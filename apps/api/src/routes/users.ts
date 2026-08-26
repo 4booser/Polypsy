@@ -64,7 +64,7 @@ userRoutes.patch("/:id/role", async (c) => {
   if (!row) notFound("Пользователь не найден");
 
   await audit(c, {
-    action: "user.create",
+    action: "user.role_change",
     resourceType: "user",
     resourceId: row.id,
     subjectUserId: row.id,

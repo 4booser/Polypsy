@@ -7,7 +7,7 @@ import { responses, surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { assertSurveyAccess } from "../lib/scope";
+import { accessibleGroupIds, assertSurveyAccess } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const accessRoutes = new Hono<AppEnv>();
@@ -125,9 +125,51 @@ accessRoutes.delete("/surveys/:id/grants/:userId", async (c) => {
   return c.body(null, 204);
 });
 
-/** Пациенты, которым можно назначить методику */
+/**
+ * Пациенты, которым можно назначить методику.
+ *
+ * Список ограничен зоной ответственности: групповой админ видит только тех, кто
+ * уже соприкасался с его группами — назначение, прохождение или доступ к методике
+ * группы. Отдавать всех пациентов системы значило бы раскрывать каждому админу
+ * состав чужих отделений. Суперадмин видит всех — ему назначать в любую группу.
+ */
 accessRoutes.get("/patients", async (c) => {
-  const rows = await db.select().from(users).where(eq(users.role, "user"));
+  const user = c.get("user");
+  const groupIds = await accessibleGroupIds(user);
+
+  let rows: (typeof users.$inferSelect)[];
+  if (groupIds === null) {
+    rows = await db.select().from(users).where(eq(users.role, "user"));
+  } else if (!groupIds.length) {
+    rows = [];
+  } else {
+    rows = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.role, "user"),
+          sql`(
+            exists (select 1 from survey_access sa
+              join surveys s on s.id = sa.survey_id
+              where sa.user_id = "users"."id" and s.group_id in ${groupIds})
+            or exists (select 1 from responses r
+              join surveys s on s.id = r.survey_id
+              where r.user_id = "users"."id" and s.group_id in ${groupIds})
+            or exists (select 1 from battery_assignments ba
+              join batteries b on b.id = ba.battery_id
+              where ba.user_id = "users"."id" and b.group_id in ${groupIds})
+          )`,
+        ),
+      );
+  }
+
+  // чтение списка пациентов — доступ к персональным данным, фиксируем
+  await audit(c, {
+    action: "access.patient_list",
+    details: { patients: rows.length, scoped: groupIds !== null },
+  });
+
   return c.json(
     rows
       .map((u) => ({ id: u.id, fullName: fullNameOf(u), email: u.email, unit: u.unit }))

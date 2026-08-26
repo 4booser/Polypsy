@@ -183,6 +183,11 @@ export const scheduleInputSchema = z
     path: ["userIds"],
   });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(10, "Пароль — минимум 10 символов").max(200),
+});
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -530,6 +535,7 @@ export type GrantAccessInput = z.infer<typeof grantAccessSchema>;
 export type BatteryInput = z.input<typeof batteryInputSchema>;
 export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;
 export type ScheduleInput = z.input<typeof scheduleInputSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type GroupInput = z.infer<typeof groupInputSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;
