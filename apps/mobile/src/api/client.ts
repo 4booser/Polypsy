@@ -220,7 +220,10 @@ export const api = {
   reportUrl: (responseId: string) => `${API_URL}/api/reports/responses/${responseId}`,
 
   myResponses: () => request<SurveyResponse[]>("/api/me/responses"),
-  surveyResponses: (surveyId: string) => request<SurveyResponse[]>(`/api/surveys/${surveyId}/responses`),
+  surveyResponses: (surveyId: string) =>
+    request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
+      `/api/surveys/${surveyId}/responses?limit=50`,
+    ).then((page) => page.rows),
   responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
 
   listUsers: () => request<User[]>("/api/users"),

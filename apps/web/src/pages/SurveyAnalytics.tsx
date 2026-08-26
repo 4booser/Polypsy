@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { SurveyAnalytics as Analytics } from "@quizzy/shared";
+import type { SurveyAnalytics as Analytics, SurveyResponse } from "@quizzy/shared";
 import { api, download, openInTab } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
@@ -359,12 +359,30 @@ export default function SurveyAnalyticsPage() {
 }
 
 function Responses({ surveyId }: { surveyId: string }) {
-  const [rows, setRows] = useState<Awaited<ReturnType<typeof api.responses>> | null>(null);
+  const [rows, setRows] = useState<SurveyResponse[] | null>(null);
+  const [nextBefore, setNextBefore] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const run = useAction();
   const openReport = (rid: string) => run(() => openInTab(api.reportUrl(rid)));
+
   useEffect(() => {
-    api.responses(surveyId).then(setRows).catch(() => setRows([]));
+    api
+      .responses(surveyId)
+      .then((page) => {
+        setRows(page.rows);
+        setHasMore(page.hasMore);
+        setNextBefore(page.nextBefore);
+      })
+      .catch(() => setRows([]));
   }, [surveyId]);
+
+  async function loadMore() {
+    const page = await api.responses(surveyId, nextBefore);
+    setRows((prev) => [...(prev ?? []), ...page.rows]);
+    setHasMore(page.hasMore);
+    setNextBefore(page.nextBefore);
+  }
+
   if (!rows) return <p className="muted">Загрузка…</p>;
 
   return (
@@ -396,6 +414,11 @@ function Responses({ surveyId }: { surveyId: string }) {
           ))}
         </tbody>
       </table>
+      {hasMore ? (
+        <button style={{ marginTop: 12 }} onClick={() => run(loadMore)}>
+          Показать ещё
+        </button>
+      ) : null}
     </div>
   );
 }

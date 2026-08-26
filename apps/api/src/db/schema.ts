@@ -516,6 +516,10 @@ export const responses = pgTable(
     surveyIdx: index("responses_survey_idx").on(t.surveyId),
     userIdx: index("responses_user_idx").on(t.userId),
     submittedIdx: index("responses_submitted_idx").on(t.submittedAt),
+    // горячие запросы: список прохождений методики по времени (пагинация)
+    // и выборка завершённых по статусу
+    surveySubmittedIdx: index("responses_survey_submitted_idx").on(t.surveyId, t.submittedAt),
+    surveyStatusIdx: index("responses_survey_status_idx").on(t.surveyId, t.status),
   }),
 );
 

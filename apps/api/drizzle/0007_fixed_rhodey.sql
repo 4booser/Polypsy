@@ -1,0 +1,2 @@
+CREATE INDEX "responses_survey_submitted_idx" ON "responses" USING btree ("survey_id","submitted_at");--> statement-breakpoint
+CREATE INDEX "responses_survey_status_idx" ON "responses" USING btree ("survey_id","status");

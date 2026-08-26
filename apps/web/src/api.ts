@@ -216,7 +216,10 @@ export const api = {
     request<SurveyAnalytics>(
       `/api/analytics/surveys/${id}${versionId ? `?versionId=${versionId}` : ""}`,
     ),
-  responses: (id: string) => request<SurveyResponse[]>(`/api/surveys/${id}/responses`),
+  responses: (id: string, before?: string | null) =>
+    request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
+      `/api/surveys/${id}/responses?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`,
+    ),
   exportUrl: (id: string) => `/api/analytics/surveys/${id}/export`,
   spssDataUrl: (id: string) => `/api/spss/surveys/${id}/data.csv`,
   spssSyntaxUrl: (id: string) => `/api/spss/surveys/${id}/syntax.sps`,
