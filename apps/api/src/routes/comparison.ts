@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   ageAt,
+  directStandardize,
   type CohortBy,
   type ScaleNormalization,
   type ComparisonResult,
@@ -88,6 +89,25 @@ comparisonRoutes.get("/surveys/:id", async (c) => {
     ? await db.select().from(responseScores).where(inArray(responseScores.responseId, responseIds))
     : [];
 
+  /*
+   * Страта прохождения — снэпшоты пола/полосы на момент сдачи (П-1 плана).
+   * Стандартная популяция — вся выборка этой методики: у каждой страты вес =
+   * её размер в общей выборке. «Рота А тревожнее» на сырых долях слишком
+   * часто означает «рота А моложе» — стандартизованная колонка отвечает,
+   * что останется от разницы при одинаковой структуре.
+   */
+  const strataByResponse = new Map<string, string>();
+  for (const r of rows) {
+    const sx = r.response.respondentSex ?? "?";
+    const band = r.response.respondentAgeBand ?? "?";
+    strataByResponse.set(r.response.id, `${sx}|${band}`);
+  }
+  const standardWeights = new Map<string, number>();
+  for (const rid of cohortByResponse.keys()) {
+    const key = strataByResponse.get(rid) ?? "?|?";
+    standardWeights.set(key, (standardWeights.get(key) ?? 0) + 1);
+  }
+
   const result: ComparisonResult = {
     surveyId,
     title: survey.title,
@@ -125,8 +145,30 @@ comparisonRoutes.get("/surveys/:id", async (c) => {
                   count: (cur?.count ?? 0) + 1,
                 });
               }
+              // доля «высокого риска» (moderate|severe) — сырая и стандартизованная
+              const isRisk = (x: (typeof list)[number]) =>
+                x.severity === "severe" || x.severity === "moderate";
+              const rawShare = list.length ? list.filter(isRisk).length / list.length : 0;
+
+              const byStratum = new Map<string, { n: number; risk: number }>();
+              for (const x of list) {
+                const key = strataByResponse.get(x.responseId) ?? "?|?";
+                const cur = byStratum.get(key) ?? { n: 0, risk: 0 };
+                cur.n += 1;
+                if (isRisk(x)) cur.risk += 1;
+                byStratum.set(key, cur);
+              }
+              const stdShare = directStandardize(
+                [...byStratum.entries()].map(([key, v]) => ({
+                  rate: v.risk / v.n,
+                  standardWeight: standardWeights.get(key) ?? 0,
+                })),
+              );
+
               return {
                 cohort,
+                rawRiskShare: round(rawShare, 3),
+                stdRiskShare: stdShare,
                 n: list.length,
                 mean: round(average(values)),
                 median: round(median(values)),

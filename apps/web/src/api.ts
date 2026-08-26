@@ -279,6 +279,18 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  surveillance: (surveyId: string) =>
+    request<{
+      surveyId: string;
+      title: string;
+      minWeekN: number;
+      series: {
+        unit: string | null;
+        center: number;
+        weeks: { week: string; n: number; x: number; p: number; ucl: number; beyondLimits: boolean; runSignal: boolean }[];
+      }[];
+    }>(`/api/surveillance/surveys/${surveyId}`),
+
   normCandidates: (surveyId: string) =>
     request<{
       minGroup: number;

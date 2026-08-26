@@ -885,6 +885,10 @@ export interface Schedule {
 /** Срез сравнения: одна когорта по одной субшкале */
 export interface CohortStat {
   cohort: string;
+  /** Сырая доля высокого риска (moderate|severe) */
+  rawRiskShare: number;
+  /** Стандартизовано по полу×возрасту всей выборки методики; null — не посчитать */
+  stdRiskShare: number | null;
   n: number;
   mean: number;
   median: number;
