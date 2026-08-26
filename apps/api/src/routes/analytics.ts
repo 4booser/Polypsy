@@ -113,15 +113,23 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   const survey = await getSurvey(surveyId, chosen?.id ?? null);
   if (!survey) notFound("Методика не найдена");
 
+  // диапазон дат: аналитика «за квартал» и «до/после ротации» — разные вопросы
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+
   // считаем только по прохождениям выбранной версии: смешивать ответы разных
   // редакций методики нельзя — вопросы у них разные
   const responseRows = await db
     .select()
     .from(responses)
     .where(
-      chosen
-        ? and(eq(responses.surveyId, surveyId), eq(responses.versionId, chosen.id))
-        : eq(responses.surveyId, surveyId),
+      and(
+        eq(responses.surveyId, surveyId),
+        chosen ? eq(responses.versionId, chosen.id) : undefined,
+        from ? sql`${responses.submittedAt} >= ${from}` : undefined,
+        // верхняя граница включительно: пользователь выбирает день, а не момент
+        to ? sql`${responses.submittedAt} < (${to}::date + 1)` : undefined,
+      ),
     );
   const responseIds = responseRows.map((r) => r.id);
 

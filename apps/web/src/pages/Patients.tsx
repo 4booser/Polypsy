@@ -5,33 +5,65 @@ import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
-import { useAction } from "../ui";
+import { DataTable, PageHead, Search, useAction } from "../ui";
+
+type Respondent = Awaited<ReturnType<typeof api.respondents>>[number];
 
 export function PatientList() {
-  const [rows, setRows] = useState<Awaited<ReturnType<typeof api.respondents>> | null>(null);
+  const [rows, setRows] = useState<Respondent[] | null>(null);
+  const [query, setQuery] = useState("");
   useEffect(() => {
     api.respondents().then(setRows).catch(() => setRows([]));
   }, []);
   if (!rows) return <p className="muted">Загрузка…</p>;
 
+  const filtered = query
+    ? rows.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(query.toLowerCase()))
+    : rows;
+
   return (
     <>
-      <h1>Пациенты</h1>
-      <p className="sub">Только те, кто проходил методики ваших групп</p>
-      <div className="card scroll-x">
-        <table>
-          <thead><tr><th>ФИО</th><th>Email</th><th className="num">Прохождений</th><th>Последнее</th></tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.userId}>
-                <td><Link to={`/patients/${r.userId}`}>{r.fullName}</Link></td>
-                <td className="muted">{r.email}</td>
-                <td className="num">{r.count}</td>
-                <td className="muted">{r.last?.slice(0, 10) ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <PageHead
+        title="Пациенты"
+        sub="Только те, кто проходил методики ваших групп"
+        actions={<Search value={query} onChange={setQuery} placeholder="Имя или email" />}
+      />
+      <div className="card">
+        <DataTable
+          rows={filtered}
+          csvName="пациенты"
+          initialSort={{ key: "last", desc: true }}
+          empty={<p className="muted">Никого не найдено</p>}
+          columns={[
+            {
+              key: "name",
+              header: "ФИО",
+              sort: (r) => r.fullName,
+              csv: (r) => r.fullName,
+              render: (r) => <Link to={`/patients/${r.userId}`}>{r.fullName}</Link>,
+            },
+            {
+              key: "email",
+              header: "Email",
+              sort: (r) => r.email,
+              render: (r) => <span className="muted">{r.email}</span>,
+            },
+            {
+              key: "count",
+              header: "Прохождений",
+              num: true,
+              sort: (r) => r.count,
+              render: (r) => r.count,
+            },
+            {
+              key: "last",
+              header: "Последнее",
+              sort: (r) => r.last ?? "",
+              csv: (r) => r.last?.slice(0, 10) ?? "",
+              render: (r) => <span className="muted">{r.last?.slice(0, 10) ?? "—"}</span>,
+            },
+          ]}
+        />
       </div>
     </>
   );

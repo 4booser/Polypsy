@@ -503,3 +503,12 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
   text-align: left; margin: 14px 0; padding: 14px 16px;
   border: 2px solid var(--sev-severe); border-radius: 12px; font-size: 16px;
 }
+
+/* отметка сборки: при разборе инцидента сверяется «что задеплоено» */
+.build-tag {
+  font: 500 10.5px ui-monospace, monospace; color: var(--muted);
+  opacity: 0.65; padding: 6px 12px; user-select: all;
+}
+
+.table-tools { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.table-tools button { font-size: 12px; padding: 5px 10px; }

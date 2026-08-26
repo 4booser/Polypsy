@@ -147,7 +147,25 @@ export interface Column<T> {
   /** Значение для сортировки; если не задано — колонка не сортируется */
   sort?: (row: T) => string | number;
   render: (row: T) => ReactNode;
+  /** Текстовое значение для CSV; без него берётся sort, иначе колонка пропускается */
+  csv?: (row: T) => string | number;
   width?: number;
+}
+
+/**
+ * CSV из текущего состояния таблицы (с сортировкой пользователя).
+ * Разделитель — точка с запятой: русский Excel по умолчанию понимает её,
+ * а запятую внутри чисел «1,5» — нет.
+ */
+function tableToCsv<T>(rows: T[], columns: Column<T>[]): string {
+  const cols = columns.filter((c) => c.csv ?? c.sort);
+  const cell = (v: string | number) => {
+    const str = String(v);
+    return /[";\n]/.test(str) ? `"${str.replaceAll('"', '""')}"` : str;
+  };
+  const head = cols.map((c) => cell(c.header)).join(";");
+  const body = rows.map((r) => cols.map((c) => cell((c.csv ?? c.sort)!(r))).join(";"));
+  return "\ufeff" + [head, ...body].join("\r\n");
 }
 
 export function DataTable<T>({
@@ -155,11 +173,14 @@ export function DataTable<T>({
   columns,
   empty,
   initialSort,
+  csvName,
 }: {
   rows: T[];
   columns: Column<T>[];
   empty?: ReactNode;
   initialSort?: { key: string; desc?: boolean };
+  /** Имя файла включает выгрузку CSV текущего вида таблицы */
+  csvName?: string;
 }) {
   const [sort, setSort] = useState(initialSort ?? null);
 
@@ -178,8 +199,23 @@ export function DataTable<T>({
 
   if (rows.length === 0 && empty) return <>{empty}</>;
 
+  const exportCsv = () => {
+    const blob = new Blob([tableToCsv(sorted, columns)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${csvName}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="scroll-x">
+      {csvName && rows.length ? (
+        <div className="table-tools">
+          <button onClick={exportCsv}>CSV · {rows.length}</button>
+        </div>
+      ) : null}
       <table>
         <thead>
           <tr>

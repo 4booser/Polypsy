@@ -115,6 +115,50 @@ export default function Audit() {
           </tbody>
         </table>
       </div>
+
+      <Storage />
     </>
+  );
+}
+
+/** Рост хранилища: что распухает — видно до того, как кончится диск */
+function Storage() {
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof api.storageStats>> | null>(null);
+  useEffect(() => {
+    api.storageStats().then(setStats).catch(() => {});
+  }, []);
+  if (!stats) return null;
+  const max = stats.tables[0]?.bytes ?? 1;
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Хранилище</h2>
+        <span className="hint">база целиком: {stats.database}</span>
+      </div>
+      <table>
+        <tbody>
+          {stats.tables.slice(0, 10).map((t) => (
+            <tr key={t.table}>
+              <td style={{ width: 200, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{t.table}</td>
+              <td>
+                <div style={{ position: "relative", height: 10, background: "var(--surface-3)", borderRadius: 5 }}>
+                  <i style={{
+                    position: "absolute", left: 0, top: 0, height: "100%",
+                    width: `${Math.max(2, (t.bytes / max) * 100)}%`,
+                    background: "var(--s1)", borderRadius: 5, display: "block",
+                  }} />
+                </div>
+              </td>
+              <td className="num" style={{ width: 90 }}>{t.pretty}</td>
+              <td className="num muted" style={{ width: 110 }}>{t.rows.toLocaleString("ru-RU")} строк</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="hint">
+        answer_events сдерживается ретенцией; audit_log растёт вечно by design — его
+        партиционирование по месяцам станет актуальным после первых миллионов записей.
+      </p>
+    </div>
   );
 }
