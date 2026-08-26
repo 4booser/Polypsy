@@ -1,0 +1,4 @@
+# Metro (React Native) не умеет резолвить изолированную раскладку node_modules,
+# поэтому держим общий hoisted-node_modules в корне монорепо.
+[install]
+linker = "hoisted"

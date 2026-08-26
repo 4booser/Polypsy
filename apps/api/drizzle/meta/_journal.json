@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787675730473,
+      "tag": "0000_fixed_the_fury",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787690934781,
+      "tag": "0001_puzzling_inertia",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787692344192,
+      "tag": "0002_natural_tomas",
+      "breakpoints": true
+    }
+  ]
+}

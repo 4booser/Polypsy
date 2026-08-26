@@ -1,0 +1,553 @@
+import { z } from "zod";
+
+export const roleSchema = z.enum(["superadmin", "admin", "user"]);
+
+/**
+ * Текст в конструкторе можно задать строкой или объектом языков.
+ * Строка нормализуется в объект на записи — так старые вызовы продолжают
+ * работать, а двуязычные методики заводятся сразу как есть.
+ */
+export const localizedSchema = z.union([
+  z.string().max(4000),
+  z.object({ uk: z.string().max(4000).optional(), ru: z.string().max(4000).optional() }),
+]);
+
+export function normalizeLocalized(
+  value: z.infer<typeof localizedSchema> | null | undefined,
+  /**
+   * Язык, которым помечается простая строка. По умолчанию русский: весь
+   * текст, заведённый строкой, написан по-русски. Двуязычные методики
+   * передают объект и этого умолчания не касаются.
+   */
+  defaultLang: "uk" | "ru" = "ru",
+): Record<string, string> | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value.trim() ? { [defaultLang]: value } : null;
+  const cleaned = Object.fromEntries(Object.entries(value).filter(([, v]) => v && v.trim()));
+  return Object.keys(cleaned).length ? cleaned : null;
+}
+
+export const questionTypeSchema = z.enum([
+  "single",
+  "multiple",
+  "scale",
+  "slider",
+  "matrix",
+  "ranking",
+  "yesno",
+  "number",
+  "text",
+  "longtext",
+  "date",
+  "info",
+]);
+
+export const surveyStatusSchema = z.enum(["draft", "published", "closed", "archived"]);
+export const scaleAggregationSchema = z.enum(["sum", "average", "count"]);
+export const severitySchema = z.enum(["none", "mild", "moderate", "severe"]);
+export const logicOperatorSchema = z.enum([
+  "eq",
+  "neq",
+  "gt",
+  "lt",
+  "gte",
+  "lte",
+  "contains",
+  "answered",
+  "not_answered",
+]);
+
+/** Типы, у которых обязаны быть варианты ответа */
+export const CHOICE_TYPES = ["single", "multiple", "matrix", "ranking"] as const;
+/** Типы с числовым ответом */
+export const NUMERIC_TYPES = ["scale", "slider", "number"] as const;
+
+export const sexSchema = z.enum(["male", "female"]);
+
+/** ФИО: фамилия и имя обязательны, отчество нет */
+const personNameSchema = {
+  firstName: z.string().min(1).max(80),
+  lastName: z.string().min(1).max(80),
+  middleName: z.string().max(80).nullish(),
+};
+
+/** Паспортная часть — её требуют регистрационные бланки всех методик */
+const profileFields = {
+  sex: sexSchema.nullish(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в формате ГГГГ-ММ-ДД").nullish(),
+  unit: z.string().max(160).nullish(),
+  position: z.string().max(160).nullish(),
+  specialty: z.string().max(160).nullish(),
+  rank: z.string().max(120).nullish(),
+};
+
+export const profileSchema = z.object({
+  sex: sexSchema.nullish(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в формате ГГГГ-ММ-ДД").nullish(),
+  unit: z.string().max(160).nullish(),
+  position: z.string().max(160).nullish(),
+  specialty: z.string().max(160).nullish(),
+  rank: z.string().max(120).nullish(),
+});
+
+export const updateProfileSchema = profileSchema.extend({
+  firstName: z.string().min(1).max(80).optional(),
+  lastName: z.string().min(1).max(80).optional(),
+  middleName: z.string().max(80).nullish(),
+});
+
+export const registerSchema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(8).max(128),
+    /** ФИО обязательно для обычного аккаунта и не хранится у псевдонимизированного */
+    firstName: z.string().max(80).optional(),
+    lastName: z.string().max(80).optional(),
+    middleName: z.string().max(80).nullish(),
+    /** Псевдонимизированный аккаунт: вместо ФИО показывается код */
+    anonymous: z.boolean().default(false),
+    ...profileFields,
+    /**
+     * Принимается, но игнорируется сервером: роль назначает только администратор.
+     * Поле оставлено в схеме, чтобы старые клиенты получали 201, а не 400,
+     * а попытка его передать фиксировалась в журнале доступа.
+     */
+    role: roleSchema.optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.anonymous) {
+      if (!v.lastName?.trim())
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lastName"], message: "Укажите фамилию" });
+      if (!v.firstName?.trim())
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["firstName"], message: "Укажите имя" });
+    }
+  });
+
+/** Создание учётной записи персонала — доступно только администратору */
+/** Учётная запись сотрудника: ФИО обязательно, псевдонимизация не применяется */
+export const createUserSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8).max(128),
+  ...personNameSchema,
+  role: roleSchema,
+});
+
+/** Назначение методики конкретному пациенту */
+export const grantAccessSchema = z.object({
+  userId: z.string().min(1),
+  expiresAt: z.string().nullish(),
+  note: z.string().max(500).nullish(),
+});
+
+export const batteryInputSchema = z.object({
+  title: z.string().min(2).max(200),
+  description: z.string().max(2000).nullish(),
+  groupId: z.string().nullish(),
+  strictOrder: z.boolean().default(true),
+  archived: z.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        surveyId: z.string().min(1),
+        required: z.boolean().default(true),
+      }),
+    )
+    .min(1, "В батарее должна быть хотя бы одна методика"),
+});
+
+export const assignBatterySchema = z.object({
+  userId: z.string().min(1),
+  dueAt: z.string().nullish(),
+  note: z.string().max(500).nullish(),
+});
+
+export const scheduleInputSchema = z
+  .object({
+    title: z.string().min(2).max(200),
+    batteryId: z.string().min(1),
+    scope: z.enum(["unit", "users"]),
+    unit: z.string().max(200).nullish(),
+    userIds: z.array(z.string()).default([]),
+    intervalDays: z.number().int().min(1).max(3650),
+    dueDays: z.number().int().min(1).max(365).default(14),
+    startsAt: z.string().nullish(),
+    endsAt: z.string().nullish(),
+    active: z.boolean().default(true),
+  })
+  .refine((v) => v.scope !== "unit" || !!v.unit?.trim(), {
+    message: "Для охвата по подразделению нужно указать подразделение",
+    path: ["unit"],
+  })
+  .refine((v) => v.scope !== "users" || v.userIds.length > 0, {
+    message: "Выберите хотя бы одного обследуемого",
+    path: ["userIds"],
+  });
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+/* ─────────────── Группы ─────────────── */
+
+export const groupInputSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).nullish(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Цвет задаётся как #RRGGBB")
+    .nullish(),
+  position: z.number().int().min(0).optional(),
+});
+
+/* ─────────────── Конструктор опроса ─────────────── */
+
+export const riskSeveritySchema = z.enum(["moderate", "severe"]);
+
+export const optionInputSchema = z.object({
+  text: localizedSchema,
+  score: z.number().default(0),
+  kind: z.enum(["option", "row"]).default("option"),
+  /** Код для ключа: «yes» / «no» у методик с ответами да/нет */
+  keyCode: z.string().max(40).nullish(),
+  /** Выбор этого варианта поднимает тревогу немедленно */
+  riskFlag: z.boolean().default(false),
+  riskLabel: localizedSchema.nullish(),
+  riskSeverity: riskSeveritySchema.nullish(),
+});
+
+export const bandInputSchema = z
+  .object({
+    minScore: z.number(),
+    maxScore: z.number(),
+    label: localizedSchema,
+    severity: severitySchema.default("none"),
+    description: localizedSchema.nullish(),
+    /** Порядковая оценка методики — может быть перевёрнута относительно severity */
+    grade: z.number().int().nullish(),
+    /** Клиническая рекомендация по этой полосе */
+    recommendation: localizedSchema.nullish(),
+  })
+  .refine((b) => b.maxScore >= b.minScore, {
+    message: "Верхняя граница нормы не может быть меньше нижней",
+    path: ["maxScore"],
+  });
+
+export const scaleInputSchema = z.object({
+  /** Ключ субшкалы, по нему вопросы к ней привязываются */
+  code: z
+    .string()
+    .min(1)
+    .max(40)
+    .regex(/^[a-zA-Z0-9_-]+$/, "Код субшкалы: латиница, цифры, дефис, подчёркивание"),
+  title: localizedSchema,
+  description: localizedSchema.nullish(),
+  aggregation: scaleAggregationSchema.default("sum"),
+
+  kind: z.enum(["clinical", "validity"]).default("clinical"),
+  normalization: z.enum(["raw", "ratio", "tscore", "sten"]).default("raw"),
+  ratioDenominator: z.number().positive().nullish(),
+  validityThreshold: z.number().nullish(),
+  validityDirection: z.enum(["above", "below"]).nullish(),
+  validityMessage: localizedSchema.nullish(),
+
+  bands: z.array(bandInputSchema).default([]),
+
+  /**
+   * Ключ шкалы: какие пункты в неё входят и с каким ожидаемым ответом.
+   * Номера — позиции в массиве questions, начиная с 1, как в пособиях.
+   */
+  key: z
+    .array(
+      z.object({
+        item: z.number().int().min(1),
+        matchKey: z.string().max(40).nullish(),
+        weight: z.number().default(1),
+      }),
+    )
+    .default([]),
+
+  /** Поправки от других шкал: { from: "K", coefficient: 0.5 } */
+  corrections: z
+    .array(z.object({ from: z.string().min(1), coefficient: z.number() }))
+    .default([]),
+
+  norms: z
+    .array(
+      z.object({
+        sex: sexSchema.nullish(),
+        ageMin: z.number().int().nullish(),
+        ageMax: z.number().int().nullish(),
+        mean: z.number(),
+        sd: z.number().positive(),
+      }),
+    )
+    .default([]),
+
+  stenTable: z
+    .array(
+      z.object({
+        sex: sexSchema.nullish(),
+        ageMin: z.number().int().nullish(),
+        ageMax: z.number().int().nullish(),
+        rawMin: z.number(),
+        rawMax: z.number(),
+        sten: z.number().int().min(1).max(10),
+      }),
+    )
+    .default([]),
+});
+
+export const sectionInputSchema = z.object({
+  /** Клиентский ключ для связи вопросов с секцией внутри одного запроса */
+  key: z.string().min(1).max(60),
+  title: localizedSchema,
+  description: localizedSchema.nullish(),
+});
+
+export const logicInputSchema = z.object({
+  /** Индекс вопроса-источника в массиве questions */
+  sourceIndex: z.number().int().min(0),
+  operator: logicOperatorSchema,
+  value: z.unknown().optional(),
+  action: z.enum(["show", "hide"]).default("show"),
+});
+
+export const questionInputSchema = z
+  .object({
+    type: questionTypeSchema,
+    title: localizedSchema,
+    help: localizedSchema.nullish(),
+    required: z.boolean().default(false),
+    /** Ключ секции из sections[].key */
+    sectionKey: z.string().max(60).nullish(),
+    /** Код субшкалы из scales[].code */
+    scaleCode: z.string().max(40).nullish(),
+    reverseScored: z.boolean().default(false),
+
+    minValue: z.number().nullish(),
+    maxValue: z.number().nullish(),
+    step: z.number().positive().nullish(),
+    minLabel: z.string().max(120).nullish(),
+    maxLabel: z.string().max(120).nullish(),
+
+    randomizeOptions: z.boolean().default(false),
+    timeLimitSec: z.number().int().positive().max(3600).nullish(),
+
+    riskThreshold: z.number().nullish(),
+    riskLabel: localizedSchema.nullish(),
+    riskSeverity: riskSeveritySchema.nullish(),
+
+    options: z.array(optionInputSchema).default([]),
+    logic: z.array(logicInputSchema).default([]),
+  })
+  .superRefine((q, ctx) => {
+    const needsOptions = (CHOICE_TYPES as readonly string[]).includes(q.type);
+    if (needsOptions) {
+      const choices = q.options.filter((o) => o.kind === "option");
+      if (choices.length < 2) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["options"],
+          message: "Нужно минимум 2 варианта ответа",
+        });
+      }
+      if (q.type === "matrix" && q.options.filter((o) => o.kind === "row").length < 1) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["options"],
+          message: "У матричного вопроса нужна хотя бы одна строка",
+        });
+      }
+    }
+
+    if ((NUMERIC_TYPES as readonly string[]).includes(q.type)) {
+      const min = q.minValue ?? (q.type === "scale" ? 1 : 0);
+      const max = q.maxValue ?? (q.type === "scale" ? 5 : 100);
+      if (max <= min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["maxValue"],
+          message: "Максимум должен быть больше минимума",
+        });
+      }
+    }
+
+    if (q.type === "info" && q.required) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["required"],
+        message: "Информационный блок не может быть обязательным",
+      });
+    }
+
+    if (q.reverseScored && !q.scaleCode) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["reverseScored"],
+        message: "Обратный ключ имеет смысл только для вопроса, привязанного к субшкале",
+      });
+    }
+  });
+
+export const surveySettingsSchema = z.object({
+  groupId: z.string().nullish(),
+  instructions: localizedSchema.nullish(),
+  timeLimitSec: z.number().int().positive().max(86400).nullish(),
+  randomizeQuestions: z.boolean().default(false),
+  allowBack: z.boolean().default(true),
+  showProgress: z.boolean().default(true),
+  anonymous: z.boolean().default(false),
+  visibility: z.enum(["public", "restricted"]).default("public"),
+  tooFastMs: z.number().int().min(200).max(120_000).nullish(),
+  alertEscalateMinutes: z.number().int().min(1).max(10_080).nullish(),
+  allowRetake: z.boolean().default(false),
+  scoringEnabled: z.boolean().default(false),
+});
+
+export const createSurveySchema = z
+  .object({
+    title: localizedSchema,
+    description: localizedSchema.nullish(),
+    administration: z.enum(["self", "clinician"]).default("self"),
+    sections: z.array(sectionInputSchema).default([]),
+    scales: z.array(scaleInputSchema).default([]),
+    questions: z.array(questionInputSchema).default([]),
+  })
+  .merge(surveySettingsSchema.partial())
+  .superRefine((s, ctx) => {
+    const sectionKeys = new Set(s.sections.map((x) => x.key));
+    if (sectionKeys.size !== s.sections.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["sections"], message: "Ключи секций должны быть уникальны" });
+    }
+
+    const scaleCodes = new Set(s.scales.map((x) => x.code));
+    if (scaleCodes.size !== s.scales.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scales"], message: "Коды субшкал должны быть уникальны" });
+    }
+
+    s.questions.forEach((q, i) => {
+      if (q.sectionKey && !sectionKeys.has(q.sectionKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["questions", i, "sectionKey"],
+          message: `Секция «${q.sectionKey}» не описана в sections`,
+        });
+      }
+      if (q.scaleCode && !scaleCodes.has(q.scaleCode)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["questions", i, "scaleCode"],
+          message: `Субшкала «${q.scaleCode}» не описана в scales`,
+        });
+      }
+      q.logic.forEach((rule, j) => {
+        if (rule.sourceIndex >= s.questions.length) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["questions", i, "logic", j, "sourceIndex"],
+            message: "Условие ссылается на несуществующий вопрос",
+          });
+        }
+        if (rule.sourceIndex >= i) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["questions", i, "logic", j, "sourceIndex"],
+            message: "Условие может ссылаться только на предыдущий вопрос",
+          });
+        }
+      });
+    });
+  });
+
+export const updateSurveySchema = z
+  .object({
+    title: localizedSchema.optional(),
+    description: localizedSchema.nullish(),
+    administration: z.enum(["self", "clinician"]).optional(),
+    status: surveyStatusSchema.optional(),
+    sections: z.array(sectionInputSchema).optional(),
+    scales: z.array(scaleInputSchema).optional(),
+    questions: z.array(questionInputSchema).optional(),
+    /** Комментарий к новой версии — что именно поменяли */
+    versionNote: z.string().max(500).optional(),
+  })
+  .merge(surveySettingsSchema.partial());
+
+/* ─────────────── Прохождение ─────────────── */
+
+export const answerSchema = z.object({
+  questionId: z.string().min(1),
+  optionIds: z.array(z.string()).optional(),
+  text: z.string().max(10000).optional(),
+  number: z.number().optional(),
+  date: z.string().optional(),
+  matrix: z.record(z.string(), z.string()).optional(),
+  ranking: z.array(z.string()).optional(),
+  skipped: z.boolean().optional(),
+
+  durationMs: z.number().int().min(0).max(86_400_000).optional(),
+  changeCount: z.number().int().min(0).max(10000).optional(),
+  visitCount: z.number().int().min(0).max(10000).optional(),
+});
+
+/** Автосохранение черновика прохождения */
+export const draftSchema = z.object({
+  answers: z.array(answerSchema),
+  startedAt: z.string(),
+  durationMs: z.number().int().min(0).max(86_400_000),
+  events: z.array(z.unknown()).max(5000).default([]),
+});
+
+/** Событие ленты: показ вопроса, выбор, смена, сброс, уход с вопроса */
+export const answerEventSchema = z.object({
+  questionId: z.string().min(1),
+  sequence: z.number().int().min(0),
+  kind: z.enum(["shown", "set", "change", "clear", "leave"]),
+  elapsedMs: z.number().int().min(0).max(86_400_000),
+  at: z.string(),
+  value: z.unknown().optional(),
+});
+
+export const submitResponseSchema = z.object({
+  answers: z.array(answerSchema),
+  startedAt: z.string(),
+  durationMs: z.number().int().min(0).max(86_400_000),
+  status: z.enum(["completed", "abandoned"]).default("completed"),
+  /** Полная лента событий — из неё восстанавливается процесс ответа */
+  events: z.array(answerEventSchema).max(5000).default([]),
+  /**
+   * Кого обследовали, если методику заполняет специалист.
+   * Только для методик с administration = "clinician".
+   */
+  onBehalfOf: z.string().nullish(),
+});
+
+export type RegisterInput = z.infer<typeof registerSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
+export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type GrantAccessInput = z.infer<typeof grantAccessSchema>;
+export type BatteryInput = z.input<typeof batteryInputSchema>;
+export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;
+export type ScheduleInput = z.input<typeof scheduleInputSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type GroupInput = z.infer<typeof groupInputSchema>;
+export type OptionInput = z.infer<typeof optionInputSchema>;
+export type BandInput = z.infer<typeof bandInputSchema>;
+export type ScaleInput = z.infer<typeof scaleInputSchema>;
+export type SectionInput = z.infer<typeof sectionInputSchema>;
+export type LogicInput = z.infer<typeof logicInputSchema>;
+export type QuestionInput = z.infer<typeof questionInputSchema>;
+export type CreateSurveyInput = z.infer<typeof createSurveySchema>;
+export type UpdateSurveyInput = z.infer<typeof updateSurveySchema>;
+export type AnswerInput = z.infer<typeof answerSchema>;
+export type SubmitResponseInput = z.infer<typeof submitResponseSchema>;
+export type AnswerEventInput = z.infer<typeof answerEventSchema>;
+
+/**
+ * Типы «до применения умолчаний» — удобны, когда методика описывается литералом
+ * в коде или в сидах: не нужно перечислять поля, у которых есть default.
+ */
+export type CreateSurveyDraft = z.input<typeof createSurveySchema>;
+export type QuestionDraft = z.input<typeof questionInputSchema>;
+export type ScaleDraft = z.input<typeof scaleInputSchema>;
