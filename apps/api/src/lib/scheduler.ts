@@ -131,18 +131,22 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
 const SCHEDULER_LOCK_KEY = 7_154_202;
 
 export async function runDueSchedules(now = new Date()): Promise<number> {
-  // две реплики не должны выдать задания дважды: идемпотентность через
-  // schedule_runs — первый пояс, лок на время прохода — второй
-  const [lock] = await db.execute(
-    sql`select pg_try_advisory_lock(${SCHEDULER_LOCK_KEY}) as ok`,
-  );
-  if (!(lock as { ok: boolean }).ok) return 0;
-
-  try {
-    return await runDueSchedulesLocked(now);
-  } finally {
-    await db.execute(sql`select pg_advisory_unlock(${SCHEDULER_LOCK_KEY})`).catch(() => {});
-  }
+  // Две реплики не должны выдать задания дважды: идемпотентность через
+  // schedule_runs — первый пояс, лок на время прохода — второй.
+  //
+  // Лок именно транзакционный (pg_try_advisory_xact_lock): сессионный вариант
+  // в пуле соединений ломается — захват и освобождение могут уйти в разные
+  // соединения, и лок либо повисает, либо снимается с предупреждением.
+  // Транзакция-обёртка держит одно соединение и не делает записей: вся работа
+  // внутри идёт обычным пулом, а лок отпускается сам при выходе — в том числе
+  // при ошибке.
+  return db.transaction(async (tx) => {
+    const [lock] = await tx.execute(
+      sql`select pg_try_advisory_xact_lock(${SCHEDULER_LOCK_KEY}) as ok`,
+    );
+    if (!(lock as { ok: boolean }).ok) return 0;
+    return runDueSchedulesLocked(now);
+  });
 }
 
 async function runDueSchedulesLocked(now: Date): Promise<number> {
