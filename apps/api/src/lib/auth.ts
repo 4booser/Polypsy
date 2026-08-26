@@ -4,7 +4,8 @@ import { env } from "../env";
 import type { UserRow } from "../db/schema";
 import type { User } from "@quizzy/shared";
 
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 дней
+// Короткий access: угнанный токен живёт минуты, продление — через refresh
+const TOKEN_TTL_SECONDS = 60 * 30;
 const ALG = "HS256" as const;
 
 export interface TokenClaims extends JWTPayload {

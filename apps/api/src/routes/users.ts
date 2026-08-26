@@ -4,6 +4,7 @@ import { createUserSchema, type User } from "@quizzy/shared";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
 import { conflict, forbidden, notFound, parseBody } from "../lib/http";
 import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
@@ -62,6 +63,9 @@ userRoutes.patch("/:id/role", async (c) => {
 
   const [row] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
   if (!row) notFound("Пользователь не найден");
+
+  // старые сессии несут старую роль в токене — обрываем их
+  await revokeAllFor(row.id);
 
   await audit(c, {
     action: "user.role_change",

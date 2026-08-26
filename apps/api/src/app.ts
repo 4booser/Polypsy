@@ -7,6 +7,8 @@
  */
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
+import { bodyLimit } from "hono/body-limit";
 import { logger } from "hono/logger";
 import { HTTPException } from "hono/http-exception";
 import { env } from "./env";
@@ -32,6 +34,16 @@ import type { AppEnv } from "./middleware/auth";
 const app = new Hono<AppEnv>();
 
 app.use("*", logger());
+app.use("*", secureHeaders());
+// самый большой легальный запрос — сдача МЛО-200 с потоком событий, ~300 КБ;
+// мегабайта хватает всем с запасом, а бомбу в теле он останавливает
+app.use(
+  "*",
+  bodyLimit({
+    maxSize: 1024 * 1024,
+    onError: (c) => c.json({ error: "Слишком большой запрос" }, 413),
+  }),
+);
 // consola токенов живёт в localStorage, поэтому открытый CORS означал бы, что
 // любой сайт может ходить в API от имени залогиненного сотрудника
 app.use(

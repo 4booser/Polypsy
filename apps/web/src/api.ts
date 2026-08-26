@@ -25,11 +25,17 @@ import type {
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
+const REFRESH_KEY = "quizzy.web.refresh";
 
 export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  getRefresh: () => localStorage.getItem(REFRESH_KEY),
+  setRefresh: (t: string) => localStorage.setItem(REFRESH_KEY, t),
+  clear: () => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+  },
 };
 
 export class ApiError extends Error {
@@ -41,7 +47,43 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Тихое продление сессии.
+ *
+ * Access-токен живёт 30 минут; на 401 пробуем обменять refresh и повторить
+ * запрос один раз. Обмен общий на все параллельные запросы — иначе пачка
+ * одновременных 401 сожжёт одноразовый refresh-токен на первом же обмене,
+ * а остальные обмены сервер прочтёт как кражу и разлогинит всех.
+ */
+let refreshing: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  refreshing ??= (async () => {
+    const raw = tokenStore.getRefresh();
+    if (!raw) return false;
+    try {
+      const res = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: raw }),
+      });
+      if (!res.ok) return false;
+      const pair = (await res.json()) as { token: string; refreshToken: string };
+      tokenStore.set(pair.token);
+      tokenStore.setRefresh(pair.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setTimeout(() => {
+        refreshing = null;
+      }, 0);
+    }
+  })();
+  return refreshing;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = tokenStore.get();
   const res = await fetch(path, {
     ...init,
@@ -51,6 +93,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.headers as Record<string, string>),
     },
   });
+  if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
+    if (await tryRefresh()) return request<T>(path, init, true);
+    tokenStore.clear();
+  }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status);
@@ -113,9 +159,19 @@ export interface Patient {
 
 export const api = {
   login: (email: string, password: string) =>
-    request<{ token: string; user: User }>("/api/auth/login", {
+    request<{ token: string; refreshToken: string; user: User }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
+    }),
+  logout: (refreshToken: string) =>
+    request<{ ok: true }>("/api/auth/logout", {
+      method: "POST",
+      body: JSON.stringify({ refreshToken }),
+    }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: true }>("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
     }),
   me: () => request<User>("/api/auth/me"),
 

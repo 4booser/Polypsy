@@ -35,10 +35,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("Консоль доступна только сотрудникам. Пациенты работают в мобильном приложении.");
     }
     tokenStore.set(res.token);
+    tokenStore.setRefresh(res.refreshToken);
     setUser(res.user);
   }
 
   function logout() {
+    // отзываем сессию на сервере; локально чистим независимо от результата
+    const raw = tokenStore.getRefresh();
+    if (raw) void api.logout(raw).catch(() => {});
     tokenStore.clear();
     setUser(null);
   }

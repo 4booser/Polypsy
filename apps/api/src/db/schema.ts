@@ -858,6 +858,57 @@ export const scheduleRuns = pgTable(
   }),
 );
 
+/**
+ * Refresh-токены.
+ *
+ * Access-токен короткий и его не отозвать — компрометация живёт минуты.
+ * Refresh хранится ХЕШЕМ (утечка таблицы не даёт токенов) и одноразов:
+ * каждое обновление выдаёт новый и гасит старый. Повторное предъявление
+ * погашенного токена — признак кражи, по нему отзывается вся семья.
+ */
+export const refreshTokens = pgTable(
+  "refresh_tokens",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    /** Семья: цепочка перевыпусков одного логина, отзывается целиком */
+    familyId: text("family_id").notNull(),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    expiresAt: timestampCol("expires_at").notNull(),
+    /** Погашен обычной ротацией */
+    rotatedAt: timestampCol("rotated_at"),
+    /** Отозван: logout, смена пароля, обнаружение повторного предъявления */
+    revokedAt: timestampCol("revoked_at"),
+  },
+  (t) => ({
+    hashIdx: uniqueIndex("refresh_tokens_hash_idx").on(t.tokenHash),
+    userIdx: index("refresh_tokens_user_idx").on(t.userId),
+    familyIdx: index("refresh_tokens_family_idx").on(t.familyId),
+  }),
+);
+
+/**
+ * Неудачные попытки входа — для rate limiting и lockout.
+ * Таблица, а не память процесса: переживает рестарт и работает при репликах.
+ */
+export const loginAttempts = pgTable(
+  "login_attempts",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    ip: text("ip"),
+    at: timestampCol("at").notNull().defaultNow(),
+  },
+  (t) => ({
+    emailIdx: index("login_attempts_email_idx").on(t.email, t.at),
+  }),
+);
+
+export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
+
 export type ScheduleRow = typeof schedules.$inferSelect;
 export type ScheduleRunRow = typeof scheduleRuns.$inferSelect;
 

@@ -36,7 +36,36 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** Общий на все запросы обмен refresh: одноразовый токен нельзя жечь параллельно */
+let refreshing: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  refreshing ??= (async () => {
+    const raw = await tokenStorage.getRefresh();
+    if (!raw) return false;
+    try {
+      const res = await fetch(`${API_URL}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: raw }),
+      });
+      if (!res.ok) return false;
+      const pair = (await res.json()) as { token: string; refreshToken: string };
+      await tokenStorage.set(pair.token);
+      await tokenStorage.setRefresh(pair.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setTimeout(() => {
+        refreshing = null;
+      }, 0);
+    }
+  })();
+  return refreshing;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = await tokenStorage.get();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -49,6 +78,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     res = await fetch(`${API_URL}${path}`, { ...init, headers });
   } catch {
     throw new ApiError(`Не удалось связаться с сервером (${API_URL})`, 0);
+  }
+
+  // истёкший access продлеваем молча и повторяем запрос один раз
+  if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
+    if (await tryRefresh()) return request<T>(path, init, true);
   }
 
   if (res.status === 204) return undefined as T;

@@ -8,6 +8,7 @@ export type AuditAction =
   | "auth.login"
   | "auth.login_failed"
   | "auth.password_change"
+  | "auth.refresh_failed"
   | "auth.register"
   | "user.create"
   | "user.role_change"
