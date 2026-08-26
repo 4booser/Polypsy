@@ -18,6 +18,7 @@ import { answerEvents, answers, riskAlerts, responseScores, responses, scales, u
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
+import { persistSubmission } from "../lib/submission";
 import { draftSchema } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertBatteryOrder, closeCompletedBatteries } from "../lib/batteries";
@@ -83,138 +84,17 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       );
   }
 
-  const answerMap = new Map(input.answers.map((a) => [a.questionId, a as Answer]));
-  const validIds = new Set(survey.questions.map((q) => q.id));
-
-  // проверяем только те вопросы, которые респондент реально должен был увидеть
-  for (const question of survey.questions) {
-    if (question.type === "info") continue;
-    if (!isQuestionVisible(question, survey.questions, answerMap)) continue;
-
-    const answer = answerMap.get(question.id);
-    // сначала форма ответа, потом обязательность: иначе битый ответ маскируется
-    // менее точным сообщением «не отвечен обязательный вопрос»
-    if (answer) validateAnswer(question, answer);
-    if (question.required && !isAnswered(question, answer)) {
-      badRequest(`Не отвечен обязательный вопрос: ${question.title}`);
-    }
-  }
-
-  /*
-   * Паспортная часть уходит в подсчёт: T-баллы и стены считаются по нормам,
-   * которые зависят от пола и возраста. Возраст берём на момент обследования,
-   * а не текущий — иначе результат менялся бы со временем.
-   */
-  // очерёдность внутри батареи проверяем до записи: отказ после сохранения
-  // означал бы прохождение, которого не должно было быть
-  await assertBatteryOrder(subjectId, surveyId, subjectId === user.id);
-
   const subject =
     subjectId === user.id
-      ? user
+      ? { id: user.id, sex: user.sex, birthDate: user.birthDate }
       : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
-  const respondent = {
-    sex: subject.sex,
-    age: ageAt(subject.birthDate, new Date().toISOString()),
-  };
-  const profile = survey.scoringEnabled
-    ? computeProfile(survey, input.answers as Answer[], respondent)
-    : { scores: [] as ScoreResult[], reliable: true, warnings: [] as string[] };
-  const scores: ScoreResult[] = profile.scores;
-  const responseId = crypto.randomUUID();
-  const submittedAt = new Date().toISOString();
 
-  await db.transaction(async (tx) => {
-    await tx.insert(responses)
-      .values({
-        id: responseId,
-        surveyId,
-        // прохождение принадлежит обследуемому, а не тому, кто внёс данные:
-        // при заполнении за пациента это разные люди, и путаница здесь ломает
-        // и динамику пациента, и когорты в аналитике
-        userId: survey.anonymous ? null : subjectId,
-        status: input.status,
-        versionId: survey.versionId,
-        startedAt: input.startedAt,
-        submittedAt,
-        durationMs: input.durationMs,
-      })
-      ;
-
-    // тревоги по критическим пунктам — до подсчёта баллов: они не зависят
-    // от шкал и должны сработать даже у методики без подсчёта
-    for (const risk of detectRisks(survey, input.answers as Answer[])) {
-      await tx.insert(riskAlerts)
-        .values({
-          id: crypto.randomUUID(),
-          responseId,
-          surveyId,
-          questionId: risk.questionId,
-          userId: survey.anonymous ? null : subjectId,
-          label: risk.label,
-          severity: risk.severity,
-          at: new Date().toISOString(),
-        })
-        .onConflictDoNothing();
-    }
-
-    for (const answer of input.answers) {
-      if (!validIds.has(answer.questionId)) continue;
-      const question = survey.questions.find((q) => q.id === answer.questionId)!;
-      await tx.insert(answers)
-        .values({
-          id: crypto.randomUUID(),
-          responseId,
-          questionId: answer.questionId,
-          optionIds: answer.optionIds ?? null,
-          text: answer.text ?? null,
-          number: answer.number ?? null,
-          date: answer.date ?? null,
-          matrix: answer.matrix ?? null,
-          ranking: answer.ranking ?? null,
-          skipped: answer.skipped ?? false,
-          score: survey.scoringEnabled ? answerScore(question, answer as Answer) : null,
-          durationMs: answer.durationMs ?? 0,
-          changeCount: answer.changeCount ?? 0,
-          visitCount: answer.visitCount ?? 1,
-        });
-    }
-
-    // лента событий пишется одной пачкой внутри той же транзакции:
-    // либо прохождение сохраняется целиком, либо не сохраняется вовсе
-    for (const event of input.events) {
-      if (!validIds.has(event.questionId)) continue;
-      await tx.insert(answerEvents)
-        .values({
-          id: crypto.randomUUID(),
-          responseId,
-          questionId: event.questionId,
-          sequence: event.sequence,
-          kind: event.kind,
-          elapsedMs: event.elapsedMs,
-          at: event.at,
-          value: event.value ?? null,
-        });
-    }
-
-    for (const score of scores) {
-      await tx.insert(responseScores)
-        .values({
-          id: crypto.randomUUID(),
-          responseId,
-          scaleId: score.scaleId,
-          rawScore: score.rawScore,
-          value: score.value,
-          normalization: score.normalization,
-          maxScore: score.maxScore,
-          percent: score.percent,
-          bandLabel: score.band?.label ?? null,
-          severity: score.band?.severity ?? null,
-        });
-    }
-  });
-
-  await closeCompletedBatteries(subjectId, surveyId);
+  const { responseId, submittedAt, scores, profile } = await persistSubmission(
+    survey,
+    subject,
+    input,
+    { filledBySelf: subjectId === user.id },
+  );
 
   await audit(c, {
     action: "response.submit",
@@ -546,60 +426,4 @@ async function withScores(
   }));
 }
 
-function validateAnswer(question: Question, answer: Answer): void {
-  const optionIds = new Set(question.options.filter((o) => o.kind === "option").map((o) => o.id));
-  const rowIds = new Set(question.options.filter((o) => o.kind === "row").map((o) => o.id));
 
-  switch (question.type) {
-    case "single":
-    case "yesno":
-      if ((answer.optionIds?.length ?? 0) > 1) {
-        badRequest(`Можно выбрать только один вариант: ${question.title}`);
-      }
-    // fallthrough — проверка принадлежности вариантов общая
-    case "multiple":
-      for (const id of answer.optionIds ?? []) {
-        if (!optionIds.has(id)) badRequest(`Недопустимый вариант ответа: ${question.title}`);
-      }
-      break;
-
-    case "matrix":
-      for (const [rowId, optionId] of Object.entries(answer.matrix ?? {})) {
-        if (!rowIds.has(rowId)) badRequest(`Недопустимая строка матрицы: ${question.title}`);
-        if (!optionIds.has(optionId)) badRequest(`Недопустимый вариант в матрице: ${question.title}`);
-      }
-      break;
-
-    case "ranking": {
-      const ranking = answer.ranking ?? [];
-      if (new Set(ranking).size !== ranking.length) {
-        badRequest(`В ранжировании есть повторы: ${question.title}`);
-      }
-      for (const id of ranking) {
-        if (!optionIds.has(id)) badRequest(`Недопустимый вариант в ранжировании: ${question.title}`);
-      }
-      break;
-    }
-
-    case "scale":
-    case "slider":
-    case "number": {
-      if (answer.number === undefined) break;
-      const min = question.minValue ?? 0;
-      const max = question.maxValue ?? 100;
-      if (answer.number < min || answer.number > max) {
-        badRequest(`Значение вне диапазона ${min}–${max}: ${question.title}`);
-      }
-      break;
-    }
-
-    case "date":
-      if (answer.date && Number.isNaN(Date.parse(answer.date))) {
-        badRequest(`Некорректная дата: ${question.title}`);
-      }
-      break;
-
-    default:
-      break;
-  }
-}

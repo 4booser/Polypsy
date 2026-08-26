@@ -27,6 +27,7 @@ import { fullNameOf } from "../lib/auth";
 import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, type AppEnv } from "../middleware/auth";
+import { parseTs } from "../lib/time";
 
 /** Язык из запроса: всё, кроме украинского, отдаём по-русски */
 const langOf = (raw: string | undefined): Lang => (raw === "uk" ? "uk" : "ru");
@@ -260,7 +261,10 @@ function buildSteps(
     const hit = done.get(item.surveyId);
     let state: BatteryStep["state"];
     if (hit) state = "done";
-    else if (blocked) state = "locked";
+    else if (item.administration === "clinician") {
+      // параллельная дорожка специалиста: не занимает очередь и не блокирует её
+      state = "available";
+    } else if (blocked) state = "locked";
     else {
       state = "current";
       if (strictOrder) blocked = true;
@@ -302,7 +306,7 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
         .where(and(inArray(responses.userId, userIds), eq(responses.status, "completed")))
     : [];
 
-  const now = new Date().toISOString();
+  const nowMs = Date.now();
   const result: BatteryAssignment[] = rows.map((r) => {
     const list = items.get(r.battery.id) ?? [];
     const mine = completions
@@ -326,7 +330,7 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
         !!r.assignment.dueAt &&
         !r.assignment.completedAt &&
         !r.assignment.cancelledAt &&
-        r.assignment.dueAt < now,
+        parseTs(r.assignment.dueAt) < nowMs,
       doneRequired,
       totalRequired: required.length,
       steps,

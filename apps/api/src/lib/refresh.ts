@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { refreshTokens, users } from "../db/schema";
 import { issueToken } from "./auth";
+import { isPast } from "./time";
 
 /**
  * Жизненный цикл refresh-токенов.
@@ -66,7 +67,7 @@ export async function rotateRefresh(raw: string): Promise<RefreshOutcome> {
     return { ok: false, reason: "reused", userId: row.userId };
   }
 
-  if (row.expiresAt < new Date().toISOString()) {
+  if (isPast(row.expiresAt)) {
     return { ok: false, reason: "expired", userId: row.userId };
   }
 

@@ -969,6 +969,54 @@ export const inviteUses = pgTable(
   }),
 );
 
+/**
+ * Сеанс киоска: один планшет — поток обследуемых по очереди.
+ *
+ * Токен сеанса — узкие права: вход участника и сдача прохождений, ничего из
+ * полномочий оператора. В базе токен хешем; на устройстве киоска не остаётся
+ * ничего, что стоило бы украсть.
+ */
+export const kioskSessions = pgTable(
+  "kiosk_sessions",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull(),
+    title: text("title").notNull(),
+    batteryId: text("battery_id")
+      .notNull()
+      .references(() => batteries.id, { onDelete: "cascade" }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestampCol("expires_at").notNull(),
+    closedAt: timestampCol("closed_at"),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    hashIdx: uniqueIndex("kiosk_sessions_hash_idx").on(t.tokenHash),
+  }),
+);
+
+export const kioskParticipants = pgTable(
+  "kiosk_participants",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => kioskSessions.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    startedAt: timestampCol("started_at").notNull().defaultNow(),
+    finishedAt: timestampCol("finished_at"),
+  },
+  (t) => ({
+    sessionIdx: index("kiosk_participants_session_idx").on(t.sessionId),
+  }),
+);
+
+export type KioskSessionRow = typeof kioskSessions.$inferSelect;
+
 export type InviteRow = typeof invites.$inferSelect;
 
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;

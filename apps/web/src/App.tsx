@@ -18,6 +18,8 @@ import Batteries from "./pages/Batteries";
 import BlankForm from "./pages/BlankForm";
 import Invites from "./pages/Invites";
 import Join from "./pages/Join";
+import Kiosk from "./pages/Kiosk";
+import KioskSessions from "./pages/KioskSessions";
 import KeyPrint from "./pages/KeyPrint";
 import {
   IconAlert,
@@ -25,6 +27,7 @@ import {
   IconBattery,
   IconClock,
   IconInvite,
+  IconKiosk,
   IconCompare,
   IconDashboard,
   IconGroup,
@@ -79,11 +82,12 @@ export default function App() {
     api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => setOpenAlerts(0));
   }, [user]);
 
-  // публичная страница приглашения живёт вне auth-гейта: у пациента нет входа
-  if (location.pathname.startsWith("/join/")) {
+  // публичные страницы живут вне auth-гейта: у пациента и киоска нет входа
+  if (location.pathname.startsWith("/join/") || location.pathname.startsWith("/kiosk/")) {
     return (
       <Routes>
         <Route path="/join/:token" element={<Join />} />
+        <Route path="/kiosk/:token" element={<Kiosk />} />
       </Routes>
     );
   }
@@ -106,6 +110,7 @@ export default function App() {
         <Nav to="/batteries" icon={<IconBattery />}>Батареи</Nav>
         <Nav to="/schedules" icon={<IconClock />}>Расписание</Nav>
         <Nav to="/invites" icon={<IconInvite />}>Приглашения</Nav>
+        <Nav to="/kiosk-sessions" icon={<IconKiosk />}>Сеансы киоска</Nav>
         <Nav to="/groups" icon={<IconGroup />}>Группы</Nav>
         <Nav to="/patients" icon={<IconPatients />}>Пациенты</Nav>
         <Nav to="/compare" icon={<IconCompare />}>Сравнение</Nav>
@@ -153,6 +158,7 @@ export default function App() {
           <Route path="/patients/:userId" element={<PatientDynamics />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
+          <Route path="/kiosk-sessions" element={<KioskSessions />} />
           <Route path="/schedules" element={<Schedules />} />
           <Route path="/compare" element={<Compare />} />
           <Route path="/alerts" element={<Alerts />} />

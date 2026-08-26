@@ -431,3 +431,73 @@ describe("приглашения", () => {
     expect(ids).not.toContain(mine.body.find((i: { batteryId: string | null }) => i.batteryId)?.id);
   });
 });
+
+/* ── очерёдность и шаги клинициста ── */
+
+describe("порядок батареи и методики клинициста", () => {
+  test("непройденное интервью специалиста не блокирует самоотчёт", async () => {
+    // батарея: [клиницист, самоотчёт] со строгим порядком
+    const clinicianSurvey = crypto.randomUUID();
+    const input = createSurveySchema.parse(sr45);
+    await db.insert(surveys).values({
+      id: clinicianSurvey,
+      groupId: groupA,
+      title: { uk: "Інтерв’ю", ru: "Интервью" },
+      administration: "clinician",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(clinicianSurvey, input, adminA.id, "v1");
+
+    const selfSurvey = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: selfSurvey,
+      groupId: groupA,
+      title: { uk: "Самозвіт", ru: "Самоотчёт" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(selfSurvey, input, adminA.id, "v1");
+
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      title: "Смешанная батарея",
+      groupId: groupA,
+      strictOrder: true,
+      createdBy: adminA.id,
+    });
+    await db.insert(batteryItems).values([
+      { batteryId, surveyId: clinicianSurvey, position: 0, required: true },
+      { batteryId, surveyId: selfSurvey, position: 1, required: true },
+    ]);
+
+    const person = await makeUser("user", "mixed@test.dev", { sex: "male", birthDate: "1992-02-02" });
+    await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+
+    // интервью ещё не внесено, но самоотчёт должен пройти:
+    // дорожка специалиста параллельна и не запирает очередь
+    const res = await submitSurvey(selfSurvey, person.token);
+    expect(res.status).toBe(201);
+
+    // батарея при этом НЕ закрыта: обязательная часть специалиста не внесена
+    const assignments = await api(`/api/batteries/${batteryId}/assignments`, adminA.token);
+    expect(assignments.body[0].completedAt).toBeNull();
+    const clinicianStep = assignments.body[0].steps.find(
+      (s: { surveyId: string }) => s.surveyId === clinicianSurvey,
+    );
+    expect(clinicianStep.state).toBe("available");
+  });
+});

@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { batteries, batteryAssignments, batteryItems, invites, inviteUses, surveyAccess } from "../db/schema";
+import { isPast } from "./time";
 
 /**
  * Механика приглашений.
@@ -46,7 +47,7 @@ export async function findUsableInvite(raw: string): Promise<InviteLookup> {
     }));
   if (!row) return { ok: false, reason: "unknown" };
   if (row.revokedAt) return { ok: false, reason: "revoked" };
-  if (row.expiresAt < new Date().toISOString()) return { ok: false, reason: "expired" };
+  if (isPast(row.expiresAt)) return { ok: false, reason: "expired" };
   if (row.usedCount >= row.maxUses) return { ok: false, reason: "exhausted" };
   return { ok: true, invite: row };
 }

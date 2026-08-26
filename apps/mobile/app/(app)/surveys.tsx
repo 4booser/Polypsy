@@ -151,10 +151,11 @@ function BatteryCard({
 }) {
   const c = useColors();
   const overdue = assignment.overdue;
-  // очередь упёрлась в шаг специалиста: обследуемый не может сдвинуть её сам,
-  // и молчать об этом — значит оставить его перед замком без объяснения
+  // в наборе есть часть специалиста: она идёт параллельно и не мешает
+  // проходить свои методики, но человек должен знать, что батарея не
+  // закроется, пока психолог не внесёт свою часть
   const waiting = assignment.steps.find(
-    (s) => s.state === "current" && s.administration === "clinician",
+    (s) => s.state !== "done" && s.administration === "clinician" && s.required,
   );
 
   return (
@@ -176,8 +177,8 @@ function BatteryCard({
 
       {waiting ? (
         <Body muted>
-          Сейчас очередь за специалистом: «{waiting.title}» заполняет психолог. Остальные
-          методики откроются после этого.
+          «{waiting.title}» заполняет специалист отдельно — ваши методики доступны, проходите
+          их в своём порядке.
         </Body>
       ) : null}
 
