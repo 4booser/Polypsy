@@ -10,7 +10,8 @@
     "db:migrate": "bun src/migrate.ts",
     "db:seed": "bun src/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",

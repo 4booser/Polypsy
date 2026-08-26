@@ -12,7 +12,8 @@
     "db:seed": "bun run --cwd apps/api db:seed",
     "typecheck": "bun run --cwd apps/api typecheck && bun run --cwd apps/mobile typecheck && bun run --cwd apps/web typecheck",
     "db:migrate": "bun run --cwd apps/api db:migrate",
-    "web": "bun run --cwd apps/web dev"
+    "web": "bun run --cwd apps/web dev",
+    "test": "bun test"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
