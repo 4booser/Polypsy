@@ -1019,6 +1019,33 @@ export const kioskParticipants = pgTable(
   }),
 );
 
+/**
+ * Журнал отправленных уведомлений о тревогах.
+ *
+ * Идемпотентность рассылки: тревога уведомляется один раз на каждый вид
+ * (initial/escalation), сколько бы раз ни прошёл тик. Отдельная таблица, а не
+ * колонка в risk_alerts: у одной тревоги несколько событий отправки с разными
+ * получателями, и их след нужен целиком.
+ */
+export const alertNotifications = pgTable(
+  "alert_notifications",
+  {
+    id: text("id").primaryKey(),
+    alertId: text("alert_id")
+      .notNull()
+      .references(() => riskAlerts.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["initial", "escalation"] }).notNull(),
+    sentAt: timestampCol("sent_at").notNull().defaultNow(),
+    /** Кому ушло: email-адреса через запятую (для разбора инцидентов) */
+    recipients: text("recipients").notNull(),
+    /** none — SMTP не настроен, уведомление только в журнале */
+    channel: text("channel", { enum: ["email", "none"] }).notNull(),
+  },
+  (t) => ({
+    alertKindIdx: uniqueIndex("alert_notifications_alert_kind_idx").on(t.alertId, t.kind),
+  }),
+);
+
 export type KioskSessionRow = typeof kioskSessions.$inferSelect;
 
 export type InviteRow = typeof invites.$inferSelect;

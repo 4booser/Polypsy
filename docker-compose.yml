@@ -29,6 +29,9 @@ services:
       DATABASE_URL: postgres://quizzy:${POSTGRES_PASSWORD}@postgres:5432/quizzy
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (32+ символов)}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-Quizzy <noreply@localhost>}
+      CONSOLE_URL: ${CONSOLE_URL:-}
       PORT: "3001"
     depends_on:
       postgres:
