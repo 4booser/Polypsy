@@ -1,6 +1,7 @@
 import {
   createContext,
   useCallback,
+  useEffect,
   useContext,
   useMemo,
   useState,
@@ -68,6 +69,14 @@ export function PageHead({
   crumbs?: ReactNode;
   actions?: ReactNode;
 }) {
+  // заголовок вкладки следует за страницей: десяток вкладок «Quizzy» неразличимы
+  useEffect(() => {
+    document.title = `${title} — Quizzy`;
+    return () => {
+      document.title = "Quizzy";
+    };
+  }, [title]);
+
   return (
     <div className="page-head">
       <div>

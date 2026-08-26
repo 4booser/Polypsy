@@ -12,7 +12,8 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "audit:verify": "bun src/auditVerifyCli.ts"
+    "audit:verify": "bun src/auditVerifyCli.ts",
+    "db:reset": "bun src/dbReset.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",

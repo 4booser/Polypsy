@@ -92,7 +92,10 @@ export function SurveyList() {
           <tbody>
             {rows.map((s) => (
               <tr key={s.id}>
-                <td><Link to={`/surveys/${s.id}`}>{s.title}</Link></td>
+                <td>
+                  <Link to={`/surveys/${s.id}`}>{s.title}</Link>
+                  {s.isDemo ? <span className="chip static" style={{ marginLeft: 8, fontSize: 10 }}>демо</span> : null}
+                </td>
                 <td className="muted">{s.status}</td>
                 <td className="muted">{s.administration === "clinician" ? "специалист" : "респондент"}</td>
                 <td className="muted">{s.visibility === "restricted" ? "по назначению" : "общая"}</td>

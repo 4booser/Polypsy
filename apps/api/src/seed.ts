@@ -509,6 +509,12 @@ async function upsertSurvey(draft: CreateSurveyDraft, status: "published" | "dra
 const emotionalRow = await upsertSurvey(emotional, "published");
 const sleepRow = await upsertSurvey(sleep, "published");
 const followUpRow = await upsertSurvey(followUp, "published");
+// демо-методики помечаются флагом: в клинических списках они с плашкой,
+// и перепутать их с выверенным инструментом нельзя
+await db
+  .update(surveys)
+  .set({ isDemo: true })
+  .where(inArray(surveys.id, [emotionalRow.id, sleepRow.id, followUpRow.id]));
 
 // методики из пособий НДЦ ГП ЗСУ — на них проверяется движок подсчёта
 const sr45Row = await upsertSurvey({ ...sr45, groupId: intake.id }, "published");
