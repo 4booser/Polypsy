@@ -81,3 +81,14 @@ auditRoutes.get("/summary", async (c) => {
     deniedCount: Number(denied ?? 0),
   });
 });
+
+/**
+ * Проверка цепочки журнала. Головной хэш из отчёта стоит время от времени
+ * записывать вовне (распечатать, отправить) — тогда подделка даже всей
+ * таблицы целиком обнаружима сверкой с внешней копией.
+ */
+auditRoutes.get("/verify", async (c) => {
+  const { verifyChain } = await import("../lib/auditVerify");
+  const report = await verifyChain();
+  return c.json(report, report.ok ? 200 : 409);
+});

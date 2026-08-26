@@ -646,9 +646,19 @@ export const auditLog = pgTable(
     ip: text("ip"),
     userAgent: text("user_agent"),
     details: jsonb("details").$type<Record<string, unknown>>(),
+
+    /**
+     * Хэш-цепочка: seq — сплошная нумерация, entryHash = SHA-256 от
+     * (prevHash + канонизированная запись). Правка или удаление любой строки
+     * рвёт цепочку у всех последующих — журнал становится доказуемым.
+     */
+    seq: integer("seq"),
+    prevHash: text("prev_hash"),
+    entryHash: text("entry_hash"),
   },
   (t) => ({
     atIdx: index("audit_at_idx").on(t.at),
+    seqIdx: uniqueIndex("audit_seq_idx").on(t.seq),
     actorIdx: index("audit_actor_idx").on(t.actorId),
     actionIdx: index("audit_action_idx").on(t.action),
     subjectIdx: index("audit_subject_idx").on(t.subjectUserId),
