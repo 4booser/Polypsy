@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { SurveyAnalytics as Analytics, SurveyResponse } from "@quizzy/shared";
 import { api, download, openInTab } from "../api";
@@ -6,6 +6,7 @@ import { BarList, Chart, Donut, LineChart } from "../charts";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
 import { duration, day, severityColor } from "../format";
 import { useAction } from "../ui";
+import { ConclusionEditor } from "../components/ConclusionEditor";
 
 type Tab = "overview" | "questions" | "scales" | "quality" | "responses";
 
@@ -360,6 +361,7 @@ export default function SurveyAnalyticsPage() {
 
 function Responses({ surveyId }: { surveyId: string }) {
   const [rows, setRows] = useState<SurveyResponse[] | null>(null);
+  const [openConclusion, setOpenConclusion] = useState<string | null>(null);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const run = useAction();
@@ -395,7 +397,8 @@ function Responses({ surveyId }: { surveyId: string }) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id}>
+            <Fragment key={r.id}>
+            <tr>
               <td>{r.userName ?? "Аноним"}</td>
               <td className="muted">{r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "—"}</td>
               <td className="num">{duration(r.durationMs)}</td>
@@ -409,8 +412,23 @@ function Responses({ surveyId }: { surveyId: string }) {
                   </div>
                 ))}
               </td>
-              <td><button onClick={() => openReport(r.id)}>Заключение</button></td>
+              <td>
+                <div className="row tight">
+                  <button onClick={() => setOpenConclusion(openConclusion === r.id ? null : r.id)}>
+                    {openConclusion === r.id ? "Свернуть" : "Заключение"}
+                  </button>
+                  <button onClick={() => openReport(r.id)}>Печать</button>
+                </div>
+              </td>
             </tr>
+            {openConclusion === r.id ? (
+              <tr>
+                <td colSpan={6} style={{ background: "var(--surface-2)" }}>
+                  <ConclusionEditor responseId={r.id} />
+                </td>
+              </tr>
+            ) : null}
+            </Fragment>
           ))}
         </tbody>
       </table>

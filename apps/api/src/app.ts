@@ -30,6 +30,7 @@ import { batteryRoutes } from "./routes/batteries";
 import { scheduleRoutes } from "./routes/schedules";
 import { inviteRoutes } from "./routes/invites";
 import { kioskRoutes } from "./routes/kiosk";
+import { conclusionRoutes } from "./routes/conclusions";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import type { AppEnv } from "./middleware/auth";
@@ -88,6 +89,7 @@ app.route("/api/batteries", batteryRoutes);
 app.route("/api/schedules", scheduleRoutes);
 app.route("/api/invites", inviteRoutes);
 app.route("/api/kiosk", kioskRoutes);
+app.route("/api/conclusions", conclusionRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {
