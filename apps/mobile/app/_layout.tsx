@@ -1,11 +1,33 @@
+import { useEffect } from "react";
+import { AppState } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
 import { LangProvider } from "@/lang";
+import { api } from "@/api/client";
 import { useColors } from "@/theme";
 
 export default function RootLayout() {
+  /*
+   * Прогон офлайн-очереди: при старте, по возвращению приложения на передний
+   * план и раз в 45 секунд, пока очередь непуста. Отдельного NetInfo нет —
+   * неудачная попытка дешёвая (первый же сетевой отказ останавливает прогон).
+   */
+  useEffect(() => {
+    void api.flushQueue().catch(() => {});
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void api.flushQueue().catch(() => {});
+    });
+    const timer = setInterval(() => {
+      if (api.pendingCount() > 0) void api.flushQueue().catch(() => {});
+    }, 45_000);
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <LangProvider>

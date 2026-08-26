@@ -521,6 +521,12 @@ export const responses = pgTable(
     submittedAt: timestampCol("submitted_at"),
     /** Момент последнего автосохранения черновика */
     lastSavedAt: timestampCol("last_saved_at"),
+    /**
+     * Идемпотентность офлайн-очереди: клиент генерирует id попытки, и повторная
+     * отправка той же попытки (сеть оборвалась после коммита, клиент ретраит)
+     * не создаёт второе прохождение — сервер возвращает существующее.
+     */
+    clientRequestId: text("client_request_id"),
     /** Общее время прохождения */
     durationMs: integer("duration_ms").notNull().default(0),
   },
@@ -531,6 +537,7 @@ export const responses = pgTable(
     // горячие запросы: список прохождений методики по времени (пагинация)
     // и выборка завершённых по статусу
     surveySubmittedIdx: index("responses_survey_submitted_idx").on(t.surveyId, t.submittedAt),
+    clientRequestIdx: uniqueIndex("responses_client_request_idx").on(t.clientRequestId),
     surveyStatusIdx: index("responses_survey_status_idx").on(t.surveyId, t.status),
   }),
 );

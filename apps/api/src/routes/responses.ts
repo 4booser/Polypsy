@@ -35,6 +35,37 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   const surveyId = c.req.param("id");
   const input = await parseBody(c.req.raw, submitResponseSchema);
 
+  /*
+   * Идемпотентный повтор из офлайн-очереди: если попытка с этим id уже
+   * закоммичена (сеть оборвалась ПОСЛЕ записи, клиент не узнал), возвращаем
+   * существующее прохождение вместо создания дубля.
+   */
+  if (input.clientRequestId) {
+    const existing = await db.query.responses.findFirst({
+      where: eq(responses.clientRequestId, input.clientRequestId),
+    });
+    if (existing) {
+      const scores = await db
+        .select()
+        .from(responseScores)
+        .where(eq(responseScores.responseId, existing.id));
+      return c.json(
+        {
+          id: existing.id,
+          surveyId: existing.surveyId,
+          submittedAt: existing.submittedAt,
+          scores: [],
+          reliable: true,
+          warnings: [],
+          safetyPlan: null,
+          duplicate: true,
+          storedScores: scores.length,
+        },
+        200,
+      );
+    }
+  }
+
   const survey = await getSurvey(surveyId, null, langOf(c));
   if (!survey) notFound("Методика не найдена");
   if (survey.status !== "published") badRequest("Методика недоступна для прохождения");

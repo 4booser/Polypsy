@@ -544,6 +544,8 @@ export const answerEventSchema = z.object({
 });
 
 export const submitResponseSchema = z.object({
+  /** Ид попытки для идемпотентного повтора из офлайн-очереди */
+  clientRequestId: z.string().max(64).nullish(),
   answers: z.array(answerSchema),
   startedAt: z.string(),
   durationMs: z.number().int().min(0).max(86_400_000),
