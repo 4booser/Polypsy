@@ -134,6 +134,7 @@ surveyRoutes.post("/", requireStaff, async (c) => {
       tooFastMs: input.tooFastMs ?? null,
       alertEscalateMinutes: input.alertEscalateMinutes ?? null,
       safetyPlan: normalizeLocalized(input.safetyPlan),
+      showResultsToPatient: input.showResultsToPatient ?? false,
       createdBy: c.get("user").id,
     })
     .returning();
@@ -199,6 +200,7 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
       ...(input.tooFastMs !== undefined && { tooFastMs: input.tooFastMs ?? null }),
       ...(input.alertEscalateMinutes !== undefined && { alertEscalateMinutes: input.alertEscalateMinutes ?? null }),
       ...(input.safetyPlan !== undefined && { safetyPlan: normalizeLocalized(input.safetyPlan) }),
+      ...(input.showResultsToPatient !== undefined && { showResultsToPatient: input.showResultsToPatient ?? false }),
       ...(goingLive && { publishedAt: new Date().toISOString() }),
       updatedAt: new Date().toISOString(),
     })

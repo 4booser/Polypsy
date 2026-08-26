@@ -76,6 +76,11 @@ export function Basics({
         <Toggle label="Разрешить повторные прохождения" value={draft.allowRetake} onChange={(v) => patch({ allowRetake: v })} />
         <Toggle label="Перемешивать вопросы" value={draft.randomizeQuestions} onChange={(v) => patch({ randomizeQuestions: v })} />
         <Toggle label="Анонимно" value={draft.anonymous} onChange={(v) => patch({ anonymous: v })} />
+        <Toggle
+          label="Пациент видит свою динамику"
+          value={draft.showResultsToPatient ?? false}
+          onChange={(v) => patch({ showResultsToPatient: v })}
+        />
       </div>
 
       <div className="card">

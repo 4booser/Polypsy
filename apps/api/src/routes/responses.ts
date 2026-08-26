@@ -1,6 +1,6 @@
 import { t } from "@quizzy/shared";
 import { Hono } from "hono";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   answerScore,
   ageAt,
@@ -14,7 +14,7 @@ import {
   type SurveyResponse,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { answerEvents, answers, riskAlerts, responseScores, responses, scales, users } from "../db/schema";
+import { answerEvents, answers, riskAlerts, responseScores, responses, scales, surveys, users } from "../db/schema";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
@@ -307,6 +307,68 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
     hasMore,
     nextBefore: hasMore ? page[page.length - 1]!.response.submittedAt : null,
   });
+});
+
+/**
+ * Динамика самого пациента — только по методикам, где психолог явно включил
+ * показ результатов. Значения — итоговые (стены/T/доля), с интерпретацией,
+ * но без клинических рекомендаций: их даёт специалист на приёме.
+ */
+responseRoutes.get("/me/dynamics", async (c) => {
+  const user = c.get("user");
+  const surveyRows = await db
+    .select()
+    .from(surveys)
+    .where(eq(surveys.showResultsToPatient, true));
+  if (!surveyRows.length) return c.json({ surveys: [] });
+
+  const own = await db
+    .select()
+    .from(responses)
+    .where(
+      and(
+        eq(responses.userId, user.id),
+        eq(responses.status, "completed"),
+        inArray(responses.surveyId, surveyRows.map((s) => s.id)),
+      ),
+    )
+    .orderBy(asc(responses.submittedAt));
+  if (!own.length) return c.json({ surveys: [] });
+
+  const scoreRows = await db
+    .select({ score: responseScores, scale: scales })
+    .from(responseScores)
+    .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+    .where(inArray(responseScores.responseId, own.map((r) => r.id)));
+
+  const lang = langOf(c);
+  const result = surveyRows
+    .map((survey) => {
+      const mine = own.filter((r) => r.surveyId === survey.id);
+      if (!mine.length) return null;
+      const byCode = new Map<string, { code: string; title: string; points: { submittedAt: string; value: number; bandLabel: string | null; severity: string | null }[] }>();
+      for (const r of mine) {
+        for (const { score, scale } of scoreRows.filter((x) => x.score.responseId === r.id)) {
+          if (scale.kind !== "clinical") continue; // шкалы лжи пациенту не показываем
+          const entry = byCode.get(scale.code) ?? { code: scale.code, title: t(scale.title as never, lang), points: [] };
+          entry.points.push({
+            submittedAt: r.submittedAt ?? r.startedAt,
+            value: score.value,
+            bandLabel: score.bandLabel,
+            severity: score.severity,
+          });
+          byCode.set(scale.code, entry);
+        }
+      }
+      return {
+        surveyId: survey.id,
+        title: t(survey.title as never, lang),
+        scales: [...byCode.values()],
+      };
+    })
+    .filter(Boolean);
+
+  return c.json({ surveys: result });
 });
 
 /** Детальный разбор прохождения: ответы, баллы и время по каждому вопросу */

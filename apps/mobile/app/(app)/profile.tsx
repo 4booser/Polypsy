@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ageAt } from "@quizzy/shared";
+import { ageAt, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { API_URL } from "@/config";
 import { Body, Button, Card, Chip, Divider, ErrorText, Field, Row, Title } from "@/components/ui";
+import { LineChart } from "@/components/viz/LineChart";
 import { spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
 
@@ -32,6 +33,13 @@ export default function AccountScreen() {
     rank: user?.rank ?? "",
   });
   const [sex, setSex] = useState(user?.sex ?? null);
+  const [myDynamics, setMyDynamics] = useState<MyDynamics | null>(null);
+
+  useEffect(() => {
+    // динамика приходит только по методикам, где психолог включил показ;
+    // пустой ответ — обычное состояние, а не ошибка
+    api.myDynamics().then(setMyDynamics).catch(() => setMyDynamics({ surveys: [] }));
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -78,6 +86,40 @@ export default function AccountScreen() {
           <Chip label="Русский" selected={lang === "ru"} onPress={() => setLang("ru")} />
         </Row>
       </Card>
+
+      {myDynamics?.surveys.length ? (
+        <Card>
+          <Text style={{ color: c.text, fontSize: 16, fontWeight: "700" }}>
+            {lang === "uk" ? "Моя динаміка" : "Моя динамика"}
+          </Text>
+          <Body muted>
+            {lang === "uk"
+              ? "Зміна ваших показників від заміру до заміру. Інтерпретацію дає фахівець."
+              : "Изменение ваших показателей от замера к замеру. Интерпретацию даёт специалист."}
+          </Body>
+          {myDynamics.surveys.map((sv) => (
+            <View key={sv.surveyId} style={{ gap: spacing.sm, marginTop: spacing.sm }}>
+              <Body>{sv.title}</Body>
+              {sv.scales.map((sc) => (
+                <View key={sc.code}>
+                  <Text style={{ color: c.muted, fontSize: 12, marginBottom: 4 }}>{sc.title}</Text>
+                  <LineChart
+                    height={120}
+                    series={[{
+                      label: sc.title,
+                      points: sc.points.map((pt) => ({
+                        x: pt.submittedAt.slice(5, 10),
+                        y: pt.value,
+                        tone: pt.severity ?? undefined,
+                      })),
+                    }]}
+                  />
+                </View>
+              ))}
+            </View>
+          ))}
+        </Card>
+      ) : null}
 
       <Card>
         <Text style={{ color: c.text, fontSize: 20, fontWeight: "700" }}>{user?.fullName}</Text>

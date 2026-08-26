@@ -20,6 +20,7 @@ export interface Draft {
   tooFastMs?: number | null;
   alertEscalateMinutes?: number | null;
   safetyPlan?: Record<string, string> | null;
+  showResultsToPatient?: boolean;
   sections: unknown[];
   questions: DraftQuestion[];
   scales: DraftScale[];

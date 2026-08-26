@@ -1,0 +1,1 @@
+ALTER TABLE "surveys" ADD COLUMN "show_results_to_patient" boolean DEFAULT false NOT NULL;
