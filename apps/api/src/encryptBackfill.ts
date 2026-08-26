@@ -8,9 +8,9 @@
 import { eq } from "drizzle-orm";
 import { client, db } from "./db";
 import { answers, conclusions, users } from "./db/schema";
-import { encryptField, encryptionEnabled } from "./lib/crypto";
+import { encryptField, isEncryptionEnabled } from "./lib/crypto";
 
-if (!encryptionEnabled) {
+if (!isEncryptionEnabled()) {
   console.error("ENCRYPTION_KEY не задан — бэкфиллу нечем шифровать");
   process.exit(1);
 }
