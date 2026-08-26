@@ -1,0 +1,14 @@
+# Раздача консоли + прокси API. TLS Caddy берёт на себя, если задан домен.
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy api:3001
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

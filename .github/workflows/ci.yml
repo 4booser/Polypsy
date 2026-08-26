@@ -48,3 +48,13 @@ jobs:
       - name: Сборка консоли
         run: bun run build
         working-directory: apps/web
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Сборка образа API
+        run: docker build -f apps/api/Dockerfile .
+      - name: Сборка образа консоли
+        run: docker build -f apps/web/Dockerfile .
