@@ -96,7 +96,7 @@ function toSurveyFull(draft: unknown): SurveyFull {
       mean: n.mean,
       sd: n.sd,
     })),
-    stenTable: (s.stenRows ?? []).map((r, ri) => ({
+    stenTable: (s.stenTable ?? []).map((r, ri) => ({
       id: `st${si}-${ri}`,
       scaleId: `sc${si}`,
       sex: r.sex ?? null,
