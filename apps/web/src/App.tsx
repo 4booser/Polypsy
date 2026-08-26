@@ -80,8 +80,20 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => setOpenAlerts(0));
+    /*
+     * Тревоги — единственное в консоли, что должно догонять само: пока
+     * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
+     * дежурный видит новую тревогу, даже сидя в другой вкладке.
+     */
+    const load = () => api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => {});
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
   }, [user]);
+
+  useEffect(() => {
+    paintFavicon(openAlerts);
+  }, [openAlerts]);
 
   // публичные страницы живут вне auth-гейта: у пациента и киоска нет входа
   if (location.pathname.startsWith("/join/") || location.pathname.startsWith("/kiosk/")) {
@@ -142,6 +154,9 @@ export default function App() {
         <button className="ghost" onClick={logout} style={{ width: "100%", justifyContent: "flex-start" }}>
           Выйти
         </button>
+        <span className="build-tag" title={`Сборка от ${__BUILD_DATE__}`}>
+          {__BUILD_SHA__}
+        </span>
       </aside>
 
       <main className="main">
@@ -171,4 +186,42 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+/** Favicon с числом открытых тревог: видно из любой вкладки */
+function paintFavicon(count: number): void {
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 32;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // базовый знак
+  ctx.fillStyle = "#3b5bfd";
+  ctx.beginPath();
+  ctx.arc(16, 16, 14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 18px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Q", 16, 17);
+
+  if (count > 0) {
+    ctx.fillStyle = "#d03b3b";
+    ctx.beginPath();
+    ctx.arc(24, 8, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 11px system-ui";
+    ctx.fillText(count > 9 ? "9+" : String(count), 24, 9);
+  }
+
+  let link = document.querySelector<HTMLLinkElement>("link[rel='icon']");
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  link.href = canvas.toDataURL("image/png");
 }

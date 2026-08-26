@@ -14,6 +14,8 @@ export default function SurveyAnalyticsPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<Analytics | null>(null);
   const [versionId, setVersionId] = useState<string | undefined>();
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const run = useAction();
   const downloadCsv = (sid: string) => run(() => download(api.exportUrl(sid), "data.csv"), "Файл выгружен");
   const downloadSpssData = (sid: string) => run(() => download(api.spssDataUrl(sid), "spss-data.csv"), "Матрица выгружена");
@@ -23,8 +25,11 @@ export default function SurveyAnalyticsPage() {
 
   useEffect(() => {
     if (!id) return;
-    api.analytics(id, versionId).then(setData).catch((e) => setError(e.message));
-  }, [id, versionId]);
+    api
+      .analytics(id, versionId, { from: from || undefined, to: to || undefined })
+      .then(setData)
+      .catch((e) => setError(e.message));
+  }, [id, versionId, from, to]);
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <p className="muted">Загрузка…</p>;
@@ -60,6 +65,22 @@ export default function SurveyAnalyticsPage() {
       <p className="sub">
         <Link to="/">Сводка</Link> · версия {data.versionNumber} · завершено {data.completed} из {data.started}
       </p>
+
+      <div className="row" style={{ marginBottom: 14 }}>
+        <label className="field" style={{ margin: 0 }}>
+          <span>С даты</span>
+          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </label>
+        <label className="field" style={{ margin: 0 }}>
+          <span>По дату</span>
+          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        {from || to ? (
+          <button style={{ alignSelf: "flex-end" }} onClick={() => { setFrom(""); setTo(""); }}>
+            Вся история
+          </button>
+        ) : null}
+      </div>
 
       {data.versions.length > 1 ? (
         <div className="card">

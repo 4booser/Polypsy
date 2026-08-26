@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { KeyboardAvoidingView, Linking, Platform, ScrollView, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import {
   isAnswered,
@@ -10,6 +10,7 @@ import {
   type ScoreResult,
   type SurveyFull,
 } from "@quizzy/shared";
+import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
@@ -68,6 +69,30 @@ export default function TakeSurveyScreen() {
       value,
     });
   }, []);
+
+  /*
+   * Выход из незавершённого теста — потеря сессии измерения (тайминги
+   * начнутся заново). Системный жест «назад» перехватываем и переспрашиваем.
+   */
+  useEffect(() => {
+    const sub = navigation.addListener("beforeRemove", (e) => {
+      if (result || answers.size === 0) return; // завершено или не начато
+      e.preventDefault();
+      Alert.alert(
+        "Прервать прохождение?",
+        "Ответы этого сеанса не сохранятся, начинать придётся заново.",
+        [
+          { text: "Продолжить тест", style: "cancel" },
+          {
+            text: "Выйти",
+            style: "destructive",
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ],
+      );
+    });
+    return sub;
+  }, [navigation, result, answers.size]);
 
   useEffect(() => {
     if (!id) return;
@@ -180,6 +205,10 @@ export default function TakeSurveyScreen() {
       !wasAnswered && nowAnswered ? "set" : wasAnswered && !nowAnswered ? "clear" : "change",
       patch.optionIds ?? patch.number ?? patch.matrix ?? patch.ranking ?? patch.date ?? undefined,
     );
+
+    // лёгкая хаптика на выбор: уставший респондент чувствует, что нажатие
+    // принято, и не давит повторно
+    if (Platform.OS !== "web") void Haptics.selectionAsync().catch(() => {});
 
     setAnswers((prev) => {
       const next = new Map(prev);

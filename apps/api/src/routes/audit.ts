@@ -92,3 +92,32 @@ auditRoutes.get("/verify", async (c) => {
   const report = await verifyChain();
   return c.json(report, report.ok ? 200 : 409);
 });
+
+/**
+ * Размеры таблиц и рост журнала: суперадмин видит, что распухает, до того
+ * как кончится диск. Особо интересны answer_events (у них ретенция) и
+ * audit_log (append-only навсегда).
+ */
+auditRoutes.get("/storage", async (c) => {
+  const rows = await db.execute(sql`
+    select relname as table,
+           pg_total_relation_size(c.oid) as bytes,
+           pg_size_pretty(pg_total_relation_size(c.oid)) as pretty,
+           coalesce(s.n_live_tup, 0) as rows
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    left join pg_stat_user_tables s on s.relid = c.oid
+    where n.nspname = 'public' and c.relkind = 'r'
+    order by pg_total_relation_size(c.oid) desc
+    limit 20`);
+  const [dbSize] = await db.execute(sql`select pg_size_pretty(pg_database_size(current_database())) as size`);
+  return c.json({
+    database: (dbSize as { size: string }).size,
+    tables: (rows as unknown as { table: string; bytes: string; pretty: string; rows: string }[]).map((r) => ({
+      table: r.table,
+      bytes: Number(r.bytes),
+      pretty: r.pretty,
+      rows: Number(r.rows),
+    })),
+  });
+});

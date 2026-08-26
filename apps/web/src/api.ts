@@ -226,10 +226,14 @@ export const api = {
   versions: (id: string) => request<SurveyVersion[]>(`/api/surveys/${id}/versions`),
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
-  analytics: (id: string, versionId?: string) =>
-    request<SurveyAnalytics>(
-      `/api/analytics/surveys/${id}${versionId ? `?versionId=${versionId}` : ""}`,
-    ),
+  analytics: (id: string, versionId?: string, range?: { from?: string; to?: string }) => {
+    const params = new URLSearchParams();
+    if (versionId) params.set("versionId", versionId);
+    if (range?.from) params.set("from", range.from);
+    if (range?.to) params.set("to", range.to);
+    const qs = params.toString();
+    return request<SurveyAnalytics>(`/api/analytics/surveys/${id}${qs ? `?${qs}` : ""}`);
+  },
   responses: (id: string, before?: string | null) =>
     request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
       `/api/surveys/${id}/responses?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`,
@@ -273,6 +277,11 @@ export const api = {
     }),
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
+
+  storageStats: () =>
+    request<{ database: string; tables: { table: string; bytes: number; pretty: string; rows: number }[] }>(
+      "/api/audit/storage",
+    ),
 
   consentText: () =>
     request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),
