@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "audit:verify": "bun src/auditVerifyCli.ts",
-    "db:reset": "bun src/dbReset.ts"
+    "db:reset": "bun src/dbReset.ts",
+    "db:encrypt": "bun src/encryptBackfill.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",

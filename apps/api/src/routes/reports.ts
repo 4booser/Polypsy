@@ -7,6 +7,7 @@ import { forbidden, notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
 import { canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
+import { decryptField } from "../lib/crypto";
 import { t } from "@quizzy/shared";
 import { ageAt } from "@quizzy/shared";
 import { getSurveyForResponse } from "../lib/surveys";
@@ -89,8 +90,8 @@ reportRoutes.get("/responses/:id", async (c) => {
     patientMeta: patient
       ? [
           patient.sex ? (patient.sex === "male" ? "муж." : "жен.") : null,
-          ageAt(patient.birthDate, response.submittedAt) !== null
-            ? `${ageAt(patient.birthDate, response.submittedAt)} лет на момент обследования`
+          ageAt(decryptField(patient.birthDate), response.submittedAt) !== null
+            ? `${ageAt(decryptField(patient.birthDate), response.submittedAt)} лет на момент обследования`
             : null,
           patient.rank,
           patient.unit,
@@ -126,7 +127,7 @@ reportRoutes.get("/responses/:id", async (c) => {
       conclusion:
         signedConclusion && signedConclusion.row.status === "signed"
           ? {
-              text: signedConclusion.row.text,
+              text: decryptField(signedConclusion.row.text) ?? "",
               version: signedConclusion.row.version,
               signedAt: signedConclusion.row.signedAt,
               signedBy: signedConclusion.author ? fullNameOf(signedConclusion.author) : "—",
@@ -151,7 +152,7 @@ function formatValue(
   if (a.ranking?.length) return a.ranking.map((id) => optionText.get(id) ?? id).join(" → ");
   if (a.number !== null && a.number !== undefined) return String(a.number);
   if (a.date) return a.date;
-  return a.text ?? "—";
+  return decryptField(a.text) ?? "—";
 }
 
 const SEVERITY_COLOR: Record<string, string> = {

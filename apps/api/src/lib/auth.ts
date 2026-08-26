@@ -1,6 +1,7 @@
 import { sign, verify } from "hono/jwt";
 import type { JWTPayload } from "hono/utils/jwt/types";
 import { env } from "../env";
+import { decryptField } from "./crypto";
 import type { UserRow } from "../db/schema";
 import type { User } from "@quizzy/shared";
 
@@ -47,7 +48,10 @@ export function fullNameOf(
   row: Partial<Pick<UserRow, "firstName" | "lastName" | "middleName" | "anonymous" | "pseudonym">>,
 ): string {
   if (row.anonymous) return row.pseudonym ?? "Респондент";
-  return [row.lastName, row.firstName, row.middleName].filter(Boolean).join(" ");
+  // поля в базе шифрованы; decryptField пропускает легаси-открытый текст
+  return [decryptField(row.lastName), decryptField(row.firstName), decryptField(row.middleName)]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** Код псевдонима: буква и четыре цифры, читаемо и достаточно различимо */
@@ -63,14 +67,14 @@ export function toPublicUser(row: UserRow): User {
   return {
     id: row.id,
     email: row.email,
-    firstName: row.anonymous ? "" : row.firstName,
-    lastName: row.anonymous ? "" : row.lastName,
-    middleName: row.anonymous ? null : row.middleName,
+    firstName: row.anonymous ? "" : (decryptField(row.firstName) ?? ""),
+    lastName: row.anonymous ? "" : (decryptField(row.lastName) ?? ""),
+    middleName: row.anonymous ? null : decryptField(row.middleName),
     fullName: fullNameOf(row),
     anonymous: row.anonymous,
     pseudonym: row.pseudonym,
     sex: row.sex,
-    birthDate: row.birthDate,
+    birthDate: decryptField(row.birthDate),
     unit: row.unit,
     position: row.position,
     specialty: row.specialty,

@@ -11,6 +11,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { ageAt, answerScore, computeProfile, computeScores, createSurveySchema, normalizeLocalized, t, type Answer } from "@quizzy/shared";
 import { client, db } from "./db";
+import { decryptField, encryptPersonFields } from "./lib/crypto";
 import {
   answerEvents,
   answers,
@@ -93,11 +94,13 @@ async function upsertUser(data: AccountSeed) {
     .values({
       id: crypto.randomUUID(),
       email: data.email,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      middleName: data.middleName,
+      ...encryptPersonFields({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        middleName: data.middleName,
+        birthDate: data.birthDate ?? null,
+      }),
       sex: data.sex ?? null,
-      birthDate: data.birthDate ?? null,
       unit: data.unit ?? null,
       position: data.position ?? null,
       specialty: data.specialty ?? null,
@@ -757,7 +760,7 @@ async function generateKeyed(surveyId: string, respondents: string[], perPatient
       const person = people.get(userId);
       const profile = computeProfile(survey, generated, {
         sex: person?.sex ?? null,
-        age: ageAt(person?.birthDate ?? null, startedAt.toISOString()),
+        age: ageAt(decryptField(person?.birthDate ?? null), startedAt.toISOString()),
       });
       const responseId = crypto.randomUUID();
       const durationMs = generated.reduce((sum, a) => sum + (a.durationMs ?? 0), 0);
