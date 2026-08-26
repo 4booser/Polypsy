@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { t } from "@quizzy/shared";
+import { itemContribution, reliableChange, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, surveys, users } from "../db/schema";
@@ -8,6 +8,10 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
+import { getSurvey } from "../lib/surveys";
+import { reliabilityOf } from "../lib/psychometrics";
+import { round, variance } from "../lib/stats";
+import { answers as answersTable } from "../db/schema";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -128,6 +132,66 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     bySurvey.set(r.surveyId, list);
   }
 
+  /*
+   * Альфа для RCI: считается по фактической выборке методики (последние 300
+   * завершённых прохождений — статистически достаточно, а МЛО-200 на тысячах
+   * прохождений не кладёт запрос). Ключ — код шкалы: коды стабильны между
+   * версиями, id — нет.
+   */
+  const alphaBySurveyCode = new Map<string, number>();
+  for (const surveyId of bySurvey.keys()) {
+    try {
+      const survey = await getSurvey(surveyId, null, "ru");
+      if (!survey) continue;
+      const sample = await db
+        .select({ id: responses.id })
+        .from(responses)
+        .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+        .orderBy(asc(responses.submittedAt))
+        .limit(300);
+      if (sample.length < 10) continue;
+      const answerRows = await db
+        .select()
+        .from(answersTable)
+        .where(inArray(answersTable.responseId, sample.map((r) => r.id)));
+      const byResponse = new Map<string, Map<string, (typeof answerRows)[number]>>();
+      for (const a of answerRows) {
+        const m = byResponse.get(a.responseId) ?? new Map();
+        m.set(a.questionId, a);
+        byResponse.set(a.responseId, m);
+      }
+      const questionById = new Map(survey.questions.map((q) => [q.id, q]));
+      for (const scale of survey.scales) {
+        if (scale.items.length < 2) continue;
+        const matrix = new Map<string, Map<string, number>>();
+        for (const [responseId, byQuestion] of byResponse) {
+          const row = new Map<string, number>();
+          for (const item of scale.items) {
+            const question = questionById.get(item.questionId);
+            const stored = byQuestion.get(item.questionId);
+            if (!question || !stored) continue;
+            const value = itemContribution(question, item, {
+              questionId: item.questionId,
+              optionIds: stored.optionIds ?? undefined,
+              number: stored.number ?? undefined,
+              matrix: stored.matrix ?? undefined,
+              skipped: stored.skipped,
+            });
+            if (value !== null) row.set(item.questionId, value);
+          }
+          if (row.size) matrix.set(responseId, row);
+        }
+        const rel = reliabilityOf(
+          scale.items.map((i) => questionById.get(i.questionId)).filter((q): q is NonNullable<typeof q> => !!q),
+          matrix,
+        );
+        if (rel) alphaBySurveyCode.set(`${surveyId}:${scale.code}`, rel.alpha);
+      }
+    } catch (error) {
+      console.error("Альфа для RCI не посчиталась", surveyId, error);
+    }
+  }
+
   const result: RespondentDynamics = {
     userId,
     fullName: fullNameOf(patient),
@@ -148,6 +212,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             points: [],
             delta: null,
             direction: null,
+            reliableChange: null,
           };
           entry.points.push({
             responseId: response.id,
@@ -163,13 +228,29 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         }
       }
 
-      for (const entry of byCode.values()) {
+      for (const [code, entry] of byCode.entries()) {
         entry.points.sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
         if (entry.points.length >= 2) {
           const first = entry.points[0]!.rawScore;
           const last = entry.points[entry.points.length - 1]!.rawScore;
           entry.delta = Math.round((last - first) * 100) / 100;
           entry.direction = entry.delta > 0 ? "up" : entry.delta < 0 ? "down" : "flat";
+
+          // RCI: SD из выборки той же шкалы, альфа — фактическая
+          const sample = sampleByKey.get(`${surveyId}:${code}`) ?? [];
+          const alpha = alphaBySurveyCode.get(`${surveyId}:${code}`);
+          if (sample.length >= 10 && alpha !== undefined) {
+            const sd = Math.sqrt(variance(sample));
+            const rc = reliableChange(first, last, sd, alpha);
+            if (rc) {
+              entry.reliableChange = {
+                rci: rc.rci,
+                significant: rc.significant,
+                direction: rc.direction,
+                basis: { sd: round(sd), alpha, sampleN: sample.length },
+              };
+            }
+          }
         }
       }
 

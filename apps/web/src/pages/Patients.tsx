@@ -93,7 +93,7 @@ export function PatientDynamics() {
                 <Chart
                   key={sc.scaleId}
                   title={sc.title}
-                  hint={sc.delta === null ? "нужен второй замер для динамики" : `изменение: ${sc.delta > 0 ? "+" : ""}${sc.delta}`}
+                  hint={rciHint(sc)}
                 >
                   <LineChart
                     yMax={last?.maxScore}
@@ -111,6 +111,20 @@ export function PatientDynamics() {
                       <tbody>
                         <tr><td>Последний замер</td><td className="num">{last.rawScore} из {last.maxScore}</td></tr>
                         {last.severity ? <tr><td>Интерпретация</td><td className="num"><SeverityTag severity={last.severity} label={last.bandLabel ?? undefined} /></td></tr> : null}
+                        {sc.reliableChange ? (
+                          <tr>
+                            <td>Достоверность сдвига</td>
+                            <td className="num">
+                              {sc.reliableChange.significant ? (
+                                <strong style={{ color: "var(--accent)" }}>
+                                  достоверный ({sc.reliableChange.direction === "up" ? "рост" : "снижение"}, RCI {sc.reliableChange.rci})
+                                </strong>
+                              ) : (
+                                <span className="muted">в пределах ошибки (RCI {sc.reliableChange.rci})</span>
+                              )}
+                            </td>
+                          </tr>
+                        ) : null}
                         <tr>
                           <td>Перцентиль</td>
                           <td className="num">
@@ -133,4 +147,23 @@ export function PatientDynamics() {
       ))}
     </>
   );
+}
+
+/**
+ * Подпись под графиком: сырая дельта плюс вердикт достоверности.
+ *
+ * Дельта без RCI вводит в заблуждение: сдвиг на 13 T-баллов при широком
+ * разбросе выборки — шум, а на 0.23 доли при α=0.92 — реальное изменение.
+ */
+function rciHint(sc: {
+  delta: number | null;
+  reliableChange: { rci: number; significant: boolean; basis: { sd: number; alpha: number; sampleN: number } } | null;
+}): string {
+  if (sc.delta === null) return "нужен второй замер для динамики";
+  const base = `изменение: ${sc.delta > 0 ? "+" : ""}${sc.delta}`;
+  const rc = sc.reliableChange;
+  if (!rc) return `${base} · достоверность не оценить (мало выборки или одно-пунктовая шкала)`;
+  return rc.significant
+    ? `${base} · превышает ошибку измерения (RCI ${rc.rci}, α ${rc.basis.alpha})`
+    : `${base} · в пределах ошибки измерения (RCI ${rc.rci}, α ${rc.basis.alpha})`;
 }
