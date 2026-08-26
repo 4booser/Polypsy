@@ -1,6 +1,6 @@
 import { t } from "@quizzy/shared";
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   answerScore,
   ageAt,
@@ -253,17 +253,32 @@ responseRoutes.get("/me/responses", async (c) => {
 /** Все прохождения методики — админам */
 responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
   await assertSurveyAccess(c.get("user"), c.req.param("id"));
+
+  // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».
+  // offset-вариант на живой таблице съезжает при вставках между страницами
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
+  const before = c.req.query("before");
+
   const rows = await db
     .select({ response: responses, userName: users.lastName })
     .from(responses)
     .leftJoin(users, eq(users.id, responses.userId))
-    .where(eq(responses.surveyId, c.req.param("id")))
-    .orderBy(desc(responses.submittedAt));
+    .where(
+      and(
+        eq(responses.surveyId, c.req.param("id")),
+        before ? sql`${responses.submittedAt} < ${before}` : undefined,
+      ),
+    )
+    .orderBy(desc(responses.submittedAt))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit);
 
   const enriched = await withScores(
-    rows.map((r) => r.response),
+    page.map((r) => r.response),
     null,
-    new Map(rows.map((r) => [r.response.id, r.userName])),
+    new Map(page.map((r) => [r.response.id, r.userName])),
   );
 
   // выгрузка списка прохождений — это доступ к данным всех респондентов сразу
@@ -277,7 +292,11 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
     },
   });
 
-  return c.json(enriched);
+  return c.json({
+    rows: enriched,
+    hasMore,
+    nextBefore: hasMore ? page[page.length - 1]!.response.submittedAt : null,
+  });
 });
 
 /** Детальный разбор прохождения: ответы, баллы и время по каждому вопросу */

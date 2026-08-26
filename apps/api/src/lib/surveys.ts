@@ -34,6 +34,33 @@ import {
  * versionOverride позволяет прочитать методику глазами старого прохождения:
  * без этого правка методики ломала бы интерпретацию уже собранных ответов.
  */
+/**
+ * Кэш собранного контента версии.
+ *
+ * Контент версии иммутабелен по построению (правка = новая версия), поэтому
+ * кэшу не нужен TTL — только ограничение размера. Ключ включает язык и raw:
+ * это разные представления одного контента. Метаданные методики (статус,
+ * видимость) в кэш не попадают — они накладываются из свежей строки на
+ * каждом вызове, иначе публикация отдавала бы чёрствый статус.
+ */
+interface CachedContent {
+  sections: Section[];
+  scales: Scale[];
+  questions: Question[];
+  versionNumber: number;
+}
+const contentCache = new Map<string, CachedContent>();
+const CONTENT_CACHE_MAX = 100;
+const contentKey = (versionId: string, lang: Lang, raw: boolean) => `${versionId}:${lang}:${raw ? 1 : 0}`;
+
+function cacheContent(key: string, value: CachedContent): void {
+  if (contentCache.size >= CONTENT_CACHE_MAX) {
+    const oldest = contentCache.keys().next().value;
+    if (oldest) contentCache.delete(oldest);
+  }
+  contentCache.set(key, value);
+}
+
 export async function attachContent(
   rows: SurveyRow[],
   versionOverride?: Map<string, string>,
@@ -64,6 +91,28 @@ export async function attachContent(
       versionId: null,
       versionNumber: 0,
     }));
+  }
+
+  // полный кэш-хит: контент версий уже собран, в базу не ходим вовсе
+  const allCached = versionIds.every((v) => contentCache.has(contentKey(v, lang, raw)));
+  if (allCached) {
+    return rows.map((survey) => {
+      const vId = versionBySurvey.get(survey.id) ?? null;
+      const cached = vId ? contentCache.get(contentKey(vId, lang, raw))! : null;
+      const L = (v: unknown) => (raw ? (v as string) : t(v as never, lang));
+      const Lnull = (v: unknown) => (v == null ? null : L(v));
+      return {
+        ...survey,
+        title: L(survey.title),
+        description: Lnull(survey.description),
+        instructions: Lnull(survey.instructions),
+        versionId: vId,
+        versionNumber: cached?.versionNumber ?? 0,
+        sections: cached?.sections ?? [],
+        scales: cached?.scales ?? [],
+        questions: cached?.questions ?? [],
+      } as SurveyFull;
+    });
   }
 
   const versionRows = await db.select().from(surveyVersions).where(inArray(surveyVersions.id, versionIds));
@@ -121,13 +170,10 @@ export async function attachContent(
   const L = (v: unknown) => (raw ? (v as never) : t(v as never, lang));
   const Lnull = (v: unknown) => (raw ? ((v ?? null) as never) : v ? t(v as never, lang) : null);
 
-  return rows.map((survey) => ({
-    ...survey,
-    title: L(survey.title),
-    description: Lnull(survey.description),
-    instructions: Lnull(survey.instructions),
-    versionId: versionBySurvey.get(survey.id) ?? null,
-    versionNumber: versionNumber.get(versionBySurvey.get(survey.id) ?? "") ?? 0,
+  return rows.map((survey) => {
+    const vId = versionBySurvey.get(survey.id) ?? null;
+    const content: CachedContent = {
+    versionNumber: versionNumber.get(vId ?? "") ?? 0,
     sections: (sectionsBySurvey.get(survey.id) ?? []).map(
       (s): Section => ({ ...s, title: L(s.title), description: Lnull(s.description) }),
     ),
@@ -183,7 +229,19 @@ export async function attachContent(
         logic: (logicByQuestion.get(q.id) ?? []) as LogicRule[],
       }),
     ),
-  }));
+    };
+
+    if (vId) cacheContent(contentKey(vId, lang, raw), content);
+
+    return {
+      ...survey,
+      title: L(survey.title),
+      description: Lnull(survey.description),
+      instructions: Lnull(survey.instructions),
+      versionId: vId,
+      ...content,
+    } as SurveyFull;
+  });
 }
 
 export async function getSurvey(

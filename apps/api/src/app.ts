@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
+import { compress } from "hono/compress";
 import { logger } from "hono/logger";
 import { HTTPException } from "hono/http-exception";
 import { env } from "./env";
@@ -37,6 +38,8 @@ const app = new Hono<AppEnv>();
 
 app.use("*", logger());
 app.use("*", secureHeaders());
+// аналитика отдаёт сотни КБ JSON — gzip сокращает их на порядок
+app.use("*", compress());
 // самый большой легальный запрос — сдача МЛО-200 с потоком событий, ~300 КБ;
 // мегабайта хватает всем с запасом, а бомбу в теле он останавливает
 app.use(
