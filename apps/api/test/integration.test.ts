@@ -323,3 +323,111 @@ describe("планировщик", () => {
     expect(runs[0]!.assigned).toBe(1);
   });
 });
+
+/* ── приглашения ── */
+
+describe("приглашения", () => {
+  let token: string;
+  let code: string;
+  let inviteBattery: string;
+
+  beforeAll(async () => {
+    inviteBattery = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: inviteBattery,
+      title: "Батарея приглашения",
+      groupId: groupA,
+      strictOrder: false,
+      createdBy: adminA.id,
+    });
+    await db.insert(batteryItems).values([{ batteryId: inviteBattery, surveyId: surveyInA, position: 0, required: true }]);
+  });
+
+  test("создание: токен и код выдаются один раз", async () => {
+    const res = await api("/api/invites", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ batteryId: inviteBattery, unit: "Рота Б", maxUses: 2, ttlDays: 7 }),
+    });
+    expect(res.status).toBe(201);
+    token = res.body.token;
+    code = res.body.code;
+    expect(token.length).toBeGreaterThan(20);
+    expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  });
+
+  test("предпросмотр публичен и не раскрывает лишнего", async () => {
+    const res = await app.request(`/api/invites/preview/${token}`);
+    const body = await res.json();
+    expect(body.valid).toBe(true);
+    expect(body.batteryTitle).toBe("Батарея приглашения");
+    expect(Object.keys(body).sort()).toEqual(["batteryTitle", "unit", "valid"]);
+  });
+
+  test("регистрация по коду: батарея назначена, подразделение из приглашения", async () => {
+    const res = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "invited@test.dev",
+        password: "longpass123",
+        anonymous: false,
+        firstName: "Новый",
+        lastName: "Пациент",
+        inviteCode: code,
+        unit: "своё-игнорируется",
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.user.unit).toBe("Рота Б");
+
+    const mine = await api("/api/batteries/mine", body.token);
+    expect(mine.body.length).toBe(1);
+    expect(mine.body[0].batteryTitle).toBe("Батарея приглашения");
+  });
+
+  test("лимит использований соблюдается атомарно", async () => {
+    // второе из двух использований
+    const second = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "invited2@test.dev", password: "longpass123", anonymous: true, inviteCode: code,
+      }),
+    });
+    expect(second.status).toBe(201);
+
+    // третье — отказ до создания аккаунта
+    const third = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "invited3@test.dev", password: "longpass123", anonymous: true, inviteCode: code,
+      }),
+    });
+    expect(third.status).toBe(400);
+    const { users: usersTable } = await import("../src/db/schema");
+    const ghost = await db.query.users.findFirst({ where: eq(usersTable.email, "invited3@test.dev") });
+    expect(ghost).toBeUndefined();
+  });
+
+  test("отзыв гасит приглашение", async () => {
+    const created = await api("/api/invites", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ maxUses: 5, ttlDays: 7 }),
+    });
+    await api(`/api/invites/${created.body.id}/revoke`, adminA.token, { method: "POST" });
+    const preview = await app.request(`/api/invites/preview/${created.body.token}`);
+    const body = await preview.json();
+    expect(body.valid).toBe(false);
+    expect(body.reason).toBe("revoked");
+  });
+
+  test("чужой админ не видит приглашение группы А в списке", async () => {
+    const mine = await api("/api/invites", adminA.token);
+    expect(mine.body.length).toBeGreaterThan(0);
+    const foreign = await api("/api/invites", adminB.token);
+    const ids = foreign.body.map((i: { id: string }) => i.id);
+    expect(ids).not.toContain(mine.body.find((i: { batteryId: string | null }) => i.batteryId)?.id);
+  });
+});

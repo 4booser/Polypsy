@@ -27,6 +27,7 @@ import { comparisonRoutes } from "./routes/comparison";
 import { spssRoutes } from "./routes/spss";
 import { batteryRoutes } from "./routes/batteries";
 import { scheduleRoutes } from "./routes/schedules";
+import { inviteRoutes } from "./routes/invites";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import type { AppEnv } from "./middleware/auth";
@@ -81,6 +82,7 @@ app.route("/api/compare", comparisonRoutes);
 app.route("/api/spss", spssRoutes);
 app.route("/api/batteries", batteryRoutes);
 app.route("/api/schedules", scheduleRoutes);
+app.route("/api/invites", inviteRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {

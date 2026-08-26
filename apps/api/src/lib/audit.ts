@@ -51,6 +51,9 @@ export type AuditAction =
   | "schedule.update"
   | "schedule.delete"
   | "schedule.run"
+  | "invite.create"
+  | "invite.revoke"
+  | "invite.use"
   | "analytics.correlations"
   | "audit.read"
   | "access.denied";

@@ -18,6 +18,7 @@ export default function RegisterScreen() {
   const [birthDate, setBirthDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -38,6 +39,7 @@ export default function RegisterScreen() {
         birthDate: birthDate.trim() || null,
         email: email.trim(),
         password,
+        inviteCode: inviteCode.trim() || null,
       });
       router.replace("/(app)/surveys");
     } catch (e) {
@@ -144,6 +146,17 @@ export default function RegisterScreen() {
           onChangeText={setPassword}
           secureTextEntry
         />
+        <Field
+          label="Код приглашения (если выдали)"
+          value={inviteCode}
+          onChangeText={setInviteCode}
+          autoCapitalize="characters"
+          placeholder="XXXX-XXXX"
+        />
+        <Body muted>
+          Код открывает назначенное обследование сразу после входа. Если развёрнута закрытая
+          регистрация — без кода войти не получится.
+        </Body>
 
         <ErrorText>{error}</ErrorText>
 

@@ -99,6 +99,8 @@ export const updateProfileSchema = profileSchema.extend({
 export const registerSchema = z
   .object({
     email: z.string().email(),
+    /** Код или токен приглашения — обязателен при закрытой регистрации */
+    inviteCode: z.string().max(200).nullish(),
     password: z.string().min(8).max(128),
     /** ФИО обязательно для обычного аккаунта и не хранится у псевдонимизированного */
     firstName: z.string().max(80).optional(),
@@ -182,6 +184,15 @@ export const scheduleInputSchema = z
     message: "Выберите хотя бы одного обследуемого",
     path: ["userIds"],
   });
+
+export const createInviteSchema = z.object({
+  batteryId: z.string().nullish(),
+  unit: z.string().max(200).nullish(),
+  note: z.string().max(500).nullish(),
+  maxUses: z.number().int().min(1).max(500).default(1),
+  /** Срок в днях от создания */
+  ttlDays: z.number().int().min(1).max(365).default(14),
+});
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
@@ -536,6 +547,7 @@ export type BatteryInput = z.input<typeof batteryInputSchema>;
 export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;
 export type ScheduleInput = z.input<typeof scheduleInputSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type CreateInviteInput = z.input<typeof createInviteSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type GroupInput = z.infer<typeof groupInputSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;
