@@ -1,0 +1,52 @@
+# Развёртывание одним файлом: база, API, консоль за Caddy.
+#
+#   cp .env.docker.example .env.docker && отредактировать
+#   docker compose --env-file .env.docker up -d
+#
+# Мобильное приложение ходит на тот же адрес, что и консоль (/api/*).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: quizzy
+      POSTGRES_USER: quizzy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quizzy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://quizzy:${POSTGRES_PASSWORD}@postgres:5432/quizzy
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (32+ символов)}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      # домен для автоматического TLS; пусто — http на :80
+      SITE_ADDRESS: ${SITE_ADDRESS:-}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
