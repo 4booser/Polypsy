@@ -15,6 +15,7 @@ import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { formatDuration, spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 /** Телеметрия по одному вопросу, копится пока экран открыт */
 interface Telemetry {
@@ -25,6 +26,7 @@ interface Telemetry {
 
 export default function TakeSurveyScreen() {
   const c = useColors();
+  const { ut } = useLang();
   const router = useRouter();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -226,7 +228,7 @@ export default function TakeSurveyScreen() {
       setResult(res.scores);
       setResponseId(res.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось отправить ответы");
+      setError(e instanceof Error ? e.message : ut("runner.submitFailed"));
     } finally {
       setBusy(false);
     }
@@ -360,7 +362,7 @@ export default function TakeSurveyScreen() {
         <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs }}>
           <Row>
             <Text style={{ color: c.muted, fontSize: 12 }}>
-              {current.type === "info" ? "Информация" : `Вопрос ${askedIndex + 1} из ${asked.length}`}
+              {current.type === "info" ? ut("runner.info") : `${ut("runner.question")} ${askedIndex + 1} ${ut("common.of")} ${asked.length}`}
             </Text>
             <View style={{ flex: 1 }} />
             <Text style={{ color: c.muted, fontSize: 12 }}>
@@ -425,12 +427,12 @@ export default function TakeSurveyScreen() {
       >
         {survey.allowBack && step > 0 ? (
           <View style={{ flex: 1 }}>
-            <Button title="Назад" variant="secondary" onPress={() => goTo(step - 1)} />
+            <Button title={ut("common.back")} variant="secondary" onPress={() => goTo(step - 1)} />
           </View>
         ) : null}
         <View style={{ flex: 2 }}>
           <Button
-            title={isLast ? "Завершить" : "Далее"}
+            title={isLast ? ut("common.finish") : ut("common.next")}
             onPress={() => (isLast ? submit() : goTo(step + 1))}
             disabled={!canAdvance}
             loading={busy}

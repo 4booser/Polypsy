@@ -29,3 +29,18 @@ const store =
       };
 
 export const tokenStorage = store;
+
+/**
+ * Настройки (язык и т.п.) — не секреты, но живут в том же хранилище:
+ * лишняя зависимость ради localStorage-аналога не нужна.
+ */
+export const prefStorage = {
+  get: (key: string) =>
+    Platform.OS === "web"
+      ? Promise.resolve(typeof localStorage === "undefined" ? null : localStorage.getItem(key))
+      : SecureStore.getItemAsync(key),
+  set: (key: string, value: string) =>
+    Platform.OS === "web"
+      ? Promise.resolve(localStorage?.setItem(key, value))
+      : SecureStore.setItemAsync(key, value),
+};

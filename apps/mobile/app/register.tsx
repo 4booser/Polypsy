@@ -2,6 +2,7 @@ import { useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthContext";
+import { useLang } from "@/lang";
 import { Body, Button, Card, Chip, ErrorText, Field, Row, Title } from "@/components/ui";
 import { radius, spacing, useColors } from "@/theme";
 
@@ -9,6 +10,7 @@ export default function RegisterScreen() {
   const c = useColors();
   const router = useRouter();
   const { register } = useAuth();
+  const { ut, lang } = useLang();
 
   const [anonymous, setAnonymous] = useState(false);
   const [lastName, setLastName] = useState("");
@@ -43,7 +45,7 @@ export default function RegisterScreen() {
       });
       router.replace("/(app)/surveys");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось зарегистрироваться");
+      setError(e instanceof Error ? e.message : ut("join.registerFailed"));
     } finally {
       setBusy(false);
     }
@@ -59,8 +61,8 @@ export default function RegisterScreen() {
     >
       <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
         <View style={{ gap: spacing.xs }}>
-          <Title>Регистрация</Title>
-          <Body muted>Регистрация создаёт учётную запись пациента</Body>
+          <Title>{ut("auth.registerTitle")}</Title>
+          <Body muted>{lang === "uk" ? "Реєстрація створює обліковий запис пацієнта" : "Регистрация создаёт учётную запись пациента"}</Body>
         </View>
 
         {/* выбор типа аккаунта — первым, потому что от него зависит остальная форма */}
@@ -105,9 +107,9 @@ export default function RegisterScreen() {
 
         {!anonymous ? (
           <>
-            <Field label="Фамилия" value={lastName} onChangeText={setLastName} />
-            <Field label="Имя" value={firstName} onChangeText={setFirstName} />
-            <Field label="Отчество (необязательно)" value={middleName} onChangeText={setMiddleName} />
+            <Field label={ut("person.lastName")} value={lastName} onChangeText={setLastName} />
+            <Field label={ut("person.firstName")} value={firstName} onChangeText={setFirstName} />
+            <Field label={ut("person.middleName")} value={middleName} onChangeText={setMiddleName} />
           </>
         ) : null}
 
@@ -115,12 +117,12 @@ export default function RegisterScreen() {
         <View style={{ gap: spacing.xs }}>
           <Text style={{ color: c.muted, fontSize: 13 }}>Пол</Text>
           <Row gap={spacing.xs}>
-            <Chip label="Мужской" selected={sex === "male"} onPress={() => setSex("male")} />
-            <Chip label="Женский" selected={sex === "female"} onPress={() => setSex("female")} />
+            <Chip label={ut("person.sex.male")} selected={sex === "male"} onPress={() => setSex("male")} />
+            <Chip label={ut("person.sex.female")} selected={sex === "female"} onPress={() => setSex("female")} />
           </Row>
         </View>
         <Field
-          label="Дата рождения (ГГГГ-ММ-ДД)"
+          label={`${ut("person.birthDate")} (ГГГГ-ММ-ДД)`}
           value={birthDate}
           onChangeText={setBirthDate}
           placeholder="1994-03-12"
@@ -141,13 +143,13 @@ export default function RegisterScreen() {
           keyboardType="email-address"
         />
         <Field
-          label="Пароль (минимум 8 символов)"
+          label={ut("person.password8")}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
         <Field
-          label="Код приглашения (если выдали)"
+          label={ut("auth.inviteCode")}
           value={inviteCode}
           onChangeText={setInviteCode}
           autoCapitalize="characters"
@@ -160,8 +162,12 @@ export default function RegisterScreen() {
 
         <ErrorText>{error}</ErrorText>
 
-        <Button title="Зарегистрироваться" onPress={onSubmit} loading={busy} disabled={!ready} />
-        <Button title="Назад ко входу" variant="secondary" onPress={() => router.back()} />
+        <Button title={ut("auth.register")} onPress={onSubmit} loading={busy} disabled={!ready} />
+        <Button
+          title={lang === "uk" ? "Назад до входу" : "Назад ко входу"}
+          variant="secondary"
+          onPress={() => router.back()}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );

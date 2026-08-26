@@ -3,17 +3,20 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AuthProvider } from "./auth";
+import { LangProvider } from "./lang";
 import { ToastProvider } from "./ui";
 import "./theme.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
+      <LangProvider>
       <AuthProvider>
         <ToastProvider>
           <App />
         </ToastProvider>
       </AuthProvider>
+      </LangProvider>
     </BrowserRouter>
   </StrictMode>,
 );

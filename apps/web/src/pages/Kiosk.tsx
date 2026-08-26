@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { LangSwitch, useLang } from "../lang";
 import {
   isAnswered,
   isQuestionVisible,
@@ -31,19 +32,20 @@ type Phase =
 
 export default function Kiosk() {
   const { token } = useParams<{ token: string }>();
+  const { ut, lang } = useLang();
   const [state, setState] = useState<KioskState | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
 
   useEffect(() => {
     if (!token) return;
-    fetch(`/api/kiosk/state/${token}`)
+    fetch(`/api/kiosk/state/${token}?lang=${lang}`)
       .then((r) => r.json())
       .then((s: KioskState) => {
         setState(s);
         setPhase(s.valid ? { kind: "idle" } : { kind: "invalid", reason: s.reason ?? "unknown" });
       })
       .catch(() => setPhase({ kind: "invalid", reason: "unknown" }));
-  }, [token]);
+  }, [token, lang]);
 
   // бездействие: на старт. Во время прохождения — тоже: брошенный планшет
   // с чужим недопройденным тестом хуже, чем потерянный прогресс
@@ -69,15 +71,15 @@ export default function Kiosk() {
     return () => window.removeEventListener("popstate", trap);
   }, []);
 
-  if (phase.kind === "loading") return <Shell><p className="muted">Загрузка…</p></Shell>;
+  if (phase.kind === "loading") return <Shell><p className="muted">{ut("common.loading")}</p></Shell>;
 
   if (phase.kind === "invalid") {
     const text: Record<string, string> = {
-      expired: "Срок сеанса истёк. Обратитесь к оператору.",
-      closed: "Сеанс завершён оператором.",
-      unknown: "Сеанс не найден. Проверьте ссылку.",
+      expired: ut("kiosk.invalid.expired"),
+      closed: ut("kiosk.invalid.closed"),
+      unknown: ut("kiosk.invalid.unknown"),
     };
-    return <Shell><h1>Сеанс не действует</h1><p className="muted">{text[phase.reason] ?? text.unknown}</p></Shell>;
+    return <Shell><h1>{ut("kiosk.invalid.title")}</h1><p className="muted">{text[phase.reason] ?? text.unknown}</p></Shell>;
   }
 
   if (!state?.valid) return null;
@@ -88,9 +90,12 @@ export default function Kiosk() {
       <Shell>
         <h1>{state.title}</h1>
         <p className="muted" style={{ fontSize: 17 }}>
-          Обследование «{state.batteryTitle}»: {selfSteps.length}{" "}
-          {plural(selfSteps.length, "методика", "методики", "методик")},{" "}
-          {selfSteps.reduce((n, s) => n + s.questionCount, 0)} вопросов.
+          «{state.batteryTitle}»: {selfSteps.length}{" "}
+          {lang === "uk"
+            ? plural(selfSteps.length, "методика", "методики", "методик")
+            : plural(selfSteps.length, "методика", "методики", "методик")}
+          , {selfSteps.reduce((n, s) => n + s.questionCount, 0)}{" "}
+          {lang === "uk" ? "запитань" : "вопросов"}.
         </p>
         <button
           className="primary kiosk-big"
@@ -99,7 +104,7 @@ export default function Kiosk() {
             setPhase({ kind: "join" });
           }}
         >
-          Начать
+          {ut("common.start")}
         </button>
       </Shell>
     );
@@ -133,10 +138,10 @@ export default function Kiosk() {
   // finished
   return (
     <Shell>
-      <h1>Спасибо, обследование завершено</h1>
-      <p className="muted" style={{ fontSize: 17 }}>Передайте планшет следующему.</p>
+      <h1>{ut("kiosk.thanks")}</h1>
+      <p className="muted" style={{ fontSize: 17 }}>{ut("kiosk.passTablet")}</p>
       <button className="primary kiosk-big" onClick={() => setPhase({ kind: "join" })}>
-        Следующий участник
+        {ut("kiosk.nextParticipant")}
       </button>
     </Shell>
   );
@@ -153,6 +158,7 @@ function plural(n: number, one: string, few: string, many: string): string {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="kiosk-page">
+      <div className="kiosk-lang"><LangSwitch /></div>
       <div className="kiosk-card">{children}</div>
     </div>
   );
@@ -161,6 +167,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 /* ── Паспортная часть ── */
 
 function JoinForm({ token, onJoined, onCancel }: { token: string; onJoined: (id: string) => void; onCancel: () => void }) {
+  const { ut } = useLang();
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -185,10 +192,10 @@ function JoinForm({ token, onJoined, onCancel }: { token: string; onJoined: (id:
         }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? "Не удалось начать");
+      if (!res.ok) throw new Error(body?.error ?? ut("kiosk.cantStart"));
       onJoined(body.participantId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось начать");
+      setError(e instanceof Error ? e.message : ut("kiosk.cantStart"));
     } finally {
       setBusy(false);
     }
@@ -196,32 +203,32 @@ function JoinForm({ token, onJoined, onCancel }: { token: string; onJoined: (id:
 
   return (
     <Shell>
-      <h1>Представьтесь</h1>
+      <h1>{ut("kiosk.introduce")}</h1>
       <div className="form-grid" style={{ marginTop: 12 }}>
-        <label className="field grow"><span>Фамилия</span>
+        <label className="field grow"><span>{ut("person.lastName")}</span>
           <input value={lastName} onChange={(e) => setLastName(e.target.value)} autoFocus /></label>
-        <label className="field grow"><span>Имя</span>
+        <label className="field grow"><span>{ut("person.firstName")}</span>
           <input value={firstName} onChange={(e) => setFirstName(e.target.value)} /></label>
-        <label className="field grow"><span>Отчество</span>
+        <label className="field grow"><span>{ut("person.middleName")}</span>
           <input value={middleName} onChange={(e) => setMiddleName(e.target.value)} /></label>
       </div>
       <div className="form-grid">
-        <label className="field"><span>Пол</span>
+        <label className="field"><span>{ut("person.sex")}</span>
           <select value={sex} onChange={(e) => setSex(e.target.value as never)}>
             <option value="">—</option>
-            <option value="male">мужской</option>
-            <option value="female">женский</option>
+            <option value="male">{ut("person.sex.male")}</option>
+            <option value="female">{ut("person.sex.female")}</option>
           </select></label>
-        <label className="field"><span>Дата рождения</span>
+        <label className="field"><span>{ut("person.birthDate")}</span>
           <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} /></label>
       </div>
-      <p className="hint">Пол и дата рождения нужны для расчёта норм по вашей группе.</p>
+      <p className="hint">{ut("person.normsHint")}</p>
       {error ? <p className="error">{error}</p> : null}
       <div className="row" style={{ marginTop: 10 }}>
         <button className="primary kiosk-big" disabled={busy || !lastName.trim() || !firstName.trim()} onClick={submit}>
-          {busy ? "Секунду…" : "Продолжить"}
+          {busy ? ut("kiosk.momentPlease") : ut("common.continue")}
         </button>
-        <button onClick={onCancel}>Отмена</button>
+        <button onClick={onCancel}>{ut("common.cancel")}</button>
       </div>
     </Shell>
   );
@@ -242,6 +249,7 @@ function Runner({
   stepLabel: string;
   onDone: () => void;
 }) {
+  const { ut, lang } = useLang();
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
   const [index, setIndex] = useState(0);
@@ -256,11 +264,11 @@ function Runner({
   const seq = useRef(0);
 
   useEffect(() => {
-    fetch(`/api/kiosk/state/${token}/surveys/${surveyId}`)
+    fetch(`/api/kiosk/state/${token}/surveys/${surveyId}?lang=${lang}`)
       .then((r) => r.json())
       .then(setSurvey)
-      .catch(() => setError("Не удалось загрузить методику"));
-  }, [token, surveyId]);
+      .catch(() => setError(ut("kiosk.cantLoad")));
+  }, [token, surveyId, lang]);
 
   const visible = useMemo(() => {
     if (!survey) return [];
@@ -295,8 +303,8 @@ function Runner({
     };
   }, [current, pushEvent]);
 
-  if (error) return <Shell><p className="error">{error}</p></Shell>;
-  if (!survey || !current) return <Shell><p className="muted">Загрузка…</p></Shell>;
+  if (error && !survey) return <Shell><p className="error">{error}</p></Shell>;
+  if (!survey || !current) return <Shell><p className="muted">{ut("common.loading")}</p></Shell>;
 
   const setAnswer = (a: Answer) => {
     const had = answers.get(current.id);
@@ -340,10 +348,10 @@ function Runner({
         body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? "Не удалось отправить");
+      if (!res.ok) throw new Error(body?.error ?? ut("kiosk.cantSubmit"));
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось отправить");
+      setError(e instanceof Error ? e.message : ut("kiosk.cantSubmit"));
     } finally {
       setBusy(false);
     }
@@ -375,11 +383,11 @@ function Runner({
         {error ? <p className="error">{error}</p> : null}
         <div className="row" style={{ marginTop: "auto", paddingTop: 18 }}>
           {survey.allowBack && index > 0 ? (
-            <button className="kiosk-big" onClick={() => setIndex(index - 1)}>Назад</button>
+            <button className="kiosk-big" onClick={() => setIndex(index - 1)}>{ut("common.back")}</button>
           ) : null}
           <div className="spacer" />
           <button className="primary kiosk-big" disabled={!canNext || busy} onClick={next}>
-            {busy ? "Отправляем…" : index + 1 < visible.length ? "Дальше" : "Завершить"}
+            {busy ? ut("common.sending") : index + 1 < visible.length ? ut("common.next") : ut("common.finish")}
           </button>
         </div>
       </div>
@@ -396,6 +404,7 @@ function QuestionInput({
   answer: Answer | undefined;
   onChange: (a: Answer) => void;
 }) {
+  const { ut } = useLang();
   const base: Answer = { questionId: question.id };
 
   switch (question.type) {
@@ -507,10 +516,7 @@ function QuestionInput({
     default:
       // matrix/ranking на киоске не поддержаны: честно говорим, а не молчим
       return (
-        <p className="error">
-          Тип вопроса «{question.type}» не поддерживается в киоске. Обратитесь к оператору —
-          эту методику нужно проходить в мобильном приложении.
-        </p>
+        <p className="error">{ut("kiosk.unsupportedType")}</p>
       );
   }
 }
