@@ -143,6 +143,8 @@ export const surveys = pgTable(
    * решение психолога, а не системы.
    */
   showResultsToPatient: boolean("show_results_to_patient").notNull().default(false),
+  /** Демонстрационная методика: не для клинического применения, в списках помечена */
+  isDemo: boolean("is_demo").notNull().default(false),
     status: text("status", { enum: ["draft", "published", "closed", "archived"] })
       .notNull()
       .default("draft"),

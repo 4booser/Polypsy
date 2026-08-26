@@ -92,6 +92,13 @@
       "when": 1787758714580,
       "tag": "0012_perpetual_sentinels",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1787758920666,
+      "tag": "0013_right_adam_warlock",
+      "breakpoints": true
     }
   ]
 }

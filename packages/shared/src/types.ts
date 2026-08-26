@@ -388,6 +388,8 @@ export interface Survey {
   safetyPlan: string | null;
   /** Пациент видит свою динамику по этой методике */
   showResultsToPatient: boolean;
+  /** Демонстрационная: не для клинического применения */
+  isDemo: boolean;
   status: SurveyStatus;
 
   timeLimitSec: number | null;
