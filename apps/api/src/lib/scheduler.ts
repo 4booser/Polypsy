@@ -127,7 +127,25 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
  * расписания не останавливает остальные — иначе одно кривое перекрыло бы
  * работу всей больницы.
  */
+/** Ключ advisory-лока: произвольная константа, одна на всё приложение */
+const SCHEDULER_LOCK_KEY = 7_154_202;
+
 export async function runDueSchedules(now = new Date()): Promise<number> {
+  // две реплики не должны выдать задания дважды: идемпотентность через
+  // schedule_runs — первый пояс, лок на время прохода — второй
+  const [lock] = await db.execute(
+    sql`select pg_try_advisory_lock(${SCHEDULER_LOCK_KEY}) as ok`,
+  );
+  if (!(lock as { ok: boolean }).ok) return 0;
+
+  try {
+    return await runDueSchedulesLocked(now);
+  } finally {
+    await db.execute(sql`select pg_advisory_unlock(${SCHEDULER_LOCK_KEY})`).catch(() => {});
+  }
+}
+
+async function runDueSchedulesLocked(now: Date): Promise<number> {
   const due = await db
     .select()
     .from(schedules)

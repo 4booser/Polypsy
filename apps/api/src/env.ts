@@ -1,9 +1,53 @@
-export const env = {
-  port: Number(process.env.PORT ?? 3001),
-  databaseUrl: process.env.DATABASE_URL ?? "postgres://postgres@localhost:5432/quizzy",
-  jwtSecret: process.env.JWT_SECRET ?? "dev-secret-change-me",
-};
+import { z } from "zod";
 
-if (process.env.NODE_ENV === "production" && env.jwtSecret === "dev-secret-change-me") {
+/**
+ * Конфигурация процесса.
+ *
+ * Валидируется на старте целиком: неверная переменная окружения должна ронять
+ * процесс с внятной ошибкой, а не всплывать посреди ночи в виде странного
+ * поведения. Дефолты действуют только вне production — в бою обязательны
+ * явные значения, иначе dev-секрет молча уезжает на сервер.
+ */
+const isProduction = process.env.NODE_ENV === "production";
+
+const schema = z.object({
+  PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  DATABASE_URL: isProduction
+    ? z.string().min(1, "DATABASE_URL обязателен в production")
+    : z.string().default("postgres://postgres@localhost:5432/quizzy"),
+  JWT_SECRET: isProduction
+    ? z.string().min(32, "JWT_SECRET в production — минимум 32 символа")
+    : z.string().default("dev-secret-change-me"),
+  /** Разрешённые origin консоли через запятую; пусто в dev = localhost */
+  CORS_ORIGINS: z.string().default(""),
+  /** Планировщик тикает только там, где флаг включён (одна реплика) */
+  SCHEDULER_ENABLED: z
+    .string()
+    .default("1")
+    .transform((v) => v !== "0" && v.toLowerCase() !== "false"),
+});
+
+const parsed = schema.safeParse(process.env);
+if (!parsed.success) {
+  const lines = parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`);
+  throw new Error(`Конфигурация окружения не прошла проверку:\n${lines.join("\n")}`);
+}
+
+const raw = parsed.data;
+
+if (isProduction && raw.JWT_SECRET === "dev-secret-change-me") {
   throw new Error("JWT_SECRET must be set in production");
 }
+
+export const env = {
+  port: raw.PORT,
+  databaseUrl: raw.DATABASE_URL,
+  jwtSecret: raw.JWT_SECRET,
+  schedulerEnabled: raw.SCHEDULER_ENABLED,
+  corsOrigins: raw.CORS_ORIGINS
+    ? raw.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : isProduction
+      ? [] // в production пустой список — значит CORS закрыт совсем
+      : ["http://localhost:5199", "http://localhost:8081"],
+  isProduction,
+};

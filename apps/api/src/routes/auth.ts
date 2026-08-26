@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
-import { loginSchema, registerSchema, updateProfileSchema } from "@quizzy/shared";
+import { changePasswordSchema, loginSchema, registerSchema, updateProfileSchema } from "@quizzy/shared";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { hashPassword, issueToken, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
-import { conflict, parseBody, unauthorized } from "../lib/http";
+import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
 export const authRoutes = new Hono<AppEnv>();
@@ -150,4 +150,45 @@ authRoutes.patch("/me", requireAuth, async (c) => {
   });
 
   return c.json(toPublicUser(row!));
+});
+
+/**
+ * Смена собственного пароля.
+ *
+ * Требует текущий пароль: угнанный токен не должен позволять перехватить
+ * учётную запись насовсем. До появления refresh-токенов (этап 0.4 плана)
+ * смена пароля не отзывает уже выданные токены — это честно зафиксировано
+ * в журнале самим фактом события.
+ */
+authRoutes.post("/password", requireAuth, async (c) => {
+  const user = c.get("user");
+  const input = await parseBody(c.req.raw, changePasswordSchema);
+
+  const row = await db.query.users.findFirst({ where: eq(users.id, user.id) });
+  if (!row || !(await verifyPassword(input.currentPassword, row.passwordHash))) {
+    await audit(c, {
+      action: "auth.password_change",
+      outcome: "denied",
+      resourceType: "user",
+      resourceId: user.id,
+      details: { reason: "wrong_current_password" },
+    });
+    unauthorized("Текущий пароль не подходит");
+  }
+  if (input.currentPassword === input.newPassword) {
+    badRequest("Новый пароль совпадает с текущим");
+  }
+
+  await db
+    .update(users)
+    .set({ passwordHash: await hashPassword(input.newPassword) })
+    .where(eq(users.id, user.id));
+
+  await audit(c, {
+    action: "auth.password_change",
+    resourceType: "user",
+    resourceId: user.id,
+    subjectUserId: user.id,
+  });
+  return c.json({ ok: true });
 });
