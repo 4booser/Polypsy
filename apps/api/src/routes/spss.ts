@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
 import { ageAt } from "@quizzy/shared";
 import { db } from "../db";
+import { env } from "../env";
 import { answers, responseScores, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
@@ -61,7 +62,28 @@ function csvCell(value: string): string {
  * Схема выгрузки. Данные и синтаксис строятся из одного описания, иначе они
  * разъезжаются: в SPSS это выглядит как правдоподобные, но чужие метки.
  */
-async function buildSchema(surveyId: string, lang: string) {
+export type ExportProfile = "full" | "deidentified" | "anonymous";
+
+/** Возрастная полоса вместо точного возраста: перекрёстно не опознаётся */
+function ageBand(age: number | null): string {
+  if (age === null) return String(MISSING);
+  if (age < 25) return "1";
+  if (age < 35) return "2";
+  if (age < 45) return "3";
+  return "4";
+}
+
+/**
+ * Стабильный необратимый код субъекта: HMAC от id с серверным секретом.
+ * Стабильность важна для лонгитюда — повторные выгрузки склеиваются по
+ * коду, но вернуть из кода личность без секрета нельзя.
+ */
+function subjectCode(userId: string): string {
+  const h = new Bun.CryptoHasher("sha256", env.jwtSecret).update(`subject:${userId}`).digest("hex");
+  return `R${h.slice(0, 10).toUpperCase()}`;
+}
+
+async function buildSchema(surveyId: string, lang: string, profile: ExportProfile = "full") {
   const survey = await getSurvey(surveyId, null, lang === "uk" ? "uk" : "ru");
   if (!survey) notFound("Методика не найдена");
 
@@ -82,12 +104,26 @@ async function buildSchema(surveyId: string, lang: string) {
       label: "Идентификатор прохождения",
       value: (c) => c.response.id,
     },
-    {
+  ];
+
+  if (profile === "full") {
+    vars.push({
       name: unique("subject"),
       spec: "A36",
       label: "Идентификатор обследуемого",
       value: (c) => c.response.userId ?? "",
-    },
+    });
+  } else if (profile === "deidentified") {
+    vars.push({
+      name: unique("subject"),
+      spec: "A12",
+      label: "Код субъекта (необратимый, стабильный между выгрузками)",
+      value: (c) => (c.response.userId ? subjectCode(c.response.userId) : ""),
+    });
+  }
+  // anonymous: субъекта нет вовсе — лонгитюд невъзможен намеренно
+
+  vars.push(
     {
       name: unique("sex"),
       spec: "F1.0",
@@ -98,27 +134,51 @@ async function buildSchema(surveyId: string, lang: string) {
       ],
       value: (c) => (c.user?.sex === "male" ? "1" : c.user?.sex === "female" ? "2" : String(MISSING)),
     },
-    {
-      name: unique("age"),
-      spec: "F3.0",
-      label: "Возраст на момент обследования, полных лет",
-      value: (c) => String(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt) ?? MISSING),
-    },
-    { name: unique("unit"), spec: "A80", label: "Подразделение", value: (c) => c.user?.unit ?? "" },
-    { name: unique("mil_rank"), spec: "A80", label: "Звание", value: (c) => c.user?.rank ?? "" },
-    {
-      name: unique("sub_date"),
-      spec: "A32",
-      label: "Дата и время завершения",
-      value: (c) => c.response.submittedAt ?? "",
-    },
+    ...(profile === "full"
+      ? [
+          {
+            name: unique("age"),
+            spec: "F3.0",
+            label: "Возраст на момент обследования, полных лет",
+            value: (c: RowContext) => String(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt) ?? MISSING),
+          },
+          { name: unique("unit"), spec: "A80", label: "Подразделение", value: (c: RowContext) => c.user?.unit ?? "" },
+          { name: unique("mil_rank"), spec: "A80", label: "Звание", value: (c: RowContext) => c.user?.rank ?? "" },
+          {
+            name: unique("sub_date"),
+            spec: "A32",
+            label: "Дата и время завершения",
+            value: (c: RowContext) => c.response.submittedAt ?? "",
+          },
+        ]
+      : [
+          {
+            name: unique("age_band"),
+            spec: "F1.0",
+            label: "Возрастная полоса",
+            values: [
+              [1, "до 25"],
+              [2, "25–34"],
+              [3, "35–44"],
+              [4, "45 и старше"],
+            ] as [number, string][],
+            value: (c: RowContext) =>
+              ageBand(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt)),
+          },
+          {
+            name: unique("sub_month"),
+            spec: "A7",
+            label: "Месяц завершения",
+            value: (c: RowContext) => c.response.submittedAt?.slice(0, 7) ?? "",
+          },
+        ]),
     {
       name: unique("dur_min"),
       spec: "F8.2",
       label: "Длительность прохождения, минут",
       value: (c) => (c.response.durationMs ? (c.response.durationMs / 60000).toFixed(2) : String(MISSING)),
     },
-  ];
+  );
 
   // Пункты: числовой код варианта (порядковый номер), время и число переключений
   for (const q of asked) {
@@ -210,11 +270,17 @@ async function loadRows(surveyId: string): Promise<RowContext[]> {
   }));
 }
 
+function profileOf(c: { req: { query: (k: string) => string | undefined } }): ExportProfile {
+  const p = c.req.query("profile");
+  return p === "deidentified" || p === "anonymous" ? p : "full";
+}
+
 /** Числовая матрица: варианты закодированы порядковыми номерами */
 spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru");
+  const profile = profileOf(c);
+  const { vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru", profile);
   const rows = await loadRows(surveyId);
 
   const body = [
@@ -222,15 +288,20 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
     ...rows.map((ctx) => vars.map((v) => csvCell(v.value(ctx))).join(",")),
   ].join("\r\n");
 
+  // хэш датасета — воспроизводимость: в статье цитируется конкретная выгрузка
+  const datasetHash = new Bun.CryptoHasher("sha256").update(body).digest("hex");
+
   await audit(c, {
     action: "analytics.export",
     resourceType: "survey",
     resourceId: surveyId,
     details: {
       format: "spss-data",
+      profile,
       rows: rows.length,
       subjects: [...new Set(rows.map((r) => r.response.userId).filter(Boolean))].length,
-      includesUserIds: true,
+      includesUserIds: profile === "full",
+      datasetSha256: datasetHash,
     },
   });
 
@@ -246,7 +317,8 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
 spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { survey, vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru");
+  const profile = profileOf(c);
+  const { survey, vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru", profile);
   const dataFile = `quizzy-${surveyId}-data.csv`;
 
   const lines: string[] = [
@@ -299,6 +371,50 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Content-Disposition": `attachment; filename="quizzy-${surveyId}-syntax.sps"`,
+    },
+  });
+});
+
+/**
+ * Codebook: словарь переменных для публикации рядом с датасетом.
+ * Включает происхождение норм — читатель обязан знать, относительно какой
+ * популяции интерпретировались T-баллы.
+ */
+spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
+  const surveyId = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), surveyId);
+  const profile = profileOf(c);
+  const { survey, vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru", profile);
+
+  const lines = [["variable", "type", "label", "values"].join(";")];
+  for (const v of vars) {
+    lines.push(
+      [
+        v.name,
+        v.spec,
+        csvCell(v.label),
+        csvCell((v.values ?? []).map(([code, text]) => `${code}=${text}`).join(" | ")),
+      ].join(";"),
+    );
+  }
+  lines.push("");
+  lines.push(["scale", "normalization", "norm_source"].join(";"));
+  for (const scale of survey.scales) {
+    const sources = [...new Set(scale.norms.map((n) => n.source).filter(Boolean))].join(" | ");
+    lines.push([scale.code, scale.normalization, csvCell(sources || "—")].join(";"));
+  }
+
+  await audit(c, {
+    action: "analytics.export",
+    resourceType: "survey",
+    resourceId: surveyId,
+    details: { format: "codebook", profile, variables: vars.length },
+  });
+
+  return new Response(`\ufeff${lines.join("\r\n")}`, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="quizzy-${surveyId}-codebook.csv"`,
     },
   });
 });

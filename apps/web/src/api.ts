@@ -239,8 +239,9 @@ export const api = {
       `/api/surveys/${id}/responses?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`,
     ),
   exportUrl: (id: string) => `/api/analytics/surveys/${id}/export`,
-  spssDataUrl: (id: string) => `/api/spss/surveys/${id}/data.csv`,
-  spssSyntaxUrl: (id: string) => `/api/spss/surveys/${id}/syntax.sps`,
+  spssDataUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/data.csv?profile=${profile}`,
+  spssSyntaxUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/syntax.sps?profile=${profile}`,
+  codebookUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/codebook.csv?profile=${profile}`,
   methodologyUrl: (id: string) => `/api/surveys/${id}/export`,
   reportUrl: (responseId: string) => `/api/reports/responses/${responseId}`,
 
