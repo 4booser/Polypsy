@@ -1,0 +1,20 @@
+{
+  "name": "quizzy",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "api": "bun run --cwd apps/api dev",
+    "mobile": "bun run --cwd apps/mobile start",
+    "db:seed": "bun run --cwd apps/api db:seed",
+    "typecheck": "bun run --cwd apps/api typecheck && bun run --cwd apps/mobile typecheck && bun run --cwd apps/web typecheck",
+    "db:migrate": "bun run --cwd apps/api db:migrate",
+    "web": "bun run --cwd apps/web dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

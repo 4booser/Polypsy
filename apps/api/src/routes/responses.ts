@@ -1,0 +1,605 @@
+import { t } from "@quizzy/shared";
+import { Hono } from "hono";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import {
+  answerScore,
+  ageAt,
+  computeProfile,
+  isAnswered,
+  isQuestionVisible,
+  submitResponseSchema,
+  type Answer,
+  type Question,
+  type ScoreResult,
+  type SurveyResponse,
+} from "@quizzy/shared";
+import { db } from "../db";
+import { answerEvents, answers, riskAlerts, responseScores, responses, scales, users } from "../db/schema";
+import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
+import { getSurvey, getSurveyForResponse } from "../lib/surveys";
+import { detectRisks } from "../lib/risk";
+import { draftSchema } from "@quizzy/shared";
+import { audit } from "../lib/audit";
+import { assertBatteryOrder, closeCompletedBatteries } from "../lib/batteries";
+import { assertSurveyAccess, isStaff } from "../lib/scope";
+import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+
+export const responseRoutes = new Hono<AppEnv>();
+
+responseRoutes.use("*", requireAuth);
+
+/** Отправка прохождения вместе с телеметрией по каждому вопросу */
+responseRoutes.post("/surveys/:id/responses", async (c) => {
+  const user = c.get("user");
+  const surveyId = c.req.param("id");
+  const input = await parseBody(c.req.raw, submitResponseSchema);
+
+  const survey = await getSurvey(surveyId, null, langOf(c));
+  if (!survey) notFound("Методика не найдена");
+  if (survey.status !== "published") badRequest("Методика недоступна для прохождения");
+  if (survey.administration !== "self" && !isStaff(user)) {
+    forbidden("Методику заполняет специалист, а не респондент");
+  }
+
+  /*
+   * Режим специалиста: клиницист заполняет методику за пациента.
+   * Прохождение записывается на пациента, но в журнал уходит, кто его внёс —
+   * иначе в карте появлялись бы данные без следа о том, кто их поставил.
+   */
+  let subjectId = user.id;
+  if (input.onBehalfOf) {
+    if (!isStaff(user)) forbidden("Заполнять за другого может только сотрудник");
+    await assertSurveyAccess(user, surveyId);
+    const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
+    if (!subject) notFound("Пациент не найден");
+    if (subject.role !== "user") badRequest("Заполнять можно только за пациента");
+    subjectId = subject.id;
+  } else if (survey.administration === "clinician") {
+    badRequest("Для этой методики нужно указать пациента, за которого она заполняется");
+  }
+
+  if (!survey.allowRetake && !survey.anonymous) {
+    const existing = await db.query.responses.findFirst({
+      where: and(
+        eq(responses.surveyId, surveyId),
+        eq(responses.userId, subjectId),
+        eq(responses.status, "completed"),
+      ),
+    });
+    if (existing) conflict("Вы уже проходили эту методику");
+  }
+
+  // незавершённый черновик того же пользователя убираем: иначе он остался бы
+  // висеть как брошенное прохождение и портил статистику доходимости
+  if (!survey.anonymous) {
+    await db
+      .delete(responses)
+      .where(
+        and(
+          eq(responses.surveyId, surveyId),
+          eq(responses.userId, subjectId),
+          eq(responses.status, "in_progress"),
+        ),
+      );
+  }
+
+  const answerMap = new Map(input.answers.map((a) => [a.questionId, a as Answer]));
+  const validIds = new Set(survey.questions.map((q) => q.id));
+
+  // проверяем только те вопросы, которые респондент реально должен был увидеть
+  for (const question of survey.questions) {
+    if (question.type === "info") continue;
+    if (!isQuestionVisible(question, survey.questions, answerMap)) continue;
+
+    const answer = answerMap.get(question.id);
+    // сначала форма ответа, потом обязательность: иначе битый ответ маскируется
+    // менее точным сообщением «не отвечен обязательный вопрос»
+    if (answer) validateAnswer(question, answer);
+    if (question.required && !isAnswered(question, answer)) {
+      badRequest(`Не отвечен обязательный вопрос: ${question.title}`);
+    }
+  }
+
+  /*
+   * Паспортная часть уходит в подсчёт: T-баллы и стены считаются по нормам,
+   * которые зависят от пола и возраста. Возраст берём на момент обследования,
+   * а не текущий — иначе результат менялся бы со временем.
+   */
+  // очерёдность внутри батареи проверяем до записи: отказ после сохранения
+  // означал бы прохождение, которого не должно было быть
+  await assertBatteryOrder(subjectId, surveyId, subjectId === user.id);
+
+  const subject =
+    subjectId === user.id
+      ? user
+      : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
+  const respondent = {
+    sex: subject.sex,
+    age: ageAt(subject.birthDate, new Date().toISOString()),
+  };
+  const profile = survey.scoringEnabled
+    ? computeProfile(survey, input.answers as Answer[], respondent)
+    : { scores: [] as ScoreResult[], reliable: true, warnings: [] as string[] };
+  const scores: ScoreResult[] = profile.scores;
+  const responseId = crypto.randomUUID();
+  const submittedAt = new Date().toISOString();
+
+  await db.transaction(async (tx) => {
+    await tx.insert(responses)
+      .values({
+        id: responseId,
+        surveyId,
+        // прохождение принадлежит обследуемому, а не тому, кто внёс данные:
+        // при заполнении за пациента это разные люди, и путаница здесь ломает
+        // и динамику пациента, и когорты в аналитике
+        userId: survey.anonymous ? null : subjectId,
+        status: input.status,
+        versionId: survey.versionId,
+        startedAt: input.startedAt,
+        submittedAt,
+        durationMs: input.durationMs,
+      })
+      ;
+
+    // тревоги по критическим пунктам — до подсчёта баллов: они не зависят
+    // от шкал и должны сработать даже у методики без подсчёта
+    for (const risk of detectRisks(survey, input.answers as Answer[])) {
+      await tx.insert(riskAlerts)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          surveyId,
+          questionId: risk.questionId,
+          userId: survey.anonymous ? null : subjectId,
+          label: risk.label,
+          severity: risk.severity,
+          at: new Date().toISOString(),
+        })
+        .onConflictDoNothing();
+    }
+
+    for (const answer of input.answers) {
+      if (!validIds.has(answer.questionId)) continue;
+      const question = survey.questions.find((q) => q.id === answer.questionId)!;
+      await tx.insert(answers)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          questionId: answer.questionId,
+          optionIds: answer.optionIds ?? null,
+          text: answer.text ?? null,
+          number: answer.number ?? null,
+          date: answer.date ?? null,
+          matrix: answer.matrix ?? null,
+          ranking: answer.ranking ?? null,
+          skipped: answer.skipped ?? false,
+          score: survey.scoringEnabled ? answerScore(question, answer as Answer) : null,
+          durationMs: answer.durationMs ?? 0,
+          changeCount: answer.changeCount ?? 0,
+          visitCount: answer.visitCount ?? 1,
+        });
+    }
+
+    // лента событий пишется одной пачкой внутри той же транзакции:
+    // либо прохождение сохраняется целиком, либо не сохраняется вовсе
+    for (const event of input.events) {
+      if (!validIds.has(event.questionId)) continue;
+      await tx.insert(answerEvents)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          questionId: event.questionId,
+          sequence: event.sequence,
+          kind: event.kind,
+          elapsedMs: event.elapsedMs,
+          at: event.at,
+          value: event.value ?? null,
+        });
+    }
+
+    for (const score of scores) {
+      await tx.insert(responseScores)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          scaleId: score.scaleId,
+          rawScore: score.rawScore,
+          value: score.value,
+          normalization: score.normalization,
+          maxScore: score.maxScore,
+          percent: score.percent,
+          bandLabel: score.band?.label ?? null,
+          severity: score.band?.severity ?? null,
+        });
+    }
+  });
+
+  await closeCompletedBatteries(subjectId, surveyId);
+
+  await audit(c, {
+    action: "response.submit",
+    resourceType: "response",
+    resourceId: responseId,
+    subjectUserId: survey.anonymous ? null : subjectId,
+    details: {
+      surveyId,
+      anonymous: survey.anonymous,
+      durationMs: input.durationMs,
+      events: input.events.length,
+      // кто именно внёс данные, если заполнял специалист
+      filledBy: subjectId === user.id ? null : user.email,
+    },
+  });
+
+  return c.json(
+    { id: responseId, surveyId, submittedAt, scores, reliable: profile.reliable, warnings: profile.warnings },
+    201,
+  );
+});
+
+/**
+ * Автосохранение черновика.
+ *
+ * Идемпотентно: на пару (методика, пользователь) держится одно незавершённое
+ * прохождение, каждое сохранение перезаписывает его ответы. Тревоги
+ * поднимаются здесь же — в этом весь смысл раннего сохранения.
+ */
+responseRoutes.put("/surveys/:id/draft", async (c) => {
+  const user = c.get("user");
+  const surveyId = c.req.param("id");
+  const input = await parseBody(c.req.raw, draftSchema);
+
+  const survey = await getSurvey(surveyId, null, langOf(c));
+  if (!survey) notFound("Методика не найдена");
+  if (survey.status !== "published") badRequest("Методика недоступна");
+  if (survey.anonymous) badRequest("Анонимная методика не сохраняет черновики");
+
+  const existing = await db.query.responses.findFirst({
+    where: and(
+      eq(responses.surveyId, surveyId),
+      eq(responses.userId, user.id),
+      eq(responses.status, "in_progress"),
+    ),
+  });
+
+  const responseId = existing?.id ?? crypto.randomUUID();
+  const now = new Date().toISOString();
+  const validIds = new Set(survey.questions.map((q) => q.id));
+
+  await db.transaction(async (tx) => {
+    if (existing) {
+      await tx.update(responses)
+        .set({ durationMs: input.durationMs, lastSavedAt: now })
+        .where(eq(responses.id, responseId));
+      await tx.delete(answers).where(eq(answers.responseId, responseId));
+    } else {
+      await tx.insert(responses)
+        .values({
+          id: responseId,
+          surveyId,
+          userId: user.id,
+          versionId: survey.versionId,
+          status: "in_progress",
+          startedAt: input.startedAt,
+          lastSavedAt: now,
+          durationMs: input.durationMs,
+        });
+    }
+
+    for (const answer of input.answers) {
+      if (!validIds.has(answer.questionId)) continue;
+      await tx.insert(answers)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          questionId: answer.questionId,
+          optionIds: answer.optionIds ?? null,
+          text: answer.text ?? null,
+          number: answer.number ?? null,
+          date: answer.date ?? null,
+          matrix: answer.matrix ?? null,
+          ranking: answer.ranking ?? null,
+          skipped: answer.skipped ?? false,
+          score: null,
+          durationMs: answer.durationMs ?? 0,
+          changeCount: answer.changeCount ?? 0,
+          visitCount: answer.visitCount ?? 1,
+        });
+    }
+
+    for (const risk of detectRisks(survey, input.answers as Answer[])) {
+      await tx.insert(riskAlerts)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          surveyId,
+          questionId: risk.questionId,
+          userId: user.id,
+          label: risk.label,
+          severity: risk.severity,
+          at: now,
+        })
+        .onConflictDoNothing();
+    }
+  });
+
+  return c.json({ id: responseId, lastSavedAt: now, answers: input.answers.length });
+});
+
+/** Незавершённое прохождение, чтобы продолжить с того же места */
+responseRoutes.get("/surveys/:id/draft", async (c) => {
+  const user = c.get("user");
+  const draft = await db.query.responses.findFirst({
+    where: and(
+      eq(responses.surveyId, c.req.param("id")),
+      eq(responses.userId, user.id),
+      eq(responses.status, "in_progress"),
+    ),
+  });
+  if (!draft) return c.json(null);
+
+  const rows = await db.select().from(answers).where(eq(answers.responseId, draft.id));
+  return c.json({
+    id: draft.id,
+    startedAt: draft.startedAt,
+    lastSavedAt: draft.lastSavedAt,
+    durationMs: draft.durationMs,
+    answers: rows.map((a) => ({
+      questionId: a.questionId,
+      optionIds: a.optionIds ?? undefined,
+      text: a.text ?? undefined,
+      number: a.number ?? undefined,
+      date: a.date ?? undefined,
+      matrix: a.matrix ?? undefined,
+      ranking: a.ranking ?? undefined,
+      durationMs: a.durationMs,
+      changeCount: a.changeCount,
+      visitCount: a.visitCount,
+    })),
+  });
+});
+
+/** Свои прохождения — с баллами, чтобы видеть динамику */
+responseRoutes.get("/me/responses", async (c) => {
+  const user = c.get("user");
+  const rows = await db
+    .select()
+    .from(responses)
+    .where(eq(responses.userId, user.id))
+    .orderBy(desc(responses.submittedAt));
+  return c.json(await withScores(rows, user.fullName));
+});
+
+/** Все прохождения методики — админам */
+responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
+  await assertSurveyAccess(c.get("user"), c.req.param("id"));
+  const rows = await db
+    .select({ response: responses, userName: users.lastName })
+    .from(responses)
+    .leftJoin(users, eq(users.id, responses.userId))
+    .where(eq(responses.surveyId, c.req.param("id")))
+    .orderBy(desc(responses.submittedAt));
+
+  const enriched = await withScores(
+    rows.map((r) => r.response),
+    null,
+    new Map(rows.map((r) => [r.response.id, r.userName])),
+  );
+
+  // выгрузка списка прохождений — это доступ к данным всех респондентов сразу
+  await audit(c, {
+    action: "response.list",
+    resourceType: "survey",
+    resourceId: c.req.param("id"),
+    details: {
+      count: enriched.length,
+      subjects: [...new Set(rows.map((r) => r.response.userId).filter(Boolean))].length,
+    },
+  });
+
+  return c.json(enriched);
+});
+
+/** Детальный разбор прохождения: ответы, баллы и время по каждому вопросу */
+responseRoutes.get("/responses/:id", async (c) => {
+  const user = c.get("user");
+  const response = await db.query.responses.findFirst({
+    where: eq(responses.id, c.req.param("id")),
+  });
+  if (!response) notFound("Прохождение не найдено");
+  if (!isStaff(user) && response.userId !== user.id) {
+    forbidden("Доступно только автору прохождения или сотруднику");
+  }
+  // сотрудник видит карту, только если методика в зоне его ответственности
+  if (isStaff(user) && response.userId !== user.id) {
+    await assertSurveyAccess(user, response.surveyId);
+  }
+
+  // читаем методику той версии, которую респондент реально видел
+  const survey = await getSurveyForResponse(response.id);
+  if (!survey) notFound("Методика не найдена");
+
+  const [answerRows, scoreRows, eventRows] = await Promise.all([
+    db.select().from(answers).where(eq(answers.responseId, response.id)),
+    db.select().from(responseScores).where(eq(responseScores.responseId, response.id)),
+    db.select().from(answerEvents).where(eq(answerEvents.responseId, response.id)),
+  ]);
+
+  const eventsByQuestion = new Map<string, typeof eventRows>();
+  for (const e of eventRows.sort((a, b) => a.sequence - b.sequence)) {
+    const list = eventsByQuestion.get(e.questionId) ?? [];
+    list.push(e);
+    eventsByQuestion.set(e.questionId, list);
+  }
+
+  const answersByQuestion = new Map(answerRows.map((a) => [a.questionId, a]));
+  const scaleTitles = new Map(survey.scales.map((s) => [s.id, s]));
+
+  await audit(c, {
+    action: "response.read",
+    resourceType: "response",
+    resourceId: response.id,
+    subjectUserId: response.userId,
+    details: { surveyId: survey.id, ownRecord: response.userId === user.id },
+  });
+
+  return c.json({
+    id: response.id,
+    survey: { id: survey.id, title: survey.title, scoringEnabled: survey.scoringEnabled },
+    status: response.status,
+    startedAt: response.startedAt,
+    submittedAt: response.submittedAt,
+    durationMs: response.durationMs,
+    scores: scoreRows.map((s) => ({
+      scaleId: s.scaleId,
+      scaleCode: scaleTitles.get(s.scaleId)?.code ?? "",
+      scaleTitle: scaleTitles.get(s.scaleId)?.title ?? "",
+      kind: "clinical" as const,
+      correctedScore: s.rawScore,
+      value: s.value,
+      normalization: s.normalization,
+      rawScore: s.rawScore,
+      maxScore: s.maxScore,
+      percent: s.percent,
+      band: s.bandLabel
+        ? { label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
+        : null,
+    })),
+    answers: survey.questions
+      .filter((q) => q.type !== "info")
+      .map((q) => {
+        const a = answersByQuestion.get(q.id);
+        return {
+          questionId: q.id,
+          title: q.title,
+          type: q.type,
+          position: q.position,
+          answered: !!a && !a.skipped,
+          optionIds: a?.optionIds ?? null,
+          text: a?.text ?? null,
+          number: a?.number ?? null,
+          date: a?.date ?? null,
+          matrix: a?.matrix ?? null,
+          ranking: a?.ranking ?? null,
+          score: a?.score ?? null,
+          durationMs: a?.durationMs ?? 0,
+          changeCount: a?.changeCount ?? 0,
+          visitCount: a?.visitCount ?? 0,
+          events: (eventsByQuestion.get(q.id) ?? []).map((e) => ({
+            kind: e.kind,
+            elapsedMs: e.elapsedMs,
+            at: e.at,
+            value: e.value,
+          })),
+        };
+      }),
+  });
+});
+
+async function withScores(
+  rows: (typeof responses.$inferSelect)[],
+  fallbackName: string | null,
+  namesById?: Map<string, string | null>,
+): Promise<SurveyResponse[]> {
+  if (!rows.length) return [];
+  const scoreRows = await db
+    .select()
+    .from(responseScores)
+    .where(inArray(responseScores.responseId, rows.map((r) => r.id)));
+
+  const scaleRows = scoreRows.length
+    ? await db.select().from(scales).where(inArray(scales.id, scoreRows.map((s) => s.scaleId)))
+    : [];
+  const scaleById = new Map(scaleRows.map((s) => [s.id, s]));
+
+  const byResponse = new Map<string, ScoreResult[]>();
+  for (const s of scoreRows) {
+    const list = byResponse.get(s.responseId) ?? [];
+    list.push({
+      scaleId: s.scaleId,
+      scaleCode: scaleById.get(s.scaleId)?.code ?? "",
+      scaleTitle: t(scaleById.get(s.scaleId)?.title as never),
+      kind: "clinical",
+      correctedScore: s.rawScore,
+      value: s.value,
+      normalization: s.normalization,
+      rawScore: s.rawScore,
+      maxScore: s.maxScore,
+      percent: s.percent,
+      band: s.bandLabel
+        ? { label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
+        : null,
+    });
+    byResponse.set(s.responseId, list);
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    surveyId: r.surveyId,
+    userId: r.userId,
+    userName: namesById?.get(r.id) ?? fallbackName,
+    status: r.status,
+    startedAt: r.startedAt,
+    submittedAt: r.submittedAt,
+    durationMs: r.durationMs,
+    scores: byResponse.get(r.id) ?? [],
+  }));
+}
+
+function validateAnswer(question: Question, answer: Answer): void {
+  const optionIds = new Set(question.options.filter((o) => o.kind === "option").map((o) => o.id));
+  const rowIds = new Set(question.options.filter((o) => o.kind === "row").map((o) => o.id));
+
+  switch (question.type) {
+    case "single":
+    case "yesno":
+      if ((answer.optionIds?.length ?? 0) > 1) {
+        badRequest(`Можно выбрать только один вариант: ${question.title}`);
+      }
+    // fallthrough — проверка принадлежности вариантов общая
+    case "multiple":
+      for (const id of answer.optionIds ?? []) {
+        if (!optionIds.has(id)) badRequest(`Недопустимый вариант ответа: ${question.title}`);
+      }
+      break;
+
+    case "matrix":
+      for (const [rowId, optionId] of Object.entries(answer.matrix ?? {})) {
+        if (!rowIds.has(rowId)) badRequest(`Недопустимая строка матрицы: ${question.title}`);
+        if (!optionIds.has(optionId)) badRequest(`Недопустимый вариант в матрице: ${question.title}`);
+      }
+      break;
+
+    case "ranking": {
+      const ranking = answer.ranking ?? [];
+      if (new Set(ranking).size !== ranking.length) {
+        badRequest(`В ранжировании есть повторы: ${question.title}`);
+      }
+      for (const id of ranking) {
+        if (!optionIds.has(id)) badRequest(`Недопустимый вариант в ранжировании: ${question.title}`);
+      }
+      break;
+    }
+
+    case "scale":
+    case "slider":
+    case "number": {
+      if (answer.number === undefined) break;
+      const min = question.minValue ?? 0;
+      const max = question.maxValue ?? 100;
+      if (answer.number < min || answer.number > max) {
+        badRequest(`Значение вне диапазона ${min}–${max}: ${question.title}`);
+      }
+      break;
+    }
+
+    case "date":
+      if (answer.date && Number.isNaN(Date.parse(answer.date))) {
+        badRequest(`Некорректная дата: ${question.title}`);
+      }
+      break;
+
+    default:
+      break;
+  }
+}
