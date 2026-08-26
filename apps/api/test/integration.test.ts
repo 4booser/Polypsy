@@ -1121,3 +1121,72 @@ describe("локальные нормы", () => {
     expect(dScale.norms.every((n: { source: string | null }) => n.source?.includes("Пособие"))).toBe(true);
   }, 60_000); // 35 регистраций с argon2 не укладываются в дефолтные 5 секунд
 });
+
+/* ── исследовательский экспорт ── */
+
+describe("профили деидентификации", () => {
+  test("deidentified: без имён/подразделений, код субъекта стабилен и необратим", async () => {
+    const res = await app.request(
+      `/api/spss/surveys/${surveyInA}/data.csv?profile=deidentified`,
+      { headers: { Authorization: `Bearer ${adminA.token}` } },
+    );
+    const csv = await res.text();
+    const head = csv.split("\r\n")[0]!;
+
+    expect(head).toContain("subject");
+    expect(head).toContain("age_band");
+    expect(head).not.toContain("unit");
+    expect(head).not.toContain("mil_rank");
+    // никаких uuid пациентов и точных дат в теле
+    expect(csv).not.toContain(patient.id);
+    expect(csv).toMatch(/R[0-9A-F]{10}/);
+
+    // стабильность кода между выгрузками — лонгитюд склеивается
+    const res2 = await app.request(
+      `/api/spss/surveys/${surveyInA}/data.csv?profile=deidentified`,
+      { headers: { Authorization: `Bearer ${adminA.token}` } },
+    );
+    const code1 = csv.match(/R[0-9A-F]{10}/)![0];
+    expect(await res2.text()).toContain(code1);
+  });
+
+  test("anonymous: субъекта нет вовсе", async () => {
+    const res = await app.request(`/api/spss/surveys/${surveyInA}/data.csv?profile=anonymous`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const head = (await res.text()).split("\r\n")[0]!;
+    expect(head).not.toContain("subject");
+    expect(head).toContain("age_band");
+  });
+
+  test("codebook перечисляет переменные и происхождение норм", async () => {
+    const res = await app.request(`/api/spss/surveys/${surveyInA}/codebook.csv`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const text = await res.text();
+    expect(text).toContain("variable;type;label;values");
+    expect(text).toContain("scale;normalization;norm_source");
+    expect(text).toContain("Sr;ratio");
+  });
+
+  test("выгрузка фиксируется в журнале с хэшем датасета", async () => {
+    const { auditLog } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "analytics.export"))
+      .orderBy(descOp(auditLog.at))
+      .limit(1);
+    const details = entry!.details as { datasetSha256?: string; profile?: string };
+    // последняя data.csv-выгрузка несёт хэш
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.action, "analytics.export"))
+      .orderBy(descOp(auditLog.at));
+    const withHash = rows.find((r) => (r.details as { datasetSha256?: string }).datasetSha256);
+    expect(withHash).toBeDefined();
+    expect((withHash!.details as { datasetSha256: string }).datasetSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+});

@@ -18,8 +18,13 @@ export default function SurveyAnalyticsPage() {
   const [to, setTo] = useState("");
   const run = useAction();
   const downloadCsv = (sid: string) => run(() => download(api.exportUrl(sid), "data.csv"), "Файл выгружен");
-  const downloadSpssData = (sid: string) => run(() => download(api.spssDataUrl(sid), "spss-data.csv"), "Матрица выгружена");
-  const downloadSpssSyntax = (sid: string) => run(() => download(api.spssSyntaxUrl(sid), "syntax.sps"), "Синтаксис выгружен");
+  const [profile, setProfile] = useState<"full" | "deidentified" | "anonymous">("full");
+  const downloadSpssData = (sid: string) =>
+    run(() => download(api.spssDataUrl(sid, profile), "spss-data.csv"), "Матрица выгружена");
+  const downloadSpssSyntax = (sid: string) =>
+    run(() => download(api.spssSyntaxUrl(sid, profile), "syntax.sps"), "Синтаксис выгружен");
+  const downloadCodebook = (sid: string) =>
+    run(() => download(api.codebookUrl(sid, profile), "codebook.csv"), "Codebook выгружен");
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
@@ -176,15 +181,27 @@ export default function SurveyAnalyticsPage() {
               <span className="hint">Выгрузка увозит персональные данные за пределы системы и записывается в журнал доступа</span>
             </div>
             <div className="row">
+              <label className="field" style={{ margin: 0 }}>
+                <span>Профиль данных</span>
+                <select value={profile} onChange={(e) => setProfile(e.target.value as never)}>
+                  <option value="full">полный (для клиники)</option>
+                  <option value="deidentified">деидентифицированный (для исследований)</option>
+                  <option value="anonymous">анонимный (без субъектов)</option>
+                </select>
+              </label>
               <button onClick={() => downloadCsv(data.surveyId)}>Данные, CSV</button>
               <button onClick={() => downloadSpssData(data.surveyId)}>Матрица для SPSS</button>
               <button onClick={() => downloadSpssSyntax(data.surveyId)}>Синтаксис .sps</button>
+              <button onClick={() => downloadCodebook(data.surveyId)}>Codebook</button>
               <Link className="btn" to={`/surveys/${data.surveyId}/blank`}>Пустой бланк</Link>
               <Link className="btn" to={`/surveys/${data.surveyId}/key`}>Ключи для сверки</Link>
             </div>
             <p className="hint" style={{ marginTop: 10 }}>
               Матрица и синтаксис — пара: положите их рядом и запустите синтаксис, он подставит
-              метки переменных и значений. Пропуски закодированы как −99.
+              метки переменных и значений. Пропуски закодированы как −99. Деидентифицированный
+              профиль заменяет субъектов необратимыми кодами (стабильными между выгрузками — 
+              лонгитюд склеивается), возраст полосами, дату месяцем; подразделение и звание
+              не выгружаются. Каждая выгрузка фиксируется в журнале с SHA-256 датасета.
             </p>
           </div>
 
