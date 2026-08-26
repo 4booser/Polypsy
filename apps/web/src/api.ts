@@ -24,6 +24,8 @@ import type {
   ScheduleInput,
   Invite,
   CreateInviteInput,
+  KioskSession,
+  CreateKioskSessionInput,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -229,6 +231,15 @@ export const api = {
     }),
   cancelAssignment: (assignmentId: string) =>
     request<{ ok: true }>(`/api/batteries/assignments/${assignmentId}/cancel`, { method: "POST" }),
+
+  kioskSessions: () => request<KioskSession[]>("/api/kiosk/sessions"),
+  createKioskSession: (input: CreateKioskSessionInput) =>
+    request<{ id: string; token: string }>("/api/kiosk/sessions", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  closeKioskSession: (id: string) =>
+    request<{ ok: true }>(`/api/kiosk/sessions/${id}/close`, { method: "POST" }),
 
   invites: () => request<Invite[]>("/api/invites"),
   createInvite: (input: CreateInviteInput) =>

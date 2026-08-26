@@ -117,8 +117,12 @@ export async function assertBatteryOrder(
     .where(and(eq(responses.userId, userId), eq(responses.status, "completed")));
 
   for (const { assignment, battery } of active) {
+    // Очерёдность касается только самоотчёта: методика клинициста — не часть
+    // последовательности респондента (утомление и прайминг между опросниками —
+    // причина строгого порядка — к интервью специалиста не относятся), и
+    // непройденное интервью не должно запирать поток — ни в киоске, ни в мобилке
     const ordered = items
-      .filter((i) => i.item.batteryId === battery.id)
+      .filter((i) => i.item.batteryId === battery.id && i.administration === "self")
       .sort((a, b) => a.item.position - b.item.position);
     const index = ordered.findIndex((i) => i.item.surveyId === surveyId);
     if (index <= 0) continue;

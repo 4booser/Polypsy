@@ -43,6 +43,13 @@
       "when": 1787745648912,
       "tag": "0005_brainy_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787749185918,
+      "tag": "0006_rare_matthew_murdock",
+      "breakpoints": true
     }
   ]
 }

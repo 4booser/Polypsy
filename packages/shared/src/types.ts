@@ -745,6 +745,37 @@ export interface BatteryAssignment {
   steps: BatteryStep[];
 }
 
+/** Сеанс киоска: групповое обследование на одном устройстве */
+export interface KioskSession {
+  id: string;
+  title: string;
+  batteryId: string;
+  batteryTitle: string;
+  expiresAt: string;
+  closedAt: string | null;
+  createdAt: string;
+  createdByName: string;
+  participants: KioskParticipantState[];
+}
+
+export interface KioskParticipantState {
+  id: string;
+  displayName: string;
+  startedAt: string;
+  finishedAt: string | null;
+  doneRequired: number;
+  totalRequired: number;
+}
+
+/** Что видит устройство киоска по своему токену */
+export interface KioskState {
+  valid: boolean;
+  reason?: "expired" | "closed" | "unknown";
+  title?: string;
+  batteryTitle?: string;
+  steps?: { surveyId: string; title: string; questionCount: number; required: boolean; administration: Administration }[];
+}
+
 /** Приглашение: вход пациента по ссылке или короткому коду */
 export interface Invite {
   id: string;

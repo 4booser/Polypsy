@@ -185,6 +185,22 @@ export const scheduleInputSchema = z
     path: ["userIds"],
   });
 
+export const createKioskSessionSchema = z.object({
+  title: z.string().min(2).max(200),
+  batteryId: z.string().min(1),
+  /** Срок жизни сеанса в часах: смена, а не недели */
+  ttlHours: z.number().int().min(1).max(72).default(8),
+});
+
+export const kioskJoinSchema = z.object({
+  lastName: z.string().min(1).max(100),
+  firstName: z.string().min(1).max(100),
+  middleName: z.string().max(100).nullish(),
+  sex: z.enum(["male", "female"]).nullish(),
+  birthDate: z.string().nullish(),
+  unit: z.string().max(200).nullish(),
+});
+
 export const createInviteSchema = z.object({
   batteryId: z.string().nullish(),
   unit: z.string().max(200).nullish(),
@@ -548,6 +564,8 @@ export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;
 export type ScheduleInput = z.input<typeof scheduleInputSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type CreateInviteInput = z.input<typeof createInviteSchema>;
+export type CreateKioskSessionInput = z.input<typeof createKioskSessionSchema>;
+export type KioskJoinInput = z.infer<typeof kioskJoinSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type GroupInput = z.infer<typeof groupInputSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;

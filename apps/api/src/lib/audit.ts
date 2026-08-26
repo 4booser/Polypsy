@@ -54,6 +54,10 @@ export type AuditAction =
   | "invite.create"
   | "invite.revoke"
   | "invite.use"
+  | "kiosk.session_create"
+  | "kiosk.session_close"
+  | "kiosk.join"
+  | "kiosk.submit"
   | "analytics.correlations"
   | "audit.read"
   | "access.denied";

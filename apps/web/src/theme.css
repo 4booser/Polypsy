@@ -356,6 +356,8 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 
 .muted-card { opacity: 0.62; }
 .muted-row td { opacity: 0.55; }
+.dot.live { background: var(--sev-none); animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
 .join-page {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
   padding: 24px; background: var(--bg);
@@ -443,4 +445,42 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
   .app { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
   .main { padding: 18px; }
+}
+
+/* ── Киоск: планшет на расстоянии вытянутой руки, крупно и контрастно ─────── */
+.kiosk-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg);
+}
+.kiosk-card {
+  width: 100%; max-width: 560px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 40px 32px; box-shadow: var(--shadow);
+}
+.kiosk-card h1 { font-size: 26px; margin: 0 0 10px; }
+.kiosk-big {
+  font-size: 18px; padding: 14px 30px; border-radius: 12px; margin-top: 16px;
+  min-height: 54px;
+}
+.kiosk-runner {
+  width: 100%; max-width: 680px; min-height: 82vh; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 26px 30px; box-shadow: var(--shadow);
+}
+.kiosk-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+.kiosk-progress { height: 6px; background: var(--surface-3); border-radius: 3px; overflow: hidden; }
+.kiosk-progress i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.kiosk-question { font-size: 22px; line-height: 1.35; margin: 22px 0 14px; }
+.kiosk-options { display: grid; gap: 10px; }
+.kiosk-option {
+  font-size: 18px; padding: 16px 18px; border-radius: 12px; text-align: left;
+  border: 2px solid var(--border-strong); background: var(--surface-2);
+  min-height: 56px;
+}
+.kiosk-option.num { text-align: center; min-width: 56px; }
+.kiosk-option.active { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.kiosk-scale { display: flex; gap: 8px; flex-wrap: wrap; }
+.kiosk-scale-labels { display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px; }
+.kiosk-number, .kiosk-text {
+  font-size: 20px; padding: 14px; width: 100%;
 }
