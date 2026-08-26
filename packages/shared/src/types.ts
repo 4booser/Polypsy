@@ -386,6 +386,8 @@ export interface Survey {
   alertEscalateMinutes: number | null;
   /** Немедленные действия при критическом ответе; показывается после сдачи при тревоге */
   safetyPlan: string | null;
+  /** Пациент видит свою динамику по этой методике */
+  showResultsToPatient: boolean;
   status: SurveyStatus;
 
   timeLimitSec: number | null;
@@ -815,6 +817,19 @@ export interface InvitePreview {
   reason?: "expired" | "revoked" | "exhausted" | "unknown";
   batteryTitle?: string | null;
   unit?: string | null;
+}
+
+/** Динамика самого пациента — то, что он видит о себе */
+export interface MyDynamics {
+  surveys: {
+    surveyId: string;
+    title: string;
+    scales: {
+      code: string;
+      title: string;
+      points: { submittedAt: string; value: number; bandLabel: string | null; severity: Severity | null }[];
+    }[];
+  }[];
 }
 
 /** Расписание повторных обследований */

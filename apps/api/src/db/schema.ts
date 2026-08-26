@@ -137,6 +137,12 @@ export const surveys = pgTable(
    * сработала тревога, — в момент, когда он ещё держит устройство в руках.
    */
   safetyPlan: jsonb("safety_plan").$type<LocalizedText>(),
+  /**
+   * Показывать ли обследуемому его собственную динамику по этой методике.
+   * Выключено по умолчанию: график суицидального риска в руках пациента —
+   * решение психолога, а не системы.
+   */
+  showResultsToPatient: boolean("show_results_to_patient").notNull().default(false),
     status: text("status", { enum: ["draft", "published", "closed", "archived"] })
       .notNull()
       .default("draft"),

@@ -22,6 +22,7 @@ import type {
   RespondentDynamics,
   SurveyVersion,
   BatteryAssignment,
+  MyDynamics,
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
@@ -157,6 +158,7 @@ export const api = {
   deleteGroup: (id: string) => request<void>(`/api/groups/${id}`, { method: "DELETE" }),
 
   myBatteries: () => request<BatteryAssignment[]>("/api/batteries/mine"),
+  myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
 
   listSurveys: (groupId?: string) =>
     request<SurveyListItem[]>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`),

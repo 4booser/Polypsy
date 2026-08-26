@@ -434,6 +434,7 @@ export const surveySettingsSchema = z.object({
   tooFastMs: z.number().int().min(200).max(120_000).nullish(),
   alertEscalateMinutes: z.number().int().min(1).max(10_080).nullish(),
   safetyPlan: localizedSchema.nullish(),
+  showResultsToPatient: z.boolean().nullish(),
   allowRetake: z.boolean().default(false),
   scoringEnabled: z.boolean().default(false),
 });
