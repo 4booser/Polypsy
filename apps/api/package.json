@@ -11,7 +11,8 @@
     "db:seed": "bun src/seed.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "audit:verify": "bun src/auditVerifyCli.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",

@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import { desc, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { auditLog } from "../db/schema";
 import type { User } from "@quizzy/shared";
@@ -76,21 +77,72 @@ interface AuditInput {
  * Никогда не бросает: отказ журнала не должен ронять обслуживание пациента,
  * поэтому ошибка уходит в лог процесса.
  */
+/**
+ * Запись с хэш-цепочкой.
+ *
+ * seq и prevHash берутся под advisory-локом транзакции: без него две
+ * параллельные записи взяли бы один prevHash и цепочка раздвоилась бы.
+ * Канонизация — фиксированный порядок полей; details сериализуются с
+ * отсортированными ключами, иначе один и тот же объект давал бы разные хэши.
+ */
+const AUDIT_CHAIN_LOCK = 7_154_301;
+
+function canonical(row: Record<string, unknown>): string {
+  const ordered = [
+    row.id,
+    // при чтении из БД метка приходит в другом текстовом виде — нормализуем
+    row.at ? new Date(row.at as string).toISOString() : null,
+    row.actorId, row.actorEmail, row.actorRole, row.action,
+    row.resourceType, row.resourceId, row.subjectUserId, row.outcome,
+    row.ip, row.userAgent,
+    row.details ? JSON.stringify(row.details, Object.keys(row.details as object).sort()) : null,
+  ];
+  return JSON.stringify(ordered);
+}
+
+export function chainHash(prevHash: string | null, row: Record<string, unknown>): string {
+  return new Bun.CryptoHasher("sha256").update((prevHash ?? "genesis") + canonical(row)).digest("hex");
+}
+
+async function writeChained(values: Record<string, unknown>): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`);
+    // только цепные строки: у записей до внедрения цепочки seq NULL, а
+    // NULLS FIRST у DESC-сортировки Postgres подсовывал бы их головой цепочки
+    const [head] = await tx
+      .select({ seq: auditLog.seq, entryHash: auditLog.entryHash })
+      .from(auditLog)
+      .where(isNotNull(auditLog.seq))
+      .orderBy(desc(auditLog.seq))
+      .limit(1);
+    const seq = (head?.seq ?? 0) + 1;
+    const prevHash = head?.entryHash ?? null;
+    const at = new Date().toISOString();
+    const row = { ...values, at };
+    await tx.insert(auditLog).values({
+      ...(row as object),
+      seq,
+      prevHash,
+      entryHash: chainHash(prevHash, row),
+    } as never);
+  });
+}
+
 export async function audit(c: Context, input: AuditInput): Promise<void> {
   try {
     const actor = input.actor ?? (c.get("user") as User | undefined) ?? null;
-    await db.insert(auditLog).values({
-        id: crypto.randomUUID(),
-        actorId: actor?.id ?? null,
-        actorEmail: actor?.email ?? null,
-        actorRole: actor?.role ?? null,
-        action: input.action,
-        resourceType: input.resourceType ?? null,
-        resourceId: input.resourceId ?? null,
-        subjectUserId: input.subjectUserId ?? null,
-        outcome: input.outcome ?? "success",
-        ip: clientIp(c),
-        userAgent: c.req.header("User-Agent") ?? null,
+    await writeChained({
+      id: crypto.randomUUID(),
+      actorId: actor?.id ?? null,
+      actorEmail: actor?.email ?? null,
+      actorRole: actor?.role ?? null,
+      action: input.action,
+      resourceType: input.resourceType ?? null,
+      resourceId: input.resourceId ?? null,
+      subjectUserId: input.subjectUserId ?? null,
+      outcome: input.outcome ?? "success",
+      ip: clientIp(c),
+      userAgent: c.req.header("User-Agent") ?? null,
       details: input.details ?? null,
     });
   } catch (err) {
@@ -105,7 +157,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
  */
 export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<void> {
   try {
-    await db.insert(auditLog).values({
+    await writeChained({
       id: crypto.randomUUID(),
       actorId: null,
       actorEmail: null,
