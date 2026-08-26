@@ -2,6 +2,7 @@ import { env } from "./env";
 import { app } from "./app";
 import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
+import { startRetention } from "./lib/retention";
 import { client } from "./db";
 
 // расписания меряются днями, поэтому часового тика достаточно; первый проход
@@ -10,6 +11,7 @@ import { client } from "./db";
 const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
 const stopNotifier = env.schedulerEnabled ? startNotifier() : null;
+const stopRetention = env.schedulerEnabled ? startRetention() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -23,6 +25,7 @@ async function shutdown(signal: string) {
   console.log(`Получен ${signal}, останавливаюсь`);
   stopScheduler?.();
   stopNotifier?.();
+  stopRetention?.();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }

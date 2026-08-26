@@ -94,7 +94,7 @@ request-id middleware (в ответ и в журнал), graceful shutdown (SIG
 убрать дефолт `postgres://postgres@localhost` в production (fail-fast как у JWT_SECRET),
 `env.ts` переписать на zod-валидацию всех переменных.
 
-### 0.6 Защита данных (M) — ⏳ хэш-цепочка ✅, бэкапы ✅, шифрование полей ✅; согласия, ретенция — впереди
+### 0.6 Защита данных (M) — ✅ (хэш-цепочка, бэкапы, шифрование полей, согласия, ретенция)
 - **Хэш-цепочка журнала:** `audit_log` + `seq`, `prevHash`, `entryHash`; писать в
   `audit()`/`auditSystem()` (единственные точки записи). `GET /api/audit/verify`
   (суперадмин) + `bun run audit:verify`. На уровне БД: `REVOKE UPDATE, DELETE` на
