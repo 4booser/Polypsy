@@ -189,7 +189,10 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
   if (survey.administration !== "self") badRequest("Методику заполняет специалист — на киоске она недоступна");
 
   const subject = (await db.query.users.findFirst({ where: eq(users.id, participant.userId) }))!;
-  const result = await persistSubmission(survey, subject, input, { filledBySelf: true });
+  const result = await persistSubmission(survey, subject, input, {
+    filledBySelf: true,
+    lang: langOf(c),
+  });
 
   // участник закончил, если закрылось назначение батареи
   const [assignment] = await db

@@ -513,6 +513,18 @@ export const responses = pgTable(
      * не создаёт второе прохождение — сервер возвращает существующее.
      */
     clientRequestId: text("client_request_id"),
+
+    /*
+     * Снэпшоты стратификации НА МОМЕНТ СДАЧИ (принцип П-1 плана):
+     * пол и возрастная полоса фиксируются такими, какими были при
+     * обследовании — профиль пациента меняется, история нет. Заодно это
+     * единственный путь SQL-группировки: дата рождения в users шифрована.
+     */
+    respondentSex: text("respondent_sex", { enum: ["male", "female"] }),
+    /** "<25" | "25-34" | "35-44" | "45+" */
+    respondentAgeBand: text("respondent_age_band"),
+    /** Язык предъявления контента — психометрический фактор (7.4) */
+    lang: text("lang", { enum: ["uk", "ru"] }),
     /** Общее время прохождения */
     durationMs: integer("duration_ms").notNull().default(0),
   },
@@ -701,6 +713,12 @@ export const riskAlerts = pgTable(
     acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
     acknowledgedAt: timestampCol("acknowledged_at"),
     note: text("note"),
+    /**
+     * Клинический исход разбора (6.1): подтверждена / не подтверждена /
+     * требует наблюдения. Сырьё для ROC-калибровки порогов и PPV скрининга.
+     * У тревог, разобранных до внедрения, — честный null.
+     */
+    outcome: text("outcome", { enum: ["confirmed", "not_confirmed", "needs_followup"] }),
   },
   (t) => ({
     surveyIdx: index("alerts_survey_idx").on(t.surveyId),

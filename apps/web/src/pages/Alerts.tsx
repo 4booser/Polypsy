@@ -3,10 +3,21 @@ import type { RiskAlert } from "@quizzy/shared";
 import { api } from "../api";
 import { dateTime, severityColor } from "../format";
 
+const OUTCOME_LABEL: Record<string, string> = {
+  confirmed: "риск подтверждён",
+  not_confirmed: "не подтверждён",
+  needs_followup: "требует наблюдения",
+};
+
 export default function Alerts() {
   const [rows, setRows] = useState<RiskAlert[] | null>(null);
   const [all, setAll] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
+
+  async function ack(id: string, outcome: "confirmed" | "not_confirmed" | "needs_followup") {
+    await api.acknowledgeAlert(id, notes[id]?.trim() || undefined, outcome).catch(() => null);
+    await load(all);
+  }
   const [error, setError] = useState<string | null>(null);
 
   async function load(showAll: boolean) {
@@ -48,26 +59,32 @@ export default function Alerts() {
           {a.acknowledgedAt ? (
             <p className="muted" style={{ margin: 0 }}>
               Разобрано: {a.acknowledgedByName ?? "—"}, {dateTime(a.acknowledgedAt)}
+              {a.outcome ? ` · ${OUTCOME_LABEL[a.outcome]}` : ""}
               {a.note ? ` — ${a.note}` : ""}
             </p>
           ) : (
-            <div className="row">
-              <input
-                placeholder="Что предпринято"
-                value={notes[a.id] ?? ""}
-                onChange={(e) => setNotes((p) => ({ ...p, [a.id]: e.target.value }))}
-                style={{ flex: 1, minWidth: 260 }}
-              />
-              <button
-                className="primary"
-                onClick={async () => {
-                  await api.acknowledgeAlert(a.id, notes[a.id]?.trim() || undefined).catch(() => null);
-                  await load(all);
-                }}
-              >
-                Отметить разобранной
-              </button>
-            </div>
+            <>
+              <div className="row">
+                <input
+                  placeholder="Что предпринято"
+                  value={notes[a.id] ?? ""}
+                  onChange={(e) => setNotes((p) => ({ ...p, [a.id]: e.target.value }))}
+                  style={{ flex: 1, minWidth: 260 }}
+                />
+              </div>
+              {/* исход — не бюрократия: по нему система калибрует пороги
+                  и считает PPV скрининга. Три кнопки вместо формы. */}
+              <div className="row tight" style={{ marginTop: 8 }}>
+                <button
+                  className="primary"
+                  onClick={() => ack(a.id, "confirmed")}
+                >
+                  Риск подтверждён
+                </button>
+                <button onClick={() => ack(a.id, "needs_followup")}>Требует наблюдения</button>
+                <button onClick={() => ack(a.id, "not_confirmed")}>Не подтверждён</button>
+              </div>
+            </>
           )}
         </div>
       ))}

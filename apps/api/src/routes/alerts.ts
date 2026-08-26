@@ -83,6 +83,7 @@ alertRoutes.get("/", async (c) => {
     severity: r.alert.severity,
     at: r.alert.at,
     acknowledgedBy: r.alert.acknowledgedBy,
+    outcome: r.alert.outcome,
     acknowledgedByName: r.alert.acknowledgedBy ? (ackNames.get(r.alert.acknowledgedBy) ?? null) : null,
     acknowledgedAt: r.alert.acknowledgedAt,
     note: r.alert.note,
@@ -113,12 +114,20 @@ alertRoutes.patch("/:id/acknowledge", async (c) => {
   if (!(await canAccessSurvey(user, alert.surveyId))) notFound("Тревога не найдена");
 
   const body = await c.req.json().catch(() => ({}));
+  // клинический исход (6.1): подтверждена / не подтверждена / наблюдение.
+  // Это сырьё для ROC-калибровки порогов и PPV — без исходов скрининг
+  // остаётся генератором непроверенных чисел
+  const outcome = ["confirmed", "not_confirmed", "needs_followup"].includes(body?.outcome)
+    ? (body.outcome as "confirmed" | "not_confirmed" | "needs_followup")
+    : null;
+
   const [row] = await db
     .update(riskAlerts)
     .set({
       acknowledgedBy: user.id,
       acknowledgedAt: new Date().toISOString(),
       note: typeof body?.note === "string" ? body.note.slice(0, 1000) : null,
+      outcome,
     })
     .where(eq(riskAlerts.id, alert.id))
     .returning();
@@ -128,7 +137,7 @@ alertRoutes.patch("/:id/acknowledge", async (c) => {
     resourceType: "alert",
     resourceId: alert.id,
     subjectUserId: alert.userId,
-    details: { label: alert.label, note: row!.note },
+    details: { label: alert.label, note: row!.note, outcome },
   });
 
   return c.json(row);

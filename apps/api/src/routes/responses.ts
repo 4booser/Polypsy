@@ -125,7 +125,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     survey,
     subject,
     input,
-    { filledBySelf: subjectId === user.id },
+    { filledBySelf: subjectId === user.id, lang: langOf(c) },
   );
 
   await audit(c, {
