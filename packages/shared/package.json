@@ -10,5 +10,8 @@
   },
   "dependencies": {
     "zod": "^3.24.1"
+  },
+  "scripts": {
+    "test": "bun test"
   }
 }
