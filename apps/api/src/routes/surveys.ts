@@ -74,6 +74,7 @@ surveyRoutes.get("/", async (c) => {
     title: t(r.survey.title as never, langOf(c)),
     description: r.survey.description ? t(r.survey.description as never, langOf(c)) : null,
     instructions: r.survey.instructions ? t(r.survey.instructions as never, langOf(c)) : null,
+    safetyPlan: r.survey.safetyPlan ? t(r.survey.safetyPlan as never, langOf(c)) : null,
     questionCount: Number(r.questionCount ?? 0),
     responseCount: Number(r.responseCount ?? 0),
     completedByMe: Number(r.completedByMe ?? 0) > 0,
@@ -130,6 +131,9 @@ surveyRoutes.post("/", requireStaff, async (c) => {
       visibility: input.visibility ?? "public",
       allowRetake: input.allowRetake ?? false,
       scoringEnabled: input.scoringEnabled ?? false,
+      tooFastMs: input.tooFastMs ?? null,
+      alertEscalateMinutes: input.alertEscalateMinutes ?? null,
+      safetyPlan: normalizeLocalized(input.safetyPlan),
       createdBy: c.get("user").id,
     })
     .returning();
@@ -192,6 +196,9 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
       ...(input.visibility !== undefined && { visibility: input.visibility }),
       ...(input.allowRetake !== undefined && { allowRetake: input.allowRetake }),
       ...(input.scoringEnabled !== undefined && { scoringEnabled: input.scoringEnabled }),
+      ...(input.tooFastMs !== undefined && { tooFastMs: input.tooFastMs ?? null }),
+      ...(input.alertEscalateMinutes !== undefined && { alertEscalateMinutes: input.alertEscalateMinutes ?? null }),
+      ...(input.safetyPlan !== undefined && { safetyPlan: normalizeLocalized(input.safetyPlan) }),
       ...(goingLive && { publishedAt: new Date().toISOString() }),
       updatedAt: new Date().toISOString(),
     })
@@ -443,6 +450,7 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
     timeLimitSec: survey.timeLimitSec,
     tooFastMs: survey.tooFastMs,
     alertEscalateMinutes: survey.alertEscalateMinutes,
+    safetyPlan: survey.safetyPlan,
     sections: [],
     questions: survey.questions.map((q) => ({
       type: q.type,
@@ -555,6 +563,7 @@ surveyRoutes.post("/import", requireStaff, async (c) => {
     scoringEnabled: input.scoringEnabled ?? false,
     tooFastMs: input.tooFastMs ?? null,
     alertEscalateMinutes: input.alertEscalateMinutes ?? null,
+    safetyPlan: normalizeLocalized(input.safetyPlan),
     createdBy: user.id,
   } as never);
   await createVersion(id, input, user.id, "Импорт из файла");

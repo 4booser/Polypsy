@@ -24,6 +24,16 @@ export function Basics({
           onChange={(v) => patch({ instructions: v })}
           multiline
         />
+        <Loc
+          label="Немедленные действия при критическом ответе (safety-план)"
+          value={draft.safetyPlan ?? undefined}
+          onChange={(v) => patch({ safetyPlan: v })}
+          multiline
+        />
+        <p className="hint">
+          Показывается обследуемому сразу после сдачи, если сработал критический пункт:
+          телефоны доверия, дежурный психолог, куда обратиться прямо сейчас.
+        </p>
       </div>
 
       <div className="card">

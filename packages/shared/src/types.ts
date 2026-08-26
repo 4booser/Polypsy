@@ -384,6 +384,8 @@ export interface Survey {
   tooFastMs: number | null;
   /** Через сколько минут неразобранная тревога просрочена. null — эскалации нет */
   alertEscalateMinutes: number | null;
+  /** Немедленные действия при критическом ответе; показывается после сдачи при тревоге */
+  safetyPlan: string | null;
   status: SurveyStatus;
 
   timeLimitSec: number | null;

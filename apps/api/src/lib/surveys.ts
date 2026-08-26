@@ -85,6 +85,7 @@ export async function attachContent(
       title: t(r.title as never, lang),
       description: r.description ? t(r.description as never, lang) : null,
       instructions: r.instructions ? t(r.instructions as never, lang) : null,
+      safetyPlan: r.safetyPlan ? t(r.safetyPlan as never, lang) : null,
       sections: [],
       scales: [],
       questions: [],
@@ -106,6 +107,7 @@ export async function attachContent(
         title: L(survey.title),
         description: Lnull(survey.description),
         instructions: Lnull(survey.instructions),
+        safetyPlan: Lnull(survey.safetyPlan),
         versionId: vId,
         versionNumber: cached?.versionNumber ?? 0,
         sections: cached?.sections ?? [],
@@ -238,6 +240,7 @@ export async function attachContent(
       title: L(survey.title),
       description: Lnull(survey.description),
       instructions: Lnull(survey.instructions),
+      safetyPlan: Lnull(survey.safetyPlan),
       versionId: vId,
       ...content,
     } as SurveyFull;

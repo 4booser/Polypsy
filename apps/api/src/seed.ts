@@ -486,6 +486,7 @@ async function upsertSurvey(draft: CreateSurveyDraft, status: "published" | "dra
       description: normalizeLocalized(input.description),
       instructions: normalizeLocalized(input.instructions),
       administration: input.administration,
+      safetyPlan: normalizeLocalized(input.safetyPlan),
       status,
       publishedAt: status === "published" ? new Date().toISOString() : null,
       timeLimitSec: input.timeLimitSec ?? null,

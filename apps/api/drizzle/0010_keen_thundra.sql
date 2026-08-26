@@ -1,0 +1,1 @@
+ALTER TABLE "surveys" ADD COLUMN "safety_plan" jsonb;

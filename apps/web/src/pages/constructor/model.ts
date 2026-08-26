@@ -19,6 +19,7 @@ export interface Draft {
   timeLimitSec?: number | null;
   tooFastMs?: number | null;
   alertEscalateMinutes?: number | null;
+  safetyPlan?: Record<string, string> | null;
   sections: unknown[];
   questions: DraftQuestion[];
   scales: DraftScale[];

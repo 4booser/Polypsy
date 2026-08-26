@@ -28,13 +28,14 @@ type Phase =
   | { kind: "idle" }
   | { kind: "join" }
   | { kind: "running"; participantId: string; stepIndex: number }
-  | { kind: "finished"; name: string };
+  | { kind: "finished"; safetyPlan: string | null };
 
 export default function Kiosk() {
   const { token } = useParams<{ token: string }>();
   const { ut, lang } = useLang();
   const [state, setState] = useState<KioskState | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  const [lastSafetyPlan, setLastSafetyPlan] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -114,6 +115,8 @@ export default function Kiosk() {
     return <JoinForm token={token!} onJoined={(participantId) => setPhase({ kind: "running", participantId, stepIndex: 0 })} onCancel={() => setPhase({ kind: "idle" })} />;
   }
 
+  // safety-план последней сдачи поднимается из раннера наверх
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   if (phase.kind === "running") {
     const step = selfSteps[phase.stepIndex];
     if (!step) return <Shell><h1>Готово</h1></Shell>;
@@ -124,11 +127,12 @@ export default function Kiosk() {
         participantId={phase.participantId}
         surveyId={step.surveyId}
         stepLabel={`Методика ${phase.stepIndex + 1} из ${selfSteps.length}`}
-        onDone={() => {
+        onDone={(safetyPlan) => {
+          if (safetyPlan) setLastSafetyPlan(safetyPlan);
           if (phase.stepIndex + 1 < selfSteps.length) {
             setPhase({ ...phase, stepIndex: phase.stepIndex + 1 });
           } else {
-            setPhase({ kind: "finished", name: "" });
+            setPhase({ kind: "finished", safetyPlan: safetyPlan ?? lastSafetyPlan });
           }
         }}
       />
@@ -139,8 +143,20 @@ export default function Kiosk() {
   return (
     <Shell>
       <h1>{ut("kiosk.thanks")}</h1>
+      {phase.safetyPlan ? (
+        <div className="kiosk-safety">
+          <strong>{ut("kiosk.safetyNow")}</strong>
+          <p style={{ whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{phase.safetyPlan}</p>
+        </div>
+      ) : null}
       <p className="muted" style={{ fontSize: 17 }}>{ut("kiosk.passTablet")}</p>
-      <button className="primary kiosk-big" onClick={() => setPhase({ kind: "join" })}>
+      <button
+        className="primary kiosk-big"
+        onClick={() => {
+          setLastSafetyPlan(null);
+          setPhase({ kind: "join" });
+        }}
+      >
         {ut("kiosk.nextParticipant")}
       </button>
     </Shell>
@@ -247,7 +263,7 @@ function Runner({
   participantId: string;
   surveyId: string;
   stepLabel: string;
-  onDone: () => void;
+  onDone: (safetyPlan: string | null) => void;
 }) {
   const { ut, lang } = useLang();
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
@@ -349,7 +365,7 @@ function Runner({
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error ?? ut("kiosk.cantSubmit"));
-      onDone();
+      onDone(body?.safetyPlan ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("kiosk.cantSubmit"));
     } finally {
