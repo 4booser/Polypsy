@@ -20,6 +20,11 @@ const schema = z.object({
     : z.string().default("dev-secret-change-me"),
   /** Разрешённые origin консоли через запятую; пусто в dev = localhost */
   CORS_ORIGINS: z.string().default(""),
+  /**
+   * Ключи шифрования полей: "v1:<base64 32Б>[,v2:...]", первый — активный.
+   * Пусто — поля пишутся открыто (dev); в production это громкое предупреждение.
+   */
+  ENCRYPTION_KEY: z.string().default(""),
   /** SMTP для уведомлений: smtp://user:pass@host:587; пусто — только журнал */
   SMTP_URL: z.string().default(""),
   MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),
@@ -55,6 +60,7 @@ export const env = {
   jwtSecret: raw.JWT_SECRET,
   schedulerEnabled: raw.SCHEDULER_ENABLED,
   openRegistration: raw.OPEN_REGISTRATION,
+  encryptionKeys: raw.ENCRYPTION_KEY,
   smtpUrl: raw.SMTP_URL,
   mailFrom: raw.MAIL_FROM,
   consoleUrl: raw.CONSOLE_URL,

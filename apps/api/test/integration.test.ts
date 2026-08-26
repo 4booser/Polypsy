@@ -14,6 +14,8 @@ const testName = baseName.endsWith("_test") ? baseName : `${baseName}_test`;
 parsed.pathname = `/${testName}`;
 process.env.DATABASE_URL = parsed.toString();
 process.env.SCHEDULER_ENABLED = "0";
+// вся сюита гоняется С ШИФРОВАНИЕМ: это и есть сквозная проверка интеграции
+process.env.ENCRYPTION_KEY = `v1:${Buffer.alloc(32, 9).toString("base64")}`;
 
 // пересоздаём тестовую базу через служебное подключение к рабочей
 {
@@ -29,6 +31,7 @@ const { db, client } = await import("../src/db");
 const { users, surveyGroups, groupAdmins, batteries, batteryItems, schedules, scheduleRuns, batteryAssignments } =
   await import("../src/db/schema");
 const { hashPassword, issueToken } = await import("../src/lib/auth");
+const { encryptPersonFields } = await import("../src/lib/crypto");
 const { createVersion } = await import("../src/lib/surveys");
 const { runDueSchedules } = await import("../src/lib/scheduler");
 const { surveys } = await import("../src/db/schema");
@@ -49,11 +52,15 @@ async function makeUser(role: "superadmin" | "admin" | "user", email: string, ex
   await db.insert(users).values({
     id,
     email,
-    firstName: "Тест",
-    lastName: email.split("@")[0]!,
+    // тот же путь, что у продуктовых записей: поля персоны шифруются
+    ...encryptPersonFields({
+      firstName: "Тест",
+      lastName: email.split("@")[0]!,
+      birthDate: (extra as { birthDate?: string }).birthDate ?? null,
+    }),
     passwordHash: await hashPassword("secret12345"),
     role,
-    ...extra,
+    ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== "birthDate")),
   } as never);
   return { id, token: await issueToken({ id, role }) };
 }
@@ -789,5 +796,32 @@ describe("clientRequestId", () => {
       .from(responsesTable)
       .where(eq(responsesTable.clientRequestId, requestId));
     expect(rows.length).toBe(1);
+  });
+});
+
+/* ── шифрование в покое ── */
+
+describe("шифрование полей", () => {
+  test("в базе — шифртекст, наружу — читаемые имена", async () => {
+    const { users: usersTable } = await import("../src/db/schema");
+    const row = await db.query.users.findFirst({ where: eq(usersTable.email, "p@test") });
+    expect(row!.lastName.startsWith("enc1:v1:")).toBe(true);
+    expect(row!.birthDate!.startsWith("enc1:v1:")).toBe(true);
+
+    // а API отдаёт человеку читаемое
+    const me = await api("/api/auth/me", patient.token);
+    expect(me.body.lastName).toBe("p");
+    expect(me.body.birthDate).toBe("1990-01-01");
+
+    // и список пациентов у админа тоже читаемый
+    const list = await api("/api/access/patients", adminA.token);
+    const found = list.body.find((p: { id: string }) => p.id === patient.id);
+    expect(found.fullName).toContain("Тест");
+  });
+
+  test("текст заключения в базе шифрован, в API — открыт", async () => {
+    const { conclusions: conclusionsTable } = await import("../src/db/schema");
+    const [row] = await db.select().from(conclusionsTable).limit(1);
+    expect(row!.text.startsWith("enc1:v1:")).toBe(true);
   });
 });

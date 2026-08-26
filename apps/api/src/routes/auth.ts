@@ -9,6 +9,7 @@ import { issuePair, revokeAllFor, revokeByToken, rotateRefresh } from "../lib/re
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";
 import { consumeInvite, findUsableInvite } from "../lib/invites";
+import { encryptPersonFields } from "../lib/crypto";
 import { env } from "../env";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
@@ -66,9 +67,12 @@ authRoutes.post("/register", async (c) => {
       id: crypto.randomUUID(),
       email,
       // у псевдонимизированного аккаунта ФИО не пишется в базу вообще
-      firstName: input.anonymous ? "" : (input.firstName ?? ""),
-      lastName: input.anonymous ? "" : (input.lastName ?? ""),
-      middleName: input.anonymous ? null : (input.middleName ?? null),
+      ...encryptPersonFields({
+        firstName: input.anonymous ? "" : (input.firstName ?? ""),
+        lastName: input.anonymous ? "" : (input.lastName ?? ""),
+        middleName: input.anonymous ? null : (input.middleName ?? null),
+        birthDate: input.birthDate ?? null,
+      }),
       anonymous: input.anonymous,
       pseudonym: input.anonymous ? makePseudonym() : null,
       sex: input.sex ?? null,
@@ -176,7 +180,7 @@ authRoutes.patch("/me", requireAuth, async (c) => {
   // псевдонимизированный аккаунт не может внести ФИО задним числом:
   // иначе смысл режима терялся бы одним запросом
   const nameEditable = !user.anonymous;
-  const changes = {
+  const changes = encryptPersonFields({
       ...(nameEditable && input.firstName !== undefined && { firstName: input.firstName }),
       ...(nameEditable && input.lastName !== undefined && { lastName: input.lastName }),
       ...(nameEditable && input.middleName !== undefined && { middleName: input.middleName ?? null }),
@@ -186,7 +190,7 @@ authRoutes.patch("/me", requireAuth, async (c) => {
       ...(input.position !== undefined && { position: input.position ?? null }),
       ...(input.specialty !== undefined && { specialty: input.specialty ?? null }),
       ...(input.rank !== undefined && { rank: input.rank ?? null }),
-  };
+  });
 
   // после фильтрации могло не остаться ничего — например, псевдонимизированный
   // прислал только ФИО. Пустая правка не ошибка, просто ничего не меняется

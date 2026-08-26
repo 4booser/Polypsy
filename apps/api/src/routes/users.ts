@@ -4,6 +4,7 @@ import { createUserSchema, type User } from "@quizzy/shared";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { encryptPersonFields } from "../lib/crypto";
 import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
 import { conflict, forbidden, notFound, parseBody } from "../lib/http";
@@ -33,9 +34,11 @@ userRoutes.post("/", async (c) => {
     .values({
       id: crypto.randomUUID(),
       email,
-      firstName: input.firstName,
-      lastName: input.lastName,
-      middleName: input.middleName ?? null,
+      ...encryptPersonFields({
+        firstName: input.firstName,
+        lastName: input.lastName,
+        middleName: input.middleName ?? null,
+      }),
       passwordHash: await hashPassword(input.password),
       role: input.role,
     })

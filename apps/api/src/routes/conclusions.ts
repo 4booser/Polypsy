@@ -5,6 +5,7 @@ import { db } from "../db";
 import { conclusions, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { canAccessSurvey } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
@@ -33,7 +34,7 @@ async function history(responseId: string) {
   return rows.map(({ row, author }) => ({
     id: row.id,
     version: row.version,
-    text: row.text,
+    text: decryptField(row.text) ?? "",
     status: row.status,
     createdAt: row.createdAt,
     authorName: author ? fullNameOf(author) : "—",
@@ -67,14 +68,14 @@ conclusionRoutes.put("/responses/:id/conclusion", async (c) => {
   if (latest && latest.status === "draft") {
     await db
       .update(conclusions)
-      .set({ text: input.text, createdBy: user.id, createdAt: new Date().toISOString() })
+      .set({ text: encryptField(input.text)!, createdBy: user.id, createdAt: new Date().toISOString() })
       .where(eq(conclusions.id, latest.id));
   } else {
     await db.insert(conclusions).values({
       id: crypto.randomUUID(),
       responseId,
       version: (latest?.version ?? 0) + 1,
-      text: input.text,
+      text: encryptField(input.text)!,
       createdBy: user.id,
     });
   }

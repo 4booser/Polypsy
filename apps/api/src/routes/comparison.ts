@@ -11,6 +11,7 @@ import {
 import { db } from "../db";
 import { responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { decryptField } from "../lib/crypto";
 import { notFound } from "../lib/http";
 import { average, median, pearson, percent, round, variance } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
@@ -65,7 +66,7 @@ comparisonRoutes.get("/surveys/:id", async (c) => {
       case "sex":
         return u.sex ? (u.sex === "male" ? "Мужчины" : "Женщины") : null;
       case "ageGroup": {
-        const age = ageAt(u.birthDate, r.response.submittedAt);
+        const age = ageAt(decryptField(u.birthDate), r.response.submittedAt);
         if (age === null) return null;
         return AGE_GROUPS.find(([, lo, hi]) => age >= lo && age <= hi)?.[0] ?? null;
       }

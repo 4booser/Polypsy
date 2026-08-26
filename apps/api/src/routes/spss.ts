@@ -4,6 +4,7 @@ import { ageAt } from "@quizzy/shared";
 import { db } from "../db";
 import { answers, responseScores, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { decryptField } from "../lib/crypto";
 import { notFound } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
@@ -101,7 +102,7 @@ async function buildSchema(surveyId: string, lang: string) {
       name: unique("age"),
       spec: "F3.0",
       label: "Возраст на момент обследования, полных лет",
-      value: (c) => String(ageAt(c.user?.birthDate ?? null, c.response.submittedAt) ?? MISSING),
+      value: (c) => String(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt) ?? MISSING),
     },
     { name: unique("unit"), spec: "A80", label: "Подразделение", value: (c) => c.user?.unit ?? "" },
     { name: unique("mil_rank"), spec: "A80", label: "Звание", value: (c) => c.user?.rank ?? "" },
@@ -136,7 +137,7 @@ async function buildSchema(surveyId: string, lang: string) {
           return idx >= 0 ? String(idx + 1) : String(MISSING);
         }
         if (a.number !== null && a.number !== undefined) return String(a.number);
-        return a.text ?? "";
+        return decryptField(a.text) ?? "";
       },
     });
     vars.push({

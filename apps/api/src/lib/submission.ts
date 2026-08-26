@@ -14,6 +14,7 @@ import {
 import { db } from "../db";
 import { answerEvents, answers, responseScores, responses, riskAlerts, type UserRow } from "../db/schema";
 import { badRequest } from "./http";
+import { decryptField, encryptField } from "./crypto";
 import { detectRisks } from "./risk";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 
@@ -67,7 +68,7 @@ export async function persistSubmission(
 
   const respondent = {
     sex: subject.sex,
-    age: ageAt(subject.birthDate, new Date().toISOString()),
+    age: ageAt(decryptField(subject.birthDate), new Date().toISOString()),
   };
   const profile: ProfileResult = survey.scoringEnabled
     ? computeProfile(survey, input.answers as Answer[], respondent)
@@ -119,7 +120,7 @@ export async function persistSubmission(
         responseId,
         questionId: answer.questionId,
         optionIds: answer.optionIds ?? null,
-        text: answer.text ?? null,
+        text: encryptField(answer.text ?? null),
         number: answer.number ?? null,
         date: answer.date ?? null,
         matrix: answer.matrix ?? null,

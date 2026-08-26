@@ -19,6 +19,7 @@ import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "..
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
 import { persistSubmission } from "../lib/submission";
+import { decryptField, encryptField } from "../lib/crypto";
 import { draftSchema } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertBatteryOrder, closeCompletedBatteries } from "../lib/batteries";
@@ -215,7 +216,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           responseId,
           questionId: answer.questionId,
           optionIds: answer.optionIds ?? null,
-          text: answer.text ?? null,
+          text: encryptField(answer.text ?? null),
           number: answer.number ?? null,
           date: answer.date ?? null,
           matrix: answer.matrix ?? null,
@@ -268,7 +269,7 @@ responseRoutes.get("/surveys/:id/draft", async (c) => {
     answers: rows.map((a) => ({
       questionId: a.questionId,
       optionIds: a.optionIds ?? undefined,
-      text: a.text ?? undefined,
+      text: decryptField(a.text) ?? undefined,
       number: a.number ?? undefined,
       date: a.date ?? undefined,
       matrix: a.matrix ?? undefined,
@@ -319,7 +320,7 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
   const enriched = await withScores(
     page.map((r) => r.response),
     null,
-    new Map(page.map((r) => [r.response.id, r.userName])),
+    new Map(page.map((r) => [r.response.id, decryptField(r.userName)])),
   );
 
   // выгрузка списка прохождений — это доступ к данным всех респондентов сразу
@@ -478,7 +479,7 @@ responseRoutes.get("/responses/:id", async (c) => {
           position: q.position,
           answered: !!a && !a.skipped,
           optionIds: a?.optionIds ?? null,
-          text: a?.text ?? null,
+          text: decryptField(a?.text ?? null),
           number: a?.number ?? null,
           date: a?.date ?? null,
           matrix: a?.matrix ?? null,

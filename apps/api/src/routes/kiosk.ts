@@ -23,6 +23,7 @@ import {
 } from "../db/schema";
 import { audit, auditSystem } from "../lib/audit";
 import { fullNameOf, hashPassword } from "../lib/auth";
+import { encryptPersonFields } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { hashInviteToken, newInviteToken } from "../lib/invites";
 import { assertGroupAccess } from "../lib/scope";
@@ -95,11 +96,13 @@ kioskRoutes.post("/state/:token/join", async (c) => {
     await tx.insert(users).values({
       id: userId,
       email: `kiosk-${userId}@kiosk.local`,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      middleName: input.middleName?.trim() || null,
+      ...encryptPersonFields({
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        middleName: input.middleName?.trim() || null,
+        birthDate: input.birthDate ?? null,
+      }),
       sex: input.sex ?? null,
-      birthDate: input.birthDate ?? null,
       unit: input.unit ?? null,
       // случайный хеш: под этим аккаунтом нельзя войти — пароль не существует
       passwordHash: await hashPassword(crypto.randomUUID() + crypto.randomUUID()),
