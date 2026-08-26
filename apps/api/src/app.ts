@@ -31,6 +31,7 @@ import { scheduleRoutes } from "./routes/schedules";
 import { inviteRoutes } from "./routes/invites";
 import { kioskRoutes } from "./routes/kiosk";
 import { conclusionRoutes } from "./routes/conclusions";
+import { consentRoutes } from "./routes/consents";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import type { AppEnv } from "./middleware/auth";
@@ -90,6 +91,7 @@ app.route("/api/schedules", scheduleRoutes);
 app.route("/api/invites", inviteRoutes);
 app.route("/api/kiosk", kioskRoutes);
 app.route("/api/conclusions", conclusionRoutes);
+app.route("/api/consents", consentRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {

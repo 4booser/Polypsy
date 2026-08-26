@@ -1096,6 +1096,47 @@ export const conclusions = pgTable(
   }),
 );
 
+/**
+ * Информированное согласие.
+ *
+ * Версии текста — append-only: правка текста создаёт новую версию, и у
+ * каждого принятия зафиксировано, КАКОЙ текст человек видел. Согласие без
+ * привязки к версии текста юридически пусто.
+ */
+export const consentTexts = pgTable(
+  "consent_texts",
+  {
+    id: text("id").primaryKey(),
+    version: integer("version").notNull(),
+    /** Локализованный текст согласия */
+    body: jsonb("body").$type<LocalizedText>().notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    versionIdx: uniqueIndex("consent_texts_version_idx").on(t.version),
+  }),
+);
+
+export const consents = pgTable(
+  "consents",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    consentTextId: text("consent_text_id")
+      .notNull()
+      .references(() => consentTexts.id, { onDelete: "restrict" }),
+    acceptedAt: timestampCol("accepted_at").notNull().defaultNow(),
+    ip: text("ip"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.consentTextId] }),
+  }),
+);
+
 export type ConclusionRow = typeof conclusions.$inferSelect;
 
 export type KioskSessionRow = typeof kioskSessions.$inferSelect;

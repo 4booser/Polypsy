@@ -63,6 +63,8 @@ export type AuditAction =
   | "alert.escalated"
   | "conclusion.save"
   | "conclusion.sign"
+  | "consent.accept"
+  | "consent.text_update"
   | "analytics.correlations"
   | "audit.read"
   | "access.denied";

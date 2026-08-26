@@ -24,7 +24,8 @@ export default function LoginScreen() {
     setError(null);
     try {
       await login(email.trim(), password);
-      router.replace("/(app)/surveys");
+      // пациент проходит через экран согласия; тот сам пропустит, если принято
+      router.replace("/consent");
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("auth.loginFailed"));
     } finally {

@@ -825,3 +825,47 @@ describe("шифрование полей", () => {
     expect(row!.text.startsWith("enc1:v1:")).toBe(true);
   });
 });
+
+/* ── согласия ── */
+
+describe("информированное согласие", () => {
+  test("новая версия текста сбрасывает принятие; след с версией", async () => {
+    // текста ещё нет — согласие не требуется
+    const empty = await api("/api/consents/me", patient.token);
+    expect(empty.body.required).toBe(false);
+
+    // суперадмин задаёт текст
+    const put = await api("/api/consents/text", root.token, {
+      method: "PUT",
+      body: JSON.stringify({ body: { uk: "Текст згоди, версія перша", ru: "Текст согласия, версия первая" } }),
+    });
+    expect(put.body.version).toBe(1);
+
+    const before = await api("/api/consents/me", patient.token);
+    expect(before.body.required).toBe(true);
+    expect(before.body.accepted).toBe(false);
+    // без Accept-Language сервер отдаёт украинский — это дефолт госпиталя
+    expect(before.body.text).toContain("версія перша");
+
+    await api("/api/consents/me/accept", patient.token, { method: "POST" });
+    const after = await api("/api/consents/me", patient.token);
+    expect(after.body.accepted).toBe(true);
+
+    // правка текста → согласие требуется заново
+    await api("/api/consents/text", root.token, {
+      method: "PUT",
+      body: JSON.stringify({ body: { uk: "Оновлений текст згоди", ru: "Обновлённый текст согласия" } }),
+    });
+    const reset = await api("/api/consents/me", patient.token);
+    expect(reset.body.accepted).toBe(false);
+    expect(reset.body.version).toBe(2);
+  });
+
+  test("правка текста — только суперадмину", async () => {
+    const res = await api("/api/consents/text", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ body: { uk: "Спроба адміна групи", ru: "Попытка админа группы" } }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
