@@ -427,6 +427,8 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
 
   const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
   const draft = {
+    /** Версия формата файла — на случай несовместимых изменений */
+    formatVersion: 1,
     title: survey.title,
     description: survey.description,
     instructions: survey.instructions,
@@ -497,6 +499,78 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
 
   await audit(c, { action: "survey.export", resourceType: "survey", resourceId: id });
   return c.json(draft);
+});
+
+/**
+ * Импорт методики из файла экспорта.
+ *
+ * Файл — тот же формат, что отдаёт export (ключи по номерам пунктов),
+ * поэтому конвейер совпадает с посевом: схема → структурный валидатор →
+ * createVersion. Методика с ошибками валидатора не создаётся вовсе:
+ * «импортировалось, но считает неправильно» — худший исход из возможных.
+ * Импортированное всегда черновик: публикация — осознанное действие после
+ * сверки ключей.
+ */
+surveyRoutes.post("/import", requireStaff, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object") badRequest("Ожидается JSON файла экспорта");
+
+  const { formatVersion, groupId, ...raw } = body as Record<string, unknown>;
+  if (formatVersion !== undefined && formatVersion !== 1) {
+    badRequest(`Неизвестная версия формата: ${formatVersion}. Эта сборка понимает версию 1`);
+  }
+  if (groupId) await assertGroupAccess(user, String(groupId));
+
+  const parsed = createSurveySchema.safeParse(raw);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    badRequest(`Файл не разобран: ${first?.path.join(".")}: ${first?.message}`);
+  }
+  const input = parsed.data;
+
+  const issues = validateSurvey(input);
+  const errors = issues.filter((i) => i.level === "error");
+  if (errors.length) {
+    // 422 с полным списком: чинить файл, а не половину методики в базе
+    return c.json({ error: "Структурные ошибки — методика не создана", issues }, 422);
+  }
+
+  const id = crypto.randomUUID();
+  await db.insert(surveys).values({
+    id,
+    groupId: groupId ? String(groupId) : null,
+    title: normalizeLocalized(input.title),
+    description: normalizeLocalized(input.description),
+    instructions: normalizeLocalized(input.instructions),
+    administration: input.administration,
+    status: "draft",
+    timeLimitSec: input.timeLimitSec ?? null,
+    randomizeQuestions: input.randomizeQuestions ?? false,
+    allowBack: input.allowBack ?? true,
+    showProgress: input.showProgress ?? true,
+    anonymous: input.anonymous ?? false,
+    visibility: input.visibility ?? "public",
+    allowRetake: input.allowRetake ?? false,
+    scoringEnabled: input.scoringEnabled ?? false,
+    tooFastMs: input.tooFastMs ?? null,
+    alertEscalateMinutes: input.alertEscalateMinutes ?? null,
+    createdBy: user.id,
+  } as never);
+  await createVersion(id, input, user.id, "Импорт из файла");
+
+  await audit(c, {
+    action: "survey.import",
+    resourceType: "survey",
+    resourceId: id,
+    details: {
+      title: t(normalizeLocalized(input.title) as never),
+      questions: input.questions.length,
+      scales: (input.scales ?? []).length,
+      warnings: issues.length,
+    },
+  });
+  return c.json({ id, issues }, 201);
 });
 
 surveyRoutes.delete("/:id", requireStaff, async (c) => {

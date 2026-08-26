@@ -22,6 +22,7 @@ export type AuditAction =
   | "survey.publish"
   | "survey.key_print"
   | "survey.export"
+  | "survey.import"
   | "group.create"
   | "group.update"
   | "group.delete"
