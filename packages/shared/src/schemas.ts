@@ -433,6 +433,7 @@ export const surveySettingsSchema = z.object({
   visibility: z.enum(["public", "restricted"]).default("public"),
   tooFastMs: z.number().int().min(200).max(120_000).nullish(),
   alertEscalateMinutes: z.number().int().min(1).max(10_080).nullish(),
+  safetyPlan: localizedSchema.nullish(),
   allowRetake: z.boolean().default(false),
   scoringEnabled: z.boolean().default(false),
 });

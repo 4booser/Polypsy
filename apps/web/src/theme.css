@@ -498,3 +498,8 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
   padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface);
 }
+
+.kiosk-safety {
+  text-align: left; margin: 14px 0; padding: 14px 16px;
+  border: 2px solid var(--sev-severe); border-radius: 12px; font-size: 16px;
+}

@@ -14,7 +14,7 @@ import { api } from "@/api/client";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
-import { formatDuration, spacing, useColors } from "@/theme";
+import { formatDuration, severityColor, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
 
 /** Телеметрия по одному вопросу, копится пока экран открыт */
@@ -38,6 +38,7 @@ export default function TakeSurveyScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ScoreResult[] | null>(null);
+  const [safetyPlan, setSafetyPlan] = useState<string | null>(null);
   const [responseId, setResponseId] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [resumed, setResumed] = useState(false);
@@ -226,6 +227,7 @@ export default function TakeSurveyScreen() {
         events: events.current,
       });
       setResult(res.scores);
+      setSafetyPlan(res.safetyPlan ?? null);
       setResponseId(res.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("runner.submitFailed"));
@@ -255,6 +257,14 @@ export default function TakeSurveyScreen() {
         <Body muted>
           Прохождение заняло {formatDuration(Date.now() - sessionStart.current)}. Ответы сохранены.
         </Body>
+        {safetyPlan ? (
+          <Card style={{ borderColor: severityColor.severe, borderWidth: 2 }}>
+            <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginBottom: 6 }}>
+              Важно прямо сейчас
+            </Text>
+            <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>{safetyPlan}</Text>
+          </Card>
+        ) : null}
         {result.length > 0 ? (
           <Card>
             <Body>Результаты по субшкалам</Body>

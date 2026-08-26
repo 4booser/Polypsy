@@ -179,7 +179,7 @@ export const api = {
       events: AnswerEvent[];
     },
   ) =>
-    request<{ id: string; scores: ScoreResult[] }>(`/api/surveys/${surveyId}/responses`, {
+    request<{ id: string; scores: ScoreResult[]; safetyPlan?: string | null }>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),

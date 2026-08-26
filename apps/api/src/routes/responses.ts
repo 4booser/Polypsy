@@ -89,7 +89,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       ? { id: user.id, sex: user.sex, birthDate: user.birthDate }
       : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
 
-  const { responseId, submittedAt, scores, profile } = await persistSubmission(
+  const { responseId, submittedAt, scores, profile, risksTriggered } = await persistSubmission(
     survey,
     subject,
     input,
@@ -112,7 +112,17 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   });
 
   return c.json(
-    { id: responseId, surveyId, submittedAt, scores, reliable: profile.reliable, warnings: profile.warnings },
+    {
+      id: responseId,
+      surveyId,
+      submittedAt,
+      scores,
+      reliable: profile.reliable,
+      warnings: profile.warnings,
+      // safety-план показывается тому, кто держит устройство, ровно в момент,
+      // когда сработал критический пункт — и только самому обследуемому
+      safetyPlan: risksTriggered > 0 && subjectId === user.id ? survey.safetyPlan : null,
+    },
     201,
   );
 });

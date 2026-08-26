@@ -49,6 +49,8 @@ export interface PersistResult {
   submittedAt: string;
   scores: ScoreResult[];
   profile: ProfileResult;
+  /** Сработали критические пункты — вызывающий решает, что показать */
+  risksTriggered: number;
 }
 
 export async function persistSubmission(
@@ -75,6 +77,8 @@ export async function persistSubmission(
   const submittedAt = new Date().toISOString();
   const validIds = new Set(survey.questions.map((q) => q.id));
 
+  const risks = detectRisks(survey, input.answers as Answer[]);
+
   await db.transaction(async (tx) => {
     await tx.insert(responses).values({
       id: responseId,
@@ -90,7 +94,7 @@ export async function persistSubmission(
 
     // тревоги — до подсчёта: они не зависят от шкал и должны сработать даже
     // у методики без подсчёта
-    for (const risk of detectRisks(survey, input.answers as Answer[])) {
+    for (const risk of risks) {
       await tx
         .insert(riskAlerts)
         .values({
@@ -160,7 +164,7 @@ export async function persistSubmission(
 
   await closeCompletedBatteries(subject.id, survey.id);
 
-  return { responseId, submittedAt, scores, profile };
+  return { responseId, submittedAt, scores, profile, risksTriggered: risks.length };
 }
 
 function validateAnswerShape(question: Question, answer: Answer): void {

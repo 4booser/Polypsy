@@ -214,6 +214,7 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
       finished: !!assignment?.completedAt,
       reliable: result.profile.reliable,
       warnings: result.profile.warnings,
+      safetyPlan: result.risksTriggered > 0 ? survey.safetyPlan : null,
     },
     201,
   );

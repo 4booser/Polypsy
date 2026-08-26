@@ -131,6 +131,12 @@ export const surveys = pgTable(
      * null — эскалации нет.
      */
     alertEscalateMinutes: integer("alert_escalate_minutes"),
+  /**
+   * Текст немедленных действий при критическом ответе: телефоны доверия,
+   * дежурный психолог. Показывается обследуемому сразу после сдачи, если
+   * сработала тревога, — в момент, когда он ещё держит устройство в руках.
+   */
+  safetyPlan: jsonb("safety_plan").$type<LocalizedText>(),
     status: text("status", { enum: ["draft", "published", "closed", "archived"] })
       .notNull()
       .default("draft"),

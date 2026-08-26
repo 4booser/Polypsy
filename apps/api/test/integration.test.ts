@@ -105,6 +105,7 @@ beforeAll(async () => {
     id: surveyInA,
     groupId: groupA,
     title: input.title,
+    safetyPlan: (sr45 as { safetyPlan?: unknown }).safetyPlan ?? null,
     administration: "self",
     status: "published",
     publishedAt: new Date().toISOString(),
@@ -695,5 +696,51 @@ describe("заключение специалиста", () => {
   test("чужой админ не достаёт заключение", async () => {
     const res = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminB.token);
     expect(res.status).toBe(404);
+  });
+});
+
+/* ── safety-план ── */
+
+describe("safety-план", () => {
+  test("возвращается сдавшему при сработавшей тревоге и не возвращается специалисту", async () => {
+    // surveyInA — СР-45 с safety-планом в описании инструмента; критические
+    // пункты — «да» на вопросы о попытках. Отвечаем «да» на всё: тревога будет
+    const surveyRes = await api(`/api/surveys/${surveyInA}`, patient.token);
+    const yesAnswers = surveyRes.body.questions
+      .filter((q: { type: string; options: unknown[] }) => q.type !== "info")
+      .map((q: { id: string; options: { id: string; keyCode?: string }[] }) => ({
+        questionId: q.id,
+        optionIds: [q.options.find((o: { keyCode?: string }) => o.keyCode === "yes")!.id],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      }));
+
+    const own = await api(`/api/surveys/${surveyInA}/responses`, patient.token, {
+      method: "POST",
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        events: [],
+        answers: yesAnswers,
+      }),
+    });
+    expect(own.status).toBe(201);
+    expect(own.body.safetyPlan).toContain("0 800 100 102");
+
+    // специалист вносит за пациента: план ему не показывается —
+    // он сам и есть тот, к кому план отправляет
+    const staff = await api(`/api/surveys/${surveyInA}/responses`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        onBehalfOf: patient.id,
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        events: [],
+        answers: yesAnswers,
+      }),
+    });
+    expect(staff.status).toBe(201);
+    expect(staff.body.safetyPlan).toBeNull();
   });
 });
