@@ -11,6 +11,7 @@ import Alerts from "./pages/Alerts";
 import Audit from "./pages/Audit";
 import Compare from "./pages/Compare";
 import Schedules from "./pages/Schedules";
+import Surveillance from "./pages/Surveillance";
 import Constructor from "./pages/constructor";
 import { SurveyList } from "./pages/constructor/SurveyList";
 import Administer from "./pages/Administer";
@@ -34,6 +35,7 @@ import {
   IconDashboard,
   IconGroup,
   IconPatients,
+  IconPulse,
   IconSurvey,
   IconUsers,
 } from "./ui";
@@ -128,6 +130,7 @@ export default function App() {
         <Nav to="/groups" icon={<IconGroup />}>Группы</Nav>
         <Nav to="/patients" icon={<IconPatients />}>Пациенты</Nav>
         <Nav to="/compare" icon={<IconCompare />}>Сравнение</Nav>
+        <Nav to="/surveillance" icon={<IconPulse />}>Надзор</Nav>
         <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>Тревоги</Nav>
 
         {isSuper ? (
@@ -179,6 +182,7 @@ export default function App() {
           <Route path="/kiosk-sessions" element={<KioskSessions />} />
           <Route path="/schedules" element={<Schedules />} />
           <Route path="/compare" element={<Compare />} />
+          <Route path="/surveillance" element={<Surveillance />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/groups" element={<Groups />} />
           {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}

@@ -93,13 +93,22 @@ export default function Compare() {
         </div>
       ) : null}
 
-      {data?.scales.map((scale) =>
-        scale.cohorts.length ? (
+      {data?.scales.map((scale) => {
+        if (!scale.cohorts.length) return null;
+        const flip = standardizationFlips(scale.cohorts);
+        return (
           <Chart key={scale.scaleId} title={scale.title} hint={scaleHint(scale)}>
+            {flip ? (
+              <p className="hint warn" style={{ marginTop: 0 }}>
+                Стандартизация по полу и возрасту меняет порядок групп: сырая разница
+                объяснялась структурой когорт, а не состоянием. Сравнивайте
+                стандартизованные доли.
+              </p>
+            ) : null}
             <CohortBars scale={scale} />
           </Chart>
-        ) : null,
-      )}
+        );
+      })}
 
       {corr && corr.codes.length >= 2 ? (
         <Chart
@@ -155,7 +164,10 @@ function CohortBars({ scale }: { scale: ComparisonResult["scales"][number] }) {
               {c.cohort} <span className="muted">· n={c.n}</span>
             </span>
             <span className="muted" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-              среднее {fmt(c.mean)} · медиана {fmt(c.median)} · σ {c.sd} · размах {fmt(c.min)}–{fmt(c.max)}
+              среднее {fmt(c.mean)} · σ {c.sd} · риск {Math.round(c.rawRiskShare * 100)}%
+              {c.stdRiskShare !== null ? (
+                <> · станд. {Math.round(c.stdRiskShare * 100)}%</>
+              ) : null}
             </span>
           </div>
           {/* столбик среднего с усом межквартильного разброса */}
@@ -265,4 +277,19 @@ function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
       </div>
     </div>
   );
+}
+
+/** Стандартизация перевернула ранжирование хотя бы одной пары когорт */
+function standardizationFlips(
+  cohorts: { rawRiskShare: number; stdRiskShare: number | null }[],
+): boolean {
+  const usable = cohorts.filter((c) => c.stdRiskShare !== null);
+  for (let i = 0; i < usable.length; i++) {
+    for (let j = i + 1; j < usable.length; j++) {
+      const rawOrder = Math.sign(usable[i]!.rawRiskShare - usable[j]!.rawRiskShare);
+      const stdOrder = Math.sign(usable[i]!.stdRiskShare! - usable[j]!.stdRiskShare!);
+      if (rawOrder !== 0 && stdOrder !== 0 && rawOrder !== stdOrder) return true;
+    }
+  }
+  return false;
 }
