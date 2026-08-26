@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
 // ключ задаётся ДО импорта модуля: crypto.ts читает env при загрузке
-process.env.ENCRYPTION_KEY = `v1:${Buffer.alloc(32, 7).toString("base64")},v0:${Buffer.alloc(32, 3).toString("base64")}`;
-const { decryptField, encryptField, encryptionEnabled } = await import("./crypto");
+const KEY_SPEC = `v1:${Buffer.alloc(32, 7).toString("base64")},v0:${Buffer.alloc(32, 3).toString("base64")}`;
+process.env.ENCRYPTION_KEY = KEY_SPEC;
+const { decryptField, encryptField, isEncryptionEnabled, reloadKeysForTests } = await import("./crypto");
+// модуль — синглтон на процесс: в полном прогоне его мог загрузить другой
+// тестовый файл со своими ключами, поэтому свои задаём явно
+reloadKeysForTests(KEY_SPEC);
 
 describe("шифрование полей", () => {
   test("круговой цикл, включая кириллицу и переводы строк", () => {
-    expect(encryptionEnabled).toBe(true);
+    expect(isEncryptionEnabled()).toBe(true);
     for (const plain of ["Іваненко Петро Іванович", "многострочный\nтекст ответа", "a"]) {
       const enc = encryptField(plain)!;
       expect(enc.startsWith("enc1:v1:")).toBe(true);

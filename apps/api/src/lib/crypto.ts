@@ -25,11 +25,11 @@ interface LoadedKey {
   key: Buffer;
 }
 
-function loadKeys(): { active: LoadedKey | null; byId: Map<string, Buffer> } {
+function loadKeys(spec: string): { active: LoadedKey | null; byId: Map<string, Buffer> } {
   const byId = new Map<string, Buffer>();
   let active: LoadedKey | null = null;
   // формат: "v1:<base64 32 байта>[,v2:<base64>]" — первый ключ активный
-  for (const part of env.encryptionKeys.split(",").map((s) => s.trim()).filter(Boolean)) {
+  for (const part of spec.split(",").map((s) => s.trim()).filter(Boolean)) {
     const [id, b64] = part.split(":");
     if (!id || !b64) continue;
     const key = Buffer.from(b64, "base64");
@@ -42,7 +42,15 @@ function loadKeys(): { active: LoadedKey | null; byId: Map<string, Buffer> } {
   return { active, byId };
 }
 
-const keys = loadKeys();
+let keys = loadKeys(env.encryptionKeys);
+
+/**
+ * Перезагрузка ключей в тестах: модуль — синглтон на процесс, а тестовые
+ * файлы задают разные ключи. Продуктовый код это не вызывает никогда.
+ */
+export function reloadKeysForTests(spec: string): void {
+  keys = loadKeys(spec);
+}
 
 if (env.isProduction && !keys.active) {
   console.warn(
@@ -50,6 +58,10 @@ if (env.isProduction && !keys.active) {
   );
 }
 
+export function isEncryptionEnabled(): boolean {
+  return keys.active !== null;
+}
+/** @deprecated снимок на момент импорта; используйте isEncryptionEnabled() */
 export const encryptionEnabled = keys.active !== null;
 
 export function encryptField(plain: string | null | undefined): string | null {
