@@ -203,6 +203,7 @@ export async function attachContent(
           coefficient: c.coefficient,
         })),
         norms: (normsByScale.get(s.id) ?? []).map((n) => ({
+          source: n.source,
           sex: n.sex,
           ageMin: n.ageMin,
           ageMax: n.ageMax,
@@ -463,6 +464,7 @@ export async function createVersion(
           ageMax: norm.ageMax ?? null,
           mean: norm.mean,
           sd: norm.sd,
+          source: norm.source ?? null,
         });
       }
 
@@ -503,3 +505,86 @@ function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
   }
   return map;
 }
+
+/**
+ * Методика → формат файла экспорта (CreateSurveyInput): ключи по номерам
+ * пунктов, поправки по кодам. Общая точка для экспорта и для правок вида
+ * «прочитать → изменить → сохранить новой версией» (локальные нормы).
+ * Ожидает raw-представление (getSurvey(..., raw = true)).
+ */
+export function surveyToDraft(survey: SurveyFull) {
+  const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
+  const draft = {
+    /** Версия формата файла — на случай несовместимых изменений */
+    formatVersion: 1,
+    title: survey.title,
+    description: survey.description,
+    instructions: survey.instructions,
+    administration: survey.administration,
+    visibility: survey.visibility,
+    scoringEnabled: survey.scoringEnabled,
+    allowRetake: survey.allowRetake,
+    showProgress: survey.showProgress,
+    allowBack: survey.allowBack,
+    anonymous: survey.anonymous,
+    randomizeQuestions: survey.randomizeQuestions,
+    timeLimitSec: survey.timeLimitSec,
+    tooFastMs: survey.tooFastMs,
+    alertEscalateMinutes: survey.alertEscalateMinutes,
+    safetyPlan: survey.safetyPlan,
+    sections: [],
+    questions: survey.questions.map((q) => ({
+      type: q.type,
+      title: q.title,
+      help: q.help,
+      required: q.required,
+      minValue: q.minValue,
+      maxValue: q.maxValue,
+      step: q.step,
+      minLabel: q.minLabel,
+      maxLabel: q.maxLabel,
+      riskThreshold: q.riskThreshold,
+      riskLabel: q.riskLabel,
+      riskSeverity: q.riskSeverity,
+      options: q.options.map((o) => ({
+        text: o.text,
+        score: o.score,
+        kind: o.kind,
+        keyCode: o.keyCode,
+        riskFlag: o.riskFlag,
+        riskLabel: o.riskLabel,
+        riskSeverity: o.riskSeverity,
+      })),
+    })),
+    scales: survey.scales.map((s) => ({
+      code: s.code,
+      title: s.title,
+      description: s.description,
+      kind: s.kind,
+      aggregation: s.aggregation,
+      normalization: s.normalization,
+      ratioDenominator: s.ratioDenominator,
+      validityThreshold: s.validityThreshold,
+      validityDirection: s.validityDirection,
+      validityMessage: s.validityMessage,
+      key: s.items.flatMap((i) => {
+        const item = indexById.get(i.questionId);
+        return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
+      }),
+      corrections: s.corrections.map((x) => ({ from: x.sourceScaleCode, coefficient: x.coefficient })),
+      norms: s.norms,
+      stenTable: s.stenTable,
+      bands: s.bands.map((b) => ({
+        minScore: b.minScore,
+        maxScore: b.maxScore,
+        label: b.label,
+        severity: b.severity,
+        description: b.description,
+        grade: b.grade,
+        recommendation: b.recommendation,
+      })),
+    })),
+  };
+  return draft;
+}
+

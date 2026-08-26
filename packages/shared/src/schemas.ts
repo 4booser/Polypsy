@@ -312,6 +312,7 @@ export const scaleInputSchema = z.object({
         ageMax: z.number().int().nullish(),
         mean: z.number(),
         sd: z.number().positive(),
+        source: z.string().max(200).nullish(),
       }),
     )
     .default([]),

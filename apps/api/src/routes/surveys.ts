@@ -5,7 +5,7 @@ import { createSurveySchema, updateSurveySchema, type SurveyFull, type SurveyLis
 import { db } from "../db";
 import { surveyVersions, surveys } from "../db/schema";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
-import { attachContent, createVersion, getSurvey } from "../lib/surveys";
+import { attachContent, createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 import { assertGroupAccess, assertSurveyAccess, isStaff, surveyScopeFilter } from "../lib/scope";
@@ -434,78 +434,7 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
   const survey = await getSurvey(id, null, "uk", true);
   if (!survey) notFound("Методика не найдена");
 
-  const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
-  const draft = {
-    /** Версия формата файла — на случай несовместимых изменений */
-    formatVersion: 1,
-    title: survey.title,
-    description: survey.description,
-    instructions: survey.instructions,
-    administration: survey.administration,
-    visibility: survey.visibility,
-    scoringEnabled: survey.scoringEnabled,
-    allowRetake: survey.allowRetake,
-    showProgress: survey.showProgress,
-    allowBack: survey.allowBack,
-    anonymous: survey.anonymous,
-    randomizeQuestions: survey.randomizeQuestions,
-    timeLimitSec: survey.timeLimitSec,
-    tooFastMs: survey.tooFastMs,
-    alertEscalateMinutes: survey.alertEscalateMinutes,
-    safetyPlan: survey.safetyPlan,
-    sections: [],
-    questions: survey.questions.map((q) => ({
-      type: q.type,
-      title: q.title,
-      help: q.help,
-      required: q.required,
-      minValue: q.minValue,
-      maxValue: q.maxValue,
-      step: q.step,
-      minLabel: q.minLabel,
-      maxLabel: q.maxLabel,
-      riskThreshold: q.riskThreshold,
-      riskLabel: q.riskLabel,
-      riskSeverity: q.riskSeverity,
-      options: q.options.map((o) => ({
-        text: o.text,
-        score: o.score,
-        kind: o.kind,
-        keyCode: o.keyCode,
-        riskFlag: o.riskFlag,
-        riskLabel: o.riskLabel,
-        riskSeverity: o.riskSeverity,
-      })),
-    })),
-    scales: survey.scales.map((s) => ({
-      code: s.code,
-      title: s.title,
-      description: s.description,
-      kind: s.kind,
-      aggregation: s.aggregation,
-      normalization: s.normalization,
-      ratioDenominator: s.ratioDenominator,
-      validityThreshold: s.validityThreshold,
-      validityDirection: s.validityDirection,
-      validityMessage: s.validityMessage,
-      key: s.items.flatMap((i) => {
-        const item = indexById.get(i.questionId);
-        return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
-      }),
-      corrections: s.corrections.map((x) => ({ from: x.sourceScaleCode, coefficient: x.coefficient })),
-      norms: s.norms,
-      stenTable: s.stenTable,
-      bands: s.bands.map((b) => ({
-        minScore: b.minScore,
-        maxScore: b.maxScore,
-        label: b.label,
-        severity: b.severity,
-        description: b.description,
-        grade: b.grade,
-        recommendation: b.recommendation,
-      })),
-    })),
-  };
+  const draft = surveyToDraft(survey);
 
   await audit(c, { action: "survey.export", resourceType: "survey", resourceId: id });
   return c.json(draft);

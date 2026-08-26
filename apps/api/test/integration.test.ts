@@ -1031,3 +1031,93 @@ describe("RLS-политики (роль без прав владельца)", (
     await expect((async () => { await attempt; })()).rejects.toThrow(/row-level security|policy/i);
   });
 });
+
+/* ── локальные нормы ── */
+
+describe("локальные нормы", () => {
+  test("кандидаты считаются по скорректированному баллу; публикация требует N≥30", async () => {
+    // surveyInA — СР-45: шкалы ratio, T-баллов нет → кандидатов нет
+    const none = await api(`/api/norms/surveys/${surveyInA}/candidates`, adminA.token);
+    expect(none.body.scales.length).toBe(0);
+
+    // публикация по несуществующей шкале — отказ
+    const bad = await api(`/api/norms/surveys/${surveyInA}/apply`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scaleCodes: ["Sr"] }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  test("на tscore-методике: кандидат появляется, публикация создаёт версию с источником", async () => {
+    // мини-методика с tscore-шкалой и 35 прохождениями мужчин
+    const { minimult } = await import("../src/instruments/minimult");
+    const input = createSurveySchema.parse(minimult);
+    const sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: { uk: "Міні-мульт норм-тест", ru: "Мини-мульт норм-тест" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, input, adminA.id, "v1");
+
+    // 35 прохождений: берём готовый конвейер сдачи от 35 свежих пациентов
+    for (let i = 0; i < 35; i++) {
+      const person = await makeUser("user", `norm${i}@test.dev`, {
+        sex: "male",
+        birthDate: "1990-01-01",
+        unit: "Норм-рота",
+      });
+      // ответы различаются между людьми: норма с нулевым разбросом не норма
+      const surveyRes = await api(`/api/surveys/${sid}`, person.token);
+      const answers = surveyRes.body.questions
+        .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length)
+        .map((q: { id: string; options: { id: string }[] }, qi: number) => ({
+          questionId: q.id,
+          optionIds: [q.options[(i + qi) % q.options.length]!.id],
+          durationMs: 1500,
+          changeCount: 0,
+          visitCount: 1,
+        }));
+      const res = await api(`/api/surveys/${sid}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({
+          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          durationMs: 60_000,
+          events: [],
+          answers,
+        }),
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const cand = await api(`/api/norms/surveys/${sid}/candidates`, adminA.token);
+    const hs = cand.body.scales.find((s: { code: string }) => s.code === "Hs");
+    expect(hs).toBeDefined();
+    const male = hs.candidate.find((g: { sex: string | null }) => g.sex === "male");
+    expect(male.n).toBe(35);
+    expect(male.publishable).toBe(true);
+    expect(male.sd).toBeGreaterThan(0);
+
+    // публикуем локальные нормы для Hs
+    const applied = await api(`/api/norms/surveys/${sid}/apply`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scaleCodes: ["Hs"] }),
+    });
+    expect(applied.status).toBe(201);
+
+    // новая версия действует: нормы Hs — локальные, остальных шкал — из пособия
+    const after = await api(`/api/surveys/${sid}`, adminA.token);
+    expect(after.body.versionNumber).toBe(2);
+    const hsScale = after.body.scales.find((s: { code: string }) => s.code === "Hs");
+    expect(hsScale.norms.some((n: { source: string | null }) => n.source?.includes("локальная выборка, N=35"))).toBe(true);
+    const dScale = after.body.scales.find((s: { code: string }) => s.code === "D");
+    expect(dScale.norms.every((n: { source: string | null }) => n.source?.includes("Пособие"))).toBe(true);
+  }, 60_000); // 35 регистраций с argon2 не укладываются в дефолтные 5 секунд
+});

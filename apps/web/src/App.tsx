@@ -21,6 +21,7 @@ import Invites from "./pages/Invites";
 import Join from "./pages/Join";
 import Kiosk from "./pages/Kiosk";
 import KioskSessions from "./pages/KioskSessions";
+import Norms from "./pages/Norms";
 import KeyPrint from "./pages/KeyPrint";
 import {
   IconAlert,
@@ -166,6 +167,7 @@ export default function App() {
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
+          <Route path="/surveys/:id/norms" element={<Norms />} />
           <Route path="/surveys/:id/blank" element={<BlankForm />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/constructor/:id" element={<Constructor />} />

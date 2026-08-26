@@ -32,6 +32,7 @@ import { inviteRoutes } from "./routes/invites";
 import { kioskRoutes } from "./routes/kiosk";
 import { conclusionRoutes } from "./routes/conclusions";
 import { consentRoutes } from "./routes/consents";
+import { normRoutes } from "./routes/norms";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import type { AppEnv } from "./middleware/auth";
@@ -92,6 +93,7 @@ app.route("/api/invites", inviteRoutes);
 app.route("/api/kiosk", kioskRoutes);
 app.route("/api/conclusions", conclusionRoutes);
 app.route("/api/consents", consentRoutes);
+app.route("/api/norms", normRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {
