@@ -57,6 +57,13 @@
       "when": 1787751165696,
       "tag": "0007_fixed_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787751249527,
+      "tag": "0008_bizarre_princess_powerful",
+      "breakpoints": true
     }
   ]
 }

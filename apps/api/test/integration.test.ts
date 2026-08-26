@@ -551,3 +551,74 @@ describe("импорт методики", () => {
     expect([403, 404]).toContain(res.status);
   });
 });
+
+/* ── уведомления о тревогах ── */
+
+describe("рассыльщик тревог", () => {
+  test("тревога уведомляет админов группы один раз; эскалация — суперадминов по сроку", async () => {
+    const nodemailer = (await import("nodemailer")).default;
+    const { runNotifierOnce, setTransportForTests } = await import("../src/lib/notify");
+    const { riskAlerts, alertNotifications, surveys: surveysTable } = await import("../src/db/schema");
+
+    // json-транспорт: письма не уходят, но полностью собираются
+    const sent: { subject: string; to: string; text: string }[] = [];
+    const transport = nodemailer.createTransport({ jsonTransport: true });
+    const original = transport.sendMail.bind(transport);
+    transport.sendMail = (async (mail: Parameters<typeof original>[0]) => {
+      sent.push({ subject: String(mail.subject), to: String(mail.to), text: String(mail.text) });
+      return original(mail);
+    }) as typeof transport.sendMail;
+    setTransportForTests(transport);
+
+    // методика с эскалацией через 30 минут
+    await db
+      .update(surveysTable)
+      .set({ alertEscalateMinutes: 30 })
+      .where(eq(surveysTable.id, surveyInA));
+
+    // тревога 40-минутной давности, не подтверждена
+    const alertId = crypto.randomUUID();
+    const responseRow = await db.query.responses.findFirst({
+      where: eq((await import("../src/db/schema")).responses.surveyId, surveyInA),
+    });
+    await db.insert(riskAlerts).values({
+      id: alertId,
+      responseId: responseRow!.id,
+      surveyId: surveyInA,
+      questionId: (await db.query.questions.findFirst({}))!.id,
+      userId: patient.id,
+      label: "Тестовая тревога",
+      severity: "severe",
+      at: new Date(Date.now() - 40 * 60_000).toISOString(),
+    });
+
+    const first = await runNotifierOnce();
+    expect(first.initial).toBeGreaterThanOrEqual(1);
+    expect(first.escalated).toBeGreaterThanOrEqual(1);
+
+    // повторный тик ничего не дублирует
+    const second = await runNotifierOnce();
+    expect(second.initial).toBe(0);
+    expect(second.escalated).toBe(0);
+
+    const записи = await db
+      .select()
+      .from(alertNotifications)
+      .where(eq(alertNotifications.alertId, alertId));
+    expect(записи.map((z) => z.kind).sort()).toEqual(["escalation", "initial"]);
+
+    // первичное — админу группы А; эскалация — суперадмину
+    const initialMail = sent.find((m) => m.subject.startsWith("Тревога"));
+    const escalationMail = sent.find((m) => m.subject.startsWith("ЭСКАЛАЦИЯ"));
+    expect(initialMail!.to).toContain("a@test");
+    expect(escalationMail!.to).toContain("root@test");
+
+    // в письмах нет персональных данных пациента
+    for (const m of sent) {
+      expect(m.text).not.toContain("Тест");
+      expect(m.text).not.toContain(patient.id);
+    }
+
+    setTransportForTests(null);
+  });
+});

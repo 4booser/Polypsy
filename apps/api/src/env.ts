@@ -20,6 +20,11 @@ const schema = z.object({
     : z.string().default("dev-secret-change-me"),
   /** Разрешённые origin консоли через запятую; пусто в dev = localhost */
   CORS_ORIGINS: z.string().default(""),
+  /** SMTP для уведомлений: smtp://user:pass@host:587; пусто — только журнал */
+  SMTP_URL: z.string().default(""),
+  MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),
+  /** Адрес консоли для ссылок в письмах */
+  CONSOLE_URL: z.string().default("http://localhost:5199"),
   /** Открытая регистрация пациентов без приглашения (в бою выключать) */
   OPEN_REGISTRATION: z
     .string()
@@ -50,6 +55,9 @@ export const env = {
   jwtSecret: raw.JWT_SECRET,
   schedulerEnabled: raw.SCHEDULER_ENABLED,
   openRegistration: raw.OPEN_REGISTRATION,
+  smtpUrl: raw.SMTP_URL,
+  mailFrom: raw.MAIL_FROM,
+  consoleUrl: raw.CONSOLE_URL,
   corsOrigins: raw.CORS_ORIGINS
     ? raw.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
     : isProduction
