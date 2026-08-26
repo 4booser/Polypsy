@@ -444,6 +444,18 @@ export interface ScaleDynamics {
   delta: number | null;
   /** Направление: улучшение зависит от того, что шкала измеряет */
   direction: "up" | "down" | "flat" | null;
+  /**
+   * Достоверность сдвига первый↔последний (Jacobson–Truax).
+   * null — посчитать нельзя: мало выборки для SD или альфы. Это честный
+   * ответ, а не ноль: без ошибки измерения сдвиг не интерпретируем.
+   */
+  reliableChange: {
+    rci: number;
+    significant: boolean;
+    direction: "up" | "down" | "flat";
+    /** На чём основан расчёт — видно в подсказке */
+    basis: { sd: number; alpha: number; sampleN: number };
+  } | null;
 }
 
 export interface RespondentDynamics {
