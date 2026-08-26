@@ -847,6 +847,8 @@ export interface OverviewAnalytics {
 }
 
 export interface AuthPayload {
+  /** Одноразовый refresh-токен: хранить в защищённом хранилище */
+  refreshToken: string;
   token: string;
   user: User;
 }

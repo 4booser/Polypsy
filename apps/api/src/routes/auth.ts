@@ -5,6 +5,8 @@ import { db } from "../db";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { hashPassword, issueToken, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
+import { issuePair, revokeAllFor, revokeByToken, rotateRefresh } from "../lib/refresh";
+import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
@@ -70,15 +72,29 @@ authRoutes.post("/register", async (c) => {
     },
   });
 
-  return c.json({ token: await issueToken(row!), user: toPublicUser(row!) }, 201);
+  const pair = await issuePair(row!);
+  return c.json({ ...pair, user: toPublicUser(row!) }, 201);
 });
 
 authRoutes.post("/login", async (c) => {
   const input = await parseBody(c.req.raw, loginSchema);
   const email = input.email.toLowerCase();
+
+  // до проверки пароля: заблокированный email не тратит argon2 и не даёт
+  // перебирать дальше. Ответ такой же, как на неверный пароль, плюс задержка
+  if (await isLockedOut(email)) {
+    await audit(c, {
+      action: "auth.login_failed",
+      outcome: "denied",
+      details: { email, reason: "locked_out" },
+    });
+    unauthorized("Слишком много попыток. Подождите 15 минут");
+  }
+
   const row = await db.query.users.findFirst({ where: eq(users.email, email) });
 
   if (!row || !(await verifyPassword(input.password, row.passwordHash))) {
+    await recordFailure(email, c.req.header("X-Forwarded-For") ?? null);
     await audit(c, {
       action: "auth.login_failed",
       outcome: "denied",
@@ -91,6 +107,8 @@ authRoutes.post("/login", async (c) => {
     unauthorized("Неверный email или пароль");
   }
 
+  await clearFailures(email);
+
   await audit(c, {
     action: "auth.login",
     resourceType: "user",
@@ -98,7 +116,8 @@ authRoutes.post("/login", async (c) => {
     actor: toPublicUser(row),
   });
 
-  return c.json({ token: await issueToken(row), user: toPublicUser(row) });
+  const pair = await issuePair(row);
+  return c.json({ ...pair, user: toPublicUser(row) });
 });
 
 authRoutes.get("/me", requireAuth, (c) => c.json(c.get("user")));
@@ -184,11 +203,45 @@ authRoutes.post("/password", requireAuth, async (c) => {
     .set({ passwordHash: await hashPassword(input.newPassword) })
     .where(eq(users.id, user.id));
 
+  // угнанная сессия не должна переживать смену пароля
+  const revoked = await revokeAllFor(user.id);
+
   await audit(c, {
     action: "auth.password_change",
     resourceType: "user",
     resourceId: user.id,
     subjectUserId: user.id,
+    details: { revokedSessions: revoked },
   });
+  return c.json({ ok: true });
+});
+
+/**
+ * Обмен refresh-токена. Повторное предъявление погашенного токена гасит всю
+ * семью — этот случай пишется в журнал как подозрение на кражу.
+ */
+authRoutes.post("/refresh", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const raw = typeof body?.refreshToken === "string" ? body.refreshToken : "";
+  if (!raw) unauthorized("Нет refresh-токена");
+
+  const outcome = await rotateRefresh(raw);
+  if (!outcome.ok) {
+    await audit(c, {
+      action: "auth.refresh_failed",
+      outcome: "denied",
+      resourceType: "user",
+      resourceId: outcome.userId,
+      subjectUserId: outcome.userId ?? null,
+      details: { reason: outcome.reason },
+    });
+    unauthorized("Сессия истекла, войдите заново");
+  }
+  return c.json(outcome.pair);
+});
+
+authRoutes.post("/logout", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  if (typeof body?.refreshToken === "string") await revokeByToken(body.refreshToken);
   return c.json({ ok: true });
 });
