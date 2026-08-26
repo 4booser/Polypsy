@@ -1,0 +1,144 @@
+import { useMemo, useState } from "react";
+import type { DraftQuestion } from "./model";
+
+/**
+ * Массовая вставка пунктов из текста пособия.
+ *
+ * Главный сценарий переноса методики: скопировать колонку пунктов из PDF и
+ * получить сразу 45–200 вопросов. Разбор терпим к мусору распознавания:
+ * номера «1.», «1)», «1 —» срезаются, переносы внутри пункта склеиваются
+ * (строка без номера продолжает предыдущий пункт), пустые строки игнорируются.
+ */
+
+interface ParsedItem {
+  n: number | null;
+  text: string;
+}
+
+export function parseBulk(raw: string): ParsedItem[] {
+  const items: ParsedItem[] = [];
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const numbered =
+      trimmed.match(/^(\d{1,3})\s*[.)\]:—–-]\s*(.+)$/) ?? trimmed.match(/^(\d{1,3})\s+(.+)$/);
+    if (numbered) {
+      items.push({ n: Number(numbered[1]), text: numbered[2]!.trim() });
+    } else if (items.length) {
+      // строка без номера — хвост предыдущего пункта, разорванного переносом
+      items[items.length - 1]!.text += ` ${trimmed}`;
+    } else {
+      items.push({ n: null, text: trimmed });
+    }
+  }
+  return items;
+}
+
+/** Дыры и дубли в нумерации — почти наверняка ошибка распознавания PDF */
+export function numberingProblems(items: ParsedItem[]): string[] {
+  const problems: string[] = [];
+  const numbers = items.map((i) => i.n).filter((n): n is number => n !== null);
+  if (!numbers.length) return problems;
+  const seen = new Set<number>();
+  for (const n of numbers) {
+    if (seen.has(n)) problems.push(`Номер ${n} встречается дважды`);
+    seen.add(n);
+  }
+  const max = Math.max(...numbers);
+  for (let i = 1; i <= max; i++) {
+    if (!seen.has(i)) problems.push(`Пропущен номер ${i}`);
+  }
+  return problems.slice(0, 8);
+}
+
+export function BulkPaste({
+  onAppend,
+  onClose,
+}: {
+  onAppend: (questions: DraftQuestion[]) => void;
+  onClose: () => void;
+}) {
+  const [raw, setRaw] = useState("");
+  const [lang, setLang] = useState<"uk" | "ru">("uk");
+  const [type, setType] = useState<"yesno" | "single">("yesno");
+
+  const items = useMemo(() => parseBulk(raw), [raw]);
+  const problems = useMemo(() => numberingProblems(items), [items]);
+
+  function apply() {
+    const questions: DraftQuestion[] = items.map((item) => ({
+      type,
+      // текст кладётся в выбранный язык; второй остаётся пустым и виден
+      // в форме как незаполненный — честнее, чем дублировать не тот язык
+      title: lang === "uk" ? { uk: item.text, ru: "" } : { uk: "", ru: item.text },
+      required: true,
+      options:
+        type === "yesno"
+          ? [
+              { text: { uk: "Так", ru: "Да" }, keyCode: "yes" },
+              { text: { uk: "Ні", ru: "Нет" }, keyCode: "no" },
+            ]
+          : [],
+    }));
+    onAppend(questions);
+    onClose();
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Вставка пунктов из текста</h2>
+        <button onClick={onClose}>Закрыть</button>
+      </div>
+      <p className="hint">
+        Скопируйте пункты из пособия — по одному на строку, с номерами или без. Номера «1.», «1)»
+        срезаются; строка без номера приклеивается к предыдущему пункту (переносы из PDF).
+      </p>
+      <textarea
+        value={raw}
+        onChange={(e) => setRaw(e.target.value)}
+        rows={12}
+        placeholder={"1. Чи може життя втратити цінність?\n2. Життя іноді гірше за смерть.\n…"}
+        spellCheck={false}
+      />
+      <div className="form-grid" style={{ marginTop: 10 }}>
+        <label className="field">
+          <span>Язык вставляемого текста</span>
+          <select value={lang} onChange={(e) => setLang(e.target.value as never)}>
+            <option value="uk">украинский</option>
+            <option value="ru">русский</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Тип вопросов</span>
+          <select value={type} onChange={(e) => setType(e.target.value as never)}>
+            <option value="yesno">Да / Нет</option>
+            <option value="single">Один ответ (варианты добавите после)</option>
+          </select>
+        </label>
+      </div>
+
+      {items.length ? (
+        <p className="hint">
+          Распознано пунктов: <strong>{items.length}</strong>
+          {items[0] ? <> · первый: «{items[0].text.slice(0, 60)}»</> : null}
+          {items.length > 1 ? <> · последний: «{items[items.length - 1]!.text.slice(0, 60)}»</> : null}
+        </p>
+      ) : null}
+      {problems.length ? (
+        <div className="hint warn">
+          Нумерация подозрительна — проверьте исходный текст:
+          {problems.map((p) => (
+            <div key={p}>• {p}</div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="row" style={{ marginTop: 10 }}>
+        <button className="primary" disabled={!items.length} onClick={apply}>
+          Добавить {items.length} пунктов
+        </button>
+      </div>
+    </div>
+  );
+}
