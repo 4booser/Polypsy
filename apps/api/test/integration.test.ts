@@ -501,3 +501,53 @@ describe("порядок батареи и методики клинициста
     expect(clinicianStep.state).toBe("available");
   });
 });
+
+/* ── экспорт → импорт ── */
+
+describe("импорт методики", () => {
+  test("цикл экспорт → импорт даёт рабочую копию с теми же баллами", async () => {
+    const exported = await api(`/api/surveys/${surveyInA}/export`, adminA.token);
+    expect(exported.status).toBe(200);
+    expect(exported.body.formatVersion).toBe(1);
+
+    const imported = await api("/api/surveys/import", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ ...exported.body, groupId: groupA }),
+    });
+    expect(imported.status).toBe(201);
+
+    // копия — черновик; публикуем и сдаём те же ответы, баллы должны совпасть
+    await api(`/api/surveys/${imported.body.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "published" }),
+    });
+    const original = await submitSurvey(surveyInA, root.token);
+    const copy = await submitSurvey(imported.body.id, root.token);
+    expect(copy.status).toBe(201);
+    const scoreOf = (r: { body: { scores: { scaleCode: string; rawScore: number }[] } }, code: string) =>
+      r.body.scores.find((s) => s.scaleCode === code)?.rawScore;
+    expect(scoreOf(copy, "Sr")).toBe(scoreOf(original, "Sr"));
+    expect(scoreOf(copy, "L")).toBe(scoreOf(original, "L"));
+  });
+
+  test("файл со структурной ошибкой не создаёт методику", async () => {
+    const exported = await api(`/api/surveys/${surveyInA}/export`, adminA.token);
+    const broken = structuredClone(exported.body);
+    broken.scales[0].key.push({ item: 999, matchKey: "yes" }); // номер за пределами
+    const res = await api("/api/surveys/import", adminA.token, {
+      method: "POST",
+      body: JSON.stringify(broken),
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.issues.some((i: { level: string }) => i.level === "error")).toBe(true);
+  });
+
+  test("чужая группа при импорте — отказ", async () => {
+    const exported = await api(`/api/surveys/${surveyInA}/export`, adminA.token);
+    const res = await api("/api/surveys/import", adminB.token, {
+      method: "POST",
+      body: JSON.stringify({ ...exported.body, groupId: groupA }),
+    });
+    expect([403, 404]).toContain(res.status);
+  });
+});

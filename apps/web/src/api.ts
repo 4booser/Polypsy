@@ -46,6 +46,8 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Тело ответа с деталями: например, список Issues при импорте */
+    readonly body?: unknown,
   ) {
     super(message);
   }
@@ -103,7 +105,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status, body);
   return body as T;
 }
 
@@ -194,6 +196,11 @@ export const api = {
     request<SurveyFull>("/api/surveys", { method: "POST", body: JSON.stringify(draft) }),
   updateSurvey: (id: string, patch: unknown) =>
     request<SurveyFull>(`/api/surveys/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  importSurvey: (draft: unknown) =>
+    request<{ id: string; issues: Issue[] }>("/api/surveys/import", {
+      method: "POST",
+      body: JSON.stringify(draft),
+    }),
   duplicateSurvey: (id: string) =>
     request<SurveyFull>(`/api/surveys/${id}/duplicate`, { method: "POST" }),
   deleteSurvey: (id: string) => request<void>(`/api/surveys/${id}`, { method: "DELETE" }),
