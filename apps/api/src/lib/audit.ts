@@ -61,6 +61,8 @@ export type AuditAction =
   | "kiosk.submit"
   | "alert.notified"
   | "alert.escalated"
+  | "conclusion.save"
+  | "conclusion.sign"
   | "analytics.correlations"
   | "audit.read"
   | "access.denied";

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { answers, responseScores, responses, scales, users } from "../db/schema";
+import { answers, conclusions, responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { forbidden, notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
@@ -34,6 +34,15 @@ reportRoutes.get("/responses/:id", async (c) => {
 
   const survey = await getSurveyForResponse(response.id);
   if (!survey) notFound("Методика не найдена");
+
+  // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
+  const [signedConclusion] = await db
+    .select({ row: conclusions, author: users })
+    .from(conclusions)
+    .leftJoin(users, eq(users.id, conclusions.signedBy))
+    .where(eq(conclusions.responseId, response.id))
+    .orderBy(desc(conclusions.version))
+    .limit(1);
 
   const [scoreRows, answerRows] = await Promise.all([
     db.select().from(responseScores).where(eq(responseScores.responseId, response.id)),
@@ -114,6 +123,17 @@ reportRoutes.get("/responses/:id", async (c) => {
             durationMs: a?.durationMs ?? 0,
           };
         }),
+      conclusion:
+        signedConclusion && signedConclusion.row.status === "signed"
+          ? {
+              text: signedConclusion.row.text,
+              version: signedConclusion.row.version,
+              signedAt: signedConclusion.row.signedAt,
+              signedBy: signedConclusion.author ? fullNameOf(signedConclusion.author) : "—",
+            }
+          : null,
+      printedBy: fullNameOf(user),
+      printedAt: new Date().toISOString(),
     }),
   );
 });
@@ -142,6 +162,9 @@ const SEVERITY_COLOR: Record<string, string> = {
 };
 
 interface ReportData {
+  conclusion: { text: string; version: number; signedAt: string | null; signedBy: string } | null;
+  printedBy: string;
+  printedAt: string;
   surveyTitle: string;
   versionNumber: number;
   patientName: string;
@@ -213,6 +236,7 @@ function renderReport(d: ReportData): string {
   th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
   .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+  .conclusion { white-space: normal; padding: 10px 12px; border: 1px solid #d8d8d4; border-radius: 6px; }
   .note { margin-top: 22px; padding: 10px 12px; background: #f5f5f3; border-radius: 6px; font-size: 12px; color: #444; }
 </style></head>
 <body>
@@ -239,11 +263,27 @@ function renderReport(d: ReportData): string {
     ${answerRows}
   </table>
 
+  ${
+    d.conclusion
+      ? `<h2>Заключение специалиста</h2>
+  <div class="conclusion">${esc(d.conclusion.text).replaceAll("\n", "<br>")}</div>
+  <div class="meta" style="margin-top:6px">
+    Подписано: ${esc(d.conclusion.signedBy)}${
+      d.conclusion.signedAt ? `, ${esc(String(d.conclusion.signedAt).slice(0, 16).replace("T", " "))}` : ""
+    } · версия ${d.conclusion.version}
+  </div>`
+      : ""
+  }
+
   <div class="note">
     Результат скринингового обследования не является диагнозом. Интерпретацию
     выполняет специалист с учётом клинической картины и анамнеза.
     Перцентиль рассчитан относительно выборки, накопленной в этой системе,
     и не заменяет популяционные нормы методики.
+  </div>
+
+  <div class="meta" style="margin-top:18px; border-top: 1px solid #e3e3e3; padding-top: 8px;">
+    Распечатано: ${esc(d.printedBy)}, ${esc(d.printedAt.slice(0, 16).replace("T", " "))}
   </div>
 </body></html>`;
 }

@@ -155,6 +155,20 @@ export async function openInTab(path: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+export interface ConclusionVersion {
+  id: string;
+  version: number;
+  text: string;
+  status: "draft" | "signed";
+  createdAt: string;
+  authorName: string;
+  signedAt: string | null;
+}
+export interface ConclusionState {
+  current: ConclusionVersion | null;
+  versions: ConclusionVersion[];
+}
+
 export interface Patient {
   id: string;
   fullName: string;
@@ -269,6 +283,18 @@ export const api = {
   deleteSchedule: (id: string) => request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
   runSchedule: (id: string) =>
     request<Schedule>(`/api/schedules/${id}/run`, { method: "POST" }),
+
+  conclusion: (responseId: string) =>
+    request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`),
+  saveConclusion: (responseId: string, text: string) =>
+    request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
+      method: "PUT",
+      body: JSON.stringify({ text }),
+    }),
+  signConclusion: (responseId: string) =>
+    request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion/sign`, {
+      method: "POST",
+    }),
 
   compare: (surveyId: string, by: string) =>
     request<ComparisonResult>(`/api/compare/surveys/${surveyId}?by=${by}`),

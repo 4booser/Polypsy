@@ -1046,6 +1046,37 @@ export const alertNotifications = pgTable(
   }),
 );
 
+/**
+ * Заключение специалиста по прохождению — поверх автоматической интерпретации.
+ *
+ * Строки append-only: каждая правка — новая версия. Подписанная версия
+ * неизменна юридически и физически: следующая правка создаёт version+1
+ * черновиком. Текущее заключение — строка с максимальной версией.
+ */
+export const conclusions = pgTable(
+  "conclusions",
+  {
+    id: text("id").primaryKey(),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => responses.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    text: text("text").notNull(),
+    status: text("status", { enum: ["draft", "signed"] }).notNull().default("draft"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    signedAt: timestampCol("signed_at"),
+    signedBy: text("signed_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    responseVersionIdx: uniqueIndex("conclusions_response_version_idx").on(t.responseId, t.version),
+  }),
+);
+
+export type ConclusionRow = typeof conclusions.$inferSelect;
+
 export type KioskSessionRow = typeof kioskSessions.$inferSelect;
 
 export type InviteRow = typeof invites.$inferSelect;

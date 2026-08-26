@@ -493,3 +493,8 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 }
 .lang-switch button.active { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
 .kiosk-lang { position: fixed; top: 14px; right: 16px; }
+
+.conclusion-view {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface);
+}

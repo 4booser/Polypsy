@@ -622,3 +622,78 @@ describe("рассыльщик тревог", () => {
     setTransportForTests(null);
   });
 });
+
+/* ── заключения ── */
+
+describe("заключение специалиста", () => {
+  let responseId: string;
+
+  beforeAll(async () => {
+    const res = await submitSurvey(surveyInA, patient.token);
+    responseId = res.body.id;
+  });
+
+  test("черновик правится на месте, подпись фиксирует версию", async () => {
+    const first = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Первый вариант" }),
+    });
+    expect(first.body.current.version).toBe(1);
+
+    const edited = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Отредактированный вариант" }),
+    });
+    // черновик правится, версия не растёт
+    expect(edited.body.current.version).toBe(1);
+    expect(edited.body.versions.length).toBe(1);
+
+    const signed = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
+      method: "POST",
+    });
+    expect(signed.body.current.status).toBe("signed");
+
+    // повторная подпись — отказ
+    const again = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
+      method: "POST",
+    });
+    expect(again.status).toBe(400);
+  });
+
+  test("правка после подписи создаёт версию 2 черновиком; подписанное неизменно", async () => {
+    const v2 = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Дополнение после подписи" }),
+    });
+    expect(v2.body.current.version).toBe(2);
+    expect(v2.body.current.status).toBe("draft");
+    const v1 = v2.body.versions.find((v: { version: number }) => v.version === 1);
+    expect(v1.status).toBe("signed");
+    expect(v1.text).toBe("Отредактированный вариант");
+  });
+
+  test("в печатный отчёт попадает только подписанная версия", async () => {
+    // текущая версия 2 — черновик; отчёт не должен её показывать,
+    // но и подписанную v1 показывать не должен: последняя версия не подписана.
+    // Контракт: отчёт берёт ПОСЛЕДНЮЮ версию и включает её только если она подписана
+    const res = await app.request(`/api/reports/responses/${responseId}`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const html = await res.text();
+    expect(html).not.toContain("Дополнение после подписи");
+
+    // подпишем v2 — теперь она в отчёте
+    await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, { method: "POST" });
+    const res2 = await app.request(`/api/reports/responses/${responseId}`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const html2 = await res2.text();
+    expect(html2).toContain("Дополнение после подписи");
+    expect(html2).toContain("Распечатано:");
+  });
+
+  test("чужой админ не достаёт заключение", async () => {
+    const res = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminB.token);
+    expect(res.status).toBe(404);
+  });
+});

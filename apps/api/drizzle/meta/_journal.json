@@ -64,6 +64,13 @@
       "when": 1787751249527,
       "tag": "0008_bizarre_princess_powerful",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787751830269,
+      "tag": "0009_wealthy_captain_midlands",
+      "breakpoints": true
     }
   ]
 }
