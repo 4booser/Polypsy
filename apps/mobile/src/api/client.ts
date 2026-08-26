@@ -25,6 +25,7 @@ import type {
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
+import { currentLang } from "../lang";
 
 export class ApiError extends Error {
   constructor(
@@ -69,6 +70,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   const token = await tokenStorage.get();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    // язык интерфейса определяет и язык контента методик
+    "Accept-Language": currentLang,
     ...((init.headers as Record<string, string>) ?? {}),
   };
   if (token) headers.Authorization = `Bearer ${token}`;

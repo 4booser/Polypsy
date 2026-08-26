@@ -7,6 +7,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { API_URL } from "@/config";
 import { Body, Button, Card, Chip, Divider, ErrorText, Field, Row, Title } from "@/components/ui";
 import { spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 const ROLE_LABEL: Record<string, string> = {
   superadmin: "Суперадминистратор",
@@ -18,6 +19,7 @@ export default function AccountScreen() {
   const c = useColors();
   const router = useRouter();
   const { user, logout, refresh } = useAuth();
+  const { lang, setLang, ut } = useLang();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     lastName: user?.lastName ?? "",
@@ -67,7 +69,15 @@ export default function AccountScreen() {
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
     >
-      <Title>Аккаунт</Title>
+      <Title>{ut("profile.title")}</Title>
+
+      <Card>
+        <Body>{ut("profile.language")}</Body>
+        <Row>
+          <Chip label="Українська" selected={lang === "uk"} onPress={() => setLang("uk")} />
+          <Chip label="Русский" selected={lang === "ru"} onPress={() => setLang("ru")} />
+        </Row>
+      </Card>
 
       <Card>
         <Text style={{ color: c.text, fontSize: 20, fontWeight: "700" }}>{user?.fullName}</Text>
@@ -138,7 +148,7 @@ export default function AccountScreen() {
         <Body>{API_URL}</Body>
       </Card>
 
-      <Button title="Выйти" onPress={onLogout} variant="danger" />
+      <Button title={ut("auth.logout")} onPress={onLogout} variant="danger" />
     </ScrollView>
   );
 }

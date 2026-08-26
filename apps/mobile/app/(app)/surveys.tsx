@@ -6,9 +6,11 @@ import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Body, Card, Chip, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { severityColor, spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 export default function SurveysScreen() {
   const c = useColors();
+  const { ut, lang } = useLang();
   const router = useRouter();
   const { isAdmin } = useAuth();
 
@@ -32,10 +34,10 @@ export default function SurveysScreen() {
       setSurveys(s);
       setBatteries(b.filter((x) => !x.completedAt && x.doneRequired < x.totalRequired));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить методики");
+      setError(e instanceof Error ? e.message : ut("surveys.loadFailed"));
       setSurveys([]);
     }
-  }, []);
+  }, [ut]);
 
   useFocusEffect(
     useCallback(() => {
@@ -71,7 +73,7 @@ export default function SurveysScreen() {
         />
       }
     >
-      <Title>Методики</Title>
+      <Title>{ut("surveys.title")}</Title>
       <ErrorText>{error}</ErrorText>
 
       {batteries.map((b) => (
@@ -83,7 +85,7 @@ export default function SurveysScreen() {
           text={
             isAdmin
               ? "Методик пока нет. Создайте первую во вкладке «Конструктор»."
-              : "Доступных методик пока нет. Загляните позже."
+              : ut("surveys.empty")
           }
         />
       ) : null}
@@ -98,7 +100,7 @@ export default function SurveysScreen() {
                 />
               ) : null}
               <Text style={{ color: c.text, fontSize: 17, fontWeight: "700" }}>
-                {group?.title ?? "Без группы"}
+                {group?.title ?? ut("surveys.noGroup")}
               </Text>
             </Row>
             {group?.description ? <Body muted>{group.description}</Body> : null}
@@ -114,11 +116,11 @@ export default function SurveysScreen() {
                 <Row>
                   <Body>{item.title}</Body>
                   <View style={{ flex: 1 }} />
-                  {item.completedByMe ? <Chip label="Пройдена" /> : null}
+                  {item.completedByMe ? <Chip label={ut("surveys.completed")} /> : null}
                 </Row>
                 {item.description ? <Body muted>{item.description}</Body> : null}
                 <Row gap={spacing.md}>
-                  <Text style={{ color: c.muted, fontSize: 12 }}>{item.questionCount} вопросов</Text>
+                  <Text style={{ color: c.muted, fontSize: 12 }}>{item.questionCount} {ut("surveys.questions")}</Text>
                   {item.timeLimitSec ? (
                     <Text style={{ color: c.muted, fontSize: 12 }}>
                       ~{Math.round(item.timeLimitSec / 60)} мин
@@ -150,6 +152,7 @@ function BatteryCard({
   onOpen: (surveyId: string) => void;
 }) {
   const c = useColors();
+  const { ut, lang } = useLang();
   const overdue = assignment.overdue;
   // в наборе есть часть специалиста: она идёт параллельно и не мешает
   // проходить свои методики, но человек должен знать, что батарея не
@@ -164,21 +167,20 @@ function BatteryCard({
         <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", flex: 1 }}>
           {assignment.batteryTitle}
         </Text>
-        <Chip label={`${assignment.doneRequired} из ${assignment.totalRequired}`} />
+        <Chip label={`${assignment.doneRequired} ${ut("battery.progressOf")} ${assignment.totalRequired}`} />
       </Row>
 
       <Body muted>
         {overdue
-          ? `Срок прошёл ${formatDay(assignment.dueAt)} — пройдите, пожалуйста, в ближайшее время`
+          ? ut("battery.overdue")
           : assignment.dueAt
-            ? `Пройти до ${formatDay(assignment.dueAt)}`
-            : "Без срока"}
+            ? `${ut("battery.dueBy")} ${formatDay(assignment.dueAt, lang)}`
+            : ut("battery.noDue")}
       </Body>
 
       {waiting ? (
         <Body muted>
-          «{waiting.title}» заполняет специалист отдельно — ваши методики доступны, проходите
-          их в своём порядке.
+          «{waiting.title}» {ut("battery.clinicianNote")}
         </Body>
       ) : null}
 
@@ -201,6 +203,7 @@ function StepRow({
   onOpen: (surveyId: string) => void;
 }) {
   const c = useColors();
+  const { ut } = useLang();
   // методику клинициста обследуемый открыть не может ни в каком состоянии
   const byClinician = step.administration === "clinician";
   const openable = !byClinician && (step.state === "current" || step.state === "available");
@@ -238,9 +241,9 @@ function StepRow({
           {step.title}
         </Text>
         <Text style={{ color: c.muted, fontSize: 12 }}>
-          {byClinician && step.state !== "done" ? "заполняет специалист" : STEP_HINT[step.state]}
-          {step.required ? "" : " · можно пропустить"}
-          {step.medianMinutes !== null ? ` · обычно ${step.medianMinutes} мин` : ""}
+          {byClinician && step.state !== "done" ? ut("battery.step.clinician") : ut(STEP_KEY[step.state])}
+          {step.required ? "" : ` · ${ut("battery.step.optional")}`}
+          {step.medianMinutes !== null ? ` · ${ut("battery.step.usually")} ${step.medianMinutes} ${ut("battery.minutes")}` : ""}
         </Text>
       </View>
     </Row>
@@ -258,14 +261,17 @@ function StepRow({
   );
 }
 
-const STEP_HINT: Record<BatteryStep["state"], string> = {
-  done: "пройдена",
-  current: "следующая — нажмите, чтобы начать",
-  available: "доступна",
-  locked: "откроется после предыдущей",
-};
+const STEP_KEY = {
+  done: "battery.step.done",
+  current: "battery.step.current",
+  available: "battery.step.available",
+  locked: "battery.step.locked",
+} as const;
 
-function formatDay(iso: string | null): string {
+function formatDay(iso: string | null, lang: "uk" | "ru"): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return new Date(iso).toLocaleDateString(lang === "uk" ? "uk-UA" : "ru-RU", {
+    day: "numeric",
+    month: "long",
+  });
 }

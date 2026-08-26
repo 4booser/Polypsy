@@ -484,3 +484,12 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 .kiosk-number, .kiosk-text {
   font-size: 20px; padding: 14px; width: 100%;
 }
+
+/* переключатель языка публичных страниц */
+.lang-switch { display: inline-flex; gap: 4px; }
+.lang-switch button {
+  font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: transparent; color: var(--muted);
+}
+.lang-switch button.active { background: var(--accent-soft); color: var(--text); border-color: var(--accent); }
+.kiosk-lang { position: fixed; top: 14px; right: 16px; }
