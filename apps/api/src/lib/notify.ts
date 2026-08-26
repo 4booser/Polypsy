@@ -1,7 +1,8 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import {
   alertNotifications,
   groupAdmins,
@@ -86,6 +87,10 @@ const SEVERITY_LABEL: Record<string, string> = {
  * эскалации по не подтверждённым дольше порога методики.
  */
 export async function runNotifierOnce(now = new Date()): Promise<{ initial: number; escalated: number }> {
+  return systemContext(baseDb, () => runNotifierInner(now));
+}
+
+async function runNotifierInner(now: Date): Promise<{ initial: number; escalated: number }> {
   let initial = 0;
   let escalated = 0;
 

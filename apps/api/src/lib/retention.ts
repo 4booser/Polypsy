@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import { env } from "../env";
 import { auditSystem } from "./audit";
 
@@ -18,6 +19,10 @@ import { auditSystem } from "./audit";
 
 export async function runRetentionOnce(now = new Date()): Promise<number> {
   if (env.answerEventsRetentionDays <= 0) return 0; // ретенция выключена
+  return systemContext(baseDb, () => runRetentionInner(now));
+}
+
+async function runRetentionInner(now: Date): Promise<number> {
 
   const cutoff = new Date(now.getTime() - env.answerEventsRetentionDays * 86_400_000).toISOString();
 
@@ -45,6 +50,7 @@ export async function runRetentionOnce(now = new Date()): Promise<number> {
   }
   return total;
 }
+
 
 /** Суточный тик: ретенция меряется месяцами, чаще нет смысла */
 export function startRetention(intervalMs = 24 * 3_600_000): () => void {

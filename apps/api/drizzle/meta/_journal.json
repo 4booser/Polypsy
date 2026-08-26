@@ -106,6 +106,20 @@
       "when": 1787759773371,
       "tag": "0014_secret_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787760271759,
+      "tag": "0015_immutability_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787767037691,
+      "tag": "0016_rls_policies",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import {
   batteryAssignments,
   batteryItems,
@@ -131,6 +132,11 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
 const SCHEDULER_LOCK_KEY = 7_154_202;
 
 export async function runDueSchedules(now = new Date()): Promise<number> {
+  // фоновый процесс работает в явном системном контексте RLS
+  return systemContext(baseDb, () => runDueSchedulesInner(now));
+}
+
+async function runDueSchedulesInner(now: Date): Promise<number> {
   // Две реплики не должны выдать задания дважды: идемпотентность через
   // schedule_runs — первый пояс, лок на время прохода — второй.
   //

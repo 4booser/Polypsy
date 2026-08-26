@@ -918,3 +918,116 @@ describe("ретенция answer_events", () => {
     expect((fresh[0] as { n: number }).n).toBeGreaterThanOrEqual(0);
   });
 });
+
+/* ── неизменяемость на уровне БД ── */
+
+describe("триггеры неизменяемости", () => {
+  // drizzle+postgres.js отдаёт ленивый thenable, а expect().rejects ждёт Promise
+  const run = (q: PromiseLike<unknown>) => (async () => { await q; })();
+
+  test("журнал не правится и не удаляется даже прямым SQL", async () => {
+    const { sql } = await import("drizzle-orm");
+    await expect(
+      run(db.execute(sql`update audit_log set action = ${"hacked"} where seq = 1`)),
+    ).rejects.toThrow(/неизменяем/);
+    await expect(run(db.execute(sql`delete from audit_log where seq = 1`))).rejects.toThrow(/неизменяем/);
+  });
+
+  test("подписанное заключение не правится прямым SQL, черновик — правится", async () => {
+    const { sql } = await import("drizzle-orm");
+    const { conclusions: conclusionsTable } = await import("../src/db/schema");
+
+    const signed = await db.query.conclusions.findFirst({
+      where: eq(conclusionsTable.status, "signed"),
+    });
+    expect(signed).toBeDefined();
+    await expect(
+      run(db.execute(sql`update conclusions set text = ${"подмена"} where id = ${signed!.id}`)),
+    ).rejects.toThrow(/неизменяемо/);
+    await expect(run(db.execute(sql`delete from conclusions where id = ${signed!.id}`))).rejects.toThrow(
+      /неизменяемо/,
+    );
+  });
+});
+
+/* ── RLS под не-владельцем ── */
+
+describe("RLS-политики (роль без прав владельца)", () => {
+  let rlsSql: ReturnType<(typeof import("postgres"))["default"]>;
+
+  beforeAll(async () => {
+    const postgres = (await import("postgres")).default;
+    // роль создаём владельцем, подключаемся ею: для неё политики активны
+    const admin = postgres(process.env.DATABASE_URL!, { max: 1 });
+    await admin.unsafe(`do $$ begin
+      if not exists (select from pg_roles where rolname = 'quizzy_rls_test') then
+        create role quizzy_rls_test login;
+      end if;
+    end $$`);
+    await admin.unsafe(`grant usage on schema public to quizzy_rls_test`);
+    await admin.unsafe(`grant select, insert, update, delete on all tables in schema public to quizzy_rls_test`);
+    await admin.end();
+
+    const url = new URL(process.env.DATABASE_URL!);
+    url.username = "quizzy_rls_test";
+    url.password = "";
+    rlsSql = postgres(url.toString(), { max: 1 });
+  });
+
+  afterAll(async () => {
+    await rlsSql?.end({ timeout: 3 }).catch(() => {});
+  });
+
+  /** Выполнить запрос в транзакции с заданной RLS-идентичностью */
+  async function as(identity: { userId?: string; role?: string }, query: string): Promise<number> {
+    const rows = await rlsSql.begin(async (tx) => {
+      await tx`select set_config('app.user_id', ${identity.userId ?? ""}, true),
+                      set_config('app.role', ${identity.role ?? ""}, true)`;
+      return tx.unsafe(query);
+    });
+    return Number((rows as unknown as { n: number }[])[0]?.n ?? NaN);
+  }
+
+  const countResponses = `select count(*)::int n from responses`;
+  const countSurveyA = `select count(*)::int n from responses where survey_id = (select id from surveys limit 1)`;
+
+  test("без контекста — ноль строк, а не чужие данные", async () => {
+    expect(await as({}, countResponses)).toBe(0);
+    expect(await as({}, `select count(*)::int n from surveys`)).toBe(0);
+    expect(await as({}, `select count(*)::int n from answers`)).toBe(0);
+    expect(await as({}, `select count(*)::int n from risk_alerts`)).toBe(0);
+  });
+
+  test("system и superadmin видят всё", async () => {
+    const total = await as({ role: "system" }, countResponses);
+    expect(total).toBeGreaterThan(0);
+    expect(await as({ userId: root.id, role: "superadmin" }, countResponses)).toBe(total);
+  });
+
+  test("админ видит только свою группу", async () => {
+    const a = await as({ userId: adminA.id, role: "admin" }, countResponses);
+    const b = await as({ userId: adminB.id, role: "admin" }, countResponses);
+    expect(a).toBeGreaterThan(0); // группа А — все прохождения теста в ней
+    expect(b).toBe(0); // у группы Б прохождений нет — и чужих ей не видно
+  });
+
+  test("пациент видит только свои прохождения и ответы", async () => {
+    const own = await as({ userId: patient.id, role: "user" }, countResponses);
+    const total = await as({ role: "system" }, countResponses);
+    expect(own).toBeGreaterThan(0);
+    expect(own).toBeLessThan(total);
+
+    // и не может читать тревоги (они — для персонала)
+    expect(await as({ userId: patient.id, role: "user" }, `select count(*)::int n from risk_alerts`)).toBe(0);
+  });
+
+  test("пациент не может подсунуть прохождение за другого", async () => {
+    const attempt = rlsSql.begin(async (tx) => {
+      await tx`select set_config('app.user_id', ${patient.id}, true),
+                      set_config('app.role', 'user', true)`;
+      await tx`insert into responses (id, survey_id, user_id, status, started_at, duration_ms)
+               values (${crypto.randomUUID()}, ${surveyInA}, ${adminA.id}, 'completed', now(), 0)`;
+    });
+    await expect((async () => { await attempt; })()).rejects.toThrow(/row-level security|policy/i);
+  });
+});

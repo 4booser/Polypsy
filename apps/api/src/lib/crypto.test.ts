@@ -14,7 +14,9 @@ describe("шифрование полей", () => {
     for (const plain of ["Іваненко Петро Іванович", "многострочный\nтекст ответа", "a"]) {
       const enc = encryptField(plain)!;
       expect(enc.startsWith("enc1:v1:")).toBe(true);
-      expect(enc).not.toContain(plain);
+      // «не содержит исходник» проверяем только для длинных строк: одиночный
+      // символ вроде «a» случайно встречается в base64 — это был флейк
+      if (plain.length > 3) expect(enc).not.toContain(plain);
       expect(decryptField(enc)).toBe(plain);
     }
   });
