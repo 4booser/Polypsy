@@ -121,7 +121,13 @@ GlitchTip/Sentry в `app.onError` + web + mobile; структурные JSON-л
 `pg_advisory_lock` вокруг `runDueSchedules` (идемпотентность через `schedule_runs` уже
 есть — лок второй пояс) + флаг `SCHEDULER_ENABLED`, чтобы тикала одна реплика.
 
-### 0.9 RLS (L) — ⬜ не начат
+### 0.9 RLS (L) — ✅
+Контекст запроса (ALS + set_config в транзакции), системный контекст фоновых
+процессов и публичных конвейеров, политики на surveys/responses/answers/
+response_scores/risk_alerts (default deny без контекста), триггеры
+неизменяемости журнала и подписанных заключений, scripts/create-app-role.sql
+для боевой не-владельческой роли. Принуждение проверено тестами под отдельной
+БД-ролью: чужая группа невидима, подлог прохождения отбит политикой.
 Политики Postgres на `responses`, `answers`, `response_scores`, `risk_alerts`, `surveys`
 по group_id; `SET LOCAL app.user_id/app.role` в обёртке транзакции (`db/index.ts`);
 приложение под non-superuser ролью; планировщику и `auditSystem` — отдельная system-роль.

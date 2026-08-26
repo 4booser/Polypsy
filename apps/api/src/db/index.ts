@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { env } from "../env";
 import * as schema from "./schema";
+import { dbContext } from "./context";
 
 /**
  * Пул соединений к PostgreSQL.
@@ -16,5 +17,21 @@ const client = postgres(env.databaseUrl, {
   transform: undefined,
 });
 
-export const db = drizzle(client, { schema });
-export { client, schema };
+const baseDb = drizzle(client, { schema });
+
+/**
+ * Прокси над drizzle: если вызов идёт внутри контекста (см. ./context) —
+ * уходит в транзакцию контекста, иначе в пул напрямую. Существующий код
+ * продолжает писать db.select()… и не знает о подмене.
+ */
+export const db: typeof baseDb = new Proxy(baseDb, {
+  get(target, prop, receiver) {
+    // ленивый импорт разорвал бы цикл, но контекст не тянет index — можно прямо
+    const store = dbContext.getStore();
+    const source = (store ?? target) as typeof baseDb;
+    const value = Reflect.get(source as object, prop, source as object) as unknown;
+    return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(source) : value;
+  },
+});
+
+export { baseDb, client, schema };

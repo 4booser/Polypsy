@@ -9,7 +9,8 @@ import {
   type KioskSession,
   type KioskState,
 } from "@quizzy/shared";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import {
   batteries,
   batteryAssignments,
@@ -35,6 +36,11 @@ import { isPast } from "../lib/time";
 export const kioskRoutes = new Hono<AppEnv>();
 
 /* ═══════════ Устройство киоска: доступ по токену сеанса ═══════════ */
+
+// у устройства нет пользователя — конвейер работает в системном контексте RLS
+kioskRoutes.use("/state/*", async (_c, next) => {
+  await systemContext(baseDb, () => next());
+});
 
 async function findSession(token: string) {
   const row = await db.query.kioskSessions.findFirst({

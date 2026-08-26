@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { eq } from "drizzle-orm";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { withDbContext } from "../db/context";
 import { users } from "../db/schema";
 import { readToken, toPublicUser } from "../lib/auth";
 import { forbidden, unauthorized } from "../lib/http";
@@ -24,7 +25,13 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   if (!row) unauthorized("Пользователь не найден");
 
   c.set("user", toPublicUser(row));
-  await next();
+
+  /*
+   * Дальше запрос живёт в транзакции с app.user_id/app.role: RLS-политики
+   * видят, кто работает. Ошибка обработчика откатывает транзакцию целиком —
+   * для записи это правильнее прежней семантики, а не опаснее.
+   */
+  await withDbContext(baseDb, { userId: row.id, role: row.role }, () => next());
 });
 
 /** Доступ для персонала: администратор группы или суперадмин */

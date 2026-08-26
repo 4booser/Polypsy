@@ -15,6 +15,11 @@ if (!isEncryptionEnabled()) {
   process.exit(1);
 }
 
+// триггер неизменяемости подписанных заключений пропускает только
+// служебную сессию — включаем режим явно, след остаётся в логах Postgres
+const { sql } = await import("drizzle-orm");
+await db.execute(sql`select set_config('app.maintenance', '1', false)`);
+
 const plain = (v: string | null) => v !== null && v !== "" && !v.startsWith("enc1:");
 
 let usersDone = 0;

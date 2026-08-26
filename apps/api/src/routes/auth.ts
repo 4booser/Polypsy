@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
 import { changePasswordSchema, loginSchema, registerSchema, updateProfileSchema } from "@quizzy/shared";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { hashPassword, issueToken, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
@@ -11,6 +12,7 @@ import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";
 import { consumeInvite, findUsableInvite } from "../lib/invites";
 import { encryptPersonFields } from "../lib/crypto";
 import { env } from "../env";
+import type { Context } from "hono";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
 export const authRoutes = new Hono<AppEnv>();
@@ -26,6 +28,11 @@ export const authRoutes = new Hono<AppEnv>();
  * заводит администратор через POST /api/users.
  */
 authRoutes.post("/register", async (c) => {
+  // регистрация — до аутентификации: пишет назначения и доступы системно
+  return systemContext(baseDb, () => registerHandler(c));
+});
+
+async function registerHandler(c: Context<AppEnv>) {
   const input = await parseBody(c.req.raw, registerSchema);
   const email = input.email.toLowerCase();
 
@@ -121,7 +128,7 @@ authRoutes.post("/register", async (c) => {
 
   const pair = await issuePair(row!);
   return c.json({ ...pair, user: toPublicUser(row!) }, 201);
-});
+}
 
 authRoutes.post("/login", async (c) => {
   const input = await parseBody(c.req.raw, loginSchema);
