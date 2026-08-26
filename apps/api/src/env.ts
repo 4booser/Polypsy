@@ -25,6 +25,11 @@ const schema = z.object({
    * Пусто — поля пишутся открыто (dev); в production это громкое предупреждение.
    */
   ENCRYPTION_KEY: z.string().default(""),
+  /**
+   * Через сколько дней удалять сырой поток answer_events завершённых
+   * прохождений. 0 — хранить вечно. Агрегаты (время, переключения) остаются.
+   */
+  ANSWER_EVENTS_RETENTION_DAYS: z.coerce.number().int().min(0).default(365),
   /** SMTP для уведомлений: smtp://user:pass@host:587; пусто — только журнал */
   SMTP_URL: z.string().default(""),
   MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),
@@ -60,6 +65,7 @@ export const env = {
   jwtSecret: raw.JWT_SECRET,
   schedulerEnabled: raw.SCHEDULER_ENABLED,
   openRegistration: raw.OPEN_REGISTRATION,
+  answerEventsRetentionDays: raw.ANSWER_EVENTS_RETENTION_DAYS,
   encryptionKeys: raw.ENCRYPTION_KEY,
   smtpUrl: raw.SMTP_URL,
   mailFrom: raw.MAIL_FROM,

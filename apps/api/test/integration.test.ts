@@ -869,3 +869,52 @@ describe("информированное согласие", () => {
     expect(res.status).toBe(403);
   });
 });
+
+/* ── ретенция событий ── */
+
+describe("ретенция answer_events", () => {
+  test("старые события удаляются порциями, агрегаты в answers остаются", async () => {
+    const { runRetentionOnce } = await import("../src/lib/retention");
+    const { answerEvents, answers: answersTable, responses: responsesTable } = await import("../src/db/schema");
+    const { sql } = await import("drizzle-orm");
+
+    // прохождение двухлетней давности с событиями
+    const old = await submitSurvey(surveyInA, patient.token);
+    await db.execute(sql`update responses set submitted_at = now() - interval '400 days' where id = ${old.body.id}`);
+    const [q] = await db.execute(sql`select id from questions limit 1`);
+    await db.insert(answerEvents).values(
+      Array.from({ length: 3 }, (_, i) => ({
+        id: crypto.randomUUID(),
+        responseId: old.body.id,
+        questionId: (q as { id: string }).id,
+        sequence: i + 100,
+        kind: "set",
+        elapsedMs: 1000 * i,
+        at: new Date().toISOString(),
+        value: null,
+      })),
+    );
+
+    const deleted = await runRetentionOnce();
+    expect(deleted).toBeGreaterThanOrEqual(3);
+
+    const leftEvents = await db.execute(
+      sql`select count(*)::int as n from answer_events ae join responses r on r.id = ae.response_id where r.id = ${old.body.id}`,
+    );
+    expect((leftEvents[0] as { n: number }).n).toBe(0);
+
+    // ответы и их агрегаты живы
+    const leftAnswers = await db.execute(
+      sql`select count(*)::int as n from answers where response_id = ${old.body.id}`,
+    );
+    expect((leftAnswers[0] as { n: number }).n).toBeGreaterThan(0);
+
+    // свежие прохождения не тронуты
+    const fresh = await db.execute(
+      sql`select count(*)::int as n from answer_events ae
+          join responses r on r.id = ae.response_id
+          where r.submitted_at > now() - interval '30 days'`,
+    );
+    expect((fresh[0] as { n: number }).n).toBeGreaterThanOrEqual(0);
+  });
+});

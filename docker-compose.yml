@@ -30,6 +30,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (32+ символов)}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      ANSWER_EVENTS_RETENTION_DAYS: ${ANSWER_EVENTS_RETENTION_DAYS:-365}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Quizzy <noreply@localhost>}
       CONSOLE_URL: ${CONSOLE_URL:-}
