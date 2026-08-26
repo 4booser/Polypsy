@@ -274,6 +274,11 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  consentText: () =>
+    request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),
+  saveConsentText: (body: Record<string, string>) =>
+    request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
+
   schedules: () => request<Schedule[]>("/api/schedules"),
   scheduleUnits: () => request<string[]>("/api/schedules/units"),
   createSchedule: (input: ScheduleInput) =>

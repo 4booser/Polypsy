@@ -56,6 +56,7 @@ function RootStack() {
       <Stack.Screen name="index" />
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
+      <Stack.Screen name="consent" />
       <Stack.Screen name="(app)" />
       <Stack.Screen name="survey/[id]" options={{ headerShown: true, title: "Методика" }} />
       <Stack.Screen name="analytics" />

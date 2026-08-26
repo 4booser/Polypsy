@@ -206,6 +206,11 @@ export const api = {
       (error) => offlineFallback(error, cache.batteries()),
     ),
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
+  consentStatus: () =>
+    request<{ required: boolean; accepted: boolean; version: number | null; text: string | null }>(
+      "/api/consents/me",
+    ),
+  acceptConsent: () => request<{ ok: true }>("/api/consents/me/accept", { method: "POST" }),
 
   listSurveys: (groupId?: string) =>
     request<SurveyListItem[]>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`).then(

@@ -18,6 +18,7 @@ import {
   batteries,
   batteryAssignments,
   batteryItems,
+  consentTexts,
   groupAdmins,
   responseScores,
   responses,
@@ -1025,6 +1026,23 @@ async function seedSchedule() {
 }
 
 await seedSchedule();
+
+/** Стартовый текст информированного согласия */
+async function seedConsent() {
+  const existing = await db.select().from(consentTexts).limit(1);
+  if (existing.length) return;
+  await db.insert(consentTexts).values({
+    id: crypto.randomUUID(),
+    version: 1,
+    body: {
+      uk: "Я погоджуюся на проходження психодіагностичного обстеження. Мої відповіді, час відповідей і результати зберігаються в захищеній системі та доступні лише персоналу, який відповідає за моє обстеження. Результати скринінгу не є діагнозом; інтерпретацію виконує фахівець. Я можу звернутися до свого психолога з питаннями щодо своїх даних.",
+      ru: "Я соглашаюсь на прохождение психодиагностического обследования. Мои ответы, время ответов и результаты хранятся в защищённой системе и доступны только персоналу, отвечающему за моё обследование. Результаты скрининга не являются диагнозом; интерпретацию выполняет специалист. Я могу обратиться к своему психологу с вопросами о своих данных.",
+    },
+    createdBy: root!.id,
+  });
+  console.log("  текст согласия: версия 1");
+}
+await seedConsent();
 
 console.log("\nГотово. Учётные записи:");
 for (const a of ACCOUNTS) console.log(`  ${a.role.padEnd(5)} ${a.email} / ${a.password}`);

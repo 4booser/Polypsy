@@ -43,7 +43,8 @@ export default function RegisterScreen() {
         password,
         inviteCode: inviteCode.trim() || null,
       });
-      router.replace("/(app)/surveys");
+      // пациент проходит через экран согласия; тот сам пропустит, если принято
+      router.replace("/consent");
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("join.registerFailed"));
     } finally {

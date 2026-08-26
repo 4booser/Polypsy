@@ -14,7 +14,7 @@ import Schedules from "./pages/Schedules";
 import Constructor from "./pages/constructor";
 import { SurveyList } from "./pages/constructor/SurveyList";
 import Administer from "./pages/Administer";
-import { Groups, Users } from "./pages/Admin";
+import { ConsentText, Groups, Users } from "./pages/Admin";
 import Batteries from "./pages/Batteries";
 import BlankForm from "./pages/BlankForm";
 import Invites from "./pages/Invites";
@@ -164,7 +164,7 @@ export default function App() {
           <Route path="/compare" element={<Compare />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/groups" element={<Groups />} />
-          {isSuper ? <Route path="/users" element={<Users />} /> : null}
+          {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

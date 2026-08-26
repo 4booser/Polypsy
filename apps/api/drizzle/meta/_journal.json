@@ -99,6 +99,13 @@
       "when": 1787758920666,
       "tag": "0013_right_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787759773371,
+      "tag": "0014_secret_smasher",
+      "breakpoints": true
     }
   ]
 }

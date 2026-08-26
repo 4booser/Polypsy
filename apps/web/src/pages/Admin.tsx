@@ -3,6 +3,7 @@ import type { GroupAdmin, SurveyGroupWithCounts, User } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime } from "../format";
+import { useAction } from "../ui";
 
 const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
 
@@ -305,5 +306,66 @@ export function Users() {
         </table>
       </div>
     </>
+  );
+}
+
+/**
+ * Текст информированного согласия. Правка создаёт новую версию, и все
+ * пациенты увидят экран согласия заново — у каждого принятия зафиксировано,
+ * какую редакцию человек читал.
+ */
+export function ConsentText() {
+  const [uk, setUk] = useState("");
+  const [ru, setRu] = useState("");
+  const [version, setVersion] = useState<number | null>(null);
+  const run = useAction();
+
+  useEffect(() => {
+    api
+      .consentText()
+      .then((t) => {
+        if (!t) return;
+        setVersion(t.version);
+        setUk(t.body.uk ?? "");
+        setRu(t.body.ru ?? "");
+      })
+      .catch(() => {});
+  }, []);
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <h2>Информированное согласие</h2>
+        {version ? <span className="hint">версия {version}</span> : <span className="hint">не настроено</span>}
+      </div>
+      <p className="hint">
+        Показывается пациенту после входа. Сохранение создаёт новую версию — все пациенты
+        подтвердят согласие заново, и в журнале останется, какую редакцию читал каждый.
+      </p>
+      <div className="form-grid">
+        <label className="field grow">
+          <span>Українською</span>
+          <textarea rows={5} value={uk} onChange={(e) => setUk(e.target.value)} />
+        </label>
+        <label className="field grow">
+          <span>По-русски</span>
+          <textarea rows={5} value={ru} onChange={(e) => setRu(e.target.value)} />
+        </label>
+      </div>
+      <div className="row" style={{ marginTop: 10 }}>
+        <button
+          className="primary"
+          disabled={uk.trim().length < 10 || ru.trim().length < 10}
+          onClick={() =>
+            run(async () => {
+              const res = await api.saveConsentText({ uk: uk.trim(), ru: ru.trim() });
+              setVersion(res.version);
+            }, "Новая версия согласия сохранена — пациенты подтвердят её при следующем входе")
+          }
+        >
+          Сохранить новой версией
+        </button>
+      </div>
+    </div>
   );
 }
