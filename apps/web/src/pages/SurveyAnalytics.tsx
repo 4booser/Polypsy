@@ -189,6 +189,7 @@ export default function SurveyAnalyticsPage() {
           </div>
 
           <div className="row">
+            <Link className="btn" to={`/surveys/${data.surveyId}/norms`}>Локальные нормы</Link>
             <Link className="btn" to={`/surveys/${data.surveyId}/access`}>Назначения пациентам</Link>
             <Link className="btn" to={`/constructor/${data.surveyId}`}>Править методику</Link>
             <Link className="btn" to={`/surveys/${data.surveyId}/administer`}>Заполнить за пациента</Link>

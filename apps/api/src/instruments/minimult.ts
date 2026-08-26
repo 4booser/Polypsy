@@ -113,9 +113,10 @@ function keyOf(code: string) {
 function normsOf(code: string) {
   const n = NORMS[code];
   if (!n) return [];
+  const source = "Пособие НДЦ ГП ЗСУ, 2016";
   return [
-    { sex: "male" as const, mean: n.male[0], sd: n.male[1] },
-    { sex: "female" as const, mean: n.female[0], sd: n.female[1] },
+    { sex: "male" as const, mean: n.male[0], sd: n.male[1], source },
+    { sex: "female" as const, mean: n.female[0], sd: n.female[1], source },
   ];
 }
 

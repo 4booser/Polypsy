@@ -104,6 +104,8 @@ export interface ScaleNorm {
   ageMax: number | null;
   mean: number;
   sd: number;
+  /** Происхождение: «пособие НПС, 2016» или «локальная выборка, N=213» */
+  source: string | null;
 }
 
 /** Строка таблицы перевода сырых баллов в стены */

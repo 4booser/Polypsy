@@ -278,6 +278,22 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  normCandidates: (surveyId: string) =>
+    request<{
+      minGroup: number;
+      scales: {
+        code: string;
+        title: string;
+        current: { sex: string | null; mean: number; sd: number; source: string | null }[];
+        candidate: { sex: string | null; n: number; mean: number; sd: number; publishable: boolean }[];
+      }[];
+    }>(`/api/norms/surveys/${surveyId}/candidates`),
+  applyNorms: (surveyId: string, scaleCodes: string[]) =>
+    request<{ versionId: string }>(`/api/norms/surveys/${surveyId}/apply`, {
+      method: "POST",
+      body: JSON.stringify({ scaleCodes }),
+    }),
+
   storageStats: () =>
     request<{ database: string; tables: { table: string; bytes: number; pretty: string; rows: number }[] }>(
       "/api/audit/storage",
