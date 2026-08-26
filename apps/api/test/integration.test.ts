@@ -1190,3 +1190,69 @@ describe("профили деидентификации", () => {
     expect((withHash!.details as { datasetSha256: string }).datasetSha256).toMatch(/^[0-9a-f]{64}$/);
   });
 });
+
+/* ── волна 1 расширения: снэпшоты, язык, исход тревоги ── */
+
+describe("снэпшоты стратификации и язык предъявления", () => {
+  test("сдача пишет пол, возрастную полосу на момент сдачи и язык", async () => {
+    const res = await api(`/api/surveys/${surveyInA}/responses`, patient.token, {
+      method: "POST",
+      headers: { "Accept-Language": "ru" },
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        events: [],
+        answers: (await api(`/api/surveys/${surveyInA}`, patient.token)).body.questions
+          .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length)
+          .map((q: { id: string; options: { id: string }[] }) => ({
+            questionId: q.id,
+            optionIds: [q.options[1]?.id ?? q.options[0]!.id],
+            durationMs: 2000,
+            changeCount: 0,
+            visitCount: 1,
+          })),
+      }),
+    });
+    expect(res.status).toBe(201);
+
+    const { responses: responsesTable } = await import("../src/db/schema");
+    const row = await db.query.responses.findFirst({ where: eq(responsesTable.id, res.body.id) });
+    // пациент из фикстур: муж, 1990 г.р. → полоса 35-44 на 2026 год
+    expect(row!.respondentSex).toBe("male");
+    expect(row!.respondentAgeBand).toBe("35-44");
+    expect(row!.lang).toBe("ru");
+  });
+});
+
+describe("исход тревоги", () => {
+  test("исход сохраняется при разборе и виден в списке", async () => {
+    const { riskAlerts: alertsTable } = await import("../src/db/schema");
+    const open = await db.query.riskAlerts.findFirst({
+      where: (t, { isNull: isNullOp }) => isNullOp(t.acknowledgedAt),
+    });
+    expect(open).toBeDefined();
+
+    const ack = await api(`/api/alerts/${open!.id}/acknowledge`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ note: "Беседа проведена", outcome: "confirmed" }),
+    });
+    expect(ack.status).toBe(200);
+
+    const list = await api("/api/alerts?all=1", adminA.token);
+    const found = list.body.find((a: { id: string }) => a.id === open!.id);
+    expect(found.outcome).toBe("confirmed");
+
+    // мусорный исход не проходит — пишется null, а не что попало
+    const open2 = await db.query.riskAlerts.findFirst({
+      where: (t, { isNull: isNullOp }) => isNullOp(t.acknowledgedAt),
+    });
+    if (open2) {
+      await api(`/api/alerts/${open2.id}/acknowledge`, adminA.token, {
+        method: "PATCH",
+        body: JSON.stringify({ outcome: "чепуха" }),
+      });
+      const row = await db.query.riskAlerts.findFirst({ where: eq(alertsTable.id, open2.id) });
+      expect(row!.outcome).toBeNull();
+    }
+  });
+});

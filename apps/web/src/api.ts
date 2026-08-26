@@ -339,10 +339,10 @@ export const api = {
   dynamics: (userId: string) => request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
 
   alerts: (all = false) => request<RiskAlert[]>(`/api/alerts${all ? "?all=1" : ""}`),
-  acknowledgeAlert: (id: string, note?: string) =>
+  acknowledgeAlert: (id: string, note?: string, outcome?: "confirmed" | "not_confirmed" | "needs_followup") =>
     request<unknown>(`/api/alerts/${id}/acknowledge`, {
       method: "PATCH",
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, outcome }),
     }),
 
   grants: (surveyId: string) => request<SurveyGrant[]>(`/api/access/surveys/${surveyId}/grants`),

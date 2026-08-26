@@ -14,7 +14,8 @@
     "test": "bun test",
     "audit:verify": "bun src/auditVerifyCli.ts",
     "db:reset": "bun src/dbReset.ts",
-    "db:encrypt": "bun src/encryptBackfill.ts"
+    "db:encrypt": "bun src/encryptBackfill.ts",
+    "db:backfill-strata": "bun src/backfillStrata.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",

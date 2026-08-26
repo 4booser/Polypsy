@@ -169,6 +169,15 @@ export interface User {
 export type Sex = "male" | "female";
 
 /** Возраст на конкретную дату — считается на момент обследования */
+/** Возрастная полоса для стратификации: "<25" | "25-34" | "35-44" | "45+" */
+export function ageBandOf(age: number | null): string | null {
+  if (age === null) return null;
+  if (age < 25) return "<25";
+  if (age < 35) return "25-34";
+  if (age < 45) return "35-44";
+  return "45+";
+}
+
 export function ageAt(birthDate: string | null, at: string | null): number | null {
   if (!birthDate || !at) return null;
   const born = new Date(birthDate);
@@ -261,6 +270,8 @@ export interface RiskAlert {
   severity: RiskSeverity;
   at: string;
   acknowledgedBy: string | null;
+  /** Клинический исход разбора; null — разобрана до внедрения исходов */
+  outcome: "confirmed" | "not_confirmed" | "needs_followup" | null;
   acknowledgedByName: string | null;
   acknowledgedAt: string | null;
   note: string | null;

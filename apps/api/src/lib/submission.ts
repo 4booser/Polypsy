@@ -1,5 +1,6 @@
 import {
   ageAt,
+  ageBandOf,
   answerScore,
   computeProfile,
   isAnswered,
@@ -58,7 +59,7 @@ export async function persistSubmission(
   survey: SurveyFull,
   subject: Pick<UserRow, "id" | "sex" | "birthDate">,
   input: SubmitResponseInput,
-  options: { filledBySelf: boolean },
+  options: { filledBySelf: boolean; lang?: "uk" | "ru" },
 ): Promise<PersistResult> {
   validateAnswers(survey, input);
 
@@ -70,6 +71,9 @@ export async function persistSubmission(
     sex: subject.sex,
     age: ageAt(decryptField(subject.birthDate), new Date().toISOString()),
   };
+  // снэпшоты стратификации на момент сдачи: профиль меняется, история — нет;
+  // и это единственный путь SQL-группировки при шифрованной дате рождения
+  const ageBand = ageBandOf(respondent.age);
   const profile: ProfileResult = survey.scoringEnabled
     ? computeProfile(survey, input.answers as Answer[], respondent)
     : { scores: [], reliable: true, warnings: [] };
@@ -92,6 +96,9 @@ export async function persistSubmission(
       submittedAt,
       durationMs: input.durationMs,
       clientRequestId: input.clientRequestId ?? null,
+      respondentSex: survey.anonymous ? null : subject.sex,
+      respondentAgeBand: survey.anonymous ? null : ageBand,
+      lang: options.lang ?? null,
     });
 
     // тревоги — до подсчёта: они не зависят от шкал и должны сработать даже
