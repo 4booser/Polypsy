@@ -681,6 +681,8 @@ export interface SurveyAnalytics {
   versionNumber: number;
   /** Все версии с числом прохождений — для переключателя */
   versions: { id: string; version: number; responseCount: number; note: string | null }[];
+  /** Кто прямо сейчас в процессе: черновики со свежим автосохранением */
+  inProgressNow: { userName: string | null; startedAt: string; lastSavedAt: string; answered: number }[];
 
   started: number;
   completed: number;

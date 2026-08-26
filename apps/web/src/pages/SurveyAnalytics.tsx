@@ -82,6 +82,25 @@ export default function SurveyAnalyticsPage() {
         ) : null}
       </div>
 
+      {data.inProgressNow.length ? (
+        <div className="card" style={{ borderColor: "var(--accent)" }}>
+          <div className="card-head">
+            <h2>
+              <i className="dot live" style={{ marginRight: 8 }} />
+              Сейчас проходят: {data.inProgressNow.length}
+            </h2>
+            <span className="hint">черновики с автосохранением за последние 30 минут</span>
+          </div>
+          <div className="row tight">
+            {data.inProgressNow.map((p, i) => (
+              <span key={i} className="chip static">
+                {p.userName ?? "аноним"} · {p.answered} отв.
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {data.versions.length > 1 ? (
         <div className="card">
           <h2>Версия методики</h2>

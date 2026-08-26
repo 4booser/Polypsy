@@ -14,6 +14,7 @@ import { notFound } from "../lib/http";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
+import { decryptField } from "../lib/crypto";
 import { average, distribution, median, percent, round, timelineByDay } from "../lib/stats";
 import { TOO_FAST_MS, qualityOf, reliabilityOf } from "../lib/psychometrics";
 import { getSurvey } from "../lib/surveys";
@@ -112,6 +113,38 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     null;
   const survey = await getSurvey(surveyId, chosen?.id ?? null);
   if (!survey) notFound("Методика не найдена");
+
+  /*
+   * «Сейчас проходят»: незавершённые прохождения с автосохранением моложе
+   * получаса. Оператор группового обследования видит, кого ещё ждать.
+   */
+  const inProgressRows = await db
+    .select({ response: responses, lastName: users.lastName })
+    .from(responses)
+    .leftJoin(users, eq(users.id, responses.userId))
+    .where(
+      and(
+        eq(responses.surveyId, surveyId),
+        eq(responses.status, "in_progress"),
+        sql`${responses.lastSavedAt} > now() - interval '30 minutes'`,
+      ),
+    )
+    .limit(20);
+  const inProgressIds = inProgressRows.map((r) => r.response.id);
+  const answeredCounts = inProgressIds.length
+    ? await db
+        .select({ responseId: answers.responseId, n: sql<number>`count(*)` })
+        .from(answers)
+        .where(inArray(answers.responseId, inProgressIds))
+        .groupBy(answers.responseId)
+    : [];
+  const answeredOf = new Map(answeredCounts.map((r) => [r.responseId, Number(r.n)]));
+  const inProgressNow = inProgressRows.map((r) => ({
+    userName: decryptField(r.lastName),
+    startedAt: r.response.startedAt,
+    lastSavedAt: r.response.lastSavedAt ?? r.response.startedAt,
+    answered: answeredOf.get(r.response.id) ?? 0,
+  }));
 
   // диапазон дат: аналитика «за квартал» и «до/после ротации» — разные вопросы
   const from = c.req.query("from");
@@ -398,6 +431,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     versionId: chosen?.id ?? null,
     versionNumber: chosen?.version ?? survey.versionNumber,
     versions,
+    inProgressNow,
     started: responseRows.length,
     completed: completed.length,
     abandoned: abandoned.length,
