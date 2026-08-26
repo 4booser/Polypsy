@@ -90,6 +90,7 @@ export async function persistSubmission(
       startedAt: input.startedAt,
       submittedAt,
       durationMs: input.durationMs,
+      clientRequestId: input.clientRequestId ?? null,
     });
 
     // тревоги — до подсчёта: они не зависят от шкал и должны сработать даже

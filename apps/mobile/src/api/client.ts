@@ -27,6 +27,9 @@ import type {
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
 import { currentLang } from "../lang";
+import { cache } from "../offline/cache";
+import { enqueue, flush, pendingCount, type QueuedSubmission } from "../offline/queue";
+import { ageAt, computeProfile } from "@quizzy/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -122,6 +125,32 @@ export interface ResponseDetail {
   }[];
 }
 
+interface SubmitResult {
+  id: string;
+  scores: ScoreResult[];
+  safetyPlan?: string | null;
+  /** Ответы легли в офлайн-очередь, а не на сервер */
+  queued?: boolean;
+}
+
+/** Сетевая ошибка → кэш; кэша нет — исходная ошибка честно всплывает */
+function offlineFallback<T>(error: unknown, cached: T | null): T {
+  if ((error as ApiError).status === 0 && cached !== null) return cached;
+  throw error;
+}
+
+/** Фоновая догрузка контента методик в кэш; ошибки не мешают основному пути */
+async function prefetchSurveys(ids: string[]): Promise<void> {
+  for (const id of ids) {
+    if (cache.survey(id)) continue;
+    try {
+      cache.saveSurvey(await request<SurveyFull>(`/api/surveys/${id}`));
+    } catch {
+      return; // сеть пропала — дозакачаем в следующий раз
+    }
+  }
+}
+
 export const api = {
   // роль в регистрации не передаётся: её назначает только администратор
   register: (input: {
@@ -138,11 +167,22 @@ export const api = {
     request<AuthPayload>("/api/auth/register", { method: "POST", body: JSON.stringify(input) }),
   login: (input: { email: string; password: string }) =>
     request<AuthPayload>("/api/auth/login", { method: "POST", body: JSON.stringify(input) }),
-  me: () => request<User>("/api/auth/me"),
+  me: () =>
+    request<User>("/api/auth/me").then((u) => {
+      cache.saveMe(u);
+      return u;
+    }),
   updateProfile: (input: UpdateProfileInput) =>
     request<User>("/api/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
 
-  listGroups: () => request<SurveyGroupWithCounts[]>("/api/groups"),
+  listGroups: () =>
+    request<SurveyGroupWithCounts[]>("/api/groups").then(
+      (rows) => {
+        cache.saveGroups(rows);
+        return rows;
+      },
+      (error) => offlineFallback(error, cache.groups()),
+    ),
   groupAdmins: (groupId: string) => request<GroupAdmin[]>(`/api/groups/${groupId}/admins`),
   assignGroupAdmin: (groupId: string, userId: string) =>
     request<{ groupId: string; userId: string }>(`/api/groups/${groupId}/admins`, {
@@ -157,12 +197,38 @@ export const api = {
     request<SurveyGroup>(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   deleteGroup: (id: string) => request<void>(`/api/groups/${id}`, { method: "DELETE" }),
 
-  myBatteries: () => request<BatteryAssignment[]>("/api/batteries/mine"),
+  myBatteries: () =>
+    request<BatteryAssignment[]>("/api/batteries/mine").then(
+      (rows) => {
+        cache.saveBatteries(rows);
+        return rows;
+      },
+      (error) => offlineFallback(error, cache.batteries()),
+    ),
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
 
   listSurveys: (groupId?: string) =>
-    request<SurveyListItem[]>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`),
-  getSurvey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
+    request<SurveyListItem[]>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`).then(
+      (rows) => {
+        // кэшируем только полный список: срез по группе не должен затирать общий
+        if (!groupId) {
+          cache.saveSurveyList(rows);
+          // контент методик подтягиваем в кэш заранее — офлайн начнётся не
+          // с открытия методики, а раньше, и к этому моменту она уже на диске
+          void prefetchSurveys(rows.map((r) => r.id));
+        }
+        return rows;
+      },
+      (error) => offlineFallback(error, groupId ? null : cache.surveyList()),
+    ),
+  getSurvey: (id: string) =>
+    request<SurveyFull>(`/api/surveys/${id}`).then(
+      (survey) => {
+        cache.saveSurvey(survey);
+        return survey;
+      },
+      (error) => offlineFallback(error, cache.survey(id)),
+    ),
   createSurvey: (input: CreateSurveyInput) =>
     request<SurveyFull>("/api/surveys", { method: "POST", body: JSON.stringify(input) }),
   updateSurvey: (id: string, input: UpdateSurveyInput) =>
@@ -181,10 +247,52 @@ export const api = {
       events: AnswerEvent[];
     },
   ) =>
-    request<{ id: string; scores: ScoreResult[]; safetyPlan?: string | null }>(`/api/surveys/${surveyId}/responses`, {
+    request<SubmitResult>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }).catch((error) => {
+      if ((error as ApiError).status !== 0) throw error;
+      /*
+       * Сети нет. Ответы — клинические данные, терять их нельзя: кладём в
+       * очередь (уйдёт при первой возможности, с идемпотентным id) и считаем
+       * баллы локально тем же движком, что на сервере, — computeProfile общий,
+       * расхождений быть не может по построению.
+       */
+      const item = enqueue(surveyId, { ...payload });
+      const survey = cache.survey(surveyId);
+      const meCached = cache.me();
+      const profile =
+        survey && survey.scoringEnabled
+          ? computeProfile(survey, payload.answers, {
+              sex: meCached?.sex ?? null,
+              age: ageAt(meCached?.birthDate ?? null, new Date().toISOString()),
+            })
+          : null;
+      const risky = profile
+        ? payload.answers.some((a) =>
+            survey!.questions.some((q) =>
+              q.options.some((o) => o.riskFlag && (a.optionIds ?? []).includes(o.id)),
+            ),
+          )
+        : false;
+      return {
+        id: item.id,
+        scores: profile?.scores ?? [],
+        safetyPlan: risky ? (survey?.safetyPlan ?? null) : null,
+        queued: true,
+      };
     }),
+
+  /** Прогон офлайн-очереди; вызывается при старте, из тика и по возвращению сети */
+  flushQueue: () =>
+    flush((item: QueuedSubmission) =>
+      request<SubmitResult>(`/api/surveys/${item.surveyId}/responses`, {
+        method: "POST",
+        body: JSON.stringify(item.payload),
+      }).then(() => undefined),
+    ),
+
+  pendingCount,
 
   surveyVersions: (surveyId: string) => request<SurveyVersion[]>(`/api/surveys/${surveyId}/versions`),
 

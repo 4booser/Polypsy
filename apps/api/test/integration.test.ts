@@ -744,3 +744,50 @@ describe("safety-план", () => {
     expect(staff.body.safetyPlan).toBeNull();
   });
 });
+
+/* ── идемпотентность офлайн-повтора ── */
+
+describe("clientRequestId", () => {
+  test("повтор той же попытки не создаёт второе прохождение", async () => {
+    const requestId = crypto.randomUUID();
+    const surveyRes = await api(`/api/surveys/${surveyInA}`, patient.token);
+    const answers = surveyRes.body.questions
+      .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length)
+      .map((q: { id: string; options: { id: string }[] }) => ({
+        questionId: q.id,
+        optionIds: [q.options[1]?.id ?? q.options[0]!.id],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      }));
+    const payload = {
+      clientRequestId: requestId,
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      durationMs: 60_000,
+      events: [],
+      answers,
+    };
+
+    const first = await api(`/api/surveys/${surveyInA}/responses`, patient.token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    expect(first.status).toBe(201);
+
+    // «сеть оборвалась после коммита, клиент ретраит»
+    const second = await api(`/api/surveys/${surveyInA}/responses`, patient.token, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    expect(second.status).toBe(200);
+    expect(second.body.duplicate).toBe(true);
+    expect(second.body.id).toBe(first.body.id);
+
+    const { responses: responsesTable } = await import("../src/db/schema");
+    const rows = await db
+      .select()
+      .from(responsesTable)
+      .where(eq(responsesTable.clientRequestId, requestId));
+    expect(rows.length).toBe(1);
+  });
+});

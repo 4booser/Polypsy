@@ -7,7 +7,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { API_URL } from "@/config";
 import { Body, Button, Card, Chip, Divider, ErrorText, Field, Row, Title } from "@/components/ui";
 import { LineChart } from "@/components/viz/LineChart";
-import { spacing, useColors } from "@/theme";
+import { severityColor, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -67,7 +67,24 @@ export default function AccountScreen() {
     }
   }
 
+  const [queueLeft, setQueueLeft] = useState(0);
+  useEffect(() => {
+    const update = () => setQueueLeft(api.pendingCount());
+    update();
+    const timer = setInterval(update, 5_000);
+    return () => clearInterval(timer);
+  }, []);
+
   async function onLogout() {
+    // непустая очередь = несданные ответы; выход стёр бы контекст их отправки
+    if (api.pendingCount() > 0) {
+      setError(
+        lang === "uk"
+          ? "Є невідправлені відповіді — зачекайте на мережу, вони підуть самі."
+          : "Есть неотправленные ответы — дождитесь сети, они уйдут сами.",
+      );
+      return;
+    }
     await logout();
     router.replace("/login");
   }
@@ -86,6 +103,24 @@ export default function AccountScreen() {
           <Chip label="Русский" selected={lang === "ru"} onPress={() => setLang("ru")} />
         </Row>
       </Card>
+
+      {queueLeft > 0 ? (
+        <Card style={{ borderColor: severityColor.mild, borderWidth: 1 }}>
+          <Body>
+            {lang === "uk"
+              ? `Не відправлено відповідей: ${queueLeft}. Підуть самі, щойно з’явиться мережа.`
+              : `Не отправлено ответов: ${queueLeft}. Уйдут сами, как только появится сеть.`}
+          </Body>
+          <Button
+            title={lang === "uk" ? "Спробувати зараз" : "Попробовать сейчас"}
+            variant="secondary"
+            onPress={async () => {
+              await api.flushQueue().catch(() => {});
+              setQueueLeft(api.pendingCount());
+            }}
+          />
+        </Card>
+      ) : null}
 
       {myDynamics?.surveys.length ? (
         <Card>
