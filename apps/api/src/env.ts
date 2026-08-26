@@ -20,6 +20,11 @@ const schema = z.object({
     : z.string().default("dev-secret-change-me"),
   /** Разрешённые origin консоли через запятую; пусто в dev = localhost */
   CORS_ORIGINS: z.string().default(""),
+  /** Открытая регистрация пациентов без приглашения (в бою выключать) */
+  OPEN_REGISTRATION: z
+    .string()
+    .default("1")
+    .transform((v) => v !== "0" && v.toLowerCase() !== "false"),
   /** Планировщик тикает только там, где флаг включён (одна реплика) */
   SCHEDULER_ENABLED: z
     .string()
@@ -44,6 +49,7 @@ export const env = {
   databaseUrl: raw.DATABASE_URL,
   jwtSecret: raw.JWT_SECRET,
   schedulerEnabled: raw.SCHEDULER_ENABLED,
+  openRegistration: raw.OPEN_REGISTRATION,
   corsOrigins: raw.CORS_ORIGINS
     ? raw.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
     : isProduction

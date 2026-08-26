@@ -745,6 +745,33 @@ export interface BatteryAssignment {
   steps: BatteryStep[];
 }
 
+/** Приглашение: вход пациента по ссылке или короткому коду */
+export interface Invite {
+  id: string;
+  /** Короткий код для ручного ввода (показывается только при создании и в списке staff) */
+  code: string;
+  batteryId: string | null;
+  batteryTitle: string | null;
+  unit: string | null;
+  note: string | null;
+  maxUses: number;
+  usedCount: number;
+  expiresAt: string;
+  revokedAt: string | null;
+  createdAt: string;
+  createdByName: string;
+  /** Кто вошёл по приглашению */
+  uses: { userId: string; fullName: string; usedAt: string }[];
+}
+
+/** Что видит человек, открывший ссылку, до регистрации */
+export interface InvitePreview {
+  valid: boolean;
+  reason?: "expired" | "revoked" | "exhausted" | "unknown";
+  batteryTitle?: string | null;
+  unit?: string | null;
+}
+
 /** Расписание повторных обследований */
 export type ScheduleScope = "unit" | "users";
 

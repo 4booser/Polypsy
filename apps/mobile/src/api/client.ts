@@ -129,6 +129,7 @@ export const api = {
     anonymous?: boolean;
     sex?: "male" | "female" | null;
     birthDate?: string | null;
+    inviteCode?: string | null;
   }) =>
     request<AuthPayload>("/api/auth/register", { method: "POST", body: JSON.stringify(input) }),
   login: (input: { email: string; password: string }) =>

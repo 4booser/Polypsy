@@ -18,6 +18,7 @@ interface AuthState {
     anonymous?: boolean;
     sex?: "male" | "female" | null;
     birthDate?: string | null;
+    inviteCode?: string | null;
   }) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;

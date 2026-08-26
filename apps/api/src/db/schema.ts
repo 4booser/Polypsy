@@ -917,6 +917,60 @@ export const loginAttempts = pgTable(
   }),
 );
 
+/**
+ * Ссылки-приглашения.
+ *
+ * Пациент попадает в систему по ссылке/QR от своего психолога, а не через
+ * открытую регистрацию: регистрация «с улицы» в клинической системе означала
+ * бы неизвестных людей в списках. Токен хранится хешем: таблица не должна
+ * раздавать входы тому, кто до неё дотянулся.
+ */
+export const invites = pgTable(
+  "invites",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull(),
+    /** Короткий код для ручного ввода на планшете (без ссылки) */
+    code: text("code").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Батарея, которая назначится при регистрации */
+    batteryId: text("battery_id").references(() => batteries.id, { onDelete: "set null" }),
+    /** Подразделение, проставляемое новому аккаунту */
+    unit: text("unit"),
+    note: text("note"),
+    maxUses: integer("max_uses").notNull().default(1),
+    usedCount: integer("used_count").notNull().default(0),
+    expiresAt: timestampCol("expires_at").notNull(),
+    revokedAt: timestampCol("revoked_at"),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    hashIdx: uniqueIndex("invites_hash_idx").on(t.tokenHash),
+    codeIdx: uniqueIndex("invites_code_idx").on(t.code),
+  }),
+);
+
+/** Кто вошёл по какому приглашению — след для журнала и списков */
+export const inviteUses = pgTable(
+  "invite_uses",
+  {
+    inviteId: text("invite_id")
+      .notNull()
+      .references(() => invites.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    usedAt: timestampCol("used_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.inviteId, t.userId] }),
+  }),
+);
+
+export type InviteRow = typeof invites.$inferSelect;
+
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 
 export type ScheduleRow = typeof schedules.$inferSelect;

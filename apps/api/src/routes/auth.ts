@@ -8,6 +8,8 @@ import { hashPassword, issueToken, makePseudonym, toPublicUser, verifyPassword }
 import { issuePair, revokeAllFor, revokeByToken, rotateRefresh } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";
+import { consumeInvite, findUsableInvite } from "../lib/invites";
+import { env } from "../env";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
 export const authRoutes = new Hono<AppEnv>();
@@ -34,6 +36,30 @@ authRoutes.post("/register", async (c) => {
     .from(users);
   const isBootstrap = Number(count) === 0;
 
+  // Вход по приглашению: проверяем ДО создания аккаунта. При закрытой
+  // регистрации приглашение обязательно — «с улицы» в клиническую систему
+  // не попадают. Bootstrap-исключение: самый первый аккаунт создаётся всегда.
+  let invite: Awaited<ReturnType<typeof findUsableInvite>> | null = null;
+  if (input.inviteCode) {
+    invite = await findUsableInvite(input.inviteCode);
+    if (!invite.ok) {
+      await audit(c, {
+        action: "auth.register",
+        outcome: "denied",
+        details: { email, reason: `invite_${invite.reason}` },
+      });
+      badRequest(
+        invite.reason === "expired"
+          ? "Срок приглашения истёк — попросите новое у своего специалиста"
+          : invite.reason === "exhausted"
+            ? "Приглашение уже использовано"
+            : "Приглашение не действует",
+      );
+    }
+  } else if (!env.openRegistration && !isBootstrap) {
+    badRequest("Регистрация только по приглашению. Попросите ссылку у своего специалиста");
+  }
+
   const [row] = await db
     .insert(users)
     .values({
@@ -47,7 +73,8 @@ authRoutes.post("/register", async (c) => {
       pseudonym: input.anonymous ? makePseudonym() : null,
       sex: input.sex ?? null,
       birthDate: input.birthDate ?? null,
-      unit: input.unit ?? null,
+      // подразделение из приглашения главнее введённого: его задал специалист
+      unit: (invite?.ok ? invite.invite.unit : null) ?? input.unit ?? null,
       position: input.position ?? null,
       specialty: input.specialty ?? null,
       rank: input.rank ?? null,
@@ -71,6 +98,22 @@ authRoutes.post("/register", async (c) => {
       requestedRole: input.role ?? null,
     },
   });
+
+  if (invite?.ok) {
+    const consumed = await consumeInvite(invite.invite, row!.id);
+    if (consumed.ok) {
+      await audit(c, {
+        action: "invite.use",
+        resourceType: "invite",
+        resourceId: invite.invite.id,
+        subjectUserId: row!.id,
+        actor: toPublicUser(row!),
+        details: { batteryId: invite.invite.batteryId },
+      });
+    }
+    // гонка на последнем использовании: аккаунт уже создан, назначения нет —
+    // это честнее, чем падать после создания; специалист выдаст батарею руками
+  }
 
   const pair = await issuePair(row!);
   return c.json({ ...pair, user: toPublicUser(row!) }, 201);

@@ -16,12 +16,15 @@ import Administer from "./pages/Administer";
 import { Groups, Users } from "./pages/Admin";
 import Batteries from "./pages/Batteries";
 import BlankForm from "./pages/BlankForm";
+import Invites from "./pages/Invites";
+import Join from "./pages/Join";
 import KeyPrint from "./pages/KeyPrint";
 import {
   IconAlert,
   IconAudit,
   IconBattery,
   IconClock,
+  IconInvite,
   IconCompare,
   IconDashboard,
   IconGroup,
@@ -76,6 +79,15 @@ export default function App() {
     api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => setOpenAlerts(0));
   }, [user]);
 
+  // публичная страница приглашения живёт вне auth-гейта: у пациента нет входа
+  if (location.pathname.startsWith("/join/")) {
+    return (
+      <Routes>
+        <Route path="/join/:token" element={<Join />} />
+      </Routes>
+    );
+  }
+
   if (loading) return <p style={{ padding: 40 }} className="muted">Загрузка…</p>;
   if (!user) return <Login />;
 
@@ -93,6 +105,7 @@ export default function App() {
         <Nav to="/surveys" icon={<IconSurvey />}>Методики</Nav>
         <Nav to="/batteries" icon={<IconBattery />}>Батареи</Nav>
         <Nav to="/schedules" icon={<IconClock />}>Расписание</Nav>
+        <Nav to="/invites" icon={<IconInvite />}>Приглашения</Nav>
         <Nav to="/groups" icon={<IconGroup />}>Группы</Nav>
         <Nav to="/patients" icon={<IconPatients />}>Пациенты</Nav>
         <Nav to="/compare" icon={<IconCompare />}>Сравнение</Nav>
@@ -139,6 +152,7 @@ export default function App() {
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:userId" element={<PatientDynamics />} />
           <Route path="/batteries" element={<Batteries />} />
+          <Route path="/invites" element={<Invites />} />
           <Route path="/schedules" element={<Schedules />} />
           <Route path="/compare" element={<Compare />} />
           <Route path="/alerts" element={<Alerts />} />

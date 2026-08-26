@@ -355,6 +355,17 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 .assign-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 14px; }
 
 .muted-card { opacity: 0.62; }
+.muted-row td { opacity: 0.55; }
+.join-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: var(--bg);
+}
+.join-card { width: 100%; max-width: 480px; }
+.join-card h1 { font-size: 20px; margin: 10px 0 4px; }
+
+.invite-fresh { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+.invite-fresh .qr { width: 180px; background: #fff; border-radius: 10px; padding: 8px; }
+.invite-fresh .qr svg { display: block; width: 100%; height: auto; }
 .alarm-row td { background: var(--danger-soft); }
 .good { color: var(--sev-none); font-weight: 600; }
 .hint.warn {

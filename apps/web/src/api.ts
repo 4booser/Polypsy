@@ -22,6 +22,8 @@ import type {
   BatteryInput,
   Schedule,
   ScheduleInput,
+  Invite,
+  CreateInviteInput,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -227,6 +229,15 @@ export const api = {
     }),
   cancelAssignment: (assignmentId: string) =>
     request<{ ok: true }>(`/api/batteries/assignments/${assignmentId}/cancel`, { method: "POST" }),
+
+  invites: () => request<Invite[]>("/api/invites"),
+  createInvite: (input: CreateInviteInput) =>
+    request<{ id: string; token: string; code: string }>("/api/invites", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  revokeInvite: (id: string) =>
+    request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
   schedules: () => request<Schedule[]>("/api/schedules"),
   scheduleUnits: () => request<string[]>("/api/schedules/units"),
