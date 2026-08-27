@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Loading } from "../ui";
+import { useResource } from "../useResource";
 
 const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "женщины" };
 
@@ -10,12 +10,9 @@ const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "ж�
  * них нормы и сравнения стоят на песке.
  */
 export function DataQualityPanel({ surveyId }: { surveyId: string }) {
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.dataQuality>> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.dataQuality(surveyId).then(setData).catch((e) => setError(e.message));
-  }, [surveyId]);
+  // через useResource: смена методики не должна оставлять ответ по прежней
+  const res = useResource(() => api.dataQuality(surveyId), [surveyId]);
+  const { data, error } = res;
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <Loading />;

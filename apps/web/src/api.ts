@@ -100,14 +100,28 @@ async function tryRefresh(): Promise<boolean> {
 
 async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = tokenStore.get();
-  const res = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers as Record<string, string>),
-    },
-  });
+
+  /*
+   * Отсутствие связи — не то же самое, что ошибка сервера, и говорить о нём
+   * надо иначе: «нет связи, повторим» вместо технического отказа. Раньше
+   * fetch бросал TypeError наружу, и экран показывал «Failed to fetch».
+   *
+   * status 0 — та же условность, что в мобильном клиенте: единый признак
+   * «до сервера не дошли».
+   */
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers as Record<string, string>),
+      },
+    });
+  } catch {
+    throw new ApiError("Нет связи с сервером", 0);
+  }
   if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
     if (await tryRefresh()) return request<T>(path, init, true);
     tokenStore.clear();

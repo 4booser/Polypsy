@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Loading } from "../ui";
+import { useResource } from "../useResource";
 
 /**
  * Калибровка порогов по клиническим исходам.
@@ -11,12 +11,9 @@ import { Loading } from "../ui";
  * рисует шум, а не популяцию.
  */
 export function CalibrationPanel({ surveyId }: { surveyId: string }) {
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.calibration>> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.calibration(surveyId).then(setData).catch((e) => setError(e.message));
-  }, [surveyId]);
+  // через useResource: смена методики не должна оставлять ответ по прежней
+  const res = useResource(() => api.calibration(surveyId), [surveyId]);
+  const { data, error } = res;
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <Loading />;
@@ -103,11 +100,9 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
 
 /** PPV скрининга: доля подтверждённых среди разобранных — для Сводки */
 export function PpvCard() {
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.ppv>> | null>(null);
-
-  useEffect(() => {
-    api.ppv().then(setData).catch(() => {});
-  }, []);
+  // отказ здесь молчит намеренно: карточка справочная, и её отсутствие
+  // не должно ломать сводку
+  const { data } = useResource(() => api.ppv(), []);
 
   if (!data?.overall) return null;
   const trend = data.byMonth.slice(-6);

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import type { SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { Chart } from "../charts";
 import { Loading, PageHead } from "../ui";
+import { useResource } from "../useResource";
 
 /**
  * Эпиднадзор: p-карты доли высокого риска по неделям и подразделениям.
@@ -13,25 +13,30 @@ import { Loading, PageHead } from "../ui";
  * шума хуже её отсутствия.
  */
 export default function Surveillance() {
-  const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [surveyId, setSurveyId] = useState("");
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.surveillance>> | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.surveys().then((rows) => {
-      const withData = rows.filter((r) => r.responseCount >= 10 && !r.isDemo);
-      const pick = withData.length ? withData : rows.filter((r) => r.responseCount >= 10);
-      setSurveys(pick);
-      if (pick[0]) setSurveyId(pick[0].id);
-    }).catch((e) => setError(e.message));
+  /*
+   * Список методик — тоже через хук. Отбираем те, где данных хватает на
+   * контрольную карту: карта из горстки точек хуже её отсутствия.
+   */
+  const list = useResource(async () => {
+    const rows = await api.surveys();
+    const withData = rows.filter((r) => r.responseCount >= 10 && !r.isDemo);
+    return withData.length ? withData : rows.filter((r) => r.responseCount >= 10);
   }, []);
+  const surveys = list.data ?? [];
 
   useEffect(() => {
-    if (!surveyId) return;
-    setData(null);
-    api.surveillance(surveyId).then(setData).catch((e) => setError(e.message));
-  }, [surveyId]);
+    if (!surveyId && surveys[0]) setSurveyId(surveys[0].id);
+  }, [surveys, surveyId]);
+  /*
+   * Через useResource: раньше data сбрасывалась вручную перед запросом —
+   * экран моргал пустотой, а ответ по прежней методике всё равно мог
+   * прийти позже и подставить чужие данные.
+   */
+  const res = useResource(() => api.surveillance(surveyId!), [surveyId], { enabled: !!surveyId });
+  const { data } = res;
+  const error = res.error ?? list.error;
 
   const signals = data?.series.flatMap((s) =>
     s.weeks.filter((w) => w.beyondLimits || w.runSignal).map((w) => ({ unit: s.unit, ...w })),
