@@ -31,8 +31,19 @@ interface Item {
   userName: string;
   unit: string | null;
   title: string;
-  /** Чем это важно: короткая строка под названием */
-  detail: string;
+  /*
+   * Подробности структурой, а не готовой строкой.
+   *
+   * Сервер собирал «Срочно · сигналов 3» текстом — и такую строку клиент не
+   * может ни перевести, ни переформатировать. Отображение принадлежит
+   * клиенту; сервер отдаёт факты.
+   */
+  severity?: "moderate" | "severe";
+  signals?: number;
+  /** Сколько дней просрочки или без движения */
+  days?: number;
+  /** Куда направлен — для направлений */
+  destination?: string;
   /** Просрочено по своему правилу: у случая — эскалация, у назначения — срок */
   overdue: boolean;
   /** Кому назначено; null — никому */
@@ -88,10 +99,8 @@ worklistRoutes.get("/", async (c) => {
         userName: fullNameOf(r as never),
         unit: r.unit,
         title: t(r.surveyTitle as never),
-        detail:
-          r.c.severity === "severe"
-            ? `Срочно · сигналов ${r.signals}`
-            : `Внимание · сигналов ${r.signals}`,
+        severity: r.c.severity,
+        signals: Number(r.signals),
         overdue: r.escalate !== null && minutes >= r.escalate,
         assignedTo: r.c.assignedTo,
         since: r.c.openedAt,
@@ -124,9 +133,10 @@ worklistRoutes.get("/", async (c) => {
       userId: r.r.userId,
       userName: fullNameOf(r as never),
       unit: r.unit,
-      title: r.r.status === "created" ? "Направление не принято" : "Направление не завершено",
+      title: r.r.status,
       // без обратной связи направление тихо теряется — семь дней уже повод
-      detail: `${r.r.destination} · ${days} дн. без движения`,
+      destination: r.r.destination,
+      days,
       overdue: days >= 7 || r.r.urgency === "immediate",
       assignedTo: null,
       since: r.r.createdAt,
@@ -168,7 +178,7 @@ worklistRoutes.get("/", async (c) => {
       userName: fullNameOf(r as never),
       unit: r.unit,
       title: r.batteryTitle,
-      detail: `Срок вышел ${days} дн. назад`,
+      days,
       overdue: true,
       assignedTo: null,
       since: r.a.dueAt!,
@@ -226,7 +236,7 @@ worklistRoutes.get("/", async (c) => {
       userName: fullNameOf(r as never),
       unit: r.unit,
       title: t(r.surveyTitle as never),
-      detail: `Повтор по протоколу не сделан · ${days} дн. просрочки`,
+      days,
       overdue: true,
       assignedTo: null,
       since: r.expiresAt!,

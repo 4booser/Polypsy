@@ -1160,8 +1160,13 @@ export interface WorkItem {
   userId: string;
   userName: string;
   unit: string | null;
+  /** Для случая — название методики, для направления — его статус */
   title: string;
-  detail: string;
+  /** Факты, а не готовая строка: отображение принадлежит клиенту */
+  severity?: "moderate" | "severe";
+  signals?: number;
+  days?: number;
+  destination?: string;
   overdue: boolean;
   assignedTo: string | null;
   since: string;
