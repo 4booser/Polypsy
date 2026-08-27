@@ -70,6 +70,7 @@ export type AuditAction =
   | "analytics.surveillance"
   | "analytics.dif"
   | "analytics.calibration"
+  | "analytics.data_quality"
   | "cascade.assign"
   | "cascade.followup"
   | "analytics.correlations"

@@ -279,6 +279,23 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  dataQuality: (surveyId: string) =>
+    request<{
+      smallCellFloor: number;
+      retestWindow: { minDays: number; maxDays: number; minPairs: number };
+      strata: {
+        sex: string;
+        band: string;
+        suppressed: boolean;
+        started?: number;
+        completed?: number;
+        completionRate?: number;
+        avgSkipped?: number;
+      }[];
+      drift: { code: string; title: string; month: string; psi: number; n: number; verdict: string }[];
+      retest: { code: string; title: string; pairs: number; icc: number | null }[];
+    }>(`/api/data-quality/surveys/${surveyId}`),
+
   calibration: (surveyId: string) =>
     request<{
       minPerOutcome: number;

@@ -9,6 +9,7 @@ import { useAction } from "../ui";
 import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DifPanel } from "../components/DifPanel";
 import { CalibrationPanel } from "../components/CalibrationPanel";
+import { DataQualityPanel } from "../components/DataQualityPanel";
 
 type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "calibration" | "responses";
 
@@ -416,6 +417,7 @@ export default function SurveyAnalyticsPage() {
 
       {tab === "dif" ? <DifPanel surveyId={data.surveyId} /> : null}
       {tab === "calibration" ? <CalibrationPanel surveyId={data.surveyId} /> : null}
+      {tab === "quality" ? <DataQualityPanel surveyId={data.surveyId} /> : null}
       {tab === "responses" ? <Responses surveyId={data.surveyId} /> : null}
     </>
   );

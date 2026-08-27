@@ -1,4 +1,4 @@
-import { itemContribution, t } from "@quizzy/shared";
+import { guttmanErrorsNormed, itemContribution, t } from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
@@ -394,6 +394,61 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     };
   });
 
+  /*
+   * Person-fit (7.1): берём самую длинную ключевую шкалу — на ней трудность
+   * пунктов оценивается устойчивее всего. Порядок «от лёгкого к трудному» —
+   * по доле срабатывания в этой же выборке: собственная трудность честнее
+   * любой внешней таблицы.
+   */
+  const fitScale = [...survey.scales]
+    .filter((sc) => sc.kind === "clinical" && sc.items.filter((i) => i.matchKey !== null).length >= 4)
+    .sort((a, b) => b.items.length - a.items.length)[0];
+
+  const personFitByResponse = new Map<string, number | null>();
+  if (fitScale) {
+    const keyItems = fitScale.items.filter((i) => i.matchKey !== null);
+    const hitsByResponse = new Map<string, Map<string, 0 | 1>>();
+    for (const [responseId, byQuestion] of answersByResponseId) {
+      const row = new Map<string, 0 | 1>();
+      for (const item of keyItems) {
+        const question = questionById.get(item.questionId);
+        const stored = byQuestion.get(item.questionId);
+        if (!question || !stored) continue;
+        const v = itemContribution(question, item, {
+          questionId: item.questionId,
+          optionIds: stored.optionIds ?? undefined,
+          matrix: stored.matrix ?? undefined,
+          skipped: stored.skipped,
+        });
+        if (v !== null) row.set(item.questionId, v > 0 ? 1 : 0);
+      }
+      if (row.size === keyItems.length) hitsByResponse.set(responseId, row);
+    }
+
+    const difficulty = new Map<string, number>();
+    for (const item of keyItems) {
+      let hits = 0;
+      let total = 0;
+      for (const row of hitsByResponse.values()) {
+        const v = row.get(item.questionId);
+        if (v === undefined) continue;
+        total += 1;
+        hits += v;
+      }
+      // доля срабатывания: чем меньше, тем пункт «труднее»
+      difficulty.set(item.questionId, total ? hits / total : 0);
+    }
+    const orderedEasyFirst = [...difficulty.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([qid]) => qid);
+
+    for (const [responseId, row] of hitsByResponse) {
+      const vector = orderedEasyFirst.map((qid) => row.get(qid)!) as (0 | 1)[];
+      personFitByResponse.set(responseId, guttmanErrorsNormed(vector));
+    }
+  }
+  const personFitOf = (responseId: string) => personFitByResponse.get(responseId) ?? null;
+
   const answersByResponse = new Map<string, typeof answerRows>();
   for (const a of answerRows) {
     const list = answersByResponse.get(a.responseId) ?? [];
@@ -420,6 +475,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         answersByResponse.get(r.id) ?? [],
         survey.questions,
         tooFastMs,
+        personFitOf(r.id),
       ),
     )
     .filter((q) => q.flagged)

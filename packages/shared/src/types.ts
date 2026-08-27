@@ -672,6 +672,12 @@ export interface QualityFlags {
   tooFastShare: number;
   /** Самая длинная серия одинаковых ответов подряд */
   longestStraightLine: number;
+  /**
+   * Нормированные ошибки Гуттмана (7.1): 0 — профиль согласован с трудностью
+   * пунктов, ~0.5 — как случайный, ближе к 1 — инвертирован. null — шкала не
+   * ключевая или профиль крайний (всё «да» / всё «нет»), где метрика слепа.
+   */
+  personFit: number | null;
   flagged: boolean;
   reasons: string[];
 }
