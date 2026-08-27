@@ -712,7 +712,17 @@ export const auditLog = pgTable(
   {
     id: text("id").primaryKey(),
     at: timestampCol("at").notNull().defaultNow(),
-    actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+    /*
+     * RESTRICT, а не SET NULL: actor_id входит в хэш записи, и обнуление
+     * ссылки при удалении пользователя переписало бы журнал — то есть порвало
+     * бы цепочку и сломало audit:verify.
+     *
+     * Раньше здесь стоял SET NULL, и удаление спасал только триггер
+     * неизменяемости: попытка падала с сообщением «UPDATE запрещён», по
+     * которому невозможно догадаться, что дело в журнале. Теперь причина
+     * названа прямо: у пользователя есть записи в журнале, и он неудаляем.
+     */
+    actorId: text("actor_id").references(() => users.id, { onDelete: "restrict" }),
     actorEmail: text("actor_email"),
     actorRole: text("actor_role"),
     action: text("action").notNull(),

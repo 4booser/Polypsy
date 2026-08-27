@@ -176,6 +176,13 @@
       "when": 1787828099910,
       "tag": "0024_blue_stryfe",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787830728377,
+      "tag": "0025_overjoyed_sandman",
+      "breakpoints": true
     }
   ]
 }
