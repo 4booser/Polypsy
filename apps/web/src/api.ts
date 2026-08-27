@@ -29,6 +29,7 @@ import type {
   Referral,
   CreateReferralInput,
   CaseSummary,
+  VersionDiff,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -180,6 +181,11 @@ export interface Patient {
   unit: string | null;
 }
 
+export interface VersionDiffResult extends VersionDiff {
+  before: { versionId: string | null; versionNumber: number };
+  after: { versionId: string | null; versionNumber: number };
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<{ token: string; refreshToken: string; user: User }>("/api/auth/login", {
@@ -230,6 +236,8 @@ export const api = {
       { method: "POST", body: JSON.stringify(payload) },
     ),
   versions: (id: string) => request<SurveyVersion[]>(`/api/surveys/${id}/versions`),
+  versionDiff: (id: string, a: string, b: string) =>
+    request<VersionDiffResult>(`/api/surveys/${id}/versions/${a}/diff/${b}`),
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
   analytics: (id: string, versionId?: string, range?: { from?: string; to?: string }) => {

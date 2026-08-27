@@ -25,6 +25,9 @@ export const analyticsRoutes = new Hono<AppEnv>();
 analyticsRoutes.use("*", requireAuth, requireStaff);
 
 /** Сводка по всем методикам */
+/** Черновик считается живым полчаса с последнего сохранения */
+const LIVE_DRAFT_MS = 30 * 60_000;
+
 analyticsRoutes.get("/overview", async (c) => {
   // сводка считается только по методикам, доступным этому сотруднику
   const scope = await surveyScopeFilter(c.get("user"));
@@ -79,6 +82,31 @@ analyticsRoutes.get("/overview", async (c) => {
       .map((severity) => ({ severity, count: severityCounts.get(severity) ?? 0 }))
       .filter((s) => s.count > 0),
     timeline: timelineByDay(completed.map((r) => r.submittedAt)),
+    /*
+     * Кто прямо сейчас за экраном. Черновик считается живым, если его
+     * сохраняли последние полчаса: брошенные прохождения висят в статусе
+     * in_progress неделями, и без ограничения по времени список превратился
+     * бы в свалку, где живого человека не найти.
+     *
+     * Нужно это для одного: если обследуемый застрял или закрыл приложение
+     * посреди методики, специалист узнаёт об этом сегодня, а не при разборе
+     * незакрытых назначений через месяц.
+     */
+    inProgress: responseRows
+      .filter(
+        (r) =>
+          r.status === "in_progress" &&
+          Date.now() - new Date(r.lastSavedAt ?? r.startedAt).getTime() < LIVE_DRAFT_MS,
+      )
+      .map((r) => ({
+        responseId: r.id,
+        userId: r.userId,
+        surveyId: r.surveyId,
+        surveyTitle: t(surveyRows.find((s) => s.id === r.surveyId)?.title as never) || "—",
+        startedAt: r.startedAt,
+        lastSavedAt: r.lastSavedAt ?? r.startedAt,
+      }))
+      .sort((a, b) => b.lastSavedAt.localeCompare(a.lastSavedAt)),
   };
   await audit(c, { action: "analytics.overview", details: { responseCount: result.responseCount } });
   return c.json(result);

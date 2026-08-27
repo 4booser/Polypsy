@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { RiskAlert } from "@quizzy/shared";
 import { api } from "../api";
 import { dateTime, severityColor } from "../format";
+import { useUrlState } from "../ui";
 
 const OUTCOME_LABEL: Record<string, string> = {
   confirmed: "риск подтверждён",
@@ -11,7 +12,9 @@ const OUTCOME_LABEL: Record<string, string> = {
 
 export default function Alerts() {
   const [rows, setRows] = useState<RiskAlert[] | null>(null);
-  const [all, setAll] = useState(false);
+  // «покажи мне разобранные тревоги» — ссылкой, а не пересказом
+  const [allParam, setAll] = useUrlState("all");
+  const all = allParam === "1";
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   async function ack(id: string, outcome: "confirmed" | "not_confirmed" | "needs_followup") {
@@ -37,8 +40,8 @@ export default function Alerts() {
       </p>
 
       <div className="tabs" style={{ maxWidth: 320 }}>
-        <button className={!all ? "active" : ""} onClick={() => setAll(false)}>Неразобранные</button>
-        <button className={all ? "active" : ""} onClick={() => setAll(true)}>Все</button>
+        <button className={!all ? "active" : ""} onClick={() => setAll("")}>Неразобранные</button>
+        <button className={all ? "active" : ""} onClick={() => setAll("1")}>Все</button>
       </div>
 
       {rows.length === 0 ? <p className="muted">Тревог нет</p> : null}

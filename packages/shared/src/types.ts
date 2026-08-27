@@ -1018,6 +1018,19 @@ export interface OverviewAnalytics {
   /** Распределение по степени выраженности across всех шкал */
   severityBreakdown: { severity: Severity; count: number }[];
   timeline: { date: string; count: number }[];
+  /**
+   * Кто проходит методику прямо сейчас — черновики свежее получаса.
+   * По методике такой список уже есть (`inProgressNow`); здесь он сводный,
+   * чтобы дежурный видел всю картину не заходя в каждую методику.
+   */
+  inProgress: {
+    responseId: string;
+    userId: string | null;
+    surveyId: string;
+    surveyTitle: string;
+    startedAt: string;
+    lastSavedAt: string;
+  }[];
 }
 
 export interface AuthPayload {

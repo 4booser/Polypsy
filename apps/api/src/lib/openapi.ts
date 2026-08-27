@@ -68,6 +68,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/surveys/:id/duplicate": { summary: "Копия методики", access: "staff" },
   "GET /api/surveys/:id/export": { summary: "Выгрузка методики файлом", access: "staff" },
   "GET /api/surveys/:id/versions": { summary: "Версии методики", access: "staff" },
+  "GET /api/surveys/:id/versions/:a/diff/:b": { summary: "Что изменилось между версиями и сопоставимы ли баллы", access: "staff" },
   "GET /api/surveys/:id/key": { summary: "Ключ методики для печати", access: "staff" },
 
   /* ── прохождения ── */

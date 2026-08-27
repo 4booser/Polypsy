@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Issue, SurveyListItem } from "@quizzy/shared";
 import { api } from "../../api";
-import { useToast } from "../../ui";
+import { ConfirmByName, useToast } from "../../ui";
 
 export function SurveyList() {
   const [rows, setRows] = useState<SurveyListItem[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [confirming, setConfirming] = useState<SurveyListItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importIssues, setImportIssues] = useState<Issue[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -74,6 +75,39 @@ export function SurveyList() {
         />
       </div>
 
+      {confirming ? (
+        /*
+         * Ничего не удаляется: методика перестаёт выдаваться и проходиться, но
+         * все собранные прохождения остаются. Формулировка обязана это
+         * отражать — «удалить» здесь было бы враньём. Название всё равно
+         * просим напечатать: в списке однотипных методик легко снять соседнюю.
+         */
+        <ConfirmByName
+          title="Снять методику с использования"
+          name={confirming.title}
+          actionLabel="Снять с использования"
+          warning={
+            <>
+              <p style={{ margin: "0 0 6px" }}>
+                Методику перестанут выдавать и проходить: она исчезнет из списков,
+                батарей, киоска и расписаний.
+              </p>
+              <p style={{ margin: 0 }} className="muted">
+                Собранные прохождения ({confirming.responseCount}) останутся на месте —
+                в карте пациента, аналитике и журнале. Решение обратимо.
+              </p>
+            </>
+          }
+          onCancel={() => setConfirming(null)}
+          onConfirm={async () => {
+            await api.archiveSurvey(confirming.id);
+            setConfirming(null);
+            await load();
+            toast("Методика снята с использования", "ok");
+          }}
+        />
+      ) : null}
+
       {error ? <p className="error">{error}</p> : null}
       {importIssues?.length ? (
         <div className="card" style={{ borderColor: "var(--sev-mild)", marginTop: 12 }}>
@@ -136,29 +170,7 @@ export function SurveyList() {
                         Вернуть в работу
                       </button>
                     ) : (
-                      <button
-                        className="danger"
-                        onClick={async () => {
-                          /*
-                           * Ничего не удаляется: методика перестаёт выдаваться и
-                           * проходиться, но все собранные прохождения остаются.
-                           * Формулировка кнопки обязана это отражать — «удалить»
-                           * здесь было бы враньём с необратимыми последствиями.
-                           */
-                          if (
-                            !confirm(
-                              `Снять «${s.title}» с использования?\n\n` +
-                                `Методику перестанут выдавать и проходить. ` +
-                                `Уже собранные прохождения (${s.responseCount}) останутся на месте, ` +
-                                `решение обратимо.`,
-                            )
-                          )
-                            return;
-                          await api.archiveSurvey(s.id);
-                          await load();
-                          toast("Методика снята с использования", "ok");
-                        }}
-                      >
+                      <button className="danger" onClick={() => setConfirming(s)}>
                         Снять
                       </button>
                     )}

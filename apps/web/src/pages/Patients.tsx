@@ -5,13 +5,14 @@ import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
-import { DataTable, PageHead, Search, useAction } from "../ui";
+import { Avatar, DataTable, PageHead, Search, useAction, useUrlState } from "../ui";
 
 type Respondent = Awaited<ReturnType<typeof api.respondents>>[number];
 
 export function PatientList() {
   const [rows, setRows] = useState<Respondent[] | null>(null);
-  const [query, setQuery] = useState("");
+  // поиск в адресе: «вот этот пациент» отправляется ссылкой
+  const [query, setQuery] = useUrlState("q");
   useEffect(() => {
     api.respondents().then(setRows).catch(() => setRows([]));
   }, []);
@@ -32,6 +33,7 @@ export function PatientList() {
         <DataTable
           rows={filtered}
           csvName="пациенты"
+          stateKey="patients"
           initialSort={{ key: "last", desc: true }}
           empty={<p className="muted">Никого не найдено</p>}
           columns={[
@@ -40,7 +42,12 @@ export function PatientList() {
               header: "ФИО",
               sort: (r) => r.fullName,
               csv: (r) => r.fullName,
-              render: (r) => <Link to={`/patients/${r.userId}`}>{r.fullName}</Link>,
+              render: (r) => (
+                <Link className="row tight" to={`/patients/${r.userId}`}>
+                  <Avatar name={r.fullName} />
+                  {r.fullName}
+                </Link>
+              ),
             },
             {
               key: "email",
