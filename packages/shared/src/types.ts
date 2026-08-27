@@ -1155,7 +1155,7 @@ export interface AlertCaseFilters {
 
 /** Одна строка очереди работы специалиста */
 export interface WorkItem {
-  kind: "case" | "assignment" | "referral";
+  kind: "case" | "assignment" | "referral" | "followup";
   id: string;
   userId: string;
   userName: string;
@@ -1172,7 +1172,7 @@ export interface Worklist {
   items: WorkItem[];
   total: number;
   truncated: boolean;
-  byKind: { case: number; referral: number; assignment: number };
+  byKind: { case: number; followup: number; referral: number; assignment: number };
   mine: number;
 }
 
