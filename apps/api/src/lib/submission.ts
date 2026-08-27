@@ -16,6 +16,7 @@ import { db } from "../db";
 import { answerEvents, answers, responseScores, responses, riskAlerts, type UserRow } from "../db/schema";
 import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
+import { attachToCase } from "./alertCases";
 import { detectRisks } from "./risk";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
@@ -106,7 +107,15 @@ export async function persistSubmission(
 
     // тревоги — до подсчёта: они не зависят от шкал и должны сработать даже
     // у методики без подсчёта
+    const riskAt = new Date().toISOString();
     for (const risk of risks) {
+      // случай открывается один на человека: разбирают не пункты, а человека
+      const caseId = await attachToCase(tx as never, {
+        userId: survey.anonymous ? null : subject.id,
+        surveyId: survey.id,
+        severity: risk.severity,
+        at: riskAt,
+      });
       await tx
         .insert(riskAlerts)
         .values({
@@ -115,9 +124,10 @@ export async function persistSubmission(
           surveyId: survey.id,
           questionId: risk.questionId,
           userId: survey.anonymous ? null : subject.id,
+          caseId,
           label: risk.label,
           severity: risk.severity,
-          at: new Date().toISOString(),
+          at: riskAt,
         })
         .onConflictDoNothing();
     }

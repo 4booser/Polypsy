@@ -1214,36 +1214,49 @@ describe("снэпшоты стратификации и язык предъяв
   });
 });
 
-describe("исход тревоги", () => {
-  test("исход сохраняется при разборе и виден в списке", async () => {
-    const { riskAlerts: alertsTable } = await import("../src/db/schema");
-    const open = await db.query.riskAlerts.findFirst({
+describe("исход разбора", () => {
+  test("исход ставится на случай и виден в списке", async () => {
+    /*
+     * Раньше исход ставился на отдельную тревогу. Тот путь убран: решение
+     * принимается о человеке, и два источника истины о клиническом решении
+     * недопустимы — по этим исходам калибруются пороги скрининга.
+     */
+    const { alertCases: casesTable } = await import("../src/db/schema");
+    const open = await db.query.alertCases.findFirst({
       where: (t, { isNull: isNullOp }) => isNullOp(t.acknowledgedAt),
     });
     expect(open).toBeDefined();
 
-    const ack = await api(`/api/alerts/${open!.id}/acknowledge`, adminA.token, {
+    const ack = await api(`/api/alert-cases/${open!.id}`, adminA.token, {
       method: "PATCH",
       body: JSON.stringify({ note: "Беседа проведена", outcome: "confirmed" }),
     });
     expect(ack.status).toBe(200);
 
-    const list = await api("/api/alerts?all=1", adminA.token);
-    const found = list.body.find((a: { id: string }) => a.id === open!.id);
-    expect(found.outcome).toBe("confirmed");
+    const row = await db.query.alertCases.findFirst({ where: eq(casesTable.id, open!.id) });
+    expect(row!.outcome).toBe("confirmed");
+    expect(row!.note).toBe("Беседа проведена");
 
-    // мусорный исход не проходит — пишется null, а не что попало
-    const open2 = await db.query.riskAlerts.findFirst({
+    const list = await api("/api/alert-cases?all=1&limit=100", adminA.token);
+    const found = list.body.items.find((x: { id: string }) => x.id === open!.id);
+    expect(found.outcome).toBe("confirmed");
+    expect(found.acknowledgedByName.length).toBeGreaterThan(0);
+  });
+
+  test("мусорный исход не проходит — случай остаётся открытым", async () => {
+    const open = await db.query.alertCases.findFirst({
       where: (t, { isNull: isNullOp }) => isNullOp(t.acknowledgedAt),
     });
-    if (open2) {
-      await api(`/api/alerts/${open2.id}/acknowledge`, adminA.token, {
-        method: "PATCH",
-        body: JSON.stringify({ outcome: "чепуха" }),
-      });
-      const row = await db.query.riskAlerts.findFirst({ where: eq(alertsTable.id, open2.id) });
-      expect(row!.outcome).toBeNull();
-    }
+    if (!open) return;
+    const res = await api(`/api/alert-cases/${open.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ outcome: "чепуха" }),
+    });
+    expect(res.status).toBe(400);
+
+    const { alertCases: casesTable } = await import("../src/db/schema");
+    const row = await db.query.alertCases.findFirst({ where: eq(casesTable.id, open.id) });
+    expect(row!.acknowledgedAt).toBeNull();
   });
 });
 
@@ -2145,5 +2158,117 @@ describe("учётная запись только на просмотр", () =>
     // самая важная проверка: отказ должен быть до записи, а не после
     const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyInA) });
     expect(survey!.archivedAt).toBeNull();
+  });
+});
+
+/* ── случаи риска ── */
+
+describe("случаи риска", () => {
+  let riskSurvey: string;
+
+  beforeAll(async () => {
+    // методика с критическим пунктом: у СР-45 они уже размечены
+    riskSurvey = surveyInA;
+  });
+
+  test("несколько сигналов одного человека дают один случай", async () => {
+    const { alertCases: casesTable, riskAlerts } = await import("../src/db/schema");
+
+    const before = await db.select().from(casesTable).where(eq(casesTable.userId, patient.id));
+
+    // два прохождения подряд с критическими ответами
+    for (let i = 0; i < 2; i++) {
+      const surveyRes = await api(`/api/surveys/${riskSurvey}`, patient.token);
+      const survey = surveyRes.body;
+      const answers = survey.questions
+        .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && q.options.length)
+        .map((q: { id: string; options: { id: string; riskFlag: boolean }[] }) => ({
+          questionId: q.id,
+          // выбираем опасный вариант там, где он есть
+          optionIds: [(q.options.find((o) => o.riskFlag) ?? q.options[0]!).id],
+          durationMs: 2500,
+          changeCount: 0,
+          visitCount: 1,
+        }));
+      const res = await api(`/api/surveys/${riskSurvey}/responses`, patient.token, {
+        method: "POST",
+        body: JSON.stringify({
+          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          durationMs: 60_000,
+          answers,
+        }),
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const after = await db.select().from(casesTable).where(eq(casesTable.userId, patient.id));
+    // оба прохождения уложились в окно — случай должен быть один новый, а не два
+    expect(after.length - before.length).toBeLessThanOrEqual(1);
+
+    const open = after.find((x) => !x.acknowledgedAt);
+    expect(open).toBeDefined();
+
+    const signals = await db.select().from(riskAlerts).where(eq(riskAlerts.caseId, open!.id));
+    expect(signals.length).toBeGreaterThan(1);
+  });
+
+  test("список отдаётся страницами с курсором", async () => {
+    const first = await api("/api/alert-cases?limit=1", adminA.token);
+    expect(first.status).toBe(200);
+    expect(first.body.items.length).toBe(1);
+    expect(typeof first.body.total).toBe("number");
+
+    if (first.body.nextCursor) {
+      const second = await api(`/api/alert-cases?limit=1&cursor=${first.body.nextCursor}`, adminA.token);
+      expect(second.status).toBe(200);
+      // вторая страница не повторяет первую
+      expect(second.body.items[0]?.id).not.toBe(first.body.items[0].id);
+      // общее число считается только на первой странице
+      expect(second.body.total).toBeUndefined();
+    }
+  });
+
+  test("случай берётся на себя и не перехватывается", async () => {
+    const list = await api("/api/alert-cases?limit=1&assigned=none", adminA.token);
+    const target = list.body.items[0];
+    if (!target) return;
+
+    expect((await api(`/api/alert-cases/${target.id}/assign`, adminA.token, { method: "POST" })).status).toBe(200);
+
+    // чужой админ этот случай вообще не видит — методика не его группы
+    const foreign = await api(`/api/alert-cases/${target.id}/assign`, adminB.token, { method: "POST" });
+    expect(foreign.status).toBe(404);
+
+    // повторный захват тем же — не ошибка
+    expect((await api(`/api/alert-cases/${target.id}/assign`, adminA.token, { method: "POST" })).status).toBe(200);
+  });
+
+  test("разбор ставит исход на случай и на все его сигналы", async () => {
+    const list = await api("/api/alert-cases?limit=1", adminA.token);
+    const target = list.body.items[0];
+    if (!target) return;
+
+    const res = await api(`/api/alert-cases/${target.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ outcome: "confirmed", note: "Направлен к психиатру" }),
+    });
+    expect(res.status).toBe(200);
+
+    const { riskAlerts } = await import("../src/db/schema");
+    const signals = await db.select().from(riskAlerts).where(eq(riskAlerts.caseId, target.id));
+    expect(signals.length).toBeGreaterThan(0);
+    // ни один сигнал не остался висеть внутри разобранного случая
+    expect(signals.every((s) => s.acknowledgedAt !== null && s.outcome === "confirmed")).toBe(true);
+  });
+
+  test("разбор без исхода отклоняется", async () => {
+    const list = await api("/api/alert-cases?limit=1&all=1", adminA.token);
+    const target = list.body.items[0];
+    if (!target) return;
+    const res = await api(`/api/alert-cases/${target.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ note: "просто заметка" }),
+    });
+    expect(res.status).toBe(400);
   });
 });

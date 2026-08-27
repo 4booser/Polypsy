@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import type { OverviewAnalytics, RiskAlert, SurveyListItem } from "@quizzy/shared";
+import type { OverviewAnalytics, AlertCase, SurveyListItem } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { ChartCard, StatTile } from "@/components/charts";
 import { Donut, LineChart } from "@/components/viz";
@@ -13,7 +13,8 @@ export default function OverviewScreen() {
   const router = useRouter();
   const [data, setData] = useState<OverviewAnalytics | null>(null);
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
-  const [alerts, setAlerts] = useState<RiskAlert[]>([]);
+  const [cases, setCases] = useState<AlertCase[]>([]);
+  const [openCases, setOpenCases] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -23,11 +24,12 @@ export default function OverviewScreen() {
       const [overview, list, open] = await Promise.all([
         api.overview(),
         api.listSurveys(),
-        api.alerts(),
+        api.alertCases({ limit: "3" }),
       ]);
       setData(overview);
       setSurveys(list);
-      setAlerts(open);
+      setCases(open.items);
+      setOpenCases(open.total ?? open.items.length);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить аналитику");
     }
@@ -59,8 +61,8 @@ export default function OverviewScreen() {
       <Title>Сводка</Title>
 
       {/* тревоги — первое, что должен увидеть специалист */}
-      {alerts.length > 0 ? (
-        <Pressable onPress={() => router.push("/analytics/alerts")} accessibilityRole="button" accessibilityLabel="Открытые тревоги">
+      {cases.length > 0 ? (
+        <Pressable onPress={() => router.push("/analytics/alerts")} accessibilityRole="button" accessibilityLabel="Открытые случаи риска">
           <Card>
             <Row>
               <View
@@ -71,11 +73,11 @@ export default function OverviewScreen() {
                   backgroundColor: severityColor.severe,
                 }}
               />
-              <Body>Неразобранных тревог: {alerts.length}</Body>
+              <Body>Случаев на разбор: {openCases}</Body>
               <View style={{ flex: 1 }} />
               <Text style={{ color: c.muted, fontSize: 18 }}>›</Text>
             </Row>
-            <Body muted>{alerts[0]!.label}</Body>
+            <Body muted>{cases.map((x) => x.userName).join(" · ")}</Body>
           </Card>
         </Pressable>
       ) : null}
@@ -85,7 +87,7 @@ export default function OverviewScreen() {
           <Button title="Пациенты" variant="secondary" onPress={() => router.push("/analytics/patients")} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button title="Тревоги" variant="secondary" onPress={() => router.push("/analytics/alerts")} />
+          <Button title="Случаи риска" variant="secondary" onPress={() => router.push("/analytics/alerts")} />
         </View>
       </Row>
 

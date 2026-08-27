@@ -153,6 +153,17 @@ export const surveys = pgTable(
      * null — эскалации нет.
      */
     alertEscalateMinutes: integer("alert_escalate_minutes"),
+
+    /**
+     * Окно, в течение которого новые тревоги прикрепляются к открытому
+     * случаю, а не заводят новый. Часы.
+     *
+     * Разное по методикам не для гибкости ради гибкости: для скрининга
+     * суицидального риска повторное срабатывание через сутки — тот же
+     * эпизод, а для адаптационного профиля с повтором раз в месяц — уже
+     * новый повод. null — общее значение по умолчанию.
+     */
+    alertCaseWindowHours: integer("alert_case_window_hours"),
   /**
    * Текст немедленных действий при критическом ответе: телефоны доверия,
    * дежурный психолог. Показывается обследуемому сразу после сдачи, если
@@ -762,6 +773,67 @@ export type AuditRow = typeof auditLog.$inferSelect;
  * в том числе при автосохранении черновика: если человек отметил пункт про
  * суицидальные мысли, персонал должен узнать об этом до конца прохождения.
  */
+/**
+ * Случай риска — то, что разбирает специалист.
+ *
+ * Тревога поднимается на каждый отмеченный пункт, и это правильно: важно
+ * знать, что именно сработало. Но разбирают не пункты, а человека. Пять
+ * отмеченных пунктов одного обследуемого — один случай и одно клиническое
+ * решение, а не пять.
+ *
+ * На стенде с 400 обследуемыми плоский список дал 397 карточек, среди
+ * которых один человек встречался пять раз подряд: дежурный не мог ни
+ * расставить приоритеты, ни найти нужного. Чем дольше система работала, тем
+ * хуже становилась — недопустимо для инструмента, который ловит
+ * суицидальный риск.
+ *
+ * Отсюда же методологическое следствие: калибровка порогов (ROC, PPV)
+ * считается по случаям. Пять пунктов одного человека — не пять независимых
+ * наблюдений, и складывать их в выборку значило бы завышать объём данных.
+ */
+export const alertCases = pgTable(
+  "alert_cases",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+
+    openedAt: timestampCol("opened_at").notNull().defaultNow(),
+    /** Время последней входящей тревоги: по нему решается, продлевать ли окно */
+    lastAlertAt: timestampCol("last_alert_at").notNull().defaultNow(),
+    /** Самая тяжёлая из входящих: случай не легче худшего своего сигнала */
+    severity: text("severity", { enum: ["moderate", "severe"] }).notNull().default("severe"),
+
+    /**
+     * Кто взял случай на себя. Двое дежурных не должны разбирать одного
+     * человека дважды — а без явной пометки они об этом не узнают.
+     */
+    assignedTo: text("assigned_to").references(() => users.id, { onDelete: "set null" }),
+    assignedAt: timestampCol("assigned_at"),
+
+    acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
+    acknowledgedAt: timestampCol("acknowledged_at"),
+    note: text("note"),
+    /** Клинический исход разбора — сырьё для калибровки порогов */
+    outcome: text("outcome", { enum: ["confirmed", "not_confirmed", "needs_followup"] }),
+    /**
+     * Случай собран автоматически при переходе со старой модели: исходы по
+     * отдельным пунктам могли расходиться, и это надо честно пометить, а не
+     * выдавать за решение специалиста.
+     */
+    mergedFromLegacy: boolean("merged_from_legacy").notNull().default(false),
+  },
+  (t) => ({
+    userIdx: index("alert_cases_user_idx").on(t.userId),
+    openIdx: index("alert_cases_open_idx").on(t.acknowledgedAt, t.lastAlertAt),
+    surveyIdx: index("alert_cases_survey_idx").on(t.surveyId),
+  }),
+);
+
 export const riskAlerts = pgTable(
   "risk_alerts",
   {
@@ -776,6 +848,11 @@ export const riskAlerts = pgTable(
       .notNull()
       .references(() => questions.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Случай, к которому относится сигнал. Nullable только ради миграции:
+     * тревоги, поднятые до перехода, привязываются отдельным шагом.
+     */
+    caseId: text("case_id").references(() => alertCases.id, { onDelete: "cascade" }),
     label: text("label").notNull(),
     severity: text("severity", { enum: ["moderate", "severe"] }).notNull().default("severe"),
     at: timestampCol("at").notNull().defaultNow(),

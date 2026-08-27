@@ -94,7 +94,9 @@ export default function App() {
      * дежурный видит новую тревогу, даже сидя в другой вкладке.
      */
     const load = () => {
-      api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => {});
+      // счётчик считает случаи, а не сработавшие пункты: в навигации должно
+      // стоять число людей, которых надо разобрать, а не число сигналов
+      api.alertCases({ limit: "1" }).then((p) => setOpenAlerts(p.total ?? 0)).catch(() => {});
       // направления в том же такте: незакрытое направление ждёт так же долго
       api.referrals().then((r) => setOpenReferrals(r.length)).catch(() => {});
     };
@@ -140,7 +142,7 @@ export default function App() {
         <Nav to="/patients" icon={<IconPatients />}>Пациенты</Nav>
         <Nav to="/compare" icon={<IconCompare />}>Сравнение</Nav>
         <Nav to="/surveillance" icon={<IconPulse />}>Надзор</Nav>
-        <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>Тревоги</Nav>
+        <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>Случаи риска</Nav>
         <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>Направления</Nav>
 
         {isSuper ? (

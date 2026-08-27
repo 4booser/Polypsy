@@ -30,7 +30,7 @@ for (const theme of ["dark", "light"] as const) {
   for (const [name, path] of [
     ["сводка", "/"],
     ["пациенты", "/patients"],
-    ["тревоги", "/alerts"],
+    ["случаи риска", "/alerts"],
     ["направления", "/referrals"],
   ] as const) {
     test(`экран «${name}» доступен, тема ${theme}`, async ({ page }) => {

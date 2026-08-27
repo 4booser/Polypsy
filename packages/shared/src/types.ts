@@ -1066,3 +1066,77 @@ export interface AuditPage {
   offset: number;
   limit: number;
 }
+
+
+/* ─────────── случаи риска ─────────── */
+
+/** Один сигнал внутри случая: какой пункт сработал */
+export interface AlertSignal {
+  id: string;
+  responseId: string;
+  questionId: string;
+  questionTitle: string;
+  label: string;
+  severity: RiskSeverity;
+  at: string;
+}
+
+/**
+ * Случай риска — единица разбора.
+ *
+ * Тревога поднимается на пункт, но решение принимается о человеке: пять
+ * отмеченных пунктов одного обследуемого — один случай.
+ */
+export interface AlertCase {
+  id: string;
+  userId: string;
+  userName: string;
+  unit: string | null;
+  surveyId: string;
+  surveyTitle: string;
+
+  severity: RiskSeverity;
+  openedAt: string;
+  lastAlertAt: string;
+  /** Сколько сигналов внутри */
+  signalCount: number;
+  /** Сигналы: приходят с самим случаем — их немного, и без них он бессмыслен */
+  signals: AlertSignal[];
+
+  /** Минут в открытом состоянии; для разобранных — сколько провисел */
+  minutesOpen: number;
+  /** Просрочен по настройке эскалации методики */
+  overdue: boolean;
+
+  assignedTo: string | null;
+  assignedToName: string | null;
+  acknowledgedBy: string | null;
+  acknowledgedByName: string | null;
+  acknowledgedAt: string | null;
+  note: string | null;
+  outcome: AlertOutcome | null;
+  /** Собран автоматически при переходе со старой модели, а не решением специалиста */
+  mergedFromLegacy: boolean;
+}
+
+export type AlertOutcome = "confirmed" | "not_confirmed" | "needs_followup";
+
+/** Страница списка: курсор вместо номера — список меняется прямо во время разбора */
+export interface Page<T> {
+  items: T[];
+  /** null — больше ничего нет */
+  nextCursor: string | null;
+  /** Всего подходящих под фильтр; считается отдельно и только на первой странице */
+  total?: number;
+}
+
+export interface AlertCaseFilters {
+  /** Разобранные тоже */
+  all?: boolean;
+  severity?: RiskSeverity;
+  unit?: string;
+  /** "me" — мои, "none" — ничьи */
+  assigned?: string;
+  surveyId?: string;
+  search?: string;
+}

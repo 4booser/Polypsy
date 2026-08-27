@@ -30,6 +30,8 @@ import type {
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
+  AlertCase,
+  Page,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -293,6 +295,24 @@ export const api = {
     }),
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
+
+  /** Случаи риска: страница с курсором */
+  alertCases: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
+  },
+  alertCaseUnits: () => request<string[]>("/api/alert-cases/units"),
+  assignCase: (id: string, release = false) =>
+    request<void>(`/api/alert-cases/${id}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ release }),
+    }),
+  resolveCase: (id: string, outcome: string, note: string) =>
+    request<void>(`/api/alert-cases/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ outcome, note }),
+    }),
 
   openapi: () => request<never>("/api/openapi.json"),
   downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),

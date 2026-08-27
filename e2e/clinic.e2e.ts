@@ -9,8 +9,9 @@ import { login, rowTexts } from "./helpers";
 test("от тревоги до закрытого направления", async ({ page }) => {
   await login(page, "psy");
 
-  await page.getByRole("link", { name: /^Тревоги/ }).click();
-  await expect(page.getByRole("heading", { name: "Тревоги" })).toBeVisible();
+  await page.getByRole("link", { name: /^Случаи риска/ }).click();
+  // экран разбора: единица работы — человек, а не сработавший пункт
+  await expect(page.getByRole("heading", { name: "Разбор случаев" })).toBeVisible();
 
   // из тревоги — к пациенту
   await page.getByRole("link", { name: "Пациенты" }).click();
