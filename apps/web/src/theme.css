@@ -785,3 +785,19 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 }
 .lang-switch button.active { background: var(--surface-2); color: var(--text); }
 @media (max-width: 1180px) { .sidebar .lang-switch { flex-direction: column; } }
+
+/* подсказка по горячим клавишам: не мешает и не притворяется содержимым */
+.hotkeys {
+  position: sticky; bottom: 0; display: flex; gap: 16px; flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3); margin-top: var(--sp-4);
+  background: var(--surface); border-top: 1px solid var(--border);
+  font-size: var(--fs-micro); color: var(--muted);
+}
+.hotkeys kbd {
+  font: inherit; font-weight: 700; padding: 2px 6px; border-radius: 4px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text-2);
+}
+@media (max-width: 760px) { .hotkeys { display: none; } }
+
+/* случай «под рукой»: видно, к чему относятся клавиши */
+.case.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
