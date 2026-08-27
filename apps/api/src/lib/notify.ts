@@ -13,6 +13,7 @@ import {
 import { env } from "../env";
 import { auditSystem } from "./audit";
 import { parseTs } from "./time";
+import { log } from "./log";
 
 /**
  * Уведомления о тревогах риска.
@@ -140,7 +141,7 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
       });
       initial++;
     } catch (error) {
-      console.error("Не удалось уведомить о тревоге", alert.id, error);
+      log.error("alert.notify_failed", { alertId: alert.id, error: String(error) });
     }
   }
 
@@ -194,7 +195,7 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
       });
       escalated++;
     } catch (error) {
-      console.error("Не удалось эскалировать тревогу", alert.id, error);
+      log.error("alert.escalate_failed", { alertId: alert.id, error: String(error) });
     }
   }
 
@@ -204,7 +205,7 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
 /** Минутный тик: тревога должна догонять специалиста быстро */
 export function startNotifier(intervalMs = 60_000): () => void {
   const tick = () => {
-    runNotifierOnce().catch((error) => console.error("Рассыльщик тревог упал", error));
+    runNotifierOnce().catch((error) => log.error("notifier.tick_failed", { error: String(error) }));
   };
   tick();
   const timer = setInterval(tick, intervalMs);

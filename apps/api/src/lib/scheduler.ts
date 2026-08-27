@@ -12,6 +12,7 @@ import {
 } from "../db/schema";
 import { auditSystem } from "./audit";
 import { batterySurveysInUse } from "./scope";
+import { log } from "./log";
 
 const DAY_MS = 86_400_000;
 
@@ -93,9 +94,10 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
   const inUse = new Set(await batterySurveysInUse(schedule.batteryId));
   const grantable = items.filter((i) => inUse.has(i.surveyId));
   if (grantable.length < items.length) {
-    console.warn(
-      `Расписание «${schedule.title}»: пропущено снятых методик ${items.length - grantable.length}`,
-    );
+    log.warn("schedule.archived_skipped", {
+      scheduleId: schedule.id,
+      skipped: items.length - grantable.length,
+    });
   }
   if (!grantable.length) return { assigned: 0, skipped: targets.length };
 
@@ -208,7 +210,7 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
       });
       handled++;
     } catch (error) {
-      console.error(`Расписание «${schedule.title}» не отработало`, error);
+      log.error("schedule.failed", { scheduleId: schedule.id, error: String(error) });
       await db
         .insert(scheduleRuns)
         .values({
@@ -234,7 +236,7 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
 /** Периодический запуск. Часа достаточно: расписания меряются днями. */
 export function startScheduler(intervalMs = 3_600_000): () => void {
   const tick = () => {
-    runDueSchedules().catch((error) => console.error("Планировщик упал", error));
+    runDueSchedules().catch((error) => log.error("scheduler.tick_failed", { error: String(error) }));
   };
   tick();
   const timer = setInterval(tick, intervalMs);

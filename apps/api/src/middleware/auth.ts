@@ -11,6 +11,8 @@ import type { User } from "@quizzy/shared";
 export interface AppEnv {
   Variables: {
     user: User;
+    /** Сквозной идентификатор запроса — ставится первым middleware */
+    requestId: string;
   };
 }
 

@@ -14,6 +14,7 @@ import { round, variance } from "../lib/stats";
 import { answers as answersTable } from "../db/schema";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { log } from "../lib/log";
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
@@ -254,7 +255,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         if (rel) alphaBySurveyCode.set(`${surveyId}:${scale.code}`, rel.alpha);
       }
     } catch (error) {
-      console.error("Альфа для RCI не посчиталась", surveyId, error);
+      log.error("rci.alpha_failed", { surveyId, error: String(error) });
     }
   }
 

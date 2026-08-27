@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { batteries, batteryAssignments, batteryItems, responses, surveys } from "../db/schema";
 import { badRequest } from "./http";
+import { log } from "./log";
 
 /**
  * Закрытие назначений батареи после сдачи очередной методики.
@@ -67,7 +68,7 @@ export async function closeCompletedBatteries(userId: string | null, surveyId: s
         .where(eq(batteryAssignments.id, a.assignment.id));
     }
   } catch (error) {
-    console.error("Не удалось обновить назначения батарей", error);
+    log.error("battery.assignments_update_failed", { error: String(error) });
   }
 }
 

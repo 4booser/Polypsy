@@ -46,6 +46,7 @@ interface RouteDoc {
 export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /health": { summary: "Живо ли приложение", access: "public" },
   "GET /health/ready": { summary: "Готово ли принимать нагрузку (проверяет БД)", access: "public" },
+  "GET /metrics": { summary: "Метрики Prometheus; закрыты METRICS_TOKEN, без него 404", access: "public" },
 
   /* ── вход и профиль ── */
   "POST /api/auth/register": { summary: "Регистрация обследуемого", access: "public", body: registerSchema },

@@ -112,7 +112,17 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status, body);
+  if (!res.ok) {
+    /*
+     * Номер запроса приходит и в заголовке, и в теле. Он приклеивается к
+     * сообщению, потому что пользователь пересказывает ошибку словами, а
+     * номер позволяет найти запись в логе одним поиском — вместо «вчера
+     * вечером что-то не сохранилось».
+     */
+    const requestId = res.headers.get("x-request-id") ?? body?.requestId ?? null;
+    const text = body?.error ?? `Ошибка ${res.status}`;
+    throw new ApiError(requestId ? `${text} · запрос ${requestId.slice(0, 8)}` : text, res.status, body);
+  }
   return body as T;
 }
 

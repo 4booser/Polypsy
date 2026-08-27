@@ -3,6 +3,7 @@ import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { env } from "../env";
 import { auditSystem } from "./audit";
+import { log } from "./log";
 
 /**
  * Ретенция сырого потока событий.
@@ -55,7 +56,7 @@ async function runRetentionInner(now: Date): Promise<number> {
 /** Суточный тик: ретенция меряется месяцами, чаще нет смысла */
 export function startRetention(intervalMs = 24 * 3_600_000): () => void {
   const tick = () => {
-    runRetentionOnce().catch((error) => console.error("Ретенция упала", error));
+    runRetentionOnce().catch((error) => log.error("retention.failed", { error: String(error) }));
   };
   tick();
   const timer = setInterval(tick, intervalMs);

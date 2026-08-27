@@ -3,6 +3,7 @@ import { desc, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { auditLog } from "../db/schema";
 import type { User } from "@quizzy/shared";
+import { currentRequestId, log } from "./log";
 
 /** Действия журнала. Строковый союз, чтобы опечатка ловилась типами. */
 export type AuditAction =
@@ -158,6 +159,13 @@ async function writeChained(values: Record<string, unknown>): Promise<void> {
   });
 }
 
+/** Подмешивает номер запроса в подробности события, не затирая своих полей */
+function withRequestId(details: Record<string, unknown> | null | undefined) {
+  const id = currentRequestId();
+  if (!id) return details ?? null;
+  return { ...(details ?? {}), requestId: id };
+}
+
 export async function audit(c: Context, input: AuditInput): Promise<void> {
   try {
     const actor = input.actor ?? (c.get("user") as User | undefined) ?? null;
@@ -173,10 +181,16 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
       outcome: input.outcome ?? "success",
       ip: clientIp(c),
       userAgent: c.req.header("User-Agent") ?? null,
-      details: input.details ?? null,
+      /*
+       * Идентификатор запроса кладём в details, а не отдельной колонкой:
+       * колонка изменила бы канонизацию строки, по которой считается хэш, и
+       * все прежние записи перестали бы проверяться. Цепочка важнее удобства
+       * запроса — а найти по details Postgres умеет.
+       */
+      details: withRequestId(input.details),
     });
   } catch (err) {
-    console.error("[audit] не удалось записать событие", input.action, err);
+    log.error("audit.write_failed", { action: input.action, error: String(err) });
   }
 }
 
@@ -202,7 +216,7 @@ export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<voi
       details: input.details ?? null,
     });
   } catch (err) {
-    console.error("[audit] не удалось записать системное событие", input.action, err);
+    log.error("audit.system_write_failed", { action: input.action, error: String(err) });
   }
 }
 
