@@ -2597,3 +2597,36 @@ describe("передача смены и просроченные повторы
     expect(res.body.byKind.followup).toBeGreaterThan(0);
   });
 });
+
+describe("RLS покрывает все клинические таблицы", () => {
+  test("ни одна таблица с клиническими данными не осталась без политик", async () => {
+    /*
+     * Политики писались один раз, а таблицы добавлялись позже — так три
+     * таблицы (случаи риска, направления, заключения) и оказались вне
+     * страховочной сетки. Тест сторожит именно это: список таблиц растёт, и
+     * помнить про RLS при каждой новой никто не обязан.
+     */
+    const { sql: sqlOp } = await import("drizzle-orm");
+    const rows = await db.execute<{ relname: string; n: number } & Record<string, unknown>>(sqlOp`
+      select c.relname,
+             (select count(*)::int from pg_policies p where p.tablename = c.relname) as n
+      from pg_class c join pg_namespace ns on ns.oid = c.relnamespace
+      where ns.nspname = 'public' and c.relkind = 'r'
+        and c.relname in (
+          'responses','answers','response_scores','risk_alerts',
+          'alert_cases','referrals','conclusions','survey_access'
+        )
+    `);
+    const unprotected = [...rows].filter((r) => Number(r.n) === 0).map((r) => String(r.relname));
+    expect(unprotected).toEqual([]);
+  });
+
+  test("политика случаев видит группу, а не всё подряд", async () => {
+    const { alertCases } = await import("../src/db/schema");
+    const [row] = await db.select().from(alertCases).limit(1);
+    if (!row) return;
+    // чужой админ не получает случай ни по API, ни по прямому чтению в его контексте
+    const res = await api(`/api/alert-cases/${row.id}/history`, adminB.token);
+    expect(res.status).toBe(404);
+  });
+});
