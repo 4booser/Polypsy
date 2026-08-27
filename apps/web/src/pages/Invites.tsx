@@ -4,6 +4,7 @@ import type { Battery, Invite } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Empty, Loading, PageHead, useAction } from "../ui";
+import { useLang } from "../lang";
 
 /**
  * Приглашения: вход пациента по ссылке, QR или короткому коду.
@@ -13,6 +14,7 @@ import { Empty, Loading, PageHead, useAction } from "../ui";
  * по телефону и ввода руками, его перехват без пары email+пароль бесполезен.
  */
 export default function Invites() {
+  const { ut } = useLang();
   const [rows, setRows] = useState<Invite[] | null>(null);
   const [batteries, setBatteries] = useState<Battery[]>([]);
   const [fresh, setFresh] = useState<{ token: string; code: string } | null>(null);
@@ -58,11 +60,11 @@ export default function Invites() {
             <thead>
               <tr>
                 <th>Код</th>
-                <th>Батарея</th>
-                <th>Подразделение</th>
-                <th className="num">Входов</th>
-                <th>Действует до</th>
-                <th>Создал</th>
+                <th>{ut("f.battery")}</th>
+                <th>{ut("ui.unit")}</th>
+                <th className="num">{ut("inv.entries")}</th>
+                <th>{ut("inv.expires")}</th>
+                <th>{ut("inv.createdBy")}</th>
                 <th />
               </tr>
             </thead>
@@ -119,6 +121,7 @@ function InviteForm({
   onClose: () => void;
   onCreated: (t: { token: string; code: string }) => void;
 }) {
+  const { ut } = useLang();
   const [batteryId, setBatteryId] = useState("");
   const [unit, setUnit] = useState("");
   const [note, setNote] = useState("");
@@ -129,12 +132,12 @@ function InviteForm({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Новое приглашение</h2>
-        <button onClick={onClose}>Закрыть</button>
+        <h2>{ut("inv.new")}</h2>
+        <button onClick={onClose}>{ut("ui.close")}</button>
       </div>
       <div className="form-grid">
         <label className="field grow">
-          <span>Батарея (назначится при регистрации)</span>
+          <span>{ut("inv.batteryOnRegister")}</span>
           <select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
             <option value="">без батареи — только доступ в систему</option>
             {batteries.map((b) => (
@@ -143,11 +146,11 @@ function InviteForm({
           </select>
         </label>
         <label className="field">
-          <span>Подразделение</span>
+          <span>{ut("ui.unit")}</span>
           <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="проставится аккаунту" />
         </label>
         <label className="field">
-          <span>Использований</span>
+          <span>{ut("inv.uses")}</span>
           <input type="number" min={1} max={500} value={maxUses}
             onChange={(e) => setMaxUses(Math.max(1, Number(e.target.value) || 1))} />
         </label>
@@ -157,7 +160,7 @@ function InviteForm({
             onChange={(e) => setTtlDays(Math.max(1, Number(e.target.value) || 1))} />
         </label>
         <label className="field grow">
-          <span>Заметка (видна только персоналу)</span>
+          <span>{ut("inv.noteStaffOnly")}</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="например, «поступление 3-й роты»" />
         </label>
       </div>
@@ -190,6 +193,7 @@ function InviteForm({
 
 /** Показ ссылки и QR один раз после создания */
 function FreshInvite({ token, code, onClose }: { token: string; code: string; onClose: () => void }) {
+  const { ut } = useLang();
   const url = `${location.origin}/join/${token}`;
   const run = useAction();
 
@@ -203,8 +207,8 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Приглашение готово</h2>
-        <button onClick={onClose}>Скрыть</button>
+        <h2>{ut("inv.ready")}</h2>
+        <button onClick={onClose}>{ut("f.hide")}</button>
       </div>
       <p className="hint warn">
         Ссылка показывается один раз — в системе хранится только её отпечаток. Скопируйте или
@@ -218,11 +222,11 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
         <div className="qr" dangerouslySetInnerHTML={{ __html: svg }} />
         <div style={{ flex: 1, minWidth: 260 }}>
           <label className="field">
-            <span>Ссылка</span>
+            <span>{ut("inv.link")}</span>
             <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
           </label>
           <label className="field">
-            <span>Код для ручного ввода</span>
+            <span>{ut("inv.manualCode")}</span>
             <input readOnly value={code} style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700 }} />
           </label>
           <div className="row tight">
@@ -232,7 +236,7 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
             <button onClick={() => run(async () => navigator.clipboard.writeText(code), "Код скопирован")}>
               Копировать код
             </button>
-            <button onClick={() => window.print()}>Печать с QR</button>
+            <button onClick={() => window.print()}>{ut("inv.printQr")}</button>
           </div>
         </div>
       </div>

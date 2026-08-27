@@ -4,6 +4,7 @@ import type { Battery, KioskSession } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Empty, Loading, PageHead, useAction } from "../ui";
+import { useLang } from "../lang";
 
 /**
  * Сеансы киоска: групповое обследование на одном планшете.
@@ -13,6 +14,7 @@ import { Empty, Loading, PageHead, useAction } from "../ui";
  * процессе. Ссылка сеанса показывается один раз: в базе только отпечаток.
  */
 export default function KioskSessions() {
+  const { ut } = useLang();
   const [rows, setRows] = useState<KioskSession[] | null>(null);
   const [batteries, setBatteries] = useState<Battery[]>([]);
   const [fresh, setFresh] = useState<string | null>(null);
@@ -62,13 +64,14 @@ export default function KioskSessions() {
       ) : null}
 
       {active.map((s) => <SessionCard key={s.id} session={s} onChanged={reload} live />)}
-      {past.length ? <h2 style={{ margin: "20px 0 10px", fontSize: 15 }} className="muted">Завершённые</h2> : null}
+      {past.length ? <h2 style={{ margin: "20px 0 10px", fontSize: 15 }} className="muted">{ut("ks.finished")}</h2> : null}
       {past.slice(0, 10).map((s) => <SessionCard key={s.id} session={s} onChanged={reload} />)}
     </>
   );
 }
 
 function SessionCard({ session, onChanged, live }: { session: KioskSession; onChanged: () => void; live?: boolean }) {
+  const { ut } = useLang();
   const run = useAction();
   const done = session.participants.filter((p) => p.finishedAt).length;
   return (
@@ -95,7 +98,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
       {session.participants.length ? (
         <table>
           <thead>
-            <tr><th>Участник</th><th>Начал</th><th>Прогресс</th></tr>
+            <tr><th>{ut("ks.participant")}</th><th>{ut("ks.started")}</th><th>{ut("bat.progress")}</th></tr>
           </thead>
           <tbody>
             {session.participants.map((p) => (
@@ -112,7 +115,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
           </tbody>
         </table>
       ) : (
-        <p className="hint">Пока никто не начал</p>
+        <p className="hint">{ut("ks.nobodyStarted")}</p>
       )}
     </div>
   );
@@ -127,6 +130,7 @@ function SessionForm({
   onClose: () => void;
   onCreated: (token: string) => void;
 }) {
+  const { ut } = useLang();
   const [title, setTitle] = useState("");
   const [batteryId, setBatteryId] = useState(batteries[0]?.id ?? "");
   const [ttlHours, setTtlHours] = useState(8);
@@ -137,17 +141,17 @@ function SessionForm({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Новый сеанс</h2>
-        <button onClick={onClose}>Закрыть</button>
+        <h2>{ut("ks.new")}</h2>
+        <button onClick={onClose}>{ut("ui.close")}</button>
       </div>
       <div className="form-grid">
-        <label className="field grow"><span>Название</span>
+        <label className="field grow"><span>{ut("f.name")}</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например, «Обследование 3-й роты, кабинет 12»" /></label>
-        <label className="field grow"><span>Батарея</span>
+        <label className="field grow"><span>{ut("f.battery")}</span>
           <select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
             {batteries.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
           </select></label>
-        <label className="field"><span>Длительность, часов</span>
+        <label className="field"><span>{ut("ks.hours")}</span>
           <input type="number" min={1} max={72} value={ttlHours}
             onChange={(e) => setTtlHours(Math.max(1, Number(e.target.value) || 1))} /></label>
       </div>
@@ -176,6 +180,7 @@ function SessionForm({
 }
 
 function FreshSession({ token, onClose }: { token: string; onClose: () => void }) {
+  const { ut } = useLang();
   const url = `${location.origin}/kiosk/${token}`;
   const run = useAction();
   const svg = useMemo(() => {
@@ -188,8 +193,8 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Сеанс готов</h2>
-        <button onClick={onClose}>Скрыть</button>
+        <h2>{ut("ks.ready")}</h2>
+        <button onClick={onClose}>{ut("f.hide")}</button>
       </div>
       <p className="hint warn">
         Откройте эту ссылку на планшете киоска. Показывается один раз — дальше хранится только
@@ -203,13 +208,13 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
         */}
         <div className="qr" dangerouslySetInnerHTML={{ __html: svg }} />
         <div style={{ flex: 1, minWidth: 260 }}>
-          <label className="field"><span>Ссылка киоска</span>
+          <label className="field"><span>{ut("ks.link")}</span>
             <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} /></label>
           <div className="row tight">
             <button onClick={() => run(async () => navigator.clipboard.writeText(url), "Скопировано")}>
               Копировать
             </button>
-            <a className="btn" href={url} target="_blank" rel="noreferrer">Открыть здесь (проверка)</a>
+            <a className="btn" href={url} target="_blank" rel="noreferrer">{ut("ks.openHere")}</a>
           </div>
         </div>
       </div>

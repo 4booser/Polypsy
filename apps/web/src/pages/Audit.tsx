@@ -4,6 +4,7 @@ import { api } from "../api";
 import { BarList, Chart } from "../charts";
 import { dateTime } from "../format";
 import { Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
 const ACTION_LABEL: Record<string, string> = {
   "auth.login": "Вход",
@@ -46,6 +47,7 @@ const FILTERS = [
 ] as const;
 
 export default function Audit() {
+  const { ut } = useLang();
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.auditSummary>> | null>(null);
@@ -99,7 +101,7 @@ export default function Audit() {
 
       <div className="card scroll-x">
         <table>
-          <thead><tr><th>Когда</th><th>Действие</th><th>Кто</th><th>Исход</th><th>Пациент</th><th>Подробности</th></tr></thead>
+          <thead><tr><th>{ut("aud.when")}</th><th>Действие</th><th>{ut("aud.who")}</th><th>Исход</th><th>Пациент</th><th>{ut("aud.details")}</th></tr></thead>
           <tbody>
             {entries.map((e) => (
               <tr key={e.id}>
