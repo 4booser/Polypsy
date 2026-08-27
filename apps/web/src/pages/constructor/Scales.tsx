@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { Loc } from "./fields";
-import { parseItems, type Draft, type DraftScale } from "./model";
+import { newUid, parseItems, type Draft, type DraftScale } from "./model";
 
 export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   // батареи нужны для каскадов: попадание в полосу может назначить углублённую
@@ -28,6 +28,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                 scales: [
                   ...d.scales,
                   {
+                    uid: newUid(),
                     code: "",
                     title: { uk: "", ru: "" },
                     kind: "clinical",
@@ -48,7 +49,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
       </div>
 
       {draft.scales.map((s, i) => (
-        <div className="card" key={i}>
+        <div className="card" key={s.uid}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <strong>{s.code || "новая шкала"}</strong>
             <button className="danger" onClick={() => setDraft((d) => ({ ...d, scales: d.scales.filter((_, k) => k !== i) }))}>

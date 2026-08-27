@@ -6,7 +6,7 @@ import { api } from "../../api";
 import { Basics } from "./Basics";
 import { Questions } from "./Questions";
 import { Scales } from "./Scales";
-import { EMPTY, toDraft, type Draft, type Tab } from "./model";
+import { EMPTY, toDraft, toPayload, withUids, type Draft, type Tab } from "./model";
 import { Loading, PageHead } from "../../ui";
 
 /**
@@ -76,7 +76,7 @@ export default function Constructor() {
     const saved = localStorage.getItem(draftKey(id));
     if (saved) {
       try {
-        setDraftRaw({ ...EMPTY, ...(JSON.parse(saved) as Draft) });
+        setDraftRaw(withUids({ ...EMPTY, ...(JSON.parse(saved) as Draft) }));
         setRestored(true);
         setLoaded(true);
         return;
@@ -155,7 +155,7 @@ export default function Constructor() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.validateSurvey(draft);
+      const res = await api.validateSurvey(toPayload(draft));
       setIssues(res.issues);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось проверить");
@@ -169,8 +169,8 @@ export default function Constructor() {
     setError(null);
     try {
       const survey = id
-        ? await api.updateSurvey(id, { ...draft, versionNote: "Правка через конструктор" })
-        : await api.createSurvey(draft);
+        ? await api.updateSurvey(id, { ...toPayload(draft), versionNote: "Правка через конструктор" })
+        : await api.createSurvey(toPayload(draft));
       if (publish) await api.updateSurvey(survey.id, { status: "published" });
       localStorage.removeItem(draftKey(id));
       setDirty(false);
@@ -187,7 +187,7 @@ export default function Constructor() {
     try {
       const parsed = JSON.parse(json) as Draft;
       if (!parsed.title) throw new Error("В JSON нет поля title");
-      setDraft({ ...EMPTY, ...parsed });
+      setDraft(withUids({ ...EMPTY, ...parsed }));
       setTab("basics");
     } catch (e) {
       setError(e instanceof Error ? `JSON не разобран: ${e.message}` : "JSON не разобран");

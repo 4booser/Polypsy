@@ -27,6 +27,14 @@ export interface Draft {
 }
 
 export interface DraftQuestion {
+  /**
+   * Идентификатор строки списка на время правки.
+   *
+   * Ключом React был порядковый номер, и при удалении пункта его место
+   * занимал следующий: поле ввода оставалось тем же узлом DOM, курсор — в
+   * нём, а текст в нём — уже от другого вопроса. На сервер не уходит.
+   */
+  uid: string;
   type: string;
   title: Record<string, string>;
   help?: Record<string, string> | null;
@@ -42,6 +50,8 @@ export interface DraftQuestion {
 }
 
 export interface DraftScale {
+  /** См. DraftQuestion.uid — то же для списка шкал */
+  uid: string;
   code: string;
   title: Record<string, string>;
   kind: "clinical" | "validity";
@@ -103,7 +113,6 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
   const loc = (v: unknown): Record<string, string> =>
     typeof v === "string" ? { ru: v } : ((v ?? {}) as Record<string, string>);
   const indexById = new Map(s.questions.map((q, i) => [q.id, i + 1]));
-  const codeById = new Map(s.scales.map((sc) => [sc.id, sc.code]));
 
   return {
     title: loc(s.title),
@@ -123,6 +132,7 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
     alertEscalateMinutes: s.alertEscalateMinutes,
     sections: [],
     questions: s.questions.map((q) => ({
+      uid: q.id,
       type: q.type,
       title: loc(q.title),
       help: q.help ? loc(q.help) : null,
@@ -137,6 +147,7 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
       })),
     })),
     scales: s.scales.map((sc) => ({
+      uid: sc.id,
       code: sc.code,
       title: loc(sc.title),
       kind: sc.kind,
@@ -163,7 +174,6 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
       })),
     })),
   };
-  void codeById;
 }
 
 
@@ -180,3 +190,40 @@ export function parseItems(input: string): number[] {
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
+
+
+/** Свежий идентификатор строки конструктора */
+export function newUid(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * Черновик в том виде, в каком его принимает API.
+ *
+ * uid — вспомогательное поле редактора, на сервере ему делать нечего: там
+ * идентификаторы выдаются заново при каждой новой версии.
+ */
+export function toPayload(draft: Draft): Omit<Draft, "questions" | "scales"> & {
+  questions: Omit<DraftQuestion, "uid">[];
+  scales: Omit<DraftScale, "uid">[];
+} {
+  const { questions, scales, ...rest } = draft;
+  return {
+    ...rest,
+    questions: questions.map(({ uid: _q, ...q }) => q),
+    scales: scales.map(({ uid: _s, ...sc }) => sc),
+  };
+}
+
+/**
+ * Восстановление черновика из localStorage: сохранённый до появления uid
+ * (или руками правленный) их не имеет — проставляем, иначе список снова
+ * поедет по индексам.
+ */
+export function withUids(draft: Draft): Draft {
+  return {
+    ...draft,
+    questions: draft.questions.map((q) => (q.uid ? q : { ...q, uid: newUid() })),
+    scales: draft.scales.map((sc) => (sc.uid ? sc : { ...sc, uid: newUid() })),
+  };
+}

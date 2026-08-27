@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { BulkPaste } from "./BulkPaste";
 import { Loc, Toggle } from "./fields";
-import { TYPES, type Draft, type DraftQuestion } from "./model";
+import { TYPES, newUid, type Draft, type DraftQuestion } from "./model";
 
 export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   const [bulk, setBulk] = useState(false);
@@ -43,6 +43,7 @@ export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d:
                   questions: [
                     ...d.questions,
                     {
+                      uid: newUid(),
                       type: "yesno",
                       title: { uk: "", ru: "" },
                       required: true,
@@ -73,7 +74,7 @@ export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d:
       ) : null}
 
       {draft.questions.map((q, i) => (
-        <div className="card" key={i}>
+        <div className="card" key={q.uid}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <strong>Пункт {i + 1}</strong>
             <div className="row">
