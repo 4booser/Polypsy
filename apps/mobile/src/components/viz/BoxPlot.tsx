@@ -4,36 +4,8 @@ import Svg, { Line, Rect, Text as SvgText } from "react-native-svg";
 import { useChart } from "../../theme";
 import { Caption, PLOT, formatShort, useMeasuredWidth } from "./primitives";
 
-export interface BoxStat {
-  label: string;
-  min: number;
-  q1: number;
-  median: number;
-  q3: number;
-  max: number;
-  n: number;
-}
-
-/** Квартили по массиву значений */
-export function boxStatsOf(label: string, values: number[]): BoxStat | null {
-  if (values.length === 0) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const at = (p: number) => {
-    const idx = (s.length - 1) * p;
-    const lo = Math.floor(idx);
-    const hi = Math.ceil(idx);
-    return s[lo]! + (s[hi]! - s[lo]!) * (idx - lo);
-  };
-  return {
-    label,
-    min: s[0]!,
-    q1: Math.round(at(0.25) * 100) / 100,
-    median: Math.round(at(0.5) * 100) / 100,
-    q3: Math.round(at(0.75) * 100) / 100,
-    max: s[s.length - 1]!,
-    n: values.length,
-  };
-}
+export { boxStatsOf, type BoxStat } from "./math";
+import type { BoxStat } from "./math";
 
 /**
  * Ящик с усами: разброс, а не только среднее.

@@ -7,3 +7,4 @@ export * from "./rci";
 export * from "./medstats";
 export * from "./versionDiff";
 export * from "./palette";
+export * from "./format";

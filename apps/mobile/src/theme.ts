@@ -1,5 +1,5 @@
 import { useColorScheme } from "react-native";
-import { SEVERITY_FILL, type Severity } from "@quizzy/shared";
+import { SEVERITY_FILL, formatDuration as sharedDuration, type Severity } from "@quizzy/shared";
 
 const light = {
   bg: "#f6f7f9",
@@ -83,12 +83,5 @@ export function useChart(): ChartColors {
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 export const radius = { sm: 8, md: 12, lg: 16 } as const;
 
-/** Человекочитаемая длительность: 4,2 с / 1 мин 12 с */
-export function formatDuration(ms: number): string {
-  if (!ms) return "—";
-  const totalSec = ms / 1000;
-  if (totalSec < 60) return `${totalSec.toFixed(1).replace(".", ",")} с`;
-  const min = Math.floor(totalSec / 60);
-  const sec = Math.round(totalSec % 60);
-  return sec ? `${min} мин ${sec} с` : `${min} мин`;
-}
+/** Длительность — из общего пакета, чтобы формат совпадал с консолью */
+export const formatDuration = sharedDuration;

@@ -52,18 +52,5 @@ export function Caption({ children }: { children: React.ReactNode }) {
   return <RNText style={{ color: c.muted, fontSize: 12, marginTop: spacing.xs }}>{children}</RNText>;
 }
 
-/** Красивые деления оси: 0, 5, 10 вместо 0, 3.7, 7.4 */
-export function niceTicks(max: number, count = 4): number[] {
-  if (max <= 0) return [0];
-  const raw = max / count;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? mag * 10;
-  const ticks: number[] = [];
-  for (let v = 0; v <= max + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
-  return ticks;
-}
-
-export function formatShort(v: number): string {
-  if (Math.abs(v) >= 1000) return `${Math.round(v / 100) / 10}k`;
-  return String(Math.round(v * 100) / 100);
-}
+// числовая часть — в math.ts: там она без react-native и покрыта тестами
+export { niceTicks, formatShort } from "./math";
