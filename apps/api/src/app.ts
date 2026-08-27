@@ -37,6 +37,7 @@ import { surveillanceRoutes } from "./routes/surveillance";
 import { difRoutes } from "./routes/dif";
 import { calibrationRoutes } from "./routes/calibration";
 import { dataQualityRoutes } from "./routes/dataQuality";
+import { facetRoutes } from "./routes/facets";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import type { AppEnv } from "./middleware/auth";
@@ -102,6 +103,7 @@ app.route("/api/surveillance", surveillanceRoutes);
 app.route("/api/dif", difRoutes);
 app.route("/api/calibration", calibrationRoutes);
 app.route("/api/data-quality", dataQualityRoutes);
+app.route("/api/facets", facetRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {

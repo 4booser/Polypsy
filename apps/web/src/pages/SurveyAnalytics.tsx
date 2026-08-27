@@ -28,6 +28,8 @@ export default function SurveyAnalyticsPage() {
     run(() => download(api.spssSyntaxUrl(sid, profile), "syntax.sps"), "Синтаксис выгружен");
   const downloadCodebook = (sid: string) =>
     run(() => download(api.codebookUrl(sid, profile), "codebook.csv"), "Codebook выгружен");
+  const downloadLong = (sid: string) =>
+    run(() => download(api.longUrl(sid, profile), "long.csv"), "Long-format выгружен");
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
@@ -196,6 +198,9 @@ export default function SurveyAnalyticsPage() {
               <button onClick={() => downloadSpssData(data.surveyId)}>Матрица для SPSS</button>
               <button onClick={() => downloadSpssSyntax(data.surveyId)}>Синтаксис .sps</button>
               <button onClick={() => downloadCodebook(data.surveyId)}>Codebook</button>
+              <button onClick={() => downloadLong(data.surveyId)} title="Одна строка на пару «прохождение × шкала» — формат R и pandas">
+                Long-format
+              </button>
               <Link className="btn" to={`/surveys/${data.surveyId}/blank`}>Пустой бланк</Link>
               <Link className="btn" to={`/surveys/${data.surveyId}/key`}>Ключи для сверки</Link>
             </div>

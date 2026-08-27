@@ -242,6 +242,7 @@ export const api = {
   spssDataUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/data.csv?profile=${profile}`,
   spssSyntaxUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/syntax.sps?profile=${profile}`,
   codebookUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/codebook.csv?profile=${profile}`,
+  longUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/long.csv?profile=${profile}`,
   methodologyUrl: (id: string) => `/api/surveys/${id}/export`,
   reportUrl: (responseId: string) => `/api/reports/responses/${responseId}`,
 

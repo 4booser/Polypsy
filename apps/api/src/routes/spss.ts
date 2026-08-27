@@ -418,3 +418,95 @@ spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
     },
   });
 });
+
+/**
+ * Long-format выгрузка (8.3): одна строка на пару «прохождение × шкала».
+ *
+ * Формат, в котором работают R и pandas: не надо разворачивать широкую
+ * матрицу, сразу годится для смешанных моделей и графиков по группам.
+ * Профили деидентификации те же, что у SPSS-выгрузки; страты берутся из
+ * витрины фактов, поэтому в файле уже есть пол, возрастная полоса и язык.
+ */
+spssRoutes.get("/surveys/:id/long.csv", async (c) => {
+  const surveyId = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), surveyId);
+  const profile = profileOf(c);
+
+  const { sql } = await import("drizzle-orm");
+  const rows = await db.execute(sql`
+    select response_id, user_id, submitted_at, submitted_month, lang,
+           respondent_sex, respondent_age_band, unit,
+           scale_code, normalization, raw_score, value, band_label, severity, is_risk
+    from response_facts
+    where survey_id = ${surveyId} and status = 'completed'
+    order by submitted_at, response_id, scale_code`);
+
+  type Row = Record<string, unknown>;
+  const header = [
+    "case_id",
+    profile === "anonymous" ? null : "subject",
+    profile === "full" ? "submitted_at" : "submitted_month",
+    "lang",
+    "sex",
+    profile === "full" ? "age_band" : "age_band",
+    profile === "full" ? "unit" : null,
+    "scale",
+    "normalization",
+    "raw_score",
+    "value",
+    "band",
+    "severity",
+    "is_risk",
+  ].filter((x): x is string => x !== null);
+
+  const body = (rows as unknown as Row[]).map((r) => {
+    const subject =
+      profile === "full"
+        ? String(r.user_id ?? "")
+        : profile === "deidentified" && r.user_id
+          ? subjectCode(String(r.user_id))
+          : "";
+    return [
+      String(r.response_id),
+      profile === "anonymous" ? null : subject,
+      profile === "full" ? String(r.submitted_at ?? "") : String(r.submitted_month ?? ""),
+      String(r.lang ?? ""),
+      String(r.respondent_sex ?? ""),
+      String(r.respondent_age_band ?? ""),
+      profile === "full" ? String(r.unit ?? "") : null,
+      String(r.scale_code),
+      String(r.normalization ?? ""),
+      String(r.raw_score ?? ""),
+      String(r.value ?? ""),
+      String(r.band_label ?? ""),
+      String(r.severity ?? ""),
+      r.is_risk ? "1" : "0",
+    ]
+      .filter((x): x is string => x !== null)
+      .map(csvCell)
+      .join(",");
+  });
+
+  const csv = [header.join(","), ...body].join("\r\n");
+  const datasetHash = new Bun.CryptoHasher("sha256").update(csv).digest("hex");
+
+  await audit(c, {
+    action: "analytics.export",
+    resourceType: "survey",
+    resourceId: surveyId,
+    details: {
+      format: "long",
+      profile,
+      rows: body.length,
+      includesUserIds: profile === "full",
+      datasetSha256: datasetHash,
+    },
+  });
+
+  return new Response(`\ufeff${csv}`, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="quizzy-${surveyId}-long.csv"`,
+    },
+  });
+});

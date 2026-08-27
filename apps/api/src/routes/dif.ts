@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   itemContribution,
@@ -15,6 +16,7 @@ import { reliabilityOf } from "../lib/psychometrics";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { cached } from "../lib/analyticsCache";
 
 export const difRoutes = new Hono<AppEnv>();
 
@@ -88,6 +90,14 @@ interface DifEntry {
 difRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
+  // DIF считает MH по каждому пункту × 3 фактора — самый дорогой срез.
+  // Кэшируем ДАННЫЕ, а не Response: тело ответа одноразово, и повторная
+  // отдача того же объекта вернула бы пустоту
+  const data = await cached(surveyId, "dif", () => buildDif(c, surveyId));
+  return c.json(data);
+});
+
+async function buildDif(c: Context<AppEnv>, surveyId: string) {
   const survey = await getSurvey(surveyId, null, "ru");
   if (!survey) notFound("Методика не найдена");
 
@@ -252,7 +262,7 @@ difRoutes.get("/surveys/:id", async (c) => {
     details: { scales: result.length, sample: responseRows.length },
   });
 
-  return c.json({
+  return {
     surveyId,
     title: survey.title,
     sample: responseRows.length,
@@ -260,5 +270,5 @@ difRoutes.get("/surveys/:id", async (c) => {
     solidGroup: SOLID_GROUP,
     scales: result,
     reliability: reliabilityByGroup,
-  });
-});
+  };
+}
