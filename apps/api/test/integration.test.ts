@@ -1470,3 +1470,128 @@ describe("каскадные назначения", () => {
     expect(loopAssigned.length).toBe(0);
   }, 60_000);
 });
+
+/* ── волна 6: ROC-калибровка и PPV ── */
+
+describe("калибровка порогов", () => {
+  test("guard: мало исходов — кривая не строится, но характеристики порога видны", async () => {
+    const res = await api(`/api/calibration/surveys/${surveyInA}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.minPerOutcome).toBe(30);
+    // на этой методике исходов почти нет: enough=false, roc=null
+    for (const scale of res.body.scales) {
+      for (const s of scale.strata) {
+        if (!s.enough) expect(s.roc).toBeNull();
+      }
+    }
+  });
+
+  test("при достаточной выборке строится ROC и предлагается порог по Юдену", async () => {
+    const { sr45 } = await import("../src/instruments/sr45");
+    const { riskAlerts: alertsTable, questions: questionsTable } = await import("../src/db/schema");
+
+    const sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: { uk: "ROC-тест", ru: "ROC-тест" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, createSurveySchema.parse(sr45), adminA.id, "v1");
+
+    const survey = (await api(`/api/surveys/${sid}`, adminA.token)).body;
+    const asked = survey.questions.filter(
+      (q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length,
+    );
+    const [anyQuestion] = await db.select().from(questionsTable).limit(1);
+
+    // 80 случаев: чем выше балл, тем чаще исход «подтверждён» —
+    // калибровка обязана увидеть в этом сигнал
+    for (let i = 0; i < 80; i++) {
+      const person = await makeUser("user", `roc${i}@test.dev`, { sex: "male", birthDate: "1990-01-01" });
+      const level = i / 80; // 0…1
+      const answers = asked.map((q: { id: string; options: { id: string; keyCode?: string }[] }, qi: number) => {
+        const yes = q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!;
+        const no = q.options.find((o) => o.keyCode === "no") ?? q.options[1] ?? q.options[0]!;
+        return {
+          questionId: q.id,
+          optionIds: [((qi * 13 + i * 7) % 100) / 100 < level ? yes.id : no.id],
+          durationMs: 1200,
+          changeCount: 0,
+          visitCount: 1,
+        };
+      });
+      const res = await api(`/api/surveys/${sid}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({
+          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          durationMs: 60_000,
+          events: [],
+          answers,
+        }),
+      });
+      expect(res.status).toBe(201);
+
+      // исход: у верхней половины по уровню — подтверждён
+      await db.insert(alertsTable).values({
+        id: crypto.randomUUID(),
+        responseId: res.body.id,
+        surveyId: sid,
+        questionId: anyQuestion!.id,
+        userId: person.id,
+        label: "калибровочная тревога",
+        severity: "severe",
+        at: new Date().toISOString(),
+        acknowledgedBy: adminA.id,
+        acknowledgedAt: new Date().toISOString(),
+        outcome: level > 0.5 ? "confirmed" : "not_confirmed",
+      });
+    }
+
+    const cal = await api(`/api/calibration/surveys/${sid}`, adminA.token);
+    expect(cal.body.cases).toBeGreaterThanOrEqual(80);
+
+    const sr = cal.body.scales.find((s: { code: string }) => s.code === "Sr");
+    const all = sr.strata.find((s: { stratum: string }) => s.stratum === "вся выборка");
+    expect(all.confirmed).toBeGreaterThanOrEqual(30);
+    expect(all.notConfirmed).toBeGreaterThanOrEqual(30);
+    expect(all.enough).toBe(true);
+    // связь балла с исходом заложена — AUC обязан быть заметно выше случайного
+    expect(all.roc.auc).toBeGreaterThan(0.75);
+    expect(all.roc.bestThreshold).toBeGreaterThan(0);
+    expect(all.currentSensitivity).not.toBeNull();
+
+    // «требует наблюдения» не попадает ни в одну сторону
+    const before = cal.body.cases;
+    const extra = await makeUser("user", "followup@test.dev", { sex: "male", birthDate: "1990-01-01" });
+    const extraRes = await submitSurvey(sid, extra.token);
+    await db.insert(alertsTable).values({
+      id: crypto.randomUUID(),
+      responseId: extraRes.body.id,
+      surveyId: sid,
+      questionId: anyQuestion!.id,
+      userId: extra.id,
+      label: "отложенное решение",
+      severity: "severe",
+      at: new Date().toISOString(),
+      acknowledgedBy: adminA.id,
+      acknowledgedAt: new Date().toISOString(),
+      outcome: "needs_followup",
+    });
+    const after = await api(`/api/calibration/surveys/${sid}`, adminA.token);
+    expect(after.body.cases).toBe(before);
+
+    // PPV: сводка видит подтверждённые и считает долю
+    const ppv = await api("/api/calibration/ppv", adminA.token);
+    expect(ppv.body.overall.n).toBeGreaterThanOrEqual(80);
+    expect(ppv.body.overall.ppv).toBeGreaterThan(0);
+    expect(ppv.body.withoutOutcome).toBeGreaterThanOrEqual(1); // тот самый needs_followup
+    expect(ppv.body.byMonth.length).toBeGreaterThan(0);
+  }, 120_000);
+});

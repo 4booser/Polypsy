@@ -4,6 +4,7 @@ import type { OverviewAnalytics, RiskAlert, SurveyListItem } from "@quizzy/share
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { duration, day, severityColor, severityLabel } from "../format";
+import { PpvCard } from "../components/CalibrationPanel";
 
 export default function Dashboard() {
   const [data, setData] = useState<OverviewAnalytics | null>(null);
@@ -26,6 +27,7 @@ export default function Dashboard() {
 
   return (
     <>
+      <PpvCard />
       <h1>Сводка</h1>
       <p className="sub">По методикам, доступным вам</p>
 

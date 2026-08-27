@@ -69,6 +69,7 @@ export type AuditAction =
   | "norms.publish"
   | "analytics.surveillance"
   | "analytics.dif"
+  | "analytics.calibration"
   | "cascade.assign"
   | "cascade.followup"
   | "analytics.correlations"

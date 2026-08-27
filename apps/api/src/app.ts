@@ -35,6 +35,7 @@ import { consentRoutes } from "./routes/consents";
 import { normRoutes } from "./routes/norms";
 import { surveillanceRoutes } from "./routes/surveillance";
 import { difRoutes } from "./routes/dif";
+import { calibrationRoutes } from "./routes/calibration";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import type { AppEnv } from "./middleware/auth";
@@ -98,6 +99,7 @@ app.route("/api/consents", consentRoutes);
 app.route("/api/norms", normRoutes);
 app.route("/api/surveillance", surveillanceRoutes);
 app.route("/api/dif", difRoutes);
+app.route("/api/calibration", calibrationRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {

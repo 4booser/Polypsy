@@ -279,6 +279,40 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  calibration: (surveyId: string) =>
+    request<{
+      minPerOutcome: number;
+      cases: number;
+      scales: {
+        code: string;
+        title: string;
+        normalization: string;
+        strata: {
+          stratum: string;
+          confirmed: number;
+          notConfirmed: number;
+          enough: boolean;
+          currentThreshold: number | null;
+          currentSensitivity: number | null;
+          currentSpecificity: number | null;
+          roc: {
+            auc: number;
+            bestThreshold: number;
+            bestSensitivity: number;
+            bestSpecificity: number;
+            points: { threshold: number; tpr: number; fpr: number }[];
+          } | null;
+        }[];
+      }[];
+    }>(`/api/calibration/surveys/${surveyId}`),
+  ppv: () =>
+    request<{
+      overall: { n: number; confirmed: number; ppv: number } | null;
+      withoutOutcome: number;
+      bySurvey: { surveyId: string; title: string; n: number; confirmed: number; ppv: number }[];
+      byMonth: { month: string; n: number; confirmed: number; ppv: number }[];
+    }>("/api/calibration/ppv"),
+
   dif: (surveyId: string) =>
     request<{
       surveyId: string;
