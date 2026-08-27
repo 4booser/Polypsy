@@ -652,12 +652,14 @@ describe("заключение специалиста", () => {
 
     const signed = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
       method: "POST",
+      body: JSON.stringify({ version: 1 }),
     });
     expect(signed.body.current.status).toBe("signed");
 
     // повторная подпись — отказ
     const again = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
       method: "POST",
+      body: JSON.stringify({ version: 1 }),
     });
     expect(again.status).toBe(400);
   });
@@ -685,13 +687,100 @@ describe("заключение специалиста", () => {
     expect(html).not.toContain("Дополнение после подписи");
 
     // подпишем v2 — теперь она в отчёте
-    await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, { method: "POST" });
+    await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 2 }),
+    });
     const res2 = await app.request(`/api/reports/responses/${responseId}`, {
       headers: { Authorization: `Bearer ${adminA.token}` },
     });
     const html2 = await res2.text();
     expect(html2).toContain("Дополнение после подписи");
     expect(html2).toContain("Распечатано:");
+  });
+
+  test("правка поверх устаревшей версии отклоняется, а не затирает чужую", async () => {
+    /*
+     * Двое открывают заключение одновременно. Первый сохраняет, второй ещё
+     * держит на экране прежний текст. Без сверки версии его «сохранить»
+     * молча уничтожило бы работу первого — и никто бы не заметил.
+     */
+    const fresh = await submitSurvey(surveyInA, patient.token);
+    const rid = fresh.body.id;
+
+    await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Текст первого специалиста", baseVersion: 0 }),
+    });
+
+    // второй правит, считая, что заключения ещё нет
+    const stale = await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Текст второго специалиста", baseVersion: 0 }),
+    });
+    expect(stale.status).toBe(409);
+
+    const state = await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token);
+    expect(state.body.current.text).toBe("Текст первого специалиста");
+  });
+
+  test("подписывается только та версия, что была на экране", async () => {
+    /*
+     * Между открытием экрана и нажатием «подписать» текст успел смениться.
+     * Подпись удостоверяет содержание — подписать неувиденное нельзя.
+     */
+    const fresh = await submitSurvey(surveyInA, patient.token);
+    const rid = fresh.body.id;
+
+    await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Версия 1", baseVersion: 0 }),
+    });
+    await api(`/api/conclusions/responses/${rid}/conclusion/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 1 }),
+    });
+    // поверх подписанной легла новая версия — её специалист не видел
+    await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Версия 2, чужая", baseVersion: 1 }),
+    });
+
+    const blind = await api(`/api/conclusions/responses/${rid}/conclusion/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 1 }),
+    });
+    expect(blind.status).toBe(409);
+
+    const state = await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token);
+    expect(state.body.current.status).toBe("draft");
+  });
+
+  test("одновременные первые сохранения не дают двух версий с одним номером", async () => {
+    /*
+     * Уникальный индекс не даст записать дубль, но пользователь получил бы
+     * пятисотку. Консультативная блокировка выстраивает их в очередь:
+     * один создаёт версию 1, второй упирается в проверку версии.
+     */
+    const fresh = await submitSurvey(surveyInA, patient.token);
+    const rid = fresh.body.id;
+
+    const both = await Promise.all([
+      api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
+        method: "PUT",
+        body: JSON.stringify({ text: "Одновременно А", baseVersion: 0 }),
+      }),
+      api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
+        method: "PUT",
+        body: JSON.stringify({ text: "Одновременно Б", baseVersion: 0 }),
+      }),
+    ]);
+
+    const codes = both.map((r) => r.status).sort();
+    expect(codes).toEqual([200, 409]);
+
+    const state = await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token);
+    expect(state.body.versions).toHaveLength(1);
   });
 
   test("чужой админ не достаёт заключение", async () => {
@@ -1150,6 +1239,28 @@ describe("профили деидентификации", () => {
     const head = (await res.text()).split("\r\n")[0]!;
     expect(head).not.toContain("subject");
     expect(head).toContain("age_band");
+  });
+
+  test("опечатка в профиле — отказ, а не полная выгрузка", async () => {
+    /*
+     * Раньше неизвестный профиль молча становился «full». Человек, набравший
+     * `deidentifed`, уносил файл с фамилиями, будучи уверен, что забрал
+     * обезличенный. Это не пятисотка, это утечка по невнимательности.
+     */
+    const res = await app.request(`/api/spss/surveys/${surveyInA}/data.csv?profile=deidentifed`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    expect(res.status).toBe(400);
+    const body = await res.text();
+    expect(body).toContain("deidentified"); // отказ называет допустимые значения
+  });
+
+  test("неизвестный фасет не подменяется другим разрезом", async () => {
+    // молчаливый откат к «пол» нарисовал бы график, подписанный не тем
+    const res = await app.request(`/api/facets/surveys/${surveyInA}?facet=подразделение`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    expect(res.status).toBe(400);
   });
 
   test("codebook перечисляет переменные и происхождение норм", async () => {

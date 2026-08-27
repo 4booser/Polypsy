@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { itemContribution, reliableChange, t } from "@quizzy/shared";
+import { itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { notFound } from "../lib/http";
+import { notFound, parseQuery } from "../lib/http";
 import { percentileOf } from "../lib/norms";
 import { getSurvey } from "../lib/surveys";
 import { reliabilityOf } from "../lib/psychometrics";
@@ -20,9 +20,8 @@ export const dynamicsRoutes = new Hono<AppEnv>();
 
 dynamicsRoutes.use("*", requireAuth, requireStaff);
 
-/** Пациенты, проходившие методики в зоне ответственности сотрудника */
 /**
- * Кто проходил методики повторно.
+ * Кто проходил методики повторно — в зоне ответственности сотрудника.
  *
  * Свёртка делается в базе, а не в приложении: раньше сюда выбирались все
  * завершённые прохождения со стыковкой к пользователям — на двадцати тысячах
@@ -33,17 +32,14 @@ dynamicsRoutes.use("*", requireAuth, requireStaff);
  * расшифровка всей выборки ради сортировки была бы самой дорогой частью
  * запроса.
  */
-const RESPONDENT_LIMIT = 50;
-
 dynamicsRoutes.get("/respondents", async (c) => {
   const scope = await surveyScopeFilter(c.get("user"));
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
   if (!surveyIds.length) return c.json({ items: [], nextCursor: null, total: 0 });
 
-  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? RESPONDENT_LIMIT), 1), 200);
-  const cursor = c.req.query("cursor") ?? null;
-  const search = (c.req.query("search") ?? "").trim().toLowerCase();
+  // ?limit=abc давал NaN, который уезжал в .limit() и ронял запрос пятисоткой
+  const { limit, cursor, search } = parseQuery(c, respondentQuery);
 
   const base = and(
     inArray(responses.surveyId, surveyIds),

@@ -1,12 +1,12 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
-import { ageAt } from "@quizzy/shared";
+import { ageAt, exportQuery } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
 import { answers, responseScores, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { notFound } from "../lib/http";
+import { notFound, parseQuery } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
@@ -270,17 +270,23 @@ async function loadRows(surveyId: string): Promise<RowContext[]> {
   }));
 }
 
-function profileOf(c: { req: { query: (k: string) => string | undefined } }): ExportProfile {
-  const p = c.req.query("profile");
-  return p === "deidentified" || p === "anonymous" ? p : "full";
+/**
+ * Профиль и язык выгрузки.
+ *
+ * Раньше неизвестный профиль молча становился «full»: опечатка в
+ * `?profile=deidentifed` отдавала выгрузку с фамилиями тому, кто был уверен,
+ * что забирает обезличенную. Теперь — отказ.
+ */
+function exportOptions(c: Context) {
+  return parseQuery(c, exportQuery);
 }
 
 /** Числовая матрица: варианты закодированы порядковыми номерами */
 spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const profile = profileOf(c);
-  const { vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru", profile);
+  const { profile, lang } = exportOptions(c);
+  const { vars } = await buildSchema(surveyId, lang, profile);
   const rows = await loadRows(surveyId);
 
   const body = [
@@ -317,8 +323,8 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
 spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const profile = profileOf(c);
-  const { survey, vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru", profile);
+  const { profile, lang } = exportOptions(c);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile);
   const dataFile = `quizzy-${surveyId}-data.csv`;
 
   const lines: string[] = [
@@ -383,8 +389,8 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
 spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const profile = profileOf(c);
-  const { survey, vars } = await buildSchema(surveyId, c.req.query("lang") ?? "ru", profile);
+  const { profile, lang } = exportOptions(c);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile);
 
   const lines = [["variable", "type", "label", "values"].join(";")];
   for (const v of vars) {
@@ -430,7 +436,7 @@ spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
 spssRoutes.get("/surveys/:id/long.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const profile = profileOf(c);
+  const { profile } = exportOptions(c);
 
   const { sql } = await import("drizzle-orm");
   const rows = await db.execute(sql`

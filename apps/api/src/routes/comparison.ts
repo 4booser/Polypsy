@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   ageAt,
   directStandardize,
+  cohortQuery,
   type CohortBy,
   type ScaleNormalization,
   type ComparisonResult,
@@ -13,7 +14,7 @@ import { db } from "../db";
 import { responseScores, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { notFound } from "../lib/http";
+import { notFound, parseQuery } from "../lib/http";
 import { average, median, pearson, percent, round, variance } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
@@ -46,7 +47,7 @@ comparisonRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
 
-  const by = (c.req.query("by") ?? "unit") as CohortBy;
+  const { by } = parseQuery(c, cohortQuery);
   const survey = await getSurvey(surveyId, null, "ru");
   if (!survey) notFound("Методика не найдена");
 

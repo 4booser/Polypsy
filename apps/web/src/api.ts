@@ -510,14 +510,17 @@ export const api = {
 
   conclusion: (responseId: string) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`),
-  saveConclusion: (responseId: string, text: string) =>
+  /** baseVersion — версия, поверх которой правили: сервер не даст затереть чужую работу */
+  saveConclusion: (responseId: string, text: string, baseVersion: number) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
       method: "PUT",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, baseVersion }),
     }),
-  signConclusion: (responseId: string) =>
+  /** Подписывается конкретная версия — та, что была на экране */
+  signConclusion: (responseId: string, version: number) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion/sign`, {
       method: "POST",
+      body: JSON.stringify({ version }),
     }),
 
   compare: (surveyId: string, by: string) =>

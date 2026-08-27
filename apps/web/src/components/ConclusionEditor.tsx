@@ -60,7 +60,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           disabled={!text.trim()}
           onClick={() =>
             run(async () => {
-              setState(await api.saveConclusion(responseId, text));
+              setState(await api.saveConclusion(responseId, text, state.current?.version ?? 0));
             }, "Черновик сохранён")
           }
         >
@@ -72,8 +72,17 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           onClick={() =>
             run(async () => {
               // подпись всегда фиксирует последний сохранённый текст
-              if (text.trim() && text !== draft?.text) await api.saveConclusion(responseId, text);
-              const s = await api.signConclusion(responseId);
+              let latest = state;
+              if (text.trim() && text !== draft?.text) {
+                latest = await api.saveConclusion(responseId, text, state.current?.version ?? 0);
+              }
+              /*
+               * Подписываем именно ту версию, которую вернуло сохранение.
+               * Если между открытием экрана и подписью успел сохранить кто-то
+               * другой, сервер откажет — лучше отказ, чем подпись под чужим
+               * текстом.
+               */
+              const s = await api.signConclusion(responseId, latest.current!.version);
               setState(s);
               setText("");
             }, "Заключение подписано — теперь оно в печатном отчёте")
