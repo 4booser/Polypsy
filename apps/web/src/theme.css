@@ -807,3 +807,13 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 .sev-seg { display: block; }
 .sev-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 5px; font-size: var(--fs-micro); color: var(--muted); }
 .sev-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+
+/* ── нет связи: состояние, а не поломка ──────────────────────────────────── */
+.offline-bar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--surface-2); border-bottom: 1px solid var(--border-strong);
+  font-size: var(--fs-caption);
+}
+.offline-bar .dot { background: var(--sev-mild); }

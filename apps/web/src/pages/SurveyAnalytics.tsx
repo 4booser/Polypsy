@@ -1,23 +1,23 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { SurveyAnalytics as Analytics, SurveyResponse } from "@quizzy/shared";
+import type { SurveyResponse } from "@quizzy/shared";
 import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
 import { duration, day, severityColor } from "../format";
-import { Loading, PageHead, useAction } from "../ui";
+import { Loading, OfflineBar, PageHead, useAction } from "../ui";
 import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DifPanel } from "../components/DifPanel";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { DataQualityPanel } from "../components/DataQualityPanel";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "calibration" | "responses";
 
 export default function SurveyAnalyticsPage() {
   const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
-  const [data, setData] = useState<Analytics | null>(null);
   const [versionId, setVersionId] = useState<string | undefined>();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -33,18 +33,22 @@ export default function SurveyAnalyticsPage() {
   const downloadLong = (sid: string) =>
     run(() => download(api.longUrl(sid, profile), "long.csv"), "Long-format выгружен");
   const [tab, setTab] = useState<Tab>("overview");
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!id) return;
-    api
-      .analytics(id, versionId, { from: from || undefined, to: to || undefined })
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [id, versionId, from, to]);
+  /*
+   * Через useResource, а не useEffect: поле периода шлёт запрос на каждое
+   * нажатие, запросы разной тяжести идут разное время, и ответ по широкому
+   * периоду успевал затереть данные по узкому. Человек видел аналитику за
+   * период, который не запрашивал.
+   */
+  const res = useResource(
+    () => api.analytics(id!, versionId, { from: from || undefined, to: to || undefined }),
+    [id, versionId, from, to],
+    { enabled: !!id },
+  );
+  const data = res.data;
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <Loading rows={5} />;
+  if (res.error) return <p className="error">{res.error}</p>;
+  if (!data) return res.offline ? <OfflineBar onRetry={res.reload} /> : <Loading rows={5} />;
 
   // тепловая карта строится только по вопросам с одинаковым набором вариантов:
   // иначе столбцы означали бы разное в разных строках
@@ -73,6 +77,7 @@ export default function SurveyAnalyticsPage() {
 
   return (
     <>
+      {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
       <PageHead
         title={data.title}
         crumbs={<Link to="/">← Сводка</Link>}

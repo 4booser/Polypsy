@@ -242,6 +242,27 @@ export function LoadMore({
  * состояния одного места, и разводить их по разным веткам значит писать
  * обработку ошибки заново на каждом экране.
  */
+/**
+ * Полоса «нет связи».
+ *
+ * Отсутствие сети — не поломка экрана, и говорить о нём надо иначе: экран
+ * держит последние данные, а сверху появляется полоса с повтором. Раньше
+ * консоль показывала техническое «Failed to fetch» и обнуляла содержимое —
+ * специалист в кабинете со слабым Wi-Fi видел то же, что при упавшем
+ * сервере.
+ */
+export function OfflineBar({ onRetry, busy }: { onRetry: () => void; busy?: boolean }) {
+  return (
+    <div className="offline-bar" role="status">
+      <i className="dot" />
+      <span className="grow">Нет связи с сервером. Показаны последние загруженные данные.</span>
+      <button className="ghost" onClick={onRetry} disabled={busy}>
+        {busy ? "Пробую…" : "Повторить"}
+      </button>
+    </div>
+  );
+}
+
 export function Loading({ rows = 4, error }: { rows?: number; error?: string | null }) {
   if (error) {
     return (
