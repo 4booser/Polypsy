@@ -1,7 +1,15 @@
+import { useEffect, useState } from "react";
+import { api } from "../../api";
 import { Loc } from "./fields";
 import { parseItems, type Draft, type DraftScale } from "./model";
 
 export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
+  // батареи нужны для каскадов: попадание в полосу может назначить углублённую
+  const [batteries, setBatteries] = useState<{ id: string; title: string }[]>([]);
+  useEffect(() => {
+    api.batteries().then((rows) => setBatteries(rows.filter((b) => !b.archived))).catch(() => {});
+  }, []);
+
   const upd = (i: number, s: Partial<DraftScale>) =>
     setDraft((d) => ({ ...d, scales: d.scales.map((x, k) => (k === i ? { ...x, ...s } : x)) }));
 
@@ -155,7 +163,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
           <h2 style={{ fontSize: 14, marginTop: 14 }}>Интерпретационные нормы</h2>
           <table>
             <thead>
-              <tr><th className="num">От</th><th className="num">До</th><th>Вывод (uk / ru)</th><th>Выраженность</th><th className="num">Оценка</th><th /></tr>
+              <tr><th className="num">От</th><th className="num">До</th><th>Вывод (uk / ru)</th><th>Выраженность</th><th className="num">Оценка</th><th>Каскад</th><th>Повторы, дн.</th><th /></tr>
             </thead>
             <tbody>
               {s.bands.map((b, bi) => (
@@ -189,6 +197,38 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                     <input type="number" value={b.grade ?? ""}
                       onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, grade: e.target.value ? Number(e.target.value) : null } : x)) })} />
                   </td>
+                  <td style={{ width: 190 }}>
+                    <select
+                      value={b.cascadeBatteryId ?? ""}
+                      title="Попадание в эту полосу назначит батарею"
+                      onChange={(e) =>
+                        upd(i, {
+                          bands: s.bands.map((x, k) =>
+                            k === bi ? { ...x, cascadeBatteryId: e.target.value || null } : x,
+                          ),
+                        })
+                      }
+                    >
+                      <option value="">без каскада</option>
+                      {batteries.map((bat) => (
+                        <option key={bat.id} value={bat.id}>{bat.title}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td style={{ width: 96 }}>
+                    <input
+                      placeholder="7,30"
+                      title="Повторы этой же методики через N дней"
+                      value={b.followUpDays ?? ""}
+                      onChange={(e) =>
+                        upd(i, {
+                          bands: s.bands.map((x, k) =>
+                            k === bi ? { ...x, followUpDays: e.target.value || null } : x,
+                          ),
+                        })
+                      }
+                    />
+                  </td>
                   <td style={{ width: 40 }}>
                     <button className="danger" onClick={() => upd(i, { bands: s.bands.filter((_, k) => k !== bi) })}>✕</button>
                   </td>
@@ -202,6 +242,11 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
           >
             Добавить норму
           </button>
+          <p className="hint">
+            Каскад назначает углублённую батарею при попадании в полосу; «повторы» ставят
+            пересдачу этой же методики через указанные дни. Автоматика назначает, но не
+            интерпретирует — вывод делает специалист.
+          </p>
         </div>
       ))}
     </>

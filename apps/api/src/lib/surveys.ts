@@ -582,6 +582,9 @@ export function surveyToDraft(survey: SurveyFull) {
         description: b.description,
         grade: b.grade,
         recommendation: b.recommendation,
+        cascadeBatteryId: b.cascadeBatteryId,
+        cascadeDueDays: b.cascadeDueDays,
+        followUpDays: b.followUpDays,
       })),
     })),
   };

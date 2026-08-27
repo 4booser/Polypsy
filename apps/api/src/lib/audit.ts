@@ -69,6 +69,8 @@ export type AuditAction =
   | "norms.publish"
   | "analytics.surveillance"
   | "analytics.dif"
+  | "cascade.assign"
+  | "cascade.followup"
   | "analytics.correlations"
   | "audit.read"
   | "access.denied";

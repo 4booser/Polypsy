@@ -41,6 +41,7 @@ export default function TakeSurveyScreen() {
   const [result, setResult] = useState<ScoreResult[] | null>(null);
   const [safetyPlan, setSafetyPlan] = useState<string | null>(null);
   const [queued, setQueued] = useState(false);
+  const [assigned, setAssigned] = useState<string[]>([]);
   const [responseId, setResponseId] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [resumed, setResumed] = useState(false);
@@ -259,6 +260,7 @@ export default function TakeSurveyScreen() {
       setResult(res.scores);
       setSafetyPlan(res.safetyPlan ?? null);
       setQueued(!!res.queued);
+      setAssigned(res.cascade?.assignedBatteries ?? []);
       setResponseId(res.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("runner.submitFailed"));
@@ -290,6 +292,14 @@ export default function TakeSurveyScreen() {
             ? `Прохождение заняло ${formatDuration(Date.now() - sessionStart.current)}. Сети нет — ответы сохранены на устройстве и уйдут сами, как только она появится. Баллы ниже посчитаны на устройстве тем же движком.`
             : `Прохождение заняло ${formatDuration(Date.now() - sessionStart.current)}. Ответы сохранены.`}
         </Body>
+        {assigned.length ? (
+          <Card>
+            <Body>
+              По результату назначено дополнительное обследование:{" "}
+              {assigned.join(", ")}. Оно уже ждёт на главном экране.
+            </Body>
+          </Card>
+        ) : null}
         {safetyPlan ? (
           <Card style={{ borderColor: severityColor.severe, borderWidth: 2 }}>
             <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginBottom: 6 }}>

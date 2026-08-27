@@ -129,6 +129,8 @@ interface SubmitResult {
   id: string;
   scores: ScoreResult[];
   safetyPlan?: string | null;
+  /** Что назначила автоматика по полосам; офлайн — неизвестно до синка */
+  cascade?: { assignedBatteries: string[]; scheduledFollowUps: number };
   /** Ответы легли в офлайн-очередь, а не на сервер */
   queued?: boolean;
 }
@@ -280,12 +282,14 @@ export const api = {
             ),
           )
         : false;
-      return {
+      // офлайн каскады не выполняются: назначения делает сервер при синке
+      const offline: SubmitResult = {
         id: item.id,
         scores: profile?.scores ?? [],
         safetyPlan: risky ? (survey?.safetyPlan ?? null) : null,
         queued: true,
       };
+      return offline;
     }),
 
   /** Прогон офлайн-очереди; вызывается при старте, из тика и по возвращению сети */

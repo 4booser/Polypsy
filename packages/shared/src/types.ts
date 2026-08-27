@@ -352,6 +352,11 @@ export interface ScaleBand {
   grade: number | null;
   /** Что делать: от амбулаторного наблюдения до обязательной госпитализации */
   recommendation: string | null;
+  /** Каскад: попадание в полосу назначает эту батарею */
+  cascadeBatteryId: string | null;
+  cascadeDueDays: number | null;
+  /** Протокол наблюдения: «7,30» — повторы через неделю и месяц */
+  followUpDays: string | null;
   position: number;
 }
 

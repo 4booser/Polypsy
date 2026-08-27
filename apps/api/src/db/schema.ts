@@ -308,6 +308,24 @@ export const scaleBands = pgTable(
     /** Клиническая рекомендация: от наблюдения до обязательной госпитализации */
     recommendation: localized("recommendation"),
     position: integer("position").notNull().default(0),
+
+    /*
+     * Каскад (6.2): попадание в эту полосу автоматически назначает батарею —
+     * скрининг сам вызывает углублённую диагностику, не дожидаясь, пока
+     * психолог откроет консоль. Автоматика НАЗНАЧАЕТ, но не интерпретирует:
+     * решение о диагнозе остаётся за специалистом.
+     */
+    cascadeBatteryId: text("cascade_battery_id").references(() => batteries.id, {
+      onDelete: "set null",
+    }),
+    /** Дней на прохождение каскадного назначения */
+    cascadeDueDays: integer("cascade_due_days"),
+
+    /*
+     * Протокол наблюдения (6.3): повторные замеры этой же методики через
+     * заданные интервалы. «7,30» — через неделю и через месяц.
+     */
+    followUpDays: text("follow_up_days"),
   },
   (t) => ({ scaleIdx: index("bands_scale_idx").on(t.scaleId) }),
 );

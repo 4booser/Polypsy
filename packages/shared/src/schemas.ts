@@ -259,6 +259,18 @@ export const bandInputSchema = z
     grade: z.number().int().nullish(),
     /** Клиническая рекомендация по этой полосе */
     recommendation: localizedSchema.nullish(),
+    /** Каскад: попадание в полосу назначает эту батарею */
+    cascadeBatteryId: z.string().nullish(),
+    cascadeDueDays: z.number().int().min(1).max(365).nullish(),
+    /** Протокол наблюдения: дни повторов через запятую, «7,30» */
+    followUpDays: z
+      .string()
+      .max(100)
+      .nullish()
+      .refine(
+        (v) => !v || v.split(",").every((x) => /^\s*\d{1,3}\s*$/.test(x)),
+        "Дни повторов — числа через запятую, например «7,30»",
+      ),
   })
   .refine((b) => b.maxScore >= b.minScore, {
     message: "Верхняя граница нормы не может быть меньше нижней",
