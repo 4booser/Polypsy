@@ -7,8 +7,9 @@ import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } f
 import { duration, day, severityColor } from "../format";
 import { useAction } from "../ui";
 import { ConclusionEditor } from "../components/ConclusionEditor";
+import { DifPanel } from "../components/DifPanel";
 
-type Tab = "overview" | "questions" | "scales" | "quality" | "responses";
+type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "responses";
 
 export default function SurveyAnalyticsPage() {
   const { id } = useParams<{ id: string }>();
@@ -412,6 +413,7 @@ export default function SurveyAnalyticsPage() {
         </>
       ) : null}
 
+      {tab === "dif" ? <DifPanel surveyId={data.surveyId} /> : null}
       {tab === "responses" ? <Responses surveyId={data.surveyId} /> : null}
     </>
   );

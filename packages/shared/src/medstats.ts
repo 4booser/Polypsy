@@ -31,13 +31,38 @@ export interface MhResult {
 }
 
 export function mantelHaenszel(strata: MhStratum[]): MhResult | null {
+  /*
+   * Поправка Хальдейна–Анскомба. При полном разделении (одна группа отвечает
+   * по ключу всегда, другая никогда) отношение шансов вырождается в 0 или ∞,
+   * и наивная формула вернула бы «не могу посчитать» — тогда как это,
+   * наоборот, максимально выраженный DIF. Добавляем 0.5 к каждой ячейке
+   * только в вырожденном случае: на обычных данных поправка сместила бы
+   * оценку без нужды.
+   */
+  // пустые страты выкидываем до поправки: иначе +0.5 «оживил» бы их
+  // и вернул бы αMH=1 там, где данных нет вовсе
+  const filled = strata.filter((s) => s.refYes + s.refNo + s.focalYes + s.focalNo > 0);
+  if (filled.length === 0) return null;
+
+  const degenerate = filled.some(
+    (s) => s.refYes === 0 || s.refNo === 0 || s.focalYes === 0 || s.focalNo === 0,
+  );
+  const work = degenerate
+    ? filled.map((s) => ({
+        refYes: s.refYes + 0.5,
+        refNo: s.refNo + 0.5,
+        focalYes: s.focalYes + 0.5,
+        focalNo: s.focalNo + 0.5,
+      }))
+    : filled;
+
   let sumA = 0;
   let sumE = 0;
   let sumV = 0;
   let sumAD = 0;
   let sumBC = 0;
 
-  for (const s of strata) {
+  for (const s of work) {
     const a = s.refYes;
     const b = s.refNo;
     const c = s.focalYes;

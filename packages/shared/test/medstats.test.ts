@@ -42,9 +42,21 @@ describe("Mantel–Haenszel", () => {
     expect(r.etsClass).toBe("C");
   });
 
+  test("полное разделение — максимальный DIF, а не «не посчитать»", () => {
+    // мужчины никогда по ключу, женщины всегда: наивная формула дала бы αMH=0.
+    // С поправкой Хальдейна–Анскомба (+0.5): a=0.5,b=30.5,c=30.5,d=0.5
+    // ad/N=0.25/62, bc/N=930.25/62 → αMH = 0.25/930.25 = 0.000269
+    const r = mantelHaenszel([{ refYes: 0, refNo: 30, focalYes: 30, focalNo: 0 }])!;
+    expect(r.alphaMH).toBeLessThan(0.01);
+    expect(r.deltaMH).toBeGreaterThan(15); // огромное различие в дельта-единицах
+    expect(r.etsClass).toBe("C");
+    expect(r.significant).toBe(true);
+  });
+
   test("вырожденные страты — null, а не мусор", () => {
-    expect(mantelHaenszel([{ refYes: 5, refNo: 0, focalYes: 5, focalNo: 0 }])).toBeNull();
+    // ни у кого нет вариативности ответа: сравнивать нечего даже с поправкой
     expect(mantelHaenszel([])).toBeNull();
+    expect(mantelHaenszel([{ refYes: 0, refNo: 0, focalYes: 0, focalNo: 0 }])).toBeNull();
   });
 });
 

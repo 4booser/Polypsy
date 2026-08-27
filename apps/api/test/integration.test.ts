@@ -1256,3 +1256,96 @@ describe("исход тревоги", () => {
     }
   });
 });
+
+/* ── волна 4: DIF, инвариантность, возрастные кривые ── */
+
+describe("DIF по полу", () => {
+  test("подсаженное различие в пункте обнаруживается; остальные пункты — класс A", async () => {
+    const { sr45 } = await import("../src/instruments/sr45");
+    const input = createSurveySchema.parse(sr45);
+    const sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: { uk: "DIF-тест", ru: "DIF-тест" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, input, adminA.id, "v1");
+
+    const survey = (await api(`/api/surveys/${sid}`, adminA.token)).body;
+    const asked = survey.questions.filter(
+      (q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length,
+    );
+    // пункт с подсаженным DIF: женщины отвечают «да» ГОРАЗДО чаще при том же
+    // общем уровне — ровно то, что метод обязан заметить
+    const difIndex = 5;
+
+    for (let i = 0; i < 120; i++) {
+      const sex = i % 2 === 0 ? "male" : "female";
+      const person = await makeUser("user", `dif${i}@test.dev`, {
+        sex,
+        birthDate: sex === "male" ? "1985-01-01" : "1995-01-01",
+      });
+      // общий уровень черты одинаково распределён между полами
+      const level = (i % 10) / 10;
+      const answers = asked.map((q: { id: string; options: { id: string; keyCode?: string }[] }, qi: number) => {
+        const yes = q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!;
+        const no = q.options.find((o) => o.keyCode === "no") ?? q.options[1] ?? q.options[0]!;
+        const base = ((qi * 7 + i * 13) % 100) / 100 < level;
+        const pick = qi === difIndex ? (sex === "female" ? level > 0.05 : level > 0.85) : base;
+        return {
+          questionId: q.id,
+          optionIds: [pick ? yes.id : no.id],
+          durationMs: 1500,
+          changeCount: 0,
+          visitCount: 1,
+        };
+      });
+      const res = await api(`/api/surveys/${sid}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({
+          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          durationMs: 60_000,
+          events: [],
+          answers,
+        }),
+      });
+      expect(res.status).toBe(201);
+    }
+
+    const dif = await api(`/api/dif/surveys/${sid}`, adminA.token);
+    expect(dif.status).toBe(200);
+    expect(dif.body.sample).toBeGreaterThanOrEqual(120);
+
+    const sexEntries = dif.body.scales.flatMap((s: { items: { position: number; entries: { factor: string; result: { etsClass: string; deltaMH: number } | null }[] }[] }) =>
+      s.items.flatMap((i) =>
+        i.entries.filter((e) => e.factor === "sex" && e.result).map((e) => ({ position: i.position, ...e })),
+      ),
+    );
+    expect(sexEntries.length).toBeGreaterThan(0);
+
+    // подсаженный пункт (позиция difIndex+1 среди asked) должен быть не-A
+    const flagged = sexEntries.filter((e: { result: { etsClass: string } }) => e.result.etsClass !== "A");
+    expect(flagged.length).toBeGreaterThan(0);
+    const positions = flagged.map((e: { position: number }) => e.position);
+    expect(positions).toContain(asked[difIndex]!.position + 1);
+
+    // надёжность посчиталась по обеим половым группам
+    const rel = dif.body.reliability.find((r: { code: string }) => r.code === "Sr");
+    expect(rel.groups.length).toBe(2);
+    expect(rel.groups.every((g: { alpha: number | null }) => g.alpha !== null)).toBe(true);
+
+    // возрастные кривые: два пола по 60 — окно наберётся
+    const curves = await api(`/api/norms/surveys/${sid}/age-curves`, adminA.token);
+    expect(curves.body.scales.length).toBeGreaterThan(0);
+    const withCurve = curves.body.scales[0].bySex.find((b: { enough: boolean }) => b.enough);
+    expect(withCurve.points[0].percentiles.length).toBe(5);
+    expect(withCurve.points[0].n).toBeGreaterThanOrEqual(30);
+  }, 180_000);
+});
