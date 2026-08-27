@@ -235,11 +235,11 @@ button, .btn {
   white-space: nowrap;
 }
 button:hover:not(:disabled), .btn:hover { background: var(--surface-2); text-decoration: none; }
-button.primary {
+button.primary, .btn.primary {
   background: var(--accent); border-color: var(--accent);
   color: var(--accent-text); font-weight: 600;
 }
-button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+button.primary:hover:not(:disabled), .btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
 button.danger { color: var(--danger); border-color: transparent; background: transparent; }
 button.danger:hover:not(:disabled) { background: var(--danger-soft); }
 button.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
@@ -424,8 +424,12 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 
 @page { size: A4 portrait; margin: 12mm; }
 
+/* Штамп подшивки: на экране лишний, на бумаге обязательный */
+.print-only { display: none; }
+
 @media print {
   .sidebar, .tabs, button, .btn, .toasts, .no-print { display: none !important; }
+  .print-only { display: block !important; }
   .app { display: block; }
   .main { padding: 0; max-width: none; }
   .card { border: none; padding: 0 0 14px; margin: 0 0 14px; break-inside: avoid; box-shadow: none; }
