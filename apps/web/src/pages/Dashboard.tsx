@@ -5,7 +5,7 @@ import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { duration, day, severityColor, severityLabel, timeOfDay } from "../format";
 import { PpvCard } from "../components/CalibrationPanel";
-import { Loading, PageHead } from "../ui";
+import { Badge, Loading, PageHead } from "../ui";
 
 export default function Dashboard() {
   const [data, setData] = useState<OverviewAnalytics | null>(null);
@@ -30,17 +30,22 @@ export default function Dashboard() {
 
   return (
     <>
-      <PpvCard />
+      {/*
+        Порядок экрана задан, а не сложился: сначала то, что требует действия
+        сегодня, потом показатели, потом обоснование. Раньше первой шла
+        подтверждаемость тревог — важный, но справочный показатель, который
+        стоял даже выше заголовка страницы.
+      */}
       <PageHead title="Сводка" sub="По методикам, доступным вам" />
 
       {cases.length ? (
-        <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <div className="row">
-              <i className="dot" style={{ background: "var(--sev-severe)" }} />
+        <div className="card alarm">
+          <div className="card-head" style={{ marginBottom: 0 }}>
+            <div className="row tight">
+              <Badge tone="bad">требует разбора</Badge>
               <strong>Случаев на разбор: {openCases}</strong>
             </div>
-            <Link to="/alerts" className="btn">Разобрать</Link>
+            <Link to="/alerts" className="btn primary">Разобрать</Link>
           </div>
           <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
             {cases
@@ -97,6 +102,10 @@ export default function Dashboard() {
           <div className="value">{duration(data.avgDurationMs)}</div>
         </div>
       </div>
+
+      {/* подтверждаемость — справочный показатель качества скрининга: он
+          объясняет цифры выше, а не требует действия, и место ему здесь */}
+      <PpvCard />
 
       <Chart title="Динамика прохождений" hint="Завершённые прохождения по дням">
         <LineChart
