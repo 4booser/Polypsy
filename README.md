@@ -8,6 +8,15 @@
 - **Веб-консоль** — Vite + React + react-router (`apps/web`), только для сотрудников
 - **Общее ядро** — типы, zod-схемы и подсчёт баллов, используются сервером и клиентом (`packages/shared`)
 
+### Документация
+
+| Файл | О чём |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | схема данных, инварианты, модель угроз |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | развёртывание, бэкапы, ключи, разбор инцидентов |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | план развития и что из него сделано |
+| [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md) | происхождение методик и правовой статус |
+
 ## Быстрый старт
 
 ```bash
