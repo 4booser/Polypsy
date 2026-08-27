@@ -7,7 +7,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { runDueSchedules, scheduleReach } from "../lib/scheduler";
-import { assertGroupAccess, isStaff } from "../lib/scope";
+import { assertBatteryInUse, assertGroupAccess, isStaff } from "../lib/scope";
 import { forbidden } from "../lib/http";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -115,6 +115,7 @@ scheduleRoutes.post("/", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, scheduleInputSchema);
   await assertScheduleBattery(user, input.batteryId);
+  await assertBatteryInUse(input.batteryId);
 
   const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
   if (input.endsAt && new Date(input.endsAt) <= startsAt)
@@ -169,6 +170,7 @@ scheduleRoutes.put("/:id", async (c) => {
 
   const input = await parseBody(c.req.raw, scheduleInputSchema);
   await assertScheduleBattery(user, input.batteryId);
+  await assertBatteryInUse(input.batteryId);
 
   const startsAt = input.startsAt ? new Date(input.startsAt) : new Date(existing.startsAt);
   if (input.endsAt && new Date(input.endsAt) <= startsAt)

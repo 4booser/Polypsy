@@ -42,7 +42,7 @@ export const questionTypeSchema = z.enum([
   "info",
 ]);
 
-export const surveyStatusSchema = z.enum(["draft", "published", "closed", "archived"]);
+export const surveyStatusSchema = z.enum(["draft", "published", "closed"]);
 export const scaleAggregationSchema = z.enum(["sum", "average", "count"]);
 export const severitySchema = z.enum(["none", "mild", "moderate", "severe"]);
 export const logicOperatorSchema = z.enum([

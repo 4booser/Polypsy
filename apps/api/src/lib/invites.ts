@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { batteries, batteryAssignments, batteryItems, invites, inviteUses, surveyAccess } from "../db/schema";
+import { batteries, batteryAssignments, batteryItems, invites, inviteUses, surveyAccess, surveys } from "../db/schema";
 import { isPast } from "./time";
 
 /**
@@ -75,7 +75,12 @@ export async function consumeInvite(
     if (invite.batteryId) {
       const battery = await tx.query.batteries.findFirst({ where: eq(batteries.id, invite.batteryId) });
       if (battery && !battery.archived) {
-        const items = await tx.select().from(batteryItems).where(eq(batteryItems.batteryId, battery.id));
+        // снятые методики по приглашению не выдаются — как и везде
+        const items = await tx
+          .select({ surveyId: batteryItems.surveyId })
+          .from(batteryItems)
+          .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
+          .where(and(eq(batteryItems.batteryId, battery.id), isNull(surveys.archivedAt)));
         if (items.length) {
           await tx.insert(batteryAssignments).values({
             id: crypto.randomUUID(),

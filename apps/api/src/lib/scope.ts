@@ -1,8 +1,9 @@
-import { and, eq, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, type SQL } from "drizzle-orm";
 import type { User } from "@quizzy/shared";
 import { db } from "../db";
-import { groupAdmins, surveyAccess, surveys } from "../db/schema";
-import { forbidden, notFound } from "./http";
+import { batteryItems, groupAdmins, surveyAccess, surveys } from "../db/schema";
+import { badRequest, forbidden, notFound } from "./http";
+import { t } from "@quizzy/shared";
 
 /**
  * Единая точка правды по видимости данных.
@@ -13,6 +14,16 @@ import { forbidden, notFound } from "./http";
  * Все роуты обязаны спрашивать разрешение здесь, а не проверять роль на месте:
  * иначе права неизбежно разъезжаются между эндпоинтами.
  */
+
+/**
+ * Методика в работе, а не снята с использования.
+ *
+ * Условие для всего, что смотрит вперёд: списки для выдачи, батареи, киоск,
+ * новые прохождения. Обратные выборки (карта пациента, аналитика, журнал)
+ * его не применяют — снятая методика обязана остаться в уже собранных
+ * записях, иначе в клинической истории появятся необъяснённые дыры.
+ */
+export const surveyInUse = isNull(surveys.archivedAt);
 
 /** Есть ли у пациента действующее персональное назначение методики */
 export async function hasGrant(userId: string, surveyId: string): Promise<boolean> {
@@ -82,4 +93,49 @@ export async function assertGroupAccess(user: User, groupId: string): Promise<vo
   if (!(await canAccessGroup(user, groupId))) {
     forbidden("Вы не управляете этой группой");
   }
+}
+
+
+/**
+ * Отказывает, если среди методик есть снятые с использования.
+ *
+ * Одна точка на все пути выдачи — персональное назначение, батарея, киоск,
+ * расписание: снятая методика не должна попасть к человеку ни одним из них,
+ * а шесть отдельных проверок гарантированно разъедутся.
+ */
+export async function assertSurveysInUse(surveyIds: string[]): Promise<void> {
+  if (!surveyIds.length) return;
+  const archived = await db
+    .select({ title: surveys.title })
+    .from(surveys)
+    .where(and(inArray(surveys.id, surveyIds), isNotNull(surveys.archivedAt)));
+  if (archived.length === 0) return;
+  const names = archived.map((r) => t(r.title as never)).join(", ");
+  badRequest(`Снято с использования: ${names}. Верните методику в работу или уберите её из набора`);
+}
+
+/** Те же проверки для батареи: её методики целиком */
+export async function assertBatteryInUse(batteryId: string): Promise<void> {
+  const items = await db
+    .select({ surveyId: batteryItems.surveyId })
+    .from(batteryItems)
+    .where(eq(batteryItems.batteryId, batteryId));
+  await assertSurveysInUse(items.map((i) => i.surveyId));
+}
+
+/**
+ * Методики батареи, оставшиеся в работе.
+ *
+ * Для автоматических выдач (расписание, каскад): человеку там отказывать
+ * некому, а выдавать снятую методику нельзя. Молча пропускаем её и оставляем
+ * остальные — расписание продолжает работать в усечённом виде, а не встаёт
+ * целиком из-за одной снятой методики.
+ */
+export async function batterySurveysInUse(batteryId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: surveys.id })
+    .from(batteryItems)
+    .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
+    .where(and(eq(batteryItems.batteryId, batteryId), isNull(surveys.archivedAt)));
+  return rows.map((r) => r.id);
 }

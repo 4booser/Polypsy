@@ -54,7 +54,7 @@ export type QuestionType =
   | "date"
   | "info";
 
-export type SurveyStatus = "draft" | "published" | "closed" | "archived";
+export type SurveyStatus = "draft" | "published" | "closed";
 
 /** Как складываются вклады пунктов в сырой балл субшкалы */
 export type ScaleAggregation = "sum" | "average" | "count";
@@ -426,6 +426,12 @@ export interface Survey {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  /**
+   * Методика снята с использования: не выдаётся, не проходится, не попадает
+   * в батареи и киоск — но остаётся во всех уже собранных записях.
+   */
+  archivedAt?: string | null;
+  archivedByName?: string | null;
 }
 
 export interface SurveyFull extends Survey {

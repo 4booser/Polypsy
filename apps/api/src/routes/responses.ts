@@ -70,6 +70,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   const survey = await getSurvey(surveyId, null, langOf(c));
   if (!survey) notFound("Методика не найдена");
   if (survey.status !== "published") badRequest("Методика недоступна для прохождения");
+  if (survey.archivedAt) badRequest("Методика снята с использования");
   if (survey.administration !== "self" && !isStaff(user)) {
     forbidden("Методику заполняет специалист, а не респондент");
   }
@@ -177,6 +178,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   const survey = await getSurvey(surveyId, null, langOf(c));
   if (!survey) notFound("Методика не найдена");
   if (survey.status !== "published") badRequest("Методика недоступна");
+  if (survey.archivedAt) badRequest("Методика снята с использования");
   if (survey.anonymous) badRequest("Анонимная методика не сохраняет черновики");
 
   const existing = await db.query.responses.findFirst({
