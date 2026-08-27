@@ -121,7 +121,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       ? { id: user.id, sex: user.sex, birthDate: user.birthDate }
       : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
 
-  const { responseId, submittedAt, scores, profile, risksTriggered } = await persistSubmission(
+  const { responseId, submittedAt, scores, profile, risksTriggered, cascade } = await persistSubmission(
     survey,
     subject,
     input,
@@ -154,6 +154,9 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       // safety-план показывается тому, кто держит устройство, ровно в момент,
       // когда сработал критический пункт — и только самому обследуемому
       safetyPlan: risksTriggered > 0 && subjectId === user.id ? survey.safetyPlan : null,
+      // что назначила автоматика — специалист должен видеть это сразу,
+      // а не обнаруживать в списке назначений через неделю
+      cascade,
     },
     201,
   );

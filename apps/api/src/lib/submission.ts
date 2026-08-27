@@ -18,6 +18,7 @@ import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
 import { detectRisks } from "./risk";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
+import { runCascades, type CascadeOutcome } from "./cascade";
 
 /**
  * Ядро сохранения прохождения — общее для обычной сдачи и киоска.
@@ -53,6 +54,8 @@ export interface PersistResult {
   profile: ProfileResult;
   /** Сработали критические пункты — вызывающий решает, что показать */
   risksTriggered: number;
+  /** Что назначила автоматика по интерпретационным полосам */
+  cascade: CascadeOutcome;
 }
 
 export async function persistSubmission(
@@ -173,7 +176,18 @@ export async function persistSubmission(
 
   await closeCompletedBatteries(subject.id, survey.id);
 
-  return { responseId, submittedAt, scores, profile, risksTriggered: risks.length };
+  // каскады и протоколы наблюдения — после закрытия батарей: иначе каскадное
+  // назначение могло бы закрыться тем же проходом, которым было создано
+  const cascade = await runCascades(survey.id, survey.anonymous ? null : subject.id, scores);
+
+  return {
+    responseId,
+    submittedAt,
+    scores,
+    profile,
+    risksTriggered: risks.length,
+    cascade,
+  };
 }
 
 function validateAnswerShape(question: Question, answer: Answer): void {

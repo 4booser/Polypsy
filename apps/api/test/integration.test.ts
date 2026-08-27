@@ -1349,3 +1349,124 @@ describe("DIF по полу", () => {
     expect(withCurve.points[0].n).toBeGreaterThanOrEqual(30);
   }, 180_000);
 });
+
+/* ── волна 5: каскады и протоколы наблюдения ── */
+
+describe("каскадные назначения", () => {
+  test("попадание в полосу назначает батарею; повтор не дублирует; петля отсекается", async () => {
+    const { sr45 } = await import("../src/instruments/sr45");
+    const { scaleBands: bandsTable, scales: scalesTable, surveyVersions } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+
+    // методика-скрининг
+    const screenId = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: screenId,
+      groupId: groupA,
+      title: { uk: "Каскад-скринінг", ru: "Каскад-скрининг" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(screenId, createSurveySchema.parse(sr45), adminA.id, "v1");
+
+    // углублённая батарея из ДРУГОЙ методики
+    const deepId = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: deepId,
+      groupId: groupA,
+      title: { uk: "Поглиблена", ru: "Углублённая" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(deepId, createSurveySchema.parse(sr45), adminA.id, "v1");
+
+    const deepBattery = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: deepBattery,
+      title: "Углублённая диагностика",
+      groupId: groupA,
+      strictOrder: false,
+      createdBy: adminA.id,
+    });
+    await db.insert(batteryItems).values([{ batteryId: deepBattery, surveyId: deepId, position: 0, required: true }]);
+
+    // вешаем каскад и повторы на ВСЕ полосы шкалы Sr текущей версии скрининга
+    const [version] = await db
+      .select()
+      .from(surveyVersions)
+      .where(eq(surveyVersions.surveyId, screenId))
+      .orderBy(descOp(surveyVersions.version))
+      .limit(1);
+    const srScale = await db.query.scales.findFirst({
+      where: and(eq(scalesTable.versionId, version!.id), eq(scalesTable.code, "Sr")),
+    });
+    await db
+      .update(bandsTable)
+      .set({ cascadeBatteryId: deepBattery, cascadeDueDays: 14, followUpDays: "7,30" })
+      .where(eq(bandsTable.scaleId, srScale!.id));
+
+    const person = await makeUser("user", "cascade@test.dev", { sex: "male", birthDate: "1990-01-01" });
+
+    const first = await submitSurvey(screenId, person.token);
+    expect(first.status).toBe(201);
+    expect(first.body.cascade.assignedBatteries).toContain("Углублённая диагностика");
+    expect(first.body.cascade.scheduledFollowUps).toBe(2);
+
+    const assigned = await db
+      .select()
+      .from(batteryAssignments)
+      .where(and(eq(batteryAssignments.batteryId, deepBattery), eq(batteryAssignments.userId, person.id)));
+    expect(assigned.length).toBe(1);
+    expect(assigned[0]!.dueAt).not.toBeNull();
+
+    // доступ к углублённой методике выдан
+    const { surveyAccess: accessTable } = await import("../src/db/schema");
+    const access = await db
+      .select()
+      .from(accessTable)
+      .where(and(eq(accessTable.surveyId, deepId), eq(accessTable.userId, person.id)));
+    expect(access.length).toBe(1);
+
+    // повторная сдача не плодит второе назначение
+    const second = await submitSurvey(screenId, person.token);
+    expect(second.status).toBe(201);
+    expect(second.body.cascade.assignedBatteries).toEqual([]);
+    const afterSecond = await db
+      .select()
+      .from(batteryAssignments)
+      .where(and(eq(batteryAssignments.batteryId, deepBattery), eq(batteryAssignments.userId, person.id)));
+    expect(afterSecond.length).toBe(1);
+
+    // петля: батарея содержит саму методику-источник → каскад пропускается
+    const loopBattery = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: loopBattery,
+      title: "Петля",
+      groupId: groupA,
+      strictOrder: false,
+      createdBy: adminA.id,
+    });
+    await db.insert(batteryItems).values([{ batteryId: loopBattery, surveyId: screenId, position: 0, required: true }]);
+    await db.update(bandsTable).set({ cascadeBatteryId: loopBattery }).where(eq(bandsTable.scaleId, srScale!.id));
+
+    const loopPerson = await makeUser("user", "loop@test.dev", { sex: "male", birthDate: "1990-01-01" });
+    const third = await submitSurvey(screenId, loopPerson.token);
+    expect(third.status).toBe(201);
+    expect(third.body.cascade.assignedBatteries).toEqual([]);
+    const loopAssigned = await db
+      .select()
+      .from(batteryAssignments)
+      .where(eq(batteryAssignments.batteryId, loopBattery));
+    expect(loopAssigned.length).toBe(0);
+  }, 60_000);
+});

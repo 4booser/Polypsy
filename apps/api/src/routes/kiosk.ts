@@ -227,6 +227,7 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
       reliable: result.profile.reliable,
       warnings: result.profile.warnings,
       safetyPlan: result.risksTriggered > 0 ? survey.safetyPlan : null,
+      cascade: result.cascade,
     },
     201,
   );

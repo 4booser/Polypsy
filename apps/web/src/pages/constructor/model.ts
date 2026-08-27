@@ -62,6 +62,9 @@ export interface DraftScale {
     severity: "none" | "mild" | "moderate" | "severe";
     grade?: number | null;
     recommendation?: Record<string, string> | null;
+    cascadeBatteryId?: string | null;
+    cascadeDueDays?: number | null;
+    followUpDays?: string | null;
   }[];
 }
 
