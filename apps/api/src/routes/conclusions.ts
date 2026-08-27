@@ -1,12 +1,12 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { conclusions, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
-import { badRequest, notFound, parseBody } from "../lib/http";
+import { badRequest, conflict, notFound, parseBody } from "../lib/http";
 import { canAccessSurvey } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
@@ -15,7 +15,35 @@ export const conclusionRoutes = new Hono<AppEnv>();
 
 conclusionRoutes.use("*", requireAuth, requireStaff);
 
-const saveSchema = z.object({ text: z.string().min(1).max(20_000) });
+const saveSchema = z.object({
+  text: z.string().min(1).max(20_000),
+  /**
+   * Версия, которую редактор показывал в момент правки. 0 — «заключения ещё
+   * не было». Присылают её не всегда (старые клиенты), поэтому поле
+   * необязательное: без него работает прежнее «последний победил».
+   */
+  baseVersion: z.number().int().min(0).optional(),
+});
+
+const signSchema = z.object({
+  /** Подписывают конкретную версию, а не «последнюю» — см. lockConclusion */
+  version: z.number().int().min(1),
+});
+
+/**
+ * Блокировка заключения на время транзакции.
+ *
+ * Каждый запрос и так идёт в транзакции (её открывает RLS-контекст), но
+ * изоляция READ COMMITTED: два одновременных сохранения прочитают одну и ту же
+ * последнюю версию и оба посчитают следующей вторую. Уникальный индекс не даст
+ * их записать, но пользователь получит пятисотку вместо понятного ответа.
+ *
+ * Блокировка именно консультативная, а не `select … for update`: строки может
+ * ещё не быть вовсе, а первую версию создают ровно так же наперегонки.
+ */
+async function lockConclusion(responseId: string) {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`conclusion:${responseId}`}))`);
+}
 
 async function assertResponse(user: User, responseId: string) {
   const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
@@ -57,6 +85,7 @@ conclusionRoutes.put("/responses/:id/conclusion", async (c) => {
   const responseId = c.req.param("id");
   await assertResponse(c.get("user"), responseId);
   const input = await parseBody(c.req.raw, saveSchema);
+  await lockConclusion(responseId);
 
   const [latest] = await db
     .select()
@@ -64,6 +93,17 @@ conclusionRoutes.put("/responses/:id/conclusion", async (c) => {
     .where(eq(conclusions.responseId, responseId))
     .orderBy(desc(conclusions.version))
     .limit(1);
+
+  /*
+   * Правку сверяем с тем, что редактор показывал. Иначе двое, открывших
+   * заключение одновременно, молча затрут работу друг друга: победит тот, кто
+   * нажал «сохранить» вторым, а первый об этом не узнает.
+   */
+  if (input.baseVersion !== undefined && input.baseVersion !== (latest?.version ?? 0)) {
+    conflict(
+      `Заключение изменилось: сейчас версия ${latest?.version ?? 0}, а правка велась поверх ${input.baseVersion}. Обновите текст.`,
+    );
+  }
 
   if (latest && latest.status === "draft") {
     await db
@@ -98,6 +138,8 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
   await assertResponse(c.get("user"), responseId);
+  const input = await parseBody(c.req.raw, signSchema);
+  await lockConclusion(responseId);
 
   const [latest] = await db
     .select()
@@ -107,6 +149,16 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", async (c) => {
     .limit(1);
   if (!latest) notFound("Заключения ещё нет");
   if (latest.status === "signed") badRequest("Последняя версия уже подписана");
+  /*
+   * Подпись удостоверяет конкретный текст. Без сверки версии сохранение,
+   * прошедшее между открытием экрана и нажатием «подписать», подставило бы
+   * под подпись текст, которого подписывающий не видел.
+   */
+  if (latest.version !== input.version) {
+    conflict(
+      `Текст изменился после открытия: сейчас версия ${latest.version}, подписывалась ${input.version}. Перечитайте заключение.`,
+    );
+  }
 
   await db
     .update(conclusions)

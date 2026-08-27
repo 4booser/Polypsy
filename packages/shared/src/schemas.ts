@@ -653,6 +653,24 @@ export const queryInt = (min: number, max: number, fallback: number) =>
     .transform((v) => (v === undefined || v === "" ? fallback : Number(v)))
     .pipe(z.number().int().min(min).max(max));
 
+/**
+ * Параметр из закрытого списка.
+ *
+ * Молчаливый откат к значению по умолчанию здесь недопустим: опечатка в
+ * `?profile=deidentifed` отдавала бы ПОЛНУЮ выгрузку с именами вместо
+ * обезличенной, и запросивший был бы уверен в обратном. Неизвестное значение —
+ * отказ с перечислением допустимых.
+ */
+export const queryEnum = <const T extends readonly [string, ...string[]]>(
+  values: T,
+  fallback: T[number],
+) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? fallback : v))
+    .pipe(z.enum(values as unknown as [T[number], ...T[number][]]));
+
 /** Флаг вида ?all=1 — присутствие со значением 1/true */
 export const queryFlag = z
   .string()
@@ -670,6 +688,26 @@ export const auditQuery = dateRangeQuery.extend({
   action: z.string().max(64).optional(),
   actorId: z.string().uuid().optional(),
   subjectUserId: z.string().uuid().optional(),
+});
+
+export const exportQuery = z.object({
+  profile: queryEnum(["full", "deidentified", "anonymous"], "full"),
+  lang: queryEnum(["uk", "ru"], "ru"),
+});
+
+export const facetQuery = z.object({
+  facet: queryEnum(["sex", "age", "sexAge", "lang", "unit"], "sexAge"),
+});
+
+export const cohortQuery = z.object({
+  by: queryEnum(["unit", "sex", "ageGroup", "month", "rank"], "unit"),
+});
+
+export const respondentQuery = z.object({
+  limit: queryInt(1, 200, 50),
+  cursor: z.string().max(200).optional(),
+  /** Поиск идёт по расшифрованным ФИО уже в приложении — здесь только длина */
+  search: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
 });
 
 export const responseListQuery = z.object({

@@ -1248,12 +1248,13 @@ export const conclusions = pgTable(
     version: integer("version").notNull(),
     text: text("text").notNull(),
     status: text("status", { enum: ["draft", "signed"] }).notNull().default("draft"),
+    // автор и подписавший — часть самого документа, стереть их нельзя
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "set null" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
     signedAt: timestampCol("signed_at"),
-    signedBy: text("signed_by").references(() => users.id, { onDelete: "set null" }),
+    signedBy: text("signed_by").references(() => users.id, { onDelete: "restrict" }),
   },
   (t) => ({
     responseVersionIdx: uniqueIndex("conclusions_response_version_idx").on(t.responseId, t.version),
@@ -1274,9 +1275,10 @@ export const consentTexts = pgTable(
     version: integer("version").notNull(),
     /** Локализованный текст согласия */
     body: jsonb("body").$type<LocalizedText>().notNull(),
+    // составитель — часть документа: обнулить его нельзя (см. 0031)
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "set null" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -1332,9 +1334,10 @@ export const referrals = pgTable(
     reason: text("reason"),
     /** Что ответила принимающая сторона */
     outcomeNote: text("outcome_note"),
+    // составитель — часть документа: обнулить его нельзя (см. 0031)
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "set null" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
     updatedAt: timestampCol("updated_at"),
   },

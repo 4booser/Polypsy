@@ -218,6 +218,13 @@
       "when": 1787831274266,
       "tag": "0030_rls_survey_access",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787831275266,
+      "tag": "0031_author_restrict",
+      "breakpoints": true
     }
   ]
 }

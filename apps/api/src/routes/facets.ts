@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
+import { facetQuery } from "@quizzy/shared";
 import { db } from "../db";
 import { audit } from "../lib/audit";
-import { notFound } from "../lib/http";
+import { notFound, parseQuery } from "../lib/http";
 import { percent, round } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
@@ -14,8 +15,6 @@ facetRoutes.use("*", requireAuth, requireStaff);
 
 /** П-1: страта меньше пяти наружу не выходит */
 const SMALL_CELL_FLOOR = 5;
-
-type Facet = "sex" | "age" | "sexAge" | "lang" | "unit";
 
 /**
  * Стратифицированные срезы аналитики (5.1) поверх витрины фактов.
@@ -31,14 +30,14 @@ facetRoutes.get("/surveys/:id", async (c) => {
   const survey = await getSurvey(surveyId, null, "ru");
   if (!survey) notFound("Методика не найдена");
 
-  const facet = (c.req.query("facet") ?? "sexAge") as Facet;
+  const { facet } = parseQuery(c, facetQuery);
   const expr = {
     sex: sql`coalesce(respondent_sex, '—')`,
     age: sql`coalesce(respondent_age_band, '—')`,
     sexAge: sql`coalesce(respondent_sex, '—') || ' · ' || coalesce(respondent_age_band, '—')`,
     lang: sql`coalesce(lang, '—')`,
     unit: sql`coalesce(unit, '—')`,
-  }[facet] ?? sql`coalesce(respondent_sex, '—')`;
+  }[facet];
 
   const rows = await db.execute(sql`
     select
