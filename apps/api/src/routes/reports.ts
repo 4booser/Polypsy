@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { answers, conclusions, responseScores, responses, scales, users } from "../db/schema";
+import { env } from "../env";
 import { audit } from "../lib/audit";
 import { forbidden, notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
@@ -238,8 +239,35 @@ function renderReport(d: ReportData): string {
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
   .conclusion { white-space: normal; padding: 10px 12px; border: 1px solid #d8d8d4; border-radius: 6px; }
   .note { margin-top: 22px; padding: 10px 12px; background: #f5f5f3; border-radius: 6px; font-size: 12px; color: #444; }
+
+  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 16px; }
+  .letterhead .org { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
+  .letterhead .unit { font-size: 12px; color: #555; margin-top: 2px; }
+
+  /* подпись не должна отрываться от документа переносом страницы */
+  .sign { margin-top: 26px; break-inside: avoid; display: flex; gap: 32px; flex-wrap: wrap; }
+  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
+  .sign-line i { display: inline-block; width: 190px; border-bottom: 1px solid #111; }
+  .sign-hint { font-size: 10px; color: #888; }
+
+  .footer { margin-top: 18px; border-top: 1px solid #e3e3e3; padding-top: 8px; }
+  /* таблицы не рвутся посреди строки при печати */
+  tr { break-inside: avoid; }
+  h2 { break-after: avoid; }
 </style></head>
 <body>
+  ${
+    /*
+     * Шапка учреждения. Лист без неё — просто распечатка, а не документ,
+     * который можно подшить в дело.
+     */
+    env.institutionName
+      ? `<div class="letterhead">
+    <div class="org">${esc(env.institutionName)}</div>
+    ${env.institutionUnit ? `<div class="unit">${esc(env.institutionUnit)}</div>` : ""}
+  </div>`
+      : ""
+  }
   <h1>${esc(d.surveyTitle)}</h1>
   <div class="meta">
     ${esc(d.patientName)}${d.patientMeta ? ` · ${esc(d.patientMeta)}` : ""} · версия методики ${d.versionNumber} ·
@@ -282,7 +310,29 @@ function renderReport(d: ReportData): string {
     и не заменяет популяционные нормы методики.
   </div>
 
-  <div class="meta" style="margin-top:18px; border-top: 1px solid #e3e3e3; padding-top: 8px;">
+  ${
+    /*
+     * Место для подписи. Заключение может быть подписано в системе, но
+     * бумажный экземпляр, который ложится в дело, всё равно подписывают
+     * рукой — и место для этого должно быть предусмотрено, а не
+     * дописываться поверх текста.
+     */
+    d.conclusion
+      ? ""
+      : `<div class="sign">
+    <div class="sign-line">
+      <span>Специалист</span>
+      <i></i>
+      <span class="sign-hint">подпись</span>
+    </div>
+    <div class="sign-line">
+      <span>Дата</span>
+      <i></i>
+    </div>
+  </div>`
+  }
+
+  <div class="meta footer">
     Распечатано: ${esc(d.printedBy)}, ${esc(d.printedAt.slice(0, 16).replace("T", " "))}
   </div>
 </body></html>`;
