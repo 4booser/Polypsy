@@ -88,7 +88,7 @@ export default function WorklistPage() {
                   {i.unit ? <span className="muted">· {i.unit}</span> : null}
                 </div>
                 <div className="hint" style={{ margin: 0 }}>
-                  {i.title} · {i.detail}
+                  {describe(i, ut)}
                 </div>
               </div>
               <span className="muted work-kind">{ut(KIND_KEY[i.kind])}</span>
@@ -106,4 +106,36 @@ export default function WorklistPage() {
       ) : null}
     </>
   );
+}
+
+
+/**
+ * Подробности строки собираются здесь, а не на сервере.
+ *
+ * Сервер отдавал их готовой строкой — «Срочно · сигналов 3», — и такую строку
+ * клиент не может ни перевести, ни переформатировать. Отображение
+ * принадлежит клиенту; сервер отдаёт факты.
+ */
+function describe(i: WorkItem, ut: (k: never) => string): string {
+  const t = (k: string) => ut(k as never);
+  switch (i.kind) {
+    case "case":
+      return [
+        i.title,
+        i.severity === "severe" ? t("work.urgent") : t("work.attention"),
+        `${t("cases.signals")} ${i.signals ?? 0}`,
+      ].join(" · ");
+    case "referral":
+      return [
+        i.title === "created" ? t("work.refNotAccepted") : t("work.refNotDone"),
+        i.destination ? t(`dest.${i.destination}`) : null,
+        `${i.days ?? 0} ${t("work.daysNoMove")}`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+    case "assignment":
+      return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
+    case "followup":
+      return `${i.title} · ${t("work.followupMissed")} · ${i.days ?? 0} ${t("work.daysOverdue")}`;
+  }
 }
