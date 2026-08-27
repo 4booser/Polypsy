@@ -1,49 +1,64 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import SurveyAnalyticsPage from "./pages/SurveyAnalytics";
-import Access from "./pages/Access";
 import { PatientDynamics, PatientList } from "./pages/Patients";
 import Alerts from "./pages/Alerts";
-import Audit from "./pages/Audit";
-import Compare from "./pages/Compare";
-import Schedules from "./pages/Schedules";
-import Surveillance from "./pages/Surveillance";
-import Constructor from "./pages/constructor";
-import { SurveyList } from "./pages/constructor/SurveyList";
-import Administer from "./pages/Administer";
-import { ConsentText, Groups, Users } from "./pages/Admin";
-import Batteries from "./pages/Batteries";
-import BlankForm from "./pages/BlankForm";
-import Invites from "./pages/Invites";
-import Join from "./pages/Join";
-import Kiosk from "./pages/Kiosk";
-import KioskSessions from "./pages/KioskSessions";
-import Norms from "./pages/Norms";
-import CaseSummaryPage from "./pages/CaseSummary";
-import ReferralsPage from "./pages/Referrals";
-import ApiDocs from "./pages/ApiDocs";
-import UiKit from "./pages/UiKit";
-import KeyPrint from "./pages/KeyPrint";
 import {
   IconAlert,
   IconAudit,
   IconBattery,
   IconClock,
-  IconInvite,
-  IconReferral,
-  IconKiosk,
   IconCompare,
   IconDashboard,
   IconGroup,
+  IconInvite,
+  IconKiosk,
   IconPatients,
   IconPulse,
+  IconReferral,
   IconSurvey,
   IconUsers,
+  Loading,
 } from "./ui";
+
+/*
+ * Экраны догружаются по требованию.
+ *
+ * Собранная консоль весила 565 КБ одним файлом: человек, открывший список
+ * случаев, тянул вместе с ним конструктор методик, печатные бланки, киоск и
+ * витрину компонентов — всё, чем он сегодня не пользуется.
+ *
+ * Сразу грузятся только вход, сводка, случаи и пациенты: по ним заходят
+ * каждый день, и подгрузка на них была бы заметной задержкой, а не
+ * экономией.
+ */
+const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
+const Access = lazy(() => import("./pages/Access"));
+const Audit = lazy(() => import("./pages/Audit"));
+const Compare = lazy(() => import("./pages/Compare"));
+const Schedules = lazy(() => import("./pages/Schedules"));
+const Surveillance = lazy(() => import("./pages/Surveillance"));
+const Constructor = lazy(() => import("./pages/constructor"));
+const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
+const Administer = lazy(() => import("./pages/Administer"));
+const ConsentText = lazy(() => import("./pages/Admin").then((m) => ({ default: m.ConsentText })));
+const Groups = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Groups })));
+const Users = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Users })));
+const Batteries = lazy(() => import("./pages/Batteries"));
+const BlankForm = lazy(() => import("./pages/BlankForm"));
+const Invites = lazy(() => import("./pages/Invites"));
+const Join = lazy(() => import("./pages/Join"));
+const Kiosk = lazy(() => import("./pages/Kiosk"));
+const KioskSessions = lazy(() => import("./pages/KioskSessions"));
+const Norms = lazy(() => import("./pages/Norms"));
+const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
+const ReferralsPage = lazy(() => import("./pages/Referrals"));
+const ApiDocs = lazy(() => import("./pages/ApiDocs"));
+const UiKit = lazy(() => import("./pages/UiKit"));
+const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
 type Theme = "dark" | "light";
 
@@ -113,14 +128,16 @@ export default function App() {
   // публичные страницы живут вне auth-гейта: у пациента и киоска нет входа
   if (location.pathname.startsWith("/join/") || location.pathname.startsWith("/kiosk/")) {
     return (
-      <Routes>
-        <Route path="/join/:token" element={<Join />} />
-        <Route path="/kiosk/:token" element={<Kiosk />} />
-      </Routes>
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          <Route path="/join/:token" element={<Join />} />
+          <Route path="/kiosk/:token" element={<Kiosk />} />
+        </Routes>
+      </Suspense>
     );
   }
 
-  if (loading) return <p style={{ padding: 40 }} className="muted">Загрузка…</p>;
+  if (loading) return <div style={{ padding: 40 }}><Loading rows={3} /></div>;
   if (!user) return <Login />;
 
   const isSuper = user.role === "superadmin";
@@ -186,7 +203,13 @@ export default function App() {
       </aside>
 
       <main className="main">
-        <Routes>
+        {/*
+          Пока догружается экран, на его месте стоит скелет — то же, что при
+          загрузке данных. Пустой прямоугольник или прыжок содержимого
+          выглядели бы поломкой.
+        */}
+        <Suspense fallback={<Loading rows={5} />}>
+          <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/surveys" element={<SurveyList />} />
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
@@ -213,8 +236,9 @@ export default function App() {
           <Route path="/groups" element={<Groups />} />
           {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </main>
     </div>
   );
