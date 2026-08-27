@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { Referral } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { DataTable, Empty, Loading, PageHead, useAction } from "../ui";
+import { Avatar, DataTable, Empty, Loading, PageHead, useAction, useUrlState } from "../ui";
 
 export const DESTINATION_LABEL: Record<string, string> = {
   psychiatrist: "Психиатр",
@@ -45,7 +45,9 @@ export const NEXT_STATUS: Record<string, { value: string; label: string }[]> = {
  */
 export default function ReferralsPage() {
   const [rows, setRows] = useState<Referral[] | null>(null);
-  const [all, setAll] = useState(false);
+  const [allParam, setAllParam] = useUrlState("all");
+  const all = allParam === "1";
+  const setAll = (v: boolean) => setAllParam(v ? "1" : "");
   const [error, setError] = useState<string | null>(null);
   const run = useAction();
 
@@ -66,7 +68,7 @@ export default function ReferralsPage() {
         title="Направления"
         sub={all ? "Все направления" : "Открытые: выписанные и принятые"}
         actions={
-          <button onClick={() => setAll((v) => !v)}>
+          <button onClick={() => setAll(!all)}>
             {all ? "Только открытые" : "Показать завершённые"}
           </button>
         }
@@ -81,12 +83,18 @@ export default function ReferralsPage() {
           <DataTable
             rows={rows}
             csvName="направления"
+            stateKey="referrals"
             initialSort={{ key: "createdAt", desc: true }}
             columns={[
               {
                 key: "userName",
                 header: "Пациент",
-                render: (r: Referral) => <Link to={`/patients/${r.userId}/summary`}>{r.userName}</Link>,
+                render: (r: Referral) => (
+                  <Link className="row tight" to={`/patients/${r.userId}/summary`}>
+                    <Avatar name={r.userName} />
+                    {r.userName}
+                  </Link>
+                ),
                 sort: (r: Referral) => r.userName,
               },
               {

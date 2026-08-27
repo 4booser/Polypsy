@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { SurveyAnalytics as Analytics, SurveyResponse } from "@quizzy/shared";
-import { api, download, openInTab } from "../api";
+import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
 import { duration, day, severityColor } from "../format";
@@ -128,6 +128,7 @@ export default function SurveyAnalyticsPage() {
               </button>
             ))}
           </div>
+          <VersionDiffPanel surveyId={id!} versions={data.versions} />
         </div>
       ) : null}
 
@@ -506,6 +507,128 @@ function Responses({ surveyId }: { surveyId: string }) {
           Показать ещё
         </button>
       ) : null}
+    </div>
+  );
+}
+
+
+/**
+ * Что изменилось между двумя версиями.
+ *
+ * Главный ответ здесь один: сопоставимы ли баллы. Перечень правок — лишь
+ * обоснование этого ответа, поэтому вывод стоит первым и крупно, а список
+ * изменений — под ним и мелко.
+ */
+function VersionDiffPanel({
+  surveyId,
+  versions,
+}: {
+  surveyId: string;
+  versions: { id: string; version: number }[];
+}) {
+  const sorted = [...versions].sort((a, b) => a.version - b.version);
+  const [a, setA] = useState(sorted[sorted.length - 2]?.id ?? sorted[0]!.id);
+  const [b, setB] = useState(sorted[sorted.length - 1]!.id);
+  const [diff, setDiff] = useState<VersionDiffResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open || a === b) return;
+    setDiff(null);
+    api.versionDiff(surveyId, a, b).then(setDiff).catch((e) => setError(e.message));
+  }, [open, surveyId, a, b]);
+
+  if (!open) {
+    return (
+      <button style={{ marginTop: 10 }} onClick={() => setOpen(true)}>
+        Сравнить версии
+      </button>
+    );
+  }
+
+  const pick = (value: string, onChange: (v: string) => void) => (
+    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 120 }}>
+      {sorted.map((v) => (
+        <option key={v.id} value={v.id}>
+          v{v.version}
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="row tight" style={{ alignItems: "center" }}>
+        {pick(a, setA)}
+        <span className="muted">→</span>
+        {pick(b, setB)}
+        <button className="ghost" onClick={() => setOpen(false)}>Свернуть</button>
+      </div>
+
+      {error ? <p className="error">{error}</p> : null}
+      {a === b ? <p className="hint">Выберите разные версии</p> : null}
+      {diff ? (
+        <>
+          <p style={{ marginTop: 10, marginBottom: 4 }}>
+            {diff.comparable ? (
+              <strong style={{ color: "var(--sev-none)" }}>Баллы версий сопоставимы</strong>
+            ) : (
+              <strong style={{ color: "var(--sev-moderate)" }}>
+                Баллы напрямую не сопоставимы
+              </strong>
+            )}
+          </p>
+          {diff.reasons.length ? (
+            <p className="hint" style={{ marginTop: 0 }}>{diff.reasons.join(" · ")}</p>
+          ) : (
+            <p className="hint" style={{ marginTop: 0 }}>
+              Изменения не затрагивают подсчёт: замеры разных версий можно объединять
+            </p>
+          )}
+
+          {diff.scales.map((sc) => (
+            <div key={sc.code} className="diff-block">
+              <strong>Шкала {sc.code}</strong>{" "}
+              <span className="muted">{DIFF_KIND[sc.kind]}</span>
+              {sc.changes.map((ch) => (
+                <ChangeLine key={ch.field} change={ch} />
+              ))}
+            </div>
+          ))}
+
+          {diff.questions.map((q, i) => (
+            <div key={`${q.position}-${i}`} className="diff-block">
+              <strong>Пункт {q.position}</strong> <span className="muted">{DIFF_KIND[q.kind]}</span>
+              <div className="muted" style={{ fontSize: 12.5 }}>{q.title}</div>
+              {q.changes.map((ch) => (
+                <ChangeLine key={ch.field} change={ch} />
+              ))}
+            </div>
+          ))}
+
+          {!diff.scales.length && !diff.questions.length ? (
+            <p className="muted" style={{ fontSize: 13 }}>Содержимое версий совпадает</p>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+const DIFF_KIND: Record<string, string> = {
+  added: "добавлена",
+  removed: "убрана",
+  changed: "изменена",
+};
+
+function ChangeLine({ change }: { change: VersionDiffResult["questions"][number]["changes"][number] }) {
+  return (
+    <div className="diff-line">
+      <span className={change.scoring ? "diff-field scoring" : "diff-field"}>{change.field}</span>
+      <span className="diff-before">{change.before ?? "—"}</span>
+      <span className="muted">→</span>
+      <span className="diff-after">{change.after ?? "—"}</span>
     </div>
   );
 }

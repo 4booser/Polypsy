@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { OverviewAnalytics, RiskAlert, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
-import { duration, day, severityColor, severityLabel } from "../format";
+import { duration, day, severityColor, severityLabel, timeOfDay } from "../format";
 import { PpvCard } from "../components/CalibrationPanel";
 
 export default function Dashboard() {
@@ -41,6 +41,32 @@ export default function Dashboard() {
             <Link to="/alerts" className="btn">Разобрать</Link>
           </div>
           <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>{alerts[0]!.label}</p>
+        </div>
+      ) : null}
+
+      {data.inProgress.length ? (
+        /*
+         * Кто прямо сейчас за экраном. Смысл в оперативности: если человек
+         * застрял или закрыл приложение посреди методики, специалист узнаёт
+         * об этом сегодня, а не при разборе незакрытых назначений через месяц.
+         */
+        <div className="card">
+          <div className="card-head">
+            <h2>Проходят сейчас</h2>
+            <span className="hint">черновики свежее получаса · {data.inProgress.length}</span>
+          </div>
+          {data.inProgress.slice(0, 8).map((r) => (
+            <div className="row" key={r.responseId} style={{ padding: "5px 0", gap: 10 }}>
+              <span className="live-dot" />
+              <span style={{ flex: 1 }}>{r.surveyTitle}</span>
+              <span className="muted" style={{ fontSize: 12 }}>
+                начал {timeOfDay(r.startedAt)} · сохранено {timeOfDay(r.lastSavedAt)}
+              </span>
+              {r.userId ? (
+                <Link className="btn" to={`/patients/${r.userId}`}>Карта</Link>
+              ) : null}
+            </div>
+          ))}
         </div>
       ) : null}
 

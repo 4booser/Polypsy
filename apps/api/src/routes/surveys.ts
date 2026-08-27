@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { normalizeLocalized, t, validateSurvey, type Issue } from "@quizzy/shared";
+import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue } from "@quizzy/shared";
 import { createSurveySchema, updateSurveySchema, type SurveyFull, type SurveyListItem } from "@quizzy/shared";
 import { db } from "../db";
 import { responses, surveyVersions, surveys } from "../db/schema";
@@ -375,6 +375,30 @@ surveyRoutes.get("/:id/versions", requireStaff, async (c) => {
     .orderBy(desc(surveyVersions.version));
 
   return c.json(rows.map((r) => ({ ...r, responseCount: Number(r.responseCount ?? 0) })));
+});
+
+/**
+ * Что изменилось между двумя версиями.
+ *
+ * Правка создаёт новую версию, старые прохождения остаются на прежней. Через
+ * полгода, глядя на две группы результатов, нужно уметь ответить: они
+ * сопоставимы или между ними переписали ключ? Ответ — здесь.
+ */
+surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, async (c) => {
+  const id = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), id);
+
+  const [before, after] = await Promise.all([
+    getSurvey(id, c.req.param("a"), langOf(c)),
+    getSurvey(id, c.req.param("b"), langOf(c)),
+  ]);
+  if (!before || !after) notFound("Версия не найдена");
+
+  return c.json({
+    before: { versionId: before.versionId, versionNumber: before.versionNumber },
+    after: { versionId: after.versionId, versionNumber: after.versionNumber },
+    ...diffVersions(before, after),
+  });
 });
 
 /**

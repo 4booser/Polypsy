@@ -32,3 +32,8 @@ export function dateTime(iso: string | null): string {
 export function day(iso: string): string {
   return iso.slice(5, 10);
 }
+
+/** Только часы и минуты: «проходит с 14:05» читается быстрее полной даты */
+export function timeOfDay(iso: string): string {
+  return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}

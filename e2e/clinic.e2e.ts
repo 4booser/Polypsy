@@ -15,13 +15,20 @@ test("от тревоги до закрытого направления", async
   // из тревоги — к пациенту
   await page.getByRole("link", { name: "Пациенты" }).click();
   const firstPatient = page.locator("table tbody tr td a").first();
-  const patientName = (await firstPatient.textContent())!.trim();
   await firstPatient.click();
 
-  await expect(page.getByRole("heading", { name: patientName })).toBeVisible();
+  // сначала дожидаемся, что страница пациента отрисовалась: заголовок читается
+  // сразу после клика и успевает вернуть ещё «Пациенты»
+  const summaryLink = page.getByRole("link", { name: "Сводка для консилиума" });
+  await summaryLink.waitFor();
 
-  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
-  await expect(page.getByRole("heading", { name: patientName })).toBeVisible();
+  // имя берём с самой страницы: в ссылке рядом с ним стоят инициалы-аватарка,
+  // и textContent вернул бы «ПДПетров Дмитрий»
+  const patientName = (await page.locator(".page-head h1").textContent())!.trim();
+  expect(patientName.length).toBeGreaterThan(0);
+
+  await summaryLink.click();
+  await expect(page.locator(".page-head h1")).toHaveText(patientName);
   await expect(page.getByRole("heading", { name: "Направления" })).toBeVisible();
   await expect(page.getByText("Направлений нет")).toBeVisible();
 

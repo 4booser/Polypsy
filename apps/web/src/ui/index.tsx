@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 /** Мелкие переиспользуемые части консоли: иконки, состояния, таблицы, сообщения */
 
@@ -37,6 +38,82 @@ export const IconReferral = icon(<><path d="M4 12h11" /><path d="M12 6l6 6-6 6" 
 export const IconCompare = icon(<><path d="M3 20V10M9 20V4M15 20v-7M21 20V8" /></>);
 
 /* ─────────── состояния ─────────── */
+
+/**
+ * Инициалы вместо портрета.
+ *
+ * Фотографий в системе нет и не будет — это лишние персональные данные ради
+ * украшения. Инициалы в кружке решают ту же задачу: глаз цепляется за строку
+ * в длинном списке однофамильцев. Цвет выводится из имени, поэтому у одного
+ * человека он всегда один и тот же и запоминается.
+ */
+export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const initials = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "—";
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  const hue = Math.abs(hash) % 360;
+  return (
+    <span
+      aria-hidden
+      className="avatar"
+      style={{
+        width: size,
+        height: size,
+        fontSize: size * 0.4,
+        /*
+         * Светлота 30 %, а не «на глаз»: при 42 % белые инициалы на жёлто-
+         * зелёных оттенках давали контраст 2,9:1. Проверено перебором всех
+         * 360 тонов — на 30 % худший случай даёт 5,3:1.
+         */
+        background: `hsl(${hue} 45% 30%)`,
+      }}
+    >
+      {initials}
+    </span>
+  );
+}
+
+/**
+ * Подтверждение необратимого действия перепечатыванием названия.
+ *
+ * Обычный confirm снимается не глядя — рука жмёт «ОК» раньше, чем глаз читает.
+ * Требование напечатать название заставляет посмотреть, что именно удаляется;
+ * это единственная защита, которую нельзя пройти на автомате.
+ */
+export function ConfirmByName({
+  title,
+  name,
+  warning,
+  actionLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  name: string;
+  warning: ReactNode;
+  actionLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const [typed, setTyped] = useState("");
+  return (
+    <div className="card danger-card">
+      <div className="card-head">
+        <h2>{title}</h2>
+        <button className="ghost" onClick={onCancel}>Отмена</button>
+      </div>
+      <div>{warning}</div>
+      <label className="field" style={{ marginTop: 10 }}>
+        <span>Напечатайте «{name}», чтобы подтвердить</span>
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
+      </label>
+      <button className="danger" disabled={typed.trim() !== name} onClick={onConfirm}>
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
 
 export function Loading({ rows = 4 }: { rows?: number }) {
   return (
@@ -142,6 +219,40 @@ export function useAction() {
 
 /* ─────────── сортируемая таблица ─────────── */
 
+/**
+ * Значение, живущее в адресной строке.
+ *
+ * Смысл не в красоте адреса, а в том, что вид экрана можно передать: «открой
+ * тревоги за март, отсортированные по дате» становится ссылкой, а не устной
+ * инструкцией. Плюс перезагрузка страницы не сбрасывает разбор наполовину.
+ *
+ * Пишем через replace: каждый щелчок по заголовку столбца не должен добавлять
+ * запись в историю браузера — «назад» обязано уводить со страницы, а не
+ * отменять сортировку по одному шагу.
+ */
+export function useUrlState(
+  name: string,
+  fallback = "",
+): [string, (v: string) => void] {
+  const [params, setParams] = useSearchParams();
+  const value = params.get(name) ?? fallback;
+  const set = useCallback(
+    (next: string) => {
+      setParams(
+        (prev) => {
+          const copy = new URLSearchParams(prev);
+          if (!next || next === fallback) copy.delete(name);
+          else copy.set(name, next);
+          return copy;
+        },
+        { replace: true },
+      );
+    },
+    [name, fallback, setParams],
+  );
+  return [value, set];
+}
+
 export interface Column<T> {
   key: string;
   header: string;
@@ -176,6 +287,7 @@ export function DataTable<T>({
   empty,
   initialSort,
   csvName,
+  stateKey,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -183,8 +295,30 @@ export function DataTable<T>({
   initialSort?: { key: string; desc?: boolean };
   /** Имя файла включает выгрузку CSV текущего вида таблицы */
   csvName?: string;
+  /**
+   * Префикс параметров адреса. Задан — сортировка переживает перезагрузку и
+   * передаётся ссылкой; не задан — живёт в памяти компонента, как раньше.
+   * Префикс нужен потому, что на странице бывает несколько таблиц.
+   */
+  stateKey?: string;
 }) {
-  const [sort, setSort] = useState(initialSort ?? null);
+  const [urlSort, setUrlSort] = useUrlState(stateKey ? `${stateKey}.sort` : "");
+  const [localSort, setLocalSort] = useState(initialSort ?? null);
+
+  // «ключ» или «ключ:desc» — читаемо в адресной строке и разбирается одним split
+  const sort = stateKey
+    ? urlSort
+      ? { key: urlSort.split(":")[0]!, desc: urlSort.endsWith(":desc") }
+      : (initialSort ?? null)
+    : localSort;
+
+  const setSort = (next: { key: string; desc?: boolean } | null) => {
+    if (!stateKey) {
+      setLocalSort(next);
+      return;
+    }
+    setUrlSort(next ? `${next.key}${next.desc ? ":desc" : ""}` : "");
+  };
 
   const sorted = useMemo(() => {
     if (!sort) return rows;
@@ -228,7 +362,7 @@ export function DataTable<T>({
                 style={c.width ? { width: c.width } : undefined}
                 onClick={() =>
                   c.sort &&
-                  setSort((s) => (s?.key === c.key ? { key: c.key, desc: !s.desc } : { key: c.key }))
+                  setSort(sort?.key === c.key ? { key: c.key, desc: !sort.desc } : { key: c.key })
                 }
               >
                 {c.header}
