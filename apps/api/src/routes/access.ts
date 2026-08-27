@@ -1,9 +1,8 @@
 import { Hono } from "hono";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { t } from "@quizzy/shared";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { grantAccessSchema, type SurveyGrant } from "@quizzy/shared";
 import { db } from "../db";
-import { responses, surveyAccess, surveys, users } from "../db/schema";
+import { surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";

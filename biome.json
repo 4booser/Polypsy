@@ -1,0 +1,54 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "apps/api/src/**",
+      "apps/web/src/**",
+      "apps/mobile/src/**",
+      "apps/mobile/app/**",
+      "packages/shared/src/**",
+      "e2e/**"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": false,
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noConstantCondition": "error",
+        "useExhaustiveDependencies": "off"
+      },
+      "suspicious": {
+        "noDoubleEquals": "error",
+        "noDuplicateObjectKeys": "error",
+        "noDuplicateCase": "error",
+        "noFallthroughSwitchClause": "error",
+        "noSelfCompare": "error",
+        "noMisleadingInstantiator": "error",
+        "noAsyncPromiseExecutor": "error",
+        "useAwait": "off",
+        "noExplicitAny": "warn"
+      },
+      "complexity": {
+        "noUselessTernary": "error",
+        "noForEach": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "error"
+      }
+    }
+  },
+  "javascript": {
+    "globals": [
+      "Bun"
+    ]
+  },
+  "assist": {
+    "enabled": false
+  }
+}

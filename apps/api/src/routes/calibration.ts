@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { roc, type RocResult } from "@quizzy/shared";
 import { db } from "../db";
-import { responseScores, responses, riskAlerts, scaleBands, scales, surveys } from "../db/schema";
+import { responseScores, responses, riskAlerts, scales, surveys } from "../db/schema";
 import { audit } from "../lib/audit";
 import { notFound } from "../lib/http";
 import { percent, round } from "../lib/stats";

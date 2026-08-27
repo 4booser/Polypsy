@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { pChart, t } from "@quizzy/shared";
+import { pChart, } from "@quizzy/shared";
 import { db } from "../db";
-import { responseScores, responses, scales, surveys, users } from "../db/schema";
+import { responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { notFound } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";

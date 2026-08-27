@@ -211,6 +211,10 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
         распечатайте сейчас. Код останется виден в списке.
       </p>
       <div className="invite-fresh">
+        {/*
+          biome-ignore lint/security/noDangerouslySetInnerHtml: SVG кода собирается
+          здесь же из ссылки, никакие внешние данные в разметку не попадают
+        */}
         <div className="qr" dangerouslySetInnerHTML={{ __html: svg }} />
         <div style={{ flex: 1, minWidth: 260 }}>
           <label className="field">

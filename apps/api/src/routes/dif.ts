@@ -9,7 +9,7 @@ import {
   type MhStratum,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { answers, responseScores, responses, scales } from "../db/schema";
+import { answers, responseScores, responses, } from "../db/schema";
 import { audit } from "../lib/audit";
 import { notFound } from "../lib/http";
 import { reliabilityOf } from "../lib/psychometrics";

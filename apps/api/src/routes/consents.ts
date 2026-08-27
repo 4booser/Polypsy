@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { desc, } from "drizzle-orm";
 import { z } from "zod";
-import { t, type Lang } from "@quizzy/shared";
+import { t, } from "@quizzy/shared";
 import { db } from "../db";
 import { consentTexts, consents } from "../db/schema";
 import { audit } from "../lib/audit";
-import { badRequest, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, parseBody } from "../lib/http";
 import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
 export const consentRoutes = new Hono<AppEnv>();

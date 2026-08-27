@@ -197,6 +197,10 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
         чтобы из теста нельзя было выйти в систему.
       </p>
       <div className="invite-fresh">
+        {/*
+          biome-ignore lint/security/noDangerouslySetInnerHtml: SVG кода собирается
+          здесь же из ссылки, никакие внешние данные в разметку не попадают
+        */}
         <div className="qr" dangerouslySetInnerHTML={{ __html: svg }} />
         <div style={{ flex: 1, minWidth: 260 }}>
           <label className="field"><span>Ссылка киоска</span>

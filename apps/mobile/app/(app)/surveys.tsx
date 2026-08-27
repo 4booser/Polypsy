@@ -10,7 +10,7 @@ import { useLang } from "@/lang";
 
 export default function SurveysScreen() {
   const c = useColors();
-  const { ut, lang } = useLang();
+  const { ut } = useLang();
   const router = useRouter();
   const { isAdmin } = useAuth();
 
