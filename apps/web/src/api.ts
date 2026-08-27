@@ -279,6 +279,53 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  dif: (surveyId: string) =>
+    request<{
+      surveyId: string;
+      title: string;
+      sample: number;
+      minGroup: number;
+      solidGroup: number;
+      scales: {
+        code: string;
+        title: string;
+        items: {
+          questionId: string;
+          position: number;
+          title: string;
+          entries: {
+            factor: "sex" | "age" | "lang";
+            reference: string;
+            focal: string;
+            refN: number;
+            focalN: number;
+            preliminary: boolean;
+            result: { chi2: number; alphaMH: number; deltaMH: number; etsClass: "A" | "B" | "C"; significant: boolean } | null;
+          }[];
+        }[];
+      }[];
+      reliability: {
+        code: string;
+        title: string;
+        groups: { group: string; n: number; alpha: number | null }[];
+        alphaSpread: number | null;
+      }[];
+    }>(`/api/dif/surveys/${surveyId}`),
+  ageCurves: (surveyId: string) =>
+    request<{
+      minWindow: number;
+      scales: {
+        code: string;
+        title: string;
+        normalization: string;
+        bySex: {
+          sex: "male" | "female";
+          enough: boolean;
+          points: { age: number; n: number; halfWidth: number; percentiles: { q: number; value: number }[] }[];
+        }[];
+      }[];
+    }>(`/api/norms/surveys/${surveyId}/age-curves`),
+
   surveillance: (surveyId: string) =>
     request<{
       surveyId: string;

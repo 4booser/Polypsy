@@ -68,6 +68,7 @@ export type AuditAction =
   | "retention.answer_events"
   | "norms.publish"
   | "analytics.surveillance"
+  | "analytics.dif"
   | "analytics.correlations"
   | "audit.read"
   | "access.denied";

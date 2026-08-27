@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { createSurveySchema, t, type Sex } from "@quizzy/shared";
+import { ageAt, createSurveySchema, quantile, t, type Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { average, round, variance } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
@@ -177,4 +178,89 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
     details: { scaleCodes: input.scaleCodes, versionId },
   });
   return c.json({ versionId }, 201);
+});
+
+/**
+ * Перцентильные кривые по возрасту (5.3).
+ *
+ * Формат знаком врачам по картам роста: P10/P25/P50/P75/P90 против возраста,
+ * отдельно для каждого пола. Скользящее окно ±5 лет; если в окне меньше
+ * MIN_WINDOW наблюдений — окно расширяется, и его фактическая ширина
+ * возвращается честно: врач должен видеть, на чём построена кривая.
+ * За пределы наблюдаемых возрастов не экстраполируем.
+ */
+const MIN_WINDOW = 30;
+const PERCENTILES = [0.1, 0.25, 0.5, 0.75, 0.9] as const;
+
+normRoutes.get("/surveys/:id/age-curves", async (c) => {
+  const surveyId = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), surveyId);
+  const survey = await getSurvey(surveyId, null, "ru");
+  if (!survey) notFound("Методика не найдена");
+
+  const rows = await db
+    .select({
+      responseId: responses.id,
+      sex: responses.respondentSex,
+      birthDate: users.birthDate,
+      submittedAt: responses.submittedAt,
+    })
+    .from(responses)
+    .leftJoin(users, eq(users.id, responses.userId))
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")));
+
+  const ageOf = new Map<string, number>();
+  const sexOf = new Map<string, "male" | "female">();
+  for (const r of rows) {
+    const age = ageAt(decryptField(r.birthDate), r.submittedAt);
+    if (age === null || !r.sex) continue;
+    ageOf.set(r.responseId, age);
+    sexOf.set(r.responseId, r.sex);
+  }
+
+  const scoreRows = ageOf.size
+    ? await db
+        .select({ score: responseScores, code: scales.code, kind: scales.kind })
+        .from(responseScores)
+        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+        .where(inArray(responseScores.responseId, [...ageOf.keys()]))
+    : [];
+
+  const curves = survey.scales
+    .filter((s) => s.kind === "clinical")
+    .map((scale) => {
+      const own = scoreRows.filter((r) => r.code === scale.code);
+      const bySex = (["male", "female"] as const).map((sex) => {
+        const points = own
+          .filter((r) => sexOf.get(r.score.responseId) === sex)
+          .map((r) => ({ age: ageOf.get(r.score.responseId)!, value: r.score.value }));
+        if (points.length < MIN_WINDOW) return { sex, points: [], enough: false as const };
+
+        const ages = [...new Set(points.map((p) => p.age))].sort((a, b) => a - b);
+        const curve = ages.map((age) => {
+          let halfWidth = 5;
+          let window = points.filter((p) => Math.abs(p.age - age) <= halfWidth);
+          // окно расширяется, пока не наберётся минимум — и это видно наружу
+          while (window.length < MIN_WINDOW && halfWidth < 40) {
+            halfWidth += 2;
+            window = points.filter((p) => Math.abs(p.age - age) <= halfWidth);
+          }
+          if (window.length < MIN_WINDOW) return null;
+          const values = window.map((p) => p.value);
+          return {
+            age,
+            n: window.length,
+            halfWidth,
+            percentiles: PERCENTILES.map((q) => ({ q, value: quantile(values, q)! })),
+          };
+        }).filter((x): x is NonNullable<typeof x> => x !== null);
+
+        return { sex, points: curve, enough: curve.length > 0 };
+      });
+
+      return { code: scale.code, title: scale.title, normalization: scale.normalization, bySex };
+    })
+    .filter((s) => s.bySex.some((b) => b.enough));
+
+  return c.json({ surveyId, title: survey.title, minWindow: MIN_WINDOW, scales: curves });
 });
