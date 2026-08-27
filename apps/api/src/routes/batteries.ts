@@ -212,19 +212,22 @@ batteryRoutes.delete("/:id", async (c) => {
   const batteryId = c.req.param("id");
   const row = await assertBatteryAccess(user, batteryId);
 
+  /*
+   * Любое назначение — не только открытое — держит батарею от удаления.
+   * Завершённое назначение это запись о том, что человек реально проходил
+   * этот набор; каскад стёр бы её вместе с батареей, и в карте осталось бы
+   * прохождение без объяснения, откуда оно взялось. Отработавшая батарея
+   * отправляется в архив, а не в утиль.
+   */
   const [{ count } = { count: 0 }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(batteryAssignments)
-    .where(
-      and(
-        eq(batteryAssignments.batteryId, batteryId),
-        isNull(batteryAssignments.completedAt),
-        isNull(batteryAssignments.cancelledAt),
-      ),
-    );
-  // удаление утащило бы за собой историю назначений — вместо этого архивируем
+    .where(eq(batteryAssignments.batteryId, batteryId));
   if (Number(count) > 0)
-    badRequest(`Батарея назначена ${Number(count)} обследуемым. Снимите назначения или сдайте батарею в архив`);
+    badRequest(
+      `Батарея назначалась ${Number(count)} раз. Удаление стёрло бы историю назначений — ` +
+        `сдайте её в архив`,
+    );
 
   await db.delete(batteries).where(eq(batteries.id, batteryId));
   await audit(c, {

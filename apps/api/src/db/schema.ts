@@ -67,6 +67,18 @@ export const users = pgTable(
 );
 
 /** Группа опросов — батарея методик */
+/*
+ * Авторство (`createdBy`) держит запись, а не уносит её.
+ *
+ * Каскад здесь означал бы, что удаление учётной записи сотрудника стирает
+ * все созданные им методики — а с ними, дальше по цепочке, прохождения,
+ * баллы и тревоги живых людей. Уволенный психолог не должен уносить с собой
+ * клинический архив отделения. RESTRICT заставляет сначала явно передать
+ * содержимое, и только потом закрывать учётную запись.
+ *
+ * Колонки `userId`, наоборот, остаются каскадными: согласия, назначения и
+ * токены принадлежат самому человеку и вместе с ним и уходят.
+ */
 export const surveyGroups = pgTable(
   "survey_groups",
   {
@@ -77,7 +89,7 @@ export const surveyGroups = pgTable(
     position: integer("position").notNull().default(0),
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
   },
   (t) => ({ positionIdx: index("groups_position_idx").on(t.position) }),
@@ -182,7 +194,7 @@ export const surveys = pgTable(
 
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Действующая версия — её видят проходящие */
     currentVersionId: text("current_version_id"),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
@@ -788,7 +800,7 @@ export const batteries = pgTable(
     archived: boolean("archived").notNull().default(false),
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -883,7 +895,7 @@ export const schedules = pgTable(
     nextRunAt: timestampCol("next_run_at").notNull(),
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -998,7 +1010,7 @@ export const invites = pgTable(
     code: text("code").notNull(),
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     /** Батарея, которая назначится при регистрации */
     batteryId: text("battery_id").references(() => batteries.id, { onDelete: "set null" }),
     /** Подразделение, проставляемое новому аккаунту */
@@ -1051,7 +1063,7 @@ export const kioskSessions = pgTable(
       .references(() => batteries.id, { onDelete: "cascade" }),
     createdBy: text("created_by")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "restrict" }),
     expiresAt: timestampCol("expires_at").notNull(),
     closedAt: timestampCol("closed_at"),
     createdAt: timestampCol("created_at").notNull().defaultNow(),

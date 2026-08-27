@@ -9,6 +9,7 @@ const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
 
 /** Группы методик и назначение их администраторов */
 export function Groups() {
+  const run = useAction();
   const { user } = useAuth();
   const isSuper = user?.role === "superadmin";
   const [groups, setGroups] = useState<SurveyGroupWithCounts[] | null>(null);
@@ -106,11 +107,15 @@ export function Groups() {
             {isSuper ? (
               <button
                 className="danger"
-                onClick={async () => {
-                  if (!confirm(`Удалить группу «${g.title}»? Методики останутся без группы.`)) return;
-                  await api.deleteGroup(g.id).catch(() => null);
-                  await load();
-                }}
+                onClick={() =>
+                  run(async () => {
+                    if (!confirm(`Удалить группу «${g.title}»?`)) return;
+                    // отказ сервера нужно показать: непустая группа не удаляется,
+                    // и молчаливая кнопка выглядела бы сломанной
+                    await api.deleteGroup(g.id);
+                    await load();
+                  }, "Группа удалена")
+                }
               >
                 Удалить
               </button>

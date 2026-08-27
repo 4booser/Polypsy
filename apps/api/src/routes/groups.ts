@@ -117,10 +117,42 @@ groupRoutes.patch("/:id", async (c) => {
   return c.json(row);
 });
 
+/**
+ * Удаление группы. Разрешено только пустой.
+ *
+ * Группа — корень целой цепочки внешних ключей: батареи каскадом уходят
+ * вместе с ней, а за ними история назначений, расписания и сеансы киоска.
+ * Методики при этом остаются, но с `group_id = null`, то есть по правилам
+ * scope.ts превращаются в личные черновики создателя — остальные админы
+ * группы молча теряют к ним доступ.
+ *
+ * Ни то, ни другое не должно случаться как побочный эффект «прибраться в
+ * списке групп»: сначала переносим содержимое, потом удаляем пустую.
+ */
 groupRoutes.delete("/:id", requireSuperadmin, async (c) => {
-  const deleted = await db.delete(surveyGroups).where(eq(surveyGroups.id, c.req.param("id"))).returning();
-  if (deleted.length === 0) notFound("Группа не найдена");
-  await audit(c, { action: "group.delete", resourceType: "group", resourceId: c.req.param("id") });
+  const id = c.req.param("id");
+  const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, id) });
+  if (!group) notFound("Группа не найдена");
+
+  const [counts] = await db
+    .select({
+      surveys: sql<number>`(select count(*)::int from surveys where group_id = ${id})`,
+      batteries: sql<number>`(select count(*)::int from batteries where group_id = ${id})`,
+    })
+    .from(sql`(select 1) as _`);
+
+  const inside: string[] = [];
+  if (counts?.surveys) inside.push(`методик: ${counts.surveys}`);
+  if (counts?.batteries) inside.push(`батарей: ${counts.batteries}`);
+  if (inside.length) {
+    badRequest(
+      `Группа не пуста (${inside.join(", ")}). Перенесите содержимое в другую группу — ` +
+        `удаление утащило бы за собой батареи вместе с историей назначений`,
+    );
+  }
+
+  await db.delete(surveyGroups).where(eq(surveyGroups.id, id));
+  await audit(c, { action: "group.delete", resourceType: "group", resourceId: id });
   return c.body(null, 204);
 });
 

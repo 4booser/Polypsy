@@ -1969,3 +1969,92 @@ describe("снятие методики с использования", () => {
     expect(pass.status).toBe(201);
   });
 });
+
+/* ── что нельзя удалить, потому что оно тянет за собой историю ── */
+
+describe("защита от каскадного удаления", () => {
+  test("непустая группа не удаляется", async () => {
+    const res = await api(`/api/groups/${groupA}`, root.token, { method: "DELETE" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("не пуста");
+
+    // группа всё ещё на месте вместе с методикой
+    const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
+    expect(survey.status).toBe(200);
+  });
+
+  test("пустая группа удаляется", async () => {
+    const emptyId = crypto.randomUUID();
+    await db.insert(surveyGroups).values({ id: emptyId, title: "Пустая", createdBy: root.id });
+    const res = await api(`/api/groups/${emptyId}`, root.token, { method: "DELETE" });
+    expect(res.status).toBe(204);
+  });
+
+  test("батарея с историей назначений не удаляется даже после завершения", async () => {
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      groupId: groupA,
+      title: "Отработавшая батарея",
+      createdBy: adminA.id,
+    } as never);
+    await db.insert(batteryItems).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      surveyId: surveyInA,
+      position: 1,
+    } as never);
+    // назначение уже закрыто — но это запись о том, что человек проходил набор
+    await db.insert(batteryAssignments).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      userId: patient.id,
+      assignedBy: adminA.id,
+      completedAt: new Date().toISOString(),
+    } as never);
+
+    const res = await api(`/api/batteries/${batteryId}`, adminA.token, { method: "DELETE" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("историю назначений");
+  });
+
+  test("батарея без назначений удаляется", async () => {
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      groupId: groupA,
+      title: "Ни разу не назначалась",
+      createdBy: adminA.id,
+    } as never);
+    const res = await api(`/api/batteries/${batteryId}`, adminA.token, { method: "DELETE" });
+    expect(res.status).toBe(204);
+  });
+});
+
+describe("удаление учётной записи не уносит клинический архив", () => {
+  test("сотрудник с созданными методиками не удаляется из базы", async () => {
+    /*
+     * Эндпоинта удаления пользователя нет, и проверяется здесь не он, а сам
+     * внешний ключ: раньше `createdBy` был каскадным, и одна ручная чистка
+     * учётки в psql уносила бы методики вместе со всеми прохождениями.
+     */
+    let failed = false;
+    try {
+      await db.delete(users).where(eq(users.id, adminA.id));
+    } catch {
+      failed = true;
+    }
+    expect(failed).toBe(true);
+
+    const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
+    expect(survey.status).toBe(200);
+  });
+
+  test("данные, принадлежащие самому человеку, уходят вместе с ним", async () => {
+    // пациент без авторства удаляется, и его согласия/назначения уходят каскадом
+    const throwaway = await makeUser("user", "throwaway@test");
+    await db.delete(users).where(eq(users.id, throwaway.id));
+    const left = await db.select().from(users).where(eq(users.id, throwaway.id));
+    expect(left.length).toBe(0);
+  });
+});
