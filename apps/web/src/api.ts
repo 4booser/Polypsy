@@ -33,6 +33,7 @@ import type {
   AlertCase,
   Page,
   Respondent,
+  UnitReport,
   Worklist,
 } from "@quizzy/shared";
 
@@ -316,6 +317,13 @@ export const api = {
   },
   alertCaseUnits: () => request<string[]>("/api/alert-cases/units"),
   worklist: () => request<Worklist>("/api/worklist"),
+  unitReportUnits: () => request<string[]>("/api/unit-report/units"),
+  unitReport: (unit: string, from?: string, to?: string) => {
+    const qs = new URLSearchParams({ unit });
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    return request<UnitReport>(`/api/unit-report?${qs}`);
+  },
   assignCase: (id: string, release = false) =>
     request<void>(`/api/alert-cases/${id}/assign`, {
       method: "POST",
