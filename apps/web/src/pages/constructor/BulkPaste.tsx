@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { DraftQuestion } from "./model";
+import { newUid, type DraftQuestion } from "./model";
 
 /**
  * Массовая вставка пунктов из текста пособия.
@@ -67,6 +67,7 @@ export function BulkPaste({
 
   function apply() {
     const questions: DraftQuestion[] = items.map((item) => ({
+      uid: newUid(),
       type,
       // текст кладётся в выбранный язык; второй остаётся пустым и виден
       // в форме как незаполненный — честнее, чем дублировать не тот язык

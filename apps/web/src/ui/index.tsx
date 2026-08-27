@@ -519,6 +519,7 @@ export function DataTable<T>({
   initialSort,
   csvName,
   stateKey,
+  rowKey,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -527,12 +528,30 @@ export function DataTable<T>({
   /** Имя файла включает выгрузку CSV текущего вида таблицы */
   csvName?: string;
   /**
+   * Устойчивый ключ строки. По умолчанию берётся поле `id`, а если его нет —
+   * порядковый номер. Номер плох тем, что таблица сортируется: React считает
+   * строку «той же самой» по позиции, и при смене порядка переиспользует её
+   * узлы — вместе с раскрытым содержимым и фокусом внутри ячейки.
+   */
+  rowKey?: (row: T) => string;
+  /**
    * Префикс параметров адреса. Задан — сортировка переживает перезагрузку и
    * передаётся ссылкой; не задан — живёт в памяти компонента, как раньше.
    * Префикс нужен потому, что на странице бывает несколько таблиц.
    */
   stateKey?: string;
 }) {
+  /*
+   * Большинство таблиц показывают сущности с id — берём его, не заставляя
+   * каждый вызов передавать rowKey. Номер строки остаётся только там, где
+   * идентификатора действительно нет (сводные строки, агрегаты).
+   */
+  const keyOf = (row: T, i: number): string => {
+    if (rowKey) return rowKey(row);
+    const id = (row as { id?: unknown }).id;
+    return typeof id === "string" ? id : String(i);
+  };
+
   const [urlSort, setUrlSort] = useUrlState(stateKey ? `${stateKey}.sort` : "");
   const [localSort, setLocalSort] = useState(initialSort ?? null);
 
@@ -593,7 +612,7 @@ export function DataTable<T>({
         </thead>
         <tbody>
           {sorted.map((row, i) => (
-            <tr key={i}>
+            <tr key={keyOf(row, i)}>
               {columns.map((c) => (
                 <td key={c.key} className={c.num ? "num" : ""}>
                   {c.render(row)}
