@@ -1,10 +1,28 @@
 import type { Severity } from "@quizzy/shared";
 
+/**
+ * Цвет заливки: метки на графиках, полоски, доли кольца.
+ * Рядом с ними нет мелкого текста, и насыщенность важнее контраста с фоном.
+ */
 export const severityColor: Record<Severity, string> = {
   none: "var(--sev-none)",
   mild: "var(--sev-mild)",
   moderate: "var(--sev-moderate)",
   severe: "var(--sev-severe)",
+};
+
+/**
+ * Цвет текста той же степени выраженности — другой и зависит от темы.
+ *
+ * Один цвет на обе задачи не годится: жёлтый #fab219 на белой карточке даёт
+ * контраст 1.83 при пороге 4.5. Заливка кружка на графике и слово
+ * «умеренная» в таблице — разные вещи.
+ */
+export const severityTextColor: Record<Severity, string> = {
+  none: "var(--sev-none-text)",
+  mild: "var(--sev-mild-text)",
+  moderate: "var(--sev-moderate-text)",
+  severe: "var(--sev-severe-text)",
 };
 
 export const severityLabel: Record<Severity, string> = {
