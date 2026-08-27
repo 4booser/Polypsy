@@ -2431,3 +2431,46 @@ describe("отчёт об ошибке не выносит персональн�
     expect(true).toBe(true);
   });
 });
+
+describe("очередь работы", () => {
+  test("собирает случаи, направления и просроченные назначения в один список", async () => {
+    const res = await api("/api/worklist", adminA.token);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(typeof res.body.total).toBe("number");
+    expect(res.body.byKind).toHaveProperty("case");
+    expect(res.body.byKind).toHaveProperty("referral");
+    expect(res.body.byKind).toHaveProperty("assignment");
+  });
+
+  test("просроченное идёт первым — порядок один на все виды работы", async () => {
+    const res = await api("/api/worklist", adminA.token);
+    const items = res.body.items as { overdue: boolean }[];
+    if (items.length < 2) return;
+    // после первого неспросроченного просроченных быть не должно
+    const firstNormal = items.findIndex((i) => !i.overdue);
+    if (firstNormal >= 0) {
+      expect(items.slice(firstNormal).every((i) => !i.overdue)).toBe(true);
+    }
+  });
+
+  test("каждая строка ведёт туда, где с ней работают", async () => {
+    const res = await api("/api/worklist", adminA.token);
+    for (const i of res.body.items as { href: string }[]) {
+      expect(i.href.startsWith("/")).toBe(true);
+    }
+  });
+
+  test("чтение очереди фиксируется в журнале", async () => {
+    await api("/api/worklist", adminA.token);
+    const { auditLog } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.actorId, adminA.id))
+      .orderBy(descOp(auditLog.at))
+      .limit(1);
+    expect(entry!.action).toBe("worklist.read");
+  });
+});

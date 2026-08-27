@@ -57,6 +57,7 @@ const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
+const WorklistPage = lazy(() => import("./pages/Worklist"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
@@ -88,6 +89,7 @@ export default function App() {
   const { user, loading, logout } = useAuth();
   const [openAlerts, setOpenAlerts] = useState(0);
   const [openReferrals, setOpenReferrals] = useState(0);
+  const [worklistCount, setWorklistCount] = useState(0);
   /*
    * Тема хранится явно: тёмная по умолчанию, но в кабинете при дневном свете
    * она неудобна, а системная настройка на рабочей станции часто не отражает
@@ -115,6 +117,7 @@ export default function App() {
       api.alertCases({ limit: "1" }).then((p) => setOpenAlerts(p.total ?? 0)).catch(() => {});
       // направления в том же такте: незакрытое направление ждёт так же долго
       api.referrals().then((r) => setOpenReferrals(r.length)).catch(() => {});
+      api.worklist().then((w) => setWorklistCount(w.total)).catch(() => {});
     };
     load();
     const timer = setInterval(load, 60_000);
@@ -151,6 +154,8 @@ export default function App() {
         </div>
 
         <Nav to="/" end icon={<IconDashboard />}>Сводка</Nav>
+        {/* очередь сразу под сводкой: с неё начинается рабочий день */}
+        <Nav to="/worklist" icon={<IconClock />} badge={worklistCount}>Очередь работы</Nav>
         <Nav to="/surveys" icon={<IconSurvey />}>Методики</Nav>
         <Nav to="/batteries" icon={<IconBattery />}>Батареи</Nav>
         <Nav to="/schedules" icon={<IconClock />}>Расписание</Nav>
@@ -233,6 +238,7 @@ export default function App() {
           <Route path="/compare" element={<Compare />} />
           <Route path="/surveillance" element={<Surveillance />} />
           <Route path="/alerts" element={<Alerts />} />
+            <Route path="/worklist" element={<WorklistPage />} />
           <Route path="/groups" element={<Groups />} />
           {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}

@@ -1151,3 +1151,27 @@ export interface AlertCaseFilters {
   surveyId?: string;
   search?: string;
 }
+
+
+/** Одна строка очереди работы специалиста */
+export interface WorkItem {
+  kind: "case" | "assignment" | "referral";
+  id: string;
+  userId: string;
+  userName: string;
+  unit: string | null;
+  title: string;
+  detail: string;
+  overdue: boolean;
+  assignedTo: string | null;
+  since: string;
+  href: string;
+}
+
+export interface Worklist {
+  items: WorkItem[];
+  total: number;
+  truncated: boolean;
+  byKind: { case: number; referral: number; assignment: number };
+  mine: number;
+}

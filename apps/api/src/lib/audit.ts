@@ -37,6 +37,7 @@ export type AuditAction =
   | "access.patient_list"
   | "response.submit"
   | "alert.list"
+  | "worklist.read"
   | "alert.acknowledge"
   | "alert.assign"
   | "alert.release"
