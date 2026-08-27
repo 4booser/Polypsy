@@ -164,6 +164,8 @@ export interface User {
 
   role: Role;
   createdAt: string;
+  /** Учётная запись работает только на просмотр: любые изменения запрещены */
+  readOnly: boolean;
 }
 
 export type Sex = "male" | "female";

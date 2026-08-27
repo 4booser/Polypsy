@@ -80,6 +80,7 @@ export function toPublicUser(row: UserRow): User {
     specialty: row.specialty,
     rank: row.rank,
     role: row.role,
+    readOnly: row.readOnly,
     createdAt: row.createdAt,
   };
 }
