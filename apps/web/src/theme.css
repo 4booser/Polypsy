@@ -522,10 +522,53 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
   .grid-sheet { gap: 10mm; }
 }
 
-@media (max-width: 900px) {
+/* ── Три размера экрана вместо одного ─────────────────────────────────────
+ *
+ * Раньше была одна контрольная точка на 900 px: до неё консоль показывалась
+ * как на большом мониторе, после — панель навигации превращалась в кучу
+ * ссылок поперёк экрана. На ноутбуке 13″ и на планшете в кабинете было тесно
+ * одинаково.
+ *
+ * Теперь: стол — панель целиком; планшет — свёрнутая до значков, потому что
+ * на 1100 px четверть ширины под подписи пунктов дороже, чем сами подписи;
+ * телефон — навигация уезжает в верхнюю полосу.
+ */
+
+/* планшет: панель сворачивается до значков, подписи прячутся */
+@media (max-width: 1180px) {
+  .app { grid-template-columns: 62px 1fr; }
+  .sidebar { padding: var(--sp-4) var(--sp-2) var(--sp-3); align-items: center; }
+  .sidebar .brand span,
+  .nav-link .grow,
+  .nav-section,
+  .sidebar > .muted,
+  .sidebar > button.ghost span { display: none; }
+  .nav-link { justify-content: center; padding: var(--sp-2); }
+  /* бейдж остаётся: число открытых случаев — то, ради чего сюда смотрят */
+  .nav-badge { position: absolute; transform: translate(14px, -10px); }
+  .nav-link { position: relative; }
+  .main { padding: var(--sp-5) var(--sp-5) var(--sp-12); }
+  .grid.cols-2 { grid-template-columns: 1fr; }
+}
+
+/* телефон: панель уходит наверх строкой, содержимое во всю ширину */
+@media (max-width: 760px) {
   .app { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
-  .main { padding: 18px; }
+  .sidebar {
+    position: static; height: auto; flex-direction: row; flex-wrap: wrap;
+    align-items: center; justify-content: flex-start; gap: var(--sp-1);
+    border-right: none; border-bottom: 1px solid var(--border);
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .sidebar .brand span { display: inline; }
+  .nav-link { padding: var(--sp-2); }
+  .main { padding: var(--sp-4) var(--sp-3) var(--sp-8); }
+  .page-head { gap: var(--sp-3); }
+  .grid.cols-3, .grid.cols-4 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  /* таблицы на телефоне листаются вбок, но страница вбок — никогда */
+  .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .filters { gap: var(--sp-2); }
+  .tabs { overflow-x: auto; }
 }
 
 /* ── Киоск: планшет на расстоянии вытянутой руки, крупно и контрастно ─────── */
