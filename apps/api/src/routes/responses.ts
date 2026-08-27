@@ -15,12 +15,12 @@ import {
 } from "@quizzy/shared";
 import { db } from "../db";
 import { answerEvents, answers, riskAlerts, responseScores, responses, scales, surveys, users } from "../db/schema";
-import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
 import { persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
-import { draftSchema } from "@quizzy/shared";
+import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertBatteryOrder, closeCompletedBatteries } from "../lib/batteries";
 import { assertSurveyAccess, isStaff } from "../lib/scope";
@@ -303,8 +303,7 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
 
   // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».
   // offset-вариант на живой таблице съезжает при вставках между страницами
-  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
-  const before = c.req.query("before");
+  const { limit, before } = parseQuery(c, responseListQuery);
 
   const rows = await db
     .select({ response: responses, userName: users.lastName })

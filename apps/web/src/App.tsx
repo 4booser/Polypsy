@@ -25,6 +25,7 @@ import KioskSessions from "./pages/KioskSessions";
 import Norms from "./pages/Norms";
 import CaseSummaryPage from "./pages/CaseSummary";
 import ReferralsPage from "./pages/Referrals";
+import ApiDocs from "./pages/ApiDocs";
 import KeyPrint from "./pages/KeyPrint";
 import {
   IconAlert,
@@ -147,6 +148,7 @@ export default function App() {
             <div className="nav-section">Администрирование</div>
             <Nav to="/users" icon={<IconUsers />}>Учётные записи</Nav>
             <Nav to="/audit" icon={<IconAudit />}>Журнал доступа</Nav>
+            <Nav to="/api-docs" icon={<IconSurvey />}>Описание API</Nav>
           </>
         ) : null}
 
@@ -188,6 +190,7 @@ export default function App() {
           <Route path="/patients/:userId" element={<PatientDynamics />} />
           <Route path="/patients/:userId/summary" element={<CaseSummaryPage />} />
           <Route path="/referrals" element={<ReferralsPage />} />
+          <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
           <Route path="/kiosk-sessions" element={<KioskSessions />} />

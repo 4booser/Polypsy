@@ -24,6 +24,9 @@ import { alertRoutes } from "./routes/alerts";
 import { dynamicsRoutes } from "./routes/dynamics";
 import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
+import { storageRoutes } from "./routes/storage";
+import { buildOpenApi } from "./lib/openapi";
+import pkg from "../package.json" with { type: "json" };
 import { comparisonRoutes } from "./routes/comparison";
 import { spssRoutes } from "./routes/spss";
 import { batteryRoutes } from "./routes/batteries";
@@ -41,7 +44,7 @@ import { facetRoutes } from "./routes/facets";
 import { referralRoutes } from "./routes/referrals";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import type { AppEnv } from "./middleware/auth";
+import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
 
 const app = new Hono<AppEnv>();
 
@@ -91,6 +94,19 @@ app.route("/api/alerts", alertRoutes);
 app.route("/api/dynamics", dynamicsRoutes);
 app.route("/api/reports", reportRoutes);
 app.route("/api/access", accessRoutes);
+app.route("/api/stats/storage", storageRoutes);
+
+/**
+ * Описание API. За логином сотрудника: перечень эндпоинтов вместе с
+ * требуемыми ролями — это карта поверхности атаки, и выкладывать её наружу
+ * незачем.
+ *
+ * Документ собирается из живой таблицы маршрутов при каждом запросе, так что
+ * разойтись с кодом он не может.
+ */
+app.get("/api/openapi.json", requireAuth, requireStaff, (c) =>
+  c.json(buildOpenApi(app.routes, pkg.version)),
+);
 app.route("/api/compare", comparisonRoutes);
 app.route("/api/spss", spssRoutes);
 app.route("/api/batteries", batteryRoutes);

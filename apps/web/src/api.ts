@@ -286,6 +286,9 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
+  openapi: () => request<never>("/api/openapi.json"),
+  downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),
+
   referrals: (all = false) => request<Referral[]>(`/api/referrals${all ? "?all=1" : ""}`),
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
