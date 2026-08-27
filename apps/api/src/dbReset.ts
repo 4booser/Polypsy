@@ -10,6 +10,7 @@ if (env.isProduction) {
   process.exit(1);
 }
 
+import { spawnSync } from "node:child_process";
 import postgres from "postgres";
 
 const sql = postgres(env.databaseUrl, { max: 1 });
@@ -19,5 +20,13 @@ await sql`drop schema if exists drizzle cascade`;
 await sql.end();
 console.log("схема сброшена, применяю миграции…");
 
-await import("./migrate");
-await import("./seed");
+/*
+ * Отдельными процессами, а не импортом: migrate.ts закрывает общий пул
+ * (`client.end()`), и посев в том же процессе писал бы в мёртвое соединение.
+ */
+for (const step of ["./migrate.ts", "./seed.ts"]) {
+  const run = spawnSync("bun", [new URL(step, import.meta.url).pathname], {
+    stdio: "inherit",
+  });
+  if (run.status !== 0) process.exit(run.status ?? 1);
+}

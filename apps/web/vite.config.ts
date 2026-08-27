@@ -25,6 +25,20 @@ export default defineConfig({
       "@quizzy/shared": fileURLToPath(new URL("../../packages/shared/src", import.meta.url)),
     },
   },
+  // Смоук-тесты гоняются против собранной консоли, а не dev-сервера:
+  // в проде отдаётся именно сборка, и ломается обычно она.
+  preview: {
+    port: 4199,
+    strictPort: true,
+    proxy: {
+      // порт задаётся снаружи: смоук-стенд не должен драться за 3001 с
+      // запущенным dev-сервером разработчика
+      "/api": {
+        target: process.env.API_PROXY_TARGET ?? "http://localhost:3001",
+        changeOrigin: true,
+      },
+    },
+  },
   server: {
     // 5173 часто занят другими проектами — берём отдельный порт
     port: 5199,

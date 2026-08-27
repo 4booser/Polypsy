@@ -11,3 +11,8 @@ apps/api/data/
 ios/
 android/
 .DS_Store
+
+# смоук веб-консоли
+/test-results/
+/playwright-report/
+/blob-report/
