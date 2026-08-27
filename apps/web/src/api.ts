@@ -199,7 +199,8 @@ export const api = {
   me: () => request<User>("/api/auth/me"),
 
   groups: () => request<SurveyGroupWithCounts[]>("/api/groups"),
-  surveys: () => request<SurveyListItem[]>("/api/surveys"),
+  surveys: (archived = false) =>
+    request<SurveyListItem[]>(`/api/surveys${archived ? "?archived=1" : ""}`),
   survey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
   /** Методика в редактируемом виде: локализованные объекты вместо строк */
   keySheet: (id: string) => request<never>(`/api/surveys/${id}/key?lang=ru`),
@@ -220,7 +221,9 @@ export const api = {
     }),
   duplicateSurvey: (id: string) =>
     request<SurveyFull>(`/api/surveys/${id}/duplicate`, { method: "POST" }),
-  deleteSurvey: (id: string) => request<void>(`/api/surveys/${id}`, { method: "DELETE" }),
+  /** Снимает методику с использования. Данные не удаляются — см. surveyPurge на сервере. */
+  archiveSurvey: (id: string) => request<void>(`/api/surveys/${id}`, { method: "DELETE" }),
+  restoreSurvey: (id: string) => request<void>(`/api/surveys/${id}/restore`, { method: "POST" }),
   submitFor: (surveyId: string, payload: unknown) =>
     request<{ id: string; scores: unknown[]; reliable: boolean; warnings: string[] }>(
       `/api/surveys/${surveyId}/responses`,

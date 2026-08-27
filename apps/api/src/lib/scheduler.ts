@@ -11,6 +11,7 @@ import {
   users,
 } from "../db/schema";
 import { auditSystem } from "./audit";
+import { batterySurveysInUse } from "./scope";
 
 const DAY_MS = 86_400_000;
 
@@ -88,6 +89,16 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
     .where(eq(batteryItems.batteryId, schedule.batteryId));
   if (!items.length) return { assigned: 0, skipped: targets.length };
 
+  // снятая методика не выдаётся даже автоматически; остальные — выдаются
+  const inUse = new Set(await batterySurveysInUse(schedule.batteryId));
+  const grantable = items.filter((i) => inUse.has(i.surveyId));
+  if (grantable.length < items.length) {
+    console.warn(
+      `Расписание «${schedule.title}»: пропущено снятых методик ${items.length - grantable.length}`,
+    );
+  }
+  if (!grantable.length) return { assigned: 0, skipped: targets.length };
+
   const dueAt = new Date(Date.now() + schedule.dueDays * DAY_MS).toISOString();
 
   await db.transaction(async (tx) => {
@@ -105,7 +116,7 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
       .insert(surveyAccess)
       .values(
         fresh.flatMap((userId) =>
-          items.map((item) => ({
+          grantable.map((item) => ({
             surveyId: item.surveyId,
             userId,
             grantedBy: schedule.createdBy,

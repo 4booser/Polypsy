@@ -7,7 +7,7 @@ import { responses, surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertSurveyAccess } from "../lib/scope";
+import { accessibleGroupIds, assertSurveyAccess, assertSurveysInUse, surveyInUse } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const accessRoutes = new Hono<AppEnv>();
@@ -68,6 +68,7 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
 accessRoutes.post("/surveys/:id/grants", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
+  await assertSurveysInUse([surveyId]);
   const input = await parseBody(c.req.raw, grantAccessSchema);
 
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
@@ -184,6 +185,7 @@ accessRoutes.get("/patients", async (c) => {
 export function patientVisibilityFilter(userId: string) {
   return and(
     eq(surveys.status, "published"),
+    surveyInUse,
     // методику, которую заполняет специалист, пациенту предлагать нельзя:
     // часть её пунктов требует клинической оценки, а не самоотчёта
     eq(surveys.administration, "self"),

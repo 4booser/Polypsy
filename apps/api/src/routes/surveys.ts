@@ -3,12 +3,12 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { normalizeLocalized, t, validateSurvey, type Issue } from "@quizzy/shared";
 import { createSurveySchema, updateSurveySchema, type SurveyFull, type SurveyListItem } from "@quizzy/shared";
 import { db } from "../db";
-import { surveyVersions, surveys } from "../db/schema";
+import { responses, surveyVersions, surveys } from "../db/schema";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { attachContent, createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
-import { assertGroupAccess, assertSurveyAccess, isStaff, surveyScopeFilter } from "../lib/scope";
+import { assertGroupAccess, assertSurveyAccess, isStaff, surveyInUse, surveyScopeFilter } from "../lib/scope";
 import { patientVisibilityFilter } from "./access";
 import { hasGrant } from "../lib/scope";
 
@@ -54,6 +54,8 @@ surveyRoutes.get("/", async (c) => {
     if (scope) filters.push(scope);
   }
   if (groupId) filters.push(eq(surveys.groupId, groupId));
+  // снятые с использования показываются только по явному запросу сотрудника
+  if (!(isStaff(user) && c.req.query("archived") === "1")) filters.push(surveyInUse);
 
   const rows = await db
     .select({
@@ -513,15 +515,63 @@ surveyRoutes.post("/import", requireStaff, async (c) => {
   return c.json({ id, issues }, 201);
 });
 
+/**
+ * Снятие методики с использования.
+ *
+ * Метод оставлен DELETE ради совместимости с клиентами, но данные не
+ * удаляются: строка `surveys` связана каскадом с прохождениями, баллами,
+ * тревогами и назначениями, и настоящее удаление уносило бы клиническую
+ * историю живых людей — необратимо и по нажатию одной кнопки.
+ *
+ * Физическое удаление возможно только с сервера: `bun run survey:purge`,
+ * и только для уже снятой методики.
+ */
 surveyRoutes.delete("/:id", requireStaff, async (c) => {
-  await assertSurveyAccess(c.get("user"), c.req.param("id"));
-  const deleted = await db.delete(surveys).where(eq(surveys.id, c.req.param("id"))).returning();
-  if (deleted.length === 0) notFound("Методика не найдена");
+  const user = c.get("user");
+  const id = c.req.param("id");
+  await assertSurveyAccess(user, id);
+
+  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
+  if (!survey) notFound("Методика не найдена");
+  if (survey.archivedAt) badRequest("Методика уже снята с использования");
+
+  const [counted] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(responses)
+    .where(eq(responses.surveyId, id));
+  const responseCount = counted?.count ?? 0;
+
+  await db
+    .update(surveys)
+    .set({ archivedAt: new Date().toISOString(), archivedBy: user.id })
+    .where(eq(surveys.id, id));
+
   await audit(c, {
-    action: "survey.delete",
+    action: "survey.archive",
     resourceType: "survey",
-    resourceId: c.req.param("id"),
-    details: { title: t(deleted[0]!.title as never) },
+    resourceId: id,
+    // число прохождений в журнале: по нему видно, что именно было выведено
+    // из оборота, даже если методику потом вычистят с сервера
+    details: { title: t(survey.title as never), responses: responseCount },
+  });
+  return c.body(null, 204);
+});
+
+/** Возврат методики в работу. Снятие — решение обратимое, в этом и смысл. */
+surveyRoutes.post("/:id/restore", requireStaff, async (c) => {
+  const id = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), id);
+
+  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
+  if (!survey) notFound("Методика не найдена");
+  if (!survey.archivedAt) badRequest("Методика и так в работе");
+
+  await db.update(surveys).set({ archivedAt: null, archivedBy: null }).where(eq(surveys.id, id));
+  await audit(c, {
+    action: "survey.restore",
+    resourceType: "survey",
+    resourceId: id,
+    details: { title: t(survey.title as never) },
   });
   return c.body(null, 204);
 });

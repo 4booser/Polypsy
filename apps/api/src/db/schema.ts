@@ -145,9 +145,28 @@ export const surveys = pgTable(
   showResultsToPatient: boolean("show_results_to_patient").notNull().default(false),
   /** Демонстрационная методика: не для клинического применения, в списках помечена */
   isDemo: boolean("is_demo").notNull().default(false),
-    status: text("status", { enum: ["draft", "published", "closed", "archived"] })
+    /*
+     * "archived" из перечисления убран намеренно: значение никогда не
+     * выставлялось и нигде не проверялось, но выглядело рабочим — рано или
+     * поздно кто-то снял бы им методику с использования, ничего при этом не
+     * запретив. Снятие живёт в archivedAt ниже.
+     */
+    status: text("status", { enum: ["draft", "published", "closed"] })
       .notNull()
       .default("draft"),
+
+    /**
+     * Методика снята с использования.
+     *
+     * Удалять методику нельзя: по внешним ключам это уносит все прохождения,
+     * баллы и тревоги по ней, то есть клиническую историю живых людей.
+     * Снятая методика исчезает из всего, что смотрит вперёд (списки, выдача,
+     * батареи, киоск, новые прохождения), и остаётся во всём, что смотрит
+     * назад (карта пациента, аналитика, журнал) — иначе в записях появились
+     * бы дыры без объяснения.
+     */
+    archivedAt: timestampCol("archived_at"),
+    archivedBy: text("archived_by").references(() => users.id, { onDelete: "set null" }),
 
     timeLimitSec: integer("time_limit_sec"),
     randomizeQuestions: boolean("randomize_questions").notNull().default(false),

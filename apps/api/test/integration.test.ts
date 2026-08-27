@@ -34,7 +34,7 @@ const { hashPassword, issueToken } = await import("../src/lib/auth");
 const { encryptPersonFields } = await import("../src/lib/crypto");
 const { createVersion } = await import("../src/lib/surveys");
 const { runDueSchedules } = await import("../src/lib/scheduler");
-const { surveys } = await import("../src/db/schema");
+const { surveys, responses: responsesTable } = await import("../src/db/schema");
 const { createSurveySchema } = await import("@quizzy/shared");
 const { sr45 } = await import("../src/instruments/sr45");
 const { migrate } = await import("drizzle-orm/postgres-js/migrator");
@@ -790,7 +790,6 @@ describe("clientRequestId", () => {
     expect(second.body.duplicate).toBe(true);
     expect(second.body.id).toBe(first.body.id);
 
-    const { responses: responsesTable } = await import("../src/db/schema");
     const rows = await db
       .select()
       .from(responsesTable)
@@ -1215,7 +1214,6 @@ describe("снэпшоты стратификации и язык предъяв
     });
     expect(res.status).toBe(201);
 
-    const { responses: responsesTable } = await import("../src/db/schema");
     const row = await db.query.responses.findFirst({ where: eq(responsesTable.id, res.body.id) });
     // пациент из фикстур: муж, 1990 г.р. → полоса 35-44 на 2026 год
     expect(row!.respondentSex).toBe("male");
@@ -1864,5 +1862,110 @@ describe("сводка консилиума", () => {
   test("чужой админ сводку не получает", async () => {
     const res = await api(`/api/referrals/summary/${patient.id}`, adminB.token);
     expect(res.status).toBe(404);
+  });
+});
+
+/* ── снятие методики с использования ── */
+
+describe("снятие методики с использования", () => {
+  let sid: string;
+
+  beforeAll(async () => {
+    // отдельная методика: снимать основную нельзя — на ней стоят другие тесты
+    const input = createSurveySchema.parse(sr45);
+    sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: input.title,
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, input, adminA.id, "Версия для снятия");
+  });
+
+  test("прохождения переживают снятие", async () => {
+    // сдаём прохождение до снятия
+    const before = await submitSurvey(sid, patient.token);
+    expect(before.status).toBe(201);
+
+    const archived = await api(`/api/surveys/${sid}`, adminA.token, { method: "DELETE" });
+    expect(archived.status).toBe(204);
+
+    const rows = await db.select().from(responsesTable).where(eq(responsesTable.surveyId, sid));
+    expect(rows.length).toBe(1);
+  });
+
+  test("снятая методика исчезает из списков и не проходится", async () => {
+    const staffList = await api("/api/surveys", adminA.token);
+    expect(staffList.body.some((s: { id: string }) => s.id === sid)).toBe(false);
+
+    const patientList = await api("/api/surveys", patient.token);
+    expect(patientList.body.some((s: { id: string }) => s.id === sid)).toBe(false);
+
+    const pass = await api(`/api/surveys/${sid}/responses`, patient.token, {
+      method: "POST",
+      body: JSON.stringify({ startedAt: new Date().toISOString(), durationMs: 1000, answers: [] }),
+    });
+    expect(pass.status).toBe(400);
+
+    const draft = await api(`/api/surveys/${sid}/draft`, patient.token, {
+      method: "PUT",
+      body: JSON.stringify({ answers: [] }),
+    });
+    expect(draft.status).toBe(400);
+  });
+
+  test("снятую методику нельзя назначить — ни лично, ни батареей", async () => {
+    const grant = await api(`/api/access/surveys/${sid}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(grant.status).toBe(400);
+
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      groupId: groupA,
+      title: "Набор со снятой методикой",
+      createdBy: adminA.id,
+    } as never);
+    await db.insert(batteryItems).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      surveyId: sid,
+      position: 1,
+    } as never);
+
+    const assign = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(assign.status).toBe(400);
+    expect(assign.body.error).toContain("Снято с использования");
+  });
+
+  test("сотрудник видит снятые по явному запросу, повторное снятие отклоняется", async () => {
+    const list = await api("/api/surveys?archived=1", adminA.token);
+    expect(list.body.some((s: { id: string }) => s.id === sid)).toBe(true);
+
+    const again = await api(`/api/surveys/${sid}`, adminA.token, { method: "DELETE" });
+    expect(again.status).toBe(400);
+  });
+
+  test("возврат в работу восстанавливает выдачу", async () => {
+    const restored = await api(`/api/surveys/${sid}/restore`, adminA.token, { method: "POST" });
+    expect(restored.status).toBe(204);
+
+    const list = await api("/api/surveys", patient.token);
+    expect(list.body.some((s: { id: string }) => s.id === sid)).toBe(true);
+
+    const pass = await submitSurvey(sid, patient.token);
+    expect(pass.status).toBe(201);
   });
 });

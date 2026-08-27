@@ -6,6 +6,7 @@ import { useToast } from "../../ui";
 
 export function SurveyList() {
   const [rows, setRows] = useState<SurveyListItem[] | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importIssues, setImportIssues] = useState<Issue[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -41,11 +42,12 @@ export function SurveyList() {
   }
 
   async function load() {
-    setRows(await api.surveys());
+    setRows(await api.surveys(showArchived));
   }
   useEffect(() => {
     load().catch((e) => setError(e.message));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showArchived]);
 
   if (!rows) return <p className="muted">{error ?? "Загрузка…"}</p>;
 
@@ -56,6 +58,9 @@ export function SurveyList() {
       <div className="row">
         <Link className="btn" to="/constructor">Создать методику</Link>
         <button onClick={() => fileRef.current?.click()}>Импорт из файла</button>
+        <button onClick={() => setShowArchived((v) => !v)}>
+          {showArchived ? "Только в работе" : "Показать снятые"}
+        </button>
         <input
           ref={fileRef}
           type="file"
@@ -96,7 +101,13 @@ export function SurveyList() {
                   <Link to={`/surveys/${s.id}`}>{s.title}</Link>
                   {s.isDemo ? <span className="chip static" style={{ marginLeft: 8, fontSize: 10 }}>демо</span> : null}
                 </td>
-                <td className="muted">{s.status}</td>
+                <td className="muted">
+                  {s.archivedAt ? (
+                    <span title={`Снята ${s.archivedAt.slice(0, 10)}`}>снята с использования</span>
+                  ) : (
+                    s.status
+                  )}
+                </td>
                 <td className="muted">{s.administration === "clinician" ? "специалист" : "респондент"}</td>
                 <td className="muted">{s.visibility === "restricted" ? "по назначению" : "общая"}</td>
                 <td className="num">{s.questionCount}</td>
@@ -114,6 +125,43 @@ export function SurveyList() {
                     >
                       Копия
                     </button>
+                    {s.archivedAt ? (
+                      <button
+                        onClick={async () => {
+                          await api.restoreSurvey(s.id);
+                          await load();
+                          toast("Методика вернулась в работу", "ok");
+                        }}
+                      >
+                        Вернуть в работу
+                      </button>
+                    ) : (
+                      <button
+                        className="danger"
+                        onClick={async () => {
+                          /*
+                           * Ничего не удаляется: методика перестаёт выдаваться и
+                           * проходиться, но все собранные прохождения остаются.
+                           * Формулировка кнопки обязана это отражать — «удалить»
+                           * здесь было бы враньём с необратимыми последствиями.
+                           */
+                          if (
+                            !confirm(
+                              `Снять «${s.title}» с использования?\n\n` +
+                                `Методику перестанут выдавать и проходить. ` +
+                                `Уже собранные прохождения (${s.responseCount}) останутся на месте, ` +
+                                `решение обратимо.`,
+                            )
+                          )
+                            return;
+                          await api.archiveSurvey(s.id);
+                          await load();
+                          toast("Методика снята с использования", "ok");
+                        }}
+                      >
+                        Снять
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

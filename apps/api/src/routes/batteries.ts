@@ -25,7 +25,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
+import { accessibleGroupIds, assertBatteryInUse, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 import { parseTs } from "../lib/time";
 
@@ -369,6 +369,7 @@ batteryRoutes.post("/:id/assign", async (c) => {
   const batteryId = c.req.param("id");
   const battery = await assertBatteryAccess(user, batteryId);
   if (battery.archived) badRequest("Батарея в архиве, назначать её нельзя");
+  await assertBatteryInUse(batteryId);
   const input = await parseBody(c.req.raw, assignBatterySchema);
 
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });

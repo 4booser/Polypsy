@@ -11,6 +11,7 @@ import {
   surveys,
 } from "../db/schema";
 import { auditSystem } from "./audit";
+import { batterySurveysInUse } from "./scope";
 
 /**
  * Каскадные назначения и протоколы наблюдения (6.2, 6.3).
@@ -116,6 +117,14 @@ async function assignCascade(
     );
   if (existing.length) return;
 
+  // снятые методики каскад не выдаёт; если снята вся батарея — каскада нет
+  const inUse = new Set(await batterySurveysInUse(batteryId));
+  const grantable = items.filter((i) => inUse.has(i.surveyId));
+  if (!grantable.length) {
+    console.warn(`Каскад пропущен: все методики батареи ${batteryId} сняты с использования`);
+    return;
+  }
+
   const [source] = await db.select({ title: surveys.title }).from(surveys).where(eq(surveys.id, fromSurveyId));
   const dueAt = dueDays ? new Date(Date.now() + dueDays * 86_400_000).toISOString() : null;
 
@@ -131,7 +140,7 @@ async function assignCascade(
     await tx
       .insert(surveyAccess)
       .values(
-        items.map((item) => ({
+        grantable.map((item) => ({
           surveyId: item.surveyId,
           userId,
           grantedBy: battery.createdBy,

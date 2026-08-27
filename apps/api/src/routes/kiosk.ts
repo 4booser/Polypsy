@@ -27,7 +27,7 @@ import { fullNameOf, hashPassword } from "../lib/auth";
 import { encryptPersonFields } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { hashInviteToken, newInviteToken } from "../lib/invites";
-import { assertGroupAccess } from "../lib/scope";
+import { assertBatteryInUse, assertGroupAccess } from "../lib/scope";
 import { persistSubmission } from "../lib/submission";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
@@ -250,6 +250,7 @@ kioskRoutes.post("/sessions", async (c) => {
   const input = await parseBody(c.req.raw, createKioskSessionSchema);
   const battery = await assertSessionBattery(user, input.batteryId);
   if (battery.archived) badRequest("Батарея в архиве");
+  await assertBatteryInUse(input.batteryId);
 
   const rawToken = newInviteToken();
   const id = crypto.randomUUID();
