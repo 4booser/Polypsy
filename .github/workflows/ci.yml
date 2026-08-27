@@ -48,6 +48,11 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres@localhost:5432/quizzy
 
+      - name: Целостность контента в базе
+        run: bun run --cwd apps/api db:migrate && bun run --cwd apps/api db:seed && bun run --cwd apps/api content:check
+        env:
+          DATABASE_URL: postgres://postgres@localhost:5432/quizzy
+
       - name: Сборка консоли
         run: bun run build
         working-directory: apps/web

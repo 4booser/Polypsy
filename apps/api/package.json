@@ -17,7 +17,8 @@
     "db:encrypt": "bun src/encryptBackfill.ts",
     "db:backfill-strata": "bun src/backfillStrata.ts",
     "survey:purge": "bun src/surveyPurge.ts",
-    "db:simulate": "bun src/simulate.ts"
+    "db:simulate": "bun src/simulate.ts",
+    "content:check": "bun src/contentCheck.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",
