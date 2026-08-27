@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import type { Answer, Option, Question } from "@quizzy/shared";
 import { radius, spacing, useColors } from "../theme";
+import { useTextScale } from "../textScale";
 import { Body, Row, TOUCH_TARGET } from "./ui";
 
 /**
@@ -36,6 +37,7 @@ function useOptions(question: Question, kind: "option" | "row"): Option[] {
 
 export function QuestionInput({ question, value, onChange }: Props) {
   const c = useColors();
+  const { fs } = useTextScale();
   const choices = useOptions(question, "option");
   const rows = useOptions(question, "row");
 
@@ -94,7 +96,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                     backgroundColor: on ? c.primary : "transparent",
                   }}
                 />
-                <Text style={{ color: c.text, fontSize: 16, flex: 1 }}>{option.text}</Text>
+                <Text style={{ color: c.text, fontSize: fs(16), flex: 1 }}>{option.text}</Text>
               </Pressable>
             );
           })}
@@ -108,7 +110,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
         <View style={{ gap: spacing.lg }}>
           {rows.map((row) => (
             <View key={row.id} style={{ gap: spacing.sm }}>
-              <Text style={{ color: c.text, fontSize: 15, fontWeight: "600" }}>{row.text}</Text>
+              <Text style={{ color: c.text, fontSize: fs(15), fontWeight: "600" }}>{row.text}</Text>
               <View style={{ flexDirection: "row", gap: spacing.xs }}>
                 {choices.map((option) => {
                   const on = picked[row.id] === option.id;
@@ -195,7 +197,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                         {index + 1}
                       </Text>
                     </View>
-                    <Text style={{ color: c.text, fontSize: 15, flex: 1 }}>{option?.text}</Text>
+                    <Text style={{ color: c.text, fontSize: fs(15), flex: 1 }}>{option?.text}</Text>
                     <Text style={{ color: c.muted, fontSize: 12 }}>убрать</Text>
                   </Pressable>
                 );
@@ -216,7 +218,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                 backgroundColor: c.card,
               }}
             >
-              <Text style={{ color: c.text, fontSize: 15 }}>{option.text}</Text>
+              <Text style={{ color: c.text, fontSize: fs(15) }}>{option.text}</Text>
             </Pressable>
           ))}
         </View>

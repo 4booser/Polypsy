@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
 import { LangProvider } from "@/lang";
+import { TextScaleProvider } from "@/textScale";
 import { api } from "@/api/client";
 import { AppLock } from "@/components/AppLock";
 import { useColors } from "@/theme";
@@ -32,6 +33,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <LangProvider>
+      <TextScaleProvider>
       <AuthProvider>
         <StatusBar style="auto" />
         {/* замок оборачивает всё приложение: он про экран, а не про отдельный маршрут */}
@@ -39,6 +41,7 @@ export default function RootLayout() {
           <RootStack />
         </AppLock>
       </AuthProvider>
+      </TextScaleProvider>
       </LangProvider>
     </SafeAreaProvider>
   );
