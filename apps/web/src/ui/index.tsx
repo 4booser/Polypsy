@@ -474,7 +474,34 @@ export interface Column<T> {
  * Разделитель — точка с запятой: русский Excel по умолчанию понимает её,
  * а запятую внутри чисел «1,5» — нет.
  */
-function tableToCsv<T>(rows: T[], columns: Column<T>[]): string {
+/**
+ * Сортировка строк таблицы. Вынесена из компонента, чтобы её можно было
+ * проверить без React: это логика, а не разметка, и ошибка в ней тихо
+ * переставляет данные местами.
+ *
+ * Числа сравниваются как числа, остальное — как текст с учётом языка:
+ * «Ялинка» и «Яблуко» должны идти в порядке украинского алфавита, а не по
+ * кодам символов.
+ */
+export function sortRows<T>(
+  rows: T[],
+  columns: Column<T>[],
+  sort: { key: string; desc?: boolean } | null,
+): T[] {
+  if (!sort) return rows;
+  const col = columns.find((c) => c.key === sort.key);
+  if (!col?.sort) return rows;
+  const get = col.sort;
+  return [...rows].sort((a, b) => {
+    const x = get(a);
+    const y = get(b);
+    const cmp =
+      typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+    return sort.desc ? -cmp : cmp;
+  });
+}
+
+export function tableToCsv<T>(rows: T[], columns: Column<T>[]): string {
   const cols = columns.filter((c) => c.csv ?? c.sort);
   const cell = (v: string | number) => {
     const str = String(v);
@@ -524,18 +551,7 @@ export function DataTable<T>({
     setUrlSort(next ? `${next.key}${next.desc ? ":desc" : ""}` : "");
   };
 
-  const sorted = useMemo(() => {
-    if (!sort) return rows;
-    const col = columns.find((c) => c.key === sort.key);
-    if (!col?.sort) return rows;
-    const get = col.sort;
-    return [...rows].sort((a, b) => {
-      const x = get(a);
-      const y = get(b);
-      const cmp = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
-      return sort.desc ? -cmp : cmp;
-    });
-  }, [rows, sort, columns]);
+  const sorted = useMemo(() => sortRows(rows, columns, sort), [rows, sort, columns]);
 
   if (rows.length === 0 && empty) return <>{empty}</>;
 

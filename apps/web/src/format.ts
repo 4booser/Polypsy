@@ -1,4 +1,4 @@
-import type { Severity, UiKey } from "@quizzy/shared";
+import { formatDuration, type Severity, type UiKey } from "@quizzy/shared";
 
 /**
  * Цвет заливки: метки на графиках, полоски, доли кольца.
@@ -41,14 +41,8 @@ export const severityKey = {
 
 export const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 
-export function duration(ms: number): string {
-  if (!ms) return "—";
-  const sec = ms / 1000;
-  if (sec < 60) return `${sec.toFixed(1).replace(".", ",")} с`;
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return s ? `${m} мин ${s} с` : `${m} мин`;
-}
+/** Длительность — из общего пакета: у мобилки была своя копия, и они бы разошлись */
+export const duration = formatDuration;
 
 export function dateTime(iso: string | null): string {
   return iso ? iso.slice(0, 16).replace("T", " ") : "—";
