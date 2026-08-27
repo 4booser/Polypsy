@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { average, cronbachAlpha, median, pearson, percent, round, variance } from "./stats";
+import { cronbachAlpha, median, pearson, percent, round, variance } from "./stats";
 
 describe("статистика", () => {
   test("median: нечётное, чётное, пустое", () => {

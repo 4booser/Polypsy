@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { ageAt, createSurveySchema, quantile, t, type Sex } from "@quizzy/shared";
+import { ageAt, createSurveySchema, quantile, type Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";

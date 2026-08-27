@@ -2,14 +2,8 @@ import { t } from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
-  answerScore,
-  ageAt,
-  computeProfile,
-  isAnswered,
-  isQuestionVisible,
   submitResponseSchema,
   type Answer,
-  type Question,
   type ScoreResult,
   type SurveyResponse,
 } from "@quizzy/shared";
@@ -22,7 +16,6 @@ import { persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
-import { assertBatteryOrder, closeCompletedBatteries } from "../lib/batteries";
 import { assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 

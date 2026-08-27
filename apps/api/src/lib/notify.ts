@@ -1,5 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";

@@ -10,7 +10,7 @@ import {
   type Severity,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { responseScores, responses, scales, users } from "../db/schema";
+import { responseScores, responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { notFound } from "../lib/http";

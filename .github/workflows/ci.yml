@@ -30,6 +30,9 @@ jobs:
       - name: Установка зависимостей
         run: bun install --frozen-lockfile
 
+      - name: Линтер
+        run: bun run lint
+
       - name: Типы — API
         run: bunx tsc --noEmit
         working-directory: apps/api

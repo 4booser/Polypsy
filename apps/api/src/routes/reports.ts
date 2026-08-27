@@ -8,7 +8,6 @@ import { percentileOf } from "../lib/norms";
 import { canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
-import { t } from "@quizzy/shared";
 import { ageAt } from "@quizzy/shared";
 import { getSurveyForResponse } from "../lib/surveys";
 import { requireAuth, type AppEnv } from "../middleware/auth";

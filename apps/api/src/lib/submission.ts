@@ -196,11 +196,13 @@ function validateAnswerShape(question: Question, answer: Answer): void {
 
   switch (question.type) {
     case "single":
+    // Проход дальше намеренный: после проверки «выбран один вариант» идёт
+    // общая для всех выборов проверка принадлежности вариантов вопросу.
+    // biome-ignore lint/suspicious/noFallthroughSwitchClause: см. выше
     case "yesno":
       if ((answer.optionIds?.length ?? 0) > 1) {
         badRequest(`Можно выбрать только один вариант: ${question.title}`);
       }
-    // fallthrough — проверка принадлежности вариантов общая
     case "multiple":
       for (const id of answer.optionIds ?? []) {
         if (!optionIds.has(id)) badRequest(`Недопустимый вариант ответа: ${question.title}`);

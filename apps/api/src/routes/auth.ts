@@ -5,7 +5,7 @@ import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { hashPassword, issueToken, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
+import { hashPassword, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
 import { issuePair, revokeAllFor, revokeByToken, rotateRefresh } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";

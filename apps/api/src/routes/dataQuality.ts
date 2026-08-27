@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { eq, inArray, } from "drizzle-orm";
 import { icc21, psi } from "@quizzy/shared";
 import { db } from "../db";
 import { answers, responseScores, responses, scales } from "../db/schema";

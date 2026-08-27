@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { scheduleInputSchema, type Schedule } from "@quizzy/shared";
 import { db } from "../db";
 import { batteries, scheduleRuns, scheduleTargets, schedules, users } from "../db/schema";
