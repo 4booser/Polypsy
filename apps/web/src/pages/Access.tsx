@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { SurveyFull, SurveyGrant } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { dateTime } from "../format";
+import { Loading, PageHead } from "../ui";
 
 /** Назначение методики конкретным пациентам */
 export default function Access() {
@@ -45,17 +46,17 @@ export default function Access() {
     }
   }
 
-  if (!survey) return <p className="muted">{error ?? "Загрузка…"}</p>;
+  if (!survey) return <Loading error={error} />;
 
   const free = patients.filter((p) => !grants.some((g) => g.userId === p.id));
 
   return (
     <>
-      <h1>Доступ к методике</h1>
-      <p className="sub">
-        <Link to={`/surveys/${survey.id}`}>{survey.title}</Link> · видимость:{" "}
-        {survey.visibility === "restricted" ? "только по назначению" : "общая"}
-      </p>
+      <PageHead
+        title="Доступ к методике"
+        crumbs={<Link to={`/surveys/${survey.id}`}>← {survey.title}</Link>}
+        sub={survey.visibility === "restricted" ? "Видимость: только по назначению" : "Видимость: общая"}
+      />
 
       {survey.visibility === "public" ? (
         <div className="card">

@@ -3,6 +3,7 @@ import type { AuditEntry } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart } from "../charts";
 import { dateTime } from "../format";
+import { Loading, PageHead } from "../ui";
 
 const ACTION_LABEL: Record<string, string> = {
   "auth.login": "Вход",
@@ -62,12 +63,14 @@ export default function Audit() {
   }, [filter]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!entries) return <p className="muted">Загрузка…</p>;
+  if (!entries) return <Loading rows={6} />;
 
   return (
     <>
-      <h1>Журнал доступа</h1>
-      <p className="sub">Фиксируются и обращения к данным пациентов, а не только изменения. Записи не редактируются.</p>
+      <PageHead
+        title="Журнал доступа"
+        sub="Фиксируются и обращения к данным пациентов, а не только изменения. Записи не редактируются."
+      />
 
       <div className="grid cols-3" style={{ marginBottom: 16 }}>
         <div className="tile"><div className="label">Всего событий</div><div className="value">{total}</div></div>

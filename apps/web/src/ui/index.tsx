@@ -231,14 +231,29 @@ export function LoadMore({
   );
 }
 
-export function Loading({ rows = 4 }: { rows?: number }) {
+/**
+ * Состояние загрузки экрана: заголовок и карточка-скелет.
+ *
+ * Раньше на месте экрана стояла строка «Загрузка…»: она не говорит, чего
+ * ждать, и содержимое приезжает рывком, сдвигая всё вниз. Скелет держит
+ * место и показывает форму будущего экрана.
+ *
+ * Ошибка передаётся сюда же: «загружается» и «не загрузилось» — соседние
+ * состояния одного места, и разводить их по разным веткам значит писать
+ * обработку ошибки заново на каждом экране.
+ */
+export function Loading({ rows = 4, error }: { rows?: number; error?: string | null }) {
+  if (error) {
+    return (
+      <div className="card">
+        <p className="error" style={{ margin: 0 }}>{error}</p>
+      </div>
+    );
+  }
   return (
     <div className="card">
-      <div style={{ display: "grid", gap: 10 }}>
-        {Array.from({ length: rows }, (_, i) => (
-          <div key={i} className="skeleton" style={{ width: `${100 - i * 12}%` }} />
-        ))}
-      </div>
+      <div className="skeleton" style={{ height: 20, width: "38%", marginBottom: 14 }} />
+      <Skeleton lines={rows} />
     </div>
   );
 }

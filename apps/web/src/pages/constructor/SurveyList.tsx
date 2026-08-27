@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Issue, SurveyListItem } from "@quizzy/shared";
 import { api } from "../../api";
-import { ConfirmByName, useToast } from "../../ui";
+import { ConfirmByName, Loading, PageHead, useToast } from "../../ui";
 
 export function SurveyList() {
   const [rows, setRows] = useState<SurveyListItem[] | null>(null);
@@ -50,14 +50,16 @@ export function SurveyList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showArchived]);
 
-  if (!rows) return <p className="muted">{error ?? "Загрузка…"}</p>;
+  if (!rows) return <Loading error={error} rows={5} />;
 
   return (
     <>
-      <h1>Методики</h1>
-      <p className="sub">Создание, правка и назначение</p>
+      <PageHead
+        title="Методики"
+        sub="Создание, правка и назначение"
+        actions={<Link className="btn primary" to="/constructor">Создать методику</Link>}
+      />
       <div className="row">
-        <Link className="btn" to="/constructor">Создать методику</Link>
         <button onClick={() => fileRef.current?.click()}>Импорт из файла</button>
         <button onClick={() => setShowArchived((v) => !v)}>
           {showArchived ? "Только в работе" : "Показать снятые"}

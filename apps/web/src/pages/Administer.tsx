@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Answer, SurveyFull } from "@quizzy/shared";
 import { isAnswered, isQuestionVisible } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { SeverityTag } from "../charts/advanced";
+import { Loading, PageHead } from "../ui";
 
 /**
  * Заполнение методики специалистом за пациента.
@@ -34,7 +35,7 @@ export default function Administer() {
   }, [id]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!survey) return <p className="muted">Загрузка…</p>;
+  if (!survey) return <Loading />;
 
   const visible = survey.questions.filter((q) => isQuestionVisible(q, survey.questions, answers));
   const unanswered = visible.filter((q) => q.required && q.type !== "info" && !isAnswered(q, answers.get(q.id)));
@@ -78,8 +79,7 @@ export default function Administer() {
     }[];
     return (
       <>
-        <h1>Обследование сохранено</h1>
-        <p className="sub">{survey.title}</p>
+        <PageHead title="Обследование сохранено" sub={survey.title} />
         {!result.reliable ? (
           <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
             <strong>Профиль признан ненадёжным</strong>
@@ -111,8 +111,11 @@ export default function Administer() {
 
   return (
     <>
-      <h1>{survey.title}</h1>
-      <p className="sub">Заполнение специалистом · {visible.filter((q) => q.type !== "info").length} пунктов</p>
+      <PageHead
+        title={survey.title}
+        crumbs={<Link to={`/surveys/${survey.id}`}>← К методике</Link>}
+        sub={`Заполнение специалистом · ${visible.filter((q) => q.type !== "info").length} пунктов`}
+      />
 
       <div className="card">
         <div className="field" style={{ maxWidth: 460, marginBottom: 0 }}>

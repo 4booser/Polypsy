@@ -5,7 +5,7 @@ import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
 import { duration, day, severityColor } from "../format";
-import { useAction } from "../ui";
+import { Loading, PageHead, useAction } from "../ui";
 import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DifPanel } from "../components/DifPanel";
 import { CalibrationPanel } from "../components/CalibrationPanel";
@@ -42,7 +42,7 @@ export default function SurveyAnalyticsPage() {
   }, [id, versionId, from, to]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Загрузка…</p>;
+  if (!data) return <Loading rows={5} />;
 
   // тепловая карта строится только по вопросам с одинаковым набором вариантов:
   // иначе столбцы означали бы разное в разных строках
@@ -71,26 +71,33 @@ export default function SurveyAnalyticsPage() {
 
   return (
     <>
-      <h1>{data.title}</h1>
-      <p className="sub">
-        <Link to="/">Сводка</Link> · версия {data.versionNumber} · завершено {data.completed} из {data.started}
-      </p>
-
-      <div className="row" style={{ marginBottom: 14 }}>
-        <label className="field" style={{ margin: 0 }}>
-          <span>С даты</span>
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label className="field" style={{ margin: 0 }}>
-          <span>По дату</span>
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </label>
-        {from || to ? (
-          <button style={{ alignSelf: "flex-end" }} onClick={() => { setFrom(""); setTo(""); }}>
-            Вся история
-          </button>
-        ) : null}
-      </div>
+      <PageHead
+        title={data.title}
+        crumbs={<Link to="/">← Сводка</Link>}
+        sub={`Версия ${data.versionNumber} · завершено ${data.completed} из ${data.started}`}
+        actions={
+          /*
+           * Период — часть заголовка, а не отдельная строка под ним: он
+           * определяет, о каком срезе весь экран, и стоять должен рядом с
+           * названием, а не теряться между заголовком и первым графиком.
+           */
+          <div className="date-range">
+            <label>
+              <span>с</span>
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Начало периода" />
+            </label>
+            <label>
+              <span>по</span>
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Конец периода" />
+            </label>
+            {from || to ? (
+              <button className="ghost" onClick={() => { setFrom(""); setTo(""); }}>
+                Вся история
+              </button>
+            ) : null}
+          </div>
+        }
+      />
 
       {data.inProgressNow.length ? (
         <div className="card" style={{ borderColor: "var(--accent)" }}>
@@ -455,7 +462,7 @@ function Responses({ surveyId }: { surveyId: string }) {
     setNextBefore(page.nextBefore);
   }
 
-  if (!rows) return <p className="muted">Загрузка…</p>;
+  if (!rows) return <Loading rows={6} />;
 
   return (
     <div className="card scroll-x">
