@@ -64,7 +64,16 @@ export function validateSurvey(draft: Draft): Issue[] {
 
     if (key.length === 0 && s.kind === "clinical") {
       const linked = questions.some((q) => q.scaleCode === s.code);
-      if (!linked) add("warning", where, "У шкалы нет ни ключа, ни привязанных пунктов — она всегда даст ноль");
+      /*
+       * Композит считается из других шкал поправками, а не из своих пунктов:
+       * так устроен ЛАП в МЛО — сумма ПР, КП и МН. Ругаться на него значило
+       * бы держать вечное ложное предупреждение, а вечное ложное
+       * предупреждение приучает не читать предупреждения вовсе.
+       */
+      const composite = (s.corrections ?? []).length > 0;
+      if (!linked && !composite) {
+        add("warning", where, "У шкалы нет ни ключа, ни привязанных пунктов — она всегда даст ноль");
+      }
     }
 
     const seen = new Map<number, string | null | undefined>();
