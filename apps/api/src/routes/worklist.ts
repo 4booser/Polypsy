@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { and, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import { db } from "../db";
-import { alertCases, batteries, batteryAssignments, referrals, surveys, users } from "../db/schema";
+import { alertCases, batteries, batteryAssignments, referrals, surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { surveyScopeFilter } from "../lib/scope";
@@ -22,7 +22,7 @@ export const worklistRoutes = new Hono<AppEnv>();
 
 worklistRoutes.use("*", requireAuth, requireStaff);
 
-type Kind = "case" | "assignment" | "referral";
+type Kind = "case" | "assignment" | "referral" | "followup";
 
 interface Item {
   kind: Kind;
@@ -47,7 +47,7 @@ interface Item {
  * потом по давности. Без общего правила список превратился бы в три списка,
  * склеенных подряд, — то есть в то же самое, от чего уходим.
  */
-const KIND_WEIGHT: Record<Kind, number> = { case: 0, referral: 1, assignment: 2 };
+const KIND_WEIGHT: Record<Kind, number> = { case: 0, followup: 1, referral: 2, assignment: 3 };
 
 worklistRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -176,6 +176,64 @@ worklistRoutes.get("/", async (c) => {
     });
   }
 
+  /*
+   * 4. Просроченные повторы по протоколу наблюдения.
+   *
+   * Каскад открывает доступ к методике с отложенным сроком и пометкой
+   * «Протокол наблюдения». Если срок вышел, а повтора нет — человек выпал
+   * из наблюдения, и узнать об этом должен специалист, а не никто.
+   */
+  const overdueFollowups = await db
+    .select({
+      userId: surveyAccess.userId,
+      surveyId: surveyAccess.surveyId,
+      note: surveyAccess.note,
+      expiresAt: surveyAccess.expiresAt,
+      surveyTitle: surveys.title,
+      unit: users.unit,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+    })
+    .from(surveyAccess)
+    .innerJoin(surveys, eq(surveys.id, surveyAccess.surveyId))
+    .innerJoin(users, eq(users.id, surveyAccess.userId))
+    .where(
+      and(
+        isNotNull(surveyAccess.expiresAt),
+        lt(surveyAccess.expiresAt, new Date().toISOString()),
+        sql`${surveyAccess.note} like ${"Протокол наблюдения%"}`,
+        // повтора так и не было: последнее прохождение раньше выдачи доступа
+        sql`not exists (
+          select 1 from responses r
+          where r.user_id = ${surveyAccess.userId}
+            and r.survey_id = ${surveyAccess.surveyId}
+            and r.status = 'completed'
+            and r.submitted_at > ${surveyAccess.grantedAt}
+        )`,
+      ),
+    )
+    .limit(200);
+
+  for (const r of overdueFollowups) {
+    const days = Math.floor((now - new Date(r.expiresAt!).getTime()) / 86_400_000);
+    items.push({
+      kind: "followup",
+      id: `${r.userId}:${r.surveyId}`,
+      userId: r.userId,
+      userName: fullNameOf(r as never),
+      unit: r.unit,
+      title: t(r.surveyTitle as never),
+      detail: `Повтор по протоколу не сделан · ${days} дн. просрочки`,
+      overdue: true,
+      assignedTo: null,
+      since: r.expiresAt!,
+      href: `/patients/${r.userId}/summary`,
+    });
+  }
+
   items.sort(
     (a, b) =>
       Number(b.overdue) - Number(a.overdue) ||
@@ -192,6 +250,7 @@ worklistRoutes.get("/", async (c) => {
     truncated: items.length > 100,
     byKind: {
       case: items.filter((i) => i.kind === "case").length,
+      followup: items.filter((i) => i.kind === "followup").length,
       referral: items.filter((i) => i.kind === "referral").length,
       assignment: items.filter((i) => i.kind === "assignment").length,
     },

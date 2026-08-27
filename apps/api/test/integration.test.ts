@@ -2521,3 +2521,79 @@ describe("отчёт по подразделению", () => {
     expect(entry!.action).toBe("report.unit");
   });
 });
+
+describe("передача смены и просроченные повторы", () => {
+  test("история случая собирается из журнала, а не из второй таблицы", async () => {
+    /*
+     * Отдельного журнала передач нет намеренно: всё уже пишется в журнал
+     * доступа, и вторая запись о том же означала бы два источника истины о
+     * клиническом решении.
+     */
+    const list = await api("/api/alert-cases?limit=1&assigned=none", adminA.token);
+    const target = list.body.items[0];
+    if (!target) return;
+
+    await api(`/api/alert-cases/${target.id}/assign`, adminA.token, { method: "POST" });
+    await api(`/api/alert-cases/${target.id}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ release: true }),
+    });
+
+    const history = await api(`/api/alert-cases/${target.id}/history`, adminA.token);
+    expect(history.status).toBe(200);
+    const actions = history.body.map((h: { action: string }) => h.action);
+    expect(actions).toContain("alert.assign");
+    expect(actions).toContain("alert.release");
+    // видно, кто именно, — иначе при передаче смены непонятно, с кем говорить
+    expect(history.body[0].actorName.length).toBeGreaterThan(0);
+  });
+
+  test("просроченный повтор по протоколу попадает в очередь работы", async () => {
+    const { surveyAccess } = await import("../src/db/schema");
+
+    /*
+     * Доступ выдан ПОЗЖЕ последнего прохождения: иначе прежний замер сойдёт
+     * за повтор, и правило справедливо не сработает. Первая версия теста
+     * ставила выдачу на десять дней назад — а пациент проходил методику в
+     * соседних проверках уже после этого.
+     */
+    const { sql: sqlOp } = await import("drizzle-orm");
+    const [last] = await db
+      .select({ at: responsesTable.submittedAt })
+      .from(responsesTable)
+      .where(and(eq(responsesTable.userId, patient.id), eq(responsesTable.surveyId, surveyInA)))
+      .orderBy(sqlOp`submitted_at desc nulls last`)
+      .limit(1);
+    const past = new Date(new Date(last?.at ?? new Date()).getTime() + 60_000).toISOString();
+
+    await db
+      .insert(surveyAccess)
+      .values({
+        surveyId: surveyInA,
+        userId: patient.id,
+        grantedBy: adminA.id,
+        grantedAt: past,
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        note: "Протокол наблюдения: повтор через 7 дн.",
+      })
+      .onConflictDoUpdate({
+        target: [surveyAccess.surveyId, surveyAccess.userId],
+        set: {
+          grantedAt: past,
+          expiresAt: new Date(Date.now() - 60_000).toISOString(),
+          note: "Протокол наблюдения: повтор через 7 дн.",
+        },
+      });
+
+    const res = await api("/api/worklist", adminA.token);
+    const followups = (res.body.items as { kind: string; userId: string }[]).filter(
+      (i) => i.kind === "followup",
+    );
+    /*
+     * Пациент проходил методику раньше выдачи доступа — значит повтора не
+     * было, и человек выпал из наблюдения. Именно это и должно всплыть.
+     */
+    expect(followups.some((i) => i.userId === patient.id)).toBe(true);
+    expect(res.body.byKind.followup).toBeGreaterThan(0);
+  });
+});

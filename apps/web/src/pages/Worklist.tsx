@@ -8,6 +8,7 @@ import { useLang } from "../lang";
 
 const KIND_KEY = {
   case: "work.kindCase",
+  followup: "work.kindFollowup",
   referral: "work.kindReferral",
   assignment: "work.kindAssignment",
 } as const;
@@ -55,6 +56,9 @@ export default function WorklistPage() {
           </button>
           <button className={kind === "case" ? "active" : ""} onClick={() => setKind("case")}>
             {ut("work.filterCases")} · {data.byKind.case}
+          </button>
+          <button className={kind === "followup" ? "active" : ""} onClick={() => setKind("followup")}>
+            {ut("work.filterFollowups")} · {data.byKind.followup}
           </button>
           <button className={kind === "referral" ? "active" : ""} onClick={() => setKind("referral")}>
             {ut("work.filterReferrals")} · {data.byKind.referral}

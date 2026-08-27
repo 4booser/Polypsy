@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { t, type AlertCase, type AlertSignal, type Page } from "@quizzy/shared";
 import { db } from "../db";
-import { alertCases, questions, riskAlerts, surveys, users } from "../db/schema";
+import { alertCases, auditLog, questions, riskAlerts, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseQuery } from "../lib/http";
@@ -249,6 +249,38 @@ async function loadCase(user: { id: string; role: string }, id: string) {
   if (!(await canAccessSurvey(user as never, row.surveyId))) notFound("Случай не найден");
   return row;
 }
+
+/**
+ * Кто и что делал со случаем.
+ *
+ * Отдельного журнала передач нет намеренно: всё уже пишется в журнал
+ * доступа, и вторая запись о том же означала бы два источника истины о
+ * клиническом решении. Здесь просто выборка по этому случаю.
+ *
+ * Нужно это при передаче смены: заступивший видит, кто брал случай, кто
+ * отпускал и почему он до сих пор открыт.
+ */
+alertCaseRoutes.get("/:id/history", async (c) => {
+  const user = c.get("user");
+  const row = await loadCase(user, c.req.param("id"));
+
+  const rows = await db
+    .select({ entry: auditLog, actor: users })
+    .from(auditLog)
+    .leftJoin(users, eq(users.id, auditLog.actorId))
+    .where(and(eq(auditLog.resourceId, row.id), eq(auditLog.resourceType, "alert_case")))
+    .orderBy(desc(auditLog.at))
+    .limit(50);
+
+  return c.json(
+    rows.map((r) => ({
+      action: r.entry.action,
+      at: r.entry.at,
+      actorName: r.actor ? fullNameOf(r.actor) : (r.entry.actorEmail ?? "—"),
+      details: r.entry.details,
+    })),
+  );
+});
 
 /**
  * Взять случай на себя или отпустить.
