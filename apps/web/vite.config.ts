@@ -33,7 +33,13 @@ export default defineConfig({
     proxy: {
       // порт задаётся снаружи: смоук-стенд не должен драться за 3001 с
       // запущенным dev-сервером разработчика
-      "/api": {
+      /*
+       * Регулярное выражение, а не префикс. Простое "/api" совпадает и с
+       * "/api-docs" — маршрутом самой консоли, — и экран описания API
+       * уходил на сервер, где его нет. В production Caddy уже настроен на
+       * "/api/*", то есть разработка вела себя иначе, чем бой.
+       */
+      "^/api/": {
         target: process.env.API_PROXY_TARGET ?? "http://localhost:3001",
         changeOrigin: true,
       },
@@ -44,7 +50,8 @@ export default defineConfig({
     port: 5199,
     strictPort: true,
     proxy: {
-      "/api": { target: "http://localhost:3001", changeOrigin: true },
+      // то же правило, что и в preview: префикс "/api" ловил бы "/api-docs"
+      "^/api/": { target: "http://localhost:3001", changeOrigin: true },
     },
   },
 });
