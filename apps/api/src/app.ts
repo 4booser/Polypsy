@@ -48,6 +48,7 @@ import { sql } from "drizzle-orm";
 import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
 import { requestId } from "./middleware/requestId";
 import { currentRequestId, log } from "./lib/log";
+import { reportError } from "./lib/errorReport";
 
 const app = new Hono<AppEnv>();
 
@@ -146,6 +147,12 @@ app.onError((err, c) => {
    * инцидент находится в логе одним поиском, вместо пересказа «вчера
    * вечером что-то не сохранилось».
    */
+  void reportError({
+    error: err,
+    route: c.req.routePath ?? c.req.path,
+    method: c.req.method,
+    role: (c.get("user") as { role?: string } | undefined)?.role,
+  });
   log.error("unhandled", {
     path: c.req.path,
     method: c.req.method,
