@@ -35,6 +35,14 @@ const schema = z.object({
   MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),
   /** Адрес консоли для ссылок в письмах */
   CONSOLE_URL: z.string().default("http://localhost:5199"),
+  /**
+   * Название учреждения в шапке печатных документов.
+   *
+   * Отчёт подшивается в дело, и лист без шапки — просто распечатка, а не
+   * документ. Настройкой, а не в коде: система ставится не в одну больницу.
+   */
+  INSTITUTION_NAME: z.string().max(200).optional(),
+  INSTITUTION_UNIT: z.string().max(200).optional(),
   /** Открытая регистрация пациентов без приглашения (в бою выключать) */
   OPEN_REGISTRATION: z
     .string()
@@ -70,6 +78,8 @@ export const env = {
   smtpUrl: raw.SMTP_URL,
   mailFrom: raw.MAIL_FROM,
   consoleUrl: raw.CONSOLE_URL,
+  institutionName: raw.INSTITUTION_NAME,
+  institutionUnit: raw.INSTITUTION_UNIT,
   corsOrigins: raw.CORS_ORIGINS
     ? raw.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
     : isProduction

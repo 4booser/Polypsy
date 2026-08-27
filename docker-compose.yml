@@ -34,6 +34,8 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Quizzy <noreply@localhost>}
       CONSOLE_URL: ${CONSOLE_URL:-}
+      INSTITUTION_NAME: ${INSTITUTION_NAME:-}
+      INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
       PORT: "3001"
     depends_on:
       postgres:
