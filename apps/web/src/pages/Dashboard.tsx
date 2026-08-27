@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import type { AlertCase, OverviewAnalytics, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
-import { duration, day, severityColor, severityLabel, timeOfDay } from "../format";
+import { duration, day, severityColor, severityKey, timeOfDay } from "../format";
 import { PpvCard } from "../components/CalibrationPanel";
 import { Badge, Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
 export default function Dashboard() {
   const [data, setData] = useState<OverviewAnalytics | null>(null);
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const [cases, setCases] = useState<AlertCase[]>([]);
   const [openCases, setOpenCases] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const { ut } = useLang();
 
   useEffect(() => {
     Promise.all([api.overview(), api.surveys(), api.alertCases({ limit: "3" })])
@@ -36,16 +38,16 @@ export default function Dashboard() {
         подтверждаемость тревог — важный, но справочный показатель, который
         стоял даже выше заголовка страницы.
       */}
-      <PageHead title="Сводка" sub="По методикам, доступным вам" />
+      <PageHead title={ut("dash.title")} sub={ut("dash.sub")} />
 
       {cases.length ? (
         <div className="card alarm">
           <div className="card-head" style={{ marginBottom: 0 }}>
             <div className="row tight">
-              <Badge tone="bad">требует разбора</Badge>
-              <strong>Случаев на разбор: {openCases}</strong>
+              <Badge tone="bad">{ut("dash.needsReview")}</Badge>
+              <strong>{ut("dash.casesOpen")}: {openCases}</strong>
             </div>
-            <Link to="/alerts" className="btn primary">Разобрать</Link>
+            <Link to="/alerts" className="btn primary">{ut("dash.review")}</Link>
           </div>
           <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
             {cases
@@ -64,8 +66,8 @@ export default function Dashboard() {
          */
         <div className="card">
           <div className="card-head">
-            <h2>Проходят сейчас</h2>
-            <span className="hint">черновики свежее получаса · {data.inProgress.length}</span>
+            <h2>{ut("dash.inProgress")}</h2>
+            <span className="hint">{ut("dash.inProgressHint")} · {data.inProgress.length}</span>
           </div>
           {data.inProgress.slice(0, 8).map((r) => (
             <div className="row" key={r.responseId} style={{ padding: "5px 0", gap: 10 }}>
@@ -75,7 +77,7 @@ export default function Dashboard() {
                 начал {timeOfDay(r.startedAt)} · сохранено {timeOfDay(r.lastSavedAt)}
               </span>
               {r.userId ? (
-                <Link className="btn" to={`/patients/${r.userId}`}>Карта</Link>
+                <Link className="btn" to={`/patients/${r.userId}`}>{ut("dash.card")}</Link>
               ) : null}
             </div>
           ))}
@@ -84,21 +86,21 @@ export default function Dashboard() {
 
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         <div className="tile">
-          <div className="label">Прохождений</div>
+          <div className="label">{ut("dash.responses")}</div>
           <div className="value">{data.responseCount}</div>
-          <div className="hint">доходимость {data.completionRate}%</div>
+          <div className="hint">{ut("dash.completion")} {data.completionRate}%</div>
         </div>
         <div className="tile">
-          <div className="label">Респондентов</div>
+          <div className="label">{ut("dash.respondents")}</div>
           <div className="value">{data.respondentCount}</div>
         </div>
         <div className="tile">
-          <div className="label">Методик</div>
+          <div className="label">{ut("dash.surveys")}</div>
           <div className="value">{data.surveyCount}</div>
-          <div className="hint">опубликовано {data.publishedCount}</div>
+          <div className="hint">{ut("dash.published")} {data.publishedCount}</div>
         </div>
         <div className="tile">
-          <div className="label">Среднее время</div>
+          <div className="label">{ut("dash.avgTime")}</div>
           <div className="value">{duration(data.avgDurationMs)}</div>
         </div>
       </div>
@@ -107,7 +109,7 @@ export default function Dashboard() {
           объясняет цифры выше, а не требует действия, и место ему здесь */}
       <PpvCard />
 
-      <Chart title="Динамика прохождений" hint="Завершённые прохождения по дням">
+      <Chart title={ut("dash.timeline")} hint={ut("dash.timelineHint")}>
         <LineChart
           area
           series={[{ label: "Прохождений", points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]}
@@ -116,12 +118,12 @@ export default function Dashboard() {
 
       <div className="grid cols-2">
         {data.severityBreakdown.length ? (
-          <Chart title="Выраженность по всем шкалам" hint="Сколько результатов попало в каждую категорию норм">
+          <Chart title={ut("dash.severity")} hint={ut("dash.severityHint")}>
             <Donut
               center={String(data.severityBreakdown.reduce((s, x) => s + x.count, 0))}
-              centerLabel="результатов"
+              centerLabel={ut("chart.results")}
               slices={data.severityBreakdown.map((s) => ({
-                label: severityLabel[s.severity],
+                label: ut(severityKey[s.severity]),
                 value: s.count,
                 color: severityColor[s.severity],
               }))}
@@ -129,8 +131,8 @@ export default function Dashboard() {
           </Chart>
         ) : null}
 
-        <Chart title="Нагрузка по методикам" hint="Число завершённых прохождений">
-          <BarList items={data.topSurveys.map((s) => ({ label: s.title, value: s.responseCount, caption: `в среднем ${duration(s.avgDurationMs)}` }))} />
+        <Chart title={ut("dash.load")} hint={ut("dash.loadHint")}>
+          <BarList items={data.topSurveys.map((s) => ({ label: s.title, value: s.responseCount, caption: `${ut("chart.onAverage")} ${duration(s.avgDurationMs)}` }))} />
         </Chart>
       </div>
 

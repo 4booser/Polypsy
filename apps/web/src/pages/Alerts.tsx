@@ -5,12 +5,13 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime, severityColor } from "../format";
 import { Avatar, Empty, Loading, PageHead, useAction, useUrlState } from "../ui";
+import { useLang } from "../lang";
 
-const OUTCOME: { value: string; label: string; hint: string }[] = [
-  { value: "confirmed", label: "Риск подтверждён", hint: "приняты меры, случай реальный" },
-  { value: "needs_followup", label: "Требует наблюдения", hint: "решение отложено, не диагноз" },
-  { value: "not_confirmed", label: "Не подтверждён", hint: "при разборе риска не оказалось" },
-];
+const OUTCOME = [
+  { value: "confirmed", key: "cases.confirmed" },
+  { value: "needs_followup", key: "cases.needsFollowup" },
+  { value: "not_confirmed", key: "cases.notConfirmed" },
+] as const;
 
 /** Сколько минут в человекочитаемом виде */
 function duration(minutes: number): string {
@@ -47,6 +48,7 @@ export default function Alerts() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const run = useAction();
+  const { ut } = useLang();
 
   const filters = { all, severity, unit, assigned, search };
   // ключ фильтров строкой: сравнивать объект в зависимостях эффекта бесполезно
@@ -99,42 +101,42 @@ export default function Alerts() {
   return (
     <>
       <PageHead
-        title="Разбор случаев"
+        title={ut("cases.title")}
         sub={
           all === "1"
-            ? "Все случаи, включая разобранные"
-            : `Открытых: ${total ?? items.length}${overdue ? ` · просрочено ${overdue}` : ""}${mine ? ` · на мне ${mine}` : ""}`
+            ? ut("cases.allSub")
+            : `${ut("cases.openCount")}: ${total ?? items.length}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}${mine ? ` · ${ut("cases.mine")} ${mine}` : ""}`
         }
         actions={
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Фамилия"
+            placeholder={ut("ui.surname")}
             style={{ maxWidth: 200 }}
           />
         }
       />
 
       <div className="card filters">
-        <Filter value={all} onChange={setAll} options={[["", "Открытые"], ["1", "Все"]]} />
+        <Filter value={all} onChange={setAll} options={[["", ut("cases.filterOpen")], ["1", ut("cases.filterAll")]]} />
         <Filter
           value={severity}
           onChange={setSeverity}
-          options={[["", "Любая срочность"], ["severe", "Только тяжёлые"], ["moderate", "Умеренные"]]}
+          options={[["", ut("cases.anySeverity")], ["severe", ut("cases.severeOnly")], ["moderate", ut("cases.moderate")]]}
         />
         <Filter
           value={assigned}
           onChange={setAssigned}
-          options={[["", "Все"], ["me", "На мне"], ["none", "Никем не взяты"]]}
+          options={[["", ut("cases.assignedAny")], ["me", ut("cases.assignedMe")], ["none", ut("cases.assignedNone")]]}
         />
         <select
           value={unit}
           onChange={(e) => setUnit(e.target.value)}
           // без подписи диктор читает список как безымянный элемент
-          aria-label="Подразделение"
+          aria-label={ut("ui.unit")}
           style={{ maxWidth: 200 }}
         >
-          <option value="">Все подразделения</option>
+          <option value="">{ut("ui.unitAll")}</option>
           {units.map((u) => (
             <option key={u} value={u}>{u}</option>
           ))}
@@ -143,8 +145,8 @@ export default function Alerts() {
 
       {items.length === 0 ? (
         <Empty
-          title={all === "1" ? "Случаев нет" : "Открытых случаев нет"}
-          hint="Случай заводится, когда обследуемый отмечает критический пункт"
+          title={all === "1" ? ut("cases.emptyAll") : ut("cases.emptyOpen")}
+          hint={ut("cases.emptyHint")}
         />
       ) : (
         items.map((c) => <CaseCard key={c.id} c={c} onChanged={() => { setCursor(null); void load(false); }} run={run} me={user?.id} />)
@@ -152,11 +154,11 @@ export default function Alerts() {
 
       {cursor ? (
         <button style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={() => void load(true)}>
-          {busy ? "Загружаю…" : "Показать ещё"}
+          {busy ? ut("ui.loading") : ut("ui.loadMore")}
         </button>
       ) : items.length ? (
         <p className="hint" style={{ textAlign: "center", marginTop: 12 }}>
-          Больше случаев нет
+          {ut("ui.endOfList")}
         </p>
       ) : null}
     </>
@@ -194,6 +196,7 @@ function CaseCard({
   run: ReturnType<typeof useAction>;
   me: string | undefined;
 }) {
+  const { ut } = useLang();
   const [note, setNote] = useState("");
   const [expanded, setExpanded] = useState(false);
   const done = !!c.acknowledgedAt;
@@ -212,19 +215,26 @@ function CaseCard({
             {c.unit ? <span className="muted">· {c.unit}</span> : null}
           </div>
           <div className="hint" style={{ margin: 0 }}>
-            {c.surveyTitle} · сигналов {c.signalCount} · открыт {duration(c.minutesOpen)} назад
+            {c.surveyTitle} · {ut("cases.signals")} {c.signalCount} · {ut("cases.openedAgo")} {duration(c.minutesOpen)} {ut("cases.ago")}
           </div>
         </div>
-        {c.overdue ? <span className="chip static bad">просрочен</span> : null}
+        {c.overdue ? <span className="chip static bad">{ut("cases.overdue")}</span> : null}
         {done ? (
-          <span className="chip static">{OUTCOME.find((o) => o.value === c.outcome)?.label ?? "разобран"}</span>
+          <span className="chip static">
+            {(() => {
+              const found = OUTCOME.find((o) => o.value === c.outcome);
+              return found ? ut(found.key) : ut("work.done");
+            })()}
+          </span>
         ) : c.assignedTo ? (
-          <span className="chip static">{takenByOther ? `у ${c.assignedToName}` : "на мне"}</span>
+          <span className="chip static">
+            {takenByOther ? `${ut("cases.taken")}: ${c.assignedToName}` : ut("cases.mine")}
+          </span>
         ) : null}
       </div>
 
       <button className="ghost case-toggle" onClick={() => setExpanded((v) => !v)}>
-        {expanded ? "Свернуть сигналы" : `Показать сигналы (${c.signalCount})`}
+        {expanded ? ut("cases.hideSignals") : `${ut("cases.showSignals")} (${c.signalCount})`}
       </button>
 
       {expanded ? (
@@ -246,38 +256,37 @@ function CaseCard({
         <p className="hint" style={{ marginBottom: 0 }}>
           {c.acknowledgedByName}, {dateTime(c.acknowledgedAt)}
           {c.note ? ` · ${c.note}` : ""}
-          {c.mergedFromLegacy ? " · случай собран автоматически при переходе на новую модель" : ""}
+          {c.mergedFromLegacy ? ` · ${ut("cases.mergedNote")}` : ""}
         </p>
       ) : (
         <>
           {takenByOther ? (
             <p className="hint">
-              Случай взял {c.assignedToName}. Разбирать одного человека вдвоём не нужно.
+              {ut("cases.takenByOther")}
             </p>
           ) : null}
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Что предпринято"
+            placeholder={ut("cases.whatDone")}
           />
           <div className="row tight" style={{ marginTop: 8, flexWrap: "wrap" }}>
             {!c.assignedTo ? (
               <button onClick={() => run(async () => { await api.assignCase(c.id); onChanged(); }, "Случай взят")}>
-                Взять на себя
+                {ut("cases.take")}
               </button>
             ) : c.assignedTo === me ? (
               <button className="ghost" onClick={() => run(async () => { await api.assignCase(c.id, true); onChanged(); }, "Случай отпущен")}>
-                Отпустить
+                {ut("cases.release")}
               </button>
             ) : null}
             {OUTCOME.map((o, i) => (
               <button
                 key={o.value}
                 className={i === 0 ? "primary" : ""}
-                title={o.hint}
                 onClick={() => run(async () => { await api.resolveCase(c.id, o.value, note); onChanged(); }, "Случай разобран")}
               >
-                {o.label}
+                {ut(o.key)}
               </button>
             ))}
           </div>

@@ -1,18 +1,26 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
 
 /**
- * Язык интерфейса публичных страниц (киоск, приглашение).
+ * Язык консоли.
  *
- * Определяется по языкам браузера (uk-* → украинский), переключается вручную
- * и запоминается. Контент методик сервер отдаёт по заголовку Accept-Language —
- * браузер шлёт его сам; выбранный вручную язык добавляется параметром.
+ * Госпиталь украинский, и держать оболочку только на русском — не мелочь:
+ * специалист читает эти экраны каждый день. Содержимое методик уже
+ * двуязычно, а обёртка вокруг него была зашита в разметку.
+ *
+ * По умолчанию — из настроек браузера (uk-* → украинский), переключается в
+ * боковой панели и запоминается. Тот же выбор уходит в Accept-Language,
+ * чтобы сервер отдавал контент методик на том же языке.
  */
 const KEY = "quizzy.web.lang";
+
+/** Текущий выбор — синхронно для api.ts, который живёт вне React */
+export let currentLang: Lang = "uk";
 
 interface LangState {
   lang: Lang;
   setLang: (l: Lang) => void;
+  /** Перевод по ключу */
   ut: (k: UiKey) => string;
 }
 
@@ -24,15 +32,16 @@ export function LangProvider({ children }: { children: ReactNode }) {
     if (saved === "uk" || saved === "ru") return saved;
     return detectLang(navigator.languages ?? [navigator.language]);
   });
+
+  useEffect(() => {
+    currentLang = lang;
+    localStorage.setItem(KEY, lang);
+    // язык страницы — для экранного диктора и переносов слов
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   const value = useMemo<LangState>(
-    () => ({
-      lang,
-      setLang: (l) => {
-        localStorage.setItem(KEY, l);
-        setLangRaw(l);
-      },
-      ut: makeUiT(lang),
-    }),
+    () => ({ lang, setLang: setLangRaw, ut: makeUiT(lang) }),
     [lang],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -44,7 +53,11 @@ export function useLang(): LangState {
   return ctx;
 }
 
-/** Кнопки-переключатели языка для публичных страниц */
+/**
+ * Переключатель языка. Одинаковый для публичных страниц (киоск, приглашение)
+ * и боковой панели консоли — язык один на всё приложение, и два разных
+ * переключателя означали бы два разных состояния.
+ */
 export function LangSwitch() {
   const { lang, setLang } = useLang();
   return (

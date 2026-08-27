@@ -6,6 +6,7 @@ import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
+import { useLang } from "../lang";
 
 export function PatientList() {
   const [rows, setRows] = useState<Respondent[] | null>(null);
@@ -14,6 +15,7 @@ export function PatientList() {
   const [busy, setBusy] = useState(false);
   // поиск в адресе: «вот этот пациент» отправляется ссылкой
   const [query, setQuery] = useUrlState("q");
+  const { ut } = useLang();
 
   /*
    * Поиск ушёл на сервер: список упорядочен по ФИО, а оно зашифровано, и
@@ -49,9 +51,9 @@ export function PatientList() {
   return (
     <>
       <PageHead
-        title="Пациенты"
-        sub={`Проходившие методики ваших групп${total ? ` · ${total}` : ""}`}
-        actions={<Search value={query} onChange={setQuery} placeholder="Имя или email" />}
+        title={ut("patients.title")}
+        sub={`${ut("patients.sub")}${total ? ` · ${total}` : ""}`}
+        actions={<Search value={query} onChange={setQuery} placeholder={ut("ui.search")} />}
       />
       <div className="card">
         <DataTable
@@ -63,7 +65,7 @@ export function PatientList() {
           columns={[
             {
               key: "name",
-              header: "ФИО",
+              header: ut("patients.name"),
               sort: (r) => r.fullName,
               csv: (r) => r.fullName,
               render: (r) => (
@@ -81,14 +83,14 @@ export function PatientList() {
             },
             {
               key: "count",
-              header: "Прохождений",
+              header: ut("patients.measurements"),
               num: true,
               sort: (r) => r.count,
               render: (r) => r.count,
             },
             {
               key: "last",
-              header: "Последнее",
+              header: ut("patients.last"),
               sort: (r) => r.last ?? "",
               csv: (r) => r.last?.slice(0, 10) ?? "",
               render: (r) => <span className="muted">{r.last?.slice(0, 10) ?? "—"}</span>,
@@ -98,7 +100,7 @@ export function PatientList() {
       </div>
       {cursor ? (
         <button style={{ width: "100%" }} disabled={busy} onClick={() => load(true)}>
-          {busy ? "Загружаю…" : "Показать ещё"}
+          {busy ? ut("ui.loading") : ut("ui.loadMore")}
         </button>
       ) : null}
     </>
@@ -106,6 +108,7 @@ export function PatientList() {
 }
 
 export function PatientDynamics() {
+  const { ut } = useLang();
   const { userId } = useParams<{ userId: string }>();
   const [data, setData] = useState<RespondentDynamics | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,8 +127,8 @@ export function PatientDynamics() {
       <PageHead
         title={data.fullName}
         sub={data.email}
-        crumbs={<Link to="/patients">← Все пациенты</Link>}
-        actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>Сводка для консилиума</Link>}
+        crumbs={<Link to="/patients">{ut("patients.all")}</Link>}
+        actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>{ut("patients.summary")}</Link>}
       />
 
       {data.surveys.length === 0 ? <p className="muted">Завершённых прохождений нет</p> : null}
