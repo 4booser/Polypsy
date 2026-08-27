@@ -1771,3 +1771,98 @@ describe("long-format экспорт", () => {
     expect(fullHeader).toContain("submitted_at");
   });
 });
+
+/* ── направления и сводка консилиума ── */
+
+describe("направления", () => {
+  let referralId: string;
+
+  test("выписывается пациенту; статусы движутся только вперёд", async () => {
+    const created = await api("/api/referrals", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        userId: patient.id,
+        destination: "psychiatrist",
+        urgency: "urgent",
+        reason: "Повышенный риск по СР-45",
+      }),
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.status).toBe("created");
+    expect(created.body.userName).toContain("Тест");
+    referralId = created.body.id;
+
+    // created → completed напрямую нельзя: сначала принять
+    const skip = await api(`/api/referrals/${referralId}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "completed" }),
+    });
+    expect(skip.status).toBe(400);
+
+    const accepted = await api(`/api/referrals/${referralId}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "accepted", outcomeNote: "Принято психиатром" }),
+    });
+    expect(accepted.body.status).toBe("accepted");
+
+    const done = await api(`/api/referrals/${referralId}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "completed" }),
+    });
+    expect(done.body.status).toBe("completed");
+
+    // завершённое не откатывается
+    const rollback = await api(`/api/referrals/${referralId}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "accepted" }),
+    });
+    expect(rollback.status).toBe(400);
+  });
+
+  test("направление сотруднику не выписывается", async () => {
+    const res = await api("/api/referrals", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: adminB.id, destination: "outpatient" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("сводка консилиума", () => {
+  test("собирает баллы, тревоги, заключения и направления в одном ответе", async () => {
+    const res = await api(`/api/referrals/summary/${patient.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.fullName).toContain("Тест");
+    expect(res.body.surveys.length).toBeGreaterThan(0);
+
+    const withScales = res.body.surveys.find(
+      (s: { scales: unknown[] }) => s.scales.length > 0,
+    );
+    expect(withScales).toBeDefined();
+    expect(withScales.scales[0].lastValue).toBeGreaterThanOrEqual(0);
+
+    // подписанное заключение из более раннего теста попало в сводку
+    expect(res.body.conclusions.length).toBeGreaterThan(0);
+    expect(res.body.conclusions[0].text.length).toBeGreaterThan(0);
+
+    // направление из предыдущего describe — здесь же
+    expect(res.body.referrals.length).toBeGreaterThan(0);
+    expect(res.body.referrals[0].status).toBe("completed");
+
+    // чтение всей карты фиксируется в журнале
+    const { auditLog } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.subjectUserId, patient.id))
+      .orderBy(descOp(auditLog.at))
+      .limit(1);
+    expect((entry!.details as { view?: string }).view).toBe("case_summary");
+  });
+
+  test("чужой админ сводку не получает", async () => {
+    const res = await api(`/api/referrals/summary/${patient.id}`, adminB.token);
+    expect(res.status).toBe(404);
+  });
+});

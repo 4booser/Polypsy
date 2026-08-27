@@ -847,6 +847,55 @@ export interface InvitePreview {
   unit?: string | null;
 }
 
+/** Направление (6.4) */
+export type ReferralDestination = "psychiatrist" | "inpatient" | "outpatient" | "commander" | "other";
+export type ReferralUrgency = "routine" | "urgent" | "immediate";
+export type ReferralStatus = "created" | "accepted" | "completed" | "declined";
+
+export interface Referral {
+  id: string;
+  userId: string;
+  userName: string;
+  responseId: string | null;
+  alertId: string | null;
+  destination: ReferralDestination;
+  urgency: ReferralUrgency;
+  status: ReferralStatus;
+  reason: string | null;
+  outcomeNote: string | null;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+/** Сводка для консилиума (6.5): всё о пациенте на одной странице */
+export interface CaseSummary {
+  userId: string;
+  fullName: string;
+  sex: Sex | null;
+  age: number | null;
+  unit: string | null;
+  surveys: {
+    surveyId: string;
+    title: string;
+    lastAt: string | null;
+    count: number;
+    scales: {
+      code: string;
+      title: string;
+      lastValue: number;
+      normalization: ScaleNormalization;
+      bandLabel: string | null;
+      severity: Severity | null;
+      /** Достоверность сдвига между первым и последним замером */
+      reliableChange: { rci: number; significant: boolean; direction: "up" | "down" | "flat" } | null;
+    }[];
+  }[];
+  openAlerts: { id: string; label: string; severity: string; at: string; surveyTitle: string }[];
+  conclusions: { responseId: string; surveyTitle: string; text: string; signedAt: string | null; authorName: string }[];
+  referrals: Referral[];
+}
+
 /** Динамика самого пациента — то, что он видит о себе */
 export interface MyDynamics {
   surveys: {

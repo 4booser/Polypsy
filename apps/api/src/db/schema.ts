@@ -1157,6 +1157,51 @@ export const consents = pgTable(
   }),
 );
 
+/**
+ * Направление (6.4): куда специалист отправил пациента по итогам обследования.
+ *
+ * Замыкает контур с другой стороны, чем исход тревоги: исход отвечает
+ * «подтвердился ли риск», направление — «что с этим сделали». Статусы
+ * меняются вперёд и не переписываются задним числом: история направления —
+ * часть клинической записи.
+ */
+export const referrals = pgTable(
+  "referrals",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Прохождение-основание, если направление выписано по результату */
+    responseId: text("response_id").references(() => responses.id, { onDelete: "set null" }),
+    /** Тревога-основание, если направление выписано при разборе */
+    alertId: text("alert_id").references(() => riskAlerts.id, { onDelete: "set null" }),
+    destination: text("destination", {
+      enum: ["psychiatrist", "inpatient", "outpatient", "commander", "other"],
+    }).notNull(),
+    urgency: text("urgency", { enum: ["routine", "urgent", "immediate"] })
+      .notNull()
+      .default("routine"),
+    status: text("status", { enum: ["created", "accepted", "completed", "declined"] })
+      .notNull()
+      .default("created"),
+    reason: text("reason"),
+    /** Что ответила принимающая сторона */
+    outcomeNote: text("outcome_note"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    updatedAt: timestampCol("updated_at"),
+  },
+  (t) => ({
+    userIdx: index("referrals_user_idx").on(t.userId),
+    statusIdx: index("referrals_status_idx").on(t.status),
+  }),
+);
+
+export type ReferralRow = typeof referrals.$inferSelect;
+
 export type ConclusionRow = typeof conclusions.$inferSelect;
 
 export type KioskSessionRow = typeof kioskSessions.$inferSelect;

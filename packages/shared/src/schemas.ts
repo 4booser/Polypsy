@@ -201,6 +201,20 @@ export const kioskJoinSchema = z.object({
   unit: z.string().max(200).nullish(),
 });
 
+export const createReferralSchema = z.object({
+  userId: z.string().min(1),
+  responseId: z.string().nullish(),
+  alertId: z.string().nullish(),
+  destination: z.enum(["psychiatrist", "inpatient", "outpatient", "commander", "other"]),
+  urgency: z.enum(["routine", "urgent", "immediate"]).default("routine"),
+  reason: z.string().max(2000).nullish(),
+});
+
+export const updateReferralSchema = z.object({
+  status: z.enum(["created", "accepted", "completed", "declined"]),
+  outcomeNote: z.string().max(2000).nullish(),
+});
+
 export const createInviteSchema = z.object({
   batteryId: z.string().nullish(),
   unit: z.string().max(200).nullish(),
@@ -581,6 +595,8 @@ export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;
 export type ScheduleInput = z.input<typeof scheduleInputSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type CreateInviteInput = z.input<typeof createInviteSchema>;
+export type CreateReferralInput = z.input<typeof createReferralSchema>;
+export type UpdateReferralInput = z.infer<typeof updateReferralSchema>;
 export type CreateKioskSessionInput = z.input<typeof createKioskSessionSchema>;
 export type KioskJoinInput = z.infer<typeof kioskJoinSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

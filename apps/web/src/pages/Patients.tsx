@@ -85,8 +85,12 @@ export function PatientDynamics() {
 
   return (
     <>
-      <h1>{data.fullName}</h1>
-      <p className="sub">{data.email} · <Link to="/patients">все пациенты</Link></p>
+      <PageHead
+        title={data.fullName}
+        sub={data.email}
+        crumbs={<Link to="/patients">← Все пациенты</Link>}
+        actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>Сводка для консилиума</Link>}
+      />
 
       {data.surveys.length === 0 ? <p className="muted">Завершённых прохождений нет</p> : null}
 

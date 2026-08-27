@@ -26,6 +26,9 @@ import type {
   CreateInviteInput,
   KioskSession,
   CreateKioskSessionInput,
+  Referral,
+  CreateReferralInput,
+  CaseSummary,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -279,6 +282,16 @@ export const api = {
     }),
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
+
+  referrals: (all = false) => request<Referral[]>(`/api/referrals${all ? "?all=1" : ""}`),
+  createReferral: (input: CreateReferralInput) =>
+    request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
+  updateReferral: (id: string, status: string, outcomeNote?: string) =>
+    request<Referral>(`/api/referrals/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, outcomeNote }),
+    }),
+  caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
 
   dataQuality: (surveyId: string) =>
     request<{

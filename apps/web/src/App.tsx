@@ -23,6 +23,8 @@ import Join from "./pages/Join";
 import Kiosk from "./pages/Kiosk";
 import KioskSessions from "./pages/KioskSessions";
 import Norms from "./pages/Norms";
+import CaseSummaryPage from "./pages/CaseSummary";
+import ReferralsPage from "./pages/Referrals";
 import KeyPrint from "./pages/KeyPrint";
 import {
   IconAlert,
@@ -30,6 +32,7 @@ import {
   IconBattery,
   IconClock,
   IconInvite,
+  IconReferral,
   IconKiosk,
   IconCompare,
   IconDashboard,
@@ -67,6 +70,7 @@ function Nav({
 export default function App() {
   const { user, loading, logout } = useAuth();
   const [openAlerts, setOpenAlerts] = useState(0);
+  const [openReferrals, setOpenReferrals] = useState(0);
   /*
    * Тема хранится явно: тёмная по умолчанию, но в кабинете при дневном свете
    * она неудобна, а системная настройка на рабочей станции часто не отражает
@@ -88,7 +92,11 @@ export default function App() {
      * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
      * дежурный видит новую тревогу, даже сидя в другой вкладке.
      */
-    const load = () => api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => {});
+    const load = () => {
+      api.alerts().then((a) => setOpenAlerts(a.length)).catch(() => {});
+      // направления в том же такте: незакрытое направление ждёт так же долго
+      api.referrals().then((r) => setOpenReferrals(r.length)).catch(() => {});
+    };
     load();
     const timer = setInterval(load, 60_000);
     return () => clearInterval(timer);
@@ -132,6 +140,7 @@ export default function App() {
         <Nav to="/compare" icon={<IconCompare />}>Сравнение</Nav>
         <Nav to="/surveillance" icon={<IconPulse />}>Надзор</Nav>
         <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>Тревоги</Nav>
+        <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>Направления</Nav>
 
         {isSuper ? (
           <>
@@ -177,6 +186,8 @@ export default function App() {
           <Route path="/surveys/:id/access" element={<Access />} />
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:userId" element={<PatientDynamics />} />
+          <Route path="/patients/:userId/summary" element={<CaseSummaryPage />} />
+          <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
           <Route path="/kiosk-sessions" element={<KioskSessions />} />
