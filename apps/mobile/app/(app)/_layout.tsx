@@ -38,6 +38,8 @@ export default function AppLayout() {
         options={{ title: "Аналитика", headerShown: false, href: isAdmin ? "/insights" : null }}
       />
       <Tabs.Screen name="profile" options={{ title: "Аккаунт" }} />
+      {/* очередь открывается из полосы состояния, отдельной вкладки ей не нужно */}
+      <Tabs.Screen name="queue" options={{ href: null, title: "Очередь отправки" }} />
       </Tabs>
     </View>
   );

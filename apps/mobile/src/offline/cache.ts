@@ -20,6 +20,17 @@ export const cache = {
   saveSurvey: (survey: SurveyFull) => store.write(`survey:${survey.id}`, survey),
   survey: (id: string) => store.read<SurveyFull>(`survey:${id}`),
 
+  /**
+   * Название методики из того, что уже лежит офлайн.
+   *
+   * Нужно экрану очереди: без сети спросить название негде, а показывать
+   * человеку идентификатор — то же, что не показывать ничего.
+   */
+  surveyTitle: (id: string): string | null =>
+    store.read<SurveyFull>(`survey:${id}`)?.title ??
+    store.read<SurveyListItem[]>("list:surveys")?.find((s) => s.id === id)?.title ??
+    null,
+
   saveMe: (user: User) => store.write("me", user),
   me: () => store.read<User>("me"),
 };

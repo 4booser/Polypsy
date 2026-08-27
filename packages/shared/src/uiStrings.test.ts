@@ -48,3 +48,39 @@ describe("словарь оболочки", () => {
     expect(detectLang([])).toBe("uk");
   });
 });
+
+describe("палитра одна на все приложения", () => {
+  test("у каждой степени есть заливка и текст в обеих темах", async () => {
+    const { SEVERITY_FILL, SEVERITY_TEXT_DARK, SEVERITY_TEXT_LIGHT, SEVERITY_KEY } = await import("./palette");
+    for (const sev of ["none", "mild", "moderate", "severe"] as const) {
+      for (const set of [SEVERITY_FILL, SEVERITY_TEXT_DARK, SEVERITY_TEXT_LIGHT]) {
+        expect(set[sev]).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+      expect(SEVERITY_KEY[sev] in UI).toBe(true);
+    }
+  });
+
+  test("цвет текста проходит порог контраста на своей подложке", async () => {
+    /*
+     * Считаем, а не доверяем глазу. Порог 4.5:1 — тот же, что проверяет
+     * смоук доступности; здесь он закреплён на уровне палитры, чтобы
+     * подобранный «на глаз» оттенок не проехал в мобильное приложение,
+     * где axe не работает.
+     */
+    const { SEVERITY_TEXT_DARK, SEVERITY_TEXT_LIGHT } = await import("./palette");
+    const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    const lum = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255);
+      return 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi! + 0.05) / (lo! + 0.05);
+    };
+
+    for (const sev of ["none", "mild", "moderate", "severe"] as const) {
+      expect(ratio(SEVERITY_TEXT_DARK[sev], "#16191f")).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(SEVERITY_TEXT_LIGHT[sev], "#ffffff")).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});

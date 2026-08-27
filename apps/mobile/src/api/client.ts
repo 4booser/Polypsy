@@ -31,7 +31,7 @@ import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
 import { currentLang } from "../lang";
 import { cache } from "../offline/cache";
-import { enqueue, flush, pendingCount, rejectedItems, type QueuedSubmission } from "../offline/queue";
+import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
 import { ageAt, computeProfile } from "@quizzy/shared";
 
 export class ApiError extends Error {
@@ -305,6 +305,23 @@ export const api = {
     ),
 
   pendingCount,
+  /**
+   * Содержимое очереди для экрана «что не ушло».
+   *
+   * Название методики берётся из офлайн-кэша: без сети запросить его негде,
+   * а показывать человеку идентификатор — то же, что не показывать ничего.
+   */
+  queueItems: () =>
+    pending().map((i) => ({
+      id: i.id,
+      surveyId: i.surveyId,
+      surveyTitle: cache.surveyTitle(i.surveyId),
+      queuedAt: i.queuedAt,
+      attempts: i.attempts,
+      rejectedReason: i.rejectedReason,
+    })),
+  /** Вернуть отвергнутую сдачу в очередь: решение принимает человек, а не код */
+  retryQueued: retryRejected,
   /** Сколько отправок сервер отверг — их надо разбирать руками */
   rejectedCount: () => rejectedItems().length,
 

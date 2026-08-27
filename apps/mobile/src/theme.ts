@@ -1,5 +1,5 @@
 import { useColorScheme } from "react-native";
-import type { Severity } from "@quizzy/shared";
+import { SEVERITY_FILL, type Severity } from "@quizzy/shared";
 
 const light = {
   bg: "#f6f7f9",
@@ -50,13 +50,18 @@ const chartDark: typeof chartLight = {
   axis: "#898781",
 };
 
-export const severityColor: Record<Severity, string> = {
-  none: "#0ca30c",
-  mild: "#fab219",
-  moderate: "#ec835a",
-  severe: "#d03b3b",
-};
+/*
+ * Цвета берутся из общего пакета: «умеренная выраженность» обязана быть
+ * одного цвета в отчёте на бумаге, на экране специалиста и на телефоне
+ * обследуемого. Два набора значений однажды разошлись бы.
+ */
+export const severityColor = SEVERITY_FILL;
 
+/**
+ * Подписи степеней. Только для мест, где нет доступа к языковому контексту
+ * (конструктор в мобилке). Везде, где есть `ut`, брать из словаря: там
+ * подпись двуязычна, а здесь всегда по-русски.
+ */
 export const severityLabel: Record<Severity, string> = {
   none: "Норма",
   mild: "Лёгкая",
