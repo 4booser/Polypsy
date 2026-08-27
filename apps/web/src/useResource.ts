@@ -35,9 +35,10 @@ export interface Resource<T> {
 export function useResource<T>(
   load: () => Promise<T>,
   deps: readonly unknown[],
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; pollMs?: number } = {},
 ): Resource<T> {
   const enabled = options.enabled ?? true;
+  const pollMs = options.pollMs ?? 0;
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
@@ -88,6 +89,28 @@ export function useResource<T>(
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(start, [...deps, enabled]);
+
+  /*
+   * Живые экраны (киоск-сеанс, очередь тревог) обновляются сами. Опрос живёт
+   * здесь, а не в экране, по той же причине, что и отмена устаревших ответов:
+   * таймер, забытый при уходе со страницы, продолжает ходить в сеть, а его
+   * ответ применяется к уже размонтированному экрану.
+   *
+   * Скрытую вкладку не опрашиваем: смысла нет, а на общей сети госпиталя
+   * забытая вкладка сутками стучится в API.
+   */
+  useEffect(() => {
+    if (!pollMs || !enabled) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") start();
+    };
+    const timer = setInterval(tick, pollMs);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [pollMs, enabled, start]);
 
   return {
     data,

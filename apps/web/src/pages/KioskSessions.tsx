@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
 import type { Battery, KioskSession } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Empty, Loading, PageHead, useAction } from "../ui";
+import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 /**
  * Сеансы киоска: групповое обследование на одном планшете.
@@ -15,24 +16,30 @@ import { useLang } from "../lang";
  */
 export default function KioskSessions() {
   const { ut } = useLang();
-  const [rows, setRows] = useState<KioskSession[] | null>(null);
-  const [batteries, setBatteries] = useState<Battery[]>([]);
   const [fresh, setFresh] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const reload = () => api.kioskSessions().then(setRows).catch(() => setRows([]));
-  useEffect(() => {
-    reload();
-    api.batteries().then((b) => setBatteries(b.filter((x) => !x.archived))).catch(() => {});
-    // живой прогресс: пока страница открыта, раз в 10 секунд
-    const timer = setInterval(reload, 10_000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const active = rows?.filter((s) => !s.closedAt && s.expiresAt > new Date().toISOString()) ?? [];
-  const past = rows?.filter((s) => !!s.closedAt || s.expiresAt <= new Date().toISOString()) ?? [];
+  // живой прогресс сеанса: пока вкладка открыта, раз в 10 секунд
+  const res = useResource(
+    async () => {
+      const [rows, batteries] = await Promise.all([
+        api.kioskSessions(),
+        api.batteries().then((b) => b.filter((x) => !x.archived)).catch(() => [] as Battery[]),
+      ]);
+      return { rows, batteries };
+    },
+    [],
+    { pollMs: 10_000 },
+  );
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {({ rows, batteries }) => {
+        const now = new Date().toISOString();
+        const active = rows.filter((s) => !s.closedAt && s.expiresAt > now);
+        const past = rows.filter((s) => !!s.closedAt || s.expiresAt <= now);
+        return (
     <>
       <PageHead
         title="Сеансы киоска"
@@ -67,6 +74,9 @@ export default function KioskSessions() {
       {past.length ? <h2 style={{ margin: "20px 0 10px", fontSize: 15 }} className="muted">{ut("ks.finished")}</h2> : null}
       {past.slice(0, 10).map((s) => <SessionCard key={s.id} session={s} onChanged={reload} />)}
     </>
+        );
+      }}
+    </Screen>
   );
 }
 

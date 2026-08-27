@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
-import type { Battery, Invite } from "@quizzy/shared";
+import type { Battery } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Empty, Loading, PageHead, useAction } from "../ui";
+import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 /**
  * Приглашения: вход пациента по ссылке, QR или короткому коду.
@@ -15,19 +16,23 @@ import { useLang } from "../lang";
  */
 export default function Invites() {
   const { ut } = useLang();
-  const [rows, setRows] = useState<Invite[] | null>(null);
-  const [batteries, setBatteries] = useState<Battery[]>([]);
   const [fresh, setFresh] = useState<{ token: string; code: string } | null>(null);
   const [showForm, setShowForm] = useState(false);
   const run = useAction();
 
-  const reload = () => api.invites().then(setRows).catch(() => setRows([]));
-  useEffect(() => {
-    reload();
-    api.batteries().then((b) => setBatteries(b.filter((x) => !x.archived))).catch(() => {});
+  // батареи нужны только форме: их отказ не должен прятать сам список ссылок
+  const res = useResource(async () => {
+    const [rows, batteries] = await Promise.all([
+      api.invites(),
+      api.batteries().then((b) => b.filter((x) => !x.archived)).catch(() => [] as Battery[]),
+    ]);
+    return { rows, batteries };
   }, []);
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {({ rows, batteries }) => (
     <>
       <PageHead
         title="Приглашения"
@@ -109,6 +114,8 @@ export default function Invites() {
         </div>
       ) : null}
     </>
+      )}
+    </Screen>
   );
 }
 
