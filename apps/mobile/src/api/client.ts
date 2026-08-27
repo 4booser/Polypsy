@@ -28,7 +28,7 @@ import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
 import { currentLang } from "../lang";
 import { cache } from "../offline/cache";
-import { enqueue, flush, pendingCount, type QueuedSubmission } from "../offline/queue";
+import { enqueue, flush, pendingCount, rejectedItems, type QueuedSubmission } from "../offline/queue";
 import { ageAt, computeProfile } from "@quizzy/shared";
 
 export class ApiError extends Error {
@@ -302,6 +302,8 @@ export const api = {
     ),
 
   pendingCount,
+  /** Сколько отправок сервер отверг — их надо разбирать руками */
+  rejectedCount: () => rejectedItems().length,
 
   surveyVersions: (surveyId: string) => request<SurveyVersion[]>(`/api/surveys/${surveyId}/versions`),
 

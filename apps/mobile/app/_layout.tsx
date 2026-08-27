@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
 import { LangProvider } from "@/lang";
 import { api } from "@/api/client";
+import { AppLock } from "@/components/AppLock";
 import { useColors } from "@/theme";
 
 export default function RootLayout() {
@@ -33,7 +34,10 @@ export default function RootLayout() {
       <LangProvider>
       <AuthProvider>
         <StatusBar style="auto" />
-        <RootStack />
+        {/* замок оборачивает всё приложение: он про экран, а не про отдельный маршрут */}
+        <AppLock>
+          <RootStack />
+        </AppLock>
       </AuthProvider>
       </LangProvider>
     </SafeAreaProvider>
