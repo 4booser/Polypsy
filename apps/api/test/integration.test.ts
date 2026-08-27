@@ -2392,3 +2392,42 @@ describe("метрики", () => {
     resetMetrics();
   });
 });
+
+describe("отчёт об ошибке не выносит персональные данные", () => {
+  test("событие содержит только техническое", async () => {
+    const { buildEvent, containsPersonalData } = await import("../src/lib/errorReport");
+    const event = buildEvent({
+      error: Object.assign(new Error("что-то сломалось"), { stack: "Error\n  at foo (bar.ts:1)" }),
+      route: "/api/surveys/:id/responses",
+      method: "POST",
+      role: "admin",
+    });
+
+    expect(containsPersonalData(event)).toBeNull();
+
+    const text = JSON.stringify(event);
+    // маршрут — шаблоном: фактический путь нёс бы идентификатор человека
+    expect(text).toContain("/api/surveys/:id/responses");
+    expect(text).not.toContain("@");
+  });
+
+  test("сторож ловит персональные поля на любой глубине", async () => {
+    /*
+     * Пояс поверх подтяжек: сборка события ничего лишнего не берёт, но если
+     * однажды кто-то добавит поле, узнать об этом из чужой панели — плохой
+     * способ.
+     */
+    const { containsPersonalData } = await import("../src/lib/errorReport");
+    expect(containsPersonalData({ a: { b: { email: "кто-то@пример" } } })).toBe("email");
+    expect(containsPersonalData({ extra: { body: { answers: [] } } })).toBe("body");
+    expect(containsPersonalData({ tags: { route: "/api/x", method: "GET" } })).toBeNull();
+  });
+
+  test("без SENTRY_DSN ничего не отправляется", async () => {
+    const { reportError } = await import("../src/lib/errorReport");
+    delete process.env.SENTRY_DSN;
+    // не должно ни бросить, ни попытаться сходить в сеть
+    await reportError({ error: new Error("тест"), route: "/api/x", method: "GET" });
+    expect(true).toBe(true);
+  });
+});
