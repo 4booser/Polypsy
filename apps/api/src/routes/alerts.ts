@@ -6,8 +6,7 @@ import { db } from "../db";
 import { questions, riskAlerts, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { notFound } from "../lib/http";
-import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const alertRoutes = new Hono<AppEnv>();
@@ -106,39 +105,14 @@ alertRoutes.get("/", async (c) => {
   return c.json(result);
 });
 
-/** Пометить тревогу разобранной — с указанием, кто и что предпринял */
-alertRoutes.patch("/:id/acknowledge", async (c) => {
-  const user = c.get("user");
-  const alert = await db.query.riskAlerts.findFirst({ where: eq(riskAlerts.id, c.req.param("id")) });
-  if (!alert) notFound("Тревога не найдена");
-  if (!(await canAccessSurvey(user, alert.surveyId))) notFound("Тревога не найдена");
-
-  const body = await c.req.json().catch(() => ({}));
-  // клинический исход (6.1): подтверждена / не подтверждена / наблюдение.
-  // Это сырьё для ROC-калибровки порогов и PPV — без исходов скрининг
-  // остаётся генератором непроверенных чисел
-  const outcome = ["confirmed", "not_confirmed", "needs_followup"].includes(body?.outcome)
-    ? (body.outcome as "confirmed" | "not_confirmed" | "needs_followup")
-    : null;
-
-  const [row] = await db
-    .update(riskAlerts)
-    .set({
-      acknowledgedBy: user.id,
-      acknowledgedAt: new Date().toISOString(),
-      note: typeof body?.note === "string" ? body.note.slice(0, 1000) : null,
-      outcome,
-    })
-    .where(eq(riskAlerts.id, alert.id))
-    .returning();
-
-  await audit(c, {
-    action: "alert.acknowledge",
-    resourceType: "alert",
-    resourceId: alert.id,
-    subjectUserId: alert.userId,
-    details: { label: alert.label, note: row!.note, outcome },
-  });
-
-  return c.json(row);
-});
+/*
+ * Разбор отдельной тревоги убран намеренно.
+ *
+ * Решение принимается о человеке и живёт на случае (`/api/alert-cases`).
+ * Пока путей было два, один и тот же сигнал мог получить один исход в
+ * составе случая и другой сам по себе — а по этим исходам калибруются
+ * пороги скрининга. Два источника истины о клиническом решении недопустимы.
+ *
+ * Список ниже остаётся: он показывает, какие именно пункты сработали, и это
+ * нужно при разборе. Но он только читает.
+ */

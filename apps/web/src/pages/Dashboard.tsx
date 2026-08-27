@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { OverviewAnalytics, RiskAlert, SurveyListItem } from "@quizzy/shared";
+import type { AlertCase, OverviewAnalytics, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { duration, day, severityColor, severityLabel, timeOfDay } from "../format";
@@ -9,15 +9,17 @@ import { PpvCard } from "../components/CalibrationPanel";
 export default function Dashboard() {
   const [data, setData] = useState<OverviewAnalytics | null>(null);
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
-  const [alerts, setAlerts] = useState<RiskAlert[]>([]);
+  const [cases, setCases] = useState<AlertCase[]>([]);
+  const [openCases, setOpenCases] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.overview(), api.surveys(), api.alerts()])
+    Promise.all([api.overview(), api.surveys(), api.alertCases({ limit: "3" })])
       .then(([o, s, a]) => {
         setData(o);
         setSurveys(s);
-        setAlerts(a);
+        setCases(a.items);
+        setOpenCases(a.total ?? a.items.length);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -31,16 +33,21 @@ export default function Dashboard() {
       <h1>Сводка</h1>
       <p className="sub">По методикам, доступным вам</p>
 
-      {alerts.length ? (
+      {cases.length ? (
         <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <div className="row">
               <i className="dot" style={{ background: "var(--sev-severe)" }} />
-              <strong>Неразобранных тревог: {alerts.length}</strong>
+              <strong>Случаев на разбор: {openCases}</strong>
             </div>
             <Link to="/alerts" className="btn">Разобрать</Link>
           </div>
-          <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>{alerts[0]!.label}</p>
+          <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
+            {cases
+              .map((c) => `${c.userName}${c.signalCount > 1 ? ` (сигналов ${c.signalCount})` : ""}`)
+              .join(" · ")}
+            {openCases > cases.length ? ` и ещё ${openCases - cases.length}` : ""}
+          </p>
         </div>
       ) : null}
 

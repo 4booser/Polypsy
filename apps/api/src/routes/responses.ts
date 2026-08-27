@@ -9,6 +9,7 @@ import {
 } from "@quizzy/shared";
 import { db } from "../db";
 import { answerEvents, answers, riskAlerts, responseScores, responses, scales, surveys, users } from "../db/schema";
+import { attachToCase } from "../lib/alertCases";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
@@ -228,6 +229,12 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
     }
 
     for (const risk of detectRisks(survey, input.answers as Answer[])) {
+      const caseId = await attachToCase(tx as never, {
+        userId: user.id,
+        surveyId,
+        severity: risk.severity,
+        at: now,
+      });
       await tx.insert(riskAlerts)
         .values({
           id: crypto.randomUUID(),
@@ -235,6 +242,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           surveyId,
           questionId: risk.questionId,
           userId: user.id,
+          caseId,
           label: risk.label,
           severity: risk.severity,
           at: now,

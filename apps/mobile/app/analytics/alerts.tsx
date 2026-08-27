@@ -1,28 +1,51 @@
 import { useCallback, useState } from "react";
 import { RefreshControl, ScrollView, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
-import type { RiskAlert } from "@quizzy/shared";
+import { useFocusEffect, useRouter } from "expo-router";
+import type { AlertCase } from "@quizzy/shared";
 import { api } from "@/api/client";
-import { Body, Button, Card, Empty, ErrorText, Field, Loader, Row, Segmented, Title } from "@/components/ui";
+import { Body, Button, Card, Chip, Empty, ErrorText, Field, Loader, Row, Segmented, Title } from "@/components/ui";
 import { severityColor, spacing, useColors } from "@/theme";
 
-/** Тревоги по критическим пунктам: разбираются вручную и фиксируются с автором */
+const OUTCOMES = [
+  { value: "confirmed", label: "Риск подтверждён" },
+  { value: "needs_followup", label: "Требует наблюдения" },
+  { value: "not_confirmed", label: "Не подтверждён" },
+] as const;
+
+/**
+ * Разбор случаев риска.
+ *
+ * Единица работы — человек, а не сработавший пункт: пять отмеченных пунктов
+ * одного обследуемого дают один случай и одно клиническое решение. Раньше
+ * экран показывал строку на каждый пункт, и на реальном объёме один человек
+ * встречался в списке подряд по несколько раз.
+ */
 export default function AlertsScreen() {
   const c = useColors();
-  const [alerts, setAlerts] = useState<RiskAlert[] | null>(null);
+  const _router = useRouter();
+  const [cases, setCases] = useState<AlertCase[] | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
   const [mode, setMode] = useState<"open" | "all">("open");
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
 
-  const load = useCallback(async (all: boolean) => {
+  const load = useCallback(async (all: boolean, more = false, from: string | null = null) => {
     try {
       setError(null);
-      setAlerts(await api.alerts(all));
+      const page = await api.alertCases({
+        limit: "20",
+        all: all ? "1" : undefined,
+        cursor: more ? (from ?? undefined) : undefined,
+      });
+      setCases((prev) => (more && prev ? [...prev, ...page.items] : page.items));
+      setCursor(page.nextCursor);
+      if (!more) setTotal(page.total ?? page.items.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить тревоги");
-      setAlerts([]);
+      setError(e instanceof Error ? e.message : "Не удалось загрузить случаи");
+      setCases([]);
     }
   }, []);
 
@@ -32,16 +55,11 @@ export default function AlertsScreen() {
     }, [load, mode]),
   );
 
-  /**
-   * Разбор тревоги с комментарием.
-   * Ввод делаем прямо в карточке, а не через Alert.prompt: тот существует
-   * только на iOS и на Android с вебом молча ничего не делает.
-   */
-  async function acknowledge(alert: RiskAlert) {
-    setSaving(alert.id);
+  async function resolve(item: AlertCase, outcome: string) {
+    setSaving(item.id);
     try {
-      await api.acknowledgeAlert(alert.id, notes[alert.id]?.trim() || undefined);
-      setNotes((prev) => ({ ...prev, [alert.id]: "" }));
+      await api.resolveCase(item.id, outcome, notes[item.id]?.trim() || undefined);
+      setNotes((prev) => ({ ...prev, [item.id]: "" }));
       await load(mode === "all");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
@@ -50,7 +68,7 @@ export default function AlertsScreen() {
     }
   }
 
-  if (!alerts) return <Loader />;
+  if (!cases) return <Loader />;
 
   return (
     <ScrollView
@@ -67,25 +85,25 @@ export default function AlertsScreen() {
         />
       }
     >
-      <Title>Тревоги</Title>
+      <Title>Разбор случаев</Title>
       <Body muted>
-        Поднимаются сразу при сохранении ответа, в том числе на незавершённом
-        прохождении — чтобы не ждать, пока пациент дойдёт до конца.
+        Случай — это человек, а не отдельный пункт. Решение принимается один раз обо всех
+        его сигналах.
       </Body>
 
       <Segmented
         value={mode}
         onChange={setMode}
         options={[
-          { value: "open", label: "Неразобранные" },
+          { value: "open", label: `Открытые${total ? ` · ${total}` : ""}` },
           { value: "all", label: "Все" },
         ]}
       />
 
       <ErrorText>{error}</ErrorText>
-      {alerts.length === 0 ? <Empty text="Тревог нет" /> : null}
+      {cases.length === 0 ? <Empty text="Случаев нет" /> : null}
 
-      {alerts.map((a) => (
+      {cases.map((a) => (
         <Card key={a.id}>
           <Row>
             <View
@@ -99,41 +117,77 @@ export default function AlertsScreen() {
             <Text style={{ color: c.text, fontSize: 13, fontWeight: "700" }}>
               {a.severity === "severe" ? "Срочно" : "Внимание"}
             </Text>
+            {a.overdue ? <Chip label="просрочен" color={severityColor.severe} /> : null}
             <View style={{ flex: 1 }} />
             <Text style={{ color: c.muted, fontSize: 12 }}>
-              {a.at.slice(0, 16).replace("T", " ")}
+              {a.lastAlertAt.slice(0, 16).replace("T", " ")}
             </Text>
           </Row>
 
-          <Body>{a.label}</Body>
+          <Body>{a.userName}</Body>
           <Body muted>
-            {a.respondent ?? "Аноним"} · {a.surveyTitle}
+            {a.surveyTitle}
+            {a.unit ? ` · ${a.unit}` : ""} · сигналов {a.signalCount}
           </Body>
-          <Text style={{ color: c.muted, fontSize: 12 }}>{a.questionTitle}</Text>
+
+          {/* что именно сработало — коротко, полный разбор в консоли */}
+          {a.signals.slice(0, 3).map((s) => (
+            <Text key={s.id} style={{ color: c.muted, fontSize: 12 }}>
+              • {s.label}
+            </Text>
+          ))}
+          {a.signalCount > 3 ? (
+            <Text style={{ color: c.muted, fontSize: 12 }}>…и ещё {a.signalCount - 3}</Text>
+          ) : null}
 
           {a.acknowledgedAt ? (
             <Body muted>
-              Разобрано: {a.acknowledgedByName ?? "—"}, {a.acknowledgedAt.slice(0, 16).replace("T", " ")}
+              Разобрано: {a.acknowledgedByName ?? "—"},{" "}
+              {a.acknowledgedAt.slice(0, 16).replace("T", " ")}
               {a.note ? ` — ${a.note}` : ""}
             </Body>
           ) : (
             <View style={{ gap: spacing.sm }}>
+              {a.assignedToName ? (
+                <Body muted>Взял: {a.assignedToName}</Body>
+              ) : (
+                <Button
+                  title="Взять на себя"
+                  variant="secondary"
+                  onPress={async () => {
+                    await api.assignCase(a.id).catch(() => {});
+                    await load(mode === "all");
+                  }}
+                />
+              )}
               <Field
                 label="Что предпринято"
                 value={notes[a.id] ?? ""}
                 onChangeText={(t) => setNotes((prev) => ({ ...prev, [a.id]: t }))}
                 placeholder="Например: осмотр назначен на сегодня"
               />
-              <Button
-                title="Отметить разобранной"
-                variant="secondary"
-                loading={saving === a.id}
-                onPress={() => acknowledge(a)}
-              />
+              {/* исход обязателен: «просто закрыть» здесь нельзя */}
+              {OUTCOMES.map((o) => (
+                <Button
+                  key={o.value}
+                  title={o.label}
+                  variant={o.value === "confirmed" ? "primary" : "secondary"}
+                  loading={saving === a.id}
+                  onPress={() => resolve(a, o.value)}
+                />
+              ))}
             </View>
           )}
         </Card>
       ))}
+
+      {cursor ? (
+        <Button
+          title="Показать ещё"
+          variant="secondary"
+          onPress={() => load(mode === "all", true, cursor)}
+        />
+      ) : null}
     </ScrollView>
   );
 }

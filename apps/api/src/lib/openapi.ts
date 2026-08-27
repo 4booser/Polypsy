@@ -128,8 +128,11 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/kiosk/state/:token/submit": { summary: "Сдача прохождения из киоска", access: "public", body: submitResponseSchema },
 
   /* ── тревоги, направления, заключения ── */
-  "GET /api/alerts": { summary: "Тревоги риска; ?all=1 — вместе с разобранными", access: "staff" },
-  "PATCH /api/alerts/:id/acknowledge": { summary: "Разбор тревоги с фиксацией исхода", access: "staff" },
+  "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff" },
+  "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff" },
+  "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff" },
+  "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff" },
+  "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке", access: "staff" },
   "GET /api/referrals": { summary: "Направления; ?all=1 — вместе с завершёнными", access: "staff" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", body: updateReferralSchema },

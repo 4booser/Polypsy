@@ -570,3 +570,25 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 .diff-field.scoring { color: var(--sev-moderate); font-weight: 600; }
 .diff-before { color: var(--muted); text-decoration: line-through; }
 .diff-after { color: var(--text); }
+
+/* ── разбор случаев риска ─────────────────────────────────────────────────── */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px 14px; }
+
+.case { position: relative; overflow: hidden; }
+/* полоса срочности слева: степень читается до чтения текста */
+.case .sev-bar {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 0;
+}
+.case-head { display: flex; gap: 11px; align-items: center; padding-left: 8px; }
+.case-head .grow { flex: 1; min-width: 0; }
+.case.overdue { border-color: var(--sev-severe); }
+.case.resolved { opacity: 0.72; }
+.case-toggle { margin: 8px 0 0 8px; padding-left: 0; font-size: 12.5px; }
+
+.signals { margin: 6px 0 10px 8px; display: grid; gap: 5px; }
+.signal {
+  display: grid; grid-template-columns: 130px 1fr 1fr; gap: 10px;
+  font-size: 12.5px; padding: 5px 0; border-top: 1px solid var(--border);
+}
+@media (max-width: 900px) { .signal { grid-template-columns: 1fr; gap: 2px; } }
+.chip.static.bad { color: var(--danger); border-color: var(--danger); }

@@ -15,7 +15,9 @@ import type {
   SurveyResponse,
   UpdateSurveyInput,
   User,
+  AlertCase,
   AuditPage,
+  Page,
   CreateUserInput,
   RiskAlert,
   UpdateProfileInput,
@@ -325,10 +327,25 @@ export const api = {
     } | null>(`/api/surveys/${surveyId}/draft`),
 
   alerts: (all = false) => request<RiskAlert[]>(`/api/alerts${all ? "?all=1" : ""}`),
-  acknowledgeAlert: (id: string, note?: string) =>
-    request<unknown>(`/api/alerts/${id}/acknowledge`, {
+  /** Случаи риска: страница с курсором */
+  alertCases: (params: Record<string, string | undefined> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
+  },
+  /**
+   * Разбор случая. Исход обязателен: без него разбор — это «посмотрел и
+   * закрыл», а по исходам калибруются пороги скрининга.
+   */
+  resolveCase: (id: string, outcome: string, note?: string) =>
+    request<unknown>(`/api/alert-cases/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ outcome, note }),
+    }),
+  assignCase: (id: string, release = false) =>
+    request<unknown>(`/api/alert-cases/${id}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ release }),
     }),
 
   respondents: () =>

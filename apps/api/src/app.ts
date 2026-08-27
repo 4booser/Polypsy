@@ -25,6 +25,7 @@ import { dynamicsRoutes } from "./routes/dynamics";
 import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
 import { storageRoutes } from "./routes/storage";
+import { alertCaseRoutes } from "./routes/alertCases";
 import { buildOpenApi } from "./lib/openapi";
 import pkg from "../package.json" with { type: "json" };
 import { comparisonRoutes } from "./routes/comparison";
@@ -94,6 +95,8 @@ app.route("/api/alerts", alertRoutes);
 app.route("/api/dynamics", dynamicsRoutes);
 app.route("/api/reports", reportRoutes);
 app.route("/api/access", accessRoutes);
+// случаи риска — новый контур разбора; /api/alerts оставлен для совместимости
+app.route("/api/alert-cases", alertCaseRoutes);
 app.route("/api/stats/storage", storageRoutes);
 
 /**
