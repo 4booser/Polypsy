@@ -79,6 +79,9 @@ export default function RegisterScreen() {
                 <Pressable
                   key={String(opt.value)}
                   onPress={() => setAnonymous(opt.value)}
+                  accessibilityRole="radio"
+                  accessibilityLabel={`${opt.label}. ${opt.hint}`}
+                  accessibilityState={{ checked: on }}
                   style={{
                     flex: 1,
                     padding: spacing.md,

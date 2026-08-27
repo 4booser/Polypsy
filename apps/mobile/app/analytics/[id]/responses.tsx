@@ -43,6 +43,9 @@ export default function ResponsesScreen() {
           onPress={async () => {
             setDetail(detail?.id === r.id ? null : await api.responseDetail(r.id));
           }}
+          accessibilityRole="button"
+          accessibilityLabel={r.userName ?? "Аноним"}
+          accessibilityState={{ expanded: detail?.id === r.id }}
         >
           <Card>
             <Row>

@@ -2,7 +2,22 @@ import { useMemo } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import type { Answer, Option, Question } from "@quizzy/shared";
 import { radius, spacing, useColors } from "../theme";
-import { Body, Row } from "./ui";
+import { Body, Row, TOUCH_TARGET } from "./ui";
+
+/**
+ * Подпись деления шкалы для диктора: голое «7» бессмысленно, а у краёв
+ * методики обычно есть словесные якоря — их и озвучиваем.
+ */
+function scalePointLabel(
+  question: Question,
+  point: number,
+  min: number,
+  max: number,
+): string {
+  if (point === min && question.minLabel) return `${point} — ${question.minLabel}`;
+  if (point === max && question.maxLabel) return `${point} — ${question.maxLabel}`;
+  return `${point} из ${max}`;
+}
 
 interface Props {
   question: Question;
@@ -49,6 +64,15 @@ export function QuestionInput({ question, value, onChange }: Props) {
                       : [option.id],
                   })
                 }
+                /*
+                 * Роль и состояние обязательны: без них диктор читает просто
+                 * «Иногда», не сообщая ни что это выбор, ни что он уже сделан.
+                 * Для обследуемого со слабым зрением это разница между
+                 * заполненной методикой и случайным набором ответов.
+                 */
+                accessibilityRole={multi ? "checkbox" : "radio"}
+                accessibilityLabel={option.text}
+                accessibilityState={{ checked: on }}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -92,6 +116,11 @@ export function QuestionInput({ question, value, onChange }: Props) {
                     <Pressable
                       key={option.id}
                       onPress={() => onChange({ matrix: { ...picked, [row.id]: option.id } })}
+                      // в подписи и строка, и вариант: вне таблицы «Часто»
+                      // само по себе ничего не значит
+                      accessibilityRole="radio"
+                      accessibilityLabel={`${row.text}: ${option.text}`}
+                      accessibilityState={{ checked: on }}
                       style={{
                         flex: 1,
                         paddingVertical: spacing.md,
@@ -139,6 +168,8 @@ export function QuestionInput({ question, value, onChange }: Props) {
                   <Pressable
                     key={id}
                     onPress={() => onChange({ ranking: order.filter((x) => x !== id) })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${index + 1}: ${option?.text ?? ""}. Нажмите, чтобы убрать`}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
@@ -175,6 +206,8 @@ export function QuestionInput({ question, value, onChange }: Props) {
             <Pressable
               key={option.id}
               onPress={() => onChange({ ranking: [...order, option.id] })}
+              accessibilityRole="button"
+              accessibilityLabel={`${option.text}. Нажмите, чтобы поставить на место ${order.length + 1}`}
               style={{
                 padding: spacing.lg,
                 borderRadius: radius.sm,
@@ -207,8 +240,13 @@ export function QuestionInput({ question, value, onChange }: Props) {
                 <Pressable
                   key={point}
                   onPress={() => onChange({ number: point })}
+                  accessibilityRole="radio"
+                  accessibilityLabel={scalePointLabel(question, point, min, max)}
+                  accessibilityState={{ checked: on }}
                   style={{
-                    minWidth: 46,
+                    minWidth: TOUCH_TARGET,
+                    minHeight: TOUCH_TARGET,
+                    justifyContent: "center",
                     flexGrow: points.length > 8 ? 1 : 0,
                     paddingVertical: spacing.md,
                     alignItems: "center",
@@ -248,6 +286,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
             onChange({ number: t === "" || Number.isNaN(parsed) ? undefined : parsed });
           }}
           keyboardType="numeric"
+          accessibilityLabel={question.title}
           placeholder={`от ${question.minValue ?? 0} до ${question.maxValue ?? 100}`}
           placeholderTextColor={c.muted}
           style={inputStyle(c)}
@@ -259,6 +298,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
         <TextInput
           value={value?.date ?? ""}
           onChangeText={(t) => onChange({ date: t })}
+          accessibilityLabel={question.title}
           placeholder="ГГГГ-ММ-ДД"
           placeholderTextColor={c.muted}
           style={inputStyle(c)}
@@ -271,6 +311,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
         <TextInput
           value={value?.text ?? ""}
           onChangeText={(t) => onChange({ text: t })}
+          accessibilityLabel={question.title}
           placeholder="Ваш ответ"
           placeholderTextColor={c.muted}
           multiline={question.type === "longtext"}
