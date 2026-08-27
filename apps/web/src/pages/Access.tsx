@@ -4,9 +4,11 @@ import type { SurveyFull, SurveyGrant } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { dateTime } from "../format";
 import { Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
 /** Назначение методики конкретным пациентам */
 export default function Access() {
+  const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
   const [grants, setGrants] = useState<SurveyGrant[]>([]);
@@ -61,7 +63,7 @@ export default function Access() {
       {survey.visibility === "public" ? (
         <div className="card">
           <p style={{ margin: 0 }}>
-            Методика общедоступна — её видят все пациенты, и персональные назначения ни на что не влияют.
+            {ut("acc.publicHint")}
             Чтобы ограничить доступ, переключите видимость методики на «по назначению».
           </p>
         </div>
@@ -88,7 +90,7 @@ export default function Access() {
             <label>Действует до (необязательно)</label>
             <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
           </div>
-          <button className="primary" onClick={grant} disabled={!selected || busy}>Назначить</button>
+          <button className="primary" onClick={grant} disabled={!selected || busy}>{ut("acc.grant")}</button>
         </div>
         {error ? <p className="error">{error}</p> : null}
       </div>

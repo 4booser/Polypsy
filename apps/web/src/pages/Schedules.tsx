@@ -3,6 +3,7 @@ import type { Battery, Schedule, ScheduleScope } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { day } from "../format";
 import { Empty, IconBattery, Loading, PageHead, Search, useAction } from "../ui";
+import { useLang } from "../lang";
 
 /**
  * Расписание повторных обследований.
@@ -12,6 +13,7 @@ import { Empty, IconBattery, Loading, PageHead, Search, useAction } from "../ui"
  * доступа и свой прогресс. Батарея из одной методики закрывает частный случай.
  */
 export default function Schedules() {
+  const { ut } = useLang();
   const [rows, setRows] = useState<Schedule[] | null>(null);
   const [batteries, setBatteries] = useState<Battery[]>([]);
   const [units, setUnits] = useState<string[]>([]);
@@ -89,7 +91,7 @@ export default function Schedules() {
               >
                 Запустить сейчас
               </button>
-              <button onClick={() => setEditing(s)}>Править</button>
+              <button onClick={() => setEditing(s)}>{ut("f.edit")}</button>
               <button
                 className="danger"
                 onClick={() =>
@@ -110,7 +112,7 @@ export default function Schedules() {
               <span className="value">{everyLabel(s.intervalDays)}</span>
             </div>
             <div className="tile">
-              <span className="label">Охват</span>
+              <span className="label">{ut("sch.scope")}</span>
               <span className="value">{s.reach}</span>
               <span className="label">{s.scope === "unit" ? (s.unit ?? "—") : "поимённо"}</span>
             </div>
@@ -120,7 +122,7 @@ export default function Schedules() {
               <span className="label">дней</span>
             </div>
             <div className="tile">
-              <span className="label">Ближайшая выдача</span>
+              <span className="label">{ut("sch.nextRun")}</span>
               <span className="value" style={{ fontSize: 17 }}>
                 {s.active ? day(s.nextRunAt) : "—"}
               </span>
@@ -149,10 +151,10 @@ export default function Schedules() {
               <table>
                 <thead>
                   <tr>
-                    <th>Когда</th>
-                    <th className="num">Назначено</th>
+                    <th>{ut("sch.when")}</th>
+                    <th className="num">{ut("f.assigned")}</th>
                     <th className="num">Пропущено</th>
-                    <th>Примечание</th>
+                    <th>{ut("f.note")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -211,6 +213,7 @@ function ScheduleEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { ut } = useLang();
   const [title, setTitle] = useState(schedule?.title ?? "");
   const [batteryId, setBatteryId] = useState(schedule?.batteryId ?? batteries[0]?.id ?? "");
   const [scope, setScope] = useState<ScheduleScope>(schedule?.scope ?? "unit");
@@ -261,12 +264,12 @@ function ScheduleEditor({
     <div className="card">
       <div className="card-head">
         <h2>{schedule ? "Правка расписания" : "Новое расписание"}</h2>
-        <button onClick={onClose}>Закрыть</button>
+        <button onClick={onClose}>{ut("ui.close")}</button>
       </div>
 
       <div className="form-grid">
         <label className="field grow">
-          <span>Название</span>
+          <span>{ut("f.name")}</span>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -274,7 +277,7 @@ function ScheduleEditor({
           />
         </label>
         <label className="field grow">
-          <span>Батарея</span>
+          <span>{ut("f.battery")}</span>
           <select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
             {batteries.map((b) => (
               <option key={b.id} value={b.id}>
@@ -285,7 +288,7 @@ function ScheduleEditor({
         </label>
       </div>
 
-      <h3 style={{ marginTop: 16 }}>Как часто</h3>
+      <h3 style={{ marginTop: 16 }}>{ut("sch.howOften")}</h3>
       <div className="row tight">
         {PRESETS.map(([label, days]) => (
           <button
@@ -308,7 +311,7 @@ function ScheduleEditor({
           />
         </label>
         <label className="field">
-          <span>Дней на прохождение</span>
+          <span>{ut("sch.daysToPass")}</span>
           <input
             type="number"
             min={1}
@@ -317,11 +320,11 @@ function ScheduleEditor({
           />
         </label>
         <label className="field">
-          <span>Начало</span>
+          <span>{ut("sch.start")}</span>
           <input type="date" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} />
         </label>
         <label className="field">
-          <span>Окончание</span>
+          <span>{ut("sch.end")}</span>
           <input type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
         </label>
       </div>
@@ -333,7 +336,7 @@ function ScheduleEditor({
         ) : null}
       </p>
 
-      <h3 style={{ marginTop: 16 }}>Кого охватывает</h3>
+      <h3 style={{ marginTop: 16 }}>{ut("sch.coverage")}</h3>
       <div className="row tight">
         <button className={`chip ${scope === "unit" ? "active" : ""}`} onClick={() => setScope("unit")}>
           Подразделение целиком
@@ -373,7 +376,7 @@ function ScheduleEditor({
                   </button>
                 ))
               ) : (
-                <span className="hint">Никого не найдено</span>
+                <span className="hint">{ut("f.nobodyFound")}</span>
               )}
             </div>
           ) : null}
@@ -415,7 +418,7 @@ function ScheduleEditor({
         >
           Сохранить
         </button>
-        <button onClick={onClose}>Отмена</button>
+        <button onClick={onClose}>{ut("ui.cancel")}</button>
       </div>
     </div>
   );

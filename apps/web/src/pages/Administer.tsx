@@ -5,6 +5,7 @@ import { isAnswered, isQuestionVisible } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { SeverityTag } from "../charts/advanced";
 import { Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
 /**
  * Заполнение методики специалистом за пациента.
@@ -13,6 +14,7 @@ import { Loading, PageHead } from "../ui";
  * переносит уже собранные сведения, и постраничный мастер тут только мешает.
  */
 export default function Administer() {
+  const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
@@ -79,7 +81,7 @@ export default function Administer() {
     }[];
     return (
       <>
-        <PageHead title="Обследование сохранено" sub={survey.title} />
+        <PageHead title={ut("adn.saved")} sub={survey.title} />
         {!result.reliable ? (
           <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
             <strong>Профиль признан ненадёжным</strong>
@@ -114,14 +116,14 @@ export default function Administer() {
       <PageHead
         title={survey.title}
         crumbs={<Link to={`/surveys/${survey.id}`}>← К методике</Link>}
-        sub={`Заполнение специалистом · ${visible.filter((q) => q.type !== "info").length} пунктов`}
+        sub={`${ut("adn.byClinician")} · ${visible.filter((q) => q.type !== "info").length} ${ut("adn.items")}`}
       />
 
       <div className="card">
         <div className="field" style={{ maxWidth: 460, marginBottom: 0 }}>
-          <label>Кого обследуем</label>
+          <label>{ut("adn.whoIsTested")}</label>
           <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-            <option value="">— выберите пациента —</option>
+            <option value="">{ut("adn.pickPatient")}</option>
             {patients.map((p) => (
               <option key={p.id} value={p.id}>{p.fullName} · {p.email}</option>
             ))}

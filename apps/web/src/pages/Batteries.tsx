@@ -10,6 +10,7 @@ import type {
 import { api, type Patient } from "../api";
 import { day } from "../format";
 import { Empty, IconBattery, Loading, PageHead, Search, useAction } from "../ui";
+import { useLang } from "../lang";
 
 /**
  * Батареи: набор методик, назначаемый целиком.
@@ -19,6 +20,7 @@ import { Empty, IconBattery, Loading, PageHead, Search, useAction } from "../ui"
  * ничего не забудет и выдаст в нужном порядке; батарея снимает оба допущения.
  */
 export default function Batteries() {
+  const { ut } = useLang();
   const [rows, setRows] = useState<Battery[] | null>(null);
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [groups, setGroups] = useState<SurveyGroupWithCounts[]>([]);
@@ -77,7 +79,7 @@ export default function Batteries() {
               <button onClick={() => setOpenId(openId === b.id ? null : b.id)}>
                 {openId === b.id ? "Свернуть назначения" : `Назначения · ${b.activeAssignments}`}
               </button>
-              <button onClick={() => setEditing(b)}>Править</button>
+              <button onClick={() => setEditing(b)}>{ut("f.edit")}</button>
               <button
                 className="danger"
                 onClick={() =>
@@ -137,6 +139,7 @@ function totalMinutes(b: Battery): number | null {
 }
 
 function Assignments({ battery, patients }: { battery: Battery; patients: Patient[] }) {
+  const { ut } = useLang();
   const [rows, setRows] = useState<BatteryAssignment[] | null>(null);
   const [query, setQuery] = useState("");
   const [due, setDue] = useState("");
@@ -162,17 +165,17 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
 
   return (
     <div className="nested">
-      <h3>Назначения</h3>
+      <h3>{ut("f.assignments")}</h3>
       {!rows ? <Loading /> : null}
 
       {rows?.length ? (
         <table>
           <thead>
             <tr>
-              <th>Обследуемый</th>
-              <th>Назначено</th>
+              <th>{ut("f.subject")}</th>
+              <th>{ut("f.assigned")}</th>
               <th>Срок</th>
-              <th>Прогресс</th>
+              <th>{ut("bat.progress")}</th>
               <th />
             </tr>
           </thead>
@@ -214,7 +217,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
           </tbody>
         </table>
       ) : rows ? (
-        <p className="hint">Батарея пока никому не назначена</p>
+        <p className="hint">{ut("bat.notAssigned")}</p>
       ) : null}
 
       <div className="assign-row">
@@ -224,7 +227,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
           <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
         </label>
         <label className="field grow">
-          <span>Примечание</span>
+          <span>{ut("f.note")}</span>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="необязательно" />
         </label>
       </div>
@@ -247,7 +250,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
               </button>
             ))
           ) : (
-            <span className="hint">Никого не найдено — либо батарея уже назначена</span>
+            <span className="hint">{ut("bat.nobodyLeft")}</span>
           )}
         </div>
       ) : null}
@@ -290,6 +293,7 @@ function BatteryEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const { ut } = useLang();
   const [title, setTitle] = useState(battery?.title ?? "");
   const [description, setDescription] = useState(battery?.description ?? "");
   const [groupId, setGroupId] = useState(battery?.groupId ?? "");
@@ -328,16 +332,16 @@ function BatteryEditor({
     <div className="card">
       <div className="card-head">
         <h2>{battery ? "Правка батареи" : "Новая батарея"}</h2>
-        <button onClick={onClose}>Закрыть</button>
+        <button onClick={onClose}>{ut("ui.close")}</button>
       </div>
 
       <div className="form-grid">
         <label className="field grow">
-          <span>Название</span>
+          <span>{ut("f.name")}</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например, входное обследование" />
         </label>
         <label className="field">
-          <span>Группа</span>
+          <span>{ut("f.group")}</span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
             <option value="">вне групп</option>
             {groups.map((g) => (
@@ -346,7 +350,7 @@ function BatteryEditor({
           </select>
         </label>
         <label className="field grow">
-          <span>Описание</span>
+          <span>{ut("f.description")}</span>
           <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="необязательно" />
         </label>
       </div>
@@ -393,7 +397,7 @@ function BatteryEditor({
           ))}
         </ol>
       ) : (
-        <p className="hint">Пока пусто — добавьте методики ниже</p>
+        <p className="hint">{ut("bat.emptyAddBelow")}</p>
       )}
 
       <div className="row tight" style={{ marginTop: 12 }}>
@@ -410,7 +414,7 @@ function BatteryEditor({
         <button className="primary" onClick={save} disabled={!title.trim() || !items.length}>
           Сохранить
         </button>
-        <button onClick={onClose}>Отмена</button>
+        <button onClick={onClose}>{ut("ui.cancel")}</button>
       </div>
     </div>
   );

@@ -4,11 +4,13 @@ import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime } from "../format";
 import { Loading, PageHead, useAction } from "../ui";
+import { useLang } from "../lang";
 
 const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
 
 /** Группы методик и назначение их администраторов */
 export function Groups() {
+  const { ut } = useLang();
   const run = useAction();
   const { user } = useAuth();
   const isSuper = user?.role === "superadmin";
@@ -40,14 +42,14 @@ export function Groups() {
 
       {isSuper ? (
         <div className="card">
-          <h2>Новая группа</h2>
+          <h2>{ut("adm.newGroup")}</h2>
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
-              <label>Название</label>
+              <label>{ut("f.name")}</label>
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Приёмное отделение" />
             </div>
             <div className="field" style={{ flex: 2, minWidth: 240, marginBottom: 0 }}>
-              <label>Описание</label>
+              <label>{ut("f.description")}</label>
               <input value={description} onChange={(e) => setDescription(e.target.value)} />
             </div>
             <div className="row" style={{ gap: 6 }}>
@@ -125,7 +127,7 @@ export function Groups() {
 
           {isSuper ? (
             <>
-              <h2 style={{ fontSize: 14, marginTop: 12 }}>Администраторы</h2>
+              <h2 style={{ fontSize: 14, marginTop: 12 }}>{ut("adm.admins")}</h2>
               {g.admins.length === 0 ? (
                 <p className="muted">Никто не назначен — группой управляет только суперадмин</p>
               ) : (
@@ -173,7 +175,7 @@ export function Groups() {
                         <option key={u.id} value={u.id}>{u.fullName} · {u.email}</option>
                       ))}
                   </select>
-                  <button onClick={() => setAssigning(null)}>Отмена</button>
+                  <button onClick={() => setAssigning(null)}>{ut("ui.cancel")}</button>
                 </div>
               ) : (
                 <button style={{ marginTop: 10 }} onClick={() => setAssigning(g.id)}>
@@ -196,6 +198,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 /** Учётные записи персонала */
 export function Users() {
+  const { ut } = useLang();
   const [users, setUsers] = useState<User[] | null>(null);
   const [form, setForm] = useState({ lastName: "", firstName: "", middleName: "", email: "", password: "" });
   const [role, setRole] = useState<"admin" | "superadmin">("admin");
@@ -222,7 +225,7 @@ export function Users() {
       />
 
       <div className="card">
-        <h2>Новая учётная запись</h2>
+        <h2>{ut("adm.newUser")}</h2>
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field" style={{ flex: 1, minWidth: 140, marginBottom: 0 }}>
             <label>Фамилия</label>
@@ -245,7 +248,7 @@ export function Users() {
             <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </div>
           <div className="field" style={{ width: 190, marginBottom: 0 }}>
-            <label>Роль</label>
+            <label>{ut("adm.role")}</label>
             <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "superadmin")}>
               <option value="admin">Администратор группы</option>
               <option value="superadmin">Суперадминистратор</option>
@@ -292,7 +295,7 @@ export function Users() {
           />
         </div>
         <table>
-          <thead><tr><th>ФИО</th><th>Email</th><th>Роль</th><th>Пол</th><th>Создан</th></tr></thead>
+          <thead><tr><th>ФИО</th><th>Email</th><th>{ut("adm.role")}</th><th>Пол</th><th>Создан</th></tr></thead>
           <tbody>
             {shown.map((u) => (
               <tr key={u.id}>
