@@ -829,7 +829,17 @@ export const alertCases = pgTable(
   },
   (t) => ({
     userIdx: index("alert_cases_user_idx").on(t.userId),
-    openIdx: index("alert_cases_open_idx").on(t.acknowledgedAt, t.lastAlertAt),
+    /*
+     * Порядок колонок ровно как в запросе списка: сортировка по времени
+     * последнего сигнала, потом по идентификатору. Прежний (acknowledgedAt,
+     * lastAlertAt) не использовался ни разу — планировщик всё равно шёл
+     * последовательным сканированием, потому что ведущая колонка в сортировке
+     * не участвует.
+     *
+     * Частичный: в списке всегда только неразобранные, и держать в индексе
+     * закрытые случаи незачем.
+     */
+    openIdx: index("alert_cases_open_idx").on(t.lastAlertAt.desc(), t.id.desc()),
     surveyIdx: index("alert_cases_survey_idx").on(t.surveyId),
   }),
 );
@@ -869,6 +879,12 @@ export const riskAlerts = pgTable(
   (t) => ({
     surveyIdx: index("alerts_survey_idx").on(t.surveyId),
     openIdx: index("alerts_open_idx").on(t.acknowledgedAt),
+    /*
+     * Сигналы всегда читаются пачкой по случаю: и списком, и счётчиком.
+     * Без индекса это было последовательное сканирование таблицы на каждый
+     * случай на странице — тридцать сканирований на один экран.
+     */
+    caseIdx: index("alerts_case_idx").on(t.caseId),
     // одна тревога на пункт в рамках прохождения, иначе автосохранение
     // плодило бы дубликаты при каждом сохранении
     uniquePerAnswer: uniqueIndex("alerts_response_question_idx").on(t.responseId, t.questionId),

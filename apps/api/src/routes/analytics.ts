@@ -28,86 +28,112 @@ analyticsRoutes.use("*", requireAuth, requireStaff);
 /** Черновик считается живым полчаса с последнего сохранения */
 const LIVE_DRAFT_MS = 30 * 60_000;
 
+/**
+ * Сводка по всем доступным методикам.
+ *
+ * Считается в базе, а не в приложении. Раньше сюда выбирались все
+ * прохождения и все баллы: на четырнадцати тысячах замеров это 14 тысяч и
+ * 58 тысяч строк в память ради счётчиков, которые Postgres делает
+ * группировкой. Экран открывается при каждом входе — расти линейно ему
+ * нельзя.
+ */
 analyticsRoutes.get("/overview", async (c) => {
   // сводка считается только по методикам, доступным этому сотруднику
   const scope = await surveyScopeFilter(c.get("user"));
   const surveyRows = await db.select().from(surveys).where(scope);
   const scopedIds = surveyRows.map((s) => s.id);
 
-  const [responseRows, scoreRows] = scopedIds.length
-    ? await Promise.all([
-        db.select().from(responses).where(inArray(responses.surveyId, scopedIds)),
-        db
-          .select()
-          .from(responseScores)
-          .innerJoin(responses, eq(responses.id, responseScores.responseId))
-          .where(inArray(responses.surveyId, scopedIds))
-          .then((rows) => rows.map((r) => r.response_scores)),
-      ])
-    : [[], []];
-
-  const completed = responseRows.filter((r) => r.status === "completed");
-  const durations = completed.map((r) => r.durationMs).filter((d) => d > 0);
-
-  const byS = new Map<string, typeof completed>();
-  for (const r of completed) {
-    const list = byS.get(r.surveyId) ?? [];
-    list.push(r);
-    byS.set(r.surveyId, list);
+  if (!scopedIds.length) {
+    return c.json({
+      surveyCount: 0, publishedCount: 0, responseCount: 0, respondentCount: 0,
+      avgDurationMs: 0, completionRate: 0, topSurveys: [], severityBreakdown: [],
+      timeline: [], inProgress: [],
+    } satisfies OverviewAnalytics);
   }
 
-  const severityCounts = new Map<Severity, number>();
-  for (const s of scoreRows) {
-    if (!s.severity) continue;
-    severityCounts.set(s.severity, (severityCounts.get(s.severity) ?? 0) + 1);
-  }
+  const idList = sql`(${sql.join(scopedIds.map((id) => sql`${id}`), sql`, `)})`;
+  const liveSince = new Date(Date.now() - LIVE_DRAFT_MS).toISOString();
 
-  const result: OverviewAnalytics = {
-    surveyCount: surveyRows.length,
-    publishedCount: surveyRows.filter((s) => s.status === "published").length,
-    responseCount: completed.length,
-    respondentCount: new Set(completed.map((r) => r.userId).filter(Boolean)).size,
-    avgDurationMs: Math.round(average(durations)),
-    completionRate: percent(completed.length, responseRows.length),
-    topSurveys: [...byS.entries()]
-      .map(([surveyId, list]) => ({
-        surveyId,
-        title: t(surveyRows.find((s) => s.id === surveyId)?.title as never) || "—",
-        responseCount: list.length,
-        avgDurationMs: Math.round(average(list.map((r) => r.durationMs).filter((d) => d > 0))),
-      }))
-      .sort((a, b) => b.responseCount - a.responseCount)
-      .slice(0, 10),
-    severityBreakdown: (["none", "mild", "moderate", "severe"] as Severity[])
-      .map((severity) => ({ severity, count: severityCounts.get(severity) ?? 0 }))
-      .filter((s) => s.count > 0),
-    timeline: timelineByDay(completed.map((r) => r.submittedAt)),
+  const [totals, byS, severities, timelineRows, drafts] = await Promise.all([
+    db.execute<{ completed: number; started: number; respondents: number; avg_ms: number } & Record<string, unknown>>(sql`
+      select
+        count(*) filter (where status = 'completed')::int              as completed,
+        count(*)::int                                                  as started,
+        count(distinct user_id) filter (where status = 'completed')::int as respondents,
+        coalesce(avg(duration_ms) filter (where status = 'completed' and duration_ms > 0), 0)::int as avg_ms
+      from responses where survey_id in ${idList}
+    `),
+    db.execute<{ survey_id: string; n: number; avg_ms: number } & Record<string, unknown>>(sql`
+      select survey_id, count(*)::int as n,
+             coalesce(avg(duration_ms) filter (where duration_ms > 0), 0)::int as avg_ms
+      from responses
+      where survey_id in ${idList} and status = 'completed'
+      group by survey_id order by n desc limit 10
+    `),
+    db.execute<{ severity: Severity; n: number } & Record<string, unknown>>(sql`
+      select rs.severity, count(*)::int as n
+      from response_scores rs
+      join responses r on r.id = rs.response_id
+      where r.survey_id in ${idList} and rs.severity is not null
+      group by rs.severity
+    `),
+    db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
+      select to_char(submitted_at, 'YYYY-MM-DD') as date, count(*)::int as n
+      from responses
+      where survey_id in ${idList} and status = 'completed' and submitted_at is not null
+      group by 1 order by 1
+    `),
     /*
      * Кто прямо сейчас за экраном. Черновик считается живым, если его
      * сохраняли последние полчаса: брошенные прохождения висят в статусе
      * in_progress неделями, и без ограничения по времени список превратился
      * бы в свалку, где живого человека не найти.
-     *
-     * Нужно это для одного: если обследуемый застрял или закрыл приложение
-     * посреди методики, специалист узнаёт об этом сегодня, а не при разборе
-     * незакрытых назначений через месяц.
      */
-    inProgress: responseRows
-      .filter(
-        (r) =>
-          r.status === "in_progress" &&
-          Date.now() - new Date(r.lastSavedAt ?? r.startedAt).getTime() < LIVE_DRAFT_MS,
-      )
-      .map((r) => ({
-        responseId: r.id,
-        userId: r.userId,
-        surveyId: r.surveyId,
-        surveyTitle: t(surveyRows.find((s) => s.id === r.surveyId)?.title as never) || "—",
-        startedAt: r.startedAt,
-        lastSavedAt: r.lastSavedAt ?? r.startedAt,
+    db.execute<{ id: string; user_id: string | null; survey_id: string; started_at: string; last_saved_at: string | null } & Record<string, unknown>>(sql`
+      select id, user_id, survey_id, started_at, last_saved_at
+      from responses
+      where survey_id in ${idList} and status = 'in_progress'
+        and coalesce(last_saved_at, started_at) > ${liveSince}
+      order by coalesce(last_saved_at, started_at) desc
+      limit 20
+    `),
+  ]);
+
+  const titleOf = new Map(surveyRows.map((s) => [s.id, t(s.title as never)]));
+  const total = [...totals][0];
+  const started = Number(total?.started ?? 0);
+  const completed = Number(total?.completed ?? 0);
+
+  const result: OverviewAnalytics = {
+    surveyCount: surveyRows.length,
+    publishedCount: surveyRows.filter((s) => s.status === "published").length,
+    responseCount: completed,
+    respondentCount: Number(total?.respondents ?? 0),
+    avgDurationMs: Number(total?.avg_ms ?? 0),
+    completionRate: percent(completed, started),
+    topSurveys: [...byS].map((r) => ({
+      surveyId: String(r.survey_id),
+      title: titleOf.get(String(r.survey_id)) || "—",
+      responseCount: Number(r.n),
+      avgDurationMs: Number(r.avg_ms),
+    })),
+    severityBreakdown: (["none", "mild", "moderate", "severe"] as Severity[])
+      .map((severity) => ({
+        severity,
+        count: Number([...severities].find((x) => x.severity === severity)?.n ?? 0),
       }))
-      .sort((a, b) => b.lastSavedAt.localeCompare(a.lastSavedAt)),
+      .filter((s) => s.count > 0),
+    timeline: [...timelineRows].map((r) => ({ date: String(r.date), count: Number(r.n) })),
+    inProgress: [...drafts].map((r) => ({
+      responseId: String(r.id),
+      userId: r.user_id ? String(r.user_id) : null,
+      surveyId: String(r.survey_id),
+      surveyTitle: titleOf.get(String(r.survey_id)) ?? "—",
+      startedAt: String(r.started_at),
+      lastSavedAt: String(r.last_saved_at ?? r.started_at),
+    })),
   };
+
   await audit(c, { action: "analytics.overview", details: { responseCount: result.responseCount } });
   return c.json(result);
 });
