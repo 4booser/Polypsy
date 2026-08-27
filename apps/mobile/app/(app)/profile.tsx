@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ageAt, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
+import { authenticate, isAvailable, isEnabled, setEnabled as setBiometrics } from "@/auth/biometrics";
 import { useAuth } from "@/auth/AuthContext";
 import { API_URL } from "@/config";
 import { Body, Button, Card, Chip, Divider, ErrorText, Field, Row, Title } from "@/components/ui";
@@ -103,6 +104,8 @@ export default function AccountScreen() {
           <Chip label="Русский" selected={lang === "ru"} onPress={() => setLang("ru")} />
         </Row>
       </Card>
+
+      <BiometricsCard />
 
       {queueLeft > 0 ? (
         <Card style={{ borderColor: severityColor.mild, borderWidth: 1 }}>
@@ -237,5 +240,64 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
       <View style={{ flex: 1 }} />
       <Body>{value}</Body>
     </Row>
+  );
+}
+
+
+/**
+ * Замок по отпечатку или лицу.
+ *
+ * Формулировки честные: замок закрывает экран, а не шифрует данные — токен и
+ * так лежит в защищённом хранилище системы. И отдельно сказано, чего делать
+ * не надо: на общем планшете в кабинете биометрия принадлежит не
+ * обследуемому, и замок привяжет учётную запись к чужому пальцу.
+ */
+function BiometricsCard() {
+  const c = useColors();
+  const { lang } = useLang();
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [on, setOn] = useState(false);
+
+  useEffect(() => {
+    void isAvailable().then(setAvailable);
+    void isEnabled().then(setOn);
+  }, []);
+
+  if (available === null) return null;
+  if (!available) return null;
+
+  const toggle = async () => {
+    // включение подтверждаем прямо сейчас: иначе человек узнает, что замок не
+    // работает, только когда окажется от него заперт
+    if (!on && !(await authenticate())) return;
+    await setBiometrics(!on);
+    setOn(!on);
+  };
+
+  return (
+    <Card>
+      <Text style={{ color: c.text, fontSize: 16, fontWeight: "700" }}>
+        {lang === "uk" ? "Замок на застосунок" : "Замок на приложение"}
+      </Text>
+      <Body muted>
+        {lang === "uk"
+          ? "Просити відбиток або обличчя при вході. Закриває екран від сторонніх очей — дані й так зберігаються в захищеному сховищі системи."
+          : "Спрашивать отпечаток или лицо при входе. Закрывает экран от посторонних глаз — данные и так хранятся в защищённом хранилище системы."}
+      </Body>
+      <Body muted>
+        {lang === "uk"
+          ? "На спільному планшеті не вмикайте: біометрія там належить не вам."
+          : "На общем планшете не включайте: биометрия там принадлежит не вам."}
+      </Body>
+      <Button
+        title={
+          on
+            ? lang === "uk" ? "Вимкнути замок" : "Выключить замок"
+            : lang === "uk" ? "Увімкнути замок" : "Включить замок"
+        }
+        variant="secondary"
+        onPress={() => void toggle()}
+      />
+    </Card>
   );
 }
