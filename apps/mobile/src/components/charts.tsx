@@ -1,6 +1,8 @@
 import { Text, View } from "react-native";
 import type { Severity } from "@quizzy/shared";
-import { radius, severityColor, severityLabel, spacing, useChart, useColors } from "../theme";
+import { radius, severityColor, spacing, useChart, useColors } from "../theme";
+import { SEVERITY_KEY } from "@quizzy/shared";
+import { useLang } from "../lang";
 import { Body, Card } from "./ui";
 
 /**
@@ -143,13 +145,14 @@ export function SeverityBar({
 /** Метка выраженности: кружок + текст, никогда не только цвет */
 export function SeverityTag({ severity, label }: { severity: Severity; label?: string }) {
   const c = useColors();
+  const { ut } = useLang();
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
       <View
         style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: severityColor[severity] }}
       />
       <Text style={{ color: c.text, fontSize: 13, fontWeight: "600" }}>
-        {label ?? severityLabel[severity]}
+        {label ?? ut(SEVERITY_KEY[severity])}
       </Text>
     </View>
   );

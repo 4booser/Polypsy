@@ -6,3 +6,4 @@ export * from "./uiStrings";
 export * from "./rci";
 export * from "./medstats";
 export * from "./versionDiff";
+export * from "./palette";

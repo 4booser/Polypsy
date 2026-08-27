@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { api } from "../api/client";
 import { spacing, useColors } from "../theme";
 
@@ -17,6 +18,7 @@ import { spacing, useColors } from "../theme";
  */
 export function OfflineBar() {
   const c = useColors();
+  const router = useRouter();
   const [left, setLeft] = useState(0);
   const [rejected, setRejected] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -46,15 +48,22 @@ export function OfflineBar() {
     }
   };
 
+  /*
+   * Отвергнутое сервером само не уйдёт: там нужен разбор, а не повтор.
+   * Поэтому на такой полосе нажатие ведёт на экран очереди, где видно, что
+   * именно не принято, а не запускает бесполезную попытку.
+   */
   const problem = rejected > 0;
+  const onPress = problem ? () => router.push("/(app)/queue") : retry;
+
   return (
     <Pressable
-      onPress={retry}
+      onPress={onPress}
       disabled={busy}
       accessibilityRole="button"
       accessibilityLabel={
         problem
-          ? `Не удалось отправить ${rejected}. Нажмите, чтобы повторить`
+          ? `Не удалось отправить: ${rejected}. Нажмите, чтобы посмотреть`
           : `Ждут отправки: ${left}. Нажмите, чтобы отправить сейчас`
       }
       style={{
@@ -80,7 +89,7 @@ export function OfflineBar() {
           : `Ответы сохранены на устройстве и ждут связи: ${left}`}
       </Text>
       <Text style={{ fontSize: 13, fontWeight: "600", color: problem ? "#fff" : c.primary }}>
-        {busy ? "Отправляю…" : "Повторить"}
+        {problem ? "Разобрать" : busy ? "Отправляю…" : "Повторить"}
       </Text>
     </Pressable>
   );
