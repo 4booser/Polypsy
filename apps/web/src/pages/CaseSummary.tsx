@@ -6,37 +6,14 @@ import { SeverityTag } from "../charts/advanced";
 import { day, dateTime } from "../format";
 import { useAuth } from "../auth";
 import { Loading, PageHead, useAction } from "../ui";
+import { useLang } from "../lang";
+/*
+ * Подписи направлений берутся из экрана направлений: держать вторую копию
+ * тех же словарей — верный способ однажды показать «принято» в одном месте
+ * и «прийнято» в другом.
+ */
+import { DESTINATION_KEY, NEXT_STATUS, STATUS_KEY, URGENCY_KEY } from "./Referrals";
 
-const DEST: Record<ReferralDestination, string> = {
-  psychiatrist: "психиатр",
-  inpatient: "стационар",
-  outpatient: "амбулаторно",
-  commander: "командиру",
-  other: "иное",
-};
-const URGENCY: Record<ReferralUrgency, string> = {
-  routine: "планово",
-  urgent: "срочно",
-  immediate: "немедленно",
-};
-const STATUS: Record<string, string> = {
-  created: "выписано",
-  accepted: "принято",
-  completed: "завершено",
-  declined: "отклонено",
-};
-const NEXT_STATUS: Record<string, { value: string; label: string }[]> = {
-  created: [
-    { value: "accepted", label: "Принято" },
-    { value: "declined", label: "Отклонено" },
-  ],
-  accepted: [
-    { value: "completed", label: "Завершено" },
-    { value: "declined", label: "Отклонено" },
-  ],
-  completed: [],
-  declined: [],
-};
 
 /**
  * Сводка для консилиума: всё о пациенте на одной странице.
@@ -51,6 +28,7 @@ export default function CaseSummaryPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { user } = useAuth();
+  const { ut } = useLang();
   const run = useAction();
 
   const reload = () => {
@@ -66,7 +44,7 @@ export default function CaseSummaryPage() {
     <>
       {/* штамп для подшивки: без «кто и когда распечатал» лист в деле безымянный */}
       <p className="print-only hint">
-        Сводка сформирована {dateTime(new Date().toISOString())}
+        {ut("sum.formedAt")} {dateTime(new Date().toISOString())}
         {user ? ` · ${user.lastName ?? ""} ${user.firstName ?? ""}`.trimEnd() : ""}
       </p>
       <PageHead
@@ -81,8 +59,8 @@ export default function CaseSummaryPage() {
           .join(" · ")}
         actions={
           <div className="row tight">
-            <button onClick={() => setShowForm((v) => !v)}>Выписать направление</button>
-            <button onClick={() => window.print()}>Печать сводки</button>
+            <button onClick={() => setShowForm((v) => !v)}>{ut("ref.new")}</button>
+            <button onClick={() => window.print()}>{ut("sum.print")}</button>
           </div>
         }
       />
@@ -99,7 +77,7 @@ export default function CaseSummaryPage() {
 
       {data.openAlerts.length ? (
         <div className="card alarm">
-          <h2>Открытые тревоги: {data.openAlerts.length}</h2>
+          <h2>{ut("sum.openAlerts")}: {data.openAlerts.length}</h2>
           {data.openAlerts.map((a) => (
             <p key={a.id} style={{ margin: "4px 0", fontSize: 13 }}>
               <strong>{a.surveyTitle}</strong> · {a.label} · {dateTime(a.at)}
@@ -113,17 +91,17 @@ export default function CaseSummaryPage() {
           <div className="card-head">
             <h2>{s.title}</h2>
             <span className="hint">
-              замеров {s.count}
-              {s.lastAt ? ` · последний ${day(s.lastAt)}` : ""}
+              {ut("sum.measurements")} {s.count}
+              {s.lastAt ? ` · ${ut("sum.lastAt")} ${day(s.lastAt)}` : ""}
             </span>
           </div>
           <table>
             <thead>
               <tr>
-                <th>Шкала</th>
-                <th className="num">Последний балл</th>
-                <th>Интерпретация</th>
-                <th>Динамика</th>
+                <th>{ut("sum.scale")}</th>
+                <th className="num">{ut("sum.lastScore")}</th>
+                <th>{ut("sum.interpretation")}</th>
+                <th>{ut("sum.trend")}</th>
               </tr>
             </thead>
             <tbody>
@@ -140,14 +118,14 @@ export default function CaseSummaryPage() {
                   </td>
                   <td>
                     {!sc.reliableChange ? (
-                      <span className="muted">один замер</span>
+                      <span className="muted">{ut("sum.oneMeasure")}</span>
                     ) : sc.reliableChange.significant ? (
                       <strong style={{ color: "var(--accent)" }}>
-                        достоверный {sc.reliableChange.direction === "up" ? "рост" : "спад"} (RCI{" "}
+                        {sc.reliableChange.direction === "up" ? ut("sum.reliableUp") : ut("sum.reliableDown")} (RCI{" "}
                         {sc.reliableChange.rci})
                       </strong>
                     ) : (
-                      <span className="muted">в пределах ошибки</span>
+                      <span className="muted">{ut("sum.withinError")}</span>
                     )}
                   </td>
                 </tr>
@@ -159,7 +137,7 @@ export default function CaseSummaryPage() {
 
       {data.conclusions.length ? (
         <div className="card">
-          <h2>Заключения специалистов</h2>
+          <h2>{ut("sum.conclusions")}</h2>
           {data.conclusions.map((c, i) => (
             <div className="conclusion-view" key={i} style={{ marginTop: 8 }}>
               <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 13 }}>{c.text}</p>
@@ -173,25 +151,25 @@ export default function CaseSummaryPage() {
       ) : null}
 
       <div className="card scroll-x">
-        <h2>Направления</h2>
+        <h2>{ut("ref.title")}</h2>
         {data.referrals.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>Направлений нет</p>
+          <p className="muted" style={{ margin: 0 }}>{ut("ref.none")}</p>
         ) : (
           <table>
             <thead>
               <tr>
-                <th>Куда</th><th>Срочность</th><th>Статус</th><th>Основание</th>
-                <th>Выписал</th><th /></tr>
+                <th>{ut("ref.where")}</th><th>{ut("ref.urgency")}</th><th>{ut("ref.status")}</th><th>{ut("ref.reason")}</th>
+                <th>{ut("ref.issued")}</th><th /></tr>
             </thead>
             <tbody>
               {data.referrals.map((r) => (
                 <tr key={r.id}>
-                  <td>{DEST[r.destination]}</td>
-                  <td className={r.urgency === "immediate" ? "bad" : undefined}>{URGENCY[r.urgency]}</td>
-                  <td>{STATUS[r.status]}</td>
+                  <td>{ut(DESTINATION_KEY[r.destination])}</td>
+                  <td className={r.urgency === "immediate" ? "bad" : undefined}>{ut(URGENCY_KEY[r.urgency])}</td>
+                  <td>{ut(STATUS_KEY[r.status])}</td>
                   <td className="muted" style={{ maxWidth: 260, fontSize: 12 }}>
                     {r.reason ?? "—"}
-                    {r.outcomeNote ? <div>Ответ: {r.outcomeNote}</div> : null}
+                    {r.outcomeNote ? <div>{ut("ref.answer")}: {r.outcomeNote}</div> : null}
                   </td>
                   <td className="muted">{r.createdByName}, {day(r.createdAt)}</td>
                   <td>
@@ -203,10 +181,10 @@ export default function CaseSummaryPage() {
                             run(async () => {
                               await api.updateReferral(r.id, n.value);
                               reload();
-                            }, `Направление: ${n.label.toLowerCase()}`)
+                            }, ut(n.key))
                           }
                         >
-                          {n.label}
+                          {ut(n.key)}
                         </button>
                       ))}
                     </div>
@@ -222,6 +200,7 @@ export default function CaseSummaryPage() {
 }
 
 function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }) {
+  const { ut } = useLang();
   const [destination, setDestination] = useState<ReferralDestination>("psychiatrist");
   const [urgency, setUrgency] = useState<ReferralUrgency>("routine");
   const [reason, setReason] = useState("");
@@ -230,29 +209,29 @@ function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }
   return (
     <div className="card no-print">
       <div className="card-head">
-        <h2>Новое направление</h2>
-        <button onClick={onDone}>Закрыть</button>
+        <h2>{ut("ref.new")}</h2>
+        <button onClick={onDone}>{ut("ui.close")}</button>
       </div>
       <div className="form-grid">
         <label className="field">
-          <span>Куда</span>
+          <span>{ut("ref.where")}</span>
           <select value={destination} onChange={(e) => setDestination(e.target.value as ReferralDestination)}>
-            {Object.entries(DEST).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
+            {Object.entries(DESTINATION_KEY).map(([v, k]) => (
+              <option key={v} value={v}>{ut(k)}</option>
             ))}
           </select>
         </label>
         <label className="field">
-          <span>Срочность</span>
+          <span>{ut("ref.urgency")}</span>
           <select value={urgency} onChange={(e) => setUrgency(e.target.value as ReferralUrgency)}>
-            {Object.entries(URGENCY).map(([v, l]) => (
-              <option key={v} value={v}>{l}</option>
+            {Object.entries(URGENCY_KEY).map(([v, k]) => (
+              <option key={v} value={v}>{ut(k)}</option>
             ))}
           </select>
         </label>
         <label className="field grow">
-          <span>Основание</span>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="что послужило поводом" />
+          <span>{ut("ref.reason")}</span>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={ut("ref.reasonPlaceholder")} />
         </label>
       </div>
       <div className="row" style={{ marginTop: 10 }}>
@@ -265,7 +244,7 @@ function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }
             }, "Направление выписано")
           }
         >
-          Выписать
+          {ut("ref.issue")}
         </button>
       </div>
     </div>

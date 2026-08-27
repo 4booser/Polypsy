@@ -37,6 +37,8 @@ test("экраны ежедневного пути переведены цели
     ["/worklist", "Черга роботи"],
     ["/alerts", "Розбір випадків"],
     ["/patients", "Пацієнти"],
+    ["/referrals", "Направлення"],
+    ["/unit-report", "Стан підрозділу"],
   ] as const) {
     await page.goto(path);
     await expect(page.locator(".page-head h1")).toHaveText(marker);
