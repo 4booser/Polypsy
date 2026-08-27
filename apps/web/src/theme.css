@@ -759,3 +759,20 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 .date-range { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .date-range label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-caption); color: var(--muted); }
 .date-range input { width: auto; min-width: 132px; }
+
+/* ── очередь работы: строка-ссылка на всю ширину ──────────────────────────── */
+.work-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+  color: var(--text); text-decoration: none;
+}
+.work-row:first-child { border-top: none; }
+.work-row:hover { background: var(--surface-2); text-decoration: none; }
+.work-row .grow { flex: 1; min-width: 0; }
+.work-kind { font-size: var(--fs-micro); white-space: nowrap; }
+.work-since { font-size: var(--fs-caption); white-space: nowrap; min-width: 74px; text-align: right; }
+@media (max-width: 760px) {
+  .work-row { flex-wrap: wrap; }
+  .work-since, .work-kind { min-width: 0; }
+}

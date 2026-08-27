@@ -33,6 +33,7 @@ import type {
   AlertCase,
   Page,
   Respondent,
+  Worklist,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -314,6 +315,7 @@ export const api = {
     return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
   },
   alertCaseUnits: () => request<string[]>("/api/alert-cases/units"),
+  worklist: () => request<Worklist>("/api/worklist"),
   assignCase: (id: string, release = false) =>
     request<void>(`/api/alert-cases/${id}/assign`, {
       method: "POST",

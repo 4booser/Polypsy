@@ -130,6 +130,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
 
   /* ── тревоги, направления, заключения ── */
   "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff" },
+  "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff" },
   "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff" },
   "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff" },
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff" },
