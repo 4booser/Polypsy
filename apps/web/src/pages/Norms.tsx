@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { Empty, Loading, PageHead, useAction } from "../ui";
+import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
+import { useResource } from "../useResource";
 
 const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "женщины", all: "вся выборка" };
 
@@ -18,25 +19,19 @@ type NormsTab = "table" | "curves";
 export default function Norms() {
   const { id } = useParams<{ id: string }>();
   const [tab, setTab] = useState<NormsTab>("table");
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.normCandidates>> | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
   const run = useAction();
 
-  const reload = () => {
-    if (!id) return;
-    api.normCandidates(id).then(setData).catch((e) => setError(e.message));
-  };
-  useEffect(reload, [id]);
-
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <Loading />;
-
-  const publishableCodes = data.scales
-    .filter((s) => s.candidate.some((g) => g.sex !== null && g.publishable))
-    .map((s) => s.code);
+  const res = useResource(() => api.normCandidates(id!), [id], { enabled: !!id });
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {(data) => {
+        const publishableCodes = data.scales
+          .filter((s) => s.candidate.some((g) => g.sex !== null && g.publishable))
+          .map((s) => s.code);
+        return (
     <>
       <PageHead
         title="Локальные нормы"
@@ -168,6 +163,9 @@ export default function Norms() {
       </div>
       ) : null}
     </>
+        );
+      }}
+    </Screen>
   );
 }
 
@@ -177,12 +175,7 @@ export default function Norms() {
  * там, где данных мало, окно шире, и кривая грубее.
  */
 function AgeCurves({ surveyId }: { surveyId: string }) {
-  const [data, setData] = useState<Awaited<ReturnType<typeof api.ageCurves>> | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.ageCurves(surveyId).then(setData).catch((e) => setError(e.message));
-  }, [surveyId]);
+  const { data, error } = useResource(() => api.ageCurves(surveyId), [surveyId]);
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <Loading />;

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { Battery, Schedule, ScheduleScope } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { day } from "../format";
-import { Empty, IconBattery, Loading, PageHead, Search, useAction } from "../ui";
+import { Empty, IconBattery, Loading, PageHead, Screen, Search, useAction } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 /**
  * Расписание повторных обследований.
@@ -14,23 +15,24 @@ import { useLang } from "../lang";
  */
 export default function Schedules() {
   const { ut } = useLang();
-  const [rows, setRows] = useState<Schedule[] | null>(null);
-  const [batteries, setBatteries] = useState<Battery[]>([]);
-  const [units, setUnits] = useState<string[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [editing, setEditing] = useState<Schedule | "new" | null>(null);
   const run = useAction();
 
-  const reload = () => api.schedules().then(setRows).catch(() => setRows([]));
-
-  useEffect(() => {
-    reload();
-    api.batteries().then((b) => setBatteries(b.filter((x) => !x.archived))).catch(() => {});
-    api.scheduleUnits().then(setUnits).catch(() => {});
-    api.patients().then((p) => setPatients(p.items)).catch(() => {});
+  // справочники нужны редактору: их отказ ограничивает выбор, но не экран
+  const res = useResource(async () => {
+    const [rows, batteries, units, patients] = await Promise.all([
+      api.schedules(),
+      api.batteries().then((b) => b.filter((x) => !x.archived)).catch(() => [] as Battery[]),
+      api.scheduleUnits().catch(() => [] as string[]),
+      api.patients().then((p) => p.items).catch(() => [] as Patient[]),
+    ]);
+    return { rows, batteries, units, patients };
   }, []);
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {({ rows, batteries, units, patients }) => (
     <>
       <PageHead
         title="Расписание повторов"
@@ -175,6 +177,8 @@ export default function Schedules() {
         </div>
       ))}
     </>
+      )}
+    </Screen>
   );
 }
 
