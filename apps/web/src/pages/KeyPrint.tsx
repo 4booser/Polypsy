@@ -1,29 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, download } from "../api";
+import { useResource } from "../useResource";
 import { useAction } from "../ui";
 
-interface KeySheet {
-  surveyId: string;
-  title: string;
-  version: number;
-  questionCount: number;
-  questions: { n: number; title: string }[];
-  scales: {
-    code: string;
-    title: string;
-    kind: string;
-    normalization: string;
-    itemCount: number;
-    yes: string;
-    no: string;
-    scored: string;
-    corrections: string;
-    norms: string;
-    stens: string;
-    bands: string;
-  }[];
-}
 
 /**
  * Печать ключей для сверки с пособием.
@@ -35,15 +15,9 @@ interface KeySheet {
  */
 export default function KeyPrint() {
   const { id } = useParams<{ id: string }>();
-  const [sheet, setSheet] = useState<KeySheet | null>(null);
   const [showItems, setShowItems] = useState(false);
   const run = useAction();
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    api.keySheet(id).then(setSheet).catch((e) => setError(e.message));
-  }, [id]);
+  const { data: sheet, error } = useResource(() => api.keySheet(id!), [id], { enabled: !!id });
 
   if (error) return <p className="error">{error}</p>;
   if (!sheet) return <p className="muted">Загрузка…</p>;

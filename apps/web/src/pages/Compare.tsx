@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import type { CohortBy, ComparisonResult, CorrelationMatrix, SurveyListItem } from "@quizzy/shared";
+import { useState } from "react";
+import type { CohortBy, ComparisonResult, CorrelationMatrix } from "@quizzy/shared";
 import { api } from "../api";
+import { useResource } from "../useResource";
 import { Chart } from "../charts";
 import { SERIES, severityColor } from "../format";
 import { Empty, Loading, PageHead } from "../ui";
@@ -20,35 +21,24 @@ const BY_LABEL: [CohortBy, string][] = [
  * «отличается ли отделение от отделения» и «что с чем связано».
  */
 export default function Compare() {
-  const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
-  const [surveyId, setSurveyId] = useState("");
+  const [chosen, setChosen] = useState("");
   const [by, setBy] = useState<CohortBy>("unit");
-  const [data, setData] = useState<ComparisonResult | null>(null);
-  const [corr, setCorr] = useState<CorrelationMatrix | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api
-      .surveys()
-      .then((s) => {
-        const withData = s.filter((x) => x.responseCount > 0);
-        setSurveys(withData);
-        if (withData[0]) setSurveyId(withData[0].id);
-      })
-      .catch((e) => setError(e.message));
-  }, []);
+  const list = useResource(async () => (await api.surveys()).filter((x) => x.responseCount > 0), []);
+  const surveys = list.data ?? [];
+  // выбор по умолчанию — первая методика с данными; явный выбор его перебивает
+  const surveyId = chosen || surveys[0]?.id || "";
 
-  useEffect(() => {
-    if (!surveyId) return;
-    setData(null);
-    setCorr(null);
-    Promise.all([api.compare(surveyId, by), api.correlations(surveyId)])
-      .then(([c, m]) => {
-        setData(c);
-        setCorr(m);
-      })
-      .catch((e) => setError(e.message));
-  }, [surveyId, by]);
+  const res = useResource(
+    async () => {
+      const [data, corr] = await Promise.all([api.compare(surveyId, by), api.correlations(surveyId)]);
+      return { data, corr };
+    },
+    [surveyId, by],
+    { enabled: !!surveyId },
+  );
+  const { data, corr } = res.data ?? { data: null, corr: null };
+  const error = list.error ?? res.error;
 
   return (
     <>
@@ -57,7 +47,7 @@ export default function Compare() {
         sub="Когорты по паспортной части и связи между субшкалами"
         actions={
           <>
-            <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)} style={{ width: 300 }}>
+            <select value={surveyId} onChange={(e) => setChosen(e.target.value)} style={{ width: 300 }}>
               {surveys.map((s) => (
                 <option key={s.id} value={s.id}>{s.title}</option>
               ))}
