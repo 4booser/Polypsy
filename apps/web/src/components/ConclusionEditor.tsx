@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, type ConclusionState } from "../api";
+import { api } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
+import { useResource } from "../useResource";
 
 /**
  * Заключение специалиста поверх автоматической интерпретации.
@@ -11,22 +12,28 @@ import { useAction } from "../ui";
  * рабочий текст не должен утекать в документ, который подошьют в дело.
  */
 export function ConclusionEditor({ responseId }: { responseId: string }) {
-  const [state, setState] = useState<ConclusionState | null>(null);
   const [text, setText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const run = useAction();
 
-  useEffect(() => {
-    api
-      .conclusion(responseId)
-      .then((s) => {
-        setState(s);
-        setText(s.current?.status === "draft" ? s.current.text : "");
-      })
-      .catch(() => setState({ current: null, versions: [] }));
-  }, [responseId]);
+  const res = useResource(() => api.conclusion(responseId), [responseId]);
+  // сохранение и подпись возвращают новое состояние целиком — кладём его в
+  // ресурс, а не рядом: отдельная копия пережила бы смену прохождения
+  const state = res.data;
 
-  if (!state) return <p className="muted">Загрузка…</p>;
+  /*
+   * Черновик подставляется в поле один раз на загрузку. Делать это на каждый
+   * рендер значило бы затирать то, что специалист печатает прямо сейчас.
+   */
+  useEffect(() => {
+    const current = res.data?.current;
+    setText(current?.status === "draft" ? current.text : "");
+  }, [res.data]);
+
+  if (!state) {
+    // отказ загрузки — не повод прятать редактор: заключение можно написать заново
+    return res.error ? <p className="muted">Заключение не загрузилось: {res.error}</p> : <p className="muted">Загрузка…</p>;
+  }
 
   const signed = state.versions.find((v) => v.status === "signed");
   const draft = state.current?.status === "draft" ? state.current : null;
@@ -60,7 +67,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           disabled={!text.trim()}
           onClick={() =>
             run(async () => {
-              setState(await api.saveConclusion(responseId, text, state.current?.version ?? 0));
+              res.patch(await api.saveConclusion(responseId, text, state.current?.version ?? 0));
             }, "Черновик сохранён")
           }
         >
@@ -83,7 +90,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
                * текстом.
                */
               const s = await api.signConclusion(responseId, latest.current!.version);
-              setState(s);
+              res.patch(s);
               setText("");
             }, "Заключение подписано — теперь оно в печатном отчёте")
           }

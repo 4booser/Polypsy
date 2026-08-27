@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
-import type { GroupAdmin, SurveyGroupWithCounts, User } from "@quizzy/shared";
+import { useEffect, useState } from "react";
+import type { GroupAdmin } from "@quizzy/shared";
 import { api } from "../api";
+import { useResource } from "../useResource";
 import { useAuth } from "../auth";
 import { dateTime } from "../format";
 import { Loading, PageHead, useAction } from "../ui";
@@ -14,24 +15,24 @@ export function Groups() {
   const run = useAction();
   const { user } = useAuth();
   const isSuper = user?.role === "superadmin";
-  const [groups, setGroups] = useState<SurveyGroupWithCounts[] | null>(null);
-  const [staff, setStaff] = useState<User[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[0]!);
   const [assigning, setAssigning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setGroups(await api.groups());
-    if (isSuper) setStaff((await api.users()).filter((u) => u.role !== "user"));
+  const res = useResource(async () => {
+    const [groups, users] = await Promise.all([
+      api.groups(),
+      isSuper ? api.users() : Promise.resolve([]),
+    ]);
+    return { groups, staff: users.filter((u) => u.role !== "user") };
   }, [isSuper]);
+  const load = async () => res.reload();
+  const groups = res.data?.groups ?? null;
+  const staff = res.data?.staff ?? [];
 
-  useEffect(() => {
-    load().catch((e) => setError(e.message));
-  }, [load]);
-
-  if (!groups) return <Loading error={error} />;
+  if (!groups) return <Loading error={res.error} />;
 
   return (
     <>
@@ -199,19 +200,17 @@ const ROLE_LABEL: Record<string, string> = {
 /** Учётные записи персонала */
 export function Users() {
   const { ut } = useLang();
-  const [users, setUsers] = useState<User[] | null>(null);
   const [form, setForm] = useState({ lastName: "", firstName: "", middleName: "", email: "", password: "" });
   const [role, setRole] = useState<"admin" | "superadmin">("admin");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
 
-  const load = useCallback(async () => setUsers(await api.users()), []);
-  useEffect(() => {
-    load().catch((e) => setError(e.message));
-  }, [load]);
+  const res = useResource(() => api.users(), []);
+  const load = async () => res.reload();
+  const users = res.data;
 
-  if (!users) return <Loading error={error} />;
+  if (!users) return <Loading error={res.error} />;
 
   const shown = users.filter((u) =>
     `${u.fullName} ${u.email}`.toLowerCase().includes(query.trim().toLowerCase()),
@@ -327,17 +326,13 @@ export function ConsentText() {
   const [version, setVersion] = useState<number | null>(null);
   const run = useAction();
 
+  const current = useResource(() => api.consentText(), []).data;
   useEffect(() => {
-    api
-      .consentText()
-      .then((t) => {
-        if (!t) return;
-        setVersion(t.version);
-        setUk(t.body.uk ?? "");
-        setRu(t.body.ru ?? "");
-      })
-      .catch(() => {});
-  }, []);
+    if (!current) return;
+    setVersion(current.version);
+    setUk(current.body.uk ?? "");
+    setRu(current.body.ru ?? "");
+  }, [current]);
 
   return (
     <div className="card">
