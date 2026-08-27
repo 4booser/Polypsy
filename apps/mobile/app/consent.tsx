@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "@/api/client";
+import { useAuth } from "@/auth/AuthContext";
 import { Body, Button, ErrorText, Loader, Title } from "@/components/ui";
 import { useLang } from "@/lang";
 import { spacing, useColors } from "@/theme";
@@ -17,10 +18,12 @@ export default function ConsentScreen() {
   const c = useColors();
   const router = useRouter();
   const { ut } = useLang();
+  const { logout } = useAuth();
   const [text, setText] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [declined, setDeclined] = useState(false);
 
   useEffect(() => {
     api
@@ -81,6 +84,26 @@ export default function ConsentScreen() {
           }
         }}
       />
+      {/*
+        Отказ обязателен. Раньше на экране была одна кнопка «соглашаюсь»:
+        не согласный не мог ни отказаться, ни выйти — только убить приложение
+        и вернуться сюда же. Это и ловушка навигации, и подмена согласия:
+        согласие, от которого нельзя отказаться, согласием не является.
+
+        Отказ выводит из учётной записи и объясняет, что делать дальше, —
+        человек не остаётся один на один с экраном без выхода.
+      */}
+      <Button
+        title={ut("consent.decline")}
+        variant="secondary"
+        disabled={busy}
+        onPress={async () => {
+          setDeclined(true);
+          await logout();
+          router.replace("/login");
+        }}
+      />
+      {declined ? <Body muted>{ut("consent.declined")}</Body> : null}
     </ScrollView>
   );
 }
