@@ -25,7 +25,7 @@ export default function Schedules() {
     reload();
     api.batteries().then((b) => setBatteries(b.filter((x) => !x.archived))).catch(() => {});
     api.scheduleUnits().then(setUnits).catch(() => {});
-    api.patients().then(setPatients).catch(() => {});
+    api.patients().then((p) => setPatients(p.items)).catch(() => {});
   }, []);
 
   return (

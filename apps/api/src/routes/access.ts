@@ -133,9 +133,23 @@ accessRoutes.delete("/surveys/:id/grants/:userId", async (c) => {
  * группы. Отдавать всех пациентов системы значило бы раскрывать каждому админу
  * состав чужих отделений. Суперадмин видит всех — ему назначать в любую группу.
  */
+/*
+ * Курсорная пагинация здесь не годится, и это следствие шифрования, а не
+ * лень: список упорядочен по ФИО, а ФИО хранится зашифрованным — упорядочить
+ * его в SQL нечем, а класть рядом открытую копию ради удобного запроса
+ * значило бы обменять защиту персональных данных на пагинацию.
+ *
+ * Поэтому здесь поиск с потолком выдачи. Экран нужен, чтобы найти человека и
+ * назначить ему методику, а не листать пять тысяч фамилий: расшифровать и
+ * отфильтровать на сервере дешевле, чем передать всех клиенту.
+ */
+const PATIENT_LIMIT = 100;
+
 accessRoutes.get("/patients", async (c) => {
   const user = c.get("user");
   const groupIds = await accessibleGroupIds(user);
+  const search = (c.req.query("search") ?? "").trim().toLowerCase();
+  const unit = c.req.query("unit") ?? "";
 
   let rows: (typeof users.$inferSelect)[];
   if (groupIds === null) {
@@ -164,17 +178,26 @@ accessRoutes.get("/patients", async (c) => {
       );
   }
 
+  const all = rows
+    .map((u) => ({ id: u.id, fullName: fullNameOf(u), email: u.email, unit: u.unit }))
+    .filter((u) => (unit ? u.unit === unit : true))
+    .filter((u) =>
+      search ? `${u.fullName} ${u.email}`.toLowerCase().includes(search) : true,
+    )
+    .sort((a, b) => a.fullName.localeCompare(b.fullName));
+
   // чтение списка пациентов — доступ к персональным данным, фиксируем
   await audit(c, {
     action: "access.patient_list",
-    details: { patients: rows.length, scoped: groupIds !== null },
+    details: { matched: all.length, returned: Math.min(all.length, PATIENT_LIMIT), scoped: groupIds !== null },
   });
 
-  return c.json(
-    rows
-      .map((u) => ({ id: u.id, fullName: fullNameOf(u), email: u.email, unit: u.unit }))
-      .sort((a, b) => a.fullName.localeCompare(b.fullName)),
-  );
+  return c.json({
+    items: all.slice(0, PATIENT_LIMIT),
+    // клиент должен понимать, что видит не всё, и сузить поиск
+    total: all.length,
+    truncated: all.length > PATIENT_LIMIT,
+  });
 });
 
 /**

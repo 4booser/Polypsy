@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { itemContribution, reliableChange, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics } from "@quizzy/shared";
 import { db } from "../db";
@@ -20,40 +20,106 @@ export const dynamicsRoutes = new Hono<AppEnv>();
 dynamicsRoutes.use("*", requireAuth, requireStaff);
 
 /** Пациенты, проходившие методики в зоне ответственности сотрудника */
+/**
+ * Кто проходил методики повторно.
+ *
+ * Свёртка делается в базе, а не в приложении: раньше сюда выбирались все
+ * завершённые прохождения со стыковкой к пользователям — на двадцати тысячах
+ * замеров это двадцать тысяч строк в память ради подсчёта, который база
+ * делает одной группировкой.
+ *
+ * Расшифровываются только те, кто попал на страницу: ФИО зашифровано, и
+ * расшифровка всей выборки ради сортировки была бы самой дорогой частью
+ * запроса.
+ */
+const RESPONDENT_LIMIT = 50;
+
 dynamicsRoutes.get("/respondents", async (c) => {
   const scope = await surveyScopeFilter(c.get("user"));
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) return c.json([]);
+  if (!surveyIds.length) return c.json({ items: [], nextCursor: null, total: 0 });
 
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? RESPONDENT_LIMIT), 1), 200);
+  const cursor = c.req.query("cursor") ?? null;
+  const search = (c.req.query("search") ?? "").trim().toLowerCase();
+
+  const base = and(
+    inArray(responses.surveyId, surveyIds),
+    eq(responses.status, "completed"),
+    isNotNull(responses.userId),
+  );
+
+  /*
+   * При поиске выбираем шире и фильтруем после расшифровки: LIKE по
+   * шифртексту ничего не найдёт. На реальных объёмах это несколько тысяч
+   * расшифровок — дешевле, чем держать открытую копию имени в базе.
+   */
   const rows = await db
     .select({
       userId: responses.userId,
+      count: sql<number>`count(*)::int`,
+      last: sql<string>`max(${responses.submittedAt})`,
       firstName: users.firstName,
       lastName: users.lastName,
       middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
       email: users.email,
-      surveyId: responses.surveyId,
-      submittedAt: responses.submittedAt,
     })
     .from(responses)
     .innerJoin(users, eq(users.id, responses.userId))
-    .where(and(inArray(responses.surveyId, surveyIds), eq(responses.status, "completed")));
+    .where(base)
+    .groupBy(
+      responses.userId,
+      users.firstName,
+      users.lastName,
+      users.middleName,
+      users.anonymous,
+      users.pseudonym,
+      users.email,
+    )
+    /*
+     * Курсор проверяется на агрегате, а не на строках прохождений.
+     *
+     * Условие в WHERE отсекало бы отдельные замеры, но у человека есть и
+     * более старые — и он выпадал бы на следующей странице снова, уже с
+     * меньшим максимумом. Пагинация по группам обязана фильтровать по тому
+     * же значению, по которому сортирует.
+     */
+    .having(cursor ? sql`max(${responses.submittedAt}) < ${cursor}` : sql`true`)
+    .orderBy(sql`max(${responses.submittedAt}) desc`)
+    .limit(search ? 2000 : limit + 1);
 
-  const byUser = new Map<string, { fullName: string; email: string; count: number; last: string | null }>();
-  for (const r of rows) {
-    if (!r.userId) continue;
-    const cur = byUser.get(r.userId) ?? { fullName: fullNameOf(r), email: r.email, count: 0, last: null };
-    cur.count++;
-    if (!cur.last || (r.submittedAt ?? "") > cur.last) cur.last = r.submittedAt;
-    byUser.set(r.userId, cur);
+  const named = rows.map((r) => ({
+    userId: r.userId!,
+    fullName: fullNameOf(r as never),
+    email: r.email,
+    count: Number(r.count),
+    last: r.last,
+  }));
+  const matched = search
+    ? named.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(search))
+    : named;
+
+  const items = matched.slice(0, limit);
+  const hasMore = matched.length > limit;
+
+  let total: number | undefined;
+  if (!cursor && !search) {
+    const [row] = await db
+      .select({ n: sql<number>`count(distinct ${responses.userId})::int` })
+      .from(responses)
+      .where(base);
+    total = row?.n ?? 0;
   }
 
-  return c.json(
-    [...byUser.entries()]
-      .map(([userId, v]) => ({ userId, ...v }))
-      .sort((a, b) => (b.last ?? "").localeCompare(a.last ?? "")),
-  );
+  return c.json({
+    items,
+    // курсор — время последнего замера: сортировка идёт по нему же
+    nextCursor: hasMore && items.length ? items[items.length - 1]!.last : null,
+    total,
+  });
 });
 
 /**

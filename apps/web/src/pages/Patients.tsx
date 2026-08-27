@@ -1,32 +1,56 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { RespondentDynamics } from "@quizzy/shared";
+import type { Respondent, RespondentDynamics } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, PageHead, Search, useAction, useUrlState } from "../ui";
 
-type Respondent = Awaited<ReturnType<typeof api.respondents>>[number];
-
 export function PatientList() {
   const [rows, setRows] = useState<Respondent[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   // поиск в адресе: «вот этот пациент» отправляется ссылкой
   const [query, setQuery] = useUrlState("q");
+
+  /*
+   * Поиск ушёл на сервер: список упорядочен по ФИО, а оно зашифровано, и
+   * фильтровать на клиенте можно было только то, что уже приехало. На
+   * реальном объёме приезжала бы не вся выборка.
+   */
+  const load = (more = false) => {
+    setBusy(true);
+    api
+      .respondents({ search: query || undefined, cursor: more ? (cursor ?? undefined) : undefined })
+      .then((page) => {
+        setRows((prev) => (more && prev ? [...prev, ...page.items] : page.items));
+        setCursor(page.nextCursor);
+        if (!more) setTotal(page.total ?? page.items.length);
+      })
+      .catch(() => setRows([]))
+      .finally(() => setBusy(false));
+  };
+
   useEffect(() => {
-    api.respondents().then(setRows).catch(() => setRows([]));
-  }, []);
+    const timer = setTimeout(() => {
+      setCursor(null);
+      load(false);
+    }, query ? 300 : 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
   if (!rows) return <p className="muted">Загрузка…</p>;
 
-  const filtered = query
-    ? rows.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(query.toLowerCase()))
-    : rows;
+  const filtered = rows;
 
   return (
     <>
       <PageHead
         title="Пациенты"
-        sub="Только те, кто проходил методики ваших групп"
+        sub={`Проходившие методики ваших групп${total ? ` · ${total}` : ""}`}
         actions={<Search value={query} onChange={setQuery} placeholder="Имя или email" />}
       />
       <div className="card">
@@ -72,6 +96,11 @@ export function PatientList() {
           ]}
         />
       </div>
+      {cursor ? (
+        <button style={{ width: "100%" }} disabled={busy} onClick={() => load(true)}>
+          {busy ? "Загружаю…" : "Показать ещё"}
+        </button>
+      ) : null}
     </>
   );
 }

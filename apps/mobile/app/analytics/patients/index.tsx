@@ -15,7 +15,7 @@ export default function PatientsScreen() {
 
   const load = useCallback(async () => {
     try {
-      setPeople(await api.respondents());
+      setPeople((await api.respondents()).items);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить список");
       setPeople([]);

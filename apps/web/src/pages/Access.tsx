@@ -18,7 +18,7 @@ export default function Access() {
 
   async function load() {
     if (!id) return;
-    const [s, g, p] = await Promise.all([api.survey(id), api.grants(id), api.patients()]);
+    const [s, g, p] = await Promise.all([api.survey(id), api.grants(id), api.patients().then((p) => p.items)]);
     setSurvey(s);
     setGrants(g);
     setPatients(p);
