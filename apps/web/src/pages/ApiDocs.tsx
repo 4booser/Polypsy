@@ -1,20 +1,7 @@
-import { useEffect, useState } from "react";
-import { api } from "../api";
+import { useState } from "react";
+import { api, type OpenApiOperation as Operation } from "../api";
+import { useResource } from "../useResource";
 import { Loading, PageHead } from "../ui";
-
-interface Operation {
-  summary: string;
-  description: string;
-  tags: string[];
-  security: unknown[];
-  requestBody?: {
-    content: { "application/json": { schema: Record<string, unknown> } };
-  };
-}
-type Spec = {
-  info: { title: string; version: string };
-  paths: Record<string, Record<string, Operation>>;
-};
 
 const METHOD_ORDER = ["get", "post", "put", "patch", "delete"];
 
@@ -27,16 +14,10 @@ const METHOD_ORDER = ["get", "post", "put", "patch", "delete"];
  * маршрутов со схемами тел даёт то же самое без единого внешнего запроса.
  */
 export default function ApiDocs() {
-  const [spec, setSpec] = useState<Spec | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const { data: spec, error } = useResource(() => api.openapi(), []);
 
-  useEffect(() => {
-    api.openapi().then(setSpec).catch((e) => setError(e.message));
-  }, []);
-
-  if (error) return <p className="error">{error}</p>;
-  if (!spec) return <Loading />;
+  if (!spec) return <Loading error={error} />;
 
   const byTag = new Map<string, { path: string; method: string; op: Operation }[]>();
   for (const [path, methods] of Object.entries(spec.paths)) {

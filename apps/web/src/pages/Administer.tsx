@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { Answer, SurveyFull } from "@quizzy/shared";
 import { isAnswered, isQuestionVisible } from "@quizzy/shared";
 import { api, type Patient } from "../api";
+import { useResource } from "../useResource";
 import { SeverityTag } from "../charts/advanced";
 import { Loading, PageHead } from "../ui";
 import { useLang } from "../lang";
@@ -17,8 +18,6 @@ export default function Administer() {
   const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [survey, setSurvey] = useState<SurveyFull | null>(null);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [subject, setSubject] = useState("");
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.submitFor>> | null>(null);
@@ -26,18 +25,22 @@ export default function Administer() {
   const [busy, setBusy] = useState(false);
   const started = useMemo(() => new Date().toISOString(), []);
 
-  useEffect(() => {
-    if (!id) return;
-    Promise.all([api.survey(id), api.patients().then((p) => p.items)])
-      .then(([s, p]) => {
-        setSurvey(s);
-        setPatients(p);
-      })
-      .catch((e) => setError(e.message));
-  }, [id]);
+  const res = useResource(
+    async () => {
+      const [survey, patients] = await Promise.all([
+        api.survey(id!),
+        api.patients().then((p) => p.items),
+      ]);
+      return { survey, patients };
+    },
+    [id],
+    { enabled: !!id },
+  );
+  const survey: SurveyFull | null = res.data?.survey ?? null;
+  const patients: Patient[] = res.data?.patients ?? [];
 
-  if (error) return <p className="error">{error}</p>;
-  if (!survey) return <Loading />;
+  // ошибка ниже — про сдачу, а не про загрузку: у них разные состояния
+  if (!survey) return <Loading error={res.error} />;
 
   const visible = survey.questions.filter((q) => isQuestionVisible(q, survey.questions, answers));
   const unanswered = visible.filter((q) => q.required && q.type !== "info" && !isAnswered(q, answers.get(q.id)));

@@ -1,14 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Issue, SurveyListItem } from "@quizzy/shared";
 import { api } from "../../api";
+import { useResource } from "../../useResource";
 import { ConfirmByName, Loading, PageHead, useToast } from "../../ui";
 
 export function SurveyList() {
-  const [rows, setRows] = useState<SurveyListItem[] | null>(null);
   const [showArchived, setShowArchived] = useState(false);
-  const [confirming, setConfirming] = useState<SurveyListItem | null>(null);
+  // ошибка импорта — про действие, а не про загрузку списка: состояния разные
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<SurveyListItem | null>(null);
   const [importIssues, setImportIssues] = useState<Issue[] | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -42,15 +43,11 @@ export function SurveyList() {
     }
   }
 
-  async function load() {
-    setRows(await api.surveys(showArchived));
-  }
-  useEffect(() => {
-    load().catch((e) => setError(e.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showArchived]);
+  const res = useResource(() => api.surveys(showArchived), [showArchived]);
+  const rows = res.data;
+  const load = async () => res.reload();
 
-  if (!rows) return <Loading error={error} rows={5} />;
+  if (!rows) return <Loading error={res.error} rows={5} />;
 
   return (
     <>

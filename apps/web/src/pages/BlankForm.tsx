@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
+import { useResource } from "../useResource";
 
 /**
  * Пустой бланк для бумажного проведения.
@@ -13,14 +14,8 @@ import { api } from "../api";
  */
 export default function BlankForm() {
   const { id } = useParams<{ id: string }>();
-  const [survey, setSurvey] = useState<SurveyFull | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [compact, setCompact] = useState(true);
-
-  useEffect(() => {
-    if (!id) return;
-    api.survey(id).then(setSurvey).catch((e) => setError(e.message));
-  }, [id]);
+  const { data: survey, error } = useResource(() => api.survey(id!), [id], { enabled: !!id });
 
   if (error) return <p className="error">{error}</p>;
   if (!survey) return <p className="muted">Загрузка…</p>;

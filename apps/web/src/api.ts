@@ -215,6 +215,48 @@ export interface VersionDiffResult extends VersionDiff {
   after: { versionId: string | null; versionNumber: number };
 }
 
+/**
+ * Печатный лист ключей. Описание жило на странице печати, а клиент объявлял
+ * ответ как never — страница это скрывала, приводя данные к своему типу у себя
+ * в состоянии, и рассинхронизация с сервером не обнаружилась бы ничем.
+ */
+export interface KeySheet {
+  surveyId: string;
+  title: string;
+  version: number;
+  questionCount: number;
+  questions: { n: number; title: string }[];
+  scales: {
+    code: string;
+    title: string;
+    kind: string;
+    normalization: string;
+    itemCount: number;
+    yes: string;
+    no: string;
+    scored: string;
+    corrections: string;
+    norms: string;
+    stens: string;
+    bands: string;
+  }[];
+}
+
+/** Описание API: форма ответа /api/openapi.json — та часть, которую читает консоль */
+export interface OpenApiOperation {
+  summary: string;
+  description: string;
+  tags: string[];
+  security: unknown[];
+  requestBody?: {
+    content: { "application/json": { schema: Record<string, unknown> } };
+  };
+}
+export type OpenApiSpec = {
+  info: { title: string; version: string };
+  paths: Record<string, Record<string, OpenApiOperation>>;
+};
+
 export const api = {
   login: (email: string, password: string) =>
     request<{ token: string; refreshToken: string; user: User }>("/api/auth/login", {
@@ -238,7 +280,7 @@ export const api = {
     request<SurveyListItem[]>(`/api/surveys${archived ? "?archived=1" : ""}`),
   survey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
   /** Методика в редактируемом виде: локализованные объекты вместо строк */
-  keySheet: (id: string) => request<never>(`/api/surveys/${id}/key?lang=ru`),
+  keySheet: (id: string) => request<KeySheet>(`/api/surveys/${id}/key?lang=ru`),
   surveyRaw: (id: string) => request<SurveyFull>(`/api/surveys/${id}?raw=1`),
   validateSurvey: (draft: unknown) =>
     request<{ issues: Issue[] }>("/api/surveys/validate", {
@@ -349,7 +391,7 @@ export const api = {
       body: JSON.stringify({ outcome, note }),
     }),
 
-  openapi: () => request<never>("/api/openapi.json"),
+  openapi: () => request<OpenApiSpec>("/api/openapi.json"),
   downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),
 
   referrals: (all = false) => request<Referral[]>(`/api/referrals${all ? "?all=1" : ""}`),

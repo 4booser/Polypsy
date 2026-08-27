@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import type { UnitReport as Report } from "@quizzy/shared";
 import { api } from "../api";
+import { useResource } from "../useResource";
 import { severityColor, severityKey } from "../format";
 import { useLang } from "../lang";
 import { Empty, Loading, PageHead, useUrlState } from "../ui";
@@ -21,25 +20,15 @@ export default function UnitReportPage() {
   const [unit, setUnit] = useUrlState("unit");
   const [from, setFrom] = useUrlState("from");
   const [to, setTo] = useUrlState("to");
-  const [units, setUnits] = useState<string[]>([]);
-  const [data, setData] = useState<Report | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // список подразделений — выбор; его отказ не должен прятать сам отчёт
+  const units = useResource(() => api.unitReportUnits(), []).data ?? [];
 
-  useEffect(() => {
-    api.unitReportUnits().then(setUnits).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!unit) {
-      setData(null);
-      return;
-    }
-    setError(null);
-    api
-      .unitReport(unit, from || undefined, to || undefined)
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [unit, from, to]);
+  const res = useResource(
+    () => api.unitReport(unit, from || undefined, to || undefined),
+    [unit, from, to],
+    { enabled: !!unit },
+  );
+  const { data, error } = res;
 
   return (
     <>

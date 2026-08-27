@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { CaseSummary as Summary, ReferralDestination, ReferralUrgency } from "@quizzy/shared";
+import type { ReferralDestination, ReferralUrgency } from "@quizzy/shared";
 import { api } from "../api";
 import { SeverityTag } from "../charts/advanced";
 import { day, dateTime } from "../format";
 import { useAuth } from "../auth";
-import { Loading, PageHead, useAction } from "../ui";
+import { PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
  * тех же словарей — верный способ однажды показать «принято» в одном месте
@@ -24,23 +25,17 @@ import { DESTINATION_KEY, NEXT_STATUS, STATUS_KEY, URGENCY_KEY } from "./Referra
  */
 export default function CaseSummaryPage() {
   const { userId } = useParams<{ userId: string }>();
-  const [data, setData] = useState<Summary | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { user } = useAuth();
   const { ut } = useLang();
   const run = useAction();
 
-  const reload = () => {
-    if (!userId) return;
-    api.caseSummary(userId).then(setData).catch((e) => setError(e.message));
-  };
-  useEffect(reload, [userId]);
-
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <Loading />;
+  const res = useResource(() => api.caseSummary(userId!), [userId], { enabled: !!userId });
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {(data) => (
     <>
       {/* штамп для подшивки: без «кто и когда распечатал» лист в деле безымянный */}
       <p className="print-only hint">
@@ -196,6 +191,8 @@ export default function CaseSummaryPage() {
         )}
       </div>
     </>
+      )}
+    </Screen>
   );
 }
 
