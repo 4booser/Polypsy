@@ -711,3 +711,8 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 
 .load-more { width: 100%; justify-content: center; margin-top: var(--sp-3); }
 .end-of-list { text-align: center; margin-top: var(--sp-3); }
+
+/* Диапазон дат в шапке экрана: компактно, в одну строку, подписи слева от поля */
+.date-range { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.date-range label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-caption); color: var(--muted); }
+.date-range input { width: auto; min-width: 132px; }

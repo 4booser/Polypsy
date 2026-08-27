@@ -5,6 +5,7 @@ import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { duration, day, severityColor, severityLabel, timeOfDay } from "../format";
 import { PpvCard } from "../components/CalibrationPanel";
+import { Loading, PageHead } from "../ui";
 
 export default function Dashboard() {
   const [data, setData] = useState<OverviewAnalytics | null>(null);
@@ -25,13 +26,12 @@ export default function Dashboard() {
   }, []);
 
   if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Загрузка…</p>;
+  if (!data) return <Loading rows={5} />;
 
   return (
     <>
       <PpvCard />
-      <h1>Сводка</h1>
-      <p className="sub">По методикам, доступным вам</p>
+      <PageHead title="Сводка" sub="По методикам, доступным вам" />
 
       {cases.length ? (
         <div className="card" style={{ borderColor: "var(--sev-severe)" }}>

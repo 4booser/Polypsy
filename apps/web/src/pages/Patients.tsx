@@ -5,7 +5,7 @@ import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
-import { Avatar, DataTable, PageHead, Search, useAction, useUrlState } from "../ui";
+import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
 
 export function PatientList() {
   const [rows, setRows] = useState<Respondent[] | null>(null);
@@ -42,7 +42,7 @@ export function PatientList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  if (!rows) return <p className="muted">Загрузка…</p>;
+  if (!rows) return <Loading rows={6} />;
 
   const filtered = rows;
 
@@ -117,7 +117,7 @@ export function PatientDynamics() {
   }, [userId]);
 
   if (error) return <p className="error">{error}</p>;
-  if (!data) return <p className="muted">Загрузка…</p>;
+  if (!data) return <Loading rows={5} />;
 
   return (
     <>

@@ -3,7 +3,7 @@ import type { GroupAdmin, SurveyGroupWithCounts, User } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime } from "../format";
-import { useAction } from "../ui";
+import { Loading, PageHead, useAction } from "../ui";
 
 const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
 
@@ -29,14 +29,14 @@ export function Groups() {
     load().catch((e) => setError(e.message));
   }, [load]);
 
-  if (!groups) return <p className="muted">{error ?? "Загрузка…"}</p>;
+  if (!groups) return <Loading error={error} />;
 
   return (
     <>
-      <h1>Группы методик</h1>
-      <p className="sub">
-        Группа — единица разграничения доступа: администратор видит только методики своих групп
-      </p>
+      <PageHead
+        title="Группы методик"
+        sub="Группа — единица разграничения доступа: администратор видит только методики своих групп"
+      />
 
       {isSuper ? (
         <div className="card">
@@ -208,7 +208,7 @@ export function Users() {
     load().catch((e) => setError(e.message));
   }, [load]);
 
-  if (!users) return <p className="muted">{error ?? "Загрузка…"}</p>;
+  if (!users) return <Loading error={error} />;
 
   const shown = users.filter((u) =>
     `${u.fullName} ${u.email}`.toLowerCase().includes(query.trim().toLowerCase()),
@@ -216,11 +216,10 @@ export function Users() {
 
   return (
     <>
-      <h1>Учётные записи</h1>
-      <p className="sub">
-        Единственный способ выдать доступ сотрудника: самостоятельная регистрация всегда
-        создаёт пациента
-      </p>
+      <PageHead
+        title="Учётные записи"
+        sub="Единственный способ выдать доступ сотрудника: самостоятельная регистрация всегда создаёт пациента"
+      />
 
       <div className="card">
         <h2>Новая учётная запись</h2>

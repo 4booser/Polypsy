@@ -7,6 +7,7 @@ import { Basics } from "./Basics";
 import { Questions } from "./Questions";
 import { Scales } from "./Scales";
 import { EMPTY, toDraft, type Draft, type Tab } from "./model";
+import { Loading, PageHead } from "../../ui";
 
 /**
  * Черновик живёт в localStorage: правка методики на 200 пунктов не должна
@@ -193,21 +194,19 @@ export default function Constructor() {
     }
   }
 
-  if (!loaded) return <p className="muted">Загрузка…</p>;
+  if (!loaded) return <Loading rows={5} />;
 
   return (
     <>
-      <h1>{id ? "Правка методики" : "Новая методика"}</h1>
-      <p className="sub">
-        {id ? (
-          <>
-            Правка создаёт новую версию — собранные прохождения останутся на прежней.{" "}
-            <Link to={`/surveys/${id}`}>к аналитике</Link>
-          </>
-        ) : (
-          "Заполните вручную или вставьте описание методики целиком во вкладке «JSON»"
-        )}
-      </p>
+      <PageHead
+        title={id ? "Правка методики" : "Новая методика"}
+        crumbs={id ? <Link to={`/surveys/${id}`}>← К аналитике</Link> : <Link to="/surveys">← Методики</Link>}
+        sub={
+          id
+            ? "Правка создаёт новую версию — собранные прохождения останутся на прежней"
+            : "Заполните вручную или вставьте описание методики целиком во вкладке «JSON»"
+        }
+      />
 
       <div className="row" style={{ alignItems: "flex-end" }}>
       <div className="tabs" style={{ flex: 1 }}>
