@@ -8,8 +8,9 @@ import { duration, day, severityColor } from "../format";
 import { useAction } from "../ui";
 import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DifPanel } from "../components/DifPanel";
+import { CalibrationPanel } from "../components/CalibrationPanel";
 
-type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "responses";
+type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "calibration" | "responses";
 
 export default function SurveyAnalyticsPage() {
   const { id } = useParams<{ id: string }>();
@@ -414,6 +415,7 @@ export default function SurveyAnalyticsPage() {
       ) : null}
 
       {tab === "dif" ? <DifPanel surveyId={data.surveyId} /> : null}
+      {tab === "calibration" ? <CalibrationPanel surveyId={data.surveyId} /> : null}
       {tab === "responses" ? <Responses surveyId={data.surveyId} /> : null}
     </>
   );
