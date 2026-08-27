@@ -1,5 +1,6 @@
-import { Stack } from "expo-router";
-import { useColors } from "@/theme";
+import { Pressable, Text } from "react-native";
+import { Stack, useRouter } from "expo-router";
+import { spacing, useColors } from "@/theme";
 
 /**
  * Аналитика — отдельный полноэкранный раздел вне вкладок: при входе панель вкладок
@@ -8,6 +9,28 @@ import { useColors } from "@/theme";
  */
 export default function AnalyticsLayout() {
   const c = useColors();
+  const router = useRouter();
+
+  /*
+   * Выход к вкладкам на корневом экране раздела.
+   *
+   * Вкладка «Аналитика» переадресует сюда заменой, поэтому возвращаться
+   * стеку некуда: системной стрелки «назад» нет, панель вкладок скрыта — и
+   * приложение приходилось перезапускать. Кнопка ставится только на корне;
+   * на вложенных экранах стрелка появляется сама.
+   */
+  const closeButton = () => (
+    <Pressable
+      onPress={() => router.replace("/(app)/surveys")}
+      accessibilityRole="button"
+      accessibilityLabel="Выйти из аналитики"
+      hitSlop={12}
+      style={{ paddingRight: spacing.sm }}
+    >
+      <Text style={{ color: c.primary, fontSize: 16 }}>‹ Меню</Text>
+    </Pressable>
+  );
+
   return (
     <Stack
       screenOptions={{
@@ -17,7 +40,7 @@ export default function AnalyticsLayout() {
         contentStyle: { backgroundColor: c.bg },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Аналитика" }} />
+      <Stack.Screen name="index" options={{ title: "Аналитика", headerLeft: closeButton }} />
       <Stack.Screen name="[id]/index" options={{ title: "Методика" }} />
       <Stack.Screen name="[id]/responses" options={{ title: "Прохождения" }} />
       <Stack.Screen name="alerts" options={{ title: "Тревоги" }} />
