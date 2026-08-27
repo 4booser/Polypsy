@@ -10,10 +10,12 @@ import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DifPanel } from "../components/DifPanel";
 import { CalibrationPanel } from "../components/CalibrationPanel";
 import { DataQualityPanel } from "../components/DataQualityPanel";
+import { useLang } from "../lang";
 
 type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "calibration" | "responses";
 
 export default function SurveyAnalyticsPage() {
+  const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<Analytics | null>(null);
   const [versionId, setVersionId] = useState<string | undefined>();
@@ -74,7 +76,7 @@ export default function SurveyAnalyticsPage() {
       <PageHead
         title={data.title}
         crumbs={<Link to="/">← Сводка</Link>}
-        sub={`Версия ${data.versionNumber} · завершено ${data.completed} из ${data.started}`}
+        sub={`${ut("an.version")} ${data.versionNumber} · ${ut("an.completedOf")} ${data.completed} ${ut("an.of")} ${data.started}`}
         actions={
           /*
            * Период — часть заголовка, а не отдельная строка под ним: он
@@ -84,7 +86,7 @@ export default function SurveyAnalyticsPage() {
           <div className="date-range">
             <label>
               <span>с</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Начало периода" />
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={ut("unit.chooseHint")} />
             </label>
             <label>
               <span>по</span>
@@ -92,7 +94,7 @@ export default function SurveyAnalyticsPage() {
             </label>
             {from || to ? (
               <button className="ghost" onClick={() => { setFrom(""); setTo(""); }}>
-                Вся история
+                {ut("an.allHistory")}
               </button>
             ) : null}
           </div>
@@ -120,9 +122,9 @@ export default function SurveyAnalyticsPage() {
 
       {data.versions.length > 1 ? (
         <div className="card">
-          <h2>Версия методики</h2>
+          <h2>{ut("an.versionOfSurvey")}</h2>
           <p className="hint">
-            Прохождения разных версий не смешиваются — вопросы у них разные. Открыта версия с наибольшим объёмом данных.
+            {ut("an.versionHint")}
           </p>
           <div className="row">
             {data.versions.map((v) => (
@@ -141,11 +143,11 @@ export default function SurveyAnalyticsPage() {
 
       <div className="tabs">
         {([
-          ["overview", "Общее"],
-          ["questions", `Вопросы ${data.questions.length}`],
-          ["scales", `Шкалы ${data.scales.length}`],
-          ["quality", `Качество ${data.quality.length || ""}`],
-          ["responses", "Прохождения"],
+          ["overview", ut("an.tabOverview")],
+          ["questions", `${ut("an.tabQuestions")} ${data.questions.length}`],
+          ["scales", `${ut("an.tabScales")} ${data.scales.length}`],
+          ["quality", `${ut("an.tabQuality")} ${data.quality.length || ""}`],
+          ["responses", ut("an.tabResponses")],
         ] as [Tab, string][]).map(([v, label]) => (
           <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)}>
             {label}
@@ -156,27 +158,27 @@ export default function SurveyAnalyticsPage() {
       {tab === "overview" ? (
         <>
           <div className="grid cols-4" style={{ marginBottom: 16 }}>
-            <div className="tile"><div className="label">Завершено</div><div className="value">{data.completed}</div><div className="hint">начато {data.started}</div></div>
+            <div className="tile"><div className="label">{ut("an.completed")}</div><div className="value">{data.completed}</div><div className="hint">{ut("an.started")} {data.started}</div></div>
             {/*
               Доходимость была ещё и кольцевой диаграммой на четверть экрана —
               ради двух чисел, которые и так стоят в плитке. Место отдано
               распределениям, где картинка действительно нужна.
             */}
-            <div className="tile"><div className="label">Доходимость</div><div className="value">{data.completionRate}%</div><div className="hint">брошено {data.abandoned}</div></div>
-            <div className="tile"><div className="label">Среднее время</div><div className="value">{duration(data.avgDurationMs)}</div></div>
-            <div className="tile"><div className="label">Медиана</div><div className="value">{duration(data.medianDurationMs)}</div></div>
+            <div className="tile"><div className="label">{ut("an.completion")}</div><div className="value">{data.completionRate}%</div><div className="hint">{ut("an.abandoned")} {data.abandoned}</div></div>
+            <div className="tile"><div className="label">{ut("dash.avgTime")}</div><div className="value">{duration(data.avgDurationMs)}</div></div>
+            <div className="tile"><div className="label">{ut("an.median")}</div><div className="value">{duration(data.medianDurationMs)}</div></div>
           </div>
 
-          <Chart title="Динамика" hint="Завершённые прохождения по дням">
+          <Chart title={ut("an.dynamics")} hint={ut("dash.timelineHint")}>
             <LineChart area series={[{ label: "Прохождений", points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]} />
           </Chart>
 
           <Chart
-            title="Где теряются респонденты"
+            title={ut("an.dropOff")}
             hint={
               dropOffStages.length < data.dropOff.length
                 ? `Показаны первый, последний и шаги с потерями — всего вопросов ${data.dropOff.length}`
-                : "Сколько человек дошло до каждого вопроса"
+                : ut("an.dropOffHint")
             }
           >
             <Funnel stages={dropOffStages} />
@@ -184,12 +186,12 @@ export default function SurveyAnalyticsPage() {
 
           <div className="card">
             <div className="card-head">
-              <h2>Выгрузки и печать</h2>
-              <span className="hint">Выгрузка увозит персональные данные за пределы системы и записывается в журнал доступа</span>
+              <h2>{ut("an.exports")}</h2>
+              <span className="hint">{ut("an.exportsHint")}</span>
             </div>
             <div className="row">
               <label className="field" style={{ margin: 0 }}>
-                <span>Профиль данных</span>
+                <span>{ut("an.profile")}</span>
                 <select value={profile} onChange={(e) => setProfile(e.target.value as never)}>
                   <option value="full">полный (для клиники)</option>
                   <option value="deidentified">деидентифицированный (для исследований)</option>
@@ -431,6 +433,7 @@ export default function SurveyAnalyticsPage() {
 }
 
 function Responses({ surveyId }: { surveyId: string }) {
+  const { ut } = useLang();
   const [rows, setRows] = useState<SurveyResponse[] | null>(null);
   const [openConclusion, setOpenConclusion] = useState<string | null>(null);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
@@ -460,8 +463,8 @@ function Responses({ surveyId }: { surveyId: string }) {
 
   return (
     <div className="card scroll-x">
-      <h2>Прохождения</h2>
-      <p className="hint">Каждая строка — отдельное обследование; заключение открывается в новой вкладке</p>
+      <h2>{ut("an.tabResponses")}</h2>
+      <p className="hint">{ut("an.responsesHint")}</p>
       <table>
         <thead>
           <tr><th>Респондент</th><th>Завершено</th><th className="num">Время</th><th>Статус</th><th>Баллы</th><th /></tr>
@@ -527,6 +530,7 @@ function VersionDiffPanel({
   surveyId: string;
   versions: { id: string; version: number }[];
 }) {
+  const { ut } = useLang();
   const sorted = [...versions].sort((a, b) => a.version - b.version);
   const [a, setA] = useState(sorted[sorted.length - 2]?.id ?? sorted[0]!.id);
   const [b, setB] = useState(sorted[sorted.length - 1]!.id);
@@ -543,7 +547,7 @@ function VersionDiffPanel({
   if (!open) {
     return (
       <button style={{ marginTop: 10 }} onClick={() => setOpen(true)}>
-        Сравнить версии
+        {ut("an.compareVersions")}
       </button>
     );
   }
@@ -564,19 +568,19 @@ function VersionDiffPanel({
         {pick(a, setA)}
         <span className="muted">→</span>
         {pick(b, setB)}
-        <button className="ghost" onClick={() => setOpen(false)}>Свернуть</button>
+        <button className="ghost" onClick={() => setOpen(false)}>{ut("an.collapse")}</button>
       </div>
 
       {error ? <p className="error">{error}</p> : null}
-      {a === b ? <p className="hint">Выберите разные версии</p> : null}
+      {a === b ? <p className="hint">{ut("an.pickDifferent")}</p> : null}
       {diff ? (
         <>
           <p style={{ marginTop: 10, marginBottom: 4 }}>
             {diff.comparable ? (
-              <strong style={{ color: "var(--sev-none)" }}>Баллы версий сопоставимы</strong>
+              <strong style={{ color: "var(--sev-none-text)" }}>{ut("an.comparable")}</strong>
             ) : (
               <strong style={{ color: "var(--sev-moderate)" }}>
-                Баллы напрямую не сопоставимы
+                {ut("an.notComparable")}
               </strong>
             )}
           </p>
@@ -584,14 +588,14 @@ function VersionDiffPanel({
             <p className="hint" style={{ marginTop: 0 }}>{diff.reasons.join(" · ")}</p>
           ) : (
             <p className="hint" style={{ marginTop: 0 }}>
-              Изменения не затрагивают подсчёт: замеры разных версий можно объединять
+              {ut("an.noScoringChange")}
             </p>
           )}
 
           {diff.scales.map((sc) => (
             <div key={sc.code} className="diff-block">
-              <strong>Шкала {sc.code}</strong>{" "}
-              <span className="muted">{DIFF_KIND[sc.kind]}</span>
+              <strong>{ut("an.scaleWord")} {sc.code}</strong>{" "}
+              <span className="muted">{ut(DIFF_KIND[sc.kind])}</span>
               {sc.changes.map((ch) => (
                 <ChangeLine key={ch.field} change={ch} />
               ))}
@@ -600,7 +604,7 @@ function VersionDiffPanel({
 
           {diff.questions.map((q, i) => (
             <div key={`${q.position}-${i}`} className="diff-block">
-              <strong>Пункт {q.position}</strong> <span className="muted">{DIFF_KIND[q.kind]}</span>
+              <strong>{ut("an.item")} {q.position}</strong> <span className="muted">{ut(DIFF_KIND[q.kind])}</span>
               <div className="muted" style={{ fontSize: 12.5 }}>{q.title}</div>
               {q.changes.map((ch) => (
                 <ChangeLine key={ch.field} change={ch} />
@@ -609,7 +613,7 @@ function VersionDiffPanel({
           ))}
 
           {!diff.scales.length && !diff.questions.length ? (
-            <p className="muted" style={{ fontSize: 13 }}>Содержимое версий совпадает</p>
+            <p className="muted" style={{ fontSize: 13 }}>{ut("an.sameContent")}</p>
           ) : null}
         </>
       ) : null}
@@ -617,11 +621,11 @@ function VersionDiffPanel({
   );
 }
 
-const DIFF_KIND: Record<string, string> = {
-  added: "добавлена",
-  removed: "убрана",
-  changed: "изменена",
-};
+const DIFF_KIND = {
+  added: "an.added",
+  removed: "an.removed",
+  changed: "an.changed",
+} as const;
 
 function ChangeLine({ change }: { change: VersionDiffResult["questions"][number]["changes"][number] }) {
   return (
