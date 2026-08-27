@@ -32,6 +32,7 @@ import type {
   VersionDiff,
   AlertCase,
   Page,
+  Respondent,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -490,10 +491,11 @@ export const api = {
   correlations: (surveyId: string) =>
     request<CorrelationMatrix>(`/api/compare/surveys/${surveyId}/correlations`),
 
-  respondents: () =>
-    request<{ userId: string; fullName: string; email: string; count: number; last: string | null }[]>(
-      "/api/dynamics/respondents",
-    ),
+  respondents: (params: { search?: string; cursor?: string; limit?: string } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<Page<Respondent>>(`/api/dynamics/respondents?${qs}`);
+  },
   dynamics: (userId: string) => request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
 
   alerts: (all = false) => request<RiskAlert[]>(`/api/alerts${all ? "?all=1" : ""}`),
@@ -511,7 +513,17 @@ export const api = {
     }),
   revoke: (surveyId: string, userId: string) =>
     request<void>(`/api/access/surveys/${surveyId}/grants/${userId}`, { method: "DELETE" }),
-  patients: () => request<Patient[]>("/api/access/patients"),
+  /**
+   * Пациенты. Отдаётся не всё: список упорядочен по ФИО, а оно зашифровано —
+   * упорядочить его в SQL нечем, поэтому сервер ищет и обрезает выдачу.
+   */
+  patients: (params: { search?: string; unit?: string } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<{ items: Patient[]; total: number; truncated: boolean }>(
+      `/api/access/patients?${qs}`,
+    );
+  },
 
   users: () => request<User[]>("/api/users"),
   createUser: (input: CreateUserInput) =>

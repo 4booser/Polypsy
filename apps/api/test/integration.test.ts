@@ -136,15 +136,17 @@ describe("скоупинг групп", () => {
 
   test("список пациентов у чужого админа пуст, у своего — после прохождения появляется", async () => {
     const before = await api("/api/access/patients", adminB.token);
-    expect(before.body).toEqual([]);
+    expect(before.body.items).toEqual([]);
 
     const beforeA = await api("/api/access/patients", adminA.token);
-    expect(beforeA.body).toEqual([]); // пациент ещё не касался группы А
+    expect(beforeA.body.items).toEqual([]); // пациент ещё не касался группы А
   });
 
   test("суперадмин видит всё", async () => {
     const all = await api("/api/access/patients", root.token);
-    expect(all.body.length).toBe(1);
+    expect(all.body.items.length).toBe(1);
+    expect(all.body.total).toBe(1);
+    expect(all.body.truncated).toBe(false);
     const s = await api(`/api/surveys/${surveyInA}`, root.token);
     expect(s.status).toBe(200);
   });
@@ -200,10 +202,10 @@ describe("сдача прохождения", () => {
 
   test("после прохождения пациент появляется в списке своего админа, но не чужого", async () => {
     const mine = await api("/api/access/patients", adminA.token);
-    expect(mine.body.map((p: { id: string }) => p.id)).toContain(patient.id);
+    expect(mine.body.items.map((p: { id: string }) => p.id)).toContain(patient.id);
 
     const foreign = await api("/api/access/patients", adminB.token);
-    expect(foreign.body).toEqual([]);
+    expect(foreign.body.items).toEqual([]);
   });
 });
 
@@ -806,7 +808,7 @@ describe("шифрование полей", () => {
 
     // и список пациентов у админа тоже читаемый
     const list = await api("/api/access/patients", adminA.token);
-    const found = list.body.find((p: { id: string }) => p.id === patient.id);
+    const found = list.body.items.find((p: { id: string }) => p.id === patient.id);
     expect(found.fullName).toContain("Тест");
   });
 
@@ -2270,5 +2272,38 @@ describe("случаи риска", () => {
       body: JSON.stringify({ note: "просто заметка" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+
+describe("списки не отдаются целиком", () => {
+  test("пациенты: поиск на сервере и честная пометка об обрезке", async () => {
+    /*
+     * Курсорная пагинация здесь невозможна: список упорядочен по ФИО, а оно
+     * зашифровано. Поэтому сервер ищет и обрезает, а клиенту сообщает, что
+     * показано не всё — иначе тот молча принял бы часть за целое.
+     */
+    const res = await api("/api/access/patients?search=нетакогочеловека", adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.truncated).toBe(false);
+  });
+
+  test("повторные замеры отдаются страницами", async () => {
+    const first = await api("/api/dynamics/respondents?limit=1", adminA.token);
+    expect(first.status).toBe(200);
+    expect(Array.isArray(first.body.items)).toBe(true);
+    expect(typeof first.body.total).toBe("number");
+    // общее число считается только на первой странице
+    if (first.body.nextCursor) {
+      const second = await api(
+        `/api/dynamics/respondents?limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`,
+        adminA.token,
+      );
+      expect(second.status).toBe(200);
+      expect(second.body.total).toBeUndefined();
+      expect(second.body.items[0]?.userId).not.toBe(first.body.items[0]?.userId);
+    }
   });
 });

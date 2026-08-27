@@ -25,7 +25,7 @@ export default function Administer() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([api.survey(id), api.patients()])
+    Promise.all([api.survey(id), api.patients().then((p) => p.items)])
       .then(([s, p]) => {
         setSurvey(s);
         setPatients(p);

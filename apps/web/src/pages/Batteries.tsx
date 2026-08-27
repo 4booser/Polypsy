@@ -33,7 +33,7 @@ export default function Batteries() {
     reload();
     api.surveys().then(setSurveys).catch(() => {});
     api.groups().then(setGroups).catch(() => {});
-    api.patients().then(setPatients).catch(() => {});
+    api.patients().then((p) => setPatients(p.items)).catch(() => {});
   }, []);
 
   return (

@@ -490,6 +490,17 @@ export interface ScaleDynamics {
   } | null;
 }
 
+/** Строка списка «кто проходил повторно» */
+export interface Respondent {
+  userId: string;
+  fullName: string;
+  email: string;
+  /** Сколько завершённых прохождений */
+  count: number;
+  /** Дата последнего замера; null у прохождений без даты сдачи */
+  last: string | null;
+}
+
 export interface RespondentDynamics {
   userId: string;
   fullName: string;

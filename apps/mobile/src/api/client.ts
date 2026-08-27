@@ -18,6 +18,7 @@ import type {
   AlertCase,
   AuditPage,
   Page,
+  Respondent,
   CreateUserInput,
   RiskAlert,
   UpdateProfileInput,
@@ -348,10 +349,11 @@ export const api = {
       body: JSON.stringify({ release }),
     }),
 
-  respondents: () =>
-    request<{ userId: string; fullName: string; email: string; count: number; last: string | null }[]>(
-      "/api/dynamics/respondents",
-    ),
+  respondents: (params: { search?: string; cursor?: string } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<Page<Respondent>>(`/api/dynamics/respondents?${qs}`);
+  },
   respondentDynamics: (userId: string) =>
     request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
 
