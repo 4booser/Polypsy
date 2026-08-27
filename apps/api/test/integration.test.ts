@@ -1595,3 +1595,111 @@ describe("калибровка порогов", () => {
     expect(ppv.body.byMonth.length).toBeGreaterThan(0);
   }, 120_000);
 });
+
+/* ── волна 7: качество данных ── */
+
+describe("качество данных", () => {
+  test("страты подавляются при n<5; PSI и ретест считаются только при достаточных данных", async () => {
+    const res = await api(`/api/data-quality/surveys/${surveyInA}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.smallCellFloor).toBe(5);
+
+    // подавленные страты не раскрывают чисел
+    for (const s of res.body.strata) {
+      if (s.suppressed) {
+        expect(s.started).toBeUndefined();
+        expect(s.completionRate).toBeUndefined();
+      } else {
+        expect(s.started).toBeGreaterThanOrEqual(5);
+        expect(s.completionRate).toBeGreaterThan(0);
+      }
+    }
+
+    // ретест: пары считаются, но ICC только при минимуме
+    for (const r of res.body.retest) {
+      if (r.pairs < res.body.retestWindow.minPairs) expect(r.icc).toBeNull();
+    }
+  });
+
+  test("person-fit попадает в флаги качества и помечает инвертированный профиль", async () => {
+    const { sr45 } = await import("../src/instruments/sr45");
+    const sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: { uk: "Person-fit тест", ru: "Person-fit тест" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, createSurveySchema.parse(sr45), adminA.id, "v1");
+
+    const survey = (await api(`/api/surveys/${sid}`, adminA.token)).body;
+    const asked = survey.questions.filter(
+      (q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length,
+    );
+
+    // 30 «нормальных»: чем выше уровень, тем больше «да» — согласованный профиль
+    for (let i = 0; i < 30; i++) {
+      const person = await makeUser("user", `fit${i}@test.dev`, { sex: "male", birthDate: "1990-01-01" });
+      const level = (i % 10) / 10;
+      const answers = asked.map((q: { id: string; options: { id: string; keyCode?: string }[] }, qi: number) => {
+        const yes = q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!;
+        const no = q.options.find((o) => o.keyCode === "no") ?? q.options[1] ?? q.options[0]!;
+        // лёгкие пункты (малый индекс) срабатывают раньше трудных
+        return {
+          questionId: q.id,
+          optionIds: [qi / asked.length < level ? yes.id : no.id],
+          durationMs: 2500,
+          changeCount: 0,
+          visitCount: 1,
+        };
+      });
+      await api(`/api/surveys/${sid}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({
+          startedAt: new Date(Date.now() - 90_000).toISOString(),
+          durationMs: 90_000,
+          events: [],
+          answers,
+        }),
+      });
+    }
+
+    // один инвертированный: трудные «да», лёгкие «нет»
+    const odd = await makeUser("user", "fit-odd@test.dev", { sex: "male", birthDate: "1990-01-01" });
+    const invertedAnswers = asked.map((q: { id: string; options: { id: string; keyCode?: string }[] }, qi: number) => {
+      const yes = q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!;
+      const no = q.options.find((o) => o.keyCode === "no") ?? q.options[1] ?? q.options[0]!;
+      return {
+        questionId: q.id,
+        optionIds: [qi / asked.length > 0.6 ? yes.id : no.id],
+        durationMs: 2500,
+        changeCount: 0,
+        visitCount: 1,
+      };
+    });
+    const oddRes = await api(`/api/surveys/${sid}/responses`, odd.token, {
+      method: "POST",
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 90_000).toISOString(),
+        durationMs: 90_000,
+        events: [],
+        answers: invertedAnswers,
+      }),
+    });
+    expect(oddRes.status).toBe(201);
+
+    const analytics = await api(`/api/analytics/surveys/${sid}`, adminA.token);
+    const flagged = analytics.body.quality.find(
+      (q: { responseId: string }) => q.responseId === oddRes.body.id,
+    );
+    expect(flagged).toBeDefined();
+    expect(flagged.personFit).toBeGreaterThan(0.4);
+    expect(flagged.reasons.some((r: string) => r.includes("нетипичный паттерн"))).toBe(true);
+  }, 90_000);
+});

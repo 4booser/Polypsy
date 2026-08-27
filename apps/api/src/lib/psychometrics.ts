@@ -74,6 +74,8 @@ export function qualityOf(
   answers: AnswerLike[],
   questions: Question[],
   tooFastMs: number = TOO_FAST_MS,
+  /** Ошибки Гуттмана по ключевой шкале, если её удалось построить */
+  personFit: number | null = null,
 ): QualityFlags {
   const byId = new Map(questions.map((q) => [q.id, q]));
   const answered = answers.filter((a) => !a.skipped);
@@ -114,6 +116,14 @@ export function qualityOf(
   if (answered.length >= 5 && durationMs > 0 && durationMs < answered.length * tooFastMs) {
     reasons.push("общее время меньше минимально правдоподобного");
   }
+  /*
+   * Person-fit: профиль, где трудные пункты сработали, а лёгкие нет, — не
+   * «плохой человек», а нетипичный паттерн: небрежность, симуляция или
+   * непонятая инструкция. Формулировка нейтральна намеренно.
+   */
+  if (personFit !== null && personFit >= 0.4) {
+    reasons.push(`нетипичный паттерн ответов (${personFit})`);
+  }
 
   return {
     responseId,
@@ -122,6 +132,7 @@ export function qualityOf(
     durationMs,
     tooFastShare,
     longestStraightLine,
+    personFit,
     flagged: reasons.length > 0,
     reasons,
   };
