@@ -60,7 +60,7 @@ export default function OverviewScreen() {
 
       {/* тревоги — первое, что должен увидеть специалист */}
       {alerts.length > 0 ? (
-        <Pressable onPress={() => router.push("/analytics/alerts")}>
+        <Pressable onPress={() => router.push("/analytics/alerts")} accessibilityRole="button" accessibilityLabel="Открытые тревоги">
           <Card>
             <Row>
               <View
@@ -141,6 +141,8 @@ export default function OverviewScreen() {
           <Pressable
             key={s.id}
             onPress={() => router.push(`/analytics/${s.id}`)}
+            accessibilityRole="button"
+            accessibilityLabel={s.title}
             style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingVertical: spacing.sm })}
           >
             <Row>
@@ -167,6 +169,8 @@ export default function OverviewScreen() {
             <Pressable
               key={s.surveyId}
               onPress={() => router.push(`/analytics/${s.surveyId}`)}
+              accessibilityRole="button"
+              accessibilityLabel={s.title}
               style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, paddingVertical: spacing.sm })}
             >
               <Row>

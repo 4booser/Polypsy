@@ -11,6 +11,15 @@ import {
 } from "react-native";
 import { radius, spacing, useColors } from "../theme";
 
+/**
+ * Минимальная цель нажатия.
+ *
+ * 44 pt — порог из руководств Apple и Google; берём 48, потому что планшет
+ * в киоске держат на вытянутой руке, а часть обследуемых приходит с тремором
+ * или после бессонной смены.
+ */
+export const TOUCH_TARGET = 48;
+
 export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
   const c = useColors();
   return (
@@ -64,6 +73,11 @@ export function Button({
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      // busy отдельно от disabled: голосовой доступ читает «занято», а не
+      // «недоступно» — для человека это разные ситуации
+      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
       style={({ pressed }) => ({
         backgroundColor: bg,
         borderColor: variant === "secondary" ? c.border : bg,
@@ -71,6 +85,9 @@ export function Button({
         borderRadius: radius.sm,
         paddingVertical: spacing.md,
         paddingHorizontal: spacing.lg,
+        // цель нажатия не меньше 48 pt даже при мелком системном шрифте
+        minHeight: TOUCH_TARGET,
+        justifyContent: "center",
         alignItems: "center",
         opacity: isDisabled ? 0.5 : pressed ? 0.8 : 1,
       })}
@@ -91,6 +108,8 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
       <Text style={{ color: c.muted, fontSize: 13 }}>{label}</Text>
       <TextInput
         placeholderTextColor={c.muted}
+        // подпись рядом с полем экранный диктор сам не свяжет
+        accessibilityLabel={label}
         {...props}
         style={{
           backgroundColor: c.card,
@@ -98,6 +117,7 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
           borderWidth: StyleSheet.hairlineWidth,
           borderRadius: radius.sm,
           padding: spacing.md,
+          minHeight: TOUCH_TARGET,
           color: c.text,
           fontSize: 15,
         }}
@@ -155,7 +175,20 @@ export function Chip({
       </Text>
     </View>
   );
-  return onPress ? <Pressable onPress={onPress}>{body}</Pressable> : body;
+  return onPress ? (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!selected }}
+      // сам чип низкий по дизайну — добираем область нажатия отступами
+      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+    >
+      {body}
+    </Pressable>
+  ) : (
+    body
+  );
 }
 
 export function Segmented<T extends string>({
@@ -170,6 +203,7 @@ export function Segmented<T extends string>({
   const c = useColors();
   return (
     <View
+      accessibilityRole="radiogroup"
       style={{
         flexDirection: "row",
         backgroundColor: c.cardAlt,
@@ -184,9 +218,14 @@ export function Segmented<T extends string>({
           <Pressable
             key={o.value}
             onPress={() => onChange(o.value)}
+            accessibilityRole="radio"
+            accessibilityLabel={o.label}
+            accessibilityState={{ checked: active }}
             style={{
               flex: 1,
               alignItems: "center",
+              justifyContent: "center",
+              minHeight: TOUCH_TARGET,
               paddingVertical: spacing.sm,
               borderRadius: radius.sm - 2,
               backgroundColor: active ? c.card : "transparent",

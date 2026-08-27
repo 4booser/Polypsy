@@ -426,7 +426,12 @@ export default function TakeSurveyScreen() {
               {survey.timeLimitSec ? ` / ${Math.round(survey.timeLimitSec / 60)} мин` : ""}
             </Text>
           </Row>
-          <View style={{ height: 4, backgroundColor: c.border, borderRadius: 2 }}>
+          {/* полоса без подписи для диктора — просто декорация; озвучиваем сам прогресс */}
+          <View
+            accessibilityRole="progressbar"
+            accessibilityValue={{ min: 0, max: asked.length, now: askedIndex + 1 }}
+            style={{ height: 4, backgroundColor: c.border, borderRadius: 2 }}
+          >
             <View
               style={{
                 height: 4,

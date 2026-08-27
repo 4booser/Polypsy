@@ -41,6 +41,8 @@ export default function PatientsScreen() {
         <Pressable
           key={p.userId}
           onPress={() => router.push(`/analytics/patients/${p.userId}`)}
+          accessibilityRole="button"
+          accessibilityLabel={p.fullName}
           style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
         >
           <Card>

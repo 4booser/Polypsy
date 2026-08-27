@@ -110,6 +110,12 @@ export default function SurveysScreen() {
             <Pressable
               key={item.id}
               onPress={() => router.push(`/survey/${item.id}`)}
+              accessibilityRole="button"
+              // карточка целиком — одна кнопка; иначе диктор читает название,
+              // счётчик вопросов и метку «пройдено» как три несвязанных куска
+              accessibilityLabel={`${item.title}. ${item.questionCount} ${ut("surveys.questions")}${
+                item.completedByMe ? `. ${ut("surveys.completed")}` : ""
+              }`}
               style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
             >
               <Card>
@@ -254,6 +260,8 @@ function StepRow({
   return (
     <Pressable
       onPress={() => onOpen(step.surveyId)}
+      accessibilityRole="button"
+      accessibilityLabel={`${step.title}. ${ut(STEP_KEY[step.state])}`}
       style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
     >
       {row}
