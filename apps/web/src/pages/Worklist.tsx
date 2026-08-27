@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { Worklist as List, WorkItem } from "@quizzy/shared";
+import type { WorkItem } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Avatar, Badge, Empty, Loading, PageHead } from "../ui";
+import { Avatar, Badge, Empty, PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 const KIND_KEY = {
   case: "work.kindCase",
@@ -24,21 +25,16 @@ const KIND_KEY = {
  * Поэтому каждая строка — ссылка туда, где с ней работают.
  */
 export default function WorklistPage() {
-  const [data, setData] = useState<List | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<WorkItem["kind"] | "">("");
   const { ut } = useLang();
-
-  useEffect(() => {
-    api.worklist().then(setData).catch((e) => setError(e.message));
-  }, []);
-
-  if (!data) return <Loading error={error} rows={6} />;
-
-  const shown = kind ? data.items.filter((i) => i.kind === kind) : data.items;
-  const overdue = data.items.filter((i) => i.overdue).length;
+  const res = useResource(() => api.worklist(), []);
 
   return (
+    <Screen res={res} rows={6}>
+      {(data) => {
+        const shown = kind ? data.items.filter((i) => i.kind === kind) : data.items;
+        const overdue = data.items.filter((i) => i.overdue).length;
+        return (
     <>
       <PageHead
         title={ut("work.title")}
@@ -105,6 +101,9 @@ export default function WorklistPage() {
         </p>
       ) : null}
     </>
+        );
+      }}
+    </Screen>
   );
 }
 

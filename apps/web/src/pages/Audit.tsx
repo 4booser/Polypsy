@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import type { AuditEntry } from "@quizzy/shared";
+import { useState } from "react";
 import { api } from "../api";
 import { BarList, Chart } from "../charts";
 import { dateTime } from "../format";
-import { Loading, PageHead } from "../ui";
+import { PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 const ACTION_LABEL: Record<string, string> = {
   "auth.login": "Вход",
@@ -48,26 +48,19 @@ const FILTERS = [
 
 export default function Audit() {
   const { ut } = useLang();
-  const [entries, setEntries] = useState<AuditEntry[] | null>(null);
-  const [total, setTotal] = useState(0);
-  const [summary, setSummary] = useState<Awaited<ReturnType<typeof api.auditSummary>> | null>(null);
   const [filter, setFilter] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([api.audit({ action: filter || undefined }), api.auditSummary()])
-      .then(([page, s]) => {
-        setEntries(page.entries);
-        setTotal(page.total);
-        setSummary(s);
-      })
-      .catch((e) => setError(e.message));
+  const res = useResource(async () => {
+    const [page, summary] = await Promise.all([
+      api.audit({ action: filter || undefined }),
+      api.auditSummary(),
+    ]);
+    return { entries: page.entries, total: page.total, summary };
   }, [filter]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!entries) return <Loading rows={6} />;
-
   return (
+    <Screen res={res} rows={6}>
+      {({ entries, total, summary }) => (
     <>
       <PageHead
         title="Журнал доступа"
@@ -123,15 +116,15 @@ export default function Audit() {
 
       <Storage />
     </>
+      )}
+    </Screen>
   );
 }
 
 /** Рост хранилища: что распухает — видно до того, как кончится диск */
 function Storage() {
-  const [stats, setStats] = useState<Awaited<ReturnType<typeof api.storageStats>> | null>(null);
-  useEffect(() => {
-    api.storageStats().then(setStats).catch(() => {});
-  }, []);
+  // блок вспомогательный: не загрузился — просто не показываем, экран цел
+  const { data: stats } = useResource(() => api.storageStats(), []);
   if (!stats) return null;
   const max = stats.tables[0]?.bytes ?? 1;
   return (

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
+import type { Resource } from "../useResource";
 
 /** Мелкие переиспользуемые части консоли: иконки, состояния, таблицы, сообщения */
 
@@ -260,6 +261,45 @@ export function OfflineBar({ onRetry, busy }: { onRetry: () => void; busy?: bool
         {busy ? "Пробую…" : "Повторить"}
       </button>
     </div>
+  );
+}
+
+/**
+ * Три состояния загрузки в одном месте.
+ *
+ * Раньше каждый экран писал их сам — и писал по-разному: где-то обрыв связи
+ * показывался как ошибка приложения, где-то экран навсегда оставался пустым,
+ * где-то при обновлении данные исчезали и появлялись заново. Здесь порядок
+ * один: пока данных нет — скелет; если связи нет, но данные уже были —
+ * показываем их с полосой предупреждения, потому что устаревшие цифры
+ * полезнее пустого экрана, если про их устарелость сказано.
+ */
+export function Screen<T>({
+  res,
+  rows = 4,
+  children,
+}: {
+  res: Resource<T>;
+  rows?: number;
+  children: (data: T) => ReactNode;
+}) {
+  if (res.data === null) {
+    if (res.offline) {
+      return (
+        <>
+          <OfflineBar onRetry={res.reload} busy={res.loading} />
+          <Loading rows={rows} />
+        </>
+      );
+    }
+    return <Loading rows={rows} error={res.error} />;
+  }
+  return (
+    <>
+      {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
+      {res.error ? <p className="error">{res.error}</p> : null}
+      {children(res.data)}
+    </>
   );
 }
 

@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+
 import { Link } from "react-router-dom";
 import type { Referral, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Avatar, DataTable, Empty, Loading, PageHead, useAction, useUrlState } from "../ui";
+import { Avatar, DataTable, Empty, PageHead, Screen, useAction, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 export const DESTINATION_KEY = {
   psychiatrist: "dest.psychiatrist",
@@ -45,26 +46,18 @@ export const NEXT_STATUS = {
  * частый разрыв клинического контура.
  */
 export default function ReferralsPage() {
-  const [rows, setRows] = useState<Referral[] | null>(null);
   const [allParam, setAllParam] = useUrlState("all");
   const all = allParam === "1";
   const setAll = (v: boolean) => setAllParam(v ? "1" : "");
-  const [error, setError] = useState<string | null>(null);
   const run = useAction();
   const { ut } = useLang();
 
-  const reload = (withClosed = all) => {
-    api.referrals(withClosed).then(setRows).catch((e) => setError(e.message));
-  };
-  useEffect(() => {
-    reload(all);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all]);
-
-  if (error) return <p className="error">{error}</p>;
-  if (!rows) return <Loading />;
+  const res = useResource(() => api.referrals(all), [all]);
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {(rows) => (
     <>
       <PageHead
         title={ut("ref.title")}
@@ -163,5 +156,7 @@ export default function ReferralsPage() {
         )}
       </div>
     </>
+      )}
+    </Screen>
   );
 }
