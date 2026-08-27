@@ -1,6 +1,7 @@
 import {
   createContext,
   useCallback,
+  useRef,
   useEffect,
   useContext,
   useMemo,
@@ -112,6 +113,121 @@ export function ConfirmByName({
         {actionLabel}
       </button>
     </div>
+  );
+}
+
+/**
+ * Скелет вместо строки «Загрузка…».
+ *
+ * Строка не говорит, чего ждать, и экран прыгает, когда данные приезжают.
+ * Скелет держит место и показывает форму будущего содержимого — переход
+ * получается без скачка.
+ */
+export function Skeleton({
+  lines = 3,
+  height = 14,
+  width = "100%",
+}: {
+  lines?: number;
+  height?: number;
+  width?: string;
+}) {
+  return (
+    <div className="skeleton-group" aria-hidden>
+      {Array.from({ length: lines }, (_, i) => (
+        <div
+          key={i}
+          className="skeleton"
+          // последняя строка короче: так блок читается как текст, а не как таблица
+          style={{ height, width: i === lines - 1 ? "62%" : width }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Метка состояния: цвет несёт смысл, но не единственный — рядом всегда слово */
+export function Badge({
+  tone = "neutral",
+  children,
+}: {
+  tone?: "neutral" | "good" | "warn" | "bad" | "accent";
+  children: ReactNode;
+}) {
+  return <span className={`badge ${tone}`}>{children}</span>;
+}
+
+/**
+ * Модальное окно.
+ *
+ * Esc закрывает, фокус уходит внутрь, фон не прокручивается. Без этого
+ * диалог остаётся ловушкой для клавиатуры.
+ */
+export function Modal({
+  title,
+  onClose,
+  children,
+  wide,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    ref.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className={`modal ${wide ? "wide" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="card-head">
+          <h2>{title}</h2>
+          <button className="ghost" onClick={onClose} aria-label="Закрыть">✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Кнопка «показать ещё» с честным состоянием и концом списка */
+export function LoadMore({
+  cursor,
+  busy,
+  onLoad,
+  emptyText = "Больше записей нет",
+}: {
+  cursor: string | null;
+  busy?: boolean;
+  onLoad: () => void;
+  emptyText?: string;
+}) {
+  if (!cursor) return <p className="hint end-of-list">{emptyText}</p>;
+  return (
+    <button className="load-more" disabled={busy} onClick={onLoad}>
+      {busy ? "Загружаю…" : "Показать ещё"}
+    </button>
   );
 }
 
