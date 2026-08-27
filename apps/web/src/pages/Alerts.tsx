@@ -4,7 +4,7 @@ import type { AlertCase } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime, severityColor } from "../format";
-import { Avatar, Empty, Loading, PageHead, useAction, useUrlState } from "../ui";
+import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, useUrlState } from "../ui";
 import { useLang } from "../lang";
 
 const OUTCOME = [
@@ -42,6 +42,12 @@ export default function Alerts() {
   const [search, setSearch] = useUrlState("q");
 
   const [items, setItems] = useState<AlertCase[] | null>(null);
+  /*
+   * Какой случай «под рукой». Разбор идёт подряд, и держать указатель
+   * дешевле, чем каждый раз тянуться мышью: j/k ведут по списку, цифры
+   * ставят исход.
+   */
+  const [cursorIdx, setCursorIdx] = useState(0);
   const [total, setTotal] = useState<number | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [units, setUnits] = useState<string[]>([]);
@@ -91,6 +97,45 @@ export default function Alerts() {
   useEffect(() => {
     api.alertCaseUnits().then(setUnits).catch(() => {});
   }, []);
+
+  const open = (items ?? []).filter((c) => !c.acknowledgedAt);
+  const current = open[Math.min(cursorIdx, open.length - 1)];
+
+  const resolve = (outcome: string) => {
+    if (!current) return;
+    void run(async () => {
+      await api.resolveCase(current.id, outcome, "");
+      setCursor(null);
+      void load(false);
+    }, ut("work.done"));
+  };
+
+  /*
+   * Клавиши подобраны так, чтобы рука не уходила с домашнего ряда: j/k —
+   * движение по списку (как в почтовых клиентах и терминалах, где это
+   * привычно), цифры 1–3 — исход в том же порядке, что кнопки на экране.
+   */
+  useHotkeys({
+    j: () => setCursorIdx((i) => Math.min(i + 1, Math.max(open.length - 1, 0))),
+    k: () => setCursorIdx((i) => Math.max(i - 1, 0)),
+    "1": () => resolve("confirmed"),
+    "2": () => resolve("needs_followup"),
+    "3": () => resolve("not_confirmed"),
+    t: () => {
+      if (!current || current.assignedTo) return;
+      void run(async () => {
+        await api.assignCase(current.id);
+        setCursor(null);
+        void load(false);
+      }, ut("cases.take"));
+    },
+    "/": () => {
+      const input = document.querySelector<HTMLInputElement>(".page-head input");
+      input?.focus();
+      input?.select();
+    },
+    Escape: () => (document.activeElement as HTMLElement | null)?.blur(),
+  });
 
   if (error) return <p className="error">{error}</p>;
   if (!items) return <Loading />;
@@ -149,8 +194,31 @@ export default function Alerts() {
           hint={ut("cases.emptyHint")}
         />
       ) : (
-        items.map((c) => <CaseCard key={c.id} c={c} onChanged={() => { setCursor(null); void load(false); }} run={run} me={user?.id} />)
+        items.map((c) => (
+          <CaseCard
+            key={c.id}
+            c={c}
+            focused={c.id === current?.id}
+            onChanged={() => {
+              setCursor(null);
+              void load(false);
+            }}
+            run={run}
+            me={user?.id}
+          />
+        ))
       )}
+
+      <HotkeyHint
+        keys={[
+          ["J / K", ut("hotkey.next")],
+          ["1", ut("hotkey.confirm")],
+          ["2", ut("hotkey.followup")],
+          ["3", ut("hotkey.reject")],
+          ["T", ut("hotkey.take")],
+          ["/", ut("hotkey.search")],
+        ]}
+      />
 
       {cursor ? (
         <button style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={() => void load(true)}>
@@ -187,11 +255,14 @@ function Filter({
 
 function CaseCard({
   c,
+  focused,
   onChanged,
   run,
   me,
 }: {
   c: AlertCase;
+  /** Случай «под рукой»: на нём сработают цифры и T */
+  focused: boolean;
   onChanged: () => void;
   run: ReturnType<typeof useAction>;
   me: string | undefined;
@@ -203,7 +274,13 @@ function CaseCard({
   const takenByOther = !!c.assignedTo && c.assignedTo !== me;
 
   return (
-    <div className={`card case ${c.overdue ? "overdue" : ""} ${done ? "resolved" : ""}`}>
+    <div
+      // ref-колбэк обязан ничего не возвращать: React трактует возврат как функцию очистки
+      ref={(el) => {
+        if (focused) el?.scrollIntoView({ block: "nearest" });
+      }}
+      className={`card case ${c.overdue ? "overdue" : ""} ${done ? "resolved" : ""} ${focused ? "focused" : ""}`}
+    >
       <div className="case-head">
         <i className="sev-bar" style={{ background: severityColor[c.severity === "severe" ? "severe" : "moderate"] }} />
         <Avatar name={c.userName} size={30} />

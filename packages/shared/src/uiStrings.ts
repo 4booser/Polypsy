@@ -312,6 +312,15 @@ export const UI = {
 
   "chart.results": { uk: "результатів", ru: "результатов" },
   "chart.onAverage": { uk: "у середньому", ru: "в среднем" },
+
+  /* горячие клавиши разбора */
+  "hotkey.next": { uk: "наступний випадок", ru: "следующий случай" },
+  "hotkey.prev": { uk: "попередній", ru: "предыдущий" },
+  "hotkey.take": { uk: "взяти на себе", ru: "взять на себя" },
+  "hotkey.confirm": { uk: "підтвердити ризик", ru: "подтвердить риск" },
+  "hotkey.followup": { uk: "спостереження", ru: "наблюдение" },
+  "hotkey.reject": { uk: "не підтверджено", ru: "не подтверждён" },
+  "hotkey.search": { uk: "пошук", ru: "поиск" },
 } as const;
 
 export type UiKey = keyof typeof UI;

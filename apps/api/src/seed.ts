@@ -11,6 +11,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { ageAt, answerScore, computeProfile, computeScores, createSurveySchema, normalizeLocalized, t, type Answer } from "@quizzy/shared";
 import { client, db } from "./db";
+import { attachToCase } from "./lib/alertCases";
 import { decryptField, encryptPersonFields } from "./lib/crypto";
 import {
   answerEvents,
@@ -810,6 +811,18 @@ async function generateKeyed(surveyId: string, respondents: string[], perPatient
           const picked = new Set(a.optionIds ?? []);
           const risky = question.options.find((o) => o.riskFlag && picked.has(o.id));
           if (risky) {
+            /*
+             * Случай открывается тем же кодом, что и в бою. Вставлять тревогу
+             * напрямую было ошибкой: разбирают не тревоги, а случаи, и на
+             * свежей установке экран разбора оказывался пуст, хотя тревоги в
+             * базе были.
+             */
+            const caseId = await attachToCase(tx as never, {
+              userId,
+              surveyId,
+              severity: risky.riskSeverity ?? "severe",
+              at: startedAt.toISOString(),
+            });
             await tx
               .insert(riskAlerts)
               .values({
@@ -818,6 +831,7 @@ async function generateKeyed(surveyId: string, respondents: string[], perPatient
                 surveyId,
                 questionId: question.id,
                 userId,
+                caseId,
                 label: risky.riskLabel ?? question.title,
                 severity: risky.riskSeverity ?? "severe",
                 at: startedAt.toISOString(),
