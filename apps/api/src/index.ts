@@ -4,6 +4,7 @@ import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
 import { client } from "./db";
+import { log } from "./lib/log";
 
 // расписания меряются днями, поэтому часового тика достаточно; первый проход
 // идёт сразу при старте, чтобы простой сервера не сдвигал выдачу заданий.
@@ -22,7 +23,7 @@ let shuttingDown = false;
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`Получен ${signal}, останавливаюсь`);
+  log.info("shutdown", { signal });
   stopScheduler?.();
   stopNotifier?.();
   stopRetention?.();

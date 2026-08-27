@@ -12,6 +12,7 @@ import {
 } from "../db/schema";
 import { auditSystem } from "./audit";
 import { batterySurveysInUse } from "./scope";
+import { log } from "./log";
 
 /**
  * Каскадные назначения и протоколы наблюдения (6.2, 6.3).
@@ -79,7 +80,7 @@ export async function runCascades(
       }
     }
   } catch (error) {
-    console.error("Каскад не отработал", surveyId, error);
+    log.error("cascade.failed", { surveyId, error: String(error) });
   }
   return outcome;
 }
@@ -99,7 +100,7 @@ async function assignCascade(
 
   // петля: батарея, содержащая методику-источник, назначала бы себя вечно
   if (items.some((i) => i.surveyId === fromSurveyId)) {
-    console.warn(`Каскад пропущен: батарея ${batteryId} содержит методику-источник`);
+    log.warn("cascade.loop", { batteryId, reason: "батарея содержит методику-источник" });
     return;
   }
 
@@ -121,7 +122,7 @@ async function assignCascade(
   const inUse = new Set(await batterySurveysInUse(batteryId));
   const grantable = items.filter((i) => inUse.has(i.surveyId));
   if (!grantable.length) {
-    console.warn(`Каскад пропущен: все методики батареи ${batteryId} сняты с использования`);
+    log.warn("cascade.skipped", { batteryId, reason: "все методики сняты с использования" });
     return;
   }
 

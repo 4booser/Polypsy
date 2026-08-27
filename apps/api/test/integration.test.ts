@@ -67,7 +67,7 @@ async function api(path: string, token: string, init: RequestInit = {}) {
     },
   });
   const body = await res.json().catch(() => null);
-  return { status: res.status, body };
+  return { status: res.status, headers: res.headers, body };
 }
 
 let root: Person;
@@ -2305,5 +2305,90 @@ describe("списки не отдаются целиком", () => {
       expect(second.body.total).toBeUndefined();
       expect(second.body.items[0]?.userId).not.toBe(first.body.items[0]?.userId);
     }
+  });
+});
+
+describe("наблюдаемость", () => {
+  test("номер запроса возвращается в заголовке и попадает в журнал", async () => {
+    const res = await api("/api/surveys", adminA.token);
+    const id = res.headers?.get?.("x-request-id");
+    expect(typeof id).toBe("string");
+    expect(id!.length).toBeGreaterThan(8);
+  });
+
+  test("свой номер запроса принимается — по нему сшиваются логи прокси и приложения", async () => {
+    const mine = "edge-proxy-7f3a91";
+    const res = await api("/api/surveys", adminA.token, { headers: { "x-request-id": mine } });
+    expect(res.headers?.get?.("x-request-id")).toBe(mine);
+  });
+
+  test("чужой номер просеивается: он уходит в заголовок ответа и в лог", async () => {
+    /*
+     * Подстановка в заголовок и в лог — обе неприятны, а идентификатор
+     * приходит снаружи. Символы вне безопасного набора вырезаются.
+     */
+    const res = await api("/api/surveys", adminA.token, {
+      headers: { "x-request-id": "abc\u0009def<script>" },
+    });
+    const got = res.headers?.get?.("x-request-id") ?? "";
+    expect(got).not.toContain("<");
+    expect(got).toMatch(/^[A-Za-z0-9._:-]+$/);
+  });
+
+  test("отказ несёт номер запроса, по которому инцидент ищется в логе", async () => {
+    const res = await api("/api/surveys/нет-такой-методики", adminA.token);
+    expect(res.status).toBe(404);
+    expect(typeof res.body.requestId).toBe("string");
+  });
+});
+
+describe("метрики", () => {
+  test("без токена эндпоинта нет вовсе", async () => {
+    // выключено значит выключено, а не «открыто для всех»
+    delete process.env.METRICS_TOKEN;
+    const res = await app.request("/metrics");
+    expect(res.status).toBe(404);
+  });
+
+  test("с токеном отдаёт счётчики в формате Prometheus", async () => {
+    process.env.METRICS_TOKEN = "metrics-secret-9f21";
+    const bad = await app.request("/metrics", { headers: { authorization: "Bearer wrong" } });
+    expect(bad.status).toBe(401);
+
+    const res = await app.request("/metrics", {
+      headers: { authorization: "Bearer metrics-secret-9f21" },
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    // счётчик запросов набрался за время прогона сюиты
+    expect(text).toContain("quizzy_http_requests_total{");
+    // гистограмма длительности — с накопительными корзинами и +Inf
+    expect(text).toContain('quizzy_http_duration_ms_bucket{route=');
+    expect(text).toContain('le="+Inf"');
+    // показатели состояния, ради которых всё и затевалось
+    expect(text).toContain("quizzy_open_alert_cases ");
+    expect(text).toContain("quizzy_scheduler_stale_minutes ");
+    expect(text).toContain("quizzy_database_bytes ");
+
+    delete process.env.METRICS_TOKEN;
+  });
+
+  test("корзины гистограммы накопительные и не убывают", async () => {
+    const { observe, render, resetMetrics } = await import("../src/lib/metrics");
+    resetMetrics();
+    for (const ms of [3, 7, 40, 900, 9000]) observe("probe_ms", ms, { route: "/x" });
+
+    const lines = render()
+      .split("\n")
+      .filter((l) => l.startsWith("probe_ms_bucket"));
+    const values = lines.map((l) => Number(l.split(" ").pop()));
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]!).toBeGreaterThanOrEqual(values[i - 1]!);
+    }
+    // последняя корзина — все наблюдения
+    expect(values[values.length - 1]).toBe(5);
+    expect(render()).toContain('probe_ms_count{route="/x"} 5');
+    resetMetrics();
   });
 });

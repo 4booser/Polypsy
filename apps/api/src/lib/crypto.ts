@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { env } from "../env";
+import { log } from "./log";
 
 /**
  * Прикладное шифрование чувствительных полей (AES-256-GCM).
@@ -53,9 +54,9 @@ export function reloadKeysForTests(spec: string): void {
 }
 
 if (env.isProduction && !keys.active) {
-  console.warn(
-    "ВНИМАНИЕ: ENCRYPTION_KEY не задан — чувствительные поля пишутся открытым текстом",
-  );
+  log.warn("crypto.disabled", {
+    hint: "ENCRYPTION_KEY не задан — чувствительные поля пишутся открытым текстом",
+  });
 }
 
 export function isEncryptionEnabled(): boolean {
@@ -81,7 +82,7 @@ export function decryptField(value: string | null | undefined): string | null {
   const key = keyId ? keys.byId.get(keyId) : undefined;
   if (!key || !ivB64 || !payloadB64) {
     // ключ утрачен или значение битое: честная пометка вместо мусора или падения
-    console.error("Не удалось расшифровать поле: ключ", keyId, "недоступен");
+    log.error("crypto.key_missing", { keyId });
     return "«не расшифровано»";
   }
   try {
@@ -92,7 +93,7 @@ export function decryptField(value: string | null | undefined): string | null {
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
   } catch (error) {
-    console.error("Расшифровка поля не удалась", error);
+    log.error("crypto.decrypt_failed", { error: String(error) });
     return "«не расшифровано»";
   }
 }

@@ -10,7 +10,6 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
-import { logger } from "hono/logger";
 import { HTTPException } from "hono/http-exception";
 import { env } from "./env";
 import { authRoutes } from "./routes/auth";
@@ -26,6 +25,7 @@ import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
 import { storageRoutes } from "./routes/storage";
 import { alertCaseRoutes } from "./routes/alertCases";
+import { metricsRoutes } from "./routes/metrics";
 import { buildOpenApi } from "./lib/openapi";
 import pkg from "../package.json" with { type: "json" };
 import { comparisonRoutes } from "./routes/comparison";
@@ -46,10 +46,16 @@ import { referralRoutes } from "./routes/referrals";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
+import { requestId } from "./middleware/requestId";
+import { currentRequestId, log } from "./lib/log";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", logger());
+/*
+ * Идентификатор запроса — первым: он должен стоять в контексте раньше, чем
+ * что-либо начнёт писать в лог, иначе первые записи останутся без него.
+ */
+app.use("*", requestId);
 app.use("*", secureHeaders());
 // аналитика отдаёт сотни КБ JSON — gzip сокращает их на порядок
 app.use("*", compress());
@@ -98,6 +104,8 @@ app.route("/api/access", accessRoutes);
 // случаи риска — новый контур разбора; /api/alerts оставлен для совместимости
 app.route("/api/alert-cases", alertCaseRoutes);
 app.route("/api/stats/storage", storageRoutes);
+// метрики вне /api: их снимает сборщик, а не консоль
+app.route("/metrics", metricsRoutes);
 
 /**
  * Описание API. За логином сотрудника: перечень эндпоинтов вместе с
@@ -128,13 +136,27 @@ app.route("/api/referrals", referralRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {
+  const id = currentRequestId();
   if (err instanceof HTTPException) {
-    return c.json({ error: err.message }, err.status);
+    // ожидаемые отказы — не ошибки сервера, стек тут не нужен
+    return c.json({ error: err.message, requestId: id }, err.status);
   }
-  console.error(err);
-  return c.json({ error: "Внутренняя ошибка сервера" }, 500);
+  /*
+   * Номер запроса возвращается пользователю вместе с отказом: по нему
+   * инцидент находится в логе одним поиском, вместо пересказа «вчера
+   * вечером что-то не сохранилось».
+   */
+  log.error("unhandled", {
+    path: c.req.path,
+    method: c.req.method,
+    name: err.name,
+    // сообщение и стек — в лог, наружу не отдаём: там бывают имена таблиц
+    message: err.message,
+    stack: err.stack?.split("\n").slice(0, 6).join(" | "),
+  });
+  return c.json({ error: "Внутренняя ошибка сервера", requestId: id }, 500);
 });
 
-app.notFound((c) => c.json({ error: "Маршрут не найден" }, 404));
+app.notFound((c) => c.json({ error: "Маршрут не найден", requestId: currentRequestId() }, 404));
 
 export { app };
