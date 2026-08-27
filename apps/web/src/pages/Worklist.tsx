@@ -4,12 +4,13 @@ import type { Worklist as List, WorkItem } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Avatar, Badge, Empty, Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
-const KIND_LABEL: Record<WorkItem["kind"], string> = {
-  case: "случай риска",
-  referral: "направление",
-  assignment: "назначение",
-};
+const KIND_KEY = {
+  case: "work.kindCase",
+  referral: "work.kindReferral",
+  assignment: "work.kindAssignment",
+} as const;
 
 /**
  * Что от меня ждут сегодня.
@@ -25,6 +26,7 @@ export default function WorklistPage() {
   const [data, setData] = useState<List | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [kind, setKind] = useState<WorkItem["kind"] | "">("");
+  const { ut } = useLang();
 
   useEffect(() => {
     api.worklist().then(setData).catch((e) => setError(e.message));
@@ -38,38 +40,38 @@ export default function WorklistPage() {
   return (
     <>
       <PageHead
-        title="Очередь работы"
+        title={ut("work.title")}
         sub={
           data.total
-            ? `${data.total} на разбор${overdue ? ` · просрочено ${overdue}` : ""}`
-            : "Ничего не ждёт"
+            ? `${data.total} ${ut("work.onReview")}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}`
+            : ut("work.nothing")
         }
       />
 
       <div className="card filters">
         <div className="tabs">
           <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>
-            Всё · {data.total}
+            {ut("work.all")} · {data.total}
           </button>
           <button className={kind === "case" ? "active" : ""} onClick={() => setKind("case")}>
-            Случаи · {data.byKind.case}
+            {ut("work.filterCases")} · {data.byKind.case}
           </button>
           <button className={kind === "referral" ? "active" : ""} onClick={() => setKind("referral")}>
-            Направления · {data.byKind.referral}
+            {ut("work.filterReferrals")} · {data.byKind.referral}
           </button>
           <button
             className={kind === "assignment" ? "active" : ""}
             onClick={() => setKind("assignment")}
           >
-            Просроченные назначения · {data.byKind.assignment}
+            {ut("work.filterAssignments")} · {data.byKind.assignment}
           </button>
         </div>
       </div>
 
       {shown.length === 0 ? (
         <Empty
-          title="Разобрано"
-          hint="Новое появится здесь, как только придёт — этот экран собирает всё входящее в одном месте"
+          title={ut("work.done")}
+          hint={ut("work.doneHint")}
         />
       ) : (
         <div className="card flush">
@@ -85,8 +87,8 @@ export default function WorklistPage() {
                   {i.title} · {i.detail}
                 </div>
               </div>
-              <span className="muted work-kind">{KIND_LABEL[i.kind]}</span>
-              {i.overdue ? <Badge tone="bad">просрочено</Badge> : null}
+              <span className="muted work-kind">{ut(KIND_KEY[i.kind])}</span>
+              {i.overdue ? <Badge tone="bad">{ut("cases.overdue")}</Badge> : null}
               <span className="muted work-since">{day(i.since)}</span>
             </Link>
           ))}
@@ -95,7 +97,7 @@ export default function WorklistPage() {
 
       {data.truncated ? (
         <p className="hint" style={{ textAlign: "center" }}>
-          Показаны первые 100. Разберите срочное — остальное подтянется.
+          {ut("work.truncated")}
         </p>
       ) : null}
     </>

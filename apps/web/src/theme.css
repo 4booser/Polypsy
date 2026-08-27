@@ -776,3 +776,12 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
   .work-row { flex-wrap: wrap; }
   .work-since, .work-kind { min-width: 0; }
 }
+
+/* переключатель языка в боковой панели: два коротких переключателя в ряд */
+.lang-switch { display: inline-flex; gap: 2px; }
+.lang-switch button {
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: 0.04em;
+  padding: 4px 9px; border-color: transparent; background: transparent; color: var(--muted);
+}
+.lang-switch button.active { background: var(--surface-2); color: var(--text); }
+@media (max-width: 1180px) { .sidebar .lang-switch { flex-direction: column; } }

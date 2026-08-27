@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
+import { LangSwitch, useLang } from "./lang";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
@@ -87,6 +88,7 @@ function Nav({
 
 export default function App() {
   const { user, loading, logout } = useAuth();
+  const { ut } = useLang();
   const [openAlerts, setOpenAlerts] = useState(0);
   const [openReferrals, setOpenReferrals] = useState(0);
   const [worklistCount, setWorklistCount] = useState(0);
@@ -153,28 +155,28 @@ export default function App() {
           Quizzy
         </div>
 
-        <Nav to="/" end icon={<IconDashboard />}>Сводка</Nav>
+        <Nav to="/" end icon={<IconDashboard />}>{ut("nav.dashboard")}</Nav>
         {/* очередь сразу под сводкой: с неё начинается рабочий день */}
-        <Nav to="/worklist" icon={<IconClock />} badge={worklistCount}>Очередь работы</Nav>
-        <Nav to="/surveys" icon={<IconSurvey />}>Методики</Nav>
-        <Nav to="/batteries" icon={<IconBattery />}>Батареи</Nav>
-        <Nav to="/schedules" icon={<IconClock />}>Расписание</Nav>
-        <Nav to="/invites" icon={<IconInvite />}>Приглашения</Nav>
-        <Nav to="/kiosk-sessions" icon={<IconKiosk />}>Сеансы киоска</Nav>
-        <Nav to="/groups" icon={<IconGroup />}>Группы</Nav>
-        <Nav to="/patients" icon={<IconPatients />}>Пациенты</Nav>
-        <Nav to="/compare" icon={<IconCompare />}>Сравнение</Nav>
-        <Nav to="/surveillance" icon={<IconPulse />}>Надзор</Nav>
-        <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>Случаи риска</Nav>
-        <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>Направления</Nav>
+        <Nav to="/worklist" icon={<IconClock />} badge={worklistCount}>{ut("nav.worklist")}</Nav>
+        <Nav to="/surveys" icon={<IconSurvey />}>{ut("nav.surveys")}</Nav>
+        <Nav to="/batteries" icon={<IconBattery />}>{ut("nav.batteries")}</Nav>
+        <Nav to="/schedules" icon={<IconClock />}>{ut("nav.schedules")}</Nav>
+        <Nav to="/invites" icon={<IconInvite />}>{ut("nav.invites")}</Nav>
+        <Nav to="/kiosk-sessions" icon={<IconKiosk />}>{ut("nav.kiosk")}</Nav>
+        <Nav to="/groups" icon={<IconGroup />}>{ut("nav.groups")}</Nav>
+        <Nav to="/patients" icon={<IconPatients />}>{ut("nav.patients")}</Nav>
+        <Nav to="/compare" icon={<IconCompare />}>{ut("nav.compare")}</Nav>
+        <Nav to="/surveillance" icon={<IconPulse />}>{ut("nav.surveillance")}</Nav>
+        <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>{ut("nav.cases")}</Nav>
+        <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>{ut("nav.referrals")}</Nav>
 
         {isSuper ? (
           <>
-            <div className="nav-section">Администрирование</div>
-            <Nav to="/users" icon={<IconUsers />}>Учётные записи</Nav>
-            <Nav to="/audit" icon={<IconAudit />}>Журнал доступа</Nav>
-            <Nav to="/api-docs" icon={<IconSurvey />}>Описание API</Nav>
-            <Nav to="/ui" icon={<IconDashboard />}>Библиотека</Nav>
+            <div className="nav-section">{ut("nav.admin")}</div>
+            <Nav to="/users" icon={<IconUsers />}>{ut("nav.users")}</Nav>
+            <Nav to="/audit" icon={<IconAudit />}>{ut("nav.audit")}</Nav>
+            <Nav to="/api-docs" icon={<IconSurvey />}>{ut("nav.api")}</Nav>
+            <Nav to="/ui" icon={<IconDashboard />}>{ut("nav.ui")}</Nav>
           </>
         ) : null}
 
@@ -184,8 +186,12 @@ export default function App() {
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           style={{ width: "100%", justifyContent: "flex-start" }}
         >
-          {theme === "dark" ? "☀ Светлая тема" : "☾ Тёмная тема"}
+          {theme === "dark" ? `☀ ${ut("nav.themeLight")}` : `☾ ${ut("nav.themeDark")}`}
         </button>
+        {/* язык рядом с темой: обе настройки про то, как выглядит консоль */}
+        <div style={{ padding: "0 10px 8px" }}>
+          <LangSwitch />
+        </div>
         <div className="nav-section" style={{ paddingBottom: 2 }}>
           {user.fullName}
         </div>
@@ -193,14 +199,14 @@ export default function App() {
           // человек должен понимать, почему кнопки не срабатывают, до того
           // как решит, что консоль сломана
           <div className="muted" style={{ fontSize: 11, padding: "0 10px 4px" }}>
-            Режим просмотра · изменения отключены
+            {ut("nav.readOnly")}
           </div>
         ) : null}
         <div className="muted" style={{ fontSize: 11, padding: "0 10px 8px" }}>
-          {user.role === "superadmin" ? "Суперадминистратор" : "Администратор группы"}
+          {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
         </div>
         <button className="ghost" onClick={logout} style={{ width: "100%", justifyContent: "flex-start" }}>
-          Выйти
+          {ut("nav.logout")}
         </button>
         <span className="build-tag" title={`Сборка от ${__BUILD_DATE__}`}>
           {__BUILD_SHA__}

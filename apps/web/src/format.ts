@@ -1,4 +1,4 @@
-import type { Severity } from "@quizzy/shared";
+import type { Severity, UiKey } from "@quizzy/shared";
 
 /**
  * Цвет заливки: метки на графиках, полоски, доли кольца.
@@ -25,12 +25,19 @@ export const severityTextColor: Record<Severity, string> = {
   severe: "var(--sev-severe-text)",
 };
 
-export const severityLabel: Record<Severity, string> = {
-  none: "Норма",
-  mild: "Лёгкая",
-  moderate: "Умеренная",
-  severe: "Выраженная",
-};
+/**
+ * Ключи подписей степени выраженности.
+ *
+ * Сами подписи живут в общем словаре: они видны на каждом экране с
+ * результатом и в мобильном приложении тоже, а два словаря однажды
+ * разойдутся.
+ */
+export const severityKey = {
+  none: "severity.none",
+  mild: "severity.mild",
+  moderate: "severity.moderate",
+  severe: "severity.severe",
+} as const satisfies Record<Severity, UiKey>;
 
 export const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 
