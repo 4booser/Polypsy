@@ -163,6 +163,13 @@ export default function App() {
         <div className="nav-section" style={{ paddingBottom: 2 }}>
           {user.fullName}
         </div>
+        {user.readOnly ? (
+          // человек должен понимать, почему кнопки не срабатывают, до того
+          // как решит, что консоль сломана
+          <div className="muted" style={{ fontSize: 11, padding: "0 10px 4px" }}>
+            Режим просмотра · изменения отключены
+          </div>
+        ) : null}
         <div className="muted" style={{ fontSize: 11, padding: "0 10px 8px" }}>
           {user.role === "superadmin" ? "Суперадминистратор" : "Администратор группы"}
         </div>

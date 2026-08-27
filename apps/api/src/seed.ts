@@ -76,6 +76,7 @@ interface AccountSeed {
   position?: string | null;
   specialty?: string | null;
   rank?: string | null;
+  readOnly?: boolean;
 }
 
 const ACCOUNTS: AccountSeed[] = [
@@ -85,6 +86,15 @@ const ACCOUNTS: AccountSeed[] = [
   { email: "psy2@quizzy.dev", password: "psy212345", firstName: "Игорь", lastName: "Смирнов", middleName: "Олегович", role: "admin" as const },
   { email: "user@quizzy.dev", password: "user12345", firstName: "Дмитрий", lastName: "Петров", middleName: "Андреевич", role: "user" as const, sex: "male" as const, birthDate: "1994-03-12", unit: "1-й батальон", position: "Стрелок", specialty: "Стрелок", rank: "Солдат" },
   { email: "user2@quizzy.dev", password: "user212345", firstName: "Елена", lastName: "Ким", middleName: null, role: "user" as const, sex: "female" as const, birthDate: "1988-11-02", unit: "Медицинская рота", position: "Санитарный инструктор", specialty: "Медик", rank: "Сержант" },
+  /*
+   * Учётка для показов — строго последней в списке: ниже массив разбирается
+   * по позициям, и вставка в середину молча сдвинула бы пациентов.
+   *
+   * Ходит по консоли настоящими маршрутами и видит настоящие экраны, но любой
+   * запрос на изменение получает отказ: демонстрацию можно отдать в чужие
+   * руки, не рискуя данными.
+   */
+  { email: "demo@quizzy.dev", password: "demo12345", firstName: "Демонстрация", lastName: "Просмотр", middleName: null, role: "admin" as const, readOnly: true },
 ];
 
 async function upsertUser(data: AccountSeed) {
@@ -108,12 +118,13 @@ async function upsertUser(data: AccountSeed) {
       rank: data.rank ?? null,
       passwordHash: await hashPassword(data.password),
       role: data.role,
+      readOnly: data.readOnly ?? false,
     })
     .returning();
   return row!;
 }
 
-const [root, , psy, psy2, patient, patient2] = await Promise.all(ACCOUNTS.map(upsertUser));
+const [root, , psy, psy2, patient, patient2, demo] = await Promise.all(ACCOUNTS.map(upsertUser));
 
 /** Дополнительные пациенты — чтобы аналитика и списки не были вырожденными */
 const pool: UserRow[] = [];
@@ -164,6 +175,9 @@ const dynamics = await upsertGroup(
 for (const [group, admin] of [
   [intake, psy!],
   [dynamics, psy2!],
+  // демонстрационной учётке дают обе группы: показывать пустую консоль незачем
+  [intake, demo!],
+  [dynamics, demo!],
 ] as const) {
   await db
     .insert(groupAdmins)

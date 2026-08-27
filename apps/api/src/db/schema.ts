@@ -29,6 +29,16 @@ export const users = pgTable(
     id: text("id").primaryKey(),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
+    /**
+     * Учётная запись только для чтения.
+     *
+     * Нужна для показов и обучения: человек ходит по консоли настоящими
+     * маршрутами и видит настоящие экраны, но ничего не может испортить.
+     * Проверка живёт в одном месте — middleware по методу запроса, — потому
+     * что перечислять «безопасные» эндпоинты пришлось бы заново после
+     * каждой новой фичи, и однажды кто-то забыл бы.
+     */
+    readOnly: boolean("read_only").notNull().default(false),
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
     /** Отчество — необязательно, но в медицинском учреждении обычно есть */

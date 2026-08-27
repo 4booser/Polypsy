@@ -2090,3 +2090,60 @@ describe("размеры хранилища", () => {
     expect((await api("/api/stats/storage", adminA.token)).status).toBe(403);
   });
 });
+
+describe("учётная запись только на просмотр", () => {
+  let viewer: Person;
+
+  beforeAll(async () => {
+    viewer = await makeUser("admin", "viewer@test");
+    await db.update(users).set({ readOnly: true }).where(eq(users.id, viewer.id));
+    await db.insert(groupAdmins).values({ groupId: groupA, userId: viewer.id, assignedBy: root.id });
+  });
+
+  test("читать можно всё, что положено роли", async () => {
+    expect((await api("/api/surveys", viewer.token)).status).toBe(200);
+    expect((await api(`/api/surveys/${surveyInA}`, viewer.token)).status).toBe(200);
+    expect((await api("/api/alerts", viewer.token)).status).toBe(200);
+  });
+
+  test("любое изменение отклоняется — независимо от эндпоинта", async () => {
+    const attempts = [
+      ["POST", "/api/referrals", { userId: patient.id, destination: "psychiatrist" }],
+      ["POST", `/api/access/surveys/${surveyInA}/grants`, { userId: patient.id }],
+      ["DELETE", `/api/surveys/${surveyInA}`, undefined],
+      ["PATCH", "/api/auth/me", { unit: "Другое" }],
+    ] as const;
+
+    for (const [method, path, body] of attempts) {
+      const res = await api(path, viewer.token, {
+        method,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain("только на просмотр");
+    }
+  });
+
+  test("отказ попадает в журнал", async () => {
+    await api("/api/referrals", viewer.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id, destination: "other" }),
+    });
+    const { auditLog } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.actorId, viewer.id))
+      .orderBy(descOp(auditLog.at))
+      .limit(1);
+    expect(entry!.action).toBe("access.denied");
+    expect((entry!.details as { reason?: string }).reason).toBe("read_only_account");
+  });
+
+  test("данные после попыток не изменились", async () => {
+    // самая важная проверка: отказ должен быть до записи, а не после
+    const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyInA) });
+    expect(survey!.archivedAt).toBeNull();
+  });
+});
