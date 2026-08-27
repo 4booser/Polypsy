@@ -157,6 +157,11 @@ export default function SurveyAnalyticsPage() {
         <>
           <div className="grid cols-4" style={{ marginBottom: 16 }}>
             <div className="tile"><div className="label">Завершено</div><div className="value">{data.completed}</div><div className="hint">начато {data.started}</div></div>
+            {/*
+              Доходимость была ещё и кольцевой диаграммой на четверть экрана —
+              ради двух чисел, которые и так стоят в плитке. Место отдано
+              распределениям, где картинка действительно нужна.
+            */}
             <div className="tile"><div className="label">Доходимость</div><div className="value">{data.completionRate}%</div><div className="hint">брошено {data.abandoned}</div></div>
             <div className="tile"><div className="label">Среднее время</div><div className="value">{duration(data.avgDurationMs)}</div></div>
             <div className="tile"><div className="label">Медиана</div><div className="value">{duration(data.medianDurationMs)}</div></div>
@@ -164,17 +169,6 @@ export default function SurveyAnalyticsPage() {
 
           <Chart title="Динамика" hint="Завершённые прохождения по дням">
             <LineChart area series={[{ label: "Прохождений", points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]} />
-          </Chart>
-
-          <Chart title="Доходимость" hint="Завершённые против брошенных">
-            <Donut
-              center={`${data.completionRate}%`}
-              centerLabel="дошли до конца"
-              slices={[
-                { label: "Завершено", value: data.completed, color: severityColor.none },
-                { label: "Брошено", value: data.abandoned, color: severityColor.severe },
-              ]}
-            />
           </Chart>
 
           <Chart
