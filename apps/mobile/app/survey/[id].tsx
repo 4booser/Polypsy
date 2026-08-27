@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import {
   isAnswered,
@@ -17,6 +17,7 @@ import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { formatDuration, severityColor, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { useTextScale } from "@/textScale";
 
 /** Телеметрия по одному вопросу, копится пока экран открыт */
 interface Telemetry {
@@ -27,6 +28,7 @@ interface Telemetry {
 
 export default function TakeSurveyScreen() {
   const c = useColors();
+  const { scale, cycle, fs } = useTextScale();
   const { ut } = useLang();
   const router = useRouter();
   const navigation = useNavigation();
@@ -400,6 +402,17 @@ export default function TakeSurveyScreen() {
   const asked = visible.filter((q) => q.type !== "info");
   const askedIndex = asked.findIndex((q) => q.id === current.id);
   const progress = asked.length ? (askedIndex + 1) / asked.length : 1;
+  /*
+   * Сколько осталось: по собственному темпу, а не по медиане других. Пока
+   * пройдено меньше трёх пунктов, темпа ещё нет и оценка была бы выдумкой —
+   * тогда не показываем ничего.
+   */
+  const answeredCount = asked.filter((q) => isAnswered(q, answers.get(q.id))).length;
+  const remainingMinutes =
+    answeredCount >= 3 && elapsed > 0
+      ? Math.max(1, Math.round(((elapsed / answeredCount) * (asked.length - answeredCount)) / 60_000))
+      : null;
+
   const canAdvance = !current.required || isAnswered(current, answers.get(current.id));
   const isLast = step === visible.length - 1;
   const section = sectionOf(current);
@@ -417,14 +430,42 @@ export default function TakeSurveyScreen() {
             <Text style={{ color: c.muted, fontSize: 12 }}>
               {current.type === "info" ? ut("runner.info") : `${ut("runner.question")} ${askedIndex + 1} ${ut("common.of")} ${asked.length}`}
             </Text>
+            {/*
+              Оценка оставшегося времени важнее прошедшего: человек с
+              двухсотпунктовым опросником решает, успеет ли он сейчас, а не
+              интересуется, сколько уже потратил. Считается по своему же
+              темпу, а не по чужой медиане — так честнее.
+             */}
+            {remainingMinutes !== null ? (
+              <Text style={{ color: c.muted, fontSize: 12 }}>
+                ≈{remainingMinutes} мин осталось
+              </Text>
+            ) : null}
             <View style={{ flex: 1 }} />
-            <Text style={{ color: c.muted, fontSize: 12 }}>
-              {savedAt ? "сохранено · " : ""}
-            </Text>
+            {savedAt ? (
+              <Text style={{ color: c.muted, fontSize: 12 }} accessibilityLabel="Ответы сохранены">
+                ✓ сохранено
+              </Text>
+            ) : null}
             <Text style={{ color: overtime ? c.danger : c.muted, fontSize: 12 }}>
               {formatDuration(elapsed)}
               {survey.timeLimitSec ? ` / ${Math.round(survey.timeLimitSec / 60)} мин` : ""}
             </Text>
+            {/*
+              Укрупнение текста прямо на экране прохождения: лезть в
+              настройки телефона посреди обследования никто не будет.
+             */}
+            <Pressable
+              onPress={cycle}
+              accessibilityRole="button"
+              accessibilityLabel={`Размер текста, сейчас ${Math.round(scale * 100)} процентов`}
+              hitSlop={12}
+              style={{ paddingLeft: spacing.sm }}
+            >
+              <Text style={{ color: scale > 1 ? c.primary : c.muted, fontSize: 14, fontWeight: "700" }}>
+                А{scale > 1 ? "+" : ""}
+              </Text>
+            </Pressable>
           </Row>
           {/* полоса без подписи для диктора — просто декорация; озвучиваем сам прогресс */}
           <View
@@ -455,7 +496,9 @@ export default function TakeSurveyScreen() {
         ) : null}
 
         <View style={{ gap: spacing.xs }}>
-          <Text style={{ color: c.text, fontSize: 19, fontWeight: "600", lineHeight: 26 }}>
+          {/* формулировка пункта укрупняется вместе с вариантами: читать
+              приходится и то и другое */}
+          <Text style={{ color: c.text, fontSize: fs(19), fontWeight: "600", lineHeight: fs(26) }}>
             {current.title}
           </Text>
           {current.help ? <Body muted>{current.help}</Body> : null}
@@ -491,7 +534,22 @@ export default function TakeSurveyScreen() {
         <View style={{ flex: 2 }}>
           <Button
             title={isLast ? ut("common.finish") : ut("common.next")}
-            onPress={() => (isLast ? submit() : goTo(step + 1))}
+            onPress={() => {
+              if (!isLast) return goTo(step + 1);
+              /*
+               * Перед сдачей возвращаем к первому пропущенному обязательному
+               * пункту. Иначе человек упирается в отказ сервера и ищет
+               * пропуск сам — в опроснике на двести пунктов это тупик.
+               */
+              const missing = visible.findIndex(
+                (q) => q.required && q.type !== "info" && !isAnswered(q, answers.get(q.id)),
+              );
+              if (missing >= 0 && missing !== step) {
+                setError(ut("runner.missingRequired"));
+                return goTo(missing);
+              }
+              return submit();
+            }}
             disabled={!canAdvance}
             loading={busy}
           />
