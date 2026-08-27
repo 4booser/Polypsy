@@ -44,8 +44,8 @@ export default function UnitReportPage() {
   return (
     <>
       <PageHead
-        title="Состояние подразделения"
-        sub="Свод по людям подразделения. Отдельного человека здесь не видно — для этого есть его карта"
+        title={ut("nav.unitReport")}
+        sub={ut("unit.sub")}
         actions={
           <div className="date-range">
             <select value={unit} onChange={(e) => setUnit(e.target.value)} aria-label={ut("ui.unit")}>
@@ -62,13 +62,13 @@ export default function UnitReportPage() {
               <span>по</span>
               <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Конец периода" />
             </label>
-            {data ? <button onClick={() => window.print()}>Печать</button> : null}
+            {data ? <button onClick={() => window.print()}>{ut("unit.print")}</button> : null}
           </div>
         }
       />
 
       {!unit ? (
-        <Empty title="Выберите подразделение" hint="Отчёт строится по одному подразделению за период" />
+        <Empty title={ut("unit.choose")} hint={ut("unit.chooseHint")} />
       ) : error ? (
         <p className="error">{error}</p>
       ) : !data ? (
@@ -77,16 +77,16 @@ export default function UnitReportPage() {
         <>
           <div className="grid cols-4" style={{ marginBottom: 16 }}>
             <div className="tile">
-              <div className="label">Охват</div>
+              <div className="label">{ut("unit.coverage")}</div>
               <div className="value">{data.coverage}%</div>
-              <div className="hint">обследовано {data.measured} из {data.people}</div>
+              <div className="hint">{ut("unit.measured")} {data.measured} / {data.people}</div>
             </div>
             <div className="tile">
-              <div className="label">Прохождений</div>
+              <div className="label">{ut("dash.responses")}</div>
               <div className="value">{data.responses}</div>
             </div>
             <div className={`tile ${data.atRisk ? "alarm" : ""}`}>
-              <div className="label">В тяжёлой полосе</div>
+              <div className="label">{ut("unit.atRisk")}</div>
               <div className="value">{data.atRisk ?? "—"}</div>
               <div className="hint">
                 {data.atRisk === null
@@ -95,14 +95,14 @@ export default function UnitReportPage() {
               </div>
             </div>
             <div className="tile">
-              <div className="label">Методик</div>
+              <div className="label">{ut("dash.surveys")}</div>
               <div className="value">{data.surveys.length}</div>
             </div>
           </div>
 
           <div className="card scroll-x">
             <div className="card-head">
-              <h2>Распределение по шкалам</h2>
+              <h2>{ut("unit.distribution")}</h2>
               <span className="hint">
                 Ячейки меньше {data.smallCellFloor} человек скрыты: по единичному значению
                 человека узнают сослуживцы
@@ -111,9 +111,9 @@ export default function UnitReportPage() {
             <table>
               <thead>
                 <tr>
-                  <th>Шкала</th>
-                  <th className="num">Замеров</th>
-                  <th>Распределение</th>
+                  <th>{ut("sum.scale")}</th>
+                  <th className="num">{ut("sum.measurements")}</th>
+                  <th>{ut("unit.distribution")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -155,10 +155,10 @@ export default function UnitReportPage() {
           </div>
 
           <div className="card scroll-x">
-            <h2>Методики</h2>
+            <h2>{ut("nav.surveys")}</h2>
             <table>
               <thead>
-                <tr><th>Методика</th><th className="num">Прохождений</th><th className="num">Человек</th></tr>
+                <tr><th>{ut("nav.surveys")}</th><th className="num">{ut("dash.responses")}</th><th className="num">{ut("unit.people")}</th></tr>
               </thead>
               <tbody>
                 {data.surveys.map((s) => (

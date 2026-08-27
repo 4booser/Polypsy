@@ -1,40 +1,41 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Referral } from "@quizzy/shared";
+import type { Referral, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Avatar, DataTable, Empty, Loading, PageHead, useAction, useUrlState } from "../ui";
+import { useLang } from "../lang";
 
-export const DESTINATION_LABEL: Record<string, string> = {
-  psychiatrist: "Психиатр",
-  inpatient: "Стационар",
-  outpatient: "Амбулаторно",
-  commander: "Командиру",
-  other: "Иное",
-};
-export const URGENCY_LABEL: Record<string, string> = {
-  routine: "планово",
-  urgent: "срочно",
-  immediate: "немедленно",
-};
-export const STATUS_LABEL: Record<string, string> = {
-  created: "выписано",
-  accepted: "принято",
-  completed: "завершено",
-  declined: "отклонено",
-};
-export const NEXT_STATUS: Record<string, { value: string; label: string }[]> = {
+export const DESTINATION_KEY = {
+  psychiatrist: "dest.psychiatrist",
+  inpatient: "dest.inpatient",
+  outpatient: "dest.outpatient",
+  commander: "dest.commander",
+  other: "dest.other",
+} as const;
+export const URGENCY_KEY = {
+  routine: "urg.routine",
+  urgent: "urg.urgent",
+  immediate: "urg.immediate",
+} as const;
+export const STATUS_KEY = {
+  created: "st.created",
+  accepted: "st.accepted",
+  completed: "st.completed",
+  declined: "st.declined",
+} as const;
+export const NEXT_STATUS = {
   created: [
-    { value: "accepted", label: "Принято" },
-    { value: "declined", label: "Отклонено" },
+    { value: "accepted", key: "ref.accepted" },
+    { value: "declined", key: "ref.declined" },
   ],
   accepted: [
-    { value: "completed", label: "Завершено" },
-    { value: "declined", label: "Отклонено" },
+    { value: "completed", key: "ref.completed" },
+    { value: "declined", key: "ref.declined" },
   ],
   completed: [],
   declined: [],
-};
+} as const satisfies Record<string, readonly { value: string; key: UiKey }[]>;
 
 /**
  * Реестр направлений.
@@ -50,6 +51,7 @@ export default function ReferralsPage() {
   const setAll = (v: boolean) => setAllParam(v ? "1" : "");
   const [error, setError] = useState<string | null>(null);
   const run = useAction();
+  const { ut } = useLang();
 
   const reload = (withClosed = all) => {
     api.referrals(withClosed).then(setRows).catch((e) => setError(e.message));
@@ -65,19 +67,19 @@ export default function ReferralsPage() {
   return (
     <>
       <PageHead
-        title="Направления"
-        sub={all ? "Все направления" : "Открытые: выписанные и принятые"}
+        title={ut("ref.title")}
+        sub={all ? ut("ref.allSub") : ut("ref.openSub")}
         actions={
           <button onClick={() => setAll(!all)}>
-            {all ? "Только открытые" : "Показать завершённые"}
+            {all ? ut("ref.onlyOpen") : ut("ref.showClosed")}
           </button>
         }
       />
       <div className="card">
         {rows.length === 0 ? (
           <Empty
-            title={all ? "Направлений нет" : "Открытых направлений нет"}
-            hint="Направление выписывается со сводки пациента"
+            title={all ? ut("ref.none") : ut("ref.noneOpen")}
+            hint={ut("ref.noneHint")}
           />
         ) : (
           <DataTable
@@ -88,7 +90,7 @@ export default function ReferralsPage() {
             columns={[
               {
                 key: "userName",
-                header: "Пациент",
+                header: ut("ref.patient"),
                 render: (r: Referral) => (
                   <Link className="row tight" to={`/patients/${r.userId}/summary`}>
                     <Avatar name={r.userName} />
@@ -99,35 +101,35 @@ export default function ReferralsPage() {
               },
               {
                 key: "destination",
-                header: "Куда",
-                render: (r: Referral) => DESTINATION_LABEL[r.destination] ?? r.destination,
+                header: ut("ref.where"),
+                render: (r: Referral) => ut(DESTINATION_KEY[r.destination]),
                 sort: (r: Referral) => r.destination,
               },
               {
                 key: "urgency",
-                header: "Срочность",
+                header: ut("ref.urgency"),
                 render: (r: Referral) => (
                   <span className={r.urgency === "immediate" ? "bad" : undefined}>
-                    {URGENCY_LABEL[r.urgency]}
+                    {ut(URGENCY_KEY[r.urgency])}
                   </span>
                 ),
                 sort: (r: Referral) => r.urgency,
               },
               {
                 key: "status",
-                header: "Статус",
-                render: (r: Referral) => STATUS_LABEL[r.status] ?? r.status,
+                header: ut("ref.status"),
+                render: (r: Referral) => ut(STATUS_KEY[r.status]),
                 sort: (r: Referral) => r.status,
               },
               {
                 key: "reason",
-                header: "Основание",
+                header: ut("ref.reason"),
                 render: (r: Referral) => <span className="muted">{r.reason ?? "—"}</span>,
                 sort: (r: Referral) => r.reason ?? "",
               },
               {
                 key: "createdAt",
-                header: "Выписано",
+                header: ut("ref.issued"),
                 render: (r: Referral) => (
                   <span className="muted">
                     {day(r.createdAt)}, {r.createdByName}
@@ -147,10 +149,10 @@ export default function ReferralsPage() {
                           run(async () => {
                             await api.updateReferral(r.id, n.value);
                             reload();
-                          }, `Направление: ${n.label.toLowerCase()}`)
+                          }, ut(n.key))
                         }
                       >
-                        {n.label}
+                        {ut(n.key)}
                       </button>
                     ))}
                   </div>
