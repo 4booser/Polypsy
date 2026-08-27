@@ -1,36 +1,37 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { AlertCase, OverviewAnalytics, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { duration, day, severityColor, severityKey, timeOfDay } from "../format";
 import { PpvCard } from "../components/CalibrationPanel";
-import { Badge, Loading, PageHead } from "../ui";
+import { Badge, PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 export default function Dashboard() {
-  const [data, setData] = useState<OverviewAnalytics | null>(null);
-  const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
-  const [cases, setCases] = useState<AlertCase[]>([]);
-  const [openCases, setOpenCases] = useState(0);
-  const [error, setError] = useState<string | null>(null);
   const { ut } = useLang();
 
-  useEffect(() => {
-    Promise.all([api.overview(), api.surveys(), api.alertCases({ limit: "3" })])
-      .then(([o, s, a]) => {
-        setData(o);
-        setSurveys(s);
-        setCases(a.items);
-        setOpenCases(a.total ?? a.items.length);
-      })
-      .catch((e) => setError(e.message));
+  /*
+   * Три запроса одной загрузкой: экран без любого из них неполон, и показывать
+   * его по частям значит подсовывать сводку, в которой чего-то не хватает без
+   * объяснения.
+   */
+  const res = useResource(async () => {
+    const [overview, surveys, alerts] = await Promise.all([
+      api.overview(),
+      api.surveys(),
+      api.alertCases({ limit: "3" }),
+    ]);
+    return {
+      data: overview,
+      surveys,
+      cases: alerts.items,
+      openCases: alerts.total ?? alerts.items.length,
+    };
   }, []);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!data) return <Loading rows={5} />;
-
   return (
+    <Screen res={res} rows={5}>
+      {({ data, surveys, cases, openCases }) => (
     <>
       {/*
         Порядок экрана задан, а не сложился: сначала то, что требует действия
@@ -163,5 +164,7 @@ export default function Dashboard() {
         </table>
       </div>
     </>
+      )}
+    </Screen>
   );
 }

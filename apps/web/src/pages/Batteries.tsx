@@ -9,8 +9,9 @@ import type {
 } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { day } from "../format";
-import { Empty, IconBattery, Loading, PageHead, Search, useAction } from "../ui";
+import { Empty, IconBattery, Loading, PageHead, Screen, Search, useAction } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 /**
  * Батареи: набор методик, назначаемый целиком.
@@ -21,24 +22,29 @@ import { useLang } from "../lang";
  */
 export default function Batteries() {
   const { ut } = useLang();
-  const [rows, setRows] = useState<Battery[] | null>(null);
-  const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
-  const [groups, setGroups] = useState<SurveyGroupWithCounts[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [editing, setEditing] = useState<Battery | "new" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const run = useAction();
 
-  const reload = () => api.batteries().then(setRows).catch(() => setRows([]));
-
-  useEffect(() => {
-    reload();
-    api.surveys().then(setSurveys).catch(() => {});
-    api.groups().then(setGroups).catch(() => {});
-    api.patients().then((p) => setPatients(p.items)).catch(() => {});
+  /*
+   * Батареи — содержание экрана, остальные три списка нужны только редактору
+   * и назначению. Их отказ не должен прятать сам список: пустой справочник
+   * ограничит выбор, но не оставит человека перед пустым экраном.
+   */
+  const res = useResource(async () => {
+    const [rows, surveys, groups, patients] = await Promise.all([
+      api.batteries(),
+      api.surveys().catch(() => [] as SurveyListItem[]),
+      api.groups().catch(() => [] as SurveyGroupWithCounts[]),
+      api.patients().then((p) => p.items).catch(() => [] as Patient[]),
+    ]);
+    return { rows, surveys, groups, patients };
   }, []);
+  const reload = res.reload;
 
   return (
+    <Screen res={res}>
+      {({ rows, surveys, groups, patients }) => (
     <>
       <PageHead
         title="Батареи методик"
@@ -59,8 +65,7 @@ export default function Batteries() {
         />
       ) : null}
 
-      {!rows ? <Loading /> : null}
-      {rows && !rows.length && !editing ? (
+      {!rows.length && !editing ? (
         <Empty
           title="Батарей пока нет"
           hint="Соберите набор из методик, которые всегда идут вместе, — назначать его придётся один раз, а не по одной методике"
@@ -129,6 +134,8 @@ export default function Batteries() {
         </div>
       ))}
     </>
+      )}
+    </Screen>
   );
 }
 

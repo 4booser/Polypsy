@@ -1,35 +1,34 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { SurveyFull, SurveyGrant } from "@quizzy/shared";
-import { api, type Patient } from "../api";
+import { api } from "../api";
 import { dateTime } from "../format";
-import { Loading, PageHead } from "../ui";
+import { PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 /** Назначение методики конкретным пациентам */
 export default function Access() {
   const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
-  const [survey, setSurvey] = useState<SurveyFull | null>(null);
-  const [grants, setGrants] = useState<SurveyGrant[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState("");
   const [note, setNote] = useState("");
   const [expires, setExpires] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function load() {
-    if (!id) return;
-    const [s, g, p] = await Promise.all([api.survey(id), api.grants(id), api.patients().then((p) => p.items)]);
-    setSurvey(s);
-    setGrants(g);
-    setPatients(p);
-  }
-
-  useEffect(() => {
-    load().catch((e) => setError(e.message));
-  }, [id]);
+  const res = useResource(
+    async () => {
+      const [survey, grants, patients] = await Promise.all([
+        api.survey(id!),
+        api.grants(id!),
+        api.patients().then((p) => p.items),
+      ]);
+      return { survey, grants, patients };
+    },
+    [id],
+    { enabled: !!id },
+  );
+  const load = async () => res.reload();
 
   async function grant() {
     if (!id || !selected) return;
@@ -48,11 +47,11 @@ export default function Access() {
     }
   }
 
-  if (!survey) return <Loading error={error} />;
-
-  const free = patients.filter((p) => !grants.some((g) => g.userId === p.id));
-
   return (
+    <Screen res={res}>
+      {({ survey, grants, patients }) => {
+        const free = patients.filter((p) => !grants.some((g) => g.userId === p.id));
+        return (
     <>
       <PageHead
         title="Доступ к методике"
@@ -132,5 +131,8 @@ export default function Access() {
         )}
       </div>
     </>
+        );
+      }}
+    </Screen>
   );
 }
