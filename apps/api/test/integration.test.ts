@@ -1703,3 +1703,71 @@ describe("качество данных", () => {
     expect(flagged.reasons.some((r: string) => r.includes("нетипичный паттерн"))).toBe(true);
   }, 90_000);
 });
+
+/* ── этап 8: витрина, фасеты, кэш, long-format ── */
+
+describe("витрина фактов и фасеты", () => {
+  test("фасет по полу режет метрики; страты меньше 5 подавлены", async () => {
+    const res = await api(`/api/facets/surveys/${surveyInA}?facet=sex`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.smallCellFloor).toBe(5);
+    for (const scale of res.body.scales) {
+      for (const s of scale.strata) {
+        expect(s.n).toBeGreaterThanOrEqual(5);
+        expect(s.riskShare).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  test("витрина видит те же прохождения, что и живые таблицы", async () => {
+    const { sql } = await import("drizzle-orm");
+    const [viaFacts] = await db.execute(sql`
+      select count(distinct response_id)::int n from response_facts
+      where survey_id = ${surveyInA} and status = 'completed'`);
+    const [viaTables] = await db.execute(sql`
+      select count(distinct r.id)::int n from responses r
+      join response_scores s on s.response_id = r.id
+      where r.survey_id = ${surveyInA} and r.status = 'completed'`);
+    expect((viaFacts as { n: number }).n).toBe((viaTables as { n: number }).n);
+  });
+
+  test("кэш отдаёт то же и инвалидируется новой сдачей", async () => {
+    const { clearAnalyticsCache } = await import("../src/lib/analyticsCache");
+    clearAnalyticsCache();
+
+    const first = await api(`/api/dif/surveys/${surveyInA}`, adminA.token);
+    const cachedRes = await api(`/api/dif/surveys/${surveyInA}`, adminA.token);
+    expect(cachedRes.body.sample).toBe(first.body.sample);
+
+    // новая сдача меняет отпечаток — выборка в ответе обязана вырасти
+    await submitSurvey(surveyInA, patient.token);
+    const afterSubmit = await api(`/api/dif/surveys/${surveyInA}`, adminA.token);
+    expect(afterSubmit.body.sample).toBe(first.body.sample + 1);
+  });
+});
+
+describe("long-format экспорт", () => {
+  test("строка на пару «прохождение × шкала», страты в файле, профиль соблюдается", async () => {
+    const res = await app.request(`/api/spss/surveys/${surveyInA}/long.csv?profile=deidentified`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const csv = await res.text();
+    const lines = csv.trim().split("\r\n");
+    const header = lines[0]!;
+
+    expect(header).toContain("scale");
+    expect(header).toContain("sex");
+    expect(header).toContain("age_band");
+    expect(header).not.toContain("unit"); // деидентифицированный профиль
+    expect(csv).not.toContain(patient.id);
+    expect(lines.length).toBeGreaterThan(1);
+
+    // полный профиль отдаёт подразделение и точную дату
+    const full = await app.request(`/api/spss/surveys/${surveyInA}/long.csv`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const fullHeader = (await full.text()).split("\r\n")[0]!;
+    expect(fullHeader).toContain("unit");
+    expect(fullHeader).toContain("submitted_at");
+  });
+});
