@@ -26,6 +26,7 @@ import { accessRoutes } from "./routes/access";
 import { storageRoutes } from "./routes/storage";
 import { alertCaseRoutes } from "./routes/alertCases";
 import { worklistRoutes } from "./routes/worklist";
+import { unitReportRoutes } from "./routes/unitReport";
 import { metricsRoutes } from "./routes/metrics";
 import { buildOpenApi } from "./lib/openapi";
 import pkg from "../package.json" with { type: "json" };
@@ -106,6 +107,7 @@ app.route("/api/access", accessRoutes);
 // случаи риска — новый контур разбора; /api/alerts оставлен для совместимости
 app.route("/api/alert-cases", alertCaseRoutes);
 app.route("/api/worklist", worklistRoutes);
+app.route("/api/unit-report", unitReportRoutes);
 app.route("/api/stats/storage", storageRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);

@@ -2474,3 +2474,50 @@ describe("очередь работы", () => {
     expect(entry!.action).toBe("worklist.read");
   });
 });
+
+describe("отчёт по подразделению", () => {
+  test("считает охват и распределение", async () => {
+    const res = await api(`/api/unit-report?unit=${encodeURIComponent("Рота А")}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.unit).toBe("Рота А");
+    expect(typeof res.body.coverage).toBe("number");
+    expect(Array.isArray(res.body.scales)).toBe(true);
+  });
+
+  test("малые ячейки подавляются, а не показываются нулём", async () => {
+    /*
+     * В роте на двенадцать человек строка «выраженная: 1» указывает на
+     * конкретного, и по ней его узнают сослуживцы. Подавление — не
+     * формальность: ноль читался бы как «таких нет», поэтому в подавленной
+     * ячейке именно null.
+     */
+    const res = await api(`/api/unit-report?unit=${encodeURIComponent("Рота А")}`, adminA.token);
+    expect(res.body.smallCellFloor).toBe(5);
+
+    for (const scale of res.body.scales as { total: number; breakdown: { count: number | null }[] }[]) {
+      // шкала попадает в отчёт только если наблюдений хватает
+      expect(scale.total).toBeGreaterThanOrEqual(5);
+      for (const cell of scale.breakdown) {
+        // либо ноль, либо не меньше порога, либо скрыто
+        expect(cell.count === null || cell.count === 0 || cell.count >= 5).toBe(true);
+      }
+    }
+  });
+
+  test("подразделение обязательно — отчёт «по всем» это не отчёт", async () => {
+    expect((await api("/api/unit-report", adminA.token)).status).toBe(400);
+  });
+
+  test("чтение отчёта фиксируется в журнале", async () => {
+    await api(`/api/unit-report?unit=${encodeURIComponent("Рота А")}`, adminA.token);
+    const { auditLog } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.actorId, adminA.id))
+      .orderBy(descOp(auditLog.at))
+      .limit(1);
+    expect(entry!.action).toBe("report.unit");
+  });
+});

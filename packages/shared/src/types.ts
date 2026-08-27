@@ -1175,3 +1175,27 @@ export interface Worklist {
   byKind: { case: number; referral: number; assignment: number };
   mine: number;
 }
+
+
+/** Состояние подразделения за период */
+export interface UnitReport {
+  unit: string;
+  from: string | null;
+  to: string | null;
+  /** Всего людей в подразделении */
+  people: number;
+  /** Из них обследовано за период */
+  measured: number;
+  coverage: number;
+  responses: number;
+  /** Сколько человек хоть раз попало в тяжёлую полосу; null — ячейка подавлена */
+  atRisk: number | null;
+  smallCellFloor: number;
+  surveys: { surveyId: string; title: string; responses: number; people: number }[];
+  scales: {
+    code: string;
+    title: string;
+    total: number;
+    breakdown: { severity: Severity; count: number | null; percent: number }[];
+  }[];
+}

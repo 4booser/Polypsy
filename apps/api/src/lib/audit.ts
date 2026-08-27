@@ -42,6 +42,7 @@ export type AuditAction =
   | "alert.assign"
   | "alert.release"
   | "report.render"
+  | "report.unit"
   | "response.list"
   | "response.read"
   | "analytics.overview"

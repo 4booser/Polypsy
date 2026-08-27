@@ -801,3 +801,9 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 
 /* случай «под рукой»: видно, к чему относятся клавиши */
 .case.focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* ── распределение по шкалам: полоса вместо четырёх чисел ─────────────────── */
+.sev-bar-row { display: flex; height: 8px; border-radius: 4px; overflow: hidden; min-width: 180px; }
+.sev-seg { display: block; }
+.sev-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 5px; font-size: var(--fs-micro); color: var(--muted); }
+.sev-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
