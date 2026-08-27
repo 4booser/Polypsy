@@ -8,6 +8,11 @@
  * Обе темы описаны целиком: тёмная по умолчанию, светлая нужна в кабинете
  * при дневном свете.
  */
+/*
+ * Приглушённый текст и акцент подобраны по контрасту, а не на глаз: axe в
+ * смоуке требует 4.5:1, и подписи таблиц с активным пунктом меню в тёмной
+ * теме этого порога не проходили.
+ */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -21,10 +26,10 @@
 
   --text: #eef1f6;
   --text-2: #b3bccb;
-  --muted: #7d8797;
+  --muted: #88919f;
 
-  --accent: #6b83ff;
-  --accent-soft: rgba(107, 131, 255, 0.14);
+  --accent: #7d92ff;
+  --accent-soft: rgba(125, 146, 255, 0.14);
   --accent-text: #0e1014;
   --danger: #e05a5a;
   --danger-soft: rgba(224, 90, 90, 0.13);
@@ -51,10 +56,10 @@
 
   --text: #10141b;
   --text-2: #48505e;
-  --muted: #78818f;
+  --muted: #5f6773;
 
-  --accent: #3b5bfd;
-  --accent-soft: rgba(59, 91, 253, 0.1);
+  --accent: #3452ea;
+  --accent-soft: rgba(52, 82, 234, 0.1);
   --accent-text: #ffffff;
   --danger: #d03b3b;
   --danger-soft: rgba(208, 59, 59, 0.09);
@@ -511,7 +516,7 @@ label.check input { width: auto; margin: 0; accent-color: var(--accent); }
 /* отметка сборки: при разборе инцидента сверяется «что задеплоено» */
 .build-tag {
   font: 500 10.5px ui-monospace, monospace; color: var(--muted);
-  opacity: 0.65; padding: 6px 12px; user-select: all;
+  padding: 6px 12px; user-select: all;
 }
 
 .table-tools { display: flex; justify-content: flex-end; margin-bottom: 8px; }

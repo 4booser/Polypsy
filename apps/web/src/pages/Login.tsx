@@ -27,12 +27,19 @@ export default function Login() {
         <h1>Quizzy</h1>
         <p className="sub">Консоль аналитики для сотрудников</p>
         <div className="field">
-          <label>Email</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="username" />
+          <label htmlFor="login-email">Email</label>
+          <input
+            id="login-email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="username"
+          />
         </div>
         <div className="field">
-          <label>Пароль</label>
+          <label htmlFor="login-password">Пароль</label>
           <input
+            id="login-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
