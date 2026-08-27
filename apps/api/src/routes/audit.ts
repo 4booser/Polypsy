@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
-import type { AuditPage } from "@quizzy/shared";
+import { auditQuery, type AuditPage } from "@quizzy/shared";
+import { parseQuery } from "../lib/http";
 import { db } from "../db";
 import { auditLog } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -18,13 +19,7 @@ auditRoutes.use("*", requireAuth, requireSuperadmin);
  * Само чтение журнала тоже журналируется.
  */
 auditRoutes.get("/", async (c) => {
-  const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
-  const offset = Math.max(Number(c.req.query("offset") ?? 0), 0);
-  const action = c.req.query("action");
-  const actorId = c.req.query("actorId");
-  const subjectUserId = c.req.query("subjectUserId");
-  const from = c.req.query("from");
-  const to = c.req.query("to");
+  const { limit, offset, action, actorId, subjectUserId, from, to } = parseQuery(c, auditQuery);
 
   const filters: SQL[] = [];
   if (action) filters.push(eq(auditLog.action, action));

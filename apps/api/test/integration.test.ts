@@ -3,26 +3,18 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 /**
  * Интеграционные тесты API против отдельной базы `<имя>_test`.
  *
- * База настраивается ДО импорта приложения: модуль db читает DATABASE_URL при
- * загрузке, поэтому все импорты ниже — динамические. Правило имени жёсткое:
- * тесты никогда не ходят в рабочую базу.
+ * Окружение готовит preload (см. bunfig.toml): модуль db читает DATABASE_URL
+ * при загрузке, поэтому переменные должны быть выставлены раньше любого
+ * импорта приложения. Импорты ниже динамические по той же причине.
  */
-const baseUrl = process.env.DATABASE_URL ?? "postgres://abooser@localhost:5432/quizzy";
-const parsed = new URL(baseUrl);
-const baseName = parsed.pathname.slice(1);
-const testName = baseName.endsWith("_test") ? baseName : `${baseName}_test`;
-parsed.pathname = `/${testName}`;
-process.env.DATABASE_URL = parsed.toString();
-process.env.SCHEDULER_ENABLED = "0";
-// вся сюита гоняется С ШИФРОВАНИЕМ: это и есть сквозная проверка интеграции
-process.env.ENCRYPTION_KEY = `v1:${Buffer.alloc(32, 9).toString("base64")}`;
+import { ADMIN_DATABASE_URL, TEST_DATABASE_NAME } from "./preload";
 
 // пересоздаём тестовую базу через служебное подключение к рабочей
 {
   const postgres = (await import("postgres")).default;
-  const admin = postgres(baseUrl, { max: 1 });
-  await admin.unsafe(`DROP DATABASE IF EXISTS ${testName}`);
-  await admin.unsafe(`CREATE DATABASE ${testName}`);
+  const admin = postgres(ADMIN_DATABASE_URL, { max: 1 });
+  await admin.unsafe(`DROP DATABASE IF EXISTS ${TEST_DATABASE_NAME}`);
+  await admin.unsafe(`CREATE DATABASE ${TEST_DATABASE_NAME}`);
   await admin.end();
 }
 
@@ -2056,5 +2048,45 @@ describe("удаление учётной записи не уносит кли�
     await db.delete(users).where(eq(users.id, throwaway.id));
     const left = await db.select().from(users).where(eq(users.id, throwaway.id));
     expect(left.length).toBe(0);
+  });
+});
+
+/* ── служебные эндпоинты ── */
+
+describe("query-параметры проверяются схемой", () => {
+  test("нечисловой limit — 400, а не пятисотка", async () => {
+    const res = await api("/api/audit?limit=abc", root.token);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("limit");
+  });
+
+  test("limit сверх потолка отклоняется", async () => {
+    expect((await api("/api/audit?limit=100000", root.token)).status).toBe(400);
+  });
+
+  test("несуществующая дата отклоняется", async () => {
+    // формату «ГГГГ-ММ-ДД» соответствует, а даты такой нет
+    const res = await api("/api/audit?from=2026-02-31", root.token);
+    expect(res.status).toBe(400);
+  });
+
+  test("корректные параметры проходят", async () => {
+    const res = await api("/api/audit?limit=5&from=2026-01-01", root.token);
+    expect(res.status).toBe(200);
+    expect(res.body.entries.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("размеры хранилища", () => {
+  test("суперадмин видит таблицы и рост журнала", async () => {
+    const res = await api("/api/stats/storage", root.token);
+    expect(res.status).toBe(200);
+    expect(res.body.database.bytes).toBeGreaterThan(0);
+    expect(res.body.tables.some((t: { table: string }) => t.table === "audit_log")).toBe(true);
+    expect(Array.isArray(res.body.auditGrowth)).toBe(true);
+  });
+
+  test("групповому админу размеры базы не показываются", async () => {
+    expect((await api("/api/stats/storage", adminA.token)).status).toBe(403);
   });
 });

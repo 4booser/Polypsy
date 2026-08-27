@@ -52,3 +52,21 @@ export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): 
   }
   return result.data;
 }
+
+/**
+ * Разбор query-параметров по zod-схеме.
+ *
+ * Без него `Number(c.req.query("limit"))` на `limit=abc` даёт NaN, который
+ * молча уезжает в `.limit()` и роняет запрос пятисоткой вместо честной
+ * четырёхсотки. То же с датами: `from=вчера` уходило в сравнение как есть.
+ */
+export function parseQuery<S extends ZodTypeAny>(c: Context, schema: S): z.output<S> {
+  const result = schema.safeParse(c.req.query());
+  if (!result.success) {
+    const detail = result.error.issues
+      .map((i) => `${i.path.join(".") || "query"}: ${i.message}`)
+      .join("; ");
+    badRequest(detail);
+  }
+  return result.data;
+}

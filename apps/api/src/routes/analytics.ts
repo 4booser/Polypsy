@@ -1,4 +1,4 @@
-import { guttmanErrorsNormed, itemContribution, t } from "@quizzy/shared";
+import { dateRangeQuery, guttmanErrorsNormed, itemContribution, t } from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
@@ -10,7 +10,7 @@ import type {
 } from "@quizzy/shared";
 import { db } from "../db";
 import { answerEvents, answers, responseScores, responses, surveyVersions, surveys, users } from "../db/schema";
-import { notFound } from "../lib/http";
+import { notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
@@ -147,8 +147,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   }));
 
   // диапазон дат: аналитика «за квартал» и «до/после ротации» — разные вопросы
-  const from = c.req.query("from");
-  const to = c.req.query("to");
+  const { from, to } = parseQuery(c, dateRangeQuery);
 
   // считаем только по прохождениям выбранной версии: смешивать ответы разных
   // редакций методики нельзя — вопросы у них разные

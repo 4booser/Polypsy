@@ -620,3 +620,59 @@ export type AnswerEventInput = z.infer<typeof answerEventSchema>;
 export type CreateSurveyDraft = z.input<typeof createSurveySchema>;
 export type QuestionDraft = z.input<typeof questionInputSchema>;
 export type ScaleDraft = z.input<typeof scaleInputSchema>;
+
+
+/* ─────────── query-параметры ─────────── */
+
+/**
+ * Дата в запросе — календарный день (ГГГГ-ММ-ДД) или полный ISO-момент.
+ * Проверяется не только формат, но и существование даты: «2026-02-31»
+ * формату соответствует, а в сравнении с меткой времени ведёт себя
+ * непредсказуемо.
+ */
+export const queryDate = z.string().refine(
+  (v) => {
+    if (!/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(v)) return false;
+    const parsed = new Date(v);
+    if (Number.isNaN(parsed.getTime())) return false;
+    /*
+     * Обратная сверка обязательна: Date.parse("2026-02-31") не падает, а
+     * молча превращает дату в 3 марта. Отчёт «с 31 февраля» построился бы
+     * по чужому периоду, и никто бы этого не заметил.
+     */
+    return parsed.toISOString().slice(0, 10) === v.slice(0, 10);
+  },
+  { message: "ожидается существующая дата ГГГГ-ММ-ДД" },
+);
+
+/** Числовой параметр из строки запроса с границами */
+export const queryInt = (min: number, max: number, fallback: number) =>
+  z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? fallback : Number(v)))
+    .pipe(z.number().int().min(min).max(max));
+
+/** Флаг вида ?all=1 — присутствие со значением 1/true */
+export const queryFlag = z
+  .string()
+  .optional()
+  .transform((v) => v === "1" || v === "true");
+
+export const dateRangeQuery = z.object({
+  from: queryDate.optional(),
+  to: queryDate.optional(),
+});
+
+export const auditQuery = dateRangeQuery.extend({
+  limit: queryInt(1, 500, 100),
+  offset: queryInt(0, 1_000_000, 0),
+  action: z.string().max(64).optional(),
+  actorId: z.string().uuid().optional(),
+  subjectUserId: z.string().uuid().optional(),
+});
+
+export const responseListQuery = z.object({
+  limit: queryInt(1, 200, 50),
+  before: queryDate.optional(),
+});
