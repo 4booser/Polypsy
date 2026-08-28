@@ -17,6 +17,7 @@ import { answerEvents, answers, responseScores, responses, riskAlerts, type User
 import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
 import { attachToCase } from "./alertCases";
+import { applyRules } from "./decisions";
 import { publish } from "./events";
 import { detectRisks } from "./risk";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
@@ -203,6 +204,21 @@ export async function persistSubmission(
   // каскады и протоколы наблюдения — после закрытия батарей: иначе каскадное
   // назначение могло бы закрыться тем же проходом, которым было создано
   const cascade = await runCascades(survey.id, survey.anonymous ? null : subject.id, scores);
+
+  /*
+   * Правила поддержки решений — после каскадов: каскад назначает методики по
+   * жёсткой настройке самой методики, правило же только предлагает, и
+   * предлагать разумнее с учётом уже назначенного.
+   */
+  await applyRules({
+    responseId,
+    surveyId: survey.id,
+    userId: survey.anonymous ? null : subject.id,
+    scores,
+    riskSeverity: risks.length
+      ? (risks.some((r) => r.severity === "severe") ? "severe" : "moderate")
+      : null,
+  });
 
   return {
     responseId,

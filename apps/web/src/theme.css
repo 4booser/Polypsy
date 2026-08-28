@@ -1803,6 +1803,43 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   color: var(--text-2);
 }
 
+/* ─────────── поддержка решений ─────────── */
+
+.duty-line {
+  margin: 0 0 4px;
+  font-size: var(--fs-small);
+}
+
+.suggestions {
+  display: grid;
+  gap: var(--gap);
+}
+
+/*
+ * Предложение — не тревога: рамка обычная, акцент не используется. Янтарь
+ * здесь означал бы «требует внимания сейчас», а подсказка ждёт столько,
+ * сколько нужно.
+ */
+.suggestion {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* объяснение набрано моноширинным: в нём числа, и они должны читаться */
+.because {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--text);
+}
+
 /* ─────────── присутствие ─────────── */
 
 /*
