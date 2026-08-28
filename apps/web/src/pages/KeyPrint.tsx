@@ -22,7 +22,7 @@ export default function KeyPrint() {
   const { data: sheet, error } = useResource(() => api.keySheet(id!), [id], { enabled: !!id });
 
   if (error) return <p className="error">{error}</p>;
-  if (!sheet) return <p className="muted">Загрузка…</p>;
+  if (!sheet) return <p className="muted">{ut("common.loading")}</p>;
 
   return (
     <>
@@ -39,11 +39,11 @@ export default function KeyPrint() {
           местами номера выглядят для неё совершенно законно.
         </p>
         <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={() => window.print()}>Печать</button>
+          <button onClick={() => window.print()}>{ut("kp.print")}</button>
           <button onClick={() => run(() => download(api.methodologyUrl(sheet.surveyId), "methodology.json"))}>
             Выгрузить JSON
           </button>
-          <Link className="btn" to={`/surveys/${sheet.surveyId}/blank`}>Пустой бланк</Link>
+          <Link className="btn" to={`/surveys/${sheet.surveyId}/blank`}>{ut("kp.blank")}</Link>
           <button onClick={() => setShowItems((v) => !v)}>
             {showItems ? ut("kp.hideItems") : ut("kp.showItems")}
           </button>

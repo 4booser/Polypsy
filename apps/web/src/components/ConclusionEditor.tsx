@@ -3,6 +3,7 @@ import { api } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
 /**
  * Заключение специалиста поверх автоматической интерпретации.
@@ -12,6 +13,7 @@ import { useResource } from "../useResource";
  * рабочий текст не должен утекать в документ, который подошьют в дело.
  */
 export function ConclusionEditor({ responseId }: { responseId: string }) {
+  const { ut } = useLang();
   const [text, setText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const run = useAction();
@@ -32,7 +34,13 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
 
   if (!state) {
     // отказ загрузки — не повод прятать редактор: заключение можно написать заново
-    return res.error ? <p className="muted">Заключение не загрузилось: {res.error}</p> : <p className="muted">Загрузка…</p>;
+    return res.error ? (
+      <p className="muted">
+        {ut("cn.loadFailed")}: {res.error}
+      </p>
+    ) : (
+      <p className="muted">{ut("common.loading")}</p>
+    );
   }
 
   const signed = state.versions.find((v) => v.status === "signed");
@@ -40,7 +48,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
 
   return (
     <div className="nested">
-      <h3>Заключение специалиста</h3>
+      <h3>{ut("cn.title")}</h3>
 
       {signed && !draft ? (
         <div className="conclusion-view">
@@ -58,8 +66,8 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         onChange={(e) => setText(e.target.value)}
         placeholder={
           signed
-            ? "Новый текст поверх подписанной версии…"
-            : "Клиническая интерпретация, рекомендации, назначения…"
+            ? ut("cn.newOverSigned")
+            : ut("cn.placeholder")
         }
       />
       <div className="row" style={{ marginTop: 8 }}>
@@ -68,7 +76,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           onClick={() =>
             run(async () => {
               res.patch(await api.saveConclusion(responseId, text, state.current?.version ?? 0));
-            }, "Черновик сохранён")
+            }, ut("cn.draftSaved"))
           }
         >
           Сохранить черновик
@@ -92,14 +100,14 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
               const s = await api.signConclusion(responseId, latest.current!.version);
               res.patch(s);
               setText("");
-            }, "Заключение подписано — теперь оно в печатном отчёте")
+            }, ut("cn.signed"))
           }
         >
           Подписать
         </button>
         {state.versions.length > 1 ? (
           <button onClick={() => setShowHistory((v) => !v)}>
-            {showHistory ? "Скрыть историю" : `История (${state.versions.length})`}
+            {showHistory ? ut("cn.hideHistory") : `История (${state.versions.length})`}
           </button>
         ) : null}
       </div>

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Resource } from "../useResource";
+import { useLang } from "../lang";
 
 /** Мелкие переиспользуемые части консоли: иконки, состояния, таблицы, сообщения */
 
@@ -98,16 +99,19 @@ export function ConfirmByName({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { ut } = useLang();
   const [typed, setTyped] = useState("");
   return (
     <div className="card danger-card">
       <div className="card-head">
         <h2>{title}</h2>
-        <button className="ghost" onClick={onCancel}>Отмена</button>
+        <button className="ghost" onClick={onCancel}>{ut("ui.cancel")}</button>
       </div>
       <div>{warning}</div>
       <label className="field" style={{ marginTop: 10 }}>
-        <span>Напечатайте «{name}», чтобы подтвердить</span>
+        <span>
+          {ut("ui.typeToConfirm")} «{name}»
+        </span>
         <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus />
       </label>
       <button className="danger" disabled={typed.trim() !== name} onClick={onConfirm}>
@@ -175,6 +179,7 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const { ut } = useLang();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -204,7 +209,7 @@ export function Modal({
       >
         <div className="card-head">
           <h2>{title}</h2>
-          <button className="ghost" onClick={onClose} aria-label="Закрыть">✕</button>
+          <button className="ghost" onClick={onClose} aria-label={ut("bp.close")}>✕</button>
         </div>
         {children}
       </div>
@@ -217,17 +222,18 @@ export function LoadMore({
   cursor,
   busy,
   onLoad,
-  emptyText = "Больше записей нет",
+  emptyText,
 }: {
   cursor: string | null;
   busy?: boolean;
   onLoad: () => void;
   emptyText?: string;
 }) {
-  if (!cursor) return <p className="hint end-of-list">{emptyText}</p>;
+  const { ut } = useLang();
+  if (!cursor) return <p className="hint end-of-list">{emptyText ?? ut("ui.noMoreRecords")}</p>;
   return (
     <button className="load-more" disabled={busy} onClick={onLoad}>
-      {busy ? "Загружаю…" : "Показать ещё"}
+      {busy ? ut("ui.loadingMore") : ut("ui.loadMore")}
     </button>
   );
 }
@@ -253,12 +259,13 @@ export function LoadMore({
  * сервере.
  */
 export function OfflineBar({ onRetry, busy }: { onRetry: () => void; busy?: boolean }) {
+  const { ut } = useLang();
   return (
     <div className="offline-bar" role="status">
       <i className="dot" />
-      <span className="grow">Нет связи с сервером. Показаны последние загруженные данные.</span>
+      <span className="grow">{ut("ui.offline")}</span>
       <button className="ghost" onClick={onRetry} disabled={busy}>
-        {busy ? "Пробую…" : "Повторить"}
+        {busy ? ut("ui.retrying") : ut("common.retry")}
       </button>
     </div>
   );
@@ -394,6 +401,7 @@ export const useToast = () => useContext(ToastCtx);
 /** Оборачивает действие: показывает результат и не даёт ошибке уйти в пустоту */
 export function useAction() {
   const toast = useToast();
+  const { ut } = useLang();
   return useCallback(
     async (fn: () => Promise<unknown>, okText?: string) => {
       try {
@@ -401,11 +409,11 @@ export function useAction() {
         if (okText) toast(okText, "ok");
         return true;
       } catch (e) {
-        toast(e instanceof Error ? e.message : "Не удалось выполнить", "err");
+        toast(e instanceof Error ? e.message : ut("ui.actionFailed"), "err");
         return false;
       }
     },
-    [toast],
+    [toast, ut],
   );
 }
 

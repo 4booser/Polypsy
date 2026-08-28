@@ -72,34 +72,34 @@ export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d:
       ) : null}
 
       {draft.questions.length === 0 && !bulk ? (
-        <p className="muted">Вопросов пока нет</p>
+        <p className="muted">{ut("cq.noQuestions")}</p>
       ) : null}
 
       {draft.questions.map((q, i) => (
         <div className="card" key={q.uid}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>Пункт {i + 1}</strong>
+            <strong>{ut("cq.item")} {i + 1}</strong>
             <div className="row">
               <select value={q.type} onChange={(e) => upd(i, { type: e.target.value })} style={{ width: 180 }}>
                 {TYPES.map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>
-              <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Выше" title="Сдвинуть выше">↑</button>
-              <button onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1} aria-label="Ниже" title="Сдвинуть ниже">↓</button>
-              <button onClick={() => duplicate(i)} title="Дублировать пункт">⧉</button>
+              <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Выше" title={ut("cq.moveUp")}>↑</button>
+              <button onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1} aria-label="Ниже" title={ut("cq.moveDown")}>↓</button>
+              <button onClick={() => duplicate(i)} title={ut("cq.duplicate")}>⧉</button>
               <button className="danger" onClick={() => setDraft((d) => ({ ...d, questions: d.questions.filter((_, k) => k !== i) }))}>
                 Удалить
               </button>
             </div>
           </div>
-          <Loc label="Текст пункта" value={q.title} onChange={(v) => upd(i, { title: v })} multiline />
-          <Toggle label="Обязательный" value={q.required} onChange={(v) => upd(i, { required: v })} />
+          <Loc label={ut("cq.itemText")} value={q.title} onChange={(v) => upd(i, { title: v })} multiline />
+          <Toggle label={ut("cq.required")} value={q.required} onChange={(v) => upd(i, { required: v })} />
 
           {q.options.length ? (
             <table>
               <thead>
-                <tr><th>Вариант (uk / ru)</th><th className="num">Балл</th><th>Код ключа</th><th>Тревога</th></tr>
+                <tr><th>{ut("cq.option")}</th><th className="num">{ut("cq.score")}</th><th>{ut("cq.keyCode")}</th><th>{ut("cq.alarm")}</th></tr>
               </thead>
               <tbody>
                 {q.options.map((o, oi) => (

@@ -91,7 +91,7 @@ export function BulkPaste({
     <div className="card">
       <div className="card-head">
         <h2>{ut("bp.title")}</h2>
-        <button onClick={onClose}>Закрыть</button>
+        <button onClick={onClose}>{ut("bp.close")}</button>
       </div>
       <p className="hint">
         Скопируйте пункты из пособия — по одному на строку, с номерами или без. Номера «1.», «1)»

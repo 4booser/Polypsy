@@ -149,9 +149,9 @@ export function SurveyList() {
                 <td className="num">{s.responseCount}</td>
                 <td>
                   <div className="row">
-                    <Link className="btn" to={`/constructor/${s.id}`}>Править</Link>
-                    <Link className="btn" to={`/surveys/${s.id}/key`}>Ключи</Link>
-                    <Link className="btn" to={`/surveys/${s.id}/access`}>Доступ</Link>
+                    <Link className="btn" to={`/constructor/${s.id}`}>{ut("cl.editAction")}</Link>
+                    <Link className="btn" to={`/surveys/${s.id}/key`}>{ut("cl.keysAction")}</Link>
+                    <Link className="btn" to={`/surveys/${s.id}/access`}>{ut("cl.accessAction")}</Link>
                     <button
                       onClick={async () => {
                         await api.duplicateSurvey(s.id).catch(() => null);
@@ -165,7 +165,7 @@ export function SurveyList() {
                         onClick={async () => {
                           await api.restoreSurvey(s.id);
                           await load();
-                          toast("Методика вернулась в работу", "ok");
+                          toast(ut("cl.restored"), "ok");
                         }}
                       >
                         Вернуть в работу

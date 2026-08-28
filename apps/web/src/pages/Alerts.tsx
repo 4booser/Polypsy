@@ -92,7 +92,7 @@ export default function Alerts() {
       void run(async () => {
         await api.assignCase(current.id);
         page.reload();
-      }, ut("cases.take"));
+      }, ut("cases.tookToast"));
     },
     "/": () => {
       const input = document.querySelector<HTMLInputElement>(".page-head input");
@@ -314,11 +314,11 @@ function CaseCard({
           />
           <div className="row tight" style={{ marginTop: 8, flexWrap: "wrap" }}>
             {!c.assignedTo ? (
-              <button onClick={() => run(async () => { await api.assignCase(c.id); onChanged(); }, "Случай взят")}>
+              <button onClick={() => run(async () => { await api.assignCase(c.id); onChanged(); }, ut("cases.tookToast"))}>
                 {ut("cases.take")}
               </button>
             ) : c.assignedTo === me ? (
-              <button className="ghost" onClick={() => run(async () => { await api.assignCase(c.id, true); onChanged(); }, "Случай отпущен")}>
+              <button className="ghost" onClick={() => run(async () => { await api.assignCase(c.id, true); onChanged(); }, ut("cases.released"))}>
                 {ut("cases.release")}
               </button>
             ) : null}
@@ -326,7 +326,7 @@ function CaseCard({
               <button
                 key={o.value}
                 className={i === 0 ? "primary" : ""}
-                onClick={() => run(async () => { await api.resolveCase(c.id, o.value, note); onChanged(); }, "Случай разобран")}
+                onClick={() => run(async () => { await api.resolveCase(c.id, o.value, note); onChanged(); }, ut("cases.resolved"))}
               >
                 {ut(o.key)}
               </button>

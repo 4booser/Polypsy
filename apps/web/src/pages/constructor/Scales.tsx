@@ -163,7 +163,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
           <h2 style={{ fontSize: 14, marginTop: 14 }}>{ut("cs.bands")}</h2>
           <table>
             <thead>
-              <tr><th className="num">От</th><th className="num">До</th><th>{ut("cs.bandLabel")}</th><th>{ut("cs.severity")}</th><th className="num">{ut("cs.grade")}</th><th>{ut("cs.cascade")}</th><th>{ut("cs.repeatDays")}</th><th /></tr>
+              <tr><th className="num">{ut("cs.from")}</th><th className="num">{ut("cs.to")}</th><th>{ut("cs.bandLabel")}</th><th>{ut("cs.severity")}</th><th className="num">{ut("cs.grade")}</th><th>{ut("cs.cascade")}</th><th>{ut("cs.repeatDays")}</th><th /></tr>
             </thead>
             <tbody>
               {s.bands.map((b, bi) => (

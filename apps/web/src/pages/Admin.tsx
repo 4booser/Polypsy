@@ -231,15 +231,15 @@ export function Users() {
         <h2>{ut("adm.newUser")}</h2>
         <div className="row" style={{ alignItems: "flex-end" }}>
           <div className="field" style={{ flex: 1, minWidth: 140, marginBottom: 0 }}>
-            <label>Фамилия</label>
+            <label>{ut("adm.lastName")}</label>
             <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
           </div>
           <div className="field" style={{ flex: 1, minWidth: 140, marginBottom: 0 }}>
-            <label>Имя</label>
+            <label>{ut("adm.firstName")}</label>
             <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
           </div>
           <div className="field" style={{ flex: 1, minWidth: 140, marginBottom: 0 }}>
-            <label>Отчество</label>
+            <label>{ut("adm.middleName")}</label>
             <input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} />
           </div>
           <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
@@ -289,7 +289,7 @@ export function Users() {
 
       <div className="card scroll-x">
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
-          <h2 style={{ margin: 0 }}>Все учётные записи ({shown.length})</h2>
+          <h2 style={{ margin: 0 }}>{ut("adm.allAccounts")} ({shown.length})</h2>
           <input
             placeholder={ut("adm.searchPlaceholder")}
             value={query}

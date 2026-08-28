@@ -46,9 +46,9 @@ export default function Batteries() {
       {({ rows, surveys, groups, patients }) => (
     <>
       <PageHead
-        title="Батареи методик"
-        sub="Набор методик, который назначается и проходится целиком"
-        actions={<button className="primary" onClick={() => setEditing("new")}>Собрать батарею</button>}
+        title={ut("bt.title")}
+        sub={ut("bt.sub")}
+        actions={<button className="primary" onClick={() => setEditing("new")}>{ut("bt.assemble")}</button>}
       />
 
       {editing ? (
@@ -66,8 +66,8 @@ export default function Batteries() {
 
       {!rows.length && !editing ? (
         <Empty
-          title="Батарей пока нет"
-          hint="Соберите набор из методик, которые всегда идут вместе, — назначать его придётся один раз, а не по одной методике"
+          title={ut("bt.none")}
+          hint={ut("bt.noneHint")}
         />
       ) : null}
 
@@ -81,7 +81,7 @@ export default function Batteries() {
             </h2>
             <div className="row tight">
               <button onClick={() => setOpenId(openId === b.id ? null : b.id)}>
-                {openId === b.id ? "Свернуть назначения" : `Назначения · ${b.activeAssignments}`}
+                {openId === b.id ? ut("bt.collapseAssignments") : `Назначения · ${b.activeAssignments}`}
               </button>
               <button onClick={() => setEditing(b)}>{ut("f.edit")}</button>
               <button
@@ -90,7 +90,7 @@ export default function Batteries() {
                   run(async () => {
                     await api.deleteBattery(b.id);
                     await reload();
-                  }, "Батарея удалена")
+                  }, ut("bt.deleted"))
                 }
               >
                 Удалить
@@ -100,7 +100,7 @@ export default function Batteries() {
 
           {b.description ? <p className="hint">{b.description}</p> : null}
           <p className="hint">
-            {b.groupTitle ? `Группа: ${b.groupTitle}` : "Вне групп"} ·{" "}
+            {b.groupTitle ? `Группа: ${b.groupTitle}` : ut("bt.noGroup")} ·{" "}
             {b.strictOrder ? "строгий порядок" : "свободный порядок"} · всего{" "}
             {b.items.reduce((sum, i) => sum + i.questionCount, 0)} пунктов
             {totalMinutes(b) !== null ? ` · ориентировочно ${totalMinutes(b)} мин` : null}
@@ -178,7 +178,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
             <tr>
               <th>{ut("f.subject")}</th>
               <th>{ut("f.assigned")}</th>
-              <th>Срок</th>
+              <th>{ut("bt.deadline")}</th>
               <th>{ut("bat.progress")}</th>
               <th />
             </tr>
@@ -209,7 +209,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                         run(async () => {
                           await api.cancelAssignment(a.id);
                           await reload();
-                        }, "Назначение снято")
+                        }, ut("bt.assignmentRemoved"))
                       }
                     >
                       Снять
@@ -225,9 +225,9 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
       ) : null}
 
       <div className="assign-row">
-        <Search value={query} onChange={setQuery} placeholder="Найти обследуемого" />
+        <Search value={query} onChange={setQuery} placeholder={ut("ui.findRespondent")} />
         <label className="field">
-          <span>Срок</span>
+          <span>{ut("bt.deadline")}</span>
           <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
         </label>
         <label className="field grow">
@@ -330,19 +330,19 @@ function BatteryEditor({
       if (battery) await api.updateBattery(battery.id, payload);
       else await api.createBattery(payload);
       onSaved();
-    }, battery ? "Батарея обновлена" : "Батарея собрана");
+    }, battery ? ut("bt.updated") : ut("bt.assembled"));
 
   return (
     <div className="card">
       <div className="card-head">
-        <h2>{battery ? "Правка батареи" : "Новая батарея"}</h2>
+        <h2>{battery ? ut("bt.editTitle") : ut("bt.newTitle")}</h2>
         <button onClick={onClose}>{ut("ui.close")}</button>
       </div>
 
       <div className="form-grid">
         <label className="field grow">
           <span>{ut("f.name")}</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например, входное обследование" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("bt.namePlaceholder")} />
         </label>
         <label className="field">
           <span>{ut("f.group")}</span>
@@ -374,7 +374,7 @@ function BatteryEditor({
         где утомление от длинного опросника искажает результат короткого.
       </p>
 
-      <h3 style={{ marginTop: 18 }}>Состав</h3>
+      <h3 style={{ marginTop: 18 }}>{ut("bt.composition")}</h3>
       {items.length ? (
         <ol className="battery-steps editable">
           {items.map((item, i) => (

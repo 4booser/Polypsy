@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, type OpenApiOperation as Operation } from "../api";
 import { useResource } from "../useResource";
 import { Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
 const METHOD_ORDER = ["get", "post", "put", "patch", "delete"];
 
@@ -14,6 +15,7 @@ const METHOD_ORDER = ["get", "post", "put", "patch", "delete"];
  * маршрутов со схемами тел даёт то же самое без единого внешнего запроса.
  */
 export default function ApiDocs() {
+  const { ut } = useLang();
   const [open, setOpen] = useState<string | null>(null);
   const { data: spec, error } = useResource(() => api.openapi(), []);
 
@@ -40,10 +42,10 @@ export default function ApiDocs() {
   return (
     <>
       <PageHead
-        title="Описание API"
+        title={ut("api.title")}
         sub={`${spec.info.title} ${spec.info.version} · ${total} маршрутов`}
         actions={
-          <button onClick={() => void api.downloadOpenapi()}>Скачать openapi.json</button>
+          <button onClick={() => void api.downloadOpenapi()}>{ut("api.download")}</button>
         }
       />
       <div className="card">
@@ -68,7 +70,7 @@ export default function ApiDocs() {
                   className="ghost api-line"
                   onClick={() => setOpen(open === key ? null : key)}
                   disabled={!schema}
-                  title={schema ? "Показать схему тела" : "Тело не требуется"}
+                  title={schema ? ut("api.showSchema") : ut("api.noBody")}
                 >
                   <span className={`api-method m-${method}`}>{method.toUpperCase()}</span>
                   <code>{path}</code>

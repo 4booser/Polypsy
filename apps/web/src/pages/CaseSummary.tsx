@@ -154,7 +154,7 @@ export default function CaseSummaryPage() {
             <thead>
               <tr>
                 <th>{ut("ref.where")}</th><th>{ut("ref.urgency")}</th><th>{ut("ref.status")}</th><th>{ut("ref.reason")}</th>
-                <th>{ut("ref.issued")}</th><th /></tr>
+                <th>{ut("ref.issuedToast")}</th><th /></tr>
             </thead>
             <tbody>
               {data.referrals.map((r) => (
@@ -238,7 +238,7 @@ function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }
             run(async () => {
               await api.createReferral({ userId, destination, urgency, reason: reason || null });
               onDone();
-            }, "Направление выписано")
+            }, ut("ref.issuedToast"))
           }
         >
           {ut("ref.issue")}

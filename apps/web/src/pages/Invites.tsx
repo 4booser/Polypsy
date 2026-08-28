@@ -35,9 +35,9 @@ export default function Invites() {
       {({ rows, batteries }) => (
     <>
       <PageHead
-        title="Приглашения"
-        sub="Ссылка или код — и пациент регистрируется сам, уже с назначенной батареей"
-        actions={<button className="primary" onClick={() => setShowForm(true)}>Создать приглашение</button>}
+        title={ut("inv.title")}
+        sub={ut("inv.sub")}
+        actions={<button className="primary" onClick={() => setShowForm(true)}>{ut("inv.create")}</button>}
       />
 
       {showForm ? (
@@ -56,7 +56,7 @@ export default function Invites() {
 
       {!rows ? <Loading /> : null}
       {rows && !rows.length && !showForm ? (
-        <Empty title="Приглашений нет" hint="Создайте ссылку — пациент зарегистрируется сам и сразу получит назначение" />
+        <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
       ) : null}
 
       {rows?.length ? (
@@ -64,7 +64,7 @@ export default function Invites() {
           <table>
             <thead>
               <tr>
-                <th>Код</th>
+                <th>{ut("inv.code")}</th>
                 <th>{ut("f.battery")}</th>
                 <th>{ut("ui.unit")}</th>
                 <th className="num">{ut("inv.entries")}</th>
@@ -99,7 +99,7 @@ export default function Invites() {
                             run(async () => {
                               await api.revokeInvite(inv.id);
                               await reload();
-                            }, "Приглашение отозвано")
+                            }, ut("inv.revoked"))
                           }
                         >
                           Отозвать
@@ -162,7 +162,7 @@ function InviteForm({
             onChange={(e) => setMaxUses(Math.max(1, Number(e.target.value) || 1))} />
         </label>
         <label className="field">
-          <span>Срок, дней</span>
+          <span>{ut("inv.days")}</span>
           <input type="number" min={1} max={365} value={ttlDays}
             onChange={(e) => setTtlDays(Math.max(1, Number(e.target.value) || 1))} />
         </label>
@@ -188,7 +188,7 @@ function InviteForm({
                 ttlDays,
               });
               onCreated({ token: res.token, code: res.code });
-            }, "Приглашение создано")
+            }, ut("inv.created"))
           }
         >
           Создать
@@ -237,10 +237,10 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
             <input readOnly value={code} style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700 }} />
           </label>
           <div className="row tight">
-            <button onClick={() => run(async () => navigator.clipboard.writeText(url), "Ссылка скопирована")}>
+            <button onClick={() => run(async () => navigator.clipboard.writeText(url), ut("inv.linkCopied"))}>
               Копировать ссылку
             </button>
-            <button onClick={() => run(async () => navigator.clipboard.writeText(code), "Код скопирован")}>
+            <button onClick={() => run(async () => navigator.clipboard.writeText(code), ut("inv.codeCopied"))}>
               Копировать код
             </button>
             <button onClick={() => window.print()}>{ut("inv.printQr")}</button>
