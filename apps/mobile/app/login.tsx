@@ -49,7 +49,7 @@ export default function LoginScreen() {
       >
         <View style={{ gap: spacing.xs }}>
           <Title>Quizzy</Title>
-          <Body muted>{lang === "uk" ? "Вхід для пацієнтів і фахівців" : "Вход для пациентов и специалистов"}</Body>
+          <Body muted>{ut("ml.subtitle")}</Body>
         </View>
 
         <Field
@@ -67,7 +67,7 @@ export default function LoginScreen() {
         <Button title={ut("auth.login")} onPress={onSubmit} loading={busy} />
 
         <Button
-          title={lang === "uk" ? "Створити обліковий запис" : "Создать аккаунт"}
+          title={ut("ml.createAccount")}
           onPress={() => router.push("/register")}
           variant="secondary"
         />

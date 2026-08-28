@@ -82,12 +82,12 @@ export default function TakeSurveyScreen() {
       if (result || answers.size === 0) return; // завершено или не начато
       e.preventDefault();
       Alert.alert(
-        "Прервать прохождение?",
-        "Ответы этого сеанса не сохранятся, начинать придётся заново.",
+        ut("ms.abortTitle"),
+        ut("ms.abortBody"),
         [
-          { text: "Продолжить тест", style: "cancel" },
+          { text: ut("ms.continueTest"), style: "cancel" },
           {
-            text: "Выйти",
+            text: ut("ms.exit"),
             style: "destructive",
             onPress: () => navigation.dispatch(e.data.action),
           },
@@ -115,7 +115,7 @@ export default function TakeSurveyScreen() {
           setSavedAt(draft.lastSavedAt);
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Не удалось загрузить методику");
+        setError(e instanceof Error ? e.message : ut("ms.loadFailed"));
       }
     })();
   }, [id, navigation]);
@@ -275,7 +275,7 @@ export default function TakeSurveyScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, padding: spacing.lg, gap: spacing.md }}>
         <ErrorText>{error}</ErrorText>
-        <Button title="Назад" variant="secondary" onPress={() => router.back()} />
+        <Button title={ut("common.back")} variant="secondary" onPress={() => router.back()} />
       </View>
     );
   }
@@ -288,7 +288,7 @@ export default function TakeSurveyScreen() {
         style={{ backgroundColor: c.bg }}
         contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
       >
-        <Title>Готово</Title>
+        <Title>{ut("ms.done")}</Title>
         <Body muted>
           {queued
             ? `Прохождение заняло ${formatDuration(Date.now() - sessionStart.current)}. Сети нет — ответы сохранены на устройстве и уйдут сами, как только она появится. Баллы ниже посчитаны на устройстве тем же движком.`
@@ -312,7 +312,7 @@ export default function TakeSurveyScreen() {
         ) : null}
         {result.length > 0 ? (
           <Card>
-            <Body>Результаты по субшкалам</Body>
+            <Body>{ut("ms.subscaleResults")}</Body>
             {result.map((s) => (
               <View key={s.scaleId} style={{ gap: spacing.xs, marginTop: spacing.md }}>
                 <Row>
@@ -333,7 +333,7 @@ export default function TakeSurveyScreen() {
         ) : null}
         {responseId ? (
           <Button
-            title="Открыть заключение"
+            title={ut("ms.openConclusion")}
             variant="secondary"
             onPress={() => Linking.openURL(api.reportUrl(responseId))}
           />
@@ -354,7 +354,7 @@ export default function TakeSurveyScreen() {
         {survey.description ? <Body muted>{survey.description}</Body> : null}
         {resumed ? (
           <Card>
-            <Body>Найдено незавершённое прохождение</Body>
+            <Body>{ut("ms.unfinishedFound")}</Body>
             <Body muted>
               Ответы сохранены{savedAt ? ` ${savedAt.slice(0, 16).replace("T", " ")}` : ""} —
               продолжите с того места, где остановились.
@@ -368,20 +368,20 @@ export default function TakeSurveyScreen() {
         ) : null}
         <Card>
           <Row>
-            <Body muted>Вопросов</Body>
+            <Body muted>{ut("ms.questions")}</Body>
             <View style={{ flex: 1 }} />
             <Body>{visible.filter((q) => q.type !== "info").length}</Body>
           </Row>
           {survey.timeLimitSec ? (
             <Row>
-              <Body muted>Ограничение времени</Body>
+              <Body muted>{ut("ms.timeLimit")}</Body>
               <View style={{ flex: 1 }} />
               <Body>{Math.round(survey.timeLimitSec / 60)} мин</Body>
             </Row>
           ) : null}
         </Card>
         <Button
-          title={resumed ? "Продолжить" : "Начать"}
+          title={resumed ? ut("ms.continue") : ut("ms.start")}
           onPress={() => {
             if (!resumed) {
               sessionStart.current = Date.now();
@@ -443,8 +443,8 @@ export default function TakeSurveyScreen() {
             ) : null}
             <View style={{ flex: 1 }} />
             {savedAt ? (
-              <Text style={{ color: c.muted, fontSize: 12 }} accessibilityLabel="Ответы сохранены">
-                ✓ сохранено
+              <Text style={{ color: c.muted, fontSize: 12 }} accessibilityLabel={ut("ms.answersSaved")}>
+                ✓ {ut("ms.saved")}
               </Text>
             ) : null}
             <Text style={{ color: overtime ? c.danger : c.muted, fontSize: 12 }}>
@@ -503,7 +503,7 @@ export default function TakeSurveyScreen() {
           </Text>
           {current.help ? <Body muted>{current.help}</Body> : null}
           {current.required && current.type !== "info" ? (
-            <Text style={{ color: c.muted, fontSize: 12 }}>Обязательный вопрос</Text>
+            <Text style={{ color: c.muted, fontSize: 12 }}>{ut("ms.requiredQuestion")}</Text>
           ) : null}
         </View>
 
