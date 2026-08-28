@@ -279,6 +279,8 @@ export const UI = {
   "work.kindCase": { uk: "випадок ризику", ru: "случай риска" },
   "work.kindReferral": { uk: "направлення", ru: "направление" },
   "work.kindPathway": { uk: "крок маршруту", ru: "шаг маршрута" },
+  "work.kindGoal": { uk: "ціль лікування", ru: "цель лечения" },
+  "work.goalOverdue": { uk: "строк цілі минув", ru: "срок цели прошёл" },
   "work.kindAssignment": { uk: "призначення", ru: "назначение" },
   "work.kindFollowup": { uk: "повтор за протоколом", ru: "повтор по протоколу" },
   "work.filterFollowups": { uk: "Прострочені повтори", ru: "Просроченные повторы" },

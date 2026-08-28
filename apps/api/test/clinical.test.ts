@@ -1027,3 +1027,34 @@ describe("достоверность изменения в сводке", () => 
     }
   });
 });
+
+describe("просроченная цель в очереди работы", () => {
+  test("цель со вчерашним сроком попадает в общую очередь", async () => {
+    /*
+     * У цели есть срок, и без этого он был бы украшением: никто не открывает
+     * карту каждого пациента, чтобы проверить, не прошёл ли третий месяц.
+     */
+    const person = await makeUser("user", `goal-wl-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
+
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    await api(`/api/goals/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        surveyId: surveyInA,
+        scaleCode: survey.body.scales[0].code,
+        direction: "down",
+        targetValue: 0.1,
+        dueAt: yesterday,
+      }),
+    });
+
+    const work = await api("/api/worklist", adminA.token);
+    const mine = work.body.items.filter(
+      (i: { kind: string; userId: string }) => i.kind === "goal" && i.userId === person.id,
+    );
+    expect(mine).toHaveLength(1);
+    expect(mine[0].overdue).toBe(true);
+  });
+});
