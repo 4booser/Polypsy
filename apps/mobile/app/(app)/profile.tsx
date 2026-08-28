@@ -11,11 +11,12 @@ import { LineChart } from "@/components/viz/LineChart";
 import { severityColor, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
 
-const ROLE_LABEL: Record<string, string> = {
-  superadmin: "Суперадминистратор",
-  admin: "Администратор группы",
-  user: "Пациент",
-};
+// ключи, а не подписи: карта вне компонента, язык — при отрисовке
+const ROLE_KEY = {
+  superadmin: "mp.roleSuper",
+  admin: "mp.roleAdmin",
+  user: "mp.rolePatient",
+} as const;
 
 export default function AccountScreen() {
   const c = useColors();
@@ -62,7 +63,7 @@ export default function AccountScreen() {
       await refresh();
       setEditing(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+      setError(e instanceof Error ? e.message : ut("mp.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -82,7 +83,7 @@ export default function AccountScreen() {
       setError(
         lang === "uk"
           ? "Є невідправлені відповіді — зачекайте на мережу, вони підуть самі."
-          : "Есть неотправленные ответы — дождитесь сети, они уйдут сами.",
+          : ut("mp.unsentAnswers"),
       );
       return;
     }
@@ -115,7 +116,7 @@ export default function AccountScreen() {
               : `Не отправлено ответов: ${queueLeft}. Уйдут сами, как только появится сеть.`}
           </Body>
           <Button
-            title={lang === "uk" ? "Спробувати зараз" : "Попробовать сейчас"}
+            title={ut("mq.tryNow")}
             variant="secondary"
             onPress={async () => {
               await api.flushQueue().catch(() => {});
@@ -128,12 +129,10 @@ export default function AccountScreen() {
       {myDynamics?.surveys.length ? (
         <Card>
           <Text style={{ color: c.text, fontSize: 16, fontWeight: "700" }}>
-            {lang === "uk" ? "Моя динаміка" : "Моя динамика"}
+            {ut("mp.myDynamics")}
           </Text>
           <Body muted>
-            {lang === "uk"
-              ? "Зміна ваших показників від заміру до заміру. Інтерпретацію дає фахівець."
-              : "Изменение ваших показателей от замера к замеру. Интерпретацию даёт специалист."}
+            {ut("mp.dynamicsHint")}
           </Body>
           {myDynamics.surveys.map((sv) => (
             <View key={sv.surveyId} style={{ gap: spacing.sm, marginTop: spacing.sm }}>
@@ -163,53 +162,53 @@ export default function AccountScreen() {
         <Text style={{ color: c.text, fontSize: 20, fontWeight: "700" }}>{user?.fullName}</Text>
         <Body muted>{user?.email}</Body>
         <View style={{ marginTop: spacing.xs }}>
-          <Chip label={ROLE_LABEL[user?.role ?? "user"] ?? "Пациент"} />
+          <Chip label={ut(ROLE_KEY[(user?.role ?? "user") as keyof typeof ROLE_KEY] ?? "mp.rolePatient")} />
         </View>
 
         <Divider />
         {editing ? (
           <>
-            <Field label="Фамилия" value={form.lastName} onChangeText={(t) => setForm({ ...form, lastName: t })} />
-            <Field label="Имя" value={form.firstName} onChangeText={(t) => setForm({ ...form, firstName: t })} />
-            <Field label="Отчество" value={form.middleName} onChangeText={(t) => setForm({ ...form, middleName: t })} />
+            <Field label={ut("person.lastName")} value={form.lastName} onChangeText={(t) => setForm({ ...form, lastName: t })} />
+            <Field label={ut("person.firstName")} value={form.firstName} onChangeText={(t) => setForm({ ...form, firstName: t })} />
+            <Field label={ut("person.middleName")} value={form.middleName} onChangeText={(t) => setForm({ ...form, middleName: t })} />
             <View style={{ gap: spacing.xs }}>
-              <Text style={{ color: c.muted, fontSize: 13 }}>Пол</Text>
+              <Text style={{ color: c.muted, fontSize: 13 }}>{ut("person.sex")}</Text>
               <Row gap={spacing.xs}>
-                <Chip label="Мужской" selected={sex === "male"} onPress={() => setSex("male")} />
-                <Chip label="Женский" selected={sex === "female"} onPress={() => setSex("female")} />
+                <Chip label={ut("mp.male")} selected={sex === "male"} onPress={() => setSex("male")} />
+                <Chip label={ut("mp.female")} selected={sex === "female"} onPress={() => setSex("female")} />
               </Row>
             </View>
             <Field
-              label="Дата рождения (ГГГГ-ММ-ДД)"
+              label={`${ut("person.birthDate")} (${ut("mp.dateFormat")})`}
               value={form.birthDate}
               onChangeText={(t) => setForm({ ...form, birthDate: t })}
               placeholder="1994-03-12"
             />
-            <Field label="Подразделение" value={form.unit} onChangeText={(t) => setForm({ ...form, unit: t })} />
-            <Field label="Должность" value={form.position} onChangeText={(t) => setForm({ ...form, position: t })} />
-            <Field label="Специальность" value={form.specialty} onChangeText={(t) => setForm({ ...form, specialty: t })} />
-            <Field label="Звание" value={form.rank} onChangeText={(t) => setForm({ ...form, rank: t })} />
+            <Field label={ut("person.unit")} value={form.unit} onChangeText={(t) => setForm({ ...form, unit: t })} />
+            <Field label={ut("mp.position")} value={form.position} onChangeText={(t) => setForm({ ...form, position: t })} />
+            <Field label={ut("mp.specialty")} value={form.specialty} onChangeText={(t) => setForm({ ...form, specialty: t })} />
+            <Field label={ut("mp.rank")} value={form.rank} onChangeText={(t) => setForm({ ...form, rank: t })} />
             <ErrorText>{error}</ErrorText>
-            <Button title="Сохранить" onPress={save} loading={busy} />
-            <Button title="Отмена" variant="secondary" onPress={() => setEditing(false)} />
+            <Button title={ut("common.save")} onPress={save} loading={busy} />
+            <Button title={ut("common.cancel")} variant="secondary" onPress={() => setEditing(false)} />
           </>
         ) : (
           <>
-            <ProfileRow label="Пол" value={user?.sex === "male" ? "Мужской" : user?.sex === "female" ? "Женский" : "—"} />
+            <ProfileRow label={ut("person.sex")} value={user?.sex === "male" ? ut("mp.male") : user?.sex === "female" ? ut("mp.female") : "—"} />
             <ProfileRow
-              label="Возраст"
+              label={ut("mp.age")}
               value={
                 ageAt(user?.birthDate ?? null, new Date().toISOString()) !== null
                   ? `${ageAt(user!.birthDate, new Date().toISOString())}`
                   : "—"
               }
             />
-            <ProfileRow label="Подразделение" value={user?.unit ?? "—"} />
-            <ProfileRow label="Должность" value={user?.position ?? "—"} />
-            <ProfileRow label="Специальность" value={user?.specialty ?? "—"} />
-            <ProfileRow label="Звание" value={user?.rank ?? "—"} />
-            <ProfileRow label="В системе с" value={user?.createdAt.slice(0, 10) ?? "—"} />
-            <Button title="Редактировать" variant="secondary" onPress={() => setEditing(true)} />
+            <ProfileRow label={ut("person.unit")} value={user?.unit ?? "—"} />
+            <ProfileRow label={ut("mp.position")} value={user?.position ?? "—"} />
+            <ProfileRow label={ut("mp.specialty")} value={user?.specialty ?? "—"} />
+            <ProfileRow label={ut("mp.rank")} value={user?.rank ?? "—"} />
+            <ProfileRow label={ut("mp.since")} value={user?.createdAt.slice(0, 10) ?? "—"} />
+            <Button title={ut("mp.edit")} variant="secondary" onPress={() => setEditing(true)} />
           </>
         )}
       </Card>
@@ -224,7 +223,7 @@ export default function AccountScreen() {
       ) : null}
 
       <Card>
-        <Body muted>Сервер</Body>
+        <Body muted>{ut("mp.server")}</Body>
         <Body>{API_URL}</Body>
       </Card>
 
@@ -254,7 +253,7 @@ function ProfileRow({ label, value }: { label: string; value: string }) {
  */
 function BiometricsCard() {
   const c = useColors();
-  const { lang } = useLang();
+  const { ut } = useLang();
   const [available, setAvailable] = useState<boolean | null>(null);
   const [on, setOn] = useState(false);
 
@@ -277,23 +276,19 @@ function BiometricsCard() {
   return (
     <Card>
       <Text style={{ color: c.text, fontSize: 16, fontWeight: "700" }}>
-        {lang === "uk" ? "Замок на застосунок" : "Замок на приложение"}
+        {ut("mp.appLock")}
       </Text>
       <Body muted>
-        {lang === "uk"
-          ? "Просити відбиток або обличчя при вході. Закриває екран від сторонніх очей — дані й так зберігаються в захищеному сховищі системи."
-          : "Спрашивать отпечаток или лицо при входе. Закрывает экран от посторонних глаз — данные и так хранятся в защищённом хранилище системы."}
+        {ut("mp.lockHint")}
       </Body>
       <Body muted>
-        {lang === "uk"
-          ? "На спільному планшеті не вмикайте: біометрія там належить не вам."
-          : "На общем планшете не включайте: биометрия там принадлежит не вам."}
+        {ut("mp.lockShared")}
       </Body>
       <Button
         title={
           on
-            ? lang === "uk" ? "Вимкнути замок" : "Выключить замок"
-            : lang === "uk" ? "Увімкнути замок" : "Включить замок"
+            ? ut("mp.lockOff")
+            : ut("mp.lockOn")
         }
         variant="secondary"
         onPress={() => void toggle()}

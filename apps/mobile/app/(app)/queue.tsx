@@ -17,7 +17,7 @@ import { useLang } from "@/lang";
 export default function QueueScreen() {
   const c = useColors();
   const router = useRouter();
-  const { lang } = useLang();
+  const { ut } = useLang();
   const [items, setItems] = useState<ReturnType<typeof api.queueItems>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,32 +30,30 @@ export default function QueueScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
-      <Title>{lang === "uk" ? "Черга відправки" : "Очередь отправки"}</Title>
+      <Title>{ut("mq.title")}</Title>
       <Body muted>
-        {lang === "uk"
-          ? "Відповіді зберігаються на пристрої й підуть самі, щойно з'явиться мережа. Нічого не втрачено."
-          : "Ответы сохранены на устройстве и уйдут сами, как только появится сеть. Ничего не потеряно."}
+        {ut("mq.hint")}
       </Body>
 
       <ErrorText>{error}</ErrorText>
 
       {items.length === 0 ? (
-        <Empty text={lang === "uk" ? "Усе відправлено" : "Всё отправлено"} />
+        <Empty text={ut("mq.allSent")} />
       ) : null}
 
       {waiting.length ? (
         <Card>
           <Body>
-            {lang === "uk" ? "Чекають на зв'язок" : "Ждут связи"}: {waiting.length}
+            {ut("mq.waiting")}: {waiting.length}
           </Body>
           {waiting.map((i) => (
             <Text key={i.id} style={{ color: c.muted, fontSize: 13 }}>
               • {i.surveyTitle ?? i.surveyId.slice(0, 8)} · {i.queuedAt.slice(0, 16).replace("T", " ")}
-              {i.attempts > 0 ? ` · ${lang === "uk" ? "спроб" : "попыток"} ${i.attempts}` : ""}
+              {i.attempts > 0 ? ` · ${ut("mq.attempts")} ${i.attempts}` : ""}
             </Text>
           ))}
           <Button
-            title={lang === "uk" ? "Спробувати зараз" : "Попробовать сейчас"}
+            title={ut("mq.tryNow")}
             variant="secondary"
             loading={busy}
             onPress={async () => {
@@ -76,13 +74,11 @@ export default function QueueScreen() {
           <Row>
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: severityColor.severe }} />
             <Body>
-              {lang === "uk" ? "Сервер не прийняв" : "Сервер не принял"}: {rejected.length}
+              {ut("mq.rejected")}: {rejected.length}
             </Body>
           </Row>
           <Body muted>
-            {lang === "uk"
-              ? "Ці відповіді не підуть самі. Покажіть екран фахівцю — видаляти їх самостійно не потрібно."
-              : "Эти ответы не уйдут сами. Покажите экран специалисту — удалять их самостоятельно не нужно."}
+            {ut("mq.rejectedHint")}
           </Body>
           {rejected.map((i) => (
             <View key={i.id} style={{ gap: 4, marginTop: spacing.sm }}>
@@ -91,7 +87,7 @@ export default function QueueScreen() {
               </Text>
               <Text style={{ color: c.muted, fontSize: 12 }}>{i.rejectedReason}</Text>
               <Button
-                title={lang === "uk" ? "Спробувати ще раз" : "Попробовать ещё раз"}
+                title={ut("mq.retry")}
                 variant="secondary"
                 onPress={async () => {
                   api.retryQueued(i.id);
@@ -106,7 +102,7 @@ export default function QueueScreen() {
       ) : null}
 
       <Button
-        title={lang === "uk" ? "Назад" : "Назад"}
+        title={ut("common.back")}
         variant="secondary"
         onPress={() => router.back()}
       />

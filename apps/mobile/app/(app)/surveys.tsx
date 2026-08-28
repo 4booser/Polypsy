@@ -84,7 +84,7 @@ export default function SurveysScreen() {
         <Empty
           text={
             isAdmin
-              ? "Методик пока нет. Создайте первую во вкладке «Конструктор»."
+              ? ut("surveys.emptyAdmin")
               : ut("surveys.empty")
           }
         />

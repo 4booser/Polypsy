@@ -4,6 +4,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 /**
  * Три вкладки: прохождение, аналитика (для сотрудников) и аккаунт.
@@ -11,6 +12,7 @@ import { useColors } from "@/theme";
  * такую работу делать неудобно, а экран нужен целиком под прохождение.
  */
 export default function AppLayout() {
+  const { ut } = useLang();
   const { user, loading, isAdmin } = useAuth();
   const c = useColors();
 
@@ -32,14 +34,14 @@ export default function AppLayout() {
         sceneStyle: { backgroundColor: c.bg },
       }}
     >
-      <Tabs.Screen name="surveys" options={{ title: "Опросы" }} />
+      <Tabs.Screen name="surveys" options={{ title: ut("tab.surveys") }} />
       <Tabs.Screen
         name="insights"
-        options={{ title: "Аналитика", headerShown: false, href: isAdmin ? "/insights" : null }}
+        options={{ title: ut("tab.analytics"), headerShown: false, href: isAdmin ? "/insights" : null }}
       />
-      <Tabs.Screen name="profile" options={{ title: "Аккаунт" }} />
+      <Tabs.Screen name="profile" options={{ title: ut("tab.account") }} />
       {/* очередь открывается из полосы состояния, отдельной вкладки ей не нужно */}
-      <Tabs.Screen name="queue" options={{ href: null, title: "Очередь отправки" }} />
+      <Tabs.Screen name="queue" options={{ href: null, title: ut("tab.queue") }} />
       </Tabs>
     </View>
   );

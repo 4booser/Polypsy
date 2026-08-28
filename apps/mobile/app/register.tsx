@@ -63,16 +63,16 @@ export default function RegisterScreen() {
       <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
         <View style={{ gap: spacing.xs }}>
           <Title>{ut("auth.registerTitle")}</Title>
-          <Body muted>{lang === "uk" ? "Реєстрація створює обліковий запис пацієнта" : "Регистрация создаёт учётную запись пациента"}</Body>
+          <Body muted>{ut("mr.createsPatient")}</Body>
         </View>
 
         {/* выбор типа аккаунта — первым, потому что от него зависит остальная форма */}
         <View style={{ gap: spacing.sm }}>
-          <Text style={{ color: c.muted, fontSize: 13 }}>Тип учётной записи</Text>
+          <Text style={{ color: c.muted, fontSize: 13 }}>{ut("mr.accountType")}</Text>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             {[
-              { value: false, label: "Обычная", hint: "С фамилией и именем" },
-              { value: true, label: "Без имени", hint: "Вместо ФИО — код" },
+              { value: false, label: ut("mr.regular"), hint: ut("mr.withName") },
+              { value: true, label: ut("mr.noName"), hint: ut("mr.codeInstead") },
             ].map((opt) => {
               const on = anonymous === opt.value;
               return (
@@ -168,7 +168,7 @@ export default function RegisterScreen() {
 
         <Button title={ut("auth.register")} onPress={onSubmit} loading={busy} disabled={!ready} />
         <Button
-          title={lang === "uk" ? "Назад до входу" : "Назад ко входу"}
+          title={ut("mr.backToLogin")}
           variant="secondary"
           onPress={() => router.back()}
         />
