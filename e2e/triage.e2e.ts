@@ -99,3 +99,60 @@ test("разобранный случай уходит из очереди и н
   await page.getByRole("button", { name: "Все", exact: true }).first().click();
   await expect(page.locator(".queue-row.done").first()).toBeVisible();
 });
+
+test("новая тревога догоняет открытый экран без перезагрузки", async ({ page }) => {
+  /*
+   * Это и есть смысл потока событий: дежурный не должен обновлять страницу,
+   * чтобы узнать о тревоге. Сдача делается через API, консоль в это время
+   * открыта и ничего не запрашивает по своей воле.
+   *
+   * Проверяется отметка в центре событий, а не длина очереди: очередь
+   * показывает страницу в тридцать случаев, а случай на человека открывается
+   * один — повторный сигнал того же обследуемого не удлиняет список.
+   */
+  await expect(page.locator(".events-dot")).toHaveCount(0);
+
+  /*
+   * Запросы идут через page.request и относительные адреса: у стенда свой
+   * экземпляр API со своей базой, и обращение к порту разработки попадало бы
+   * в другую систему — событие ушло бы туда, а ждали бы его здесь.
+   */
+  const login = await page.request.post("/api/auth/login", {
+    data: { email: "user@quizzy.dev", password: "user12345" },
+  });
+  if (!login.ok()) test.skip(true, "нет учётной записи пациента в посеве");
+  const { token } = (await login.json()) as { token: string };
+  const auth = { Authorization: `Bearer ${token}` };
+
+  const surveys = await page.request.get("/api/surveys", { headers: auth });
+  const list = (await surveys.json()) as { items: { id: string; title: string }[] };
+  const target = list.items.find((s) => /СР-45/i.test(s.title)) ?? list.items[0];
+  if (!target) test.skip(true, "пациенту не выдано ни одной методики");
+
+  const full = await page.request.get(`/api/surveys/${target!.id}`, { headers: auth });
+  const survey = (await full.json()) as {
+    questions: { id: string; type: string; options: { id: string; riskFlag?: boolean }[] }[];
+  };
+  const answers = survey.questions
+    .filter((q) => q.type !== "info" && q.options.length)
+    .map((q) => ({
+      questionId: q.id,
+      optionIds: [(q.options.find((o) => o.riskFlag) ?? q.options[0]!).id],
+      durationMs: 2000,
+      changeCount: 0,
+      visitCount: 1,
+    }));
+
+  await page.request.post(`/api/surveys/${target!.id}/responses`, {
+    headers: auth,
+    data: {
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      durationMs: 60_000,
+      events: [],
+      answers,
+    },
+  });
+
+  // ни одного действия в браузере — отметка появляется сама
+  await expect(page.locator(".events-dot")).toBeVisible({ timeout: 15_000 });
+});

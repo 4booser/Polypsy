@@ -1,5 +1,6 @@
 import { useLang } from "../lang";
 import { LangSwitch } from "../lang";
+import { EventCenter } from "./EventCenter";
 
 /**
  * Верхняя панель.
@@ -51,6 +52,7 @@ export function Topbar({
 
       <div className="spacer" />
       {right}
+      <EventCenter />
 
       <button
         className="ghost icon-btn"

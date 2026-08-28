@@ -1411,6 +1411,13 @@ export const UI = {
   "mp.themeSystem": { uk: "Системна", ru: "Системная" },
   "mp.themeDark": { uk: "Темна", ru: "Тёмная" },
   "mp.themeLight": { uk: "Світла", ru: "Светлая" },
+
+  /* центр событий */
+  "ev.title": { uk: "Події", ru: "События" },
+  "ev.empty": { uk: "Поки тихо", ru: "Пока тихо" },
+  "ev.sessionOnly": { uk: "за цю сесію", ru: "за эту сессию" },
+  "ev.alert": { uk: "нова тривога", ru: "новая тревога" },
+  "ev.case": { uk: "випадок змінився", ru: "случай изменился" },
 } as const;
 
 export type UiKey = keyof typeof UI;
