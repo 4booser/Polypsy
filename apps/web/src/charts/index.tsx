@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { SERIES } from "../format";
 
@@ -74,21 +75,53 @@ export function LineChart({
   yMax?: number;
 }) {
   const W = 900;
-  const all = series.flatMap((s) => s.points);
-  if (!all.length) return <p className="muted">Данных пока нет</p>;
+  const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
+  const all = series.flatMap((s) => s.points);
   const top = Math.max(yMax ?? 0, ...all.map((p) => p.y), 1);
   const ts = ticks(top);
   const scale = Math.max(...ts, top);
   const pw = W - PAD.left - PAD.right;
   const ph = height - PAD.top - PAD.bottom;
-  const n = Math.max(...series.map((s) => s.points.length));
+  const n = Math.max(1, ...series.map((s) => s.points.length));
   const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
   const yAt = (v: number) => PAD.top + ph - (v / scale) * ph;
 
+  /*
+   * Индекс точки под курсором считается из доли ширины, а не поиском
+   * ближайшего узла: точки расположены равномерно, и деление дешевле перебора
+   * на графике в триста замеров.
+   */
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const rel = ((e.clientX - box.left) / box.width) * W;
+    const share = (rel - PAD.left) / pw;
+    if (share < -0.02 || share > 1.02) {
+      setHover(null);
+      return;
+    }
+    setHover(Math.min(n - 1, Math.max(0, Math.round(share * (n - 1)))));
+  };
+
+  if (!all.length) return <p className="muted">Данных пока нет</p>;
+
+  const at = hover ?? -1;
+  const label = series[0]?.points[at]?.x;
+
   return (
-    <div className="scroll-x">
-      <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height} preserveAspectRatio="none">
+    <div className="chart-wrap">
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${height}`}
+        width="100%"
+        height={height}
+        preserveAspectRatio="none"
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+        role="img"
+      >
         {ts.map((t) => (
           <g key={t}>
             <line x1={PAD.left} x2={W - PAD.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
@@ -97,6 +130,20 @@ export function LineChart({
             </text>
           </g>
         ))}
+
+        {/* перекрестье под линиями: оно ориентир, а не содержание */}
+        {at >= 0 ? (
+          <line
+            x1={xAt(at)}
+            x2={xAt(at)}
+            y1={PAD.top}
+            y2={PAD.top + ph}
+            stroke="var(--accent)"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+          />
+        ) : null}
+
         {series.map((s, si) => {
           const color = s.color ?? SERIES[si % SERIES.length];
           const d = s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y)}`).join(" ");
@@ -110,20 +157,39 @@ export function LineChart({
                 />
               ) : null}
               <path d={d} stroke={color} strokeWidth={2} fill="none" />
-              {s.points.map((p, i) => (
+              {/*
+                Узлы рисуются только на коротких рядах: на трёхстах замерах
+                они сливаются в сплошную полосу и мешают читать линию.
+                Под курсором узел показывается всегда — он и есть ответ на
+                вопрос «сколько здесь».
+              */}
+              {s.points.length <= 60
+                ? s.points.map((p, i) => (
+                    <circle
+                      key={i}
+                      cx={xAt(i)}
+                      cy={yAt(p.y)}
+                      r={4}
+                      fill={p.tone ?? color}
+                      stroke="var(--card)"
+                      strokeWidth={2}
+                    />
+                  ))
+                : null}
+              {at >= 0 && s.points[at] ? (
                 <circle
-                  key={i}
-                  cx={xAt(i)}
-                  cy={yAt(p.y)}
-                  r={4}
-                  fill={p.tone ?? color}
+                  cx={xAt(at)}
+                  cy={yAt(s.points[at]!.y)}
+                  r={5}
+                  fill={s.points[at]!.tone ?? color}
                   stroke="var(--card)"
                   strokeWidth={2}
                 />
-              ))}
+              ) : null}
             </g>
           );
         })}
+
         <line x1={PAD.left} x2={W - PAD.right} y1={yAt(0)} y2={yAt(0)} stroke="var(--axis)" />
         <text x={PAD.left} y={height - 6} fontSize="11" fill="var(--axis)">
           {all[0]?.x}
@@ -132,6 +198,28 @@ export function LineChart({
           {series[0]?.points.at(-1)?.x}
         </text>
       </svg>
+
+      {at >= 0 && label ? (
+        <div
+          className="chart-tip"
+          style={{ left: `${((xAt(at) / W) * 100).toFixed(2)}%` }}
+          role="status"
+        >
+          <span className="chart-tip-x">{label}</span>
+          {series.map((s, si) => {
+            const point = s.points[at];
+            if (!point) return null;
+            return (
+              <span key={s.label} className="chart-tip-row">
+                <i style={{ background: s.color ?? SERIES[si % SERIES.length] }} />
+                {series.length > 1 ? <span className="grow">{s.label}</span> : null}
+                <b>{fmt(point.y)}</b>
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+
       <Legend items={series.map((s, i) => ({ label: s.label, color: s.color ?? SERIES[i % SERIES.length]! }))} />
     </div>
   );
