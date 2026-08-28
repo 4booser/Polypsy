@@ -7,6 +7,7 @@ import { day, dateTime } from "../format";
 import { useAuth } from "../auth";
 import { PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
+import { NotesEditor } from "../components/NotesEditor";
 import { useResource } from "../useResource";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
@@ -130,6 +131,10 @@ export default function CaseSummaryPage() {
           </table>
         </div>
       ))}
+
+      <div className="card">
+        <NotesEditor userId={data.userId} />
+      </div>
 
       {data.conclusions.length ? (
         <div className="card">

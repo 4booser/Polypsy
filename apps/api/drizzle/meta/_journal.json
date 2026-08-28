@@ -239,6 +239,13 @@
       "when": 1787831277266,
       "tag": "0033_pathways",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1787831278266,
+      "tag": "0034_patient_notes",
+      "breakpoints": true
     }
   ]
 }

@@ -80,6 +80,9 @@ export type AuditAction =
   | "analytics.data_quality"
   | "analytics.facets"
   | "referral.list"
+  /* заметки приёма: запись о человеке вне привязки к прохождению */
+  | "note.save"
+  | "note.sign"
   /* маршруты помощи: заведение шаблона и ведение человека по нему */
   | "pathway.create"
   | "pathway.start"

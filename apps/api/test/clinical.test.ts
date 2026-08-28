@@ -527,3 +527,121 @@ describe("маршрут в очереди работы", () => {
     expect(mine[0].href).toContain("/pathways/");
   });
 });
+
+/* ── заметки приёма ── */
+
+describe("заметка приёма", () => {
+  test("черновик правится на месте, подпись фиксирует версию", async () => {
+    const person = await makeUser("user", `note-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const first = await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Первичная беседа", kind: "intake", baseVersion: 0 }),
+    });
+    expect(first.body.current.version).toBe(1);
+    expect(first.body.current.kind).toBe("intake");
+
+    const edited = await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Первичная беседа, дополнено", baseVersion: 1 }),
+    });
+    expect(edited.body.current.version).toBe(1);
+
+    const signed = await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 1 }),
+    });
+    expect(signed.body.current.status).toBe("signed");
+
+    // правка после подписи создаёт версию 2, подписанная остаётся как была
+    const next = await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Повторный приём", baseVersion: 1 }),
+    });
+    expect(next.body.current.version).toBe(2);
+    const v1 = next.body.versions.find((v: { version: number }) => v.version === 1);
+    expect(v1.text).toBe("Первичная беседа, дополнено");
+    expect(v1.status).toBe("signed");
+  });
+
+  test("подписанная заметка не правится прямым SQL", async () => {
+    /*
+     * Договорённости «не править руками» недостаточно, когда речь о
+     * клиническом документе: запрет живёт в базе, а не в коде приложения.
+     */
+    const { sql } = await import("drizzle-orm");
+    const { patientNotes } = await import("../src/db/schema");
+    const person = await makeUser("user", `note-sql-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Подписываемая", baseVersion: 0 }),
+    });
+    await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 1 }),
+    });
+
+    const [row] = await db.select().from(patientNotes).where(eq(patientNotes.userId, person.id));
+    await expect(
+      (async () => {
+        await db.execute(sql`update patient_notes set text = ${"подмена"} where id = ${row!.id}`);
+      })(),
+    ).rejects.toThrow(/неизменяем/i);
+  });
+
+  test("подписывается та версия, что была на экране", async () => {
+    const person = await makeUser("user", `note-race-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Версия 1", baseVersion: 0 }),
+    });
+    await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 1 }),
+    });
+    await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Версия 2, чужая", baseVersion: 1 }),
+    });
+
+    const blind = await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: 1 }),
+    });
+    expect(blind.status).toBe(409);
+  });
+
+  test("текст шифруется в базе и читается через API", async () => {
+    const { patientNotes } = await import("../src/db/schema");
+    const person = await makeUser("user", `note-enc-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Клинический текст", baseVersion: 0 }),
+    });
+
+    const [row] = await db.select().from(patientNotes).where(eq(patientNotes.userId, person.id));
+    expect(row!.text.startsWith("enc1:v1:")).toBe(true);
+
+    const back = await api(`/api/notes/patients/${person.id}`, adminA.token);
+    expect(back.body.current.text).toBe("Клинический текст");
+  });
+
+  test("чужой админ заметок не видит", async () => {
+    const person = await makeUser("user", `note-foreign-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Своя запись", baseVersion: 0 }),
+    });
+
+    const foreign = await api(`/api/notes/patients/${person.id}`, adminB.token);
+    expect(foreign.status).toBe(404);
+  });
+});

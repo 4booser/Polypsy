@@ -72,3 +72,30 @@ test("групповой админ не видит чужих пациенто�
   // пересечение допустимо (общий пациент), полное совпадение списков — нет
   expect(mine.join("|")).not.toBe(theirs.join("|"));
 });
+
+test("запись приёма сохраняется, подписывается и становится неизменной", async ({ page }) => {
+  /*
+   * Заключение отвечает на вопрос «что показала методика»; приём бывает и без
+   * методики. Проверяется тот же контур, что у заключения: черновик правится,
+   * подпись фиксирует, правка поверх создаёт новую версию.
+   */
+  await login(page, "psy");
+  await page.goto("/patients");
+  await page.locator("table tbody tr td a").first().click();
+  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
+
+  const notes = page.locator(".card").filter({ hasText: "Записи приёма" }).first();
+  await expect(notes).toBeVisible();
+
+  const text = `Беседа ${Date.now()}`;
+  await notes.getByRole("button", { name: "Первичный" }).click();
+  await notes.getByPlaceholder(/Жалобы|Новая запись/).fill(text);
+  await notes.getByRole("button", { name: "Сохранить черновиком" }).click();
+
+  await expect(notes.getByPlaceholder(/Жалобы|Новая запись/)).toHaveValue(text);
+
+  await notes.getByRole("button", { name: "Подписать" }).click();
+  // подписанная запись показывается отдельно, а поле освобождается под новую
+  await expect(notes.locator(".conclusion-view").first()).toContainText(text);
+  await expect(notes.getByPlaceholder("Новая запись поверх подписанной")).toHaveValue("");
+});

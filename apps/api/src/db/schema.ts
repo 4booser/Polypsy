@@ -1239,6 +1239,48 @@ export const alertNotifications = pgTable(
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
 /**
+ * Заметка приёма.
+ *
+ * Заключение привязано к прохождению — оно отвечает на вопрос «что показала
+ * методика». Приём бывает и без методики: беседа, наблюдение, звонок
+ * командиру. Такую запись некуда было положить, и она уходила в тетрадь.
+ *
+ * Устройство повторяет заключения намеренно: версии, подпись, шифрование.
+ * Подписанное неизменно — правка создаёт новую версию.
+ */
+export const patientNotes = pgTable(
+  "patient_notes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** Приём, наблюдение, разбор случая, консультация */
+    kind: text("kind", { enum: ["intake", "session", "observation", "consult"] })
+      .notNull()
+      .default("session"),
+    /** Шифруется: клинический текст о человеке */
+    text: text("text").notNull(),
+    status: text("status", { enum: ["draft", "signed"] }).notNull().default("draft"),
+    /** Необязательная привязка к маршруту: заметка как шаг пути */
+    pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
+      onDelete: "set null",
+    }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    signedAt: timestampCol("signed_at"),
+    signedBy: text("signed_by").references(() => users.id, { onDelete: "restrict" }),
+  },
+  (t) => ({
+    userVersionIdx: uniqueIndex("patient_notes_user_version_idx").on(t.userId, t.version),
+    userIdx: index("patient_notes_user_idx").on(t.userId, t.createdAt),
+  }),
+);
+
+/**
  * Маршрут помощи — шаблон пути от скрининга до исхода.
  *
  * Скрининг, углублённое обследование, решение, вмешательство, повторный
