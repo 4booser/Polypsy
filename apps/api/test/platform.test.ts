@@ -353,3 +353,50 @@ describe("отчёт об ошибке не выносит персональн�
     expect(true).toBe(true);
   });
 });
+
+/**
+ * Обход всей поверхности GET-запросов.
+ *
+ * Пятисотка в /api/audit/storage прожила долго именно потому, что этот
+ * эндпоинт не вызывал ни один тест: ошибка «column reference is ambiguous»
+ * возникала только при выполнении запроса. Здесь каждый документированный
+ * GET-маршрут вызывается хотя бы раз — не для проверки содержимого ответа, а
+ * чтобы ни один не падал молча.
+ */
+describe("ни один GET не падает пятисоткой", () => {
+  test("все документированные маршруты отвечают без 5xx", async () => {
+    const { ROUTE_DOCS } = await import("../src/lib/openapi");
+
+    // подстановки для маршрутов с параметрами: настоящие идентификаторы
+    const done = await submitSurvey(surveyInA, patient.token);
+    const substitutions: Record<string, string> = {
+      ":id": surveyInA,
+      ":userId": patient.id,
+      ":surveyId": surveyInA,
+      ":responseId": done.body.id,
+      ":token": "нет-такого-токена",
+      ":versionId": crypto.randomUUID(),
+      ":batteryId": crypto.randomUUID(),
+    };
+
+    const failures: string[] = [];
+    for (const key of Object.keys(ROUTE_DOCS)) {
+      const [method, rawPath] = key.split(" ") as [string, string];
+      if (method !== "GET") continue;
+
+      const path = rawPath.replace(/:[a-zA-Z]+/g, (p) => substitutions[p] ?? crypto.randomUUID());
+      // остались неизвестные параметры — маршрут проверяется отдельно
+      if (path.includes(":")) continue;
+
+      const res = await app.request(path, { headers: { Authorization: `Bearer ${root.token}` } });
+      /*
+       * Интересуют только серверные ошибки. 404 и 403 — законные ответы:
+       * подставленный идентификатор может ничего не значить, а часть
+       * маршрутов закрыта даже суперадмину (метрики без токена).
+       */
+      if (res.status >= 500) failures.push(`${key} → ${res.status}: ${(await res.text()).slice(0, 120)}`);
+    }
+
+    expect(failures).toEqual([]);
+  });
+});
