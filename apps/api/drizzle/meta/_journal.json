@@ -225,6 +225,13 @@
       "when": 1787831275266,
       "tag": "0031_author_restrict",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787831276266,
+      "tag": "0032_saved_views",
+      "breakpoints": true
     }
   ]
 }

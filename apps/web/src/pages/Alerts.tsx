@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { dateTime, day, severityColor } from "../format";
 import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { SavedViews } from "../ui/SavedViews";
 import { onAppEvent } from "../events";
 import { usePagedResource, useResource } from "../useResource";
 
@@ -145,6 +146,7 @@ export default function Alerts() {
       {/* ── панель 1: очередь ── */}
       <aside className="triage-queue">
         <div className="triage-filters">
+          <SavedViews scope="alerts" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}

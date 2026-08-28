@@ -1238,6 +1238,36 @@ export const alertNotifications = pgTable(
  * неизменна юридически и физически: следующая правка создаёт version+1
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
+/**
+ * Сохранённые виды: именованный срез экрана.
+ *
+ * Фильтры уже живут в адресе и передаются ссылкой, но каждый раз собирать
+ * «мои просроченные по третьей роте» заново — работа, которую можно снять.
+ * Хранятся параметры, а не данные: вид, открытый другим сотрудником,
+ * покажет ему только то, что он и так вправе видеть.
+ */
+export const savedViews = pgTable(
+  "saved_views",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Экран: alerts, patients, referrals… */
+    scope: text("scope").notNull(),
+    name: text("name").notNull(),
+    /** Параметры адреса среза — то, что стоит после «?» */
+    params: text("params").notNull(),
+    /** Общий вид виден всем сотрудникам, личный — только владельцу */
+    shared: boolean("shared").notNull().default(false),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    ownerScopeIdx: index("saved_views_owner_scope_idx").on(t.ownerId, t.scope),
+    uniqueName: uniqueIndex("saved_views_unique_name").on(t.ownerId, t.scope, t.name),
+  }),
+);
+
 export const conclusions = pgTable(
   "conclusions",
   {

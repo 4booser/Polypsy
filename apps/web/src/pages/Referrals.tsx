@@ -5,6 +5,7 @@ import { api } from "../api";
 import { day } from "../format";
 import { Avatar, DataTable, Empty, PageHead, Screen, useAction, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { SavedViews } from "../ui/SavedViews";
 import { useResource } from "../useResource";
 
 export const DESTINATION_KEY = {
@@ -69,6 +70,9 @@ export default function ReferralsPage() {
         }
       />
       <div className="card">
+        <div className="table-tools">
+          <SavedViews scope="referrals" />
+        </div>
         {truncated ? (
           <p className="hint" style={{ marginTop: 0 }}>
             Показаны первые 200 направлений — самые свежие. Чтобы увидеть остальные,

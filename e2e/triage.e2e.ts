@@ -156,3 +156,32 @@ test("новая тревога догоняет открытый экран б�
   // ни одного действия в браузере — отметка появляется сама
   await expect(page.locator(".events-dot")).toBeVisible({ timeout: 15_000 });
 });
+
+test("срез экрана сохраняется под именем и восстанавливается", async ({ page }) => {
+  /*
+   * Ради этого всё и делалось: не собирать «мои просроченные» каждое утро.
+   * Хранится строка запроса, поэтому проверка идёт по адресу — вид обязан
+   * вернуть ровно тот фильтр, при котором его сохранили.
+   */
+  await page.getByRole("button", { name: "Только тяжёлые", exact: true }).click();
+  await expect.poll(() => page.url()).toContain("severity=severe");
+
+  const name = `Тяжёлые ${Date.now()}`;
+  await page.getByRole("button", { name: /Сохранить вид/ }).click();
+  await page.getByPlaceholder("Например: мои просроченные").fill(name);
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+
+  const view = page.getByRole("button", { name, exact: true });
+  await expect(view).toBeVisible();
+
+  // сбрасываем фильтр и возвращаемся к нему одним нажатием
+  await page.getByRole("button", { name: "Любая срочность", exact: true }).click();
+  await expect.poll(() => page.url()).not.toContain("severity=severe");
+
+  await view.click();
+  await expect.poll(() => page.url()).toContain("severity=severe");
+
+  // и убираем за собой: вид принадлежит учётной записи, а не прогону теста
+  await page.getByRole("button", { name: "Удалить вид" }).click();
+  await expect(view).toHaveCount(0);
+});

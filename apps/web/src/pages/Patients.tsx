@@ -6,6 +6,7 @@ import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { SavedViews } from "../ui/SavedViews";
 import { usePagedResource, useResource } from "../useResource";
 
 export function PatientList() {
@@ -37,6 +38,9 @@ export function PatientList() {
         actions={<Search value={query} onChange={setQuery} placeholder={ut("ui.search")} />}
       />
       <div className="card">
+        <div className="table-tools">
+          <SavedViews scope="patients" />
+        </div>
         <DataTable
           rows={filtered}
           csvName={ut("pt.patients")}

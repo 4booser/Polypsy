@@ -180,6 +180,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin" },
   "GET /api/timeline/:userId": { summary: "Хронология пациента: всё на одной оси", access: "staff" },
   "GET /api/events": { summary: "Поток событий (SSE): тревоги и изменения случаев", access: "staff" },
+  "GET /api/views": { summary: "Сохранённые виды экрана: свои и общие", access: "staff" },
+  "POST /api/views": { summary: "Сохранить текущий срез экрана", access: "staff" },
+  "PATCH /api/views/:id": { summary: "Переименовать вид или открыть его коллегам", access: "staff" },
+  "DELETE /api/views/:id": { summary: "Удалить свой вид", access: "staff" },
   "GET /api/openapi.json": { summary: "Это описание", access: "staff" },
 
   /* ── согласие ── */
