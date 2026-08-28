@@ -253,6 +253,13 @@
       "when": 1787831279266,
       "tag": "0035_safety_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787831280266,
+      "tag": "0036_treatment_goals",
+      "breakpoints": true
     }
   ]
 }

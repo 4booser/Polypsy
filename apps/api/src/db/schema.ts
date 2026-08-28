@@ -1239,6 +1239,54 @@ export const alertNotifications = pgTable(
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
 /**
+ * Цель лечения.
+ *
+ * Ядро measurement-based care: цель формулируется измеримо и привязывается к
+ * шкале, а не к ощущению. «Стало полегче» нельзя ни проверить, ни передать
+ * коллеге; «ЛАП выше 4 к третьему месяцу» — можно.
+ *
+ * Достоверность изменения (RCI) в системе уже считается; цель встраивает её
+ * в контур: видно не только «стало лучше», но и «изменение больше ошибки
+ * измерения», а это разные утверждения.
+ */
+export const treatmentGoals = pgTable(
+  "treatment_goals",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    /** Код шкалы: он переживает смену версии методики, в отличие от id */
+    scaleCode: text("scale_code").notNull(),
+    /** Куда должно двигаться значение */
+    direction: text("direction", { enum: ["down", "up"] }).notNull(),
+    targetValue: doublePrecision("target_value").notNull(),
+    /** Значение на момент постановки цели — точка отсчёта для RCI */
+    baselineValue: doublePrecision("baseline_value"),
+    dueAt: timestampCol("due_at"),
+    status: text("status", { enum: ["open", "met", "missed", "cancelled"] })
+      .notNull()
+      .default("open"),
+    note: text("note"),
+    pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
+      onDelete: "set null",
+    }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    closedAt: timestampCol("closed_at"),
+  },
+  (t) => ({
+    userIdx: index("treatment_goals_user_idx").on(t.userId),
+    openIdx: index("treatment_goals_open_idx").on(t.dueAt).where(sql`status = 'open'`),
+  }),
+);
+
+/**
  * Личный план безопасности (Стэнли–Браун).
  *
  * У методики уже есть `safetyPlan` — текст немедленных действий, одинаковый

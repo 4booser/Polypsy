@@ -1717,3 +1717,24 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
 .sp-view section, .sp-edit section { display: grid; gap: 5px; }
 .sp-list { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: var(--fs-small); }
 .sp-edit .row { align-items: center; }
+
+/* ═══ цели лечения ═══ */
+.goal {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.goal:last-child { border-bottom: none; }
+.goal.closed { opacity: 0.6; }
+.goal-bar {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+  margin-top: 6px;
+  max-width: 420px;
+}
+.goal-bar i { display: block; height: 100%; background: var(--primary); }

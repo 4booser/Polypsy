@@ -9,6 +9,7 @@ import { PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
+import { Goals } from "../components/Goals";
 import { useResource } from "../useResource";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
@@ -132,6 +133,8 @@ export default function CaseSummaryPage() {
           </table>
         </div>
       ))}
+
+      <Goals userId={data.userId} summary={data} />
 
       {/* план безопасности стоит выше заметок: в кризис открывают его */}
       <SafetyPlanEditor userId={data.userId} />

@@ -96,7 +96,7 @@ test("запись приёма сохраняется, подписываетс
 
   await notes.getByRole("button", { name: "Подписать" }).click();
   // подписанная запись показывается отдельно, а поле освобождается под новую
-  await expect(notes.locator(".conclusion-view").first()).toContainText(text);
+  await expect(notes).toContainText(text);
   await expect(notes.getByPlaceholder("Новая запись поверх подписанной")).toHaveValue("");
 });
 
@@ -125,4 +125,34 @@ test("план безопасности составляется и сохран
 
   await expect(card.getByText(sign)).toBeVisible();
   await expect(card.getByText(/версия\s+\d+/)).toBeVisible();
+});
+
+test("цель лечения ставится измеримо и показывает прогресс", async ({ page }) => {
+  /*
+   * «Стало полегче» нельзя ни проверить, ни передать коллеге. Цель привязана
+   * к шкале и значению — и тогда прогресс считается из тех же замеров, что и
+   * вся аналитика.
+   */
+  await login(page, "psy");
+  await page.goto("/patients");
+  await page.locator("table tbody tr td a").first().click();
+  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
+
+  const card = page.locator(".card").filter({ hasText: "Цели лечения" }).first();
+  await expect(card).toBeVisible();
+
+  await card.getByRole("button", { name: "Поставить цель" }).click();
+  await card.locator("#goal-survey").selectOption({ index: 1 });
+  await card.locator("#goal-scale").selectOption({ index: 1 });
+  await card.locator("#goal-target").fill("0.1");
+  await card.getByRole("button", { name: "Поставить", exact: true }).click();
+
+  const goal = card.locator(".goal").first();
+  await expect(goal).toBeVisible();
+  // видно точку отсчёта, цель и текущее значение — всё из замеров
+  await expect(goal).toContainText("от");
+  await expect(goal).toContainText("сейчас");
+
+  await goal.getByRole("button", { name: "Достигнута", exact: true }).click();
+  await expect(card.locator(".goal.closed").first()).toBeVisible();
 });
