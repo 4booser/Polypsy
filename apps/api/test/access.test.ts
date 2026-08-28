@@ -145,23 +145,63 @@ describe("RLS-политики (роль без прав владельца)", (
 describe("RLS покрывает все клинические таблицы", () => {
   test("ни одна таблица с клиническими данными не осталась без политик", async () => {
     /*
-     * Политики писались один раз, а таблицы добавлялись позже — так три
-     * таблицы (случаи риска, направления, заключения) и оказались вне
-     * страховочной сетки. Тест сторожит именно это: список таблиц растёт, и
-     * помнить про RLS при каждой новой никто не обязан.
+     * Список таблиц раньше был вписан руками — и устарел в тот же день, когда
+     * появились маршруты, заметки, планы безопасности, цели и консилиум:
+     * семь новых таблиц с данными о людях прошли бы мимо проверки, которая
+     * ровно для этого и писалась.
+     *
+     * Теперь список выводится: клинической считается любая таблица со
+     * ссылкой на пользователя, кроме перечисленных исключений. Новая таблица
+     * попадает под проверку сама, а исключение приходится назвать явно — и
+     * тогда оно хотя бы обдумано.
      */
     const { sql: sqlOp } = await import("drizzle-orm");
+
+    /** Таблицы со ссылкой на человека, но без клинического содержания */
+    const notClinical = new Set([
+      "users", // сами учётные записи закрыты правами, а не политикой строк
+      "group_admins",
+      "refresh_tokens",
+      "login_attempts",
+      "invites",
+      "invite_uses",
+      "push_tokens",
+      "push_deliveries",
+      "saved_views",
+      "consent_texts",
+      "audit_log", // журнал закрыт ролью: суперадмин видит всё, остальные ничего
+      "schedule_targets", // поимённые цели расписания: видны только персоналу
+      "pathways", // шаблон маршрута — не данные о человеке
+      "pathway_steps",
+      "schedules",
+      "schedule_targets",
+      "schedule_runs",
+      "batteries",
+      "battery_items",
+      "surveys",
+      "survey_groups",
+      "survey_versions",
+      "kiosk_sessions",
+      "alert_notifications",
+    ]);
+
     const rows = await db.execute<{ relname: string; n: number } & Record<string, unknown>>(sqlOp`
       select c.relname,
              (select count(*)::int from pg_policies p where p.tablename = c.relname) as n
-      from pg_class c join pg_namespace ns on ns.oid = c.relnamespace
+      from pg_class c
+      join pg_namespace ns on ns.oid = c.relnamespace
       where ns.nspname = 'public' and c.relkind = 'r'
-        and c.relname in (
-          'responses','answers','response_scores','risk_alerts',
-          'alert_cases','referrals','conclusions','survey_access'
+        and exists (
+          select 1 from information_schema.columns col
+          where col.table_schema = 'public'
+            and col.table_name = c.relname
+            and col.column_name in ('user_id', 'response_id', 'subject_user_id')
         )
     `);
-    const unprotected = [...rows].filter((r) => Number(r.n) === 0).map((r) => String(r.relname));
+
+    const unprotected = [...rows]
+      .filter((r) => Number(r.n) === 0 && !notClinical.has(String(r.relname)))
+      .map((r) => String(r.relname));
     expect(unprotected).toEqual([]);
   });
 
