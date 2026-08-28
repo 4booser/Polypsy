@@ -1514,3 +1514,26 @@ kbd, .kbd {
   .tl-day { grid-template-columns: 1fr; gap: 6px; }
   .tl-date { position: static; }
 }
+
+/* ═══ график с подсказкой ═══ */
+.chart-wrap { position: relative; overflow-x: auto; }
+.chart-tip {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  display: grid;
+  gap: 3px;
+  min-width: 96px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: var(--fs-caption);
+  z-index: 2;
+}
+.chart-tip-x { color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-micro); }
+.chart-tip-row { display: flex; align-items: center; gap: 7px; }
+.chart-tip-row i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.chart-tip-row b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
