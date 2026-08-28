@@ -178,6 +178,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/audit/summary": { summary: "Сводка по журналу", access: "superadmin" },
   "GET /api/audit/verify": { summary: "Проверка хэш-цепочки журнала", access: "superadmin" },
   "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin" },
+  "GET /api/timeline/:userId": { summary: "Хронология пациента: всё на одной оси", access: "staff" },
   "GET /api/openapi.json": { summary: "Это описание", access: "staff" },
 
   /* ── согласие ── */
