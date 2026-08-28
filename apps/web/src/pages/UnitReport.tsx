@@ -45,11 +45,11 @@ export default function UnitReportPage() {
             </select>
             <label>
               <span>с</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="Начало периода" />
+              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={ut("ur.periodStart")} />
             </label>
             <label>
               <span>по</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Конец периода" />
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={ut("ur.periodEnd")} />
             </label>
             {data ? <button onClick={() => window.print()}>{ut("unit.print")}</button> : null}
           </div>

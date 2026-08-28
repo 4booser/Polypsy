@@ -96,7 +96,7 @@ export default function Join() {
           <>
             <h1>{ut("join.doneTitle")}</h1>
             <p>
-              {lang === "uk" ? "Обліковий запис створено" : "Учётная запись создана"}
+              {ut("join.accountCreated")}
               {preview?.batteryTitle
                 ? lang === "uk"
                   ? `, обстеження «${preview.batteryTitle}» вже призначено`
@@ -112,7 +112,7 @@ export default function Join() {
           <>
             <h1>{ut("join.registerTitle")}</h1>
             <p className="muted">
-              {lang === "uk" ? "Вас запросили пройти обстеження" : "Вас пригласили пройти обследование"}
+              {ut("join.invited")}
               {preview.batteryTitle ? <>: «{preview.batteryTitle}»</> : null}
               {preview.unit ? <> · {preview.unit}</> : null}
             </p>

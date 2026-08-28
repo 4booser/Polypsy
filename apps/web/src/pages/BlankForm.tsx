@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
 /**
  * Пустой бланк для бумажного проведения.
@@ -13,12 +14,13 @@ import { useResource } from "../useResource";
  * нумерацией на экране — она берётся из той же версии методики.
  */
 export default function BlankForm() {
+  const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const [compact, setCompact] = useState(true);
   const { data: survey, error } = useResource(() => api.survey(id!), [id], { enabled: !!id });
 
   if (error) return <p className="error">{error}</p>;
-  if (!survey) return <p className="muted">Загрузка…</p>;
+  if (!survey) return <p className="muted">{ut("common.loading")}</p>;
 
   const asked = survey.questions.filter((q) => q.type !== "info");
   /* Одинаковый набор вариантов на всю методику — тогда шапку можно вынести
@@ -27,7 +29,7 @@ export default function BlankForm() {
 
   return (
     <>
-      <h1>Бланк для заполнения</h1>
+      <h1>{ut("bf.title")}</h1>
       <p className="sub">
         <Link to={`/surveys/${survey.id}`}>{survey.title}</Link> · {asked.length} пунктов
       </p>
@@ -41,10 +43,10 @@ export default function BlankForm() {
             : " Варианты у пунктов различаются, поэтому они напечатаны при каждом."}
         </p>
         <div className="row" style={{ marginTop: 12 }}>
-          <button onClick={() => window.print()}>Печать</button>
+          <button onClick={() => window.print()}>{ut("kp.print")}</button>
           {shared ? (
             <button onClick={() => setCompact((v) => !v)}>
-              {compact ? "Развернуть с текстом пунктов" : "Свернуть до сетки ответов"}
+              {compact ? ut("bf.expand") : ut("bf.collapse")}
             </button>
           ) : null}
         </div>
@@ -55,13 +57,13 @@ export default function BlankForm() {
           <h2 style={{ margin: 0 }}>{survey.title}</h2>
           {survey.instructions ? <p className="hint">{survey.instructions}</p> : null}
           <div className="fields">
-            <Blank label="Фамилия, имя, отчество" width="100%" />
-            <Blank label="Подразделение" width="55%" />
-            <Blank label="Звание" width="40%" />
-            <Blank label="Дата рождения" width="30%" />
+            <Blank label={ut("bf.fullName")} width="100%" />
+            <Blank label={ut("sch.unit")} width="55%" />
+            <Blank label={ut("cmp.rank")} width="40%" />
+            <Blank label={ut("bf.birthDate")} width="30%" />
             <Blank label="Пол" width="20%" />
-            <Blank label="Дата обследования" width="30%" />
-            <Blank label="Психолог" width="45%" />
+            <Blank label={ut("bf.examDate")} width="30%" />
+            <Blank label={ut("bf.psychologist")} width="45%" />
           </div>
         </div>
 
@@ -75,7 +77,7 @@ export default function BlankForm() {
           Отвечайте на каждый пункт. Пропущенные пункты снижают достоверность результата.
         </p>
         <div className="fields" style={{ marginTop: 12 }}>
-          <Blank label="Подпись обследуемого" width="45%" />
+          <Blank label={ut("bf.signature")} width="45%" />
           <Blank label="Дата" width="25%" />
         </div>
       </div>

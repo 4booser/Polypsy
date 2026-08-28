@@ -1,17 +1,19 @@
 import { useState } from "react";
-import type { CohortBy, ComparisonResult, CorrelationMatrix } from "@quizzy/shared";
+import type { CohortBy, ComparisonResult, CorrelationMatrix, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
 import { Chart } from "../charts";
 import { SERIES, severityColor } from "../format";
 import { Empty, Loading, PageHead } from "../ui";
+import { useLang } from "../lang";
 
-const BY_LABEL: [CohortBy, string][] = [
-  ["unit", "Подразделение"],
-  ["sex", "Пол"],
-  ["ageGroup", "Возраст"],
-  ["rank", "Звание"],
-  ["month", "Месяц"],
+// ключи, а не подписи: карта вне компонента, язык — при отрисовке
+const BY_KEY: [CohortBy, UiKey][] = [
+  ["unit", "cmp.unit"],
+  ["sex", "cmp.sex"],
+  ["ageGroup", "cmp.age"],
+  ["rank", "cmp.rank"],
+  ["month", "cmp.month"],
 ];
 
 /**
@@ -21,6 +23,7 @@ const BY_LABEL: [CohortBy, string][] = [
  * «отличается ли отделение от отделения» и «что с чем связано».
  */
 export default function Compare() {
+  const { ut } = useLang();
   const [chosen, setChosen] = useState("");
   const [by, setBy] = useState<CohortBy>("unit");
 
@@ -43,8 +46,8 @@ export default function Compare() {
   return (
     <>
       <PageHead
-        title="Сравнение"
-        sub="Когорты по паспортной части и связи между субшкалами"
+        title={ut("cmp.title")}
+        sub={ut("cmp.sub")}
         actions={
           <>
             <select value={surveyId} onChange={(e) => setChosen(e.target.value)} style={{ width: 300 }}>
@@ -53,9 +56,9 @@ export default function Compare() {
               ))}
             </select>
             <div className="row tight">
-              {BY_LABEL.map(([v, label]) => (
+              {BY_KEY.map(([v, label]) => (
                 <button key={v} className={`chip ${by === v ? "active" : ""}`} onClick={() => setBy(v)}>
-                  {label}
+                  {ut(label)}
                 </button>
               ))}
             </div>
@@ -68,8 +71,8 @@ export default function Compare() {
 
       {data && data.scales.every((s) => s.cohorts.length === 0) ? (
         <Empty
-          title="Сравнивать нечего"
-          hint={`Ни одна когорта по признаку «${BY_LABEL.find(([v]) => v === by)?.[1]}» не набрала трёх прохождений. Возможно, поле не заполнено у пациентов.`}
+          title={ut("cmp.nothing")}
+          hint={`${ut("cmp.noCohortsBefore")} «${ut(BY_KEY.find(([v]) => v === by)![1])}» ${ut("cmp.noCohortsAfter")}`}
         />
       ) : null}
 
@@ -87,7 +90,7 @@ export default function Compare() {
         if (!scale.cohorts.length) return null;
         const flip = standardizationFlips(scale.cohorts);
         return (
-          <Chart key={scale.scaleId} title={scale.title} hint={scaleHint(scale)}>
+          <Chart key={scale.scaleId} title={scale.title} hint={scaleHint(scale, ut)}>
             {flip ? (
               <p className="hint warn" style={{ marginTop: 0 }}>
                 Стандартизация по полу и возрасту меняет порядок групп: сырая разница
@@ -102,7 +105,7 @@ export default function Compare() {
 
       {corr && corr.codes.length >= 2 ? (
         <Chart
-          title="Связи между субшкалами"
+          title={ut("cmp.links")}
           hint={`Коэффициент Пирсона. Считается только там, где есть оба балла, и не считается при выборке меньше ${corr.minSample}`}
         >
           <CorrelationGrid matrix={corr} />
@@ -130,16 +133,18 @@ function axis(scale: ComparisonResult["scales"][number]): { top: number; fmt: (v
   }
 }
 
-function scaleHint(scale: ComparisonResult["scales"][number]): string {
+// переводчик аргументом: функция чистая и живёт вне компонента
+function scaleHint(scale: ComparisonResult["scales"][number], ut: (k: UiKey) => string): string {
+  const tail = ut("cmp.barsHint");
   switch (scale.normalization) {
     case "ratio":
-      return `Доля от максимума (сырой максимум ${scale.maxScore}). Полоса — размах, заливка — среднее`;
+      return `${ut("cmp.ratioHint")} (${ut("cmp.rawMax")} ${scale.maxScore}). ${tail}`;
     case "tscore":
-      return "T-баллы по нормам пола и возраста. Полоса — размах, заливка — среднее";
+      return `${ut("cmp.tscoreHint")} ${tail}`;
     case "sten":
-      return "Стены 1–10. Полоса — размах, заливка — среднее";
+      return `${ut("cmp.stenHint")} ${tail}`;
     default:
-      return `Сырой балл, максимум ${scale.maxScore}. Полоса — размах, заливка — среднее`;
+      return `${ut("cmp.rawHint")} ${scale.maxScore}. ${tail}`;
   }
 }
 

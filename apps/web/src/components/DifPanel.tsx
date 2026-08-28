@@ -56,7 +56,7 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
 
       {flagged.length ? (
         <div className="card scroll-x">
-          <h2>Пункты с различиями: {flagged.length}</h2>
+          <h2>{ut("dif.flaggedItems")}: {flagged.length}</h2>
           <table>
             <thead>
               <tr>

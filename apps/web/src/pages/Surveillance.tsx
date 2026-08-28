@@ -3,6 +3,7 @@ import { api } from "../api";
 import { Chart } from "../charts";
 import { Loading, PageHead } from "../ui";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
 /**
  * Эпиднадзор: p-карты доли высокого риска по неделям и подразделениям.
@@ -13,6 +14,7 @@ import { useResource } from "../useResource";
  * шума хуже её отсутствия.
  */
 export default function Surveillance() {
+  const { ut } = useLang();
   const [surveyId, setSurveyId] = useState("");
 
   /*
@@ -45,8 +47,8 @@ export default function Surveillance() {
   return (
     <>
       <PageHead
-        title="Надзор"
-        sub="Контрольные карты: доля прохождений с высоким риском по неделям"
+        title={ut("sv.title")}
+        sub={ut("sv.sub")}
         actions={
           <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)} style={{ width: 300 }}>
             {surveys.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
@@ -59,7 +61,7 @@ export default function Surveillance() {
 
       {signals.length ? (
         <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
-          <h2>Сигналы: {signals.length}</h2>
+          <h2>{ut("sv.signals")}: {signals.length}</h2>
           {signals.slice(0, 6).map((s, i) => (
             <p key={i} style={{ margin: "4px 0", fontSize: 13 }}>
               <strong>{s.unit ?? "вся выборка"}</strong> · неделя {s.week}:{" "}
@@ -70,13 +72,13 @@ export default function Surveillance() {
           ))}
         </div>
       ) : data ? (
-        <div className="card"><p className="muted" style={{ margin: 0 }}>Сигналов нет — доли в пределах ожидаемого разброса.</p></div>
+        <div className="card"><p className="muted" style={{ margin: 0 }}>{ut("sv.noSignals")}</p></div>
       ) : null}
 
       {data?.series.map((s) => (
         <Chart
           key={s.unit ?? "__all__"}
-          title={s.unit ?? "Вся выборка"}
+          title={s.unit ?? ut("sv.wholeSample")}
           hint={`центр ${Math.round(s.center * 100)}% · недели с n<${data.minWeekN} без сигналов`}
         >
           <PBars series={s} />

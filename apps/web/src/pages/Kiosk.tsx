@@ -119,7 +119,7 @@ export default function Kiosk() {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   if (phase.kind === "running") {
     const step = selfSteps[phase.stepIndex];
-    if (!step) return <Shell><h1>Готово</h1></Shell>;
+    if (!step) return <Shell><h1>{ut("ks.done")}</h1></Shell>;
     return (
       <Runner
         key={step.surveyId}

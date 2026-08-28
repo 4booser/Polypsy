@@ -42,8 +42,8 @@ export default function KioskSessions() {
         return (
     <>
       <PageHead
-        title="Сеансы киоска"
-        sub="Один планшет — поток обследуемых по очереди, с живым прогрессом"
+        title={ut("ks.title")}
+        sub={ut("ks.sub")}
         actions={
           <button className="primary" disabled={!batteries.length} onClick={() => setShowForm(true)}>
             Новый сеанс
@@ -67,7 +67,7 @@ export default function KioskSessions() {
 
       {!rows ? <Loading /> : null}
       {rows && !rows.length && !showForm ? (
-        <Empty title="Сеансов не было" hint="Создайте сеанс и откройте его ссылку на планшете — дальше устройство работает само" />
+        <Empty title={ut("ks.none")} hint={ut("ks.noneHint")} />
       ) : null}
 
       {active.map((s) => <SessionCard key={s.id} session={s} onChanged={reload} live />)}
@@ -93,7 +93,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
           {live ? (
             <button
               className="danger"
-              onClick={() => run(async () => { await api.closeKioskSession(session.id); onChanged(); }, "Сеанс закрыт")}
+              onClick={() => run(async () => { await api.closeKioskSession(session.id); onChanged(); }, ut("ks.closed"))}
             >
               Завершить сеанс
             </button>
@@ -156,7 +156,7 @@ function SessionForm({
       </div>
       <div className="form-grid">
         <label className="field grow"><span>{ut("f.name")}</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Например, «Обследование 3-й роты, кабинет 12»" /></label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("ks.namePlaceholder")} /></label>
         <label className="field grow"><span>{ut("f.battery")}</span>
           <select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
             {batteries.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
@@ -179,7 +179,7 @@ function SessionForm({
             run(async () => {
               const res = await api.createKioskSession({ title, batteryId, ttlHours });
               onCreated(res.token);
-            }, "Сеанс создан")
+            }, ut("ks.created"))
           }
         >
           Создать сеанс
@@ -221,7 +221,7 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
           <label className="field"><span>{ut("ks.link")}</span>
             <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} /></label>
           <div className="row tight">
-            <button onClick={() => run(async () => navigator.clipboard.writeText(url), "Скопировано")}>
+            <button onClick={() => run(async () => navigator.clipboard.writeText(url), ut("ui.copied"))}>
               Копировать
             </button>
             <a className="btn" href={url} target="_blank" rel="noreferrer">{ut("ks.openHere")}</a>

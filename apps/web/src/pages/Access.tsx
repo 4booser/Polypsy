@@ -95,13 +95,13 @@ export default function Access() {
       </div>
 
       <div className="card scroll-x">
-        <h2>Назначено ({grants.length})</h2>
+        <h2>{ut("acc.granted")} ({grants.length})</h2>
         {grants.length === 0 ? (
           <p className="muted">{ut("acc.nobody")}</p>
         ) : (
           <table>
             <thead>
-              <tr><th>{ut("acc.patient")}</th><th>Email</th><th>{ut("acc.grantedBy")}</th><th>{ut("acc.when")}</th><th>До</th><th>{ut("acc.passed")}</th><th>{ut("acc.comment")}</th><th /></tr>
+              <tr><th>{ut("acc.patient")}</th><th>Email</th><th>{ut("acc.grantedBy")}</th><th>{ut("acc.when")}</th><th>{ut("cs.to")}</th><th>{ut("acc.passed")}</th><th>{ut("acc.comment")}</th><th /></tr>
             </thead>
             <tbody>
               {grants.map((g) => (

@@ -68,7 +68,7 @@ export default function Administer() {
       });
       setResult(res);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+      setError(e instanceof Error ? e.message : ut("ad.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -87,7 +87,7 @@ export default function Administer() {
         <PageHead title={ut("adn.saved")} sub={survey.title} />
         {!result.reliable ? (
           <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
-            <strong>Профиль признан ненадёжным</strong>
+            <strong>{ut("ad.unreliable")}</strong>
             {result.warnings.map((w, i) => (
               <p key={i} className="hint" style={{ marginBottom: 0 }}>{w}</p>
             ))}
@@ -95,7 +95,7 @@ export default function Administer() {
         ) : null}
         <div className="card scroll-x">
           <table>
-            <thead><tr><th>Шкала</th><th className="num">Сырой</th><th className="num">Значение</th><th>Интерпретация</th><th>Рекомендация</th></tr></thead>
+            <thead><tr><th>{ut("ad.scale")}</th><th className="num">{ut("ad.raw")}</th><th className="num">{ut("ad.value")}</th><th>{ut("ad.interpretation")}</th><th>{ut("ad.recommendation")}</th></tr></thead>
             <tbody>
               {scores.map((s) => (
                 <tr key={s.scaleCode}>
@@ -197,7 +197,7 @@ export default function Administer() {
       {error ? <p className="error">{error}</p> : null}
       <div className="row">
         <button className="primary" onClick={submit} disabled={!subject || unanswered.length > 0 || busy}>
-          {busy ? "Сохранение…" : "Сохранить обследование"}
+          {busy ? ut("ad.saving") : ut("ad.save")}
         </button>
         {unanswered.length ? <span className="muted">не заполнено обязательных: {unanswered.length}</span> : null}
         {!subject ? <span className="muted">выберите пациента</span> : null}

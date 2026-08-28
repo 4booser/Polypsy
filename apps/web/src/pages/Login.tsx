@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth";
+import { useLang } from "../lang";
 
 export default function Login() {
+  const { ut } = useLang();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,7 +17,7 @@ export default function Login() {
     try {
       await login(email.trim(), password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Не удалось войти");
+      setError(err instanceof Error ? err.message : ut("lg.failed"));
     } finally {
       setBusy(false);
     }
@@ -25,7 +27,7 @@ export default function Login() {
     <div className="login">
       <form className="card" onSubmit={submit}>
         <h1>Quizzy</h1>
-        <p className="sub">Консоль аналитики для сотрудников</p>
+        <p className="sub">{ut("lg.consoleSub")}</p>
         <div className="field">
           <label htmlFor="login-email">Email</label>
           <input
@@ -37,7 +39,7 @@ export default function Login() {
           />
         </div>
         <div className="field">
-          <label htmlFor="login-password">Пароль</label>
+          <label htmlFor="login-password">{ut("lg.password")}</label>
           <input
             id="login-password"
             value={password}

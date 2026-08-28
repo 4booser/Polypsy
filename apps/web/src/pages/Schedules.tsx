@@ -270,12 +270,12 @@ function ScheduleEditor({
       if (schedule) await api.updateSchedule(schedule.id, payload);
       else await api.createSchedule(payload);
       onSaved();
-    }, schedule ? "Расписание обновлено" : "Расписание заведено");
+    }, schedule ? ut("sch.updated") : ut("sch.created"));
 
   return (
     <div className="card">
       <div className="card-head">
-        <h2>{schedule ? "Правка расписания" : "Новое расписание"}</h2>
+        <h2>{schedule ? ut("sch.editTitle") : ut("sch.newTitle")}</h2>
         <button onClick={onClose}>{ut("ui.close")}</button>
       </div>
 
@@ -285,7 +285,7 @@ function ScheduleEditor({
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Например, плановый замер личного состава"
+            placeholder={ut("sch.namePlaceholder")}
           />
         </label>
         <label className="field grow">
@@ -314,7 +314,7 @@ function ScheduleEditor({
       </div>
       <div className="form-grid" style={{ marginTop: 10 }}>
         <label className="field">
-          <span>Период, дней</span>
+          <span>{ut("sch.periodDays")}</span>
           <input
             type="number"
             min={1}
@@ -361,7 +361,7 @@ function ScheduleEditor({
       {scope === "unit" ? (
         <>
           <label className="field grow" style={{ marginTop: 12, maxWidth: 380 }}>
-            <span>Подразделение</span>
+            <span>{ut("sch.unit")}</span>
             <select value={unit} onChange={(e) => setUnit(e.target.value)}>
               {units.length ? null : <option value="">— нет подразделений —</option>}
               {units.map((u) => (
@@ -377,7 +377,7 @@ function ScheduleEditor({
       ) : (
         <>
           <div style={{ marginTop: 12, maxWidth: 380 }}>
-            <Search value={query} onChange={setQuery} placeholder="Найти обследуемого" />
+            <Search value={query} onChange={setQuery} placeholder={ut("ui.findRespondent")} />
           </div>
           {query ? (
             <div className="row tight" style={{ marginTop: 8 }}>
@@ -399,7 +399,7 @@ function ScheduleEditor({
                   {byId.get(id)?.fullName ?? id}
                   <button
                     className="chip-x"
-                    aria-label="Убрать"
+                    aria-label={ut("ui.remove")}
                     onClick={() => setPicked(picked.filter((x) => x !== id))}
                   >
                     ×
@@ -407,7 +407,7 @@ function ScheduleEditor({
                 </span>
               ))
             ) : (
-              <span className="hint">Список пуст</span>
+              <span className="hint">{ut("sch.emptyList")}</span>
             )}
           </div>
         </>

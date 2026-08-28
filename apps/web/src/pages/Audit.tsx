@@ -42,14 +42,15 @@ const ACTION_KEY = {
   "audit.read": "act.audit_read",
 } as const satisfies Record<string, UiKey>;
 
+// пары «фильтр → ключ подписи»: язык берётся при отрисовке
 const FILTERS = [
-  ["", "Всё"],
-  ["response.read", "Доступ к картам"],
-  ["analytics.export", "Выгрузки"],
-  ["access.grant", "Назначения"],
-  ["access.denied", "Отказы"],
-  ["auth.login_failed", "Неудачные входы"],
-] as const;
+  ["", "aud.allEvents"],
+  ["response.read", "aud.cardAccess"],
+  ["analytics.export", "aud.exports"],
+  ["access.grant", "aud.grants"],
+  ["access.denied", "aud.denials"],
+  ["auth.login_failed", "aud.failedLogins"],
+] as const satisfies readonly (readonly [string, UiKey])[];
 
 export default function Audit() {
   const { ut } = useLang();
@@ -70,24 +71,24 @@ export default function Audit() {
       {({ entries, total, summary }) => (
     <>
       <PageHead
-        title="Журнал доступа"
-        sub="Фиксируются и обращения к данным пациентов, а не только изменения. Записи не редактируются."
+        title={ut("aud.title")}
+        sub={ut("aud.sub")}
       />
 
       <div className="grid cols-3" style={{ marginBottom: 16 }}>
-        <div className="tile"><div className="label">Всего событий</div><div className="value">{total}</div></div>
+        <div className="tile"><div className="label">{ut("aud.totalEvents")}</div><div className="value">{total}</div></div>
         <div className="tile">
-          <div className="label">Отказов в доступе</div>
+          <div className="label">{ut("aud.denied")}</div>
           <div className="value" style={{ color: summary?.deniedCount ? "var(--danger)" : undefined }}>{summary?.deniedCount ?? 0}</div>
         </div>
       </div>
 
       {summary ? (
         <div className="grid cols-2">
-          <Chart title="Кто чаще обращается" hint="Событий на учётную запись">
+          <Chart title={ut("aud.whoOften")} hint={ut("aud.perAccount")}>
             <BarList items={summary.byActor.map((a) => ({ label: a.actorEmail, value: a.count }))} />
           </Chart>
-          <Chart title="Что делают" hint="Распределение по типам действий">
+          <Chart title={ut("aud.whatDo")} hint={ut("aud.byActionType")}>
             <BarList items={summary.byAction.slice(0, 12).map((a) => ({ label: actionLabel(a.action), value: a.count }))} />
           </Chart>
         </div>
@@ -95,13 +96,15 @@ export default function Audit() {
 
       <div className="row" style={{ marginBottom: 12 }}>
         {FILTERS.map(([v, label]) => (
-          <button key={v} className={`chip ${filter === v ? "active" : ""}`} onClick={() => setFilter(v)}>{label}</button>
+          <button key={v} className={`chip ${filter === v ? "active" : ""}`} onClick={() => setFilter(v)}>
+            {ut(label)}
+          </button>
         ))}
       </div>
 
       <div className="card scroll-x">
         <table>
-          <thead><tr><th>{ut("aud.when")}</th><th>Действие</th><th>{ut("aud.who")}</th><th>Исход</th><th>Пациент</th><th>{ut("aud.details")}</th></tr></thead>
+          <thead><tr><th>{ut("aud.when")}</th><th>{ut("aud.action")}</th><th>{ut("aud.who")}</th><th>{ut("aud.outcome")}</th><th>{ut("aud.patient")}</th><th>{ut("aud.details")}</th></tr></thead>
           <tbody>
             {entries.map((e) => (
               <tr key={e.id}>
@@ -130,6 +133,7 @@ export default function Audit() {
 
 /** Рост хранилища: что распухает — видно до того, как кончится диск */
 function Storage() {
+  const { ut } = useLang();
   // блок вспомогательный: не загрузился — просто не показываем, экран цел
   const { data: stats } = useResource(() => api.storageStats(), []);
   if (!stats) return null;
@@ -137,7 +141,7 @@ function Storage() {
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Хранилище</h2>
+        <h2>{ut("aud.storage")}</h2>
         <span className="hint">база целиком: {stats.database}</span>
       </div>
       <table>
