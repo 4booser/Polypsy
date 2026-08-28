@@ -289,7 +289,7 @@ function CaseCard({
             </div>
           ))}
           {c.signalCount > c.signals.length ? (
-            <p className="hint">…и ещё {c.signalCount - c.signals.length}</p>
+            <p className="hint">…{ut("ui.andMore")} {c.signalCount - c.signals.length}</p>
           ) : null}
         </div>
       ) : null}

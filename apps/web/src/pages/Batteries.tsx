@@ -77,11 +77,11 @@ export default function Batteries() {
             <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <IconBattery />
               {b.title}
-              {b.archived ? <span className="chip static">архив</span> : null}
+              {b.archived ? <span className="chip static">{ut("bt.archived")}</span> : null}
             </h2>
             <div className="row tight">
               <button onClick={() => setOpenId(openId === b.id ? null : b.id)}>
-                {openId === b.id ? ut("bt.collapseAssignments") : `Назначения · ${b.activeAssignments}`}
+                {openId === b.id ? ut("bt.collapseAssignments") : `${ut("bt.assignments")} · ${b.activeAssignments}`}
               </button>
               <button onClick={() => setEditing(b)}>{ut("f.edit")}</button>
               <button
@@ -93,25 +93,23 @@ export default function Batteries() {
                   }, ut("bt.deleted"))
                 }
               >
-                Удалить
+                {ut("ui.delete")}
               </button>
             </div>
           </div>
 
           {b.description ? <p className="hint">{b.description}</p> : null}
           <p className="hint">
-            {b.groupTitle ? `Группа: ${b.groupTitle}` : ut("bt.noGroup")} ·{" "}
-            {b.strictOrder ? "строгий порядок" : "свободный порядок"} · всего{" "}
-            {b.items.reduce((sum, i) => sum + i.questionCount, 0)} пунктов
-            {totalMinutes(b) !== null ? ` · ориентировочно ${totalMinutes(b)} мин` : null}
+            {b.groupTitle ? `${ut("bt.group")}: ${b.groupTitle}` : ut("bt.noGroup")} ·{" "}
+            {b.strictOrder ? ut("bt.strictOrder") : ut("bt.freeOrder")} · {ut("bt.totalItems")}{" "}
+            {b.items.reduce((sum, i) => sum + i.questionCount, 0)}
+            {totalMinutes(b) !== null ? ` · ${ut("bt.approx")} ${totalMinutes(b)} ${ut("ui.min")}` : null}
           </p>
 
           {b.items.some((i) => i.administration === "clinician") &&
           b.items.some((i) => i.administration === "self") ? (
             <p className="hint warn">
-              В батарее смешаны режимы. Шаги, которые заполняет специалист, обследуемый увидит,
-              но открыть не сможет — при строгом порядке они задержат остальные, пока их не
-              внесут через «Провести».
+              {ut("bt.mixedModes")}
             </p>
           ) : null}
 
@@ -120,10 +118,12 @@ export default function Batteries() {
               <li key={item.surveyId}>
                 <Link to={`/surveys/${item.surveyId}`}>{item.title}</Link>
                 <span className="hint">
-                  {item.questionCount} пунктов
-                  {item.medianMinutes !== null ? ` · медиана ${item.medianMinutes} мин` : " · длительность неизвестна"}
-                  {item.required ? "" : " · необязательная"}
-                  {item.administration === "clinician" ? " · заполняет специалист" : ""}
+                  {item.questionCount} {ut("bt.items")}
+                  {item.medianMinutes !== null
+                    ? ` · ${ut("bt.median")} ${item.medianMinutes} ${ut("ui.min")}`
+                    : ` · ${ut("bt.durationUnknown")}`}
+                  {item.required ? "" : ` · ${ut("bt.optional")}`}
+                  {item.administration === "clinician" ? ` · ${ut("bt.byClinician")}` : ""}
                 </span>
               </li>
             ))}
@@ -189,7 +189,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                 <td>{a.userName}</td>
                 <td className="muted">{day(a.assignedAt)}</td>
                 <td className={a.overdue ? "bad" : "muted"}>
-                  {a.dueAt ? day(a.dueAt) : "без срока"}
+                  {a.dueAt ? day(a.dueAt) : ut("bt.noDeadline")}
                   {a.overdue ? " · просрочено" : ""}
                 </td>
                 <td>

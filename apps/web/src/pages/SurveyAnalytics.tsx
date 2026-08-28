@@ -513,7 +513,7 @@ function Responses({ surveyId }: { surveyId: string }) {
       </table>
       {hasMore ? (
         <button style={{ marginTop: 12 }} onClick={() => run(loadMore)}>
-          Показать ещё
+          {ut("ui.loadMore")}
         </button>
       ) : null}
     </div>

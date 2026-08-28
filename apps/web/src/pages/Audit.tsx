@@ -137,12 +137,14 @@ function Storage() {
   // блок вспомогательный: не загрузился — просто не показываем, экран цел
   const { data: stats } = useResource(() => api.storageStats(), []);
   if (!stats) return null;
-  const max = stats.tables[0]?.bytes ?? 1;
+  const max = stats.tables[0]?.totalBytes ?? 1;
   return (
     <div className="card">
       <div className="card-head">
         <h2>{ut("aud.storage")}</h2>
-        <span className="hint">база целиком: {stats.database}</span>
+        <span className="hint">
+          {ut("aud.wholeDatabase")}: {stats.database.pretty}
+        </span>
       </div>
       <table>
         <tbody>
@@ -153,13 +155,13 @@ function Storage() {
                 <div style={{ position: "relative", height: 10, background: "var(--surface-3)", borderRadius: 5 }}>
                   <i style={{
                     position: "absolute", left: 0, top: 0, height: "100%",
-                    width: `${Math.max(2, (t.bytes / max) * 100)}%`,
+                    width: `${Math.max(2, (t.totalBytes / max) * 100)}%`,
                     background: "var(--s1)", borderRadius: 5, display: "block",
                   }} />
                 </div>
               </td>
-              <td className="num" style={{ width: 90 }}>{t.pretty}</td>
-              <td className="num muted" style={{ width: 110 }}>{t.rows.toLocaleString("ru-RU")} строк</td>
+              <td className="num" style={{ width: 90 }}>{t.totalPretty}</td>
+              <td className="num muted" style={{ width: 110 }}>{t.rows.toLocaleString("uk-UA")} {ut("aud.rows")}</td>
             </tr>
           ))}
         </tbody>

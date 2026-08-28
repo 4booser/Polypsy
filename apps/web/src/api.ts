@@ -548,10 +548,18 @@ export const api = {
       body: JSON.stringify({ scaleCodes }),
     }),
 
+  /**
+   * Размеры таблиц. Был второй такой же обработчик в /api/audit/storage —
+   * и в нём `relname` не был уточнён именем таблицы, из-за чего запрос падал
+   * пятисоткой: у pg_class и pg_stat_user_tables колонка называется одинаково.
+   * Дубль удалён, остался этот.
+   */
   storageStats: () =>
-    request<{ database: string; tables: { table: string; bytes: number; pretty: string; rows: number }[] }>(
-      "/api/audit/storage",
-    ),
+    request<{
+      database: { bytes: number; pretty: string };
+      tables: { table: string; rows: number; totalBytes: number; totalPretty: string }[];
+      auditGrowth: { month: string; entries: number }[];
+    }>("/api/stats/storage"),
 
   consentText: () =>
     request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),
