@@ -67,6 +67,7 @@ const UnitReportPage = lazy(() => import("./pages/UnitReport"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const Pathways = lazy(() => import("./pages/Pathways"));
+const PathwayEditor = lazy(() => import("./pages/PathwayEditor"));
 const PathwayDetail = lazy(() => import("./pages/Pathways").then((m) => ({ default: m.PathwayDetailPage })));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
@@ -295,6 +296,7 @@ export default function App() {
           <Route path="/patients/:userId/timeline" element={<Timeline />} />
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/pathways" element={<Pathways />} />
+          <Route path="/pathways/new" element={<PathwayEditor />} />
           <Route path="/pathways/:id" element={<PathwayDetail />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/ui" element={<UiKit />} />

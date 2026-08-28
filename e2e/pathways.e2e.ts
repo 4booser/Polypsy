@@ -68,3 +68,30 @@ test("маршрут ведётся от шага до исхода", async ({ p
   await expect(page.getByText("закрыт").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Выполнено" })).toHaveCount(0);
 });
+
+test("шаблон маршрута собирается в редакторе", async ({ page }) => {
+  /*
+   * Раньше шаблон можно было завести только через API: функция была, а
+   * пользоваться ею мог только тот, кто пишет запросы руками.
+   */
+  await login(page, "psy");
+  await page.goto("/pathways");
+  await page.getByRole("link", { name: "Новый маршрут" }).click();
+
+  const name = `Смоук-маршрут ${Date.now()}`;
+  const title = page.locator(".field").filter({ hasText: "Название" }).first();
+  await title.getByPlaceholder("по-русски").fill(name);
+
+  const step = page.locator(".pwe-step").first();
+  await step.getByPlaceholder("по-русски").first().fill("Скрининг");
+  await step.locator("select").first().selectOption("survey");
+  await step.getByLabel("Срок, дней от старта").fill("0");
+
+  await page.getByRole("button", { name: "Добавить шаг" }).click();
+  const second = page.locator(".pwe-step").nth(1);
+  await second.getByPlaceholder("по-русски").first().fill("Беседа");
+  await second.getByLabel("Срок, дней от старта").fill("7");
+
+  await page.getByRole("button", { name: "Сохранить маршрут" }).click();
+  await expect(page).toHaveURL(/\/pathways\?created=/);
+});

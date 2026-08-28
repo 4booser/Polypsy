@@ -605,6 +605,18 @@ export const api = {
     }),
 
   pathways: () => unwrap(request<Items<PathwayTemplate>>("/api/pathways")),
+  createPathway: (input: {
+    title: Record<string, string>;
+    description?: Record<string, string> | null;
+    steps: {
+      title: Record<string, string>;
+      kind: "survey" | "battery" | "referral" | "action" | "decision";
+      surveyId?: string | null;
+      batteryId?: string | null;
+      dueDays?: number | null;
+      required?: boolean;
+    }[];
+  }) => request<{ id: string }>("/api/pathways", { method: "POST", body: JSON.stringify(input) }),
   pathwayInstances: (all = false) =>
     unwrap(request<Items<PathwayInstance>>(`/api/pathways/instances${all ? "?all=1" : ""}`)),
   pathwayInstance: (id: string) => request<PathwayDetail>(`/api/pathways/instances/${id}`),
