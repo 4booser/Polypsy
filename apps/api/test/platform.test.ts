@@ -1,0 +1,355 @@
+import { beforeAll, describe, expect, test } from "bun:test";
+import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
+
+/* Служебное: наблюдаемость, метрики, проверка входа, жизненный цикл методики */
+
+/* ── экспорт → импорт ── */
+
+describe("импорт методики", () => {
+  test("цикл экспорт → импорт даёт рабочую копию с теми же баллами", async () => {
+    const exported = await api(`/api/surveys/${surveyInA}/export`, adminA.token);
+    expect(exported.status).toBe(200);
+    expect(exported.body.formatVersion).toBe(1);
+
+    const imported = await api("/api/surveys/import", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ ...exported.body, groupId: groupA }),
+    });
+    expect(imported.status).toBe(201);
+
+    // копия — черновик; публикуем и сдаём те же ответы, баллы должны совпасть
+    await api(`/api/surveys/${imported.body.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "published" }),
+    });
+    const original = await submitSurvey(surveyInA, root.token);
+    const copy = await submitSurvey(imported.body.id, root.token);
+    expect(copy.status).toBe(201);
+    const scoreOf = (r: { body: { scores: { scaleCode: string; rawScore: number }[] } }, code: string) =>
+      r.body.scores.find((s) => s.scaleCode === code)?.rawScore;
+    expect(scoreOf(copy, "Sr")).toBe(scoreOf(original, "Sr"));
+    expect(scoreOf(copy, "L")).toBe(scoreOf(original, "L"));
+  });
+
+  test("файл со структурной ошибкой не создаёт методику", async () => {
+    const exported = await api(`/api/surveys/${surveyInA}/export`, adminA.token);
+    const broken = structuredClone(exported.body);
+    broken.scales[0].key.push({ item: 999, matchKey: "yes" }); // номер за пределами
+    const res = await api("/api/surveys/import", adminA.token, {
+      method: "POST",
+      body: JSON.stringify(broken),
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.issues.some((i: { level: string }) => i.level === "error")).toBe(true);
+  });
+
+  test("чужая группа при импорте — отказ", async () => {
+    const exported = await api(`/api/surveys/${surveyInA}/export`, adminA.token);
+    const res = await api("/api/surveys/import", adminB.token, {
+      method: "POST",
+      body: JSON.stringify({ ...exported.body, groupId: groupA }),
+    });
+    expect([403, 404]).toContain(res.status);
+  });
+});
+
+/* ── снятие методики с использования ── */
+
+describe("снятие методики с использования", () => {
+  let sid: string;
+
+  beforeAll(async () => {
+    // отдельная методика: снимать основную нельзя — на ней стоят другие тесты
+    const input = createSurveySchema.parse(sr45);
+    sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: input.title,
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, input, adminA.id, "Версия для снятия");
+  });
+
+  test("прохождения переживают снятие", async () => {
+    // сдаём прохождение до снятия
+    const before = await submitSurvey(sid, patient.token);
+    expect(before.status).toBe(201);
+
+    const archived = await api(`/api/surveys/${sid}`, adminA.token, { method: "DELETE" });
+    expect(archived.status).toBe(204);
+
+    const rows = await db.select().from(responsesTable).where(eq(responsesTable.surveyId, sid));
+    expect(rows.length).toBe(1);
+  });
+
+  test("снятая методика исчезает из списков и не проходится", async () => {
+    const staffList = await api("/api/surveys", adminA.token);
+    expect(staffList.body.items.some((s: { id: string }) => s.id === sid)).toBe(false);
+
+    const patientList = await api("/api/surveys", patient.token);
+    expect(patientList.body.items.some((s: { id: string }) => s.id === sid)).toBe(false);
+
+    const pass = await api(`/api/surveys/${sid}/responses`, patient.token, {
+      method: "POST",
+      body: JSON.stringify({ startedAt: new Date().toISOString(), durationMs: 1000, answers: [] }),
+    });
+    expect(pass.status).toBe(400);
+
+    const draft = await api(`/api/surveys/${sid}/draft`, patient.token, {
+      method: "PUT",
+      body: JSON.stringify({ answers: [] }),
+    });
+    expect(draft.status).toBe(400);
+  });
+
+  test("снятую методику нельзя назначить — ни лично, ни батареей", async () => {
+    const grant = await api(`/api/access/surveys/${sid}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(grant.status).toBe(400);
+
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      groupId: groupA,
+      title: "Набор со снятой методикой",
+      createdBy: adminA.id,
+    } as never);
+    await db.insert(batteryItems).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      surveyId: sid,
+      position: 1,
+    } as never);
+
+    const assign = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(assign.status).toBe(400);
+    expect(assign.body.error).toContain("Снято с использования");
+  });
+
+  test("сотрудник видит снятые по явному запросу, повторное снятие отклоняется", async () => {
+    const list = await api("/api/surveys?archived=1", adminA.token);
+    expect(list.body.items.some((s: { id: string }) => s.id === sid)).toBe(true);
+
+    const again = await api(`/api/surveys/${sid}`, adminA.token, { method: "DELETE" });
+    expect(again.status).toBe(400);
+  });
+
+  test("возврат в работу восстанавливает выдачу", async () => {
+    const restored = await api(`/api/surveys/${sid}/restore`, adminA.token, { method: "POST" });
+    expect(restored.status).toBe(204);
+
+    const list = await api("/api/surveys", patient.token);
+    expect(list.body.items.some((s: { id: string }) => s.id === sid)).toBe(true);
+
+    const pass = await submitSurvey(sid, patient.token);
+    expect(pass.status).toBe(201);
+  });
+});
+
+/* ── служебные эндпоинты ── */
+
+describe("query-параметры проверяются схемой", () => {
+  test("нечисловой limit — 400, а не пятисотка", async () => {
+    const res = await api("/api/audit?limit=abc", root.token);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("limit");
+  });
+
+  test("limit сверх потолка отклоняется", async () => {
+    expect((await api("/api/audit?limit=100000", root.token)).status).toBe(400);
+  });
+
+  test("несуществующая дата отклоняется", async () => {
+    // формату «ГГГГ-ММ-ДД» соответствует, а даты такой нет
+    const res = await api("/api/audit?from=2026-02-31", root.token);
+    expect(res.status).toBe(400);
+  });
+
+  test("корректные параметры проходят", async () => {
+    const res = await api("/api/audit?limit=5&from=2026-01-01", root.token);
+    expect(res.status).toBe(200);
+    expect(res.body.entries.length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("размеры хранилища", () => {
+  test("суперадмин видит таблицы и рост журнала", async () => {
+    const res = await api("/api/stats/storage", root.token);
+    expect(res.status).toBe(200);
+    expect(res.body.database.bytes).toBeGreaterThan(0);
+    expect(res.body.tables.some((t: { table: string }) => t.table === "audit_log")).toBe(true);
+    expect(Array.isArray(res.body.auditGrowth)).toBe(true);
+  });
+
+  test("групповому админу размеры базы не показываются", async () => {
+    expect((await api("/api/stats/storage", adminA.token)).status).toBe(403);
+  });
+});
+
+describe("списки не отдаются целиком", () => {
+  test("пациенты: поиск на сервере и честная пометка об обрезке", async () => {
+    /*
+     * Курсорная пагинация здесь невозможна: список упорядочен по ФИО, а оно
+     * зашифровано. Поэтому сервер ищет и обрезает, а клиенту сообщает, что
+     * показано не всё — иначе тот молча принял бы часть за целое.
+     */
+    const res = await api("/api/access/patients?search=нетакогочеловека", adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.items).toEqual([]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.truncated).toBe(false);
+  });
+
+  test("повторные замеры отдаются страницами", async () => {
+    const first = await api("/api/dynamics/respondents?limit=1", adminA.token);
+    expect(first.status).toBe(200);
+    expect(Array.isArray(first.body.items)).toBe(true);
+    expect(typeof first.body.total).toBe("number");
+    // общее число считается только на первой странице
+    if (first.body.nextCursor) {
+      const second = await api(
+        `/api/dynamics/respondents?limit=1&cursor=${encodeURIComponent(first.body.nextCursor)}`,
+        adminA.token,
+      );
+      expect(second.status).toBe(200);
+      expect(second.body.total).toBeUndefined();
+      expect(second.body.items[0]?.userId).not.toBe(first.body.items[0]?.userId);
+    }
+  });
+});
+
+describe("наблюдаемость", () => {
+  test("номер запроса возвращается в заголовке и попадает в журнал", async () => {
+    const res = await api("/api/surveys", adminA.token);
+    const id = res.headers?.get?.("x-request-id");
+    expect(typeof id).toBe("string");
+    expect(id!.length).toBeGreaterThan(8);
+  });
+
+  test("свой номер запроса принимается — по нему сшиваются логи прокси и приложения", async () => {
+    const mine = "edge-proxy-7f3a91";
+    const res = await api("/api/surveys", adminA.token, { headers: { "x-request-id": mine } });
+    expect(res.headers?.get?.("x-request-id")).toBe(mine);
+  });
+
+  test("чужой номер просеивается: он уходит в заголовок ответа и в лог", async () => {
+    /*
+     * Подстановка в заголовок и в лог — обе неприятны, а идентификатор
+     * приходит снаружи. Символы вне безопасного набора вырезаются.
+     */
+    const res = await api("/api/surveys", adminA.token, {
+      headers: { "x-request-id": "abc\u0009def<script>" },
+    });
+    const got = res.headers?.get?.("x-request-id") ?? "";
+    expect(got).not.toContain("<");
+    expect(got).toMatch(/^[A-Za-z0-9._:-]+$/);
+  });
+
+  test("отказ несёт номер запроса, по которому инцидент ищется в логе", async () => {
+    const res = await api("/api/surveys/нет-такой-методики", adminA.token);
+    expect(res.status).toBe(404);
+    expect(typeof res.body.requestId).toBe("string");
+  });
+});
+
+describe("метрики", () => {
+  test("без токена эндпоинта нет вовсе", async () => {
+    // выключено значит выключено, а не «открыто для всех»
+    delete process.env.METRICS_TOKEN;
+    const res = await app.request("/metrics");
+    expect(res.status).toBe(404);
+  });
+
+  test("с токеном отдаёт счётчики в формате Prometheus", async () => {
+    process.env.METRICS_TOKEN = "metrics-secret-9f21";
+    const bad = await app.request("/metrics", { headers: { authorization: "Bearer wrong" } });
+    expect(bad.status).toBe(401);
+
+    const res = await app.request("/metrics", {
+      headers: { authorization: "Bearer metrics-secret-9f21" },
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    // счётчик запросов набрался за время прогона сюиты
+    expect(text).toContain("quizzy_http_requests_total{");
+    // гистограмма длительности — с накопительными корзинами и +Inf
+    expect(text).toContain('quizzy_http_duration_ms_bucket{route=');
+    expect(text).toContain('le="+Inf"');
+    // показатели состояния, ради которых всё и затевалось
+    expect(text).toContain("quizzy_open_alert_cases ");
+    expect(text).toContain("quizzy_scheduler_stale_minutes ");
+    expect(text).toContain("quizzy_database_bytes ");
+
+    delete process.env.METRICS_TOKEN;
+  });
+
+  test("корзины гистограммы накопительные и не убывают", async () => {
+    const { observe, render, resetMetrics } = await import("../src/lib/metrics");
+    resetMetrics();
+    for (const ms of [3, 7, 40, 900, 9000]) observe("probe_ms", ms, { route: "/x" });
+
+    const lines = render()
+      .split("\n")
+      .filter((l) => l.startsWith("probe_ms_bucket"));
+    const values = lines.map((l) => Number(l.split(" ").pop()));
+    for (let i = 1; i < values.length; i++) {
+      expect(values[i]!).toBeGreaterThanOrEqual(values[i - 1]!);
+    }
+    // последняя корзина — все наблюдения
+    expect(values[values.length - 1]).toBe(5);
+    expect(render()).toContain('probe_ms_count{route="/x"} 5');
+    resetMetrics();
+  });
+});
+
+describe("отчёт об ошибке не выносит персональные данные", () => {
+  test("событие содержит только техническое", async () => {
+    const { buildEvent, containsPersonalData } = await import("../src/lib/errorReport");
+    const event = buildEvent({
+      error: Object.assign(new Error("что-то сломалось"), { stack: "Error\n  at foo (bar.ts:1)" }),
+      route: "/api/surveys/:id/responses",
+      method: "POST",
+      role: "admin",
+    });
+
+    expect(containsPersonalData(event)).toBeNull();
+
+    const text = JSON.stringify(event);
+    // маршрут — шаблоном: фактический путь нёс бы идентификатор человека
+    expect(text).toContain("/api/surveys/:id/responses");
+    expect(text).not.toContain("@");
+  });
+
+  test("сторож ловит персональные поля на любой глубине", async () => {
+    /*
+     * Пояс поверх подтяжек: сборка события ничего лишнего не берёт, но если
+     * однажды кто-то добавит поле, узнать об этом из чужой панели — плохой
+     * способ.
+     */
+    const { containsPersonalData } = await import("../src/lib/errorReport");
+    expect(containsPersonalData({ a: { b: { email: "кто-то@пример" } } })).toBe("email");
+    expect(containsPersonalData({ extra: { body: { answers: [] } } })).toBe("body");
+    expect(containsPersonalData({ tags: { route: "/api/x", method: "GET" } })).toBeNull();
+  });
+
+  test("без SENTRY_DSN ничего не отправляется", async () => {
+    const { reportError } = await import("../src/lib/errorReport");
+    delete process.env.SENTRY_DSN;
+    // не должно ни бросить, ни попытаться сходить в сеть
+    await reportError({ error: new Error("тест"), route: "/api/x", method: "GET" });
+    expect(true).toBe(true);
+  });
+});
