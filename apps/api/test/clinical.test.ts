@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, api, app, db, eq, makeUser, patient, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, api, app, db, eq, makeUser, patient, root, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Клинические документы: заключения, направления, консилиум */
 
@@ -851,6 +851,148 @@ describe("цель лечения", () => {
     const person = await makeUser("user", `goal-foreign-${crypto.randomUUID()}@test`);
     await submitSurvey(surveyInA, person.token);
     const res = await api(`/api/goals/patients/${person.id}`, adminB.token);
+    expect(res.status).toBe(404);
+  });
+});
+
+/* ── консилиум ── */
+
+describe("консилиум", () => {
+  test("мнения собираются, особое мнение остаётся видимым", async () => {
+    /*
+     * В клинике несогласие участника должно быть видно, а не растворяться в
+     * общем протоколе: иначе он выглядит единогласным, каким не был.
+     */
+    const person = await makeUser("user", `cc-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const opened = await api(`/api/conferences/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Повторный высокий риск" }),
+    });
+    expect(opened.status).toBe(201);
+
+    await api(`/api/conferences/${opened.body.id}/opinions`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Оставить под наблюдением" }),
+    });
+    await api(`/api/conferences/${opened.body.id}/opinions`, root.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Настаиваю на госпитализации", kind: "dissent" }),
+    });
+
+    const list = await api(`/api/conferences/patients/${person.id}`, adminA.token);
+    const conference = list.body.items[0];
+    expect(conference.opinions).toHaveLength(2);
+    expect(conference.opinions.some((o: { kind: string }) => o.kind === "dissent")).toBe(true);
+  });
+
+  test("повторное мнение того же участника правит прежнее, а не добавляет", async () => {
+    // протокол, где один человек высказался трижды, читается как спор с собой
+    const person = await makeUser("user", `cc-edit-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const opened = await api(`/api/conferences/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Повод" }),
+    });
+
+    await api(`/api/conferences/${opened.body.id}/opinions`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Первая редакция" }),
+    });
+    await api(`/api/conferences/${opened.body.id}/opinions`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Уточнённая редакция" }),
+    });
+
+    const list = await api(`/api/conferences/patients/${person.id}`, adminA.token);
+    expect(list.body.items[0].opinions).toHaveLength(1);
+    expect(list.body.items[0].opinions[0].text).toBe("Уточнённая редакция");
+  });
+
+  test("решение без единого мнения не принимается", async () => {
+    /*
+     * Это не консилиум, а запись одного человека — её следует делать
+     * заметкой приёма. Отказ честнее протокола, в котором никто не
+     * высказался.
+     */
+    const person = await makeUser("user", `cc-empty-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const opened = await api(`/api/conferences/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Повод" }),
+    });
+
+    const early = await api(`/api/conferences/${opened.body.id}/decide`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ decision: "Решили сами" }),
+    });
+    expect(early.status).toBe(400);
+  });
+
+  test("решение фиксируется, закрытый консилиум не дописывается", async () => {
+    const person = await makeUser("user", `cc-done-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const opened = await api(`/api/conferences/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Повод" }),
+    });
+    await api(`/api/conferences/${opened.body.id}/opinions`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Мнение" }),
+    });
+
+    const decided = await api(`/api/conferences/${opened.body.id}/decide`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ decision: "Направить к психиатру, повторный замер через две недели" }),
+    });
+    expect(decided.status).toBe(200);
+
+    const late = await api(`/api/conferences/${opened.body.id}/opinions`, root.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Поздно" }),
+    });
+    expect(late.status).toBe(400);
+
+    const list = await api(`/api/conferences/patients/${person.id}`, adminA.token);
+    expect(list.body.items[0].status).toBe("decided");
+    expect(list.body.items[0].decision).toContain("психиатру");
+  });
+
+  test("текст решения и мнений шифруется", async () => {
+    const { caseConferences, conferenceOpinions } = await import("../src/db/schema");
+    const person = await makeUser("user", `cc-enc-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const opened = await api(`/api/conferences/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Повод" }),
+    });
+    await api(`/api/conferences/${opened.body.id}/opinions`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ text: "Секретное мнение" }),
+    });
+    await api(`/api/conferences/${opened.body.id}/decide`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ decision: "Секретное решение" }),
+    });
+
+    const [row] = await db
+      .select()
+      .from(caseConferences)
+      .where(eq(caseConferences.id, opened.body.id));
+    const [opinion] = await db
+      .select()
+      .from(conferenceOpinions)
+      .where(eq(conferenceOpinions.conferenceId, opened.body.id));
+
+    expect(row!.decision!.startsWith("enc1:v1:")).toBe(true);
+    expect(opinion!.text.startsWith("enc1:v1:")).toBe(true);
+  });
+
+  test("чужой админ консилиумов не видит", async () => {
+    const person = await makeUser("user", `cc-foreign-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const res = await api(`/api/conferences/patients/${person.id}`, adminB.token);
     expect(res.status).toBe(404);
   });
 });

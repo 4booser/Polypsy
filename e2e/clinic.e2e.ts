@@ -156,3 +156,35 @@ test("цель лечения ставится измеримо и показы�
   await goal.getByRole("button", { name: "Достигнута", exact: true }).click();
   await expect(card.locator(".goal.closed").first()).toBeVisible();
 });
+
+test("консилиум собирает мнения и фиксирует решение", async ({ page }) => {
+  /*
+   * Особое мнение показывается отдельно и заметно: протокол не должен
+   * выглядеть единогласным, каким он не был.
+   */
+  await login(page, "psy");
+  await page.goto("/patients");
+  await page.locator("table tbody tr td a").first().click();
+  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
+
+  const card = page.locator(".card").filter({ hasText: "Консилиум" }).first();
+  await expect(card).toBeVisible();
+
+  const reason = `Повод ${Date.now()}`;
+  await card.getByPlaceholder("Повод: что обсуждаем").fill(reason);
+  await card.getByRole("button", { name: "Вынести на консилиум" }).click();
+
+  const conference = card.locator(".conference").filter({ hasText: reason }).first();
+  await expect(conference).toBeVisible();
+
+  // решение без единого мнения недоступно
+  await expect(conference.getByRole("button", { name: "Зафиксировать решение" })).toBeDisabled();
+
+  await conference.getByPlaceholder("Ваше мнение по случаю").fill("Оставить под наблюдением");
+  await conference.getByRole("button", { name: "Особое мнение" }).click();
+  await expect(conference.locator(".opinion.dissent")).toBeVisible();
+
+  await conference.getByPlaceholder("Решение консилиума").fill("Повторный замер через две недели");
+  await conference.getByRole("button", { name: "Зафиксировать решение" }).click();
+  await expect(conference).toContainText("решение принято");
+});

@@ -1738,3 +1738,25 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   max-width: 420px;
 }
 .goal-bar i { display: block; height: 100%; background: var(--primary); }
+
+/* ═══ консилиум ═══ */
+.conference {
+  border-top: 1px solid var(--hairline);
+  padding: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+.conference:first-of-type { border-top: none; }
+.opinion {
+  border-left: 2px solid var(--border-strong);
+  padding: 7px 12px;
+  background: var(--surface-2);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--fs-small);
+}
+/* особое мнение видно сразу: протокол не должен выглядеть единогласным */
+.opinion.dissent {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+.conference-actions { display: grid; gap: 8px; }

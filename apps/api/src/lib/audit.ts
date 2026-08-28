@@ -80,6 +80,10 @@ export type AuditAction =
   | "analytics.data_quality"
   | "analytics.facets"
   | "referral.list"
+  /* консилиум */
+  | "conference.open"
+  | "conference.opinion"
+  | "conference.decide"
   /* цели лечения */
   | "goal.create"
   | "goal.close"

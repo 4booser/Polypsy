@@ -270,6 +270,23 @@ export type OpenApiSpec = {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
+export interface Conference {
+  id: string;
+  reason: string;
+  status: "open" | "decided" | "cancelled";
+  decision: string | null;
+  decidedAt: string | null;
+  decidedByName: string | null;
+  createdAt: string;
+  opinions: {
+    id: string;
+    kind: "opinion" | "dissent";
+    text: string;
+    authorName: string;
+    createdAt: string;
+  }[];
+}
+
 export interface TreatmentGoal {
   id: string;
   surveyId: string;
@@ -541,6 +558,24 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  conferences: (userId: string) =>
+    unwrap(request<Items<Conference>>(`/api/conferences/patients/${userId}`)),
+  openConference: (userId: string, reason: string) =>
+    request<{ id: string }>(`/api/conferences/patients/${userId}`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  addOpinion: (conferenceId: string, text: string, kind: "opinion" | "dissent") =>
+    request<{ id: string }>(`/api/conferences/${conferenceId}/opinions`, {
+      method: "POST",
+      body: JSON.stringify({ text, kind }),
+    }),
+  decideConference: (conferenceId: string, decision: string) =>
+    request<{ ok: true }>(`/api/conferences/${conferenceId}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    }),
+
   goals: (userId: string) => unwrap(request<Items<TreatmentGoal>>(`/api/goals/patients/${userId}`)),
   createGoal: (
     userId: string,
