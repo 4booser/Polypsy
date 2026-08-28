@@ -3,6 +3,7 @@ import { View } from "react-native";
 import Svg, { Circle, Line, Text as SvgText } from "react-native-svg";
 import { severityColor, useChart, useColors } from "../../theme";
 import { Caption, Legend, PLOT, formatShort, niceTicks, useMeasuredWidth } from "./primitives";
+import { useLang } from "@/lang";
 
 export interface ScatterPoint {
   x: number;
@@ -32,11 +33,12 @@ export function Scatter({
   /** Вертикальная отсечка — например минимально правдоподобное время */
   xThreshold?: number;
 }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
   const [width, onLayout] = useMeasuredWidth();
 
-  if (points.length === 0) return <Caption>Данных пока нет</Caption>;
+  if (points.length === 0) return <Caption>{ut("mviz.noData")}</Caption>;
 
   const xMax = Math.max(...points.map((p) => p.x), xThreshold ?? 0, 1);
   const yMax = Math.max(...points.map((p) => p.y), 1);

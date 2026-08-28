@@ -2,6 +2,7 @@ import { Pressable, Switch, Text, View } from "react-native";
 import type { QuestionType } from "@quizzy/shared";
 import { radius, spacing, useColors } from "../../theme";
 import { Body, Button, Card, Chip, Field, Row } from "../ui";
+import { useLang } from "@/lang";
 import {
   NEEDS_OPTIONS,
   NEEDS_RANGE,
@@ -39,6 +40,7 @@ export function QuestionEditor({
   onRemove,
   onMove,
 }: Props) {
+  const { ut } = useLang();
   const c = useColors();
   const choices = question.options.filter((o) => o.kind === "option");
   const rows = question.options.filter((o) => o.kind === "row");
@@ -79,13 +81,13 @@ export function QuestionEditor({
       </View>
 
       <Field
-        label="Текст вопроса"
+        label={ut("mb.questionText")}
         value={question.title}
         onChangeText={(t) => onChange({ title: t })}
         multiline
       />
       <Field
-        label="Пояснение (необязательно)"
+        label={ut("mb.help")}
         value={question.help}
         onChangeText={(t) => onChange({ help: t })}
       />
@@ -93,23 +95,23 @@ export function QuestionEditor({
       {question.type !== "info" ? (
         <Row>
           <Switch value={question.required} onValueChange={(v) => onChange({ required: v })} />
-          <Body muted>Обязательный</Body>
+          <Body muted>{ut("mb.required")}</Body>
         </Row>
       ) : null}
 
       {sections.length > 0 ? (
         <View style={{ gap: spacing.xs }}>
-          <Text style={{ color: c.muted, fontSize: 13 }}>Раздел</Text>
+          <Text style={{ color: c.muted, fontSize: 13 }}>{ut("mb.section")}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
             <Chip
-              label="Без раздела"
+              label={ut("mb.noSection")}
               selected={!question.sectionKey}
               onPress={() => onChange({ sectionKey: null })}
             />
             {sections.map((s) => (
               <Chip
                 key={s.key}
-                label={s.title || "Без названия"}
+                label={s.title || ut("mb.untitled")}
                 selected={question.sectionKey === s.key}
                 onPress={() => onChange({ sectionKey: s.key })}
               />
@@ -120,10 +122,10 @@ export function QuestionEditor({
 
       {scoringEnabled && scales.length > 0 && SCORABLE.includes(question.type) ? (
         <View style={{ gap: spacing.xs }}>
-          <Text style={{ color: c.muted, fontSize: 13 }}>Субшкала</Text>
+          <Text style={{ color: c.muted, fontSize: 13 }}>{ut("mb.subscale")}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
             <Chip
-              label="Не считать"
+              label={ut("mb.dontScore")}
               selected={!question.scaleCode}
               onPress={() => onChange({ scaleCode: null, reverseScored: false })}
             />
@@ -157,7 +159,7 @@ export function QuestionEditor({
           <Row gap={spacing.md}>
             <View style={{ flex: 1 }}>
               <Field
-                label="Минимум"
+                label={ut("mb.min")}
                 value={question.minValue}
                 onChangeText={(t) => onChange({ minValue: t })}
                 keyboardType="numbers-and-punctuation"
@@ -165,7 +167,7 @@ export function QuestionEditor({
             </View>
             <View style={{ flex: 1 }}>
               <Field
-                label="Максимум"
+                label={ut("mb.max")}
                 value={question.maxValue}
                 onChangeText={(t) => onChange({ maxValue: t })}
                 keyboardType="numbers-and-punctuation"
@@ -183,7 +185,7 @@ export function QuestionEditor({
           <Row gap={spacing.md}>
             <View style={{ flex: 1 }}>
               <Field
-                label="Порог тревоги (пусто — нет)"
+                label={ut("mb.alarmThreshold")}
                 value={question.riskThreshold}
                 onChangeText={(t) => onChange({ riskThreshold: t })}
                 keyboardType="numbers-and-punctuation"
@@ -191,7 +193,7 @@ export function QuestionEditor({
             </View>
             <View style={{ flex: 2 }}>
               <Field
-                label="Текст тревоги"
+                label={ut("mb.alarmText")}
                 value={question.riskLabel}
                 onChangeText={(t) => onChange({ riskLabel: t })}
               />
@@ -200,14 +202,14 @@ export function QuestionEditor({
           <Row gap={spacing.md}>
             <View style={{ flex: 1 }}>
               <Field
-                label="Подпись слева"
+                label={ut("mb.labelLeft")}
                 value={question.minLabel}
                 onChangeText={(t) => onChange({ minLabel: t })}
               />
             </View>
             <View style={{ flex: 1 }}>
               <Field
-                label="Подпись справа"
+                label={ut("mb.labelRight")}
                 value={question.maxLabel}
                 onChangeText={(t) => onChange({ maxLabel: t })}
               />
@@ -219,7 +221,7 @@ export function QuestionEditor({
       {NEEDS_OPTIONS.includes(question.type) ? (
         <View style={{ gap: spacing.sm }}>
           <Text style={{ color: c.muted, fontSize: 13 }}>
-            {question.type === "matrix" ? "Варианты (столбцы)" : "Варианты ответа"}
+            {question.type === "matrix" ? ut("mb.optionsColumns") : ut("mb.options")}
           </Text>
           {choices.map((option, i) => (
             <Row key={option.key} gap={spacing.sm}>
@@ -254,7 +256,7 @@ export function QuestionEditor({
             </Row>
           ))}
           <Button
-            title="Добавить вариант"
+            title={ut("mb.addOption")}
             variant="secondary"
             onPress={() => onChange({ options: [...question.options, emptyOption("option")] })}
           />
@@ -287,7 +289,7 @@ export function QuestionEditor({
                 </Row>
               ))}
               <Button
-                title="Добавить строку"
+                title={ut("mb.addRow")}
                 variant="secondary"
                 onPress={() => onChange({ options: [...question.options, emptyOption("row")] })}
               />
@@ -299,12 +301,12 @@ export function QuestionEditor({
               value={question.randomizeOptions}
               onValueChange={(v) => onChange({ randomizeOptions: v })}
             />
-            <Body muted>Перемешивать варианты</Body>
+            <Body muted>{ut("mb.shuffle")}</Body>
           </Row>
 
           {/* критические варианты: выбор поднимает тревогу до конца прохождения */}
           <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-            <Text style={{ color: c.muted, fontSize: 13 }}>Критические варианты</Text>
+            <Text style={{ color: c.muted, fontSize: 13 }}>{ut("mb.criticalOptions")}</Text>
             {choices.map((option) => (
               <View key={`risk-${option.key}`} style={{ gap: spacing.xs }}>
                 <Row>
@@ -319,19 +321,19 @@ export function QuestionEditor({
                 {option.riskFlag ? (
                   <View style={{ gap: spacing.xs, paddingLeft: spacing.xl }}>
                     <Field
-                      label="Текст тревоги"
+                      label={ut("mb.alarmText")}
                       value={option.riskLabel}
                       onChangeText={(t) => patchOption(option.key, { riskLabel: t })}
-                      placeholder="Что увидит персонал"
+                      placeholder={ut("mb.staffSees")}
                     />
                     <Row gap={spacing.xs}>
                       <Chip
-                        label="Внимание"
+                        label={ut("mb.attention")}
                         selected={option.riskSeverity === "moderate"}
                         onPress={() => patchOption(option.key, { riskSeverity: "moderate" })}
                       />
                       <Chip
-                        label="Срочно"
+                        label={ut("mb.urgent")}
                         selected={option.riskSeverity === "severe"}
                         onPress={() => patchOption(option.key, { riskSeverity: "severe" })}
                       />
@@ -346,7 +348,7 @@ export function QuestionEditor({
 
       {previous.length > 0 ? (
         <View style={{ gap: spacing.sm }}>
-          <Text style={{ color: c.muted, fontSize: 13 }}>Условный показ</Text>
+          <Text style={{ color: c.muted, fontSize: 13 }}>{ut("mb.conditional")}</Text>
           {question.logic.map((rule) => (
             <View
               key={rule.key}
@@ -358,7 +360,7 @@ export function QuestionEditor({
                 borderColor: c.border,
               }}
             >
-              <Body muted>Показывать, если вопрос</Body>
+              <Body muted>{ut("mb.showIf")}</Body>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
                 {previous.map((p, i) => (
                   <Chip
@@ -393,7 +395,7 @@ export function QuestionEditor({
               </View>
               {rule.operator !== "answered" && rule.operator !== "not_answered" ? (
                 <Field
-                  label="Значение (текст варианта или число)"
+                  label={ut("mb.value")}
                   value={rule.value}
                   onChangeText={(t) =>
                     onChange({
@@ -414,7 +416,7 @@ export function QuestionEditor({
             </View>
           ))}
           <Button
-            title="Добавить условие"
+            title={ut("mb.addCondition")}
             variant="secondary"
             onPress={() =>
               onChange({

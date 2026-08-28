@@ -2,6 +2,7 @@ import { View } from "react-native";
 import Svg, { Circle, Line, Polygon, Text as SvgText } from "react-native-svg";
 import { useChart, useColors } from "../../theme";
 import { Caption, Legend, useMeasuredWidth } from "./primitives";
+import { useLang } from "@/lang";
 
 export interface RadarAxis {
   label: string;
@@ -22,14 +23,16 @@ export function RadarChart({
   axes,
   compare,
   height = 260,
-  labels = ["Текущий", "Предыдущий"],
+  labels,
 }: {
   axes: RadarAxis[];
   /** Второй профиль для сравнения — например прошлый замер */
   compare?: RadarAxis[];
   height?: number;
+  /** Подписи профилей; по умолчанию «Текущий» и «Предыдущий» на языке интерфейса */
   labels?: [string, string] | string[];
 }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
   const [width, onLayout] = useMeasuredWidth();
@@ -114,13 +117,13 @@ export function RadarChart({
         items={
           compare
             ? [
-                { label: labels[0] ?? "Текущий", color: chart.series[0]! },
-                { label: labels[1] ?? "Предыдущий", color: chart.series[1]! },
+                { label: labels?.[0] ?? ut("mviz.current"), color: chart.series[0]! },
+                { label: labels?.[1] ?? ut("mviz.previous"), color: chart.series[1]! },
               ]
             : []
         }
       />
-      <Caption>Оси нормированы к максимуму своей субшкалы, поэтому сравнима форма профиля</Caption>
+      <Caption>{ut("mviz.radarHint")}</Caption>
     </View>
   );
 }

@@ -4,7 +4,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
-import { LangProvider } from "@/lang";
+import { LangProvider, useLang } from "@/lang";
 import { TextScaleProvider } from "@/textScale";
 import { api } from "@/api/client";
 import { AppLock } from "@/components/AppLock";
@@ -48,6 +48,7 @@ export default function RootLayout() {
 }
 
 function RootStack() {
+  const { ut } = useLang();
   const c = useColors();
   return (
     <Stack
@@ -65,7 +66,7 @@ function RootStack() {
       <Stack.Screen name="register" />
       <Stack.Screen name="consent" />
       <Stack.Screen name="(app)" />
-      <Stack.Screen name="survey/[id]" options={{ headerShown: true, title: "Методика" }} />
+      <Stack.Screen name="survey/[id]" options={{ headerShown: true, title: ut("mnav.instrument") }} />
       <Stack.Screen name="analytics" />
     </Stack>
   );

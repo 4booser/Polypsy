@@ -8,9 +8,11 @@ import { PercentileBar } from "@/components/charts-extra";
 import { LineChart, RadarChart } from "@/components/viz";
 import { Body, Button, Card, Divider, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 /** Динамика одного пациента: как менялись баллы от замера к замеру */
 export default function PatientDynamicsScreen() {
+  const { ut } = useLang();
   const c = useColors();
   const navigation = useNavigation();
   const { userId } = useLocalSearchParams<{ userId: string }>();
@@ -24,7 +26,7 @@ export default function PatientDynamicsScreen() {
       setData(d);
       navigation.setOptions({ title: d.fullName });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить динамику");
+      setError(e instanceof Error ? e.message : ut("mdy.loadFailed"));
     }
   }, [userId, navigation]);
 
@@ -44,7 +46,7 @@ export default function PatientDynamicsScreen() {
         <Body muted>{data.email}</Body>
       </View>
 
-      {data.surveys.length === 0 ? <Empty text="Завершённых прохождений нет" /> : null}
+      {data.surveys.length === 0 ? <Empty text={ut("mdy.noCompleted")} /> : null}
 
       {data.surveys.map((sv) => (
         <View key={sv.surveyId} style={{ gap: spacing.md }}>
@@ -60,11 +62,11 @@ export default function PatientDynamicsScreen() {
           {/* профиль целиком: в психодиагностике важна форма, а не отдельная шкала */}
           {sv.scales.length >= 3 ? (
             <ChartCard
-              title="Профиль по субшкалам"
-              subtitle="Последний замер против первого"
+              title={ut("mdy.profile")}
+              subtitle={ut("mdy.lastVsFirst")}
             >
               <RadarChart
-                labels={["Последний замер", "Первый замер"]}
+                labels={[ut("mdy.last"), ut("mdy.first")]}
                 axes={sv.scales.map((sc) => {
                   const p = sc.points[sc.points.length - 1];
                   return {
@@ -120,7 +122,7 @@ export default function PatientDynamicsScreen() {
                   <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
                     <Divider />
                     <Row>
-                      <Body muted>Последний замер</Body>
+                      <Body muted>{ut("mdy.last")}</Body>
                       <View style={{ flex: 1 }} />
                       <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
                         {last.rawScore} из {last.maxScore}
@@ -138,7 +140,7 @@ export default function PatientDynamicsScreen() {
                       </Body>
                     )}
                     <Button
-                      title="Заключение по последнему замеру"
+                      title={ut("mdy.conclusion")}
                       variant="secondary"
                       onPress={() => Linking.openURL(api.reportUrl(last.responseId))}
                     />

@@ -5,11 +5,13 @@ import type { AlertCase } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { Body, Button, Card, Chip, Empty, ErrorText, Field, Loader, Row, Segmented, Title } from "@/components/ui";
 import { severityColor, spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
+// ключи, а не подписи: карта вне компонента, язык — при отрисовке
 const OUTCOMES = [
-  { value: "confirmed", label: "Риск подтверждён" },
-  { value: "needs_followup", label: "Требует наблюдения" },
-  { value: "not_confirmed", label: "Не подтверждён" },
+  { value: "confirmed", key: "mal.confirmed" },
+  { value: "needs_followup", key: "mal.needsFollowup" },
+  { value: "not_confirmed", key: "mal.notConfirmed" },
 ] as const;
 
 /**
@@ -21,6 +23,7 @@ const OUTCOMES = [
  * встречался в списке подряд по несколько раз.
  */
 export default function AlertsScreen() {
+  const { ut } = useLang();
   const c = useColors();
   const _router = useRouter();
   const [cases, setCases] = useState<AlertCase[] | null>(null);
@@ -44,7 +47,7 @@ export default function AlertsScreen() {
       setCursor(page.nextCursor);
       if (!more) setTotal(page.total ?? page.items.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить случаи");
+      setError(e instanceof Error ? e.message : ut("mal.loadFailed"));
       setCases([]);
     }
   }, []);
@@ -62,7 +65,7 @@ export default function AlertsScreen() {
       setNotes((prev) => ({ ...prev, [item.id]: "" }));
       await load(mode === "all");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+      setError(e instanceof Error ? e.message : ut("mal.saveFailed"));
     } finally {
       setSaving(null);
     }
@@ -85,7 +88,7 @@ export default function AlertsScreen() {
         />
       }
     >
-      <Title>Разбор случаев</Title>
+      <Title>{ut("mal.title")}</Title>
       <Body muted>
         Случай — это человек, а не отдельный пункт. Решение принимается один раз обо всех
         его сигналах.
@@ -101,7 +104,7 @@ export default function AlertsScreen() {
       />
 
       <ErrorText>{error}</ErrorText>
-      {cases.length === 0 ? <Empty text="Случаев нет" /> : null}
+      {cases.length === 0 ? <Empty text={ut("mal.none")} /> : null}
 
       {cases.map((a) => (
         <Card key={a.id}>
@@ -115,7 +118,7 @@ export default function AlertsScreen() {
               }}
             />
             <Text style={{ color: c.text, fontSize: 13, fontWeight: "700" }}>
-              {a.severity === "severe" ? "Срочно" : "Внимание"}
+              {a.severity === "severe" ? ut("mal.urgent") : ut("mal.attention")}
             </Text>
             {a.overdue ? <Chip label="просрочен" color={severityColor.severe} /> : null}
             <View style={{ flex: 1 }} />
@@ -152,7 +155,7 @@ export default function AlertsScreen() {
                 <Body muted>Взял: {a.assignedToName}</Body>
               ) : (
                 <Button
-                  title="Взять на себя"
+                  title={ut("mal.take")}
                   variant="secondary"
                   onPress={async () => {
                     await api.assignCase(a.id).catch(() => {});
@@ -161,16 +164,16 @@ export default function AlertsScreen() {
                 />
               )}
               <Field
-                label="Что предпринято"
+                label={ut("mal.whatDone")}
                 value={notes[a.id] ?? ""}
                 onChangeText={(t) => setNotes((prev) => ({ ...prev, [a.id]: t }))}
-                placeholder="Например: осмотр назначен на сегодня"
+                placeholder={ut("mal.example")}
               />
               {/* исход обязателен: «просто закрыть» здесь нельзя */}
               {OUTCOMES.map((o) => (
                 <Button
                   key={o.value}
-                  title={o.label}
+                  title={ut(o.key)}
                   variant={o.value === "confirmed" ? "primary" : "secondary"}
                   loading={saving === a.id}
                   onPress={() => resolve(a, o.value)}
@@ -183,7 +186,7 @@ export default function AlertsScreen() {
 
       {cursor ? (
         <Button
-          title="Показать ещё"
+          title={ut("mal.loadMore")}
           variant="secondary"
           onPress={() => load(mode === "all", true, cursor)}
         />

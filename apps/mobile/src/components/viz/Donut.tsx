@@ -2,6 +2,7 @@ import { Text as RNText, View } from "react-native";
 import Svg, { G, Path, Text as SvgText } from "react-native-svg";
 import { spacing, useColors } from "../../theme";
 import { Caption, useMeasuredWidth } from "./primitives";
+import { useLang } from "@/lang";
 
 export interface Slice {
   label: string;
@@ -27,10 +28,11 @@ export function Donut({
   centerLabel?: string;
   size?: number;
 }) {
+  const { ut } = useLang();
   const c = useColors();
   const [, onLayout] = useMeasuredWidth();
   const total = slices.reduce((s, x) => s + x.value, 0);
-  if (total === 0) return <Caption>Данных пока нет</Caption>;
+  if (total === 0) return <Caption>{ut("mviz.noData")}</Caption>;
 
   const r = size / 2 - 12;
   const inner = r * 0.62;

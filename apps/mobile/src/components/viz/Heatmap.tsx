@@ -3,6 +3,7 @@ import { View } from "react-native";
 import Svg, { Rect, Text as SvgText } from "react-native-svg";
 import { useChart, useColors } from "../../theme";
 import { Caption, useMeasuredWidth } from "./primitives";
+import { useLang } from "@/lang";
 
 export interface HeatRow {
   label: string;
@@ -27,11 +28,12 @@ export function Heatmap({
   height?: number;
   unit?: string;
 }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
   const [width, onLayout] = useMeasuredWidth();
 
-  if (rows.length === 0) return <Caption>Данных пока нет</Caption>;
+  if (rows.length === 0) return <Caption>{ut("mviz.noData")}</Caption>;
 
   const labelW = Math.min(140, width * 0.38);
   const headerH = 30;
@@ -92,7 +94,7 @@ export function Heatmap({
           </React.Fragment>
         ))}
       </Svg>
-      <Caption>Насыщенность кодирует величину; значение продублировано числом</Caption>
+      <Caption>{ut("mviz.heatHint")}</Caption>
     </View>
   );
 }

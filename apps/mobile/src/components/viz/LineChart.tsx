@@ -2,6 +2,7 @@ import { View } from "react-native";
 import Svg, { Circle, G, Line, Path, Text as SvgText } from "react-native-svg";
 import { severityColor, useChart, useColors } from "../../theme";
 import { Caption, Legend, PLOT, formatShort, niceTicks, useMeasuredWidth } from "./primitives";
+import { useLang } from "@/lang";
 
 export interface SeriesPoint {
   x: string;
@@ -36,12 +37,13 @@ export function LineChart({
   showArea?: boolean;
   valueLabel?: (v: number) => string;
 }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
   const [width, onLayout] = useMeasuredWidth();
 
   const all = series.flatMap((s) => s.points);
-  if (all.length === 0) return <Caption>Данных пока нет</Caption>;
+  if (all.length === 0) return <Caption>{ut("mviz.noData")}</Caption>;
 
   const top = yMax ?? Math.max(...all.map((p) => p.y), 1);
   const ticks = niceTicks(top);

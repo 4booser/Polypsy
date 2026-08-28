@@ -16,10 +16,12 @@ import {
 } from "@/components/viz";
 import { Body, Button, Card, Chip, Divider, ErrorText, Loader, Row, Segmented } from "@/components/ui";
 import { formatDuration, severityColor, spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 type Tab = "overview" | "questions" | "scales" | "quality";
 
 export default function SurveyAnalyticsScreen() {
+  const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
   const navigation = useNavigation();
@@ -37,7 +39,7 @@ export default function SurveyAnalyticsScreen() {
       setData(a);
       navigation.setOptions({ title: a.title });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить аналитику");
+      setError(e instanceof Error ? e.message : ut("ma.loadFailed"));
     }
   }, [id, navigation, versionId]);
 
@@ -73,7 +75,7 @@ export default function SurveyAnalyticsScreen() {
           и надо явно показывать, какую редакцию мы сейчас смотрим */}
       {data.versions.length > 1 ? (
         <Card>
-          <Body muted>Версия методики</Body>
+          <Body muted>{ut("msv.version")}</Body>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
             {data.versions.map((v) => (
               <Chip
@@ -95,9 +97,9 @@ export default function SurveyAnalyticsScreen() {
         value={tab}
         onChange={setTab}
         options={[
-          { value: "overview", label: "Общее" },
-          { value: "questions", label: "Вопросы" },
-          { value: "scales", label: "Шкалы" },
+          { value: "overview", label: ut("msv.general") },
+          { value: "questions", label: ut("msv.questions") },
+          { value: "scales", label: ut("msv.scales") },
           { value: "quality", label: `Качество${data.quality.length ? " " + data.quality.length : ""}` },
         ]}
       />
@@ -106,43 +108,43 @@ export default function SurveyAnalyticsScreen() {
         <>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
             <StatTile
-              label="Завершено"
+              label={ut("msv.completed")}
               value={String(data.completed)}
               hint={`начато ${data.started}`}
             />
-            <StatTile label="Доходимость" value={`${data.completionRate}%`} hint={`брошено ${data.abandoned}`} />
-            <StatTile label="Среднее время" value={formatDuration(data.avgDurationMs)} />
-            <StatTile label="Медиана" value={formatDuration(data.medianDurationMs)} />
+            <StatTile label={ut("msv.completion")} value={`${data.completionRate}%`} hint={`брошено ${data.abandoned}`} />
+            <StatTile label={ut("ma.avgTime")} value={formatDuration(data.avgDurationMs)} />
+            <StatTile label={ut("msv.median")} value={formatDuration(data.medianDurationMs)} />
           </View>
 
-          <ChartCard title="Динамика" subtitle="Завершённые прохождения по дням">
+          <ChartCard title={ut("msv.dynamics")} subtitle={ut("ma.trendHint")}>
             <LineChart
               showArea
               height={170}
               series={[
                 {
-                  label: "Прохождений",
+                  label: ut("ma.responses"),
                   points: data.timeline.map((t) => ({ x: t.date.slice(5), y: t.count })),
                 },
               ]}
             />
           </ChartCard>
 
-          <ChartCard title="Доходимость" subtitle="Завершённые против брошенных">
+          <ChartCard title={ut("msv.completion")} subtitle={ut("msv.completedVsAbandoned")}>
             <Donut
               centerValue={`${data.completionRate}%`}
               centerLabel="дошли до конца"
               slices={[
-                { label: "Завершено", value: data.completed, color: severityColor.none },
-                { label: "Брошено", value: data.abandoned, color: severityColor.severe },
+                { label: ut("msv.completed"), value: data.completed, color: severityColor.none },
+                { label: ut("msv.abandoned"), value: data.abandoned, color: severityColor.severe },
               ]}
             />
           </ChartCard>
 
           {data.dropOff.some((d) => d.lost > 0) ? (
             <ChartCard
-              title="Где теряются респонденты"
-              subtitle="Сколько человек дошло до каждого вопроса"
+              title={ut("msv.dropoff")}
+              subtitle={ut("msv.dropoffHint")}
             >
               <Funnel
                 stages={data.dropOff.map((d) => ({
@@ -155,7 +157,7 @@ export default function SurveyAnalyticsScreen() {
           ) : null}
 
           <Button
-            title="Список прохождений"
+            title={ut("msv.responseList")}
             variant="secondary"
             onPress={() => router.push(`/analytics/${id}/responses`)}
           />
@@ -166,8 +168,8 @@ export default function SurveyAnalyticsScreen() {
         <View style={{ gap: spacing.lg }}>
           {/* сводные срезы по всем вопросам сразу — прежде чем идти в детали */}
           <ChartCard
-            title="Время ответа по вопросам"
-            subtitle="Разброс, а не только среднее: две одинаковые средние могут вести себя по-разному"
+            title={ut("msv.timePerQuestion")}
+            subtitle={ut("msv.timeHint")}
           >
             <BoxPlot
               boxes={data.questions
@@ -186,16 +188,16 @@ export default function SurveyAnalyticsScreen() {
 
           {heatRows.length > 0 ? (
             <ChartCard
-              title="Распределение выборов"
-              subtitle="Доля респондентов по каждому варианту, % от ответивших"
+              title={ut("msv.optionSpread")}
+              subtitle={ut("msv.optionSpreadHint")}
             >
               <Heatmap rows={heatRows} columns={heatColumns} />
             </ChartCard>
           ) : null}
 
           <ChartCard
-            title="Сомнения при ответе"
-            subtitle="Доля респондентов, менявших ответ — маркер неоднозначной формулировки"
+            title={ut("msv.doubts")}
+            subtitle={ut("msv.doubtsHint")}
           >
             <BarList
               unit="%"
@@ -216,8 +218,8 @@ export default function SurveyAnalyticsScreen() {
         <View style={{ gap: spacing.lg }}>
           {data.scales.length > 1 ? (
             <ChartCard
-              title="Сравнение субшкал"
-              subtitle="Разброс баллов по каждой шкале в одном масштабе"
+              title={ut("msv.subscales")}
+              subtitle={ut("msv.subscalesHint")}
             >
               <BoxPlot
                 categorical
@@ -241,7 +243,7 @@ export default function SurveyAnalyticsScreen() {
                 <SeverityBar bands={s.bands} />
                 {s.reliability ? (
                   <View style={{ marginTop: spacing.lg }}>
-                    <Body muted>Связь пункта со своей шкалой</Body>
+                    <Body muted>{ut("msv.itemTotal")}</Body>
                     <DivergingBar
                       goodThreshold={0.3}
                       items={s.reliability.items.map((it) => ({
@@ -260,7 +262,7 @@ export default function SurveyAnalyticsScreen() {
       {tab === "quality" ? (
         <View style={{ gap: spacing.lg }}>
           <Card>
-            <Body>Признаки небрежного заполнения</Body>
+            <Body>{ut("msv.careless")}</Body>
             <Body muted>
               Помечено {data.quality.length} из {data.completed} прохождений. Порог «слишком
               быстро» — {Math.round(data.tooFastThresholdMs / 1000)} с на вопрос. Это флаг для
@@ -270,8 +272,8 @@ export default function SurveyAnalyticsScreen() {
 
           {data.quality.length > 0 ? (
             <ChartCard
-              title="Время против доли быстрых ответов"
-              subtitle="Точки у левого края — прошли методику быстрее, чем её можно прочесть"
+              title={ut("msv.timeVsFast")}
+              subtitle={ut("msv.fastHint")}
             >
               <Scatter
                 xLabel="время прохождения, с"
@@ -286,14 +288,14 @@ export default function SurveyAnalyticsScreen() {
             </ChartCard>
           ) : (
             <Card>
-              <Body muted>Подозрительных прохождений не найдено</Body>
+              <Body muted>{ut("msv.noSuspicious")}</Body>
             </Card>
           )}
 
           {data.quality.map((q) => (
             <Card key={q.responseId}>
               <Row>
-                <Body>{q.respondent ?? "Аноним"}</Body>
+                <Body>{q.respondent ?? ut("mrs.anon")}</Body>
                 <View style={{ flex: 1 }} />
                 <Text style={{ color: c.muted, fontSize: 12 }}>{formatDuration(q.durationMs)}</Text>
               </Row>
@@ -330,21 +332,22 @@ export default function SurveyAnalyticsScreen() {
 
 /** Надёжность субшкалы: альфа и вклад каждого пункта */
 function Reliability({ r }: { r: NonNullable<SurveyAnalytics["scales"][number]["reliability"]> }) {
+  const { ut } = useLang();
   const c = useColors();
   const verdict =
     r.alpha >= 0.9
-      ? "очень высокая"
+      ? ut("msv.alphaVeryHigh")
       : r.alpha >= 0.8
-        ? "хорошая"
+        ? ut("msv.alphaGood")
         : r.alpha >= 0.7
-          ? "приемлемая"
-          : "низкая";
+          ? ut("msv.alphaOk")
+          : ut("msv.alphaLow");
 
   return (
     <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
       <Divider />
       <Row>
-        <Body muted>Альфа Кронбаха</Body>
+        <Body muted>{ut("msv.alpha")}</Body>
         <View style={{ flex: 1 }} />
         <Text style={{ color: c.text, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
           {r.alpha}
@@ -389,6 +392,7 @@ function Reliability({ r }: { r: NonNullable<SurveyAnalytics["scales"][number]["
 }
 
 function QuestionBlock({ q }: { q: QuestionAnalytics }) {
+  const { ut } = useLang();
   const c = useColors();
   return (
     <Card>
@@ -408,46 +412,46 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
       {/* время на вопрос — то, ради чего эта таблица и нужна */}
       <View style={{ gap: spacing.xs, marginVertical: spacing.sm }}>
         <Row>
-          <Body muted>Среднее время</Body>
+          <Body muted>{ut("ma.avgTime")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
             {formatDuration(q.avgDurationMs)}
           </Text>
         </Row>
         <Row>
-          <Body muted>Медиана</Body>
+          <Body muted>{ut("msv.median")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
             {formatDuration(q.medianDurationMs)}
           </Text>
         </Row>
         <Row>
-          <Body muted>Разброс</Body>
+          <Body muted>{ut("msv.spread")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
             {formatDuration(q.minDurationMs)} — {formatDuration(q.maxDurationMs)}
           </Text>
         </Row>
         <Row>
-          <Body muted>Думал до первого выбора</Body>
+          <Body muted>{ut("msv.thoughtBefore")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
             {formatDuration(q.avgTimeToFirstAnswerMs)}
           </Text>
         </Row>
         <Row>
-          <Body muted>Смен ответа в среднем</Body>
+          <Body muted>{ut("msv.changesAvg")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>{q.avgChangeCount}</Text>
         </Row>
         <Row>
-          <Body muted>Меняли ответ</Body>
+          <Body muted>{ut("msv.changedAnswer")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>{q.changedShare}%</Text>
         </Row>
         {q.tooFastShare > 0 ? (
           <Row>
-            <Body muted>Отвечено слишком быстро</Body>
+            <Body muted>{ut("msv.tooFast")}</Body>
             <View style={{ flex: 1 }} />
             <Text style={{ color: c.danger, fontVariant: ["tabular-nums"] }}>{q.tooFastShare}%</Text>
           </Row>
