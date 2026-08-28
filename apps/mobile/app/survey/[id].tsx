@@ -12,6 +12,7 @@ import {
 } from "@quizzy/shared";
 import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
+import { drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
@@ -48,6 +49,7 @@ export default function TakeSurveyScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [resumed, setResumed] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [draftSynced, setDraftSynced] = useState(true);
 
   const startedAt = useRef(new Date().toISOString());
   const sessionStart = useRef(Date.now());
@@ -105,10 +107,16 @@ export default function TakeSurveyScreen() {
         setSurvey(loaded);
         navigation.setOptions({ title: loaded.title });
 
-        // незавершённое прохождение — продолжаем с того же места
-        const draft = await api.getDraft(id).catch(() => null);
-        if (draft && draft.answers.length > 0) {
-          setAnswers(new Map(draft.answers.map((a) => [a.questionId, a])));
+        /*
+         * Незавершённое прохождение — продолжаем с того же места. Берём то,
+         * что новее: локальная копия свежее серверной ровно тогда, когда
+         * человек отвечал без сети, и именно её терять нельзя.
+         */
+        const remote = await api.getDraft(id).catch(() => null);
+        const draft = pickDraft(drafts.get(id), remote);
+
+        if (draft) {
+          setAnswers(new Map((draft.answers as Answer[]).map((a) => [a.questionId, a])));
           startedAt.current = draft.startedAt;
           sessionStart.current = Date.now() - draft.durationMs;
           setResumed(true);
@@ -155,8 +163,12 @@ export default function TakeSurveyScreen() {
   /**
    * Автосохранение. Вызывается при каждом переходе между вопросами: обрыв связи
    * или разряженный телефон не должны стоить пациенту всего прохождения.
-   * Ошибку глотаем намеренно — потеря автосохранения не повод прерывать работу,
-   * ответы остаются в памяти экрана.
+   *
+   * Сначала на устройство, потом на сервер. Раньше был только сервер, и в
+   * подвале без связи автосохранение молча ничего не делало — телефон, севший
+   * на сто восьмидесятом пункте МЛО-200, стоил человеку всего прохождения.
+   * Локальная запись атомарна, поэтому выключение посреди неё не портит то,
+   * что уже было сохранено.
    */
   const autosave = useCallback(async () => {
     if (!survey || survey.anonymous) return;
@@ -167,16 +179,32 @@ export default function TakeSurveyScreen() {
       visitCount: telemetry.get(a.questionId)?.visitCount ?? 1,
     }));
     if (payload.length === 0) return;
+
+    const local: LocalDraft = {
+      surveyId: survey.id,
+      answers: payload,
+      startedAt: startedAt.current,
+      durationMs: Date.now() - sessionStart.current,
+      events: events.current,
+      savedAt: new Date().toISOString(),
+      synced: false,
+    };
+    drafts.save(local);
+    setSavedAt(local.savedAt);
+    setDraftSynced(false);
+
     try {
       const res = await api.saveDraft(survey.id, {
         answers: payload,
-        startedAt: startedAt.current,
-        durationMs: Date.now() - sessionStart.current,
-        events: events.current,
+        startedAt: local.startedAt,
+        durationMs: local.durationMs,
+        events: local.events as never,
       });
+      drafts.save({ ...local, synced: true });
       setSavedAt(res.lastSavedAt);
+      setDraftSynced(true);
     } catch {
-      // тихо: черновик догонит на следующем переходе
+      // сети нет — локальная копия уже лежит, догонит при следующем проходе
     }
   }, [survey, answers, telemetry]);
 
@@ -259,6 +287,9 @@ export default function TakeSurveyScreen() {
         status,
         events: events.current,
       });
+      // прохождение ушло (или встало в очередь) — локальный черновик больше
+      // не нужен и не должен всплыть «продолжением» при следующем открытии
+      drafts.drop(survey.id);
       setResult(res.scores);
       setSafetyPlan(res.safetyPlan ?? null);
       setQueued(!!res.queued);
@@ -443,8 +474,16 @@ export default function TakeSurveyScreen() {
             ) : null}
             <View style={{ flex: 1 }} />
             {savedAt ? (
-              <Text style={{ color: c.muted, fontSize: 12 }} accessibilityLabel={ut("ms.answersSaved")}>
-                ✓ {ut("ms.saved")}
+              /*
+               * Разница между «сохранено на телефоне» и «сохранено на сервере»
+               * человеку важна: во втором случае прохождение переживёт потерю
+               * телефона, в первом — только его собственную память.
+               */
+              <Text
+                style={{ color: c.muted, fontSize: 12 }}
+                accessibilityLabel={draftSynced ? ut("ms.answersSaved") : ut("ms.savedHereOnly")}
+              >
+                {draftSynced ? `✓ ${ut("ms.saved")}` : `⌁ ${ut("ms.savedHere")}`}
               </Text>
             ) : null}
             <Text style={{ color: overtime ? c.danger : c.muted, fontSize: 12 }}>

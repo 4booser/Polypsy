@@ -76,10 +76,29 @@ function nativeStore(): JsonStore {
       }
     },
     write(name, value) {
+      /*
+       * Через временный файл с переименованием.
+       *
+       * Прямая запись поверх — не атомарная операция: если телефон выключится
+       * посреди неё, на диске останется обрезанный JSON, и черновик двухсот
+       * ответов превратится в ничто. Переименование в пределах одной
+       * директории атомарно, поэтому наблюдатель видит либо старую запись,
+       * либо новую целиком.
+       */
+      const tmp = new File(dir, `${fileName(name)}.tmp`);
       try {
-        const f = new File(dir, fileName(name));
-        f.write(JSON.stringify(value));
+        if (tmp.exists) tmp.delete();
+        tmp.create();
+        tmp.write(JSON.stringify(value));
+        const target = new File(dir, fileName(name));
+        if (target.exists) target.delete();
+        tmp.move(target);
       } catch (error) {
+        try {
+          if (tmp.exists) tmp.delete();
+        } catch {
+          /* мусорный временный файл переживём */
+        }
         console.warn("offline store: запись не удалась", name, error);
       }
     },
@@ -96,6 +115,7 @@ function nativeStore(): JsonStore {
         return dir
           .list()
           .filter((e): e is InstanceType<typeof File> => e instanceof File)
+          .filter((f) => !f.name.endsWith(".tmp"))
           .map((f) => decodeURIComponent(f.name.replace(/\.json$/, "")))
           .filter((n) => n.startsWith(prefix));
       } catch {
