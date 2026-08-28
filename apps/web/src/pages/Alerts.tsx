@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { AlertCase } from "@quizzy/shared";
 import { api } from "../api";
@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { dateTime, day, severityColor } from "../format";
 import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { onAppEvent } from "../events";
 import { usePagedResource, useResource } from "../useResource";
 
 const OUTCOME = [
@@ -65,6 +66,15 @@ export default function Alerts() {
   const { items, total, error } = page;
 
   const units = useResource(() => api.alertCaseUnits(), []).data ?? [];
+
+  /*
+   * Очередь обновляется по событию: новая тревога должна появиться у
+   * дежурного сразу, а взятый коллегой случай — сразу пометиться, иначе
+   * двое разбирают одного человека.
+   */
+  useEffect(() => onAppEvent((e) => {
+    if (e.kind === "alert.created" || e.kind === "case.changed") page.reload();
+  }), [page.reload]);
 
   const open = (items ?? []).filter((c) => !c.acknowledgedAt);
   // выбранный либо тот, что выбрали, либо первый в очереди

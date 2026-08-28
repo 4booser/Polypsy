@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Служебное: наблюдаемость, метрики, проверка входа, жизненный цикл методики */
 
@@ -398,5 +398,97 @@ describe("ни один GET не падает пятисоткой", () => {
     }
 
     expect(failures).toEqual([]);
+  });
+});
+
+/* ── поток событий ── */
+
+describe("реальное время", () => {
+  test("опубликованное событие доходит до подписчика", async () => {
+    /*
+     * Проверяется именно путь через PostgreSQL: LISTEN/NOTIFY выбран, чтобы
+     * подписчик не обязан был сидеть на том же инстансе API, который
+     * обработал сдачу. Общая память процесса этого не даёт, и подмена одного
+     * другим прошла бы незаметно до второго инстанса в проде.
+     */
+    const { publish, subscribe } = await import("../src/lib/events");
+
+    const received: unknown[] = [];
+    const unsubscribe = await subscribe((e) => received.push(e));
+
+    await publish(db, {
+      kind: "alert.created",
+      surveyId: surveyInA,
+      userId: patient.id,
+      severity: "severe",
+      at: new Date().toISOString(),
+    });
+
+    // доставка асинхронная: ждём появления, а не фиксированную паузу
+    for (let i = 0; i < 40 && received.length === 0; i++) await Bun.sleep(25);
+    unsubscribe();
+
+    expect(received).toHaveLength(1);
+    expect((received[0] as { kind: string }).kind).toBe("alert.created");
+  });
+
+  test("канал закрыт для пациента и для неавторизованного", async () => {
+    expect((await app.request("/api/events")).status).toBe(401);
+
+    const res = await app.request("/api/events", {
+      headers: { Authorization: `Bearer ${patient.token}` },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  test("сдача с риском публикует событие", async () => {
+    const { subscribe } = await import("../src/lib/events");
+    const { questions, options } = await import("../src/db/schema");
+    const { and: andOp } = await import("drizzle-orm");
+
+    const received: { kind: string }[] = [];
+    const unsubscribe = await subscribe((e) => received.push(e as { kind: string }));
+
+    // отвечаем рискованным вариантом: событие должно уйти из той же
+    // транзакции, что и сама тревога
+    const person = await makeUser("user", `sse-${crypto.randomUUID()}@test`);
+    const survey = await api(`/api/surveys/${surveyInA}`, person.token);
+    const risky = await db
+      .select({ questionId: options.questionId, id: options.id })
+      .from(options)
+      .innerJoin(questions, eq(questions.id, options.questionId))
+      .where(eq(options.riskFlag, true))
+      .limit(1);
+
+    if (risky.length) {
+      const answers = survey.body.questions
+        .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && q.options.length)
+        .map((q: { id: string; options: { id: string }[] }) => ({
+          questionId: q.id,
+          optionIds: [
+            q.id === risky[0]!.questionId ? risky[0]!.id : (q.options[1]?.id ?? q.options[0]!.id),
+          ],
+          durationMs: 2000,
+          changeCount: 0,
+          visitCount: 1,
+        }));
+      await api(`/api/surveys/${surveyInA}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({
+          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          durationMs: 60_000,
+          events: [],
+          answers,
+        }),
+      });
+    }
+
+    for (let i = 0; i < 60 && !received.some((e) => e.kind === "alert.created"); i++) {
+      await Bun.sleep(25);
+    }
+    unsubscribe();
+    void andOp;
+
+    expect(received.some((e) => e.kind === "alert.created")).toBe(true);
   });
 });

@@ -87,11 +87,12 @@ test("в украинском режиме не остаётся русских 
     await page.locator(".page-head h1").waitFor();
     /*
      * Заголовок появляется раньше содержимого: на «Сравнении» графики
-     * приезжают отдельным запросом. Без ожидания один проход читает пустой
-     * экран, второй — заполненный, и разница выглядит как непереведённые
-     * строки.
+     * приезжают отдельным запросом. Ждать «тишины в сети» нельзя — консоль
+     * держит открытым поток событий, и она не наступает никогда. Ждём, пока
+     * исчезнут скелеты: это и есть признак, что данные приехали.
      */
-    await page.waitForLoadState("networkidle");
+    await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    await page.waitForTimeout(150);
     const text = await page.locator("main").innerText();
     return new Set(text.split(/[\s,.:;()«»…—-]+/).filter((w) => RUSSIAN_ONLY.test(w)));
   };
