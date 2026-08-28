@@ -176,7 +176,12 @@ export const surveys = pgTable(
    * решение психолога, а не системы.
    */
   showResultsToPatient: boolean("show_results_to_patient").notNull().default(false),
-  /** Демонстрационная методика: не для клинического применения, в списках помечена */
+  /*
+   * Демонстрационная методика: показывается в обучении и на показах, но не
+   * выдаётся пациентам. Флаг был объявлен давно и ничего не значил — списки
+   * его не смотрели, и единственной защитой оставалось «(демо)» в названии,
+   * то есть внимательность того, кто назначает.
+   */
   isDemo: boolean("is_demo").notNull().default(false),
     /*
      * "archived" из перечисления убран намеренно: значение никогда не
@@ -200,6 +205,29 @@ export const surveys = pgTable(
      */
     archivedAt: timestampCol("archived_at"),
     archivedBy: text("archived_by").references(() => users.id, { onDelete: "set null" }),
+
+    /*
+     * Правовой статус текста методики.
+     *
+     * README честно фиксировал, что тексты требуют очистки прав перед
+     * клиническим применением, — но README не мешает выдать методику
+     * пациенту. Статус здесь делает это свойством данных: неочищенная
+     * методика видна персоналу с пометкой и не публикуется молча.
+     *
+     * `own` — написана в учреждении, `licensed` — есть договор,
+     * `public_domain` — срок охраны истёк или автор открыл, `unclear` —
+     * не разобрано.
+     */
+    rightsStatus: text("rights_status", {
+      enum: ["own", "licensed", "public_domain", "unclear"],
+    })
+      .notNull()
+      .default("unclear"),
+    /** Источник: пособие, страницы, автор — то, что нужно для сверки и для прав */
+    sourceNote: text("source_note"),
+    /** Ключи сверены с пособием: кто и когда */
+    keysVerifiedAt: timestampCol("keys_verified_at"),
+    keysVerifiedBy: text("keys_verified_by").references(() => users.id, { onDelete: "set null" }),
 
     timeLimitSec: integer("time_limit_sec"),
     randomizeQuestions: boolean("randomize_questions").notNull().default(false),

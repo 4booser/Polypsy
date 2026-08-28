@@ -180,6 +180,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin" },
   "GET /api/timeline/:userId": { summary: "Хронология пациента: всё на одной оси", access: "staff" },
   "GET /api/events": { summary: "Поток событий (SSE): тревоги и изменения случаев", access: "staff" },
+  "PATCH /api/surveys/:id/rights": { summary: "Правовой статус и отметка о сверке ключей", access: "superadmin" },
   "POST /api/push/register": { summary: "Зарегистрировать устройство для пушей", access: "user" },
   "POST /api/push/forget": { summary: "Забыть устройство", access: "user" },
   "GET /api/goals/patients/:userId": { summary: "Цели лечения пациента с прогрессом", access: "staff" },

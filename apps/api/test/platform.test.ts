@@ -684,3 +684,68 @@ describe("пуш-уведомления", () => {
     setPushSenderForTests(null);
   });
 });
+
+/* ── правовой статус методик ── */
+
+describe("правовой статус и демонстрационные методики", () => {
+  test("демонстрационная методика не попадает пациенту", async () => {
+    /*
+     * Флаг isDemo существовал давно и ничего не значил: списки его не
+     * смотрели, и единственной защитой оставалось «(демо)» в названии — то
+     * есть внимательность того, кто назначает.
+     */
+    const { surveys: surveysTable } = await import("../src/db/schema");
+    const demoId = crypto.randomUUID();
+    const input = createSurveySchema.parse(sr45);
+    await db.insert(surveysTable).values({
+      id: demoId,
+      groupId: groupA,
+      title: { uk: "Демо", ru: "Демо" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      isDemo: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(demoId, input, adminA.id, "Демо-версия");
+
+    const asPatient = await api("/api/surveys", patient.token);
+    expect(asPatient.body.items.some((s: { id: string }) => s.id === demoId)).toBe(false);
+
+    // персоналу она видна: на показах и в обучении она нужна
+    const asStaff = await api("/api/surveys", adminA.token);
+    expect(asStaff.body.items.some((s: { id: string }) => s.id === demoId)).toBe(true);
+  });
+
+  test("правовой статус меняет только суперадмин", async () => {
+    /*
+     * Это не настройка методики, а утверждение учреждения о том, что тексты
+     * можно применять. Такое утверждение не должен делать тот, кто методику
+     * завёл.
+     */
+    const denied = await api(`/api/surveys/${surveyInA}/rights`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ rightsStatus: "own" }),
+    });
+    expect(denied.status).toBe(403);
+
+    const ok = await api(`/api/surveys/${surveyInA}/rights`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({
+        rightsStatus: "public_domain",
+        sourceNote: "Юнацкевич П. И., пособие, с. 45–52",
+        keysVerified: true,
+      }),
+    });
+    expect(ok.status).toBe(200);
+
+    const list = await api("/api/surveys", adminA.token);
+    const mine = list.body.items.find((s: { id: string }) => s.id === surveyInA);
+    expect(mine.rightsStatus).toBe("public_domain");
+    // отметка о сверке ключей проставляется вместе со статусом
+    expect(mine.keysVerifiedAt).not.toBeNull();
+  });
+});
