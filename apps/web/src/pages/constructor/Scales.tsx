@@ -2,8 +2,10 @@ import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { Loc } from "./fields";
 import { newUid, parseItems, type Draft, type DraftScale } from "./model";
+import { useLang } from "../../lang";
 
 export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
+  const { ut } = useLang();
   // батареи нужны для каскадов: попадание в полосу может назначить углублённую
   const batteries = (useResource(() => api.batteries(), []).data ?? []).filter((b) => !b.archived);
 
@@ -48,7 +50,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
       {draft.scales.map((s, i) => (
         <div className="card" key={s.uid}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>{s.code || "новая шкала"}</strong>
+            <strong>{s.code || ut("cs.newScale")}</strong>
             <button className="danger" onClick={() => setDraft((d) => ({ ...d, scales: d.scales.filter((_, k) => k !== i) }))}>
               Удалить
             </button>
@@ -56,31 +58,31 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
 
           <div className="row">
             <div className="field" style={{ width: 140 }}>
-              <label>Код</label>
+              <label>{ut("cs.code")}</label>
               <input value={s.code} onChange={(e) => upd(i, { code: e.target.value })} placeholder="Sr" />
             </div>
             <div className="field" style={{ width: 170 }}>
-              <label>Роль</label>
+              <label>{ut("cs.role")}</label>
               <select value={s.kind} onChange={(e) => upd(i, { kind: e.target.value as DraftScale["kind"] })}>
-                <option value="clinical">Содержательная</option>
-                <option value="validity">Достоверности</option>
+                <option value="clinical">{ut("cs.clinical")}</option>
+                <option value="validity">{ut("cs.validity")}</option>
               </select>
             </div>
             <div className="field" style={{ width: 190 }}>
-              <label>Нормирование</label>
+              <label>{ut("cs.normalization")}</label>
               <select
                 value={s.normalization}
                 onChange={(e) => upd(i, { normalization: e.target.value as DraftScale["normalization"] })}
               >
-                <option value="raw">Сырой балл</option>
-                <option value="ratio">Доля от максимума</option>
+                <option value="raw">{ut("cs.raw")}</option>
+                <option value="ratio">{ut("cs.ratio")}</option>
                 <option value="tscore">T-баллы</option>
-                <option value="sten">Стены</option>
+                <option value="sten">{ut("cs.sten")}</option>
               </select>
             </div>
             {s.normalization === "ratio" ? (
               <div className="field" style={{ width: 150 }}>
-                <label>Знаменатель</label>
+                <label>{ut("cs.denominator")}</label>
                 <input
                   type="number"
                   value={s.ratioDenominator ?? ""}
@@ -90,12 +92,12 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
             ) : null}
           </div>
 
-          <Loc label="Название шкалы" value={s.title} onChange={(v) => upd(i, { title: v })} />
+          <Loc label={ut("cs.scaleTitle")} value={s.title} onChange={(v) => upd(i, { title: v })} />
 
           {s.kind === "validity" ? (
             <div className="row">
               <div className="field" style={{ width: 150 }}>
-                <label>Порог</label>
+                <label>{ut("cs.threshold")}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -104,7 +106,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                 />
               </div>
               <div className="field" style={{ width: 180 }}>
-                <label>Нарушается</label>
+                <label>{ut("cs.violated")}</label>
                 <select
                   value={s.validityDirection ?? "above"}
                   onChange={(e) => upd(i, { validityDirection: e.target.value as "above" | "below" })}
@@ -117,7 +119,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
           ) : null}
 
           <div className="field">
-            <label>Ключ: номера пунктов с ответом «Да»</label>
+            <label>{ut("cs.keyYes")}</label>
             <input
               value={s.key.filter((k) => k.matchKey === "yes").map((k) => k.item).join(", ")}
               placeholder="1, 2, 3, 5, 7"
@@ -132,7 +134,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
             />
           </div>
           <div className="field">
-            <label>Ключ: номера пунктов с ответом «Нет»</label>
+            <label>{ut("cs.keyNo")}</label>
             <input
               value={s.key.filter((k) => k.matchKey === "no").map((k) => k.item).join(", ")}
               placeholder="4, 6, 8"
@@ -158,10 +160,10 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
             они занимали бы больше места, чем экономят
           </p>
 
-          <h2 style={{ fontSize: 14, marginTop: 14 }}>Интерпретационные нормы</h2>
+          <h2 style={{ fontSize: 14, marginTop: 14 }}>{ut("cs.bands")}</h2>
           <table>
             <thead>
-              <tr><th className="num">От</th><th className="num">До</th><th>Вывод (uk / ru)</th><th>Выраженность</th><th className="num">Оценка</th><th>Каскад</th><th>Повторы, дн.</th><th /></tr>
+              <tr><th className="num">От</th><th className="num">До</th><th>{ut("cs.bandLabel")}</th><th>{ut("cs.severity")}</th><th className="num">{ut("cs.grade")}</th><th>{ut("cs.cascade")}</th><th>{ut("cs.repeatDays")}</th><th /></tr>
             </thead>
             <tbody>
               {s.bands.map((b, bi) => (
@@ -185,10 +187,10 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                   <td style={{ width: 150 }}>
                     <select value={b.severity}
                       onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, severity: e.target.value as DraftScale["bands"][number]["severity"] } : x)) })}>
-                      <option value="none">Норма</option>
-                      <option value="mild">Лёгкая</option>
-                      <option value="moderate">Умеренная</option>
-                      <option value="severe">Выраженная</option>
+                      <option value="none">{ut("cs.sevNormal")}</option>
+                      <option value="mild">{ut("cs.sevMild")}</option>
+                      <option value="moderate">{ut("cs.sevModerate")}</option>
+                      <option value="severe">{ut("cs.sevSevere")}</option>
                     </select>
                   </td>
                   <td className="num" style={{ width: 80 }}>
@@ -198,7 +200,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                   <td style={{ width: 190 }}>
                     <select
                       value={b.cascadeBatteryId ?? ""}
-                      title="Попадание в эту полосу назначит батарею"
+                      title={ut("cs.cascadeHint")}
                       onChange={(e) =>
                         upd(i, {
                           bands: s.bands.map((x, k) =>
@@ -216,7 +218,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                   <td style={{ width: 96 }}>
                     <input
                       placeholder="7,30"
-                      title="Повторы этой же методики через N дней"
+                      title={ut("cs.repeatHint")}
                       value={b.followUpDays ?? ""}
                       onChange={(e) =>
                         upd(i, {

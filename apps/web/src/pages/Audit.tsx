@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart } from "../charts";
 import { dateTime } from "../format";
@@ -6,36 +7,40 @@ import { PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
-const ACTION_LABEL: Record<string, string> = {
-  "auth.login": "Вход",
-  "auth.login_failed": "Неудачный вход",
-  "auth.register": "Регистрация",
-  "user.create": "Создание учётной записи",
-  "user.list": "Просмотр учётных записей",
-  "survey.create": "Создание методики",
-  "survey.update": "Правка методики",
-  "survey.publish": "Публикация методики",
-  "survey.delete": "Удаление методики",
-  "survey.duplicate": "Копия методики",
-  "group.create": "Создание группы",
-  "group.admin_assign": "Назначение админа группы",
-  "group.admin_revoke": "Снятие админа группы",
-  "access.grant": "Назначение методики пациенту",
-  "access.revoke": "Отзыв назначения",
-  "access.grant_list": "Просмотр назначений",
-  "access.denied": "Отказ в доступе",
-  "response.submit": "Прохождение отправлено",
-  "response.list": "Просмотр прохождений",
-  "response.read": "Просмотр карты",
-  "response.draft": "Черновик",
-  "analytics.overview": "Просмотр сводки",
-  "analytics.survey": "Просмотр аналитики",
-  "analytics.export": "Выгрузка данных",
-  "report.render": "Печать заключения",
-  "alert.list": "Просмотр тревог",
-  "alert.acknowledge": "Разбор тревоги",
-  "audit.read": "Чтение журнала",
-};
+/*
+ * Ключи, а не готовые подписи: карта живёт вне компонента, и язык должен
+ * определяться при отрисовке, а не при загрузке модуля.
+ */
+const ACTION_KEY = {
+  "auth.login": "act.auth_login",
+  "auth.login_failed": "act.auth_login_failed",
+  "auth.register": "act.auth_register",
+  "user.create": "act.user_create",
+  "user.list": "act.user_list",
+  "survey.create": "act.survey_create",
+  "survey.update": "act.survey_update",
+  "survey.publish": "act.survey_publish",
+  "survey.delete": "act.survey_delete",
+  "survey.duplicate": "act.survey_duplicate",
+  "group.create": "act.group_create",
+  "group.admin_assign": "act.group_admin_assign",
+  "group.admin_revoke": "act.group_admin_revoke",
+  "access.grant": "act.access_grant",
+  "access.revoke": "act.access_revoke",
+  "access.grant_list": "act.access_grant_list",
+  "access.denied": "act.access_denied",
+  "response.submit": "act.response_submit",
+  "response.list": "act.response_list",
+  "response.read": "act.response_read",
+  "response.draft": "act.response_draft",
+  "analytics.overview": "act.analytics_overview",
+  "analytics.survey": "act.analytics_survey",
+  "analytics.export": "act.analytics_export",
+  "report.render": "act.report_render",
+  "alert.list": "act.alert_list",
+  "alert.acknowledge": "act.alert_acknowledge",
+  "audit.read": "act.audit_read",
+} as const satisfies Record<string, UiKey>;
 
 const FILTERS = [
   ["", "Всё"],
@@ -48,6 +53,8 @@ const FILTERS = [
 
 export default function Audit() {
   const { ut } = useLang();
+  // незнакомое действие показываем как есть: лучше сырой код, чем пустая ячейка
+  const actionLabel = (a: string) => (a in ACTION_KEY ? ut(ACTION_KEY[a as keyof typeof ACTION_KEY]) : a);
   const [filter, setFilter] = useState("");
 
   const res = useResource(async () => {
@@ -81,7 +88,7 @@ export default function Audit() {
             <BarList items={summary.byActor.map((a) => ({ label: a.actorEmail, value: a.count }))} />
           </Chart>
           <Chart title="Что делают" hint="Распределение по типам действий">
-            <BarList items={summary.byAction.slice(0, 12).map((a) => ({ label: ACTION_LABEL[a.action] ?? a.action, value: a.count }))} />
+            <BarList items={summary.byAction.slice(0, 12).map((a) => ({ label: actionLabel(a.action), value: a.count }))} />
           </Chart>
         </div>
       ) : null}
@@ -99,7 +106,7 @@ export default function Audit() {
             {entries.map((e) => (
               <tr key={e.id}>
                 <td className="muted">{dateTime(e.at)}</td>
-                <td>{ACTION_LABEL[e.action] ?? e.action}</td>
+                <td>{actionLabel(e.action)}</td>
                 <td className="muted">{e.actorEmail ?? "—"}</td>
                 <td style={{ color: e.outcome !== "success" ? "var(--danger)" : undefined }}>
                   {e.outcome === "success" ? "ок" : e.outcome === "denied" ? "отказано" : "ошибка"}

@@ -8,6 +8,7 @@ import { Questions } from "./Questions";
 import { Scales } from "./Scales";
 import { EMPTY, toDraft, toPayload, withUids, type Draft, type Tab } from "./model";
 import { Loading, PageHead } from "../../ui";
+import { useLang } from "../../lang";
 
 /**
  * Черновик живёт в localStorage: правка методики на 200 пунктов не должна
@@ -17,6 +18,7 @@ import { Loading, PageHead } from "../../ui";
 const draftKey = (id: string | undefined) => `quizzy.constructor.${id ?? "new"}`;
 
 export default function Constructor() {
+  const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [draft, setDraftRaw] = useState<Draft>(EMPTY);
@@ -158,7 +160,7 @@ export default function Constructor() {
       const res = await api.validateSurvey(toPayload(draft));
       setIssues(res.issues);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось проверить");
+      setError(e instanceof Error ? e.message : ut("co.checkFailed"));
     } finally {
       setBusy(false);
     }
@@ -169,14 +171,14 @@ export default function Constructor() {
     setError(null);
     try {
       const survey = id
-        ? await api.updateSurvey(id, { ...toPayload(draft), versionNote: "Правка через конструктор" })
+        ? await api.updateSurvey(id, { ...toPayload(draft), versionNote: ut("co.versionNote") })
         : await api.createSurvey(toPayload(draft));
       if (publish) await api.updateSurvey(survey.id, { status: "published" });
       localStorage.removeItem(draftKey(id));
       setDirty(false);
       navigate(`/surveys/${survey.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+      setError(e instanceof Error ? e.message : ut("co.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -186,7 +188,7 @@ export default function Constructor() {
     setError(null);
     try {
       const parsed = JSON.parse(json) as Draft;
-      if (!parsed.title) throw new Error("В JSON нет поля title");
+      if (!parsed.title) throw new Error(ut("co.noTitleField"));
       setDraft(withUids({ ...EMPTY, ...parsed }));
       setTab("basics");
     } catch (e) {
@@ -199,19 +201,19 @@ export default function Constructor() {
   return (
     <>
       <PageHead
-        title={id ? "Правка методики" : "Новая методика"}
+        title={id ? ut("co.editTitle") : ut("co.newTitle")}
         crumbs={id ? <Link to={`/surveys/${id}`}>← К аналитике</Link> : <Link to="/surveys">← Методики</Link>}
         sub={
           id
-            ? "Правка создаёт новую версию — собранные прохождения останутся на прежней"
-            : "Заполните вручную или вставьте описание методики целиком во вкладке «JSON»"
+            ? ut("co.editSub")
+            : ut("co.newSub")
         }
       />
 
       <div className="row" style={{ alignItems: "flex-end" }}>
       <div className="tabs" style={{ flex: 1 }}>
         {([
-          ["basics", "Основное"],
+          ["basics", ut("co.basics")],
           ["questions", `Вопросы ${asked}`],
           ["scales", `Шкалы ${draft.scales.length}`],
           ["json", "JSON"],
@@ -222,8 +224,8 @@ export default function Constructor() {
         ))}
       </div>
         <div className="row tight" style={{ paddingBottom: 6 }}>
-          <button onClick={undo} disabled={!undoStack.current.length} title="Отменить (Ctrl+Z)">↶</button>
-          <button onClick={redo} disabled={!redoStack.current.length} title="Вернуть (Ctrl+Shift+Z)">↷</button>
+          <button onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")}>↶</button>
+          <button onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")}>↷</button>
           {dirty ? <span className="hint">черновик сохраняется сам</span> : null}
         </div>
       </div>
@@ -266,7 +268,7 @@ export default function Constructor() {
         >
           <h2>
             {issues.length === 0
-              ? "Структурных замечаний нет"
+              ? ut("co.noIssues")
               : `Замечаний: ${issues.filter((i) => i.level === "error").length} ошибок, ${issues.filter((i) => i.level === "warning").length} предупреждений`}
           </h2>
           <p className="hint">
@@ -289,7 +291,7 @@ export default function Constructor() {
       {tab === "scales" ? <Scales draft={draft} setDraft={setDraft} /> : null}
       {tab === "json" ? (
         <div className="card">
-          <h2>Описание методики целиком</h2>
+          <h2>{ut("co.wholeJson")}</h2>
           <p className="hint">
             Для методик на сотни пунктов заполнять форму бессмысленно. Вставьте сюда описание
             в том же виде, какой принимает API — с ключами шкал, нормами и таблицами стенов.
@@ -302,17 +304,17 @@ export default function Constructor() {
             style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
           />
           <div className="row" style={{ marginTop: 10 }}>
-            <button className="primary" onClick={applyJson}>Применить</button>
-            <button onClick={() => navigator.clipboard?.writeText(json)}>Скопировать</button>
+            <button className="primary" onClick={applyJson}>{ut("co.apply")}</button>
+            <button onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</button>
           </div>
         </div>
       ) : null}
 
       <div className="row" style={{ marginTop: 18 }}>
-        <button onClick={check} disabled={busy}>Проверить структуру</button>
-        <button onClick={() => save(false)} disabled={busy}>Сохранить черновиком</button>
+        <button onClick={check} disabled={busy}>{ut("co.checkStructure")}</button>
+        <button onClick={() => save(false)} disabled={busy}>{ut("co.saveDraft")}</button>
         <button className="primary" onClick={() => save(true)} disabled={busy}>
-          {busy ? "Сохранение…" : "Сохранить и опубликовать"}
+          {busy ? ut("co.saving") : ut("co.savePublish")}
         </button>
       </div>
     </>

@@ -1,5 +1,5 @@
 import { Link, useParams } from "react-router-dom";
-import type { Respondent } from "@quizzy/shared";
+import type { Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
@@ -39,10 +39,10 @@ export function PatientList() {
       <div className="card">
         <DataTable
           rows={filtered}
-          csvName="пациенты"
+          csvName={ut("pt.patients")}
           stateKey="patients"
           initialSort={{ key: "last", desc: true }}
-          empty={<p className="muted">Никого не найдено</p>}
+          empty={<p className="muted">{ut("pt.nobodyFound")}</p>}
           columns={[
             {
               key: "name",
@@ -106,7 +106,7 @@ export function PatientDynamics() {
         actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>{ut("patients.summary")}</Link>}
       />
 
-      {data.surveys.length === 0 ? <p className="muted">Завершённых прохождений нет</p> : null}
+      {data.surveys.length === 0 ? <p className="muted">{ut("pt.noCompleted")}</p> : null}
 
       {data.surveys.map((sv) => (
         <div key={sv.surveyId}>
@@ -118,7 +118,7 @@ export function PatientDynamics() {
           </div>
 
           {sv.scales.length >= 3 ? (
-            <Chart title="Профиль по субшкалам" hint="Последний замер против первого">
+            <Chart title={ut("pt.profileBySubscales")} hint={ut("pt.lastVsFirst")}>
               <Radar
                 axes={sv.scales.map((sc) => {
                   const p = sc.points.at(-1);
@@ -143,7 +143,7 @@ export function PatientDynamics() {
                 <Chart
                   key={sc.scaleId}
                   title={sc.title}
-                  hint={rciHint(sc)}
+                  hint={rciHint(sc, ut)}
                 >
                   <LineChart
                     yMax={last?.maxScore}
@@ -159,15 +159,15 @@ export function PatientDynamics() {
                   {last ? (
                     <table style={{ marginTop: 10 }}>
                       <tbody>
-                        <tr><td>Последний замер</td><td className="num">{last.rawScore} из {last.maxScore}</td></tr>
-                        {last.severity ? <tr><td>Интерпретация</td><td className="num"><SeverityTag severity={last.severity} label={last.bandLabel ?? undefined} /></td></tr> : null}
+                        <tr><td>{ut("pt.lastMeasure")}</td><td className="num">{last.rawScore} из {last.maxScore}</td></tr>
+                        {last.severity ? <tr><td>{ut("pt.interpretation")}</td><td className="num"><SeverityTag severity={last.severity} label={last.bandLabel ?? undefined} /></td></tr> : null}
                         {sc.reliableChange ? (
                           <tr>
-                            <td>Достоверность сдвига</td>
+                            <td>{ut("pt.rciTitle")}</td>
                             <td className="num">
                               {sc.reliableChange.significant ? (
                                 <strong style={{ color: "var(--accent)" }}>
-                                  достоверный ({sc.reliableChange.direction === "up" ? "рост" : "снижение"}, RCI {sc.reliableChange.rci})
+                                  достоверный ({sc.reliableChange.direction === "up" ? ut("pt.growth") : ut("pt.decline")}, RCI {sc.reliableChange.rci})
                                 </strong>
                               ) : (
                                 <span className="muted">в пределах ошибки (RCI {sc.reliableChange.rci})</span>
@@ -176,7 +176,7 @@ export function PatientDynamics() {
                           </tr>
                         ) : null}
                         <tr>
-                          <td>Перцентиль</td>
+                          <td>{ut("pt.percentile")}</td>
                           <td className="num">
                             {last.percentile === null ? <span className="muted">выборка мала</span> : `выше, чем у ${last.percentile}%`}
                           </td>
@@ -205,15 +205,18 @@ export function PatientDynamics() {
  * Дельта без RCI вводит в заблуждение: сдвиг на 13 T-баллов при широком
  * разбросе выборки — шум, а на 0.23 доли при α=0.92 — реальное изменение.
  */
-function rciHint(sc: {
-  delta: number | null;
-  reliableChange: { rci: number; significant: boolean; basis: { sd: number; alpha: number; sampleN: number } } | null;
-}): string {
-  if (sc.delta === null) return "нужен второй замер для динамики";
-  const base = `изменение: ${sc.delta > 0 ? "+" : ""}${sc.delta}`;
+function rciHint(
+  sc: {
+    delta: number | null;
+    reliableChange: { rci: number; significant: boolean; basis: { sd: number; alpha: number; sampleN: number } } | null;
+  },
+  // переводчик аргументом: функция чистая и живёт вне компонента
+  ut: (k: UiKey) => string,
+): string {
+  if (sc.delta === null) return ut("pt.needSecond");
+  const base = `${ut("pt.change")}: ${sc.delta > 0 ? "+" : ""}${sc.delta}`;
   const rc = sc.reliableChange;
-  if (!rc) return `${base} · достоверность не оценить (мало выборки или одно-пунктовая шкала)`;
-  return rc.significant
-    ? `${base} · превышает ошибку измерения (RCI ${rc.rci}, α ${rc.basis.alpha})`
-    : `${base} · в пределах ошибки измерения (RCI ${rc.rci}, α ${rc.basis.alpha})`;
+  if (!rc) return `${base} · ${ut("pt.rciUnknown")}`;
+  const verdict = rc.significant ? ut("pt.rciAbove") : ut("pt.rciWithin");
+  return `${base} · ${verdict} (RCI ${rc.rci}, α ${rc.basis.alpha})`;
 }

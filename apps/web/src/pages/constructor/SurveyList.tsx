@@ -4,8 +4,10 @@ import type { Issue, SurveyListItem } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { ConfirmByName, Loading, PageHead, useToast } from "../../ui";
+import { useLang } from "../../lang";
 
 export function SurveyList() {
+  const { ut } = useLang();
   const [showArchived, setShowArchived] = useState(false);
   // ошибка импорта — про действие, а не про загрузку списка: состояния разные
   const [error, setError] = useState<string | null>(null);
@@ -27,19 +29,19 @@ export function SurveyList() {
     try {
       draft = JSON.parse(await file.text());
     } catch {
-      setError("Файл не является корректным JSON");
+      setError(ut("cl.badJson"));
       return;
     }
     try {
       const res = await api.importSurvey(draft);
       if (res.issues.length) setImportIssues(res.issues);
-      toast("Методика импортирована черновиком — сверьте ключи перед публикацией", "ok");
+      toast(ut("cl.imported"), "ok");
       navigate(`/constructor/${res.id}`);
     } catch (e) {
       // 422: сервер вернул список структурных проблем — показываем целиком
       const body = (e as { body?: { issues?: Issue[] } }).body;
       if (body?.issues) setImportIssues(body.issues);
-      setError(e instanceof Error ? e.message : "Импорт не удался");
+      setError(e instanceof Error ? e.message : ut("cl.importFailed"));
     }
   }
 
@@ -52,14 +54,14 @@ export function SurveyList() {
   return (
     <>
       <PageHead
-        title="Методики"
-        sub="Создание, правка и назначение"
-        actions={<Link className="btn primary" to="/constructor">Создать методику</Link>}
+        title={ut("cl.title")}
+        sub={ut("cl.sub")}
+        actions={<Link className="btn primary" to="/constructor">{ut("cl.create")}</Link>}
       />
       <div className="row">
-        <button onClick={() => fileRef.current?.click()}>Импорт из файла</button>
+        <button onClick={() => fileRef.current?.click()}>{ut("cl.importFile")}</button>
         <button onClick={() => setShowArchived((v) => !v)}>
-          {showArchived ? "Только в работе" : "Показать снятые"}
+          {showArchived ? ut("cl.activeOnly") : ut("cl.showArchived")}
         </button>
         <input
           ref={fileRef}
@@ -82,9 +84,9 @@ export function SurveyList() {
          * просим напечатать: в списке однотипных методик легко снять соседнюю.
          */
         <ConfirmByName
-          title="Снять методику с использования"
+          title={ut("cl.archiveConfirm")}
           name={confirming.title}
-          actionLabel="Снять с использования"
+          actionLabel={ut("cl.archive")}
           warning={
             <>
               <p style={{ margin: "0 0 6px" }}>
@@ -102,7 +104,7 @@ export function SurveyList() {
             await api.archiveSurvey(confirming.id);
             setConfirming(null);
             await load();
-            toast("Методика снята с использования", "ok");
+            toast(ut("cl.archived"), "ok");
           }}
         />
       ) : null}
@@ -110,7 +112,7 @@ export function SurveyList() {
       {error ? <p className="error">{error}</p> : null}
       {importIssues?.length ? (
         <div className="card" style={{ borderColor: "var(--sev-mild)", marginTop: 12 }}>
-          <h2>Замечания к файлу</h2>
+          <h2>{ut("cl.fileIssues")}</h2>
           {importIssues.map((i, k) => (
             <p key={k} style={{ margin: "4px 0", fontSize: 13 }}>
               <span style={{ color: i.level === "error" ? "var(--sev-severe)" : "var(--sev-mild)" }}>
@@ -125,7 +127,7 @@ export function SurveyList() {
       <div className="card scroll-x" style={{ marginTop: 16 }}>
         <table>
           <thead>
-            <tr><th>Название</th><th>Статус</th><th>Заполняет</th><th>Видимость</th><th className="num">Вопросов</th><th className="num">Прохождений</th><th /></tr>
+            <tr><th>{ut("cl.name")}</th><th>{ut("cl.status")}</th><th>{ut("cl.filledBy")}</th><th>{ut("cl.visibility")}</th><th className="num">{ut("cl.questions")}</th><th className="num">{ut("cl.responses")}</th><th /></tr>
           </thead>
           <tbody>
             {rows.map((s) => (
@@ -141,8 +143,8 @@ export function SurveyList() {
                     s.status
                   )}
                 </td>
-                <td className="muted">{s.administration === "clinician" ? "специалист" : "респондент"}</td>
-                <td className="muted">{s.visibility === "restricted" ? "по назначению" : "общая"}</td>
+                <td className="muted">{s.administration === "clinician" ? ut("cl.clinician") : ut("cl.respondent")}</td>
+                <td className="muted">{s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}</td>
                 <td className="num">{s.questionCount}</td>
                 <td className="num">{s.responseCount}</td>
                 <td>

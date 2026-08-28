@@ -2,8 +2,10 @@ import { useState } from "react";
 import { BulkPaste } from "./BulkPaste";
 import { Loc, Toggle } from "./fields";
 import { TYPES, newUid, type Draft, type DraftQuestion } from "./model";
+import { useLang } from "../../lang";
 
 export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
+  const { ut } = useLang();
   const [bulk, setBulk] = useState(false);
   const upd = (i: number, q: Partial<DraftQuestion>) =>
     setDraft((d) => ({ ...d, questions: d.questions.map((x, k) => (k === i ? { ...x, ...q } : x)) }));
@@ -34,7 +36,7 @@ export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d:
             сдвигает ключи, поэтому меняйте порядок до того, как зададите ключ.
           </p>
           <div className="row tight">
-            <button onClick={() => setBulk(true)}>Вставить пункты из текста</button>
+            <button onClick={() => setBulk(true)}>{ut("co.bulkPaste")}</button>
             <button
               className="primary"
               onClick={() =>
@@ -48,8 +50,8 @@ export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d:
                       title: { uk: "", ru: "" },
                       required: true,
                       options: [
-                        { text: { uk: "Так", ru: "Да" }, keyCode: "yes" },
-                        { text: { uk: "Ні", ru: "Нет" }, keyCode: "no" },
+                        { text: { uk: ut("bp.yes"), ru: "Да" }, keyCode: "yes" },
+                        { text: { uk: "Ні", ru: ut("bp.no") }, keyCode: "no" },
                       ],
                     },
                   ],

@@ -3,8 +3,10 @@ import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
-const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "женщины", all: "вся выборка" };
+// ключи: карта вне компонента, перевод берётся при отрисовке
+const SEX_KEY = { male: "nm.men", female: "nm.women", all: "nm.wholeSample" } as const;
 
 /**
  * Локальные нормы: пересчёт M/SD по фактической выборке учреждения.
@@ -17,6 +19,7 @@ const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "ж�
 type NormsTab = "table" | "curves";
 
 export default function Norms() {
+  const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const [tab, setTab] = useState<NormsTab>("table");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -34,7 +37,7 @@ export default function Norms() {
         return (
     <>
       <PageHead
-        title="Локальные нормы"
+        title={ut("nm.title")}
         crumbs={<Link to={`/surveys/${id}`}>← Аналитика методики</Link>}
         sub="M и SD по фактической выборке учреждения против норм пособия"
         actions={
@@ -46,7 +49,7 @@ export default function Norms() {
                   await api.applyNorms(id!, [...picked]);
                   setPicked(new Set());
                   reload();
-                }, "Локальные нормы опубликованы новой версией")
+                }, ut("nm.published"))
               }
             >
               Опубликовать для {picked.size} шкал
@@ -68,8 +71,8 @@ export default function Norms() {
 
       {tab === "table" && !data.scales.length ? (
         <Empty
-          title="Здесь нечего пересчитывать"
-          hint="Локальные нормы применимы только к шкалам с T-баллами. У этой методики таких нет — доли и стены нормируются иначе."
+          title={ut("nm.nothing")}
+          hint={ut("nm.nothingHint")}
         />
       ) : null}
 
@@ -102,12 +105,12 @@ export default function Norms() {
             <table>
               <thead>
                 <tr>
-                  <th>Группа</th>
-                  <th className="num">Норма сейчас (M / SD)</th>
-                  <th>Источник</th>
-                  <th className="num">Кандидат (M / SD)</th>
+                  <th>{ut("nm.group")}</th>
+                  <th className="num">{ut("nm.currentNorm")}</th>
+                  <th>{ut("nm.source")}</th>
+                  <th className="num">{ut("nm.candidate")}</th>
                   <th className="num">N</th>
-                  <th className="num">Сдвиг среднего T</th>
+                  <th className="num">{ut("nm.shift")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -122,7 +125,7 @@ export default function Norms() {
                       : null;
                   return (
                     <tr key={sex}>
-                      <td>{SEX_LABEL[sex]}</td>
+                      <td>{ut(SEX_KEY[sex as keyof typeof SEX_KEY])}</td>
                       <td className="num">{cur ? `${cur.mean} / ${cur.sd}` : "—"}</td>
                       <td className="muted" style={{ fontSize: 12 }}>{cur?.source ?? "—"}</td>
                       <td className="num">
@@ -158,7 +161,7 @@ export default function Norms() {
         <p className="hint" style={{ margin: 0 }}>
           Публикация создаёт новую версию методики: собранные прохождения остаются на прежних
           нормах, происхождение каждой нормы фиксируется («локальная выборка, N=…»).
-          <Link to={`/surveys/${id}/key`} style={{ marginLeft: 6 }}>Проверить ключи после публикации</Link>
+          <Link to={`/surveys/${id}/key`} style={{ marginLeft: 6 }}>{ut("nm.checkKeys")}</Link>
         </p>
       </div>
       ) : null}
@@ -175,6 +178,7 @@ export default function Norms() {
  * там, где данных мало, окно шире, и кривая грубее.
  */
 function AgeCurves({ surveyId }: { surveyId: string }) {
+  const { ut } = useLang();
   const { data, error } = useResource(() => api.ageCurves(surveyId), [surveyId]);
 
   if (error) return <p className="error">{error}</p>;
@@ -182,7 +186,7 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
   if (!data.scales.length) {
     return (
       <Empty
-        title="Кривых пока нет"
+        title={ut("nm.noCurves")}
         hint={`Для кривой нужно минимум ${data.minWindow} прохождений одного пола с указанным возрастом. Накопится — появятся.`}
       />
     );
@@ -200,7 +204,7 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
             {scale.bySex.filter((b) => b.enough).map((b) => (
               <div key={b.sex}>
                 <p className="hint" style={{ marginTop: 0 }}>
-                  {b.sex === "male" ? "Мужчины" : "Женщины"} · окно ±{b.points[0]?.halfWidth ?? "?"} лет
+                  {b.sex === "male" ? ut("nm.menCap") : ut("nm.womenCap")} · окно ±{b.points[0]?.halfWidth ?? "?"} лет
                 </p>
                 <CurveTable points={b.points} />
               </div>
@@ -213,6 +217,7 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
 }
 
 function CurveTable({ points }: { points: { age: number; n: number; halfWidth: number; percentiles: { q: number; value: number }[] }[] }) {
+  const { ut } = useLang();
   // показываем опорные возрасты: сплошная таблица по каждому году нечитаема
   const step = Math.max(1, Math.floor(points.length / 8));
   const shown = points.filter((_, i) => i % step === 0);
@@ -220,7 +225,7 @@ function CurveTable({ points }: { points: { age: number; n: number; halfWidth: n
     <table>
       <thead>
         <tr>
-          <th className="num">Возраст</th>
+          <th className="num">{ut("nm.age")}</th>
           {shown[0]?.percentiles.map((p) => (
             <th key={p.q} className="num">P{Math.round(p.q * 100)}</th>
           ))}

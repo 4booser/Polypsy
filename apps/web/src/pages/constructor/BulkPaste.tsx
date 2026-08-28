@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { newUid, type DraftQuestion } from "./model";
+import { useLang } from "../../lang";
 
 /**
  * Массовая вставка пунктов из текста пособия.
@@ -58,6 +59,7 @@ export function BulkPaste({
   onAppend: (questions: DraftQuestion[]) => void;
   onClose: () => void;
 }) {
+  const { ut } = useLang();
   const [raw, setRaw] = useState("");
   const [lang, setLang] = useState<"uk" | "ru">("uk");
   const [type, setType] = useState<"yesno" | "single">("yesno");
@@ -76,8 +78,8 @@ export function BulkPaste({
       options:
         type === "yesno"
           ? [
-              { text: { uk: "Так", ru: "Да" }, keyCode: "yes" },
-              { text: { uk: "Ні", ru: "Нет" }, keyCode: "no" },
+              { text: { uk: ut("bp.yes"), ru: "Да" }, keyCode: "yes" },
+              { text: { uk: "Ні", ru: ut("bp.no") }, keyCode: "no" },
             ]
           : [],
     }));
@@ -88,7 +90,7 @@ export function BulkPaste({
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Вставка пунктов из текста</h2>
+        <h2>{ut("bp.title")}</h2>
         <button onClick={onClose}>Закрыть</button>
       </div>
       <p className="hint">
@@ -104,17 +106,17 @@ export function BulkPaste({
       />
       <div className="form-grid" style={{ marginTop: 10 }}>
         <label className="field">
-          <span>Язык вставляемого текста</span>
+          <span>{ut("bp.lang")}</span>
           <select value={lang} onChange={(e) => setLang(e.target.value as never)}>
             <option value="uk">украинский</option>
             <option value="ru">русский</option>
           </select>
         </label>
         <label className="field">
-          <span>Тип вопросов</span>
+          <span>{ut("bp.type")}</span>
           <select value={type} onChange={(e) => setType(e.target.value as never)}>
-            <option value="yesno">Да / Нет</option>
-            <option value="single">Один ответ (варианты добавите после)</option>
+            <option value="yesno">{ut("bp.yesNo")}</option>
+            <option value="single">{ut("bp.single")}</option>
           </select>
         </label>
       </div>

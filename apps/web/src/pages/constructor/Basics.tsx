@@ -1,6 +1,7 @@
 import type { SurveyGroupWithCounts } from "@quizzy/shared";
 import { Loc, Toggle } from "./fields";
 import type { Draft } from "./model";
+import { useLang } from "../../lang";
 
 export function Basics({
   draft,
@@ -11,21 +12,22 @@ export function Basics({
   groups: SurveyGroupWithCounts[];
   patch: (p: Partial<Draft>) => void;
 }) {
+  const { ut } = useLang();
   return (
     <>
       <div className="card">
-        <h2>Название и описание</h2>
-        <p className="hint">Слева украинский вариант, справа русский</p>
-        <Loc label="Название" value={draft.title} onChange={(v) => patch({ title: v })} />
-        <Loc label="Описание" value={draft.description} onChange={(v) => patch({ description: v })} multiline />
+        <h2>{ut("cb.titleAndDescription")}</h2>
+        <p className="hint">{ut("cb.twoLangs")}</p>
+        <Loc label={ut("cb.title")} value={draft.title} onChange={(v) => patch({ title: v })} />
+        <Loc label={ut("cb.description")} value={draft.description} onChange={(v) => patch({ description: v })} multiline />
         <Loc
-          label="Инструкция перед прохождением"
+          label={ut("cb.instructions")}
           value={draft.instructions}
           onChange={(v) => patch({ instructions: v })}
           multiline
         />
         <Loc
-          label="Немедленные действия при критическом ответе (safety-план)"
+          label={ut("cb.safetyPlan")}
           value={draft.safetyPlan ?? undefined}
           onChange={(v) => patch({ safetyPlan: v })}
           multiline
@@ -37,10 +39,10 @@ export function Basics({
       </div>
 
       <div className="card">
-        <h2>Кто и как проходит</h2>
+        <h2>{ut("cb.whoAndHow")}</h2>
         <div className="row">
           <div className="field" style={{ flex: 1, minWidth: 220 }}>
-            <label>Группа</label>
+            <label>{ut("cb.group")}</label>
             <select value={draft.groupId ?? ""} onChange={(e) => patch({ groupId: e.target.value || null })}>
               <option value="">— без группы —</option>
               {groups.map((g) => (
@@ -49,49 +51,49 @@ export function Basics({
             </select>
           </div>
           <div className="field" style={{ flex: 1, minWidth: 220 }}>
-            <label>Кто заполняет</label>
+            <label>{ut("cb.whoFills")}</label>
             <select
               value={draft.administration}
               onChange={(e) => patch({ administration: e.target.value as Draft["administration"] })}
             >
-              <option value="self">Респондент сам</option>
-              <option value="clinician">Специалист за респондента</option>
+              <option value="self">{ut("cb.selfAdmin")}</option>
+              <option value="clinician">{ut("cb.clinicianAdmin")}</option>
             </select>
           </div>
           <div className="field" style={{ flex: 1, minWidth: 220 }}>
-            <label>Видимость</label>
+            <label>{ut("cb.visibility")}</label>
             <select
               value={draft.visibility}
               onChange={(e) => patch({ visibility: e.target.value as Draft["visibility"] })}
             >
-              <option value="public">Всем пациентам</option>
-              <option value="restricted">Только по назначению</option>
+              <option value="public">{ut("cb.allPatients")}</option>
+              <option value="restricted">{ut("cb.byGrantOnly")}</option>
             </select>
           </div>
         </div>
 
-        <Toggle label="Считать баллы по шкалам" value={draft.scoringEnabled} onChange={(v) => patch({ scoringEnabled: v })} />
-        <Toggle label="Показывать прогресс" value={draft.showProgress} onChange={(v) => patch({ showProgress: v })} />
-        <Toggle label="Разрешить возврат назад" value={draft.allowBack} onChange={(v) => patch({ allowBack: v })} />
-        <Toggle label="Разрешить повторные прохождения" value={draft.allowRetake} onChange={(v) => patch({ allowRetake: v })} />
-        <Toggle label="Перемешивать вопросы" value={draft.randomizeQuestions} onChange={(v) => patch({ randomizeQuestions: v })} />
-        <Toggle label="Анонимно" value={draft.anonymous} onChange={(v) => patch({ anonymous: v })} />
+        <Toggle label={ut("cb.scoring")} value={draft.scoringEnabled} onChange={(v) => patch({ scoringEnabled: v })} />
+        <Toggle label={ut("cb.showProgress")} value={draft.showProgress} onChange={(v) => patch({ showProgress: v })} />
+        <Toggle label={ut("cb.allowBack")} value={draft.allowBack} onChange={(v) => patch({ allowBack: v })} />
+        <Toggle label={ut("cb.allowRetake")} value={draft.allowRetake} onChange={(v) => patch({ allowRetake: v })} />
+        <Toggle label={ut("cb.randomize")} value={draft.randomizeQuestions} onChange={(v) => patch({ randomizeQuestions: v })} />
+        <Toggle label={ut("cb.anonymous")} value={draft.anonymous} onChange={(v) => patch({ anonymous: v })} />
         <Toggle
-          label="Пациент видит свою динамику"
+          label={ut("cb.showDynamics")}
           value={draft.showResultsToPatient ?? false}
           onChange={(v) => patch({ showResultsToPatient: v })}
         />
       </div>
 
       <div className="card">
-        <h2>Пороги</h2>
+        <h2>{ut("cb.thresholds")}</h2>
         <p className="hint">
           Порог «слишком быстро» задаётся отдельно: матричный вопрос требует заметно больше
           времени, чем «да/нет», и общий порог либо пропускает небрежность, либо клевещет
         </p>
         <div className="row">
           <div className="field" style={{ flex: 1 }}>
-            <label>Лимит времени, минут</label>
+            <label>{ut("cb.timeLimit")}</label>
             <input
               type="number"
               value={draft.timeLimitSec ? draft.timeLimitSec / 60 : ""}
@@ -108,10 +110,10 @@ export function Basics({
             />
           </div>
           <div className="field" style={{ flex: 1 }}>
-            <label>Эскалация тревоги, минут</label>
+            <label>{ut("cb.escalation")}</label>
             <input
               type="number"
-              placeholder="без эскалации"
+              placeholder={ut("cb.noEscalation")}
               value={draft.alertEscalateMinutes ?? ""}
               onChange={(e) => patch({ alertEscalateMinutes: e.target.value ? Number(e.target.value) : null })}
             />
