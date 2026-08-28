@@ -1650,3 +1650,10 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
 .events-row:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
 .events-mark { width: 6px; height: 6px; border-radius: 50%; flex: none; }
 .events-empty { padding: 22px 13px; text-align: center; color: var(--muted); font-size: var(--fs-small); margin: 0; }
+
+/* ═══ сохранённые виды ═══ */
+.views { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.views .chip { display: inline-flex; align-items: center; gap: 5px; }
+.views-add { border-style: dashed; color: var(--muted); }
+.views-form { display: flex; align-items: center; gap: 6px; }
+.views-form input { width: 190px; }

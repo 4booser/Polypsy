@@ -268,6 +268,18 @@ export type OpenApiSpec = {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
+export interface SavedView {
+  id: string;
+  scope: string;
+  name: string;
+  /** Строка запроса без «?» — то, что восстанавливает срез экрана */
+  params: string;
+  shared: boolean;
+  mine: boolean;
+  ownerName: string;
+  createdAt: string;
+}
+
 export interface TimelineItem {
   id: string;
   kind: "response" | "alert" | "referral" | "conclusion" | "assignment";
@@ -431,6 +443,13 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  views: (scope: string) => unwrap(request<Items<SavedView>>(`/api/views?scope=${scope}`)),
+  saveView: (input: { scope: string; name: string; params: string; shared?: boolean }) =>
+    request<{ id: string }>("/api/views", { method: "POST", body: JSON.stringify(input) }),
+  updateView: (id: string, patch: { name?: string; shared?: boolean; params?: string }) =>
+    request<{ ok: true }>(`/api/views/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteView: (id: string) => request<void>(`/api/views/${id}`, { method: "DELETE" }),
+
   /** Хронология пациента: прохождения, тревоги, направления, заключения на одной оси */
   timeline: (userId: string) => unwrap(request<Items<TimelineItem>>(`/api/timeline/${userId}`)),
 

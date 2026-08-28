@@ -492,3 +492,86 @@ describe("реальное время", () => {
     expect(received.some((e) => e.kind === "alert.created")).toBe(true);
   });
 });
+
+/* ── сохранённые виды ── */
+
+describe("сохранённые виды", () => {
+  test("свой вид сохраняется и находится по экрану", async () => {
+    const created = await api("/api/views", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scope: "alerts", name: "Мои просроченные", params: "assigned=me&all=" }),
+    });
+    expect(created.status).toBe(201);
+
+    const list = await api("/api/views?scope=alerts", adminA.token);
+    const mine = list.body.items.find((v: { id: string }) => v.id === created.body.id);
+    expect(mine.name).toBe("Мои просроченные");
+    expect(mine.mine).toBe(true);
+
+    // на другом экране этого вида нет: срез принадлежит экрану
+    const other = await api("/api/views?scope=patients", adminA.token);
+    expect(other.body.items.some((v: { id: string }) => v.id === created.body.id)).toBe(false);
+  });
+
+  test("личный вид коллеге не виден, общий — виден", async () => {
+    const personal = await api("/api/views", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scope: "patients", name: `Личный ${crypto.randomUUID()}`, params: "q=иванов" }),
+    });
+    const shared = await api("/api/views", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        scope: "patients",
+        name: `Общий ${crypto.randomUUID()}`,
+        params: "unit=Рота",
+        shared: true,
+      }),
+    });
+
+    const asOther = await api("/api/views?scope=patients", adminB.token);
+    const ids = asOther.body.items.map((v: { id: string }) => v.id);
+    expect(ids).not.toContain(personal.body.id);
+    expect(ids).toContain(shared.body.id);
+
+    /*
+     * Общий вид безопасен именно потому, что хранит параметры, а не данные:
+     * открыв его, чужой админ получит тот же фильтр, но выборку сервер
+     * соберёт по его правам.
+     */
+    const view = asOther.body.items.find((v: { id: string }) => v.id === shared.body.id);
+    expect(view.mine).toBe(false);
+    expect(view.params).toBe("unit=Рота");
+  });
+
+  test("чужой вид не правится и не удаляется", async () => {
+    const created = await api("/api/views", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scope: "alerts", name: `Чужой ${crypto.randomUUID()}`, params: "", shared: true }),
+    });
+
+    const patched = await api(`/api/views/${created.body.id}`, adminB.token, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Переименовал" }),
+    });
+    expect(patched.status).toBe(403);
+
+    const removed = await api(`/api/views/${created.body.id}`, adminB.token, { method: "DELETE" });
+    expect(removed.status).toBe(403);
+  });
+
+  test("одинаковые названия в одном экране не заводятся", async () => {
+    // второй «мои просроченные» сбивал бы с толку сильнее, чем отказ
+    const name = `Дубль ${crypto.randomUUID()}`;
+    const first = await api("/api/views", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scope: "referrals", name, params: "all=1" }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await api("/api/views", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ scope: "referrals", name, params: "all=" }),
+    });
+    expect(second.status).toBe(400);
+  });
+});
