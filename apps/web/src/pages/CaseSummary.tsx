@@ -86,6 +86,14 @@ export default function CaseSummaryPage() {
         </div>
       ) : null}
 
+      {/*
+        Две колонки, а не один столбец: карта выросла до двух экранов
+        прокрутки, и «что измерено» перестало помещаться рядом с «что делать».
+        Слева — измерения и цели, справа — клинические действия: план
+        безопасности, записи приёма, консилиум, направления.
+      */}
+      <div className="patient-card">
+        <div className="pc-measures">
       {data.surveys.map((s) => (
         <div className="card scroll-x" key={s.surveyId}>
           <div className="card-head">
@@ -136,17 +144,19 @@ export default function CaseSummaryPage() {
       ))}
 
       <Goals userId={data.userId} summary={data} />
+        </div>
 
-      <Conferences userId={data.userId} />
+        <div className="pc-actions">
+          {/* план безопасности первым: в кризис открывают его */}
+          <SafetyPlanEditor userId={data.userId} />
 
-      {/* план безопасности стоит выше заметок: в кризис открывают его */}
-      <SafetyPlanEditor userId={data.userId} />
+          <div className="card">
+            <NotesEditor userId={data.userId} />
+          </div>
 
-      <div className="card">
-        <NotesEditor userId={data.userId} />
-      </div>
+          <Conferences userId={data.userId} />
 
-      {data.conclusions.length ? (
+          {data.conclusions.length ? (
         <div className="card">
           <h2>{ut("sum.conclusions")}</h2>
           {data.conclusions.map((c, i) => (
@@ -205,6 +215,8 @@ export default function CaseSummaryPage() {
             </tbody>
           </table>
         )}
+          </div>
+        </div>
       </div>
     </>
       )}

@@ -996,3 +996,34 @@ describe("консилиум", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("достоверность изменения в сводке", () => {
+  test("RCI не вырождается в одно и то же число для всех шкал", async () => {
+    /*
+     * SD раньше считалась по тем же двум точкам, между которыми меряется
+     * изменение. Арифметика такого расчёта вырождается: при двух значениях
+     * sd = |Δ|/√2, и RCI выходит ровно ±2.24 всегда — для любой шкалы,
+     * любого человека и любого сдвига. На экране это выглядело как уверенное
+     * «достоверное возрастание» в каждой строке подряд.
+     */
+    const person = await makeUser("user", `rci-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await submitSurvey(surveyInA, person.token);
+
+    const res = await api(`/api/referrals/summary/${person.id}`, adminA.token);
+    expect(res.status).toBe(200);
+
+    const rcis = res.body.surveys
+      .flatMap((s: { scales: { reliableChange: { rci: number } | null }[] }) => s.scales)
+      .map((sc: { reliableChange: { rci: number } | null }) => sc.reliableChange?.rci)
+      .filter((x: number | undefined) => x !== undefined);
+
+    // либо достоверность не посчитана (мало выборки), либо значения различаются
+    if (rcis.length > 1) {
+      expect(new Set(rcis.map((x: number) => Math.abs(x))).size).toBeGreaterThan(1);
+    }
+    for (const rci of rcis) {
+      expect(Math.abs(rci)).not.toBeCloseTo(2.236, 2);
+    }
+  });
+});
