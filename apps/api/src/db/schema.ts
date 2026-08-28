@@ -1267,6 +1267,69 @@ export const alertNotifications = pgTable(
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
 /**
+ * Консилиум по случаю.
+ *
+ * Сводка для консилиума в системе была, а самого процесса — нет: решение
+ * принимали в кабинете и записывали в тетрадь. Через полгода восстановить,
+ * кто что предлагал и почему решили именно так, было невозможно.
+ *
+ * Здесь фиксируются мнения участников и итоговое решение. Особое мнение —
+ * отдельный вид записи, а не примечание: в клинике несогласие участника
+ * должно быть видно, а не растворяться в общем протоколе.
+ */
+export const caseConferences = pgTable(
+  "case_conferences",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Повод: что вынесли на обсуждение */
+    reason: text("reason").notNull(),
+    status: text("status", { enum: ["open", "decided", "cancelled"] })
+      .notNull()
+      .default("open"),
+    /** Шифруется: итоговое решение — клинический текст */
+    decision: text("decision"),
+    decidedAt: timestampCol("decided_at"),
+    decidedBy: text("decided_by").references(() => users.id, { onDelete: "restrict" }),
+    pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
+      onDelete: "set null",
+    }),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    userIdx: index("case_conferences_user_idx").on(t.userId),
+    openIdx: index("case_conferences_open_idx").on(t.createdAt).where(sql`status = 'open'`),
+  }),
+);
+
+/** Мнение участника: обычное или особое */
+export const conferenceOpinions = pgTable(
+  "conference_opinions",
+  {
+    id: text("id").primaryKey(),
+    conferenceId: text("conference_id")
+      .notNull()
+      .references(() => caseConferences.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Шифруется вместе с текстом решения */
+    text: text("text").notNull(),
+    kind: text("kind", { enum: ["opinion", "dissent"] }).notNull().default("opinion"),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    conferenceIdx: index("conference_opinions_conference_idx").on(t.conferenceId, t.createdAt),
+    oncePerAuthor: uniqueIndex("conference_opinions_once").on(t.conferenceId, t.authorId, t.kind),
+  }),
+);
+
+/**
  * Токен устройства для пуш-уведомлений.
  *
  * До этого мобильное приложение молчало: назначили обследование — человек

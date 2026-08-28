@@ -274,6 +274,13 @@
       "when": 1787831282266,
       "tag": "0038_survey_rights",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787831283266,
+      "tag": "0039_conferences",
+      "breakpoints": true
     }
   ]
 }
