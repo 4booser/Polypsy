@@ -404,3 +404,55 @@ describe("информированное согласие", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("полнота проверки зоны на маршрутах о пациенте", () => {
+  /*
+   * Список маршрутов берётся из самого приложения, а не пишется руками:
+   * ровно так уже нашлись четыре таблицы без политик RLS. Новый маршрут с
+   * `:userId` попадёт под проверку в тот же день, когда появится, — и если
+   * забыть в нём проверку зоны, тест упадёт, а не промолчит.
+   *
+   * У adminB есть собственная методика (фикстуры), поэтому отказ приходит
+   * именно из-за чужого пациента, а не из-за пустой зоны.
+   */
+  const notAboutPatients = new Set([
+    // управление правами: адресат — не пациент, а сотрудник или грант
+    "DELETE /api/groups/:id/admins/:userId",
+    "DELETE /api/access/surveys/:id/grants/:userId",
+  ]);
+
+  test("ни один не отвечает про пациента вне зоны", async () => {
+    const person = await makeUser("user", `sweep-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const routes = (app as unknown as { routes: { method: string; path: string }[] }).routes;
+    const checked = [
+      ...new Set(
+        routes
+          .map((r) => `${r.method} ${r.path}`)
+          .filter((r) => r.includes(":userId") && !notAboutPatients.has(r)),
+      ),
+    ];
+    expect(checked.length).toBeGreaterThan(5);
+
+    const leaked: string[] = [];
+    for (const route of checked) {
+      const [method, path] = route.split(" ") as [string, string];
+      const url = path.replace(":userId", person.id);
+      const res = await app.request(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${adminB.token}`,
+          "Content-Type": "application/json",
+        },
+        // тело заведомо неполное: до валидации дело дойти не должно
+        body: method === "GET" ? undefined : "{}",
+      });
+      // 404 — «вне зоны его нет»; 403 — прямой отказ. Всё остальное значит,
+      // что маршрут начал отвечать о чужом пациенте.
+      if (res.status !== 404 && res.status !== 403) leaked.push(`${route} → ${res.status}`);
+    }
+
+    expect(leaked).toEqual([]);
+  });
+});
