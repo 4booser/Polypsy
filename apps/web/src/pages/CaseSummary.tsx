@@ -44,16 +44,17 @@ export default function CaseSummaryPage() {
       </p>
       <PageHead
         title={data.fullName}
-        crumbs={<Link to={`/patients/${data.userId}`}>← Динамика пациента</Link>}
+        crumbs={<Link to={`/patients/${data.userId}`}>← {ut("pt.dynamics")}</Link>}
         sub={[
-          data.sex === "male" ? "муж." : data.sex === "female" ? "жен." : null,
-          data.age !== null ? `${data.age} лет` : null,
+          data.sex === "male" ? ut("adm.male") : data.sex === "female" ? ut("adm.female") : null,
+          data.age !== null ? `${data.age}` : null,
           data.unit,
         ]
           .filter(Boolean)
           .join(" · ")}
         actions={
           <div className="row tight">
+            <Link className="btn" to={`/patients/${data.userId}/timeline`}>{ut("tl.title")}</Link>
             <button onClick={() => setShowForm((v) => !v)}>{ut("ref.new")}</button>
             <button onClick={() => window.print()}>{ut("sum.print")}</button>
           </div>

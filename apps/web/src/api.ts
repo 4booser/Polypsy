@@ -268,6 +268,16 @@ export type OpenApiSpec = {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
+export interface TimelineItem {
+  id: string;
+  kind: "response" | "alert" | "referral" | "conclusion" | "assignment";
+  at: string;
+  title: string;
+  detail?: string | null;
+  severity?: "none" | "mild" | "moderate" | "severe" | null;
+  href?: string | null;
+}
+
 export interface Items<T> {
   items: T[];
 }
@@ -421,6 +431,8 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  /** Хронология пациента: прохождения, тревоги, направления, заключения на одной оси */
+  timeline: (userId: string) => unwrap(request<Items<TimelineItem>>(`/api/timeline/${userId}`)),
 
   dataQuality: (surveyId: string) =>
     request<{

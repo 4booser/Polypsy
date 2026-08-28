@@ -63,6 +63,7 @@ const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const WorklistPage = lazy(() => import("./pages/Worklist"));
 const UnitReportPage = lazy(() => import("./pages/UnitReport"));
 const UiKit = lazy(() => import("./pages/UiKit"));
+const Timeline = lazy(() => import("./pages/Timeline"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
 type Theme = "dark" | "light";
@@ -275,6 +276,7 @@ export default function App() {
           <Route path="/patients" element={<PatientList />} />
           <Route path="/patients/:userId" element={<PatientDynamics />} />
           <Route path="/patients/:userId/summary" element={<CaseSummaryPage />} />
+          <Route path="/patients/:userId/timeline" element={<Timeline />} />
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/ui" element={<UiKit />} />

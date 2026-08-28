@@ -1449,3 +1449,68 @@ kbd, .kbd {
   .triage-queue { max-height: 46vh; border-right: none; border-bottom: 1px solid var(--hairline); }
   .triage-case { padding: 14px 0; }
 }
+
+/* длинная таблица: своя прокрутка, шапка липнет к её верху */
+.virtual-wrap {
+  max-height: min(72vh, 900px);
+  overflow: auto;
+  border-radius: var(--r-sm);
+  contain: strict;
+}
+.virtual-wrap table { table-layout: fixed; }
+.virtual-wrap tbody tr { height: var(--row-h); }
+
+/* ═══ хронология ═══
+ * Ось времени с группировкой по дням: без группировки лента из двухсот
+ * событий читается как журнал, а не как история.
+ */
+.timeline { display: grid; gap: 18px; }
+.tl-day { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: start; }
+.tl-date {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  color: var(--muted);
+  margin: 4px 0 0;
+  position: sticky;
+  top: 56px;
+}
+.tl-events {
+  display: grid;
+  gap: 2px;
+  border-left: 1px solid var(--hairline);
+  padding-left: 16px;
+}
+.tl-event {
+  display: grid;
+  grid-template-columns: 8px 46px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  position: relative;
+}
+.tl-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  margin-left: -20px;
+  align-self: center;
+}
+.tl-event.k-alert .tl-dot { background: var(--sev-severe); }
+.tl-event.k-referral .tl-dot { background: var(--cat-1); }
+.tl-event.k-conclusion .tl-dot { background: var(--cat-3); }
+.tl-time { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); }
+.tl-body { font-size: var(--fs-small); }
+.tl-kind {
+  display: inline-block;
+  min-width: 92px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 8px;
+}
+@media (max-width: 900px) {
+  .tl-day { grid-template-columns: 1fr; gap: 6px; }
+  .tl-date { position: static; }
+}

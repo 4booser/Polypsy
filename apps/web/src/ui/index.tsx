@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Resource } from "../useResource";
 import { useLang } from "../lang";
 
@@ -632,46 +633,152 @@ export function DataTable<T>({
     URL.revokeObjectURL(url);
   };
 
-  return (
-    <div className="scroll-x">
-      {csvName && rows.length ? (
-        <div className="table-tools">
-          <button onClick={exportCsv}>CSV · {rows.length}</button>
-        </div>
-      ) : null}
-      <table>
-        <thead>
-          <tr>
-            {columns.map((c) => (
-              <th
-                key={c.key}
-                className={`${c.num ? "num" : ""} ${c.sort ? "sortable" : ""}`}
-                style={c.width ? { width: c.width } : undefined}
-                onClick={() =>
-                  c.sort &&
-                  setSort(sort?.key === c.key ? { key: c.key, desc: !sort.desc } : { key: c.key })
-                }
-              >
-                {c.header}
-                {sort?.key === c.key ? <span className="arrow">{sort.desc ? "↓" : "↑"}</span> : null}
-              </th>
+  const head = (
+    <thead>
+      <tr>
+        {columns.map((c) => (
+          <th
+            key={c.key}
+            className={`${c.num ? "num" : ""} ${c.sort ? "sortable" : ""}`}
+            style={c.width ? { width: c.width } : undefined}
+            onClick={() =>
+              c.sort &&
+              setSort(sort?.key === c.key ? { key: c.key, desc: !sort.desc } : { key: c.key })
+            }
+          >
+            {c.header}
+            {sort?.key === c.key ? <span className="arrow">{sort.desc ? "↓" : "↑"}</span> : null}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
+  const tools =
+    csvName && rows.length ? (
+      <div className="table-tools">
+        <button onClick={exportCsv}>CSV · {rows.length}</button>
+      </div>
+    ) : null;
+
+  /*
+   * Короткие таблицы рисуются целиком: виртуализация стоит собственной
+   * сложности (фиксированная высота строки, отдельный контейнер прокрутки) и
+   * на двух десятках строк только мешает.
+   */
+  if (sorted.length <= VIRTUAL_FROM) {
+    return (
+      <div className="scroll-x">
+        {tools}
+        <table>
+          {head}
+          <tbody>
+            {sorted.map((row, i) => (
+              <tr key={keyOf(row, i)}>
+                {columns.map((c) => (
+                  <td key={c.key} className={c.num ? "num" : ""}>
+                    {c.render(row)}
+                  </td>
+                ))}
+              </tr>
             ))}
-          </tr>
-        </thead>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {tools}
+      <VirtualRows sorted={sorted} columns={columns} head={head} keyOf={keyOf} />
+    </>
+  );
+}
+
+/** С какого числа строк включается виртуализация */
+const VIRTUAL_FROM = 60;
+
+/**
+ * Длинная таблица: в DOM живут только видимые строки.
+ *
+ * Список пациентов — девять тысяч человек, и раньше все девять тысяч строк
+ * рисовались сразу: вкладка занимала полгигабайта и прокручивалась рывками.
+ * Высота строки берётся из токена плотности, поэтому в плотном режиме
+ * пересчёт происходит сам.
+ */
+function VirtualRows<T>({
+  sorted,
+  columns,
+  head,
+  keyOf,
+}: {
+  sorted: T[];
+  columns: Column<T>[];
+  head: ReactNode;
+  keyOf: (row: T, i: number) => string;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const rowHeight = useRowHeight(scrollRef);
+
+  const virtual = useVirtualizer({
+    count: sorted.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 12,
+  });
+
+  const items = virtual.getVirtualItems();
+  const padTop = items[0]?.start ?? 0;
+  const padBottom = virtual.getTotalSize() - (items[items.length - 1]?.end ?? 0);
+
+  return (
+    <div className="scroll-x virtual-wrap" ref={scrollRef}>
+      <table>
+        {head}
         <tbody>
-          {sorted.map((row, i) => (
-            <tr key={keyOf(row, i)}>
-              {columns.map((c) => (
-                <td key={c.key} className={c.num ? "num" : ""}>
-                  {c.render(row)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {/* распорки вместо абсолютного позиционирования: строки таблицы
+              нельзя вынимать из потока, не потеряв выравнивание колонок */}
+          {padTop > 0 ? <tr style={{ height: padTop }} aria-hidden /> : null}
+          {items.map((v) => {
+            const row = sorted[v.index]!;
+            return (
+              <tr key={keyOf(row, v.index)} style={{ height: rowHeight }}>
+                {columns.map((c) => (
+                  <td key={c.key} className={c.num ? "num" : ""}>
+                    {c.render(row)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+          {padBottom > 0 ? <tr style={{ height: padBottom }} aria-hidden /> : null}
         </tbody>
       </table>
     </div>
   );
+}
+
+/**
+ * Высота строки из токена плотности.
+ *
+ * Захардкодить нельзя: в плотном режиме строка ниже на восемь пикселей, и
+ * виртуализация с чужой высотой оставляет пустоты в конце списка.
+ */
+function useRowHeight(ref: React.RefObject<HTMLElement | null>): number {
+  const [h, setH] = useState(38);
+  useEffect(() => {
+    const read = () => {
+      const raw = getComputedStyle(document.documentElement).getPropertyValue("--row-h");
+      const px = Number.parseFloat(raw);
+      if (Number.isFinite(px) && px > 0) setH(px);
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-density"] });
+    return () => observer.disconnect();
+  }, [ref]);
+  return h;
 }
 
 /** Поле поиска с иконкой */

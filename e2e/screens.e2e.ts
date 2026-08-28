@@ -125,4 +125,20 @@ test.describe("экраны с параметром", () => {
     await open(page, { name: "динамика", path: `/patients/${id}` });
     await open(page, { name: "сводка", path: `/patients/${id}/summary` });
   });
+
+  test("хронология пациента открывается и упорядочена", async ({ page }) => {
+    await login(page, "psy");
+    await page.goto("/patients");
+    await page.locator("table tbody tr td a").first().click();
+    // ссылка на хронологию живёт на сводке: туда приходят разбираться
+    await page.getByRole("link", { name: "Сводка для консилиума" }).click();
+    await page.getByRole("link", { name: "Хронология" }).click();
+    await expect(page.locator(".page-head h1")).toHaveText("Хронология");
+    await expect(page.locator(".tl-event").first()).toBeVisible();
+
+    // дни идут от свежего к старому: историю читают с конца
+    const days = await page.locator(".tl-date").allTextContents();
+    expect([...days].sort().reverse()).toEqual(days);
+    await expect(page.locator(".error")).toHaveCount(0);
+  });
 });

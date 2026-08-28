@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, api, app, db, eq, patient, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, api, app, db, eq, makeUser, patient, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Клинические документы: заключения, направления, консилиум */
 
@@ -259,5 +259,67 @@ describe("сводка консилиума", () => {
   test("чужой админ сводку не получает", async () => {
     const res = await api(`/api/referrals/summary/${patient.id}`, adminB.token);
     expect(res.status).toBe(404);
+  });
+});
+
+/* ── хронология ── */
+
+describe("хронология пациента", () => {
+  test("события всех видов на одной оси, свежие сверху", async () => {
+    const person = await makeUser("user", `tl-${crypto.randomUUID()}@test`, { unit: "Рота Т" });
+    const done = await submitSurvey(surveyInA, person.token);
+
+    await api(`/api/conclusions/responses/${done.body.id}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Заключение для хронологии", baseVersion: 0 }),
+    });
+    await api("/api/referrals", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id, destination: "psychiatrist", reason: "хронология" }),
+    });
+
+    const res = await api(`/api/timeline/${person.id}`, adminA.token);
+    expect(res.status).toBe(200);
+
+    const kinds = res.body.items.map((i: { kind: string }) => i.kind);
+    expect(kinds).toContain("response");
+    expect(kinds).toContain("conclusion");
+    expect(kinds).toContain("referral");
+
+    // порядок — от свежего к старому: историю читают с конца
+    const times = res.body.items.map((i: { at: string }) => i.at);
+    expect([...times].sort().reverse()).toEqual(times);
+  });
+
+  test("чужой админ хронологию не получает", async () => {
+    /*
+     * Ответ «пациента нет» здесь честный: вне зоны ответственности его
+     * действительно нет, а «есть, но не покажу» раскрывало бы сам факт
+     * обследования человека.
+     */
+    const person = await makeUser("user", `tl-foreign-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const res = await api(`/api/timeline/${person.id}`, adminB.token);
+    expect(res.status).toBe(404);
+  });
+
+  test("обращение к хронологии попадает в журнал", async () => {
+    // хронология — это чтение карты; такие обращения фиксируются наравне с ней
+    const { auditLog } = await import("../src/db/schema");
+    const { desc: descOp } = await import("drizzle-orm");
+    const person = await makeUser("user", `tl-audit-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    await api(`/api/timeline/${person.id}`, adminA.token);
+
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.subjectUserId, person.id))
+      .orderBy(descOp(auditLog.at))
+      .limit(1);
+    expect(entry!.action).toBe("response.read");
+    expect((entry!.details as { view?: string }).view).toBe("timeline");
   });
 });
