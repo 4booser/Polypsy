@@ -1239,6 +1239,41 @@ export const alertNotifications = pgTable(
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
 /**
+ * Личный план безопасности (Стэнли–Браун).
+ *
+ * У методики уже есть `safetyPlan` — текст немедленных действий, одинаковый
+ * для всех, кто попал в полосу риска. Это инструкция инструмента. Здесь —
+ * другое: план конкретного человека, составленный с ним в кабинете, его
+ * словами и с его телефонами.
+ *
+ * Шифруется целиком: это самый чувствительный документ в системе. Хранится
+ * версиями — план пересматривают, и предыдущая редакция должна остаться.
+ */
+export const safetyPlans = pgTable(
+  "safety_plans",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    /** Шифрованный JSON с разделами плана */
+    content: text("content").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    /** Когда план последний раз пересматривали вместе с человеком */
+    reviewedAt: timestampCol("reviewed_at"),
+  },
+  (t) => ({
+    userVersionIdx: uniqueIndex("safety_plans_user_version_idx").on(t.userId, t.version),
+    activeIdx: index("safety_plans_active_idx").on(t.userId).where(sql`active`),
+  }),
+);
+
+/**
  * Заметка приёма.
  *
  * Заключение привязано к прохождению — оно отвечает на вопрос «что показала

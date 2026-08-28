@@ -80,6 +80,8 @@ export type AuditAction =
   | "analytics.data_quality"
   | "analytics.facets"
   | "referral.list"
+  /* личный план безопасности */
+  | "safety.save"
   /* заметки приёма: запись о человеке вне привязки к прохождению */
   | "note.save"
   | "note.sign"

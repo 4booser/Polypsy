@@ -1,4 +1,6 @@
 import type {
+  SafetyPlan,
+  SafetyPlanContent,
   AuditPage,
   OverviewAnalytics,
   RespondentDynamics,
@@ -516,6 +518,14 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  safetyPlans: (userId: string) =>
+    request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`),
+  saveSafetyPlan: (userId: string, content: SafetyPlanContent) =>
+    request<{ id: string; version: number }>(`/api/safety/patients/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify(content),
+    }),
+
   notes: (userId: string) => request<NoteState>(`/api/notes/patients/${userId}`),
   saveNote: (userId: string, text: string, baseVersion: number, kind?: string) =>
     request<NoteState>(`/api/notes/patients/${userId}`, {

@@ -645,3 +645,98 @@ describe("заметка приёма", () => {
     expect(foreign.status).toBe(404);
   });
 });
+
+/* ── личный план безопасности ── */
+
+describe("план безопасности", () => {
+  const content = {
+    warningSigns: ["Не сплю больше двух ночей", "Перестаю отвечать на сообщения"],
+    copingStrategies: ["Выйти на улицу", "Дыхание 4-7-8"],
+    distractions: ["Спортзал", "Позвонить брату"],
+    people: [{ name: "Брат Игорь", contact: "+380..." }],
+    professionals: [{ name: "Дежурный психолог", contact: "вн. 214" }],
+    meansRestriction: "Табельное оружие сдано на хранение",
+    reasonsToLive: ["Дочь"],
+  };
+
+  test("сохранение создаёт новую версию, а не правит прежнюю", async () => {
+    /*
+     * План пересматривают вместе с человеком, и «как было в марте» —
+     * клинически значимый вопрос: по нему видно, что изменилось в жизни и
+     * что перестало работать.
+     */
+    const person = await makeUser("user", `sp-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const first = await api(`/api/safety/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify(content),
+    });
+    expect(first.status).toBe(201);
+    expect(first.body.version).toBe(1);
+
+    const second = await api(`/api/safety/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ ...content, meansRestriction: "Оружие сдано, ключи у супруги" }),
+    });
+    expect(second.body.version).toBe(2);
+
+    const list = await api(`/api/safety/patients/${person.id}`, adminA.token);
+    expect(list.body.versions).toHaveLength(2);
+    // действующей остаётся ровно одна
+    expect(list.body.versions.filter((v: { active: boolean }) => v.active)).toHaveLength(1);
+    expect(list.body.versions[0].version).toBe(2);
+  });
+
+  test("пациент читает свой план сам", async () => {
+    /*
+     * План нужен человеку в кризисе, когда рядом никого нет, — поэтому
+     * доступ шире обычного клинического: это единственный документ, который
+     * пациент открывает о себе целиком.
+     */
+    const person = await makeUser("user", `sp-own-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await api(`/api/safety/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify(content),
+    });
+
+    const own = await api("/api/safety/me", person.token);
+    expect(own.status).toBe(200);
+    expect(own.body.plan.content.people[0].name).toBe("Брат Игорь");
+    expect(own.body.plan.content.meansRestriction).toContain("оружие");
+  });
+
+  test("чужой план пациенту не отдаётся", async () => {
+    const mine = await makeUser("user", `sp-a-${crypto.randomUUID()}@test`);
+    const other = await makeUser("user", `sp-b-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, mine.token);
+    await submitSurvey(surveyInA, other.token);
+    await api(`/api/safety/patients/${other.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify(content),
+    });
+
+    // у mine плана нет — и чужой он получить не может никаким путём
+    const own = await api("/api/safety/me", mine.token);
+    expect(own.body.plan).toBeNull();
+
+    const foreign = await api(`/api/safety/patients/${other.id}`, mine.token);
+    expect(foreign.status).toBe(404);
+  });
+
+  test("содержимое шифруется в базе", async () => {
+    const { safetyPlans } = await import("../src/db/schema");
+    const person = await makeUser("user", `sp-enc-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await api(`/api/safety/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify(content),
+    });
+
+    const [row] = await db.select().from(safetyPlans).where(eq(safetyPlans.userId, person.id));
+    expect(row!.content.startsWith("enc1:v1:")).toBe(true);
+    // самый чувствительный документ в системе не лежит открытым ни секунды
+    expect(row!.content).not.toContain("Брат");
+  });
+});

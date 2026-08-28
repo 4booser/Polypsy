@@ -1,4 +1,11 @@
-import type { BatteryAssignment, SurveyFull, SurveyGroupWithCounts, SurveyListItem, User } from "@quizzy/shared";
+import type {
+  BatteryAssignment,
+  SafetyPlan,
+  SurveyFull,
+  SurveyGroupWithCounts,
+  SurveyListItem,
+  User,
+} from "@quizzy/shared";
 import { store } from "./store";
 
 /**
@@ -16,6 +23,15 @@ export const cache = {
 
   saveBatteries: (rows: BatteryAssignment[]) => store.write("list:batteries", rows),
   batteries: () => store.read<BatteryAssignment[]>("list:batteries"),
+
+  /*
+   * План безопасности хранится офлайн намеренно и отдельно от прочего кэша:
+   * он нужен в кризис, а кризис не спрашивает, есть ли сеть. Это
+   * единственный документ, который приложение обязано показать в самолётном
+   * режиме.
+   */
+  saveSafetyPlan: (plan: SafetyPlan | null) => store.write("safety:plan", plan),
+  safetyPlan: () => store.read<SafetyPlan>("safety:plan"),
 
   saveSurvey: (survey: SurveyFull) => store.write(`survey:${survey.id}`, survey),
   survey: (id: string) => store.read<SurveyFull>(`survey:${id}`),
