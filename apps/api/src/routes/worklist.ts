@@ -2,10 +2,22 @@ import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import { db } from "../db";
-import { alertCases, batteries, batteryAssignments, referrals, surveyAccess, surveys, users } from "../db/schema";
+import {
+  alertCases,
+  batteries,
+  batteryAssignments,
+  pathwayInstances,
+  pathwayProgress,
+  pathways,
+  pathwaySteps,
+  referrals,
+  surveyAccess,
+  surveys,
+  users,
+} from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -22,7 +34,7 @@ export const worklistRoutes = new Hono<AppEnv>();
 
 worklistRoutes.use("*", requireAuth, requireStaff);
 
-type Kind = "case" | "assignment" | "referral" | "followup";
+type Kind = "case" | "assignment" | "referral" | "followup" | "pathway";
 
 interface Item {
   kind: Kind;
@@ -58,7 +70,7 @@ interface Item {
  * потом по давности. Без общего правила список превратился бы в три списка,
  * склеенных подряд, — то есть в то же самое, от чего уходим.
  */
-const KIND_WEIGHT: Record<Kind, number> = { case: 0, followup: 1, referral: 2, assignment: 3 };
+const KIND_WEIGHT: Record<Kind, number> = { case: 0, pathway: 1, followup: 2, referral: 3, assignment: 4 };
 
 worklistRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -244,6 +256,55 @@ worklistRoutes.get("/", async (c) => {
     });
   }
 
+  /*
+   * Просроченные шаги маршрутов. Без этого маршрут был бы отдельным списком,
+   * который надо не забыть открыть, — то есть ровно тем, от чего уходим:
+   * очередь работы существует, чтобы держать всё входящее в одном месте.
+   */
+  const allowedPatients = await accessiblePatientIds(user);
+  if (!allowedPatients || allowedPatients.size) {
+    const overdueSteps = await db
+      .select({
+        progress: pathwayProgress,
+        step: pathwaySteps,
+        instance: pathwayInstances,
+        pathway: pathways,
+        patient: users,
+      })
+      .from(pathwayProgress)
+      .innerJoin(pathwaySteps, eq(pathwaySteps.id, pathwayProgress.stepId))
+      .innerJoin(pathwayInstances, eq(pathwayInstances.id, pathwayProgress.instanceId))
+      .innerJoin(pathways, eq(pathways.id, pathwayInstances.pathwayId))
+      .leftJoin(users, eq(users.id, pathwayInstances.userId))
+      .where(
+        and(
+          eq(pathwayProgress.state, "pending"),
+          isNull(pathwayInstances.closedAt),
+          isNotNull(pathwayProgress.dueAt),
+          sql`${pathwayProgress.dueAt} < now()`,
+          allowedPatients ? inArray(pathwayInstances.userId, [...allowedPatients]) : undefined,
+        ),
+      )
+      .limit(200);
+
+    for (const row of overdueSteps) {
+      const days = Math.floor((now - new Date(row.progress.dueAt!).getTime()) / 86_400_000);
+      items.push({
+        kind: "pathway",
+        id: row.progress.id,
+        userId: row.instance.userId,
+        userName: row.patient ? fullNameOf(row.patient) : "—",
+        unit: row.patient?.unit ?? null,
+        title: `${t(row.pathway.title as never)}: ${t(row.step.title as never)}`,
+        days,
+        overdue: true,
+        assignedTo: null,
+        since: row.progress.dueAt!,
+        href: `/pathways/${row.instance.id}`,
+      });
+    }
+  }
+
   items.sort(
     (a, b) =>
       Number(b.overdue) - Number(a.overdue) ||
@@ -263,6 +324,7 @@ worklistRoutes.get("/", async (c) => {
       followup: items.filter((i) => i.kind === "followup").length,
       referral: items.filter((i) => i.kind === "referral").length,
       assignment: items.filter((i) => i.kind === "assignment").length,
+      pathway: items.filter((i) => i.kind === "pathway").length,
     },
     mine,
   });

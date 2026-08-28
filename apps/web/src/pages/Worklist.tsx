@@ -12,6 +12,7 @@ const KIND_KEY = {
   followup: "work.kindFollowup",
   referral: "work.kindReferral",
   assignment: "work.kindAssignment",
+  pathway: "work.kindPathway",
 } as const;
 
 /**
@@ -136,5 +137,8 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
       return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
     case "followup":
       return `${i.title} · ${t("work.followupMissed")} · ${i.days ?? 0} ${t("work.daysOverdue")}`;
+    case "pathway":
+      // у шага маршрута заголовок уже несёт «маршрут: шаг» — остаётся просрочка
+      return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
   }
 }

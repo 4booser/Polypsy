@@ -323,3 +323,207 @@ describe("хронология пациента", () => {
     expect((entry!.details as { view?: string }).view).toBe("timeline");
   });
 });
+
+/* ── маршруты помощи ── */
+
+describe("маршрут помощи", () => {
+  let pathwayId: string;
+
+  test("шаблон заводится со шагами и сроками", async () => {
+    const res = await api("/api/pathways", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        title: { uk: "Ризик", ru: "Риск" },
+        steps: [
+          { title: { uk: "Скринінг", ru: "Скрининг" }, kind: "survey", surveyId: surveyInA, dueDays: 0 },
+          { title: { uk: "Бесіда", ru: "Беседа" }, kind: "action", dueDays: 1 },
+          { title: { uk: "Рішення", ru: "Решение" }, kind: "decision", dueDays: 14, required: false },
+        ],
+      }),
+    });
+    expect(res.status).toBe(201);
+    pathwayId = res.body.id;
+
+    const list = await api("/api/pathways", adminA.token);
+    const mine = list.body.items.find((p: { id: string }) => p.id === pathwayId);
+    expect(mine.steps).toHaveLength(3);
+    expect(mine.steps[0].kind).toBe("survey");
+  });
+
+  test("человек ставится на маршрут, сроки считаются от старта", async () => {
+    /*
+     * Срок шага — от начала маршрута, а не от предыдущего шага: иначе
+     * просрочка одного сдвигает все следующие, и «через две недели после
+     * скрининга» превращается в «когда-нибудь».
+     */
+    const person = await makeUser("user", `pw-${crypto.randomUUID()}@test`, { unit: "Рота П" });
+    await submitSurvey(surveyInA, person.token);
+
+    const started = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+    expect(started.status).toBe(201);
+
+    const detail = await api(`/api/pathways/instances/${started.body.id}`, adminA.token);
+    expect(detail.body.steps).toHaveLength(3);
+
+    const [first, second, third] = detail.body.steps;
+    const day = 86_400_000;
+    const startedAt = new Date(detail.body.startedAt).getTime();
+    expect(new Date(first.dueAt).getTime() - startedAt).toBeLessThan(day);
+    expect(Math.round((new Date(second.dueAt).getTime() - startedAt) / day)).toBe(1);
+    expect(Math.round((new Date(third.dueAt).getTime() - startedAt) / day)).toBe(14);
+  });
+
+  test("второй такой же маршрут не открывается", async () => {
+    // два списка шагов рядом невозможно разобрать, и это почти всегда ошибка
+    const person = await makeUser("user", `pw2-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const first = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+    expect(first.status).toBe(201);
+
+    const second = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+    expect(second.status).toBe(400);
+  });
+
+  test("пропуск обязательного шага требует объяснения", async () => {
+    /*
+     * Без объяснения запись «шаг пропущен» через месяц ничего не значит — а
+     * именно к ней возвращаются, разбирая, почему человек не дошёл до помощи.
+     */
+    const person = await makeUser("user", `pw3-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const started = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+    const detail = await api(`/api/pathways/instances/${started.body.id}`, adminA.token);
+    const required = detail.body.steps.find((s: { required: boolean }) => s.required);
+    const optional = detail.body.steps.find((s: { required: boolean }) => !s.required);
+
+    const bare = await api(`/api/pathways/progress/${required.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ state: "skipped" }),
+    });
+    expect(bare.status).toBe(400);
+
+    const explained = await api(`/api/pathways/progress/${required.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ state: "skipped", note: "Проходил на прошлой неделе" }),
+    });
+    expect(explained.status).toBe(200);
+
+    // необязательный пропускается без объяснений
+    const soft = await api(`/api/pathways/progress/${optional.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ state: "skipped" }),
+    });
+    expect(soft.status).toBe(200);
+  });
+
+  test("в списке видно, где стоим и что просрочено", async () => {
+    const person = await makeUser("user", `pw4-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const started = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+
+    const list = await api("/api/pathways/instances", adminA.token);
+    const mine = list.body.items.find((i: { id: string }) => i.id === started.body.id);
+    expect(mine.total).toBe(3);
+    expect(mine.done).toBe(0);
+    // «где стоим» — первый незакрытый шаг: он и есть ответ на вопрос.
+    // Язык по умолчанию украинский: заголовок приходит на нём, и это верно —
+    // сервер локализует контент, а не отдаёт ключи
+    expect(mine.currentStep).toBe("Скринінг");
+    // первый шаг со сроком «в тот же день» уже просрочен
+    expect(mine.overdue).toBeGreaterThanOrEqual(1);
+  });
+
+  test("чужой админ маршрут не видит и не правит", async () => {
+    const person = await makeUser("user", `pw5-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const started = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+
+    const foreign = await api(`/api/pathways/instances/${started.body.id}`, adminB.token);
+    expect(foreign.status).toBe(404);
+
+    const list = await api("/api/pathways/instances", adminB.token);
+    expect(list.body.items.some((i: { id: string }) => i.id === started.body.id)).toBe(false);
+  });
+
+  test("закрытие требует исхода и делает маршрут неизменяемым", async () => {
+    const person = await makeUser("user", `pw6-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const started = await api(`/api/pathways/${pathwayId}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+
+    const noOutcome = await api(`/api/pathways/instances/${started.body.id}/close`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    expect(noOutcome.status).toBe(400);
+
+    const closed = await api(`/api/pathways/instances/${started.body.id}/close`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ outcome: "resolved", note: "Снят с наблюдения" }),
+    });
+    expect(closed.status).toBe(200);
+
+    // после закрытия шаги не двигаются: маршрут стал историей
+    const detail = await api(`/api/pathways/instances/${started.body.id}`, adminA.token);
+    const step = detail.body.steps[0];
+    const late = await api(`/api/pathways/progress/${step.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ state: "done" }),
+    });
+    expect(late.status).toBe(400);
+  });
+});
+
+describe("маршрут в очереди работы", () => {
+  test("просроченный шаг попадает в общую очередь", async () => {
+    /*
+     * Иначе маршрут был бы отдельным списком, который надо не забыть
+     * открыть, — то есть ровно тем, от чего уходим: очередь существует,
+     * чтобы держать всё входящее в одном месте.
+     */
+    const template = await api("/api/pathways", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        title: { uk: "Черга", ru: "Очередь" },
+        steps: [{ title: { uk: "Прострочений крок", ru: "Просроченный шаг" }, kind: "action", dueDays: 0 }],
+      }),
+    });
+
+    const person = await makeUser("user", `wl-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await api(`/api/pathways/${template.body.id}/start`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: person.id }),
+    });
+
+    const work = await api("/api/worklist", adminA.token);
+    const mine = work.body.items.filter(
+      (i: { kind: string; userId: string }) => i.kind === "pathway" && i.userId === person.id,
+    );
+    expect(mine).toHaveLength(1);
+    expect(mine[0].overdue).toBe(true);
+    // ссылка ведёт на маршрут, а не на карту: работать надо там
+    expect(mine[0].href).toContain("/pathways/");
+  });
+});

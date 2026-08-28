@@ -23,6 +23,7 @@ import {
   IconPatients,
   IconPulse,
   IconReferral,
+  IconRoute,
   IconSurvey,
   IconUsers,
   Loading,
@@ -65,6 +66,8 @@ const WorklistPage = lazy(() => import("./pages/Worklist"));
 const UnitReportPage = lazy(() => import("./pages/UnitReport"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
+const Pathways = lazy(() => import("./pages/Pathways"));
+const PathwayDetail = lazy(() => import("./pages/Pathways").then((m) => ({ default: m.PathwayDetailPage })));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
 type Theme = "dark" | "light";
@@ -223,6 +226,7 @@ export default function App() {
         <Nav to="/unit-report" icon={<IconGroup />}>{ut("nav.unitReport")}</Nav>
         <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>{ut("nav.cases")}</Nav>
         <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>{ut("nav.referrals")}</Nav>
+        <Nav to="/pathways" icon={<IconRoute />}>{ut("pw.title")}</Nav>
 
         {isSuper ? (
           <>
@@ -290,6 +294,8 @@ export default function App() {
           <Route path="/patients/:userId/summary" element={<CaseSummaryPage />} />
           <Route path="/patients/:userId/timeline" element={<Timeline />} />
           <Route path="/referrals" element={<ReferralsPage />} />
+          <Route path="/pathways" element={<Pathways />} />
+          <Route path="/pathways/:id" element={<PathwayDetail />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/ui" element={<UiKit />} />
           <Route path="/batteries" element={<Batteries />} />
