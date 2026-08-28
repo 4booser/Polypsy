@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, and, api, db, eq, isNull, patient, responsesTable, root, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, and, api, db, eq, isNull, patient, responsesTable, root, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Риск: тревоги, случаи, разбор и передача смены */
 
@@ -26,6 +26,12 @@ describe("рассыльщик тревог", () => {
       .update(surveysTable)
       .set({ alertEscalateMinutes: 30 })
       .where(eq(surveysTable.id, surveyInA));
+
+    /*
+     * Прохождение создаётся здесь же: раньше тест брал первое попавшееся из
+     * базы и работал только потому, что соседний файл успел его положить.
+     */
+    await submitSurvey(surveyInA, patient.token);
 
     // тревога 40-минутной давности, не подтверждена
     const alertId = crypto.randomUUID();
