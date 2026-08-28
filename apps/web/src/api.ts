@@ -527,6 +527,13 @@ export const api = {
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
   worklist: () => request<Worklist>("/api/worklist"),
+
+  presenceHere: (resource: string) =>
+    request<{ ok: true }>("/api/presence", { method: "POST", body: JSON.stringify({ resource }) }),
+  presenceOthers: (resource: string) =>
+    request<{ others: { id: string; name: string }[] }>(
+      `/api/presence?resource=${encodeURIComponent(resource)}`,
+    ),
   unitReportUnits: () => unwrap(request<Items<string>>("/api/unit-report/units")),
   unitReport: (unit: string, from?: string, to?: string) => {
     const qs = new URLSearchParams({ unit });

@@ -849,3 +849,60 @@ describe("правовой статус и демонстрационные ме
     expect(mine.keysVerifiedAt).not.toBeNull();
   });
 });
+
+describe("присутствие", () => {
+  test("сосед по экрану виден, сам себя человек не видит", async () => {
+    const resource = `patient:${crypto.randomUUID()}`;
+
+    await api("/api/presence", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ resource }),
+    });
+    await api("/api/presence", root.token, {
+      method: "POST",
+      body: JSON.stringify({ resource }),
+    });
+
+    const mine = await api(`/api/presence?resource=${encodeURIComponent(resource)}`, adminA.token);
+    expect(mine.body.others.map((o: { id: string }) => o.id)).toEqual([root.id]);
+  });
+
+  test("присутствие ничего не блокирует", async () => {
+    /*
+     * Проверяется именно это: жёсткая блокировка в клинике опаснее конфликта.
+     * Пока один сотрудник «здесь», второй обязан сохранять как обычно —
+     * от потери правок защищает проверка версии, а не запрет.
+     */
+    const person = await makeUser("user", `presence-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    await api("/api/presence", root.token, {
+      method: "POST",
+      body: JSON.stringify({ resource: `note:${person.id}` }),
+    });
+
+    const saved = await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Запись при соседе", baseVersion: 0, kind: "session" }),
+    });
+    expect(saved.status).toBe(200);
+  });
+
+  test("протухшее присутствие не показывается", async () => {
+    const resource = `patient:${crypto.randomUUID()}`;
+    const { presence } = await import("../src/db/schema");
+
+    await api("/api/presence", root.token, {
+      method: "POST",
+      body: JSON.stringify({ resource }),
+    });
+    // отматываем пульс на две минуты назад — живой считается только минута
+    await db
+      .update(presence)
+      .set({ seenAt: new Date(Date.now() - 120_000).toISOString() })
+      .where(eq(presence.userId, root.id));
+
+    const seen = await api(`/api/presence?resource=${encodeURIComponent(resource)}`, adminA.token);
+    expect(seen.body.others).toEqual([]);
+  });
+});

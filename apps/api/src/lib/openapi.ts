@@ -132,6 +132,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff" },
   "GET /api/unit-report": { summary: "Состояние подразделения за период; малые ячейки подавляются", access: "staff" },
   "GET /api/unit-report/units": { summary: "Подразделения для отчёта", access: "staff" },
+  "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff" },
+  "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff" },
   "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff" },
   "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff" },
   "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff" },

@@ -18,6 +18,13 @@ import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http"
 import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
+/** Конец N-го дня от даты: срок истекает вечером, а не в момент старта */
+function endOfDay(from: Date, days: number): string {
+  const d = new Date(from.getTime() + days * 86_400_000);
+  d.setHours(23, 59, 59, 999);
+  return d.toISOString();
+}
+
 export const pathwayRoutes = new Hono<AppEnv>();
 pathwayRoutes.use("*", requireAuth, requireStaff);
 
@@ -173,12 +180,16 @@ pathwayRoutes.post("/:id/start", async (c) => {
       id: crypto.randomUUID(),
       instanceId,
       stepId: s.id,
-      // срок считается от начала маршрута: «через 14 дней» — это от старта,
-      // а не от предыдущего шага, иначе просрочка одного сдвигает все
-      dueAt:
-        s.dueDays === null
-          ? null
-          : new Date(startedAt.getTime() + s.dueDays * 86_400_000).toISOString(),
+      /*
+       * Срок считается от начала маршрута: «через 14 дней» — это от старта,
+       * а не от предыдущего шага, иначе просрочка одного сдвигает все.
+       *
+       * И срок — это дата, а не момент: «в тот же день» истекает вечером
+       * того дня, а не в ту же миллисекунду, что и старт маршрута. Иначе шаг
+       * рождался бы уже просроченным и попадал в очередь работы прежде, чем
+       * кто-нибудь успел его сделать.
+       */
+      dueAt: s.dueDays === null ? null : endOfDay(startedAt, s.dueDays),
     })),
   );
 

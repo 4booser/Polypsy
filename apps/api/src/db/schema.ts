@@ -1789,3 +1789,25 @@ export type LogicRow = typeof questionLogic.$inferSelect;
 export type ResponseRow = typeof responses.$inferSelect;
 export type AnswerRow = typeof answers.$inferSelect;
 export type ResponseScoreRow = typeof responseScores.$inferSelect;
+
+/**
+ * Присутствие сотрудника на экране.
+ *
+ * Строка живёт до следующего пульса: читаются только свежие записи, старые
+ * вычищаются тем же запросом. Хранить это в памяти процесса нельзя —
+ * инстансов API может быть несколько.
+ */
+export const presence = pgTable(
+  "presence",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    resource: text("resource").notNull(),
+    seenAt: timestampCol("seen_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.resource] }),
+    resourceIdx: index("presence_resource_idx").on(t.resource, t.seenAt),
+  }),
+);

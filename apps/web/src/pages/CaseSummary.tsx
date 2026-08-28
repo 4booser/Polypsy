@@ -8,6 +8,7 @@ import { useAuth } from "../auth";
 import { PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
+import { Here } from "../components/Here";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
 import { Goals } from "../components/Goals";
 import { Conferences } from "../components/Conferences";
@@ -59,6 +60,7 @@ export default function CaseSummaryPage() {
           .join(" · ")}
         actions={
           <div className="row tight">
+            <Here resource={`patient:${data.userId}`} />
             <Link className="btn" to={`/patients/${data.userId}/timeline`}>{ut("tl.title")}</Link>
             <button onClick={() => setShowForm((v) => !v)}>{ut("ref.new")}</button>
             <button onClick={() => window.print()}>{ut("sum.print")}</button>

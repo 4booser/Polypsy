@@ -445,8 +445,21 @@ describe("маршрут помощи", () => {
     // Язык по умолчанию украинский: заголовок приходит на нём, и это верно —
     // сервер локализует контент, а не отдаёт ключи
     expect(mine.currentStep).toBe("Скринінг");
-    // первый шаг со сроком «в тот же день» уже просрочен
-    expect(mine.overdue).toBeGreaterThanOrEqual(1);
+    /*
+     * Только что начатый маршрут просрочек не имеет: срок «в тот же день»
+     * истекает вечером. Просрочку проверяем, отмотав срок в прошлое.
+     */
+    expect(mine.overdue).toBe(0);
+
+    const { pathwayProgress } = await import("../src/db/schema");
+    await db
+      .update(pathwayProgress)
+      .set({ dueAt: new Date(Date.now() - 86_400_000).toISOString() })
+      .where(eq(pathwayProgress.instanceId, started.body.id));
+
+    const later = await api("/api/pathways/instances", adminA.token);
+    const overdue = later.body.items.find((i: { id: string }) => i.id === started.body.id);
+    expect(overdue.overdue).toBeGreaterThanOrEqual(1);
   });
 
   test("чужой админ маршрут не видит и не правит", async () => {
@@ -512,10 +525,17 @@ describe("маршрут в очереди работы", () => {
 
     const person = await makeUser("user", `wl-${crypto.randomUUID()}@test`);
     await submitSurvey(surveyInA, person.token);
-    await api(`/api/pathways/${template.body.id}/start`, adminA.token, {
+    const started = await api(`/api/pathways/${template.body.id}/start`, adminA.token, {
       method: "POST",
       body: JSON.stringify({ userId: person.id }),
     });
+
+    // срок «в тот же день» истекает вечером — отматываем его во вчера
+    const { pathwayProgress } = await import("../src/db/schema");
+    await db
+      .update(pathwayProgress)
+      .set({ dueAt: new Date(Date.now() - 86_400_000).toISOString() })
+      .where(eq(pathwayProgress.instanceId, started.body.id));
 
     const work = await api("/api/worklist", adminA.token);
     const mine = work.body.items.filter(

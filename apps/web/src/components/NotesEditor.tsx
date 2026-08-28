@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type NoteVersion } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
+import { usePresence } from "../events";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
@@ -28,6 +29,7 @@ const KIND_KEY = {
 export function NotesEditor({ userId }: { userId: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
+  const alsoHere = usePresence(`note:${userId}`);
   const [text, setText] = useState("");
   const [kind, setKind] = useState<NoteVersion["kind"]>("session");
   const [showHistory, setShowHistory] = useState(false);
@@ -87,6 +89,17 @@ export function NotesEditor({ userId }: { userId: string }) {
           </button>
         ))}
       </div>
+
+      {alsoHere.length ? (
+        /*
+         * Предупреждение стоит над полем, а не под кнопкой: смысл в том,
+         * чтобы человек узнал до того, как напишет абзац, а не после того,
+         * как сохранение упало на проверке версии.
+         */
+        <p className="warn-line">
+          {alsoHere.map((o) => o.name).join(", ")} — {ut("here.editing")}
+        </p>
+      ) : null}
 
       <textarea
         rows={4}

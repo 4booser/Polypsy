@@ -53,8 +53,12 @@ test("маршрут ведётся от шага до исхода", async ({ p
 
   const row = page.locator(".pw-row").filter({ hasText: person!.fullName }).first();
   await expect(row).toBeVisible();
-  // первый шаг со сроком «в тот же день» уже просрочен — строка помечена
-  await expect(row).toHaveClass(/overdue/);
+  /*
+   * Только что начатый маршрут не помечен просрочкой: срок «в тот же день»
+   * истекает вечером того дня, а не в момент старта. Иначе каждый маршрут
+   * рождался бы красным и метка перестала бы что-либо значить.
+   */
+  await expect(row).not.toHaveClass(/overdue/);
   await row.click();
 
   // шаги видны, первый закрывается отметкой

@@ -1802,3 +1802,47 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   font-size: var(--fs-micro);
   color: var(--text-2);
 }
+
+/* ─────────── присутствие ─────────── */
+
+/*
+ * Полоса «кто здесь ещё» появляется только когда есть кто-то ещё, поэтому
+ * рисуется тихо: без рамки и без цвета внимания. Янтарь здесь был бы враньём —
+ * присутствие коллеги не требует действия.
+ */
+.here {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  font-size: var(--fs-small);
+}
+
+.here-faces {
+  display: inline-flex;
+}
+
+.here-faces > * + * {
+  margin-left: -8px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/*
+ * Единственное место, где присутствие требует внимания: кто-то уже пишет в ту
+ * же запись. Здесь янтарь уместен — правку действительно можно потерять.
+ */
+.warn-line {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--fs-small);
+}
+
+@media print {
+  .here,
+  .warn-line {
+    display: none;
+  }
+}
