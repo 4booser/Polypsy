@@ -1163,7 +1163,7 @@ export interface AlertCaseFilters {
 
 /** Одна строка очереди работы специалиста */
 export interface WorkItem {
-  kind: "case" | "assignment" | "referral" | "followup" | "pathway";
+  kind: "case" | "assignment" | "referral" | "followup" | "pathway" | "goal";
   id: string;
   userId: string;
   userName: string;

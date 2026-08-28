@@ -11,6 +11,7 @@ import {
   pathways,
   pathwaySteps,
   referrals,
+  treatmentGoals,
   surveyAccess,
   surveys,
   users,
@@ -34,7 +35,7 @@ export const worklistRoutes = new Hono<AppEnv>();
 
 worklistRoutes.use("*", requireAuth, requireStaff);
 
-type Kind = "case" | "assignment" | "referral" | "followup" | "pathway";
+type Kind = "case" | "assignment" | "referral" | "followup" | "pathway" | "goal";
 
 interface Item {
   kind: Kind;
@@ -70,7 +71,7 @@ interface Item {
  * потом по давности. Без общего правила список превратился бы в три списка,
  * склеенных подряд, — то есть в то же самое, от чего уходим.
  */
-const KIND_WEIGHT: Record<Kind, number> = { case: 0, pathway: 1, followup: 2, referral: 3, assignment: 4 };
+const KIND_WEIGHT: Record<Kind, number> = { case: 0, pathway: 1, goal: 2, followup: 3, referral: 4, assignment: 5 };
 
 worklistRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -305,6 +306,45 @@ worklistRoutes.get("/", async (c) => {
     }
   }
 
+  /*
+   * Просроченные цели лечения. У цели есть срок, и без этого он был бы
+   * украшением: никто не открывает карту каждого пациента, чтобы проверить,
+   * не прошёл ли третий месяц.
+   */
+  if (!allowedPatients || allowedPatients.size) {
+    const overdueGoals = await db
+      .select({ goal: treatmentGoals, survey: surveys, patient: users })
+      .from(treatmentGoals)
+      .innerJoin(surveys, eq(surveys.id, treatmentGoals.surveyId))
+      .leftJoin(users, eq(users.id, treatmentGoals.userId))
+      .where(
+        and(
+          eq(treatmentGoals.status, "open"),
+          isNotNull(treatmentGoals.dueAt),
+          sql`${treatmentGoals.dueAt} < now()`,
+          allowedPatients ? inArray(treatmentGoals.userId, [...allowedPatients]) : undefined,
+        ),
+      )
+      .limit(200);
+
+    for (const row of overdueGoals) {
+      const days = Math.floor((now - new Date(row.goal.dueAt!).getTime()) / 86_400_000);
+      items.push({
+        kind: "goal",
+        id: row.goal.id,
+        userId: row.goal.userId,
+        userName: row.patient ? fullNameOf(row.patient) : "—",
+        unit: row.patient?.unit ?? null,
+        title: `${t(row.survey.title as never)}: ${row.goal.scaleCode}`,
+        days,
+        overdue: true,
+        assignedTo: null,
+        since: row.goal.dueAt!,
+        href: `/patients/${row.goal.userId}/summary`,
+      });
+    }
+  }
+
   items.sort(
     (a, b) =>
       Number(b.overdue) - Number(a.overdue) ||
@@ -325,6 +365,7 @@ worklistRoutes.get("/", async (c) => {
       referral: items.filter((i) => i.kind === "referral").length,
       assignment: items.filter((i) => i.kind === "assignment").length,
       pathway: items.filter((i) => i.kind === "pathway").length,
+      goal: items.filter((i) => i.kind === "goal").length,
     },
     mine,
   });
