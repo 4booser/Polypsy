@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
 import { LangProvider, useLang } from "@/lang";
+import { ThemeProvider } from "@/theme";
 import { TextScaleProvider } from "@/textScale";
 import { api } from "@/api/client";
 import { AppLock } from "@/components/AppLock";
@@ -32,6 +33,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
+      <ThemeProvider>
       <LangProvider>
       <TextScaleProvider>
       <AuthProvider>
@@ -43,6 +45,7 @@ export default function RootLayout() {
       </AuthProvider>
       </TextScaleProvider>
       </LangProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

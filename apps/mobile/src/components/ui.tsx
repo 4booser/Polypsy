@@ -9,7 +9,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
-import { radius, spacing, useColors } from "../theme";
+import { radius, spacing, type, useColors } from "../theme";
 
 /**
  * Минимальная цель нажатия.
@@ -43,12 +43,31 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
 
 export function Title({ children }: { children: ReactNode }) {
   const c = useColors();
-  return <Text style={{ color: c.text, fontSize: 22, fontWeight: "700" }}>{children}</Text>;
+  return <Text style={[type.display, { color: c.text }]}>{children}</Text>;
+}
+
+/** Крупное число: баллы и счётчики читают с расстояния, а не вчитываются */
+export function Stat({ value, label }: { value: string | number; label?: string }) {
+  const c = useColors();
+  return (
+    <View style={{ gap: 2 }}>
+      <Text style={[type.display, type.mono, { color: c.text, fontSize: 32, lineHeight: 34 }]}>
+        {value}
+      </Text>
+      {label ? (
+        <Text style={[type.caption, { color: c.muted, textTransform: "uppercase", letterSpacing: 0.6 }]}>
+          {label}
+        </Text>
+      ) : null}
+    </View>
+  );
 }
 
 export function Body({ children, muted }: { children: ReactNode; muted?: boolean }) {
   const c = useColors();
-  return <Text style={{ color: muted ? c.muted : c.text, fontSize: 15, lineHeight: 21 }}>{children}</Text>;
+  return (
+    <Text style={[type.body, { color: muted ? c.muted : c.text, lineHeight: 23 }]}>{children}</Text>
+  );
 }
 
 export function Button({
@@ -105,7 +124,7 @@ export function Field({ label, ...props }: TextInputProps & { label: string }) {
   const c = useColors();
   return (
     <View style={{ gap: spacing.xs }}>
-      <Text style={{ color: c.muted, fontSize: 13 }}>{label}</Text>
+      <Text style={[type.caption, { color: c.muted }]}>{label}</Text>
       <TextInput
         placeholderTextColor={c.muted}
         // подпись рядом с полем экранный диктор сам не свяжет
