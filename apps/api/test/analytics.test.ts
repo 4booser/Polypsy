@@ -97,6 +97,13 @@ describe("локальные нормы", () => {
 
 describe("профили деидентификации", () => {
   test("deidentified: без имён/подразделений, код субъекта стабилен и необратим", async () => {
+    /*
+     * Прохождение создаётся здесь же. Выгрузка без единой строки прошла бы
+     * все проверки на отсутствие персональных данных — в пустом файле их
+     * действительно нет, — и тест выглядел бы зелёным, ничего не проверяя.
+     */
+    await submitSurvey(surveyInA, patient.token);
+
     const res = await app.request(
       `/api/spss/surveys/${surveyInA}/data.csv?profile=deidentified`,
       { headers: { Authorization: `Bearer ${adminA.token}` } },
