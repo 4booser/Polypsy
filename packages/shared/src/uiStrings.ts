@@ -1407,6 +1407,10 @@ export const UI = {
   "tl.referral": { uk: "направлення", ru: "направление" },
   "tl.conclusion": { uk: "висновок", ru: "заключение" },
   "tl.assignment": { uk: "призначення", ru: "назначение" },
+  "mp.theme": { uk: "Тема", ru: "Тема" },
+  "mp.themeSystem": { uk: "Системна", ru: "Системная" },
+  "mp.themeDark": { uk: "Темна", ru: "Тёмная" },
+  "mp.themeLight": { uk: "Світла", ru: "Светлая" },
 } as const;
 
 export type UiKey = keyof typeof UI;

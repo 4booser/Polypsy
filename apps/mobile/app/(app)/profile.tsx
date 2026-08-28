@@ -8,7 +8,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { API_URL } from "@/config";
 import { Body, Button, Card, Chip, Divider, ErrorText, Field, Row, Title } from "@/components/ui";
 import { LineChart } from "@/components/viz/LineChart";
-import { severityColor, spacing, useColors } from "@/theme";
+import { severityColor, spacing, useColors, useTheme } from "@/theme";
 import { useLang } from "@/lang";
 
 // ключи, а не подписи: карта вне компонента, язык — при отрисовке
@@ -23,6 +23,7 @@ export default function AccountScreen() {
   const router = useRouter();
   const { user, logout, refresh } = useAuth();
   const { lang, setLang, ut } = useLang();
+  const { choice, setChoice } = useTheme();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     lastName: user?.lastName ?? "",
@@ -103,6 +104,20 @@ export default function AccountScreen() {
         <Row>
           <Chip label="Українська" selected={lang === "uk"} onPress={() => setLang("uk")} />
           <Chip label="Русский" selected={lang === "ru"} onPress={() => setLang("ru")} />
+        </Row>
+      </Card>
+
+      {/*
+        Тема выбирается явно: приложение открывают и в казарме после отбоя, и
+        в кабинете при дневном свете, а системная настройка телефона об этом
+        не знает.
+      */}
+      <Card>
+        <Body>{ut("mp.theme")}</Body>
+        <Row>
+          <Chip label={ut("mp.themeSystem")} selected={choice === "system"} onPress={() => setChoice("system")} />
+          <Chip label={ut("mp.themeDark")} selected={choice === "dark"} onPress={() => setChoice("dark")} />
+          <Chip label={ut("mp.themeLight")} selected={choice === "light"} onPress={() => setChoice("light")} />
         </Row>
       </Card>
 
