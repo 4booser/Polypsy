@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type {
   Battery,
-  BatteryAssignment,
   BatteryStep,
   SurveyGroupWithCounts,
   SurveyListItem,
@@ -147,16 +146,14 @@ function totalMinutes(b: Battery): number | null {
 
 function Assignments({ battery, patients }: { battery: Battery; patients: Patient[] }) {
   const { ut } = useLang();
-  const [rows, setRows] = useState<BatteryAssignment[] | null>(null);
   const [query, setQuery] = useState("");
   const [due, setDue] = useState("");
   const [note, setNote] = useState("");
   const run = useAction();
 
-  const reload = () => api.batteryAssignments(battery.id).then(setRows).catch(() => setRows([]));
-  useEffect(() => {
-    reload();
-  }, [battery.id]);
+  const res = useResource(() => api.batteryAssignments(battery.id), [battery.id]);
+  const rows = res.data;
+  const reload = res.reload;
 
   const assigned = new Set(
     rows?.filter((r) => !r.cancelledAt && !r.completedAt).map((r) => r.userId) ?? [],

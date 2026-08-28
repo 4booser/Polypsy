@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { AlertCase } from "@quizzy/shared";
 import { api } from "../api";
@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { dateTime, severityColor } from "../format";
 import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { usePagedResource, useResource } from "../useResource";
 
 const OUTCOME = [
   { value: "confirmed", key: "cases.confirmed" },
@@ -41,18 +42,12 @@ export default function Alerts() {
   const [assigned, setAssigned] = useUrlState("assigned");
   const [search, setSearch] = useUrlState("q");
 
-  const [items, setItems] = useState<AlertCase[] | null>(null);
   /*
    * Какой случай «под рукой». Разбор идёт подряд, и держать указатель
    * дешевле, чем каждый раз тянуться мышью: j/k ведут по списку, цифры
    * ставят исход.
    */
   const [cursorIdx, setCursorIdx] = useState(0);
-  const [total, setTotal] = useState<number | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [units, setUnits] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const run = useAction();
   const { ut } = useLang();
 
@@ -60,43 +55,15 @@ export default function Alerts() {
   // ключ фильтров строкой: сравнивать объект в зависимостях эффекта бесполезно
   const filterKey = JSON.stringify(filters);
 
-  const load = useCallback(
-    async (more = false) => {
-      setBusy(true);
-      try {
-        const page = await api.alertCases({
-          ...filters,
-          limit: "30",
-          cursor: more ? (cursor ?? undefined) : undefined,
-        });
-        setItems((prev) => (more && prev ? [...prev, ...page.items] : page.items));
-        setCursor(page.nextCursor);
-        if (!more) setTotal(page.total ?? null);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Не удалось загрузить");
-      } finally {
-        setBusy(false);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filterKey, cursor],
+  // 300 мс на набор текста: поиск не дёргает сервер на каждую букву
+  const page = usePagedResource<AlertCase>(
+    (cursor) => api.alertCases({ ...filters, limit: "30", cursor: cursor ?? undefined }),
+    [filterKey],
+    { debounceMs: 300 },
   );
+  const { items, total, error } = page;
 
-  // поиск не дёргает сервер на каждую букву
-  const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => {
-    clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => {
-      setCursor(null);
-      void load(false);
-    }, search ? 300 : 0);
-    return () => clearTimeout(debounce.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey]);
-
-  useEffect(() => {
-    api.alertCaseUnits().then(setUnits).catch(() => {});
-  }, []);
+  const units = useResource(() => api.alertCaseUnits(), []).data ?? [];
 
   const open = (items ?? []).filter((c) => !c.acknowledgedAt);
   const current = open[Math.min(cursorIdx, open.length - 1)];
@@ -105,8 +72,7 @@ export default function Alerts() {
     if (!current) return;
     void run(async () => {
       await api.resolveCase(current.id, outcome, "");
-      setCursor(null);
-      void load(false);
+      page.reload();
     }, ut("work.done"));
   };
 
@@ -125,8 +91,7 @@ export default function Alerts() {
       if (!current || current.assignedTo) return;
       void run(async () => {
         await api.assignCase(current.id);
-        setCursor(null);
-        void load(false);
+        page.reload();
       }, ut("cases.take"));
     },
     "/": () => {
@@ -137,8 +102,7 @@ export default function Alerts() {
     Escape: () => (document.activeElement as HTMLElement | null)?.blur(),
   });
 
-  if (error) return <p className="error">{error}</p>;
-  if (!items) return <Loading />;
+  if (!items) return <Loading error={error} />;
 
   const mine = items.filter((c) => c.assignedTo === user?.id && !c.acknowledgedAt).length;
   const overdue = items.filter((c) => c.overdue).length;
@@ -199,10 +163,7 @@ export default function Alerts() {
             key={c.id}
             c={c}
             focused={c.id === current?.id}
-            onChanged={() => {
-              setCursor(null);
-              void load(false);
-            }}
+            onChanged={page.reload}
             run={run}
             me={user?.id}
           />
@@ -220,9 +181,13 @@ export default function Alerts() {
         ]}
       />
 
-      {cursor ? (
-        <button style={{ width: "100%", marginTop: 12 }} disabled={busy} onClick={() => void load(true)}>
-          {busy ? ut("ui.loading") : ut("ui.loadMore")}
+      {page.hasMore ? (
+        <button
+          style={{ width: "100%", marginTop: 12 }}
+          disabled={page.loadingMore}
+          onClick={page.loadMore}
+        >
+          {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
         </button>
       ) : items.length ? (
         <p className="hint" style={{ textAlign: "center", marginTop: 12 }}>

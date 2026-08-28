@@ -122,3 +122,125 @@ export function useResource<T>(
     patch: setData,
   };
 }
+
+/** Страница списка: то, что отдают курсорные эндпоинты */
+export interface Page<T> {
+  items: T[];
+  nextCursor: string | null;
+  total?: number | null;
+}
+
+export interface PagedResource<T> {
+  items: T[] | null;
+  loading: boolean;
+  /** Идёт подгрузка следующей страницы: список на экране остаётся */
+  loadingMore: boolean;
+  error: string | null;
+  offline: boolean;
+  total: number | null;
+  /** Есть ли что дозагрузить */
+  hasMore: boolean;
+  loadMore: () => void;
+  /** Перечитать с первой страницы — после действия, изменившего список */
+  reload: () => void;
+}
+
+/**
+ * Список с постраничной подгрузкой.
+ *
+ * Отличается от useResource тем, что страницы дописываются к показанным, а не
+ * заменяют их. Всё остальное — то же самое и по той же причине: у каждой
+ * загрузки свой номер, и ответ применяется только от последней.
+ *
+ * Гонка здесь коварнее, чем на обычном экране: пока летит ответ на «показать
+ * ещё», человек меняет фильтр — и хвост старой выборки дописывается к новой.
+ * Список выглядит правдоподобно и содержит чужие строки. Поэтому номер
+ * запуска проверяется и перед дописыванием тоже.
+ *
+ * `debounceMs` — для поиска: набор текста не должен дёргать сервер на каждую
+ * букву, но первая загрузка и смена фильтров должны идти сразу.
+ */
+export function usePagedResource<T>(
+  load: (cursor: string | null) => Promise<Page<T>>,
+  deps: readonly unknown[],
+  options: { debounceMs?: number } = {},
+): PagedResource<T> {
+  const debounceMs = options.debounceMs ?? 0;
+  const [items, setItems] = useState<T[] | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [appending, setAppending] = useState(false);
+
+  const runId = useRef(0);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const cursorRef = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const fetchPage = useCallback((more: boolean) => {
+    const id = ++runId.current;
+    setBusy(true);
+    setAppending(more);
+    setError(null);
+    setOffline(false);
+
+    loadRef
+      .current(more ? cursorRef.current : null)
+      .then((page) => {
+        if (id !== runId.current || !mounted.current) return;
+        cursorRef.current = page.nextCursor;
+        setCursor(page.nextCursor);
+        setItems((prev) => (more && prev ? [...prev, ...page.items] : page.items));
+        if (!more) setTotal(page.total ?? null);
+      })
+      .catch((e: unknown) => {
+        if (id !== runId.current || !mounted.current) return;
+        if (e instanceof ApiError && e.status === 0) setOffline(true);
+        else setError(e instanceof Error ? e.message : "Не удалось загрузить");
+      })
+      .finally(() => {
+        if (id !== runId.current || !mounted.current) return;
+        setBusy(false);
+        setAppending(false);
+      });
+  }, []);
+
+  const reload = useCallback(() => {
+    cursorRef.current = null;
+    fetchPage(false);
+  }, [fetchPage]);
+
+  useEffect(() => {
+    // задержка только при повторных сменах: первый показ ждать незачем
+    if (!debounceMs) {
+      reload();
+      return;
+    }
+    const timer = setTimeout(reload, debounceMs);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [...deps]);
+
+  return {
+    items,
+    loading: busy && !appending && items === null,
+    loadingMore: appending,
+    error,
+    offline,
+    total,
+    hasMore: cursor !== null,
+    loadMore: () => {
+      if (!busy && cursor) fetchPage(true);
+    },
+    reload,
+  };
+}
