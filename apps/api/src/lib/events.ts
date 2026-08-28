@@ -22,7 +22,8 @@ export type AppEventKind =
   | "case.changed"
   | "response.submitted"
   | "kiosk.progress"
-  | "schedule.run";
+  | "schedule.run"
+  | "presence.changed";
 
 export interface AppEvent {
   kind: AppEventKind;
@@ -39,6 +40,8 @@ export interface AppEvent {
   severity?: "moderate" | "severe";
   /** Сеанс киоска — чтобы открытый экран сеанса обновлял только себя */
   sessionId?: string;
+  /** Экран, на котором находится сотрудник: `patient:<id>` и подобные */
+  resource?: string;
 }
 
 type Handler = (event: AppEvent) => void;

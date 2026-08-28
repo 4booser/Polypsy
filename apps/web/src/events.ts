@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { tokenStore } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { api, tokenStore } from "./api";
 
 /**
  * Подписка консоли на поток событий сервера.
@@ -18,7 +18,8 @@ export type AppEventKind =
   | "case.changed"
   | "response.submitted"
   | "kiosk.progress"
-  | "schedule.run";
+  | "schedule.run"
+  | "presence.changed";
 
 export interface AppEvent {
   kind: AppEventKind;
@@ -27,6 +28,7 @@ export interface AppEvent {
   at: string;
   severity?: "moderate" | "severe";
   sessionId?: string;
+  resource?: string;
 }
 
 type Listener = (event: AppEvent) => void;
@@ -143,4 +145,53 @@ export function useLiveReload(kinds: AppEventKind[], reload: () => void): void {
       if (timer) clearTimeout(timer);
     };
   }, [keys]);
+}
+
+/**
+ * «Кто здесь ещё».
+ *
+ * Пульс раз в двадцать секунд плюс чужие пульсы по каналу. Намеренно мягко:
+ * жёсткая блокировка в клинике опаснее конфликта — человек, взявший случай,
+ * уходит со смены, и запись остаётся запертой. От потери правок защищает
+ * проверка версии при сохранении, а это — только предупреждение.
+ */
+export function usePresence(resource: string | null): { id: string; name: string }[] {
+  const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    if (!resource) {
+      setOthers([]);
+      return;
+    }
+    let alive = true;
+
+    const refresh = () => {
+      void api
+        .presenceOthers(resource)
+        .then((r) => {
+          if (alive) setOthers(r.others);
+        })
+        .catch(() => {
+          /* присутствие — удобство: его отказ не должен ничего ломать */
+        });
+    };
+    const beat = () => {
+      void api.presenceHere(resource).catch(() => {});
+    };
+
+    beat();
+    refresh();
+    const timer = setInterval(beat, 20_000);
+    const off = onAppEvent((event) => {
+      if (event.kind === "presence.changed" && event.resource === resource) refresh();
+    });
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      off();
+    };
+  }, [resource]);
+
+  return others;
 }

@@ -12,6 +12,7 @@ import {
 } from "../db/schema";
 import { auditSystem } from "./audit";
 import { publish } from "./events";
+import { sweepPresence } from "../routes/presence";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -271,6 +272,14 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
 export function startScheduler(intervalMs = 3_600_000): () => void {
   const tick = () => {
     runDueSchedules().catch((error) => log.error("scheduler.tick_failed", { error: String(error) }));
+    /*
+     * Заодно вычищаем протухшее присутствие. Отдельного таймера оно не
+     * заслуживает: строки безвредны, а раз в час их не наберётся столько,
+     * чтобы это кого-то беспокоило.
+     */
+    void systemContext(baseDb, () => sweepPresence()).catch((error) =>
+      log.warn("presence.sweep_failed", { error: String(error) }),
+    );
   };
   tick();
   const timer = setInterval(tick, intervalMs);
