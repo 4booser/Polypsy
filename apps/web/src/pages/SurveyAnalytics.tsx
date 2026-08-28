@@ -22,12 +22,12 @@ export default function SurveyAnalyticsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const run = useAction();
-  const downloadCsv = (sid: string) => run(() => download(api.exportUrl(sid), "data.csv"), "Файл выгружен");
+  const downloadCsv = (sid: string) => run(() => download(api.exportUrl(sid), "data.csv"), ut("an.fileExported"));
   const [profile, setProfile] = useState<"full" | "deidentified" | "anonymous">("full");
   const downloadSpssData = (sid: string) =>
-    run(() => download(api.spssDataUrl(sid, profile), "spss-data.csv"), "Матрица выгружена");
+    run(() => download(api.spssDataUrl(sid, profile), "spss-data.csv"), ut("an.matrixExported"));
   const downloadSpssSyntax = (sid: string) =>
-    run(() => download(api.spssSyntaxUrl(sid, profile), "syntax.sps"), "Синтаксис выгружен");
+    run(() => download(api.spssSyntaxUrl(sid, profile), "syntax.sps"), ut("an.syntaxExported"));
   const downloadCodebook = (sid: string) =>
     run(() => download(api.codebookUrl(sid, profile), "codebook.csv"), "Codebook выгружен");
   const downloadLong = (sid: string) =>
@@ -95,7 +95,7 @@ export default function SurveyAnalyticsPage() {
             </label>
             <label>
               <span>по</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Конец периода" />
+              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={ut("an.periodEnd")} />
             </label>
             {from || to ? (
               <button className="ghost" onClick={() => { setFrom(""); setTo(""); }}>
@@ -118,7 +118,7 @@ export default function SurveyAnalyticsPage() {
           <div className="row tight">
             {data.inProgressNow.map((p, i) => (
               <span key={i} className="chip static">
-                {p.userName ?? "аноним"} · {p.answered} отв.
+                {p.userName ?? ut("an.anon")} · {p.answered} отв.
               </span>
             ))}
           </div>
@@ -175,7 +175,7 @@ export default function SurveyAnalyticsPage() {
           </div>
 
           <Chart title={ut("an.dynamics")} hint={ut("dash.timelineHint")}>
-            <LineChart area series={[{ label: "Прохождений", points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]} />
+            <LineChart area series={[{ label: ut("an.responses"), points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]} />
           </Chart>
 
           <Chart
@@ -203,15 +203,15 @@ export default function SurveyAnalyticsPage() {
                   <option value="anonymous">анонимный (без субъектов)</option>
                 </select>
               </label>
-              <button onClick={() => downloadCsv(data.surveyId)}>Данные, CSV</button>
-              <button onClick={() => downloadSpssData(data.surveyId)}>Матрица для SPSS</button>
-              <button onClick={() => downloadSpssSyntax(data.surveyId)}>Синтаксис .sps</button>
+              <button onClick={() => downloadCsv(data.surveyId)}>{ut("an.dataCsv")}</button>
+              <button onClick={() => downloadSpssData(data.surveyId)}>{ut("an.spssMatrix")}</button>
+              <button onClick={() => downloadSpssSyntax(data.surveyId)}>{ut("an.spssSyntax")}</button>
               <button onClick={() => downloadCodebook(data.surveyId)}>Codebook</button>
-              <button onClick={() => downloadLong(data.surveyId)} title="Одна строка на пару «прохождение × шкала» — формат R и pandas">
+              <button onClick={() => downloadLong(data.surveyId)} title={ut("an.longHint")}>
                 Long-format
               </button>
-              <Link className="btn" to={`/surveys/${data.surveyId}/blank`}>Пустой бланк</Link>
-              <Link className="btn" to={`/surveys/${data.surveyId}/key`}>Ключи для сверки</Link>
+              <Link className="btn" to={`/surveys/${data.surveyId}/blank`}>{ut("an.blank")}</Link>
+              <Link className="btn" to={`/surveys/${data.surveyId}/key`}>{ut("an.keys")}</Link>
             </div>
             <p className="hint" style={{ marginTop: 10 }}>
               Матрица и синтаксис — пара: положите их рядом и запустите синтаксис, он подставит
@@ -223,17 +223,17 @@ export default function SurveyAnalyticsPage() {
           </div>
 
           <div className="row">
-            <Link className="btn" to={`/surveys/${data.surveyId}/norms`}>Локальные нормы</Link>
-            <Link className="btn" to={`/surveys/${data.surveyId}/access`}>Назначения пациентам</Link>
-            <Link className="btn" to={`/constructor/${data.surveyId}`}>Править методику</Link>
-            <Link className="btn" to={`/surveys/${data.surveyId}/administer`}>Заполнить за пациента</Link>
+            <Link className="btn" to={`/surveys/${data.surveyId}/norms`}>{ut("an.localNorms")}</Link>
+            <Link className="btn" to={`/surveys/${data.surveyId}/access`}>{ut("an.assignments")}</Link>
+            <Link className="btn" to={`/constructor/${data.surveyId}`}>{ut("an.edit")}</Link>
+            <Link className="btn" to={`/surveys/${data.surveyId}/administer`}>{ut("an.administer")}</Link>
           </div>
         </>
       ) : null}
 
       {tab === "questions" ? (
         <>
-          <Chart title="Время ответа по вопросам" hint="Разброс, а не только среднее">
+          <Chart title={ut("an.timePerQuestion")} hint={ut("an.spreadNotMean")}>
             <BoxPlot
               boxes={data.questions
                 .filter((q) => q.answered > 0)
@@ -243,7 +243,7 @@ export default function SurveyAnalyticsPage() {
           </Chart>
 
           {heat.length ? (
-            <Chart title="Распределение выборов" hint="Доля респондентов по каждому варианту">
+            <Chart title={ut("an.optionSpread")} hint={ut("an.optionSpreadHint")}>
               <Heatmap
                 columns={heat[0]!.options!.map((o) => o.text)}
                 rows={heat.map((q) => ({ label: `${q.position + 1}. ${q.title}`, cells: q.options!.map((o) => o.percent) }))}
@@ -252,10 +252,10 @@ export default function SurveyAnalyticsPage() {
           ) : null}
 
           <div className="grid cols-2">
-            <Chart title="Сомнения при ответе" hint="Доля респондентов, менявших ответ">
+            <Chart title={ut("an.doubts")} hint={ut("an.doubtsHint")}>
               <BarList unit="%" items={data.questions.map((q) => ({ label: `${q.position + 1}. ${q.title}`, value: q.changedShare }))} />
             </Chart>
-            <Chart title="Время до первого выбора" hint="Сколько думали, прежде чем ответить">
+            <Chart title={ut("an.firstChoice")} hint={ut("an.firstChoiceHint")}>
               <BarList
                 unit=" с"
                 items={data.questions.map((q) => ({
@@ -267,15 +267,15 @@ export default function SurveyAnalyticsPage() {
           </div>
 
           <div className="card scroll-x">
-            <h2>Подробно по вопросам</h2>
-            <p className="hint">Полная таблица метрик — сортируйте глазами, всё в одном месте</p>
+            <h2>{ut("an.perQuestion")}</h2>
+            <p className="hint">{ut("an.perQuestionHint")}</p>
             <table>
               <thead>
                 <tr>
-                  <th>#</th><th>Вопрос</th><th>Тип</th>
-                  <th className="num">Показан</th><th className="num">Ответов</th><th className="num">Пропуск</th>
-                  <th className="num">Ср. время</th><th className="num">Медиана</th><th className="num">Разброс</th>
-                  <th className="num">До выбора</th><th className="num">Правок</th><th className="num">Меняли</th><th className="num">Быстрых</th>
+                  <th>#</th><th>{ut("an.question")}</th><th>{ut("an.type")}</th>
+                  <th className="num">{ut("an.shown")}</th><th className="num">{ut("an.answers")}</th><th className="num">{ut("an.skipped")}</th>
+                  <th className="num">{ut("an.avgTime")}</th><th className="num">{ut("an.median")}</th><th className="num">{ut("an.spread")}</th>
+                  <th className="num">{ut("an.toChoice")}</th><th className="num">{ut("an.edits")}</th><th className="num">{ut("an.changedShare")}</th><th className="num">{ut("an.fast")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,7 +309,7 @@ export default function SurveyAnalyticsPage() {
           {data.questions.filter((q) => q.texts?.length).map((q) => (
             <div className="card" key={q.questionId}>
               <h2>{q.position + 1}. {q.title}</h2>
-              <p className="hint">Свободные ответы: {q.texts!.length}</p>
+              <p className="hint">{ut("an.freeText")}: {q.texts!.length}</p>
               <ul className="muted" style={{ margin: 0, paddingLeft: 18 }}>
                 {q.texts!.slice(0, 40).map((t, i) => <li key={i}>{t}</li>)}
               </ul>
@@ -321,7 +321,7 @@ export default function SurveyAnalyticsPage() {
       {tab === "scales" ? (
         <>
           {data.scales.length > 1 ? (
-            <Chart title="Сравнение субшкал" hint="Разброс баллов по каждой шкале">
+            <Chart title={ut("an.subscales")} hint={ut("an.subscalesHint")}>
               <BoxPlot
                 categorical
                 boxes={data.scales.map((s) => boxOf(s.code, [s.min, s.average, s.median, s.max])).filter((b): b is NonNullable<typeof b> => !!b)}
@@ -343,7 +343,7 @@ export default function SurveyAnalyticsPage() {
                   ) : (
                   <Donut
                     center={String(s.bands.reduce((a, b) => a + b.count, 0))}
-                    centerLabel="результатов"
+                    centerLabel={ut("an.results")}
                     slices={s.bands.map((b) => ({ label: b.label, value: b.count, color: severityColor[b.severity] }))}
                   />
                   )}
@@ -352,9 +352,9 @@ export default function SurveyAnalyticsPage() {
                   {s.reliability ? (
                     <>
                       <p style={{ margin: "0 0 6px" }}>
-                        <strong>Альфа Кронбаха: {s.reliability.alpha}</strong>{" "}
+                        <strong>{ut("an.alpha")}: {s.reliability.alpha}</strong>{" "}
                         <span className="muted">
-                          ({s.reliability.alpha >= 0.8 ? "хорошая" : s.reliability.alpha >= 0.7 ? "приемлемая" : "низкая"} согласованность по {s.reliability.itemCount} пунктам)
+                          ({s.reliability.alpha >= 0.8 ? ut("an.reliabilityGood") : s.reliability.alpha >= 0.7 ? ut("an.reliabilityOk") : ut("an.reliabilityLow")} согласованность по {s.reliability.itemCount} пунктам)
                         </span>
                       </p>
                       <DivergingBar
@@ -362,7 +362,7 @@ export default function SurveyAnalyticsPage() {
                         items={s.reliability.items.map((it) => ({ label: it.title, value: it.itemTotalCorrelation }))}
                       />
                       <table style={{ marginTop: 12 }}>
-                        <thead><tr><th>Пункт</th><th className="num">Связь</th><th className="num">α без него</th><th className="num">Дисперсия</th></tr></thead>
+                        <thead><tr><th>{ut("an.item")}</th><th className="num">{ut("an.link")}</th><th className="num">α без него</th><th className="num">{ut("an.variance")}</th></tr></thead>
                         <tbody>
                           {s.reliability.items.map((it) => (
                             <tr key={it.questionId}>
@@ -378,7 +378,7 @@ export default function SurveyAnalyticsPage() {
                       </table>
                     </>
                   ) : (
-                    <p className="muted">Надёжность не считается: меньше двух пунктов или нет разброса ответов</p>
+                    <p className="muted">{ut("an.noReliability")}</p>
                   )}
                 </div>
               </div>
@@ -390,7 +390,7 @@ export default function SurveyAnalyticsPage() {
       {tab === "quality" ? (
         <>
           <div className="card">
-            <h2>Признаки небрежного заполнения</h2>
+            <h2>{ut("an.carelessTitle")}</h2>
             <p className="hint">
               Помечено {data.quality.length} из {data.completed}. Порог «слишком быстро» — {Math.round(data.tooFastThresholdMs / 1000)} с
               на вопрос. Это флаг для проверки специалистом, а не основание исключать данные.
@@ -398,9 +398,9 @@ export default function SurveyAnalyticsPage() {
           </div>
           {data.quality.length ? (
             <>
-              <Chart title="Время против доли быстрых ответов" hint="Точки у левого края прошли методику быстрее, чем её можно прочесть">
+              <Chart title={ut("an.timeVsFast")} hint={ut("an.timeVsFastHint")}>
                 <Scatter
-                  xLabel="время прохождения, с"
+                  xLabel={ut("an.durationAxis")}
                   yLabel="% быстрых"
                   xThreshold={(data.questions.length * data.tooFastThresholdMs) / 1000}
                   points={data.quality.map((q) => ({ x: Math.round(q.durationMs / 1000), y: q.tooFastShare, flagged: q.flagged }))}
@@ -408,11 +408,11 @@ export default function SurveyAnalyticsPage() {
               </Chart>
               <div className="card scroll-x">
                 <table>
-                  <thead><tr><th>Респондент</th><th className="num">Время</th><th className="num">Быстрых</th><th className="num">Серия</th><th>Причины</th></tr></thead>
+                  <thead><tr><th>{ut("an.respondent")}</th><th className="num">{ut("an.time")}</th><th className="num">{ut("an.fast")}</th><th className="num">{ut("an.streak")}</th><th>{ut("an.reasons")}</th></tr></thead>
                   <tbody>
                     {data.quality.map((q) => (
                       <tr key={q.responseId}>
-                        <td>{q.respondent ?? "Аноним"}</td>
+                        <td>{q.respondent ?? ut("an.anonCap")}</td>
                         <td className="num">{duration(q.durationMs)}</td>
                         <td className="num">{q.tooFastShare}%</td>
                         <td className="num">{q.longestStraightLine}</td>
@@ -424,7 +424,7 @@ export default function SurveyAnalyticsPage() {
               </div>
             </>
           ) : (
-            <p className="muted">Подозрительных прохождений не найдено</p>
+            <p className="muted">{ut("an.noSuspicious")}</p>
           )}
         </>
       ) : null}
@@ -472,13 +472,13 @@ function Responses({ surveyId }: { surveyId: string }) {
       <p className="hint">{ut("an.responsesHint")}</p>
       <table>
         <thead>
-          <tr><th>Респондент</th><th>Завершено</th><th className="num">Время</th><th>Статус</th><th>Баллы</th><th /></tr>
+          <tr><th>{ut("an.respondent")}</th><th>{ut("an.completed")}</th><th className="num">{ut("an.time")}</th><th>{ut("an.status")}</th><th>{ut("an.scores")}</th><th /></tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <Fragment key={r.id}>
             <tr>
-              <td>{r.userName ?? "Аноним"}</td>
+              <td>{r.userName ?? ut("an.anonCap")}</td>
               <td className="muted">{r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "—"}</td>
               <td className="num">{duration(r.durationMs)}</td>
               <td className="muted">{r.status}</td>
@@ -494,9 +494,9 @@ function Responses({ surveyId }: { surveyId: string }) {
               <td>
                 <div className="row tight">
                   <button onClick={() => setOpenConclusion(openConclusion === r.id ? null : r.id)}>
-                    {openConclusion === r.id ? "Свернуть" : "Заключение"}
+                    {openConclusion === r.id ? ut("an.collapse") : ut("an.conclusion")}
                   </button>
-                  <button onClick={() => openReport(r.id)}>Печать</button>
+                  <button onClick={() => openReport(r.id)}>{ut("an.print")}</button>
                 </div>
               </td>
             </tr>

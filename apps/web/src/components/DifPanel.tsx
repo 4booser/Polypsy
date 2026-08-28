@@ -1,18 +1,11 @@
 import { api } from "../api";
 import { Loading } from "../ui";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
-const FACTOR_LABEL: Record<string, string> = {
-  sex: "пол",
-  age: "возраст",
-  lang: "язык предъявления",
-};
-
-const CLASS_HINT: Record<string, string> = {
-  A: "работает одинаково",
-  B: "умеренное различие",
-  C: "выраженное различие — разобрать формулировку",
-};
+// ключи, а не строки: карты живут вне компонента, перевод берётся при отрисовке
+const FACTOR_KEY = { sex: "dif.sex", age: "dif.age", lang: "dif.lang" } as const;
+const CLASS_KEY = { A: "dif.same", B: "dif.moderate", C: "dif.large" } as const;
 
 /**
  * DIF: работает ли пункт одинаково у людей с ОДИНАКОВЫМ уровнем черты, но
@@ -23,6 +16,7 @@ const CLASS_HINT: Record<string, string> = {
  * Автоматически из ключа ничего не выбрасывается.
  */
 export function DifPanel({ surveyId }: { surveyId: string }) {
+  const { ut } = useLang();
   // через useResource: смена методики не должна оставлять ответ по прежней
   const res = useResource(() => api.dif(surveyId), [surveyId]);
   const { data, error } = res;
@@ -42,7 +36,7 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
     <>
       <div className="card">
         <div className="card-head">
-          <h2>Дифференциальное функционирование пунктов</h2>
+          <h2>{ut("dif.title")}</h2>
           <span className="hint">выборка {data.sample}</span>
         </div>
         <p className="hint">
@@ -54,8 +48,8 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
         {flagged.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>
             {data.scales.length
-              ? "Пунктов с различиями не найдено — все класса A."
-              : "Данных пока недостаточно: нужны две группы по " + data.minGroup + " прохождений."}
+              ? ut("dif.none")
+              : ut("dif.notEnough") + data.minGroup + " прохождений."}
           </p>
         ) : null}
       </div>
@@ -67,12 +61,12 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
             <thead>
               <tr>
                 <th className="num">№</th>
-                <th>Пункт</th>
-                <th>Шкала</th>
-                <th>Фактор</th>
-                <th>Группы (n)</th>
+                <th>{ut("dif.item")}</th>
+                <th>{ut("dq.scale")}</th>
+                <th>{ut("dif.factor")}</th>
+                <th>{ut("dif.groupsN")}</th>
                 <th className="num">ΔMH</th>
-                <th>Класс</th>
+                <th>{ut("dif.class")}</th>
               </tr>
             </thead>
             <tbody>
@@ -81,7 +75,7 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
                   <td className="num">{f.position}</td>
                   <td style={{ maxWidth: 320 }}>{f.title}</td>
                   <td className="muted">{f.scale}</td>
-                  <td className="muted">{FACTOR_LABEL[f.factor]}</td>
+                  <td className="muted">{ut(FACTOR_KEY[f.factor as keyof typeof FACTOR_KEY])}</td>
                   <td className="muted" style={{ fontSize: 12 }}>
                     {f.reference} ({f.refN}) ↔ {f.focal} ({f.focalN})
                     {f.preliminary ? " · предварительно" : ""}
@@ -91,7 +85,7 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
                     <span
                       className="chip static"
                       style={{ color: f.result!.etsClass === "C" ? "var(--sev-severe)" : "var(--sev-mild)" }}
-                      title={CLASS_HINT[f.result!.etsClass]}
+                      title={ut(CLASS_KEY[f.result!.etsClass as keyof typeof CLASS_KEY])}
                     >
                       {f.result!.etsClass}
                     </span>
@@ -109,14 +103,14 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
 
       {data.reliability.length ? (
         <div className="card scroll-x">
-          <h2>Надёжность по группам</h2>
+          <h2>{ut("dif.reliabilityByGroup")}</h2>
           <p className="hint">
             Альфа Кронбаха отдельно у мужчин и женщин. Расхождение больше 0.10 означает, что
             шкала измеряет одну группу точнее другой — сравнивать их баллы нужно осторожнее.
           </p>
           <table>
             <thead>
-              <tr><th>Шкала</th><th>Группа</th><th className="num">n</th><th className="num">α</th><th className="num">Расхождение</th></tr>
+              <tr><th>{ut("dq.scale")}</th><th>{ut("dif.group")}</th><th className="num">n</th><th className="num">α</th><th className="num">{ut("dif.gap")}</th></tr>
             </thead>
             <tbody>
               {data.reliability.map((s) =>

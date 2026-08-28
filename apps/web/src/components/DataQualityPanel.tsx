@@ -1,8 +1,10 @@
 import { api } from "../api";
 import { Loading } from "../ui";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
-const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "женщины" };
+// ключи: карта вне компонента, перевод берётся при отрисовке
+const SEX_KEY = { male: "dq.men", female: "dq.women" } as const;
 
 /**
  * Качество данных: кто доходит до конца, изменилась ли выборка, повторяемо ли
@@ -10,6 +12,9 @@ const SEX_LABEL: Record<string, string> = { male: "мужчины", female: "ж�
  * них нормы и сравнения стоят на песке.
  */
 export function DataQualityPanel({ surveyId }: { surveyId: string }) {
+  const { ut } = useLang();
+  const sexLabel = (sex: string) =>
+    sex in SEX_KEY ? ut(SEX_KEY[sex as keyof typeof SEX_KEY]) : sex;
   // через useResource: смена методики не должна оставлять ответ по прежней
   const res = useResource(() => api.dataQuality(surveyId), [surveyId]);
   const { data, error } = res;
@@ -25,27 +30,29 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
     <>
       <div className="card scroll-x">
         <div className="card-head">
-          <h2>Доходимость по группам</h2>
-          <span className="hint">группы меньше {data.smallCellFloor} скрыты</span>
+          <h2>{ut("dq.completionTitle")}</h2>
+          <span className="hint">
+            {ut("dq.groupsSmallerThan")} {data.smallCellFloor} {ut("dq.areHidden")}
+          </span>
         </div>
         {worst && (worst.completionRate ?? 100) < 80 ? (
           <p className="hint warn">
-            {SEX_LABEL[worst.sex] ?? worst.sex} {worst.band}: доходит {worst.completionRate}%. Эта
-            группа недопредставлена в нормах — их баллы посчитаны по тем, кто дошёл.
+            {sexLabel(worst.sex)} {worst.band}: {ut("dq.reaches")} {worst.completionRate}%.{" "}
+            {ut("dq.underrepresented")}
           </p>
         ) : null}
         <table>
           <thead>
             <tr>
-              <th>Пол</th><th>Возраст</th><th className="num">Начали</th>
-              <th className="num">Завершили</th><th className="num">Доходимость</th>
-              <th className="num">Пропущено пунктов</th>
+              <th>{ut("dq.sex")}</th><th>{ut("dq.age")}</th><th className="num">{ut("dq.started")}</th>
+              <th className="num">{ut("dq.finished")}</th><th className="num">{ut("dq.completion")}</th>
+              <th className="num">{ut("dq.skippedItems")}</th>
             </tr>
           </thead>
           <tbody>
             {data.strata.map((s) => (
               <tr key={`${s.sex}-${s.band}`}>
-                <td>{SEX_LABEL[s.sex] ?? s.sex}</td>
+                <td>{sexLabel(s.sex)}</td>
                 <td className="muted">{s.band}</td>
                 {s.suppressed ? (
                   <td colSpan={4} className="muted">
@@ -67,7 +74,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
 
       {data.drift.length ? (
         <div className="card scroll-x">
-          <h2>Дрейф выборки</h2>
+          <h2>{ut("dq.driftTitle")}</h2>
           <p className="hint">
             Насколько распределение баллов последнего месяца отличается от предыдущих (PSI).
             Больше 0.2 — выборка существенно изменилась, и локальные нормы, посчитанные
@@ -75,7 +82,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
           </p>
           <table>
             <thead>
-              <tr><th>Шкала</th><th>Месяц</th><th className="num">n</th><th className="num">PSI</th><th>Вывод</th></tr>
+              <tr><th>{ut("dq.scale")}</th><th>{ut("dq.month")}</th><th className="num">n</th><th className="num">PSI</th><th>{ut("dq.verdict")}</th></tr>
             </thead>
             <tbody>
               {data.drift.map((d) => (
@@ -93,7 +100,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
       ) : null}
 
       <div className="card scroll-x">
-        <h2>Повторяемость измерения</h2>
+        <h2>{ut("dq.repeatTitle")}</h2>
         <p className="hint">
           ICC по парам замеров одного человека с интервалом {data.retestWindow.minDays}–
           {data.retestWindow.maxDays} дней: раньше — человек помнит ответы, позже — состояние
@@ -102,7 +109,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
         </p>
         <table>
           <thead>
-            <tr><th>Шкала</th><th className="num">Пар</th><th className="num">ICC</th></tr>
+            <tr><th>{ut("dq.scale")}</th><th className="num">{ut("dq.pairs")}</th><th className="num">ICC</th></tr>
           </thead>
           <tbody>
             {data.retest.map((r) => (
