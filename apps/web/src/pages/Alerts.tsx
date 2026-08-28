@@ -208,9 +208,14 @@ function Filter({
   options: [string, string][];
 }) {
   return (
-    <div className="tabs">
+    <div className="segmented" role="group">
       {options.map(([v, label]) => (
-        <button key={v} className={value === v ? "active" : ""} onClick={() => onChange(v)}>
+        <button
+          key={v}
+          className={value === v ? "active" : ""}
+          aria-pressed={value === v}
+          onClick={() => onChange(v)}
+        >
           {label}
         </button>
       ))}

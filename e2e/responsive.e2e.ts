@@ -43,7 +43,13 @@ for (const size of SIZES) {
 
     test("навигация доступна и ведёт куда надо", async ({ page }) => {
       await login(page, "psy");
-      // на планшете подписи спрятаны, но сами пункты остаются нажимаемыми
+      /*
+       * На узком экране рельса не сжимает содержимое, а выезжает поверх:
+       * деление на две колонки на 390 px не оставляет места ни одной таблице.
+       * Поэтому сначала её открывают кнопкой, и это часть проверки.
+       */
+      const toggle = page.getByRole("button", { name: /меню|меню/i }).first();
+      if (await toggle.isVisible()) await toggle.click();
       const link = page.locator(`.sidebar a[href="/patients"]`);
       await expect(link).toBeVisible();
       await link.click();

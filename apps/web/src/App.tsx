@@ -2,8 +2,10 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
-import { LangSwitch, useLang } from "./lang";
+import { useLang } from "./lang";
 import Login from "./pages/Login";
+import { Topbar } from "./shell/Topbar";
+import { CommandPalette } from "./shell/CommandPalette";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
 import Alerts from "./pages/Alerts";
@@ -64,6 +66,7 @@ const UiKit = lazy(() => import("./pages/UiKit"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
 type Theme = "dark" | "light";
+type Density = "cozy" | "compact";
 
 function Nav({
   to,
@@ -101,11 +104,47 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem("quizzy.theme") as Theme) ?? "dark",
   );
+  /*
+   * Плотность — не косметика: в плотном режиме на экран помещается 24 строки
+   * вместо 14, а разбор случаев — это чтение списка. Держится в профиле
+   * рабочего места, потому что зависит от монитора, а не от человека.
+   */
+  const [density, setDensity] = useState<Density>(
+    () => (localStorage.getItem("quizzy.density") as Density) ?? "cozy",
+  );
+  const [railOpen, setRailOpen] = useState(() => {
+    // на узком экране рельса перекрывает содержимое, поэтому стартует закрытой
+    if (window.matchMedia("(max-width: 900px)").matches) return false;
+    return localStorage.getItem("quizzy.rail") !== "0";
+  });
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("quizzy.theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.density = density;
+    localStorage.setItem("quizzy.density", density);
+  }, [density]);
+
+  useEffect(() => {
+    localStorage.setItem("quizzy.rail", railOpen ? "1" : "0");
+  }, [railOpen]);
+
+  // ⌘K — единственный вход в поиск; в поле ввода не перехватываем
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+      if (e.key === "Escape") setPaletteOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -149,7 +188,7 @@ export default function App() {
   const isSuper = user.role === "superadmin";
 
   return (
-    <div className="app">
+    <div className={`app${railOpen ? "" : " rail-closed"}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">Q</span>
@@ -183,17 +222,7 @@ export default function App() {
         ) : null}
 
         <div style={{ flex: 1 }} />
-        <button
-          className="ghost"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          style={{ width: "100%", justifyContent: "flex-start" }}
-        >
-          {theme === "dark" ? `☀ ${ut("nav.themeLight")}` : `☾ ${ut("nav.themeDark")}`}
-        </button>
-        {/* язык рядом с темой: обе настройки про то, как выглядит консоль */}
-        <div style={{ padding: "0 10px 8px" }}>
-          <LangSwitch />
-        </div>
+        {/* тема, язык и плотность переехали в верхнюю панель: там их ищут */}
         <div className="nav-section" style={{ paddingBottom: 2 }}>
           {user.fullName}
         </div>
@@ -215,7 +244,17 @@ export default function App() {
         </span>
       </aside>
 
-      <main className="main">
+      <div className="workarea">
+        <Topbar
+          onSearch={() => setPaletteOpen(true)}
+          onToggleRail={() => setRailOpen((v) => !v)}
+          railOpen={railOpen}
+          theme={theme}
+          onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+          density={density}
+          onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
+        />
+        <main className="main">
         {/*
           Пока догружается экран, на его месте стоит скелет — то же, что при
           загрузке данных. Пустой прямоугольник или прыжок содержимого
@@ -254,7 +293,15 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-      </main>
+        </main>
+      </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+        onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
+      />
     </div>
   );
 }
