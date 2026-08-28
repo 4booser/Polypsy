@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Battery, Schedule, ScheduleScope } from "@quizzy/shared";
+import type { Battery, Schedule, ScheduleScope, UiKey } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { day } from "../format";
 import { Empty, IconBattery, Loading, PageHead, Screen, Search, useAction } from "../ui";
@@ -35,8 +35,8 @@ export default function Schedules() {
       {({ rows, batteries, units, patients }) => (
     <>
       <PageHead
-        title="Расписание повторов"
-        sub="Периодическая выдача батарей: входной контроль, плановые замеры, динамика"
+        title={ut("sch.title")}
+        sub={ut("sch.sub")}
         actions={
           <button className="primary" disabled={!batteries.length} onClick={() => setEditing("new")}>
             Новое расписание
@@ -46,8 +46,8 @@ export default function Schedules() {
 
       {!batteries.length && rows ? (
         <Empty
-          title="Сначала нужна батарея"
-          hint="Расписание выдаёт батарею целиком. Соберите набор в разделе «Батареи» — из одной методики тоже можно."
+          title={ut("sch.needBattery")}
+          hint={ut("sch.needBatteryHint")}
         />
       ) : null}
 
@@ -68,8 +68,8 @@ export default function Schedules() {
       {!rows ? <Loading /> : null}
       {rows && !rows.length && batteries.length && !editing ? (
         <Empty
-          title="Расписаний нет"
-          hint="Заведите повтор, чтобы плановые замеры выдавались сами, а не по памяти"
+          title={ut("sch.none")}
+          hint={ut("sch.noneHint")}
         />
       ) : null}
 
@@ -87,7 +87,7 @@ export default function Schedules() {
                   run(async () => {
                     await api.runSchedule(s.id);
                     await reload();
-                  }, "Расписание отработало")
+                  }, ut("sch.ran"))
                 }
                 disabled={!s.active}
               >
@@ -100,7 +100,7 @@ export default function Schedules() {
                   run(async () => {
                     await api.deleteSchedule(s.id);
                     await reload();
-                  }, "Расписание удалено")
+                  }, ut("sch.deleted"))
                 }
               >
                 Удалить
@@ -110,16 +110,20 @@ export default function Schedules() {
 
           <div className="tiles">
             <div className="tile">
-              <span className="label">Период</span>
-              <span className="value">{everyLabel(s.intervalDays)}</span>
+              <span className="label">{ut("sch.period")}</span>
+              <span className="value">
+                {everyKey(s.intervalDays)
+                  ? ut(everyKey(s.intervalDays)!)
+                  : `${ut("sch.everyNDays")} ${s.intervalDays}`}
+              </span>
             </div>
             <div className="tile">
               <span className="label">{ut("sch.scope")}</span>
               <span className="value">{s.reach}</span>
-              <span className="label">{s.scope === "unit" ? (s.unit ?? "—") : "поимённо"}</span>
+              <span className="label">{s.scope === "unit" ? (s.unit ?? "—") : ut("sch.byName")}</span>
             </div>
             <div className="tile">
-              <span className="label">Срок на прохождение</span>
+              <span className="label">{ut("sch.deadline")}</span>
               <span className="value">{s.dueDays}</span>
               <span className="label">дней</span>
             </div>
@@ -149,13 +153,13 @@ export default function Schedules() {
 
           {s.runs.length ? (
             <div className="nested">
-              <h3>Последние срабатывания</h3>
+              <h3>{ut("sch.lastRuns")}</h3>
               <table>
                 <thead>
                   <tr>
                     <th>{ut("sch.when")}</th>
                     <th className="num">{ut("f.assigned")}</th>
-                    <th className="num">Пропущено</th>
+                    <th className="num">{ut("sch.skipped")}</th>
                     <th>{ut("f.note")}</th>
                   </tr>
                 </thead>
@@ -166,7 +170,7 @@ export default function Schedules() {
                       <td className="num">{r.assigned}</td>
                       <td className="num muted">{r.skipped}</td>
                       <td className="muted">
-                        {r.note ?? (r.skipped ? "пропущены те, у кого задание ещё открыто" : "—")}
+                        {r.note ?? (r.skipped ? ut("sch.skippedHint") : "—")}
                       </td>
                     </tr>
                   ))}
@@ -182,24 +186,28 @@ export default function Schedules() {
   );
 }
 
-/** Период человеческими словами: «каждые 90 дней» читается хуже, чем «раз в квартал» */
-function everyLabel(days: number): string {
-  if (days === 1) return "ежедневно";
-  if (days === 7) return "еженедельно";
-  if (days === 14) return "раз в 2 недели";
-  if (days === 30 || days === 31) return "ежемесячно";
-  if (days === 90 || days === 91) return "раз в квартал";
-  if (days === 180) return "раз в полгода";
-  if (days === 365) return "ежегодно";
-  return `раз в ${days} дн.`;
+/**
+ * Период человеческими словами: «каждые 90 дней» читается хуже, чем
+ * «раз в квартал». Возвращается ключ, а не готовая строка: функция вызывается
+ * из разметки, и язык должен браться при отрисовке.
+ */
+function everyKey(days: number): UiKey | null {
+  if (days === 1) return "sch.daily";
+  if (days === 7) return "sch.weekly";
+  if (days === 14) return "sch.biweekly";
+  if (days === 30 || days === 31) return "sch.monthly";
+  if (days === 90 || days === 91) return "sch.quarterly";
+  if (days === 180) return "sch.halfYear";
+  if (days === 365) return "sch.yearly";
+  return null;
 }
 
-const PRESETS: [string, number][] = [
-  ["Еженедельно", 7],
-  ["Ежемесячно", 30],
-  ["Раз в квартал", 90],
-  ["Раз в полгода", 180],
-  ["Ежегодно", 365],
+const PRESETS: [UiKey, number][] = [
+  ["sch.weeklyCap", 7],
+  ["sch.monthlyCap", 30],
+  ["sch.quarterlyCap", 90],
+  ["sch.halfYearCap", 180],
+  ["sch.yearlyCap", 365],
 ];
 
 function ScheduleEditor({
@@ -300,7 +308,7 @@ function ScheduleEditor({
             className={`chip ${intervalDays === days ? "active" : ""}`}
             onClick={() => setIntervalDays(days)}
           >
-            {label}
+            {ut(label)}
           </button>
         ))}
       </div>

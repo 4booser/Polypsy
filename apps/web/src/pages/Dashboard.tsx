@@ -113,7 +113,7 @@ export default function Dashboard() {
       <Chart title={ut("dash.timeline")} hint={ut("dash.timelineHint")}>
         <LineChart
           area
-          series={[{ label: "Прохождений", points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]}
+          series={[{ label: ut("cl.responses"), points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]}
         />
       </Chart>
 
@@ -138,16 +138,16 @@ export default function Dashboard() {
       </div>
 
       <div className="card">
-        <h2>Все методики</h2>
-        <p className="hint">Откройте методику, чтобы увидеть подробные срезы</p>
+        <h2>{ut("dash.allSurveys")}</h2>
+        <p className="hint">{ut("dash.allSurveysHint")}</p>
         <table>
           <thead>
             <tr>
-              <th>Методика</th>
-              <th>Статус</th>
-              <th>Видимость</th>
-              <th className="num">Вопросов</th>
-              <th className="num">Прохождений</th>
+              <th>{ut("dash.survey")}</th>
+              <th>{ut("cl.status")}</th>
+              <th>{ut("cl.visibility")}</th>
+              <th className="num">{ut("cl.questions")}</th>
+              <th className="num">{ut("cl.responses")}</th>
             </tr>
           </thead>
           <tbody>
@@ -155,7 +155,7 @@ export default function Dashboard() {
               <tr key={s.id}>
                 <td><Link to={`/surveys/${s.id}`}>{s.title}</Link></td>
                 <td className="muted">{s.status}</td>
-                <td className="muted">{s.visibility === "restricted" ? "по назначению" : "общая"}</td>
+                <td className="muted">{s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}</td>
                 <td className="num">{s.questionCount}</td>
                 <td className="num">{s.responseCount}</td>
               </tr>
