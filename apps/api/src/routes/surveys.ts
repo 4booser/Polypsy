@@ -81,7 +81,7 @@ surveyRoutes.get("/", async (c) => {
     responseCount: Number(r.responseCount ?? 0),
     completedByMe: Number(r.completedByMe ?? 0) > 0,
   }));
-  return c.json(list);
+  return c.json({ items: list });
 });
 
 surveyRoutes.get("/:id", async (c) => {
@@ -374,7 +374,7 @@ surveyRoutes.get("/:id/versions", requireStaff, async (c) => {
     .where(eq(surveyVersions.surveyId, id))
     .orderBy(desc(surveyVersions.version));
 
-  return c.json(rows.map((r) => ({ ...r, responseCount: Number(r.responseCount ?? 0) })));
+  return c.json({ items: rows.map((r) => ({ ...r, responseCount: Number(r.responseCount ?? 0) })) });
 });
 
 /**

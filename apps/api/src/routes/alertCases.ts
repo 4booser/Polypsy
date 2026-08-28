@@ -233,14 +233,14 @@ alertCaseRoutes.get("/units", async (c) => {
   const scope = await surveyScopeFilter(c.get("user"));
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const ids = scoped.map((s) => s.id);
-  if (!ids.length) return c.json([]);
+  if (!ids.length) return c.json({ items: [] });
 
   const rows = await db
     .selectDistinct({ unit: users.unit })
     .from(alertCases)
     .innerJoin(users, eq(users.id, alertCases.userId))
     .where(and(inArray(alertCases.surveyId, ids), isNotNull(users.unit)));
-  return c.json(rows.map((r) => r.unit).filter(Boolean).sort());
+  return c.json({ items: rows.map((r) => r.unit).filter(Boolean).sort() });
 });
 
 async function loadCase(user: { id: string; role: string }, id: string) {
@@ -272,14 +272,14 @@ alertCaseRoutes.get("/:id/history", async (c) => {
     .orderBy(desc(auditLog.at))
     .limit(50);
 
-  return c.json(
-    rows.map((r) => ({
+  return c.json({
+    items: rows.map((r) => ({
       action: r.entry.action,
       at: r.entry.at,
       actorName: r.actor ? fullNameOf(r.actor) : (r.entry.actorEmail ?? "—"),
       details: r.entry.details,
     })),
-  );
+  });
 });
 
 /**

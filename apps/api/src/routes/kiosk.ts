@@ -313,7 +313,7 @@ kioskRoutes.get("/sessions", async (c) => {
       participants: await participantStates(row.id, row.batteryId),
     });
   }
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 async function participantStates(sessionId: string, batteryId: string) {

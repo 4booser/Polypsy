@@ -295,7 +295,7 @@ responseRoutes.get("/me/responses", async (c) => {
     .from(responses)
     .where(eq(responses.userId, user.id))
     .orderBy(desc(responses.submittedAt));
-  return c.json(await withScores(rows, user.fullName));
+  return c.json({ items: await withScores(rows, user.fullName) });
 });
 
 /** Все прохождения методики — админам */

@@ -18,7 +18,7 @@ userRoutes.use("*", requireAuth, requireSuperadmin);
 userRoutes.get("/", async (c) => {
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));
   await audit(c, { action: "user.list", details: { count: rows.length } });
-  return c.json(rows.map(toPublicUser) satisfies User[]);
+  return c.json({ items: rows.map(toPublicUser) satisfies User[] });
 });
 
 /** Единственный способ завести администратора или специалиста */

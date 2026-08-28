@@ -57,7 +57,7 @@ export default function ReferralsPage() {
 
   return (
     <Screen res={res}>
-      {(rows) => (
+      {({ items: rows, truncated }) => (
     <>
       <PageHead
         title={ut("ref.title")}
@@ -69,6 +69,12 @@ export default function ReferralsPage() {
         }
       />
       <div className="card">
+        {truncated ? (
+          <p className="hint" style={{ marginTop: 0 }}>
+            Показаны первые 200 направлений — самые свежие. Чтобы увидеть остальные,
+            сузьте выборку переключателем выше.
+          </p>
+        ) : null}
         {rows.length === 0 ? (
           <Empty
             title={all ? ut("ref.none") : ut("ref.noneOpen")}

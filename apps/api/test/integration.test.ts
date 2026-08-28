@@ -384,8 +384,8 @@ describe("приглашения", () => {
     expect(body.user.unit).toBe("Рота Б");
 
     const mine = await api("/api/batteries/mine", body.token);
-    expect(mine.body.length).toBe(1);
-    expect(mine.body[0].batteryTitle).toBe("Батарея приглашения");
+    expect(mine.body.items.length).toBe(1);
+    expect(mine.body.items[0].batteryTitle).toBe("Батарея приглашения");
   });
 
   test("лимит использований соблюдается атомарно", async () => {
@@ -427,10 +427,12 @@ describe("приглашения", () => {
 
   test("чужой админ не видит приглашение группы А в списке", async () => {
     const mine = await api("/api/invites", adminA.token);
-    expect(mine.body.length).toBeGreaterThan(0);
+    expect(mine.body.items.length).toBeGreaterThan(0);
     const foreign = await api("/api/invites", adminB.token);
-    const ids = foreign.body.map((i: { id: string }) => i.id);
-    expect(ids).not.toContain(mine.body.find((i: { batteryId: string | null }) => i.batteryId)?.id);
+    const ids = foreign.body.items.map((i: { id: string }) => i.id);
+    expect(ids).not.toContain(
+      mine.body.items.find((i: { batteryId: string | null }) => i.batteryId)?.id,
+    );
   });
 });
 
@@ -496,8 +498,8 @@ describe("порядок батареи и методики клинициста
 
     // батарея при этом НЕ закрыта: обязательная часть специалиста не внесена
     const assignments = await api(`/api/batteries/${batteryId}/assignments`, adminA.token);
-    expect(assignments.body[0].completedAt).toBeNull();
-    const clinicianStep = assignments.body[0].steps.find(
+    expect(assignments.body.items[0].completedAt).toBeNull();
+    const clinicianStep = assignments.body.items[0].steps.find(
       (s: { surveyId: string }) => s.surveyId === clinicianSurvey,
     );
     expect(clinicianStep.state).toBe("available");
@@ -2021,10 +2023,10 @@ describe("снятие методики с использования", () => {
 
   test("снятая методика исчезает из списков и не проходится", async () => {
     const staffList = await api("/api/surveys", adminA.token);
-    expect(staffList.body.some((s: { id: string }) => s.id === sid)).toBe(false);
+    expect(staffList.body.items.some((s: { id: string }) => s.id === sid)).toBe(false);
 
     const patientList = await api("/api/surveys", patient.token);
-    expect(patientList.body.some((s: { id: string }) => s.id === sid)).toBe(false);
+    expect(patientList.body.items.some((s: { id: string }) => s.id === sid)).toBe(false);
 
     const pass = await api(`/api/surveys/${sid}/responses`, patient.token, {
       method: "POST",
@@ -2070,7 +2072,7 @@ describe("снятие методики с использования", () => {
 
   test("сотрудник видит снятые по явному запросу, повторное снятие отклоняется", async () => {
     const list = await api("/api/surveys?archived=1", adminA.token);
-    expect(list.body.some((s: { id: string }) => s.id === sid)).toBe(true);
+    expect(list.body.items.some((s: { id: string }) => s.id === sid)).toBe(true);
 
     const again = await api(`/api/surveys/${sid}`, adminA.token, { method: "DELETE" });
     expect(again.status).toBe(400);
@@ -2081,7 +2083,7 @@ describe("снятие методики с использования", () => {
     expect(restored.status).toBe(204);
 
     const list = await api("/api/surveys", patient.token);
-    expect(list.body.some((s: { id: string }) => s.id === sid)).toBe(true);
+    expect(list.body.items.some((s: { id: string }) => s.id === sid)).toBe(true);
 
     const pass = await submitSurvey(sid, patient.token);
     expect(pass.status).toBe(201);
@@ -2652,11 +2654,11 @@ describe("передача смены и просроченные повторы
 
     const history = await api(`/api/alert-cases/${target.id}/history`, adminA.token);
     expect(history.status).toBe(200);
-    const actions = history.body.map((h: { action: string }) => h.action);
+    const actions = history.body.items.map((h: { action: string }) => h.action);
     expect(actions).toContain("alert.assign");
     expect(actions).toContain("alert.release");
     // видно, кто именно, — иначе при передаче смены непонятно, с кем говорить
-    expect(history.body[0].actorName.length).toBeGreaterThan(0);
+    expect(history.body.items[0].actorName.length).toBeGreaterThan(0);
   });
 
   test("просроченный повтор по протоколу попадает в очередь работы", async () => {
