@@ -575,3 +575,112 @@ describe("сохранённые виды", () => {
     expect(second.status).toBe(400);
   });
 });
+
+/* ── пуш-уведомления ── */
+
+describe("пуш-уведомления", () => {
+  test("устройство регистрируется, повторная регистрация не плодит записей", async () => {
+    const { pushTokens } = await import("../src/db/schema");
+    const person = await makeUser("user", `push-${crypto.randomUUID()}@test`);
+    const token = `ExponentPushToken[${crypto.randomUUID()}]`;
+
+    for (let i = 0; i < 3; i++) {
+      const res = await api("/api/push/register", person.token, {
+        method: "POST",
+        body: JSON.stringify({ token, platform: "ios" }),
+      });
+      expect(res.status).toBe(200);
+    }
+
+    const rows = await db.select().from(pushTokens).where(eq(pushTokens.token, token));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.userId).toBe(person.id);
+  });
+
+  test("токен переезжает к тому, кто вошёл последним", async () => {
+    /*
+     * На общем планшете после выхода токен должен принадлежать следующему
+     * вошедшему — иначе первый продолжал бы получать уведомления о чужих
+     * назначениях.
+     */
+    const { pushTokens } = await import("../src/db/schema");
+    const first = await makeUser("user", `push-a-${crypto.randomUUID()}@test`);
+    const second = await makeUser("user", `push-b-${crypto.randomUUID()}@test`);
+    const token = `ExponentPushToken[${crypto.randomUUID()}]`;
+
+    await api("/api/push/register", first.token, {
+      method: "POST",
+      body: JSON.stringify({ token, platform: "android" }),
+    });
+    await api("/api/push/register", second.token, {
+      method: "POST",
+      body: JSON.stringify({ token, platform: "android" }),
+    });
+
+    const [row] = await db.select().from(pushTokens).where(eq(pushTokens.token, token));
+    expect(row!.userId).toBe(second.id);
+  });
+
+  test("одно и то же событие не уходит дважды", async () => {
+    /*
+     * Уведомление, пришедшее дважды, приучает игнорировать уведомления — а
+     * это дороже, чем не отправить вовсе.
+     */
+    const { pushToUser, setPushSenderForTests } = await import("../src/lib/push");
+    const sent: { to: string; title: string }[] = [];
+    setPushSenderForTests(async (messages) => {
+      sent.push(...messages.map((m) => ({ to: m.to, title: m.title })));
+    });
+
+    const person = await makeUser("user", `push-dup-${crypto.randomUUID()}@test`);
+    await api("/api/push/register", person.token, {
+      method: "POST",
+      body: JSON.stringify({ token: `ExponentPushToken[${crypto.randomUUID()}]`, platform: "ios" }),
+    });
+
+    const message = {
+      eventKey: `test:${crypto.randomUUID()}`,
+      kind: "assignment",
+      title: "Назначено обследование",
+      body: "Срок — до завтра",
+    };
+    expect(await pushToUser(person.id, message)).toBe(true);
+    expect(await pushToUser(person.id, message)).toBe(false);
+    expect(sent).toHaveLength(1);
+
+    setPushSenderForTests(null);
+  });
+
+  test("в теле уведомления нет персональных данных", async () => {
+    /*
+     * Экран блокировки видят посторонние — в казарме, в транспорте, на
+     * построении. Уведомление не должно сообщать им ничего о состоянии
+     * человека.
+     */
+    const { pushToUser, setPushSenderForTests } = await import("../src/lib/push");
+    const captured: { title: string; body: string }[] = [];
+    setPushSenderForTests(async (messages) => {
+      captured.push(...messages.map((m) => ({ title: m.title, body: m.body })));
+    });
+
+    const person = await makeUser("user", `push-pii-${crypto.randomUUID()}@test`, { unit: "Рота Z" });
+    await api("/api/push/register", person.token, {
+      method: "POST",
+      body: JSON.stringify({ token: `ExponentPushToken[${crypto.randomUUID()}]`, platform: "ios" }),
+    });
+
+    await pushToUser(person.id, {
+      eventKey: `pii:${crypto.randomUUID()}`,
+      kind: "assignment",
+      title: "Назначено обследование",
+      body: "Срок — до 2026-09-01",
+    });
+
+    const all = captured.map((m) => `${m.title} ${m.body}`).join(" ");
+    expect(all).not.toContain("Рота Z");
+    expect(all).not.toContain(person.id);
+    expect(all).not.toContain("@test");
+
+    setPushSenderForTests(null);
+  });
+});

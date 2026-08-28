@@ -13,6 +13,7 @@ import {
 import { auditSystem } from "./audit";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
+import { pushToUser } from "./push";
 
 const DAY_MS = 86_400_000;
 
@@ -129,6 +130,25 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
       )
       .onConflictDoNothing();
   });
+
+  /*
+   * Уведомление — после транзакции, а не внутри: пуш нельзя откатить, и
+   * отправленное «вам назначено обследование» при откате выдачи было бы
+   * обещанием, которого система не выполнит. Порядок «сначала запись, потом
+   * сообщение» здесь важнее скорости.
+   *
+   * В тексте нет ни методики, ни диагноза: экран блокировки видят
+   * посторонние — в казарме, в транспорте, на построении.
+   */
+  for (const userId of fresh) {
+    await pushToUser(userId, {
+      eventKey: `schedule:${schedule.id}:${dueAt}`,
+      kind: "assignment",
+      title: "Назначено обследование",
+      body: `Срок — до ${dueAt.slice(0, 10)}`,
+      path: "/(app)/surveys",
+    });
+  }
 
   return { assigned: fresh.length, skipped: targets.length - fresh.length };
 }

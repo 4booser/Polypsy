@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { User } from "@quizzy/shared";
 import { api } from "../api/client";
 import { tokenStorage } from "../storage";
+import { forgetPush } from "../push";
 
 interface AuthState {
   user: User | null;
@@ -65,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    // на общем планшете токен обязан уехать вместе с учётной записью
+    await forgetPush().catch(() => {});
     await tokenStorage.clear();
     setUser(null);
   }, []);

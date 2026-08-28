@@ -31,6 +31,7 @@ import { pathwayRoutes } from "./routes/pathways";
 import { noteRoutes } from "./routes/notes";
 import { safetyRoutes } from "./routes/safety";
 import { goalRoutes } from "./routes/goals";
+import { pushRoutes } from "./routes/push";
 import { alertCaseRoutes } from "./routes/alertCases";
 import { worklistRoutes } from "./routes/worklist";
 import { unitReportRoutes } from "./routes/unitReport";
@@ -123,6 +124,7 @@ app.route("/api/pathways", pathwayRoutes);
 app.route("/api/notes", noteRoutes);
 app.route("/api/safety", safetyRoutes);
 app.route("/api/goals", goalRoutes);
+app.route("/api/push", pushRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);
 

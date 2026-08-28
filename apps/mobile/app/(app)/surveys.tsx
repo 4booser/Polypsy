@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import type { BatteryAssignment, BatteryStep, SurveyGroupWithCounts, SurveyListItem } from "@quizzy/shared";
@@ -7,8 +7,18 @@ import { useAuth } from "@/auth/AuthContext";
 import { Body, Card, Chip, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { severityColor, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { ensurePushRegistered } from "@/push";
 
 export default function SurveysScreen() {
+  /*
+   * Разрешение спрашиваем здесь, а не при первом запуске: на экране заданий
+   * человек уже понимает, о чём его уведомят. Запрос без контекста
+   * отклоняют, и второй раз система его не покажет.
+   */
+  useEffect(() => {
+    void ensurePushRegistered();
+  }, []);
+
   const c = useColors();
   const { ut } = useLang();
   const router = useRouter();

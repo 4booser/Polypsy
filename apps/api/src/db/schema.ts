@@ -1239,6 +1239,62 @@ export const alertNotifications = pgTable(
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
 /**
+ * Токен устройства для пуш-уведомлений.
+ *
+ * До этого мобильное приложение молчало: назначили обследование — человек
+ * узнавал, когда сам заходил. Для повторных замеров по расписанию это
+ * означало, что половина просто не приходит.
+ *
+ * Токен принадлежит паре «человек + устройство»: у одного бывает телефон и
+ * планшет, и выключенный на одном не должен глушить второй.
+ */
+export const pushTokens = pgTable(
+  "push_tokens",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    platform: text("platform", { enum: ["ios", "android", "web"] }).notNull(),
+    /** Когда устройство последний раз выходило на связь: мёртвые чистятся */
+    lastSeenAt: timestampCol("last_seen_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: uniqueIndex("push_tokens_token_idx").on(t.token),
+    userIdx: index("push_tokens_user_idx").on(t.userId),
+  }),
+);
+
+/**
+ * Отправленные пуши.
+ *
+ * Та же роль, что у alert_notifications для почты: идемпотентность и
+ * доказательство отправки. Уведомление о тревоге, ушедшее дважды, приучает
+ * игнорировать уведомления — а это дороже, чем не отправить вовсе.
+ */
+export const pushDeliveries = pgTable(
+  "push_deliveries",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Ключ события: `assignment:<id>`, `alert:<id>` — по нему и дедупликация */
+    eventKey: text("event_key").notNull(),
+    kind: text("kind").notNull(),
+    sentAt: timestampCol("sent_at").notNull().defaultNow(),
+    ok: boolean("ok").notNull().default(true),
+    error: text("error"),
+  },
+  (t) => ({
+    uniqueEvent: uniqueIndex("push_deliveries_unique").on(t.userId, t.eventKey),
+    sentIdx: index("push_deliveries_sent_idx").on(t.sentAt),
+  }),
+);
+
+/**
  * Цель лечения.
  *
  * Ядро measurement-based care: цель формулируется измеримо и привязывается к

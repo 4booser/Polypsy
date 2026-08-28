@@ -14,6 +14,7 @@ import { env } from "../env";
 import { auditSystem } from "./audit";
 import { parseTs } from "./time";
 import { log } from "./log";
+import { pushToUsers } from "./push";
 
 /**
  * Уведомления о тревогах риска.
@@ -53,6 +54,26 @@ async function recipientsFor(surveyId: string): Promise<string[]> {
   }
   const supers = await db.select({ email: users.email }).from(users).where(eq(users.role, "superadmin"));
   return supers.map((r) => r.email);
+}
+
+/**
+ * Кому уходит пуш о тревоге.
+ *
+ * Тот же круг, что и у письма, но идентификаторами: пуш адресуется учётной
+ * записи, а не почте. Разъехаться эти два списка не должны — дежурный,
+ * получающий письмо, но не получающий пуш, узнаёт о тревоге позже всех.
+ */
+async function pushRecipientsFor(surveyId: string): Promise<string[]> {
+  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
+  if (survey?.groupId) {
+    const rows = await db
+      .select({ id: groupAdmins.userId })
+      .from(groupAdmins)
+      .where(eq(groupAdmins.groupId, survey.groupId));
+    if (rows.length) return rows.map((r) => r.id);
+  }
+  const supers = await db.select({ id: users.id }).from(users).where(eq(users.role, "superadmin"));
+  return supers.map((r) => r.id);
 }
 
 async function superadminEmails(): Promise<string[]> {
@@ -132,6 +153,19 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
           channel,
         })
         .onConflictDoNothing();
+      /*
+       * Пуш идёт тем же адресатам и в том же такте, что письмо: почту
+       * открывают не всегда, а тревога о суицидальном риске должна догнать
+       * дежурного там, где он есть.
+       */
+      await pushToUsers(await pushRecipientsFor(survey.id), {
+        eventKey: `alert:${alert.id}`,
+        kind: "alert",
+        title: "Тревога в вашей группе",
+        body: `Методика «${title}». Откройте разбор случаев.`,
+        path: "/analytics/alerts",
+      });
+
       await auditSystem({
         action: "alert.notified",
         resourceType: "risk_alert",
