@@ -191,6 +191,37 @@ referralRoutes.get("/summary/:userId", async (c) => {
         .where(inArray(responseScores.responseId, own.map((r) => r.id)))
     : [];
 
+  /*
+   * Выборка для SD — по всем прохождениям методики, а не по замерам самого
+   * пациента.
+   *
+   * Раньше SD считалась по тем же двум точкам, между которыми меряется
+   * изменение. Арифметика такого расчёта вырождается: при двух значениях
+   * sd = |Δ|/√2, и RCI выходит ровно ±2.24 всегда — для любой шкалы, любого
+   * человека и любого сдвига. На экране это выглядело как уверенное
+   * «достоверное возрастание» у каждой строки подряд, то есть как настоящий
+   * клинический вывод, которым не являлось.
+   */
+  const populationRows = own.length
+    ? await db
+        .select({ code: scales.code, surveyId: responses.surveyId, value: responseScores.value })
+        .from(responseScores)
+        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+        .innerJoin(responses, eq(responses.id, responseScores.responseId))
+        .where(
+          and(
+            inArray(responses.surveyId, [...new Set(own.map((r) => r.surveyId))]),
+            eq(responses.status, "completed"),
+          ),
+        )
+    : [];
+
+  const populationByKey = new Map<string, number[]>();
+  for (const row of populationRows) {
+    const key = `${row.surveyId}:${row.code}`;
+    populationByKey.set(key, [...(populationByKey.get(key) ?? []), row.value]);
+  }
+
   const bySurvey = new Map<string, typeof own>();
   for (const r of own) {
     const list = bySurvey.get(r.surveyId) ?? [];
@@ -223,15 +254,24 @@ referralRoutes.get("/summary/:userId", async (c) => {
         const first = ordered[0]!;
         const last = ordered[ordered.length - 1]!;
 
-        // RCI: SD по всей выборке шкалы, надёжность консервативно 0.8 —
-        // точная альфа считается в аналитике, здесь важен порядок величины
+        /*
+         * RCI: SD по популяции той же шкалы, надёжность консервативно 0.8 —
+         * точная альфа считается в аналитике, здесь важен порядок величины.
+         *
+         * Порог в десять наблюдений не формальность: на меньшей выборке SD
+         * сама по себе шум, и «достоверность» превращается в подбрасывание
+         * монеты с уверенным лицом. Лучше показать «недостаточно данных»,
+         * чем вывод, которого нет.
+         */
         let rc: CaseSummary["surveys"][number]["scales"][number]["reliableChange"] = null;
         if (ordered.length >= 2) {
-          const sample = scoreRows.filter((s) => s.code === code).map((s) => s.score.value);
-          const sd = Math.sqrt(variance(sample));
-          const computed = reliableChange(first.score.value, last.score.value, sd, 0.8);
-          if (computed) {
-            rc = { rci: computed.rci, significant: computed.significant, direction: computed.direction };
+          const sample = populationByKey.get(`${surveyId}:${code}`) ?? [];
+          if (sample.length >= 10) {
+            const sd = Math.sqrt(variance(sample));
+            const computed = reliableChange(first.score.value, last.score.value, sd, 0.8);
+            if (computed) {
+              rc = { rci: computed.rci, significant: computed.significant, direction: computed.direction };
+            }
           }
         }
 

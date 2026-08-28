@@ -1760,3 +1760,25 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   background: var(--accent-soft);
 }
 .conference-actions { display: grid; gap: 8px; }
+
+/* ═══ карта пациента: две колонки ═══
+ * Карта выросла до двух экранов прокрутки, и «что измерено» перестало
+ * помещаться рядом с «что делать». Слева измерения и цели, справа
+ * клинические действия.
+ */
+.patient-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(340px, 1fr);
+  gap: var(--gap);
+  align-items: start;
+}
+.pc-measures, .pc-actions { display: grid; gap: var(--gap); align-content: start; min-width: 0; }
+.pc-measures .card, .pc-actions .card { margin-bottom: 0; }
+
+@media (max-width: 1200px) {
+  .patient-card { grid-template-columns: 1fr; }
+}
+@media print {
+  /* в печати колонки не нужны: лист один и узкий */
+  .patient-card { display: block; }
+}
