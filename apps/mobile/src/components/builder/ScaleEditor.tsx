@@ -1,13 +1,15 @@
 import { Pressable, Text, View } from "react-native";
-import type { ScaleAggregation, Severity } from "@quizzy/shared";
+import type { ScaleAggregation, Severity, UiKey } from "@quizzy/shared";
 import { severityColor, severityLabel, spacing, useColors } from "../../theme";
 import { Body, Button, Card, Chip, Field, Row } from "../ui";
 import { emptyBand, type DraftScale } from "./types";
+import { useLang } from "@/lang";
 
-const AGGREGATION_LABEL: Record<ScaleAggregation, string> = {
-  sum: "Сумма",
-  average: "Среднее",
-  count: "Число признаков",
+// ключи, а не подписи: карта вне компонента, язык — при отрисовке
+const AGGREGATION_KEY: Record<ScaleAggregation, UiKey> = {
+  sum: "mb.sum",
+  average: "mb.avg",
+  count: "mb.count",
 };
 
 export function ScaleEditor({
@@ -19,12 +21,13 @@ export function ScaleEditor({
   onChange: (patch: Partial<DraftScale>) => void;
   onRemove: () => void;
 }) {
+  const { ut } = useLang();
   const c = useColors();
 
   return (
     <Card>
       <Row>
-        <Body muted>Субшкала</Body>
+        <Body muted>{ut("mb.subscale")}</Body>
         <View style={{ flex: 1 }} />
         <Pressable onPress={onRemove} hitSlop={8}>
           <Text style={{ color: c.danger, fontSize: 13 }}>удалить</Text>
@@ -43,21 +46,21 @@ export function ScaleEditor({
         </View>
         <View style={{ flex: 2 }}>
           <Field
-            label="Название"
+            label={ut("mb.name")}
             value={scale.title}
             onChangeText={(t) => onChange({ title: t })}
-            placeholder="Тревога"
+            placeholder={ut("mb.alarm")}
           />
         </View>
       </Row>
 
       <View style={{ gap: spacing.xs }}>
-        <Text style={{ color: c.muted, fontSize: 13 }}>Как считать итог</Text>
+        <Text style={{ color: c.muted, fontSize: 13 }}>{ut("mb.howToSum")}</Text>
         <Row gap={spacing.xs}>
-          {(Object.keys(AGGREGATION_LABEL) as ScaleAggregation[]).map((a) => (
+          {(Object.keys(AGGREGATION_KEY) as ScaleAggregation[]).map((a) => (
             <Chip
               key={a}
-              label={AGGREGATION_LABEL[a]}
+              label={ut(AGGREGATION_KEY[a])}
               selected={scale.aggregation === a}
               onPress={() => onChange({ aggregation: a })}
             />
@@ -105,7 +108,7 @@ export function ScaleEditor({
                       bands: scale.bands.map((b) => (b.key === band.key ? { ...b, label: t } : b)),
                     })
                   }
-                  placeholder="Умеренная тревога"
+                  placeholder={ut("mb.moderateAlarm")}
                 />
               </View>
             </Row>
@@ -134,7 +137,7 @@ export function ScaleEditor({
           </View>
         ))}
         <Button
-          title="Добавить норму"
+          title={ut("mb.addNorm")}
           variant="secondary"
           onPress={() => onChange({ bands: [...scale.bands, emptyBand()] })}
         />

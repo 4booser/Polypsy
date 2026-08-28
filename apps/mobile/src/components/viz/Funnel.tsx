@@ -3,6 +3,7 @@ import { View } from "react-native";
 import Svg, { Path, Text as SvgText } from "react-native-svg";
 import { severityColor, useChart, useColors } from "../../theme";
 import { Caption, useMeasuredWidth } from "./primitives";
+import { useLang } from "@/lang";
 
 export interface FunnelStage {
   label: string;
@@ -17,11 +18,12 @@ export interface FunnelStage {
  * Шаги с заметной потерей подписаны отдельно.
  */
 export function Funnel({ stages, height }: { stages: FunnelStage[]; height?: number }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
   const [width, onLayout] = useMeasuredWidth();
 
-  if (stages.length === 0) return <Caption>Данных пока нет</Caption>;
+  if (stages.length === 0) return <Caption>{ut("mviz.noData")}</Caption>;
 
   const rowH = 34;
   const labelW = Math.min(150, width * 0.42);
@@ -69,7 +71,7 @@ export function Funnel({ stages, height }: { stages: FunnelStage[]; height?: num
           );
         })}
       </Svg>
-      <Caption>Сужение показывает, на каком вопросе респонденты прекращают прохождение</Caption>
+      <Caption>{ut("mviz.funnelHint")}</Caption>
     </View>
   );
 }

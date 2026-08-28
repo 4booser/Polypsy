@@ -6,8 +6,10 @@ import { api, type ResponseDetail } from "@/api/client";
 import { SeverityTag } from "@/components/charts";
 import { Body, Card, Divider, Empty, ErrorText, Loader, Row } from "@/components/ui";
 import { formatDuration, spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 export default function ResponsesScreen() {
+  const { ut } = useLang();
   const c = useColors();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [rows, setRows] = useState<SurveyResponse[] | null>(null);
@@ -19,7 +21,7 @@ export default function ResponsesScreen() {
     try {
       setRows(await api.surveyResponses(id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить прохождения");
+      setError(e instanceof Error ? e.message : ut("mrs.loadFailed"));
       setRows([]);
     }
   }, [id]);
@@ -35,7 +37,7 @@ export default function ResponsesScreen() {
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
       <ErrorText>{error}</ErrorText>
-      {rows.length === 0 ? <Empty text="Прохождений пока нет" /> : null}
+      {rows.length === 0 ? <Empty text={ut("mrs.none")} /> : null}
 
       {rows.map((r) => (
         <Pressable
@@ -44,12 +46,12 @@ export default function ResponsesScreen() {
             setDetail(detail?.id === r.id ? null : await api.responseDetail(r.id));
           }}
           accessibilityRole="button"
-          accessibilityLabel={r.userName ?? "Аноним"}
+          accessibilityLabel={r.userName ?? ut("mrs.anon")}
           accessibilityState={{ expanded: detail?.id === r.id }}
         >
           <Card>
             <Row>
-              <Body>{r.userName ?? "Аноним"}</Body>
+              <Body>{r.userName ?? ut("mrs.anon")}</Body>
               <View style={{ flex: 1 }} />
               <Text style={{ color: c.muted, fontSize: 12 }}>
                 {r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "не завершено"}
@@ -76,7 +78,7 @@ export default function ResponsesScreen() {
             {detail?.id === r.id ? (
               <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
                 <Divider />
-                <Body muted>Ответы и время по вопросам</Body>
+                <Body muted>{ut("mrs.answersAndTime")}</Body>
                 {detail.answers.map((a) => (
                   <Row key={a.questionId}>
                     <Text style={{ color: c.text, fontSize: 13, flex: 1 }} numberOfLines={1}>

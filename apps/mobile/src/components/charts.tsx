@@ -100,9 +100,10 @@ export function SeverityBar({
 }: {
   bands: { label: string; severity: Severity; count: number; percent: number }[];
 }) {
+  const { ut } = useLang();
   const c = useColors();
   const total = bands.reduce((sum, b) => sum + b.count, 0);
-  if (!total) return <Body muted>Нет данных для распределения</Body>;
+  if (!total) return <Body muted>{ut("mch.noDistribution")}</Body>;
 
   return (
     <View style={{ gap: spacing.md }}>
@@ -166,9 +167,10 @@ export function Histogram({
   data: { value: number; count: number }[];
   height?: number;
 }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
-  if (!data.length) return <Body muted>Нет числовых ответов</Body>;
+  if (!data.length) return <Body muted>{ut("mch.noNumeric")}</Body>;
   const max = Math.max(...data.map((d) => d.count), 1);
 
   return (
@@ -214,9 +216,10 @@ export function Histogram({
 
 /** Динамика прохождений по дням */
 export function Timeline({ data }: { data: { date: string; count: number }[] }) {
+  const { ut } = useLang();
   const chart = useChart();
   const c = useColors();
-  if (!data.length) return <Body muted>Прохождений пока нет</Body>;
+  if (!data.length) return <Body muted>{ut("mch.noResponses")}</Body>;
 
   const max = Math.max(...data.map((d) => d.count), 1);
   const first = data[0]!.date;

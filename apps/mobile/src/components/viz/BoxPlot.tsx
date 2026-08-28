@@ -6,6 +6,7 @@ import { Caption, PLOT, formatShort, useMeasuredWidth } from "./primitives";
 
 export { boxStatsOf, type BoxStat } from "./math";
 import type { BoxStat } from "./math";
+import { useLang } from "@/lang";
 
 /**
  * Ящик с усами: разброс, а не только среднее.
@@ -28,10 +29,11 @@ export function BoxPlot({
   height?: number;
   categorical?: boolean;
 }) {
+  const { ut } = useLang();
   const chart = useChart();
   const [width, onLayout] = useMeasuredWidth();
 
-  if (boxes.length === 0) return <Caption>Данных пока нет</Caption>;
+  if (boxes.length === 0) return <Caption>{ut("mviz.noData")}</Caption>;
 
   const top = Math.max(...boxes.map((b) => b.max), 1);
   const plotH = height - PLOT.padTop - PLOT.padBottom;
@@ -93,7 +95,7 @@ export function BoxPlot({
           );
         })}
       </Svg>
-      <Caption>Ящик — межквартильный размах, жирная черта — медиана, усы — крайние значения</Caption>
+      <Caption>{ut("mviz.boxHint")}</Caption>
     </View>
   );
 }

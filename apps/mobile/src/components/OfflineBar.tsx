@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "../api/client";
 import { spacing, useColors } from "../theme";
+import { useLang } from "@/lang";
 
 /**
  * Полоса «нет связи» поверх всех экранов.
@@ -17,6 +18,7 @@ import { spacing, useColors } from "../theme";
  * сообщением об ошибке — плохая идея.
  */
 export function OfflineBar() {
+  const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
   const [left, setLeft] = useState(0);
@@ -89,7 +91,7 @@ export function OfflineBar() {
           : `Ответы сохранены на устройстве и ждут связи: ${left}`}
       </Text>
       <Text style={{ fontSize: 13, fontWeight: "600", color: problem ? "#fff" : c.primary }}>
-        {problem ? "Разобрать" : busy ? "Отправляю…" : "Повторить"}
+        {problem ? ut("mob.resolve") : busy ? ut("mob.sending") : ut("common.retry")}
       </Text>
     </Pressable>
   );

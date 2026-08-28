@@ -1,6 +1,7 @@
 import { Pressable, Text } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 /**
  * Аналитика — отдельный полноэкранный раздел вне вкладок: при входе панель вкладок
@@ -8,6 +9,7 @@ import { spacing, useColors } from "@/theme";
  * список методик → дашборд → срезы → прохождение.
  */
 export default function AnalyticsLayout() {
+  const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
 
@@ -23,7 +25,7 @@ export default function AnalyticsLayout() {
     <Pressable
       onPress={() => router.replace("/(app)/surveys")}
       accessibilityRole="button"
-      accessibilityLabel="Выйти из аналитики"
+      accessibilityLabel={ut("mnav.exit")}
       hitSlop={12}
       style={{ paddingRight: spacing.sm }}
     >
@@ -40,12 +42,12 @@ export default function AnalyticsLayout() {
         contentStyle: { backgroundColor: c.bg },
       }}
     >
-      <Stack.Screen name="index" options={{ title: "Аналитика", headerLeft: closeButton }} />
-      <Stack.Screen name="[id]/index" options={{ title: "Методика" }} />
-      <Stack.Screen name="[id]/responses" options={{ title: "Прохождения" }} />
-      <Stack.Screen name="alerts" options={{ title: "Тревоги" }} />
-      <Stack.Screen name="patients/index" options={{ title: "Пациенты" }} />
-      <Stack.Screen name="patients/[userId]" options={{ title: "Динамика" }} />
+      <Stack.Screen name="index" options={{ title: ut("mnav.analytics"), headerLeft: closeButton }} />
+      <Stack.Screen name="[id]/index" options={{ title: ut("mnav.survey") }} />
+      <Stack.Screen name="[id]/responses" options={{ title: ut("mnav.responses") }} />
+      <Stack.Screen name="alerts" options={{ title: ut("mnav.alerts") }} />
+      <Stack.Screen name="patients/index" options={{ title: ut("mnav.patients") }} />
+      <Stack.Screen name="patients/[userId]" options={{ title: ut("msv.dynamics") }} />
     </Stack>
   );
 }

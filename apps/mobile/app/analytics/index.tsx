@@ -7,8 +7,10 @@ import { ChartCard, StatTile } from "@/components/charts";
 import { Donut, LineChart } from "@/components/viz";
 import { Body, Button, Card, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { formatDuration, severityColor, severityLabel, spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 export default function OverviewScreen() {
+  const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
   const [data, setData] = useState<OverviewAnalytics | null>(null);
@@ -31,7 +33,7 @@ export default function OverviewScreen() {
       setCases(open.items);
       setOpenCases(open.total ?? open.items.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить аналитику");
+      setError(e instanceof Error ? e.message : ut("ma.loadFailed"));
     }
   }, []);
 
@@ -58,11 +60,11 @@ export default function OverviewScreen() {
         />
       }
     >
-      <Title>Сводка</Title>
+      <Title>{ut("ma.overview")}</Title>
 
       {/* тревоги — первое, что должен увидеть специалист */}
       {cases.length > 0 ? (
-        <Pressable onPress={() => router.push("/analytics/alerts")} accessibilityRole="button" accessibilityLabel="Открытые случаи риска">
+        <Pressable onPress={() => router.push("/analytics/alerts")} accessibilityRole="button" accessibilityLabel={ut("ma.openCases")}>
           <Card>
             <Row>
               <View
@@ -84,35 +86,35 @@ export default function OverviewScreen() {
 
       <Row gap={spacing.md}>
         <View style={{ flex: 1 }}>
-          <Button title="Пациенты" variant="secondary" onPress={() => router.push("/analytics/patients")} />
+          <Button title={ut("mnav.patients")} variant="secondary" onPress={() => router.push("/analytics/patients")} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button title="Случаи риска" variant="secondary" onPress={() => router.push("/analytics/alerts")} />
+          <Button title={ut("ma.cases")} variant="secondary" onPress={() => router.push("/analytics/alerts")} />
         </View>
       </Row>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.md }}>
         <StatTile
-          label="Прохождений"
+          label={ut("ma.responses")}
           value={String(data.responseCount)}
           hint={`доходимость ${data.completionRate}%`}
         />
-        <StatTile label="Респондентов" value={String(data.respondentCount)} />
+        <StatTile label={ut("ma.respondents")} value={String(data.respondentCount)} />
         <StatTile
-          label="Методик"
+          label={ut("ma.surveys")}
           value={String(data.surveyCount)}
           hint={`опубликовано ${data.publishedCount}`}
         />
-        <StatTile label="Среднее время" value={formatDuration(data.avgDurationMs)} />
+        <StatTile label={ut("ma.avgTime")} value={formatDuration(data.avgDurationMs)} />
       </View>
 
-      <ChartCard title="Динамика прохождений" subtitle="Завершённые прохождения по дням">
+      <ChartCard title={ut("ma.trend")} subtitle={ut("ma.trendHint")}>
         <LineChart
           showArea
           height={170}
           series={[
             {
-              label: "Прохождений",
+              label: ut("ma.responses"),
               points: data.timeline.map((t) => ({ x: t.date.slice(5), y: t.count })),
             },
           ]}
@@ -121,8 +123,8 @@ export default function OverviewScreen() {
 
       {data.severityBreakdown.length ? (
         <ChartCard
-          title="Выраженность по всем шкалам"
-          subtitle="Сколько результатов попало в каждую категорию норм"
+          title={ut("ma.severityAll")}
+          subtitle={ut("ma.severityHint")}
         >
           <Donut
             centerValue={String(data.severityBreakdown.reduce((sum, s) => sum + s.count, 0))}
@@ -137,8 +139,8 @@ export default function OverviewScreen() {
       ) : null}
 
       <Card>
-        <Body>Все методики</Body>
-        <Body muted>Выберите методику, чтобы открыть срезы</Body>
+        <Body>{ut("ma.allSurveys")}</Body>
+        <Body muted>{ut("ma.pickSurvey")}</Body>
         {surveys.map((s) => (
           <Pressable
             key={s.id}
@@ -163,9 +165,9 @@ export default function OverviewScreen() {
       </Card>
 
       <Card>
-        <Body>Методики по числу прохождений</Body>
+        <Body>{ut("ma.byResponses")}</Body>
         {data.topSurveys.length === 0 ? (
-          <Body muted>Прохождений пока нет</Body>
+          <Body muted>{ut("mrs.none")}</Body>
         ) : (
           data.topSurveys.map((s) => (
             <Pressable

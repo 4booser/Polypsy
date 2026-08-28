@@ -4,6 +4,7 @@ import type { Answer, Option, Question } from "@quizzy/shared";
 import { radius, spacing, useColors } from "../theme";
 import { useTextScale } from "../textScale";
 import { Body, Row, TOUCH_TARGET } from "./ui";
+import { useLang } from "@/lang";
 
 /**
  * Подпись деления шкалы для диктора: голое «7» бессмысленно, а у краёв
@@ -36,6 +37,7 @@ function useOptions(question: Question, kind: "option" | "row"): Option[] {
 }
 
 export function QuestionInput({ question, value, onChange }: Props) {
+  const { ut } = useLang();
   const c = useColors();
   const { fs } = useTextScale();
   const choices = useOptions(question, "option");
@@ -161,7 +163,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
       const rest = choices.filter((o) => !order.includes(o.id));
       return (
         <View style={{ gap: spacing.md }}>
-          <Body muted>Нажимайте в порядке важности — от самого важного к наименее важному</Body>
+          <Body muted>{ut("mqi.rankHint")}</Body>
           {order.length > 0 ? (
             <View style={{ gap: spacing.sm }}>
               {order.map((id, index) => {
@@ -314,7 +316,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
           value={value?.text ?? ""}
           onChangeText={(t) => onChange({ text: t })}
           accessibilityLabel={question.title}
-          placeholder="Ваш ответ"
+          placeholder={ut("mqi.yourAnswer")}
           placeholderTextColor={c.muted}
           multiline={question.type === "longtext"}
           style={[

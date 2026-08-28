@@ -3,6 +3,7 @@ import { AppState, Text, View } from "react-native";
 import { authenticate, isEnabled } from "../auth/biometrics";
 import { Body, Button, Title } from "./ui";
 import { spacing, useColors } from "../theme";
+import { useLang } from "@/lang";
 
 /** Через сколько после сворачивания приложение просит подтвердить личность */
 const RELOCK_AFTER_MS = 60_000;
@@ -16,6 +17,7 @@ const RELOCK_AFTER_MS = 60_000;
  * вопросы, и лишний барьер стоит брошенного прохождения.
  */
 export function AppLock({ children }: { children: React.ReactNode }) {
+  const { ut } = useLang();
   const c = useColors();
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [locked, setLocked] = useState(false);
@@ -68,9 +70,9 @@ export function AppLock({ children }: { children: React.ReactNode }) {
       }}
     >
       <Text style={{ fontSize: 44 }}>🔒</Text>
-      <Title>Приложение заперто</Title>
-      <Body muted>Подтвердите личность, чтобы продолжить</Body>
-      <Button title="Разблокировать" onPress={() => void unlock()} />
+      <Title>{ut("mlock.locked")}</Title>
+      <Body muted>{ut("mlock.confirm")}</Body>
+      <Button title={ut("mlock.unlock")} onPress={() => void unlock()} />
     </View>
   );
 }

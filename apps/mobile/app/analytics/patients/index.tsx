@@ -4,8 +4,10 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { api } from "@/api/client";
 import { Body, Card, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { spacing, useColors } from "@/theme";
+import { useLang } from "@/lang";
 
 export default function PatientsScreen() {
+  const { ut } = useLang();
   const c = useColors();
   const router = useRouter();
   const [people, setPeople] = useState<
@@ -17,7 +19,7 @@ export default function PatientsScreen() {
     try {
       setPeople((await api.respondents()).items);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить список");
+      setError(e instanceof Error ? e.message : ut("mpt.loadFailed"));
       setPeople([]);
     }
   }, []);
@@ -32,10 +34,10 @@ export default function PatientsScreen() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
-      <Title>Пациенты</Title>
-      <Body muted>Только те, кто проходил методики ваших групп</Body>
+      <Title>{ut("mpt.title")}</Title>
+      <Body muted>{ut("mpt.sub")}</Body>
       <ErrorText>{error}</ErrorText>
-      {people.length === 0 ? <Empty text="Прохождений пока нет" /> : null}
+      {people.length === 0 ? <Empty text={ut("mch.noResponses")} /> : null}
 
       {people.map((p) => (
         <Pressable
