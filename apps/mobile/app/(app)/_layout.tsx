@@ -39,6 +39,8 @@ export default function AppLayout() {
         name="insights"
         options={{ title: ut("tab.analytics"), headerShown: false, href: isAdmin ? "/insights" : null }}
       />
+      {/* план безопасности — отдельной вкладкой: в кризис его ищут, а не вспоминают, где он */}
+      <Tabs.Screen name="safety" options={{ title: ut("tab.safety") }} />
       <Tabs.Screen name="profile" options={{ title: ut("tab.account") }} />
       {/* очередь открывается из полосы состояния, отдельной вкладки ей не нужно */}
       <Tabs.Screen name="queue" options={{ href: null, title: ut("tab.queue") }} />

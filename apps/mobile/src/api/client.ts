@@ -1,5 +1,6 @@
 import type {
   Answer,
+  SafetyPlan,
   AnswerEvent,
   AuthPayload,
   CreateSurveyInput,
@@ -222,6 +223,21 @@ export const api = {
       (error) => offlineFallback(error, cache.batteries()),
     ),
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
+  /**
+   * Свой план безопасности.
+   *
+   * Кэшируется на устройство сразу после загрузки: план нужен в кризис, а
+   * кризис не спрашивает, есть ли сеть. Это единственный документ, который
+   * приложение обязано показать даже в самолётном режиме.
+   */
+  mySafetyPlan: () =>
+    request<{ plan: SafetyPlan | null }>("/api/safety/me").then(
+      (res) => {
+        cache.saveSafetyPlan(res.plan);
+        return res;
+      },
+      (error) => offlineFallback(error, { plan: cache.safetyPlan() }),
+    ),
   consentStatus: () =>
     request<{ required: boolean; accepted: boolean; version: number | null; text: string | null }>(
       "/api/consents/me",

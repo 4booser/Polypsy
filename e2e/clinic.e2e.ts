@@ -99,3 +99,30 @@ test("запись приёма сохраняется, подписываетс
   await expect(notes.locator(".conclusion-view").first()).toContainText(text);
   await expect(notes.getByPlaceholder("Новая запись поверх подписанной")).toHaveValue("");
 });
+
+test("план безопасности составляется и сохраняется версией", async ({ page }) => {
+  /*
+   * Не путать с safetyPlan методики: там инструкция инструмента, одинаковая
+   * для всех. Здесь план конкретного человека — что делать ему самому, когда
+   * рядом никого нет.
+   */
+  await login(page, "psy");
+  await page.goto("/patients");
+  await page.locator("table tbody tr td a").first().click();
+  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
+
+  const card = page.locator(".card").filter({ hasText: "План безопасности" }).first();
+  await expect(card).toBeVisible();
+
+  await card.getByRole("button", { name: /Составить план|Пересмотреть/ }).click();
+
+  // порядок разделов воспроизводит порядок действий в кризисе
+  const sign = `Не сплю ${Date.now()}`;
+  await card.getByRole("button", { name: "+ Добавить строку" }).first().click();
+  await card.getByPlaceholder("Своими словами").first().fill(sign);
+
+  await card.getByRole("button", { name: "Сохранить новой версией" }).click();
+
+  await expect(card.getByText(sign)).toBeVisible();
+  await expect(card.getByText(/версия\s+\d+/)).toBeVisible();
+});

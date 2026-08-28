@@ -1204,3 +1204,41 @@ export interface UnitReport {
     breakdown: { severity: Severity; count: number | null; percent: number }[];
   }[];
 }
+
+
+/**
+ * Личный план безопасности (Стэнли–Браун).
+ *
+ * Порядок разделов не произвольный: он воспроизводит порядок действий в
+ * кризисе. Сначала то, что человек может сделать один, потом отвлечение,
+ * потом люди, и лишь затем профессиональная помощь — так план работает даже
+ * тогда, когда сил на звонок ещё нет. Ограничение доступа к средствам стоит
+ * последним пунктом, но обсуждается всегда: это единственная часть плана,
+ * которая снижает риск, а не помогает его пережить.
+ */
+export interface SafetyPlanContent {
+  /** Признаки, по которым человек узнаёт приближение кризиса */
+  warningSigns: string[];
+  /** Что он может сделать сам */
+  copingStrategies: string[];
+  /** Занятия и места, которые отвлекают */
+  distractions: string[];
+  /** Люди, к которым можно обратиться: имя и как связаться */
+  people: { name: string; contact: string }[];
+  /** Специалисты и дежурные службы */
+  professionals: { name: string; contact: string }[];
+  /** Что сделано, чтобы ограничить доступ к средствам */
+  meansRestriction: string;
+  /** Ради чего стоит жить — своими словами */
+  reasonsToLive: string[];
+}
+
+export interface SafetyPlan {
+  id: string;
+  version: number;
+  content: SafetyPlanContent;
+  active: boolean;
+  createdAt: string;
+  reviewedAt: string | null;
+  authorName: string;
+}
