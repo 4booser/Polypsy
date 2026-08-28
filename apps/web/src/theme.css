@@ -1782,3 +1782,23 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   /* в печати колонки не нужны: лист один и узкий */
   .patient-card { display: block; }
 }
+
+/* ═══ редактор маршрута ═══ */
+.pwe-step {
+  border-top: 1px solid var(--hairline);
+  padding: 12px 0;
+  display: grid;
+  gap: 10px;
+}
+.pwe-step:first-of-type { border-top: none; }
+.pwe-num {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}

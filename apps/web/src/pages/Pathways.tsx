@@ -26,13 +26,18 @@ export default function Pathways() {
         title={ut("pw.title")}
         sub={ut("pw.sub")}
         actions={
-          <div className="segmented" role="group">
+          <div className="row tight">
+            <Link className="btn primary" to="/pathways/new">
+              {ut("pw.newTemplate")}
+            </Link>
+            <div className="segmented" role="group">
             <button className={all ? "" : "active"} onClick={() => setAll(false)}>
               {ut("pw.open")}
             </button>
             <button className={all ? "active" : ""} onClick={() => setAll(true)}>
               {ut("pw.allInstances")}
             </button>
+            </div>
           </div>
         }
       />
