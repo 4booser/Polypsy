@@ -6,6 +6,7 @@ import { useLang } from "./lang";
 import Login from "./pages/Login";
 import { Topbar } from "./shell/Topbar";
 import { CommandPalette } from "./shell/CommandPalette";
+import { onAppEvent } from "./events";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
 import Alerts from "./pages/Alerts";
@@ -163,8 +164,19 @@ export default function App() {
       api.worklist().then((w) => setWorklistCount(w.total)).catch(() => {});
     };
     load();
+    /*
+     * Таймер остаётся страховкой: поток событий может не пройти через
+     * корпоративный прокси, и тогда счётчики обновляются как прежде — раз в
+     * минуту. Реальное время здесь ускорение, а не единственный путь.
+     */
     const timer = setInterval(load, 60_000);
-    return () => clearInterval(timer);
+    const off = onAppEvent((e) => {
+      if (e.kind === "alert.created" || e.kind === "case.changed") load();
+    });
+    return () => {
+      clearInterval(timer);
+      off();
+    };
   }, [user]);
 
   useEffect(() => {

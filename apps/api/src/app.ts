@@ -25,6 +25,7 @@ import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
 import { storageRoutes } from "./routes/storage";
 import { timelineRoutes } from "./routes/timeline";
+import { eventRoutes } from "./routes/events";
 import { alertCaseRoutes } from "./routes/alertCases";
 import { worklistRoutes } from "./routes/worklist";
 import { unitReportRoutes } from "./routes/unitReport";
@@ -111,6 +112,7 @@ app.route("/api/worklist", worklistRoutes);
 app.route("/api/unit-report", unitReportRoutes);
 app.route("/api/stats/storage", storageRoutes);
 app.route("/api/timeline", timelineRoutes);
+app.route("/api/events", eventRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);
 

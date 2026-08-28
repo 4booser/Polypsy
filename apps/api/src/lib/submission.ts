@@ -17,6 +17,7 @@ import { answerEvents, answers, responseScores, responses, riskAlerts, type User
 import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
 import { attachToCase } from "./alertCases";
+import { publish } from "./events";
 import { detectRisks } from "./risk";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
@@ -130,6 +131,19 @@ export async function persistSubmission(
           at: riskAt,
         })
         .onConflictDoNothing();
+
+      /*
+       * Уведомление уходит в той же транзакции: `pg_notify` доставляется
+       * только при коммите, поэтому «сообщили дежурному, а запись
+       * откатилась» невозможно по устройству, а не по внимательности.
+       */
+      await publish(tx as never, {
+        kind: "alert.created",
+        surveyId: survey.id,
+        userId: survey.anonymous ? null : subject.id,
+        severity: risk.severity,
+        at: riskAt,
+      });
     }
 
     for (const answer of input.answers) {

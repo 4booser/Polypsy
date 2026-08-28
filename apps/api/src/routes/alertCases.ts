@@ -4,6 +4,7 @@ import { t, type AlertCase, type AlertSignal, type Page } from "@quizzy/shared";
 import { db } from "../db";
 import { alertCases, auditLog, questions, riskAlerts, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseQuery } from "../lib/http";
 import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
@@ -316,6 +317,16 @@ alertCaseRoutes.post("/:id/assign", async (c) => {
     resourceId: row.id,
     subjectUserId: row.userId,
   });
+  /*
+   * Кто взял случай — видно всем сразу, а не через минуту: иначе двое
+   * дежурных разбирают одного человека и узнают об этом из журнала.
+   */
+  await publish(db, {
+    kind: "case.changed",
+    surveyId: row.surveyId,
+    userId: row.userId,
+    at: new Date().toISOString(),
+  });
   return c.json(updated);
 });
 
@@ -363,6 +374,13 @@ alertCaseRoutes.patch("/:id", async (c) => {
     resourceId: row.id,
     subjectUserId: row.userId,
     details: { outcome, note },
+  });
+
+  await publish(db, {
+    kind: "case.changed",
+    surveyId: row.surveyId,
+    userId: row.userId,
+    at,
   });
 
   return c.json({ id: row.id, outcome, acknowledgedAt: at });
