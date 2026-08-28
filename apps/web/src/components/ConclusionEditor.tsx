@@ -16,7 +16,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
   const { ut } = useLang();
   const [text, setText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
-  const run = useAction();
+  const { run } = useAction();
 
   const res = useResource(() => api.conclusion(responseId), [responseId]);
   // сохранение и подпись возвращают новое состояние целиком — кладём его в

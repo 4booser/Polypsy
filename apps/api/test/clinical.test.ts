@@ -1058,3 +1058,28 @@ describe("просроченная цель в очереди работы", () 
     expect(mine[0].overdue).toBe(true);
   });
 });
+
+describe("карточка пациента вне зоны", () => {
+  /*
+   * У adminB есть своя методика, поэтому проверка «есть ли вообще методики»
+   * его не остановит — отказ должен приходить именно из-за чужого пациента.
+   */
+  test("динамика чужого пациента не отдаёт ни имени, ни почты", async () => {
+    const email = `dyn-foreign-${crypto.randomUUID()}@test`;
+    const person = await makeUser("user", email);
+    await submitSurvey(surveyInA, person.token);
+
+    const res = await api(`/api/dynamics/respondents/${person.id}`, adminB.token);
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain(email);
+  });
+
+  test("свой админ ту же карточку получает", async () => {
+    const person = await makeUser("user", `dyn-own-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const res = await api(`/api/dynamics/respondents/${person.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.surveys.length).toBeGreaterThan(0);
+  });
+});

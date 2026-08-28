@@ -50,7 +50,7 @@ export default function ReferralsPage() {
   const [allParam, setAllParam] = useUrlState("all");
   const all = allParam === "1";
   const setAll = (v: boolean) => setAllParam(v ? "1" : "");
-  const run = useAction();
+  const { run } = useAction();
   const { ut } = useLang();
 
   const res = useResource(() => api.referrals(all), [all]);

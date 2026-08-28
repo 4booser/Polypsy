@@ -15,7 +15,7 @@ import { useResource } from "../useResource";
  */
 export function PatientPathways({ userId }: { userId: string }) {
   const { ut } = useLang();
-  const run = useAction();
+  const { run } = useAction();
   const [pick, setPick] = useState("");
 
   const templates = useResource(() => api.pathways(), []).data ?? [];

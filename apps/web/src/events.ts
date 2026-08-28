@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { tokenStore } from "./api";
 
 /**
@@ -12,14 +13,20 @@ import { tokenStore } from "./api";
  * путь доставки.
  */
 
-export type AppEventKind = "alert.created" | "case.changed" | "response.submitted" | "kiosk.progress";
+export type AppEventKind =
+  | "alert.created"
+  | "case.changed"
+  | "response.submitted"
+  | "kiosk.progress"
+  | "schedule.run";
 
 export interface AppEvent {
   kind: AppEventKind;
-  surveyId: string | null;
+  surveyIds: string[] | null;
   userId: string | null;
   at: string;
   severity?: "moderate" | "severe";
+  sessionId?: string;
 }
 
 type Listener = (event: AppEvent) => void;
@@ -106,4 +113,34 @@ function handle(chunk: string): void {
   } catch {
     /* мусор в канале — не повод падать */
   }
+}
+
+/**
+ * Перечитать данные экрана, когда сервер сообщил об изменении.
+ *
+ * Перезагрузка отложена на четверть секунды и склеивается: в киоске десять
+ * человек сдают методику почти одновременно, и десять запросов подряд за одним
+ * и тем же списком — это хуже, чем поллинг, который они заменяют.
+ */
+export function useLiveReload(kinds: AppEventKind[], reload: () => void): void {
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  const keys = kinds.join(",");
+
+  useEffect(() => {
+    const want = new Set(keys.split(","));
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const off = onAppEvent((event) => {
+      if (!want.has(event.kind)) return;
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        reloadRef.current();
+      }, 250);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [keys]);
 }

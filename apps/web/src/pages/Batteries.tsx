@@ -23,7 +23,7 @@ export default function Batteries() {
   const { ut } = useLang();
   const [editing, setEditing] = useState<Battery | "new" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const run = useAction();
+  const { run } = useAction();
 
   /*
    * Батареи — содержание экрана, остальные три списка нужны только редактору
@@ -149,7 +149,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
   const [query, setQuery] = useState("");
   const [due, setDue] = useState("");
   const [note, setNote] = useState("");
-  const run = useAction();
+  const { run } = useAction();
 
   const res = useResource(() => api.batteryAssignments(battery.id), [battery.id]);
   const rows = res.data;
@@ -306,7 +306,7 @@ function BatteryEditor({
   const [items, setItems] = useState<{ surveyId: string; required: boolean }[]>(
     battery?.items.map((i) => ({ surveyId: i.surveyId, required: i.required })) ?? [],
   );
-  const run = useAction();
+  const { run } = useAction();
 
   const titleOf = (id: string) => surveys.find((s) => s.id === id)?.title ?? id;
   const move = (index: number, delta: number) => {

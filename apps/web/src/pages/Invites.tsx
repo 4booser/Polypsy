@@ -18,7 +18,7 @@ export default function Invites() {
   const { ut } = useLang();
   const [fresh, setFresh] = useState<{ token: string; code: string } | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const run = useAction();
+  const { run } = useAction();
 
   // батареи нужны только форме: их отказ не должен прятать сам список ссылок
   const res = useResource(async () => {
@@ -134,7 +134,7 @@ function InviteForm({
   const [note, setNote] = useState("");
   const [maxUses, setMaxUses] = useState(1);
   const [ttlDays, setTtlDays] = useState(14);
-  const run = useAction();
+  const { run } = useAction();
 
   return (
     <div className="card">
@@ -202,7 +202,7 @@ function InviteForm({
 function FreshInvite({ token, code, onClose }: { token: string; code: string; onClose: () => void }) {
   const { ut } = useLang();
   const url = `${location.origin}/join/${token}`;
-  const run = useAction();
+  const { run } = useAction();
 
   const svg = useMemo(() => {
     const qr = qrcode(0, "M");

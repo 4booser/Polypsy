@@ -16,7 +16,7 @@ import { useResource } from "../useResource";
 export default function Schedules() {
   const { ut } = useLang();
   const [editing, setEditing] = useState<Schedule | "new" | null>(null);
-  const run = useAction();
+  const { run } = useAction();
 
   // справочники нужны редактору: их отказ ограничивает выбор, но не экран
   const res = useResource(async () => {
@@ -239,7 +239,7 @@ function ScheduleEditor({
   const [active, setActive] = useState(schedule?.active ?? true);
   const [picked, setPicked] = useState<string[]>(schedule?.targets.map((t) => t.userId) ?? []);
   const [query, setQuery] = useState("");
-  const run = useAction();
+  const { run } = useAction();
 
   const byId = useMemo(() => new Map(patients.map((p) => [p.id, p])), [patients]);
   const found = useMemo(

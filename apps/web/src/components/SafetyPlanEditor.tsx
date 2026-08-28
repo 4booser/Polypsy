@@ -34,7 +34,7 @@ type PeopleKey = "people" | "professionals";
 
 export function SafetyPlanEditor({ userId }: { userId: string }) {
   const { ut } = useLang();
-  const run = useAction();
+  const { run, busy } = useAction();
   const res = useResource(() => api.safetyPlans(userId), [userId]);
   const [draft, setDraft] = useState<SafetyPlanContent>(EMPTY);
   const [open, setOpen] = useState(false);
@@ -176,7 +176,7 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
           </section>
 
           <div className="row">
-            <button className="primary" onClick={save}>
+            <button className="primary" disabled={busy} onClick={save}>
               {ut("sp.saveVersion")}
             </button>
             <button className="ghost" onClick={() => setOpen(false)}>

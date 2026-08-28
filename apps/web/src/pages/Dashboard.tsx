@@ -6,6 +6,7 @@ import { PpvCard } from "../components/CalibrationPanel";
 import { PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { useLiveReload } from "../events";
 
 export default function Dashboard() {
   const { ut } = useLang();
@@ -32,6 +33,8 @@ export default function Dashboard() {
       work,
     };
   }, []);
+  // сводка дежурного стареет от чужих действий: сдача, тревога, тик расписания
+  useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], res.reload);
 
   return (
     <Screen res={res} rows={5}>

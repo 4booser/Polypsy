@@ -20,7 +20,7 @@ import { useResource } from "../useResource";
  */
 export function Goals({ userId, summary }: { userId: string; summary: Summary }) {
   const { ut } = useLang();
-  const run = useAction();
+  const { run, busy } = useAction();
   const res = useResource(() => api.goals(userId), [userId]);
   const [adding, setAdding] = useState(false);
   const [surveyId, setSurveyId] = useState("");
@@ -101,7 +101,7 @@ export function Goals({ userId, summary }: { userId: string; summary: Summary })
           <div className="field" style={{ alignSelf: "end" }}>
             <button
               className="primary"
-              disabled={!surveyId || !scaleCode || !target.trim()}
+              disabled={busy || !surveyId || !scaleCode || !target.trim()}
               onClick={create}
             >
               {ut("goal.set")}
@@ -113,7 +113,7 @@ export function Goals({ userId, summary }: { userId: string; summary: Summary })
       {goals.length === 0 ? (
         <p className="hint" style={{ margin: 0 }}>{ut("goal.empty")}</p>
       ) : (
-        goals.map((g) => <GoalRow key={g.id} g={g} onChanged={res.reload} run={run} />)
+        goals.map((g) => <GoalRow key={g.id} g={g} onChanged={res.reload} run={run} busy={busy} />)
       )}
     </div>
   );
@@ -123,10 +123,12 @@ function GoalRow({
   g,
   onChanged,
   run,
+  busy,
 }: {
   g: TreatmentGoal;
   onChanged: () => void;
   run: (fn: () => Promise<unknown>, ok?: string) => Promise<boolean>;
+  busy: boolean;
 }) {
   const { ut } = useLang();
   const open = g.status === "open";
@@ -173,11 +175,12 @@ function GoalRow({
 
       {open ? (
         <div className="row tight">
-          <button onClick={() => void run(async () => { await api.closeGoal(g.id, "met"); onChanged(); }, ut("goal.closed"))}>
+          <button disabled={busy} onClick={() => void run(async () => { await api.closeGoal(g.id, "met"); onChanged(); }, ut("goal.closed"))}>
             {ut("goal.markMet")}
           </button>
           <button
             className="ghost"
+            disabled={busy}
             onClick={() => void run(async () => { await api.closeGoal(g.id, "missed"); onChanged(); }, ut("goal.closed"))}
           >
             {ut("goal.markMissed")}

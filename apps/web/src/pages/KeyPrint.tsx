@@ -18,7 +18,7 @@ export default function KeyPrint() {
   const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const [showItems, setShowItems] = useState(false);
-  const run = useAction();
+  const { run } = useAction();
   const { data: sheet, error } = useResource(() => api.keySheet(id!), [id], { enabled: !!id });
 
   if (error) return <p className="error">{error}</p>;

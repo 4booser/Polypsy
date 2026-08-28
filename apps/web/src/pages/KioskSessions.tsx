@@ -6,20 +6,22 @@ import { day } from "../format";
 import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { useLiveReload } from "../events";
 
 /**
  * Сеансы киоска: групповое обследование на одном планшете.
  *
  * Оператор создаёт сеанс, открывает ссылку на устройстве киоска и раздаёт его
- * по очереди. Прогресс обновляется здесь поллингом — видно, кто прошёл, кто в
- * процессе. Ссылка сеанса показывается один раз: в базе только отпечаток.
+ * по очереди. Прогресс приходит по каналу событий — участник появляется в
+ * списке сразу, а не через десять секунд; поллинг раз в минуту остался
+ * страховкой на случай, если канал оборвался. Ссылка сеанса показывается один
+ * раз: в базе только отпечаток.
  */
 export default function KioskSessions() {
   const { ut } = useLang();
   const [fresh, setFresh] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  // живой прогресс сеанса: пока вкладка открыта, раз в 10 секунд
   const res = useResource(
     async () => {
       const [rows, batteries] = await Promise.all([
@@ -29,9 +31,10 @@ export default function KioskSessions() {
       return { rows, batteries };
     },
     [],
-    { pollMs: 10_000 },
+    { pollMs: 60_000 },
   );
   const reload = res.reload;
+  useLiveReload(["kiosk.progress"], reload);
 
   return (
     <Screen res={res}>
@@ -82,7 +85,7 @@ export default function KioskSessions() {
 
 function SessionCard({ session, onChanged, live }: { session: KioskSession; onChanged: () => void; live?: boolean }) {
   const { ut } = useLang();
-  const run = useAction();
+  const { run } = useAction();
   const done = session.participants.filter((p) => p.finishedAt).length;
   return (
     <div className={`card${live ? "" : " muted-card"}`}>
@@ -144,7 +147,7 @@ function SessionForm({
   const [title, setTitle] = useState("");
   const [batteryId, setBatteryId] = useState(batteries[0]?.id ?? "");
   const [ttlHours, setTtlHours] = useState(8);
-  const run = useAction();
+  const { run } = useAction();
   const chosen = batteries.find((b) => b.id === batteryId);
   const clinicianSteps = chosen?.items.filter((i) => i.administration === "clinician") ?? [];
 
@@ -192,7 +195,7 @@ function SessionForm({
 function FreshSession({ token, onClose }: { token: string; onClose: () => void }) {
   const { ut } = useLang();
   const url = `${location.origin}/kiosk/${token}`;
-  const run = useAction();
+  const { run } = useAction();
   const svg = useMemo(() => {
     const qr = qrcode(0, "M");
     qr.addData(url);

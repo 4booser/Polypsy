@@ -51,7 +51,7 @@ export default function Alerts() {
    * занял освободившееся место.
    */
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const run = useAction();
+  const { run } = useAction();
   const { ut } = useLang();
 
   const filters = { all, severity, unit, assigned, search };
@@ -380,7 +380,7 @@ function CaseCard({
   /** Случай «под рукой»: на нём сработают цифры и T */
   focused: boolean;
   onChanged: () => void;
-  run: ReturnType<typeof useAction>;
+  run: ReturnType<typeof useAction>["run"];
   me: string | undefined;
 }) {
   const { ut } = useLang();

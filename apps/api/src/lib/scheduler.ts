@@ -11,6 +11,7 @@ import {
   users,
 } from "../db/schema";
 import { auditSystem } from "./audit";
+import { publish } from "./events";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -222,6 +223,19 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
         skipped,
         note: assigned === 0 && skipped === 0 ? "Некого охватить" : null,
       });
+      if (assigned > 0) {
+        /*
+         * Только когда что-то реально назначено: тик расписания случается
+         * каждые несколько минут, и пустой прогон не новость для консоли.
+         */
+        await publish(db, {
+          kind: "schedule.run",
+          surveyIds: null,
+          userId: null,
+          at: now.toISOString(),
+        });
+      }
+
       await auditSystem({
         action: "schedule.run",
         resourceType: "schedule",

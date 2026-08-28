@@ -27,7 +27,7 @@ const KIND_KEY = {
 
 export function NotesEditor({ userId }: { userId: string }) {
   const { ut } = useLang();
-  const run = useAction();
+  const { run, busy } = useAction();
   const [text, setText] = useState("");
   const [kind, setKind] = useState<NoteVersion["kind"]>("session");
   const [showHistory, setShowHistory] = useState(false);
@@ -97,7 +97,7 @@ export function NotesEditor({ userId }: { userId: string }) {
 
       <div className="row" style={{ marginTop: 8 }}>
         <button
-          disabled={!text.trim()}
+          disabled={busy || (!text.trim())}
           onClick={() =>
             void run(async () => {
               res.patch(await api.saveNote(userId, text, state.current?.version ?? 0, kind));
@@ -108,7 +108,7 @@ export function NotesEditor({ userId }: { userId: string }) {
         </button>
         <button
           className="primary"
-          disabled={!draft && !text.trim()}
+          disabled={busy || (!draft && !text.trim())}
           onClick={() =>
             void run(async () => {
               let latest = state;

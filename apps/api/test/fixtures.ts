@@ -125,6 +125,27 @@ await db.insert(surveys).values({
 } as never);
 await createVersion(surveyInA, input, adminA.id, "Тестовая версия");
 
+/*
+ * Методика в группе Б. Существует ради тестов вида «чужой админ не видит»:
+ * без неё у adminB не было бы ни одной методики, маршруты обрывались бы на
+ * проверке «а есть ли у сотрудника вообще методики», и тест доказывал бы
+ * пустоту зоны вместо разграничения доступа.
+ */
+export const surveyInB = crypto.randomUUID();
+await db.insert(surveys).values({
+  id: surveyInB,
+  groupId: groupB,
+  title: { uk: "Методика групи Б", ru: "Методика группы Б" },
+  administration: "self",
+  status: "published",
+  publishedAt: new Date().toISOString(),
+  visibility: "public",
+  scoringEnabled: true,
+  allowRetake: true,
+  createdBy: adminB.id,
+} as never);
+await createVersion(surveyInB, input, adminB.id, "Тестовая версия");
+
 /**
  * Сдача методики «безопасными» ответами.
  *

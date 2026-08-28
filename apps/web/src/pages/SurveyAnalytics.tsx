@@ -21,7 +21,7 @@ export default function SurveyAnalyticsPage() {
   const [versionId, setVersionId] = useState<string | undefined>();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const run = useAction();
+  const { run } = useAction();
   const downloadCsv = (sid: string) => run(() => download(api.exportUrl(sid), "data.csv"), ut("an.fileExported"));
   const [profile, setProfile] = useState<"full" | "deidentified" | "anonymous">("full");
   const downloadSpssData = (sid: string) =>
@@ -443,7 +443,7 @@ function Responses({ surveyId }: { surveyId: string }) {
   const [openConclusion, setOpenConclusion] = useState<string | null>(null);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const run = useAction();
+  const { run } = useAction();
   const openReport = (rid: string) => run(() => openInTab(api.reportUrl(rid)));
 
   useEffect(() => {
