@@ -12,7 +12,7 @@ import { getSurvey } from "../lib/surveys";
 import { reliabilityOf } from "../lib/psychometrics";
 import { round, variance } from "../lib/stats";
 import { answers as answersTable } from "../db/schema";
-import { surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 import { log } from "../lib/log";
 
@@ -131,6 +131,15 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!patient) notFound("Пациент не найден");
+
+  /*
+   * Зона ответственности — до всего остального. Раньше маршрут возвращал ФИО
+   * и email по любому существующему идентификатору: достаточно было иметь
+   * хоть одну свою методику, чтобы получить карточку чужого пациента с
+   * пустым списком замеров.
+   */
+  const allowed = await accessiblePatientIds(staff);
+  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
 
   const scope = await surveyScopeFilter(staff);
   const scoped = await db.select().from(surveys).where(scope);

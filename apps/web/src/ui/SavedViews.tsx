@@ -20,7 +20,7 @@ export function SavedViews({ scope }: { scope: string }) {
   const { ut } = useLang();
   const navigate = useNavigate();
   const location = useLocation();
-  const run = useAction();
+  const { run } = useAction();
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
 

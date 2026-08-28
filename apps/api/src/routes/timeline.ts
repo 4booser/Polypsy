@@ -15,7 +15,7 @@ import {
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
-import { surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const timelineRoutes = new Hono<AppEnv>();
@@ -60,6 +60,16 @@ timelineRoutes.get("/:userId", async (c) => {
    * события только по своим методикам, и «пациента нет» — честный ответ,
    * потому что вне зоны его действительно нет.
    */
+  /*
+   * Пациент должен быть в зоне ответственности сотрудника. Раньше здесь
+   * стояла только проверка «есть ли у сотрудника хоть одна методика», и
+   * админ чужой группы получал 200 с пустой сводкой на любой существующий
+   * идентификатор — то есть маршрут отвечал на вопрос «есть ли такой
+   * пациент», который задавать ему никто не разрешал.
+   */
+  const allowed = await accessiblePatientIds(staff);
+  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+
   const scope = await surveyScopeFilter(staff);
   const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);

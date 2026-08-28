@@ -404,8 +404,23 @@ export const useToast = () => useContext(ToastCtx);
 export function useAction() {
   const toast = useToast();
   const { ut } = useLang();
-  return useCallback(
+  const [busy, setBusy] = useState(false);
+  /*
+   * Пока действие в полёте, второе не начинается.
+   *
+   * Иначе «Сохранить черновиком» и сразу «Подписать» уходили на сервер
+   * одновременно с одной и той же базовой версией: второй запрос падал на
+   * проверке параллельных правок, и подпись молча не ставилась. Флаг живёт
+   * в ref, а не только в состоянии, потому что решение принимается в момент
+   * клика, до перерисовки.
+   */
+  const inFlight = useRef(false);
+
+  const run = useCallback(
     async (fn: () => Promise<unknown>, okText?: string) => {
+      if (inFlight.current) return false;
+      inFlight.current = true;
+      setBusy(true);
       try {
         await fn();
         if (okText) toast(okText, "ok");
@@ -413,10 +428,15 @@ export function useAction() {
       } catch (e) {
         toast(e instanceof Error ? e.message : ut("ui.actionFailed"), "err");
         return false;
+      } finally {
+        inFlight.current = false;
+        setBusy(false);
       }
     },
     [toast, ut],
   );
+
+  return { run, busy };
 }
 
 /* ─────────── сортируемая таблица ─────────── */

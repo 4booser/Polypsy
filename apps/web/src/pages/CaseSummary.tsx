@@ -33,7 +33,7 @@ export default function CaseSummaryPage() {
   const [showForm, setShowForm] = useState(false);
   const { user } = useAuth();
   const { ut } = useLang();
-  const run = useAction();
+  const { run } = useAction();
 
   const res = useResource(() => api.caseSummary(userId!), [userId], { enabled: !!userId });
   const reload = res.reload;
@@ -232,7 +232,7 @@ function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }
   const [destination, setDestination] = useState<ReferralDestination>("psychiatrist");
   const [urgency, setUrgency] = useState<ReferralUrgency>("routine");
   const [reason, setReason] = useState("");
-  const run = useAction();
+  const { run } = useAction();
 
   return (
     <div className="card no-print">

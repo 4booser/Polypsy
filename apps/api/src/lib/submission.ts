@@ -139,7 +139,7 @@ export async function persistSubmission(
        */
       await publish(tx as never, {
         kind: "alert.created",
-        surveyId: survey.id,
+        surveyIds: [survey.id],
         userId: survey.anonymous ? null : subject.id,
         severity: risk.severity,
         at: riskAt,

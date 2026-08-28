@@ -59,7 +59,7 @@ export default function UiKit() {
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
   const toast = useToast();
-  const run = useAction();
+  const { run } = useAction();
 
   return (
     <>

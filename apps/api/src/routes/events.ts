@@ -25,9 +25,13 @@ eventRoutes.use("*", requireAuth, requireStaff);
 eventRoutes.get("/", async (c) => {
   const user = c.get("user");
 
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const allowed = new Set(scoped.map((s) => s.id));
+  async function readScope(): Promise<Set<string>> {
+    const scope = await surveyScopeFilter(user);
+    const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
+    return new Set(scoped.map((s) => s.id));
+  }
+
+  let allowed = await readScope();
 
   return streamSSE(c, async (stream) => {
     let alive = true;
@@ -37,8 +41,8 @@ eventRoutes.get("/", async (c) => {
 
     const unsubscribe = await subscribe((event: AppEvent) => {
       if (!alive) return;
-      // событие без методики (системное) видно всем сотрудникам
-      if (event.surveyId && !allowed.has(event.surveyId)) return;
+      // событие без методик (системное) видно всем сотрудникам
+      if (event.surveyIds && !event.surveyIds.some((id) => allowed.has(id))) return;
       void stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
     });
 
@@ -55,6 +59,12 @@ eventRoutes.get("/", async (c) => {
       while (alive) {
         await stream.sleep(25_000);
         if (!alive) break;
+        /*
+         * Заодно перечитываем зону ответственности. Смена длится часами, а
+         * доступ к методике могут отозвать посреди неё; подписка, выданная
+         * авансом при открытии вкладки, пережила бы это отзыв.
+         */
+        allowed = await readScope();
         await stream.writeSSE({ event: "ping", data: "1" });
       }
     } finally {

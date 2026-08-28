@@ -37,7 +37,7 @@ const emptyStep = (): DraftStep => ({
 export default function PathwayEditor() {
   const { ut } = useLang();
   const navigate = useNavigate();
-  const run = useAction();
+  const { run } = useAction();
   const surveys = useResource(() => api.surveys(), []).data ?? [];
 
   const [title, setTitle] = useState<Record<string, string>>({ uk: "", ru: "" });

@@ -6,6 +6,7 @@ import { day } from "../format";
 import { Avatar, Badge, Empty, PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { useLiveReload } from "../events";
 
 const KIND_KEY = {
   case: "work.kindCase",
@@ -30,6 +31,7 @@ export default function WorklistPage() {
   const [kind, setKind] = useState<WorkItem["kind"] | "">("");
   const { ut } = useLang();
   const res = useResource(() => api.worklist(), []);
+  useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], res.reload);
 
   return (
     <Screen res={res} rows={6}>

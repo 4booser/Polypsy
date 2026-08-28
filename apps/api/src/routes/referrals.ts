@@ -28,7 +28,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { round, variance } from "../lib/stats";
-import { surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const referralRoutes = new Hono<AppEnv>();
@@ -165,6 +165,16 @@ referralRoutes.get("/summary/:userId", async (c) => {
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!patient) notFound("Пациент не найден");
+
+  /*
+   * Пациент должен быть в зоне ответственности сотрудника. Раньше здесь
+   * стояла только проверка «есть ли у сотрудника хоть одна методика», и
+   * админ чужой группы получал 200 с пустой сводкой на любой существующий
+   * идентификатор — то есть маршрут отвечал на вопрос «есть ли такой
+   * пациент», который задавать ему никто не разрешал.
+   */
+  const allowed = await accessiblePatientIds(staff);
+  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
 
   const scope = await surveyScopeFilter(staff);
   const scoped = await db.select().from(surveys).where(scope);

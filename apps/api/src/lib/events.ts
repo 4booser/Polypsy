@@ -21,16 +21,24 @@ export type AppEventKind =
   | "alert.created"
   | "case.changed"
   | "response.submitted"
-  | "kiosk.progress";
+  | "kiosk.progress"
+  | "schedule.run";
 
 export interface AppEvent {
   kind: AppEventKind;
-  /** Методика, к которой относится событие: по ней проверяются права */
-  surveyId: string | null;
+  /**
+   * Методики, к которым относится событие: событие видит тот, кому доступна
+   * хотя бы одна из них. Список, а не одна методика, потому что события
+   * киоска относятся к батарее целиком. `null` — системное событие,
+   * видимое всем сотрудникам.
+   */
+  surveyIds: string[] | null;
   /** Кого касается; null у анонимных прохождений */
   userId: string | null;
   at: string;
   severity?: "moderate" | "severe";
+  /** Сеанс киоска — чтобы открытый экран сеанса обновлял только себя */
+  sessionId?: string;
 }
 
 type Handler = (event: AppEvent) => void;

@@ -12,7 +12,7 @@ const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
 /** Группы методик и назначение их администраторов */
 export function Groups() {
   const { ut } = useLang();
-  const run = useAction();
+  const { run } = useAction();
   const { user } = useAuth();
   const isSuper = user?.role === "superadmin";
   const [title, setTitle] = useState("");
@@ -329,7 +329,7 @@ export function ConsentText() {
   const [uk, setUk] = useState("");
   const [ru, setRu] = useState("");
   const [version, setVersion] = useState<number | null>(null);
-  const run = useAction();
+  const { run } = useAction();
 
   const current = useResource(() => api.consentText(), []).data;
   useEffect(() => {

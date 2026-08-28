@@ -25,6 +25,7 @@ import {
 import { audit, auditSystem } from "../lib/audit";
 import { fullNameOf, hashPassword } from "../lib/auth";
 import { encryptPersonFields } from "../lib/crypto";
+import { publish } from "../lib/events";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { hashInviteToken, newInviteToken } from "../lib/invites";
 import { assertBatteryInUse, assertGroupAccess } from "../lib/scope";
@@ -135,6 +136,18 @@ kioskRoutes.post("/state/:token/join", async (c) => {
         })),
       )
       .onConflictDoNothing();
+
+    /*
+     * Внутри транзакции: `pg_notify` доставляется при коммите, поэтому
+     * «оператор увидел участника, а регистрация откатилась» невозможно.
+     */
+    await publish(tx as never, {
+      kind: "kiosk.progress",
+      surveyIds: items.map((i) => i.surveyId),
+      userId,
+      sessionId: row.id,
+      at: new Date().toISOString(),
+    });
   });
 
   await auditSystem({
@@ -211,6 +224,14 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
       .set({ finishedAt: new Date().toISOString() })
       .where(eq(kioskParticipants.id, participant.id));
   }
+
+  await publish(db, {
+    kind: "kiosk.progress",
+    surveyIds: [surveyId],
+    userId: participant.userId,
+    sessionId: row.id,
+    at: new Date().toISOString(),
+  });
 
   await auditSystem({
     action: "kiosk.submit",

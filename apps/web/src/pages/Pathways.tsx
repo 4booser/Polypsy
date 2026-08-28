@@ -105,7 +105,7 @@ function Row({ i }: { i: PathwayInstance }) {
 /** Маршрут одного человека по шагам */
 export function PathwayDetailPage() {
   const { ut } = useLang();
-  const run = useAction();
+  const { run } = useAction();
   const id = window.location.pathname.split("/").pop()!;
   const res = useResource(() => api.pathwayInstance(id), [id]);
   const [note, setNote] = useState("");

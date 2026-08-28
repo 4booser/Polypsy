@@ -18,7 +18,7 @@ import { useResource } from "../useResource";
  */
 export function Conferences({ userId }: { userId: string }) {
   const { ut } = useLang();
-  const run = useAction();
+  const { run, busy } = useAction();
   const res = useResource(() => api.conferences(userId), [userId]);
   const [reason, setReason] = useState("");
   const items = res.data ?? [];
@@ -37,7 +37,7 @@ export function Conferences({ userId }: { userId: string }) {
           placeholder={ut("cc.reasonPlaceholder")}
         />
         <button
-          disabled={!reason.trim()}
+          disabled={busy || (!reason.trim())}
           onClick={() =>
             void run(async () => {
               await api.openConference(userId, reason.trim());
@@ -53,7 +53,7 @@ export function Conferences({ userId }: { userId: string }) {
       {items.length === 0 ? (
         <p className="hint" style={{ margin: 0 }}>{ut("cc.empty")}</p>
       ) : (
-        items.map((cf) => <ConferenceCard key={cf.id} cf={cf} onChanged={res.reload} run={run} />)
+        items.map((cf) => <ConferenceCard key={cf.id} cf={cf} onChanged={res.reload} run={run} busy={busy} />)
       )}
     </div>
   );
@@ -63,10 +63,12 @@ function ConferenceCard({
   cf,
   onChanged,
   run,
+  busy,
 }: {
   cf: Conference;
   onChanged: () => void;
   run: (fn: () => Promise<unknown>, ok?: string) => Promise<boolean>;
+  busy: boolean;
 }) {
   const { ut } = useLang();
   const [text, setText] = useState("");
@@ -117,7 +119,7 @@ function ConferenceCard({
           />
           <div className="row tight">
             <button
-              disabled={!text.trim()}
+              disabled={busy || (!text.trim())}
               onClick={() =>
                 void run(async () => {
                   await api.addOpinion(cf.id, text.trim(), "opinion");
@@ -130,7 +132,7 @@ function ConferenceCard({
             </button>
             <button
               className="ghost"
-              disabled={!text.trim()}
+              disabled={busy || (!text.trim())}
               onClick={() =>
                 void run(async () => {
                   await api.addOpinion(cf.id, text.trim(), "dissent");
@@ -150,7 +152,7 @@ function ConferenceCard({
           />
           <button
             className="primary"
-            disabled={!decision.trim() || cf.opinions.length === 0}
+            disabled={busy || !decision.trim() || cf.opinions.length === 0}
             title={cf.opinions.length === 0 ? ut("cc.needOpinion") : undefined}
             onClick={() =>
               void run(async () => {

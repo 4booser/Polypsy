@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveyInB, surveys } from "./fixtures";
 
 /* Служебное: наблюдаемость, метрики, проверка входа, жизненный цикл методики */
 
@@ -418,7 +418,7 @@ describe("реальное время", () => {
 
     await publish(db, {
       kind: "alert.created",
-      surveyId: surveyInA,
+      surveyIds: [surveyInA],
       userId: patient.id,
       severity: "severe",
       at: new Date().toISOString(),
@@ -490,6 +490,106 @@ describe("реальное время", () => {
     void andOp;
 
     expect(received.some((e) => e.kind === "alert.created")).toBe(true);
+  });
+
+  test("поток отдаёт событие своей методики и молчит о чужой", async () => {
+
+    /*
+     * Права проверяются на каждое событие, а не при подписке. Если бы проверка
+     * стояла только при открытии канала, достаточно было бы держать вкладку
+     * открытой, чтобы видеть активность по методикам чужой группы.
+     */
+    const { publish } = await import("../src/lib/events");
+
+    const res = await app.request("/api/events", {
+      headers: { Authorization: `Bearer ${adminA.token}`, Accept: "text/event-stream" },
+    });
+    expect(res.status).toBe(200);
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+
+    // первое сообщение — «ready»: до него подписка ещё не установлена
+    const first = await reader.read();
+    expect(first.value).toContain("ready");
+
+    const mark = crypto.randomUUID();
+    await publish(db, {
+      kind: "response.submitted",
+      surveyIds: [surveyInB],
+      userId: mark,
+      at: new Date().toISOString(),
+    });
+    await publish(db, {
+      kind: "response.submitted",
+      surveyIds: [surveyInA],
+      userId: mark,
+      at: new Date().toISOString(),
+    });
+
+    /*
+     * Читаем весь поток фоном и ждём фиксированное время, а не «пока не
+     * встретится метка»: остановка на первом совпадении означала бы, что
+     * второе, запрещённое событие просто не успели прочитать — и тест
+     * проходил бы даже со снятой проверкой прав.
+     */
+    let seen = "";
+    const pump = (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          seen += value;
+        }
+      } catch {
+        /* поток закрыт отменой ниже */
+      }
+    })();
+
+    await Bun.sleep(700);
+    await reader.cancel();
+    await pump;
+
+    // методика своей группы дошла, чужая — нет, хотя опубликованы обе
+    expect(seen).toContain(mark);
+    expect(seen.match(new RegExp(mark, "g"))).toHaveLength(1);
+  });
+
+  test("вход участника в киоск публикует прогресс", async () => {
+    const { subscribe } = await import("../src/lib/events");
+    const received: { kind: string; sessionId?: string }[] = [];
+    const unsubscribe = await subscribe((e) => received.push(e as { kind: string }));
+
+    const kioskBattery = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: kioskBattery,
+      title: "Батарея киоска",
+      groupId: groupA,
+      strictOrder: false,
+      createdBy: adminA.id,
+    });
+    await db
+      .insert(batteryItems)
+      .values([{ batteryId: kioskBattery, surveyId: surveyInA, position: 0, required: true }]);
+
+    const session = await api("/api/kiosk/sessions", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Поток", batteryId: kioskBattery, hours: 4 }),
+    });
+    expect(session.status).toBe(201);
+
+    const joined = await app.request(`/api/kiosk/state/${session.body.token}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ firstName: "Ігор", lastName: "Кіоскенко" }),
+    });
+    expect(joined.status).toBe(201);
+
+    for (let i = 0; i < 60 && !received.some((e) => e.kind === "kiosk.progress"); i++) {
+      await Bun.sleep(25);
+    }
+    unsubscribe();
+
+    const progress = received.find((e) => e.kind === "kiosk.progress");
+    expect(progress?.sessionId).toBe(session.body.id);
   });
 });
 

@@ -323,7 +323,7 @@ alertCaseRoutes.post("/:id/assign", async (c) => {
    */
   await publish(db, {
     kind: "case.changed",
-    surveyId: row.surveyId,
+    surveyIds: [row.surveyId],
     userId: row.userId,
     at: new Date().toISOString(),
   });
@@ -378,7 +378,7 @@ alertCaseRoutes.patch("/:id", async (c) => {
 
   await publish(db, {
     kind: "case.changed",
-    surveyId: row.surveyId,
+    surveyIds: [row.surveyId],
     userId: row.userId,
     at,
   });

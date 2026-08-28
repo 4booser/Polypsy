@@ -95,7 +95,7 @@ export function PatientList() {
 export function PatientDynamics() {
   const { ut } = useLang();
   const { userId } = useParams<{ userId: string }>();
-  const run = useAction();
+  const { run } = useAction();
   const { data, error } = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId });
 
   if (error) return <p className="error">{error}</p>;
