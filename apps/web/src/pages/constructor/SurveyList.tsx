@@ -142,6 +142,20 @@ export function SurveyList() {
                   ) : (
                     s.status
                   )}
+                  {/*
+                    Правовой статус стоит рядом со статусом публикации: это
+                    единственное место, где решают, выдавать ли методику.
+                  */}
+                  {s.isDemo ? (
+                    <span className="badge" style={{ marginLeft: 6 }}>
+                      {ut("cl.demo")}
+                    </span>
+                  ) : null}
+                  {!s.rightsStatus || s.rightsStatus === "unclear" ? (
+                    <span className="badge warn" style={{ marginLeft: 6 }} title={ut("cl.rightsHint")}>
+                      {ut("cl.rightsUnclear")}
+                    </span>
+                  ) : null}
                 </td>
                 <td className="muted">{s.administration === "clinician" ? ut("cl.clinician") : ut("cl.respondent")}</td>
                 <td className="muted">{s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}</td>

@@ -410,6 +410,12 @@ export interface Survey {
   showResultsToPatient: boolean;
   /** Демонстрационная: не для клинического применения */
   isDemo: boolean;
+  /**
+   * Правовой статус текста методики. README честно фиксировал, что тексты
+   * требуют очистки прав перед клиническим применением, — но README не
+   * мешает выдать методику пациенту.
+   */
+  rightsStatus?: "own" | "licensed" | "public_domain" | "unclear";
   status: SurveyStatus;
 
   timeLimitSec: number | null;
@@ -520,6 +526,8 @@ export interface SurveyListItem extends Survey {
   responseCount: number;
   /** Проходил ли текущий пользователь */
   completedByMe: boolean;
+  /** Когда ключи сверены с пособием */
+  keysVerifiedAt?: string | null;
 }
 
 /** Ответ на один вопрос вместе с телеметрией */

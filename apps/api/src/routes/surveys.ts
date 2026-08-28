@@ -4,7 +4,7 @@ import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue } from 
 import { createSurveySchema, updateSurveySchema, type SurveyFull, type SurveyListItem } from "@quizzy/shared";
 import { db } from "../db";
 import { responses, surveyVersions, surveys } from "../db/schema";
-import { badRequest, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { attachContent, createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
@@ -40,6 +40,47 @@ export const surveyRoutes = new Hono<AppEnv>();
 surveyRoutes.use("*", requireAuth);
 
 /** Пользователю видны только опубликованные методики, админу — все */
+/**
+ * Правовой статус и отметка о сверке ключей.
+ *
+ * Меняет суперадмин: это не настройка методики, а утверждение учреждения о
+ * том, что тексты можно применять и что ключи сверены с пособием. Такое
+ * утверждение не должен делать тот, кто методику завёл.
+ */
+surveyRoutes.patch("/:id/rights", async (c) => {
+  const user = c.get("user");
+  if (user.role !== "superadmin") forbidden("Правовой статус меняет суперадмин");
+
+  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, c.req.param("id")) });
+  if (!survey) notFound("Методика не найдена");
+
+  const body = await c.req.json().catch(() => ({}));
+  const status = ["own", "licensed", "public_domain", "unclear"].includes(body?.rightsStatus)
+    ? (body.rightsStatus as "own" | "licensed" | "public_domain" | "unclear")
+    : survey.rightsStatus;
+
+  const verified = body?.keysVerified === true;
+  await db
+    .update(surveys)
+    .set({
+      rightsStatus: status,
+      sourceNote: typeof body.sourceNote === "string" ? body.sourceNote.trim() || null : survey.sourceNote,
+      isDemo: typeof body.isDemo === "boolean" ? body.isDemo : survey.isDemo,
+      keysVerifiedAt: verified ? new Date().toISOString() : survey.keysVerifiedAt,
+      keysVerifiedBy: verified ? user.id : survey.keysVerifiedBy,
+    })
+    .where(eq(surveys.id, survey.id));
+
+  await audit(c, {
+    action: "survey.update",
+    resourceType: "survey",
+    resourceId: survey.id,
+    details: { rightsStatus: status, keysVerified: verified },
+  });
+
+  return c.json({ ok: true });
+});
+
 surveyRoutes.get("/", async (c) => {
   const user = c.get("user");
   const groupId = c.req.query("groupId");
@@ -48,6 +89,12 @@ surveyRoutes.get("/", async (c) => {
   if (!isStaff(user)) {
     // пациент видит опубликованные общедоступные плюс назначенные лично ему
     filters.push(patientVisibilityFilter(user.id));
+    /*
+     * Демонстрационные методики пациенту не выдаются. Раньше единственной
+     * защитой было «(демо)» в названии — то есть внимательность того, кто
+     * назначает.
+     */
+    filters.push(eq(surveys.isDemo, false));
   } else {
     // сотрудник видит только методики своих групп
     const scope = await surveyScopeFilter(user);
@@ -77,6 +124,9 @@ surveyRoutes.get("/", async (c) => {
     description: r.survey.description ? t(r.survey.description as never, langOf(c)) : null,
     instructions: r.survey.instructions ? t(r.survey.instructions as never, langOf(c)) : null,
     safetyPlan: r.survey.safetyPlan ? t(r.survey.safetyPlan as never, langOf(c)) : null,
+    rightsStatus: r.survey.rightsStatus,
+    isDemo: r.survey.isDemo,
+    keysVerifiedAt: r.survey.keysVerifiedAt,
     questionCount: Number(r.questionCount ?? 0),
     responseCount: Number(r.responseCount ?? 0),
     completedByMe: Number(r.completedByMe ?? 0) > 0,
