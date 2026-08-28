@@ -79,7 +79,7 @@ export default function Schedules() {
             <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <IconBattery />
               {s.title}
-              {s.active ? null : <span className="chip static">выключено</span>}
+              {s.active ? null : <span className="chip static">{ut("sch.off")}</span>}
             </h2>
             <div className="row tight">
               <button
@@ -91,7 +91,7 @@ export default function Schedules() {
                 }
                 disabled={!s.active}
               >
-                Запустить сейчас
+                {ut("sch.runNow")}
               </button>
               <button onClick={() => setEditing(s)}>{ut("f.edit")}</button>
               <button
@@ -103,7 +103,7 @@ export default function Schedules() {
                   }, ut("sch.deleted"))
                 }
               >
-                Удалить
+                {ut("ui.delete")}
               </button>
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function Schedules() {
             <div className="tile">
               <span className="label">{ut("sch.deadline")}</span>
               <span className="value">{s.dueDays}</span>
-              <span className="label">дней</span>
+              <span className="label">{ut("sch.days")}</span>
             </div>
             <div className="tile">
               <span className="label">{ut("sch.nextRun")}</span>
@@ -136,18 +136,20 @@ export default function Schedules() {
           </div>
 
           <p className="hint">
-            Батарея: {s.batteryTitle} · с {day(s.startsAt)}
-            {s.endsAt ? ` по ${day(s.endsAt)}` : ", бессрочно"}
-            {s.lastRunAt ? ` · последняя выдача ${day(s.lastRunAt)}` : " · ещё не выдавалось"}
+            {ut("f.battery")}: {s.batteryTitle} · {ut("sch.from")} {day(s.startsAt)}
+            {s.endsAt ? ` ${ut("sch.to")} ${day(s.endsAt)}` : `, ${ut("acc.forever")}`}
+            {s.lastRunAt
+              ? ` · ${ut("sch.lastIssue")} ${day(s.lastRunAt)}`
+              : ` · ${ut("sch.neverIssued")}`}
           </p>
 
           {s.reach === 0 ? (
             <p className="hint warn">
-              Сейчас расписание никого не охватывает
+              {ut("sch.reachesNobody")}
               {s.scope === "unit"
-                ? `: в подразделении «${s.unit}» нет обследуемых`
-                : ": список пуст"}
-              . Оно отработает вхолостую.
+                ? `: ${ut("sch.noSubjectsInUnit")} «${s.unit}»`
+                : `: ${ut("sch.emptyList")}`}
+              . {ut("sch.willRunIdle")}
             </p>
           ) : null}
 

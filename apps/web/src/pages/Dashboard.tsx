@@ -54,7 +54,7 @@ export default function Dashboard() {
             {cases
               .map((c) => `${c.userName}${c.signalCount > 1 ? ` (сигналов ${c.signalCount})` : ""}`)
               .join(" · ")}
-            {openCases > cases.length ? ` и ещё ${openCases - cases.length}` : ""}
+            {openCases > cases.length ? ` ${ut("ui.andMore")} ${openCases - cases.length}` : ""}
           </p>
         </div>
       ) : null}
