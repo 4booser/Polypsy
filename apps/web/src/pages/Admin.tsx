@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { GroupAdmin } from "@quizzy/shared";
+import type { GroupAdmin, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
 import { useAuth } from "../auth";
@@ -37,8 +37,8 @@ export function Groups() {
   return (
     <>
       <PageHead
-        title="Группы методик"
-        sub="Группа — единица разграничения доступа: администратор видит только методики своих групп"
+        title={ut("adm.groupsTitle")}
+        sub={ut("adm.groupsSub")}
       />
 
       {isSuper ? (
@@ -47,7 +47,7 @@ export function Groups() {
           <div className="row" style={{ alignItems: "flex-end" }}>
             <div className="field" style={{ flex: 1, minWidth: 200, marginBottom: 0 }}>
               <label>{ut("f.name")}</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Приёмное отделение" />
+              <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("adm.groupExample")} />
             </div>
             <div className="field" style={{ flex: 2, minWidth: 240, marginBottom: 0 }}>
               <label>{ut("f.description")}</label>
@@ -117,7 +117,7 @@ export function Groups() {
                     // и молчаливая кнопка выглядела бы сломанной
                     await api.deleteGroup(g.id);
                     await load();
-                  }, "Группа удалена")
+                  }, ut("adm.groupDeleted"))
                 }
               >
                 Удалить
@@ -130,10 +130,10 @@ export function Groups() {
             <>
               <h2 style={{ fontSize: 14, marginTop: 12 }}>{ut("adm.admins")}</h2>
               {g.admins.length === 0 ? (
-                <p className="muted">Никто не назначен — группой управляет только суперадмин</p>
+                <p className="muted">{ut("adm.noAdmins")}</p>
               ) : (
                 <table>
-                  <thead><tr><th>ФИО</th><th>Email</th><th>Назначен</th><th /></tr></thead>
+                  <thead><tr><th>{ut("adm.fullName")}</th><th>Email</th><th>{ut("adm.assignedAt")}</th><th /></tr></thead>
                   <tbody>
                     {g.admins.map((a: GroupAdmin) => (
                       <tr key={a.userId}>
@@ -191,11 +191,15 @@ export function Groups() {
   );
 }
 
-const ROLE_LABEL: Record<string, string> = {
-  superadmin: "Суперадминистратор",
-  admin: "Администратор группы",
-  user: "Пациент",
-};
+/*
+ * Ключи, а не готовые строки: карта живёт вне компонента, а перевод зависит
+ * от выбранного языка и должен браться в момент отрисовки.
+ */
+const ROLE_KEY = {
+  superadmin: "adm.roleSuper",
+  admin: "adm.roleAdmin",
+  user: "adm.rolePatient",
+} as const satisfies Record<string, UiKey>;
 
 /** Учётные записи персонала */
 export function Users() {
@@ -219,8 +223,8 @@ export function Users() {
   return (
     <>
       <PageHead
-        title="Учётные записи"
-        sub="Единственный способ выдать доступ сотрудника: самостоятельная регистрация всегда создаёт пациента"
+        title={ut("adm.accountsTitle")}
+        sub={ut("adm.accountsSub")}
       />
 
       <div className="card">
@@ -243,14 +247,14 @@ export function Users() {
             <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </div>
           <div className="field" style={{ flex: 1, minWidth: 160, marginBottom: 0 }}>
-            <label>Пароль (от 8 знаков)</label>
+            <label>{ut("adm.password8")}</label>
             <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </div>
           <div className="field" style={{ width: 190, marginBottom: 0 }}>
             <label>{ut("adm.role")}</label>
             <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "superadmin")}>
-              <option value="admin">Администратор группы</option>
-              <option value="superadmin">Суперадминистратор</option>
+              <option value="admin">{ut("adm.roleAdmin")}</option>
+              <option value="superadmin">{ut("adm.roleSuper")}</option>
             </select>
           </div>
           <button
@@ -271,7 +275,7 @@ export function Users() {
                 setForm({ lastName: "", firstName: "", middleName: "", email: "", password: "" });
                 await load();
               } catch (e) {
-                setError(e instanceof Error ? e.message : "Не удалось создать");
+                setError(e instanceof Error ? e.message : ut("adm.createFailed"));
               } finally {
                 setBusy(false);
               }
@@ -287,14 +291,14 @@ export function Users() {
         <div className="row" style={{ justifyContent: "space-between", marginBottom: 10 }}>
           <h2 style={{ margin: 0 }}>Все учётные записи ({shown.length})</h2>
           <input
-            placeholder="Поиск по ФИО или email"
+            placeholder={ut("adm.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             style={{ maxWidth: 280 }}
           />
         </div>
         <table>
-          <thead><tr><th>ФИО</th><th>Email</th><th>{ut("adm.role")}</th><th>Пол</th><th>Создан</th></tr></thead>
+          <thead><tr><th>{ut("adm.fullName")}</th><th>Email</th><th>{ut("adm.role")}</th><th>{ut("dq.sex")}</th><th>{ut("adm.createdAt")}</th></tr></thead>
           <tbody>
             {shown.map((u) => (
               <tr key={u.id}>
@@ -303,8 +307,8 @@ export function Users() {
                   {u.anonymous ? <span className="muted"> · без имени</span> : null}
                 </td>
                 <td className="muted">{u.email}</td>
-                <td>{ROLE_LABEL[u.role]}</td>
-                <td className="muted">{u.sex === "male" ? "муж." : u.sex === "female" ? "жен." : "—"}</td>
+                <td>{ut(ROLE_KEY[u.role as keyof typeof ROLE_KEY])}</td>
+                <td className="muted">{u.sex === "male" ? ut("adm.male") : u.sex === "female" ? ut("adm.female") : "—"}</td>
                 <td className="muted">{u.createdAt.slice(0, 10)}</td>
               </tr>
             ))}
@@ -321,6 +325,7 @@ export function Users() {
  * какую редакцию человек читал.
  */
 export function ConsentText() {
+  const { ut } = useLang();
   const [uk, setUk] = useState("");
   const [ru, setRu] = useState("");
   const [version, setVersion] = useState<number | null>(null);
@@ -337,20 +342,19 @@ export function ConsentText() {
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Информированное согласие</h2>
-        {version ? <span className="hint">версия {version}</span> : <span className="hint">не настроено</span>}
+        <h2>{ut("adm.consentTitle")}</h2>
+        {version ? <span className="hint">{ut("adm.consentVersion")} {version}</span> : <span className="hint">{ut("adm.consentUnset")}</span>}
       </div>
       <p className="hint">
-        Показывается пациенту после входа. Сохранение создаёт новую версию — все пациенты
-        подтвердят согласие заново, и в журнале останется, какую редакцию читал каждый.
+        {ut("adm.consentHint")}
       </p>
       <div className="form-grid">
         <label className="field grow">
-          <span>Українською</span>
+          <span>{ut("adm.inUkrainian")}</span>
           <textarea rows={5} value={uk} onChange={(e) => setUk(e.target.value)} />
         </label>
         <label className="field grow">
-          <span>По-русски</span>
+          <span>{ut("adm.inRussian")}</span>
           <textarea rows={5} value={ru} onChange={(e) => setRu(e.target.value)} />
         </label>
       </div>
@@ -362,10 +366,10 @@ export function ConsentText() {
             run(async () => {
               const res = await api.saveConsentText({ uk: uk.trim(), ru: ru.trim() });
               setVersion(res.version);
-            }, "Новая версия согласия сохранена — пациенты подтвердят её при следующем входе")
+            }, ut("adm.consentSaved"))
           }
         >
-          Сохранить новой версией
+          {ut("adm.consentSave")}
         </button>
       </div>
     </div>

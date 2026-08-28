@@ -1,6 +1,7 @@
 import { api } from "../api";
 import { Loading } from "../ui";
 import { useResource } from "../useResource";
+import { useLang } from "../lang";
 
 /**
  * Калибровка порогов по клиническим исходам.
@@ -11,6 +12,7 @@ import { useResource } from "../useResource";
  * рисует шум, а не популяцию.
  */
 export function CalibrationPanel({ surveyId }: { surveyId: string }) {
+  const { ut } = useLang();
   // через useResource: смена методики не должна оставлять ответ по прежней
   const res = useResource(() => api.calibration(surveyId), [surveyId]);
   const { data, error } = res;
@@ -22,7 +24,7 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
     <>
       <div className="card">
         <div className="card-head">
-          <h2>Калибровка порогов по исходам</h2>
+          <h2>{ut("cal.title")}</h2>
           <span className="hint">разобранных случаев: {data.cases}</span>
         </div>
         <p className="hint">
@@ -50,14 +52,14 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
           <table>
             <thead>
               <tr>
-                <th>Страта</th>
-                <th className="num">Подтв.</th>
-                <th className="num">Не подтв.</th>
-                <th className="num">Действующий порог</th>
-                <th className="num">Чувств.</th>
-                <th className="num">Специф.</th>
+                <th>{ut("cal.stratum")}</th>
+                <th className="num">{ut("cal.confirmed")}</th>
+                <th className="num">{ut("cal.notConfirmed")}</th>
+                <th className="num">{ut("cal.currentThreshold")}</th>
+                <th className="num">{ut("cal.sensitivity")}</th>
+                <th className="num">{ut("cal.specificity")}</th>
                 <th className="num">AUC</th>
-                <th className="num">Кандидат (Юден)</th>
+                <th className="num">{ut("cal.candidate")}</th>
               </tr>
             </thead>
             <tbody>
@@ -100,6 +102,7 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
 
 /** PPV скрининга: доля подтверждённых среди разобранных — для Сводки */
 export function PpvCard() {
+  const { ut } = useLang();
   // отказ здесь молчит намеренно: карточка справочная, и её отсутствие
   // не должно ломать сводку
   const { data } = useResource(() => api.ppv(), []);
@@ -110,7 +113,7 @@ export function PpvCard() {
   return (
     <div className="card">
       <div className="card-head">
-        <h2>Подтверждаемость тревог</h2>
+        <h2>{ut("cal.ppvTitle")}</h2>
         <span className="hint">
           {data.overall.confirmed} из {data.overall.n} разобранных
           {data.withoutOutcome ? ` · без исхода: ${data.withoutOutcome}` : ""}
@@ -118,7 +121,7 @@ export function PpvCard() {
       </div>
       <div className="tiles">
         <div className="tile">
-          <span className="label">Всего</span>
+          <span className="label">{ut("cal.total")}</span>
           <span className="value">{data.overall.ppv}%</span>
         </div>
         {trend.map((m) => (
