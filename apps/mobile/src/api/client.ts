@@ -31,7 +31,7 @@ import type {
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
 import { currentLang } from "../lang";
-import { cache } from "../offline/cache";
+import { cache, drafts } from "../offline/cache";
 import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
 import { ageAt, computeProfile } from "@quizzy/shared";
 
@@ -329,14 +329,46 @@ export const api = {
       return offline;
     }),
 
-  /** Прогон офлайн-очереди; вызывается при старте, из тика и по возвращению сети */
-  flushQueue: () =>
-    flush((item: QueuedSubmission) =>
+  /**
+   * Прогон офлайн-очереди; вызывается при старте, из тика и по возвращению сети.
+   *
+   * Сдачи идут первыми: незавершённый черновик подождёт, а сданное
+   * прохождение — это уже результат, который ждут в консоли. Черновики
+   * досылаются тем же проходом, чтобы не заводить второй механизм синка с
+   * собственными ошибками.
+   */
+  flushQueue: async () => {
+    const result = await flush((item: QueuedSubmission) =>
       request<SubmitResult>(`/api/surveys/${item.surveyId}/responses`, {
         method: "POST",
         body: JSON.stringify(item.payload),
       }).then(() => undefined),
-    ),
+    );
+
+    for (const draft of drafts.unsynced()) {
+      try {
+        await request(`/api/surveys/${draft.surveyId}/draft`, {
+          method: "PUT",
+          body: JSON.stringify({
+            answers: draft.answers,
+            startedAt: draft.startedAt,
+            durationMs: draft.durationMs,
+            events: draft.events,
+          }),
+        });
+        drafts.save({ ...draft, synced: true });
+      } catch (error) {
+        // сети по-прежнему нет — остальные тоже не уйдут
+        if (((error as { status?: number }).status ?? 0) === 0) break;
+        /*
+         * Отказ по существу черновик не роняет: он всё равно лежит на
+         * устройстве, а прохождение можно продолжить и сдать целиком.
+         */
+      }
+    }
+
+    return result;
+  },
 
   pendingCount,
   /**
