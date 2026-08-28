@@ -1,14 +1,11 @@
-import { useEffect, useState } from "react";
 import { api } from "../../api";
+import { useResource } from "../../useResource";
 import { Loc } from "./fields";
 import { newUid, parseItems, type Draft, type DraftScale } from "./model";
 
 export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   // батареи нужны для каскадов: попадание в полосу может назначить углублённую
-  const [batteries, setBatteries] = useState<{ id: string; title: string }[]>([]);
-  useEffect(() => {
-    api.batteries().then((rows) => setBatteries(rows.filter((b) => !b.archived))).catch(() => {});
-  }, []);
+  const batteries = (useResource(() => api.batteries(), []).data ?? []).filter((b) => !b.archived);
 
   const upd = (i: number, s: Partial<DraftScale>) =>
     setDraft((d) => ({ ...d, scales: d.scales.map((x, k) => (k === i ? { ...x, ...s } : x)) }));

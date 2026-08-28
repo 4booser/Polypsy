@@ -1,18 +1,14 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { Respondent, RespondentDynamics } from "@quizzy/shared";
+import type { Respondent } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
 import { useLang } from "../lang";
+import { usePagedResource, useResource } from "../useResource";
 
 export function PatientList() {
-  const [rows, setRows] = useState<Respondent[] | null>(null);
-  const [total, setTotal] = useState(0);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   // поиск в адресе: «вот этот пациент» отправляется ссылкой
   const [query, setQuery] = useUrlState("q");
   const { ut } = useLang();
@@ -22,29 +18,14 @@ export function PatientList() {
    * фильтровать на клиенте можно было только то, что уже приехало. На
    * реальном объёме приезжала бы не вся выборка.
    */
-  const load = (more = false) => {
-    setBusy(true);
-    api
-      .respondents({ search: query || undefined, cursor: more ? (cursor ?? undefined) : undefined })
-      .then((page) => {
-        setRows((prev) => (more && prev ? [...prev, ...page.items] : page.items));
-        setCursor(page.nextCursor);
-        if (!more) setTotal(page.total ?? page.items.length);
-      })
-      .catch(() => setRows([]))
-      .finally(() => setBusy(false));
-  };
+  const page = usePagedResource<Respondent>(
+    (cursor) => api.respondents({ search: query || undefined, cursor: cursor ?? undefined }),
+    [query],
+    { debounceMs: 300 },
+  );
+  const { items: rows, total } = page;
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setCursor(null);
-      load(false);
-    }, query ? 300 : 0);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  if (!rows) return <Loading rows={6} />;
+  if (!rows) return <Loading rows={6} error={page.error} />;
 
   const filtered = rows;
 
@@ -98,9 +79,9 @@ export function PatientList() {
           ]}
         />
       </div>
-      {cursor ? (
-        <button style={{ width: "100%" }} disabled={busy} onClick={() => load(true)}>
-          {busy ? ut("ui.loading") : ut("ui.loadMore")}
+      {page.hasMore ? (
+        <button style={{ width: "100%" }} disabled={page.loadingMore} onClick={page.loadMore}>
+          {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
         </button>
       ) : null}
     </>
@@ -110,14 +91,8 @@ export function PatientList() {
 export function PatientDynamics() {
   const { ut } = useLang();
   const { userId } = useParams<{ userId: string }>();
-  const [data, setData] = useState<RespondentDynamics | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const run = useAction();
-
-  useEffect(() => {
-    if (!userId) return;
-    api.dynamics(userId).then(setData).catch((e) => setError(e.message));
-  }, [userId]);
+  const { data, error } = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId });
 
   if (error) return <p className="error">{error}</p>;
   if (!data) return <Loading rows={5} />;
