@@ -11,6 +11,7 @@ import { NotesEditor } from "../components/NotesEditor";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
 import { Goals } from "../components/Goals";
 import { Conferences } from "../components/Conferences";
+import { PatientPathways } from "../components/PatientPathways";
 import { useResource } from "../useResource";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
@@ -147,6 +148,8 @@ export default function CaseSummaryPage() {
         </div>
 
         <div className="pc-actions">
+          <PatientPathways userId={data.userId} />
+
           {/* план безопасности первым: в кризис открывают его */}
           <SafetyPlanEditor userId={data.userId} />
 

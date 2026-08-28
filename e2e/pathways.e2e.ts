@@ -95,3 +95,27 @@ test("шаблон маршрута собирается в редакторе",
   await page.getByRole("button", { name: "Сохранить маршрут" }).click();
   await expect(page).toHaveURL(/\/pathways\?created=/);
 });
+
+test("человек ставится на маршрут из своей карты", async ({ page }) => {
+  /*
+   * Решение принимают в карте: там видно, что уже идёт. Раньше поставить на
+   * маршрут можно было только запросом к API.
+   */
+  await login(page, "psy");
+  await page.goto("/patients");
+  await page.locator("table tbody tr td a").first().click();
+  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
+
+  const card = page.locator(".card").filter({ hasText: "Маршруты помощи" }).first();
+  await expect(card).toBeVisible();
+
+  const select = card.getByLabel("Поставить на маршрут");
+  const options = await select.locator("option:not([disabled])").count();
+  if (options <= 1) test.skip(true, "все маршруты уже открыты у этого человека");
+
+  await select.selectOption({ index: 1 });
+  await card.getByRole("button", { name: "Поставить на маршрут" }).click();
+
+  // маршрут появился в карте и ведёт на свой экран
+  await expect(card.locator("a.duty-row").first()).toBeVisible();
+});
