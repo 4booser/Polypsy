@@ -1811,3 +1811,90 @@ export const presence = pgTable(
     resourceIdx: index("presence_resource_idx").on(t.resource, t.seenAt),
   }),
 );
+
+/* ═══════════ Поддержка решений ═══════════ */
+
+/**
+ * Правило поддержки решений.
+ *
+ * Система предлагает, человек решает. Правило не выполняет действий — оно
+ * порождает предложение с объяснением, а принимает его специалист, и это
+ * фиксируется. Иначе ответственность растворяется между правилом и врачом.
+ */
+export const decisionRules = pgTable(
+  "decision_rules",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "set null" }),
+    enabled: boolean("enabled").notNull().default(true),
+    conditions: jsonb("conditions").notNull(),
+    actions: jsonb("actions").notNull(),
+    version: integer("version").notNull().default(1),
+    note: text("note"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    updatedAt: timestampCol("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    groupIdx: index("decision_rules_group_idx").on(t.groupId, t.enabled),
+  }),
+);
+
+/** Срабатывание правила: предложение с объяснением и решением человека */
+export const ruleHits = pgTable(
+  "rule_hits",
+  {
+    id: text("id").primaryKey(),
+    ruleId: text("rule_id")
+      .notNull()
+      .references(() => decisionRules.id, { onDelete: "cascade" }),
+    /*
+     * Версия правила на момент срабатывания. Правило потом поправят, а
+     * объяснение должно остаться верным для того случая, который уже разобрали.
+     */
+    ruleVersion: integer("rule_version").notNull(),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => responses.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    explanation: jsonb("explanation").notNull(),
+    status: text("status").notNull().default("suggested"),
+    decidedBy: text("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: timestampCol("decided_at"),
+    decisionNote: text("decision_note"),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    statusIdx: index("rule_hits_status_idx").on(t.status, t.createdAt),
+    userIdx: index("rule_hits_user_idx").on(t.userId, t.createdAt),
+  }),
+);
+
+/** Дежурная смена: кто сейчас принимает тревоги */
+export const dutyShifts = pgTable(
+  "duty_shifts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "cascade" }),
+    startsAt: timestampCol("starts_at").notNull(),
+    endsAt: timestampCol("ends_at").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    windowIdx: index("duty_shifts_window_idx").on(t.startsAt, t.endsAt),
+  }),
+);

@@ -37,6 +37,8 @@ import type {
   Respondent,
   UnitReport,
   Worklist,
+  RuleHit,
+  DutyShiftRow,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -527,6 +529,20 @@ export const api = {
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
   worklist: () => request<Worklist>("/api/worklist"),
+
+  ruleHits: (status = "suggested") =>
+    request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
+  decideHit: (id: string, status: "accepted" | "declined", note?: string) =>
+    request<{ ok: true }>(`/api/decisions/hits/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, note: note ?? null }),
+    }),
+  duty: () => request<{ items: DutyShiftRow[] }>("/api/decisions/duty").then((r) => r.items),
+  takeDuty: (startsAt: string, endsAt: string, userId: string) =>
+    request<{ id: string }>("/api/decisions/duty", {
+      method: "POST",
+      body: JSON.stringify({ userId, startsAt, endsAt }),
+    }),
 
   presenceHere: (resource: string) =>
     request<{ ok: true }>("/api/presence", { method: "POST", body: JSON.stringify({ resource }) }),

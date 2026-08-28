@@ -1250,3 +1250,31 @@ export interface SafetyPlan {
   reviewedAt: string | null;
   authorName: string;
 }
+
+/* ═══════════ Поддержка решений ═══════════ */
+
+export interface RuleHit {
+  id: string;
+  ruleTitle: string;
+  ruleVersion: number;
+  userId: string;
+  userName: string;
+  surveyId: string;
+  responseId: string;
+  status: "suggested" | "accepted" | "declined";
+  explanation: {
+    title: string;
+    because: { met: boolean; text: string }[];
+    actions: import("./rules").RuleAction[];
+  };
+  createdAt: string;
+}
+
+export interface DutyShiftRow {
+  id: string;
+  userId: string;
+  name: string;
+  groupId: string | null;
+  startsAt: string;
+  endsAt: string;
+}

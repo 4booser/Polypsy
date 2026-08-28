@@ -7,6 +7,8 @@ import { PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
+import { Suggestions } from "../components/Suggestions";
+import { DutyNow } from "../components/DutyNow";
 
 export default function Dashboard() {
   const { ut } = useLang();
@@ -56,6 +58,14 @@ export default function Dashboard() {
       */}
       <div className="duty">
         <section className="duty-now">
+          {/*
+            Предложения правил стоят выше очереди работы, но ниже тревог:
+            это подсказка, а не сигнал. Если предложений нет, блок не рисуется
+            вовсе — постоянный пустой заголовок быстро становится невидимым.
+          */}
+          <DutyNow />
+          <Suggestions />
+
           {openCases ? (
             <Link to="/alerts" className="duty-alarm">
               <span className="duty-alarm-num">{openCases}</span>
