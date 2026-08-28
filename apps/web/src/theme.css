@@ -1537,3 +1537,62 @@ kbd, .kbd {
 .chart-tip-row { display: flex; align-items: center; gap: 7px; }
 .chart-tip-row i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
 .chart-tip-row b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ═══ панель дежурного ═══
+ * Слева то, что требует действия сегодня; справа показатели. Раньше экран был
+ * колонкой карточек, и «разобрать случай» стояло рядом со справочной
+ * подтверждаемостью тревог, будто это дела одного порядка.
+ */
+.duty {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+  gap: var(--gap);
+  align-items: start;
+  margin-bottom: var(--gap);
+}
+.duty-now, .duty-figures { display: grid; gap: var(--gap); align-content: start; }
+
+.duty-alarm {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--sev-severe) 45%, transparent);
+  background: linear-gradient(90deg, var(--danger-soft), transparent 60%), var(--card);
+  color: var(--text);
+}
+.duty-alarm:hover { text-decoration: none; border-color: var(--sev-severe); }
+.duty-alarm-num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-stat);
+  font-weight: 600;
+  color: var(--sev-severe-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.duty-alarm-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.duty-alarm-text .hint {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.duty-work .card-head { margin-bottom: 8px; }
+.duty-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--fs-small);
+  color: var(--text-2);
+}
+.duty-row:last-child { border-bottom: none; }
+a.duty-row:hover { text-decoration: none; color: var(--text); }
+.duty-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); flex: none; }
+
+@media (max-width: 1200px) {
+  .duty { grid-template-columns: 1fr; }
+}

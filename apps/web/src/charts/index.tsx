@@ -121,6 +121,12 @@ export function LineChart({
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         role="img"
+        /*
+         * Роль img обязывает дать имя: без него диктор объявляет «графика» и
+         * замолкает. Имя собирается из рядов и границ периода — это то, что
+         * зрячий читает с осей за секунду.
+         */
+        aria-label={`${series.map((s) => s.label).join(", ")}: ${all[0]?.x ?? ""} — ${series[0]?.points.at(-1)?.x ?? ""}`}
       >
         {ts.map((t) => (
           <g key={t}>

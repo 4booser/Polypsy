@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
-import { duration, day, severityColor, severityKey, timeOfDay } from "../format";
+import { duration, day, severityColor, severityKey } from "../format";
 import { PpvCard } from "../components/CalibrationPanel";
-import { Badge, PageHead, Screen } from "../ui";
+import { PageHead, Screen } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -16,22 +16,26 @@ export default function Dashboard() {
    * объяснения.
    */
   const res = useResource(async () => {
-    const [overview, surveys, alerts] = await Promise.all([
+    const [overview, surveys, alerts, work] = await Promise.all([
       api.overview(),
       api.surveys(),
-      api.alertCases({ limit: "3" }),
+      api.alertCases({ limit: "6" }),
+      // очередь работы — то, с чего начинается день; её отказ не должен
+      // прятать остальную сводку
+      api.worklist().catch(() => ({ items: [], total: 0, truncated: false })),
     ]);
     return {
       data: overview,
       surveys,
       cases: alerts.items,
       openCases: alerts.total ?? alerts.items.length,
+      work,
     };
   }, []);
 
   return (
     <Screen res={res} rows={5}>
-      {({ data, surveys, cases, openCases }) => (
+      {({ data, surveys, cases, openCases, work }) => (
     <>
       {/*
         Порядок экрана задан, а не сложился: сначала то, что требует действия
@@ -41,50 +45,78 @@ export default function Dashboard() {
       */}
       <PageHead title={ut("dash.title")} sub={ut("dash.sub")} />
 
-      {cases.length ? (
-        <div className="card alarm">
-          <div className="card-head" style={{ marginBottom: 0 }}>
-            <div className="row tight">
-              <Badge tone="bad">{ut("dash.needsReview")}</Badge>
-              <strong>{ut("dash.casesOpen")}: {openCases}</strong>
-            </div>
-            <Link to="/alerts" className="btn primary">{ut("dash.review")}</Link>
-          </div>
-          <p className="hint" style={{ marginTop: 8, marginBottom: 0 }}>
-            {cases
-              .map((c) => `${c.userName}${c.signalCount > 1 ? ` (сигналов ${c.signalCount})` : ""}`)
-              .join(" · ")}
-            {openCases > cases.length ? ` ${ut("ui.andMore")} ${openCases - cases.length}` : ""}
-          </p>
-        </div>
-      ) : null}
-
-      {data.inProgress.length ? (
-        /*
-         * Кто прямо сейчас за экраном. Смысл в оперативности: если человек
-         * застрял или закрыл приложение посреди методики, специалист узнаёт
-         * об этом сегодня, а не при разборе незакрытых назначений через месяц.
-         */
-        <div className="card">
-          <div className="card-head">
-            <h2>{ut("dash.inProgress")}</h2>
-            <span className="hint">{ut("dash.inProgressHint")} · {data.inProgress.length}</span>
-          </div>
-          {data.inProgress.slice(0, 8).map((r) => (
-            <div className="row" key={r.responseId} style={{ padding: "5px 0", gap: 10 }}>
-              <span className="live-dot" />
-              <span style={{ flex: 1 }}>{r.surveyTitle}</span>
-              <span className="muted" style={{ fontSize: 12 }}>
-                начал {timeOfDay(r.startedAt)} · сохранено {timeOfDay(r.lastSavedAt)}
+      {/*
+        Панель дежурного: слева — то, что требует действия сегодня, справа —
+        показатели. Раньше экран был колонкой карточек, и «разобрать случай»
+        стояло рядом со справочной подтверждаемостью тревог, будто это дела
+        одного порядка.
+      */}
+      <div className="duty">
+        <section className="duty-now">
+          {openCases ? (
+            <Link to="/alerts" className="duty-alarm">
+              <span className="duty-alarm-num">{openCases}</span>
+              <span className="duty-alarm-text">
+                <strong>{ut("dash.casesOpen")}</strong>
+                <span className="hint">
+                  {cases
+                    .slice(0, 3)
+                    .map((c) => c.userName)
+                    .join(" · ")}
+                  {openCases > 3 ? ` ${ut("ui.andMore")} ${openCases - 3}` : ""}
+                </span>
               </span>
-              {r.userId ? (
-                <Link className="btn" to={`/patients/${r.userId}`}>{ut("dash.card")}</Link>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      ) : null}
+              <span className="btn primary">{ut("dash.review")}</span>
+            </Link>
+          ) : null}
 
+          <div className="card duty-work">
+            <div className="card-head">
+              <h2>{ut("work.title")}</h2>
+              <Link to="/worklist" className="hint">
+                {work.total} →
+              </Link>
+            </div>
+            {work.items.length === 0 ? (
+              <p className="hint" style={{ margin: 0 }}>{ut("work.nothing")}</p>
+            ) : (
+              work.items.slice(0, 7).map((i) => (
+                <Link key={i.id} to={i.href ?? "/worklist"} className="duty-row">
+                  <i
+                    className="duty-dot"
+                    style={i.severity ? { background: severityColor[i.severity] } : undefined}
+                  />
+                  <span className="grow">{i.userName}</span>
+                  <span className="muted">{i.title}</span>
+                  {i.overdue ? <span className="badge bad">{ut("cases.overdue")}</span> : null}
+                </Link>
+              ))
+            )}
+          </div>
+
+          {data.inProgress.length ? (
+            /*
+             * Кто прямо сейчас за экраном. Смысл в оперативности: если человек
+             * застрял или закрыл приложение посреди методики, специалист узнаёт
+             * об этом сегодня, а не при разборе назначений через месяц.
+             */
+            <div className="card">
+              <div className="card-head">
+                <h2>{ut("dash.inProgress")}</h2>
+                <span className="hint">{data.inProgress.length}</span>
+              </div>
+              {data.inProgress.slice(0, 6).map((r) => (
+                <div className="duty-row" key={r.responseId}>
+                  <span className="live-dot" />
+                  <span className="grow">{r.surveyTitle}</span>
+                  <span className="muted">{duration(Date.now() - new Date(r.lastSavedAt).getTime())}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="duty-figures">
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         <div className="tile">
           <div className="label">{ut("dash.responses")}</div>
@@ -106,9 +138,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* подтверждаемость — справочный показатель качества скрининга: он
-          объясняет цифры выше, а не требует действия, и место ему здесь */}
-      <PpvCard />
+          {/* подтверждаемость — справочный показатель качества скрининга:
+              он объясняет цифры выше, а не требует действия */}
+          <PpvCard />
+        </section>
+      </div>
 
       <Chart title={ut("dash.timeline")} hint={ut("dash.timelineHint")}>
         <LineChart
