@@ -223,6 +223,13 @@ export const api = {
       (error) => offlineFallback(error, cache.batteries()),
     ),
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
+  registerPush: (token: string, platform: "ios" | "android") =>
+    request<{ ok: true }>("/api/push/register", {
+      method: "POST",
+      body: JSON.stringify({ token, platform }),
+    }),
+  forgetPush: (token: string) =>
+    request<{ ok: true }>("/api/push/forget", { method: "POST", body: JSON.stringify({ token }) }),
   /**
    * Свой план безопасности.
    *
