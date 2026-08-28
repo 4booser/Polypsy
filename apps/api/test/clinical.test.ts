@@ -740,3 +740,117 @@ describe("план безопасности", () => {
     expect(row!.content).not.toContain("Брат");
   });
 });
+
+/* ── цели лечения ── */
+
+describe("цель лечения", () => {
+  test("цель ставится на существующую шкалу и берёт точку отсчёта из замеров", async () => {
+    const person = await makeUser("user", `goal-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
+    const code = survey.body.scales[0].code;
+
+    const created = await api(`/api/goals/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        surveyId: surveyInA,
+        scaleCode: code,
+        direction: "down",
+        targetValue: 0.1,
+        note: "Снизить к третьему месяцу",
+      }),
+    });
+    expect(created.status).toBe(201);
+
+    const list = await api(`/api/goals/patients/${person.id}`, adminA.token);
+    const goal = list.body.items[0];
+    expect(goal.scaleCode).toBe(code);
+    // точка отсчёта — последний замер на момент постановки, а не ноль
+    expect(goal.baselineValue).not.toBeNull();
+    expect(goal.measurements).toBeGreaterThanOrEqual(1);
+  });
+
+  test("цель на несуществующую шкалу не заводится", async () => {
+    /*
+     * Иначе она никогда не показала бы прогресс и выглядела бы как «человек
+     * не двигается» — худший вид ошибки: правдоподобный и молчаливый.
+     */
+    const person = await makeUser("user", `goal-bad-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const res = await api(`/api/goals/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        surveyId: surveyInA,
+        scaleCode: "НЕТ_ТАКОЙ",
+        direction: "down",
+        targetValue: 1,
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("достижение считается по направлению цели", async () => {
+    const person = await makeUser("user", `goal-reach-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
+    const code = survey.body.scales[0].code;
+
+    // цель «вниз» с заведомо высоким порогом достигнута сразу
+    await api(`/api/goals/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ surveyId: surveyInA, scaleCode: code, direction: "down", targetValue: 999 }),
+    });
+    // цель «вверх» с недостижимым порогом — нет
+    await api(`/api/goals/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ surveyId: surveyInA, scaleCode: code, direction: "up", targetValue: 999 }),
+    });
+
+    const list = await api(`/api/goals/patients/${person.id}`, adminA.token);
+    const down = list.body.items.find((g: { direction: string }) => g.direction === "down");
+    const up = list.body.items.find((g: { direction: string }) => g.direction === "up");
+    expect(down.reached).toBe(true);
+    expect(up.reached).toBe(false);
+  });
+
+  test("цель закрывается исходом и перестаёт быть открытой", async () => {
+    const person = await makeUser("user", `goal-close-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
+    const created = await api(`/api/goals/patients/${person.id}`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        surveyId: surveyInA,
+        scaleCode: survey.body.scales[0].code,
+        direction: "down",
+        targetValue: 0.2,
+      }),
+    });
+
+    const bad = await api(`/api/goals/${created.body.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+    });
+    expect(bad.status).toBe(400);
+
+    const ok = await api(`/api/goals/${created.body.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "met", note: "Цель достигнута" }),
+    });
+    expect(ok.status).toBe(200);
+
+    const list = await api(`/api/goals/patients/${person.id}`, adminA.token);
+    expect(list.body.items[0].status).toBe("met");
+    expect(list.body.items[0].closedAt).not.toBeNull();
+  });
+
+  test("чужой админ целей не видит", async () => {
+    const person = await makeUser("user", `goal-foreign-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const res = await api(`/api/goals/patients/${person.id}`, adminB.token);
+    expect(res.status).toBe(404);
+  });
+});

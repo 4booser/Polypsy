@@ -270,6 +270,29 @@ export type OpenApiSpec = {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
+export interface TreatmentGoal {
+  id: string;
+  surveyId: string;
+  surveyTitle: string;
+  scaleCode: string;
+  direction: "down" | "up";
+  targetValue: number;
+  baselineValue: number | null;
+  currentValue: number | null;
+  measurements: number;
+  /** Значение достигло цели по её направлению */
+  reached: boolean;
+  /** Изменение больше ошибки измерения — иное утверждение, чем «стало лучше» */
+  reliable: boolean | null;
+  rci: number | null;
+  status: "open" | "met" | "missed" | "cancelled";
+  dueAt: string | null;
+  note: string | null;
+  authorName: string;
+  createdAt: string;
+  closedAt: string | null;
+}
+
 export interface NoteVersion {
   id: string;
   version: number;
@@ -518,6 +541,14 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  goals: (userId: string) => unwrap(request<Items<TreatmentGoal>>(`/api/goals/patients/${userId}`)),
+  createGoal: (
+    userId: string,
+    input: { surveyId: string; scaleCode: string; direction: "down" | "up"; targetValue: number; dueAt?: string | null; note?: string },
+  ) => request<{ id: string }>(`/api/goals/patients/${userId}`, { method: "POST", body: JSON.stringify(input) }),
+  closeGoal: (id: string, status: "met" | "missed" | "cancelled" | "open", note?: string) =>
+    request<{ ok: true }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify({ status, note }) }),
+
   safetyPlans: (userId: string) =>
     request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`),
   saveSafetyPlan: (userId: string, content: SafetyPlanContent) =>
