@@ -9,26 +9,26 @@ import { login } from "./helpers";
  * ввода: иначе набор комментария «не подтверждён» ставил бы исходы на
  * каждой букве.
  */
-test("j и k ведут по списку, / ставит курсор в поиск", async ({ page }) => {
+test("j и k ведут по очереди, / ставит курсор в поиск", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/alerts");
-  await page.locator(".case").first().waitFor();
+  await page.locator(".queue-row").first().waitFor();
 
-  const cards = page.locator(".case");
-  await expect(cards.nth(0)).toHaveClass(/focused/);
+  const rows = page.locator(".queue-row");
+  await expect(rows.nth(0)).toHaveAttribute("aria-current", "true");
 
   await page.keyboard.press("j");
-  await expect(cards.nth(1)).toHaveClass(/focused/);
-  await expect(cards.nth(0)).not.toHaveClass(/focused/);
+  await expect(rows.nth(1)).toHaveAttribute("aria-current", "true");
+  await expect(rows.nth(0)).not.toHaveAttribute("aria-current", "true");
 
   await page.keyboard.press("k");
-  await expect(cards.nth(0)).toHaveClass(/focused/);
+  await expect(rows.nth(0)).toHaveAttribute("aria-current", "true");
 
   await page.keyboard.press("/");
-  await expect(page.locator(".page-head input")).toBeFocused();
+  await expect(page.locator(".triage-filters input")).toBeFocused();
 
   await page.keyboard.press("Escape");
-  await expect(page.locator(".page-head input")).not.toBeFocused();
+  await expect(page.locator(".triage-filters input")).not.toBeFocused();
 });
 
 test("клавиши молчат, пока курсор в поле ввода", async ({ page }) => {

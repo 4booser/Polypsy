@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { AlertCase } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { dateTime, severityColor } from "../format";
+import { dateTime, day, severityColor } from "../format";
 import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, useUrlState } from "../ui";
 import { useLang } from "../lang";
 import { usePagedResource, useResource } from "../useResource";
@@ -43,11 +43,12 @@ export default function Alerts() {
   const [search, setSearch] = useUrlState("q");
 
   /*
-   * Какой случай «под рукой». Разбор идёт подряд, и держать указатель
-   * дешевле, чем каждый раз тянуться мышью: j/k ведут по списку, цифры
-   * ставят исход.
+   * Какой случай «под рукой» — по идентификатору, а не по номеру строки.
+   * Указатель на позицию сползал: после «взять на себя» список перечитывался,
+   * порядок менялся, и на экране оказывался уже другой человек — тот, кто
+   * занял освободившееся место.
    */
-  const [cursorIdx, setCursorIdx] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const run = useAction();
   const { ut } = useLang();
 
@@ -66,12 +67,23 @@ export default function Alerts() {
   const units = useResource(() => api.alertCaseUnits(), []).data ?? [];
 
   const open = (items ?? []).filter((c) => !c.acknowledgedAt);
-  const current = open[Math.min(cursorIdx, open.length - 1)];
+  // выбранный либо тот, что выбрали, либо первый в очереди
+  const current = (items ?? []).find((c) => c.id === selectedId) ?? open[0];
+
+  /** Сдвиг по очереди клавишами: считается от текущего, а не от позиции */
+  const move = (delta: number) => {
+    if (!open.length) return;
+    const at = open.findIndex((c) => c.id === current?.id);
+    const next = open[Math.min(Math.max((at < 0 ? 0 : at) + delta, 0), open.length - 1)];
+    if (next) setSelectedId(next.id);
+  };
 
   const resolve = (outcome: string) => {
     if (!current) return;
     void run(async () => {
       await api.resolveCase(current.id, outcome, "");
+      // разобранный уходит из очереди: следующий сам станет выбранным
+      setSelectedId(null);
       page.reload();
     }, ut("work.done"));
   };
@@ -82,8 +94,8 @@ export default function Alerts() {
    * привычно), цифры 1–3 — исход в том же порядке, что кнопки на экране.
    */
   useHotkeys({
-    j: () => setCursorIdx((i) => Math.min(i + 1, Math.max(open.length - 1, 0))),
-    k: () => setCursorIdx((i) => Math.max(i - 1, 0)),
+    j: () => move(1),
+    k: () => move(-1),
     "1": () => resolve("confirmed"),
     "2": () => resolve("needs_followup"),
     "3": () => resolve("not_confirmed"),
@@ -95,7 +107,7 @@ export default function Alerts() {
       }, ut("cases.tookToast"));
     },
     "/": () => {
-      const input = document.querySelector<HTMLInputElement>(".page-head input");
+      const input = document.querySelector<HTMLInputElement>(".triage-filters input");
       input?.focus();
       input?.select();
     },
@@ -106,9 +118,11 @@ export default function Alerts() {
 
   const mine = items.filter((c) => c.assignedTo === user?.id && !c.acknowledgedAt).length;
   const overdue = items.filter((c) => c.overdue).length;
+  const selected = current ?? items[0] ?? null;
 
   return (
     <>
+      {/* заголовок остаётся: без него экран теряет ориентацию, а диктор — точку входа */}
       <PageHead
         title={ut("cases.title")}
         sub={
@@ -116,83 +130,203 @@ export default function Alerts() {
             ? ut("cases.allSub")
             : `${ut("cases.openCount")}: ${total ?? items.length}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}${mine ? ` · ${ut("cases.mine")} ${mine}` : ""}`
         }
-        actions={
+      />
+    <div className="triage">
+      {/* ── панель 1: очередь ── */}
+      <aside className="triage-queue">
+        <div className="triage-filters">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={ut("ui.surname")}
-            style={{ maxWidth: 200 }}
           />
-        }
-      />
+          <Filter value={all} onChange={setAll} options={[["", ut("cases.filterOpen")], ["1", ut("cases.filterAll")]]} />
+          <Filter
+            value={severity}
+            onChange={setSeverity}
+            options={[["", ut("cases.anySeverity")], ["severe", ut("cases.severeOnly")], ["moderate", ut("cases.moderate")]]}
+          />
+          <Filter
+            value={assigned}
+            onChange={setAssigned}
+            options={[["", ut("cases.assignedAny")], ["me", ut("cases.assignedMe")], ["none", ut("cases.assignedNone")]]}
+          />
+          <select value={unit} onChange={(e) => setUnit(e.target.value)} aria-label={ut("ui.unit")}>
+            <option value="">{ut("ui.unitAll")}</option>
+            {units.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </select>
+        </div>
 
-      <div className="card filters">
-        <Filter value={all} onChange={setAll} options={[["", ut("cases.filterOpen")], ["1", ut("cases.filterAll")]]} />
-        <Filter
-          value={severity}
-          onChange={setSeverity}
-          options={[["", ut("cases.anySeverity")], ["severe", ut("cases.severeOnly")], ["moderate", ut("cases.moderate")]]}
+        <div className="triage-list">
+          {items.length === 0 ? (
+            <Empty
+              title={all === "1" ? ut("cases.emptyAll") : ut("cases.emptyOpen")}
+              hint={ut("cases.emptyHint")}
+            />
+          ) : (
+            items.map((c) => (
+              <QueueRow
+                key={c.id}
+                c={c}
+                active={c.id === selected?.id}
+                me={user?.id}
+                onPick={() => setSelectedId(c.id)}
+              />
+            ))
+          )}
+          {page.hasMore ? (
+            <button className="load-more" disabled={page.loadingMore} onClick={page.loadMore}>
+              {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
+            </button>
+          ) : items.length ? (
+            <p className="end-of-list">{ut("ui.endOfList")}</p>
+          ) : null}
+        </div>
+      </aside>
+
+      {/* ── панель 2: сам случай ── */}
+      <section className="triage-case">
+        {selected ? (
+          <CaseCard c={selected} focused onChanged={page.reload} run={run} me={user?.id} />
+        ) : (
+          <Empty title={ut("cases.emptyOpen")} hint={ut("cases.emptyHint")} />
+        )}
+        <HotkeyHint
+          keys={[
+            ["J / K", ut("hotkey.next")],
+            ["1", ut("hotkey.confirm")],
+            ["2", ut("hotkey.followup")],
+            ["3", ut("hotkey.reject")],
+            ["T", ut("hotkey.take")],
+            ["/", ut("hotkey.search")],
+          ]}
         />
-        <Filter
-          value={assigned}
-          onChange={setAssigned}
-          options={[["", ut("cases.assignedAny")], ["me", ut("cases.assignedMe")], ["none", ut("cases.assignedNone")]]}
-        />
-        <select
-          value={unit}
-          onChange={(e) => setUnit(e.target.value)}
-          // без подписи диктор читает список как безымянный элемент
-          aria-label={ut("ui.unit")}
-          style={{ maxWidth: 200 }}
-        >
-          <option value="">{ut("ui.unitAll")}</option>
-          {units.map((u) => (
-            <option key={u} value={u}>{u}</option>
-          ))}
-        </select>
+      </section>
+
+      {/* ── панель 3: контекст человека ── */}
+      <aside className="triage-context">
+        {selected ? <PatientContext userId={selected.userId} /> : null}
+      </aside>
+    </div>
+    </>
+  );
+}
+
+/**
+ * Строка очереди.
+ *
+ * Всё, что нужно для выбора следующего: тяжесть полосой слева, кто держит
+ * случай, сколько сигналов и сколько он ждёт. Разбор идёт подряд, и строка
+ * не должна требовать чтения — только взгляда.
+ */
+function QueueRow({
+  c,
+  active,
+  me,
+  onPick,
+}: {
+  c: AlertCase;
+  active: boolean;
+  me: string | undefined;
+  onPick: () => void;
+}) {
+  const { ut } = useLang();
+  return (
+    <button
+      type="button"
+      className={`queue-row${active ? " active" : ""}${c.overdue ? " overdue" : ""}${c.acknowledgedAt ? " done" : ""}`}
+      onClick={onPick}
+      aria-current={active}
+    >
+      <i
+        className="queue-sev"
+        style={{ background: severityColor[c.severity === "severe" ? "severe" : "moderate"] }}
+      />
+      <span className="queue-main">
+        <span className="queue-name">{c.userName}</span>
+        <span className="queue-meta">
+          {c.unit ? `${c.unit} · ` : ""}
+          {c.surveyTitle}
+        </span>
+      </span>
+      <span className="queue-right">
+        <span className="queue-since">{duration(c.minutesOpen)}</span>
+        {c.signalCount > 1 ? <span className="queue-signals">{c.signalCount}</span> : null}
+        {c.assignedTo ? (
+          <span className="queue-who" title={c.assignedToName ?? ""}>
+            {c.assignedTo === me ? ut("cases.mine") : (c.assignedToName ?? "").slice(0, 1)}
+          </span>
+        ) : null}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Контекст пациента рядом со случаем.
+ *
+ * Раньше, чтобы понять, кого разбираешь, нужно было уйти на карту и потерять
+ * место в очереди. Здесь то же самое стоит рядом: последние баллы, открытые
+ * тревоги, направления и подписанные заключения.
+ */
+function PatientContext({ userId }: { userId: string }) {
+  const { ut } = useLang();
+  const res = useResource(() => api.caseSummary(userId), [userId]);
+  const data = res.data;
+
+  if (!data) return <Loading rows={4} error={res.error} />;
+
+  return (
+    <>
+      <div className="ctx-head">
+        <Avatar name={data.fullName} size={30} />
+        <div className="grow">
+          <Link to={`/patients/${userId}/summary`}>
+            <strong>{data.fullName}</strong>
+          </Link>
+          <div className="hint" style={{ margin: 0 }}>
+            {[data.unit, data.age ? `${data.age}` : null].filter(Boolean).join(" · ")}
+          </div>
+        </div>
       </div>
 
-      {items.length === 0 ? (
-        <Empty
-          title={all === "1" ? ut("cases.emptyAll") : ut("cases.emptyOpen")}
-          hint={ut("cases.emptyHint")}
-        />
-      ) : (
-        items.map((c) => (
-          <CaseCard
-            key={c.id}
-            c={c}
-            focused={c.id === current?.id}
-            onChanged={page.reload}
-            run={run}
-            me={user?.id}
-          />
-        ))
-      )}
+      {data.surveys.map((sv) => (
+        <div key={sv.surveyId} className="ctx-block">
+          <h3>{sv.title}</h3>
+          {sv.scales.slice(0, 6).map((sc) => (
+            <div key={sc.code} className="ctx-scale">
+              <span className="grow">{sc.title}</span>
+              <span className="ctx-value">{sc.lastValue}</span>
+              {sc.severity ? (
+                <i className="ctx-dot" style={{ background: severityColor[sc.severity] }} />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ))}
 
-      <HotkeyHint
-        keys={[
-          ["J / K", ut("hotkey.next")],
-          ["1", ut("hotkey.confirm")],
-          ["2", ut("hotkey.followup")],
-          ["3", ut("hotkey.reject")],
-          ["T", ut("hotkey.take")],
-          ["/", ut("hotkey.search")],
-        ]}
-      />
+      {data.referrals.length ? (
+        <div className="ctx-block">
+          <h3>{ut("nav.referrals")}</h3>
+          {data.referrals.slice(0, 3).map((r) => (
+            <div key={r.id} className="ctx-scale">
+              <span className="grow">{r.destination}</span>
+              <span className="muted">{day(r.createdAt)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
-      {page.hasMore ? (
-        <button
-          style={{ width: "100%", marginTop: 12 }}
-          disabled={page.loadingMore}
-          onClick={page.loadMore}
-        >
-          {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
-        </button>
-      ) : items.length ? (
-        <p className="hint" style={{ textAlign: "center", marginTop: 12 }}>
-          {ut("ui.endOfList")}
-        </p>
+      {data.conclusions.length ? (
+        <div className="ctx-block">
+          <h3>{ut("an.conclusion")}</h3>
+          <p className="hint" style={{ margin: 0 }}>
+            {data.conclusions[0]!.text.slice(0, 180)}
+            {data.conclusions[0]!.text.length > 180 ? "…" : ""}
+          </p>
+        </div>
       ) : null}
     </>
   );
