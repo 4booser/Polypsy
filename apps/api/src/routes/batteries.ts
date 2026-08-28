@@ -124,7 +124,7 @@ batteryRoutes.get("/", async (c) => {
     items: items.get(r.battery.id) ?? [],
     activeAssignments: Number(r.activeAssignments ?? 0),
   }));
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 /** Создание батареи */
@@ -357,7 +357,7 @@ batteryRoutes.get("/:id/assignments", async (c) => {
     resourceId: batteryId,
     details: { assignments: result.length },
   });
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 /**
@@ -448,5 +448,5 @@ batteryRoutes.get("/mine", async (c) => {
     and(eq(batteryAssignments.userId, user.id), isNull(batteryAssignments.cancelledAt)),
     langOf(c.req.query("lang")),
   );
-  return c.json(result);
+  return c.json({ items: result });
 });

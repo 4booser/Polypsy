@@ -21,7 +21,7 @@ alertRoutes.get("/", async (c) => {
   const scope = await surveyScopeFilter(user);
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
-  if (surveyIds.length === 0) return c.json([]);
+  if (surveyIds.length === 0) return c.json({ items: [] });
 
   const rows = await db
     .select({
@@ -102,7 +102,7 @@ alertRoutes.get("/", async (c) => {
       includeAcknowledged,
     },
   });
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 /*

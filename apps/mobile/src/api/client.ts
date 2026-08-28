@@ -156,6 +156,17 @@ async function prefetchSurveys(ids: string[]): Promise<void> {
   }
 }
 
+/**
+ * Списочный ответ API — объект, а не голый массив: в массив нельзя добавить
+ * ни «всего», ни курсор, ни признак усечения, не сломав всех читателей.
+ * Разворачивается здесь, чтобы экраны не знали про обёртку.
+ */
+interface Items<T> {
+  items: T[];
+}
+
+const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
+
 export const api = {
   // роль в регистрации не передаётся: её назначает только администратор
   register: (input: {
@@ -181,14 +192,14 @@ export const api = {
     request<User>("/api/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
 
   listGroups: () =>
-    request<SurveyGroupWithCounts[]>("/api/groups").then(
-      (rows) => {
+    request<Items<SurveyGroupWithCounts>>("/api/groups").then(
+      ({ items: rows }) => {
         cache.saveGroups(rows);
         return rows;
       },
       (error) => offlineFallback(error, cache.groups()),
     ),
-  groupAdmins: (groupId: string) => request<GroupAdmin[]>(`/api/groups/${groupId}/admins`),
+  groupAdmins: (groupId: string) => unwrap(request<Items<GroupAdmin>>(`/api/groups/${groupId}/admins`)),
   assignGroupAdmin: (groupId: string, userId: string) =>
     request<{ groupId: string; userId: string }>(`/api/groups/${groupId}/admins`, {
       method: "POST",
@@ -203,8 +214,8 @@ export const api = {
   deleteGroup: (id: string) => request<void>(`/api/groups/${id}`, { method: "DELETE" }),
 
   myBatteries: () =>
-    request<BatteryAssignment[]>("/api/batteries/mine").then(
-      (rows) => {
+    request<Items<BatteryAssignment>>("/api/batteries/mine").then(
+      ({ items: rows }) => {
         cache.saveBatteries(rows);
         return rows;
       },
@@ -218,8 +229,8 @@ export const api = {
   acceptConsent: () => request<{ ok: true }>("/api/consents/me/accept", { method: "POST" }),
 
   listSurveys: (groupId?: string) =>
-    request<SurveyListItem[]>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`).then(
-      (rows) => {
+    request<Items<SurveyListItem>>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`).then(
+      ({ items: rows }) => {
         // кэшируем только полный список: срез по группе не должен затирать общий
         if (!groupId) {
           cache.saveSurveyList(rows);
@@ -325,7 +336,8 @@ export const api = {
   /** Сколько отправок сервер отверг — их надо разбирать руками */
   rejectedCount: () => rejectedItems().length,
 
-  surveyVersions: (surveyId: string) => request<SurveyVersion[]>(`/api/surveys/${surveyId}/versions`),
+  surveyVersions: (surveyId: string) =>
+    unwrap(request<Items<SurveyVersion>>(`/api/surveys/${surveyId}/versions`)),
 
   saveDraft: (
     surveyId: string,
@@ -344,7 +356,7 @@ export const api = {
       answers: Answer[];
     } | null>(`/api/surveys/${surveyId}/draft`),
 
-  alerts: (all = false) => request<RiskAlert[]>(`/api/alerts${all ? "?all=1" : ""}`),
+  alerts: (all = false) => unwrap(request<Items<RiskAlert>>(`/api/alerts${all ? "?all=1" : ""}`)),
   /** Случаи риска: страница с курсором */
   alertCases: (params: Record<string, string | undefined> = {}) => {
     const qs = new URLSearchParams();
@@ -376,14 +388,14 @@ export const api = {
 
   reportUrl: (responseId: string) => `${API_URL}/api/reports/responses/${responseId}`,
 
-  myResponses: () => request<SurveyResponse[]>("/api/me/responses"),
+  myResponses: () => unwrap(request<Items<SurveyResponse>>("/api/me/responses")),
   surveyResponses: (surveyId: string) =>
     request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
       `/api/surveys/${surveyId}/responses?limit=50`,
     ).then((page) => page.rows),
   responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
 
-  listUsers: () => request<User[]>("/api/users"),
+  listUsers: () => unwrap(request<Items<User>>("/api/users")),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
 

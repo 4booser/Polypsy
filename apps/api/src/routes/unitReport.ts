@@ -39,7 +39,7 @@ unitReportRoutes.get("/units", async (c) => {
     .selectDistinct({ unit: users.unit })
     .from(users)
     .where(and(eq(users.role, "user"), isNotNull(users.unit)));
-  return c.json(rows.map((r) => r.unit).filter(Boolean).sort());
+  return c.json({ items: rows.map((r) => r.unit).filter(Boolean).sort() });
 });
 
 unitReportRoutes.get("/", async (c) => {

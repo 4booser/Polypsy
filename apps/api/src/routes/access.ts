@@ -60,7 +60,7 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
     resourceId: surveyId,
     details: { count: result.length },
   });
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 /** Назначить методику пациенту */

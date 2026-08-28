@@ -257,6 +257,23 @@ export type OpenApiSpec = {
   paths: Record<string, Record<string, OpenApiOperation>>;
 };
 
+/**
+ * Списочный ответ API.
+ *
+ * Списки отдаются объектом, а не голым массивом: в массив нельзя добавить ни
+ * «всего», ни курсор, ни признак усечения, не сломав всех, кто его читает.
+ * Реестр направлений — как раз тот случай: двухсотое направление раньше
+ * молча исчезало, и экран выглядел полным.
+ *
+ * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
+ * неё ничего не нужно.
+ */
+export interface Items<T> {
+  items: T[];
+}
+
+const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
+
 export const api = {
   login: (email: string, password: string) =>
     request<{ token: string; refreshToken: string; user: User }>("/api/auth/login", {
@@ -275,9 +292,9 @@ export const api = {
     }),
   me: () => request<User>("/api/auth/me"),
 
-  groups: () => request<SurveyGroupWithCounts[]>("/api/groups"),
+  groups: () => unwrap(request<Items<SurveyGroupWithCounts>>("/api/groups")),
   surveys: (archived = false) =>
-    request<SurveyListItem[]>(`/api/surveys${archived ? "?archived=1" : ""}`),
+    unwrap(request<Items<SurveyListItem>>(`/api/surveys${archived ? "?archived=1" : ""}`)),
   survey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
   /** Методика в редактируемом виде: локализованные объекты вместо строк */
   keySheet: (id: string) => request<KeySheet>(`/api/surveys/${id}/key?lang=ru`),
@@ -306,7 +323,7 @@ export const api = {
       `/api/surveys/${surveyId}/responses`,
       { method: "POST", body: JSON.stringify(payload) },
     ),
-  versions: (id: string) => request<SurveyVersion[]>(`/api/surveys/${id}/versions`),
+  versions: (id: string) => unwrap(request<Items<SurveyVersion>>(`/api/surveys/${id}/versions`)),
   versionDiff: (id: string, a: string, b: string) =>
     request<VersionDiffResult>(`/api/surveys/${id}/versions/${a}/diff/${b}`),
 
@@ -331,14 +348,14 @@ export const api = {
   methodologyUrl: (id: string) => `/api/surveys/${id}/export`,
   reportUrl: (responseId: string) => `/api/reports/responses/${responseId}`,
 
-  batteries: () => request<Battery[]>("/api/batteries"),
+  batteries: () => unwrap(request<Items<Battery>>("/api/batteries")),
   createBattery: (input: BatteryInput) =>
     request<{ id: string }>("/api/batteries", { method: "POST", body: JSON.stringify(input) }),
   updateBattery: (id: string, input: BatteryInput) =>
     request<{ ok: true }>(`/api/batteries/${id}`, { method: "PUT", body: JSON.stringify(input) }),
   deleteBattery: (id: string) => request<void>(`/api/batteries/${id}`, { method: "DELETE" }),
   batteryAssignments: (id: string) =>
-    request<BatteryAssignment[]>(`/api/batteries/${id}/assignments`),
+    unwrap(request<Items<BatteryAssignment>>(`/api/batteries/${id}/assignments`)),
   assignBattery: (id: string, userId: string, dueAt: string | null, note: string | null) =>
     request<{ id: string }>(`/api/batteries/${id}/assign`, {
       method: "POST",
@@ -347,7 +364,7 @@ export const api = {
   cancelAssignment: (assignmentId: string) =>
     request<{ ok: true }>(`/api/batteries/assignments/${assignmentId}/cancel`, { method: "POST" }),
 
-  kioskSessions: () => request<KioskSession[]>("/api/kiosk/sessions"),
+  kioskSessions: () => unwrap(request<Items<KioskSession>>("/api/kiosk/sessions")),
   createKioskSession: (input: CreateKioskSessionInput) =>
     request<{ id: string; token: string }>("/api/kiosk/sessions", {
       method: "POST",
@@ -356,7 +373,7 @@ export const api = {
   closeKioskSession: (id: string) =>
     request<{ ok: true }>(`/api/kiosk/sessions/${id}/close`, { method: "POST" }),
 
-  invites: () => request<Invite[]>("/api/invites"),
+  invites: () => unwrap(request<Items<Invite>>("/api/invites")),
   createInvite: (input: CreateInviteInput) =>
     request<{ id: string; token: string; code: string }>("/api/invites", {
       method: "POST",
@@ -371,9 +388,9 @@ export const api = {
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
   },
-  alertCaseUnits: () => request<string[]>("/api/alert-cases/units"),
+  alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
   worklist: () => request<Worklist>("/api/worklist"),
-  unitReportUnits: () => request<string[]>("/api/unit-report/units"),
+  unitReportUnits: () => unwrap(request<Items<string>>("/api/unit-report/units")),
   unitReport: (unit: string, from?: string, to?: string) => {
     const qs = new URLSearchParams({ unit });
     if (from) qs.set("from", from);
@@ -394,7 +411,8 @@ export const api = {
   openapi: () => request<OpenApiSpec>("/api/openapi.json"),
   downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),
 
-  referrals: (all = false) => request<Referral[]>(`/api/referrals${all ? "?all=1" : ""}`),
+  referrals: (all = false) =>
+    request<Items<Referral> & { truncated: boolean }>(`/api/referrals${all ? "?all=1" : ""}`),
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
   updateReferral: (id: string, status: string, outcomeNote?: string) =>
@@ -540,8 +558,8 @@ export const api = {
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
 
-  schedules: () => request<Schedule[]>("/api/schedules"),
-  scheduleUnits: () => request<string[]>("/api/schedules/units"),
+  schedules: () => unwrap(request<Items<Schedule>>("/api/schedules")),
+  scheduleUnits: () => unwrap(request<Items<string>>("/api/schedules/units")),
   createSchedule: (input: ScheduleInput) =>
     request<{ id: string }>("/api/schedules", { method: "POST", body: JSON.stringify(input) }),
   updateSchedule: (id: string, input: ScheduleInput) =>
@@ -577,14 +595,14 @@ export const api = {
   },
   dynamics: (userId: string) => request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
 
-  alerts: (all = false) => request<RiskAlert[]>(`/api/alerts${all ? "?all=1" : ""}`),
+  alerts: (all = false) => unwrap(request<Items<RiskAlert>>(`/api/alerts${all ? "?all=1" : ""}`)),
   acknowledgeAlert: (id: string, note?: string, outcome?: "confirmed" | "not_confirmed" | "needs_followup") =>
     request<unknown>(`/api/alerts/${id}/acknowledge`, {
       method: "PATCH",
       body: JSON.stringify({ note, outcome }),
     }),
 
-  grants: (surveyId: string) => request<SurveyGrant[]>(`/api/access/surveys/${surveyId}/grants`),
+  grants: (surveyId: string) => unwrap(request<Items<SurveyGrant>>(`/api/access/surveys/${surveyId}/grants`)),
   grant: (surveyId: string, userId: string, note?: string, expiresAt?: string | null) =>
     request<unknown>(`/api/access/surveys/${surveyId}/grants`, {
       method: "POST",
@@ -604,7 +622,7 @@ export const api = {
     );
   },
 
-  users: () => request<User[]>("/api/users"),
+  users: () => unwrap(request<Items<User>>("/api/users")),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
   createGroup: (input: GroupInput) =>

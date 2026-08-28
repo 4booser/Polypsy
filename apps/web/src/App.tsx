@@ -119,7 +119,7 @@ export default function App() {
       // стоять число людей, которых надо разобрать, а не число сигналов
       api.alertCases({ limit: "1" }).then((p) => setOpenAlerts(p.total ?? 0)).catch(() => {});
       // направления в том же такте: незакрытое направление ждёт так же долго
-      api.referrals().then((r) => setOpenReferrals(r.length)).catch(() => {});
+      api.referrals().then((r) => setOpenReferrals(r.items.length)).catch(() => {});
       api.worklist().then((w) => setWorklistCount(w.total)).catch(() => {});
     };
     load();

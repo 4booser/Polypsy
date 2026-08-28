@@ -93,7 +93,7 @@ scheduleRoutes.get("/", async (c) => {
       // расписание на чужую батарею просто не показываем
     }
   }
-  return c.json(await serialize(visible));
+  return c.json({ items: await serialize(visible) });
 });
 
 /** Подразделения, по которым можно строить охват */
@@ -103,12 +103,12 @@ scheduleRoutes.get("/units", async (c) => {
     .from(users)
     .where(eq(users.role, "user"))
     .groupBy(users.unit);
-  return c.json(
-    rows
+  return c.json({
+    items: rows
       .map((r) => r.unit)
       .filter((u): u is string => !!u?.trim())
       .sort((a, b) => a.localeCompare(b, "ru")),
-  );
+  });
 });
 
 scheduleRoutes.post("/", async (c) => {

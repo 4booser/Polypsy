@@ -75,7 +75,7 @@ groupRoutes.get("/", async (c) => {
     responseCount: Number(r.responseCount ?? 0),
     admins: adminsByGroup.get(r.id) ?? [],
   }));
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 /** Создавать группы может только суперадмин — это единица разграничения доступа */
@@ -177,7 +177,7 @@ groupRoutes.get("/:id/admins", async (c) => {
     .innerJoin(users, eq(users.id, groupAdmins.userId))
     .where(eq(groupAdmins.groupId, groupId));
 
-  return c.json(rows.map((r) => ({ ...r, fullName: fullNameOf(r) })) satisfies GroupAdmin[]);
+  return c.json({ items: rows.map((r) => ({ ...r, fullName: fullNameOf(r) })) satisfies GroupAdmin[] });
 });
 
 /** Назначение администратора на группу — прерогатива суперадмина */

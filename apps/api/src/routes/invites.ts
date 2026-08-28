@@ -96,7 +96,7 @@ inviteRoutes.get("/", async (c) => {
       .filter((u) => u.use.inviteId === r.id)
       .map((u) => ({ userId: u.user.id, fullName: fullNameOf(u.user), usedAt: u.use.usedAt })),
   }));
-  return c.json(result);
+  return c.json({ items: result });
 });
 
 /** Создание: токен показывается ОДИН раз — дальше в базе только хеш */

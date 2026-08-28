@@ -68,15 +68,24 @@ async function serialize(rows: (typeof referrals.$inferSelect)[]): Promise<Refer
 /** Направления в зоне ответственности: открытые сверху */
 referralRoutes.get("/", async (c) => {
   const all = c.req.query("all") === "1";
+  const LIMIT = 200;
   const rows = await db
     .select()
     .from(referrals)
     .where(all ? undefined : ne(referrals.status, "completed"))
     .orderBy(desc(referrals.createdAt))
-    .limit(200);
+    .limit(LIMIT + 1);
 
-  await audit(c, { action: "referral.list", details: { count: rows.length, all } });
-  return c.json(await serialize(rows));
+  /*
+   * Признак усечения — то, ради чего список отдаётся объектом, а не массивом.
+   * Раньше двести первое направление просто исчезало, и экран выглядел
+   * полным. Теперь про обрыв сказано, и это видно в интерфейсе.
+   */
+  const truncated = rows.length > LIMIT;
+  const page = truncated ? rows.slice(0, LIMIT) : rows;
+
+  await audit(c, { action: "referral.list", details: { count: page.length, all, truncated } });
+  return c.json({ items: await serialize(page), truncated });
 });
 
 referralRoutes.post("/", async (c) => {
