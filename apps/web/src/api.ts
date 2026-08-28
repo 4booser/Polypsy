@@ -268,6 +268,22 @@ export type OpenApiSpec = {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
+export interface NoteVersion {
+  id: string;
+  version: number;
+  kind: "intake" | "session" | "observation" | "consult";
+  text: string;
+  status: "draft" | "signed";
+  createdAt: string;
+  authorName: string;
+  signedAt: string | null;
+}
+
+export interface NoteState {
+  current: NoteVersion | null;
+  versions: NoteVersion[];
+}
+
 export interface PathwayTemplate {
   id: string;
   title: string;
@@ -500,6 +516,18 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  notes: (userId: string) => request<NoteState>(`/api/notes/patients/${userId}`),
+  saveNote: (userId: string, text: string, baseVersion: number, kind?: string) =>
+    request<NoteState>(`/api/notes/patients/${userId}`, {
+      method: "PUT",
+      body: JSON.stringify({ text, baseVersion, kind }),
+    }),
+  signNote: (userId: string, version: number) =>
+    request<NoteState>(`/api/notes/patients/${userId}/sign`, {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
+
   pathways: () => unwrap(request<Items<PathwayTemplate>>("/api/pathways")),
   pathwayInstances: (all = false) =>
     unwrap(request<Items<PathwayInstance>>(`/api/pathways/instances${all ? "?all=1" : ""}`)),

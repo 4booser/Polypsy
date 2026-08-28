@@ -1469,6 +1469,29 @@ export const UI = {
   "pw.kind.referral": { uk: "направлення", ru: "направление" },
   "pw.kind.action": { uk: "дія", ru: "действие" },
   "pw.kind.decision": { uk: "рішення", ru: "решение" },
+
+  /* заметки приёма */
+  "note.title": { uk: "Записи прийому", ru: "Записи приёма" },
+  "note.history": { uk: "Історія", ru: "История" },
+  "note.version": { uk: "версія", ru: "версия" },
+  "note.draft": { uk: "чернетка", ru: "черновик" },
+  "note.signedAt": { uk: "підписано", ru: "подписано" },
+  "note.saveDraft": { uk: "Зберегти чернеткою", ru: "Сохранить черновиком" },
+  "note.sign": { uk: "Підписати", ru: "Подписать" },
+  "note.signed": { uk: "Запис підписано", ru: "Запись подписана" },
+  "note.loadFailed": { uk: "Записи не завантажилися", ru: "Записи не загрузились" },
+  "note.placeholder": {
+    uk: "Скарги, спостереження, домовленості, план",
+    ru: "Жалобы, наблюдение, договорённости, план",
+  },
+  "note.placeholderNext": {
+    uk: "Новий запис поверх підписаного",
+    ru: "Новая запись поверх подписанной",
+  },
+  "note.intake": { uk: "Первинний", ru: "Первичный" },
+  "note.session": { uk: "Прийом", ru: "Приём" },
+  "note.observation": { uk: "Спостереження", ru: "Наблюдение" },
+  "note.consult": { uk: "Консультація", ru: "Консультация" },
 } as const;
 
 export type UiKey = keyof typeof UI;
