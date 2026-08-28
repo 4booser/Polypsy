@@ -80,6 +80,11 @@ export type AuditAction =
   | "analytics.data_quality"
   | "analytics.facets"
   | "referral.list"
+  /* маршруты помощи: заведение шаблона и ведение человека по нему */
+  | "pathway.create"
+  | "pathway.start"
+  | "pathway.step"
+  | "pathway.close"
   | "referral.create"
   | "referral.update"
   | "cascade.assign"

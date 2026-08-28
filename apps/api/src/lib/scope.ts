@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull, isNull, or, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { User } from "@quizzy/shared";
 import { db } from "../db";
-import { batteryItems, groupAdmins, surveyAccess, surveys } from "../db/schema";
+import { batteryItems, groupAdmins, surveyAccess, surveys, users } from "../db/schema";
 import { badRequest, forbidden, notFound } from "./http";
 import { t } from "@quizzy/shared";
 
@@ -138,4 +138,44 @@ export async function batterySurveysInUse(batteryId: string): Promise<string[]> 
     .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
     .where(and(eq(batteryItems.batteryId, batteryId), isNull(surveys.archivedAt)));
   return rows.map((r) => r.id);
+}
+
+
+/**
+ * Идентификаторы пациентов в зоне ответственности сотрудника.
+ *
+ * `null` — ограничений нет (суперадмин). Пустое множество — сотрудник не
+ * видит никого: у него нет групп либо в его группах ещё никто не появлялся.
+ *
+ * Человек попадает в зону тремя путями: ему назначили методику группы, он
+ * прошёл методику группы или ему назначили батарею группы. Такой же набор
+ * условий уже применялся на экране пациентов; здесь он вынесен, чтобы
+ * маршруты и списки не разошлись в понимании слова «свой».
+ */
+export async function accessiblePatientIds(user: User): Promise<Set<string> | null> {
+  const groupIds = await accessibleGroupIds(user);
+  if (groupIds === null) return null;
+  if (!groupIds.length) return new Set();
+
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.role, "user"),
+        sql`(
+          exists (select 1 from survey_access sa
+            join surveys s on s.id = sa.survey_id
+            where sa.user_id = "users"."id" and s.group_id in ${groupIds})
+          or exists (select 1 from responses r
+            join surveys s on s.id = r.survey_id
+            where r.user_id = "users"."id" and s.group_id in ${groupIds})
+          or exists (select 1 from battery_assignments ba
+            join batteries b on b.id = ba.battery_id
+            where ba.user_id = "users"."id" and b.group_id in ${groupIds})
+        )`,
+      ),
+    );
+
+  return new Set(rows.map((r) => r.id));
 }

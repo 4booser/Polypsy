@@ -1155,7 +1155,7 @@ export interface AlertCaseFilters {
 
 /** Одна строка очереди работы специалиста */
 export interface WorkItem {
-  kind: "case" | "assignment" | "referral" | "followup";
+  kind: "case" | "assignment" | "referral" | "followup" | "pathway";
   id: string;
   userId: string;
   userName: string;

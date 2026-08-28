@@ -1239,6 +1239,112 @@ export const alertNotifications = pgTable(
  * черновиком. Текущее заключение — строка с максимальной версией.
  */
 /**
+ * Маршрут помощи — шаблон пути от скрининга до исхода.
+ *
+ * Скрининг, углублённое обследование, решение, вмешательство, повторный
+ * замер — всё это в системе уже есть по отдельности и связывается в голове
+ * специалиста. Маршрут делает связь явной, и тогда видно главное: кто застрял
+ * и на каком шаге. Сегодня «отправили к психиатру и забыли» обнаруживается
+ * случайно.
+ */
+export const pathways = pgTable(
+  "pathways",
+  {
+    id: text("id").primaryKey(),
+    title: localized("title").notNull(),
+    description: localized("description"),
+    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "set null" }),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ groupIdx: index("pathways_group_idx").on(t.groupId) }),
+);
+
+/** Шаг шаблона: что должно произойти и в какой срок от начала маршрута */
+export const pathwaySteps = pgTable(
+  "pathway_steps",
+  {
+    id: text("id").primaryKey(),
+    pathwayId: text("pathway_id")
+      .notNull()
+      .references(() => pathways.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    title: localized("title").notNull(),
+    /**
+     * Чем шаг закрывается: прохождением методики, батареей, направлением
+     * или действием специалиста с записью. Решение — отдельный вид: оно
+     * требует исхода, а не отметки «сделано».
+     */
+    kind: text("kind", { enum: ["survey", "battery", "referral", "action", "decision"] }).notNull(),
+    surveyId: text("survey_id").references(() => surveys.id, { onDelete: "set null" }),
+    batteryId: text("battery_id").references(() => batteries.id, { onDelete: "set null" }),
+    /** Срок в днях от начала маршрута; null — без срока */
+    dueDays: integer("due_days"),
+    required: boolean("required").notNull().default(true),
+  },
+  (t) => ({ pathwayIdx: index("pathway_steps_pathway_idx").on(t.pathwayId, t.position) }),
+);
+
+/** Человек на маршруте */
+export const pathwayInstances = pgTable(
+  "pathway_instances",
+  {
+    id: text("id").primaryKey(),
+    pathwayId: text("pathway_id")
+      .notNull()
+      .references(() => pathways.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    startedAt: timestampCol("started_at").notNull().defaultNow(),
+    startedBy: text("started_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    closedAt: timestampCol("closed_at"),
+    closedBy: text("closed_by").references(() => users.id, { onDelete: "restrict" }),
+    /** Чем кончилось: снят с наблюдения, направлен, продолжает наблюдение */
+    outcome: text("outcome", { enum: ["resolved", "referred", "ongoing", "dropped"] }),
+    note: text("note"),
+  },
+  (t) => ({
+    userIdx: index("pathway_instances_user_idx").on(t.userId),
+    openIdx: index("pathway_instances_open_idx")
+      .on(t.startedAt)
+      .where(sql`closed_at is null`),
+  }),
+);
+
+/** Состояние конкретного шага у конкретного человека */
+export const pathwayProgress = pgTable(
+  "pathway_progress",
+  {
+    id: text("id").primaryKey(),
+    instanceId: text("instance_id")
+      .notNull()
+      .references(() => pathwayInstances.id, { onDelete: "cascade" }),
+    stepId: text("step_id")
+      .notNull()
+      .references(() => pathwaySteps.id, { onDelete: "cascade" }),
+    dueAt: timestampCol("due_at"),
+    state: text("state", { enum: ["pending", "done", "skipped"] }).notNull().default("pending"),
+    doneAt: timestampCol("done_at"),
+    doneBy: text("done_by").references(() => users.id, { onDelete: "restrict" }),
+    /** Чем закрыт шаг: прохождение, направление или запись специалиста */
+    responseId: text("response_id").references(() => responses.id, { onDelete: "set null" }),
+    referralId: text("referral_id").references(() => referrals.id, { onDelete: "set null" }),
+    note: text("note"),
+  },
+  (t) => ({
+    instanceIdx: index("pathway_progress_instance_idx").on(t.instanceId),
+    dueIdx: index("pathway_progress_due_idx").on(t.dueAt).where(sql`state = 'pending'`),
+    uniqueStep: uniqueIndex("pathway_progress_unique").on(t.instanceId, t.stepId),
+  }),
+);
+
+/**
  * Сохранённые виды: именованный срез экрана.
  *
  * Фильтры уже живут в адресе и передаются ссылкой, но каждый раз собирать

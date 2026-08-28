@@ -268,6 +268,63 @@ export type OpenApiSpec = {
  * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
  * неё ничего не нужно.
  */
+export interface PathwayTemplate {
+  id: string;
+  title: string;
+  description: string | null;
+  groupId: string | null;
+  steps: {
+    id: string;
+    title: string;
+    kind: "survey" | "battery" | "referral" | "action" | "decision";
+    surveyId: string | null;
+    batteryId: string | null;
+    dueDays: number | null;
+    required: boolean;
+  }[];
+}
+
+export interface PathwayInstance {
+  id: string;
+  pathwayTitle: string;
+  userId: string;
+  userName: string;
+  unit: string | null;
+  startedAt: string;
+  closedAt: string | null;
+  outcome: string | null;
+  total: number;
+  done: number;
+  overdue: number;
+  /** Первый незакрытый шаг — ответ на вопрос «где стоим» */
+  currentStep: string | null;
+  currentDueAt: string | null;
+}
+
+export interface PathwayDetail {
+  id: string;
+  pathwayTitle: string;
+  userId: string;
+  userName: string;
+  startedAt: string;
+  closedAt: string | null;
+  outcome: string | null;
+  note: string | null;
+  steps: {
+    id: string;
+    title: string;
+    kind: "survey" | "battery" | "referral" | "action" | "decision";
+    surveyId: string | null;
+    batteryId: string | null;
+    required: boolean;
+    state: "pending" | "done" | "skipped";
+    dueAt: string | null;
+    doneAt: string | null;
+    doneByName: string | null;
+    note: string | null;
+  }[];
+}
+
 export interface SavedView {
   id: string;
   scope: string;
@@ -443,6 +500,26 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
+  pathways: () => unwrap(request<Items<PathwayTemplate>>("/api/pathways")),
+  pathwayInstances: (all = false) =>
+    unwrap(request<Items<PathwayInstance>>(`/api/pathways/instances${all ? "?all=1" : ""}`)),
+  pathwayInstance: (id: string) => request<PathwayDetail>(`/api/pathways/instances/${id}`),
+  startPathway: (pathwayId: string, userId: string) =>
+    request<{ id: string }>(`/api/pathways/${pathwayId}/start`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  setPathwayStep: (progressId: string, state: "pending" | "done" | "skipped", note?: string) =>
+    request<{ ok: true }>(`/api/pathways/progress/${progressId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ state, note }),
+    }),
+  closePathway: (id: string, outcome: string, note?: string) =>
+    request<{ ok: true }>(`/api/pathways/instances/${id}/close`, {
+      method: "POST",
+      body: JSON.stringify({ outcome, note }),
+    }),
+
   views: (scope: string) => unwrap(request<Items<SavedView>>(`/api/views?scope=${scope}`)),
   saveView: (input: { scope: string; name: string; params: string; shared?: boolean }) =>
     request<{ id: string }>("/api/views", { method: "POST", body: JSON.stringify(input) }),

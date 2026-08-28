@@ -1657,3 +1657,57 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
 .views-add { border-style: dashed; color: var(--muted); }
 .views-form { display: flex; align-items: center; gap: 6px; }
 .views-form input { width: 190px; }
+
+/* ═══ маршруты помощи ═══
+ * Экран отвечает на вопрос «где стоим», а не «что назначено»: главная
+ * колонка — первый незакрытый шаг и его срок, просроченные сверху.
+ */
+.pw-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+}
+.pw-row:last-child { border-bottom: none; }
+.pw-row:hover { text-decoration: none; color: var(--text); background: var(--surface-2); }
+.pw-row.overdue { box-shadow: inset 2px 0 0 var(--accent); padding-left: 8px; }
+.pw-main { display: grid; gap: 1px; min-width: 0; flex: 1.2; }
+.pw-name { font-weight: 600; color: var(--text); }
+.pw-meta { font-size: var(--fs-micro); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw-step { flex: 1.4; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pw-step-title { color: var(--text); }
+.pw-progress {
+  width: 90px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+  flex: none;
+}
+.pw-progress i { display: block; height: 100%; background: var(--primary); }
+.pw-count { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); min-width: 34px; text-align: right; }
+
+.pw-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; }
+.pw-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.pw-step-row:last-child { border-bottom: none; }
+.pw-mark {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  margin-top: 6px;
+  flex: none;
+}
+.pw-step-row.s-done .pw-mark { background: var(--sev-none); border-color: var(--sev-none); }
+.pw-step-row.s-skipped .pw-mark { background: var(--muted); border-color: var(--muted); }
+.pw-step-row.overdue .pw-mark { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pw-step-row.s-skipped { opacity: 0.7; }
