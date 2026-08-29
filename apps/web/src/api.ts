@@ -571,6 +571,21 @@ export const api = {
     }>(`/api/conclusions/batch?${q}`);
   },
 
+  devices: (userId?: string) =>
+    request<{
+      items: {
+        id: string;
+        label: string | null;
+        platform: string | null;
+        ownerName: string;
+        lastSeenAt: string;
+        wipeRequestedAt: string | null;
+        wipedAt: string | null;
+      }[];
+    }>(`/api/devices${userId ? `?userId=${userId}` : ""}`).then((r) => r.items),
+  wipeDevice: (id: string) =>
+    request<{ ok: true; note: string }>(`/api/devices/${id}/wipe`, { method: "POST" }),
+
   crisis: () =>
     request<{ active: boolean; reason: string | null; startedAt: string | null }>(
       "/api/decisions/crisis",
