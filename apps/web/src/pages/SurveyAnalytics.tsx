@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { SurveyResponse } from "@quizzy/shared";
 import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
+import { ItemHeatmap } from "../components/ItemHeatmap";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
 import { duration, day, severityColor } from "../format";
 import { Loading, OfflineBar, PageHead, useAction } from "../ui";
@@ -422,6 +423,18 @@ export default function SurveyAnalyticsPage() {
               Помечено {data.quality.length} из {data.completed}. Порог «слишком быстро» — {Math.round(data.tooFastThresholdMs / 1000)} с
               на вопрос. Это флаг для проверки специалистом, а не основание исключать данные.
             </p>
+          </div>
+
+          {/*
+            Карта пунктов стоит выше сводных графиков: небрежное заполнение
+            выдаёт себя формой, а не средним, и полоса одинаковых ответов от
+            сорокового пункта до конца видна только здесь.
+          */}
+          <div className="card">
+            <div className="card-head">
+              <h2>{ut("qh.title")}</h2>
+            </div>
+            <ItemHeatmap surveyId={data.surveyId} />
           </div>
           {data.quality.length ? (
             <>
