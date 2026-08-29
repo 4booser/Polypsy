@@ -2041,3 +2041,27 @@ export const cohorts = pgTable(
     authorIdx: index("cohorts_author_idx").on(t.createdBy, t.createdAt),
   }),
 );
+
+/**
+ * Слепой индекс записей.
+ *
+ * Строка на каждый отпечаток слова. Ни текста, ни порядка слов здесь нет —
+ * только «в этой записи встречается основа с таким отпечатком».
+ */
+export const noteSearch = pgTable(
+  "note_search",
+  {
+    noteId: text("note_id").notNull(),
+    /** note | conclusion — из какой сущности запись */
+    kind: text("kind").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fp: text("fp").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.noteId, t.fp] }),
+    fpIdx: index("note_search_fp_idx").on(t.fp),
+    userIdx: index("note_search_user_idx").on(t.userId),
+  }),
+);

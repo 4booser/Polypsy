@@ -140,6 +140,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/informants/form/:token": { summary: "Сдача формы информантом; ссылка одноразовая", access: "public" },
   "GET /api/informants/compare/:userId": { summary: "Самоотчёт против взгляда со стороны", access: "staff" },
   "GET /api/conclusions/batch": { summary: "Пакет подписанных заключений подразделения за период", access: "staff" },
+  "GET /api/search/notes": { summary: "Поиск по записям приёма через слепой индекс; текст запроса в журнал не пишется", access: "staff" },
   "POST /api/cohorts/preview": { summary: "Размер и распределения когорты; малые ячейки подавляются", access: "staff" },
   "POST /api/cohorts/members": { summary: "Когорта поимённо — отдельное действие и отдельная запись в журнале", access: "staff" },
   "GET /api/cohorts": { summary: "Свои сохранённые когорты", access: "staff" },

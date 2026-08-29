@@ -574,6 +574,21 @@ export const api = {
     }>(`/api/conclusions/batch?${q}`);
   },
 
+  searchNotes: (q: string) =>
+    request<{
+      words: string[];
+      items: {
+        id: string;
+        userId: string;
+        userName: string;
+        kind: string;
+        version: number;
+        status: string;
+        createdAt: string;
+        excerpt: string;
+      }[];
+    }>(`/api/search/notes?q=${encodeURIComponent(q)}`),
+
   cohortPreview: (spec: CohortSpec) =>
     request<CohortPreview>("/api/cohorts/preview", { method: "POST", body: JSON.stringify(spec) }),
   cohortMembers: (spec: CohortSpec) =>
