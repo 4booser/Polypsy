@@ -1803,6 +1803,19 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   color: var(--text-2);
 }
 
+/* стартовый экран в подвале рельсы: настройка, а не навигация */
+.start-screen {
+  display: grid;
+  gap: 3px;
+  padding: 0 10px 8px;
+  font-size: 11px;
+}
+
+.start-screen select {
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
 /* ─────────── предпросмотр конструктора ─────────── */
 
 /*

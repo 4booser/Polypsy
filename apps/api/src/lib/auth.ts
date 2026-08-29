@@ -81,6 +81,7 @@ export function toPublicUser(row: UserRow): User {
     rank: row.rank,
     role: row.role,
     readOnly: row.readOnly,
+    workspace: (row.workspace as never) ?? null,
     createdAt: row.createdAt,
   };
 }

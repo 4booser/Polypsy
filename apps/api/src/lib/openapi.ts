@@ -132,6 +132,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff" },
   "GET /api/unit-report": { summary: "Состояние подразделения за период; малые ячейки подавляются", access: "staff" },
   "GET /api/unit-report/units": { summary: "Подразделения для отчёта", access: "staff" },
+  "PUT /api/auth/me/workspace": { summary: "Настройки рабочего места: стартовый экран, тема, плотность", access: "any" },
   "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff" },
   "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin" },
   "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin" },

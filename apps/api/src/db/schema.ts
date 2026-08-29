@@ -89,6 +89,14 @@ export const users = pgTable(
     specialty: text("specialty"),
     rank: text("rank"),
     role: text("role", { enum: ["superadmin", "admin", "user"] }).notNull().default("user"),
+    /**
+     * Настройки рабочего места: стартовый экран, плотность, тема, язык.
+     *
+     * Хранятся на сервере, а не в браузере: сотрудник садится за разные
+     * машины в отделении, и «моя настройка» не должна означать «настройка
+     * этого компьютера».
+     */
+    workspace: jsonb("workspace"),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({ emailIdx: uniqueIndex("users_email_idx").on(t.email) }),

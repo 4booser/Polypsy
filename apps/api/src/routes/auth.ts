@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { eq, sql } from "drizzle-orm";
-import { changePasswordSchema, loginSchema, registerSchema, updateProfileSchema } from "@quizzy/shared";
+import {
+  changePasswordSchema,
+  loginSchema,
+  registerSchema,
+  updateProfileSchema,
+  workspacePrefsSchema,
+} from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { users } from "../db/schema";
@@ -175,6 +181,24 @@ authRoutes.post("/login", async (c) => {
 });
 
 authRoutes.get("/me", requireAuth, (c) => c.json(c.get("user")));
+
+/**
+ * Настройки рабочего места.
+ *
+ * Отдельным маршрутом, а не полем в PATCH /me: паспортная часть — клинические
+ * данные с шифрованием и журналом, а плотность таблиц — нет. Смешивать их
+ * значит писать в журнал доступа «правка пациента» при переключении темы.
+ */
+authRoutes.put("/me/workspace", requireAuth, async (c) => {
+  const user = c.get("user");
+  const input = await parseBody(c.req.raw, workspacePrefsSchema);
+
+  // слияние, а не замена: клиент шлёт то, что поменял
+  const merged = { ...((user.workspace as object | null) ?? {}), ...input };
+  await db.update(users).set({ workspace: merged }).where(eq(users.id, user.id));
+
+  return c.json(merged);
+});
 
 /**
  * Заполнение паспортной части. Пациент правит свою сам: пол и дата рождения

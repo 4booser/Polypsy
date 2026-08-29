@@ -714,3 +714,11 @@ export const responseListQuery = z.object({
   limit: queryInt(1, 200, 50),
   before: queryDate.optional(),
 });
+
+/** Настройки рабочего места; каждое поле необязательно и правится отдельно */
+export const workspacePrefsSchema = z.object({
+  startScreen: z.enum(["dashboard", "worklist", "alerts", "patients"]).optional(),
+  density: z.enum(["cozy", "compact"]).optional(),
+  theme: z.enum(["dark", "light"]).optional(),
+  lang: z.enum(["uk", "ru"]).optional(),
+});

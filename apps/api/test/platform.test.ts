@@ -931,3 +931,48 @@ describe("формат меток времени", () => {
     expect(user!.at < new Date().toISOString()).toBe(true);
   });
 });
+
+describe("настройки рабочего места", () => {
+  test("сохраняются на сервере и приходят с профилем", async () => {
+    /*
+     * На сервере, а не в браузере: сотрудник садится за разные машины в
+     * отделении, и «моя тема» не должна означать «тема этого компьютера».
+     */
+    const saved = await api("/api/auth/me/workspace", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ theme: "light", startScreen: "worklist" }),
+    });
+    expect(saved.status).toBe(200);
+
+    const me = await api("/api/auth/me", adminA.token);
+    expect(me.body.workspace).toEqual({ theme: "light", startScreen: "worklist" });
+  });
+
+  test("правка одного поля не стирает остальные", async () => {
+    // клиент шлёт то, что поменял: переключение плотности не должно
+    // сбрасывать выбранный стартовый экран
+    await api("/api/auth/me/workspace", root.token, {
+      method: "PUT",
+      body: JSON.stringify({ theme: "dark", startScreen: "alerts" }),
+    });
+    await api("/api/auth/me/workspace", root.token, {
+      method: "PUT",
+      body: JSON.stringify({ density: "compact" }),
+    });
+
+    const me = await api("/api/auth/me", root.token);
+    expect(me.body.workspace).toEqual({
+      theme: "dark",
+      startScreen: "alerts",
+      density: "compact",
+    });
+  });
+
+  test("неизвестное значение не принимается", async () => {
+    const bad = await api("/api/auth/me/workspace", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ startScreen: "нет такого экрана" }),
+    });
+    expect(bad.status).toBe(400);
+  });
+});
