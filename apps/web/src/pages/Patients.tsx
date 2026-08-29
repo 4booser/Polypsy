@@ -3,6 +3,7 @@ import type { Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { versionMarks } from "../charts/marks";
+import { Hint } from "../components/Hint";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
@@ -176,6 +177,7 @@ export function PatientDynamics() {
             </Chart>
           ) : null}
 
+          <Hint id="stens" text="hint.stens" />
           <div className="grid cols-2">
             {sv.scales.map((sc) => {
               const last = sc.points.at(-1);

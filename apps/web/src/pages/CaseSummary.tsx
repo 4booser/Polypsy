@@ -10,6 +10,7 @@ import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
 import { Here } from "../components/Here";
 import { Informants } from "../components/Informants";
+import { Hint } from "../components/Hint";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
 import { Goals } from "../components/Goals";
 import { Conferences } from "../components/Conferences";
@@ -147,6 +148,8 @@ export default function CaseSummaryPage() {
         </div>
       ))}
 
+      {/* подсказка стоит рядом с числом, а не в справке: вопрос возникает здесь */}
+      <Hint id="rci" text="hint.rci" />
       <Goals userId={data.userId} summary={data} />
       <Informants userId={data.userId} />
         </div>

@@ -127,3 +127,27 @@ for (const theme of ["dark", "light"] as const) {
     expect(ink.bg).toBeGreaterThan(0.9);
   });
 }
+
+test("подсказка закрывается один раз и не возвращается", async ({ page }) => {
+  /*
+   * Хранится список ЗАКРЫТЫХ подсказок, а не показанных: подсказка по
+   * умолчанию видна, и потерянная запись о показе не должна навсегда прятать
+   * объяснение. Проверяется обе стороны — что закрылась и что после
+   * перезагрузки не вернулась.
+   */
+  await login(page, "psy");
+  await page.goto("/patients");
+  await page.waitForSelector("table tbody tr");
+  const href = await page.locator("table tbody tr td a").first().getAttribute("href");
+  await page.goto(href!);
+
+  const hint = page.locator(".hint-box").first();
+  await expect(hint).toBeVisible();
+
+  await hint.getByRole("button", { name: "Понятно" }).click();
+  await expect(page.locator(".hint-box")).toHaveCount(0);
+
+  await page.reload();
+  await page.waitForSelector(".page-head h1");
+  await expect(page.locator(".hint-box")).toHaveCount(0);
+});

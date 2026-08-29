@@ -8,6 +8,7 @@ import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, us
 import { useLang } from "../lang";
 import { SavedViews } from "../ui/SavedViews";
 import { onAppEvent } from "../events";
+import { Hint } from "../components/Hint";
 import { usePagedResource, useResource } from "../useResource";
 
 const OUTCOME = [
@@ -473,6 +474,11 @@ function CaseCard({
                 {ut("cases.release")}
               </button>
             ) : null}
+            {/*
+              Исходы разбора называются коротко, и «без исхода» читается как
+              «ничего не сделал». Объяснение стоит рядом с кнопками, а не в
+              документации, которую в разборе не открывают.
+            */}
             {OUTCOME.map((o, i) => (
               <button
                 key={o.value}
@@ -483,6 +489,7 @@ function CaseCard({
               </button>
             ))}
           </div>
+          <Hint id="case-status" text="hint.caseStatus" />
         </>
       )}
     </div>

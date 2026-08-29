@@ -721,4 +721,5 @@ export const workspacePrefsSchema = z.object({
   density: z.enum(["cozy", "compact"]).optional(),
   theme: z.enum(["dark", "light"]).optional(),
   lang: z.enum(["uk", "ru"]).optional(),
+  dismissedHints: z.array(z.string().max(60)).max(100).optional(),
 });

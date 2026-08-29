@@ -1902,6 +1902,35 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   }
 }
 
+/*
+ * Подсказка. Приглушённая рамка и никакого акцента: она объясняет, а не
+ * требует действия. Акцент здесь означал бы «посмотри сюда сейчас», и через
+ * неделю на него перестали бы смотреть везде.
+ */
+.hint-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: var(--fs-small);
+  color: var(--text-2, var(--text));
+}
+
+.hint-box p {
+  margin: 0;
+  flex: 1;
+}
+
+@media print {
+  .hint-box {
+    display: none;
+  }
+}
+
 /* список запросов к информантам: строка = роль, форма, состояние */
 .inf-list {
   list-style: none;
