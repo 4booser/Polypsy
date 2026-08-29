@@ -6,6 +6,7 @@ import { responses, responseScores, scales, surveys, users } from "../db/schema"
 import { audit } from "../lib/audit";
 import { badRequest, parseQuery } from "../lib/http";
 import { surveyScopeFilter } from "../lib/scope";
+import { SMALL_CELL_FLOOR, suppress } from "../lib/privacy";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
 import { queryDate } from "@quizzy/shared";
@@ -25,8 +26,7 @@ export const unitReportRoutes = new Hono<AppEnv>();
 
 unitReportRoutes.use("*", requireAuth, requireStaff);
 
-/** Ниже этого числа человек в ячейке цифра не показывается */
-const SMALL_CELL_FLOOR = 5;
+
 
 const query = z.object({
   unit: z.string().min(1).max(120),
@@ -148,7 +148,7 @@ unitReportRoutes.get("/", async (c) => {
           severity: sev,
           // подавляем маленькую ячейку, а не всю строку: доля по остальным
           // остаётся полезной, а по одному человеку его не вычислят
-          count: n === 0 || n >= SMALL_CELL_FLOOR ? n : null,
+          count: suppress(n),
           percent: Math.round((n / s.total) * 100),
         };
       }),
@@ -163,7 +163,7 @@ unitReportRoutes.get("/", async (c) => {
     measured,
     coverage: people ? Math.round((measured / people) * 100) : 0,
     responses: Number(cover?.responses ?? 0),
-    atRisk: Number([...riskRows][0]?.n ?? 0) >= SMALL_CELL_FLOOR ? Number([...riskRows][0]?.n ?? 0) : null,
+    atRisk: suppress(Number([...riskRows][0]?.n ?? 0)),
     smallCellFloor: SMALL_CELL_FLOOR,
     surveys: bySurvey
       .map((r) => ({

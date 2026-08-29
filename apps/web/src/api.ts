@@ -42,6 +42,9 @@ import type {
   WorkspacePrefs,
   InformantRequestRow,
   InformantComparison,
+  CohortSpec,
+  CohortPreview,
+  CohortRow,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -570,6 +573,21 @@ export const api = {
       }[];
     }>(`/api/conclusions/batch?${q}`);
   },
+
+  cohortPreview: (spec: CohortSpec) =>
+    request<CohortPreview>("/api/cohorts/preview", { method: "POST", body: JSON.stringify(spec) }),
+  cohortMembers: (spec: CohortSpec) =>
+    request<{ items: { userId: string; fullName: string; unit: string | null; sex: string | null }[] }>(
+      "/api/cohorts/members",
+      { method: "POST", body: JSON.stringify(spec) },
+    ).then((r) => r.items),
+  cohorts: () => request<{ items: CohortRow[] }>("/api/cohorts").then((r) => r.items),
+  saveCohort: (title: string, spec: CohortSpec) =>
+    request<{ id: string }>("/api/cohorts", {
+      method: "POST",
+      body: JSON.stringify({ title, spec }),
+    }),
+  deleteCohort: (id: string) => request<{ ok: true }>(`/api/cohorts/${id}`, { method: "DELETE" }),
 
   devices: (userId?: string) =>
     request<{

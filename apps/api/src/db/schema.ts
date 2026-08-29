@@ -2015,3 +2015,29 @@ export const devices = pgTable(
     userIdx: index("devices_user_idx").on(t.userId, t.lastSeenAt),
   }),
 );
+
+/**
+ * Сохранённая когорта.
+ *
+ * Хранится правило отбора, а не список людей: «мужчины 20–30 с низким ЛАП»
+ * через месяц — это другие люди, и наблюдать во времени надо правило.
+ * Замороженный список отвечал бы на вопрос «кто подходил в день сохранения»,
+ * который никто не задаёт.
+ */
+export const cohorts = pgTable(
+  "cohorts",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    spec: jsonb("spec").notNull(),
+    note: text("note"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    authorIdx: index("cohorts_author_idx").on(t.createdBy, t.createdAt),
+  }),
+);

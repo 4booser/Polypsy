@@ -1902,6 +1902,13 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   }
 }
 
+/* число когорты крупно и моноширинным: на него и смотрят, сужая условия */
+.stat-num {
+  font-family: var(--font-mono);
+  font-size: var(--fs-stat, 28px);
+  font-variant-numeric: tabular-nums;
+}
+
 /*
  * Подсказка. Приглушённая рамка и никакого акцента: она объясняет, а не
  * требует действия. Акцент здесь означал бы «посмотри сюда сейчас», и через
