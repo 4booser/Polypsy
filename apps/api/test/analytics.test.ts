@@ -623,3 +623,92 @@ describe("воспроизводимость выгрузки", () => {
     expect(py).toContain("utf-8-sig");
   });
 });
+
+describe("k-анонимность выгрузки", () => {
+  test("обезличенная выгрузка не отдаёт одиночные сочетания пола и возраста", async () => {
+    /*
+     * Обезличивание убирает имя и подразделение, но пол и возрастная полоса
+     * остаются. В выборке на сорок человек «женщина, 45 и старше» может
+     * оказаться единственной — и тот, кто знает подразделение, узнает её по
+     * одной строке. Стабильный код субъекта делает узнавание переносимым
+     * между выгрузками.
+     */
+    const survey = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: survey,
+      groupId: groupA,
+      title: { uk: "К-анонімність", ru: "K-анонимность" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(survey, createSurveySchema.parse(sr45), adminA.id, "v1");
+
+    // двенадцать мужчин до 25 и одна женщина 45+
+    for (let i = 0; i < 12; i++) {
+      const p = await makeUser("user", `kan-m-${crypto.randomUUID()}@test`, {
+        sex: "male",
+        birthDate: "2004-01-01",
+      });
+      await submitSurvey(survey, p.token);
+    }
+    const rare = await makeUser("user", `kan-f-${crypto.randomUUID()}@test`, {
+      sex: "female",
+      birthDate: "1970-01-01",
+    });
+    await submitSurvey(survey, rare.token);
+
+    const res = await app.request(`/api/spss/surveys/${survey}/data.csv?profile=deidentified`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    const csv = await res.text();
+    const lines = csv.trim().split("\r\n");
+    const head = lines[0]!.split(",");
+    const sexAt = head.indexOf("sex");
+    const bandAt = head.indexOf("age_band");
+    expect(sexAt).toBeGreaterThanOrEqual(0);
+
+    /*
+     * Ни одно сочетание не должно встречаться реже пяти раз — кроме
+     * полностью стёртого: по «пол неизвестен, возраст неизвестен» не узнают
+     * никого.
+     */
+    const counts = new Map<string, number>();
+    for (const line of lines.slice(1)) {
+      const cells = line.split(",");
+      const key = `${cells[sexAt]}|${cells[bandAt]}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    for (const [key, n] of counts) {
+      if (key === "-99|-99") continue;
+      expect(n).toBeGreaterThanOrEqual(5);
+    }
+
+    // и редкая строка из выгрузки не пропала: баллы ради них и выгружают
+    expect(lines.length - 1).toBe(13);
+  });
+
+  test("манифест объясняет, что пропуски не случайны", async () => {
+    /*
+     * Иначе исследователь увидит пропуски в поле «пол» и обработает их как
+     * случайные — а пропущено ровно то, что было редким.
+     */
+    const res = await api(
+      `/api/spss/surveys/${surveyInA}/manifest.json?profile=deidentified`,
+      adminA.token,
+    );
+    expect(res.body.kanon).toBeTruthy();
+    expect(res.body.kanon.note).toContain("не случайны");
+    expect(res.body.kanon.k).toBe(5);
+  });
+
+  test("полный профиль k-анонимность не трогает", async () => {
+    // он и не притворяется обезличенным: там есть имя и подразделение
+    const res = await api(`/api/spss/surveys/${surveyInA}/manifest.json`, adminA.token);
+    expect(res.body.kanon).toBeNull();
+  });
+});
