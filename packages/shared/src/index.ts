@@ -9,3 +9,4 @@ export * from "./versionDiff";
 export * from "./palette";
 export * from "./format";
 export * from "./rules";
+export * from "./equating";
