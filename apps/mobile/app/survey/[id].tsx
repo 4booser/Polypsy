@@ -13,6 +13,7 @@ import {
 import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
 import { drafts, pickDraft, type LocalDraft } from "@/offline/cache";
+import { missedBefore } from "@/runner/progress";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
@@ -471,6 +472,14 @@ export default function TakeSurveyScreen() {
       ? Math.max(1, Math.round(((elapsed / answeredCount) * (asked.length - answeredCount)) / 60_000))
       : null;
 
+  /*
+   * Пропущенные обязательные пункты считаются постоянно, а не только перед
+   * сдачей: в опроснике на двести пунктов искать пропуск прокруткой — тупик,
+   * и узнавать о нём в конце пути значит проходить его дважды. Правило — в
+   * missedBefore.
+   */
+  const missedBehind = missedBefore(visible, answers, step);
+
   const canAdvance = !current.required || isAnswered(current, answers.get(current.id));
   const isLast = step === visible.length - 1;
   const section = sectionOf(current);
@@ -494,6 +503,23 @@ export default function TakeSurveyScreen() {
               интересуется, сколько уже потратил. Считается по своему же
               темпу, а не по чужой медиане — так честнее.
              */}
+            {/*
+              Пропущенные показываются только когда они позади: пункты
+              впереди ещё не пропущены, и считать их пропусками значит пугать
+              человека собственным будущим.
+             */}
+            {missedBehind.length ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${ut("runner.missedGoTo")}: ${missedBehind.length}`}
+                onPress={() => goTo(missedBehind[0]!)}
+                hitSlop={8}
+              >
+                <Text style={{ color: c.accent, fontSize: 12 }}>
+                  {ut("runner.missed")} {missedBehind.length} →
+                </Text>
+              </Pressable>
+            ) : null}
             {remainingMinutes !== null ? (
               <Text style={{ color: c.muted, fontSize: 12 }}>
                 ≈{remainingMinutes} мин осталось
