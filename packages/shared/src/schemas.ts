@@ -470,7 +470,7 @@ export const createSurveySchema = z
   .object({
     title: localizedSchema,
     description: localizedSchema.nullish(),
-    administration: z.enum(["self", "clinician"]).default("self"),
+    administration: z.enum(["self", "clinician", "informant"]).default("self"),
     sections: z.array(sectionInputSchema).default([]),
     scales: z.array(scaleInputSchema).default([]),
     questions: z.array(questionInputSchema).default([]),
@@ -525,7 +525,7 @@ export const updateSurveySchema = z
   .object({
     title: localizedSchema.optional(),
     description: localizedSchema.nullish(),
-    administration: z.enum(["self", "clinician"]).optional(),
+    administration: z.enum(["self", "clinician", "informant"]).optional(),
     status: surveyStatusSchema.optional(),
     sections: z.array(sectionInputSchema).optional(),
     scales: z.array(scaleInputSchema).optional(),

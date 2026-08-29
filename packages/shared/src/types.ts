@@ -780,7 +780,15 @@ export interface SurveyAnalytics {
 }
 
 /** Кто заполняет методику: сам обследуемый или специалист */
-export type Administration = "self" | "clinician";
+/**
+ * Кто заполняет методику.
+ *
+ * `informant` — короткая форма для командира, сослуживца или родственника.
+ * Отдельный вид, а не второй способ заполнить ту же методику: смешивать
+ * самоотчёт и наблюдение со стороны в одной выборке значит испортить и нормы,
+ * и оценку надёжности.
+ */
+export type Administration = "self" | "clinician" | "informant";
 
 /** Батарея: набор методик, назначаемый целиком */
 export interface BatteryItem {
@@ -1318,4 +1326,36 @@ export interface WorkspacePrefs {
   density?: "cozy" | "compact";
   theme?: "dark" | "light";
   lang?: "uk" | "ru";
+}
+
+/* ═══════════ Мульти-информант ═══════════ */
+
+export type InformantRole = "commander" | "peer" | "family" | "clinician";
+
+export interface InformantRequestRow {
+  id: string;
+  role: InformantRole;
+  surveyId: string;
+  surveyTitle: string;
+  note: string | null;
+  expiresAt: string;
+  usedAt: string | null;
+  revokedAt: string | null;
+  responseId: string | null;
+}
+
+/** Одна перспектива: что видит человек со стороны против самоотчёта */
+export interface InformantComparison {
+  requestId: string;
+  role: InformantRole;
+  at: string | null;
+  scales: {
+    code: string;
+    title: string;
+    informant: number;
+    /** null — этой шкалы в самоотчёте нет */
+    self: number | null;
+    /** Расхождение; null там, где сравнивать не с чем */
+    gap: number | null;
+  }[];
 }
