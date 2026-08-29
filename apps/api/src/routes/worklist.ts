@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import { db } from "../db";
+import { currentCrisis } from "../lib/crisis";
 import {
   alertCases,
   batteries,
@@ -345,11 +346,25 @@ worklistRoutes.get("/", async (c) => {
     }
   }
 
-  items.sort(
-    (a, b) =>
-      Number(b.overdue) - Number(a.overdue) ||
-      KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind] ||
-      a.since.localeCompare(b.since),
+  /*
+   * В кризисном режиме порядок другой: сначала тяжесть, потом всё остальное.
+   *
+   * В обычный день очередь ведёт по видам работы — случай, шаг маршрута,
+   * цель, — и это правильно: так работа не теряется. В массовое поступление
+   * то же правило прячет тяжёлого за плановой рутиной.
+   *
+   * Меняется только порядок. Состав очереди и всё остальное — те же: режим,
+   * который заодно что-то скрывает, опаснее любого потока пациентов.
+   */
+  const crisis = await currentCrisis();
+  const byCrisis = (i: Item) => (i.kind === "case" ? 0 : i.overdue ? 1 : 2);
+
+  items.sort((a, b) =>
+    crisis.active
+      ? byCrisis(a) - byCrisis(b) || (b.days ?? 0) - (a.days ?? 0)
+      : Number(b.overdue) - Number(a.overdue) ||
+        KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind] ||
+        a.since.localeCompare(b.since),
   );
 
   const mine = items.filter((i) => i.assignedTo === user.id).length;
@@ -359,6 +374,8 @@ worklistRoutes.get("/", async (c) => {
     items: items.slice(0, 100),
     total: items.length,
     truncated: items.length > 100,
+    /** Порядок очереди сейчас кризисный: сначала тяжесть */
+    crisis: crisis.active,
     byKind: {
       case: items.filter((i) => i.kind === "case").length,
       followup: items.filter((i) => i.kind === "followup").length,

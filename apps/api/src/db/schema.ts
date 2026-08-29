@@ -1965,3 +1965,21 @@ export const informantRequests = pgTable(
     patientIdx: index("informant_requests_patient_idx").on(t.patientId, t.createdAt),
   }),
 );
+
+/**
+ * Кризисный режим учреждения: массовое поступление.
+ *
+ * Период, а не флаг: история включений — часть журнала. Открытый период
+ * ровно один, это держит частичный уникальный индекс — два одновременных
+ * «кризиса» означали бы, что выключение одного не выключает режим.
+ */
+export const crisisPeriods = pgTable("crisis_periods", {
+  id: text("id").primaryKey(),
+  reason: text("reason").notNull(),
+  startedBy: text("started_by")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  startedAt: timestampCol("started_at").notNull().default(sql`now()`),
+  endedBy: text("ended_by").references(() => users.id, { onDelete: "set null" }),
+  endedAt: timestampCol("ended_at"),
+});

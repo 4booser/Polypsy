@@ -547,6 +547,17 @@ export const api = {
       body: JSON.stringify({ userId, startsAt, endsAt }),
     }),
 
+  crisis: () =>
+    request<{ active: boolean; reason: string | null; startedAt: string | null }>(
+      "/api/decisions/crisis",
+    ),
+  startCrisis: (reason: string) =>
+    request<{ ok: true }>("/api/decisions/crisis", {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  endCrisis: () => request<{ ok: true }>("/api/decisions/crisis", { method: "DELETE" }),
+
   informants: (userId: string) =>
     request<{ items: InformantRequestRow[] }>(`/api/informants/patients/${userId}`).then(
       (r) => r.items,
