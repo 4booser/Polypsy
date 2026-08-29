@@ -1,9 +1,9 @@
 import { Hono, type Context } from "hono";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageAt, exportQuery } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
-import { answers, responseScores, responses, users } from "../db/schema";
+import { answers, responseScores, responses, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
@@ -285,7 +285,7 @@ function exportOptions(c: Context) {
 spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang } = exportOptions(c);
+  const { profile, lang, purpose } = exportOptions(c);
   const { vars } = await buildSchema(surveyId, lang, profile);
   const rows = await loadRows(surveyId);
 
@@ -308,6 +308,7 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
       subjects: [...new Set(rows.map((r) => r.response.userId).filter(Boolean))].length,
       includesUserIds: profile === "full",
       datasetSha256: datasetHash,
+      purpose: purpose ?? null,
     },
   });
 
@@ -436,7 +437,7 @@ spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
 spssRoutes.get("/surveys/:id/long.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile } = exportOptions(c);
+  const { profile, purpose } = exportOptions(c);
 
   const { sql } = await import("drizzle-orm");
   const rows = await db.execute(sql`
@@ -506,6 +507,7 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
       rows: body.length,
       includesUserIds: profile === "full",
       datasetSha256: datasetHash,
+      purpose: purpose ?? null,
     },
   });
 
@@ -513,6 +515,139 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="quizzy-${surveyId}-long.csv"`,
+    },
+  });
+});
+
+
+/**
+ * Снимок параметров выгрузки: манифест.
+ *
+ * Хэш датасета уже есть, и он отвечает на вопрос «та ли это выгрузка». Но не
+ * отвечает на «как её повторить»: какие версии методик применялись, какие
+ * нормы, какой профиль обезличивания. Через год, когда статью попросят
+ * пересчитать, восстановить это будет неоткуда.
+ *
+ * Манифест кладут рядом с данными, и в нём нет ни одной строки самих данных.
+ */
+spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
+  const surveyId = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), surveyId);
+  const { profile, lang, purpose } = exportOptions(c);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile);
+
+  const versionRows = await db
+    .select({ id: surveyVersions.id, version: surveyVersions.version, createdAt: surveyVersions.createdAt, note: surveyVersions.note })
+    .from(surveyVersions)
+    .where(eq(surveyVersions.surveyId, surveyId))
+    .orderBy(surveyVersions.version);
+
+  const used = await db
+    .select({ versionId: responses.versionId, n: sql<number>`count(*)::int` })
+    .from(responses)
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+    .groupBy(responses.versionId);
+  const countByVersion = new Map(used.map((u) => [u.versionId, Number(u.n)]));
+
+  const manifest = {
+    survey: { id: surveyId, title: survey.title },
+    exportedAt: new Date().toISOString(),
+    profile,
+    lang,
+    purpose: purpose ?? null,
+    /*
+     * Версии перечислены все, а не только использованные: отсутствие
+     * прохождений у версии — тоже факт, и «этой версией никто не проходил»
+     * приходится восстанавливать иначе.
+     */
+    versions: versionRows.map((v) => ({
+      version: v.version,
+      createdAt: v.createdAt,
+      note: v.note,
+      responses: countByVersion.get(v.id) ?? 0,
+    })),
+    variables: vars.map((v) => v.name),
+    /*
+     * Нормы — часть параметров: T-балл, посчитанный по другим нормам, это
+     * другое число под тем же именем.
+     */
+    norms: survey.scales.map((sc) => ({
+      code: sc.code,
+      normalization: sc.normalization,
+      norms: sc.norms.map((n) => ({ sex: n.sex, mean: n.mean, sd: n.sd })),
+      stenRows: sc.stenTable.length,
+    })),
+  };
+
+  await audit(c, {
+    action: "analytics.export",
+    resourceType: "survey",
+    resourceId: surveyId,
+    details: { format: "manifest", profile, purpose: purpose ?? null },
+  });
+
+  return c.json(manifest);
+});
+
+/**
+ * Готовые скрипты загрузки для R и Python.
+ *
+ * Не украшение: выгрузка, которую каждый читает своим способом, читается
+ * по-разному. Типы колонок, кодировка, разделитель, пропуски — четыре места,
+ * где два исследователя получат два датасета из одного файла.
+ */
+/*
+ * Расширение отдельным сегментом, а не после точки: точка перед параметром
+ * маршрутизатором не разбирается, и адрес молча превращался в 404.
+ */
+spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
+  const surveyId = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), surveyId);
+  const ext = c.req.param("ext");
+  if (ext !== "r" && ext !== "py") notFound("Такого скрипта нет");
+  const { profile, lang } = exportOptions(c);
+  const { vars } = await buildSchema(surveyId, lang, profile);
+
+  const dataFile = `quizzy-${surveyId}-data.csv`;
+  const codeFile = `quizzy-${surveyId}-codebook.csv`;
+  const factors = vars.filter((v) => v.values?.length).map((v) => v.name);
+
+  const script =
+    ext === "r"
+      ? [
+          "# Загрузка выгрузки Quizzy в R.",
+          "# Кодировка UTF-8 с BOM, разделитель — запятая, пропуски — пустая строка.",
+          "",
+          `data <- read.csv("${dataFile}", fileEncoding = "UTF-8-BOM", na.strings = c(""))`,
+          `codebook <- read.csv("${codeFile}", fileEncoding = "UTF-8-BOM")`,
+          "",
+          "# Категориальные переменные объявлены факторами: иначе порядковые коды",
+          "# вариантов попадут в модель как числа, и «вариант 3» окажется втрое",
+          "# больше «варианта 1».",
+          ...factors.map((name) => `data$${name} <- factor(data$${name})`),
+          "",
+          "str(data)",
+        ].join("\n")
+      : [
+          "# Загрузка выгрузки Quizzy в Python.",
+          "# Кодировка UTF-8 с BOM, разделитель — запятая, пропуски — пустая строка.",
+          "",
+          "import pandas as pd",
+          "",
+          `data = pd.read_csv("${dataFile}", encoding="utf-8-sig", keep_default_na=False, na_values=[""])`,
+          `codebook = pd.read_csv("${codeFile}", encoding="utf-8-sig")`,
+          "",
+          "# Категориальные переменные объявлены категориями: иначе порядковые",
+          "# коды вариантов попадут в модель как числа.",
+          ...factors.map((name) => `data["${name}"] = data["${name}"].astype("category")`),
+          "",
+          "print(data.dtypes)",
+        ].join("\n");
+
+  return new Response(script, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Disposition": `attachment; filename="quizzy-${surveyId}-load.${ext}"`,
     },
   });
 });
