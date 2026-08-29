@@ -1803,6 +1803,22 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   color: var(--text-2);
 }
 
+/* список запросов к информантам: строка = роль, форма, состояние */
+.inf-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.inf-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-small);
+}
+
 /* стартовый экран в подвале рельсы: настройка, а не навигация */
 .start-screen {
   display: grid;

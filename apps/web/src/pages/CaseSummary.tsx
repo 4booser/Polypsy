@@ -9,6 +9,7 @@ import { PageHead, Screen, useAction } from "../ui";
 import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
 import { Here } from "../components/Here";
+import { Informants } from "../components/Informants";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
 import { Goals } from "../components/Goals";
 import { Conferences } from "../components/Conferences";
@@ -147,6 +148,7 @@ export default function CaseSummaryPage() {
       ))}
 
       <Goals userId={data.userId} summary={data} />
+      <Informants userId={data.userId} />
         </div>
 
         <div className="pc-actions">

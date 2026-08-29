@@ -162,7 +162,12 @@ export const surveys = pgTable(
     description: localized("description"),
     instructions: localized("instructions"),
     /** self — заполняет респондент, clinician — специалист за него */
-    administration: text("administration", { enum: ["self", "clinician"] })
+    /*
+     * Кто заполняет. `informant` — короткая форма для командира, сослуживца
+     * или родственника: отдельная методика, а не второй способ заполнить ту
+     * же. Смешивать их в одной выборке значило бы испортить и нормы, и альфу.
+     */
+    administration: text("administration", { enum: ["self", "clinician", "informant"] })
       .notNull()
       .default("self"),
 
@@ -1922,5 +1927,41 @@ export const dutyShifts = pgTable(
   },
   (t) => ({
     windowIdx: index("duty_shifts_window_idx").on(t.startsAt, t.endsAt),
+  }),
+);
+
+/**
+ * Запрос к информанту.
+ *
+ * Имя информанта не хранится намеренно: оценка командира не должна
+ * превращаться в личное дело того, кто её дал. Хранится роль — именно она и
+ * несёт смысл при сравнении перспектив.
+ */
+export const informantRequests = pgTable(
+  "informant_requests",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    /** commander | peer | family | clinician */
+    role: text("role").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    note: text("note"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    expiresAt: timestampCol("expires_at").notNull(),
+    responseId: text("response_id").references(() => responses.id, { onDelete: "set null" }),
+    usedAt: timestampCol("used_at"),
+    revokedAt: timestampCol("revoked_at"),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    hashIdx: uniqueIndex("informant_requests_hash_idx").on(t.tokenHash),
+    patientIdx: index("informant_requests_patient_idx").on(t.patientId, t.createdAt),
   }),
 );

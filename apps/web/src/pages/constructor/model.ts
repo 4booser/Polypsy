@@ -1,4 +1,4 @@
-import type { SurveyFull, SurveyGroupWithCounts } from "@quizzy/shared";
+import type { Administration, SurveyFull, SurveyGroupWithCounts } from "@quizzy/shared";
 
 export type Tab = "basics" | "questions" | "scales" | "json";
 
@@ -8,7 +8,7 @@ export interface Draft {
   description?: Record<string, string> | null;
   instructions?: Record<string, string> | null;
   groupId?: string | null;
-  administration: "self" | "clinician";
+  administration: Administration;
   visibility: "public" | "restricted";
   scoringEnabled: boolean;
   allowRetake: boolean;

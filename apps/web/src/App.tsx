@@ -57,6 +57,7 @@ const Batteries = lazy(() => import("./pages/Batteries"));
 const BlankForm = lazy(() => import("./pages/BlankForm"));
 const Invites = lazy(() => import("./pages/Invites"));
 const Join = lazy(() => import("./pages/Join"));
+const InformantForm = lazy(() => import("./pages/InformantForm"));
 const Kiosk = lazy(() => import("./pages/Kiosk"));
 const KioskSessions = lazy(() => import("./pages/KioskSessions"));
 const Norms = lazy(() => import("./pages/Norms"));
@@ -239,12 +240,17 @@ export default function App() {
   }, [openAlerts]);
 
   // публичные страницы живут вне auth-гейта: у пациента и киоска нет входа
-  if (location.pathname.startsWith("/join/") || location.pathname.startsWith("/kiosk/")) {
+  if (
+    location.pathname.startsWith("/join/") ||
+    location.pathname.startsWith("/kiosk/") ||
+    location.pathname.startsWith("/informant/")
+  ) {
     return (
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/join/:token" element={<Join />} />
           <Route path="/kiosk/:token" element={<Kiosk />} />
+          <Route path="/informant/:token" element={<InformantForm />} />
         </Routes>
       </Suspense>
     );

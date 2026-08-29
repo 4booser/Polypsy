@@ -58,6 +58,7 @@ export function Basics({
             >
               <option value="self">{ut("cb.selfAdmin")}</option>
               <option value="clinician">{ut("cb.clinicianAdmin")}</option>
+              <option value="informant">{ut("cb.informantAdmin")}</option>
             </select>
           </div>
           <div className="field" style={{ flex: 1, minWidth: 220 }}>

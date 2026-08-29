@@ -40,6 +40,8 @@ import type {
   RuleHit,
   DutyShiftRow,
   WorkspacePrefs,
+  InformantRequestRow,
+  InformantComparison,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -544,6 +546,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ userId, startsAt, endsAt }),
     }),
+
+  informants: (userId: string) =>
+    request<{ items: InformantRequestRow[] }>(`/api/informants/patients/${userId}`).then(
+      (r) => r.items,
+    ),
+  askInformant: (userId: string, surveyId: string, role: string, note?: string) =>
+    request<{ id: string; token: string }>(`/api/informants/patients/${userId}`, {
+      method: "POST",
+      body: JSON.stringify({ surveyId, role, note: note ?? null }),
+    }),
+  revokeInformant: (id: string) =>
+    request<{ ok: true }>(`/api/informants/${id}/revoke`, { method: "POST" }),
+  informantCompare: (userId: string) =>
+    request<{ items: InformantComparison[] }>(`/api/informants/compare/${userId}`).then(
+      (r) => r.items,
+    ),
 
   saveWorkspace: (prefs: WorkspacePrefs) =>
     request<WorkspacePrefs>("/api/auth/me/workspace", {

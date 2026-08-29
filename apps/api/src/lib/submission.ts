@@ -69,6 +69,22 @@ export async function persistSubmission(
 ): Promise<PersistResult> {
   validateAnswers(survey, input);
 
+  /*
+   * Кого записываем в прохождение.
+   *
+   * Анонимная методика не связывается с человеком по определению. Форма
+   * информанта — тоже, но по другой причине: её заполняет посторонний человек
+   * О пациенте, и записать её на пациента значило бы смешать взгляд со
+   * стороны с его самоотчётом в каждом графике, каждом RCI и каждой выборке
+   * норм. Связь с пациентом живёт отдельно, в informant_requests, и её видит
+   * только тот код, который для этого написан.
+   *
+   * Решение принимается один раз здесь, а не повторяется у каждой вставки:
+   * повторённое семь раз условие — это семь мест, где новый случай забудут.
+   */
+  const linkedUserId =
+    survey.anonymous || survey.administration === "informant" ? null : subject.id;
+
   // очерёдность внутри батареи проверяем до записи: отказ после сохранения
   // означал бы прохождение, которого не должно было быть
   await assertBatteryOrder(subject.id, survey.id, options.filledBySelf);
@@ -95,15 +111,15 @@ export async function persistSubmission(
       id: responseId,
       surveyId: survey.id,
       // прохождение принадлежит обследуемому, а не тому, кто внёс данные
-      userId: survey.anonymous ? null : subject.id,
+      userId: linkedUserId,
       status: input.status,
       versionId: survey.versionId,
       startedAt: input.startedAt,
       submittedAt,
       durationMs: input.durationMs,
       clientRequestId: input.clientRequestId ?? null,
-      respondentSex: survey.anonymous ? null : subject.sex,
-      respondentAgeBand: survey.anonymous ? null : ageBand,
+      respondentSex: linkedUserId ? subject.sex : null,
+      respondentAgeBand: linkedUserId ? ageBand : null,
       lang: options.lang ?? null,
     });
 
@@ -113,7 +129,7 @@ export async function persistSubmission(
     for (const risk of risks) {
       // случай открывается один на человека: разбирают не пункты, а человека
       const caseId = await attachToCase(tx as never, {
-        userId: survey.anonymous ? null : subject.id,
+        userId: linkedUserId,
         surveyId: survey.id,
         severity: risk.severity,
         at: riskAt,
@@ -125,7 +141,7 @@ export async function persistSubmission(
           responseId,
           surveyId: survey.id,
           questionId: risk.questionId,
-          userId: survey.anonymous ? null : subject.id,
+          userId: linkedUserId,
           caseId,
           label: risk.label,
           severity: risk.severity,
@@ -141,7 +157,7 @@ export async function persistSubmission(
       await publish(tx as never, {
         kind: "alert.created",
         surveyIds: [survey.id],
-        userId: survey.anonymous ? null : subject.id,
+        userId: linkedUserId,
         severity: risk.severity,
         at: riskAt,
       });
@@ -203,7 +219,7 @@ export async function persistSubmission(
 
   // каскады и протоколы наблюдения — после закрытия батарей: иначе каскадное
   // назначение могло бы закрыться тем же проходом, которым было создано
-  const cascade = await runCascades(survey.id, survey.anonymous ? null : subject.id, scores);
+  const cascade = await runCascades(survey.id, linkedUserId, scores);
 
   /*
    * Правила поддержки решений — после каскадов: каскад назначает методики по
@@ -213,7 +229,7 @@ export async function persistSubmission(
   await applyRules({
     responseId,
     surveyId: survey.id,
-    userId: survey.anonymous ? null : subject.id,
+    userId: linkedUserId,
     scores,
     riskSeverity: risks.length
       ? (risks.some((r) => r.severity === "severe") ? "severe" : "moderate")
