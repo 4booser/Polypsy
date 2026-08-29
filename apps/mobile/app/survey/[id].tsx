@@ -33,7 +33,8 @@ export default function TakeSurveyScreen() {
   const { ut } = useLang();
   const router = useRouter();
   const navigation = useNavigation();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, onBehalfOf } = useLocalSearchParams<{ id: string; onBehalfOf?: string }>();
+  const [patient, setPatient] = useState<{ fullName: string; sex: "male" | "female" | null; age: number | null } | null>(null);
 
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
@@ -171,7 +172,13 @@ export default function TakeSurveyScreen() {
    * что уже было сохранено.
    */
   const autosave = useCallback(async () => {
-    if (!survey || survey.anonymous) return;
+    /*
+     * За пациента черновики не сохраняются. Черновик на сервере привязан к
+     * тому, кто его прислал, — то есть к специалисту: сохранив его, мы
+     * положили бы ответы пациента в незавершённые прохождения врача, а при
+     * следующем открытии методики предложили бы врачу их «продолжить».
+     */
+    if (!survey || survey.anonymous || onBehalfOf) return;
     const payload = [...answers.values()].map((a) => ({
       ...a,
       durationMs: telemetry.get(a.questionId)?.durationMs ?? 0,
@@ -206,7 +213,7 @@ export default function TakeSurveyScreen() {
     } catch {
       // сети нет — локальная копия уже лежит, догонит при следующем проходе
     }
-  }, [survey, answers, telemetry]);
+  }, [survey, answers, telemetry, onBehalfOf]);
 
   function goTo(nextStep: number) {
     commitTiming();
@@ -286,6 +293,14 @@ export default function TakeSurveyScreen() {
         durationMs: Date.now() - sessionStart.current,
         status,
         events: events.current,
+        onBehalfOf: onBehalfOf ?? null,
+        /*
+         * Пол и возраст пациента едут вместе с ответами: без сети баллы
+         * считаются на устройстве, а нормы методик стратифицированы. Считать
+         * чужой профиль по своему полу значит показать у койки неверный
+         * результат — и заметить это будет негде.
+         */
+        subject: patient ? { sex: patient.sex, age: patient.age } : null,
       });
       // прохождение ушло (или встало в очередь) — локальный черновик больше
       // не нужен и не должен всплыть «продолжением» при следующем открытии
@@ -382,6 +397,18 @@ export default function TakeSurveyScreen() {
         contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
       >
         <Title>{survey.title}</Title>
+        {onBehalfOf ? (
+          /*
+           * За кого заполняем — самой заметной строкой на экране. У койки
+           * заполняют подряд нескольких, и ошибиться человеком легче, чем
+           * кажется; заметить такую ошибку потом будет негде.
+           */
+          <Card>
+            <Body>{ut("rounds.fillingFor")}</Body>
+            <Title>{patient?.fullName ?? "…"}</Title>
+            <Body muted>{ut("rounds.noDraft")}</Body>
+          </Card>
+        ) : null}
         {survey.description ? <Body muted>{survey.description}</Body> : null}
         {resumed ? (
           <Card>

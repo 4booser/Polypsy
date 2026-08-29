@@ -18,6 +18,8 @@ import type {
   User,
   AlertCase,
   AuditPage,
+  Worklist,
+  WorkItem,
   Page,
   Respondent,
   CreateUserInput,
@@ -32,6 +34,8 @@ import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
 import { currentLang } from "../lang";
 import { cache, drafts } from "../offline/cache";
+import { respondentFor } from "../offline/respondent";
+import { deviceId, platformName, wipeLocalData } from "../offline/device";
 import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
 import { ageAt, computeProfile } from "@quizzy/shared";
 
@@ -289,6 +293,17 @@ export const api = {
       durationMs: number;
       status?: "completed" | "abandoned";
       events: AnswerEvent[];
+      /**
+       * Заполнено специалистом за пациента (режим обхода).
+       *
+       * Прохождение записывается на пациента, а в журнал уходит, кто его внёс.
+       * Локальный подсчёт при этом ведётся по паспортным данным ПАЦИЕНТА, а не
+       * заполняющего: нормы у методик по полу и возрасту, и посчитать чужие
+       * баллы по своему полу значит выдать неверный профиль.
+       */
+      onBehalfOf?: string | null;
+      /** Пол и возраст пациента — для офлайн-подсчёта в режиме обхода */
+      subject?: { sex: "male" | "female" | null; age: number | null } | null;
     },
   ) =>
     request<SubmitResult>(`/api/surveys/${surveyId}/responses`, {
@@ -304,12 +319,13 @@ export const api = {
        */
       const item = enqueue(surveyId, { ...payload });
       const survey = cache.survey(surveyId);
-      const meCached = cache.me();
+      // чей пол и возраст берём для норм — см. respondentFor
+      const respondent = respondentFor(payload.subject, cache.me());
       const profile =
         survey && survey.scoringEnabled
           ? computeProfile(survey, payload.answers, {
-              sex: meCached?.sex ?? null,
-              age: ageAt(meCached?.birthDate ?? null, new Date().toISOString()),
+              sex: respondent.sex,
+              age: respondent.age,
             })
           : null;
       const risky = profile
@@ -440,6 +456,78 @@ export const api = {
   },
   respondentDynamics: (userId: string) =>
     request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
+
+  /**
+   * Обход: что от специалиста ждут сегодня.
+   *
+   * При отказе сети отдаётся кэш с отметкой, когда он снят. Планшет в палате —
+   * место, где сети нет чаще, чем есть, и обход не должен останавливаться.
+   * Отметка обязательна: молча показанная вчерашняя очередь хуже пустого
+   * экрана, потому что по ней ходят как по сегодняшней.
+   */
+  /**
+   * Отметка устройства. Вызывается при запуске и при возвращении сети.
+   *
+   * Если сервер просит стереть данные — стираем и подтверждаем. Подтверждение
+   * отправляется ДО очистки идентификатора: после стирания устройство
+   * представится новым, и подтвердить будет нечем.
+   */
+  deviceCheckin: async (label: string | null): Promise<boolean> => {
+    const id = deviceId();
+    try {
+      const res = await request<{ wipe: boolean }>("/api/devices/checkin", {
+        method: "POST",
+        body: JSON.stringify({ deviceId: id, label, platform: platformName() }),
+      });
+      if (!res.wipe) return false;
+
+      await request("/api/devices/wiped", {
+        method: "POST",
+        body: JSON.stringify({ deviceId: id }),
+      }).catch(() => {
+        /* подтверждение не дошло — стираем всё равно: это важнее отчётности */
+      });
+      wipeLocalData();
+      /*
+       * Токены тоже. Стёртое устройство, оставшееся в системе залогиненным, —
+       * это ровно та ситуация, ради которой команду и отдавали: нашедший
+       * планшет открывает приложение и снова видит отделение, просто без
+       * кэша.
+       */
+      await tokenStorage.clear().catch(() => {});
+      return true;
+    } catch {
+      // нет сети — не повод ничего стирать
+      return false;
+    }
+  },
+
+  rounds: async (): Promise<{ list: Worklist; cachedAt: string | null }> => {
+    try {
+      const list = await request<Worklist>("/api/worklist");
+      cache.saveRounds(list);
+      return { list, cachedAt: null };
+    } catch (error) {
+      const saved = cache.rounds();
+      if (!saved) throw error;
+      return { list: saved.rows as Worklist, cachedAt: saved.at };
+    }
+  },
+
+  /** Карта пациента для обхода; тот же приём с кэшем и отметкой */
+  roundsCard: async (
+    userId: string,
+  ): Promise<{ card: RespondentDynamics; cachedAt: string | null }> => {
+    try {
+      const card = await request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`);
+      cache.savePatientCard(userId, card);
+      return { card, cachedAt: null };
+    } catch (error) {
+      const saved = cache.patientCard(userId);
+      if (!saved) throw error;
+      return { card: saved.card as RespondentDynamics, cachedAt: saved.at };
+    }
+  },
 
   reportUrl: (responseId: string) => `${API_URL}/api/reports/responses/${responseId}`,
 

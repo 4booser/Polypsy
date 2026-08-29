@@ -534,6 +534,15 @@ export interface RespondentDynamics {
   userId: string;
   fullName: string;
   email: string;
+  /**
+   * Пол и возраст — для подсчёта норм на устройстве в режиме обхода.
+   *
+   * Возраст числом, а не датой рождения: для норм достаточно числа, а дата
+   * рождения на планшете, который носят по отделению, — лишние сведения о
+   * человеке без единого сценария, которому они нужны.
+   */
+  sex: Sex | null;
+  age: number | null;
   surveys: {
     surveyId: string;
     title: string;

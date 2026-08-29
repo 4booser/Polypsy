@@ -1983,3 +1983,35 @@ export const crisisPeriods = pgTable("crisis_periods", {
   endedBy: text("ended_by").references(() => users.id, { onDelete: "set null" }),
   endedAt: timestampCol("ended_at"),
 });
+
+/**
+ * Устройство с установленным приложением.
+ *
+ * Нужно ради удалённого стирания: планшет носят по отделению, и потерять его
+ * проще, чем ноутбук, а на нём лежит кэш обхода — имена, баллы, планы
+ * безопасности.
+ *
+ * Ограничение честное и важное: стирание срабатывает, когда устройство в
+ * следующий раз выйдет на связь. Устройство, которое больше не включат, этой
+ * командой не очистить — от этого защищает шифрование хранилища и блокировка
+ * экрана.
+ */
+export const devices = pgTable(
+  "devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: text("label"),
+    platform: text("platform"),
+    lastSeenAt: timestampCol("last_seen_at").notNull().default(sql`now()`),
+    wipeRequestedAt: timestampCol("wipe_requested_at"),
+    wipeRequestedBy: text("wipe_requested_by").references(() => users.id, { onDelete: "set null" }),
+    wipedAt: timestampCol("wiped_at"),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    userIdx: index("devices_user_idx").on(t.userId, t.lastSeenAt),
+  }),
+);

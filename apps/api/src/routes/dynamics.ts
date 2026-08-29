@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
-import type { RespondentDynamics, ScaleDynamics } from "@quizzy/shared";
+import { ageAt, itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
+import type { RespondentDynamics, ScaleDynamics, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
 import { percentileOf } from "../lib/norms";
 import { getSurvey } from "../lib/surveys";
@@ -153,7 +154,14 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   const scoped = await db.select().from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
   if (!surveyIds.length) {
-    return c.json({ userId, fullName: fullNameOf(patient), email: patient.email, surveys: [] });
+    return c.json({
+      userId,
+      fullName: fullNameOf(patient),
+      email: patient.email,
+      sex: (patient.sex as Sex | null) ?? null,
+      age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+      surveys: [],
+    } satisfies RespondentDynamics);
   }
 
   const responseRows = await db
@@ -169,7 +177,14 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     .orderBy(asc(responses.submittedAt));
 
   if (!responseRows.length) {
-    return c.json({ userId, fullName: fullNameOf(patient), email: patient.email, surveys: [] });
+    return c.json({
+      userId,
+      fullName: fullNameOf(patient),
+      email: patient.email,
+      sex: (patient.sex as Sex | null) ?? null,
+      age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+      surveys: [],
+    } satisfies RespondentDynamics);
   }
 
   const scoreRows = await db
@@ -291,6 +306,13 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     userId,
     fullName: fullNameOf(patient),
     email: patient.email,
+    /*
+     * Пол и возраст — для подсчёта норм на устройстве в режиме обхода.
+     * Возраст числом: для норм достаточно, а дата рождения на планшете,
+     * который носят по отделению, — лишние сведения без единого сценария.
+     */
+    sex: (patient.sex as Sex | null) ?? null,
+    age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
     surveys: [...bySurvey.entries()].map(([surveyId, list]) => {
       const survey = scoped.find((s) => s.id === surveyId)!;
 

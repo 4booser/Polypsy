@@ -13,14 +13,24 @@ import { useColors } from "@/theme";
 
 export default function RootLayout() {
   /*
-   * Прогон офлайн-очереди: при старте, по возвращению приложения на передний
-   * план и раз в 45 секунд, пока очередь непуста. Отдельного NetInfo нет —
-   * неудачная попытка дешёвая (первый же сетевой отказ останавливает прогон).
+   * Синхронизация: при старте, по возвращению приложения на передний план и
+   * раз в 45 секунд, пока очередь непуста. Отдельного NetInfo нет — неудачная
+   * попытка дешёвая (первый же сетевой отказ останавливает прогон).
    */
   useEffect(() => {
-    void api.flushQueue().catch(() => {});
+    /*
+     * Отметка устройства идёт вместе с прогоном очереди: оба нужны ровно
+     * тогда, когда появилась сеть. Если сервер просит стереть локальные
+     * данные — приложение стирает их и выходит из учётной записи.
+     */
+    const sync = () => {
+      void api.deviceCheckin(null).catch(() => {});
+      void api.flushQueue().catch(() => {});
+    };
+
+    sync();
     const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") void api.flushQueue().catch(() => {});
+      if (state === "active") sync();
     });
     const timer = setInterval(() => {
       if (api.pendingCount() > 0) void api.flushQueue().catch(() => {});

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import type { BatteryAssignment, BatteryStep, SurveyGroupWithCounts, SurveyListItem } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
@@ -29,6 +29,14 @@ export default function SurveysScreen() {
   const [batteries, setBatteries] = useState<BatteryAssignment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  /*
+   * Режим обхода: специалист заполняет методику за пациента. Идентификатор
+   * приходит из карты обхода и передаётся дальше в прохождение — экран сам
+   * ничего про пациента не знает, кроме того, что он есть.
+   */
+  const { onBehalfOf } = useLocalSearchParams<{ onBehalfOf?: string }>();
+  const forPatient = onBehalfOf ? `?onBehalfOf=${onBehalfOf}` : "";
 
   const load = useCallback(async () => {
     try {
@@ -87,7 +95,7 @@ export default function SurveysScreen() {
       <ErrorText>{error}</ErrorText>
 
       {batteries.map((b) => (
-        <BatteryCard key={b.id} assignment={b} onOpen={(id) => router.push(`/survey/${id}`)} />
+        <BatteryCard key={b.id} assignment={b} onOpen={(id) => router.push(`/survey/${id}${forPatient}`)} />
       ))}
 
       {sections.length === 0 && batteries.length === 0 && !error ? (
@@ -119,7 +127,7 @@ export default function SurveysScreen() {
           {items.map((item) => (
             <Pressable
               key={item.id}
-              onPress={() => router.push(`/survey/${item.id}`)}
+              onPress={() => router.push(`/survey/${item.id}${forPatient}`)}
               accessibilityRole="button"
               // карточка целиком — одна кнопка; иначе диктор читает название,
               // счётчик вопросов и метку «пройдено» как три несвязанных куска
