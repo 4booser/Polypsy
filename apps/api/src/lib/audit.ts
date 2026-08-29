@@ -10,6 +10,8 @@ export type AuditAction =
   | "conclusion.batch"
   | "quality.read"
   | "search.notes"
+  | "breakglass.open"
+  | "breakglass.close"
   | "cohort.preview"
   | "cohort.members"
   | "cohort.save"

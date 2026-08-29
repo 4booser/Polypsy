@@ -2065,3 +2065,32 @@ export const noteSearch = pgTable(
     userIdx: index("note_search_user_idx").on(t.userId),
   }),
 );
+
+/**
+ * Доступ в обход правил — «разбить стекло».
+ *
+ * Выдаётся сотрудником самому себе, но с обоснованием, на срок и громко:
+ * запись в журнале и уведомление тем, кто отвечает за данные. Тихого варианта
+ * нет намеренно — тихий обход правил это не обход, а дыра.
+ */
+export const breakGlass = pgTable(
+  "break_glass",
+  {
+    id: text("id").primaryKey(),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    grantedAt: timestampCol("granted_at").notNull().default(sql`now()`),
+    expiresAt: timestampCol("expires_at").notNull(),
+    revokedAt: timestampCol("revoked_at"),
+    revokedBy: text("revoked_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    actorIdx: index("break_glass_actor_idx").on(t.actorId, t.expiresAt),
+    patientIdx: index("break_glass_patient_idx").on(t.patientId, t.grantedAt),
+  }),
+);

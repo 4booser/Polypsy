@@ -15,7 +15,7 @@ import {
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
-import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const timelineRoutes = new Hono<AppEnv>();
@@ -70,7 +70,7 @@ timelineRoutes.get("/:userId", async (c) => {
   const allowed = await accessiblePatientIds(staff);
   if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
 
-  const scope = await surveyScopeFilter(staff);
+  const scope = await surveyScopeFilterFor(staff, userId);
   const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
   if (!surveyIds.length) notFound("Пациент не найден");

@@ -13,7 +13,7 @@ import { getSurvey } from "../lib/surveys";
 import { reliabilityOf } from "../lib/psychometrics";
 import { round, variance } from "../lib/stats";
 import { answers as answersTable } from "../db/schema";
-import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 import { log } from "../lib/log";
 
@@ -150,7 +150,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   const allowed = await accessiblePatientIds(staff);
   if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
 
-  const scope = await surveyScopeFilter(staff);
+  const scope = await surveyScopeFilterFor(staff, userId);
   const scoped = await db.select().from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
   if (!surveyIds.length) {

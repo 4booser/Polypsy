@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { User } from "@quizzy/shared";
 import { db } from "../db";
-import { batteryItems, groupAdmins, surveyAccess, surveys, users } from "../db/schema";
+import { batteryItems, breakGlass, groupAdmins, surveyAccess, surveys, users } from "../db/schema";
 import { badRequest, forbidden, notFound } from "./http";
 import { t } from "@quizzy/shared";
 
@@ -48,6 +48,28 @@ export async function accessibleGroupIds(user: User): Promise<string[] | null> {
 }
 
 /**
+ * Пациенты, к которым у сотрудника сейчас открыт доступ «разбить стекло».
+ *
+ * Отдельная функция, а не флаг внутри скоупа: доступ вне правил обязан быть
+ * видимым в коде так же, как он виден в журнале. Спрятанный в общем условии,
+ * он через год читался бы как часть обычной логики.
+ */
+export async function brokenGlassPatients(user: User): Promise<string[]> {
+  const now = new Date().toISOString();
+  const rows = await db
+    .select({ patientId: breakGlass.patientId })
+    .from(breakGlass)
+    .where(
+      and(
+        eq(breakGlass.actorId, user.id),
+        isNull(breakGlass.revokedAt),
+        gt(breakGlass.expiresAt, now),
+      ),
+    );
+  return [...new Set(rows.map((r) => r.patientId))];
+}
+
+/**
  * Условие видимости методик для сотрудника.
  * Возвращает undefined, если ограничивать нечем (суперадмин).
  */
@@ -61,6 +83,35 @@ export async function surveyScopeFilter(user: User): Promise<SQL | undefined> {
   const ownUngrouped = and(isNull(surveys.groupId), eq(surveys.createdBy, user.id));
   if (groupIds.length === 0) return ownUngrouped;
   return or(inArray(surveys.groupId, groupIds), ownUngrouped);
+}
+
+/**
+ * Условие видимости методик при работе с ОДНИМ человеком.
+ *
+ * Отличается от общего только разбитым стеклом — и в этом весь смысл.
+ * Сначала я добавил доступ прямо в `surveyScopeFilter`, и мой же тест поймал
+ * утечку: стекло, разбитое ради одного пациента, открывало методику целиком,
+ * а всё, что фильтрует по методике, а не по человеку — когорты, аналитика,
+ * списки — начинало показывать чужих людей. Обоснование писалось про одного,
+ * доступ получался ко всем, кто эту методику проходил.
+ *
+ * Поэтому доступ вне правил расширяет видимость только вместе с именем того,
+ * ради кого стекло разбито.
+ */
+export async function surveyScopeFilterFor(user: User, patientId: string): Promise<SQL | undefined> {
+  const base = await surveyScopeFilter(user);
+  if (base === undefined) return undefined;
+
+  const emergency = await brokenGlassPatients(user);
+  if (!emergency.includes(patientId)) return base;
+
+  return or(
+    base,
+    sql`${surveys.id} in (
+      select r.survey_id from responses r
+      where r.user_id = ${patientId} and r.status = 'completed'
+    )`,
+  );
 }
 
 /** Может ли сотрудник работать с этой методикой */
@@ -155,7 +206,10 @@ export async function batterySurveysInUse(batteryId: string): Promise<string[]> 
 export async function accessiblePatientIds(user: User): Promise<Set<string> | null> {
   const groupIds = await accessibleGroupIds(user);
   if (groupIds === null) return null;
-  if (!groupIds.length) return new Set();
+
+  // разбитое стекло добавляет ровно тех, ради кого его разбивали
+  const emergency = await brokenGlassPatients(user);
+  if (!groupIds.length) return new Set(emergency);
 
   const rows = await db
     .select({ id: users.id })
@@ -177,5 +231,5 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
       ),
     );
 
-  return new Set(rows.map((r) => r.id));
+  return new Set([...rows.map((r) => r.id), ...emergency]);
 }
