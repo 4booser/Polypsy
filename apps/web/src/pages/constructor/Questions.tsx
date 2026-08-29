@@ -4,7 +4,19 @@ import { Loc, Toggle } from "./fields";
 import { TYPES, newUid, type Draft, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
 
-export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
+export function Questions({
+  draft,
+  setDraft,
+  onFocusQuestion,
+}: {
+  draft: Draft;
+  setDraft: (f: (d: Draft) => Draft) => void;
+  /**
+   * Какой пункт сейчас правят. Предпросмотр идёт за ним: иначе он витрина, а
+   * не инструмент — смотреть приходилось бы, перелистывая его отдельно.
+   */
+  onFocusQuestion?: (index: number) => void;
+}) {
   const { ut } = useLang();
   const [bulk, setBulk] = useState(false);
   const upd = (i: number, q: Partial<DraftQuestion>) =>
@@ -76,7 +88,11 @@ export function Questions({ draft, setDraft }: { draft: Draft; setDraft: (f: (d:
       ) : null}
 
       {draft.questions.map((q, i) => (
-        <div className="card" key={q.uid}>
+        /*
+         * Фокус ловится на всплытии, а не на каждом поле: полей в пункте
+         * десяток, и вешать обработчик на каждое — способ забыть один.
+         */
+        <div className="card" key={q.uid} onFocusCapture={() => onFocusQuestion?.(i)}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <strong>{ut("cq.item")} {i + 1}</strong>
             <div className="row">
