@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Аналитика: нормы, DIF, калибровка, витрина, отчёты */
 
@@ -553,5 +553,73 @@ describe("отчёт по подразделению", () => {
       .orderBy(descOp(auditLog.at))
       .limit(1);
     expect(entry!.action).toBe("report.unit");
+  });
+});
+
+describe("воспроизводимость выгрузки", () => {
+  test("манифест перечисляет версии, нормы и профиль", async () => {
+    /*
+     * Хэш датасета отвечает на «та ли это выгрузка», но не на «как её
+     * повторить». Через год, когда попросят пересчитать, восстанавливать
+     * версии и нормы будет неоткуда.
+     */
+    const res = await api(
+      `/api/spss/surveys/${surveyInA}/manifest.json?profile=deidentified&purpose=Диссертация`,
+      adminA.token,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.profile).toBe("deidentified");
+    expect(res.body.purpose).toBe("Диссертация");
+    expect(res.body.versions.length).toBeGreaterThan(0);
+    expect(res.body.norms.length).toBeGreaterThan(0);
+    // в манифесте нет ни одной строки данных
+    expect(JSON.stringify(res.body)).not.toContain("respondent_id");
+  });
+
+  test("версии перечислены все, включая те, которыми никто не проходил", async () => {
+    // «этой версией никто не проходил» — тоже факт, и его иначе не восстановить
+    const res = await api(`/api/spss/surveys/${surveyInA}/manifest.json`, adminA.token);
+    for (const v of res.body.versions) {
+      expect(typeof v.responses).toBe("number");
+    }
+  });
+
+  test("цель выгрузки попадает в журнал", async () => {
+    /*
+     * «Кто и когда» без «зачем» не отвечает ни на один вопрос разбора через
+     * год.
+     */
+    await api(`/api/spss/surveys/${surveyInA}/data.csv?purpose=Проверка+журнала`, adminA.token);
+
+    const log = await api("/api/audit?action=analytics.export&limit=20", root.token);
+    const entry = log.body.entries.find(
+      (e: { action: string; details?: { purpose?: string } }) =>
+        e.action === "analytics.export" && e.details?.purpose === "Проверка журнала",
+    );
+    expect(entry).toBeTruthy();
+  });
+
+  test("скрипт загрузки объявляет категориальные переменные факторами", async () => {
+    /*
+     * Иначе порядковые коды вариантов попадут в модель как числа, и «вариант
+     * 3» окажется втрое больше «варианта 1». Это тихая ошибка: анализ
+     * посчитается и даст неверный результат.
+     */
+    // ответ текстовый, а не JSON: берём его напрямую
+    const script = async (ext: string) => {
+      const res = await app.request(`/api/spss/surveys/${surveyInA}/load/${ext}`, {
+        headers: { Authorization: `Bearer ${adminA.token}` },
+      });
+      expect(res.status).toBe(200);
+      return res.text();
+    };
+
+    const r = await script("r");
+    expect(r).toContain("factor(");
+    expect(r).toContain("UTF-8-BOM");
+
+    const py = await script("py");
+    expect(py).toContain('astype("category")');
+    expect(py).toContain("utf-8-sig");
   });
 });

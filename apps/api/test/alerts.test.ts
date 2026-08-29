@@ -33,6 +33,34 @@ describe("рассыльщик тревог", () => {
      */
     await submitSurvey(surveyInA, patient.token);
 
+    /*
+     * Все ранее накопленные тревоги помечаются как уже разосланные.
+     *
+     * Рассыльщик берёт по пятьдесят штук за тик, и без этого тест зависел бы
+     * от того, сколько тревог успели создать соседние файлы: сначала он
+     * выгребал очередь двадцатью тиками, потом их перестало хватать. Очередь
+     * из одной тревоги не зависит от размера набора вовсе.
+     */
+    const pending = await db.select({ id: riskAlerts.id }).from(riskAlerts);
+    if (pending.length) {
+      await db
+        .insert(alertNotifications)
+        .values(
+          pending.flatMap((a) =>
+            (["initial", "escalation"] as const).map((kind) => ({
+              id: crypto.randomUUID(),
+              alertId: a.id,
+              kind,
+              // «уже разослано» без адресатов: это отметка, а не отправка
+              recipients: "",
+              channel: "none" as const,
+              sentAt: new Date().toISOString(),
+            })),
+          ),
+        )
+        .onConflictDoNothing();
+    }
+
     // тревога 40-минутной давности, не подтверждена
     const alertId = crypto.randomUUID();
     const responseRow = await db.query.responses.findFirst({
@@ -54,15 +82,13 @@ describe("рассыльщик тревог", () => {
     expect(first.escalated).toBeGreaterThanOrEqual(1);
 
     /*
-     * Идемпотентность проверяется по этой тревоге, а не по счётчикам тика:
-     * рассыльщик берёт по 50 штук за раз, и «второй тик вернул ноль»
-     * держалось лишь на том, что тревог в базе было меньше полусотни.
-     * Выгребаем очередь до конца и смотрим, что записей всё равно две.
+     * Идемпотентность: повторные тики не добавляют записей. Очередь пуста —
+     * всё прочее помечено выше, — поэтому двух тиков достаточно, и они не
+     * зависят от того, сколько тревог в базе.
      */
-    for (let i = 0; i < 20; i++) {
-      const tick = await runNotifierOnce();
-      if (tick.initial === 0 && tick.escalated === 0) break;
-    }
+    const second = await runNotifierOnce();
+    expect(second.initial).toBe(0);
+    expect(second.escalated).toBe(0);
 
     const записи = await db
       .select()

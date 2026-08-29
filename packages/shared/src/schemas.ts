@@ -693,6 +693,14 @@ export const auditQuery = dateRangeQuery.extend({
 export const exportQuery = z.object({
   profile: queryEnum(["full", "deidentified", "anonymous"], "full"),
   lang: queryEnum(["uk", "ru"], "ru"),
+  /**
+   * Зачем выгружают.
+   *
+   * Необязательно для машины и обязательно по смыслу: выгрузка клинических
+   * данных — это событие, которое через год кто-то будет разбирать, и «кто и
+   * когда» без «зачем» не отвечает ни на один вопрос разбора.
+   */
+  purpose: z.string().max(300).optional(),
 });
 
 export const facetQuery = z.object({

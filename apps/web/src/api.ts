@@ -490,6 +490,10 @@ export const api = {
   spssSyntaxUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/syntax.sps?profile=${profile}`,
   codebookUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/codebook.csv?profile=${profile}`,
   longUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/long.csv?profile=${profile}`,
+  manifestUrl: (id: string, profile = "full", purpose = "") =>
+    `/api/spss/surveys/${id}/manifest.json?profile=${profile}${purpose ? `&purpose=${encodeURIComponent(purpose)}` : ""}`,
+  loadScriptUrl: (id: string, ext: "r" | "py", profile = "full") =>
+    `/api/spss/surveys/${id}/load/${ext}?profile=${profile}`,
   methodologyUrl: (id: string) => `/api/surveys/${id}/export`,
   reportUrl: (responseId: string) => `/api/reports/responses/${responseId}`,
 

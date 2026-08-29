@@ -24,12 +24,17 @@ export default function SurveyAnalyticsPage() {
   const { run } = useAction();
   const downloadCsv = (sid: string) => run(() => download(api.exportUrl(sid), "data.csv"), ut("an.fileExported"));
   const [profile, setProfile] = useState<"full" | "deidentified" | "anonymous">("full");
+  const [purpose, setPurpose] = useState("");
   const downloadSpssData = (sid: string) =>
     run(() => download(api.spssDataUrl(sid, profile), "spss-data.csv"), ut("an.matrixExported"));
   const downloadSpssSyntax = (sid: string) =>
     run(() => download(api.spssSyntaxUrl(sid, profile), "syntax.sps"), ut("an.syntaxExported"));
   const downloadCodebook = (sid: string) =>
     run(() => download(api.codebookUrl(sid, profile), "codebook.csv"), "Codebook выгружен");
+  const downloadManifest = (sid: string) =>
+    run(() => download(api.manifestUrl(sid, profile, purpose), "manifest.json"), ut("rep.manifestDone"));
+  const downloadScript = (sid: string, ext: "r" | "py") =>
+    run(() => download(api.loadScriptUrl(sid, ext, profile), `load.${ext}`), ut("rep.scriptDone"));
   const downloadLong = (sid: string) =>
     run(() => download(api.longUrl(sid, profile), "long.csv"), "Long-format выгружен");
   const [tab, setTab] = useState<Tab>("overview");
@@ -195,6 +200,18 @@ export default function SurveyAnalyticsPage() {
               <span className="hint">{ut("an.exportsHint")}</span>
             </div>
             <div className="row">
+              {/*
+                Цель выгрузки — не формальность: «кто и когда» без «зачем» не
+                отвечает ни на один вопрос разбора через год.
+              */}
+              <label className="field" style={{ margin: 0, minWidth: 220 }}>
+                <span>{ut("rep.purpose")}</span>
+                <input
+                  value={purpose}
+                  onChange={(e) => setPurpose(e.target.value)}
+                  placeholder={ut("rep.purposePlaceholder")}
+                />
+              </label>
               <label className="field" style={{ margin: 0 }}>
                 <span>{ut("an.profile")}</span>
                 <select value={profile} onChange={(e) => setProfile(e.target.value as never)}>
@@ -210,6 +227,16 @@ export default function SurveyAnalyticsPage() {
               <button onClick={() => downloadLong(data.surveyId)} title={ut("an.longHint")}>
                 Long-format
               </button>
+              {/*
+                Манифест и скрипты загрузки — рядом с выгрузкой, а не в
+                документации: воспроизводимость обеспечивают тем, что забирают
+                вместе с данными, а не тем, о чём вспоминают через год.
+              */}
+              <button onClick={() => downloadManifest(data.surveyId)} title={ut("rep.manifestHint")}>
+                {ut("rep.manifest")}
+              </button>
+              <button onClick={() => downloadScript(data.surveyId, "r")}>R</button>
+              <button onClick={() => downloadScript(data.surveyId, "py")}>Python</button>
               <Link className="btn" to={`/surveys/${data.surveyId}/blank`}>{ut("an.blank")}</Link>
               <Link className="btn" to={`/surveys/${data.surveyId}/key`}>{ut("an.keys")}</Link>
             </div>
