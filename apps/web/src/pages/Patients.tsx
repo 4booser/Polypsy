@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
@@ -131,6 +132,7 @@ export function PatientList() {
 
 export function PatientDynamics() {
   const { ut } = useLang();
+  const [equating, setEquating] = useState(false);
   const { userId } = useParams<{ userId: string }>();
   const { run } = useAction();
   const { data, error } = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId });
@@ -178,6 +180,25 @@ export function PatientDynamics() {
           ) : null}
 
           <Hint id="stens" text="hint.stens" />
+
+          {/*
+            Сведение версий предлагается только там, где версии действительно
+            разные, и никогда не включается само: оно опирается на допущение о
+            сопоставимости выборок, а знает о нём человек, а не программа.
+          */}
+          {sv.scales.some((sc) => sc.equated?.length) ? (
+            <div className="card">
+              <label className="row tight">
+                <input
+                  type="checkbox"
+                  checked={equating}
+                  onChange={(e) => setEquating(e.target.checked)}
+                />
+                <strong>{ut("eq.title")}</strong>
+              </label>
+              <p className="hint" style={{ marginBottom: 0 }}>{ut("eq.hint")}</p>
+            </div>
+          ) : null}
           <div className="grid cols-2">
             {sv.scales.map((sc) => {
               const last = sc.points.at(-1);
@@ -199,7 +220,7 @@ export function PatientDynamics() {
                       label: sc.title,
                       points: sc.points.map((p) => ({
                         x: day(p.submittedAt),
-                        y: p.rawScore,
+                        y: equating ? equatedValue(p, sc.equated) : p.rawScore,
                         tone: p.severity ? severityColor[p.severity] : undefined,
                         /*
                          * Полоса ошибки измерения. Без неё 62 и 65 выглядят
@@ -260,6 +281,22 @@ export function PatientDynamics() {
  * Дельта без RCI вводит в заблуждение: сдвиг на 13 T-баллов при широком
  * разбросе выборки — шум, а на 0.23 доли при α=0.92 — реальное изменение.
  */
+/**
+ * Балл, приведённый к версии последнего замера.
+ *
+ * Если для версии этой точки коэффициентов нет — балл остаётся своим. Это
+ * лучше, чем прятать точку: пропуск в ряду читается как «замера не было», а
+ * замер был, просто свести его не из чего.
+ */
+function equatedValue(
+  point: { rawScore: number; versionNo?: number | null },
+  rules: { fromVersion: number; slope: number; intercept: number }[] | null | undefined,
+): number {
+  const rule = rules?.find((r) => r.fromVersion === point.versionNo);
+  if (!rule) return point.rawScore;
+  return Math.round((rule.slope * point.rawScore + rule.intercept) * 100) / 100;
+}
+
 function rciHint(
   sc: {
     delta: number | null;

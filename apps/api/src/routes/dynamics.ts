@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { ageAt, itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
+import { ageAt, equate, itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
@@ -201,16 +201,35 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   // нормативная выборка: все баллы по субшкалам с тем же кодом в той же методике
   const sampleByKey = new Map<string, number[]>();
   const allScores = await db
-    .select({ score: responseScores, surveyId: responses.surveyId, scaleCode: scales.code })
+    .select({
+      score: responseScores,
+      surveyId: responses.surveyId,
+      scaleCode: scales.code,
+      versionId: responses.versionId,
+    })
     .from(responseScores)
     .innerJoin(responses, eq(responses.id, responseScores.responseId))
     .innerJoin(scales, eq(scales.id, responseScores.scaleId))
     .where(and(inArray(responses.surveyId, surveyIds), eq(responses.status, "completed")));
+
+  /*
+   * Та же выборка, но разложенная по версиям: из неё считаются моменты для
+   * приведения баллов между версиями. Отдельный запрос был бы вторым проходом
+   * по тем же строкам.
+   */
+  const byVersionKey = new Map<string, number[]>();
   for (const row of allScores) {
     const key = `${row.surveyId}:${row.scaleCode}`;
     const list = sampleByKey.get(key) ?? [];
     list.push(row.score.value);
     sampleByKey.set(key, list);
+
+    if (row.versionId) {
+      const vk = `${key}:${row.versionId}`;
+      const vlist = byVersionKey.get(vk) ?? [];
+      vlist.push(row.score.value);
+      byVersionKey.set(vk, vlist);
+    }
   }
 
   const scoresByResponse = new Map<string, typeof scoreRows>();
@@ -353,6 +372,60 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
 
       for (const [code, entry] of byCode.entries()) {
         entry.points.sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
+
+        /*
+         * Приведение баллов к версии последнего замера.
+         *
+         * Версия иммутабельна, и это правильно, но следствие до сих пор
+         * замалчивалось: баллы разных версий формально несравнимы, а график
+         * рисует их в один ряд — правку одного пункта видно как «динамику».
+         *
+         * Коэффициенты отдаются вместе с приведённым баллом, а не вместо
+         * него: приведение опирается на допущение о сопоставимости выборок, и
+         * знает о нём только человек, который помнит, менялся ли контингент.
+         */
+        const versionIdsOfPoints = new Set(
+          list.map((r) => r.versionId).filter(Boolean) as string[],
+        );
+        const targetVersionId = list
+          .slice()
+          .sort((a, b) =>
+            (a.submittedAt ?? a.startedAt).localeCompare(b.submittedAt ?? b.startedAt),
+          )
+          .at(-1)?.versionId;
+
+        if (versionIdsOfPoints.size > 1 && targetVersionId) {
+          const momentsOf = (versionId: string) => {
+            const values = byVersionKey.get(`${surveyId}:${code}:${versionId}`) ?? [];
+            if (!values.length) return null;
+            return {
+              version: versionNoById.get(versionId) ?? 0,
+              n: values.length,
+              mean: values.reduce((a, b) => a + b, 0) / values.length,
+              sd: Math.sqrt(variance(values)),
+            };
+          };
+
+          const to = momentsOf(targetVersionId);
+          if (to) {
+            entry.equated = [];
+            for (const versionId of versionIdsOfPoints) {
+              if (versionId === targetVersionId) continue;
+              const from = momentsOf(versionId);
+              const eq = from && to ? equate(from, to) : null;
+              if (!eq) continue;
+              entry.equated.push({
+                fromVersion: eq.from.version,
+                toVersion: eq.to.version,
+                slope: round(eq.slope),
+                intercept: round(eq.intercept),
+                fromN: eq.from.n,
+                toN: eq.to.n,
+              });
+            }
+            if (!entry.equated.length) entry.equated = null;
+          }
+        }
         if (entry.points.length >= 2) {
           const first = entry.points[0]!.rawScore;
           const last = entry.points[entry.points.length - 1]!.rawScore;

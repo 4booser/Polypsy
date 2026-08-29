@@ -1169,3 +1169,38 @@ describe("пакет заключений", () => {
     expect(foreign.body.items).toEqual([]);
   });
 });
+
+describe("сведение версий", () => {
+  test("одна версия — коэффициентов нет", async () => {
+    /*
+     * Приводить нечего: все замеры сделаны на одной версии, и «коэффициент 1»
+     * здесь был бы ответом на незаданный вопрос.
+     */
+    const person = await makeUser("user", `eq-one-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await submitSurvey(surveyInA, person.token);
+
+    const card = await api(`/api/dynamics/respondents/${person.id}`, adminA.token);
+    for (const sv of card.body.surveys) {
+      for (const sc of sv.scales) {
+        expect(sc.equated ?? null).toBeNull();
+      }
+    }
+  });
+
+  test("коэффициенты приходят вместе с размерами выборок", async () => {
+    /*
+     * Решение показывать приведённый балл принимает человек, который знает,
+     * менялся ли контингент. Значит ему нужны основания, а не одно число.
+     */
+    const { equate } = await import("@quizzy/shared");
+    const eq = equate(
+      { version: 1, n: 120, mean: 20, sd: 5 },
+      { version: 2, n: 90, mean: 24, sd: 6 },
+    )!;
+    expect(eq.from.n).toBe(120);
+    expect(eq.to.n).toBe(90);
+    // +1 SD в старой версии остаётся +1 SD в новой
+    expect(eq.slope * 25 + eq.intercept).toBeCloseTo(30, 6);
+  });
+});
