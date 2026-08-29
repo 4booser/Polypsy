@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   doublePrecision,
   index,
   integer,
@@ -7,7 +8,6 @@ import {
   pgTable,
   primaryKey,
   text,
-  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -21,7 +21,25 @@ import type { LocalizedText } from "@quizzy/shared";
 /** Локализованный текст: { uk, ru }. Хранится как jsonb, читается через t() */
 const localized = (name: string) => jsonb(name).$type<LocalizedText>();
 
-const timestampCol = (name: string) => timestamp(name, { withTimezone: true, mode: "string" });
+/**
+ * Метка времени. Из базы всегда выходит в ISO.
+ *
+ * Postgres отдаёт timestamptz текстом вида «2026-08-26 17:00:00+03», а весь
+ * остальной код живёт в ISO («2026-08-26T14:00:00.000Z»). Лексикографное
+ * сравнение этих форм врёт: пробел меньше «T», поэтому любая метка из базы
+ * «меньше» любой ISO-метки того же дня. Это однажды уронило киоск («сеанс
+ * истёк» сразу после создания) и молча помечало просроченным каждый шаг
+ * маршрута со сроком — включая назначенный на две недели вперёд.
+ *
+ * Помощник `parseTs` спасал только тех, кто помнил его позвать. Здесь —
+ * граница с базой: наружу выходит ровно один вид метки, и сравнить
+ * неправильно больше нечего.
+ */
+const timestampCol = customType<{ data: string; driverData: string }>({
+  dataType: () => "timestamp with time zone",
+  fromDriver: (value) => new Date(value).toISOString(),
+  toDriver: (value) => value,
+});
 
 export const users = pgTable(
   "users",
@@ -71,7 +89,7 @@ export const users = pgTable(
     specialty: text("specialty"),
     rank: text("rank"),
     role: text("role", { enum: ["superadmin", "admin", "user"] }).notNull().default("user"),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({ emailIdx: uniqueIndex("users_email_idx").on(t.email) }),
 );
@@ -100,7 +118,7 @@ export const surveyGroups = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({ positionIdx: index("groups_position_idx").on(t.position) }),
 );
@@ -119,7 +137,7 @@ export const groupAdmins = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     addedBy: text("added_by").references(() => users.id, { onDelete: "set null" }),
-    addedAt: timestampCol("added_at").notNull().defaultNow(),
+    addedAt: timestampCol("added_at").notNull().default(sql`now()`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.groupId, t.userId] }),
@@ -246,8 +264,8 @@ export const surveys = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     /** Действующая версия — её видят проходящие */
     currentVersionId: text("current_version_id"),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
-    updatedAt: timestampCol("updated_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
     publishedAt: timestampCol("published_at"),
   },
   (t) => ({
@@ -281,7 +299,7 @@ export const surveyAccess = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     grantedBy: text("granted_by").references(() => users.id, { onDelete: "set null" }),
-    grantedAt: timestampCol("granted_at").notNull().defaultNow(),
+    grantedAt: timestampCol("granted_at").notNull().default(sql`now()`),
     /** Срок действия назначения — после него методика снова скрыта */
     expiresAt: timestampCol("expires_at"),
     note: text("note"),
@@ -302,7 +320,7 @@ export const surveyVersions = pgTable(
     version: integer("version").notNull(),
     note: text("note"),
     createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     surveyIdx: index("versions_survey_idx").on(t.surveyId),
@@ -601,7 +619,7 @@ export const responses = pgTable(
       .default("completed"),
     /** Версия методики, которую респондент реально видел */
     versionId: text("version_id").references(() => surveyVersions.id, { onDelete: "set null" }),
-    startedAt: timestampCol("started_at").notNull().defaultNow(),
+    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
     submittedAt: timestampCol("submitted_at"),
     /** Момент последнего автосохранения черновика */
     lastSavedAt: timestampCol("last_saved_at"),
@@ -750,7 +768,7 @@ export const auditLog = pgTable(
   "audit_log",
   {
     id: text("id").primaryKey(),
-    at: timestampCol("at").notNull().defaultNow(),
+    at: timestampCol("at").notNull().default(sql`now()`),
     /*
      * RESTRICT, а не SET NULL: actor_id входит в хэш записи, и обнуление
      * ссылки при удалении пользователя переписало бы журнал — то есть порвало
@@ -830,9 +848,9 @@ export const alertCases = pgTable(
       .notNull()
       .references(() => surveys.id, { onDelete: "cascade" }),
 
-    openedAt: timestampCol("opened_at").notNull().defaultNow(),
+    openedAt: timestampCol("opened_at").notNull().default(sql`now()`),
     /** Время последней входящей тревоги: по нему решается, продлевать ли окно */
-    lastAlertAt: timestampCol("last_alert_at").notNull().defaultNow(),
+    lastAlertAt: timestampCol("last_alert_at").notNull().default(sql`now()`),
     /** Самая тяжёлая из входящих: случай не легче худшего своего сигнала */
     severity: text("severity", { enum: ["moderate", "severe"] }).notNull().default("severe"),
 
@@ -893,7 +911,7 @@ export const riskAlerts = pgTable(
     caseId: text("case_id").references(() => alertCases.id, { onDelete: "cascade" }),
     label: text("label").notNull(),
     severity: text("severity", { enum: ["moderate", "severe"] }).notNull().default("severe"),
-    at: timestampCol("at").notNull().defaultNow(),
+    at: timestampCol("at").notNull().default(sql`now()`),
     acknowledgedBy: text("acknowledged_by").references(() => users.id, { onDelete: "set null" }),
     acknowledgedAt: timestampCol("acknowledged_at"),
     note: text("note"),
@@ -942,7 +960,7 @@ export const batteries = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     groupIdx: index("batteries_group_idx").on(t.groupId),
@@ -979,7 +997,7 @@ export const batteryAssignments = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     assignedBy: text("assigned_by").references(() => users.id, { onDelete: "set null" }),
-    assignedAt: timestampCol("assigned_at").notNull().defaultNow(),
+    assignedAt: timestampCol("assigned_at").notNull().default(sql`now()`),
     /** Срок, к которому батарея должна быть пройдена */
     dueAt: timestampCol("due_at"),
     /** Проставляется, когда пройдены все обязательные методики */
@@ -1028,7 +1046,7 @@ export const schedules = pgTable(
     intervalDays: integer("interval_days").notNull(),
     /** Сколько дней даётся на прохождение с момента выдачи */
     dueDays: integer("due_days").notNull().default(14),
-    startsAt: timestampCol("starts_at").notNull().defaultNow(),
+    startsAt: timestampCol("starts_at").notNull().default(sql`now()`),
     /** Дата окончания: после неё расписание больше не срабатывает */
     endsAt: timestampCol("ends_at"),
     active: boolean("active").notNull().default(true),
@@ -1037,7 +1055,7 @@ export const schedules = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     dueIdx: index("schedules_due_idx").on(t.active, t.nextRunAt),
@@ -1073,7 +1091,7 @@ export const scheduleRuns = pgTable(
     scheduleId: text("schedule_id")
       .notNull()
       .references(() => schedules.id, { onDelete: "cascade" }),
-    ranAt: timestampCol("ran_at").notNull().defaultNow(),
+    ranAt: timestampCol("ran_at").notNull().default(sql`now()`),
     /** Сколько назначений создано */
     assigned: integer("assigned").notNull().default(0),
     /** Сколько пропущено: у человека уже висит незакрытое назначение */
@@ -1103,7 +1121,7 @@ export const refreshTokens = pgTable(
     tokenHash: text("token_hash").notNull(),
     /** Семья: цепочка перевыпусков одного логина, отзывается целиком */
     familyId: text("family_id").notNull(),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     expiresAt: timestampCol("expires_at").notNull(),
     /** Погашен обычной ротацией */
     rotatedAt: timestampCol("rotated_at"),
@@ -1127,7 +1145,7 @@ export const loginAttempts = pgTable(
     id: text("id").primaryKey(),
     email: text("email").notNull(),
     ip: text("ip"),
-    at: timestampCol("at").notNull().defaultNow(),
+    at: timestampCol("at").notNull().default(sql`now()`),
   },
   (t) => ({
     emailIdx: index("login_attempts_email_idx").on(t.email, t.at),
@@ -1161,7 +1179,7 @@ export const invites = pgTable(
     usedCount: integer("used_count").notNull().default(0),
     expiresAt: timestampCol("expires_at").notNull(),
     revokedAt: timestampCol("revoked_at"),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     hashIdx: uniqueIndex("invites_hash_idx").on(t.tokenHash),
@@ -1179,7 +1197,7 @@ export const inviteUses = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    usedAt: timestampCol("used_at").notNull().defaultNow(),
+    usedAt: timestampCol("used_at").notNull().default(sql`now()`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.inviteId, t.userId] }),
@@ -1207,7 +1225,7 @@ export const kioskSessions = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     expiresAt: timestampCol("expires_at").notNull(),
     closedAt: timestampCol("closed_at"),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     hashIdx: uniqueIndex("kiosk_sessions_hash_idx").on(t.tokenHash),
@@ -1224,7 +1242,7 @@ export const kioskParticipants = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    startedAt: timestampCol("started_at").notNull().defaultNow(),
+    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
     finishedAt: timestampCol("finished_at"),
   },
   (t) => ({
@@ -1248,7 +1266,7 @@ export const alertNotifications = pgTable(
       .notNull()
       .references(() => riskAlerts.id, { onDelete: "cascade" }),
     kind: text("kind", { enum: ["initial", "escalation"] }).notNull(),
-    sentAt: timestampCol("sent_at").notNull().defaultNow(),
+    sentAt: timestampCol("sent_at").notNull().default(sql`now()`),
     /** Кому ушло: email-адреса через запятую (для разбора инцидентов) */
     recipients: text("recipients").notNull(),
     /** none — SMTP не настроен, уведомление только в журнале */
@@ -1299,7 +1317,7 @@ export const caseConferences = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     userIdx: index("case_conferences_user_idx").on(t.userId),
@@ -1321,7 +1339,7 @@ export const conferenceOpinions = pgTable(
     /** Шифруется вместе с текстом решения */
     text: text("text").notNull(),
     kind: text("kind", { enum: ["opinion", "dissent"] }).notNull().default("opinion"),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     conferenceIdx: index("conference_opinions_conference_idx").on(t.conferenceId, t.createdAt),
@@ -1349,8 +1367,8 @@ export const pushTokens = pgTable(
     token: text("token").notNull(),
     platform: text("platform", { enum: ["ios", "android", "web"] }).notNull(),
     /** Когда устройство последний раз выходило на связь: мёртвые чистятся */
-    lastSeenAt: timestampCol("last_seen_at").notNull().defaultNow(),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    lastSeenAt: timestampCol("last_seen_at").notNull().default(sql`now()`),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     tokenIdx: uniqueIndex("push_tokens_token_idx").on(t.token),
@@ -1375,7 +1393,7 @@ export const pushDeliveries = pgTable(
     /** Ключ события: `assignment:<id>`, `alert:<id>` — по нему и дедупликация */
     eventKey: text("event_key").notNull(),
     kind: text("kind").notNull(),
-    sentAt: timestampCol("sent_at").notNull().defaultNow(),
+    sentAt: timestampCol("sent_at").notNull().default(sql`now()`),
     ok: boolean("ok").notNull().default(true),
     error: text("error"),
   },
@@ -1424,7 +1442,7 @@ export const treatmentGoals = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     closedAt: timestampCol("closed_at"),
   },
   (t) => ({
@@ -1458,7 +1476,7 @@ export const safetyPlans = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     /** Когда план последний раз пересматривали вместе с человеком */
     reviewedAt: timestampCol("reviewed_at"),
   },
@@ -1500,7 +1518,7 @@ export const patientNotes = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     signedAt: timestampCol("signed_at"),
     signedBy: text("signed_by").references(() => users.id, { onDelete: "restrict" }),
   },
@@ -1530,7 +1548,7 @@ export const pathways = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({ groupIdx: index("pathways_group_idx").on(t.groupId) }),
 );
@@ -1571,7 +1589,7 @@ export const pathwayInstances = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    startedAt: timestampCol("started_at").notNull().defaultNow(),
+    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
     startedBy: text("started_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -1638,7 +1656,7 @@ export const savedViews = pgTable(
     params: text("params").notNull(),
     /** Общий вид виден всем сотрудникам, личный — только владельцу */
     shared: boolean("shared").notNull().default(false),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     ownerScopeIdx: index("saved_views_owner_scope_idx").on(t.ownerId, t.scope),
@@ -1660,7 +1678,7 @@ export const conclusions = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     signedAt: timestampCol("signed_at"),
     signedBy: text("signed_by").references(() => users.id, { onDelete: "restrict" }),
   },
@@ -1687,7 +1705,7 @@ export const consentTexts = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     versionIdx: uniqueIndex("consent_texts_version_idx").on(t.version),
@@ -1703,7 +1721,7 @@ export const consents = pgTable(
     consentTextId: text("consent_text_id")
       .notNull()
       .references(() => consentTexts.id, { onDelete: "restrict" }),
-    acceptedAt: timestampCol("accepted_at").notNull().defaultNow(),
+    acceptedAt: timestampCol("accepted_at").notNull().default(sql`now()`),
     ip: text("ip"),
   },
   (t) => ({
@@ -1746,7 +1764,7 @@ export const referrals = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     updatedAt: timestampCol("updated_at"),
   },
   (t) => ({
@@ -1804,7 +1822,7 @@ export const presence = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     resource: text("resource").notNull(),
-    seenAt: timestampCol("seen_at").notNull().defaultNow(),
+    seenAt: timestampCol("seen_at").notNull().default(sql`now()`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.resource] }),
@@ -1835,8 +1853,8 @@ export const decisionRules = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
-    updatedAt: timestampCol("updated_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
   },
   (t) => ({
     groupIdx: index("decision_rules_group_idx").on(t.groupId, t.enabled),
@@ -1870,7 +1888,7 @@ export const ruleHits = pgTable(
     decidedBy: text("decided_by").references(() => users.id, { onDelete: "set null" }),
     decidedAt: timestampCol("decided_at"),
     decisionNote: text("decision_note"),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     statusIdx: index("rule_hits_status_idx").on(t.status, t.createdAt),
@@ -1892,7 +1910,7 @@ export const dutyShifts = pgTable(
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().defaultNow(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     windowIdx: index("duty_shifts_window_idx").on(t.startsAt, t.endsAt),

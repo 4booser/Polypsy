@@ -63,6 +63,10 @@ dynamicsRoutes.get("/respondents", async (c) => {
       anonymous: users.anonymous,
       pseudonym: users.pseudonym,
       email: users.email,
+      // подразделение и пол — для фасетов списка: фильтровать по ним нужно
+      // постоянно, а второй запрос за теми же людьми был бы чистой тратой
+      unit: users.unit,
+      sex: users.sex,
     })
     .from(responses)
     .innerJoin(users, eq(users.id, responses.userId))
@@ -75,6 +79,8 @@ dynamicsRoutes.get("/respondents", async (c) => {
       users.anonymous,
       users.pseudonym,
       users.email,
+      users.unit,
+      users.sex,
     )
     /*
      * Курсор проверяется на агрегате, а не на строках прохождений.
@@ -94,6 +100,8 @@ dynamicsRoutes.get("/respondents", async (c) => {
     email: r.email,
     count: Number(r.count),
     last: r.last,
+    unit: r.unit,
+    sex: r.sex as "male" | "female" | null,
   }));
   const matched = search
     ? named.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(search))

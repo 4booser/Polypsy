@@ -46,11 +46,39 @@ export function PatientList() {
           csvName={ut("pt.patients")}
           stateKey="patients"
           initialSort={{ key: "last", desc: true }}
+          facetNote={
+            page.hasMore ? `${ut("tbl.facetsOnLoaded")} ${rows.length}` : undefined
+          }
+          facets={[
+            { key: "unit", label: ut("person.unit"), valueOf: (r) => r.unit },
+            {
+              key: "sex",
+              label: ut("person.sex"),
+              valueOf: (r) =>
+                r.sex === "male" ? ut("adm.male") : r.sex === "female" ? ut("adm.female") : null,
+            },
+            {
+              key: "act",
+              label: ut("pt.activity"),
+              /*
+               * Порог в тридцать дней, а не «последний месяц»: рубеж должен
+               * быть один и тот же, из какого бы дня месяца на него ни
+               * смотрели.
+               */
+              valueOf: (r) =>
+                !r.last
+                  ? null
+                  : Date.now() - new Date(r.last).getTime() < 30 * 86_400_000
+                    ? ut("pt.recent")
+                    : ut("pt.stale"),
+            },
+          ]}
           empty={<p className="muted">{ut("pt.nobodyFound")}</p>}
           columns={[
             {
               key: "name",
               header: ut("patients.name"),
+              required: true,
               sort: (r) => r.fullName,
               csv: (r) => r.fullName,
               render: (r) => (
@@ -61,8 +89,15 @@ export function PatientList() {
               ),
             },
             {
+              key: "unit",
+              header: ut("person.unit"),
+              sort: (r) => r.unit ?? "",
+              render: (r) => <span className="muted">{r.unit ?? "—"}</span>,
+            },
+            {
               key: "email",
               header: "Email",
+              hiddenByDefault: true,
               sort: (r) => r.email,
               render: (r) => <span className="muted">{r.email}</span>,
             },
