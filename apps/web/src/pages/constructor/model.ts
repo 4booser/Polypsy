@@ -227,3 +227,129 @@ export function withUids(draft: Draft): Draft {
     scales: draft.scales.map((sc) => (sc.uid ? sc : { ...sc, uid: newUid() })),
   };
 }
+
+/**
+ * Черновик как готовая методика — для проверки ключа прямо в редакторе.
+ *
+ * Перенос методики из пособия проверялся только после публикации: заполнить,
+ * сдать, посмотреть баллы, вернуться в конструктор. Здесь тот же самый движок
+ * подсчёта, что и на сервере (`computeProfile` из общего пакета), считает по
+ * черновику — значит проверка отвечает на вопрос «верен ли ключ», а не «верна
+ * ли ещё одна реализация ключа».
+ *
+ * Идентификаторы синтетические: у черновика их нет, а ключ ссылается на пункты
+ * по номеру. Номер и становится идентификатором — ровно так же, как это делает
+ * сервер при сохранении версии.
+ */
+export function draftToSurvey(draft: Draft, lang: "uk" | "ru"): SurveyFull {
+  const text = (value: Record<string, string> | null | undefined): string =>
+    value?.[lang] || value?.uk || value?.ru || "";
+
+  const questions = draft.questions.map((q, i) => ({
+    id: `q${i + 1}`,
+    surveyId: "draft",
+    versionId: "draft",
+    type: q.type as never,
+    title: text(q.title),
+    help: q.help ? text(q.help) : null,
+    required: q.required,
+    position: i,
+    sectionId: null,
+    randomizeOptions: false,
+    minValue: null,
+    maxValue: null,
+    step: null,
+    logic: [],
+    options: q.options.map((o, k) => ({
+      id: `q${i + 1}o${k + 1}`,
+      questionId: `q${i + 1}`,
+      kind: "option" as const,
+      text: text(o.text),
+      score: o.score ?? 0,
+      keyCode: o.keyCode ?? null,
+      riskFlag: o.riskFlag ?? false,
+      riskLabel: o.riskLabel ? text(o.riskLabel) : null,
+      riskSeverity: o.riskSeverity ?? null,
+      position: k,
+    })),
+  }));
+
+  const scales = draft.scales.map((sc, i) => ({
+    id: `s${i + 1}`,
+    surveyId: "draft",
+    code: sc.code,
+    title: text(sc.title),
+    description: null,
+    aggregation: (sc.aggregation ?? "sum") as never,
+    position: i,
+    kind: sc.kind as never,
+    normalization: sc.normalization as never,
+    ratioDenominator: sc.ratioDenominator ?? null,
+    validityThreshold: sc.validityThreshold ?? null,
+    validityDirection: (sc.validityDirection ?? null) as never,
+    validityMessage: sc.validityMessage ? text(sc.validityMessage) : null,
+    bands: sc.bands.map((b) => ({
+      minScore: b.minScore,
+      maxScore: b.maxScore,
+      label: text(b.label),
+      severity: b.severity as never,
+      grade: b.grade ?? null,
+      recommendation: b.recommendation ? text(b.recommendation) : null,
+      cascadeBatteryId: b.cascadeBatteryId ?? null,
+      cascadeDueDays: b.cascadeDueDays ?? null,
+      followUpDays: b.followUpDays ?? null,
+    })),
+    /*
+     * Ключ ссылается на пункт по номеру. Ссылка за пределы списка — не повод
+     * падать: в редакторе пункт могли только что удалить, и проверка обязана
+     * это показать, а не сломаться.
+     */
+    items: sc.key
+      .filter((k) => k.item >= 1 && k.item <= questions.length)
+      .map((k) => ({
+        questionId: `q${k.item}`,
+        matchKey: k.matchKey ?? null,
+        weight: k.weight ?? 1,
+      })),
+    corrections: sc.corrections.map((c) => ({
+      sourceScaleCode: c.from,
+      coefficient: c.coefficient,
+    })),
+    norms: sc.norms.map((n) => ({
+      sex: n.sex ?? null,
+      ageMin: null,
+      ageMax: null,
+      mean: n.mean,
+      sd: n.sd,
+      source: null,
+    })),
+    stenTable: sc.stenTable,
+  }));
+
+  return {
+    id: "draft",
+    groupId: draft.groupId ?? null,
+    title: text(draft.title),
+    description: draft.description ? text(draft.description) : null,
+    instructions: draft.instructions ? text(draft.instructions) : null,
+    safetyPlan: draft.safetyPlan ? text(draft.safetyPlan) : null,
+    administration: draft.administration,
+    status: "draft",
+    visibility: draft.visibility,
+    scoringEnabled: draft.scoringEnabled,
+    allowRetake: draft.allowRetake,
+    showProgress: draft.showProgress,
+    allowBack: draft.allowBack,
+    anonymous: draft.anonymous,
+    randomizeQuestions: draft.randomizeQuestions,
+    timeLimitSec: draft.timeLimitSec ?? null,
+    tooFastMs: draft.tooFastMs ?? null,
+    alertEscalateMinutes: draft.alertEscalateMinutes ?? null,
+    showResultsToPatient: draft.showResultsToPatient ?? false,
+    sections: [],
+    questions,
+    scales,
+    versionId: null,
+    versionNumber: 0,
+  } as unknown as SurveyFull;
+}
