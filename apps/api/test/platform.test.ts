@@ -1063,3 +1063,94 @@ describe("устройства и удалённое стирание", () => {
     expect(bySuper.status).toBe(200);
   });
 });
+
+describe("что произошло, пока меня не было", () => {
+  test("новые случаи попадают в сводку, старые — нет", async () => {
+    /*
+     * Сводка считается по самим данным, а не читается из второго журнала
+     * событий: журнал пришлось бы писать при каждом изменении, и однажды он
+     * разошёлся бы с реальностью.
+     */
+    const cutoff = new Date().toISOString();
+    await Bun.sleep(20);
+
+    const person = await makeUser("user", `missed-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+
+    const { alertCases } = await import("../src/db/schema");
+    await db.insert(alertCases).values({
+      id: crypto.randomUUID(),
+      userId: person.id,
+      surveyId: surveyInA,
+      severity: "severe",
+    });
+
+    const after = await api(`/api/missed?since=${encodeURIComponent(cutoff)}`, adminA.token);
+    expect(after.status).toBe(200);
+    const opened = after.body.groups.find((g: { kind: string }) => g.kind === "case.opened");
+    expect(opened.count).toBeGreaterThanOrEqual(1);
+
+    // сдвигаем точку отсчёта вперёд — тот же случай уже не новость
+    const later = await api(
+      `/api/missed?since=${encodeURIComponent(new Date().toISOString())}`,
+      adminA.token,
+    );
+    expect(
+      (later.body.groups.find((g: { kind: string }) => g.kind === "case.opened")?.count ?? 0),
+    ).toBe(0);
+  });
+
+  test("свои собственные разборы в сводку не попадают", async () => {
+    /*
+     * Человек помнит, что сделал сам. Показывать это в сводке «пока тебя не
+     * было» значит разбавлять её тем, что он и так знает.
+     */
+    const cutoff = new Date().toISOString();
+    await Bun.sleep(20);
+
+    const person = await makeUser("user", `missed-own-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const { alertCases } = await import("../src/db/schema");
+    const caseId = crypto.randomUUID();
+    await db.insert(alertCases).values({
+      id: caseId,
+      userId: person.id,
+      surveyId: surveyInA,
+      severity: "moderate",
+    });
+
+    const done = await api(`/api/alert-cases/${caseId}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ outcome: "confirmed", note: "разобрал сам" }),
+    });
+    expect(done.status).toBe(200);
+
+    const mine = await api(`/api/missed?since=${encodeURIComponent(cutoff)}`, adminA.token);
+    const resolved = mine.body.groups.find((g: { kind: string }) => g.kind === "case.resolved");
+    expect(resolved?.items.some((i: { id: string }) => i.id === caseId) ?? false).toBe(false);
+
+    // а коллеге тот же разбор виден
+    const theirs = await api(`/api/missed?since=${encodeURIComponent(cutoff)}`, root.token);
+    const seen = theirs.body.groups.find((g: { kind: string }) => g.kind === "case.resolved");
+    expect(seen?.items.some((i: { id: string }) => i.id === caseId) ?? false).toBe(true);
+  });
+
+  test("чужая зона в сводку не попадает", async () => {
+    const cutoff = new Date().toISOString();
+    await Bun.sleep(20);
+
+    const person = await makeUser("user", `missed-foreign-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const { alertCases } = await import("../src/db/schema");
+    await db.insert(alertCases).values({
+      id: crypto.randomUUID(),
+      userId: person.id,
+      surveyId: surveyInA,
+      severity: "severe",
+    });
+
+    const foreign = await api(`/api/missed?since=${encodeURIComponent(cutoff)}`, adminB.token);
+    const opened = foreign.body.groups.find((g: { kind: string }) => g.kind === "case.opened");
+    expect(opened?.count ?? 0).toBe(0);
+  });
+});

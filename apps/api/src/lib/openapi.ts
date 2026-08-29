@@ -143,6 +143,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/spss/surveys/:id/manifest.json": { summary: "Снимок параметров выгрузки: версии, нормы, профиль обезличивания", access: "staff" },
   "GET /api/spss/surveys/:id/load/:ext": { summary: "Готовый скрипт загрузки выгрузки в R или Python", access: "staff" },
   "GET /api/data-quality/surveys/:id/items": { summary: "Тепловая карта пунктов: время ответа и серии одинаковых ответов", access: "staff" },
+  "GET /api/missed": { summary: "Что произошло, пока меня не было: новые случаи, разобранные другими, направления, расписания", access: "staff" },
   "GET /api/search/notes": { summary: "Поиск по записям приёма через слепой индекс; текст запроса в журнал не пишется", access: "staff" },
   "POST /api/cohorts/preview": { summary: "Размер и распределения когорты; малые ячейки подавляются", access: "staff" },
   "POST /api/cohorts/members": { summary: "Когорта поимённо — отдельное действие и отдельная запись в журнале", access: "staff" },

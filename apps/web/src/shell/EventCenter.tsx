@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { onAppEvent, type AppEvent } from "../events";
 import { useLang } from "../lang";
+import { api } from "../api";
+import { useAuth } from "../auth";
+import { useResource } from "../useResource";
 import { dateTime, severityColor } from "../format";
 
 /**
@@ -12,18 +15,45 @@ import { dateTime, severityColor } from "../format";
  * взятый коллегой случай — там же, и заметить изменение можно было лишь по
  * счётчику в меню.
  *
- * Лента живёт только в памяти вкладки и не переживает перезагрузку: это
- * оповещение, а не журнал. Журнал — отдельный экран, и он не теряет ничего.
+ * Панель показывает две разные вещи, и это различие важно.
+ *
+ * Живая лента — то, что пришло по каналу, пока вкладка открыта. Она в памяти и
+ * перезагрузку не переживает: это оповещение, а не журнал.
+ *
+ * Сводка «пока вас не было» — запрос к серверу за тем, что изменилось с
+ * момента, когда человек в прошлый раз нажал «прочитано». Она считается по
+ * самим данным, а не читается из второго журнала событий: журнал пришлось бы
+ * писать при каждом изменении, и однажды он разошёлся бы с реальностью —
+ * случай закрыт, а в ленте открыт.
  */
 
 const LIMIT = 30;
 
+const GROUP_KEY = {
+  "case.opened": "ec.caseOpened",
+  "case.resolved": "ec.caseResolved",
+  "referral.created": "ec.referralCreated",
+  "schedule.run": "ec.scheduleRun",
+} as const;
+
 export function EventCenter() {
   const { ut } = useLang();
+  const { user, refreshUser } = useAuth();
   const [events, setEvents] = useState<AppEvent[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  /*
+   * Точка отсчёта: когда человек в прошлый раз сказал «прочитано». Если такой
+   * отметки нет — берём сутки назад, а не начало времён: первое открытие
+   * панели не должно вываливать всю историю учреждения.
+   */
+  const since =
+    user?.workspace?.eventsSeenAt ?? new Date(Date.now() - 86_400_000).toISOString();
+
+  const missed = useResource(() => api.missed(since), [since]);
+  const missedCount = (missed.data?.groups ?? []).reduce((n, g) => n + g.count, 0);
 
   useEffect(
     () =>
@@ -64,13 +94,77 @@ export function EventCenter() {
         }}
       >
         <IconBell />
-        {unread > 0 ? <span className="events-dot">{unread > 9 ? "9+" : unread}</span> : null}
+        {/* счётчик считает и пропущенное, и пришедшее при открытой вкладке */}
+        {unread + missedCount > 0 ? (
+          <span className="events-dot">{unread + missedCount > 9 ? "9+" : unread + missedCount}</span>
+        ) : null}
       </button>
 
       {open ? (
         <div className="events-panel" role="dialog" aria-label={ut("ev.title")}>
           <div className="events-head">
-            <strong>{ut("ev.title")}</strong>
+            <strong>{ut("ec.missed")}</strong>
+            <span className="hint">
+              {ut("ec.since")} {dateTime(since)}
+            </span>
+          </div>
+
+          {missedCount === 0 ? (
+            <p className="events-empty">{ut("ec.nothing")}</p>
+          ) : (
+            <div className="events-list">
+              {(missed.data?.groups ?? []).map((g) => (
+                <div key={g.kind}>
+                  <div className="events-group">
+                    {ut(GROUP_KEY[g.kind])} · {g.count}
+                  </div>
+                  {g.items.slice(0, 5).map((item) => (
+                    <Link
+                      key={item.id}
+                      to={item.href}
+                      className="events-row"
+                      onClick={() => setOpen(false)}
+                    >
+                      <i
+                        className="events-mark"
+                        style={{
+                          background: item.severity
+                            ? severityColor[item.severity]
+                            : "var(--border-strong)",
+                        }}
+                      />
+                      <span className="grow">{item.title}</span>
+                      <span className="muted">{dateTime(item.at).slice(5, 16)}</span>
+                    </Link>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {missedCount > 0 ? (
+            <button
+              className="ghost"
+              style={{ width: "100%" }}
+              onClick={() => {
+                /*
+                 * «Прочитано» сдвигает точку отсчёта на сейчас. Отдельной
+                 * отметки на каждое событие нет намеренно: человек читает
+                 * сводку целиком, и учёт по одному пункту создавал бы работу
+                 * там, где её нет.
+                 */
+                void api
+                  .saveWorkspace({ eventsSeenAt: new Date().toISOString() })
+                  .then(refreshUser)
+                  .catch(() => {});
+              }}
+            >
+              {ut("ec.markRead")}
+            </button>
+          ) : null}
+
+          <div className="events-head">
+            <strong>{ut("ec.live")}</strong>
             <span className="hint">{ut("ev.sessionOnly")}</span>
           </div>
           {events.length === 0 ? (

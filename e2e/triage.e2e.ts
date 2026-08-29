@@ -110,6 +110,19 @@ test("новая тревога догоняет открытый экран б�
    * показывает страницу в тридцать случаев, а случай на человека открывается
    * один — повторный сигнал того же обследуемого не удлиняет список.
    */
+  /*
+   * Отметку «прочитано» ставим сами: счётчик теперь считает и пропущенное с
+   * прошлого раза, и предположение «на старте пусто» зависело бы от того,
+   * насколько свежи данные посева. Тест задаёт своё условие, а не надеется на
+   * него.
+   */
+  const staffToken = await page.evaluate(() => localStorage.getItem("quizzy.web.token"));
+  await page.request.put("/api/auth/me/workspace", {
+    headers: { Authorization: `Bearer ${staffToken}`, "Content-Type": "application/json" },
+    data: { eventsSeenAt: new Date().toISOString() },
+  });
+  await page.reload();
+  await page.waitForSelector(".sidebar");
   await expect(page.locator(".events-dot")).toHaveCount(0);
 
   /*
