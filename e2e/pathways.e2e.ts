@@ -23,10 +23,13 @@ test("маршрут ведётся от шага до исхода", async ({ p
   const list = (await survey.json()) as { items: { id: string; title: string }[] };
   const target = list.items[0]!;
 
+  // заголовок уникален: у пациента могут быть маршруты от прошлых прогонов,
+  // и «строка этого человека» указала бы на чужой
+  const title = `Смоук ${Date.now()}`;
   const created = await page.request.post("/api/pathways", {
     headers: auth,
     data: {
-      title: { uk: `Смоук ${Date.now()}`, ru: `Смоук ${Date.now()}` },
+      title: { uk: title, ru: title },
       steps: [
         { title: { uk: "Скринінг", ru: "Скрининг" }, kind: "survey", surveyId: target.id, dueDays: 0 },
         { title: { uk: "Бесіда", ru: "Беседа" }, kind: "action", dueDays: 7 },
@@ -51,7 +54,7 @@ test("маршрут ведётся от шага до исхода", async ({ p
   await page.goto("/pathways");
   await expect(page.locator(".page-head h1")).toHaveText("Маршруты помощи");
 
-  const row = page.locator(".pw-row").filter({ hasText: person!.fullName }).first();
+  const row = page.locator(".pw-row").filter({ hasText: title }).first();
   await expect(row).toBeVisible();
   /*
    * Только что начатый маршрут не помечен просрочкой: срок «в тот же день»

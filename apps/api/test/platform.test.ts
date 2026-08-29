@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveyInB, surveys } from "./fixtures";
+import { sql } from "drizzle-orm";
+import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveyInB, surveys, users } from "./fixtures";
 
 /* Служебное: наблюдаемость, метрики, проверка входа, жизненный цикл методики */
 
@@ -904,5 +905,29 @@ describe("присутствие", () => {
 
     const seen = await api(`/api/presence?resource=${encodeURIComponent(resource)}`, adminA.token);
     expect(seen.body.others).toEqual([]);
+  });
+});
+
+describe("формат меток времени", () => {
+  test("из базы метки выходят в ISO, а не в родном формате Postgres", async () => {
+    /*
+     * Лексикографное сравнение «2026-08-29 23:59+03» и «2026-08-29T10:15Z»
+     * врёт: пробел меньше «T». Из-за этого просроченным считался каждый шаг
+     * маршрута со сроком, включая назначенный на две недели вперёд, а киоск
+     * однажды объявлял сеанс истёкшим сразу после создания.
+     *
+     * Проверяется граница с базой, а не отдельный маршрут: если разбор
+     * вернётся к родному формату, упадёт здесь, а не через полгода в отчёте.
+     */
+    const [row] = await db.execute<{ at: string }>(
+      sql`select now() at time zone 'utc' at time zone 'utc' as at`,
+    );
+    void row;
+
+    const [user] = await db.select({ at: users.createdAt }).from(users).limit(1);
+    expect(user!.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+
+    // и сравнение с текущим моментом даёт осмысленный ответ
+    expect(user!.at < new Date().toISOString()).toBe(true);
   });
 });

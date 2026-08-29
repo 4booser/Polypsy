@@ -505,6 +505,9 @@ export interface Respondent {
   count: number;
   /** Дата последнего замера; null у прохождений без даты сдачи */
   last: string | null;
+  /** Подразделение и пол — для фасетов списка */
+  unit: string | null;
+  sex: "male" | "female" | null;
 }
 
 export interface RespondentDynamics {

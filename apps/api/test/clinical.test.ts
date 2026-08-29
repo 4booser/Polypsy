@@ -368,12 +368,23 @@ describe("маршрут помощи", () => {
     const detail = await api(`/api/pathways/instances/${started.body.id}`, adminA.token);
     expect(detail.body.steps).toHaveLength(3);
 
+    /*
+     * Сравниваются календарные даты, а не смещения в миллисекундах: срок —
+     * это дата, истекающая вечером своего дня, и разница «сколько суток
+     * прошло» зависела бы от того, в котором часу запустили тест.
+     */
     const [first, second, third] = detail.body.steps;
     const day = 86_400_000;
-    const startedAt = new Date(detail.body.startedAt).getTime();
-    expect(new Date(first.dueAt).getTime() - startedAt).toBeLessThan(day);
-    expect(Math.round((new Date(second.dueAt).getTime() - startedAt) / day)).toBe(1);
-    expect(Math.round((new Date(third.dueAt).getTime() - startedAt) / day)).toBe(14);
+    const startedMs = new Date(detail.body.startedAt).getTime();
+    const dateAfter = (days: number) => new Date(startedMs + days * day).toDateString();
+    const dueDate = (step: { dueAt: string }) => new Date(step.dueAt).toDateString();
+
+    expect(dueDate(first)).toBe(dateAfter(0));
+    expect(dueDate(second)).toBe(dateAfter(1));
+    expect(dueDate(third)).toBe(dateAfter(14));
+
+    // и вечером своего дня, а не в момент старта
+    expect(new Date(first.dueAt).getHours()).toBe(23);
   });
 
   test("второй такой же маршрут не открывается", async () => {

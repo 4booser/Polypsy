@@ -11,6 +11,15 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Resource } from "../useResource";
+import {
+  applyFacets,
+  facetOptions,
+  parseFacets,
+  serializeFacets,
+  toggleFacet,
+  type Facet,
+  type FacetSelection,
+} from "./facets";
 import { useLang } from "../lang";
 
 /** Мелкие переиспользуемые части консоли: иконки, состояния, таблицы, сообщения */
@@ -537,6 +546,14 @@ export interface Column<T> {
   /** Текстовое значение для CSV; без него берётся sort, иначе колонка пропускается */
   csv?: (row: T) => string | number;
   width?: number;
+  /**
+   * Колонку нельзя скрыть. Ставится там, где без неё строка перестаёт быть
+   * узнаваемой: имя пациента, название методики. Настройка колонок нужна,
+   * чтобы убрать лишнее, а не чтобы получить таблицу из одних чисел.
+   */
+  required?: boolean;
+  /** Скрыта, пока её не включат: редкие колонки не должны загромождать вид */
+  hiddenByDefault?: boolean;
 }
 
 /**
@@ -590,6 +607,8 @@ export function DataTable<T>({
   csvName,
   stateKey,
   rowKey,
+  facets,
+  facetNote,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -610,6 +629,20 @@ export function DataTable<T>({
    * Префикс нужен потому, что на странице бывает несколько таблиц.
    */
   stateKey?: string;
+  /**
+   * Фасетные фильтры над таблицей. Со счётчиком «сколько будет» до
+   * применения: выбор вслепую заставляет пробовать варианты по одному.
+   */
+  facets?: Facet<T>[];
+  /**
+   * Приписка к фасетам о том, по чему они считают.
+   *
+   * Таблица с подгрузкой держит в памяти только загруженные строки, и счётчик
+   * «Разведрота 13» означает «13 из загруженных», а не «13 в подразделении».
+   * Без этой приписки счётчик врёт — а счётчик, которому нельзя верить, хуже
+   * его отсутствия: по нему принимают решения.
+   */
+  facetNote?: string;
 }) {
   /*
    * Большинство таблиц показывают сущности с id — берём его, не заставляя
@@ -640,12 +673,53 @@ export function DataTable<T>({
     setUrlSort(next ? `${next.key}${next.desc ? ":desc" : ""}` : "");
   };
 
-  const sorted = useMemo(() => sortRows(rows, columns, sort), [rows, sort, columns]);
+  /*
+   * Скрытые колонки живут в адресе рядом с сортировкой: тогда настроенный вид
+   * пересылается ссылкой и попадает в сохранённые виды бесплатно — они уже
+   * умеют сохранять параметры адреса.
+   */
+  const [hiddenRaw, setHiddenRaw] = useUrlState(stateKey ? `${stateKey}.cols` : "");
+  const [localHidden, setLocalHidden] = useState("");
+  const hiddenParam = stateKey ? hiddenRaw : localHidden;
+
+  const hidden = useMemo(() => {
+    if (hiddenParam) return new Set(hiddenParam.split(","));
+    return new Set(columns.filter((c) => c.hiddenByDefault).map((c) => c.key));
+  }, [hiddenParam, columns]);
+
+  const setHidden = (next: Set<string>) => {
+    const raw = [...next].join(",");
+    if (stateKey) setHiddenRaw(raw);
+    else setLocalHidden(raw);
+  };
+
+  const shown = useMemo(
+    () => columns.filter((c) => c.required || !hidden.has(c.key)),
+    [columns, hidden],
+  );
+
+  const [facetRaw, setFacetRaw] = useUrlState(stateKey && facets ? `${stateKey}.f` : "");
+  const [localFacets, setLocalFacets] = useState("");
+  const facetParam = stateKey ? facetRaw : localFacets;
+  const selection = useMemo(() => parseFacets(facetParam), [facetParam]);
+  const setSelection = (next: FacetSelection) => {
+    const raw = serializeFacets(next);
+    if (stateKey) setFacetRaw(raw);
+    else setLocalFacets(raw);
+  };
+
+  const filtered = useMemo(
+    () => (facets?.length ? applyFacets(rows, facets, selection) : rows),
+    [rows, facets, selection],
+  );
+
+  const sorted = useMemo(() => sortRows(filtered, shown, sort), [filtered, sort, shown]);
 
   if (rows.length === 0 && empty) return <>{empty}</>;
 
+  // выгружается видимый срез: то, что человек настроил, — и есть его ответ
   const exportCsv = () => {
-    const blob = new Blob([tableToCsv(sorted, columns)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([tableToCsv(sorted, shown)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -657,7 +731,7 @@ export function DataTable<T>({
   const head = (
     <thead>
       <tr>
-        {columns.map((c) => (
+        {shown.map((c) => (
           <th
             key={c.key}
             className={`${c.num ? "num" : ""} ${c.sort ? "sortable" : ""}`}
@@ -675,10 +749,38 @@ export function DataTable<T>({
     </thead>
   );
 
+  const hideable = columns.filter((c) => !c.required);
   const tools =
-    csvName && rows.length ? (
+    (csvName && rows.length) || hideable.length || facets?.length ? (
       <div className="table-tools">
-        <button onClick={exportCsv}>CSV · {rows.length}</button>
+        {facets?.length ? (
+          <FacetBar
+            rows={rows}
+            facets={facets}
+            selection={selection}
+            onChange={setSelection}
+            shownCount={sorted.length}
+            totalCount={rows.length}
+            note={facetNote}
+          />
+        ) : null}
+        <div className="row tight">
+          {hideable.length ? (
+            <ColumnPicker
+              columns={hideable}
+              hidden={hidden}
+              onToggle={(key) => {
+                const next = new Set(hidden);
+                if (next.has(key)) next.delete(key);
+                else next.add(key);
+                setHidden(next);
+              }}
+            />
+          ) : null}
+          {csvName && sorted.length ? (
+            <button onClick={exportCsv}>CSV · {sorted.length}</button>
+          ) : null}
+        </div>
       </div>
     ) : null;
 
@@ -696,7 +798,7 @@ export function DataTable<T>({
           <tbody>
             {sorted.map((row, i) => (
               <tr key={keyOf(row, i)}>
-                {columns.map((c) => (
+                {shown.map((c) => (
                   <td key={c.key} className={c.num ? "num" : ""}>
                     {c.render(row)}
                   </td>
@@ -712,7 +814,7 @@ export function DataTable<T>({
   return (
     <>
       {tools}
-      <VirtualRows sorted={sorted} columns={columns} head={head} keyOf={keyOf} />
+      <VirtualRows sorted={sorted} columns={shown} head={head} keyOf={keyOf} />
     </>
   );
 }
@@ -821,5 +923,119 @@ export function Search({
       placeholder={placeholder ?? "Поиск"}
       style={{ maxWidth: width }}
     />
+  );
+}
+
+/* ─────────── настройка колонок и фасеты ─────────── */
+
+/**
+ * Какие колонки показывать.
+ *
+ * Обязательные не предлагаются к скрытию вовсе, а не показываются серыми:
+ * список выбора должен состоять только из того, что действительно можно
+ * выбрать. Настройка живёт в адресе, поэтому переживает перезагрузку и
+ * передаётся ссылкой вместе с сортировкой.
+ */
+function ColumnPicker<T>({
+  columns,
+  hidden,
+  onToggle,
+}: {
+  columns: Column<T>[];
+  hidden: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  const { ut } = useLang();
+  const [open, setOpen] = useState(false);
+  const count = columns.filter((c) => !hidden.has(c.key)).length;
+
+  return (
+    <div className="col-picker">
+      <button
+        className="ghost"
+        aria-expanded={open}
+        aria-haspopup="true"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {ut("tbl.columns")} · {count}/{columns.length}
+      </button>
+      {open ? (
+        <>
+          {/* клик мимо закрывает: меню без этого остаётся висеть поверх работы */}
+          <div className="col-picker-veil" onClick={() => setOpen(false)} />
+          <div className="col-picker-menu" role="group" aria-label={ut("tbl.columns")}>
+            {columns.map((c) => (
+              <label key={c.key}>
+                <input
+                  type="checkbox"
+                  checked={!hidden.has(c.key)}
+                  onChange={() => onToggle(c.key)}
+                />
+                {c.header}
+              </label>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Фасеты над таблицей.
+ *
+ * У каждого варианта — счётчик «сколько строк останется». Он считается по
+ * строкам, прошедшим остальные фасеты, но не этот: иначе выбор варианта
+ * обнулял бы счётчики его соседей, и человек не увидел бы, что даст
+ * переключение.
+ */
+function FacetBar<T>({
+  rows,
+  facets,
+  selection,
+  onChange,
+  shownCount,
+  totalCount,
+  note,
+}: {
+  rows: T[];
+  facets: Facet<T>[];
+  selection: FacetSelection;
+  onChange: (next: FacetSelection) => void;
+  shownCount: number;
+  totalCount: number;
+  note?: string;
+}) {
+  const { ut } = useLang();
+  const active = Object.values(selection).some((v) => v.length);
+
+  return (
+    <div className="facets">
+      {facets.map((facet) => {
+        const options = facetOptions(rows, facets, selection, facet.key);
+        if (!options.length) return null;
+        return (
+          <div key={facet.key} className="facet">
+            <span className="facet-label">{facet.label}</span>
+            {options.slice(0, 8).map((o) => (
+              <button
+                key={o.value}
+                className={`chip${o.selected ? " active" : ""}`}
+                aria-pressed={o.selected}
+                onClick={() => onChange(toggleFacet(selection, facet.key, o.value))}
+              >
+                {o.value} <span className="facet-count">{o.count}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })}
+      {active ? (
+        <button className="ghost" onClick={() => onChange({})}>
+          {ut("tbl.resetFacets")} · {shownCount}/{totalCount}
+        </button>
+      ) : null}
+      {note ? <span className="facet-note">{note}</span> : null}
+    </div>
   );
 }
