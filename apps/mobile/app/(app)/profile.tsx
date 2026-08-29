@@ -118,7 +118,9 @@ export default function AccountScreen() {
           <Chip label={ut("mp.themeSystem")} selected={choice === "system"} onPress={() => setChoice("system")} />
           <Chip label={ut("mp.themeDark")} selected={choice === "dark"} onPress={() => setChoice("dark")} />
           <Chip label={ut("mp.themeLight")} selected={choice === "light"} onPress={() => setChoice("light")} />
+          <Chip label={ut("mp.themeNight")} selected={choice === "night"} onPress={() => setChoice("night")} />
         </Row>
+        {choice === "night" ? <Body muted>{ut("mp.themeNightHint")}</Body> : null}
       </Card>
 
       <BiometricsCard />
