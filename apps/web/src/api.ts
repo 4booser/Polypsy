@@ -578,6 +578,23 @@ export const api = {
     }>(`/api/conclusions/batch?${q}`);
   },
 
+  missed: (since: string) =>
+    request<{
+      since: string;
+      groups: {
+        kind: "case.opened" | "case.resolved" | "referral.created" | "schedule.run";
+        count: number;
+        items: {
+          id: string;
+          at: string;
+          title: string;
+          detail: string;
+          severity: "moderate" | "severe" | null;
+          href: string;
+        }[];
+      }[];
+    }>(`/api/missed?since=${encodeURIComponent(since)}`),
+
   itemQuality: (surveyId: string) =>
     request<{
       questions: { number: number; title: string }[];
