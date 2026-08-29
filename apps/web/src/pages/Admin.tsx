@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { GroupAdmin, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
+import { Devices } from "../components/Devices";
 import { useAuth } from "../auth";
 import { dateTime } from "../format";
 import { Loading, PageHead, useAction } from "../ui";
@@ -209,6 +210,7 @@ export function Users() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
+  const [devicesFor, setDevicesFor] = useState<string | null>(null);
 
   const res = useResource(() => api.users(), []);
   const load = async () => res.reload();
@@ -301,16 +303,39 @@ export function Users() {
           <thead><tr><th>{ut("adm.fullName")}</th><th>Email</th><th>{ut("adm.role")}</th><th>{ut("dq.sex")}</th><th>{ut("adm.createdAt")}</th></tr></thead>
           <tbody>
             {shown.map((u) => (
-              <tr key={u.id}>
-                <td>
-                  {u.fullName}
-                  {u.anonymous ? <span className="muted"> · без имени</span> : null}
-                </td>
-                <td className="muted">{u.email}</td>
-                <td>{ut(ROLE_KEY[u.role as keyof typeof ROLE_KEY])}</td>
-                <td className="muted">{u.sex === "male" ? ut("adm.male") : u.sex === "female" ? ut("adm.female") : "—"}</td>
-                <td className="muted">{u.createdAt.slice(0, 10)}</td>
-              </tr>
+              <Fragment key={u.id}>
+                <tr>
+                  <td>
+                    {u.fullName}
+                    {u.anonymous ? <span className="muted"> · без имени</span> : null}
+                  </td>
+                  <td className="muted">{u.email}</td>
+                  <td>{ut(ROLE_KEY[u.role as keyof typeof ROLE_KEY])}</td>
+                  <td className="muted">{u.sex === "male" ? ut("adm.male") : u.sex === "female" ? ut("adm.female") : "—"}</td>
+                  <td className="muted">
+                    {u.createdAt.slice(0, 10)}
+                    {/*
+                      Устройства раскрываются по требованию, а не висят в
+                      таблице: это сведения о человеке, и показывать их всем
+                      подряд при каждом открытии списка незачем.
+                    */}
+                    <button
+                      className="ghost"
+                      style={{ marginLeft: 8 }}
+                      onClick={() => setDevicesFor((v) => (v === u.id ? null : u.id))}
+                    >
+                      {ut("dev.title")}
+                    </button>
+                  </td>
+                </tr>
+                {devicesFor === u.id ? (
+                  <tr>
+                    <td colSpan={5}>
+                      <Devices userId={u.id} />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))}
           </tbody>
         </table>
