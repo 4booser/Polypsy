@@ -89,3 +89,41 @@ for (const theme of ["dark", "light"] as const) {
     expect(values).toMatchSnapshot(`tokens-${theme}.txt`);
   });
 }
+
+for (const theme of ["dark", "light"] as const) {
+  test(`печать читается на бумаге: тема ${theme}`, async ({ page }) => {
+    /*
+     * Браузер не печатает фон. Если в печатном режиме остаётся тёмная тема,
+     * почти белый текст ложится на белую бумагу — и отчёт выходит пустым
+     * листом. Так и было: `:root[data-theme="dark"]` перебивал печатный блок
+     * по специфичности, а тема тёмная по умолчанию.
+     *
+     * Проверяется не картинка, а сами токены: пустой лист на снимке от
+     * правильно белого листа не отличить.
+     */
+    await page.addInitScript((value) => {
+      localStorage.setItem("quizzy.theme", value);
+    }, theme);
+
+    await login(page, "psy");
+    await page.emulateMedia({ media: "print" });
+
+    const ink = await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      const parse = (name: string) => {
+        const value = style.getPropertyValue(name).trim();
+        const hex = value.length === 4
+          ? value.replace(/#(.)(.)(.)/, "#$1$1$2$2$3$3")
+          : value;
+        return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+      };
+      const luminance = (rgb: number[]) =>
+        (0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!) / 255;
+      return { text: luminance(parse("--text")), bg: luminance(parse("--bg")) };
+    });
+
+    // текст тёмный, бумага светлая — иначе печатать нечего
+    expect(ink.text).toBeLessThan(0.3);
+    expect(ink.bg).toBeGreaterThan(0.9);
+  });
+}

@@ -23,6 +23,7 @@ import {
   IconInvite,
   IconKiosk,
   IconPatients,
+  IconStack,
   IconPulse,
   IconReferral,
   IconRoute,
@@ -67,6 +68,7 @@ const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const WorklistPage = lazy(() => import("./pages/Worklist"));
 const UnitReportPage = lazy(() => import("./pages/UnitReport"));
+const ConclusionBatch = lazy(() => import("./pages/ConclusionBatch"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const Pathways = lazy(() => import("./pages/Pathways"));
@@ -283,6 +285,7 @@ export default function App() {
         <Nav to="/compare" icon={<IconCompare />}>{ut("nav.compare")}</Nav>
         <Nav to="/surveillance" icon={<IconPulse />}>{ut("nav.surveillance")}</Nav>
         <Nav to="/unit-report" icon={<IconGroup />}>{ut("nav.unitReport")}</Nav>
+        <Nav to="/conclusion-batch" icon={<IconStack />}>{ut("cbatch.title")}</Nav>
         <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>{ut("nav.cases")}</Nav>
         <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>{ut("nav.referrals")}</Nav>
         <Nav to="/pathways" icon={<IconRoute />}>{ut("pw.title")}</Nav>
@@ -396,6 +399,7 @@ export default function App() {
           <Route path="/alerts" element={<Alerts />} />
             <Route path="/worklist" element={<WorklistPage />} />
             <Route path="/unit-report" element={<UnitReportPage />} />
+            <Route path="/conclusion-batch" element={<ConclusionBatch />} />
           <Route path="/groups" element={<Groups />} />
           {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}

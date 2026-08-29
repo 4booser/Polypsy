@@ -1,13 +1,26 @@
 import { Hono } from "hono";
-import { desc, eq, sql } from "drizzle-orm";
+import { aliasedTable, and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
+import { t } from "@quizzy/shared";
 import { db } from "../db";
-import { conclusions, responses, users } from "../db/schema";
+import { conclusions, responses, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
-import { badRequest, conflict, notFound, parseBody } from "../lib/http";
-import { canAccessSurvey } from "../lib/scope";
+import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+
+/*
+ * Псевдоним таблицы пользователей для автора заключения: в одном запросе
+ * участвуют и пациент, и подписавший, и без псевдонима join склеил бы их.
+ */
+const authorTable = aliasedTable(users, "conclusion_author");
+
+const batchQuery = z.object({
+  unit: z.string().max(200).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+});
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
 
@@ -173,4 +186,76 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", async (c) => {
   });
   const versions = await history(responseId);
   return c.json({ current: versions[0], versions });
+});
+
+/**
+ * Пакет заключений: подразделение за период одним документом.
+ *
+ * Отчёты подшивают в дело, и печатать их по одному — это открыть карту,
+ * нажать печать, дождаться, вернуться, и так семьдесят раз. Здесь один запрос
+ * отдаёт всё, что подписано за период, в порядке подшивки.
+ *
+ * Только подписанные. Черновик заключения — это мысль вслух, и попасть в дело
+ * он не должен: подшитый черновик потом не отличить от решения.
+ */
+conclusionRoutes.get("/batch", async (c) => {
+  const user = c.get("user");
+  const { unit, from, to } = parseQuery(c, batchQuery);
+  const lang = langOf(c);
+
+  const scope = await surveyScopeFilter(user);
+  const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
+  const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never, lang)]));
+  if (!scoped.length) return c.json({ items: [], unit: unit ?? null });
+
+  const rows = await db
+    .select({ row: conclusions, response: responses, patient: users, author: authorTable })
+    .from(conclusions)
+    .innerJoin(responses, eq(responses.id, conclusions.responseId))
+    .leftJoin(users, eq(users.id, responses.userId))
+    .leftJoin(authorTable, eq(authorTable.id, conclusions.createdBy))
+    .where(
+      and(
+        eq(conclusions.status, "signed"),
+        inArray(responses.surveyId, [...titleOf.keys()]),
+        from ? gte(conclusions.signedAt, from) : undefined,
+        to ? lte(conclusions.signedAt, to) : undefined,
+        unit ? eq(users.unit, unit) : undefined,
+      ),
+    )
+    .orderBy(asc(users.lastName), asc(conclusions.signedAt));
+
+  /*
+   * Только последняя подписанная версия по каждому прохождению. Подшивать в
+   * дело две версии одного заключения — верный способ, чтобы потом читали ту,
+   * что сверху, а не ту, что верна.
+   */
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    const seen = latest.get(r.row.responseId);
+    if (!seen || seen.row.version < r.row.version) latest.set(r.row.responseId, r);
+  }
+
+  await audit(c, {
+    action: "conclusion.batch",
+    details: { unit: unit ?? null, from: from ?? null, to: to ?? null, count: latest.size },
+  });
+
+  return c.json({
+    unit: unit ?? null,
+    from: from ?? null,
+    to: to ?? null,
+    items: [...latest.values()].map((r) => ({
+      id: r.row.id,
+      responseId: r.row.responseId,
+      version: r.row.version,
+      signedAt: r.row.signedAt,
+      text: decryptField(r.row.text) ?? "",
+      authorName: r.author ? fullNameOf(r.author) : "—",
+      patientName: r.patient ? fullNameOf(r.patient) : "—",
+      unit: r.patient?.unit ?? null,
+      surveyTitle: titleOf.get(r.response.surveyId) ?? "—",
+      submittedAt: r.response.submittedAt,
+    })),
+  });
 });

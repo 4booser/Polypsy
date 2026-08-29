@@ -139,6 +139,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/informants/form/:token": { summary: "Форма информанта по ссылке; без учётной записи", access: "public" },
   "POST /api/informants/form/:token": { summary: "Сдача формы информантом; ссылка одноразовая", access: "public" },
   "GET /api/informants/compare/:userId": { summary: "Самоотчёт против взгляда со стороны", access: "staff" },
+  "GET /api/conclusions/batch": { summary: "Пакет подписанных заключений подразделения за период", access: "staff" },
   "GET /api/decisions/crisis": { summary: "Включён ли кризисный режим учреждения", access: "staff" },
   "POST /api/decisions/crisis": { summary: "Включить кризисный режим: плановые замеры стоп, очередь по тяжести", access: "superadmin" },
   "DELETE /api/decisions/crisis": { summary: "Выключить кризисный режим", access: "superadmin" },
