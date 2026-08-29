@@ -35,3 +35,48 @@ test("методика создаётся из вставленного текс
   await page.getByRole("link", { name: "Методики" }).click();
   await expect(page.getByRole("link", { name: title })).toBeVisible();
 });
+
+test("предпросмотр показывает пункт, который правят", async ({ page }) => {
+  /*
+   * Раньше вид пункта был виден только после публикации и прохождения:
+   * длинная формулировка, не влезающая в экран телефона, обнаруживалась
+   * на пациенте.
+   */
+  await login(page, "psy");
+  const token = await page.evaluate(() => localStorage.getItem("quizzy.web.token"));
+  const surveys = await (
+    await page.request.get("/api/surveys", { headers: { Authorization: `Bearer ${token}` } })
+  ).json();
+
+  // нужна методика с пунктами: у пустого черновика предпросмотру нечего показывать
+  let withQuestions: string | null = null;
+  for (const s of surveys.items as { id: string; status: string }[]) {
+    if (s.status !== "published") continue;
+    const detail = await (
+      await page.request.get(`/api/surveys/${s.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json();
+    if ((detail.questions ?? []).length >= 2) {
+      withQuestions = s.id;
+      break;
+    }
+  }
+  expect(withQuestions).not.toBeNull();
+
+  await page.goto(`/constructor/${withQuestions}`);
+  await page.getByRole("button", { name: /^Вопросы/ }).click();
+
+  const phone = page.locator(".preview-phone");
+  await expect(phone).toBeVisible();
+
+  const firstShown = await page.locator(".preview-question").textContent();
+
+  // ставим курсор во второй пункт — предпросмотр обязан перейти к нему
+  await page.locator(".constructor-main .card").nth(2).locator("textarea").first().focus();
+  await expect(page.locator(".preview-nav .muted")).not.toHaveText("1 / 1");
+  await expect(page.locator(".preview-question")).not.toHaveText(firstShown ?? "");
+
+  // ключи и баллы в предпросмотр не попадают: человек их не видит
+  await expect(phone).not.toContainText("Код ключа");
+});

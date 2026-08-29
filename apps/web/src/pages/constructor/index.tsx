@@ -7,6 +7,7 @@ import { Basics } from "./Basics";
 import { Questions } from "./Questions";
 import { Scales } from "./Scales";
 import { EMPTY, toDraft, toPayload, withUids, type Draft, type Tab } from "./model";
+import { Preview } from "./Preview";
 import { Loading, PageHead } from "../../ui";
 import { useLang } from "../../lang";
 
@@ -65,6 +66,7 @@ export default function Constructor() {
   }, []);
   const [groups, setGroups] = useState<SurveyGroupWithCounts[]>([]);
   const [tab, setTab] = useState<Tab>("basics");
+  const [focused, setFocused] = useState(0);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -287,7 +289,21 @@ export default function Constructor() {
       ) : null}
 
       {tab === "basics" ? <Basics draft={draft} groups={groups} patch={patch} /> : null}
-      {tab === "questions" ? <Questions draft={draft} setDraft={setDraft} /> : null}
+      {/*
+        Пункты правятся рядом с тем, как они выглядят. Раньше вид пункта был
+        виден только после публикации и прохождения: длинная формулировка,
+        не влезающая в экран телефона, обнаруживалась на пациенте.
+      */}
+      {tab === "questions" ? (
+        <div className="constructor-split">
+          {/* обёртка обязательна: Questions отдаёт фрагмент из нескольких
+              карточек, и без неё сетка разложила бы их по своим ячейкам */}
+          <div className="constructor-main">
+            <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
+          </div>
+          <Preview draft={draft} at={focused} />
+        </div>
+      ) : null}
       {tab === "scales" ? <Scales draft={draft} setDraft={setDraft} /> : null}
       {tab === "json" ? (
         <div className="card">

@@ -1803,6 +1803,110 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   color: var(--text-2);
 }
 
+/* ─────────── предпросмотр конструктора ─────────── */
+
+/*
+ * Двухпанельно: слева правка, справа то, что увидит человек. Панель липкая —
+ * при длинном списке пунктов предпросмотр должен оставаться на виду, иначе он
+ * бесполезен ровно там, где нужен больше всего.
+ */
+.constructor-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--gap);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .constructor-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.constructor-main {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.preview {
+  position: sticky;
+  top: var(--gap);
+  display: grid;
+  gap: 6px;
+}
+
+/*
+ * Рамка телефона условная, без «чёлок» и кнопок: она нужна, чтобы задать
+ * ширину строки, а не чтобы изобразить устройство.
+ */
+.preview-phone {
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 18px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.preview-progress {
+  height: 3px;
+  background: var(--surface-2);
+}
+
+.preview-progress-fill {
+  height: 100%;
+  background: var(--primary);
+}
+
+.preview-screen {
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  padding: 16px;
+}
+
+.preview-question {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.preview-required {
+  color: var(--sev-severe);
+}
+
+.preview-help,
+.preview-info {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-small);
+}
+
+.preview-options {
+  display: grid;
+  gap: 6px;
+}
+
+.preview-option {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.preview-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-small);
+}
+
 /* ─────────── настройка таблицы ─────────── */
 
 .table-tools {
