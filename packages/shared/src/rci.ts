@@ -17,6 +17,14 @@
 export interface ReliableChange {
   /** Сам индекс: сдвиг в единицах ошибки разности */
   rci: number;
+  /**
+   * Стандартная ошибка одного измерения в единицах шкалы.
+   *
+   * Отдаётся отдельно, а не выводится из sdiff вызывающим кодом: полоса
+   * ошибки на графике строится именно по ней, и деление на √2 «где-то в
+   * компоненте» — ровно то место, где однажды потеряется двойка.
+   */
+  sem: number;
   /** Ошибка разности двух замеров в единицах шкалы */
   sdiff: number;
   /** |RCI| превышает критерий */
@@ -42,6 +50,7 @@ export function reliableChange(
   const rci = (last - first) / sdiff;
   return {
     rci: Math.round(rci * 100) / 100,
+    sem: Math.round(sem * 100) / 100,
     sdiff: Math.round(sdiff * 100) / 100,
     significant: Math.abs(rci) > criterion,
     direction: last > first ? "up" : last < first ? "down" : "flat",
