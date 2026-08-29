@@ -18,7 +18,8 @@
     "db:backfill-strata": "bun src/backfillStrata.ts",
     "survey:purge": "bun src/surveyPurge.ts",
     "db:simulate": "bun src/simulate.ts",
-    "content:check": "bun src/contentCheck.ts"
+    "content:check": "bun src/contentCheck.ts",
+    "search:reindex": "bun src/reindex.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",

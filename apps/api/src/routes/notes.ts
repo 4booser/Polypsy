@@ -2,10 +2,11 @@ import { Hono } from "hono";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { patientNotes, users } from "../db/schema";
+import { noteSearch, patientNotes, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
+import { indexOf } from "../lib/searchIndex";
 import { badRequest, conflict, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
 import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
@@ -110,6 +111,17 @@ noteRoutes.put("/patients/:userId", async (c) => {
     );
   }
 
+  /*
+   * Слепой индекс переписывается целиком на каждое сохранение: правка меняет
+   * состав слов, и дописывать новые, не убирая старые, значит находить запись
+   * по словам, которых в ней уже нет.
+   */
+  const reindex = async (noteId: string) => {
+    await db.delete(noteSearch).where(eq(noteSearch.noteId, noteId));
+    const rows = indexOf(input.text).map((fp) => ({ noteId, kind: "note", userId, fp }));
+    if (rows.length) await db.insert(noteSearch).values(rows).onConflictDoNothing();
+  };
+
   if (latest && latest.status === "draft") {
     await db
       .update(patientNotes)
@@ -121,9 +133,11 @@ noteRoutes.put("/patients/:userId", async (c) => {
         createdAt: new Date().toISOString(),
       })
       .where(eq(patientNotes.id, latest.id));
+    await reindex(latest.id);
   } else {
+    const id = crypto.randomUUID();
     await db.insert(patientNotes).values({
-      id: crypto.randomUUID(),
+      id,
       userId,
       version: (latest?.version ?? 0) + 1,
       kind: input.kind ?? "session",
@@ -131,6 +145,7 @@ noteRoutes.put("/patients/:userId", async (c) => {
       pathwayInstanceId: input.pathwayInstanceId ?? null,
       createdBy: staff.id,
     });
+    await reindex(id);
   }
 
   await audit(c, {

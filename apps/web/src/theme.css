@@ -1902,6 +1902,22 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   }
 }
 
+/* результаты поиска: отрывок читают, поэтому ему дана нормальная строка */
+.search-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.search-excerpt {
+  margin: 4px 0 0;
+  max-width: 68ch;
+  font-size: var(--fs-small);
+  color: var(--text-2, var(--text));
+}
+
 /* число когорты крупно и моноширинным: на него и смотрят, сужая условия */
 .stat-num {
   font-family: var(--font-mono);
