@@ -1253,7 +1253,17 @@ kbd, .kbd {
 .grid-sheet { display: grid; gap: 3px; }
 
 @media print {
-  :root {
+  /*
+   * Перечислены и голый :root, и оба варианта с меткой темы.
+   *
+   * Одного `:root` не хватало: `:root[data-theme="dark"]` весит больше по
+   * специфичности и перебивал печатный блок. Браузер фон не печатает, а текст
+   * оставался почти белым — и любой отчёт из тёмной темы выходил пустым
+   * листом. Тема тёмная по умолчанию, то есть это было верно почти для всех.
+   */
+  :root,
+  :root[data-theme="dark"],
+  :root[data-theme="light"] {
     --bg: #fff;
     --surface: #fff;
     --surface-2: #fff;
@@ -1801,6 +1811,67 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   color: var(--text-2);
+}
+
+/* ─────────── пакет заключений ─────────── */
+
+.batch {
+  display: grid;
+  gap: var(--gap);
+}
+
+.batch-toc ol {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-small);
+}
+
+.batch-item {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.batch-item header h2 {
+  margin: 0;
+}
+
+/* текст заключения: перенос строк автора сохраняется — абзацы значимы */
+.batch-text {
+  white-space: pre-wrap;
+  margin: 10px 0;
+}
+
+@media print {
+  /* блок управления в подшивку не попадает */
+  .no-print {
+    display: none;
+  }
+
+  /*
+   * Подшивка: оглавление на первой странице, дальше по заключению на лист.
+   * Разрыв принудительный, а не «как ляжет»: два заключения на одном листе
+   * нельзя подшить в разные дела.
+   */
+  .batch-toc {
+    break-after: page;
+  }
+
+  .batch-item {
+    break-inside: avoid;
+    break-after: page;
+    border: 0;
+    padding: 0;
+    background: none;
+  }
+
+  /* последний лист не должен тянуть за собой пустой */
+  .batch-item:last-child {
+    break-after: auto;
+  }
 }
 
 /*

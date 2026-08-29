@@ -1114,3 +1114,58 @@ describe("карточка пациента вне зоны", () => {
     expect(res.body.surveys.length).toBeGreaterThan(0);
   });
 });
+
+describe("пакет заключений", () => {
+  test("в пакет попадают только подписанные, и только последняя версия", async () => {
+    /*
+     * Черновик заключения — мысль вслух: подшитый в дело, он потом не
+     * отличается от решения. Две версии одного заключения рядом — верный
+     * способ, чтобы читали ту, что сверху, а не ту, что верна.
+     */
+    const person = await makeUser("user", `batch-${crypto.randomUUID()}@test`);
+    const submitted = await submitSurvey(surveyInA, person.token);
+    const responseId = submitted.body.id;
+
+    const draft = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text: "Черновик, в дело не идёт", baseVersion: 0 }),
+    });
+    expect(draft.status).toBe(200);
+
+    const before = await api("/api/conclusions/batch", adminA.token);
+    expect(
+      before.body.items.some((i: { responseId: string }) => i.responseId === responseId),
+    ).toBe(false);
+
+    await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: draft.body.current.version }),
+    });
+
+    // правка поверх подписанной и вторая подпись — в пакет должна попасть она
+    const second = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({
+        text: "Уточнённое заключение",
+        baseVersion: draft.body.current.version,
+      }),
+    });
+    await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ version: second.body.current.version }),
+    });
+
+    const after = await api("/api/conclusions/batch", adminA.token);
+    const mine = after.body.items.filter(
+      (i: { responseId: string }) => i.responseId === responseId,
+    );
+    expect(mine).toHaveLength(1);
+    expect(mine[0].text).toBe("Уточнённое заключение");
+  });
+
+  test("чужой админ в пакет не заглядывает", async () => {
+    const foreign = await api("/api/conclusions/batch", adminB.token);
+    expect(foreign.status).toBe(200);
+    expect(foreign.body.items).toEqual([]);
+  });
+});

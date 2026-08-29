@@ -547,6 +547,30 @@ export const api = {
       body: JSON.stringify({ userId, startsAt, endsAt }),
     }),
 
+  conclusionBatch: (unit: string, from: string, to: string) => {
+    const q = new URLSearchParams();
+    if (unit) q.set("unit", unit);
+    if (from) q.set("from", from);
+    if (to) q.set("to", to);
+    return request<{
+      unit: string | null;
+      from: string | null;
+      to: string | null;
+      items: {
+        id: string;
+        responseId: string;
+        version: number;
+        signedAt: string | null;
+        text: string;
+        authorName: string;
+        patientName: string;
+        unit: string | null;
+        surveyTitle: string;
+        submittedAt: string | null;
+      }[];
+    }>(`/api/conclusions/batch?${q}`);
+  },
+
   crisis: () =>
     request<{ active: boolean; reason: string | null; startedAt: string | null }>(
       "/api/decisions/crisis",
