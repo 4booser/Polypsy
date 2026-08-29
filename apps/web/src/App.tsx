@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, type ReactNode, useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import { Topbar } from "./shell/Topbar";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
+import type { WorkspacePrefs } from "@quizzy/shared";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
 import Alerts from "./pages/Alerts";
@@ -96,8 +97,28 @@ function Nav({
   );
 }
 
+/**
+ * Что показывать на корневом адресе.
+ *
+ * Неизвестное значение молча превращается в сводку: настройка приходит с
+ * сервера, а сервер может оказаться новее консоли — падать из-за этого не за
+ * что.
+ */
+function StartScreen({ prefs }: { prefs: WorkspacePrefs | null }) {
+  switch (prefs?.startScreen) {
+    case "worklist":
+      return <WorklistPage />;
+    case "alerts":
+      return <Alerts />;
+    case "patients":
+      return <PatientList />;
+    default:
+      return <Dashboard />;
+  }
+}
+
 export default function App() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, refreshUser } = useAuth();
   const { ut } = useLang();
   const [openAlerts, setOpenAlerts] = useState(0);
   const [openReferrals, setOpenReferrals] = useState(0);
@@ -125,14 +146,44 @@ export default function App() {
   });
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  /*
+   * Настройки рабочего места приходят с профилем и перекрывают локальные.
+   *
+   * Сотрудник садится за разные машины в отделении, и «моя тема» не должна
+   * означать «тема этого компьютера». Локальная копия остаётся: она отвечает
+   * за то, чтобы консоль не мигнула чужим оформлением, пока летит запрос за
+   * профилем.
+   */
+  const applied = useRef(false);
+  useEffect(() => {
+    if (!user?.workspace || applied.current) return;
+    applied.current = true;
+    if (user.workspace.theme) setTheme(user.workspace.theme);
+    if (user.workspace.density) setDensity(user.workspace.density);
+  }, [user]);
+
+  /*
+   * Сохранение — только после того, как серверные настройки применены.
+   * Иначе первый же рендер отправлял бы на сервер локальное значение и
+   * затирал им то, что человек настроил на другой машине.
+   */
+  const persist = (prefs: Parameters<typeof api.saveWorkspace>[0]) => {
+    if (!user || !applied.current) return;
+    void api.saveWorkspace(prefs).catch(() => {
+      /* настройка рабочего места — удобство: её отказ ничего не ломает */
+    });
+  };
+
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("quizzy.theme", theme);
+    persist({ theme });
   }, [theme]);
 
   useEffect(() => {
     document.documentElement.dataset.density = density;
     localStorage.setItem("quizzy.density", density);
+    persist({ density });
   }, [density]);
 
   useEffect(() => {
@@ -254,6 +305,27 @@ export default function App() {
         <div className="muted" style={{ fontSize: 11, padding: "0 10px 8px" }}>
           {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
         </div>
+
+        {/*
+          Стартовый экран. Дежурному нужна сводка, а тому, кто весь день
+          разбирает случаи, — очередь: попадать каждый раз не туда стоит
+          лишнего нажатия в начале каждой смены.
+        */}
+        <label className="start-screen">
+          <span className="muted">{ut("ws.startScreen")}</span>
+          <select
+            value={user.workspace?.startScreen ?? "dashboard"}
+            onChange={(e) => {
+              const value = e.target.value as NonNullable<WorkspacePrefs["startScreen"]>;
+              void api.saveWorkspace({ startScreen: value }).then(refreshUser).catch(() => {});
+            }}
+          >
+            <option value="dashboard">{ut("nav.dashboard")}</option>
+            <option value="worklist">{ut("nav.worklist")}</option>
+            <option value="alerts">{ut("nav.cases")}</option>
+            <option value="patients">{ut("nav.patients")}</option>
+          </select>
+        </label>
         <button className="ghost" onClick={logout} style={{ width: "100%", justifyContent: "flex-start" }}>
           {ut("nav.logout")}
         </button>
@@ -280,7 +352,14 @@ export default function App() {
         */}
         <Suspense fallback={<Loading rows={5} />}>
           <Routes>
-          <Route path="/" element={<Dashboard />} />
+          {/*
+            Стартовый экран настраивается: дежурному нужна сводка, а тому, кто
+            весь день разбирает случаи, — очередь. Замена происходит здесь, а
+            не перенаправлением после входа: перенаправление добавляло бы
+            лишнюю запись в историю браузера, и «назад» возвращало бы на пустой
+            экран.
+          */}
+          <Route path="/" element={<StartScreen prefs={user?.workspace ?? null} />} />
           <Route path="/surveys" element={<SurveyList />} />
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />

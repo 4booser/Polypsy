@@ -166,6 +166,11 @@ export interface User {
   createdAt: string;
   /** Учётная запись работает только на просмотр: любые изменения запрещены */
   readOnly: boolean;
+  /**
+   * Настройки рабочего места. Приходят вместе с профилем: отдельный запрос за
+   * ними означал бы, что консоль на мгновение открывается не в той теме.
+   */
+  workspace?: WorkspacePrefs | null;
 }
 
 export type Sex = "male" | "female";
@@ -1295,4 +1300,22 @@ export interface DutyShiftRow {
   groupId: string | null;
   startsAt: string;
   endsAt: string;
+}
+
+/* ═══════════ Рабочее место ═══════════ */
+
+/**
+ * Настройки рабочего места.
+ *
+ * Живут на сервере, а не в браузере: сотрудник садится за разные машины в
+ * отделении, и «моя настройка» не должна означать «настройка этого
+ * компьютера». Все поля необязательны — отсутствие значит «как по умолчанию»,
+ * а не «выключено».
+ */
+export interface WorkspacePrefs {
+  /** Куда попадать после входа */
+  startScreen?: "dashboard" | "worklist" | "alerts" | "patients";
+  density?: "cozy" | "compact";
+  theme?: "dark" | "light";
+  lang?: "uk" | "ru";
 }

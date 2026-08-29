@@ -39,6 +39,7 @@ import type {
   Worklist,
   RuleHit,
   DutyShiftRow,
+  WorkspacePrefs,
 } from "@quizzy/shared";
 
 const TOKEN_KEY = "quizzy.web.token";
@@ -542,6 +543,12 @@ export const api = {
     request<{ id: string }>("/api/decisions/duty", {
       method: "POST",
       body: JSON.stringify({ userId, startsAt, endsAt }),
+    }),
+
+  saveWorkspace: (prefs: WorkspacePrefs) =>
+    request<WorkspacePrefs>("/api/auth/me/workspace", {
+      method: "PUT",
+      body: JSON.stringify(prefs),
     }),
 
   presenceHere: (resource: string) =>

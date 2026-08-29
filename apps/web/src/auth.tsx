@@ -7,6 +7,8 @@ interface AuthState {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Перечитать профиль — после правки настроек рабочего места */
+  refreshUser: () => void;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -47,7 +49,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
-  return <Ctx.Provider value={{ user, loading, login, logout }}>{children}</Ctx.Provider>;
+  /*
+   * Перечитать профиль. Нужно после правки настроек рабочего места: они
+   * приходят вместе с профилем, и без обновления консоль показывала бы старое
+   * значение до следующего входа.
+   */
+  function refreshUser() {
+    void api.me().then(setUser).catch(() => {});
+  }
+
+  return (
+    <Ctx.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</Ctx.Provider>
+  );
 }
 
 export function useAuth(): AuthState {
