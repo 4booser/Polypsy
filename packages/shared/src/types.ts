@@ -1383,3 +1383,47 @@ export interface InformantComparison {
     gap: number | null;
   }[];
 }
+
+/* ═══════════ Когорты ═══════════ */
+
+/**
+ * Правило отбора когорты.
+ *
+ * Все условия соединяются «и». Пустое правило — вся доступная выборка, и это
+ * осмысленное начало работы: человек сужает, а не собирает с нуля.
+ */
+export interface CohortSpec {
+  sex?: "male" | "female" | null;
+  ageMin?: number | null;
+  ageMax?: number | null;
+  units?: string[];
+  /** Методика, по которой смотрим баллы и период */
+  surveyId?: string | null;
+  from?: string | null;
+  to?: string | null;
+  /** Условия по шкалам выбранной методики */
+  scales?: { code: string; op: ">=" | "<=" | ">" | "<"; value: number }[];
+  /** Только те, у кого есть повторный замер: без него динамики нет */
+  repeatedOnly?: boolean;
+  /** Только те, у кого поднималась тревога риска */
+  riskOnly?: boolean;
+}
+
+export interface CohortPreview {
+  /** Сколько человек подходит; null — когорта слишком мала, чтобы назвать число */
+  size: number | null;
+  /** Можно ли показывать разбивки: у малой когорты они указывают на людей */
+  breakdownAllowed: boolean;
+  smallCellFloor: number;
+  bySex: { key: string; count: number | null }[];
+  byUnit: { key: string; count: number | null }[];
+  bySeverity: { key: string; count: number | null }[];
+}
+
+export interface CohortRow {
+  id: string;
+  title: string;
+  note: string | null;
+  spec: CohortSpec;
+  createdAt: string;
+}

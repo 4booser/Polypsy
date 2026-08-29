@@ -69,6 +69,7 @@ const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const WorklistPage = lazy(() => import("./pages/Worklist"));
 const UnitReportPage = lazy(() => import("./pages/UnitReport"));
 const ConclusionBatch = lazy(() => import("./pages/ConclusionBatch"));
+const Cohorts = lazy(() => import("./pages/Cohorts"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const Pathways = lazy(() => import("./pages/Pathways"));
@@ -283,6 +284,7 @@ export default function App() {
         <Nav to="/groups" icon={<IconGroup />}>{ut("nav.groups")}</Nav>
         <Nav to="/patients" icon={<IconPatients />}>{ut("nav.patients")}</Nav>
         <Nav to="/compare" icon={<IconCompare />}>{ut("nav.compare")}</Nav>
+        <Nav to="/cohorts" icon={<IconGroup />}>{ut("coh.title")}</Nav>
         <Nav to="/surveillance" icon={<IconPulse />}>{ut("nav.surveillance")}</Nav>
         <Nav to="/unit-report" icon={<IconGroup />}>{ut("nav.unitReport")}</Nav>
         <Nav to="/conclusion-batch" icon={<IconStack />}>{ut("cbatch.title")}</Nav>
@@ -400,6 +402,7 @@ export default function App() {
             <Route path="/worklist" element={<WorklistPage />} />
             <Route path="/unit-report" element={<UnitReportPage />} />
             <Route path="/conclusion-batch" element={<ConclusionBatch />} />
+            <Route path="/cohorts" element={<Cohorts />} />
           <Route path="/groups" element={<Groups />} />
           {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}

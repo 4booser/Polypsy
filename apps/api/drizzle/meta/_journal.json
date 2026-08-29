@@ -330,6 +330,13 @@
       "when": 1788006381751,
       "tag": "0046_devices",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788008406729,
+      "tag": "0047_cohorts",
+      "breakpoints": true
     }
   ]
 }
