@@ -49,6 +49,22 @@ export const cache = {
 
   saveMe: (user: User) => store.write("me", user),
   me: () => store.read<User>("me"),
+
+  /*
+   * Обход. Планшет в палате — это место, где сети нет чаще, чем есть:
+   * толстые стены, подвал, отделение без точки доступа. Список на сегодня и
+   * открытые карты кладутся в кэш, чтобы обход не останавливался.
+   *
+   * Кэш честно устаревает: рядом со списком показывается, когда он снят.
+   * Молча показывать вчерашнюю очередь хуже, чем показать пустой экран.
+   */
+  saveRounds: (rows: unknown) => store.write("rounds:list", { at: new Date().toISOString(), rows }),
+  rounds: () => store.read<{ at: string; rows: unknown }>("rounds:list"),
+
+  savePatientCard: (userId: string, card: unknown) =>
+    store.write(`rounds:card:${userId}`, { at: new Date().toISOString(), card }),
+  patientCard: (userId: string) =>
+    store.read<{ at: string; card: unknown }>(`rounds:card:${userId}`),
 };
 
 /**

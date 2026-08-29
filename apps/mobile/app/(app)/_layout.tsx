@@ -7,7 +7,8 @@ import { useColors } from "@/theme";
 import { useLang } from "@/lang";
 
 /**
- * Три вкладки: прохождение, аналитика (для сотрудников) и аккаунт.
+ * Вкладки: прохождение, обход и аналитика (для сотрудников), план безопасности
+ * и аккаунт.
  * Конструктор методик и управление доступами живут в веб-консоли — на телефоне
  * такую работу делать неудобно, а экран нужен целиком под прохождение.
  */
@@ -35,6 +36,14 @@ export default function AppLayout() {
       }}
     >
       <Tabs.Screen name="surveys" options={{ title: ut("tab.surveys") }} />
+      {/*
+        Обход — вкладка специалиста: планшет в палате вместо ноутбука.
+        Пациенту она не нужна и не показывается.
+      */}
+      <Tabs.Screen
+        name="rounds"
+        options={{ title: ut("rounds.title"), href: isAdmin ? "/rounds" : null }}
+      />
       <Tabs.Screen
         name="insights"
         options={{ title: ut("tab.analytics"), headerShown: false, href: isAdmin ? "/insights" : null }}

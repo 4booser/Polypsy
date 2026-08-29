@@ -8,6 +8,8 @@ import { currentRequestId, log } from "./log";
 /** Действия журнала. Строковый союз, чтобы опечатка ловилась типами. */
 export type AuditAction =
   | "conclusion.batch"
+  | "device.wipe_requested"
+  | "device.wiped"
   | "crisis.start"
   | "crisis.end"
   | "informant.invite"

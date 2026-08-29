@@ -976,3 +976,90 @@ describe("настройки рабочего места", () => {
     expect(bad.status).toBe(400);
   });
 });
+
+describe("устройства и удалённое стирание", () => {
+  const deviceOf = (who: string) => `dev-${who}-${crypto.randomUUID()}`.slice(0, 40);
+
+  test("устройство отмечается и по умолчанию стирать нечего", async () => {
+    const id = deviceOf("a");
+    const first = await api("/api/devices/checkin", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id, label: "Планшет отделения", platform: "android" }),
+    });
+    expect(first.status).toBe(200);
+    expect(first.body.wipe).toBe(false);
+
+    const list = await api("/api/devices", adminA.token);
+    expect(list.body.items.some((d: { id: string }) => d.id === id)).toBe(true);
+  });
+
+  test("после запроса стирания устройство узнаёт об этом при следующей отметке", async () => {
+    const id = deviceOf("b");
+    await api("/api/devices/checkin", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+
+    const asked = await api(`/api/devices/${id}/wipe`, root.token, { method: "POST" });
+    expect(asked.status).toBe(200);
+    // ответ обязан сказать, чего команда НЕ делает
+    expect(asked.body.note).toContain("следующий раз");
+
+    const second = await api("/api/devices/checkin", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+    expect(second.body.wipe).toBe(true);
+
+    // после подтверждения повторно стирать не просят
+    await api("/api/devices/wiped", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+    const third = await api("/api/devices/checkin", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+    expect(third.body.wipe).toBe(false);
+  });
+
+  test("стирание запрашивает только суперадмин", async () => {
+    const id = deviceOf("c");
+    await api("/api/devices/checkin", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+
+    const denied = await api(`/api/devices/${id}/wipe`, adminB.token, { method: "POST" });
+    expect(denied.status).toBe(403);
+  });
+
+  test("чужой запрос не стирает работу другого человека", async () => {
+    /*
+     * Два сотрудника могли по очереди войти на одном планшете. Стирание по
+     * чужому запросу выглядело бы как случайная потеря работы, поэтому
+     * команда действует только для того, за кем устройство закреплено сейчас.
+     */
+    const id = deviceOf("d");
+    await api("/api/devices/checkin", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+    await api(`/api/devices/${id}/wipe`, root.token, { method: "POST" });
+
+    // тот же планшет, но вошёл другой сотрудник
+    const other = await api("/api/devices/checkin", adminB.token, {
+      method: "POST",
+      body: JSON.stringify({ deviceId: id }),
+    });
+    expect(other.body.wipe).toBe(false);
+  });
+
+  test("чужие устройства не показываются групповому админу", async () => {
+    const mine = await api(`/api/devices?userId=${adminA.id}`, adminB.token);
+    expect(mine.status).toBe(404);
+
+    const bySuper = await api(`/api/devices?userId=${adminA.id}`, root.token);
+    expect(bySuper.status).toBe(200);
+  });
+});
