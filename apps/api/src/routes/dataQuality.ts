@@ -1,10 +1,11 @@
 import { Hono } from "hono";
-import { eq, inArray, } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { icc21, psi } from "@quizzy/shared";
 import { db } from "../db";
 import { answers, responseScores, responses, scales } from "../db/schema";
 import { audit } from "../lib/audit";
-import { notFound } from "../lib/http";
+import { langOf, notFound, parseQuery } from "../lib/http";
 import { percent, round } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
@@ -200,5 +201,132 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
     strata,
     drift,
     retest,
+  });
+});
+
+/**
+ * Тепловая карта пунктов: человек × вопрос.
+ *
+ * Небрежное заполнение выдаёт себя формой, а не средним. Двести пунктов,
+ * отвеченных за четыре минуты, видны в таблице чисел плохо; сплошная полоса
+ * одинаковых ответов от сорокового пункта до конца — сразу.
+ *
+ * Показываются две объективные вещи, а не выдуманный «индекс небрежности»:
+ * время ответа относительно медианы ЭТОГО пункта и длина серии одинаковых
+ * ответов подряд. Что с этим делать, решает человек — сводить два разных
+ * признака в одно число значит спрятать от него именно то, на что он смотрит.
+ */
+dataQualityRoutes.get("/surveys/:id/items", async (c) => {
+  const surveyId = c.req.param("id");
+  await assertSurveyAccess(c.get("user"), surveyId);
+  const survey = await getSurvey(surveyId, null, langOf(c));
+  if (!survey) notFound("Методика не найдена");
+
+  const { limit } = parseQuery(c, z.object({ limit: z.coerce.number().int().min(1).max(200).default(60) }));
+
+  const asked = survey.questions.filter((q) => q.type !== "info");
+  const position = new Map(asked.map((q, i) => [q.id, i]));
+
+  const done = await db
+    .select({ id: responses.id, submittedAt: responses.submittedAt, durationMs: responses.durationMs })
+    .from(responses)
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+    .orderBy(desc(responses.submittedAt))
+    .limit(limit);
+  if (!done.length) return c.json({ questions: [], rows: [], medians: [] });
+
+  const cells = await db
+    .select({
+      responseId: answers.responseId,
+      questionId: answers.questionId,
+      durationMs: answers.durationMs,
+      optionIds: answers.optionIds,
+      skipped: answers.skipped,
+    })
+    .from(answers)
+    .where(inArray(answers.responseId, done.map((r) => r.id)));
+
+  /*
+   * Медиана по каждому пункту, а не общая: первый вопрос читают дольше
+   * последнего, а длинная формулировка дольше короткой. Общая медиана
+   * пометила бы «слишком быстрым» весь хвост методики.
+   */
+  const byQuestion = new Map<string, number[]>();
+  for (const cell of cells) {
+    if (!cell.durationMs) continue;
+    const list = byQuestion.get(cell.questionId) ?? [];
+    list.push(cell.durationMs);
+    byQuestion.set(cell.questionId, list);
+  }
+  const medians = asked.map((q) => {
+    const list = (byQuestion.get(q.id) ?? []).slice().sort((a, b) => a - b);
+    if (!list.length) return 0;
+    return list[Math.floor(list.length / 2)]!;
+  });
+
+  const byResponse = new Map<string, typeof cells>();
+  for (const cell of cells) {
+    const list = byResponse.get(cell.responseId) ?? [];
+    list.push(cell);
+    byResponse.set(cell.responseId, list);
+  }
+
+  const rows = done.map((r) => {
+    const own = byResponse.get(r.id) ?? [];
+    const byPos = new Array<(typeof cells)[number] | null>(asked.length).fill(null);
+    for (const cell of own) {
+      const at = position.get(cell.questionId);
+      if (at !== undefined) byPos[at] = cell;
+    }
+
+    /*
+     * Серия одинаковых ответов. Считается по выбранному варианту, а не по
+     * баллу: в шкале с обратными пунктами одинаковый балл получается из
+     * разных вариантов, и «серия по баллу» показала бы аккуратное заполнение
+     * как небрежное.
+     */
+    const runs = new Array(asked.length).fill(0);
+    let start = 0;
+    for (let i = 1; i <= byPos.length; i++) {
+      const same =
+        i < byPos.length &&
+        byPos[i]?.optionIds?.[0] !== undefined &&
+        byPos[i]?.optionIds?.[0] === byPos[start]?.optionIds?.[0];
+      if (!same) {
+        const length = i - start;
+        for (let k = start; k < i; k++) runs[k] = length;
+        start = i;
+      }
+    }
+
+    return {
+      responseId: r.id,
+      submittedAt: r.submittedAt,
+      durationMs: r.durationMs,
+      cells: byPos.map((cell, i) => ({
+        // null — на пункт не отвечали (логика показа или пропуск)
+        answered: !!cell && !cell.skipped,
+        /*
+         * Доля от медианы пункта. Число, а не флаг: порог «слишком быстро»
+         * зависит от методики, и прятать его в сервере значит навязывать
+         * один порог всем.
+         */
+        rel: cell?.durationMs && medians[i] ? Math.round((cell.durationMs / medians[i]) * 100) / 100 : null,
+        run: runs[i] as number,
+      })),
+    };
+  });
+
+  await audit(c, {
+    action: "quality.read",
+    resourceType: "survey",
+    resourceId: surveyId,
+    details: { view: "items", rows: rows.length },
+  });
+
+  return c.json({
+    questions: asked.map((q, i) => ({ number: i + 1, title: q.title })),
+    medians,
+    rows,
   });
 });

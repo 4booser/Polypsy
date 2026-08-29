@@ -1902,6 +1902,47 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   }
 }
 
+/* ─────────── карта пунктов ─────────── */
+
+/*
+ * Ячейка узкая намеренно: карта на двести столбцов должна помещаться целиком,
+ * иначе полоса, ради которой она нужна, окажется за краем экрана.
+ */
+.qh-cell {
+  display: inline-block;
+  width: 5px;
+  height: 14px;
+  margin-right: 1px;
+  background: var(--surface-2);
+  vertical-align: middle;
+}
+
+/*
+ * Быстрота и серия — разные признаки, поэтому разные цвета, а не оттенки
+ * одного: оттенок читался бы как «сильнее/слабее», а это не так.
+ */
+.qh-cell.m-fast { background: var(--accent); }
+.qh-cell.m-run { background: var(--sev-moderate); }
+.qh-cell.m-both { background: var(--sev-severe); }
+.qh-cell.m-missing { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+
+.qh th { text-align: left; white-space: nowrap; padding-right: 10px; }
+.qh-cells { line-height: 1; }
+.qh-sum { padding-left: 10px; }
+
+.qh-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-small);
+  color: var(--muted);
+}
+
+@media print {
+  /* на монохромном принтере цвета неразличимы — карта печати не подлежит */
+  .qh { display: none; }
+}
+
 /* результаты поиска: отрывок читают, поэтому ему дана нормальная строка */
 .search-hits {
   list-style: none;

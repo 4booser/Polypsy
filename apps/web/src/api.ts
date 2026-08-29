@@ -578,6 +578,18 @@ export const api = {
     }>(`/api/conclusions/batch?${q}`);
   },
 
+  itemQuality: (surveyId: string) =>
+    request<{
+      questions: { number: number; title: string }[];
+      medians: number[];
+      rows: {
+        responseId: string;
+        submittedAt: string | null;
+        durationMs: number;
+        cells: { answered: boolean; rel: number | null; run: number }[];
+      }[];
+    }>(`/api/data-quality/surveys/${surveyId}/items`),
+
   searchNotes: (q: string) =>
     request<{
       words: string[];
