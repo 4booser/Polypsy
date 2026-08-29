@@ -1218,6 +1218,12 @@ export interface Worklist {
   truncated: boolean;
   byKind: { case: number; followup: number; referral: number; assignment: number };
   mine: number;
+  /**
+   * Очередь построена по кризисному правилу: сначала тяжесть, потом всё
+   * остальное. Флаг отдаётся, чтобы экран мог сказать об этом прямо —
+   * изменившийся порядок без объяснения читается как сбой.
+   */
+  crisis?: boolean;
 }
 
 

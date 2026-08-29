@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { decisionRules, dutyShifts, ruleHits, surveys, users } from "../db/schema";
+import { crisisPeriods, decisionRules, dutyShifts, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { currentCrisis } from "../lib/crisis";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, isSuperadmin, surveyScopeFilter } from "../lib/scope";
@@ -264,4 +265,53 @@ decisionRoutes.post("/duty", async (c) => {
   });
 
   return c.json({ id }, 201);
+});
+
+/* ── кризисный режим ── */
+
+const crisisSchema = z.object({ reason: z.string().min(3).max(300) });
+
+decisionRoutes.get("/crisis", async (c) => c.json(await currentCrisis()));
+
+decisionRoutes.post("/crisis", requireSuperadmin, async (c) => {
+  const user = c.get("user");
+  const input = await parseBody(c.req.raw, crisisSchema);
+
+  const open = await currentCrisis();
+  if (open.active) badRequest("Кризисный режим уже включён");
+
+  const id = crypto.randomUUID();
+  await db.insert(crisisPeriods).values({
+    id,
+    reason: input.reason,
+    startedBy: user.id,
+  });
+
+  await audit(c, {
+    action: "crisis.start",
+    resourceType: "crisis",
+    resourceId: id,
+    details: { reason: input.reason },
+  });
+
+  return c.json({ ok: true }, 201);
+});
+
+decisionRoutes.delete("/crisis", requireSuperadmin, async (c) => {
+  const user = c.get("user");
+
+  const [row] = await db
+    .select()
+    .from(crisisPeriods)
+    .where(isNull(crisisPeriods.endedAt))
+    .limit(1);
+  if (!row) badRequest("Кризисный режим не включён");
+
+  await db
+    .update(crisisPeriods)
+    .set({ endedAt: new Date().toISOString(), endedBy: user.id })
+    .where(eq(crisisPeriods.id, row!.id));
+
+  await audit(c, { action: "crisis.end", resourceType: "crisis", resourceId: row!.id });
+  return c.json({ ok: true });
 });

@@ -12,6 +12,7 @@ import {
 } from "../db/schema";
 import { auditSystem } from "./audit";
 import { publish } from "./events";
+import { currentCrisis } from "./crisis";
 import { sweepPresence } from "../routes/presence";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
@@ -191,6 +192,20 @@ async function runDueSchedulesInner(now: Date): Promise<number> {
 }
 
 async function runDueSchedulesLocked(now: Date): Promise<number> {
+  /*
+   * В кризисном режиме плановые замеры не запускаются.
+   *
+   * В массовое поступление очередь работы должна наполняться поступившими, а
+   * не напоминаниями трёхмесячной давности. Сроки не сдвигаются: расписание
+   * догонит себя, когда режим выключат, — пропущенный тик это отложенный, а
+   * не отменённый замер.
+   */
+  const crisis = await currentCrisis();
+  if (crisis.active) {
+    log.info("scheduler.skipped_crisis", { reason: crisis.reason });
+    return 0;
+  }
+
   const due = await db
     .select()
     .from(schedules)

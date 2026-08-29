@@ -233,3 +233,78 @@ describe("дежурная смена", () => {
     expect(self.status).toBe(201);
   });
 });
+
+describe("кризисный режим", () => {
+  test("включается один раз, выключается, и всё это в журнале", async () => {
+    const on = await api("/api/decisions/crisis", root.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Массовое поступление, учения" }),
+    });
+    expect(on.status).toBe(201);
+
+    // второй раз включить нельзя: два открытых периода означали бы, что
+    // выключение одного не выключает режим
+    const again = await api("/api/decisions/crisis", root.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "ещё раз" }),
+    });
+    expect(again.status).toBe(400);
+
+    const state = await api("/api/decisions/crisis", adminA.token);
+    expect(state.body.active).toBe(true);
+    expect(state.body.reason).toBe("Массовое поступление, учения");
+
+    const off = await api("/api/decisions/crisis", root.token, { method: "DELETE" });
+    expect(off.status).toBe(200);
+    expect((await api("/api/decisions/crisis", adminA.token)).body.active).toBe(false);
+  });
+
+  test("включает только суперадмин", async () => {
+    const denied = await api("/api/decisions/crisis", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "самовольно" }),
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  test("плановые расписания в кризис не запускаются", async () => {
+    /*
+     * В массовое поступление очередь работы должна наполняться поступившими,
+     * а не напоминаниями трёхмесячной давности. Сроки при этом не сдвигаются:
+     * пропущенный тик — отложенный замер, а не отменённый.
+     */
+    const { runDueSchedules } = await import("./fixtures");
+    await api("/api/decisions/crisis", root.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Проверка планировщика" }),
+    });
+
+    const handled = await runDueSchedules(new Date());
+    expect(handled).toBe(0);
+
+    await api("/api/decisions/crisis", root.token, { method: "DELETE" });
+  });
+
+  test("очередь работы перестраивается по тяжести", async () => {
+    const before = await api("/api/worklist", adminA.token);
+    expect(before.body.crisis).toBe(false);
+
+    await api("/api/decisions/crisis", root.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Проверка очереди" }),
+    });
+
+    const during = await api("/api/worklist", adminA.token);
+    expect(during.body.crisis).toBe(true);
+    // случаи риска впереди всего остального
+    const kinds = during.body.items.map((i: { kind: string }) => i.kind);
+    const lastCase = kinds.lastIndexOf("case");
+    const firstOther = kinds.findIndex((k: string) => k !== "case");
+    if (lastCase >= 0 && firstOther >= 0) expect(lastCase).toBeLessThan(firstOther);
+
+    // состав очереди тот же: режим ничего не скрывает
+    expect(during.body.total).toBe(before.body.total);
+
+    await api("/api/decisions/crisis", root.token, { method: "DELETE" });
+  });
+});

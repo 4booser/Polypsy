@@ -1,4 +1,5 @@
 import { Suspense, lazy, type ReactNode, useEffect, useRef, useState } from "react";
+import { CrisisBar } from "./components/CrisisBar";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
@@ -350,6 +351,7 @@ export default function App() {
           density={density}
           onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
         />
+        <CrisisBar canSwitch={isSuper} />
         <main className="main">
         {/*
           Пока догружается экран, на его месте стоит скелет — то же, что при
