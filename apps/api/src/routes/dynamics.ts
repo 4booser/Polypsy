@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics } from "@quizzy/shared";
 import { db } from "../db";
-import { responseScores, responses, scales, surveys, users } from "../db/schema";
+import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { notFound, parseQuery } from "../lib/http";
@@ -205,6 +205,21 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     scoresByResponse.set(s.responseId, list);
   }
 
+  /*
+   * Номера версий методик, которые человек видел. Одним запросом по уже
+   * известным идентификаторам: запрашивать версию на каждый замер — это
+   * столько же обращений, сколько у человека прохождений.
+   */
+  const versionIds = [...new Set(responseRows.map((r) => r.versionId).filter(Boolean))] as string[];
+  const versionNoById = new Map<string, number>();
+  if (versionIds.length) {
+    const versions = await db
+      .select({ id: surveyVersions.id, version: surveyVersions.version })
+      .from(surveyVersions)
+      .where(inArray(surveyVersions.id, versionIds));
+    for (const v of versions) versionNoById.set(v.id, v.version);
+  }
+
   const bySurvey = new Map<string, typeof responseRows>();
   for (const r of responseRows) {
     const list = bySurvey.get(r.surveyId) ?? [];
@@ -297,6 +312,12 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
           entry.points.push({
             responseId: response.id,
             submittedAt: response.submittedAt ?? response.startedAt,
+            /*
+             * Номер версии методики, которую человек реально видел. Скачок
+             * после смены версии — часто артефакт правки ключей, а не
+             * изменение состояния; без этой отметки его читают как динамику.
+             */
+            versionNo: versionNoById.get(response.versionId ?? "") ?? null,
             rawScore: score.value,
             maxScore: score.maxScore,
             percent: score.percent,
@@ -329,6 +350,13 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
                 direction: rc.direction,
                 basis: { sd: round(sd), alpha, sampleN: sample.length },
               };
+              /*
+               * Ошибка одного измерения — для полосы на графике. Именно SEM,
+               * а не Sdiff: Sdiff — ошибка РАЗНОСТИ двух замеров, и рисовать
+               * её вокруг каждой точки значит завысить неопределённость в
+               * полтора раза.
+               */
+              entry.sem = rc.sem;
             }
           }
         }

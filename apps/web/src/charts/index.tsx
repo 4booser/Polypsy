@@ -61,6 +61,26 @@ export interface LinePoint {
   x: string;
   y: number;
   tone?: string;
+  /**
+   * Полуширина интервала ошибки измерения (SEM).
+   *
+   * T-балл без него вводит в заблуждение: 62 и 65 выглядят как разные числа,
+   * хотя при SEM = 4 это одно и то же измерение. Полоса рисуется только там,
+   * где интервал известен, — придумывать его нельзя.
+   */
+  err?: number | null;
+}
+
+/**
+ * Событие на оси времени: ротация, госпитализация, начало терапии.
+ *
+ * Без них изменение читается как случайность. С ними видно, что балл вырос
+ * после перевода в другое подразделение, — и это уже разговор, а не догадка.
+ */
+export interface TimeMark {
+  /** Подпись точки по оси X, к которой привязано событие */
+  x: string;
+  label: string;
 }
 
 export function LineChart({
@@ -68,18 +88,21 @@ export function LineChart({
   height = 220,
   area = false,
   yMax,
+  marks,
 }: {
   series: { label: string; points: LinePoint[]; color?: string }[];
   height?: number;
   area?: boolean;
   yMax?: number;
+  marks?: TimeMark[];
 }) {
   const W = 900;
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const all = series.flatMap((s) => s.points);
-  const top = Math.max(yMax ?? 0, ...all.map((p) => p.y), 1);
+  // верх шкалы учитывает полосу ошибки: иначе она обрезалась бы краем поля
+  const top = Math.max(yMax ?? 0, ...all.map((p) => p.y + (p.err ?? 0)), 1);
   const ts = ticks(top);
   const scale = Math.max(...ts, top);
   const pw = W - PAD.left - PAD.right;
@@ -153,8 +176,28 @@ export function LineChart({
         {series.map((s, si) => {
           const color = s.color ?? SERIES[si % SERIES.length];
           const d = s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y)}`).join(" ");
+
+          /*
+           * Полоса ошибки рисуется под линией и без обводки: это фон, в
+           * котором лежит измерение, а не второй ряд данных. Строится только
+           * если интервал известен у всех точек ряда — полоса «местами» врала
+           * бы про то, где измерение точнее.
+           */
+          const hasErr = s.points.length > 1 && s.points.every((p) => (p.err ?? null) !== null);
+          const band = hasErr
+            ? [
+                ...s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y + p.err!)}`),
+                ...s.points
+                  .map((p, i) => ({ p, i }))
+                  .reverse()
+                  .map(({ p, i }) => `L${xAt(i)},${yAt(Math.max(0, p.y - p.err!))}`),
+                "Z",
+              ].join(" ")
+            : null;
+
           return (
             <g key={s.label}>
+              {band ? <path d={band} fill={color} opacity={0.14} /> : null}
               {area ? (
                 <path
                   d={`${d} L${xAt(s.points.length - 1)},${yAt(0)} L${xAt(0)},${yAt(0)} Z`}
@@ -192,6 +235,32 @@ export function LineChart({
                   strokeWidth={2}
                 />
               ) : null}
+            </g>
+          );
+        })}
+
+        {/*
+          Отметки событий — вертикальные пунктиры с подписью у верхнего края.
+          Подпись наверху, а не у оси: внизу она столкнулась бы с подписями
+          дат, а событие важнее даты, к которой оно привязано.
+        */}
+        {marks?.map((m) => {
+          const i = series[0]?.points.findIndex((p) => p.x === m.x) ?? -1;
+          if (i < 0) return null;
+          return (
+            <g key={`${m.x}-${m.label}`}>
+              <line
+                x1={xAt(i)}
+                x2={xAt(i)}
+                y1={PAD.top}
+                y2={PAD.top + ph}
+                stroke="var(--axis)"
+                strokeWidth={1}
+                strokeDasharray="2 4"
+              />
+              <text x={xAt(i) + 4} y={PAD.top + 10} fontSize="10" fill="var(--axis)">
+                {m.label}
+              </text>
             </g>
           );
         })}

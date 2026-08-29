@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import type { Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
+import { versionMarks } from "../charts/marks";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
@@ -185,6 +186,12 @@ export function PatientDynamics() {
                   hint={rciHint(sc, ut)}
                 >
                   <LineChart
+                    /*
+                     * Отметки смены версии методики. Скачок сразу после
+                     * правки ключей — артефакт, а не динамика, и прочесть
+                     * его как улучшение стоит дороже, чем лишний пунктир.
+                     */
+                    marks={versionMarks(sc.points)}
                     yMax={last?.maxScore}
                     series={[{
                       label: sc.title,
@@ -192,6 +199,13 @@ export function PatientDynamics() {
                         x: day(p.submittedAt),
                         y: p.rawScore,
                         tone: p.severity ? severityColor[p.severity] : undefined,
+                        /*
+                         * Полоса ошибки измерения. Без неё 62 и 65 выглядят
+                         * как разные числа, хотя при SEM = 4 это одно и то же
+                         * измерение. Если SEM посчитать не из чего, полоса не
+                         * рисуется: придуманный интервал выглядит как знание.
+                         */
+                        err: sc.sem ?? null,
                       })),
                     }]}
                   />

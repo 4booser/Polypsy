@@ -39,3 +39,22 @@ describe("RCI (Jacobson–Truax)", () => {
     expect(rc.significant).toBe(false);
   });
 });
+
+describe("ошибка одного измерения", () => {
+  test("SEM отдаётся отдельно и связан с Sdiff множителем √2", () => {
+    /*
+     * Полоса ошибки на графике строится по SEM, а не по Sdiff: Sdiff — это
+     * ошибка РАЗНОСТИ двух замеров, и рисовать её вокруг каждой точки значит
+     * завысить неопределённость в полтора раза.
+     */
+    const rc = reliableChange(10, 16, 8, 0.75)!;
+    expect(rc.sem).toBe(4);
+    expect(rc.sdiff).toBeCloseTo(4 * Math.SQRT2, 1);
+  });
+
+  test("SEM растёт, когда надёжность падает", () => {
+    const good = reliableChange(10, 16, 8, 0.9)!;
+    const poor = reliableChange(10, 16, 8, 0.5)!;
+    expect(poor.sem).toBeGreaterThan(good.sem);
+  });
+});
