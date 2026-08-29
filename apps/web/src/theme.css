@@ -2025,6 +2025,43 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   font-size: 14px;
 }
 
+/*
+ * Выбранный вариант в проверке ключа: заливка акцентом, а не рамка. Проверяя
+ * ключ, человек смотрит на баллы внизу, и глазами по вариантам не ходит —
+ * состояние должно читаться боковым зрением.
+ */
+button.preview-option {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.preview-option.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.key-check {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: var(--fs-small);
+}
+
+.key-check table {
+  font-family: var(--font-mono);
+}
+
+/* предупреждения подсчёта: недостоверность, отсутствующие нормы */
+.key-warn {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--accent);
+}
+
 .preview-nav {
   display: flex;
   align-items: center;

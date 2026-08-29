@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { computeProfile, type Answer } from "@quizzy/shared";
 import { useLang } from "../../lang";
-import type { Draft } from "./model";
+import { draftToSurvey, type Draft } from "./model";
 
 /**
  * Живой предпросмотр методики.
@@ -13,10 +14,18 @@ import type { Draft } from "./model";
  * заданном порядке. Ключи, баллы и флаги риска сюда не попадают намеренно —
  * пациент их не видит, и предпросмотр, показывающий больше, чем реальность,
  * не отвечает на вопрос, ради которого существует.
+ *
+ * Второй режим — проверка ключа. Там варианты выбираются, и внизу считаются
+ * баллы тем же движком, что и на сервере: перенос методики из пособия иначе
+ * проверялся только после публикации — заполнить, сдать, посмотреть, вернуться
+ * в конструктор. Общий движок важен: своя реализация подсчёта в редакторе
+ * отвечала бы на вопрос «сходятся ли две реализации», а не «верен ли ключ».
  */
 export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
   const { ut, lang } = useLang();
   const [at, setAt] = useState(0);
+  const [checking, setChecking] = useState(false);
+  const [picked, setPicked] = useState<Map<string, string>>(new Map());
 
   /*
    * Предпросмотр идёт за правкой, но человек может листать его и сам. Поэтому
@@ -35,6 +44,25 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
 
   const text = (value: Record<string, string> | null | undefined): string =>
     value?.[lang] || value?.uk || value?.ru || "";
+
+  /*
+   * Профиль пересчитывается на каждый выбор. Дёшево: методика уже в памяти, а
+   * подсчёт — чистая функция без обращений к сети.
+   */
+  const profile = useMemo(() => {
+    if (!checking) return null;
+    const survey = draftToSurvey(draft, lang);
+    const answers: Answer[] = [...picked.entries()].map(([questionId, optionId]) => ({
+      questionId,
+      optionIds: [optionId],
+    }));
+    try {
+      return computeProfile(survey, answers);
+    } catch {
+      // недостроенный ключ — не повод ронять редактор
+      return null;
+    }
+  }, [checking, draft, lang, picked]);
 
   if (!shown.length) {
     return (
@@ -74,17 +102,39 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
               {current?.help ? <p className="preview-help">{text(current.help)}</p> : null}
 
               {/*
-                Варианты не кликаются: это предпросмотр вида, а не прохождение.
-                Кликабельный, но ничего не делающий элемент — обещание, которое
-                интерфейс не выполняет.
+                В режиме вида варианты не кликаются: кликабельный, но ничего не
+                делающий элемент — обещание, которое интерфейс не выполняет.
+                В режиме проверки ключа они выбираются, потому что там это и
+                есть работа.
               */}
               <div className="preview-options">
                 {current?.options.length ? (
-                  current.options.map((o, i) => (
-                    <div key={i} className="preview-option">
-                      {text(o.text) || <span className="muted">—</span>}
-                    </div>
-                  ))
+                  current.options.map((o, i) => {
+                    const qid = `q${shown.indexOf(current) + 1}`;
+                    const oid = `${qid}o${i + 1}`;
+                    const on = picked.get(qid) === oid;
+                    return checking ? (
+                      <button
+                        key={i}
+                        className={`preview-option${on ? " on" : ""}`}
+                        aria-pressed={on}
+                        onClick={() =>
+                          setPicked((prev) => {
+                            const next = new Map(prev);
+                            next.set(qid, oid);
+                            return next;
+                          })
+                        }
+                      >
+                        {text(o.text) || "—"}
+                        {o.score !== undefined ? <span className="muted"> {o.score}</span> : null}
+                      </button>
+                    ) : (
+                      <div key={i} className="preview-option">
+                        {text(o.text) || <span className="muted">—</span>}
+                      </div>
+                    );
+                  })
                 ) : (
                   <p className="muted">{ut("co.previewNoOptions")}</p>
                 )}
@@ -109,9 +159,56 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
         </div>
       </div>
 
-      <p className="hint" style={{ textAlign: "center" }}>
-        {ut("co.previewHint")}
-      </p>
+      <div className="row tight">
+        <button className={checking ? "" : "active"} onClick={() => setChecking(false)}>
+          {ut("co.preview")}
+        </button>
+        <button className={checking ? "active" : ""} onClick={() => setChecking(true)}>
+          {ut("co.keyCheck")}
+        </button>
+        {checking && picked.size ? (
+          <button className="ghost" onClick={() => setPicked(new Map())}>
+            {ut("co.keyReset")}
+          </button>
+        ) : null}
+      </div>
+
+      {checking ? (
+        <div className="key-check">
+          <p className="hint" style={{ margin: 0 }}>
+            {ut("co.keyHint")} · {picked.size}/{asked.length}
+          </p>
+          {profile?.scores.length ? (
+            <table>
+              <tbody>
+                {profile.scores.map((sc) => (
+                  <tr key={sc.scaleCode}>
+                    <td>{sc.scaleCode}</td>
+                    <td className="num">{sc.rawScore}</td>
+                    <td className="num">
+                      {sc.normalization === "raw" ? "—" : sc.value}
+                    </td>
+                    <td className="muted">{sc.band?.label ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="muted" style={{ margin: 0 }}>{ut("co.keyNoScales")}</p>
+          )}
+          {profile?.warnings.length ? (
+            <ul className="key-warn">
+              {profile.warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : (
+        <p className="hint" style={{ textAlign: "center" }}>
+          {ut("co.previewHint")}
+        </p>
+      )}
     </div>
   );
 }
