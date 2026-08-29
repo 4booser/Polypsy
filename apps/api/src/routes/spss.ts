@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { ageAt, exportQuery } from "@quizzy/shared";
+import { ageAt, applyQuasi, exportQuery, generalizeQuasi } from "@quizzy/shared";
+import type { AgeBand, Generalization } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
 import { answers, responseScores, responses, surveyVersions, users } from "../db/schema";
@@ -83,7 +84,42 @@ function subjectCode(userId: string): string {
   return `R${h.slice(0, 10).toUpperCase()}`;
 }
 
-async function buildSchema(surveyId: string, lang: string, profile: ExportProfile = "full") {
+/**
+ * Обобщение квазиидентификаторов для обезличенного профиля.
+ *
+ * Считается по самим выгружаемым строкам, а не по всей базе: защищать надо то,
+ * что уходит наружу. Расчёт по базе дал бы «в системе таких много», хотя в
+ * этой выгрузке человек один.
+ */
+async function quasiPlan(
+  surveyId: string,
+  profile: ExportProfile,
+): Promise<Generalization | null> {
+  if (profile !== "deidentified") return null;
+  const rows = await loadRows(surveyId);
+  return generalizeQuasi(
+    rows.map((c) => ({
+      sex: (c.user?.sex as "male" | "female" | null) ?? null,
+      band: bandName(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt)),
+    })),
+  );
+}
+
+/** Название полосы для k-анонимности; null — возраст неизвестен */
+function bandName(age: number | null): AgeBand | null {
+  if (age === null) return null;
+  if (age < 25) return "<25";
+  if (age < 35) return "25-34";
+  if (age < 45) return "35-44";
+  return "45+";
+}
+
+async function buildSchema(
+  surveyId: string,
+  lang: string,
+  profile: ExportProfile = "full",
+  kanon: Generalization | null = null,
+) {
   const survey = await getSurvey(surveyId, null, lang === "uk" ? "uk" : "ru");
   if (!survey) notFound("Методика не найдена");
 
@@ -132,7 +168,22 @@ async function buildSchema(surveyId: string, lang: string, profile: ExportProfil
         [1, "мужской"],
         [2, "женский"],
       ],
-      value: (c) => (c.user?.sex === "male" ? "1" : c.user?.sex === "female" ? "2" : String(MISSING)),
+      /*
+       * В обезличенном профиле пол проходит через обобщение: у редкой ячейки
+       * он стирается, иначе сочетание пола и возраста указывает на человека.
+       */
+      value: (c) => {
+        const sex = kanon
+          ? applyQuasi(
+              {
+                sex: (c.user?.sex as "male" | "female" | null) ?? null,
+                band: bandName(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt)),
+              },
+              kanon,
+            ).sex
+          : ((c.user?.sex as "male" | "female" | null) ?? null);
+        return sex === "male" ? "1" : sex === "female" ? "2" : String(MISSING);
+      },
     },
     ...(profile === "full"
       ? [
@@ -162,8 +213,29 @@ async function buildSchema(surveyId: string, lang: string, profile: ExportProfil
               [3, "35–44"],
               [4, "45 и старше"],
             ] as [number, string][],
-            value: (c: RowContext) =>
-              ageBand(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt)),
+            value: (c: RowContext) => {
+              const age = ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt);
+              if (!kanon) return ageBand(age);
+              /*
+               * Пол передаётся настоящий: ячейка определяется парой, и с
+               * подставленным null ключ не совпал бы с тем, который считался
+               * при обобщении, — возраст остался бы на месте у строки, у
+               * которой стёрли пол.
+               */
+              const shown = applyQuasi(
+                {
+                  sex: (c.user?.sex as "male" | "female" | null) ?? null,
+                  band: bandName(age),
+                },
+                kanon,
+              );
+              /*
+               * Слитые полосы кодируются номером первой из слитых: числовой
+               * код обязан остаться числом, а расшифровка слияния лежит в
+               * манифесте — там, где её и ищут.
+               */
+              return shown.band === null ? String(MISSING) : ageBand(age);
+            },
           },
           {
             name: unique("sub_month"),
@@ -286,7 +358,8 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const { profile, lang, purpose } = exportOptions(c);
-  const { vars } = await buildSchema(surveyId, lang, profile);
+  const kanon = await quasiPlan(surveyId, profile);
+  const { vars } = await buildSchema(surveyId, lang, profile, kanon);
   const rows = await loadRows(surveyId);
 
   const body = [
@@ -309,6 +382,12 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
       includesUserIds: profile === "full",
       datasetSha256: datasetHash,
       purpose: purpose ?? null,
+      /*
+       * Что сделала k-анонимность, попадает в журнал вместе с выгрузкой: без
+       * этого «почему у трети строк нет пола» через год объяснить будет
+       * нечем.
+       */
+      kanon: kanon ? { merges: kanon.merges, blankedRows: kanon.blankedRows } : null,
     },
   });
 
@@ -534,7 +613,8 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const { profile, lang, purpose } = exportOptions(c);
-  const { survey, vars } = await buildSchema(surveyId, lang, profile);
+  const kanon = await quasiPlan(surveyId, profile);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile, kanon);
 
   const versionRows = await db
     .select({ id: surveyVersions.id, version: surveyVersions.version, createdAt: surveyVersions.createdAt, note: surveyVersions.note })
@@ -567,6 +647,20 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
       responses: countByVersion.get(v.id) ?? 0,
     })),
     variables: vars.map((v) => v.name),
+    /*
+     * Что сделано ради k-анонимности. Без этого раздела исследователь увидит
+     * пропуски в поле «пол» и посчитает их случайными — а они не случайные:
+     * пропущено ровно то, что было редким.
+     */
+    kanon: kanon
+      ? {
+          k: 5,
+          merges: kanon.merges,
+          bandMap: kanon.bandMap,
+          blankedRows: kanon.blankedRows,
+          note: "Возрастные полосы слиты до наполнения k; у оставшихся редких сочетаний пол и возраст стёрты. Пропуски в этих полях не случайны.",
+        }
+      : null,
     /*
      * Нормы — часть параметров: T-балл, посчитанный по другим нормам, это
      * другое число под тем же именем.

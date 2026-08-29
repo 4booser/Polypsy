@@ -10,3 +10,4 @@ export * from "./palette";
 export * from "./format";
 export * from "./rules";
 export * from "./equating";
+export * from "./kanon";
