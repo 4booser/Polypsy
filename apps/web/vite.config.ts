@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwind from "@tailwindcss/vite";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -17,7 +18,7 @@ export default defineConfig({
     __BUILD_SHA__: JSON.stringify(gitSha()),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)),
   },
-  plugins: [react()],
+  plugins: [react(), tailwind()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

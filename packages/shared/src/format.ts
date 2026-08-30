@@ -19,8 +19,17 @@ export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms <= 0) return "—";
   const sec = ms / 1000;
   if (sec < 60) return `${sec.toFixed(1).replace(".", ",")} с`;
-  const min = Math.floor(sec / 60);
-  const rest = Math.round(sec % 60);
+  /*
+   * Округляем всю величину, а потом делим на минуты и секунды — не наоборот.
+   *
+   * Прежний порядок брал остаток и округлял его отдельно, поэтому 299,6 с
+   * давали «4 мин 60 с»: остаток 59,6 округлялся до 60, а минуты считались
+   * от неокруглённого значения. На сводке это видно каждый раз, когда
+   * среднее попадает в последнюю половину секунды перед круглой минутой.
+   */
+  const total = Math.round(sec);
+  const min = Math.floor(total / 60);
+  const rest = total % 60;
   return rest ? `${min} мин ${rest} с` : `${min} мин`;
 }
 

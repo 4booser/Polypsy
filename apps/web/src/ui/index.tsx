@@ -63,7 +63,7 @@ export const IconCompare = icon(<><path d="M3 20V10M9 20V4M15 20v-7M21 20V8" /><
  * в длинном списке однофамильцев. Цвет выводится из имени, поэтому у одного
  * человека он всегда один и тот же и запоминается.
  */
-export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
+export function Avatar({ name, size = 22 }: { name: string; size?: number }) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const initials = ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "—";
   let hash = 0;
@@ -78,11 +78,17 @@ export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
         height: size,
         fontSize: size * 0.4,
         /*
-         * Светлота 30 %, а не «на глаз»: при 42 % белые инициалы на жёлто-
-         * зелёных оттенках давали контраст 2,9:1. Проверено перебором всех
-         * 360 тонов — на 30 % худший случай даёт 5,3:1.
+         * Насыщенность и светлота подобраны перебором всех 360 тонов, а не
+         * на глаз. Прежние 45 %/30 % давали в худшем случае (тон 60,
+         * жёлтый) контраст 5,3:1 — достаточно, но кружки складывались в
+         * радугу: в списке из пятидесяти строк пятьдесят насыщенных пятен
+         * перетягивают внимание с данных, ради которых список и открыли.
+         *
+         * На 32 %/26 % кружок остаётся узнаваемым и различимым, но перестаёт
+         * спорить с сигнальными цветами, а худший контраст даже выше —
+         * 7,4:1.
          */
-        background: `hsl(${hue} 45% 30%)`,
+        background: `hsl(${hue} 32% 26%)`,
       }}
     >
       {initials}
@@ -611,6 +617,8 @@ export function DataTable<T>({
   rowKey,
   facets,
   facetNote,
+  onRowClick,
+  isRowActive,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -645,6 +653,17 @@ export function DataTable<T>({
    * его отсутствия: по нему принимают решения.
    */
   facetNote?: string;
+  /**
+   * Выбор строки. Нажатие по строке показывает её в панели контекста справа,
+   * не уводя с экрана: раньше «посмотреть, кто это» стоило перехода в карту и
+   * возврата назад — с потерей места в списке и набранных фильтров.
+   *
+   * Ссылки внутри ячеек продолжают работать как ссылки: выбор — это не
+   * переход, и подменять им переход нельзя.
+   */
+  onRowClick?: (row: T) => void;
+  /** Какая строка сейчас показана в панели контекста. */
+  isRowActive?: (row: T) => boolean;
 }) {
   /*
    * Большинство таблиц показывают сущности с id — берём его, не заставляя
@@ -799,13 +818,13 @@ export function DataTable<T>({
           {head}
           <tbody>
             {sorted.map((row, i) => (
-              <tr key={keyOf(row, i)}>
-                {shown.map((c) => (
-                  <td key={c.key} className={c.num ? "num" : ""}>
-                    {c.render(row)}
-                  </td>
-                ))}
-              </tr>
+              <Row
+                key={keyOf(row, i)}
+                row={row}
+                columns={shown}
+                onRowClick={onRowClick}
+                active={isRowActive?.(row) ?? false}
+              />
             ))}
           </tbody>
         </table>
@@ -816,8 +835,73 @@ export function DataTable<T>({
   return (
     <>
       {tools}
-      <VirtualRows sorted={sorted} columns={shown} head={head} keyOf={keyOf} />
+      <VirtualRows
+        sorted={sorted}
+        columns={shown}
+        head={head}
+        keyOf={keyOf}
+        onRowClick={onRowClick}
+        isRowActive={isRowActive}
+      />
     </>
+  );
+}
+
+/**
+ * Строка таблицы.
+ *
+ * Когда выбор включён, строка становится доступной с клавиатуры: работа со
+ * списком одинаково часто идёт мышью и стрелками, и «посмотреть, кто это»
+ * не должно требовать мыши. Ссылки внутри ячеек остаются ссылками — нажатие
+ * по ним не считается выбором, иначе переход в карту заодно менял бы панель
+ * справа и человек видел бы, как она мигает на уходе со страницы.
+ */
+function Row<T>({
+  row,
+  columns,
+  height,
+  onRowClick,
+  active,
+}: {
+  row: T;
+  columns: Column<T>[];
+  height?: number;
+  onRowClick?: (row: T) => void;
+  active: boolean;
+}) {
+  const clickable = !!onRowClick;
+  return (
+    <tr
+      style={height ? { height } : undefined}
+      className={active ? "row-active" : undefined}
+      aria-selected={clickable ? active : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={
+        clickable
+          ? (e) => {
+              // нажатие по ссылке — переход, а не выбор
+              if ((e.target as HTMLElement).closest("a, button")) return;
+              onRowClick(row);
+            }
+          : undefined
+      }
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onRowClick(row);
+              }
+            }
+          : undefined
+      }
+    >
+      {columns.map((c) => (
+        <td key={c.key} className={c.num ? "num" : ""}>
+          {c.render(row)}
+        </td>
+      ))}
+    </tr>
   );
 }
 
@@ -837,11 +921,15 @@ function VirtualRows<T>({
   columns,
   head,
   keyOf,
+  onRowClick,
+  isRowActive,
 }: {
   sorted: T[];
   columns: Column<T>[];
   head: ReactNode;
   keyOf: (row: T, i: number) => string;
+  onRowClick?: (row: T) => void;
+  isRowActive?: (row: T) => boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowHeight = useRowHeight(scrollRef);
@@ -868,13 +956,14 @@ function VirtualRows<T>({
           {items.map((v) => {
             const row = sorted[v.index]!;
             return (
-              <tr key={keyOf(row, v.index)} style={{ height: rowHeight }}>
-                {columns.map((c) => (
-                  <td key={c.key} className={c.num ? "num" : ""}>
-                    {c.render(row)}
-                  </td>
-                ))}
-              </tr>
+              <Row
+                key={keyOf(row, v.index)}
+                row={row}
+                columns={columns}
+                height={rowHeight}
+                onRowClick={onRowClick}
+                active={isRowActive?.(row) ?? false}
+              />
             );
           })}
           {padBottom > 0 ? <tr style={{ height: padBottom }} aria-hidden /> : null}

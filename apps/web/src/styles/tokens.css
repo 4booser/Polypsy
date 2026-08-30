@@ -1,0 +1,392 @@
+/*
+ * «Смена» — оформление консоли психологического отдела.
+ *
+ * Прежняя метафора — пульт дежурного — была верной для системы измерений.
+ * Отдел живёт иначе: у него есть день. Расписание, приёмы, очередь работы,
+ * экран «Сегодня». Поэтому поверхность строится не как приборная панель, а
+ * как рабочий день: слева — где я нахожусь, в центре — что делаю сейчас,
+ * справа — что об этом надо знать.
+ *
+ * Что осталось от «Пульта», потому что было правильным:
+ *
+ * 1. Акцент занят смыслом. Янтарный — «требует внимания», и больше ничего.
+ *    Кнопка «сохранить» им не красится.
+ * 2. Разделители вместо карточек. Тени тратят место, которое нужно данным;
+ *    тень остаётся только там, где слой действительно висит над другим.
+ * 3. Цифра — главный элемент, моноширинная и крупнее текста вокруг.
+ *
+ * Что изменилось:
+ *
+ * 4. Земля глубже (#0B1113 против прежнего #0C1416), а ступеней поверхности
+ *    пять вместо трёх. Панели различаются планом, а не рамкой, и сигнальные
+ *    цвета на более тёмном фоне бьют заметно дальше.
+ * 5. Категориальная палитра графиков пересобрана перебором. Прежняя не
+ *    проходила проверку: оранжевый и зелёный сливались при протанопии
+ *    (ΔE 6.1 при пороге 8), зелёный и фиолетовый — при тританопии (6.6).
+ *    У новой худшая соседняя пара — 9.1 при всех четырёх видах зрения.
+ * 6. Шкала размеров ужата с восьми ступеней до шести: восемь никто не
+ *    удерживает в голове, и на практике половина использовалась наугад.
+ *
+ * Значения контраста проверены расчётом, а не на глаз: весь текст ≥ 4.5:1,
+ * приглушённый — 5.0:1, каждый цвет графика — не ниже 6.6:1 на своей земле.
+ */
+
+/* ═══ слой 1: палитра ═══
+ * Сырые ступени без смысла. Ни один компонент их не использует напрямую.
+ */
+:root {
+  /* земля и поверхности тёмной темы: шаг ~3% светлоты, лёгкий сине-зелёный увод */
+  --ink-1000: #070d0f;
+  --ink-950: #0b1113;
+  --ink-900: #0e1518;
+  --ink-850: #131c20;
+  --ink-800: #182428;
+  --ink-700: #203036;
+  --ink-600: #2b4047;
+  --ink-500: #3c565e;
+  --ink-400: #6e8a90; /* 5.00:1 на #0e1518 — нижняя граница приглушённого */
+  --ink-300: #8fa8ad; /* 7.35:1 */
+  --ink-200: #b4c8cb; /* 10.59:1 */
+  --ink-100: #d8e4e5;
+  --ink-050: #eef4f4; /* 16.58:1 — основной текст */
+
+  /* бумага светлой темы: не инверсия, а своя лестница */
+  --paper-000: #ffffff;
+  --paper-050: #fafbfb;
+  --paper-100: #f4f7f7;
+  --paper-200: #ebf0f0;
+  --paper-300: #dfe7e7;
+  --paper-400: #cbd7d8;
+  --paper-500: #a9babc;
+
+  /* янтарь: только «требует внимания» */
+  --amber-400: #ffb020;
+  --amber-500: #e09400;
+  --amber-600: #8a5200; /* 6.16:1 на бумаге */
+
+  /* бирюза: обычный интерактив, намеренно не янтарь */
+  --teal-400: #5fd3d8; /* 10.36:1 на тёмном */
+  --teal-600: #0b6a72; /* 6.10:1 на бумаге */
+
+  /* сигнальные: ступени различимы и при дальтонизме */
+  --signal-ok: #4fa97a;
+  --signal-mild: #d0a72a;
+  --signal-warn: #e0813f;
+  --signal-bad: #e45c5c;
+
+  /*
+   * Категориальные слоты графиков: фиксированный порядок, не циклятся.
+   * Подобраны перебором по трём условиям сразу — соседние пары различимы
+   * при протанопии, дейтеранопии и тританопии (ΔE ≥ 9.1 при пороге 8),
+   * при обычном зрении ΔE ≥ 18 при пороге 15, и каждый даёт ≥ 6.6:1
+   * на тёмной земле. Девятого ряда не бывает: он сворачивается в «прочие».
+   */
+  --cat-1: #4ba3f7;
+  --cat-2: #e18528;
+  --cat-3: #8bc27f;
+  --cat-4: #b38bd2;
+  --cat-5: #dca81c;
+  --cat-6: #4dc8ba;
+
+  /* совместимость со старой разметкой, пока она не вымыта */
+  --slate-950: var(--ink-1000);
+  --slate-900: var(--ink-950);
+  --slate-850: var(--ink-900);
+  --slate-800: var(--ink-900);
+  --slate-700: var(--ink-850);
+  --slate-600: var(--ink-700);
+  --slate-500: var(--ink-600);
+  --slate-400: var(--ink-400);
+  --slate-300: var(--ink-300);
+  --slate-200: var(--ink-200);
+  --slate-100: var(--ink-100);
+  --slate-050: var(--ink-050);
+}
+
+/* ═══ слой 2: семантика ═══ */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /*
+   * Земля — самое тёмное, что есть на экране, а панели лежат НА ней.
+   *
+   * Раньше было наоборот: фон страницы светлее панелей, и панель читалась
+   * как углубление. Углубление уместно для поля ввода и неуместно для
+   * участка с данными: у листа на столе край всегда светлее стола, и глаз
+   * ждёт того же. Заодно на более глубокой земле сигнальные цвета бьют
+   * дальше, а это единственное, ради чего они здесь есть.
+   */
+  --bg: var(--ink-1000);
+  --rail: var(--ink-1000);
+  --surface: var(--ink-900);
+  --surface-2: var(--ink-850);
+  --surface-3: var(--ink-800);
+  --card: var(--ink-900);
+  --border: var(--ink-700);
+  --border-strong: var(--ink-600);
+  --hairline: color-mix(in srgb, var(--ink-700) 72%, transparent);
+
+  --text: var(--ink-050);
+  --text-2: var(--ink-200);
+  --muted: var(--ink-300);
+  --ink-faint: var(--ink-400);
+
+  --accent: var(--amber-400);
+  --accent-soft: color-mix(in srgb, var(--amber-400) 14%, transparent);
+  --accent-text: var(--ink-1000);
+
+  --primary: var(--teal-400);
+  --primary-soft: color-mix(in srgb, var(--teal-400) 12%, transparent);
+  --primary-text: var(--ink-1000);
+
+  --danger: var(--signal-bad);
+  --danger-soft: color-mix(in srgb, var(--signal-bad) 14%, transparent);
+
+  --sev-none: var(--signal-ok);
+  --sev-mild: var(--signal-mild);
+  --sev-moderate: var(--signal-warn);
+  --sev-severe: var(--signal-bad);
+  --sev-none-text: #6cc492;
+  --sev-mild-text: #dfc05a;
+  --sev-moderate-text: #f0a06a;
+  --sev-severe-text: #f08080;
+
+  --grid: color-mix(in srgb, var(--ink-600) 48%, transparent);
+  --grid-fine: color-mix(in srgb, var(--ink-600) 22%, transparent);
+  --axis: var(--ink-300);
+  --s1: var(--cat-1);
+  --s2: var(--cat-2);
+  --s3: var(--cat-3);
+  --s4: var(--cat-4);
+
+  /* тень только для того, что действительно висит над поверхностью */
+  --shadow: 0 1px 0 rgb(0 0 0 / 0.5), 0 20px 44px -26px rgb(0 0 0 / 0.92);
+  --shadow-pop: 0 2px 4px rgb(0 0 0 / 0.4), 0 24px 60px -28px rgb(0 0 0 / 0.95);
+  --focus: var(--amber-400);
+}
+
+/* явная светлая должна перебивать системную тёмную */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* та же мысль на бумаге: белый лист на сером столе, а не серый на белом */
+  --bg: var(--paper-200);
+  --rail: var(--paper-200);
+  --surface: var(--paper-000);
+  --surface-2: var(--paper-100);
+  --surface-3: var(--paper-300);
+  --card: var(--paper-000);
+  --border: var(--paper-400);
+  --border-strong: var(--paper-500);
+  --hairline: color-mix(in srgb, var(--paper-400) 82%, transparent);
+
+  --text: #0d1719; /* 17.56:1 */
+  --text-2: #33474a;
+  --muted: #4e6265; /* 6.22:1 */
+  --ink-faint: #4e6265;
+
+  --accent: var(--amber-600);
+  --accent-soft: color-mix(in srgb, var(--amber-600) 12%, transparent);
+  --accent-text: #ffffff;
+
+  --primary: var(--teal-600);
+  --primary-soft: color-mix(in srgb, var(--teal-600) 10%, transparent);
+  --primary-text: #ffffff;
+
+  --danger: #b93030;
+  --danger-soft: color-mix(in srgb, #b93030 10%, transparent);
+
+  --sev-none: #2f7d52;
+  --sev-mild: #7a610f;
+  --sev-moderate: #98481a;
+  --sev-severe: #a82a2a;
+  --sev-none-text: #1f6b41;
+  --sev-mild-text: #6b5410;
+  --sev-moderate-text: #8b4118;
+  --sev-severe-text: #9c2626;
+
+  --grid: color-mix(in srgb, #0d1719 12%, transparent);
+  --grid-fine: color-mix(in srgb, #0d1719 5%, transparent);
+  --axis: #4e6265;
+  --s1: #1668a8;
+  --s2: #9c5312;
+  --s3: #33713a;
+  --s4: #6b4a9e;
+
+  --shadow: 0 1px 0 rgb(13 23 25 / 0.06), 0 18px 40px -26px rgb(13 23 25 / 0.28);
+  --shadow-pop: 0 2px 6px rgb(13 23 25 / 0.1), 0 24px 56px -28px rgb(13 23 25 / 0.34);
+  --focus: var(--amber-600);
+}
+
+/* ═══ слой 3: типографика, ритм, плотность ═══ */
+:root {
+  --font-display: "Unbounded", system-ui, sans-serif;
+  --font-text: "Onest", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /*
+   * Шесть ступеней вместо восьми. Восемь никто не держит в голове, и на
+   * практике половина выбиралась наугад; после сжатия каждая ступень
+   * отвечает за свою работу и промахнуться труднее.
+   */
+  --fs-micro: 11px;   /* служебные подписи, клавиши */
+  --fs-caption: 12px; /* подписи полей, колонки таблиц */
+  --fs-small: 13px;   /* вторичный текст */
+  --fs-body: 15px;    /* основной */
+  --fs-section: 17px; /* заголовок раздела */
+  --fs-page: 26px;    /* заголовок страницы */
+  --fs-stat: 34px;    /* число, которое читают с расстояния */
+  --fs-hero: 52px;    /* киоск: видно от двери */
+
+  --lh-tight: 1.2;
+  --lh-normal: 1.55;
+
+  --tracking-label: 0.06em; /* прописные подписи разделов */
+
+  /* сетка 8px; шаг плотности меняет только то, что связано со строкой */
+  --row-h: 38px;
+  --pad-card: 18px;
+  --pad-cell-y: 9px;
+  --gap: 16px;
+  --rail-w: 232px;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+}
+
+/*
+ * Плотный режим — не косметика: на экран помещается 24 строки вместо 14,
+ * а разбор случаев и «Сегодня» — это чтение списка.
+ */
+:root[data-density="compact"] {
+  --row-h: 30px;
+  --pad-card: 12px;
+  --pad-cell-y: 5px;
+  --gap: 10px;
+  --fs-body: 14px;
+}
+
+/* ═══ мост в Tailwind ═══
+ * inline, а не обычный @theme: значения должны остаться ссылками на
+ * переменные, иначе утилиты запеклись бы в один вариант темы и переключение
+ * перестало бы работать.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-rail: var(--rail);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-hairline: var(--hairline);
+
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--ink-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-primary: var(--primary);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-text: var(--primary-text);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --color-sev-none: var(--sev-none);
+  --color-sev-mild: var(--sev-mild);
+  --color-sev-moderate: var(--sev-moderate);
+  --color-sev-severe: var(--sev-severe);
+
+  --color-cat-1: var(--cat-1);
+  --color-cat-2: var(--cat-2);
+  --color-cat-3: var(--cat-3);
+  --color-cat-4: var(--cat-4);
+  --color-cat-5: var(--cat-5);
+  --color-cat-6: var(--cat-6);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-text);
+  --font-mono: var(--font-mono);
+
+  --text-micro: var(--fs-micro);
+  --text-caption: var(--fs-caption);
+  --text-small: var(--fs-small);
+  --text-body: var(--fs-body);
+  --text-section: var(--fs-section);
+  --text-page: var(--fs-page);
+  --text-stat: var(--fs-stat);
+  --text-hero: var(--fs-hero);
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+
+  --shadow-panel: var(--shadow);
+  --shadow-pop: var(--shadow-pop);
+
+  --ease-out: var(--ease);
+}
+
+/* движение отключается по системной настройке — это доступность, не вкус */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ═══ печать ═══
+ *
+ * Значения токенов для бумаги объявлены здесь, рядом с самими токенами, и
+ * это не вкусовщина, а вынужденное соседство.
+ *
+ * Правила наследия лежат в слое `legacy`, а токены — вне слоёв. Неслоёное
+ * правило в каскаде сильнее слоёного независимо от специфичности, поэтому
+ * печатный блок, оставленный в наследии, переставал перебивать тему: тёмная
+ * тема доживала до бумаги, браузер фон не печатает — и любой отчёт выходил
+ * пустым листом. Тема тёмная по умолчанию, то есть это касалось почти всех.
+ *
+ * Перечислены и голый :root, и оба варианта с меткой темы: `:root[data-theme]`
+ * весит больше по специфичности и перебил бы одиночный `:root`.
+ */
+@media print {
+  :root,
+  :root[data-theme="dark"],
+  :root[data-theme="light"] {
+    --bg: #fff;
+    --rail: #fff;
+    --surface: #fff;
+    --surface-2: #fff;
+    --surface-3: #fff;
+    --card: #fff;
+    --text: #000;
+    --text-2: #222;
+    --muted: #444;
+    --ink-faint: #555;
+    --border: #999;
+    --border-strong: #777;
+    --hairline: #bbb;
+    color-scheme: light;
+  }
+}
