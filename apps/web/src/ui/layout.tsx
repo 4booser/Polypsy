@@ -38,6 +38,7 @@ export function Page({
   toolbar,
   context,
   contextTitle,
+  bleed,
   children,
   className,
 }: {
@@ -52,6 +53,17 @@ export function Page({
   /** Панель справа. Если её нет, содержимое занимает всю ширину. */
   context?: ReactNode;
   contextTitle?: ReactNode;
+  /**
+   * Экран сам управляет своей областью: без полей и без прокрутки снаружи.
+   *
+   * Нужно там, где содержимое — не поток блоков, а собственная раскладка во
+   * всю высоту: три панели разбора случаев, редактор маршрута. Раньше такие
+   * экраны выбирались из полей отрицательными отступами и держали высоту
+   * через `calc(100vh − 46px − 74px)`. Числа в этой формуле — высота верхней
+   * панели и шапки страницы; стоило измениться любому из них, и экран
+   * начинал вылезать за окно или не доставать до низа, причём молча.
+   */
+  bleed?: boolean;
   children: ReactNode;
   className?: string;
 }) {
@@ -75,7 +87,12 @@ export function Page({
         не останется, поля уйдут из .main, а отсюда — absolute.
       */}
       <div className="absolute inset-0 flex min-h-0 flex-col">
-        <header className="shrink-0 px-7 pb-4 pt-6 max-[900px]:px-4 max-[900px]:pt-4">
+        <header
+          className={cx(
+            "shrink-0 px-7 max-[900px]:px-4",
+            bleed ? "pb-3 pt-4" : "pb-4 pt-6 max-[900px]:pt-4",
+          )}
+        >
           {crumbs ? <div className="mb-1.5 flex items-center gap-1.5 text-caption text-muted">{crumbs}</div> : null}
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
             <div className="min-w-0">
@@ -105,7 +122,10 @@ export function Page({
             ) : null}
             <div
               className={cx(
-                "min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-7 pb-24 pt-4 max-[900px]:px-4",
+                "min-h-0 flex-1",
+                bleed
+                  ? "overflow-hidden"
+                  : "overflow-y-auto overflow-x-hidden px-7 pb-24 pt-4 max-[900px]:px-4",
                 className,
               )}
             >

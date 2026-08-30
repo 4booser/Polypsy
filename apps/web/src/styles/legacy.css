@@ -615,9 +615,18 @@ kbd, .kbd {
 }
 .case.overdue { background: linear-gradient(90deg, var(--accent-soft), transparent 30%), var(--card); }
 .case.resolved { opacity: 0.62; }
+/*
+ * Случай под клавиатурой отмечен рамкой, а не янтарным кольцом во всю
+ * карточку.
+ *
+ * Кольцо занимало ровно тот же цвет, которым помечены просроченные случаи, и
+ * на экране разбора выходило, что подсвеченный случай сам по себе о чём-то
+ * тревожном сообщает. Кроме того, обвести целиком главную панель экрана —
+ * значит закричать там, где достаточно сказать «вы здесь».
+ */
 .case.focused {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
 }
 .case-toggle {
   border: none;
@@ -775,8 +784,8 @@ kbd, .kbd {
     radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--primary) 9%, transparent), transparent),
     var(--bg);
 }
-.login form, .join-card {
-  width: min(400px, 100%);
+/* вход собран на утилитах в pages/Login.tsx — здесь осталось приглашение */
+.join-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -784,7 +793,7 @@ kbd, .kbd {
   box-shadow: var(--shadow);
 }
 .join-card { width: min(520px, 100%); }
-.login h1, .join-card h1 { font-size: var(--fs-section); margin-bottom: 2px; }
+.join-card h1 { font-size: var(--fs-section); margin-bottom: 2px; }
 
 /* ═══ киоск: крупно, издалека, без лишнего ═══ */
 .kiosk-page { min-height: 100vh; background: var(--bg); display: grid; place-items: center; padding: 26px; }
@@ -851,18 +860,21 @@ kbd, .kbd {
 .opt { display: flex; align-items: center; gap: 9px; }
 .hotkeys { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
-.tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
 .tabs button {
   border: none;
   background: transparent;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   color: var(--muted);
-  padding: 8px 13px;
+  padding: 0 12px;
+  min-height: 34px;
   font-weight: 500;
 }
 .tabs button:hover { background: transparent; color: var(--text-2); }
-.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+/* активная вкладка подчёркнута бирюзой, а не янтарём: янтарь означает
+   «требует внимания», а выбранная вкладка — это состояние экрана */
+.tabs button.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 600; }
 
 /* сегментированный переключатель: группа читается как одно целое,
    а три подряд идущих фильтра не сливаются в кашу из подчёркиваний */
@@ -1005,13 +1017,21 @@ kbd, .kbd {
  * потерять место. Здесь очередь, случай и контекст стоят рядом, и разбор
  * идёт подряд, не сходя с экрана.
  */
+/*
+ * Высота и поля больше не считаются вручную.
+ *
+ * Было `calc(100vh − 46px − 74px)` и отрицательные отступы, чтобы выбраться
+ * из полей рабочей области. Числа в формуле — высота верхней панели и шапки
+ * страницы; стоило измениться любому, и три панели переставали доставать до
+ * низа окна или вылезали за него, причём молча. Теперь высоту даёт рамка
+ * экрана (Page в режиме bleed), а здесь остаётся только деление на колонки.
+ */
 .triage {
   display: grid;
   grid-template-columns: minmax(280px, 340px) minmax(420px, 1fr) minmax(260px, 330px);
   gap: 0;
-  /* высота окна минус верхняя панель и компактная шапка страницы */
-  height: calc(100vh - 46px - 74px);
-  margin: 0 -28px -80px;
+  height: 100%;
+  min-height: 0;
 }
 
 .triage-queue,
@@ -1020,11 +1040,11 @@ kbd, .kbd {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  background: var(--slate-850);
+  /* семантический токен вместо ступени палитры: боковые панели — та же
+     поверхность, что и всё «второго плана», и должны меняться вместе с ней */
+  background: var(--surface-2);
   scrollbar-width: thin;
 }
-:root[data-theme="light"] .triage-queue,
-:root[data-theme="light"] .triage-context { background: var(--paper-200); }
 .triage-queue { border-right: 1px solid var(--hairline); }
 .triage-context { border-left: 1px solid var(--hairline); padding: 16px; gap: 14px; }
 
@@ -1055,9 +1075,9 @@ kbd, .kbd {
 }
 .triage-filters .segmented button.active::before { display: none; }
 .triage-filters .segmented button.active {
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
 }
 .triage-count {
   padding: 9px 12px;
@@ -1087,6 +1107,9 @@ kbd, .kbd {
   color: var(--text);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
+/* выбранный случай отмечен бирюзой: янтарь означает «требует внимания», а
+   выбор — это состояние экрана, и красить его акцентом значит спорить с
+   просроченными случаями, отмеченными тем же цветом по делу */
 .queue-row.active::after {
   content: "";
   position: absolute;
@@ -1094,7 +1117,7 @@ kbd, .kbd {
   top: 6px;
   bottom: 6px;
   width: 2px;
-  background: var(--accent);
+  background: var(--primary);
 }
 .queue-row.done { opacity: 0.5; }
 .queue-sev { width: 3px; align-self: stretch; border-radius: 2px; flex: none; }

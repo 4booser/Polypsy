@@ -1,7 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth";
-import { useLang } from "../lang";
+import { LangSwitch, useLang } from "../lang";
+import { Button, Field, Input } from "../ui/primitives";
 
+/**
+ * Вход в консоль.
+ *
+ * Единственный экран, который видят до всего остального, — и до переделки он
+ * был самым небрежным: поля стояли впритык, кнопка была зашита по-русски
+ * мимо словаря, а переключателя языка не было вовсе. Украиноязычный
+ * сотрудник встречал подпись на украинском и единственную кнопку на русском,
+ * и переключить язык мог только войдя — то есть уже пройдя этот экран.
+ */
 export default function Login() {
   const { ut } = useLang();
   const { login } = useAuth();
@@ -25,34 +35,70 @@ export default function Login() {
 
   return (
     <div className="login">
-      <form className="card" onSubmit={submit}>
-        <h1>Quizzy</h1>
-        <p className="sub">{ut("lg.consoleSub")}</p>
-        <div className="field">
-          <label htmlFor="login-email">Email</label>
-          <input
-            id="login-email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            autoComplete="username"
-          />
+      <div className="w-full max-w-[380px]">
+        <form
+          className="card flex w-full flex-col gap-4 !mb-0 !p-7 shadow-panel"
+          onSubmit={submit}
+          noValidate
+        >
+          <div className="flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className="grid size-9 shrink-0 place-items-center rounded-md bg-primary font-display text-section font-bold text-primary-text"
+            >
+              Q
+            </span>
+            <div className="min-w-0">
+              <h1 className="!m-0 font-display text-section font-semibold leading-tight">Quizzy</h1>
+              <p className="m-0 text-caption text-muted">{ut("lg.consoleSub")}</p>
+            </div>
+          </div>
+
+          <Field label="Email" htmlFor="login-email">
+            <Input
+              id="login-email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              autoComplete="username"
+              autoFocus
+            />
+          </Field>
+
+          <Field label={ut("lg.password")} htmlFor="login-password">
+            <Input
+              id="login-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              autoComplete="current-password"
+            />
+          </Field>
+
+          {/*
+            Ошибка живёт рядом с кнопкой, а не под заголовком: смотрят туда,
+            куда только что нажали. Роль alert нужна, чтобы диктор прочитал
+            причину отказа, а не оставил человека перед не сработавшей кнопкой.
+          */}
+          {error ? (
+            <p role="alert" className="m-0 text-caption text-danger">
+              {error}
+            </p>
+          ) : null}
+
+          <Button type="submit" variant="primary" disabled={busy} className="w-full">
+            {busy ? ut("lg.signingIn") : ut("lg.signIn")}
+          </Button>
+        </form>
+
+        {/*
+          Переключатель языка — до входа, а не после. Иначе выбрать язык можно
+          только пройдя экран, который сам показан не на том языке.
+        */}
+        <div className="mt-4 flex justify-center">
+          <LangSwitch />
         </div>
-        <div className="field">
-          <label htmlFor="login-password">{ut("lg.password")}</label>
-          <input
-            id="login-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            autoComplete="current-password"
-          />
-        </div>
-        {error ? <p className="error">{error}</p> : null}
-        <button className="primary" style={{ width: "100%" }} disabled={busy}>
-          {busy ? "Вход…" : "Войти"}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }
