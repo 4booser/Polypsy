@@ -4,7 +4,8 @@ import type { AlertCase } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime, day, severityColor } from "../format";
-import { Avatar, Empty, HotkeyHint, Loading, PageHead, useAction, useHotkeys, useUrlState } from "../ui";
+import { Avatar, Empty, HotkeyHint, Loading, useAction, useHotkeys, useUrlState } from "../ui";
+import { Page } from "../ui/layout";
 import { useLang } from "../lang";
 import { SavedViews } from "../ui/SavedViews";
 import { onAppEvent } from "../events";
@@ -133,16 +134,17 @@ export default function Alerts() {
   const selected = current ?? items[0] ?? null;
 
   return (
-    <>
-      {/* заголовок остаётся: без него экран теряет ориентацию, а диктор — точку входа */}
-      <PageHead
-        title={ut("cases.title")}
-        sub={
-          all === "1"
-            ? ut("cases.allSub")
-            : `${ut("cases.openCount")}: ${total ?? items.length}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}${mine ? ` · ${ut("cases.mine")} ${mine}` : ""}`
-        }
-      />
+    /* заголовок остаётся: без него экран теряет ориентацию, а диктор — точку входа */
+    <Page
+      bleed
+      title={ut("cases.title")}
+      count={all === "1" ? null : (total ?? items.length)}
+      sub={
+        all === "1"
+          ? ut("cases.allSub")
+          : `${ut("cases.openCount")}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}${mine ? ` · ${ut("cases.mine")} ${mine}` : ""}`
+      }
+    >
     <div className="triage">
       {/* ── панель 1: очередь ── */}
       <aside className="triage-queue">
@@ -223,7 +225,7 @@ export default function Alerts() {
         {selected ? <PatientContext userId={selected.userId} /> : null}
       </aside>
     </div>
-    </>
+    </Page>
   );
 }
 
