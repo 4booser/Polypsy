@@ -5,7 +5,8 @@ import { api } from "../api";
 import { SeverityTag } from "../charts/advanced";
 import { day, dateTime } from "../format";
 import { useAuth } from "../auth";
-import { PageHead, Screen, useAction } from "../ui";
+import { Screen, useAction } from "../ui";
+import { Page } from "../ui/layout";
 import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
 import { Here } from "../components/Here";
@@ -50,7 +51,7 @@ export default function CaseSummaryPage() {
         {ut("sum.formedAt")} {dateTime(new Date().toISOString())}
         {user ? ` · ${user.lastName ?? ""} ${user.firstName ?? ""}`.trimEnd() : ""}
       </p>
-      <PageHead
+      <Page
         title={data.fullName}
         crumbs={<Link to={`/patients/${data.userId}`}>← {ut("pt.dynamics")}</Link>}
         sub={[
@@ -61,14 +62,14 @@ export default function CaseSummaryPage() {
           .filter(Boolean)
           .join(" · ")}
         actions={
-          <div className="row tight">
+          <>
             <Here resource={`patient:${data.userId}`} />
             <Link className="btn" to={`/patients/${data.userId}/timeline`}>{ut("tl.title")}</Link>
             <button onClick={() => setShowForm((v) => !v)}>{ut("ref.new")}</button>
             <button onClick={() => window.print()}>{ut("sum.print")}</button>
-          </div>
+          </>
         }
-      />
+      >
 
       {showForm ? (
         <ReferralForm
@@ -81,11 +82,18 @@ export default function CaseSummaryPage() {
       ) : null}
 
       {data.openAlerts.length ? (
-        <div className="card alarm">
-          <h2>{ut("sum.openAlerts")}: {data.openAlerts.length}</h2>
+        /*
+          Незакрытые тревоги стоят первыми и отмечены полосой выраженности
+          слева, а не заливкой во всю карточку. Заливка спорила с самими
+          строками тревог: карточка целиком выглядела опасной, и отличить в
+          ней тяжёлое от умеренного глазом было нельзя.
+        */
+        <div className="card alarm mb-4">
+          <h2 className="!mb-2">{ut("sum.openAlerts")}: {data.openAlerts.length}</h2>
           {data.openAlerts.map((a) => (
-            <p key={a.id} style={{ margin: "4px 0", fontSize: 13 }}>
-              <strong>{a.surveyTitle}</strong> · {a.label} · {dateTime(a.at)}
+            <p key={a.id} className="m-0 py-0.5 text-small">
+              <strong className="font-medium">{a.surveyTitle}</strong>
+              <span className="text-muted"> · {a.label} · {dateTime(a.at)}</span>
             </p>
           ))}
         </div>
@@ -228,6 +236,7 @@ export default function CaseSummaryPage() {
           </div>
         </div>
       </div>
+    </Page>
     </>
       )}
     </Screen>

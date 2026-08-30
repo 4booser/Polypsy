@@ -7,7 +7,6 @@ import {
   Empty,
   LoadMore,
   Modal,
-  PageHead,
   Search,
   Skeleton,
   useAction,
@@ -15,6 +14,8 @@ import {
 } from "../ui";
 import { Chart, LineChart, BarList, Donut } from "../charts";
 import { severityColor } from "../format";
+import { Page, Panel, Grid, Stack } from "../ui/layout";
+import { Button, Field, Input, Num, SectionLabel, SeverityTag, Stat, Tag } from "../ui/primitives";
 
 /**
  * Витрина языка интерфейса.
@@ -30,27 +31,37 @@ import { severityColor } from "../format";
  */
 
 const SWATCHES: [string, string][] = [
-  ["--bg", "основание"],
-  ["--surface", "поверхность"],
-  ["--surface-2", "приподнятая"],
+  ["--bg", "земля: самое тёмное на экране"],
+  ["--surface", "панель: лежит НА земле"],
+  ["--surface-2", "ступень выше: поля, боковые панели"],
   ["--border", "граница"],
-  ["--accent", "акцент: требует внимания"],
-  ["--primary", "интерактив"],
+  ["--accent", "янтарь: только «требует внимания»"],
+  ["--primary", "бирюза: действие и состояние"],
   ["--sev-none", "норма"],
   ["--sev-mild", "лёгкая"],
   ["--sev-moderate", "умеренная"],
   ["--sev-severe", "выраженная"],
 ];
 
+/**
+ * Категориальные слоты графиков в их единственно верном порядке.
+ *
+ * Подобраны перебором, а не на глаз: соседние пары различимы при
+ * протанопии, дейтеранопии и тританопии (худшая — 9,1 при пороге 8), при
+ * обычном зрении не ближе 18 при пороге 15, и каждый даёт не меньше 6,6:1
+ * на тёмной земле. Девятого ряда не бывает — он сворачивается в «прочие».
+ */
+const CATEGORICAL = ["--cat-1", "--cat-2", "--cat-3", "--cat-4", "--cat-5", "--cat-6"];
+
 const TYPE_SCALE: [string, string, string][] = [
-  ["--fs-hero", "50", "число во весь экран киоска"],
+  ["--fs-hero", "52", "число во весь экран киоска"],
   ["--fs-stat", "34", "показатель на панели"],
-  ["--fs-page", "25", "заголовок экрана"],
+  ["--fs-page", "26", "заголовок экрана"],
   ["--fs-section", "17", "заголовок раздела"],
   ["--fs-body", "15", "основной текст"],
-  ["--fs-small", "13", "таблицы и подписи"],
-  ["--fs-caption", "12", "пояснения"],
-  ["--fs-micro", "11", "служебное"],
+  ["--fs-small", "13", "таблицы и вторичный текст"],
+  ["--fs-caption", "12", "подписи полей и колонок"],
+  ["--fs-micro", "11", "служебное, клавиши"],
 ];
 
 export default function UiKit() {
@@ -62,44 +73,51 @@ export default function UiKit() {
   const { run } = useAction();
 
   return (
-    <>
-      <PageHead
-        title="Язык интерфейса"
-        sub="Токены, типографика и компоненты. Всё, что показано здесь, берётся отсюда, а не рисуется заново."
-      />
-
-      <div className="card">
-        <div className="card-head">
-          <h2>Палитра</h2>
-          <span className="hint">Акцент занят смыслом и на кнопки не идёт</span>
-        </div>
-        <div className="grid cols-4">
+    <Page
+      title="Язык интерфейса"
+      sub="Токены, типографика и компоненты. Всё, что показано здесь, берётся отсюда, а не рисуется заново."
+    >
+      <Stack>
+      <Panel title="Палитра" hint="Янтарь занят смыслом и на кнопки не идёт. Бирюза — действие и состояние: выбранная строка, включённый фильтр, активная вкладка.">
+        <Grid min={230}>
           {SWATCHES.map(([token, meaning]) => (
-            <div key={token} className="row tight" style={{ alignItems: "center" }}>
+            <div key={token} className="flex items-start gap-2.5">
               <i
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  background: `var(${token})`,
-                  border: "1px solid var(--border-strong)",
-                  flex: "none",
-                }}
+                aria-hidden
+                className="mt-0.5 size-7 shrink-0 rounded-sm border border-border-strong"
+                style={{ background: `var(${token})` }}
               />
-              <span style={{ display: "grid" }}>
-                <code style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>{token}</code>
-                <span className="muted" style={{ fontSize: 12 }}>{meaning}</span>
+              <span className="min-w-0">
+                <code className="block font-mono text-micro">{token}</code>
+                <span className="block text-caption text-muted">{meaning}</span>
               </span>
             </div>
           ))}
-        </div>
-      </div>
+        </Grid>
 
-      <div className="card">
-        <div className="card-head">
-          <h2>Типографика</h2>
-          <span className="hint">Модульная шкала 1.2 — ни одного размера вне её</span>
+        <div className="mt-5 border-t border-hairline pt-4">
+          <SectionLabel className="mb-2">Ряды графиков · порядок фиксирован</SectionLabel>
+          <div className="flex flex-wrap items-center gap-2">
+            {CATEGORICAL.map((token, i) => (
+              <span key={token} className="flex items-center gap-1.5">
+                <i
+                  aria-hidden
+                  className="size-5 rounded-sm"
+                  style={{ background: `var(${token})` }}
+                />
+                <Num className="text-micro text-faint">{i + 1}</Num>
+              </span>
+            ))}
+          </div>
+          <p className="m-0 mt-2 max-w-[68ch] text-caption text-muted">
+            Соседние пары различимы при трёх видах дальтонизма: худшая — 9,1 при пороге 8.
+            Прежняя палитра порог не проходила — оранжевый с зелёным сливались при протанопии.
+            Девятого ряда не бывает: он сворачивается в «прочие».
+          </p>
         </div>
+      </Panel>
+
+      <Panel title="Типографика" hint="Шесть рабочих ступеней. Восемь никто не удерживает в голове, и половина выбиралась наугад.">
         <table>
           <tbody>
             {TYPE_SCALE.map(([token, px, use]) => (
@@ -118,19 +136,19 @@ export default function UiKit() {
             ))}
           </tbody>
         </table>
-      </div>
+      </Panel>
 
-      <div className="card">
-        <h2>Кнопки и метки</h2>
-        <div className="row" style={{ marginTop: 10 }}>
-          <button className="primary">Первичное действие</button>
-          <button>Обычное</button>
-          <button className="ghost">Призрачная</button>
-          <button className="danger">Опасное</button>
-          <button disabled>Недоступно</button>
+      <Panel title="Кнопки и метки" hint="Янтарного варианта у кнопки нет вовсе. Если он кажется нужным, экран сообщает о проблеме не тем способом.">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary">Первичное действие</Button>
+          <Button>Обычное</Button>
+          <Button variant="quiet">Тихая</Button>
+          <Button variant="danger">Опасное</Button>
+          <Button disabled>Недоступно</Button>
+          <Button size="sm">Мелкая</Button>
           <kbd>⌘K</kbd>
         </div>
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge>обычная</Badge>
           <Badge tone="good">норма</Badge>
           <Badge tone="warn">внимание</Badge>
@@ -138,70 +156,95 @@ export default function UiKit() {
           <Badge tone="accent">требует разбора</Badge>
           <span className="chip">фильтр</span>
           <span className="chip active">выбранный</span>
+          <Tag>нейтральная</Tag>
+          <Tag tone="primary">состояние</Tag>
+          <Tag tone="attention">внимание</Tag>
           <Avatar name="Петров Дмитрий" />
         </div>
-        <div className="row" style={{ marginTop: 12 }}>
+        {/*
+          Выраженность показана и цветом, и подписью, и формой точки: круг,
+          круг, квадрат, ромб. Тот, кто не различает красный и зелёный, читает
+          ту же разницу по форме.
+        */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <SeverityTag level="none">норма</SeverityTag>
+          <SeverityTag level="mild">лёгкая</SeverityTag>
+          <SeverityTag level="moderate">умеренная</SeverityTag>
+          <SeverityTag level="severe">выраженная</SeverityTag>
+        </div>
+        <div className="mt-3">
           <div className="segmented" role="group">
             <button className="active">Открытые</button>
             <button>Все</button>
           </div>
         </div>
-      </div>
+      </Panel>
 
-      <div className="grid cols-2">
-        <div className="card">
-          <h2>Поля</h2>
-          <div className="fields" style={{ marginTop: 10 }}>
-            <div className="field">
-              <label htmlFor="uikit-name">Фамилия</label>
-              <input id="uikit-name" placeholder="Петров" />
-            </div>
-            <div className="field">
-              <label htmlFor="uikit-sel">Подразделение</label>
+      <Panel title="Числа" hint="Моноширинные и в колонку: в столбце баллов разной ширины глаз теряет разряд, и 128 читается как 12,8.">
+        <div className="flex flex-wrap gap-10">
+          <Stat value={14108} label="проходжень" />
+          <Stat value={317} label="в очереди" tone="attention" />
+          <Stat value={null} label="нечего считать" />
+          <Stat value="5" unit="мин" label="среднее время" />
+        </div>
+        <p className="m-0 mt-3 max-w-[68ch] text-caption text-muted">
+          Прочерк вместо нуля — не мелочь: ноль это результат, прочерк —
+          его отсутствие, и в клинических данных путать их нельзя.
+        </p>
+      </Panel>
+
+      <Grid min={340}>
+        <Panel title="Поля">
+          <div className="flex flex-col gap-3">
+            <Field label="Фамилия" htmlFor="uikit-name">
+              <Input id="uikit-name" placeholder="Петров" />
+            </Field>
+            <Field
+              label="Подразделение"
+              htmlFor="uikit-sel"
+              hint="Пояснение стоит под полем всегда, а не только вместе с ошибкой"
+            >
               <select id="uikit-sel">
                 <option>Все</option>
                 <option>Рота обеспечения</option>
               </select>
-            </div>
-          </div>
-          <div style={{ marginTop: 10 }}>
+            </Field>
+            <Field label="Срок" htmlFor="uikit-err" error="Дата уже прошла">
+              <Input id="uikit-err" defaultValue="2020-01-01" />
+            </Field>
             <Search value={query} onChange={setQuery} placeholder="Поиск" />
+            <label className="check">
+              <input type="checkbox" defaultChecked /> Считать баллы по шкалам
+            </label>
           </div>
-          <label className="check" style={{ marginTop: 12 }}>
-            <input type="checkbox" defaultChecked /> Считать баллы по шкалам
-          </label>
-        </div>
+        </Panel>
 
-        <div className="card">
-          <h2>Состояния</h2>
-          <p className="hint">Пустое, загрузка и отказ — их забывают чаще всего</p>
+        <Panel title="Состояния" hint="Пустое, загрузка и отказ — их забывают чаще всего и обнаруживают в проде">
           <Skeleton lines={3} />
-          <div style={{ marginTop: 12 }}>
+          <div className="mt-3">
             <Empty title="Ничего не найдено" hint="Смягчите фильтры или проверьте период" />
           </div>
-          <p className="error" style={{ marginTop: 8 }}>Не удалось загрузить</p>
+          <p className="mt-2 text-small text-danger">Не удалось загрузить</p>
           <LoadMore cursor="есть-ещё" busy={busy} onLoad={() => {
             setBusy(true);
             setTimeout(() => setBusy(false), 800);
           }} />
-        </div>
-      </div>
+        </Panel>
+      </Grid>
 
-      <div className="card">
-        <h2>Выраженность</h2>
-        <p className="hint">
-          Отдельная шкала, не пересекающаяся с акцентом. В печати заменяется штриховкой:
-          монохромный принтер не различает красное и жёлтое.
-        </p>
-        <div className="sev-bar-row" style={{ marginTop: 10 }}>
+      <Panel
+        title="Выраженность"
+        hint="Отдельная шкала, не пересекающаяся с акцентом. В печати заменяется штриховкой: монохромный принтер не различает красное и жёлтое."
+      >
+        <div className="sev-bar-row">
           <i className="sev-seg" style={{ background: severityColor.none, width: "45%" }} />
           <i className="sev-seg" style={{ background: severityColor.mild, width: "25%" }} />
           <i className="sev-seg" style={{ background: severityColor.moderate, width: "20%" }} />
           <i className="sev-seg" style={{ background: severityColor.severe, width: "10%" }} />
         </div>
-      </div>
+      </Panel>
 
-      <div className="grid cols-2">
+      <Grid min={380}>
         <Chart title="Временной ряд" hint="Перекрестье и подсказка — по наведению">
           <LineChart
             area
@@ -228,10 +271,9 @@ export default function UiKit() {
             ]}
           />
         </Chart>
-      </div>
+      </Grid>
 
-      <div className="card">
-        <h2>Нагрузка по методикам</h2>
+      <Panel title="Нагрузка по методикам">
         <BarList
           items={[
             { label: "СР-45", value: 4820, caption: "в среднем 6 мин" },
@@ -239,10 +281,9 @@ export default function UiKit() {
             { label: "МЛО-200", value: 980, caption: "в среднем 38 мин" },
           ]}
         />
-      </div>
+      </Panel>
 
-      <div className="card">
-        <h2>Таблица</h2>
+      <Panel title="Таблица" flush>
         <DataTable
           csvName="витрина"
           rows={[
@@ -256,19 +297,19 @@ export default function UiKit() {
             { key: "n", header: "Замеров", num: true, render: (r) => r.n, sort: (r) => r.n },
           ]}
         />
-      </div>
+      </Panel>
 
-      <div className="card">
-        <h2>Всплывающие слои</h2>
-        <div className="row" style={{ marginTop: 10 }}>
-          <button onClick={() => setModal(true)}>Диалог</button>
-          <button onClick={() => setConfirm(true)}>Подтверждение печатанием</button>
-          <button onClick={() => toast("Сохранено", "ok")}>Уведомление</button>
-          <button onClick={() => void run(async () => { throw new Error("Пример отказа"); })}>
+      <Panel title="Всплывающие слои" hint="Единственное место, где осталась тень: она сообщает о высоте, а не украшает.">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setModal(true)}>Диалог</Button>
+          <Button onClick={() => setConfirm(true)}>Подтверждение печатанием</Button>
+          <Button onClick={() => toast("Сохранено", "ok")}>Уведомление</Button>
+          <Button variant="danger" onClick={() => void run(async () => { throw new Error("Пример отказа"); })}>
             Отказ
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
+      </Stack>
 
       {modal ? (
         <Modal title="Диалог" onClose={() => setModal(false)}>
@@ -291,6 +332,6 @@ export default function UiKit() {
           onCancel={() => setConfirm(false)}
         />
       ) : null}
-    </>
+    </Page>
   );
 }
