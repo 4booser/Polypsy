@@ -8,6 +8,8 @@ import { Hint } from "../components/Hint";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
+import { Page, Panel } from "../ui/layout";
+import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
 import { SavedViews } from "../ui/SavedViews";
 import { usePagedResource, useResource } from "../useResource";
@@ -28,23 +30,37 @@ export function PatientList() {
     { debounceMs: 300 },
   );
   const { items: rows, total } = page;
+  /*
+   * Выбранная строка хранится целиком, а не одним идентификатором: панель
+   * справа рисуется сразу из того, что уже приехало со списком, и не мигает
+   * пустотой, пока летит запрос за подробностями.
+   */
+  const [selected, setSelected] = useState<Respondent | null>(null);
 
   if (!rows) return <Loading rows={6} error={page.error} />;
 
   const filtered = rows;
 
   return (
-    <>
-      <PageHead
-        title={ut("patients.title")}
-        sub={`${ut("patients.sub")}${total ? ` · ${total}` : ""}`}
-        actions={<Search value={query} onChange={setQuery} placeholder={ut("ui.search")} />}
-      />
-      <div className="card">
-        <div className="table-tools">
-          <SavedViews scope="patients" />
-        </div>
+    <Page
+      title={ut("patients.title")}
+      sub={ut("patients.sub")}
+      count={total ?? null}
+      actions={<Search value={query} onChange={setQuery} placeholder={ut("ui.search")} />}
+      toolbar={<SavedViews scope="patients" />}
+      contextTitle={ut("pt.whoIsThis")}
+      context={
+        selected ? (
+          <PatientContext person={selected} />
+        ) : (
+          <p className="m-0 text-caption text-muted">{ut("pt.pickRow")}</p>
+        )
+      }
+    >
+      <Panel flush>
         <DataTable
+          onRowClick={setSelected}
+          isRowActive={(r) => r.userId === selected?.userId}
           rows={filtered}
           csvName={ut("pt.patients")}
           stateKey="patients"
@@ -120,13 +136,13 @@ export function PatientList() {
             },
           ]}
         />
-      </div>
+      </Panel>
       {page.hasMore ? (
-        <button style={{ width: "100%" }} disabled={page.loadingMore} onClick={page.loadMore}>
+        <button className="mt-4 w-full justify-center" disabled={page.loadingMore} onClick={page.loadMore}>
           {page.loadingMore ? ut("ui.loading") : ut("ui.loadMore")}
         </button>
       ) : null}
-    </>
+    </Page>
   );
 }
 

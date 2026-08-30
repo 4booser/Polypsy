@@ -61,9 +61,34 @@ export function useLang(): LangState {
 export function LangSwitch() {
   const { lang, setLang } = useLang();
   return (
-    <div className="lang-switch" role="group" aria-label="Мова / Язык">
-      <button className={lang === "uk" ? "active" : ""} onClick={() => setLang("uk")}>УКР</button>
-      <button className={lang === "ru" ? "active" : ""} onClick={() => setLang("ru")}>РУС</button>
+    /*
+      Сегментированный переключатель, а не две кнопки рядом: две кнопки
+      выглядят как два действия, а здесь одно состояние из двух. Текущий язык
+      виден заливкой, а не только жирностью — жирность на трёх буквах
+      прописными не читается.
+    */
+    <div
+      role="group"
+      aria-label="Мова / Язык"
+      className="flex items-center gap-0.5 rounded-sm border border-border bg-surface-2 p-0.5"
+    >
+      {(["uk", "ru"] as const).map((code) => (
+        <button
+          key={code}
+          type="button"
+          onClick={() => setLang(code)}
+          aria-pressed={lang === code}
+          className={
+            "min-h-0 rounded-[4px] px-2 py-1 text-micro font-semibold tracking-[var(--tracking-label)] " +
+            "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " +
+            (lang === code
+              ? "bg-surface-3 text-text"
+              : "text-faint hover:text-text")
+          }
+        >
+          {code === "uk" ? "УКР" : "РУС"}
+        </button>
+      ))}
     </div>
   );
 }

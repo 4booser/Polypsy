@@ -1,36 +1,20 @@
-import { Suspense, lazy, type ReactNode, useEffect, useRef, useState } from "react";
-import { CrisisBar } from "./components/CrisisBar";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { CrisisBar, CrisisProvider, CrisisSwitch } from "./components/CrisisBar";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
 import { Topbar } from "./shell/Topbar";
+import { Rail } from "./shell/Rail";
+import { Button, Field, Select, Tag } from "./ui/primitives";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
 import type { WorkspacePrefs } from "@quizzy/shared";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
 import Alerts from "./pages/Alerts";
-import {
-  IconAlert,
-  IconAudit,
-  IconBattery,
-  IconClock,
-  IconCompare,
-  IconDashboard,
-  IconGroup,
-  IconInvite,
-  IconKiosk,
-  IconPatients,
-  IconStack,
-  IconPulse,
-  IconReferral,
-  IconRoute,
-  IconSurvey,
-  IconUsers,
-  Loading,
-} from "./ui";
+import { Loading } from "./ui";
 
 /*
  * Экраны догружаются по требованию.
@@ -80,28 +64,6 @@ const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
 type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
-
-function Nav({
-  to,
-  end,
-  icon,
-  badge,
-  children,
-}: {
-  to: string;
-  end?: boolean;
-  icon: ReactNode;
-  badge?: number;
-  children: ReactNode;
-}) {
-  return (
-    <NavLink to={to} end={end} className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}>
-      {icon}
-      <span className="grow">{children}</span>
-      {badge ? <span className="nav-badge">{badge}</span> : null}
-    </NavLink>
-  );
-}
 
 /**
  * Что показывать на корневом адресе.
@@ -267,89 +229,63 @@ export default function App() {
   const isSuper = user.role === "superadmin";
 
   return (
-    <div className={`app${railOpen ? "" : " rail-closed"}`}>
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">Q</span>
-          Quizzy
+    <CrisisProvider>
+    <div className="flex min-h-screen">
+      <Rail counts={{ worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} collapsed={!railOpen}>
+        <div className="mt-3 flex flex-col gap-2 border-t border-hairline pt-3">
+          {railOpen ? (
+            <>
+              <div className="px-1">
+                <div className="truncate text-small font-medium text-text">{user.fullName}</div>
+                <div className="text-micro text-faint">
+                  {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
+                </div>
+              </div>
+              {user.readOnly ? (
+                /*
+                  Человек должен понимать, почему кнопки не срабатывают, до
+                  того как решит, что консоль сломана.
+                */
+                <Tag tone="attention" className="self-start">{ut("nav.readOnly")}</Tag>
+              ) : null}
+
+              {/*
+                Стартовый экран. Дежурному нужна сводка, а тому, кто весь день
+                разбирает случаи, — очередь: попадать каждый раз не туда стоит
+                лишнего нажатия в начале каждой смены.
+              */}
+              <Field label={ut("ws.startScreen")} htmlFor="start-screen">
+                <Select
+                  id="start-screen"
+                  value={user.workspace?.startScreen ?? "dashboard"}
+                  onChange={(e) => {
+                    const value = e.target.value as NonNullable<WorkspacePrefs["startScreen"]>;
+                    void api.saveWorkspace({ startScreen: value }).then(refreshUser).catch(() => {});
+                  }}
+                >
+                  <option value="dashboard">{ut("nav.dashboard")}</option>
+                  <option value="worklist">{ut("nav.worklist")}</option>
+                  <option value="alerts">{ut("nav.cases")}</option>
+                  <option value="patients">{ut("nav.patients")}</option>
+                </Select>
+              </Field>
+            </>
+          ) : null}
+
+          <Button variant="quiet" size="sm" onClick={logout} className={railOpen ? "justify-start" : "justify-center px-0"}>
+            {railOpen ? ut("nav.logout") : "⏻"}
+          </Button>
+          {railOpen ? (
+            <span className="px-1 font-mono text-micro text-faint" title={`Сборка от ${__BUILD_DATE__}`}>
+              {__BUILD_SHA__}
+            </span>
+          ) : null}
         </div>
+      </Rail>
 
-        <Nav to="/" end icon={<IconDashboard />}>{ut("nav.dashboard")}</Nav>
-        {/* очередь сразу под сводкой: с неё начинается рабочий день */}
-        <Nav to="/worklist" icon={<IconClock />} badge={worklistCount}>{ut("nav.worklist")}</Nav>
-        <Nav to="/surveys" icon={<IconSurvey />}>{ut("nav.surveys")}</Nav>
-        <Nav to="/batteries" icon={<IconBattery />}>{ut("nav.batteries")}</Nav>
-        <Nav to="/schedules" icon={<IconClock />}>{ut("nav.schedules")}</Nav>
-        <Nav to="/invites" icon={<IconInvite />}>{ut("nav.invites")}</Nav>
-        <Nav to="/kiosk-sessions" icon={<IconKiosk />}>{ut("nav.kiosk")}</Nav>
-        <Nav to="/groups" icon={<IconGroup />}>{ut("nav.groups")}</Nav>
-        <Nav to="/patients" icon={<IconPatients />}>{ut("nav.patients")}</Nav>
-        <Nav to="/compare" icon={<IconCompare />}>{ut("nav.compare")}</Nav>
-        <Nav to="/cohorts" icon={<IconGroup />}>{ut("coh.title")}</Nav>
-        <Nav to="/search" icon={<IconStack />}>{ut("srch.title")}</Nav>
-        <Nav to="/surveillance" icon={<IconPulse />}>{ut("nav.surveillance")}</Nav>
-        <Nav to="/unit-report" icon={<IconGroup />}>{ut("nav.unitReport")}</Nav>
-        <Nav to="/conclusion-batch" icon={<IconStack />}>{ut("cbatch.title")}</Nav>
-        <Nav to="/alerts" icon={<IconAlert />} badge={openAlerts}>{ut("nav.cases")}</Nav>
-        <Nav to="/referrals" icon={<IconReferral />} badge={openReferrals}>{ut("nav.referrals")}</Nav>
-        <Nav to="/pathways" icon={<IconRoute />}>{ut("pw.title")}</Nav>
-
-        {isSuper ? (
-          <>
-            <div className="nav-section">{ut("nav.admin")}</div>
-            <Nav to="/users" icon={<IconUsers />}>{ut("nav.users")}</Nav>
-            <Nav to="/audit" icon={<IconAudit />}>{ut("nav.audit")}</Nav>
-            <Nav to="/api-docs" icon={<IconSurvey />}>{ut("nav.api")}</Nav>
-            <Nav to="/ui" icon={<IconDashboard />}>{ut("nav.ui")}</Nav>
-          </>
-        ) : null}
-
-        <div style={{ flex: 1 }} />
-        {/* тема, язык и плотность переехали в верхнюю панель: там их ищут */}
-        <div className="nav-section" style={{ paddingBottom: 2 }}>
-          {user.fullName}
-        </div>
-        {user.readOnly ? (
-          // человек должен понимать, почему кнопки не срабатывают, до того
-          // как решит, что консоль сломана
-          <div className="muted" style={{ fontSize: 11, padding: "0 10px 4px" }}>
-            {ut("nav.readOnly")}
-          </div>
-        ) : null}
-        <div className="muted" style={{ fontSize: 11, padding: "0 10px 8px" }}>
-          {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
-        </div>
-
-        {/*
-          Стартовый экран. Дежурному нужна сводка, а тому, кто весь день
-          разбирает случаи, — очередь: попадать каждый раз не туда стоит
-          лишнего нажатия в начале каждой смены.
-        */}
-        <label className="start-screen">
-          <span className="muted">{ut("ws.startScreen")}</span>
-          <select
-            value={user.workspace?.startScreen ?? "dashboard"}
-            onChange={(e) => {
-              const value = e.target.value as NonNullable<WorkspacePrefs["startScreen"]>;
-              void api.saveWorkspace({ startScreen: value }).then(refreshUser).catch(() => {});
-            }}
-          >
-            <option value="dashboard">{ut("nav.dashboard")}</option>
-            <option value="worklist">{ut("nav.worklist")}</option>
-            <option value="alerts">{ut("nav.cases")}</option>
-            <option value="patients">{ut("nav.patients")}</option>
-          </select>
-        </label>
-        <button className="ghost" onClick={logout} style={{ width: "100%", justifyContent: "flex-start" }}>
-          {ut("nav.logout")}
-        </button>
-        <span className="build-tag" title={`Сборка от ${__BUILD_DATE__}`}>
-          {__BUILD_SHA__}
-        </span>
-      </aside>
-
-      <div className="workarea">
+      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar
+          right={<CrisisSwitch canSwitch={isSuper} />}
           onSearch={() => setPaletteOpen(true)}
           onToggleRail={() => setRailOpen((v) => !v)}
           railOpen={railOpen}
@@ -422,6 +358,7 @@ export default function App() {
         onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
       />
     </div>
+    </CrisisProvider>
   );
 }
 
