@@ -76,7 +76,7 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
                   <td className="num">{s.currentThreshold ?? "—"}</td>
                   <td className="num">{s.currentSensitivity ?? "—"}</td>
                   <td className="num">{s.currentSpecificity ?? "—"}</td>
-                  <td className="num">{s.roc ? s.roc.auc : <span className="text-muted">мало данных</span>}</td>
+                  <td className="num">{s.roc ? s.roc.auc : <span className="text-muted">{ut("cal.fewData")}</span>}</td>
                   <td className="num">
                     {s.roc ? (
                       <span title={`чувствительность ${s.roc.bestSensitivity}, специфичность ${s.roc.bestSpecificity}`}>
@@ -120,8 +120,8 @@ export function PpvCard() {
       title={ut("cal.ppvTitle")}
       actions={
         <span className="text-caption text-muted">
-          {data.overall.confirmed} из {data.overall.n} разобранных
-          {data.withoutOutcome ? ` · без исхода: ${data.withoutOutcome}` : ""}
+          {data.overall.confirmed} {ut("ppv.of")} {data.overall.n} {ut("ppv.reviewed")}
+          {data.withoutOutcome ? ` · ${ut("ppv.noOutcome")}: ${data.withoutOutcome}` : ""}
         </span>
       }
     >
@@ -134,14 +134,11 @@ export function PpvCard() {
           <div className="tile" key={m.month}>
             <span className="label">{m.month}</span>
             <span className="value text-[20px]">{m.ppv}%</span>
-            <span className="label">{m.n} случ.</span>
+            <span className="label">{m.n} {ut("ppv.cases")}</span>
           </div>
         ))}
       </div>
-      <p className="mt-3 text-caption text-muted">
-        Падение подтверждаемости — ранний признак того, что выборка изменилась или персонал
-        привык к ложным тревогам. Именно из-за этого скрининги тихо перестают работать.
-      </p>
+      <p className="mt-3 max-w-[68ch] text-caption text-muted">{ut("ppv.why")}</p>
     </Panel>
   );
 }

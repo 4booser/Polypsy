@@ -46,6 +46,23 @@ export function fieldByLabel(page: Page, label: string, lang: "uk" | "ru" = "ru"
  */
 export async function rowTexts(page: Page): Promise<string[]> {
   const rows = page.locator("table tbody tr");
-  await expect.poll(async () => (await rows.allTextContents()).length).toBeGreaterThan(0);
-  return rows.allTextContents();
+  /*
+   * Возвращается ровно тот список, который удовлетворил проверке, а не
+   * прочитанный заново.
+   *
+   * Между «строки появились» и «прочитать строки» таблица успевает
+   * перерисоваться — и вторым чтением приходил пустой массив. Тест падал не
+   * на утверждении о правах, а на пустом списке, то есть выглядел как
+   * нарушение разграничения там, где просто не повезло со временем. Дырку в
+   * правах такой тест, наоборот, пропустил бы: пустой список сравнивать не с
+   * чем.
+   */
+  let texts: string[] = [];
+  await expect
+    .poll(async () => {
+      texts = await rows.allTextContents();
+      return texts.length;
+    })
+    .toBeGreaterThan(0);
+  return texts;
 }

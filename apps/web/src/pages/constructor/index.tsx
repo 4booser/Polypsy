@@ -205,8 +205,8 @@ export default function Constructor() {
 
   const tabs: [Tab, string][] = [
     ["basics", ut("co.basics")],
-    ["questions", `Вопросы ${asked}`],
-    ["scales", `Шкалы ${draft.scales.length}`],
+    ["questions", `${ut("co.questions")} ${asked}`],
+    ["scales", `${ut("co.scales")} ${draft.scales.length}`],
     ["json", "JSON"],
   ];
 
@@ -236,8 +236,15 @@ export default function Constructor() {
             ))}
           </div>
           <div className="flex items-center gap-1.5">
-            <Button variant="quiet" size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")}>↶</Button>
-            <Button variant="quiet" size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")}>↷</Button>
+            {/*
+              Отмена и возврат — обычные кнопки с рамкой, а не тихие.
+              Тихий вариант оставлял на светлой полосе вкладок две едва
+              заметные закорючки: в конструкторе отмена нужна чаще всего
+              именно тогда, когда что-то пошло не так, и искать её в этот
+              момент — последнее, чем стоит заниматься.
+            */}
+            <Button size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>↶</Button>
+            <Button size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>↷</Button>
             {dirty ? <span className="text-caption text-muted">черновик сохраняется сам</span> : null}
           </div>
         </div>
