@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Chart } from "../charts";
-import { Loading, PageHead } from "../ui";
+import { Loading } from "../ui";
+import { Page, Panel } from "../ui/layout";
+import { Select } from "../ui/primitives";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
 
@@ -45,34 +47,33 @@ export default function Surveillance() {
   ) ?? [];
 
   return (
-    <>
-      <PageHead
-        title={ut("sv.title")}
-        sub={ut("sv.sub")}
-        actions={
-          <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)} style={{ width: 300 }}>
-            {surveys.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
-          </select>
-        }
-      />
-
-      {error ? <p className="error">{error}</p> : null}
+    <Page
+      title={ut("sv.title")}
+      sub={ut("sv.sub")}
+      toolbar={
+        <Select value={surveyId} onChange={(e) => setSurveyId(e.target.value)} className="max-w-[300px]">
+          {surveys.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+        </Select>
+      }
+    >
+      {error ? <p className="text-danger">{error}</p> : null}
       {!data && !error ? <Loading /> : null}
 
       {signals.length ? (
-        <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
-          <h2>{ut("sv.signals")}: {signals.length}</h2>
+        <Panel title={`${ut("sv.signals")}: ${signals.length}`} className="mb-4 border border-[var(--sev-severe)]">
           {signals.slice(0, 6).map((s, i) => (
-            <p key={i} style={{ margin: "4px 0", fontSize: 13 }}>
+            <p key={i} className="my-1 text-small">
               <strong>{s.unit ?? "вся выборка"}</strong> · неделя {s.week}:{" "}
               {Math.round(s.p * 100)}% высокого риска ({s.x} из {s.n})
               {s.beyondLimits ? " — выше контрольного предела" : ""}
               {s.runSignal ? " — устойчивый сдвиг (8 недель по одну сторону)" : ""}
             </p>
           ))}
-        </div>
+        </Panel>
       ) : data ? (
-        <div className="card"><p className="muted" style={{ margin: 0 }}>{ut("sv.noSignals")}</p></div>
+        <Panel className="mb-4">
+          <p className="m-0 text-muted">{ut("sv.noSignals")}</p>
+        </Panel>
       ) : null}
 
       {data?.series.map((s) => (
@@ -84,30 +85,37 @@ export default function Surveillance() {
           <PBars series={s} />
         </Chart>
       ))}
-    </>
+    </Page>
   );
 }
 
 function PBars({ series }: { series: NonNullable<Awaited<ReturnType<typeof api.surveillance>>>["series"][number] }) {
   const max = Math.max(...series.weeks.map((w) => w.ucl), 0.05);
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "flex-end", height: 140 }}>
+    <div className="flex h-[140px] items-end gap-1">
       {series.weeks.map((w) => {
         const alarm = w.beyondLimits || w.runSignal;
         return (
-          <div key={w.week} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}
-            title={`${w.week}: ${w.x} из ${w.n} (${Math.round(w.p * 100)}%), предел ${Math.round(w.ucl * 100)}%`}>
-            <div style={{ position: "relative", width: "100%", maxWidth: 26, height: 110, background: "var(--surface-2)", borderRadius: 4 }}>
+          <div
+            key={w.week}
+            className="flex flex-1 flex-col items-center gap-0.5"
+            title={`${w.week}: ${w.x} из ${w.n} (${Math.round(w.p * 100)}%), предел ${Math.round(w.ucl * 100)}%`}
+          >
+            <div className="relative h-[110px] w-full max-w-[26px] rounded bg-surface-2">
               {/* контрольный предел недели */}
-              <i style={{ position: "absolute", left: 0, right: 0, bottom: `${(w.ucl / max) * 100}%`, borderTop: "2px dashed var(--sev-mild)", display: "block" }} />
-              <i style={{
-                position: "absolute", left: 2, right: 2, bottom: 0,
-                height: `${Math.max(2, (w.p / max) * 100)}%`,
-                background: alarm ? "var(--sev-severe)" : "var(--s1)",
-                borderRadius: 3, display: "block",
-              }} />
+              <i
+                className="absolute inset-x-0 block border-t-2 border-dashed border-[var(--sev-mild)]"
+                style={{ bottom: `${(w.ucl / max) * 100}%` }}
+              />
+              <i
+                className="absolute bottom-0 left-0.5 right-0.5 block rounded-[3px]"
+                style={{
+                  height: `${Math.max(2, (w.p / max) * 100)}%`,
+                  background: alarm ? "var(--sev-severe)" : "var(--s1)",
+                }}
+              />
             </div>
-            <span className="muted" style={{ fontSize: 9 }}>{w.week.slice(5)}</span>
+            <span className="text-[9px] text-muted">{w.week.slice(5)}</span>
           </div>
         );
       })}

@@ -40,7 +40,7 @@ for (const theme of ["dark", "light"] as const) {
       await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
       await login(page, "psy");
       await page.goto(path);
-      await page.locator(".page-head, .card").first().waitFor();
+      await page.locator("h1, .card, [data-panel]").first().waitFor();
       expect(digest((await scan(page)).violations)).toEqual([]);
     });
   }

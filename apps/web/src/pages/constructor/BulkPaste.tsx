@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { newUid, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
+import { Grid, Panel } from "../../ui/layout";
+import { Button, Field, Select, Textarea } from "../../ui/primitives";
 
 /**
  * Массовая вставка пунктов из текста пособия.
@@ -88,48 +90,48 @@ export function BulkPaste({
   }
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("bp.title")}</h2>
-        <button onClick={onClose}>{ut("bp.close")}</button>
-      </div>
-      <p className="hint">
-        Скопируйте пункты из пособия — по одному на строку, с номерами или без. Номера «1.», «1)»
-        срезаются; строка без номера приклеивается к предыдущему пункту (переносы из PDF).
-      </p>
-      <textarea
+    <Panel
+      title={ut("bp.title")}
+      actions={<Button variant="quiet" onClick={onClose}>{ut("bp.close")}</Button>}
+      hint="Скопируйте пункты из пособия — по одному на строку, с номерами или без. Номера «1.», «1)»
+        срезаются; строка без номера приклеивается к предыдущему пункту (переносы из PDF)."
+    >
+      <Textarea
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         rows={12}
         placeholder={"1. Чи може життя втратити цінність?\n2. Життя іноді гірше за смерть.\n…"}
         spellCheck={false}
       />
-      <div className="form-grid" style={{ marginTop: 10 }}>
-        <label className="field">
-          <span>{ut("bp.lang")}</span>
-          <select value={lang} onChange={(e) => setLang(e.target.value as never)}>
+      <Grid min={200} className="mt-3">
+        <Field label={ut("bp.lang")}>
+          <Select value={lang} onChange={(e) => setLang(e.target.value as never)}>
             <option value="uk">украинский</option>
             <option value="ru">русский</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>{ut("bp.type")}</span>
-          <select value={type} onChange={(e) => setType(e.target.value as never)}>
+          </Select>
+        </Field>
+        <Field label={ut("bp.type")}>
+          <Select value={type} onChange={(e) => setType(e.target.value as never)}>
             <option value="yesno">{ut("bp.yesNo")}</option>
             <option value="single">{ut("bp.single")}</option>
-          </select>
-        </label>
-      </div>
+          </Select>
+        </Field>
+      </Grid>
 
       {items.length ? (
-        <p className="hint">
-          Распознано пунктов: <strong>{items.length}</strong>
+        <p className="mt-3 text-caption text-muted">
+          Распознано пунктов: <strong className="font-medium text-text">{items.length}</strong>
           {items[0] ? <> · первый: «{items[0].text.slice(0, 60)}»</> : null}
           {items.length > 1 ? <> · последний: «{items[items.length - 1]!.text.slice(0, 60)}»</> : null}
         </p>
       ) : null}
       {problems.length ? (
-        <div className="hint warn">
+        /*
+         * Нумерация подозрительна — почти наверняка ошибка распознавания PDF.
+         * Это ровно случай «требует внимания» до сохранения, поэтому янтарь
+         * здесь уместен.
+         */
+        <div className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft p-3 text-caption text-accent">
           Нумерация подозрительна — проверьте исходный текст:
           {problems.map((p) => (
             <div key={p}>• {p}</div>
@@ -137,11 +139,11 @@ export function BulkPaste({
         </div>
       ) : null}
 
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="primary" disabled={!items.length} onClick={apply}>
+      <div className="mt-3">
+        <Button variant="primary" disabled={!items.length} onClick={apply}>
           Добавить {items.length} пунктов
-        </button>
+        </Button>
       </div>
-    </div>
+    </Panel>
   );
 }

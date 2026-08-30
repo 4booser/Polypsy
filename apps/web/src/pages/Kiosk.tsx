@@ -10,6 +10,20 @@ import {
   type Question,
   type SurveyFull,
 } from "@quizzy/shared";
+import { Button, Field, Input, Select, Textarea, Spacer, Toolbar } from "../ui/primitives";
+import { Grid } from "../ui/layout";
+
+/*
+ * Кнопки-действия киоска крупнее любой кнопки в консоли — их видно от двери
+ * и по ним бьют пальцем, не примеряясь. `Button` держит фиксированную высоту
+ * ряда консоли (`h-9`), рассчитанную на текст в 13px, а не на кегль в 52px,
+ * поэтому здесь она перебивается: `!important` нужен, потому что слой Tailwind
+ * `utilities` и так сильнее `legacy`, но конфликтующие утилиты Tailwind между
+ * собой порядок не гарантируют — только модификатор `!` решает спор однозначно.
+ */
+const heroBtn = "!h-auto !text-hero !font-semibold font-display tracking-[-0.02em]";
+/** Поля ввода на киоске — крупнее, чем в консоли, но не размером с кнопку: их читают, а не бьют пальцем. */
+const kioskField = "!h-14 !text-section";
 
 /**
  * Киоск: один планшет — поток обследуемых.
@@ -72,7 +86,7 @@ export default function Kiosk() {
     return () => window.removeEventListener("popstate", trap);
   }, []);
 
-  if (phase.kind === "loading") return <Shell><p className="muted">{ut("common.loading")}</p></Shell>;
+  if (phase.kind === "loading") return <Shell><p className="text-muted">{ut("common.loading")}</p></Shell>;
 
   if (phase.kind === "invalid") {
     const text: Record<string, string> = {
@@ -80,7 +94,7 @@ export default function Kiosk() {
       closed: ut("kiosk.invalid.closed"),
       unknown: ut("kiosk.invalid.unknown"),
     };
-    return <Shell><h1>{ut("kiosk.invalid.title")}</h1><p className="muted">{text[phase.reason] ?? text.unknown}</p></Shell>;
+    return <Shell><h1>{ut("kiosk.invalid.title")}</h1><p className="text-muted">{text[phase.reason] ?? text.unknown}</p></Shell>;
   }
 
   if (!state?.valid) return null;
@@ -90,7 +104,7 @@ export default function Kiosk() {
     return (
       <Shell>
         <h1>{state.title}</h1>
-        <p className="muted" style={{ fontSize: 17 }}>
+        <p className="text-section text-muted">
           «{state.batteryTitle}»: {selfSteps.length}{" "}
           {lang === "uk"
             ? plural(selfSteps.length, "методика", "методики", "методик")
@@ -98,15 +112,16 @@ export default function Kiosk() {
           , {selfSteps.reduce((n, s) => n + s.questionCount, 0)}{" "}
           {lang === "uk" ? "запитань" : "вопросов"}.
         </p>
-        <button
-          className="primary kiosk-big"
+        <Button
+          variant="primary"
+          className={heroBtn}
           onClick={() => {
             document.documentElement.requestFullscreen?.().catch(() => {});
             setPhase({ kind: "join" });
           }}
         >
           {ut("common.start")}
-        </button>
+        </Button>
       </Shell>
     );
   }
@@ -146,19 +161,20 @@ export default function Kiosk() {
       {phase.safetyPlan ? (
         <div className="kiosk-safety">
           <strong>{ut("kiosk.safetyNow")}</strong>
-          <p style={{ whiteSpace: "pre-wrap", margin: "6px 0 0" }}>{phase.safetyPlan}</p>
+          <p className="mt-1.5 whitespace-pre-wrap">{phase.safetyPlan}</p>
         </div>
       ) : null}
-      <p className="muted" style={{ fontSize: 17 }}>{ut("kiosk.passTablet")}</p>
-      <button
-        className="primary kiosk-big"
+      <p className="text-section text-muted">{ut("kiosk.passTablet")}</p>
+      <Button
+        variant="primary"
+        className={heroBtn}
         onClick={() => {
           setLastSafetyPlan(null);
           setPhase({ kind: "join" });
         }}
       >
         {ut("kiosk.nextParticipant")}
-      </button>
+      </Button>
     </Shell>
   );
 }
@@ -220,32 +236,41 @@ function JoinForm({ token, onJoined, onCancel }: { token: string; onJoined: (id:
   return (
     <Shell>
       <h1>{ut("kiosk.introduce")}</h1>
-      <div className="form-grid" style={{ marginTop: 12 }}>
-        <label className="field grow"><span>{ut("person.lastName")}</span>
-          <input value={lastName} onChange={(e) => setLastName(e.target.value)} autoFocus /></label>
-        <label className="field grow"><span>{ut("person.firstName")}</span>
-          <input value={firstName} onChange={(e) => setFirstName(e.target.value)} /></label>
-        <label className="field grow"><span>{ut("person.middleName")}</span>
-          <input value={middleName} onChange={(e) => setMiddleName(e.target.value)} /></label>
-      </div>
-      <div className="form-grid">
-        <label className="field"><span>{ut("person.sex")}</span>
-          <select value={sex} onChange={(e) => setSex(e.target.value as never)}>
+      <Grid min={220} className="mt-3">
+        <Field label={ut("person.lastName")} htmlFor="kiosk-lastName">
+          <Input id="kiosk-lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} autoFocus />
+        </Field>
+        <Field label={ut("person.firstName")} htmlFor="kiosk-firstName">
+          <Input id="kiosk-firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        </Field>
+        <Field label={ut("person.middleName")} htmlFor="kiosk-middleName">
+          <Input id="kiosk-middleName" value={middleName} onChange={(e) => setMiddleName(e.target.value)} />
+        </Field>
+      </Grid>
+      <Grid min={220} className="mt-3">
+        <Field label={ut("person.sex")} htmlFor="kiosk-sex">
+          <Select id="kiosk-sex" value={sex} onChange={(e) => setSex(e.target.value as never)}>
             <option value="">—</option>
             <option value="male">{ut("person.sex.male")}</option>
             <option value="female">{ut("person.sex.female")}</option>
-          </select></label>
-        <label className="field"><span>{ut("person.birthDate")}</span>
-          <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} /></label>
-      </div>
-      <p className="hint">{ut("person.normsHint")}</p>
-      {error ? <p className="error">{error}</p> : null}
-      <div className="row" style={{ marginTop: 10 }}>
-        <button className="primary kiosk-big" disabled={busy || !lastName.trim() || !firstName.trim()} onClick={submit}>
+          </Select>
+        </Field>
+        <Field label={ut("person.birthDate")} htmlFor="kiosk-birthDate">
+          <Input id="kiosk-birthDate" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        </Field>
+      </Grid>
+      <p className="mt-3 text-caption text-muted">{ut("person.normsHint")}</p>
+      {error ? (
+        <p role="alert" className="text-caption text-danger">
+          {error}
+        </p>
+      ) : null}
+      <Toolbar className="mt-2.5 gap-3">
+        <Button variant="primary" className={heroBtn} disabled={busy || !lastName.trim() || !firstName.trim()} onClick={submit}>
           {busy ? ut("kiosk.momentPlease") : ut("common.continue")}
-        </button>
-        <button onClick={onCancel}>{ut("common.cancel")}</button>
-      </div>
+        </Button>
+        <Button onClick={onCancel}>{ut("common.cancel")}</Button>
+      </Toolbar>
     </Shell>
   );
 }
@@ -319,8 +344,8 @@ function Runner({
     };
   }, [current, pushEvent]);
 
-  if (error && !survey) return <Shell><p className="error">{error}</p></Shell>;
-  if (!survey || !current) return <Shell><p className="muted">{ut("common.loading")}</p></Shell>;
+  if (error && !survey) return <Shell><p role="alert" className="text-danger">{error}</p></Shell>;
+  if (!survey || !current) return <Shell><p className="text-muted">{ut("common.loading")}</p></Shell>;
 
   const setAnswer = (a: Answer) => {
     const had = answers.get(current.id);
@@ -380,32 +405,37 @@ function Runner({
     <div className="kiosk-page">
       <div className="kiosk-runner">
         <div className="kiosk-top">
-          <span className="muted">{stepLabel} · {survey.title}</span>
+          <span className="text-muted">{stepLabel} · {survey.title}</span>
           {current.type !== "info" ? (
-            <span className="muted">{askedIndex + 1} / {asked.length}</span>
+            <span className="text-muted">{askedIndex + 1} / {asked.length}</span>
           ) : null}
         </div>
         {survey.showProgress && asked.length > 0 ? (
           <div className="kiosk-progress">
+            {/* ширина полосы — рантайм-значение, единственное законное исключение для style */}
             <i style={{ width: `${Math.round(((askedIndex + 1) / asked.length) * 100)}%` }} />
           </div>
         ) : null}
 
         <h1 className="kiosk-question">{current.title}</h1>
-        {current.help ? <p className="muted" style={{ fontSize: 16 }}>{current.help}</p> : null}
+        {current.help ? <p className="text-body text-muted">{current.help}</p> : null}
 
         <QuestionInput question={current} answer={answers.get(current.id)} onChange={setAnswer} />
 
-        {error ? <p className="error">{error}</p> : null}
-        <div className="row" style={{ marginTop: "auto", paddingTop: 18 }}>
+        {error ? (
+          <p role="alert" className="text-danger">
+            {error}
+          </p>
+        ) : null}
+        <Toolbar className="mt-auto gap-3 pt-[18px]">
           {survey.allowBack && index > 0 ? (
-            <button className="kiosk-big" onClick={() => setIndex(index - 1)}>{ut("common.back")}</button>
+            <Button className={heroBtn} onClick={() => setIndex(index - 1)}>{ut("common.back")}</Button>
           ) : null}
-          <div className="spacer" />
-          <button className="primary kiosk-big" disabled={!canNext || busy} onClick={next}>
+          <Spacer />
+          <Button variant="primary" className={heroBtn} disabled={!canNext || busy} onClick={next}>
             {busy ? ut("common.sending") : index + 1 < visible.length ? ut("common.next") : ut("common.finish")}
-          </button>
-        </div>
+          </Button>
+        </Toolbar>
       </div>
     </div>
   );
@@ -488,8 +518,8 @@ function QuestionInput({
             ))}
           </div>
           <div className="kiosk-scale-labels">
-            <span className="muted">{question.minLabel}</span>
-            <span className="muted">{question.maxLabel}</span>
+            <span className="text-muted">{question.minLabel}</span>
+            <span className="text-muted">{question.maxLabel}</span>
           </div>
         </div>
       );
@@ -498,9 +528,9 @@ function QuestionInput({
     case "slider":
     case "number":
       return (
-        <input
+        <Input
           type="number"
-          className="kiosk-number"
+          className={`${kioskField} max-w-xs`}
           min={question.minValue ?? undefined}
           max={question.maxValue ?? undefined}
           value={answer?.number ?? ""}
@@ -511,8 +541,8 @@ function QuestionInput({
     case "text":
     case "longtext":
       return (
-        <textarea
-          className="kiosk-text"
+        <Textarea
+          className="!text-section"
           rows={question.type === "longtext" ? 6 : 2}
           value={answer?.text ?? ""}
           onChange={(e) => onChange({ ...base, text: e.target.value })}
@@ -521,9 +551,9 @@ function QuestionInput({
 
     case "date":
       return (
-        <input
+        <Input
           type="date"
-          className="kiosk-number"
+          className={`${kioskField} max-w-xs`}
           value={answer?.date ?? ""}
           onChange={(e) => onChange({ ...base, date: e.target.value })}
         />
@@ -532,7 +562,9 @@ function QuestionInput({
     default:
       // matrix/ranking на киоске не поддержаны: честно говорим, а не молчим
       return (
-        <p className="error">{ut("kiosk.unsupportedType")}</p>
+        <p role="alert" className="text-danger">
+          {ut("kiosk.unsupportedType")}
+        </p>
       );
   }
 }

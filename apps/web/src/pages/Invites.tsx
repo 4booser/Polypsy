@@ -3,7 +3,9 @@ import qrcode from "qrcode-generator";
 import type { Battery } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
+import { Empty, Loading, Screen, useAction } from "../ui";
+import { Page, Panel, Stack } from "../ui/layout";
+import { Button, Field, Input, Select } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -33,87 +35,90 @@ export default function Invites() {
   return (
     <Screen res={res}>
       {({ rows, batteries }) => (
-    <>
-      <PageHead
-        title={ut("inv.title")}
-        sub={ut("inv.sub")}
-        actions={<button className="primary" onClick={() => setShowForm(true)}>{ut("inv.create")}</button>}
-      />
+        <Page
+          title={ut("inv.title")}
+          sub={ut("inv.sub")}
+          actions={<Button variant="primary" onClick={() => setShowForm(true)}>{ut("inv.create")}</Button>}
+        >
+          <Stack>
+            {showForm ? (
+              <InviteForm
+                batteries={batteries}
+                onClose={() => setShowForm(false)}
+                onCreated={(t) => {
+                  setFresh(t);
+                  setShowForm(false);
+                  reload();
+                }}
+              />
+            ) : null}
 
-      {showForm ? (
-        <InviteForm
-          batteries={batteries}
-          onClose={() => setShowForm(false)}
-          onCreated={(t) => {
-            setFresh(t);
-            setShowForm(false);
-            reload();
-          }}
-        />
-      ) : null}
+            {fresh ? <FreshInvite token={fresh.token} code={fresh.code} onClose={() => setFresh(null)} /> : null}
 
-      {fresh ? <FreshInvite token={fresh.token} code={fresh.code} onClose={() => setFresh(null)} /> : null}
+            {!rows ? <Loading /> : null}
+            {rows && !rows.length && !showForm ? (
+              <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
+            ) : null}
 
-      {!rows ? <Loading /> : null}
-      {rows && !rows.length && !showForm ? (
-        <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
-      ) : null}
-
-      {rows?.length ? (
-        <div className="card scroll-x">
-          <table>
-            <thead>
-              <tr>
-                <th>{ut("inv.code")}</th>
-                <th>{ut("f.battery")}</th>
-                <th>{ut("ui.unit")}</th>
-                <th className="num">{ut("inv.entries")}</th>
-                <th>{ut("inv.expires")}</th>
-                <th>{ut("inv.createdBy")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((inv) => {
-                const dead = !!inv.revokedAt || inv.usedCount >= inv.maxUses || inv.expiresAt < new Date().toISOString();
-                return (
-                  <tr key={inv.id} className={dead ? "muted-row" : undefined}>
-                    <td style={{ fontFamily: "ui-monospace, monospace", fontWeight: 600 }}>{inv.code}</td>
-                    <td>{inv.batteryTitle ?? <span className="muted">без батареи</span>}</td>
-                    <td className="muted">{inv.unit ?? "—"}</td>
-                    <td className="num">
-                      {inv.usedCount}/{inv.maxUses}
-                      {inv.uses.length ? (
-                        <div className="hint">{inv.uses.map((u) => u.fullName).join(", ")}</div>
-                      ) : null}
-                    </td>
-                    <td className={dead ? "muted" : undefined}>
-                      {inv.revokedAt ? `отозвано ${day(inv.revokedAt)}` : day(inv.expiresAt)}
-                    </td>
-                    <td className="muted">{inv.createdByName}</td>
-                    <td>
-                      {!dead ? (
-                        <button
-                          className="danger"
-                          onClick={() =>
-                            run(async () => {
-                              await api.revokeInvite(inv.id);
-                              await reload();
-                            }, ut("inv.revoked"))
-                          }
-                        >
-                          Отозвать
-                        </button>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </>
+            {rows?.length ? (
+              <Panel flush>
+                <div className="overflow-x-auto">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{ut("inv.code")}</th>
+                        <th>{ut("f.battery")}</th>
+                        <th>{ut("ui.unit")}</th>
+                        <th className="num">{ut("inv.entries")}</th>
+                        <th>{ut("inv.expires")}</th>
+                        <th>{ut("inv.createdBy")}</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((inv) => {
+                        const dead = !!inv.revokedAt || inv.usedCount >= inv.maxUses || inv.expiresAt < new Date().toISOString();
+                        return (
+                          <tr key={inv.id} className={dead ? "muted-row" : undefined}>
+                            <td className="font-mono font-semibold">{inv.code}</td>
+                            <td>{inv.batteryTitle ?? <span className="text-muted">без батареи</span>}</td>
+                            <td className="text-muted">{inv.unit ?? "—"}</td>
+                            <td className="num">
+                              {inv.usedCount}/{inv.maxUses}
+                              {inv.uses.length ? (
+                                <div className="text-caption text-muted">{inv.uses.map((u) => u.fullName).join(", ")}</div>
+                              ) : null}
+                            </td>
+                            <td className={dead ? "text-muted" : undefined}>
+                              {inv.revokedAt ? `отозвано ${day(inv.revokedAt)}` : day(inv.expiresAt)}
+                            </td>
+                            <td className="text-muted">{inv.createdByName}</td>
+                            <td>
+                              {!dead ? (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() =>
+                                    run(async () => {
+                                      await api.revokeInvite(inv.id);
+                                      await reload();
+                                    }, ut("inv.revoked"))
+                                  }
+                                >
+                                  Отозвать
+                                </Button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            ) : null}
+          </Stack>
+        </Page>
       )}
     </Screen>
   );
@@ -137,47 +142,38 @@ function InviteForm({
   const { run } = useAction();
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("inv.new")}</h2>
-        <button onClick={onClose}>{ut("ui.close")}</button>
-      </div>
-      <div className="form-grid">
-        <label className="field grow">
-          <span>{ut("inv.batteryOnRegister")}</span>
-          <select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
+    <Panel title={ut("inv.new")} actions={<Button variant="quiet" onClick={onClose}>{ut("ui.close")}</Button>}>
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+        <Field label={ut("inv.batteryOnRegister")} className="sm:col-span-2">
+          <Select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
             <option value="">без батареи — только доступ в систему</option>
             {batteries.map((b) => (
               <option key={b.id} value={b.id}>{b.title}</option>
             ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>{ut("ui.unit")}</span>
-          <input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="проставится аккаунту" />
-        </label>
-        <label className="field">
-          <span>{ut("inv.uses")}</span>
-          <input type="number" min={1} max={500} value={maxUses}
+          </Select>
+        </Field>
+        <Field label={ut("ui.unit")}>
+          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="проставится аккаунту" />
+        </Field>
+        <Field label={ut("inv.uses")}>
+          <Input type="number" min={1} max={500} value={maxUses}
             onChange={(e) => setMaxUses(Math.max(1, Number(e.target.value) || 1))} />
-        </label>
-        <label className="field">
-          <span>{ut("inv.days")}</span>
-          <input type="number" min={1} max={365} value={ttlDays}
+        </Field>
+        <Field label={ut("inv.days")}>
+          <Input type="number" min={1} max={365} value={ttlDays}
             onChange={(e) => setTtlDays(Math.max(1, Number(e.target.value) || 1))} />
-        </label>
-        <label className="field grow">
-          <span>{ut("inv.noteStaffOnly")}</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="например, «поступление 3-й роты»" />
-        </label>
+        </Field>
+        <Field label={ut("inv.noteStaffOnly")} className="sm:col-span-2">
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="например, «поступление 3-й роты»" />
+        </Field>
       </div>
-      <p className="hint">
+      <p className="mt-3 text-caption text-muted">
         Для группового обследования поставьте использований по числу людей — все войдут по одной
         ссылке. Подразделение из приглашения главнее введённого пациентом.
       </p>
-      <div className="row" style={{ marginTop: 12 }}>
-        <button
-          className="primary"
+      <div className="mt-3">
+        <Button
+          variant="primary"
           onClick={() =>
             run(async () => {
               const res = await api.createInvite({
@@ -192,9 +188,9 @@ function InviteForm({
           }
         >
           Создать
-        </button>
+        </Button>
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -212,41 +208,40 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
   }, [url]);
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("inv.ready")}</h2>
-        <button onClick={onClose}>{ut("f.hide")}</button>
-      </div>
-      <p className="hint warn">
+    <Panel title={ut("inv.ready")} actions={<Button variant="quiet" onClick={onClose}>{ut("f.hide")}</Button>}>
+      {/*
+        Предупреждение красится акцентом: это ровно тот случай, для
+        которого он существует, — ссылку нужно скопировать сейчас, второго
+        показа не будет.
+      */}
+      <p className="text-caption text-accent">
         Ссылка показывается один раз — в системе хранится только её отпечаток. Скопируйте или
         распечатайте сейчас. Код останется виден в списке.
       </p>
-      <div className="invite-fresh">
+      <div className="flex flex-wrap gap-5">
         {/*
           biome-ignore lint/security/noDangerouslySetInnerHtml: SVG кода собирается
           здесь же из ссылки, никакие внешние данные в разметку не попадают
         */}
         <div className="qr" dangerouslySetInnerHTML={{ __html: svg }} />
-        <div style={{ flex: 1, minWidth: 260 }}>
-          <label className="field">
-            <span>{ut("inv.link")}</span>
-            <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
-          </label>
-          <label className="field">
-            <span>{ut("inv.manualCode")}</span>
-            <input readOnly value={code} style={{ fontFamily: "ui-monospace, monospace", fontSize: 18, fontWeight: 700 }} />
-          </label>
-          <div className="row tight">
-            <button onClick={() => run(async () => navigator.clipboard.writeText(url), ut("inv.linkCopied"))}>
+        <div className="min-w-[260px] flex-1">
+          <Field label={ut("inv.link")}>
+            <Input readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+          </Field>
+          <Field label={ut("inv.manualCode")} className="mt-2">
+            <Input readOnly value={code} className="font-mono text-[18px] font-bold" />
+          </Field>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Button onClick={() => run(async () => navigator.clipboard.writeText(url), ut("inv.linkCopied"))}>
               Копировать ссылку
-            </button>
-            <button onClick={() => run(async () => navigator.clipboard.writeText(code), ut("inv.codeCopied"))}>
+            </Button>
+            <Button onClick={() => run(async () => navigator.clipboard.writeText(code), ut("inv.codeCopied"))}>
               Копировать код
-            </button>
-            <button onClick={() => window.print()}>{ut("inv.printQr")}</button>
+            </Button>
+            <Button onClick={() => window.print()}>{ut("inv.printQr")}</Button>
           </div>
         </div>
       </div>
-    </div>
+    </Panel>
   );
 }

@@ -41,7 +41,7 @@ test("экраны ежедневного пути переведены цели
     ["/unit-report", "Стан підрозділу"],
   ] as const) {
     await page.goto(path);
-    await expect(page.locator(".page-head h1")).toHaveText(marker);
+    await expect(page.locator("h1")).toHaveText(marker);
   }
 });
 
@@ -84,7 +84,7 @@ test("в украинском режиме не остаётся русских 
 
   const wordsOf = async (path: string) => {
     await page.goto(path);
-    await page.locator(".page-head h1").waitFor();
+    await page.locator("h1").waitFor();
     /*
      * Заголовок появляется раньше содержимого: на «Сравнении» графики
      * приезжают отдельным запросом. Ждать «тишины в сети» нельзя — консоль

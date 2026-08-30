@@ -1,10 +1,278 @@
 /*
- * Наследие «Пульта»: правила компонентов, ещё не переписанные на утилиты.
+ * «Пульт» — оформление консоли.
  *
- * Файл вымывается по мере переноса экранов. Токены он больше не объявляет —
- * они живут в styles/tokens.css, и здесь только потребляются. Пустеющий
- * файл — признак того, что перенос идёт; растущий — что что-то пошло не так.
+ * Метафора не «медицинская карточка» и не «панель показателей», а пульт
+ * дежурного: тёмная поверхность, на которой светится только то, что сейчас
+ * требует внимания. Кабинет часто без окна, работа часто ночью, и человек за
+ * экраном ищет отклонение, а не читает подряд.
+ *
+ * Три правила, из которых следует всё остальное.
+ *
+ * 1. Акцент занят смыслом. Янтарный — это «требует внимания», и больше
+ *    ничего. Кнопка «сохранить» им не красится: если акцентом отмечено
+ *    всё подряд, он перестаёт что-либо значить.
+ * 2. Разделители вместо карточек. На экране разбора двадцать строк; тени и
+ *    скругления съедают место, которое стоит отдать данным.
+ * 3. Цифра — главный элемент. Баллы, счётчики и пороги набраны моноширинными
+ *    цифрами и крупнее текста вокруг: их читают с расстояния.
+ *
+ * Тёмная тема основная, светлая — полноценная, а не инверсия: инверсия ломает
+ * иерархию поверхностей и делает тени бессмысленными.
  */
+
+/* ═══ шрифты ═══
+ * Локальные подмножества: CSP закрыт намеренно, внешних CDN нет.
+ * Unbounded — дисплейная, с настоящей кириллицей; Onest — текстовая;
+ * JetBrains Mono — цифры и коды.
+ */
+@font-face {
+  font-family: "Unbounded";
+  src: url("/fonts/Unbounded-cyrillic.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Unbounded";
+  src: url("/fonts/Unbounded-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+2122, U+2191, U+2193, U+2212;
+}
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/Onest-cyrillic.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/Onest-latin.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+2122, U+2191, U+2193, U+2212;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-cyrillic.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-latin.woff2") format("woff2");
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+2000-206F, U+2122, U+2191, U+2193, U+2212;
+}
+
+/* ═══ слой 1: палитра ═══
+ * Сырые ступени без смысла. Ни один компонент их не использует напрямую.
+ */
+:root {
+  --slate-950: #08100f;
+  --slate-900: #0c1416;
+  --slate-850: #101b1e;
+  --slate-800: #121d20;
+  --slate-700: #18272b;
+  --slate-600: #22353a;
+  --slate-500: #2d454b;
+  --slate-400: #7d9694; /* 5.56:1 на рельсе — подписи разделов и сборка */
+  --slate-300: #93acaa;
+  --slate-200: #9db2b0;
+  --slate-100: #c6d5d2;
+  --slate-050: #e8f0ee;
+
+  --paper-050: #ffffff;
+  --paper-100: #f7f9f8;
+  --paper-200: #f0f4f3;
+  --paper-300: #e4ebe9;
+  --paper-400: #d9e2e0;
+  --paper-500: #b9c7c5;
+
+  --amber-400: #ffb000;
+  --amber-500: #e59a00;
+  --amber-600: #8f5600;
+
+  /* сигнальные: ступени подобраны так, чтобы различаться и при дальтонизме */
+  --signal-ok: #4a9d6e;
+  --signal-ok-dim: #2f6b4b;
+  --signal-mild: #c9a227;
+  --signal-mild-dim: #8a6f14;
+  --signal-warn: #d97b3f;
+  --signal-warn-dim: #a05224;
+  --signal-bad: #d95757;
+  --signal-bad-dim: #a33232;
+
+  /* категориальные слоты графиков: фиксированный порядок, не циклятся */
+  --cat-1: #3d9bd4;
+  --cat-2: #d97b3f;
+  --cat-3: #4a9d6e;
+  --cat-4: #9b7bd4;
+  --cat-5: #c9a227;
+  --cat-6: #4fb3ad;
+}
+
+/* ═══ слой 2: семантика, тёмная тема ═══ */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: var(--slate-900);
+  --surface: var(--slate-800);
+  --surface-2: var(--slate-700);
+  --surface-3: var(--slate-600);
+  --card: var(--slate-800);
+  --border: var(--slate-600);
+  --border-strong: var(--slate-500);
+  --hairline: color-mix(in srgb, var(--slate-600) 70%, transparent);
+
+  --text: var(--slate-050);
+  --text-2: var(--slate-200);
+  --muted: var(--slate-300);
+
+  /* акцент занят смыслом «требует внимания» */
+  --accent: var(--amber-400);
+  --accent-soft: color-mix(in srgb, var(--amber-400) 14%, transparent);
+  --accent-text: var(--slate-950);
+
+  /* интерактив — не акцент: ссылки и обычные кнопки нейтральны */
+  --primary: #6fc3c9;
+  --primary-soft: color-mix(in srgb, #6fc3c9 12%, transparent);
+
+  --danger: var(--signal-bad);
+  --danger-soft: color-mix(in srgb, var(--signal-bad) 14%, transparent);
+
+  --sev-none: var(--signal-ok);
+  --sev-mild: var(--signal-mild);
+  --sev-moderate: var(--signal-warn);
+  --sev-severe: var(--signal-bad);
+  --sev-none-text: #6cc492;
+  --sev-mild-text: #dfc05a;
+  --sev-moderate-text: #f0a06a;
+  --sev-severe-text: #f08080;
+
+  --grid: color-mix(in srgb, var(--slate-500) 45%, transparent);
+  --grid-fine: color-mix(in srgb, var(--slate-500) 22%, transparent);
+  --axis: var(--slate-300);
+  --s1: var(--cat-1);
+  --s2: var(--cat-2);
+  --s3: var(--cat-3);
+  --s4: var(--cat-4);
+
+  --ink-faint: #7d9694; /* 5.6:1 на рельсе */
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 18px 40px -24px rgba(0, 0, 0, 0.9);
+  --focus: var(--amber-400);
+}
+
+/* системная тёмная при отсутствии явного выбора обслуживается блоком выше;
+   явная светлая должна перебивать системную тёмную */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: var(--paper-100);
+  --surface: var(--paper-050);
+  --surface-2: var(--paper-200);
+  --surface-3: var(--paper-300);
+  --card: var(--paper-050);
+  --border: var(--paper-400);
+  --border-strong: var(--paper-500);
+  --hairline: color-mix(in srgb, var(--paper-400) 80%, transparent);
+
+  --text: #0e1a1c;
+  --text-2: #33474a;
+  --muted: #5b6f71;
+
+  --accent: var(--amber-600);
+  --accent-soft: color-mix(in srgb, var(--amber-600) 12%, transparent);
+  --accent-text: #ffffff;
+
+  --primary: #0f6f77;
+  --primary-soft: color-mix(in srgb, #0f6f77 10%, transparent);
+
+  --danger: #b93030;
+  --danger-soft: color-mix(in srgb, #b93030 10%, transparent);
+
+  --sev-none: #2f7d52;
+  --sev-mild: #8a6f14;
+  --sev-moderate: #b35a24;
+  --sev-severe: #b93030;
+  --sev-none-text: #1f6b41;
+  --sev-mild-text: #7a610f;
+  --sev-moderate-text: #98481a;
+  --sev-severe-text: #a82a2a;
+
+  --grid: color-mix(in srgb, #0e1a1c 12%, transparent);
+  --grid-fine: color-mix(in srgb, #0e1a1c 5%, transparent);
+  --axis: #5b6f71;
+  --s1: #1f6f9e;
+  --s2: #b35a24;
+  --s3: #2f7d52;
+  --s4: #6a4aa0;
+
+  --ink-faint: #4f6365; /* 5.7:1 на светлой рельсе */
+  --shadow: 0 1px 0 rgba(14, 26, 28, 0.06), 0 18px 40px -26px rgba(14, 26, 28, 0.3);
+  --focus: var(--amber-600);
+}
+
+/* ═══ слой 3: типографика, ритм, плотность ═══ */
+:root {
+  --font-display: "Unbounded", system-ui, sans-serif;
+  --font-text: "Onest", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* модульная шкала 1.2, ни одного размера вне её */
+  --fs-micro: 11px;
+  --fs-caption: 12px;
+  --fs-small: 13px;
+  --fs-body: 15px;
+  --fs-section: 17px;
+  --fs-page: 25px;
+  --fs-stat: 34px;
+  --fs-hero: 50px;
+
+  --lh-tight: 1.2;
+  --lh-normal: 1.55;
+
+  /* плотность: просторный по умолчанию, плотный для ежедневной работы */
+  --row-h: 38px;
+  --pad-card: 18px;
+  --pad-cell-y: 9px;
+  --gap: 16px;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+}
+
+:root[data-density="compact"] {
+  --row-h: 30px;
+  --pad-card: 12px;
+  --pad-cell-y: 5px;
+  --gap: 10px;
+  --fs-body: 14px;
+  --fs-small: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur: 0ms;
+    --dur-slow: 0ms;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* ═══ основа ═══ */
 * { box-sizing: border-box; }
@@ -29,15 +297,125 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--r-sm);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
 }
 
 ::selection { background: var(--accent-soft); color: var(--text); }
 
-/* оболочка перенесена в shell/Rail.tsx и App.tsx — правил здесь больше нет */
+/* ═══ оболочка: рельса вместо меню ═══ */
+.app {
+  display: grid;
+  grid-template-columns: var(--rail-w, 232px) 1fr;
+  min-height: 100vh;
+  transition: grid-template-columns var(--dur) var(--ease);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px 12px;
+  background: var(--slate-850);
+  border-right: 1px solid var(--hairline);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+:root[data-theme="light"] .sidebar { background: var(--paper-200); }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 16px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-small);
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  flex: none;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: var(--fs-small);
+  font-weight: 450;
+  border-left: 2px solid transparent;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.nav-link:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.nav-link.active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  border-left-color: var(--accent);
+}
+.nav-link svg { width: 16px; height: 16px; flex: none; opacity: 0.8; }
+.nav-link.active svg { opacity: 1; color: var(--accent); }
+.nav-link .grow { flex: 1; }
+
+.nav-section {
+  margin: 16px 0 5px;
+  padding: 0 9px;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.nav-badge {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* свёрнутая рельса: остаются иконки, подписи всплывают подсказкой */
+.app.rail-closed { --rail-w: 56px; }
+.app.rail-closed .brand span:last-child,
+.app.rail-closed .nav-link .grow,
+.app.rail-closed .nav-section,
+.app.rail-closed .build-tag,
+.app.rail-closed .sidebar > .muted,
+.app.rail-closed .sidebar > button:not(.icon-btn) { display: none; }
+.app.rail-closed .nav-link { justify-content: center; padding: 8px 0; }
+.app.rail-closed .nav-badge {
+  position: absolute;
+  transform: translate(12px, -10px);
+  min-width: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+.app.rail-closed .nav-link { position: relative; }
 
 /* ═══ рабочая область: верхняя панель + контент ═══ */
+.workarea { display: flex; flex-direction: column; min-width: 0; }
+
 .topbar {
   position: sticky;
   top: 0;
@@ -138,31 +516,25 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   background: var(--surface-2);
 }
 
-/*
- * Рабочая область.
- *
- * `relative` и внутренняя прокрутка нужны на время переноса: экраны, уже
- * перенесённые на компонент Page, растягиваются здесь абсолютно и заводят
- * собственную прокрутку — заголовок и полоса фильтров у них не уезжают
- * вверх. Экраны, ещё не перенесённые, живут по-старому: с этими полями и
- * общей прокруткой. Поля уйдут вместе с последним непереносённым экраном.
- */
-.main {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 26px 32px 96px;
-  max-width: 1720px;
-}
+.main { padding: 22px 28px 80px; max-width: 1680px; }
 
 /* ═══ узкие экраны ═══
  * Рельса не сжимает содержимое, а ложится поверх: на 390 px деление на две
  * колонки не оставляет места ни одной таблице.
  */
-/* поведение рельсы и поиска на узком экране переехало в shell/*.tsx */
 @media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed;
+    z-index: 50;
+    width: 232px;
+    transform: translateX(-100%);
+    transition: transform var(--dur) var(--ease);
+  }
+  .app:not(.rail-closed) .sidebar { transform: none; box-shadow: var(--shadow); }
   .main { padding: 16px 14px 64px; }
+  .topsearch { min-width: 0; }
+  .topsearch .grow, .topsearch kbd { display: none; }
   .page-head { align-items: flex-start; }
   table { font-size: var(--fs-caption); }
 }
@@ -172,10 +544,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px 24px;
+  gap: 16px;
   flex-wrap: wrap;
-  padding-bottom: 16px;
-  margin-bottom: 24px;
+  padding-bottom: 14px;
+  margin-bottom: 20px;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -183,10 +555,9 @@ h1 {
   font-family: var(--font-display);
   font-size: var(--fs-page);
   font-weight: 600;
-  letter-spacing: -0.022em;
+  letter-spacing: -0.015em;
   line-height: var(--lh-tight);
-  text-wrap: balance;
-  margin: 0 0 5px;
+  margin: 0 0 4px;
 }
 h2 {
   font-family: var(--font-display);
@@ -195,18 +566,12 @@ h2 {
   margin: 0 0 2px;
   letter-spacing: -0.005em;
 }
-/*
- * h3 — не третий по величине заголовок, а подпись участка внутри карточки:
- * прописные и разреженные. Отличать её от h2 размером не получалось —
- * разница в один-два пикселя не читается, а начертание читается сразу.
- */
 h3 {
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   font-weight: 600;
-  margin: 0 0 8px;
-  color: var(--ink-faint);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  margin: 0 0 6px;
+  color: var(--text-2);
+  letter-spacing: 0.02em;
 }
 .sub { color: var(--muted); font-size: var(--fs-small); margin: 0; max-width: 68ch; }
 .crumbs {
@@ -231,27 +596,15 @@ h3 {
   padding: var(--pad-card);
   margin-bottom: var(--gap);
 }
-/* карточка внутри карточки не удваивает рамку — она отступает ступенью фона */
-.card .card { background: var(--surface-2); border-color: transparent; }
 .card.flush { padding: 0; overflow: hidden; }
 .card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
-/*
- * `.hint` — самостоятельный класс, а не потомок `.card`.
- *
- * Раньше правило было `.card .hint`, и пояснение получало оформление только
- * внутри карточки. При переносе карточек на панели селектор переставал
- * совпадать, и пояснение теряло цвет, кегль и отступы разом — молча, без
- * ошибок: текст оставался на месте, но набирался как основной и сливался с
- * содержимым. Ловится это только глазами, поэтому пусть класс работает сам
- * по себе, где бы ни стоял.
- */
-.hint {
+.card .hint {
   color: var(--muted);
   font-size: var(--fs-caption);
   margin: 3px 0 12px;
@@ -288,24 +641,13 @@ h3 {
   overflow: hidden;
   margin-bottom: var(--gap);
 }
-/*
- * Порядок внутри плитки задаётся явно, а не переворотом колонки.
- *
- * Переворот ставил наверх пояснение, и «доходимість 99.9%» читалось как
- * заголовок плитки, а само число — как приписка к нему. Теперь сверху вниз:
- * число, его подпись, пояснение. Первым в глаза попадает то, ради чего
- * плитку и смотрят.
- */
 .tile {
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 4px;
-  padding: 16px;
+  padding: 14px 16px;
   background: var(--card);
 }
-.tile .value { order: 1; }
-.tile .label { order: 2; }
-.tile .hint { order: 3; }
 .tile .label {
   color: var(--muted);
   font-size: var(--fs-micro);
@@ -320,46 +662,23 @@ h3 {
   letter-spacing: -0.03em;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
-  color: var(--text);
 }
-/* единицы внутри числа набираются текстовым шрифтом: «4 мин 60 с»
-   моноширинным выглядит как код, а не как время */
-.tile .value :is(span, small) { font-family: var(--font-text); }
 .tile .hint { color: var(--muted); font-size: var(--fs-caption); margin: 0; }
 .tile.alarm .value { color: var(--sev-severe-text); }
 
 /* ═══ таблицы ═══ */
 table { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
-
-/*
- * Высота строки равна токену плотности, а не складывается из содержимого.
- *
- * Складывалась она так: девять пикселей отступа сверху, столько же снизу,
- * аватар в двадцать шесть — и строка выходила сорок пять при токене
- * тридцать восемь. Виртуализация длинного списка берёт высоту именно из
- * токена, поэтому на девяти тысячах пациентов она считала по тридцати
- * восьми: полоса прокрутки показывала не ту длину, а прыжок по ней
- * приземлялся не на ту строку. Расхождение росло линейно — к концу списка
- * набегало больше тысячи пикселей.
- *
- * Теперь высоту задаёт строка, а содержимое центрируется внутри неё.
- */
 th, td {
   text-align: left;
-  height: var(--row-h);
-  padding: 0 12px;
+  padding: var(--pad-cell-y) 12px;
   border-bottom: 1px solid var(--hairline);
-  vertical-align: middle;
 }
-/* ячейка с переносом текста имеет право быть выше — но это редкий случай */
-td.wrap { height: auto; padding: var(--pad-cell-y) 12px; white-space: normal; }
 thead th {
-  color: var(--ink-faint);
+  color: var(--muted);
   font-weight: 600;
   font-size: var(--fs-micro);
-  letter-spacing: var(--tracking-label);
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  white-space: nowrap;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   position: sticky;
@@ -374,85 +693,54 @@ th.num, td.num {
 }
 tbody tr { transition: background var(--dur-fast) var(--ease); }
 tbody tr:hover { background: var(--surface-2); }
-/* строка под курсором и строка под клавиатурой выглядят одинаково: работа со
-   списком одинаково часто идёт и мышью, и стрелками */
-tbody tr:focus-within { background: var(--surface-2); }
 tbody tr:last-child td { border-bottom: none; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { color: var(--text); }
-th .arrow { margin-left: 4px; color: var(--text); }
+th .arrow { opacity: 0.75; margin-left: 4px; color: var(--accent); }
 .scroll-x { overflow-x: auto; }
 .scroll-y { overflow-y: auto; }
 .muted-row td { opacity: 0.55; }
 .alarm-row { background: var(--danger-soft); }
 
 /* ═══ управление ═══ */
-/*
- * Обычная кнопка — прозрачная с рамкой, а не залитая.
- *
- * На экране разбора шесть-семь действий подряд, и залитый серым фон у каждой
- * превращал панель в лестницу из прямоугольников: глазу не за что зацепиться,
- * и главное действие терялось среди второстепенных. Заливка осталась ровно у
- * одного варианта на экране — основного.
- *
- * Нажатие больше не сдвигает кнопку на пиксель вниз. Сдвиг выглядит живым на
- * одной кнопке и дёрганым на панели, где их семь, а при попадании курсором в
- * край кнопка успевала уехать из-под указателя.
- */
-/*
- * Базовые правила элементов обёрнуты в :where() — их вес нулевой.
- *
- * Иначе `min-height` у button перебивал высоту из утилит независимо от
- * специфичности (min-height всегда сильнее height), и кнопка-иконка в
- * панели оказывалась 34 пикселя вместо 32. Такие расхождения ищутся долго:
- * класс на месте, разметка верная, а размер чужой. Нулевой вес делает
- * правила именно тем, чем они должны быть, — умолчанием.
- */
-:where(button, .btn) {
+button, .btn {
   font: inherit;
   font-size: var(--fs-small);
   font-weight: 500;
-  min-height: 34px;
-  padding: 0 13px;
+  padding: 7px 13px;
   border-radius: var(--r-sm);
-  border: 1px solid var(--border);
-  background: transparent;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 7px;
-  white-space: nowrap;
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
-    filter var(--dur-fast) var(--ease);
+    transform var(--dur-fast) var(--ease);
 }
-:where(button, .btn):hover {
-  background: var(--surface-3);
-  border-color: var(--border-strong);
-  text-decoration: none;
-}
-:where(button, .btn):active { filter: brightness(0.94); }
-:where(button):disabled { opacity: 0.45; cursor: not-allowed; }
+button:hover, .btn:hover { background: var(--surface-3); text-decoration: none; }
+button:active, .btn:active { transform: translateY(1px); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 button.primary, .btn.primary {
   background: var(--primary);
-  border-color: transparent;
-  color: var(--primary-text);
+  border-color: var(--primary);
+  color: var(--slate-950);
   font-weight: 600;
 }
+:root[data-theme="light"] button.primary,
+:root[data-theme="light"] .btn.primary { color: #fff; }
 button.primary:hover, .btn.primary:hover {
-  background: var(--primary);
-  border-color: transparent;
-  filter: brightness(1.1);
+  background: color-mix(in srgb, var(--primary) 85%, white);
 }
 
 button.ghost {
   background: transparent;
   border-color: transparent;
-  color: var(--muted);
+  color: var(--text-2);
 }
-button.ghost:hover { background: var(--surface-2); border-color: transparent; color: var(--text); }
+button.ghost:hover { background: var(--surface-2); color: var(--text); }
 
 button.danger {
   background: transparent;
@@ -473,28 +761,24 @@ label.check {
   cursor: pointer;
 }
 
-:where(input, select, textarea) {
+input, select, textarea {
   font: inherit;
   font-size: var(--fs-small);
   width: 100%;
-  min-height: 34px;
-  padding: 6px 11px;
+  padding: 7px 11px;
   border-radius: var(--r-sm);
-  border: 1px solid var(--border);
-  /* поле — ступень над карточкой, а не провал до фона страницы: провалом
-     оно читалось как дырка, особенно когда карточек на экране несколько */
-  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
   color: var(--text);
   transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
-:where(input, select, textarea):hover { border-color: var(--border-strong); }
-/* подсказка в поле должна быть слабее введённого текста, иначе пустое поле
-   выглядит заполненным */
-:where(input, textarea)::placeholder { color: var(--ink-faint); }
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea { background: var(--surface); }
+input:hover, select:hover, textarea:hover { border-color: var(--slate-400); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
 textarea { resize: vertical; min-height: 76px; line-height: var(--lh-normal); }
-/* галочка бирюзовая, а не янтарная: отмеченный флажок — состояние, которое
-   человек задал сам, а янтарь означает «требует внимания» */
-input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--primary); }
+input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--accent); }
 
 .field { display: flex; flex-direction: column; gap: 0; }
 .field.grow { flex: 1; }
@@ -507,9 +791,6 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
   align-items: center;
   padding: 10px 12px;
 }
-/* полоса фильтров внутри панели идёт вровень с её содержимым */
-.card > .filters:first-child,
-.card > .table-tools:first-child { padding-left: 20px; padding-right: 20px; }
 .table-tools { display: flex; gap: 8px; align-items: center; padding: 8px 12px; }
 .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .row.tight { gap: 7px; }
@@ -517,31 +798,21 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
 .spacer { flex: 1; }
 
 /* ═══ метки ═══ */
-/*
- * Фишка фильтра.
- *
- * Выбранная фишка была янтарной — а янтарь в этой системе означает ровно
- * одно: «требует внимания». Включённый фильтр внимания не требует, это
- * состояние экрана; крася его акцентом, интерфейс каждый раз кричал о том,
- * что человек только что сделал сам. Теперь состояние показывает бирюза —
- * тот же цвет, что у выбранной строки и основного действия.
- */
 .chip {
-  min-height: 26px;
   font-size: var(--fs-caption);
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 20px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-2);
   cursor: pointer;
   white-space: nowrap;
 }
-.chip:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.chip:hover { background: var(--surface-2); }
 .chip.active {
-  background: var(--primary-soft);
-  border-color: color-mix(in srgb, var(--primary) 60%, transparent);
-  color: var(--primary);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
   font-weight: 600;
 }
 .chip.static { cursor: default; }
@@ -562,13 +833,12 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
   gap: 5px;
   font-size: var(--fs-micro);
   font-weight: 600;
-  letter-spacing: var(--tracking-label);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
   background: var(--surface-3);
   color: var(--text-2);
-  white-space: nowrap;
 }
 .badge.good { background: color-mix(in srgb, var(--sev-none) 18%, transparent); color: var(--sev-none-text); }
 .badge.warn { background: color-mix(in srgb, var(--sev-mild) 18%, transparent); color: var(--sev-mild-text); }
@@ -578,8 +848,8 @@ input[type="checkbox"], input[type="radio"] { width: auto; accent-color: var(--p
 .avatar {
   display: inline-grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   font-size: var(--fs-micro);
   font-weight: 600;
@@ -627,18 +897,9 @@ kbd, .kbd {
 }
 .case.overdue { background: linear-gradient(90deg, var(--accent-soft), transparent 30%), var(--card); }
 .case.resolved { opacity: 0.62; }
-/*
- * Случай под клавиатурой отмечен рамкой, а не янтарным кольцом во всю
- * карточку.
- *
- * Кольцо занимало ровно тот же цвет, которым помечены просроченные случаи, и
- * на экране разбора выходило, что подсвеченный случай сам по себе о чём-то
- * тревожном сообщает. Кроме того, обвести целиком главную панель экрана —
- * значит закричать там, где достаточно сказать «вы здесь».
- */
 .case.focused {
-  border-color: var(--primary);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .case-toggle {
   border: none;
@@ -796,8 +1057,8 @@ kbd, .kbd {
     radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--primary) 9%, transparent), transparent),
     var(--bg);
 }
-/* вход собран на утилитах в pages/Login.tsx — здесь осталось приглашение */
-.join-card {
+.login form, .join-card {
+  width: min(400px, 100%);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -805,7 +1066,7 @@ kbd, .kbd {
   box-shadow: var(--shadow);
 }
 .join-card { width: min(520px, 100%); }
-.join-card h1 { font-size: var(--fs-section); margin-bottom: 2px; }
+.login h1, .join-card h1 { font-size: var(--fs-section); margin-bottom: 2px; }
 
 /* ═══ киоск: крупно, издалека, без лишнего ═══ */
 .kiosk-page { min-height: 100vh; background: var(--bg); display: grid; place-items: center; padding: 26px; }
@@ -872,21 +1133,18 @@ kbd, .kbd {
 .opt { display: flex; align-items: center; gap: 9px; }
 .hotkeys { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
+.tabs { display: flex; gap: 3px; border-bottom: 1px solid var(--hairline); margin-bottom: 16px; }
 .tabs button {
   border: none;
   background: transparent;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   color: var(--muted);
-  padding: 0 12px;
-  min-height: 34px;
+  padding: 8px 13px;
   font-weight: 500;
 }
 .tabs button:hover { background: transparent; color: var(--text-2); }
-/* активная вкладка подчёркнута бирюзой, а не янтарём: янтарь означает
-   «требует внимания», а выбранная вкладка — это состояние экрана */
-.tabs button.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 600; }
+.tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 
 /* сегментированный переключатель: группа читается как одно целое,
    а три подряд идущих фильтра не сливаются в кашу из подчёркиваний */
@@ -915,21 +1173,13 @@ kbd, .kbd {
   font-weight: 600;
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
-/*
- * Точка у выбранного сегмента — бирюзовая, а не янтарная.
- *
- * Янтарь означает «требует внимания». Выбранный сегмент внимания не требует:
- * это состояние экрана, которое человек только что задал сам. Один экран
- * (фильтры разбора случаев) уже гасил эту точку у себя отдельным правилом —
- * признак того, что проблему замечали, но чинили по месту, а не в источнике.
- */
 .segmented button.active::before {
   content: "";
   display: block;
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--accent);
   margin-right: 6px;
   float: left;
   margin-top: 6px;
@@ -1003,7 +1253,18 @@ kbd, .kbd {
 .grid-sheet { display: grid; gap: 3px; }
 
 @media print {
-  /* печатные значения токенов живут в styles/tokens.css — см. пояснение там */
+  :root {
+    --bg: #fff;
+    --surface: #fff;
+    --surface-2: #fff;
+    --card: #fff;
+    --text: #000;
+    --text-2: #222;
+    --muted: #444;
+    --border: #999;
+    --hairline: #bbb;
+    color-scheme: light;
+  }
   body { font-size: 11pt; }
   .sidebar, .toasts, .offline-bar, .table-tools, .filters, button, .load-more { display: none !important; }
   .app { display: block; }
@@ -1037,21 +1298,13 @@ kbd, .kbd {
  * потерять место. Здесь очередь, случай и контекст стоят рядом, и разбор
  * идёт подряд, не сходя с экрана.
  */
-/*
- * Высота и поля больше не считаются вручную.
- *
- * Было `calc(100vh − 46px − 74px)` и отрицательные отступы, чтобы выбраться
- * из полей рабочей области. Числа в формуле — высота верхней панели и шапки
- * страницы; стоило измениться любому, и три панели переставали доставать до
- * низа окна или вылезали за него, причём молча. Теперь высоту даёт рамка
- * экрана (Page в режиме bleed), а здесь остаётся только деление на колонки.
- */
 .triage {
   display: grid;
   grid-template-columns: minmax(280px, 340px) minmax(420px, 1fr) minmax(260px, 330px);
   gap: 0;
-  height: 100%;
-  min-height: 0;
+  /* высота окна минус верхняя панель и компактная шапка страницы */
+  height: calc(100vh - 46px - 74px);
+  margin: 0 -28px -80px;
 }
 
 .triage-queue,
@@ -1060,11 +1313,11 @@ kbd, .kbd {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
-  /* семантический токен вместо ступени палитры: боковые панели — та же
-     поверхность, что и всё «второго плана», и должны меняться вместе с ней */
-  background: var(--surface-2);
+  background: var(--slate-850);
   scrollbar-width: thin;
 }
+:root[data-theme="light"] .triage-queue,
+:root[data-theme="light"] .triage-context { background: var(--paper-200); }
 .triage-queue { border-right: 1px solid var(--hairline); }
 .triage-context { border-left: 1px solid var(--hairline); padding: 16px; gap: 14px; }
 
@@ -1095,9 +1348,9 @@ kbd, .kbd {
 }
 .triage-filters .segmented button.active::before { display: none; }
 .triage-filters .segmented button.active {
-  background: var(--primary-soft);
-  color: var(--primary);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .triage-count {
   padding: 9px 12px;
@@ -1127,9 +1380,6 @@ kbd, .kbd {
   color: var(--text);
   box-shadow: inset 0 0 0 1px var(--border-strong);
 }
-/* выбранный случай отмечен бирюзой: янтарь означает «требует внимания», а
-   выбор — это состояние экрана, и красить его акцентом значит спорить с
-   просроченными случаями, отмеченными тем же цветом по делу */
 .queue-row.active::after {
   content: "";
   position: absolute;
@@ -1137,7 +1387,7 @@ kbd, .kbd {
   top: 6px;
   bottom: 6px;
   width: 2px;
-  background: var(--primary);
+  background: var(--accent);
 }
 .queue-row.done { opacity: 0.5; }
 .queue-sev { width: 3px; align-self: stretch; border-radius: 2px; flex: none; }
@@ -1219,15 +1469,10 @@ kbd, .kbd {
 .tl-date {
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
-  letter-spacing: 0;
-  text-transform: none;
   color: var(--muted);
   margin: 4px 0 0;
   position: sticky;
-  /* ноль, а не 56: прокручивается теперь содержимое экрана, а не страница,
-     и отступ на высоту верхней панели прибивал даты на полсотни пикселей
-     ниже, чем нужно, — они уезжали под первое событие дня */
-  top: 0;
+  top: 56px;
 }
 .tl-events {
   display: grid;
@@ -1558,367 +1803,6 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   color: var(--text-2);
 }
 
-/* ─────────── пакет заключений ─────────── */
-
-.batch {
-  display: grid;
-  gap: var(--gap);
-}
-
-.batch-toc ol {
-  margin: 0;
-  padding-left: 22px;
-  display: grid;
-  gap: 2px;
-  font-size: var(--fs-small);
-}
-
-.batch-item {
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-.batch-item header h2 {
-  margin: 0;
-}
-
-/* текст заключения: перенос строк автора сохраняется — абзацы значимы */
-.batch-text {
-  white-space: pre-wrap;
-  margin: 10px 0;
-}
-
-@media print {
-  /* блок управления в подшивку не попадает */
-  .no-print {
-    display: none;
-  }
-
-  /*
-   * Подшивка: оглавление на первой странице, дальше по заключению на лист.
-   * Разрыв принудительный, а не «как ляжет»: два заключения на одном листе
-   * нельзя подшить в разные дела.
-   */
-  .batch-toc {
-    break-after: page;
-  }
-
-  .batch-item {
-    break-inside: avoid;
-    break-after: page;
-    border: 0;
-    padding: 0;
-    background: none;
-  }
-
-  /* последний лист не должен тянуть за собой пустой */
-  .batch-item:last-child {
-    break-after: auto;
-  }
-}
-
-/*
- * Полоса кризисного режима. Единственное место в интерфейсе, где цвет
- * выраженности используется как фон: режим касается всего экрана, и приглушить
- * его до обычной карточки значит сделать вид, что ничего не изменилось.
- */
-.crisis-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-bottom: 2px solid var(--sev-severe);
-  background: color-mix(in srgb, var(--sev-severe) 12%, transparent);
-  font-size: var(--fs-small);
-}
-
-.crisis-start {
-  margin-left: auto;
-  font-size: var(--fs-small);
-}
-
-@media print {
-  .crisis-bar,
-  .crisis-start {
-    display: none;
-  }
-}
-
-/* заголовок группы в сводке событий: разделитель, а не кнопка */
-.events-group {
-  padding: 6px 10px 2px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-/* ─────────── карта пунктов ─────────── */
-
-/*
- * Ячейка узкая намеренно: карта на двести столбцов должна помещаться целиком,
- * иначе полоса, ради которой она нужна, окажется за краем экрана.
- */
-.qh-cell {
-  display: inline-block;
-  width: 5px;
-  height: 14px;
-  margin-right: 1px;
-  background: var(--surface-2);
-  vertical-align: middle;
-}
-
-/*
- * Быстрота и серия — разные признаки, поэтому разные цвета, а не оттенки
- * одного: оттенок читался бы как «сильнее/слабее», а это не так.
- */
-.qh-cell.m-fast { background: var(--accent); }
-.qh-cell.m-run { background: var(--sev-moderate); }
-.qh-cell.m-both { background: var(--sev-severe); }
-.qh-cell.m-missing { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
-
-.qh th { text-align: left; white-space: nowrap; padding-right: 10px; }
-.qh-cells { line-height: 1; }
-.qh-sum { padding-left: 10px; }
-
-.qh-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-small);
-  color: var(--muted);
-}
-
-@media print {
-  /* на монохромном принтере цвета неразличимы — карта печати не подлежит */
-  .qh { display: none; }
-}
-
-/* результаты поиска: отрывок читают, поэтому ему дана нормальная строка */
-.search-hits {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 14px;
-}
-
-.search-excerpt {
-  margin: 4px 0 0;
-  max-width: 68ch;
-  font-size: var(--fs-small);
-  color: var(--text-2, var(--text));
-}
-
-/* число когорты крупно и моноширинным: на него и смотрят, сужая условия */
-.stat-num {
-  font-family: var(--font-mono);
-  font-size: var(--fs-stat, 28px);
-  font-variant-numeric: tabular-nums;
-}
-
-/*
- * Подсказка. Приглушённая рамка и никакого акцента: она объясняет, а не
- * требует действия. Акцент здесь означал бы «посмотри сюда сейчас», и через
- * неделю на него перестали бы смотреть везде.
- */
-.hint-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin: 8px 0;
-  padding: 10px 12px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
-  background: var(--surface-2);
-  font-size: var(--fs-small);
-  color: var(--text-2, var(--text));
-}
-
-.hint-box p {
-  margin: 0;
-  flex: 1;
-}
-
-@media print {
-  .hint-box {
-    display: none;
-  }
-}
-
-/* список запросов к информантам: строка = роль, форма, состояние */
-.inf-list {
-  list-style: none;
-  margin: 0 0 8px;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.inf-list li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--fs-small);
-}
-
-/* стартовый экран в подвале рельсы: настройка, а не навигация */
-.start-screen {
-  display: grid;
-  gap: 3px;
-  padding: 0 10px 8px;
-  font-size: 11px;
-}
-
-.start-screen select {
-  font-size: 12px;
-  padding: 4px 6px;
-}
-
-/* ─────────── предпросмотр конструктора ─────────── */
-
-/*
- * Двухпанельно: слева правка, справа то, что увидит человек. Панель липкая —
- * при длинном списке пунктов предпросмотр должен оставаться на виду, иначе он
- * бесполезен ровно там, где нужен больше всего.
- */
-.constructor-split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: var(--gap);
-  align-items: start;
-}
-
-@media (max-width: 1100px) {
-  .constructor-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.constructor-main {
-  display: grid;
-  gap: var(--gap);
-  min-width: 0;
-}
-
-.preview {
-  position: sticky;
-  top: var(--gap);
-  display: grid;
-  gap: 6px;
-}
-
-/*
- * Рамка телефона условная, без «чёлок» и кнопок: она нужна, чтобы задать
- * ширину строки, а не чтобы изобразить устройство.
- */
-.preview-phone {
-  display: flex;
-  flex-direction: column;
-  min-height: 420px;
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: 18px;
-  background: var(--surface);
-  overflow: hidden;
-}
-
-.preview-progress {
-  height: 3px;
-  background: var(--surface-2);
-}
-
-.preview-progress-fill {
-  height: 100%;
-  background: var(--primary);
-}
-
-.preview-screen {
-  flex: 1;
-  display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 16px;
-}
-
-.preview-question {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.35;
-}
-
-.preview-required {
-  color: var(--sev-severe);
-}
-
-.preview-help,
-.preview-info {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--fs-small);
-}
-
-.preview-options {
-  display: grid;
-  gap: 6px;
-}
-
-.preview-option {
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 14px;
-}
-
-/*
- * Выбранный вариант в проверке ключа: заливка акцентом, а не рамка. Проверяя
- * ключ, человек смотрит на баллы внизу, и глазами по вариантам не ходит —
- * состояние должно читаться боковым зрением.
- */
-button.preview-option {
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-
-button.preview-option.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.key-check {
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: var(--fs-small);
-}
-
-.key-check table {
-  font-family: var(--font-mono);
-}
-
-/* предупреждения подсчёта: недостоверность, отсутствующие нормы */
-.key-warn {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--accent);
-}
-
-.preview-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--border);
-  font-size: var(--fs-small);
-}
-
 /* ─────────── настройка таблицы ─────────── */
 
 .table-tools {
@@ -2105,10 +1989,3 @@ button.preview-option.on {
     display: none;
   }
 }
-
-/* выбранная строка: полоса слева, а не заливка — заливка спорит со строкой
-   под курсором, и на списке становится непонятно, что выбрано, а что просто
-   под мышью */
-tbody tr.row-active { background: var(--surface-2); }
-tbody tr.row-active td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
-tbody tr[tabindex] { cursor: pointer; }

@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
+import { Empty, Loading, Screen, useAction } from "../ui";
+import { Page, Panel, Grid, Stack } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
 
@@ -35,30 +37,28 @@ export default function Norms() {
           .filter((s) => s.candidate.some((g) => g.sex !== null && g.publishable))
           .map((s) => s.code);
         return (
-    <>
-      <PageHead
-        title={ut("nm.title")}
-        crumbs={<Link to={`/surveys/${id}`}>← Аналитика методики</Link>}
-        sub="M и SD по фактической выборке учреждения против норм пособия"
-        actions={
-          picked.size ? (
-            <button
-              className="primary"
-              onClick={() =>
-                run(async () => {
-                  await api.applyNorms(id!, [...picked]);
-                  setPicked(new Set());
-                  reload();
-                }, ut("nm.published"))
-              }
-            >
-              Опубликовать для {picked.size} шкал
-            </button>
-          ) : undefined
-        }
-      />
-
-      <div className="tabs" style={{ maxWidth: 420 }}>
+    <Page
+      title={ut("nm.title")}
+      crumbs={<Link to={`/surveys/${id}`}>← Аналитика методики</Link>}
+      sub="M и SD по фактической выборке учреждения против норм пособия"
+      actions={
+        picked.size ? (
+          <Button
+            variant="primary"
+            onClick={() =>
+              run(async () => {
+                await api.applyNorms(id!, [...picked]);
+                setPicked(new Set());
+                reload();
+              }, ut("nm.published"))
+            }
+          >
+            Опубликовать для {picked.size} шкал
+          </Button>
+        ) : undefined
+      }
+    >
+      <div className="tabs max-w-[420px]">
         <button className={tab === "table" ? "active" : ""} onClick={() => setTab("table")}>
           Пособие против выборки
         </button>
@@ -76,15 +76,14 @@ export default function Norms() {
         />
       ) : null}
 
-      {tab === "table" ? data.scales.map((s) => {
+      {tab === "table" ? <Stack>{data.scales.map((s) => {
         const canPublish = publishableCodes.includes(s.code);
         return (
-          <div className="card" key={s.code}>
-            <div className="card-head">
-              <h2>
-                {s.code} — {s.title}
-              </h2>
-              {canPublish ? (
+          <Panel
+            key={s.code}
+            title={`${s.code} — ${s.title}`}
+            actions={
+              canPublish ? (
                 <label className="check">
                   <input
                     type="checkbox"
@@ -99,9 +98,10 @@ export default function Norms() {
                   перевести на локальные
                 </label>
               ) : (
-                <span className="hint">выборка меньше {data.minGroup} — публиковать рано</span>
-              )}
-            </div>
+                <span className="text-caption text-muted">выборка меньше {data.minGroup} — публиковать рано</span>
+              )
+            }
+          >
             <table>
               <thead>
                 <tr>
@@ -127,9 +127,9 @@ export default function Norms() {
                     <tr key={sex}>
                       <td>{ut(SEX_KEY[sex as keyof typeof SEX_KEY])}</td>
                       <td className="num">{cur ? `${cur.mean} / ${cur.sd}` : "—"}</td>
-                      <td className="muted" style={{ fontSize: 12 }}>{cur?.source ?? "—"}</td>
+                      <td className="text-muted text-[12px]">{cur?.source ?? "—"}</td>
                       <td className="num">
-                        {cand ? `${cand.mean} / ${cand.sd}` : <span className="muted">мало данных</span>}
+                        {cand ? `${cand.mean} / ${cand.sd}` : <span className="text-muted">мало данных</span>}
                       </td>
                       <td className="num">{cand?.n ?? "—"}</td>
                       <td className="num">
@@ -147,25 +147,23 @@ export default function Norms() {
                 })}
               </tbody>
             </table>
-            <p className="hint">
+            <p className="mt-3 text-caption text-muted">
               «Сдвиг среднего T» — насколько средний человек выборки отклоняется от нормы пособия.
               Больше ±5 T — выборка систематически отличается от нормировочной популяции, и
               локальные нормы имеют смысл.
             </p>
-          </div>
+          </Panel>
         );
-      }) : null}
-
-      {tab === "table" ? (
-      <div className="card">
-        <p className="hint" style={{ margin: 0 }}>
+      })}
+      <Panel>
+        <p className="text-caption text-muted">
           Публикация создаёт новую версию методики: собранные прохождения остаются на прежних
           нормах, происхождение каждой нормы фиксируется («локальная выборка, N=…»).
-          <Link to={`/surveys/${id}/key`} style={{ marginLeft: 6 }}>{ut("nm.checkKeys")}</Link>
+          <Link to={`/surveys/${id}/key`} className="ml-1.5">{ut("nm.checkKeys")}</Link>
         </p>
-      </div>
-      ) : null}
-    </>
+      </Panel>
+      </Stack> : null}
+    </Page>
         );
       }}
     </Screen>
@@ -181,7 +179,7 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
   const { ut } = useLang();
   const { data, error } = useResource(() => api.ageCurves(surveyId), [surveyId]);
 
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <p className="text-danger text-small">{error}</p>;
   if (!data) return <Loading />;
   if (!data.scales.length) {
     return (
@@ -193,26 +191,26 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
   }
 
   return (
-    <>
+    <Stack>
       {data.scales.map((scale) => (
-        <div className="card" key={scale.code}>
-          <div className="card-head">
-            <h2>{scale.code} — {scale.title}</h2>
-            <span className="hint">{scale.normalization === "tscore" ? "T-баллы" : scale.normalization}</span>
-          </div>
-          <div className="grid cols-2">
+        <Panel
+          key={scale.code}
+          title={`${scale.code} — ${scale.title}`}
+          actions={<span className="text-caption text-muted">{scale.normalization === "tscore" ? "T-баллы" : scale.normalization}</span>}
+        >
+          <Grid min={400}>
             {scale.bySex.filter((b) => b.enough).map((b) => (
               <div key={b.sex}>
-                <p className="hint" style={{ marginTop: 0 }}>
+                <p className="text-caption text-muted">
                   {b.sex === "male" ? ut("nm.menCap") : ut("nm.womenCap")} · окно ±{b.points[0]?.halfWidth ?? "?"} лет
                 </p>
                 <CurveTable points={b.points} />
               </div>
             ))}
-          </div>
-        </div>
+          </Grid>
+        </Panel>
       ))}
-    </>
+    </Stack>
   );
 }
 
@@ -239,7 +237,7 @@ function CurveTable({ points }: { points: { age: number; n: number; halfWidth: n
             {pt.percentiles.map((p) => (
               <td key={p.q} className="num">{p.value}</td>
             ))}
-            <td className="num muted">{pt.n}</td>
+            <td className="num text-muted">{pt.n}</td>
           </tr>
         ))}
       </tbody>

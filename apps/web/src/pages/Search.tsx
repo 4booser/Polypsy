@@ -3,7 +3,9 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { dateTime } from "../format";
 import { useLang } from "../lang";
-import { PageHead, useAction } from "../ui";
+import { useAction } from "../ui";
+import { Page, Panel, Stack } from "../ui/layout";
+import { Button, Input } from "../ui/primitives";
 
 /**
  * Поиск по записям приёма.
@@ -26,57 +28,51 @@ export default function Search() {
     });
 
   return (
-    <>
-      <PageHead title={ut("srch.title")} sub={ut("srch.sub")} />
-
-      <div className="card">
-        <div className="row tight">
-          <input
-            style={{ flex: 1 }}
-            value={q}
-            placeholder={ut("srch.placeholder")}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && q.trim().length >= 2 && search()}
-          />
-          <button className="primary" disabled={busy || q.trim().length < 2} onClick={search}>
-            {ut("srch.go")}
-          </button>
-        </div>
-        <p className="hint">{ut("srch.morphNote")}</p>
-      </div>
-
-      {result ? (
-        <div className="card">
-          <div className="card-head">
-            <h2>
-              {ut("srch.found")}: {result.items.length}
-            </h2>
+    <Page title={ut("srch.title")} sub={ut("srch.sub")}>
+      <Stack>
+        <Panel>
+          <div className="flex gap-2">
+            <Input
+              className="flex-1"
+              value={q}
+              placeholder={ut("srch.placeholder")}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && q.trim().length >= 2 && search()}
+            />
+            <Button variant="primary" disabled={busy || q.trim().length < 2} onClick={search}>
+              {ut("srch.go")}
+            </Button>
           </div>
+          <p className="m-0 mt-2 text-caption text-muted">{ut("srch.morphNote")}</p>
+        </Panel>
 
-          {result.items.length === 0 ? (
-            <p className="muted">{ut("srch.nothing")}</p>
-          ) : (
-            <ul className="search-hits">
-              {result.items.map((hit) => (
-                <li key={hit.id}>
-                  <div className="row tight">
-                    <Link to={`/patients/${hit.userId}/summary`}>{hit.userName}</Link>
-                    <span className="muted">
-                      {dateTime(hit.createdAt)} · {ut("note.version")} {hit.version}
-                    </span>
-                  </div>
-                  {/*
-                    Отрывок, а не запись целиком: поиск по одному слову
-                    выложил бы на экран десяток клинических текстов сразу, а
-                    прочитан будет один.
-                  */}
-                  <p className="search-excerpt">{hit.excerpt}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
-    </>
+        {result ? (
+          <Panel title={`${ut("srch.found")}: ${result.items.length}`}>
+            {result.items.length === 0 ? (
+              <p className="m-0 text-muted">{ut("srch.nothing")}</p>
+            ) : (
+              <ul className="search-hits">
+                {result.items.map((hit) => (
+                  <li key={hit.id}>
+                    <div className="flex items-center gap-2">
+                      <Link to={`/patients/${hit.userId}/summary`}>{hit.userName}</Link>
+                      <span className="text-muted">
+                        {dateTime(hit.createdAt)} · {ut("note.version")} {hit.version}
+                      </span>
+                    </div>
+                    {/*
+                      Отрывок, а не запись целиком: поиск по одному слову
+                      выложил бы на экран десяток клинических текстов сразу, а
+                      прочитан будет один.
+                    */}
+                    <p className="search-excerpt">{hit.excerpt}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        ) : null}
+      </Stack>
+    </Page>
   );
 }

@@ -5,7 +5,9 @@ import { isAnswered, isQuestionVisible } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { useResource } from "../useResource";
 import { SeverityTag } from "../charts/advanced";
-import { Loading, PageHead } from "../ui";
+import { Loading } from "../ui";
+import { Page, Panel, Stack } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 
 /**
@@ -83,125 +85,128 @@ export default function Administer() {
       band: { label: string; severity: "none" | "mild" | "moderate" | "severe"; recommendation: string | null } | null;
     }[];
     return (
-      <>
-        <PageHead title={ut("adn.saved")} sub={survey.title} />
-        {!result.reliable ? (
-          <div className="card" style={{ borderColor: "var(--sev-severe)" }}>
-            <strong>{ut("ad.unreliable")}</strong>
-            {result.warnings.map((w, i) => (
-              <p key={i} className="hint" style={{ marginBottom: 0 }}>{w}</p>
-            ))}
-          </div>
-        ) : null}
-        <div className="card scroll-x">
-          <table>
-            <thead><tr><th>{ut("ad.scale")}</th><th className="num">{ut("ad.raw")}</th><th className="num">{ut("ad.value")}</th><th>{ut("ad.interpretation")}</th><th>{ut("ad.recommendation")}</th></tr></thead>
-            <tbody>
-              {scores.map((s) => (
-                <tr key={s.scaleCode}>
-                  <td>{s.scaleTitle}</td>
-                  <td className="num">{s.rawScore}</td>
-                  <td className="num">{s.value}</td>
-                  <td>{s.band ? <SeverityTag severity={s.band.severity} label={s.band.label} /> : "—"}</td>
-                  <td className="muted">{s.band?.recommendation ?? "—"}</td>
-                </tr>
+      <Page title={ut("adn.saved")} sub={survey.title}>
+        <Stack>
+          {!result.reliable ? (
+            <Panel className="border border-[var(--sev-severe)]">
+              <strong>{ut("ad.unreliable")}</strong>
+              {result.warnings.map((w, i) => (
+                <p key={i} className="text-caption text-muted">{w}</p>
               ))}
-            </tbody>
-          </table>
-        </div>
-        <button className="primary" onClick={() => navigate(`/surveys/${survey.id}`)}>К аналитике методики</button>
-      </>
+            </Panel>
+          ) : null}
+          <Panel>
+            <div className="scroll-x">
+              <table>
+                <thead><tr><th>{ut("ad.scale")}</th><th className="num">{ut("ad.raw")}</th><th className="num">{ut("ad.value")}</th><th>{ut("ad.interpretation")}</th><th>{ut("ad.recommendation")}</th></tr></thead>
+                <tbody>
+                  {scores.map((s) => (
+                    <tr key={s.scaleCode}>
+                      <td>{s.scaleTitle}</td>
+                      <td className="num">{s.rawScore}</td>
+                      <td className="num">{s.value}</td>
+                      <td>{s.band ? <SeverityTag severity={s.band.severity} label={s.band.label} /> : "—"}</td>
+                      <td className="text-muted">{s.band?.recommendation ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+          <Button variant="primary" onClick={() => navigate(`/surveys/${survey.id}`)}>К аналитике методики</Button>
+        </Stack>
+      </Page>
     );
   }
 
   return (
-    <>
-      <PageHead
-        title={survey.title}
-        crumbs={<Link to={`/surveys/${survey.id}`}>← К методике</Link>}
-        sub={`${ut("adn.byClinician")} · ${visible.filter((q) => q.type !== "info").length} ${ut("adn.items")}`}
-      />
+    <Page
+      title={survey.title}
+      crumbs={<Link to={`/surveys/${survey.id}`}>← К методике</Link>}
+      sub={`${ut("adn.byClinician")} · ${visible.filter((q) => q.type !== "info").length} ${ut("adn.items")}`}
+    >
+      <Stack>
+        <Panel>
+          <div className="field max-w-[460px] mb-0">
+            <label>{ut("adn.whoIsTested")}</label>
+            <select value={subject} onChange={(e) => setSubject(e.target.value)}>
+              <option value="">{ut("adn.pickPatient")}</option>
+              {patients.map((p) => (
+                <option key={p.id} value={p.id}>{p.fullName} · {p.email}</option>
+              ))}
+            </select>
+          </div>
+          {survey.instructions ? <p className="mt-3 text-caption text-muted">{survey.instructions}</p> : null}
+        </Panel>
 
-      <div className="card">
-        <div className="field" style={{ maxWidth: 460, marginBottom: 0 }}>
-          <label>{ut("adn.whoIsTested")}</label>
-          <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-            <option value="">{ut("adn.pickPatient")}</option>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>{p.fullName} · {p.email}</option>
-            ))}
-          </select>
-        </div>
-        {survey.instructions ? <p className="hint" style={{ marginTop: 12, marginBottom: 0 }}>{survey.instructions}</p> : null}
-      </div>
-
-      {visible.map((q, i) => {
-        if (q.type === "info") {
+        {visible.map((q, i) => {
+          if (q.type === "info") {
+            return (
+              <Panel key={q.id}>
+                <strong>{q.title}</strong>
+                {q.help ? <p className="mt-1 text-caption text-muted">{q.help}</p> : null}
+              </Panel>
+            );
+          }
+          const a = answers.get(q.id);
+          const choices = q.options.filter((o) => o.kind === "option");
           return (
-            <div className="card" key={q.id}>
-              <strong>{q.title}</strong>
-              {q.help ? <p className="hint">{q.help}</p> : null}
-            </div>
-          );
-        }
-        const a = answers.get(q.id);
-        const choices = q.options.filter((o) => o.kind === "option");
-        return (
-          <div className="card" key={q.id}>
-            <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
-              <span className="muted" style={{ minWidth: 28 }}>{i + 1}.</span>
-              <div style={{ flex: 1 }}>
-                <div>{q.title}</div>
-                {q.help ? <p className="hint" style={{ marginBottom: 6 }}>{q.help}</p> : null}
-                <div className="row" style={{ marginTop: 6 }}>
-                  {choices.length ? (
-                    choices.map((o) => (
-                      <button
-                        key={o.id}
-                        className={`chip ${a?.optionIds?.includes(o.id) ? "active" : ""}`}
-                        onClick={() =>
-                          set(q.id, {
-                            optionIds: q.type === "multiple"
-                              ? (a?.optionIds ?? []).includes(o.id)
-                                ? (a?.optionIds ?? []).filter((x) => x !== o.id)
-                                : [...(a?.optionIds ?? []), o.id]
-                              : [o.id],
-                          })
-                        }
-                      >
-                        {o.text}
-                        {o.riskFlag ? " ⚠" : ""}
-                      </button>
-                    ))
-                  ) : ["scale", "slider", "number"].includes(q.type) ? (
-                    <input
-                      type="number"
-                      style={{ width: 160 }}
-                      value={a?.number ?? ""}
-                      onChange={(e) => set(q.id, { number: e.target.value === "" ? undefined : Number(e.target.value) })}
-                    />
-                  ) : (
-                    <input
-                      style={{ maxWidth: 520 }}
-                      value={a?.text ?? ""}
-                      onChange={(e) => set(q.id, { text: e.target.value })}
-                    />
-                  )}
+            <Panel key={q.id}>
+              <div className="row items-start gap-3">
+                <span className="text-muted min-w-[28px]">{i + 1}.</span>
+                <div className="flex-1">
+                  <div>{q.title}</div>
+                  {q.help ? <p className="mb-1.5 text-caption text-muted">{q.help}</p> : null}
+                  <div className="row mt-1.5">
+                    {choices.length ? (
+                      choices.map((o) => (
+                        <button
+                          key={o.id}
+                          className={`chip ${a?.optionIds?.includes(o.id) ? "active" : ""}`}
+                          onClick={() =>
+                            set(q.id, {
+                              optionIds: q.type === "multiple"
+                                ? (a?.optionIds ?? []).includes(o.id)
+                                  ? (a?.optionIds ?? []).filter((x) => x !== o.id)
+                                  : [...(a?.optionIds ?? []), o.id]
+                                : [o.id],
+                            })
+                          }
+                        >
+                          {o.text}
+                          {o.riskFlag ? " ⚠" : ""}
+                        </button>
+                      ))
+                    ) : ["scale", "slider", "number"].includes(q.type) ? (
+                      <input
+                        type="number"
+                        className="w-40"
+                        value={a?.number ?? ""}
+                        onChange={(e) => set(q.id, { number: e.target.value === "" ? undefined : Number(e.target.value) })}
+                      />
+                    ) : (
+                      <input
+                        className="max-w-[520px]"
+                        value={a?.text ?? ""}
+                        onChange={(e) => set(q.id, { text: e.target.value })}
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        );
-      })}
+            </Panel>
+          );
+        })}
 
-      {error ? <p className="error">{error}</p> : null}
-      <div className="row">
-        <button className="primary" onClick={submit} disabled={!subject || unanswered.length > 0 || busy}>
-          {busy ? ut("ad.saving") : ut("ad.save")}
-        </button>
-        {unanswered.length ? <span className="muted">не заполнено обязательных: {unanswered.length}</span> : null}
-        {!subject ? <span className="muted">выберите пациента</span> : null}
-      </div>
-    </>
+        {error ? <p className="text-danger text-small">{error}</p> : null}
+        <div className="row">
+          <Button variant="primary" onClick={submit} disabled={!subject || unanswered.length > 0 || busy}>
+            {busy ? ut("ad.saving") : ut("ad.save")}
+          </Button>
+          {unanswered.length ? <span className="text-muted">не заполнено обязательных: {unanswered.length}</span> : null}
+          {!subject ? <span className="text-muted">выберите пациента</span> : null}
+        </div>
+      </Stack>
+    </Page>
   );
 }

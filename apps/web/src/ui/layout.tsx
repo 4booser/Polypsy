@@ -190,7 +190,7 @@ export function Panel({
   as?: "section" | "div" | "article" | "aside";
 }) {
   return (
-    <As className={cx("overflow-hidden rounded-lg bg-surface", className)}>
+    <As data-panel className={cx("overflow-hidden rounded-lg bg-surface", className)}>
       {title || actions ? (
         <div
           className={cx(

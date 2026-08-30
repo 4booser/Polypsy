@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { computeProfile, type Answer } from "@quizzy/shared";
 import { useLang } from "../../lang";
 import { draftToSurvey, type Draft } from "./model";
+import { Button } from "../../ui/primitives";
 
 /**
  * Живой предпросмотр методики.
@@ -68,7 +69,7 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
     return (
       <div className="preview">
         <div className="preview-phone">
-          <p className="muted" style={{ margin: "auto", textAlign: "center" }}>
+          <p className="m-auto text-center text-muted">
             {ut("co.previewEmpty")}
           </p>
         </div>
@@ -96,7 +97,7 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
           ) : (
             <>
               <p className="preview-question">
-                {text(current?.title) || <span className="muted">{ut("co.previewNoText")}</span>}
+                {text(current?.title) || <span className="text-muted">{ut("co.previewNoText")}</span>}
                 {current?.required ? <span className="preview-required"> *</span> : null}
               </p>
               {current?.help ? <p className="preview-help">{text(current.help)}</p> : null}
@@ -127,16 +128,16 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
                         }
                       >
                         {text(o.text) || "—"}
-                        {o.score !== undefined ? <span className="muted"> {o.score}</span> : null}
+                        {o.score !== undefined ? <span className="text-muted"> {o.score}</span> : null}
                       </button>
                     ) : (
                       <div key={i} className="preview-option">
-                        {text(o.text) || <span className="muted">—</span>}
+                        {text(o.text) || <span className="text-muted">—</span>}
                       </div>
                     );
                   })
                 ) : (
-                  <p className="muted">{ut("co.previewNoOptions")}</p>
+                  <p className="text-muted">{ut("co.previewNoOptions")}</p>
                 )}
               </div>
             </>
@@ -144,38 +145,42 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
         </div>
 
         <div className="preview-nav">
-          <button disabled={at === 0} onClick={() => setAt((v) => Math.max(0, v - 1))}>
+          <Button variant="quiet" size="sm" disabled={at === 0} onClick={() => setAt((v) => Math.max(0, v - 1))}>
             ←
-          </button>
-          <span className="muted">
+          </Button>
+          <span className="text-muted">
             {Math.min(at, shown.length - 1) + 1} / {shown.length}
           </span>
-          <button
+          <Button
+            variant="quiet"
+            size="sm"
             disabled={at >= shown.length - 1}
             onClick={() => setAt((v) => Math.min(shown.length - 1, v + 1))}
           >
             →
-          </button>
+          </Button>
         </div>
       </div>
 
-      <div className="row tight">
+      {/* переключатель режима — тот же язык, что у вкладок экрана: активная
+          вкладка держится бирюзовым подчёркиванием, а не янтарём */}
+      <div className="tabs mb-0">
         <button className={checking ? "" : "active"} onClick={() => setChecking(false)}>
           {ut("co.preview")}
         </button>
         <button className={checking ? "active" : ""} onClick={() => setChecking(true)}>
           {ut("co.keyCheck")}
         </button>
-        {checking && picked.size ? (
-          <button className="ghost" onClick={() => setPicked(new Map())}>
-            {ut("co.keyReset")}
-          </button>
-        ) : null}
       </div>
+      {checking && picked.size ? (
+        <Button variant="quiet" size="sm" onClick={() => setPicked(new Map())}>
+          {ut("co.keyReset")}
+        </Button>
+      ) : null}
 
       {checking ? (
         <div className="key-check">
-          <p className="hint" style={{ margin: 0 }}>
+          <p className="m-0 text-caption text-muted">
             {ut("co.keyHint")} · {picked.size}/{asked.length}
           </p>
           {profile?.scores.length ? (
@@ -188,13 +193,13 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
                     <td className="num">
                       {sc.normalization === "raw" ? "—" : sc.value}
                     </td>
-                    <td className="muted">{sc.band?.label ?? ""}</td>
+                    <td className="text-muted">{sc.band?.label ?? ""}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ) : (
-            <p className="muted" style={{ margin: 0 }}>{ut("co.keyNoScales")}</p>
+            <p className="m-0 text-muted">{ut("co.keyNoScales")}</p>
           )}
           {profile?.warnings.length ? (
             <ul className="key-warn">
@@ -205,7 +210,7 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
           ) : null}
         </div>
       ) : (
-        <p className="hint" style={{ textAlign: "center" }}>
+        <p className="text-center text-caption text-muted">
           {ut("co.previewHint")}
         </p>
       )}

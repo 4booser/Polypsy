@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { isAnswered, isQuestionVisible, type Answer, type SurveyFull } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { Loading } from "../ui";
+import { Button, Panel } from "../ui/primitives";
 
 /**
  * Форма для человека со стороны.
@@ -40,12 +41,22 @@ export default function InformantForm() {
       .catch(() => setState({ kind: "gone" }));
   }, [token]);
 
-  if (state.kind === "loading") return <div style={{ padding: 40 }}><Loading rows={3} /></div>;
+  if (state.kind === "loading") {
+    return (
+      <div className="join-page">
+        <div className="w-full max-w-[640px]">
+          <Loading rows={3} />
+        </div>
+      </div>
+    );
+  }
 
   if (state.kind === "gone") {
     return (
       <div className="join-page">
-        <h1>{ut("inf.formGone")}</h1>
+        <div className="w-full max-w-[640px]">
+          <h1 className="m-0">{ut("inf.formGone")}</h1>
+        </div>
       </div>
     );
   }
@@ -53,7 +64,9 @@ export default function InformantForm() {
   if (state.kind === "done") {
     return (
       <div className="join-page">
-        <h1>{ut("inf.formDone")}</h1>
+        <div className="w-full max-w-[640px]">
+          <h1 className="m-0">{ut("inf.formDone")}</h1>
+        </div>
       </div>
     );
   }
@@ -100,42 +113,61 @@ export default function InformantForm() {
 
   return (
     <div className="join-page">
-      <h1>{survey.title}</h1>
-      <p className="hint">
-        {ut("inf.about")}: {state.about} · {ut(`inf.role.${state.role}` as never)}
-      </p>
-      <p className="hint">{ut("inf.formSub")}</p>
-      {state.note ? <p className="muted">{state.note}</p> : null}
+      {/*
+        Ширина ограничена, а не отдана на волю грид-центрирования .join-page:
+        без общего контейнера каждый абзац и карточка центрировались бы по
+        отдельности своей собственной шириной, и длинный вопрос растягивался
+        почти во весь экран, пока короткая подпись оставалась узкой строкой.
+      */}
+      <div className="flex w-full max-w-[640px] flex-col gap-4">
+        <div>
+          <h1 className="m-0">{survey.title}</h1>
+          <p className="m-0 mt-1.5 text-small text-muted">
+            {ut("inf.about")}: {state.about} · {ut(`inf.role.${state.role}` as never)}
+          </p>
+          <p className="m-0 mt-1 text-small text-muted">{ut("inf.formSub")}</p>
+          {state.note ? <p className="m-0 mt-1.5 text-small text-text-2">{state.note}</p> : null}
+        </div>
 
-      {visible.map((q) =>
-        q.type === "info" ? (
-          <p key={q.id} className="muted">{q.title}</p>
-        ) : (
-          <div key={q.id} className="card">
-            <p style={{ marginTop: 0 }}>
-              {q.title}
-              {q.required ? <span style={{ color: "var(--sev-severe)" }}> *</span> : null}
-            </p>
-            <div className="row tight" style={{ flexWrap: "wrap" }}>
-              {q.options.map((o) => (
-                <button
-                  key={o.id}
-                  className={answers.get(q.id)?.optionIds?.[0] === o.id ? "primary" : ""}
-                  onClick={() => pick(q.id, o.id)}
-                >
-                  {o.text}
-                </button>
-              ))}
-            </div>
-          </div>
-        ),
-      )}
+        {visible.map((q) =>
+          q.type === "info" ? (
+            <p key={q.id} className="m-0 text-small text-muted">{q.title}</p>
+          ) : (
+            <Panel key={q.id} className="p-5">
+              <p className="m-0 text-body">
+                {q.title}
+                {q.required ? <span className="text-danger"> *</span> : null}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {q.options.map((o) => (
+                  <Button
+                    key={o.id}
+                    variant={answers.get(q.id)?.optionIds?.[0] === o.id ? "primary" : "ghost"}
+                    onClick={() => pick(q.id, o.id)}
+                  >
+                    {o.text}
+                  </Button>
+                ))}
+              </div>
+            </Panel>
+          ),
+        )}
 
-      {error ? <p className="error">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="m-0 text-caption text-danger">
+            {error}
+          </p>
+        ) : null}
 
-      <button className="primary" disabled={busy || unanswered.length > 0} onClick={() => void submit()}>
-        {ut("common.finish")}
-      </button>
+        <Button
+          variant="primary"
+          className="w-full"
+          disabled={busy || unanswered.length > 0}
+          onClick={() => void submit()}
+        >
+          {ut("common.finish")}
+        </Button>
+      </div>
     </div>
   );
 }

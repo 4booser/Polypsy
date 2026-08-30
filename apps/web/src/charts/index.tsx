@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { SERIES } from "../format";
+import { Panel } from "../ui/layout";
 
 /**
  * Диаграммы консоли — plain SVG без библиотек.
@@ -37,6 +38,14 @@ export function Legend({ items }: { items: { label: string; color: string }[] })
   );
 }
 
+/**
+ * Обёртка графика — та же панель, что у остального содержимого.
+ *
+ * Раньше она рисовала свою карточку с собственным ритмом отступов, и на
+ * одном экране график стоял рядом с панелью, отличаясь от неё на несколько
+ * пикселей поля. По одному такое расхождение незаметно, но экран из панелей
+ * и «почти панелей» читается как собранный из двух разных приложений.
+ */
 export function Chart({
   title,
   hint,
@@ -47,11 +56,9 @@ export function Chart({
   children: ReactNode;
 }) {
   return (
-    <div className="card">
-      <h2>{title}</h2>
-      {hint ? <p className="hint">{hint}</p> : null}
+    <Panel title={title} hint={hint}>
       {children}
-    </div>
+    </Panel>
   );
 }
 
