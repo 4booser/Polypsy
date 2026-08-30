@@ -343,7 +343,19 @@ export default function App() {
             <Route path="/cohorts" element={<Cohorts />} />
             <Route path="/search" element={<SearchPage />} />
           <Route path="/groups" element={<Groups />} />
-          {isSuper ? <Route path="/users" element={<><Users /><ConsentText /></>} /> : null}
+          {/*
+            Учётки и текст согласия — два отдельных маршрута, а не два экрана
+            на одном.
+
+            Раньше они склеивались фрагментом. Это было тесно и до переделки —
+            два заголовка первого уровня на одной странице, — а с новой рамкой
+            стало опасно: экран занимает свою область целиком, и из двух
+            соседей второй молча закрыл бы первого. Ошибка была бы тихой:
+            разметка на месте, ошибок в консоли нет, а половина страницы
+            недостижима.
+          */}
+          {isSuper ? <Route path="/users" element={<Users />} /> : null}
+          {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

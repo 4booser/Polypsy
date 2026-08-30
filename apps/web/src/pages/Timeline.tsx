@@ -1,7 +1,8 @@
 import { Link, useParams } from "react-router-dom";
 import { api, type TimelineItem } from "../api";
 import { dateTime, severityColor } from "../format";
-import { Empty, Loading, PageHead } from "../ui";
+import { Empty, Loading } from "../ui";
+import { Page } from "../ui/layout";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
@@ -42,13 +43,12 @@ export default function Timeline() {
   }
 
   return (
-    <>
-      <PageHead
-        title={ut("tl.title")}
-        sub={ut("tl.sub")}
-        crumbs={<Link to={`/patients/${userId}/summary`}>← {ut("nav.patients")}</Link>}
-      />
-
+    <Page
+      title={ut("tl.title")}
+      sub={ut("tl.sub")}
+      count={items.length || null}
+      crumbs={<Link to={`/patients/${userId}/summary`}>← {ut("nav.patients")}</Link>}
+    >
       {items.length === 0 ? (
         <Empty title={ut("tl.empty")} hint={ut("tl.emptyHint")} />
       ) : (
@@ -76,6 +76,6 @@ export default function Timeline() {
           ))}
         </div>
       )}
-    </>
+    </Page>
   );
 }
