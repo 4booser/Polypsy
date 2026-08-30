@@ -2,6 +2,8 @@ import { api } from "../api";
 import { Loading } from "../ui";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
+import { Panel, Stack } from "../ui/layout";
+import { SeverityTag } from "../ui/primitives";
 
 // ключи: карта вне компонента, перевод берётся при отрисовке
 const SEX_KEY = { male: "dq.men", female: "dq.women" } as const;
@@ -19,7 +21,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
   const res = useResource(() => api.dataQuality(surveyId), [surveyId]);
   const { data, error } = res;
 
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <p className="text-danger">{error}</p>;
   if (!data) return <Loading />;
 
   const worst = data.strata
@@ -27,16 +29,18 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
     .sort((a, b) => (a.completionRate ?? 100) - (b.completionRate ?? 100))[0];
 
   return (
-    <>
-      <div className="card scroll-x">
-        <div className="card-head">
-          <h2>{ut("dq.completionTitle")}</h2>
-          <span className="hint">
+    <Stack>
+      <Panel
+        title={ut("dq.completionTitle")}
+        actions={
+          <span className="text-caption text-muted">
             {ut("dq.groupsSmallerThan")} {data.smallCellFloor} {ut("dq.areHidden")}
           </span>
-        </div>
+        }
+        className="overflow-x-auto"
+      >
         {worst && (worst.completionRate ?? 100) < 80 ? (
-          <p className="hint warn">
+          <p className="mb-3 text-caption text-accent">
             {sexLabel(worst.sex)} {worst.band}: {ut("dq.reaches")} {worst.completionRate}%.{" "}
             {ut("dq.underrepresented")}
           </p>
@@ -53,9 +57,9 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
             {data.strata.map((s) => (
               <tr key={`${s.sex}-${s.band}`}>
                 <td>{sexLabel(s.sex)}</td>
-                <td className="muted">{s.band}</td>
+                <td className="text-muted">{s.band}</td>
                 {s.suppressed ? (
-                  <td colSpan={4} className="muted">
+                  <td colSpan={4} className="text-muted">
                     меньше {data.smallCellFloor} — не показывается
                   </td>
                 ) : (
@@ -63,23 +67,21 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
                     <td className="num">{s.started}</td>
                     <td className="num">{s.completed}</td>
                     <td className="num">{s.completionRate}%</td>
-                    <td className="num muted">{s.avgSkipped}</td>
+                    <td className="num text-muted">{s.avgSkipped}</td>
                   </>
                 )}
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </Panel>
 
       {data.drift.length ? (
-        <div className="card scroll-x">
-          <h2>{ut("dq.driftTitle")}</h2>
-          <p className="hint">
-            Насколько распределение баллов последнего месяца отличается от предыдущих (PSI).
-            Больше 0.2 — выборка существенно изменилась, и локальные нормы, посчитанные
-            раньше, могут ей не подходить.
-          </p>
+        <Panel
+          title={ut("dq.driftTitle")}
+          hint="Насколько распределение баллов последнего месяца отличается от предыдущих (PSI). Больше 0.2 — выборка существенно изменилась, и локальные нормы, посчитанные раньше, могут ей не подходить."
+          className="overflow-x-auto"
+        >
           <table>
             <thead>
               <tr><th>{ut("dq.scale")}</th><th>{ut("dq.month")}</th><th className="num">n</th><th className="num">PSI</th><th>{ut("dq.verdict")}</th></tr>
@@ -88,25 +90,34 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
               {data.drift.map((d) => (
                 <tr key={d.code}>
                   <td>{d.code} — {d.title}</td>
-                  <td className="muted">{d.month}</td>
+                  <td className="text-muted">{d.month}</td>
                   <td className="num">{d.n}</td>
                   <td className="num">{d.psi}</td>
-                  <td style={{ color: d.psi > 0.2 ? "var(--sev-mild)" : undefined }}>{d.verdict}</td>
+                  <td>
+                    {/*
+                      Вердикт дрейфа — степень («заметно изменилась» vs «в
+                      пределах шума»), поэтому цвет не работает один:
+                      SeverityTag добавляет форму точки и оставляет текст
+                      вердикта видимым всегда, а не только по цвету.
+                    */}
+                    {d.psi > 0.2 ? (
+                      <SeverityTag level="mild">{d.verdict}</SeverityTag>
+                    ) : (
+                      d.verdict
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       ) : null}
 
-      <div className="card scroll-x">
-        <h2>{ut("dq.repeatTitle")}</h2>
-        <p className="hint">
-          ICC по парам замеров одного человека с интервалом {data.retestWindow.minDays}–
-          {data.retestWindow.maxDays} дней: раньше — человек помнит ответы, позже — состояние
-          реально меняется, и то и другое уже не про надёжность инструмента. Оценка независима
-          от альфы: та говорит о согласованности пунктов, эта — о стабильности во времени.
-        </p>
+      <Panel
+        title={ut("dq.repeatTitle")}
+        hint={`ICC по парам замеров одного человека с интервалом ${data.retestWindow.minDays}–${data.retestWindow.maxDays} дней: раньше — человек помнит ответы, позже — состояние реально меняется, и то и другое уже не про надёжность инструмента. Оценка независима от альфы: та говорит о согласованности пунктов, эта — о стабильности во времени.`}
+        className="overflow-x-auto"
+      >
         <table>
           <thead>
             <tr><th>{ut("dq.scale")}</th><th className="num">{ut("dq.pairs")}</th><th className="num">ICC</th></tr>
@@ -118,7 +129,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
                 <td className="num">{r.pairs}</td>
                 <td className="num">
                   {r.icc === null ? (
-                    <span className="muted">нужно ≥{data.retestWindow.minPairs} пар</span>
+                    <span className="text-muted">нужно ≥{data.retestWindow.minPairs} пар</span>
                   ) : (
                     r.icc
                   )}
@@ -127,7 +138,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
             ))}
           </tbody>
         </table>
-      </div>
-    </>
+      </Panel>
+    </Stack>
   );
 }

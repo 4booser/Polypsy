@@ -8,7 +8,9 @@ test.describe("вход в консоль", () => {
     await page.getByLabel("Пароль").fill("не-тот-пароль");
     await page.getByRole("button", { name: "Войти" }).click();
 
-    await expect(page.locator(".error")).toBeVisible();
+    // по роли, а не по классу: отказ должен быть объявлен диктору, и
+    // проверять надо именно это, а не то, каким классом он покрашен
+    await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.locator(".sidebar")).toHaveCount(0);
   });
 

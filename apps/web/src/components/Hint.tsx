@@ -2,6 +2,7 @@ import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
+import { Button } from "../ui/primitives";
 
 /**
  * Точечная подсказка.
@@ -26,8 +27,8 @@ export function Hint({ id, text }: { id: string; text: UiKey }) {
   return (
     <aside className="hint-box" role="note">
       <p>{ut(text)}</p>
-      <button
-        className="ghost"
+      <Button
+        variant="quiet"
         onClick={() => {
           /*
            * Закрытие сохраняется на сервере: сотрудник садится за разные
@@ -41,7 +42,7 @@ export function Hint({ id, text }: { id: string; text: UiKey }) {
         }}
       >
         {ut("hint.gotIt")}
-      </button>
+      </Button>
     </aside>
   );
 }

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { Respondent, Severity } from "@quizzy/shared";
+import type { Severity } from "@quizzy/shared";
 import { api } from "../api";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -22,7 +22,23 @@ import { severityColor } from "../format";
 /** Порядок степеней: сравнивать словами нельзя, а числом — можно. */
 const RANK: Record<Severity, number> = { none: 0, mild: 1, moderate: 2, severe: 3 };
 
-export function PatientContext({ person }: { person: Respondent }) {
+/**
+ * Минимум, который нужен панели.
+ *
+ * Не `Respondent`: панель открывается и из очереди работы, где строка — это
+ * задача, а не человек, и полной карточки респондента там нет. Требовать её
+ * значило бы делать лишний запрос ради двух полей, которые уже приехали.
+ */
+export interface ContextPerson {
+  userId: string;
+  fullName: string;
+  unit?: string | null;
+  /** Замеров и дата последнего — если список их знает; иначе прочерк. */
+  count?: number | null;
+  last?: string | null;
+}
+
+export function PatientContext({ person }: { person: ContextPerson }) {
   const { ut } = useLang();
   const { data, error } = useResource(() => api.dynamics(person.userId), [person.userId]);
 
@@ -39,7 +55,7 @@ export function PatientContext({ person }: { person: Respondent }) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <SectionLabel>{ut("patients.measurements")}</SectionLabel>
-          <Num className="text-section">{person.count}</Num>
+          <Num className="text-section">{person.count ?? "—"}</Num>
         </div>
         <div>
           <SectionLabel>{ut("patients.last")}</SectionLabel>

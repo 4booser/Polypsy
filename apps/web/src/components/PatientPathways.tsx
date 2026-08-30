@@ -5,6 +5,8 @@ import { day } from "../format";
 import { useAction } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { Panel } from "../ui/layout";
+import { Button, Select } from "../ui/primitives";
 
 /**
  * Маршруты этого человека.
@@ -24,31 +26,27 @@ export function PatientPathways({ userId }: { userId: string }) {
   const openIds = new Set(mine.filter((i) => !i.closedAt).map((i) => i.pathwayTitle));
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("pw.title")}</h2>
-      </div>
-
+    <Panel title={ut("pw.title")}>
       {mine.length === 0 ? (
-        <p className="hint" style={{ margin: 0 }}>{ut("ppw.none")}</p>
+        <p className="m-0 text-caption text-muted">{ut("ppw.none")}</p>
       ) : (
         mine.map((i) => (
           <Link key={i.id} to={`/pathways/${i.id}`} className="duty-row">
             <span className="grow">{i.pathwayTitle}</span>
-            <span className="muted">
+            <span className="text-muted">
               {i.done}/{i.total}
             </span>
             {i.overdue ? <span className="badge bad">{i.overdue}</span> : null}
-            <span className="muted">
+            <span className="text-muted">
               {i.closedAt ? ut("pw.closed") : (i.currentStep ?? ut("pw.allDone"))}
             </span>
-            <span className="muted">{day(i.startedAt)}</span>
+            <span className="text-muted">{day(i.startedAt)}</span>
           </Link>
         ))
       )}
 
-      <div className="row tight" style={{ marginTop: 10 }}>
-        <select value={pick} onChange={(e) => setPick(e.target.value)} aria-label={ut("ppw.start")}>
+      <div className="row tight mt-2.5">
+        <Select value={pick} onChange={(e) => setPick(e.target.value)} aria-label={ut("ppw.start")}>
           <option value="">{ut("ppw.choose")}</option>
           {templates.map((t) => (
             // уже открытый маршрут того же вида второй раз не ставится
@@ -57,8 +55,8 @@ export function PatientPathways({ userId }: { userId: string }) {
               {openIds.has(t.title) ? ` — ${ut("ppw.alreadyOpen")}` : ""}
             </option>
           ))}
-        </select>
-        <button
+        </Select>
+        <Button
           disabled={!pick}
           onClick={() =>
             void run(async () => {
@@ -69,8 +67,8 @@ export function PatientPathways({ userId }: { userId: string }) {
           }
         >
           {ut("ppw.start")}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Panel>
   );
 }

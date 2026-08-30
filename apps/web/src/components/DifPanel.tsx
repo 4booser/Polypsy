@@ -2,6 +2,8 @@ import { api } from "../api";
 import { Loading } from "../ui";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
+import { Panel, Stack } from "../ui/layout";
+import { SeverityTag } from "../ui/primitives";
 
 // ключи, а не строки: карты живут вне компонента, перевод берётся при отрисовке
 const FACTOR_KEY = { sex: "dif.sex", age: "dif.age", lang: "dif.lang" } as const;
@@ -21,7 +23,7 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
   const res = useResource(() => api.dif(surveyId), [surveyId]);
   const { data, error } = res;
 
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <p className="text-danger">{error}</p>;
   if (!data) return <Loading />;
 
   const flagged = data.scales.flatMap((s) =>
@@ -33,30 +35,30 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
   );
 
   return (
-    <>
-      <div className="card">
-        <div className="card-head">
-          <h2>{ut("dif.title")}</h2>
-          <span className="hint">выборка {data.sample}</span>
-        </div>
-        <p className="hint">
-          Метод Mantel–Haenszel: сравниваются люди с одинаковым суммарным баллом. Группы меньше{" "}
-          {data.minGroup} наблюдений не считаются вовсе; от {data.minGroup} до {data.solidGroup} —
-          помечены как предварительные (мягкий критерий значимости). Различие в пункте — повод
-          разобрать формулировку, а не выбросить пункт.
-        </p>
+    <Stack>
+      <Panel
+        title={ut("dif.title")}
+        hint={
+          <>
+            Метод Mantel–Haenszel: сравниваются люди с одинаковым суммарным баллом. Группы меньше{" "}
+            {data.minGroup} наблюдений не считаются вовсе; от {data.minGroup} до {data.solidGroup} —
+            помечены как предварительные (мягкий критерий значимости). Различие в пункте — повод
+            разобрать формулировку, а не выбросить пункт.
+          </>
+        }
+        actions={<span className="text-caption text-muted">выборка {data.sample}</span>}
+      >
         {flagged.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="m-0 text-muted">
             {data.scales.length
               ? ut("dif.none")
               : ut("dif.notEnough") + data.minGroup + " прохождений."}
           </p>
         ) : null}
-      </div>
+      </Panel>
 
       {flagged.length ? (
-        <div className="card scroll-x">
-          <h2>{ut("dif.flaggedItems")}: {flagged.length}</h2>
+        <Panel title={`${ut("dif.flaggedItems")}: ${flagged.length}`} className="overflow-x-auto">
           <table>
             <thead>
               <tr>
@@ -73,41 +75,42 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
               {flagged.map((f, i) => (
                 <tr key={i}>
                   <td className="num">{f.position}</td>
-                  <td style={{ maxWidth: 320 }}>{f.title}</td>
-                  <td className="muted">{f.scale}</td>
-                  <td className="muted">{ut(FACTOR_KEY[f.factor as keyof typeof FACTOR_KEY])}</td>
-                  <td className="muted" style={{ fontSize: 12 }}>
+                  <td className="max-w-[320px]">{f.title}</td>
+                  <td className="text-muted">{f.scale}</td>
+                  <td className="text-muted">{ut(FACTOR_KEY[f.factor as keyof typeof FACTOR_KEY])}</td>
+                  <td className="text-caption text-muted">
                     {f.reference} ({f.refN}) ↔ {f.focal} ({f.focalN})
                     {f.preliminary ? " · предварительно" : ""}
                   </td>
                   <td className="num">{f.result!.deltaMH}</td>
                   <td>
-                    <span
-                      className="chip static"
-                      style={{ color: f.result!.etsClass === "C" ? "var(--sev-severe)" : "var(--sev-mild)" }}
-                      title={ut(CLASS_KEY[f.result!.etsClass as keyof typeof CLASS_KEY])}
-                    >
-                      {f.result!.etsClass}
-                    </span>
+                    {/*
+                      Класс DIF — степень расхождения (B/C), а не факт
+                      «есть/нет», поэтому цвет не несёт её один: SeverityTag
+                      даёт форму точки и подпись рядом с буквой класса вместо
+                      прежней подсказки, видимой только по наведению.
+                    */}
+                    <SeverityTag level={f.result!.etsClass === "C" ? "severe" : "moderate"}>
+                      {f.result!.etsClass} · {ut(CLASS_KEY[f.result!.etsClass as keyof typeof CLASS_KEY])}
+                    </SeverityTag>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="hint">
+          <p className="mt-3 text-caption text-muted">
             ΔMH в дельта-единицах ETS: |Δ| &lt; 1 — класс A, 1–1.5 — B, &gt; 1.5 — C. Знак
             показывает, какая группа чаще отвечает по ключу при равном уровне черты.
           </p>
-        </div>
+        </Panel>
       ) : null}
 
       {data.reliability.length ? (
-        <div className="card scroll-x">
-          <h2>{ut("dif.reliabilityByGroup")}</h2>
-          <p className="hint">
-            Альфа Кронбаха отдельно у мужчин и женщин. Расхождение больше 0.10 означает, что
-            шкала измеряет одну группу точнее другой — сравнивать их баллы нужно осторожнее.
-          </p>
+        <Panel
+          title={ut("dif.reliabilityByGroup")}
+          hint="Альфа Кронбаха отдельно у мужчин и женщин. Расхождение больше 0.10 означает, что шкала измеряет одну группу точнее другой — сравнивать их баллы нужно осторожнее."
+          className="overflow-x-auto"
+        >
           <table>
             <thead>
               <tr><th>{ut("dq.scale")}</th><th>{ut("dif.group")}</th><th className="num">n</th><th className="num">α</th><th className="num">{ut("dif.gap")}</th></tr>
@@ -117,17 +120,17 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
                 s.groups.map((g, gi) => (
                   <tr key={`${s.code}-${g.group}`}>
                     {gi === 0 ? <td rowSpan={s.groups.length}>{s.code} — {s.title}</td> : null}
-                    <td className="muted">{g.group}</td>
+                    <td className="text-muted">{g.group}</td>
                     <td className="num">{g.n}</td>
                     <td className="num">{g.alpha ?? "—"}</td>
                     {gi === 0 ? (
                       <td className="num" rowSpan={s.groups.length}>
                         {s.alphaSpread === null ? (
                           "—"
+                        ) : s.alphaSpread > 0.1 ? (
+                          <SeverityTag level="mild">{s.alphaSpread}</SeverityTag>
                         ) : (
-                          <span style={{ color: s.alphaSpread > 0.1 ? "var(--sev-mild)" : undefined }}>
-                            {s.alphaSpread}
-                          </span>
+                          s.alphaSpread
                         )}
                       </td>
                     ) : null}
@@ -136,8 +139,8 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
               )}
             </tbody>
           </table>
-        </div>
+        </Panel>
       ) : null}
-    </>
+    </Stack>
   );
 }

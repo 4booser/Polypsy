@@ -2,6 +2,7 @@ import { api } from "../api";
 import { Loading } from "../ui";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
+import { Panel, Stack } from "../ui/layout";
 
 /**
  * Калибровка порогов по клиническим исходам.
@@ -17,38 +18,42 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
   const res = useResource(() => api.calibration(surveyId), [surveyId]);
   const { data, error } = res;
 
-  if (error) return <p className="error">{error}</p>;
+  if (error) return <p className="text-danger">{error}</p>;
   if (!data) return <Loading />;
 
   return (
-    <>
-      <div className="card">
-        <div className="card-head">
-          <h2>{ut("cal.title")}</h2>
-          <span className="hint">разобранных случаев: {data.cases}</span>
-        </div>
-        <p className="hint">
-          Сравниваются баллы и клинические исходы разбора тревог. «Требует наблюдения» не
-          учитывается: это отложенное решение, а не диагноз. Кандидатный порог показывается
-          только при {data.minPerOutcome} подтверждённых и {data.minPerOutcome} не подтверждённых
-          случаях в страте — на меньшем кривая описывает шум.
-        </p>
+    <Stack>
+      <Panel
+        title={ut("cal.title")}
+        hint={
+          <>
+            Сравниваются баллы и клинические исходы разбора тревог. «Требует наблюдения» не
+            учитывается: это отложенное решение, а не диагноз. Кандидатный порог показывается
+            только при {data.minPerOutcome} подтверждённых и {data.minPerOutcome} не подтверждённых
+            случаях в страте — на меньшем кривая описывает шум.
+          </>
+        }
+        actions={<span className="text-caption text-muted">разобранных случаев: {data.cases}</span>}
+      >
         {data.cases === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
+          <p className="m-0 text-muted">
             Исходов пока нет. Они появляются, когда специалист при разборе тревоги указывает,
             подтвердился риск или нет.
           </p>
         ) : null}
-      </div>
+      </Panel>
 
       {data.scales.map((scale) => (
-        <div className="card scroll-x" key={scale.code}>
-          <div className="card-head">
-            <h2>{scale.code} — {scale.title}</h2>
-            <span className="hint">
+        <Panel
+          key={scale.code}
+          title={`${scale.code} — ${scale.title}`}
+          actions={
+            <span className="text-caption text-muted">
               {scale.normalization === "tscore" ? "T-баллы" : scale.normalization}
             </span>
-          </div>
+          }
+          className="overflow-x-auto"
+        >
           <table>
             <thead>
               <tr>
@@ -71,12 +76,12 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
                   <td className="num">{s.currentThreshold ?? "—"}</td>
                   <td className="num">{s.currentSensitivity ?? "—"}</td>
                   <td className="num">{s.currentSpecificity ?? "—"}</td>
-                  <td className="num">{s.roc ? s.roc.auc : <span className="muted">мало данных</span>}</td>
+                  <td className="num">{s.roc ? s.roc.auc : <span className="text-muted">мало данных</span>}</td>
                   <td className="num">
                     {s.roc ? (
                       <span title={`чувствительность ${s.roc.bestSensitivity}, специфичность ${s.roc.bestSpecificity}`}>
                         {s.roc.bestThreshold}
-                        <span className="muted" style={{ fontSize: 11 }}>
+                        <span className="text-caption text-muted">
                           {" "}({s.roc.bestSensitivity}/{s.roc.bestSpecificity})
                         </span>
                       </span>
@@ -88,15 +93,15 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
               ))}
             </tbody>
           </table>
-          <p className="hint">
+          <p className="mt-3 text-caption text-muted">
             AUC — насколько балл вообще отличает подтверждённые случаи от неподтверждённых:
             0.5 — не отличает, выше 0.8 — хорошо. Кандидатный порог не применяется
             автоматически: перенос порога — решение специалиста, и оно публикуется новой
             версией методики.
           </p>
-        </div>
+        </Panel>
       ))}
-    </>
+    </Stack>
   );
 }
 
@@ -111,14 +116,15 @@ export function PpvCard() {
   const trend = data.byMonth.slice(-6);
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("cal.ppvTitle")}</h2>
-        <span className="hint">
+    <Panel
+      title={ut("cal.ppvTitle")}
+      actions={
+        <span className="text-caption text-muted">
           {data.overall.confirmed} из {data.overall.n} разобранных
           {data.withoutOutcome ? ` · без исхода: ${data.withoutOutcome}` : ""}
         </span>
-      </div>
+      }
+    >
       <div className="tiles">
         <div className="tile">
           <span className="label">{ut("cal.total")}</span>
@@ -127,15 +133,15 @@ export function PpvCard() {
         {trend.map((m) => (
           <div className="tile" key={m.month}>
             <span className="label">{m.month}</span>
-            <span className="value" style={{ fontSize: 20 }}>{m.ppv}%</span>
+            <span className="value text-[20px]">{m.ppv}%</span>
             <span className="label">{m.n} случ.</span>
           </div>
         ))}
       </div>
-      <p className="hint">
+      <p className="mt-3 text-caption text-muted">
         Падение подтверждаемости — ранний признак того, что выборка изменилась или персонал
         привык к ложным тревогам. Именно из-за этого скрининги тихо перестают работать.
       </p>
-    </div>
+    </Panel>
   );
 }

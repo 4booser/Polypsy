@@ -73,8 +73,8 @@ test("предпросмотр показывает пункт, который �
   const firstShown = await page.locator(".preview-question").textContent();
 
   // ставим курсор во второй пункт — предпросмотр обязан перейти к нему
-  await page.locator(".constructor-main .card").nth(2).locator("textarea").first().focus();
-  await expect(page.locator(".preview-nav .muted")).not.toHaveText("1 / 1");
+  await page.locator(".constructor-main [data-panel], .constructor-main .card").nth(2).locator("textarea").first().focus();
+  await expect(page.locator(".preview-nav span")).not.toHaveText("1 / 1");
   await expect(page.locator(".preview-question")).not.toHaveText(firstShown ?? "");
 
   // ключи и баллы в предпросмотр не попадают: человек их не видит

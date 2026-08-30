@@ -4,6 +4,7 @@ import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useState } from "react";
 import { ConfirmByName, useAction } from "../ui";
+import { Button, SeverityTag } from "../ui/primitives";
 
 /**
  * Устройства сотрудника и команда стирания.
@@ -23,7 +24,7 @@ export function Devices({ userId }: { userId: string }) {
   const [confirming, setConfirming] = useState<{ id: string; name: string } | null>(null);
   const items = res.data ?? [];
 
-  if (!items.length) return <p className="muted">{ut("dev.none")}</p>;
+  if (!items.length) return <p className="text-muted">{ut("dev.none")}</p>;
 
   const table = (
     <table>
@@ -40,12 +41,12 @@ export function Devices({ userId }: { userId: string }) {
           <tr key={d.id}>
             <td>
               {d.label ?? d.id.slice(0, 8)}
-              <span className="muted"> · {d.platform ?? "—"}</span>
+              <span className="text-muted"> · {d.platform ?? "—"}</span>
             </td>
-            <td className="muted">{dateTime(d.lastSeenAt)}</td>
+            <td className="text-muted">{dateTime(d.lastSeenAt)}</td>
             <td>
               {d.wipedAt ? (
-                <span className="muted">
+                <span className="text-muted">
                   {ut("dev.wiped")} {dateTime(d.wipedAt)}
                 </span>
               ) : d.wipeRequestedAt ? (
@@ -54,20 +55,21 @@ export function Devices({ userId }: { userId: string }) {
                  * устройство в следующий раз выйдет на связь, и называть
                  * заявку свершившимся фактом опаснее, чем неудобно.
                  */
-                <span className="chip static bad">{ut("dev.waiting")}</span>
+                <SeverityTag level="severe">{ut("dev.waiting")}</SeverityTag>
               ) : (
-                <span className="muted">{ut("dev.active")}</span>
+                <span className="text-muted">{ut("dev.active")}</span>
               )}
             </td>
             <td>
               {!d.wipedAt && !d.wipeRequestedAt ? (
-                <button
-                  className="ghost"
+                <Button
+                  variant="quiet"
+                  size="sm"
                   disabled={busy}
                   onClick={() => setConfirming({ id: d.id, name: d.label ?? d.id.slice(0, 8) })}
                 >
                   {ut("dev.wipe")}
-                </button>
+                </Button>
               ) : null}
             </td>
           </tr>
@@ -84,7 +86,7 @@ export function Devices({ userId }: { userId: string }) {
           title={ut("dev.wipe")}
           name={confirming.name}
           actionLabel={ut("dev.wipe")}
-          warning={<p style={{ margin: 0 }}>{ut("dev.wipeHint")}</p>}
+          warning={<p className="m-0">{ut("dev.wipeHint")}</p>}
           onCancel={() => setConfirming(null)}
           onConfirm={() =>
             void run(async () => {

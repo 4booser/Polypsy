@@ -152,13 +152,22 @@ function RailLink({ item, collapsed }: { item: Item; collapsed: boolean }) {
           />
           <span className="shrink-0 [&>svg]:size-[18px]">{item.icon}</span>
           {collapsed ? null : <span className="truncate">{label}</span>}
+          {/*
+            Счётчик залит янтарём, а не набран янтарём по прозрачному фону.
+            Полупрозрачная заливка давала в светлой теме 4,32:1 при пороге
+            4,5 — и хуже всего именно на выбранном пункте, где под меткой
+            лежит более светлая поверхность. Сплошная заливка даёт 6,4:1 на
+            бумаге и 10,7:1 в тёмной теме; заодно это честнее по смыслу:
+            число, которое требует внимания, не должно быть бледнее
+            соседнего текста.
+          */}
           {item.badge ? (
             <span
               className={cx(
-                "font-mono tabular-nums text-micro leading-none",
+                "bg-accent font-mono text-micro leading-none text-accent-text tabular-nums",
                 collapsed
-                  ? "absolute -right-0.5 -top-0.5 rounded-full bg-accent px-1 py-0.5 text-accent-text"
-                  : "ml-auto rounded-sm bg-accent-soft px-1.5 py-0.5 text-accent",
+                  ? "absolute -right-0.5 -top-0.5 rounded-full px-1 py-0.5"
+                  : "ml-auto rounded-sm px-1.5 py-0.5 font-semibold",
               )}
             >
               {item.badge > 99 ? "99+" : item.badge}

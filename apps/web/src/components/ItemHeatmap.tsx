@@ -5,6 +5,7 @@ import { day } from "../format";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { DEFAULT_THRESHOLDS, markOf, rowSummary, type QualityCell } from "../charts/quality";
+import { Spacer } from "../ui/primitives";
 
 /**
  * Тепловая карта пунктов: человек × вопрос.
@@ -39,8 +40,8 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
     );
   }, [data, sortByMarks]);
 
-  if (!data) return <p className="muted">{ut("common.loading")}</p>;
-  if (!data.rows.length) return <p className="muted">{ut("qh.empty")}</p>;
+  if (!data) return <p className="text-muted">{ut("common.loading")}</p>;
+  if (!data.rows.length) return <p className="text-muted">{ut("qh.empty")}</p>;
 
   return (
     <div>
@@ -53,7 +54,7 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
           />
           <span>{ut("qh.sortByMarks")}</span>
         </label>
-        <div style={{ flex: 1 }} />
+        <Spacer />
         {/* легенда рядом с картой: цвет без подписи здесь ничего не значит */}
         <span className="qh-key">
           <i className="qh-cell m-fast" /> {ut("qh.fast")}
@@ -69,7 +70,7 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
         </span>
       </div>
 
-      <p className="hint">
+      <p className="text-caption text-muted">
         {ut("qh.hint")} · {ut("qh.fastRule")} {DEFAULT_THRESHOLDS.fastRatio} ·{" "}
         {ut("qh.runRule")} {DEFAULT_THRESHOLDS.runLength}
       </p>
@@ -97,7 +98,7 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
                   {r.summary.fast + r.summary.run > 0 ? (
                     <strong>{r.summary.fast + r.summary.run}</strong>
                   ) : (
-                    <span className="muted">—</span>
+                    <span className="text-muted">—</span>
                   )}
                 </td>
               </tr>

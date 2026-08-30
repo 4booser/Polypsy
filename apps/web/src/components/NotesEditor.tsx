@@ -6,6 +6,8 @@ import { usePresence } from "../events";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
+import { cx } from "../ui/cx";
+import { Button, Textarea } from "../ui/primitives";
 
 /**
  * Заметки приёма.
@@ -46,11 +48,11 @@ export function NotesEditor({ userId }: { userId: string }) {
 
   if (!state) {
     return res.error ? (
-      <p className="muted">
+      <p className="text-muted">
         {ut("note.loadFailed")}: {res.error}
       </p>
     ) : (
-      <p className="muted">{ut("common.loading")}</p>
+      <p className="text-muted">{ut("common.loading")}</p>
     );
   }
 
@@ -62,27 +64,28 @@ export function NotesEditor({ userId }: { userId: string }) {
       <div className="card-head">
         <h3>{ut("note.title")}</h3>
         {state.versions.length > 1 ? (
-          <button className="ghost" onClick={() => setShowHistory((v) => !v)}>
+          <Button variant="quiet" onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? ut("cn.hideHistory") : `${ut("note.history")} (${state.versions.length})`}
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {signed && !draft ? (
         <div className="conclusion-view">
-          <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{state.current!.text}</p>
-          <p className="hint">
+          <p className="m-0 whitespace-pre-wrap">{state.current!.text}</p>
+          <p className="text-caption text-muted">
             {ut(KIND_KEY[state.current!.kind])} · {state.current!.authorName},{" "}
             {day(state.current!.signedAt!)} · {ut("note.version")} {state.current!.version}
           </p>
         </div>
       ) : null}
 
-      <div className="row tight" style={{ marginBottom: 8 }}>
+      <div className="row tight mb-2">
         {(Object.keys(KIND_KEY) as NoteVersion["kind"][]).map((k) => (
           <button
             key={k}
-            className={`chip${kind === k ? " active" : ""}`}
+            type="button"
+            className={cx("chip", kind === k && "active")}
             onClick={() => setKind(k)}
           >
             {ut(KIND_KEY[k])}
@@ -101,15 +104,15 @@ export function NotesEditor({ userId }: { userId: string }) {
         </p>
       ) : null}
 
-      <textarea
+      <Textarea
         rows={4}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={signed ? ut("note.placeholderNext") : ut("note.placeholder")}
       />
 
-      <div className="row" style={{ marginTop: 8 }}>
-        <button
+      <div className="row mt-2">
+        <Button
           disabled={busy || (!text.trim())}
           onClick={() =>
             void run(async () => {
@@ -118,9 +121,9 @@ export function NotesEditor({ userId }: { userId: string }) {
           }
         >
           {ut("note.saveDraft")}
-        </button>
-        <button
-          className="primary"
+        </Button>
+        <Button
+          variant="primary"
           disabled={busy || (!draft && !text.trim())}
           onClick={() =>
             void run(async () => {
@@ -135,14 +138,14 @@ export function NotesEditor({ userId }: { userId: string }) {
           }
         >
           {ut("note.sign")}
-        </button>
+        </Button>
       </div>
 
       {showHistory
         ? state.versions.map((v) => (
-            <div key={v.id} className="conclusion-view" style={{ marginTop: 8 }}>
-              <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 13 }}>{v.text}</p>
-              <p className="hint">
+            <div key={v.id} className="conclusion-view mt-2">
+              <p className="m-0 whitespace-pre-wrap text-small">{v.text}</p>
+              <p className="text-caption text-muted">
                 {ut("note.version")} {v.version} · {ut(KIND_KEY[v.kind])} ·{" "}
                 {v.status === "signed" ? `${ut("note.signedAt")} ${day(v.signedAt!)}` : ut("note.draft")} ·{" "}
                 {v.authorName}

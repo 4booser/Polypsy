@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { Loc } from "./constructor/fields";
-import { PageHead, useAction } from "../ui";
+import { useAction } from "../ui";
+import { Page, Panel, Stack } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -78,22 +80,21 @@ export default function PathwayEditor() {
     }, ut("pwe.saved"));
 
   return (
-    <>
-      <PageHead
-        title={ut("pwe.title")}
-        sub={ut("pwe.sub")}
-        crumbs={<Link to="/pathways">← {ut("pw.title")}</Link>}
-        actions={
-          <button className="primary" disabled={!ready} onClick={save}>
-            {ut("pwe.save")}
-          </button>
-        }
-      />
-
-      <div className="card">
+    <Page
+      title={ut("pwe.title")}
+      sub={ut("pwe.sub")}
+      crumbs={<Link to="/pathways">← {ut("pw.title")}</Link>}
+      actions={
+        <Button variant="primary" disabled={!ready} onClick={save}>
+          {ut("pwe.save")}
+        </Button>
+      }
+    >
+      <Stack>
+      <Panel>
         <Loc label={ut("cb.title")} value={title} onChange={setTitle} />
         <Loc label={ut("cb.description")} value={description} onChange={setDescription} />
-      </div>
+      </Panel>
 
       <div className="card">
         <div className="card-head">
@@ -185,6 +186,7 @@ export default function PathwayEditor() {
           </div>
         ))}
       </div>
-    </>
+      </Stack>
+    </Page>
   );
 }

@@ -4,6 +4,8 @@ import { dateTime } from "../format";
 import { useAction } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { Panel } from "../ui/layout";
+import { Button, Input, Textarea } from "../ui/primitives";
 
 /**
  * Консилиум по случаю.
@@ -24,19 +26,14 @@ export function Conferences({ userId }: { userId: string }) {
   const items = res.data ?? [];
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("cc.title")}</h2>
-      </div>
-      <p className="hint">{ut("cc.hint")}</p>
-
-      <div className="row tight" style={{ marginBottom: 12 }}>
-        <input
+    <Panel title={ut("cc.title")} hint={ut("cc.hint")}>
+      <div className="row tight mb-3">
+        <Input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder={ut("cc.reasonPlaceholder")}
         />
-        <button
+        <Button
           disabled={busy || (!reason.trim())}
           onClick={() =>
             void run(async () => {
@@ -47,15 +44,15 @@ export function Conferences({ userId }: { userId: string }) {
           }
         >
           {ut("cc.open")}
-        </button>
+        </Button>
       </div>
 
       {items.length === 0 ? (
-        <p className="hint" style={{ margin: 0 }}>{ut("cc.empty")}</p>
+        <p className="m-0 text-caption text-muted">{ut("cc.empty")}</p>
       ) : (
         items.map((cf) => <ConferenceCard key={cf.id} cf={cf} onChanged={res.reload} run={run} busy={busy} />)
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -79,7 +76,7 @@ function ConferenceCard({
     <div className="conference">
       <div className="row tight">
         <strong>{cf.reason}</strong>
-        <span className="muted">{dateTime(cf.createdAt)}</span>
+        <span className="text-muted">{dateTime(cf.createdAt)}</span>
         {open ? (
           <span className="badge accent">{ut("cc.statusOpen")}</span>
         ) : (
@@ -92,8 +89,8 @@ function ConferenceCard({
 
       {cf.opinions.map((o) => (
         <div key={o.id} className={`opinion${o.kind === "dissent" ? " dissent" : ""}`}>
-          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{o.text}</p>
-          <p className="hint" style={{ margin: 0 }}>
+          <p className="m-0 whitespace-pre-wrap">{o.text}</p>
+          <p className="m-0 text-caption text-muted">
             {o.authorName} · {dateTime(o.createdAt)}
             {o.kind === "dissent" ? ` · ${ut("cc.dissent")}` : ""}
           </p>
@@ -101,9 +98,9 @@ function ConferenceCard({
       ))}
 
       {cf.decision ? (
-        <div className="conclusion-view" style={{ marginTop: 8 }}>
-          <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{cf.decision}</p>
-          <p className="hint">
+        <div className="conclusion-view mt-2">
+          <p className="m-0 whitespace-pre-wrap">{cf.decision}</p>
+          <p className="text-caption text-muted">
             {ut("cc.decided")}: {cf.decidedByName} · {dateTime(cf.decidedAt ?? "")}
           </p>
         </div>
@@ -111,14 +108,14 @@ function ConferenceCard({
 
       {open ? (
         <div className="conference-actions">
-          <textarea
+          <Textarea
             rows={2}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={ut("cc.opinionPlaceholder")}
           />
           <div className="row tight">
-            <button
+            <Button
               disabled={busy || (!text.trim())}
               onClick={() =>
                 void run(async () => {
@@ -129,9 +126,9 @@ function ConferenceCard({
               }
             >
               {ut("cc.addOpinion")}
-            </button>
-            <button
-              className="ghost"
+            </Button>
+            <Button
+              variant="quiet"
               disabled={busy || (!text.trim())}
               onClick={() =>
                 void run(async () => {
@@ -142,16 +139,16 @@ function ConferenceCard({
               }
             >
               {ut("cc.addDissent")}
-            </button>
+            </Button>
           </div>
 
-          <input
+          <Input
             value={decision}
             onChange={(e) => setDecision(e.target.value)}
             placeholder={ut("cc.decisionPlaceholder")}
           />
-          <button
-            className="primary"
+          <Button
+            variant="primary"
             disabled={busy || !decision.trim() || cf.opinions.length === 0}
             title={cf.opinions.length === 0 ? ut("cc.needOpinion") : undefined}
             onClick={() =>
@@ -163,7 +160,7 @@ function ConferenceCard({
             }
           >
             {ut("cc.decide")}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
