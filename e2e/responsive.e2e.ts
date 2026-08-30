@@ -30,7 +30,7 @@ for (const size of SIZES) {
       test(`«${name}» не едет вбок`, async ({ page }) => {
         await login(page, "psy");
         await page.goto(path);
-        await page.locator(".page-head, .card").first().waitFor();
+        await page.locator("h1, .card, [data-panel]").first().waitFor();
 
         const overflow = await page.evaluate(() => ({
           scroll: document.documentElement.scrollWidth,

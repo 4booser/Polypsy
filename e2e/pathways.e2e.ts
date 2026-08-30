@@ -52,7 +52,7 @@ test("маршрут ведётся от шага до исхода", async ({ p
   expect(started.ok()).toBe(true);
 
   await page.goto("/pathways");
-  await expect(page.locator(".page-head h1")).toHaveText("Маршруты помощи");
+  await expect(page.locator("h1")).toHaveText("Маршруты помощи");
 
   const row = page.locator(".pw-row").filter({ hasText: title }).first();
   await expect(row).toBeVisible();

@@ -8,7 +8,10 @@ import { Questions } from "./Questions";
 import { Scales } from "./Scales";
 import { EMPTY, toDraft, toPayload, withUids, type Draft, type Tab } from "./model";
 import { Preview } from "./Preview";
-import { Loading, PageHead } from "../../ui";
+import { Loading } from "../../ui";
+import { Page, Panel } from "../../ui/layout";
+import { Button, Textarea } from "../../ui/primitives";
+import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
 
 /**
@@ -200,89 +203,99 @@ export default function Constructor() {
 
   if (!loaded) return <Loading rows={5} />;
 
+  const tabs: [Tab, string][] = [
+    ["basics", ut("co.basics")],
+    ["questions", `Вопросы ${asked}`],
+    ["scales", `Шкалы ${draft.scales.length}`],
+    ["json", "JSON"],
+  ];
+
   return (
-    <>
-      <PageHead
-        title={id ? ut("co.editTitle") : ut("co.newTitle")}
-        crumbs={id ? <Link to={`/surveys/${id}`}>← К аналитике</Link> : <Link to="/surveys">← Методики</Link>}
-        sub={
-          id
-            ? ut("co.editSub")
-            : ut("co.newSub")
-        }
-      />
-
-      <div className="row" style={{ alignItems: "flex-end" }}>
-      <div className="tabs" style={{ flex: 1 }}>
-        {([
-          ["basics", ut("co.basics")],
-          ["questions", `Вопросы ${asked}`],
-          ["scales", `Шкалы ${draft.scales.length}`],
-          ["json", "JSON"],
-        ] as [Tab, string][]).map(([v, label]) => (
-          <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)}>
-            {label}
-          </button>
-        ))}
-      </div>
-        <div className="row tight" style={{ paddingBottom: 6 }}>
-          <button onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")}>↶</button>
-          <button onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")}>↷</button>
-          {dirty ? <span className="hint">черновик сохраняется сам</span> : null}
+    <Page
+      title={id ? ut("co.editTitle") : ut("co.newTitle")}
+      crumbs={id ? <Link to={`/surveys/${id}`}>← К аналитике</Link> : <Link to="/surveys">← Методики</Link>}
+      sub={id ? ut("co.editSub") : ut("co.newSub")}
+      actions={
+        <>
+          <Button onClick={check} disabled={busy}>{ut("co.checkStructure")}</Button>
+          <Button onClick={() => save(false)} disabled={busy}>{ut("co.saveDraft")}</Button>
+          <Button variant="primary" onClick={() => save(true)} disabled={busy}>
+            {busy ? ut("co.saving") : ut("co.savePublish")}
+          </Button>
+        </>
+      }
+      toolbar={
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          {/* .tabs — тот же язык, что у остальных экранов: активная вкладка
+              держится подчёркиванием бирюзой, а не янтарём */}
+          <div className="tabs mb-0 border-b-0">
+            {tabs.map(([v, label]) => (
+              <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button variant="quiet" size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")}>↶</Button>
+            <Button variant="quiet" size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")}>↷</Button>
+            {dirty ? <span className="text-caption text-muted">черновик сохраняется сам</span> : null}
+          </div>
         </div>
-      </div>
-
+      }
+    >
       {restored ? (
-        <div className="card" style={{ borderColor: "var(--sev-mild)" }}>
-          <p style={{ margin: 0 }}>
-            Восстановлен несохранённый черновик из этого браузера.{" "}
-            <button
-              onClick={() => {
-                localStorage.removeItem(draftKey(id));
-                setRestored(false);
-                setDirty(false);
-                undoStack.current = [];
-                if (id) {
-                  api.surveyRaw(id).then((s) => setDraftRaw(toDraft(s, [])));
-                } else {
-                  setDraftRaw(EMPTY);
-                }
-              }}
-            >
-              Отбросить и загрузить серверную версию
-            </button>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3">
+          <p className="m-0 text-small text-text">
+            Восстановлен несохранённый черновик из этого браузера.
           </p>
+          <Button
+            variant="quiet"
+            size="sm"
+            onClick={() => {
+              localStorage.removeItem(draftKey(id));
+              setRestored(false);
+              setDirty(false);
+              undoStack.current = [];
+              if (id) {
+                api.surveyRaw(id).then((s) => setDraftRaw(toDraft(s, [])));
+              } else {
+                setDraftRaw(EMPTY);
+              }
+            }}
+          >
+            Отбросить и загрузить серверную версию
+          </Button>
         </div>
       ) : null}
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="mb-3 text-small text-danger">{error}</p> : null}
 
       {issues ? (
         <div
-          className="card"
-          style={{
-            borderColor: issues.some((i) => i.level === "error")
-              ? "var(--sev-severe)"
+          className={cx(
+            "mb-4 rounded-md border p-4",
+            issues.some((i) => i.level === "error")
+              ? "border-[color-mix(in_srgb,var(--danger)_45%,transparent)] bg-danger-soft"
               : issues.length
-                ? "var(--sev-mild)"
-                : "var(--sev-none)",
-          }}
+                ? "border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft"
+                : "border-[color-mix(in_srgb,var(--sev-none)_45%,transparent)]",
+          )}
         >
-          <h2>
+          <h2 className="m-0 font-display text-section font-medium leading-tight">
             {issues.length === 0
               ? ut("co.noIssues")
               : `Замечаний: ${issues.filter((i) => i.level === "error").length} ошибок, ${issues.filter((i) => i.level === "warning").length} предупреждений`}
           </h2>
-          <p className="hint">
+          <p className="mt-1 text-caption text-muted">
             Проверка формальная: она ловит ошибки переноса ключей и норм, но не знает
             содержания методики
           </p>
           {issues.map((i, k) => (
-            <p key={k} style={{ margin: "4px 0", fontSize: 13 }}>
-              <span style={{ color: i.level === "error" ? "var(--sev-severe)" : "var(--sev-mild)" }}>
+            <p key={k} className="my-1 text-small">
+              <span className={i.level === "error" ? "text-danger" : "text-accent"}>
                 {i.level === "error" ? "✖" : "⚠"}
               </span>{" "}
-              <strong>{i.where}:</strong> <span className="muted">{i.message}</span>
+              <strong>{i.where}:</strong> <span className="text-muted">{i.message}</span>
             </p>
           ))}
         </div>
@@ -296,8 +309,14 @@ export default function Constructor() {
       */}
       {tab === "questions" ? (
         <div className="constructor-split">
-          {/* обёртка обязательна: Questions отдаёт фрагмент из нескольких
-              карточек, и без неё сетка разложила бы их по своим ячейкам */}
+          {/*
+            Обёртка обязательна не только как контейнер: в CSS grid дочерний
+            элемент по умолчанию не сжимается уже своего содержимого
+            (min-width: auto), а таблица вариантов внутри Questions шире
+            колонки. Без явного min-width: 0 на .constructor-main левая
+            колонка раздвигала бы сетку и уводила страницу в горизонтальную
+            прокрутку — что на этом экране запрещено отдельным правилом.
+          */}
           <div className="constructor-main">
             <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
           </div>
@@ -306,34 +325,25 @@ export default function Constructor() {
       ) : null}
       {tab === "scales" ? <Scales draft={draft} setDraft={setDraft} /> : null}
       {tab === "json" ? (
-        <div className="card">
-          <h2>{ut("co.wholeJson")}</h2>
-          <p className="hint">
-            Для методик на сотни пунктов заполнять форму бессмысленно. Вставьте сюда описание
-            в том же виде, какой принимает API — с ключами шкал, нормами и таблицами стенов.
-          </p>
-          <textarea
+        <Panel
+          title={ut("co.wholeJson")}
+          hint="Для методик на сотни пунктов заполнять форму бессмысленно. Вставьте сюда описание
+            в том же виде, какой принимает API — с ключами шкал, нормами и таблицами стенов."
+        >
+          <Textarea
             value={json}
             onChange={(e) => setJson(e.target.value)}
             rows={22}
             spellCheck={false}
-            style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+            className="font-mono text-caption"
           />
-          <div className="row" style={{ marginTop: 10 }}>
-            <button className="primary" onClick={applyJson}>{ut("co.apply")}</button>
-            <button onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</button>
+          <div className="mt-3 flex gap-2">
+            <Button variant="primary" onClick={applyJson}>{ut("co.apply")}</Button>
+            <Button onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
           </div>
-        </div>
+        </Panel>
       ) : null}
-
-      <div className="row" style={{ marginTop: 18 }}>
-        <button onClick={check} disabled={busy}>{ut("co.checkStructure")}</button>
-        <button onClick={() => save(false)} disabled={busy}>{ut("co.saveDraft")}</button>
-        <button className="primary" onClick={() => save(true)} disabled={busy}>
-          {busy ? ut("co.saving") : ut("co.savePublish")}
-        </button>
-      </div>
-    </>
+    </Page>
   );
 }
 

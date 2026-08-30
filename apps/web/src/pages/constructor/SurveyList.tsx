@@ -3,7 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import type { Issue, SurveyListItem } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
-import { ConfirmByName, Loading, PageHead, useToast } from "../../ui";
+import { ConfirmByName, Loading, useToast } from "../../ui";
+import { Page, Panel } from "../../ui/layout";
+import { Button, Tag } from "../../ui/primitives";
+import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
 
 export function SurveyList() {
@@ -52,30 +55,33 @@ export function SurveyList() {
   if (!rows) return <Loading error={res.error} rows={5} />;
 
   return (
-    <>
-      <PageHead
-        title={ut("cl.title")}
-        sub={ut("cl.sub")}
-        actions={<Link className="btn primary" to="/constructor">{ut("cl.create")}</Link>}
-      />
-      <div className="row">
-        <button onClick={() => fileRef.current?.click()}>{ut("cl.importFile")}</button>
-        <button onClick={() => setShowArchived((v) => !v)}>
-          {showArchived ? ut("cl.activeOnly") : ut("cl.showArchived")}
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json,.json"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void importFile(f);
-            e.target.value = "";
-          }}
-        />
-      </div>
-
+    <Page
+      title={ut("cl.title")}
+      sub={ut("cl.sub")}
+      count={rows.length}
+      actions={
+        <Link to="/constructor" className="btn primary">{ut("cl.create")}</Link>
+      }
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => fileRef.current?.click()}>{ut("cl.importFile")}</Button>
+          <Button onClick={() => setShowArchived((v) => !v)}>
+            {showArchived ? ut("cl.activeOnly") : ut("cl.showArchived")}
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void importFile(f);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      }
+    >
       {confirming ? (
         /*
          * Ничего не удаляется: методика перестаёт выдаваться и проходиться, но
@@ -89,11 +95,11 @@ export function SurveyList() {
           actionLabel={ut("cl.archive")}
           warning={
             <>
-              <p style={{ margin: "0 0 6px" }}>
+              <p className="m-0 mb-1.5">
                 Методику перестанут выдавать и проходить: она исчезнет из списков,
                 батарей, киоска и расписаний.
               </p>
-              <p style={{ margin: 0 }} className="muted">
+              <p className="m-0 text-muted">
                 Собранные прохождения ({confirming.responseCount}) останутся на месте —
                 в карте пациента, аналитике и журнале. Решение обратимо.
               </p>
@@ -109,93 +115,98 @@ export function SurveyList() {
         />
       ) : null}
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="mb-3 text-small text-danger">{error}</p> : null}
       {importIssues?.length ? (
-        <div className="card" style={{ borderColor: "var(--sev-mild)", marginTop: 12 }}>
-          <h2>{ut("cl.fileIssues")}</h2>
+        <Panel
+          className={cx(
+            "mb-4",
+            importIssues.some((i) => i.level === "error")
+              ? "border border-[color-mix(in_srgb,var(--danger)_45%,transparent)]"
+              : "border border-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
+          )}
+          title={ut("cl.fileIssues")}
+        >
           {importIssues.map((i, k) => (
-            <p key={k} style={{ margin: "4px 0", fontSize: 13 }}>
-              <span style={{ color: i.level === "error" ? "var(--sev-severe)" : "var(--sev-mild)" }}>
+            <p key={k} className="my-1 text-small">
+              <span className={i.level === "error" ? "text-danger" : "text-accent"}>
                 {i.level === "error" ? "✖" : "⚠"}
               </span>{" "}
-              <strong>{i.where}:</strong> <span className="muted">{i.message}</span>
+              <strong>{i.where}:</strong> <span className="text-muted">{i.message}</span>
             </p>
           ))}
-        </div>
+        </Panel>
       ) : null}
 
-      <div className="card scroll-x" style={{ marginTop: 16 }}>
-        <table>
-          <thead>
-            <tr><th>{ut("cl.name")}</th><th>{ut("cl.status")}</th><th>{ut("cl.filledBy")}</th><th>{ut("cl.visibility")}</th><th className="num">{ut("cl.questions")}</th><th className="num">{ut("cl.responses")}</th><th /></tr>
-          </thead>
-          <tbody>
-            {rows.map((s) => (
-              <tr key={s.id}>
-                <td>
-                  <Link to={`/surveys/${s.id}`}>{s.title}</Link>
-                  {s.isDemo ? <span className="chip static" style={{ marginLeft: 8, fontSize: 10 }}>демо</span> : null}
-                </td>
-                <td className="muted">
-                  {s.archivedAt ? (
-                    <span title={`Снята ${s.archivedAt.slice(0, 10)}`}>снята с использования</span>
-                  ) : (
-                    s.status
-                  )}
-                  {/*
-                    Правовой статус стоит рядом со статусом публикации: это
-                    единственное место, где решают, выдавать ли методику.
-                  */}
-                  {s.isDemo ? (
-                    <span className="badge" style={{ marginLeft: 6 }}>
-                      {ut("cl.demo")}
-                    </span>
-                  ) : null}
-                  {!s.rightsStatus || s.rightsStatus === "unclear" ? (
-                    <span className="badge warn" style={{ marginLeft: 6 }} title={ut("cl.rightsHint")}>
-                      {ut("cl.rightsUnclear")}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="muted">{s.administration === "clinician" ? ut("cl.clinician") : ut("cl.respondent")}</td>
-                <td className="muted">{s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}</td>
-                <td className="num">{s.questionCount}</td>
-                <td className="num">{s.responseCount}</td>
-                <td>
-                  <div className="row">
-                    <Link className="btn" to={`/constructor/${s.id}`}>{ut("cl.editAction")}</Link>
-                    <Link className="btn" to={`/surveys/${s.id}/key`}>{ut("cl.keysAction")}</Link>
-                    <Link className="btn" to={`/surveys/${s.id}/access`}>{ut("cl.accessAction")}</Link>
-                    <button
-                      onClick={async () => {
-                        await api.duplicateSurvey(s.id).catch(() => null);
-                        await load();
-                      }}
-                    >
-                      Копия
-                    </button>
+      <Panel flush>
+        <div className="overflow-x-auto">
+          <table>
+            <thead>
+              <tr><th>{ut("cl.name")}</th><th>{ut("cl.status")}</th><th>{ut("cl.filledBy")}</th><th>{ut("cl.visibility")}</th><th className="num">{ut("cl.questions")}</th><th className="num">{ut("cl.responses")}</th><th /></tr>
+            </thead>
+            <tbody>
+              {rows.map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <Link to={`/surveys/${s.id}`}>{s.title}</Link>
+                    {s.isDemo ? <Tag className="ml-2">демо</Tag> : null}
+                  </td>
+                  <td className="text-muted">
                     {s.archivedAt ? (
-                      <button
+                      <span title={`Снята ${s.archivedAt.slice(0, 10)}`}>снята с использования</span>
+                    ) : (
+                      s.status
+                    )}
+                    {/*
+                      Правовой статус стоит рядом со статусом публикации: это
+                      единственное место, где решают, выдавать ли методику.
+                    */}
+                    {s.isDemo ? <Tag className="ml-1.5">{ut("cl.demo")}</Tag> : null}
+                    {!s.rightsStatus || s.rightsStatus === "unclear" ? (
+                      <span title={ut("cl.rightsHint")}>
+                        <Tag tone="attention" className="ml-1.5">{ut("cl.rightsUnclear")}</Tag>
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="text-muted">{s.administration === "clinician" ? ut("cl.clinician") : ut("cl.respondent")}</td>
+                  <td className="text-muted">{s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}</td>
+                  <td className="num">{s.questionCount}</td>
+                  <td className="num">{s.responseCount}</td>
+                  <td>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Link to={`/constructor/${s.id}`} className="btn">{ut("cl.editAction")}</Link>
+                      <Link to={`/surveys/${s.id}/key`} className="btn">{ut("cl.keysAction")}</Link>
+                      <Link to={`/surveys/${s.id}/access`} className="btn">{ut("cl.accessAction")}</Link>
+                      <Button
                         onClick={async () => {
-                          await api.restoreSurvey(s.id);
+                          await api.duplicateSurvey(s.id).catch(() => null);
                           await load();
-                          toast(ut("cl.restored"), "ok");
                         }}
                       >
-                        Вернуть в работу
-                      </button>
-                    ) : (
-                      <button className="danger" onClick={() => setConfirming(s)}>
-                        Снять
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+                        Копия
+                      </Button>
+                      {s.archivedAt ? (
+                        <Button
+                          onClick={async () => {
+                            await api.restoreSurvey(s.id);
+                            await load();
+                            toast(ut("cl.restored"), "ok");
+                          }}
+                        >
+                          Вернуть в работу
+                        </Button>
+                      ) : (
+                        <Button variant="danger" onClick={() => setConfirming(s)}>
+                          Снять
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+    </Page>
   );
 }

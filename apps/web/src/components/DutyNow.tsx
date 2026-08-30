@@ -14,9 +14,19 @@ export function DutyNow() {
   const items = res.data ?? [];
 
   return (
-    <p className="duty-line">
-      <span className="muted">{ut("duty.title")}:</span>{" "}
-      {items.length ? items.map((d) => d.name).join(", ") : <span className="muted">{ut("duty.nobody")}</span>}
+    /*
+      Имена дежурных набраны обычным текстом, а подпись — приглушённым: в
+      три часа ночи глазу нужно имя, а не слово «дежурная смена». Когда
+      дежурных нет, приглушено всё — сообщать нечего, и строка не должна
+      перетягивать внимание с того, что ниже.
+    */
+    <p className="duty-line m-0 text-small">
+      <span className="text-faint">{ut("duty.title")}:</span>{" "}
+      {items.length ? (
+        <span className="text-text">{items.map((d) => d.name).join(", ")}</span>
+      ) : (
+        <span className="text-muted">{ut("duty.nobody")}</span>
+      )}
     </p>
   );
 }

@@ -3,8 +3,10 @@ import type { CohortBy, ComparisonResult, CorrelationMatrix, UiKey } from "@quiz
 import { api } from "../api";
 import { useResource } from "../useResource";
 import { Chart } from "../charts";
-import { SERIES, severityColor } from "../format";
-import { Empty, Loading, PageHead } from "../ui";
+import { SERIES } from "../format";
+import { Empty, Loading } from "../ui";
+import { Page, Panel } from "../ui/layout";
+import { Select, SeverityTag } from "../ui/primitives";
 import { useLang } from "../lang";
 
 // ключи, а не подписи: карта вне компонента, язык — при отрисовке
@@ -44,29 +46,27 @@ export default function Compare() {
   const error = list.error ?? res.error;
 
   return (
-    <>
-      <PageHead
-        title={ut("cmp.title")}
-        sub={ut("cmp.sub")}
-        actions={
-          <>
-            <select value={surveyId} onChange={(e) => setChosen(e.target.value)} style={{ width: 300 }}>
-              {surveys.map((s) => (
-                <option key={s.id} value={s.id}>{s.title}</option>
-              ))}
-            </select>
-            <div className="row tight">
-              {BY_KEY.map(([v, label]) => (
-                <button key={v} className={`chip ${by === v ? "active" : ""}`} onClick={() => setBy(v)}>
-                  {ut(label)}
-                </button>
-              ))}
-            </div>
-          </>
-        }
-      />
-
-      {error ? <p className="error">{error}</p> : null}
+    <Page
+      title={ut("cmp.title")}
+      sub={ut("cmp.sub")}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={surveyId} onChange={(e) => setChosen(e.target.value)} className="max-w-[300px]">
+            {surveys.map((s) => (
+              <option key={s.id} value={s.id}>{s.title}</option>
+            ))}
+          </Select>
+          <div className="flex flex-wrap gap-2">
+            {BY_KEY.map(([v, lab]) => (
+              <button key={v} className={`chip${by === v ? " active" : ""}`} onClick={() => setBy(v)}>
+                {ut(lab)}
+              </button>
+            ))}
+          </div>
+        </div>
+      }
+    >
+      {error ? <p className="text-danger">{error}</p> : null}
       {!data ? <Loading /> : null}
 
       {data && data.scales.every((s) => s.cohorts.length === 0) ? (
@@ -77,13 +77,13 @@ export default function Compare() {
       ) : null}
 
       {data?.unclassified ? (
-        <div className="card">
-          <p style={{ margin: 0 }} className="muted">
+        <Panel className="mb-4">
+          <p className="m-0 text-muted">
             {data.unclassified} прохождений не попало ни в одну когорту: соответствующее поле
             паспортной части не заполнено. Они не учтены — растворять их в «прочих» значило бы
             искажать сравнение.
           </p>
-        </div>
+        </Panel>
       ) : null}
 
       {data?.scales.map((scale) => {
@@ -92,7 +92,7 @@ export default function Compare() {
         return (
           <Chart key={scale.scaleId} title={scale.title} hint={scaleHint(scale, ut)}>
             {flip ? (
-              <p className="hint warn" style={{ marginTop: 0 }}>
+              <p className="hint warn">
                 Стандартизация по полу и возрасту меняет порядок групп: сырая разница
                 объяснялась структурой когорт, а не состоянием. Сравнивайте
                 стандартизованные доли.
@@ -111,7 +111,7 @@ export default function Compare() {
           <CorrelationGrid matrix={corr} />
         </Chart>
       ) : null}
-    </>
+    </Page>
   );
 }
 
@@ -151,14 +151,14 @@ function scaleHint(scale: ComparisonResult["scales"][number], ut: (k: UiKey) => 
 function CohortBars({ scale }: { scale: ComparisonResult["scales"][number] }) {
   const { top, fmt } = axis(scale);
   return (
-    <div style={{ display: "grid", gap: 14 }}>
+    <div className="grid gap-3.5">
       {scale.cohorts.map((c) => (
         <div key={c.cohort}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 5 }}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>
-              {c.cohort} <span className="muted">· n={c.n}</span>
+          <div className="mb-[5px] flex items-center justify-between gap-3">
+            <span className="text-small font-medium">
+              {c.cohort} <span className="text-muted">· n={c.n}</span>
             </span>
-            <span className="muted" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+            <span className="text-caption tabular-nums text-muted">
               среднее {fmt(c.mean)} · σ {c.sd} · риск {Math.round(c.rawRiskShare * 100)}%
               {c.stdRiskShare !== null ? (
                 <> · станд. {Math.round(c.stdRiskShare * 100)}%</>
@@ -166,36 +166,25 @@ function CohortBars({ scale }: { scale: ComparisonResult["scales"][number] }) {
             </span>
           </div>
           {/* столбик среднего с усом межквартильного разброса */}
-          <div style={{ position: "relative", height: 12, background: "var(--grid)", borderRadius: 6 }}>
+          <div className="relative h-3 rounded-md bg-[var(--grid)]">
             <div
+              className="absolute h-3 rounded-md bg-surface-3"
               style={{
-                position: "absolute",
                 left: `${(c.min / top) * 100}%`,
                 width: `${Math.max(1, ((c.max - c.min) / top) * 100)}%`,
-                height: 12,
-                background: "var(--surface-3)",
-                borderRadius: 6,
               }}
             />
             <div
-              style={{
-                position: "absolute",
-                left: 0,
-                width: `${Math.max(1.5, (c.mean / top) * 100)}%`,
-                height: 12,
-                background: SERIES[0],
-                borderRadius: 6,
-                opacity: 0.9,
-              }}
+              className="absolute left-0 h-3 rounded-md opacity-90"
+              style={{ width: `${Math.max(1.5, (c.mean / top) * 100)}%`, background: SERIES[0] }}
             />
           </div>
           {c.bands.length ? (
-            <div className="row tight" style={{ marginTop: 6 }}>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
               {c.bands.map((b) => (
-                <span key={b.label} className="chip static" style={{ fontSize: 11 }}>
-                  <i className="dot" style={{ background: severityColor[b.severity] }} />
+                <SeverityTag key={b.label} level={b.severity}>
                   {b.label} · {b.percent}%
-                </span>
+                </SeverityTag>
               ))}
             </div>
           ) : null}
@@ -233,15 +222,15 @@ function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
         <tbody>
           {matrix.codes.map((a) => (
             <tr key={a}>
-              <td style={{ fontWeight: 600, whiteSpace: "nowrap" }} title={matrix.titles[a]}>
-                {a} <span className="muted" style={{ fontWeight: 400 }}>{matrix.titles[a]?.slice(0, 26)}</span>
+              <td className="whitespace-nowrap font-semibold" title={matrix.titles[a]}>
+                {a} <span className="font-normal text-muted">{matrix.titles[a]?.slice(0, 26)}</span>
               </td>
               {matrix.codes.map((b) => {
                 const v = value(a, b);
-                if (!v) return <td key={b} className="num muted">—</td>;
+                if (!v) return <td key={b} className="num text-muted">—</td>;
                 if (v.n === -1)
                   return (
-                    <td key={b} className="num muted" style={{ background: "var(--surface-2)" }}>
+                    <td key={b} className="num bg-surface-2 text-muted">
                       1
                     </td>
                   );
@@ -268,7 +257,7 @@ function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
       <div className="legend">
         <span><i className="dot" style={{ background: "var(--s1)" }} /> прямая связь</span>
         <span><i className="dot" style={{ background: "var(--sev-severe)" }} /> обратная связь</span>
-        <span className="muted">насыщенность — сила связи, число продублировано</span>
+        <span className="text-muted">насыщенность — сила связи, число продублировано</span>
       </div>
     </div>
   );

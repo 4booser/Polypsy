@@ -2,7 +2,10 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PathwayInstance } from "../api";
 import { day, dateTime } from "../format";
-import { Avatar, Empty, Loading, PageHead, Screen, useAction } from "../ui";
+import { Avatar, Empty, Loading, Screen, useAction } from "../ui";
+import { Page, Panel } from "../ui/layout";
+import { Button, Input, Tag } from "../ui/primitives";
+import { cx } from "../ui/cx";
 import { SavedViews } from "../ui/SavedViews";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -21,47 +24,47 @@ export default function Pathways() {
   const res = useResource(() => api.pathwayInstances(all), [all]);
 
   return (
-    <>
-      <PageHead
-        title={ut("pw.title")}
-        sub={ut("pw.sub")}
-        actions={
-          <div className="row tight">
-            <Link className="btn primary" to="/pathways/new">
-              {ut("pw.newTemplate")}
-            </Link>
-            <div className="segmented" role="group">
-            <button className={all ? "" : "active"} onClick={() => setAll(false)}>
+    <Page
+      title={ut("pw.title")}
+      sub={ut("pw.sub")}
+      actions={
+        <div className="flex items-center gap-2">
+          <Link className="btn primary" to="/pathways/new">
+            {ut("pw.newTemplate")}
+          </Link>
+          {/*
+            Не .segmented: у него активный сегмент отмечен янтарной точкой,
+            а переключение «открытые/все» — состояние экрана, а не то, что
+            требует внимания. .chip уже переведён на бирюзу для активного
+            состояния, поэтому переключатель собран из пары фишек.
+          */}
+          <div className="flex gap-1.5" role="group" aria-label={ut("pw.title")}>
+            <button type="button" className={cx("chip", !all && "active")} aria-pressed={!all} onClick={() => setAll(false)}>
               {ut("pw.open")}
             </button>
-            <button className={all ? "active" : ""} onClick={() => setAll(true)}>
+            <button type="button" className={cx("chip", all && "active")} aria-pressed={all} onClick={() => setAll(true)}>
               {ut("pw.allInstances")}
             </button>
-            </div>
           </div>
-        }
-      />
-
+        </div>
+      }
+      toolbar={<SavedViews scope="pathways" />}
+    >
       <Screen res={res} rows={6}>
         {(items) => (
-          <>
-            <div className="card">
-              <div className="table-tools">
-                <SavedViews scope="pathways" />
-              </div>
-              {items.length === 0 ? (
-                <Empty title={ut("pw.empty")} hint={ut("pw.emptyHint")} />
-              ) : (
-                // просроченные сверху: экран нужен, чтобы видеть застрявших
-                [...items]
-                  .sort((a, b) => b.overdue - a.overdue || a.startedAt.localeCompare(b.startedAt))
-                  .map((i) => <Row key={i.id} i={i} />)
-              )}
-            </div>
-          </>
+          <Panel flush>
+            {items.length === 0 ? (
+              <Empty title={ut("pw.empty")} hint={ut("pw.emptyHint")} />
+            ) : (
+              // просроченные сверху: экран нужен, чтобы видеть застрявших
+              [...items]
+                .sort((a, b) => b.overdue - a.overdue || a.startedAt.localeCompare(b.startedAt))
+                .map((i) => <Row key={i.id} i={i} />)
+            )}
+          </Panel>
         )}
       </Screen>
-    </>
+    </Page>
   );
 }
 
@@ -82,11 +85,11 @@ function Row({ i }: { i: PathwayInstance }) {
 
       <span className="pw-step">
         {i.closedAt ? (
-          <span className="muted">{ut("pw.closed")}</span>
+          <span className="text-muted">{ut("pw.closed")}</span>
         ) : (
           <>
             <span className="pw-step-title">{i.currentStep ?? ut("pw.allDone")}</span>
-            {i.currentDueAt ? <span className="muted"> · {day(i.currentDueAt)}</span> : null}
+            {i.currentDueAt ? <span className="text-muted"> · {day(i.currentDueAt)}</span> : null}
           </>
         )}
       </span>
@@ -122,49 +125,47 @@ export function PathwayDetailPage() {
     }, ut("pw.stepSaved"));
 
   return (
-    <>
-      <PageHead
-        title={data.pathwayTitle}
-        crumbs={<Link to="/pathways">← {ut("pw.title")}</Link>}
-        sub={`${data.userName} · ${ut("pw.startedAt")} ${day(data.startedAt)}`}
-        actions={
-          closed ? (
-            <span className="badge">{ut("pw.closed")}</span>
-          ) : (
-            <div className="row tight">
-              {(["resolved", "referred", "ongoing", "dropped"] as const).map((o) => (
-                <button
-                  key={o}
-                  className={o === "resolved" ? "primary" : ""}
-                  onClick={() =>
-                    void run(async () => {
-                      await api.closePathway(data.id, o, note.trim() || undefined);
-                      res.reload();
-                    }, ut("pw.closedToast"))
-                  }
-                >
-                  {ut(`pw.outcome.${o}` as never)}
-                </button>
-              ))}
-            </div>
-          )
-        }
-      />
-
-      <div className="card">
+    <Page
+      title={data.pathwayTitle}
+      crumbs={<Link to="/pathways">← {ut("pw.title")}</Link>}
+      sub={`${data.userName} · ${ut("pw.startedAt")} ${day(data.startedAt)}`}
+      actions={
+        closed ? (
+          <Tag tone="plain">{ut("pw.closed")}</Tag>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {(["resolved", "referred", "ongoing", "dropped"] as const).map((o) => (
+              <Button
+                key={o}
+                variant={o === "resolved" ? "primary" : "ghost"}
+                onClick={() =>
+                  void run(async () => {
+                    await api.closePathway(data.id, o, note.trim() || undefined);
+                    res.reload();
+                  }, ut("pw.closedToast"))
+                }
+              >
+                {ut(`pw.outcome.${o}` as never)}
+              </Button>
+            ))}
+          </div>
+        )
+      }
+    >
+      <Panel>
         <ol className="pw-steps">
           {data.steps.map((s) => {
             const overdue = s.state === "pending" && s.dueAt !== null && s.dueAt < new Date().toISOString();
             return (
               <li key={s.id} className={`pw-step-row s-${s.state}${overdue ? " overdue" : ""}`}>
                 <i className="pw-mark" />
-                <div className="grow">
-                  <div className="row tight">
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
                     <strong>{s.title}</strong>
-                    <span className="muted">{ut(`pw.kind.${s.kind}` as never)}</span>
-                    {!s.required ? <span className="muted">· {ut("pw.optional")}</span> : null}
+                    <span className="text-muted">{ut(`pw.kind.${s.kind}` as never)}</span>
+                    {!s.required ? <span className="text-muted">· {ut("pw.optional")}</span> : null}
                   </div>
-                  <div className="hint" style={{ margin: 0 }}>
+                  <div className="m-0 text-caption text-muted">
                     {s.state === "pending"
                       ? s.dueAt
                         ? `${ut("pw.due")} ${day(s.dueAt)}`
@@ -175,10 +176,11 @@ export function PathwayDetailPage() {
                 </div>
 
                 {!closed && s.state === "pending" ? (
-                  <div className="row tight">
-                    <button onClick={() => set(s.id, "done")}>{ut("pw.markDone")}</button>
-                    <button
-                      className="ghost"
+                  <div className="flex flex-wrap gap-1.5">
+                    <Button variant="quiet" size="sm" onClick={() => set(s.id, "done")}>{ut("pw.markDone")}</Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => {
                         /*
                          * Пропуск обязательного шага сервер не примет без
@@ -191,13 +193,13 @@ export function PathwayDetailPage() {
                       }}
                     >
                       {ut("pw.markSkipped")}
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
                 {!closed && s.state !== "pending" ? (
-                  <button className="ghost" onClick={() => set(s.id, "pending")}>
+                  <Button variant="ghost" size="sm" onClick={() => set(s.id, "pending")}>
                     {ut("pw.undo")}
-                  </button>
+                  </Button>
                 ) : null}
               </li>
             );
@@ -205,16 +207,16 @@ export function PathwayDetailPage() {
         </ol>
 
         {!closed ? (
-          <input
+          <Input
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder={ut("pw.closingNote")}
-            style={{ marginTop: 12 }}
+            className="mt-3"
           />
         ) : data.note ? (
-          <p className="hint">{data.note}</p>
+          <p className="text-caption text-muted">{data.note}</p>
         ) : null}
-      </div>
-    </>
+      </Panel>
+    </Page>
   );
 }

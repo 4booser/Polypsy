@@ -1,44 +1,51 @@
+import { Field, Input, Textarea } from "../../ui/primitives";
+
 /** Общие поля конструктора: двуязычный ввод и переключатель */
 export function Loc({
   label,
   value,
   onChange,
   multiline,
+  hint,
 }: {
   label: string;
   value: Record<string, string> | null | undefined;
   onChange: (v: Record<string, string>) => void;
   multiline?: boolean;
+  hint?: string;
 }) {
   const v = value ?? {};
-  const Field = multiline ? "textarea" : "input";
   return (
-    <div className="field">
-      <label>{label}</label>
-      <div className="row" style={{ alignItems: "flex-start" }}>
-        {(["uk", "ru"] as const).map((lang) => (
-          <div key={lang} style={{ flex: 1 }}>
-            <Field
+    <Field label={label} hint={hint}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {(["uk", "ru"] as const).map((lang) =>
+          multiline ? (
+            <Textarea
+              key={lang}
               value={v[lang] ?? ""}
-              rows={multiline ? 3 : undefined}
+              rows={3}
               placeholder={lang === "uk" ? "українською" : "по-русски"}
-              onChange={(e: { target: { value: string } }) =>
-                onChange({ ...v, [lang]: e.target.value })
-              }
+              onChange={(e) => onChange({ ...v, [lang]: e.target.value })}
             />
-          </div>
-        ))}
+          ) : (
+            <Input
+              key={lang}
+              value={v[lang] ?? ""}
+              placeholder={lang === "uk" ? "українською" : "по-русски"}
+              onChange={(e) => onChange({ ...v, [lang]: e.target.value })}
+            />
+          ),
+        )}
       </div>
-    </div>
+    </Field>
   );
 }
 
 export function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="row" style={{ gap: 8, marginBottom: 8, cursor: "pointer" }}>
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} style={{ width: 16 }} />
-      <span style={{ color: "var(--text)", fontSize: 13 }}>{label}</span>
+    <label className="flex cursor-pointer items-center gap-2 py-1">
+      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="size-4 shrink-0" />
+      <span className="text-small text-text">{label}</span>
     </label>
   );
 }
-

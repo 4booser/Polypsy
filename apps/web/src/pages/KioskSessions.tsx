@@ -3,7 +3,9 @@ import qrcode from "qrcode-generator";
 import type { Battery, KioskSession } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Empty, Loading, PageHead, Screen, useAction } from "../ui";
+import { Empty, Loading, Screen, useAction } from "../ui";
+import { Page, Panel, Stack } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
@@ -43,40 +45,41 @@ export default function KioskSessions() {
         const active = rows.filter((s) => !s.closedAt && s.expiresAt > now);
         const past = rows.filter((s) => !!s.closedAt || s.expiresAt <= now);
         return (
-    <>
-      <PageHead
-        title={ut("ks.title")}
-        sub={ut("ks.sub")}
-        actions={
-          <button className="primary" disabled={!batteries.length} onClick={() => setShowForm(true)}>
-            Новый сеанс
-          </button>
-        }
-      />
+    <Page
+      title={ut("ks.title")}
+      sub={ut("ks.sub")}
+      count={rows.length}
+      actions={
+        <Button variant="primary" disabled={!batteries.length} onClick={() => setShowForm(true)}>
+          Новый сеанс
+        </Button>
+      }
+    >
+      <Stack>
+        {showForm ? (
+          <SessionForm
+            batteries={batteries}
+            onClose={() => setShowForm(false)}
+            onCreated={(token) => {
+              setFresh(token);
+              setShowForm(false);
+              reload();
+            }}
+          />
+        ) : null}
 
-      {showForm ? (
-        <SessionForm
-          batteries={batteries}
-          onClose={() => setShowForm(false)}
-          onCreated={(token) => {
-            setFresh(token);
-            setShowForm(false);
-            reload();
-          }}
-        />
-      ) : null}
+        {fresh ? <FreshSession token={fresh} onClose={() => setFresh(null)} /> : null}
 
-      {fresh ? <FreshSession token={fresh} onClose={() => setFresh(null)} /> : null}
+        {!rows ? <Loading /> : null}
+        {rows && !rows.length && !showForm ? (
+          <Empty title={ut("ks.none")} hint={ut("ks.noneHint")} />
+        ) : null}
 
-      {!rows ? <Loading /> : null}
-      {rows && !rows.length && !showForm ? (
-        <Empty title={ut("ks.none")} hint={ut("ks.noneHint")} />
-      ) : null}
-
-      {active.map((s) => <SessionCard key={s.id} session={s} onChanged={reload} live />)}
-      {past.length ? <h2 style={{ margin: "20px 0 10px", fontSize: 15 }} className="muted">{ut("ks.finished")}</h2> : null}
-      {past.slice(0, 10).map((s) => <SessionCard key={s.id} session={s} onChanged={reload} />)}
-    </>
+        {active.map((s) => <SessionCard key={s.id} session={s} onChanged={reload} live />)}
+        {past.length ? <h2 className="mt-5 mb-2.5 text-body text-muted">{ut("ks.finished")}</h2> : null}
+        {past.slice(0, 10).map((s) => <SessionCard key={s.id} session={s} onChanged={reload} />)}
+      </Stack>
+    </Page>
         );
       }}
     </Screen>
@@ -88,26 +91,30 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
   const { run } = useAction();
   const done = session.participants.filter((p) => p.finishedAt).length;
   return (
-    <div className={`card${live ? "" : " muted-card"}`}>
-      <div className="card-head">
-        <h2>{session.title}</h2>
+    <Panel
+      className={live ? undefined : "opacity-[0.62]"}
+      title={session.title}
+      hint={
+        <>
+          {session.batteryTitle} · создан {day(session.createdAt)} ({session.createdByName})
+          {session.closedAt ? ` · закрыт ${day(session.closedAt)}` : ` · действует до ${day(session.expiresAt)}`}
+          {" · "}прошли {done} из {session.participants.length}
+        </>
+      }
+      actions={
         <div className="row tight">
           {live ? <span className="chip static"><i className="dot live" />идёт</span> : null}
           {live ? (
-            <button
-              className="danger"
+            <Button
+              variant="danger"
               onClick={() => run(async () => { await api.closeKioskSession(session.id); onChanged(); }, ut("ks.closed"))}
             >
               Завершить сеанс
-            </button>
+            </Button>
           ) : null}
         </div>
-      </div>
-      <p className="hint">
-        {session.batteryTitle} · создан {day(session.createdAt)} ({session.createdByName})
-        {session.closedAt ? ` · закрыт ${day(session.closedAt)}` : ` · действует до ${day(session.expiresAt)}`}
-        {" · "}прошли {done} из {session.participants.length}
-      </p>
+      }
+    >
       {session.participants.length ? (
         <table>
           <thead>
@@ -117,10 +124,10 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
             {session.participants.map((p) => (
               <tr key={p.id}>
                 <td>{p.displayName}</td>
-                <td className="muted">{new Date(p.startedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</td>
+                <td className="text-muted">{new Date(p.startedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</td>
                 <td>
                   {p.finishedAt
-                    ? <span className="good">завершил</span>
+                    ? <span className="text-[var(--sev-none-text)]">завершил</span>
                     : <span>{p.doneRequired} из {p.totalRequired} методик</span>}
                 </td>
               </tr>
@@ -128,9 +135,9 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
           </tbody>
         </table>
       ) : (
-        <p className="hint">{ut("ks.nobodyStarted")}</p>
+        <p className="text-caption text-muted">{ut("ks.nobodyStarted")}</p>
       )}
-    </div>
+    </Panel>
   );
 }
 
@@ -152,11 +159,7 @@ function SessionForm({
   const clinicianSteps = chosen?.items.filter((i) => i.administration === "clinician") ?? [];
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("ks.new")}</h2>
-        <button onClick={onClose}>{ut("ui.close")}</button>
-      </div>
+    <Panel title={ut("ks.new")} actions={<button onClick={onClose}>{ut("ui.close")}</button>}>
       <div className="form-grid">
         <label className="field grow"><span>{ut("f.name")}</span>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("ks.namePlaceholder")} /></label>
@@ -169,14 +172,14 @@ function SessionForm({
             onChange={(e) => setTtlHours(Math.max(1, Number(e.target.value) || 1))} /></label>
       </div>
       {clinicianSteps.length ? (
-        <p className="hint warn">
+        <p className="mt-2 text-caption text-[var(--sev-mild-text)]">
           В батарее есть {clinicianSteps.length} методик, которые заполняет специалист, — на киоске
           они пропускаются. Внесите их через «Провести» после сеанса.
         </p>
       ) : null}
-      <div className="row" style={{ marginTop: 12 }}>
-        <button
-          className="primary"
+      <div className="row mt-3">
+        <Button
+          variant="primary"
           disabled={!title.trim() || !batteryId}
           onClick={() =>
             run(async () => {
@@ -186,9 +189,9 @@ function SessionForm({
           }
         >
           Создать сеанс
-        </button>
+        </Button>
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -204,12 +207,8 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
   }, [url]);
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("ks.ready")}</h2>
-        <button onClick={onClose}>{ut("f.hide")}</button>
-      </div>
-      <p className="hint warn">
+    <Panel title={ut("ks.ready")} actions={<button onClick={onClose}>{ut("f.hide")}</button>}>
+      <p className="mb-3 text-caption text-[var(--sev-mild-text)]">
         Откройте эту ссылку на планшете киоска. Показывается один раз — дальше хранится только
         отпечаток. На планшете включите режим одного приложения (Guided Access / закрепление экрана),
         чтобы из теста нельзя было выйти в систему.
@@ -220,7 +219,7 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
           здесь же из ссылки, никакие внешние данные в разметку не попадают
         */}
         <div className="qr" dangerouslySetInnerHTML={{ __html: svg }} />
-        <div style={{ flex: 1, minWidth: 260 }}>
+        <div className="min-w-[260px] flex-1">
           <label className="field"><span>{ut("ks.link")}</span>
             <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} /></label>
           <div className="row tight">
@@ -231,6 +230,6 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
           </div>
         </div>
       </div>
-    </div>
+    </Panel>
   );
 }

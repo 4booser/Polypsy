@@ -8,7 +8,9 @@ import type {
 } from "@quizzy/shared";
 import { api, type Patient } from "../api";
 import { day } from "../format";
-import { Empty, IconBattery, Loading, PageHead, Screen, Search, useAction } from "../ui";
+import { Empty, IconBattery, Loading, Screen, Search, useAction } from "../ui";
+import { Page, Panel, Stack } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -44,95 +46,100 @@ export default function Batteries() {
   return (
     <Screen res={res}>
       {({ rows, surveys, groups, patients }) => (
-    <>
-      <PageHead
-        title={ut("bt.title")}
-        sub={ut("bt.sub")}
-        actions={<button className="primary" onClick={() => setEditing("new")}>{ut("bt.assemble")}</button>}
-      />
+    <Page
+      title={ut("bt.title")}
+      sub={ut("bt.sub")}
+      count={rows.length}
+      actions={<Button variant="primary" onClick={() => setEditing("new")}>{ut("bt.assemble")}</Button>}
+    >
+      <Stack>
+        {editing ? (
+          <BatteryEditor
+            battery={editing === "new" ? null : editing}
+            surveys={surveys}
+            groups={groups}
+            onClose={() => setEditing(null)}
+            onSaved={() => {
+              setEditing(null);
+              reload();
+            }}
+          />
+        ) : null}
 
-      {editing ? (
-        <BatteryEditor
-          battery={editing === "new" ? null : editing}
-          surveys={surveys}
-          groups={groups}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            reload();
-          }}
-        />
-      ) : null}
+        {!rows.length && !editing ? (
+          <Empty
+            title={ut("bt.none")}
+            hint={ut("bt.noneHint")}
+          />
+        ) : null}
 
-      {!rows.length && !editing ? (
-        <Empty
-          title={ut("bt.none")}
-          hint={ut("bt.noneHint")}
-        />
-      ) : null}
-
-      {rows?.map((b) => (
-        <div className={`card${b.archived ? " muted-card" : ""}`} key={b.id}>
-          <div className="card-head">
-            <h2 style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <IconBattery />
-              {b.title}
-              {b.archived ? <span className="chip static">{ut("bt.archived")}</span> : null}
-            </h2>
-            <div className="row tight">
-              <button onClick={() => setOpenId(openId === b.id ? null : b.id)}>
-                {openId === b.id ? ut("bt.collapseAssignments") : `${ut("bt.assignments")} · ${b.activeAssignments}`}
-              </button>
-              <button onClick={() => setEditing(b)}>{ut("f.edit")}</button>
-              <button
-                className="danger"
-                onClick={() =>
-                  run(async () => {
-                    await api.deleteBattery(b.id);
-                    await reload();
-                  }, ut("bt.deleted"))
-                }
-              >
-                {ut("ui.delete")}
-              </button>
-            </div>
-          </div>
-
-          {b.description ? <p className="hint">{b.description}</p> : null}
-          <p className="hint">
-            {b.groupTitle ? `${ut("bt.group")}: ${b.groupTitle}` : ut("bt.noGroup")} ·{" "}
-            {b.strictOrder ? ut("bt.strictOrder") : ut("bt.freeOrder")} · {ut("bt.totalItems")}{" "}
-            {b.items.reduce((sum, i) => sum + i.questionCount, 0)}
-            {totalMinutes(b) !== null ? ` · ${ut("bt.approx")} ${totalMinutes(b)} ${ut("ui.min")}` : null}
-          </p>
-
-          {b.items.some((i) => i.administration === "clinician") &&
-          b.items.some((i) => i.administration === "self") ? (
-            <p className="hint warn">
-              {ut("bt.mixedModes")}
+        {rows?.map((b) => (
+          <Panel
+            key={b.id}
+            className={b.archived ? "opacity-[0.62]" : undefined}
+            title={
+              <span className="flex items-center gap-2">
+                <IconBattery />
+                {b.title}
+                {b.archived ? <span className="chip static">{ut("bt.archived")}</span> : null}
+              </span>
+            }
+            actions={
+              <div className="row tight">
+                <button onClick={() => setOpenId(openId === b.id ? null : b.id)}>
+                  {openId === b.id ? ut("bt.collapseAssignments") : `${ut("bt.assignments")} · ${b.activeAssignments}`}
+                </button>
+                <button onClick={() => setEditing(b)}>{ut("f.edit")}</button>
+                <Button
+                  variant="danger"
+                  onClick={() =>
+                    run(async () => {
+                      await api.deleteBattery(b.id);
+                      await reload();
+                    }, ut("bt.deleted"))
+                  }
+                >
+                  {ut("ui.delete")}
+                </Button>
+              </div>
+            }
+          >
+            {b.description ? <p className="text-caption text-muted">{b.description}</p> : null}
+            <p className="mt-1 text-caption text-muted">
+              {b.groupTitle ? `${ut("bt.group")}: ${b.groupTitle}` : ut("bt.noGroup")} ·{" "}
+              {b.strictOrder ? ut("bt.strictOrder") : ut("bt.freeOrder")} · {ut("bt.totalItems")}{" "}
+              {b.items.reduce((sum, i) => sum + i.questionCount, 0)}
+              {totalMinutes(b) !== null ? ` · ${ut("bt.approx")} ${totalMinutes(b)} ${ut("ui.min")}` : null}
             </p>
-          ) : null}
 
-          <ol className="battery-steps">
-            {b.items.map((item) => (
-              <li key={item.surveyId}>
-                <Link to={`/surveys/${item.surveyId}`}>{item.title}</Link>
-                <span className="hint">
-                  {item.questionCount} {ut("bt.items")}
-                  {item.medianMinutes !== null
-                    ? ` · ${ut("bt.median")} ${item.medianMinutes} ${ut("ui.min")}`
-                    : ` · ${ut("bt.durationUnknown")}`}
-                  {item.required ? "" : ` · ${ut("bt.optional")}`}
-                  {item.administration === "clinician" ? ` · ${ut("bt.byClinician")}` : ""}
-                </span>
-              </li>
-            ))}
-          </ol>
+            {b.items.some((i) => i.administration === "clinician") &&
+            b.items.some((i) => i.administration === "self") ? (
+              <p className="mt-1 text-caption text-[var(--sev-mild-text)]">
+                {ut("bt.mixedModes")}
+              </p>
+            ) : null}
 
-          {openId === b.id ? <Assignments battery={b} patients={patients} /> : null}
-        </div>
-      ))}
-    </>
+            <ol className="battery-steps">
+              {b.items.map((item) => (
+                <li key={item.surveyId}>
+                  <Link to={`/surveys/${item.surveyId}`}>{item.title}</Link>
+                  <span className="text-caption text-muted">
+                    {item.questionCount} {ut("bt.items")}
+                    {item.medianMinutes !== null
+                      ? ` · ${ut("bt.median")} ${item.medianMinutes} ${ut("ui.min")}`
+                      : ` · ${ut("bt.durationUnknown")}`}
+                    {item.required ? "" : ` · ${ut("bt.optional")}`}
+                    {item.administration === "clinician" ? ` · ${ut("bt.byClinician")}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ol>
+
+            {openId === b.id ? <Assignments battery={b} patients={patients} /> : null}
+          </Panel>
+        ))}
+      </Stack>
+    </Page>
       )}
     </Screen>
   );
@@ -187,20 +194,20 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
             {rows.map((a) => (
               <tr key={a.id} className={a.overdue ? "alarm-row" : undefined}>
                 <td>{a.userName}</td>
-                <td className="muted">{day(a.assignedAt)}</td>
-                <td className={a.overdue ? "bad" : "muted"}>
+                <td className="text-muted">{day(a.assignedAt)}</td>
+                <td className={a.overdue ? "bad" : "text-muted"}>
                   {a.dueAt ? day(a.dueAt) : ut("bt.noDeadline")}
                   {a.overdue ? " · просрочено" : ""}
                 </td>
                 <td>
                   <StepTrack steps={a.steps} />
-                  <span className="hint">
+                  <span className="text-caption text-muted">
                     {a.doneRequired} из {a.totalRequired} обязательных
                   </span>
                 </td>
                 <td>
                   {a.cancelledAt ? (
-                    <span className="muted">снято {day(a.cancelledAt)}</span>
+                    <span className="text-muted">снято {day(a.cancelledAt)}</span>
                   ) : a.doneRequired === a.totalRequired ? (
                     <span className="good">пройдена</span>
                   ) : (
@@ -221,7 +228,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
           </tbody>
         </table>
       ) : rows ? (
-        <p className="hint">{ut("bat.notAssigned")}</p>
+        <p className="text-caption text-muted">{ut("bat.notAssigned")}</p>
       ) : null}
 
       <div className="assign-row">
@@ -236,7 +243,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
         </label>
       </div>
       {query ? (
-        <div className="row tight" style={{ marginTop: 8 }}>
+        <div className="row tight mt-2">
           {candidates.length ? (
             candidates.map((p) => (
               <button
@@ -254,11 +261,11 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
               </button>
             ))
           ) : (
-            <span className="hint">{ut("bat.nobodyLeft")}</span>
+            <span className="text-caption text-muted">{ut("bat.nobodyLeft")}</span>
           )}
         </div>
       ) : null}
-      <p className="hint" style={{ marginTop: 8 }}>
+      <p className="mt-2 text-caption text-muted">
         Назначение открывает доступ ко всем методикам набора. Срок назначения становится сроком
         доступа: после него методики снова скрыты.
       </p>
@@ -333,12 +340,10 @@ function BatteryEditor({
     }, battery ? ut("bt.updated") : ut("bt.assembled"));
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{battery ? ut("bt.editTitle") : ut("bt.newTitle")}</h2>
-        <button onClick={onClose}>{ut("ui.close")}</button>
-      </div>
-
+    <Panel
+      title={battery ? ut("bt.editTitle") : ut("bt.newTitle")}
+      actions={<button onClick={onClose}>{ut("ui.close")}</button>}
+    >
       <div className="form-grid">
         <label className="field grow">
           <span>{ut("f.name")}</span>
@@ -359,7 +364,7 @@ function BatteryEditor({
         </label>
       </div>
 
-      <div className="row" style={{ marginTop: 10 }}>
+      <div className="row mt-2.5">
         <label className="check">
           <input type="checkbox" checked={strictOrder} onChange={(e) => setStrictOrder(e.target.checked)} />
           Строгий порядок
@@ -369,12 +374,12 @@ function BatteryEditor({
           В архиве
         </label>
       </div>
-      <p className="hint">
+      <p className="mt-1 text-caption text-muted">
         При строгом порядке следующая методика открывается только после предыдущей. Это важно там,
         где утомление от длинного опросника искажает результат короткого.
       </p>
 
-      <h3 style={{ marginTop: 18 }}>{ut("bt.composition")}</h3>
+      <h3 className="mt-[18px]">{ut("bt.composition")}</h3>
       {items.length ? (
         <ol className="battery-steps editable">
           {items.map((item, i) => (
@@ -393,18 +398,18 @@ function BatteryEditor({
                 </label>
                 <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Выше">↑</button>
                 <button onClick={() => move(i, 1)} disabled={i === items.length - 1} aria-label="Ниже">↓</button>
-                <button className="danger" onClick={() => setItems(items.filter((_, j) => j !== i))}>
+                <Button variant="danger" onClick={() => setItems(items.filter((_, j) => j !== i))}>
                   Убрать
-                </button>
+                </Button>
               </div>
             </li>
           ))}
         </ol>
       ) : (
-        <p className="hint">{ut("bat.emptyAddBelow")}</p>
+        <p className="text-caption text-muted">{ut("bat.emptyAddBelow")}</p>
       )}
 
-      <div className="row tight" style={{ marginTop: 12 }}>
+      <div className="row tight mt-3">
         {surveys
           .filter((s) => !items.some((i) => i.surveyId === s.id))
           .map((s) => (
@@ -414,12 +419,12 @@ function BatteryEditor({
           ))}
       </div>
 
-      <div className="row" style={{ marginTop: 18 }}>
-        <button className="primary" onClick={save} disabled={!title.trim() || !items.length}>
+      <div className="row mt-[18px]">
+        <Button variant="primary" onClick={save} disabled={!title.trim() || !items.length}>
           Сохранить
-        </button>
+        </Button>
         <button onClick={onClose}>{ut("ui.cancel")}</button>
       </div>
-    </div>
+    </Panel>
   );
 }

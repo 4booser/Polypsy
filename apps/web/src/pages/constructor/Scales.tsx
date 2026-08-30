@@ -3,6 +3,8 @@ import { useResource } from "../../useResource";
 import { Loc } from "./fields";
 import { newUid, parseItems, type Draft, type DraftScale } from "./model";
 import { useLang } from "../../lang";
+import { Grid, Panel, Stack } from "../../ui/layout";
+import { Button, Field, Input, Select } from "../../ui/primitives";
 
 export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   const { ut } = useLang();
@@ -13,14 +15,14 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
     setDraft((d) => ({ ...d, scales: d.scales.map((x, k) => (k === i ? { ...x, ...s } : x)) }));
 
   return (
-    <>
-      <div className="card">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <p className="hint" style={{ margin: 0 }}>
+    <Stack>
+      <Panel>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="m-0 max-w-[60ch] text-caption text-muted">
             Ключ задаётся номерами пунктов через запятую — так же, как он напечатан в пособии
           </p>
-          <button
-            className="primary"
+          <Button
+            variant="primary"
             onClick={() =>
               setDraft((d) => ({
                 ...d,
@@ -43,34 +45,32 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
             }
           >
             Добавить шкалу
-          </button>
+          </Button>
         </div>
-      </div>
+      </Panel>
 
       {draft.scales.map((s, i) => (
-        <div className="card" key={s.uid}>
-          <div className="row" style={{ justifyContent: "space-between" }}>
-            <strong>{s.code || ut("cs.newScale")}</strong>
-            <button className="danger" onClick={() => setDraft((d) => ({ ...d, scales: d.scales.filter((_, k) => k !== i) }))}>
+        <Panel
+          key={s.uid}
+          title={s.code || ut("cs.newScale")}
+          actions={
+            <Button variant="danger" size="sm" onClick={() => setDraft((d) => ({ ...d, scales: d.scales.filter((_, k) => k !== i) }))}>
               Удалить
-            </button>
-          </div>
-
-          <div className="row">
-            <div className="field" style={{ width: 140 }}>
-              <label>{ut("cs.code")}</label>
-              <input value={s.code} onChange={(e) => upd(i, { code: e.target.value })} placeholder="Sr" />
-            </div>
-            <div className="field" style={{ width: 170 }}>
-              <label>{ut("cs.role")}</label>
-              <select value={s.kind} onChange={(e) => upd(i, { kind: e.target.value as DraftScale["kind"] })}>
+            </Button>
+          }
+        >
+          <Grid min={160}>
+            <Field label={ut("cs.code")}>
+              <Input value={s.code} onChange={(e) => upd(i, { code: e.target.value })} placeholder="Sr" />
+            </Field>
+            <Field label={ut("cs.role")}>
+              <Select value={s.kind} onChange={(e) => upd(i, { kind: e.target.value as DraftScale["kind"] })}>
                 <option value="clinical">{ut("cs.clinical")}</option>
                 <option value="validity">{ut("cs.validity")}</option>
-              </select>
-            </div>
-            <div className="field" style={{ width: 190 }}>
-              <label>{ut("cs.normalization")}</label>
-              <select
+              </Select>
+            </Field>
+            <Field label={ut("cs.normalization")}>
+              <Select
                 value={s.normalization}
                 onChange={(e) => upd(i, { normalization: e.target.value as DraftScale["normalization"] })}
               >
@@ -78,178 +78,181 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                 <option value="ratio">{ut("cs.ratio")}</option>
                 <option value="tscore">T-баллы</option>
                 <option value="sten">{ut("cs.sten")}</option>
-              </select>
-            </div>
+              </Select>
+            </Field>
             {s.normalization === "ratio" ? (
-              <div className="field" style={{ width: 150 }}>
-                <label>{ut("cs.denominator")}</label>
-                <input
+              <Field label={ut("cs.denominator")}>
+                <Input
                   type="number"
                   value={s.ratioDenominator ?? ""}
                   onChange={(e) => upd(i, { ratioDenominator: e.target.value ? Number(e.target.value) : null })}
                 />
-              </div>
+              </Field>
             ) : null}
+          </Grid>
+
+          <div className="mt-4">
+            <Loc label={ut("cs.scaleTitle")} value={s.title} onChange={(v) => upd(i, { title: v })} />
           </div>
 
-          <Loc label={ut("cs.scaleTitle")} value={s.title} onChange={(v) => upd(i, { title: v })} />
-
           {s.kind === "validity" ? (
-            <div className="row">
-              <div className="field" style={{ width: 150 }}>
-                <label>{ut("cs.threshold")}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={s.validityThreshold ?? ""}
-                  onChange={(e) => upd(i, { validityThreshold: e.target.value ? Number(e.target.value) : null })}
-                />
-              </div>
-              <div className="field" style={{ width: 180 }}>
-                <label>{ut("cs.violated")}</label>
-                <select
-                  value={s.validityDirection ?? "above"}
-                  onChange={(e) => upd(i, { validityDirection: e.target.value as "above" | "below" })}
-                >
-                  <option value="above">выше порога</option>
-                  <option value="below">ниже порога</option>
-                </select>
-              </div>
+            <div className="mt-4">
+              <Grid min={160}>
+                <Field label={ut("cs.threshold")}>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={s.validityThreshold ?? ""}
+                    onChange={(e) => upd(i, { validityThreshold: e.target.value ? Number(e.target.value) : null })}
+                  />
+                </Field>
+                <Field label={ut("cs.violated")}>
+                  <Select
+                    value={s.validityDirection ?? "above"}
+                    onChange={(e) => upd(i, { validityDirection: e.target.value as "above" | "below" })}
+                  >
+                    <option value="above">выше порога</option>
+                    <option value="below">ниже порога</option>
+                  </Select>
+                </Field>
+              </Grid>
             </div>
           ) : null}
 
-          <div className="field">
-            <label>{ut("cs.keyYes")}</label>
-            <input
-              value={s.key.filter((k) => k.matchKey === "yes").map((k) => k.item).join(", ")}
-              placeholder="1, 2, 3, 5, 7"
-              onChange={(e) =>
-                upd(i, {
-                  key: [
-                    ...parseItems(e.target.value).map((item) => ({ item, matchKey: "yes" })),
-                    ...s.key.filter((k) => k.matchKey !== "yes"),
-                  ],
-                })
-              }
-            />
-          </div>
-          <div className="field">
-            <label>{ut("cs.keyNo")}</label>
-            <input
-              value={s.key.filter((k) => k.matchKey === "no").map((k) => k.item).join(", ")}
-              placeholder="4, 6, 8"
-              onChange={(e) =>
-                upd(i, {
-                  key: [
-                    ...s.key.filter((k) => k.matchKey !== "no"),
-                    ...parseItems(e.target.value).map((item) => ({ item, matchKey: "no" })),
-                  ],
-                })
-              }
-            />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Field label={ut("cs.keyYes")}>
+              <Input
+                value={s.key.filter((k) => k.matchKey === "yes").map((k) => k.item).join(", ")}
+                placeholder="1, 2, 3, 5, 7"
+                onChange={(e) =>
+                  upd(i, {
+                    key: [
+                      ...parseItems(e.target.value).map((item) => ({ item, matchKey: "yes" })),
+                      ...s.key.filter((k) => k.matchKey !== "yes"),
+                    ],
+                  })
+                }
+              />
+            </Field>
+            <Field label={ut("cs.keyNo")}>
+              <Input
+                value={s.key.filter((k) => k.matchKey === "no").map((k) => k.item).join(", ")}
+                placeholder="4, 6, 8"
+                onChange={(e) =>
+                  upd(i, {
+                    key: [
+                      ...s.key.filter((k) => k.matchKey !== "no"),
+                      ...parseItems(e.target.value).map((item) => ({ item, matchKey: "no" })),
+                    ],
+                  })
+                }
+              />
+            </Field>
           </div>
 
-          <p className="hint" style={{ marginBottom: 4 }}>
+          <p className="mt-3 text-caption text-muted">
             В ключе {s.key.length} пунктов
             {s.corrections.length ? ` · поправки: ${s.corrections.map((c) => `${c.from}×${c.coefficient}`).join(", ")}` : ""}
             {s.norms.length ? ` · норм: ${s.norms.length}` : ""}
             {s.stenTable.length ? ` · строк стенов: ${s.stenTable.length}` : ""}
           </p>
-          <p className="hint">
+          <p className="text-caption text-muted">
             Поправки, нормы по полу и таблицы стенов задаются во вкладке «JSON» — в форме
             они занимали бы больше места, чем экономят
           </p>
 
-          <h2 style={{ fontSize: 14, marginTop: 14 }}>{ut("cs.bands")}</h2>
-          <table>
-            <thead>
-              <tr><th className="num">{ut("cs.from")}</th><th className="num">{ut("cs.to")}</th><th>{ut("cs.bandLabel")}</th><th>{ut("cs.severity")}</th><th className="num">{ut("cs.grade")}</th><th>{ut("cs.cascade")}</th><th>{ut("cs.repeatDays")}</th><th /></tr>
-            </thead>
-            <tbody>
-              {s.bands.map((b, bi) => (
-                <tr key={bi}>
-                  <td className="num" style={{ width: 80 }}>
-                    <input type="number" step="0.01" value={b.minScore}
-                      onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, minScore: Number(e.target.value) } : x)) })} />
-                  </td>
-                  <td className="num" style={{ width: 80 }}>
-                    <input type="number" step="0.01" value={b.maxScore}
-                      onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, maxScore: Number(e.target.value) } : x)) })} />
-                  </td>
-                  <td>
-                    <div className="row">
-                      <input value={b.label.uk ?? ""} placeholder="українською"
-                        onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, label: { ...x.label, uk: e.target.value } } : x)) })} />
-                      <input value={b.label.ru ?? ""} placeholder="по-русски"
-                        onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, label: { ...x.label, ru: e.target.value } } : x)) })} />
-                    </div>
-                  </td>
-                  <td style={{ width: 150 }}>
-                    <select value={b.severity}
-                      onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, severity: e.target.value as DraftScale["bands"][number]["severity"] } : x)) })}>
-                      <option value="none">{ut("cs.sevNormal")}</option>
-                      <option value="mild">{ut("cs.sevMild")}</option>
-                      <option value="moderate">{ut("cs.sevModerate")}</option>
-                      <option value="severe">{ut("cs.sevSevere")}</option>
-                    </select>
-                  </td>
-                  <td className="num" style={{ width: 80 }}>
-                    <input type="number" value={b.grade ?? ""}
-                      onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, grade: e.target.value ? Number(e.target.value) : null } : x)) })} />
-                  </td>
-                  <td style={{ width: 190 }}>
-                    <select
-                      value={b.cascadeBatteryId ?? ""}
-                      title={ut("cs.cascadeHint")}
-                      onChange={(e) =>
-                        upd(i, {
-                          bands: s.bands.map((x, k) =>
-                            k === bi ? { ...x, cascadeBatteryId: e.target.value || null } : x,
-                          ),
-                        })
-                      }
-                    >
-                      <option value="">без каскада</option>
-                      {batteries.map((bat) => (
-                        <option key={bat.id} value={bat.id}>{bat.title}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td style={{ width: 96 }}>
-                    <input
-                      placeholder="7,30"
-                      title={ut("cs.repeatHint")}
-                      value={b.followUpDays ?? ""}
-                      onChange={(e) =>
-                        upd(i, {
-                          bands: s.bands.map((x, k) =>
-                            k === bi ? { ...x, followUpDays: e.target.value || null } : x,
-                          ),
-                        })
-                      }
-                    />
-                  </td>
-                  <td style={{ width: 40 }}>
-                    <button className="danger" onClick={() => upd(i, { bands: s.bands.filter((_, k) => k !== bi) })}>✕</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button
-            style={{ marginTop: 8 }}
+          <h3 className="mb-2 mt-4 font-display text-small font-medium">{ut("cs.bands")}</h3>
+          <div className="overflow-x-auto">
+            <table>
+              <thead>
+                <tr><th className="num">{ut("cs.from")}</th><th className="num">{ut("cs.to")}</th><th>{ut("cs.bandLabel")}</th><th>{ut("cs.severity")}</th><th className="num">{ut("cs.grade")}</th><th>{ut("cs.cascade")}</th><th>{ut("cs.repeatDays")}</th><th /></tr>
+              </thead>
+              <tbody>
+                {s.bands.map((b, bi) => (
+                  <tr key={bi}>
+                    <td className="num w-[80px]">
+                      <Input type="number" step="0.01" value={b.minScore}
+                        onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, minScore: Number(e.target.value) } : x)) })} />
+                    </td>
+                    <td className="num w-[80px]">
+                      <Input type="number" step="0.01" value={b.maxScore}
+                        onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, maxScore: Number(e.target.value) } : x)) })} />
+                    </td>
+                    <td>
+                      <div className="flex items-start gap-2">
+                        <Input value={b.label.uk ?? ""} placeholder="українською"
+                          onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, label: { ...x.label, uk: e.target.value } } : x)) })} />
+                        <Input value={b.label.ru ?? ""} placeholder="по-русски"
+                          onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, label: { ...x.label, ru: e.target.value } } : x)) })} />
+                      </div>
+                    </td>
+                    <td className="w-[150px]">
+                      <Select value={b.severity}
+                        onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, severity: e.target.value as DraftScale["bands"][number]["severity"] } : x)) })}>
+                        <option value="none">{ut("cs.sevNormal")}</option>
+                        <option value="mild">{ut("cs.sevMild")}</option>
+                        <option value="moderate">{ut("cs.sevModerate")}</option>
+                        <option value="severe">{ut("cs.sevSevere")}</option>
+                      </Select>
+                    </td>
+                    <td className="num w-[80px]">
+                      <Input type="number" value={b.grade ?? ""}
+                        onChange={(e) => upd(i, { bands: s.bands.map((x, k) => (k === bi ? { ...x, grade: e.target.value ? Number(e.target.value) : null } : x)) })} />
+                    </td>
+                    <td className="w-[190px]">
+                      <Select
+                        value={b.cascadeBatteryId ?? ""}
+                        title={ut("cs.cascadeHint")}
+                        onChange={(e) =>
+                          upd(i, {
+                            bands: s.bands.map((x, k) =>
+                              k === bi ? { ...x, cascadeBatteryId: e.target.value || null } : x,
+                            ),
+                          })
+                        }
+                      >
+                        <option value="">без каскада</option>
+                        {batteries.map((bat) => (
+                          <option key={bat.id} value={bat.id}>{bat.title}</option>
+                        ))}
+                      </Select>
+                    </td>
+                    <td className="w-[96px]">
+                      <Input
+                        placeholder="7,30"
+                        title={ut("cs.repeatHint")}
+                        value={b.followUpDays ?? ""}
+                        onChange={(e) =>
+                          upd(i, {
+                            bands: s.bands.map((x, k) =>
+                              k === bi ? { ...x, followUpDays: e.target.value || null } : x,
+                            ),
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="w-10">
+                      <Button variant="danger" size="sm" onClick={() => upd(i, { bands: s.bands.filter((_, k) => k !== bi) })}>✕</Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Button
+            className="mt-2"
             onClick={() => upd(i, { bands: [...s.bands, { minScore: 0, maxScore: 0, label: { uk: "", ru: "" }, severity: "none" }] })}
           >
             Добавить норму
-          </button>
-          <p className="hint">
+          </Button>
+          <p className="mt-2 text-caption text-muted">
             Каскад назначает углублённую батарею при попадании в полосу; «повторы» ставят
             пересдачу этой же методики через указанные дни. Автоматика назначает, но не
             интерпретирует — вывод делает специалист.
           </p>
-        </div>
+        </Panel>
       ))}
-    </>
+    </Stack>
   );
 }
 

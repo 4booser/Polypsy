@@ -25,11 +25,11 @@ test("от тревоги до закрытого направления", async
 
   // имя берём с самой страницы: в ссылке рядом с ним стоят инициалы-аватарка,
   // и textContent вернул бы «ПДПетров Дмитрий»
-  const patientName = (await page.locator(".page-head h1").textContent())!.trim();
+  const patientName = (await page.locator("h1").textContent())!.trim();
   expect(patientName.length).toBeGreaterThan(0);
 
   await summaryLink.click();
-  await expect(page.locator(".page-head h1")).toHaveText(patientName);
+  await expect(page.locator("h1")).toHaveText(patientName);
   await expect(page.getByRole("heading", { name: "Направления" })).toBeVisible();
   await expect(page.getByText("Направлений нет")).toBeVisible();
 

@@ -72,7 +72,7 @@ async function open(page: import("@playwright/test").Page, s: Screen) {
   const errors = watchConsole(page);
   await page.goto(s.path);
   // ждём хоть что-то содержательное: заголовок, карточку или пустое состояние
-  await page.locator(".page-head, .card, .empty, h1").first().waitFor({ timeout: 10_000 });
+  await page.locator("h1, .card, [data-panel], .empty").first().waitFor({ timeout: 10_000 });
   await expect(page.locator(".error")).toHaveCount(0);
   expect(errors, `ошибки в консоли на ${s.path}`).toEqual([]);
 }
@@ -133,7 +133,7 @@ test.describe("экраны с параметром", () => {
     // ссылка на хронологию живёт на сводке: туда приходят разбираться
     await page.getByRole("link", { name: "Сводка для консилиума" }).click();
     await page.getByRole("link", { name: "Хронология" }).click();
-    await expect(page.locator(".page-head h1")).toHaveText("Хронология");
+    await expect(page.locator("h1")).toHaveText("Хронология");
     await expect(page.locator(".tl-event").first()).toBeVisible();
 
     // дни идут от свежего к старому: историю читают с конца

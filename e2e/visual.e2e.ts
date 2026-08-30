@@ -60,7 +60,7 @@ for (const theme of ["dark", "light"] as const) {
 
     await login(page, "psy");
     await page.goto("/ui");
-    await page.waitForSelector(".page-head h1");
+    await page.waitForSelector("h1");
 
     /*
      * Ждём шрифты: без этого снимок ловит запасную гарнитуру, метрики
@@ -79,7 +79,7 @@ for (const theme of ["dark", "light"] as const) {
 
     await login(page, "psy");
     await page.goto("/ui");
-    await page.waitForSelector(".page-head h1");
+    await page.waitForSelector("h1");
 
     const values = await page.evaluate((names) => {
       const style = getComputedStyle(document.documentElement);
@@ -148,6 +148,6 @@ test("подсказка закрывается один раз и не возв
   await expect(page.locator(".hint-box")).toHaveCount(0);
 
   await page.reload();
-  await page.waitForSelector(".page-head h1");
+  await page.waitForSelector("h1");
   await expect(page.locator(".hint-box")).toHaveCount(0);
 });

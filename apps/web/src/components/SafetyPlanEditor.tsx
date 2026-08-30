@@ -5,6 +5,7 @@ import { day } from "../format";
 import { useAction } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { Panel } from "../ui/layout";
 
 /**
  * Личный план безопасности (Стэнли–Браун).
@@ -81,26 +82,38 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
   if (!res.data) return null;
 
   return (
-    <div className="card danger-card">
-      <div className="card-head">
-        <h2>{ut("sp.title")}</h2>
-        <div className="row tight">
+    /*
+     * Красной рамки у блока больше нет.
+     *
+     * Она стояла всегда — и когда план есть, и когда его нет, — то есть
+     * сообщала не о состоянии дел, а о названии раздела. Красный в этой
+     * системе занят выраженностью состояния человека; рамка вокруг блока
+     * выглядела так, будто сам план безопасности — тревожный факт.
+     *
+     * Внимания требует ровно одно: плана нет у того, кому он нужен. Именно
+     * это и отмечено — янтарной полосой слева и меткой рядом с заголовком.
+     * Когда план есть, блок обычный.
+     */
+    <Panel
+      className={active ? undefined : "border-l-2 border-l-[var(--accent)]"}
+      title={ut("sp.title")}
+      hint={ut("sp.hint")}
+      actions={
+        <>
           {active ? (
-            <span className="hint">
+            <span className="text-caption text-muted">
               {ut("sp.version")} {active.version} · {day(active.reviewedAt ?? active.createdAt)}
             </span>
           ) : (
-            <span className="badge warn">{ut("sp.none")}</span>
+            <span className="badge accent">{ut("sp.none")}</span>
           )}
           <button onClick={() => setOpen((v) => !v)}>
             {open ? ut("common.close") : active ? ut("sp.revise") : ut("sp.create")}
           </button>
           {active ? <button onClick={() => window.print()}>{ut("sp.print")}</button> : null}
-        </div>
-      </div>
-
-      <p className="hint">{ut("sp.hint")}</p>
-
+        </>
+      }
+    >
       {!open && active ? <PlanView content={active.content} /> : null}
 
       {open ? (
@@ -185,7 +198,7 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
           </div>
         </div>
       ) : null}
-    </div>
+    </Panel>
   );
 }
 

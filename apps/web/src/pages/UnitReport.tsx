@@ -2,7 +2,9 @@ import { api } from "../api";
 import { useResource } from "../useResource";
 import { severityColor, severityKey } from "../format";
 import { useLang } from "../lang";
-import { Empty, Loading, PageHead, useUrlState } from "../ui";
+import { Empty, Loading, useUrlState } from "../ui";
+import { Page, Panel, Grid, Stack } from "../ui/layout";
+import { Button, Input, Select, Stat, SeverityTag } from "../ui/primitives";
 
 /**
  * Состояние подразделения за период.
@@ -31,137 +33,153 @@ export default function UnitReportPage() {
   const { data, error } = res;
 
   return (
-    <>
-      <PageHead
-        title={ut("nav.unitReport")}
-        sub={ut("unit.sub")}
-        actions={
-          <div className="date-range">
-            <select value={unit} onChange={(e) => setUnit(e.target.value)} aria-label={ut("ui.unit")}>
-              <option value="">— {ut("ui.unit")} —</option>
-              {units.map((u) => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-            <label>
-              <span>с</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={ut("ur.periodStart")} />
-            </label>
-            <label>
-              <span>по</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={ut("ur.periodEnd")} />
-            </label>
-            {data ? <button onClick={() => window.print()}>{ut("unit.print")}</button> : null}
-          </div>
-        }
-      />
-
+    <Page
+      title={ut("nav.unitReport")}
+      sub={ut("unit.sub")}
+      toolbar={
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            aria-label={ut("ui.unit")}
+            className="max-w-[220px]"
+          >
+            <option value="">— {ut("ui.unit")} —</option>
+            {units.map((u) => (
+              <option key={u} value={u}>{u}</option>
+            ))}
+          </Select>
+          <label className="flex items-center gap-1.5 text-caption text-muted">
+            <span>с</span>
+            <Input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              aria-label={ut("ur.periodStart")}
+              className="max-w-[160px]"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-caption text-muted">
+            <span>по</span>
+            <Input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              aria-label={ut("ur.periodEnd")}
+              className="max-w-[160px]"
+            />
+          </label>
+        </div>
+      }
+      actions={data ? <Button onClick={() => window.print()}>{ut("unit.print")}</Button> : null}
+    >
       {!unit ? (
         <Empty title={ut("unit.choose")} hint={ut("unit.chooseHint")} />
       ) : error ? (
-        <p className="error">{error}</p>
+        <p className="text-danger">{error}</p>
       ) : !data ? (
         <Loading rows={5} />
       ) : (
-        <>
-          <div className="grid cols-4" style={{ marginBottom: 16 }}>
-            <div className="tile">
-              <div className="label">{ut("unit.coverage")}</div>
-              <div className="value">{data.coverage}%</div>
-              <div className="hint">{ut("unit.measured")} {data.measured} / {data.people}</div>
-            </div>
-            <div className="tile">
-              <div className="label">{ut("dash.responses")}</div>
-              <div className="value">{data.responses}</div>
-            </div>
-            <div className={`tile ${data.atRisk ? "alarm" : ""}`}>
-              <div className="label">{ut("unit.atRisk")}</div>
-              <div className="value">{data.atRisk ?? "—"}</div>
-              <div className="hint">
+        <Stack>
+          <Grid min={196}>
+            <Panel>
+              <Stat value={data.coverage} unit="%" label={ut("unit.coverage")} />
+              <p className="m-0 mt-1 text-caption text-muted">
+                {ut("unit.measured")} {data.measured} / {data.people}
+              </p>
+            </Panel>
+            <Panel>
+              <Stat value={data.responses} label={ut("dash.responses")} />
+            </Panel>
+            <Panel>
+              <Stat value={data.atRisk} tone={data.atRisk ? "danger" : "plain"} label={ut("unit.atRisk")} />
+              <p className="m-0 mt-1 text-caption text-muted">
                 {data.atRisk === null
                   ? `меньше ${data.smallCellFloor} человек — не показываем`
                   : "хотя бы по одной шкале"}
-              </div>
-            </div>
-            <div className="tile">
-              <div className="label">{ut("dash.surveys")}</div>
-              <div className="value">{data.surveys.length}</div>
-            </div>
-          </div>
-
-          <div className="card scroll-x">
-            <div className="card-head">
-              <h2>{ut("unit.distribution")}</h2>
-              <span className="hint">
-                Ячейки меньше {data.smallCellFloor} человек скрыты: по единичному значению
-                человека узнают сослуживцы
-              </span>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>{ut("sum.scale")}</th>
-                  <th className="num">{ut("sum.measurements")}</th>
-                  <th>{ut("unit.distribution")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.scales.map((s) => (
-                  <tr key={s.code}>
-                    <td>
-                      <strong>{s.code}</strong> <span className="muted">{s.title}</span>
-                    </td>
-                    <td className="num">{s.total}</td>
-                    <td>
-                      <div className="sev-bar-row">
-                        {s.breakdown.map((b) => (
-                          <span
-                            key={b.severity}
-                            className="sev-seg"
-                            style={{ width: `${b.percent}%`, background: severityColor[b.severity] }}
-                            title={`${ut(severityKey[b.severity])}: ${b.count ?? "скрыто"} (${b.percent}%)`}
-                          />
-                        ))}
-                      </div>
-                      <div className="sev-legend">
-                        {s.breakdown.map((b) => (
-                          <span key={b.severity}>
-                            <i style={{ background: severityColor[b.severity] }} />
-                            {ut(severityKey[b.severity])} {b.count === null ? "—" : b.count} · {b.percent}%
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {data.scales.length === 0 ? (
-              <p className="muted" style={{ margin: 0 }}>
-                Замеров за период меньше {data.smallCellFloor} — свод не строится
               </p>
-            ) : null}
-          </div>
+            </Panel>
+            <Panel>
+              <Stat value={data.surveys.length} label={ut("dash.surveys")} />
+            </Panel>
+          </Grid>
 
-          <div className="card scroll-x">
-            <h2>{ut("nav.surveys")}</h2>
-            <table>
-              <thead>
-                <tr><th>{ut("nav.surveys")}</th><th className="num">{ut("dash.responses")}</th><th className="num">{ut("unit.people")}</th></tr>
-              </thead>
-              <tbody>
-                {data.surveys.map((s) => (
-                  <tr key={s.surveyId}>
-                    <td>{s.title}</td>
-                    <td className="num">{s.responses}</td>
-                    <td className="num">{s.people}</td>
+          <Panel
+            title={ut("unit.distribution")}
+            hint={`Ячейки меньше ${data.smallCellFloor} человек скрыты: по единичному значению человека узнают сослуживцы`}
+            flush
+          >
+            <div className="overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{ut("sum.scale")}</th>
+                    <th className="num">{ut("sum.measurements")}</th>
+                    <th>{ut("unit.distribution")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+                </thead>
+                <tbody>
+                  {data.scales.map((s) => (
+                    <tr key={s.code}>
+                      <td>
+                        <strong>{s.code}</strong> <span className="text-muted">{s.title}</span>
+                      </td>
+                      <td className="num">{s.total}</td>
+                      <td>
+                        <div className="sev-bar-row">
+                          {s.breakdown.map((b) => (
+                            <span
+                              key={b.severity}
+                              className="sev-seg"
+                              style={{ width: `${b.percent}%`, background: severityColor[b.severity] }}
+                              title={`${ut(severityKey[b.severity])}: ${b.count ?? "скрыто"} (${b.percent}%)`}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {s.breakdown.map((b) => (
+                            <SeverityTag key={b.severity} level={b.severity}>
+                              {ut(severityKey[b.severity])} {b.count === null ? "—" : b.count} · {b.percent}%
+                            </SeverityTag>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {data.scales.length === 0 ? (
+                <p className="m-0 p-5 text-muted">
+                  Замеров за период меньше {data.smallCellFloor} — свод не строится
+                </p>
+              ) : null}
+            </div>
+          </Panel>
+
+          <Panel title={ut("nav.surveys")} flush>
+            <div className="overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{ut("nav.surveys")}</th>
+                    <th className="num">{ut("dash.responses")}</th>
+                    <th className="num">{ut("unit.people")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.surveys.map((s) => (
+                    <tr key={s.surveyId}>
+                      <td>{s.title}</td>
+                      <td className="num">{s.responses}</td>
+                      <td className="num">{s.people}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </Stack>
       )}
-    </>
+    </Page>
   );
 }

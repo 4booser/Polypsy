@@ -6,7 +6,9 @@ import { BarList, Chart, Donut, LineChart } from "../charts";
 import { ItemHeatmap } from "../components/ItemHeatmap";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
 import { duration, day, severityColor } from "../format";
-import { Loading, OfflineBar, PageHead, useAction } from "../ui";
+import { Loading, OfflineBar, useAction } from "../ui";
+import { Page, Panel, Grid, Stack } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DifPanel } from "../components/DifPanel";
 import { CalibrationPanel } from "../components/CalibrationPanel";
@@ -53,7 +55,7 @@ export default function SurveyAnalyticsPage() {
   );
   const data = res.data;
 
-  if (res.error) return <p className="error">{res.error}</p>;
+  if (res.error) return <p className="text-danger text-small">{res.error}</p>;
   if (!data) return res.offline ? <OfflineBar onRetry={res.reload} /> : <Loading rows={5} />;
 
   // тепловая карта строится только по вопросам с одинаковым набором вариантов:
@@ -82,44 +84,50 @@ export default function SurveyAnalyticsPage() {
       : allStages.filter((s, i) => i === 0 || i === allStages.length - 1 || s.lost > 0);
 
   return (
-    <>
+    <Page
+      title={data.title}
+      crumbs={<Link to="/">← Сводка</Link>}
+      sub={`${ut("an.version")} ${data.versionNumber} · ${ut("an.completedOf")} ${data.completed} ${ut("an.of")} ${data.started}`}
+      actions={
+        /*
+         * Период — часть заголовка, а не отдельная строка под ним: он
+         * определяет, о каком срезе весь экран, и стоять должен рядом с
+         * названием, а не теряться между заголовком и первым графиком.
+         */
+        <div className="date-range">
+          <label>
+            <span>с</span>
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={ut("unit.chooseHint")} />
+          </label>
+          <label>
+            <span>по</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={ut("an.periodEnd")} />
+          </label>
+          {from || to ? (
+            <Button variant="quiet" onClick={() => { setFrom(""); setTo(""); }}>
+              {ut("an.allHistory")}
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
       {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
-      <PageHead
-        title={data.title}
-        crumbs={<Link to="/">← Сводка</Link>}
-        sub={`${ut("an.version")} ${data.versionNumber} · ${ut("an.completedOf")} ${data.completed} ${ut("an.of")} ${data.started}`}
-        actions={
-          /*
-           * Период — часть заголовка, а не отдельная строка под ним: он
-           * определяет, о каком срезе весь экран, и стоять должен рядом с
-           * названием, а не теряться между заголовком и первым графиком.
-           */
-          <div className="date-range">
-            <label>
-              <span>с</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={ut("unit.chooseHint")} />
-            </label>
-            <label>
-              <span>по</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={ut("an.periodEnd")} />
-            </label>
-            {from || to ? (
-              <button className="ghost" onClick={() => { setFrom(""); setTo(""); }}>
-                {ut("an.allHistory")}
-              </button>
-            ) : null}
-          </div>
-        }
-      />
-
+      <Stack>
+      {/*
+        Живой список «сейчас проходят» — сведения, а не сигнал. Янтарная
+        рамка здесь досталась от прежней вёрстки и означала бы «требует
+        внимания»: человек, спокойно отвечающий на вопросы, внимания не
+        требует. Отмечено бирюзой — тем же цветом, что и всё живое в
+        интерфейсе.
+      */}
       {data.inProgressNow.length ? (
-        <div className="card" style={{ borderColor: "var(--accent)" }}>
-          <div className="card-head">
-            <h2>
-              <i className="dot live" style={{ marginRight: 8 }} />
+        <Panel className="border border-[color-mix(in_srgb,var(--primary)_45%,transparent)]">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <h2 className="m-0 flex items-center gap-2 font-display text-section font-medium">
+              <i className="dot live" />
               Сейчас проходят: {data.inProgressNow.length}
             </h2>
-            <span className="hint">черновики с автосохранением за последние 30 минут</span>
+            <span className="text-caption text-muted">черновики с автосохранением за последние 30 минут</span>
           </div>
           <div className="row tight">
             {data.inProgressNow.map((p, i) => (
@@ -128,15 +136,11 @@ export default function SurveyAnalyticsPage() {
               </span>
             ))}
           </div>
-        </div>
+        </Panel>
       ) : null}
 
       {data.versions.length > 1 ? (
-        <div className="card">
-          <h2>{ut("an.versionOfSurvey")}</h2>
-          <p className="hint">
-            {ut("an.versionHint")}
-          </p>
+        <Panel title={ut("an.versionOfSurvey")} hint={ut("an.versionHint")}>
           <div className="row">
             {data.versions.map((v) => (
               <button
@@ -149,7 +153,7 @@ export default function SurveyAnalyticsPage() {
             ))}
           </div>
           <VersionDiffPanel surveyId={id!} versions={data.versions} />
-        </div>
+        </Panel>
       ) : null}
 
       <div className="tabs">
@@ -167,8 +171,8 @@ export default function SurveyAnalyticsPage() {
       </div>
 
       {tab === "overview" ? (
-        <>
-          <div className="grid cols-4" style={{ marginBottom: 16 }}>
+        <Stack>
+          <Grid min={196} className="mb-4">
             <div className="tile"><div className="label">{ut("an.completed")}</div><div className="value">{data.completed}</div><div className="hint">{ut("an.started")} {data.started}</div></div>
             {/*
               Доходимость была ещё и кольцевой диаграммой на четверть экрана —
@@ -178,7 +182,7 @@ export default function SurveyAnalyticsPage() {
             <div className="tile"><div className="label">{ut("an.completion")}</div><div className="value">{data.completionRate}%</div><div className="hint">{ut("an.abandoned")} {data.abandoned}</div></div>
             <div className="tile"><div className="label">{ut("dash.avgTime")}</div><div className="value">{duration(data.avgDurationMs)}</div></div>
             <div className="tile"><div className="label">{ut("an.median")}</div><div className="value">{duration(data.medianDurationMs)}</div></div>
-          </div>
+          </Grid>
 
           <Chart title={ut("an.dynamics")} hint={ut("dash.timelineHint")}>
             <LineChart area series={[{ label: ut("an.responses"), points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]} />
@@ -195,17 +199,13 @@ export default function SurveyAnalyticsPage() {
             <Funnel stages={dropOffStages} />
           </Chart>
 
-          <div className="card">
-            <div className="card-head">
-              <h2>{ut("an.exports")}</h2>
-              <span className="hint">{ut("an.exportsHint")}</span>
-            </div>
+          <Panel title={ut("an.exports")} hint={ut("an.exportsHint")}>
             <div className="row">
               {/*
                 Цель выгрузки — не формальность: «кто и когда» без «зачем» не
                 отвечает ни на один вопрос разбора через год.
               */}
-              <label className="field" style={{ margin: 0, minWidth: 220 }}>
+              <label className="field m-0 min-w-[220px]">
                 <span>{ut("rep.purpose")}</span>
                 <input
                   value={purpose}
@@ -213,7 +213,7 @@ export default function SurveyAnalyticsPage() {
                   placeholder={ut("rep.purposePlaceholder")}
                 />
               </label>
-              <label className="field" style={{ margin: 0 }}>
+              <label className="field m-0">
                 <span>{ut("an.profile")}</span>
                 <select value={profile} onChange={(e) => setProfile(e.target.value as never)}>
                   <option value="full">полный (для клиники)</option>
@@ -241,14 +241,14 @@ export default function SurveyAnalyticsPage() {
               <Link className="btn" to={`/surveys/${data.surveyId}/blank`}>{ut("an.blank")}</Link>
               <Link className="btn" to={`/surveys/${data.surveyId}/key`}>{ut("an.keys")}</Link>
             </div>
-            <p className="hint" style={{ marginTop: 10 }}>
+            <p className="mt-2.5 text-caption text-muted">
               Матрица и синтаксис — пара: положите их рядом и запустите синтаксис, он подставит
               метки переменных и значений. Пропуски закодированы как −99. Деидентифицированный
-              профиль заменяет субъектов необратимыми кодами (стабильными между выгрузками — 
+              профиль заменяет субъектов необратимыми кодами (стабильными между выгрузками —
               лонгитюд склеивается), возраст полосами, дату месяцем; подразделение и звание
               не выгружаются. Каждая выгрузка фиксируется в журнале с SHA-256 датасета.
             </p>
-          </div>
+          </Panel>
 
           <div className="row">
             <Link className="btn" to={`/surveys/${data.surveyId}/norms`}>{ut("an.localNorms")}</Link>
@@ -256,11 +256,11 @@ export default function SurveyAnalyticsPage() {
             <Link className="btn" to={`/constructor/${data.surveyId}`}>{ut("an.edit")}</Link>
             <Link className="btn" to={`/surveys/${data.surveyId}/administer`}>{ut("an.administer")}</Link>
           </div>
-        </>
+        </Stack>
       ) : null}
 
       {tab === "questions" ? (
-        <>
+        <Stack>
           <Chart title={ut("an.timePerQuestion")} hint={ut("an.spreadNotMean")}>
             <BoxPlot
               boxes={data.questions
@@ -279,7 +279,7 @@ export default function SurveyAnalyticsPage() {
             </Chart>
           ) : null}
 
-          <div className="grid cols-2">
+          <Grid min={400}>
             <Chart title={ut("an.doubts")} hint={ut("an.doubtsHint")}>
               <BarList unit="%" items={data.questions.map((q) => ({ label: `${q.position + 1}. ${q.title}`, value: q.changedShare }))} />
             </Chart>
@@ -292,41 +292,41 @@ export default function SurveyAnalyticsPage() {
                 }))}
               />
             </Chart>
-          </div>
+          </Grid>
 
-          <div className="card scroll-x">
-            <h2>{ut("an.perQuestion")}</h2>
-            <p className="hint">{ut("an.perQuestionHint")}</p>
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th><th>{ut("an.question")}</th><th>{ut("an.type")}</th>
-                  <th className="num">{ut("an.shown")}</th><th className="num">{ut("an.answers")}</th><th className="num">{ut("an.skipped")}</th>
-                  <th className="num">{ut("an.avgTime")}</th><th className="num">{ut("an.median")}</th><th className="num">{ut("an.spread")}</th>
-                  <th className="num">{ut("an.toChoice")}</th><th className="num">{ut("an.edits")}</th><th className="num">{ut("an.changedShare")}</th><th className="num">{ut("an.fast")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.questions.map((q) => (
-                  <tr key={q.questionId}>
-                    <td className="num">{q.position + 1}</td>
-                    <td style={{ maxWidth: 320 }}>{q.title}</td>
-                    <td className="muted">{q.type}</td>
-                    <td className="num">{q.shown}</td>
-                    <td className="num">{q.answered}</td>
-                    <td className="num">{q.skipRate}%</td>
-                    <td className="num">{duration(q.avgDurationMs)}</td>
-                    <td className="num">{duration(q.medianDurationMs)}</td>
-                    <td className="num">{duration(q.minDurationMs)}–{duration(q.maxDurationMs)}</td>
-                    <td className="num">{duration(q.avgTimeToFirstAnswerMs)}</td>
-                    <td className="num">{q.avgChangeCount}</td>
-                    <td className="num">{q.changedShare}%</td>
-                    <td className="num" style={{ color: q.tooFastShare > 20 ? "var(--danger)" : undefined }}>{q.tooFastShare}%</td>
+          <Panel title={ut("an.perQuestion")} hint={ut("an.perQuestionHint")}>
+            <div className="scroll-x">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th><th>{ut("an.question")}</th><th>{ut("an.type")}</th>
+                    <th className="num">{ut("an.shown")}</th><th className="num">{ut("an.answers")}</th><th className="num">{ut("an.skipped")}</th>
+                    <th className="num">{ut("an.avgTime")}</th><th className="num">{ut("an.median")}</th><th className="num">{ut("an.spread")}</th>
+                    <th className="num">{ut("an.toChoice")}</th><th className="num">{ut("an.edits")}</th><th className="num">{ut("an.changedShare")}</th><th className="num">{ut("an.fast")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.questions.map((q) => (
+                    <tr key={q.questionId}>
+                      <td className="num">{q.position + 1}</td>
+                      <td className="max-w-[320px]">{q.title}</td>
+                      <td className="text-muted">{q.type}</td>
+                      <td className="num">{q.shown}</td>
+                      <td className="num">{q.answered}</td>
+                      <td className="num">{q.skipRate}%</td>
+                      <td className="num">{duration(q.avgDurationMs)}</td>
+                      <td className="num">{duration(q.medianDurationMs)}</td>
+                      <td className="num">{duration(q.minDurationMs)}–{duration(q.maxDurationMs)}</td>
+                      <td className="num">{duration(q.avgTimeToFirstAnswerMs)}</td>
+                      <td className="num">{q.avgChangeCount}</td>
+                      <td className="num">{q.changedShare}%</td>
+                      <td className="num" style={{ color: q.tooFastShare > 20 ? "var(--danger)" : undefined }}>{q.tooFastShare}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
 
           {data.questions.filter((q) => q.numeric).map((q) => (
             <Chart key={q.questionId} title={`${q.position + 1}. ${q.title}`} hint={`среднее ${q.numeric!.average} · медиана ${q.numeric!.median} · диапазон ${q.numeric!.min}–${q.numeric!.max}`}>
@@ -335,19 +335,18 @@ export default function SurveyAnalyticsPage() {
           ))}
 
           {data.questions.filter((q) => q.texts?.length).map((q) => (
-            <div className="card" key={q.questionId}>
-              <h2>{q.position + 1}. {q.title}</h2>
-              <p className="hint">{ut("an.freeText")}: {q.texts!.length}</p>
-              <ul className="muted" style={{ margin: 0, paddingLeft: 18 }}>
+            <Panel key={q.questionId} title={`${q.position + 1}. ${q.title}`}>
+              <p className="text-caption text-muted">{ut("an.freeText")}: {q.texts!.length}</p>
+              <ul className="m-0 pl-[18px] text-muted">
                 {q.texts!.slice(0, 40).map((t, i) => <li key={i}>{t}</li>)}
               </ul>
-            </div>
+            </Panel>
           ))}
-        </>
+        </Stack>
       ) : null}
 
       {tab === "scales" ? (
-        <>
+        <Stack>
           {data.scales.length > 1 ? (
             <Chart title={ut("an.subscales")} hint={ut("an.subscalesHint")}>
               <BoxPlot
@@ -358,14 +357,11 @@ export default function SurveyAnalyticsPage() {
           ) : null}
 
           {data.scales.map((s) => (
-            <div className="card" key={s.scaleId}>
-              <h2>{s.title}</h2>
-              <p className="hint">среднее {s.average} · медиана {s.median} · диапазон {s.min}–{s.max} из {s.maxPossible}</p>
-
-              <div className="grid cols-2">
+            <Panel key={s.scaleId} title={s.title} hint={`среднее ${s.average} · медиана ${s.median} · диапазон ${s.min}–${s.max} из ${s.maxPossible}`}>
+              <Grid min={400}>
                 <div>
                   {s.bands.length === 0 ? (
-                    <p className="muted">
+                    <p className="text-muted">
                       У шкалы нет интерпретационных норм — она используется как служебная
                     </p>
                   ) : (
@@ -379,9 +375,9 @@ export default function SurveyAnalyticsPage() {
                 <div>
                   {s.reliability ? (
                     <>
-                      <p style={{ margin: "0 0 6px" }}>
+                      <p className="mb-1.5">
                         <strong>{ut("an.alpha")}: {s.reliability.alpha}</strong>{" "}
-                        <span className="muted">
+                        <span className="text-muted">
                           ({s.reliability.alpha >= 0.8 ? ut("an.reliabilityGood") : s.reliability.alpha >= 0.7 ? ut("an.reliabilityOk") : ut("an.reliabilityLow")} согласованность по {s.reliability.itemCount} пунктам)
                         </span>
                       </p>
@@ -389,12 +385,12 @@ export default function SurveyAnalyticsPage() {
                         goodThreshold={0.3}
                         items={s.reliability.items.map((it) => ({ label: it.title, value: it.itemTotalCorrelation }))}
                       />
-                      <table style={{ marginTop: 12 }}>
+                      <table className="mt-3">
                         <thead><tr><th>{ut("an.item")}</th><th className="num">{ut("an.link")}</th><th className="num">α без него</th><th className="num">{ut("an.variance")}</th></tr></thead>
                         <tbody>
                           {s.reliability.items.map((it) => (
                             <tr key={it.questionId}>
-                              <td style={{ maxWidth: 300 }}>{it.title}</td>
+                              <td className="max-w-[300px]">{it.title}</td>
                               <td className="num">{it.itemTotalCorrelation}</td>
                               <td className="num" style={{ color: it.alphaIfDeleted !== null && it.alphaIfDeleted > s.reliability!.alpha ? "var(--danger)" : undefined }}>
                                 {it.alphaIfDeleted ?? "—"}
@@ -406,36 +402,32 @@ export default function SurveyAnalyticsPage() {
                       </table>
                     </>
                   ) : (
-                    <p className="muted">{ut("an.noReliability")}</p>
+                    <p className="text-muted">{ut("an.noReliability")}</p>
                   )}
                 </div>
-              </div>
-            </div>
+              </Grid>
+            </Panel>
           ))}
-        </>
+        </Stack>
       ) : null}
 
       {tab === "quality" ? (
-        <>
-          <div className="card">
-            <h2>{ut("an.carelessTitle")}</h2>
-            <p className="hint">
+        <Stack>
+          <Panel title={ut("an.carelessTitle")}>
+            <p className="text-caption text-muted">
               Помечено {data.quality.length} из {data.completed}. Порог «слишком быстро» — {Math.round(data.tooFastThresholdMs / 1000)} с
               на вопрос. Это флаг для проверки специалистом, а не основание исключать данные.
             </p>
-          </div>
+          </Panel>
 
           {/*
             Карта пунктов стоит выше сводных графиков: небрежное заполнение
             выдаёт себя формой, а не средним, и полоса одинаковых ответов от
             сорокового пункта до конца видна только здесь.
           */}
-          <div className="card">
-            <div className="card-head">
-              <h2>{ut("qh.title")}</h2>
-            </div>
+          <Panel title={ut("qh.title")}>
             <ItemHeatmap surveyId={data.surveyId} />
-          </div>
+          </Panel>
           {data.quality.length ? (
             <>
               <Chart title={ut("an.timeVsFast")} hint={ut("an.timeVsFastHint")}>
@@ -446,34 +438,37 @@ export default function SurveyAnalyticsPage() {
                   points={data.quality.map((q) => ({ x: Math.round(q.durationMs / 1000), y: q.tooFastShare, flagged: q.flagged }))}
                 />
               </Chart>
-              <div className="card scroll-x">
-                <table>
-                  <thead><tr><th>{ut("an.respondent")}</th><th className="num">{ut("an.time")}</th><th className="num">{ut("an.fast")}</th><th className="num">{ut("an.streak")}</th><th>{ut("an.reasons")}</th></tr></thead>
-                  <tbody>
-                    {data.quality.map((q) => (
-                      <tr key={q.responseId}>
-                        <td>{q.respondent ?? ut("an.anonCap")}</td>
-                        <td className="num">{duration(q.durationMs)}</td>
-                        <td className="num">{q.tooFastShare}%</td>
-                        <td className="num">{q.longestStraightLine}</td>
-                        <td className="muted">{q.reasons.join("; ")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Panel>
+                <div className="scroll-x">
+                  <table>
+                    <thead><tr><th>{ut("an.respondent")}</th><th className="num">{ut("an.time")}</th><th className="num">{ut("an.fast")}</th><th className="num">{ut("an.streak")}</th><th>{ut("an.reasons")}</th></tr></thead>
+                    <tbody>
+                      {data.quality.map((q) => (
+                        <tr key={q.responseId}>
+                          <td>{q.respondent ?? ut("an.anonCap")}</td>
+                          <td className="num">{duration(q.durationMs)}</td>
+                          <td className="num">{q.tooFastShare}%</td>
+                          <td className="num">{q.longestStraightLine}</td>
+                          <td className="text-muted">{q.reasons.join("; ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
             </>
           ) : (
-            <p className="muted">{ut("an.noSuspicious")}</p>
+            <p className="text-muted">{ut("an.noSuspicious")}</p>
           )}
-        </>
+        </Stack>
       ) : null}
 
       {tab === "dif" ? <DifPanel surveyId={data.surveyId} /> : null}
       {tab === "calibration" ? <CalibrationPanel surveyId={data.surveyId} /> : null}
       {tab === "quality" ? <DataQualityPanel surveyId={data.surveyId} /> : null}
       {tab === "responses" ? <Responses surveyId={data.surveyId} /> : null}
-    </>
+      </Stack>
+    </Page>
   );
 }
 
@@ -507,56 +502,56 @@ function Responses({ surveyId }: { surveyId: string }) {
   if (!rows) return <Loading rows={6} />;
 
   return (
-    <div className="card scroll-x">
-      <h2>{ut("an.tabResponses")}</h2>
-      <p className="hint">{ut("an.responsesHint")}</p>
-      <table>
-        <thead>
-          <tr><th>{ut("an.respondent")}</th><th>{ut("an.completed")}</th><th className="num">{ut("an.time")}</th><th>{ut("an.status")}</th><th>{ut("an.scores")}</th><th /></tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <Fragment key={r.id}>
-            <tr>
-              <td>{r.userName ?? ut("an.anonCap")}</td>
-              <td className="muted">{r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "—"}</td>
-              <td className="num">{duration(r.durationMs)}</td>
-              <td className="muted">{r.status}</td>
-              <td>
-                {r.scores.map((s) => (
-                  <div key={s.scaleId} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <span style={{ minWidth: 150 }}>{s.scaleTitle}</span>
-                    <span className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{s.rawScore}/{s.maxScore}</span>
-                    {s.band ? <SeverityTag severity={s.band.severity} label={s.band.label} /> : null}
-                  </div>
-                ))}
-              </td>
-              <td>
-                <div className="row tight">
-                  <button onClick={() => setOpenConclusion(openConclusion === r.id ? null : r.id)}>
-                    {openConclusion === r.id ? ut("an.collapse") : ut("an.conclusion")}
-                  </button>
-                  <button onClick={() => openReport(r.id)}>{ut("an.print")}</button>
-                </div>
-              </td>
-            </tr>
-            {openConclusion === r.id ? (
+    <Panel title={ut("an.tabResponses")} hint={ut("an.responsesHint")}>
+      <div className="scroll-x">
+        <table>
+          <thead>
+            <tr><th>{ut("an.respondent")}</th><th>{ut("an.completed")}</th><th className="num">{ut("an.time")}</th><th>{ut("an.status")}</th><th>{ut("an.scores")}</th><th /></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <Fragment key={r.id}>
               <tr>
-                <td colSpan={6} style={{ background: "var(--surface-2)" }}>
-                  <ConclusionEditor responseId={r.id} />
+                <td>{r.userName ?? ut("an.anonCap")}</td>
+                <td className="text-muted">{r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "—"}</td>
+                <td className="num">{duration(r.durationMs)}</td>
+                <td className="text-muted">{r.status}</td>
+                <td>
+                  {r.scores.map((s) => (
+                    <div key={s.scaleId} className="flex items-center gap-2">
+                      <span className="min-w-[150px]">{s.scaleTitle}</span>
+                      <span className="text-muted [font-variant-numeric:tabular-nums]">{s.rawScore}/{s.maxScore}</span>
+                      {s.band ? <SeverityTag severity={s.band.severity} label={s.band.label} /> : null}
+                    </div>
+                  ))}
+                </td>
+                <td>
+                  <div className="row tight">
+                    <button onClick={() => setOpenConclusion(openConclusion === r.id ? null : r.id)}>
+                      {openConclusion === r.id ? ut("an.collapse") : ut("an.conclusion")}
+                    </button>
+                    <button onClick={() => openReport(r.id)}>{ut("an.print")}</button>
+                  </div>
                 </td>
               </tr>
-            ) : null}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
+              {openConclusion === r.id ? (
+                <tr>
+                  <td colSpan={6} className="bg-surface-2">
+                    <ConclusionEditor responseId={r.id} />
+                  </td>
+                </tr>
+              ) : null}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {hasMore ? (
-        <button style={{ marginTop: 12 }} onClick={() => run(loadMore)}>
+        <button className="mt-3" onClick={() => run(loadMore)}>
           {ut("ui.loadMore")}
         </button>
       ) : null}
-    </div>
+    </Panel>
   );
 }
 
@@ -591,14 +586,14 @@ function VersionDiffPanel({
 
   if (!open) {
     return (
-      <button style={{ marginTop: 10 }} onClick={() => setOpen(true)}>
+      <button className="mt-2.5" onClick={() => setOpen(true)}>
         {ut("an.compareVersions")}
       </button>
     );
   }
 
   const pick = (value: string, onChange: (v: string) => void) => (
-    <select value={value} onChange={(e) => onChange(e.target.value)} style={{ maxWidth: 120 }}>
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="max-w-[120px]">
       {sorted.map((v) => (
         <option key={v.id} value={v.id}>
           v{v.version}
@@ -608,31 +603,31 @@ function VersionDiffPanel({
   );
 
   return (
-    <div style={{ marginTop: 12 }}>
-      <div className="row tight" style={{ alignItems: "center" }}>
+    <div className="mt-3">
+      <div className="row tight items-center">
         {pick(a, setA)}
-        <span className="muted">→</span>
+        <span className="text-muted">→</span>
         {pick(b, setB)}
-        <button className="ghost" onClick={() => setOpen(false)}>{ut("an.collapse")}</button>
+        <Button variant="quiet" onClick={() => setOpen(false)}>{ut("an.collapse")}</Button>
       </div>
 
-      {error ? <p className="error">{error}</p> : null}
-      {a === b ? <p className="hint">{ut("an.pickDifferent")}</p> : null}
+      {error ? <p className="text-danger text-small">{error}</p> : null}
+      {a === b ? <p className="text-caption text-muted">{ut("an.pickDifferent")}</p> : null}
       {diff ? (
         <>
-          <p style={{ marginTop: 10, marginBottom: 4 }}>
+          <p className="mt-2.5 mb-1">
             {diff.comparable ? (
-              <strong style={{ color: "var(--sev-none-text)" }}>{ut("an.comparable")}</strong>
+              <strong className="text-[var(--sev-none-text)]">{ut("an.comparable")}</strong>
             ) : (
-              <strong style={{ color: "var(--sev-moderate)" }}>
+              <strong className="text-[var(--sev-moderate)]">
                 {ut("an.notComparable")}
               </strong>
             )}
           </p>
           {diff.reasons.length ? (
-            <p className="hint" style={{ marginTop: 0 }}>{diff.reasons.join(" · ")}</p>
+            <p className="text-caption text-muted">{diff.reasons.join(" · ")}</p>
           ) : (
-            <p className="hint" style={{ marginTop: 0 }}>
+            <p className="text-caption text-muted">
               {ut("an.noScoringChange")}
             </p>
           )}
@@ -640,7 +635,7 @@ function VersionDiffPanel({
           {diff.scales.map((sc) => (
             <div key={sc.code} className="diff-block">
               <strong>{ut("an.scaleWord")} {sc.code}</strong>{" "}
-              <span className="muted">{ut(DIFF_KIND[sc.kind])}</span>
+              <span className="text-muted">{ut(DIFF_KIND[sc.kind])}</span>
               {sc.changes.map((ch) => (
                 <ChangeLine key={ch.field} change={ch} />
               ))}
@@ -649,8 +644,8 @@ function VersionDiffPanel({
 
           {diff.questions.map((q, i) => (
             <div key={`${q.position}-${i}`} className="diff-block">
-              <strong>{ut("an.item")} {q.position}</strong> <span className="muted">{ut(DIFF_KIND[q.kind])}</span>
-              <div className="muted" style={{ fontSize: 12.5 }}>{q.title}</div>
+              <strong>{ut("an.item")} {q.position}</strong> <span className="text-muted">{ut(DIFF_KIND[q.kind])}</span>
+              <div className="text-muted text-[12.5px]">{q.title}</div>
               {q.changes.map((ch) => (
                 <ChangeLine key={ch.field} change={ch} />
               ))}
@@ -658,7 +653,7 @@ function VersionDiffPanel({
           ))}
 
           {!diff.scales.length && !diff.questions.length ? (
-            <p className="muted" style={{ fontSize: 13 }}>{ut("an.sameContent")}</p>
+            <p className="text-muted text-small">{ut("an.sameContent")}</p>
           ) : null}
         </>
       ) : null}
@@ -677,7 +672,7 @@ function ChangeLine({ change }: { change: VersionDiffResult["questions"][number]
     <div className="diff-line">
       <span className={change.scoring ? "diff-field scoring" : "diff-field"}>{change.field}</span>
       <span className="diff-before">{change.before ?? "—"}</span>
-      <span className="muted">→</span>
+      <span className="text-muted">→</span>
       <span className="diff-after">{change.after ?? "—"}</span>
     </div>
   );

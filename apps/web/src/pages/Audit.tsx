@@ -3,7 +3,10 @@ import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart } from "../charts";
 import { dateTime } from "../format";
-import { PageHead, Screen } from "../ui";
+import { Screen } from "../ui";
+import { Page, Panel, Grid, Stack } from "../ui/layout";
+import { Stat, Tag, Toolbar } from "../ui/primitives";
+import { cx } from "../ui/cx";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -69,63 +72,80 @@ export default function Audit() {
   return (
     <Screen res={res} rows={6}>
       {({ entries, total, summary }) => (
-    <>
-      <PageHead
-        title={ut("aud.title")}
-        sub={ut("aud.sub")}
-      />
+        <Page
+          title={ut("aud.title")}
+          sub={ut("aud.sub")}
+          toolbar={
+            <Toolbar>
+              {FILTERS.map(([v, label]) => (
+                <button
+                  key={v}
+                  className={cx("chip", filter === v && "active")}
+                  aria-pressed={filter === v}
+                  onClick={() => setFilter(v)}
+                >
+                  {ut(label)}
+                </button>
+              ))}
+            </Toolbar>
+          }
+        >
+          <Stack>
+            <Grid min={200}>
+              <Panel>
+                <Stat value={total} label={ut("aud.totalEvents")} />
+              </Panel>
+              <Panel>
+                <Stat
+                  value={summary?.deniedCount ?? 0}
+                  label={ut("aud.denied")}
+                  tone={summary?.deniedCount ? "danger" : "plain"}
+                />
+              </Panel>
+            </Grid>
 
-      <div className="grid cols-3" style={{ marginBottom: 16 }}>
-        <div className="tile"><div className="label">{ut("aud.totalEvents")}</div><div className="value">{total}</div></div>
-        <div className="tile">
-          <div className="label">{ut("aud.denied")}</div>
-          <div className="value" style={{ color: summary?.deniedCount ? "var(--danger)" : undefined }}>{summary?.deniedCount ?? 0}</div>
-        </div>
-      </div>
+            {summary ? (
+              <Grid min={320}>
+                <Chart title={ut("aud.whoOften")} hint={ut("aud.perAccount")}>
+                  <BarList items={summary.byActor.map((a) => ({ label: a.actorEmail, value: a.count }))} />
+                </Chart>
+                <Chart title={ut("aud.whatDo")} hint={ut("aud.byActionType")}>
+                  <BarList items={summary.byAction.slice(0, 12).map((a) => ({ label: actionLabel(a.action), value: a.count }))} />
+                </Chart>
+              </Grid>
+            ) : null}
 
-      {summary ? (
-        <div className="grid cols-2">
-          <Chart title={ut("aud.whoOften")} hint={ut("aud.perAccount")}>
-            <BarList items={summary.byActor.map((a) => ({ label: a.actorEmail, value: a.count }))} />
-          </Chart>
-          <Chart title={ut("aud.whatDo")} hint={ut("aud.byActionType")}>
-            <BarList items={summary.byAction.slice(0, 12).map((a) => ({ label: actionLabel(a.action), value: a.count }))} />
-          </Chart>
-        </div>
-      ) : null}
+            <Panel flush>
+              <div className="overflow-x-auto">
+                <table>
+                  <thead><tr><th>{ut("aud.when")}</th><th>{ut("aud.action")}</th><th>{ut("aud.who")}</th><th>{ut("aud.outcome")}</th><th>{ut("aud.patient")}</th><th>{ut("aud.details")}</th></tr></thead>
+                  <tbody>
+                    {entries.map((e) => (
+                      <tr key={e.id}>
+                        <td className="text-muted">{dateTime(e.at)}</td>
+                        <td>{actionLabel(e.action)}</td>
+                        <td className="text-muted">{e.actorEmail ?? "—"}</td>
+                        <td>
+                          {e.outcome === "success" ? (
+                            "ок"
+                          ) : (
+                            <Tag tone="danger">{e.outcome === "denied" ? "отказано" : "ошибка"}</Tag>
+                          )}
+                        </td>
+                        <td className="text-muted">{e.subjectUserId ? e.subjectUserId.slice(0, 8) : "—"}</td>
+                        <td className="max-w-[420px] overflow-hidden text-ellipsis whitespace-nowrap text-muted">
+                          {e.details ? JSON.stringify(e.details) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
 
-      <div className="row" style={{ marginBottom: 12 }}>
-        {FILTERS.map(([v, label]) => (
-          <button key={v} className={`chip ${filter === v ? "active" : ""}`} onClick={() => setFilter(v)}>
-            {ut(label)}
-          </button>
-        ))}
-      </div>
-
-      <div className="card scroll-x">
-        <table>
-          <thead><tr><th>{ut("aud.when")}</th><th>{ut("aud.action")}</th><th>{ut("aud.who")}</th><th>{ut("aud.outcome")}</th><th>{ut("aud.patient")}</th><th>{ut("aud.details")}</th></tr></thead>
-          <tbody>
-            {entries.map((e) => (
-              <tr key={e.id}>
-                <td className="muted">{dateTime(e.at)}</td>
-                <td>{actionLabel(e.action)}</td>
-                <td className="muted">{e.actorEmail ?? "—"}</td>
-                <td style={{ color: e.outcome !== "success" ? "var(--danger)" : undefined }}>
-                  {e.outcome === "success" ? "ок" : e.outcome === "denied" ? "отказано" : "ошибка"}
-                </td>
-                <td className="muted">{e.subjectUserId ? e.subjectUserId.slice(0, 8) : "—"}</td>
-                <td className="muted" style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {e.details ? JSON.stringify(e.details) : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <Storage />
-    </>
+            <Storage />
+          </Stack>
+        </Page>
       )}
     </Screen>
   );
@@ -139,37 +159,35 @@ function Storage() {
   if (!stats) return null;
   const max = stats.tables[0]?.totalBytes ?? 1;
   return (
-    <div className="card">
-      <div className="card-head">
-        <h2>{ut("aud.storage")}</h2>
-        <span className="hint">
-          {ut("aud.wholeDatabase")}: {stats.database.pretty}
-        </span>
+    <Panel
+      title={ut("aud.storage")}
+      actions={<span className="text-caption text-muted">{ut("aud.wholeDatabase")}: {stats.database.pretty}</span>}
+    >
+      <div className="overflow-x-auto">
+        <table>
+          <tbody>
+            {stats.tables.slice(0, 10).map((t) => (
+              <tr key={t.table}>
+                <td className="w-[200px] font-mono text-caption">{t.table}</td>
+                <td>
+                  <div className="relative h-2.5 overflow-hidden rounded-full bg-surface-3">
+                    <i
+                      className="absolute inset-y-0 left-0 block rounded-full bg-[var(--s1)]"
+                      style={{ width: `${Math.max(2, (t.totalBytes / max) * 100)}%` }}
+                    />
+                  </div>
+                </td>
+                <td className="num w-[90px]">{t.totalPretty}</td>
+                <td className="num w-[110px] text-muted">{t.rows.toLocaleString("uk-UA")} {ut("aud.rows")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <table>
-        <tbody>
-          {stats.tables.slice(0, 10).map((t) => (
-            <tr key={t.table}>
-              <td style={{ width: 200, fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{t.table}</td>
-              <td>
-                <div style={{ position: "relative", height: 10, background: "var(--surface-3)", borderRadius: 5 }}>
-                  <i style={{
-                    position: "absolute", left: 0, top: 0, height: "100%",
-                    width: `${Math.max(2, (t.totalBytes / max) * 100)}%`,
-                    background: "var(--s1)", borderRadius: 5, display: "block",
-                  }} />
-                </div>
-              </td>
-              <td className="num" style={{ width: 90 }}>{t.totalPretty}</td>
-              <td className="num muted" style={{ width: 110 }}>{t.rows.toLocaleString("uk-UA")} {ut("aud.rows")}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="hint">
+      <p className="mb-0 mt-3 text-caption text-muted">
         answer_events сдерживается ретенцией; audit_log растёт вечно by design — его
         партиционирование по месяцам станет актуальным после первых миллионов записей.
       </p>
-    </div>
+    </Panel>
   );
 }
