@@ -5,6 +5,8 @@ import { day } from "../format";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useAction } from "../ui";
+import { Panel } from "../ui/layout";
+import { Button, Input, Select } from "../ui/primitives";
 
 /**
  * Взгляд со стороны.
@@ -43,34 +45,34 @@ export function Informants({ userId }: { userId: string }) {
   const perspectives = compare.data ?? [];
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <h3>{ut("inf.title")}</h3>
-        <button disabled={!available.length} onClick={() => setAdding((v) => !v)}>
+    <Panel
+      title={ut("inf.title")}
+      hint={ut("inf.sub")}
+      actions={
+        <Button disabled={!available.length} onClick={() => setAdding((v) => !v)}>
           {adding ? ut("common.cancel") : ut("inf.ask")}
-        </button>
-      </div>
-      <p className="hint" style={{ marginTop: 0 }}>{ut("inf.sub")}</p>
-
+        </Button>
+      }
+    >
       {adding ? (
-        <div className="row tight" style={{ marginBottom: 10 }}>
-          <select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
+        <div className="row tight mb-2.5">
+          <Select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
             <option value="">—</option>
             {available.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title}
               </option>
             ))}
-          </select>
-          <select value={role} onChange={(e) => setRole(e.target.value as InformantRole)}>
+          </Select>
+          <Select value={role} onChange={(e) => setRole(e.target.value as InformantRole)}>
             {(Object.keys(ROLE_KEY) as InformantRole[]).map((r) => (
               <option key={r} value={r}>
                 {ut(ROLE_KEY[r])}
               </option>
             ))}
-          </select>
-          <button
-            className="primary"
+          </Select>
+          <Button
+            variant="primary"
             disabled={busy || !surveyId}
             onClick={() =>
               void run(async () => {
@@ -82,7 +84,7 @@ export function Informants({ userId }: { userId: string }) {
             }
           >
             {ut("inf.ask")}
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -92,22 +94,22 @@ export function Informants({ userId }: { userId: string }) {
          * не прячется в подсказку, а лежит в поле, откуда её видно и можно
          * скопировать целиком.
          */
-        <div className="row tight" style={{ marginBottom: 10 }}>
-          <input readOnly value={fresh} onFocus={(e) => e.currentTarget.select()} />
-          <button onClick={() => void navigator.clipboard?.writeText(fresh)}>⧉</button>
-          <span className="hint">{ut("inf.link")}</span>
+        <div className="row tight mb-2.5">
+          <Input readOnly value={fresh} onFocus={(e) => e.currentTarget.select()} />
+          <Button onClick={() => void navigator.clipboard?.writeText(fresh)}>⧉</Button>
+          <span className="text-caption text-muted">{ut("inf.link")}</span>
         </div>
       ) : null}
 
       {rows.length === 0 ? (
-        <p className="muted" style={{ margin: 0 }}>{ut("inf.nobody")}</p>
+        <p className="m-0 text-muted">{ut("inf.nobody")}</p>
       ) : (
         <ul className="inf-list">
           {rows.map((r) => (
             <li key={r.id}>
               <span className="badge">{ut(ROLE_KEY[r.role])}</span>
               <span>{r.surveyTitle}</span>
-              <span className="muted">
+              <span className="text-muted">
                 {r.revokedAt
                   ? ut("inf.revoked")
                   : r.usedAt
@@ -115,8 +117,9 @@ export function Informants({ userId }: { userId: string }) {
                     : `${ut("inf.waiting")} · ${day(r.expiresAt)}`}
               </span>
               {!r.usedAt && !r.revokedAt ? (
-                <button
-                  className="ghost"
+                <Button
+                  variant="quiet"
+                  size="sm"
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -126,7 +129,7 @@ export function Informants({ userId }: { userId: string }) {
                   }
                 >
                   {ut("inf.revoke")}
-                </button>
+                </Button>
               ) : null}
             </li>
           ))}
@@ -134,10 +137,10 @@ export function Informants({ userId }: { userId: string }) {
       )}
 
       {perspectives.map((p) => (
-        <div key={p.requestId} className="nested" style={{ marginTop: 12 }}>
+        <div key={p.requestId} className="nested mt-3">
           <div className="row tight">
             <strong>{ut(ROLE_KEY[p.role])}</strong>
-            <span className="muted">{p.at ? day(p.at) : ""}</span>
+            <span className="text-muted">{p.at ? day(p.at) : ""}</span>
           </div>
           <table>
             <thead>
@@ -160,7 +163,7 @@ export function Informants({ userId }: { userId: string }) {
                       на ноль», а он просто не отвечал на эту шкалу.
                     */}
                     {s.gap === null ? (
-                      <span className="muted" title={ut("inf.noSelf")}>—</span>
+                      <span className="text-muted" title={ut("inf.noSelf")}>—</span>
                     ) : (
                       <strong>{s.gap > 0 ? `+${s.gap}` : s.gap}</strong>
                     )}
@@ -171,6 +174,6 @@ export function Informants({ userId }: { userId: string }) {
           </table>
         </div>
       ))}
-    </section>
+    </Panel>
   );
 }

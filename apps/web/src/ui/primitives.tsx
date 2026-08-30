@@ -281,16 +281,35 @@ export function Field({
   label: ReactNode;
   hint?: ReactNode;
   error?: string | null;
+  /**
+   * Нужен только когда поле лежит вне подписи. Обычно не нужен: подпись
+   * оборачивает поле, и связь получается сама.
+   */
   htmlFor?: string;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <div className={cx("flex flex-col gap-1.5", className)}>
-      <label htmlFor={htmlFor} className="text-caption font-medium text-text-2">
-        {label}
+    /* data-field — точка опоры для смоук-тестов: класс менять можно, признак нет */
+    <div data-field className={cx("flex flex-col gap-1.5", className)}>
+      {/*
+        Подпись оборачивает поле, а не ссылается на него через htmlFor.
+
+        Ссылка требовала id на каждом поле и htmlFor на каждой подписи, то
+        есть двух совпадающих строк в разных местах разметки. Из шестидесяти
+        двух полей связь была проставлена у семнадцати: в остальных подпись
+        не нажималась и не читалась диктором, а поле оставалось безымянным.
+        Забыть при этом нечего не давало никаких признаков — ни ошибки, ни
+        предупреждения.
+
+        Обёртка связывает их по построению: id не нужен вовсе, а забыть
+        нельзя. htmlFor остался для редкого случая, когда поле физически
+        лежит вне подписи.
+      */}
+      <label htmlFor={htmlFor} className="flex flex-col gap-1.5">
+        <span className="text-caption font-medium text-text-2">{label}</span>
+        {children}
       </label>
-      {children}
       {error ? (
         <span className="text-caption text-danger">{error}</span>
       ) : hint ? (

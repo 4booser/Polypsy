@@ -4,6 +4,7 @@ import { day } from "../format";
 import { useAction } from "../ui";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
+import { Button, Textarea } from "../ui/primitives";
 
 /**
  * Заключение специалиста поверх автоматической интерпретации.
@@ -35,11 +36,11 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
   if (!state) {
     // отказ загрузки — не повод прятать редактор: заключение можно написать заново
     return res.error ? (
-      <p className="muted">
+      <p className="text-muted">
         {ut("cn.loadFailed")}: {res.error}
       </p>
     ) : (
-      <p className="muted">{ut("common.loading")}</p>
+      <p className="text-muted">{ut("common.loading")}</p>
     );
   }
 
@@ -52,15 +53,15 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
 
       {signed && !draft ? (
         <div className="conclusion-view">
-          <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{state.current!.text}</p>
-          <p className="hint">
+          <p className="m-0 whitespace-pre-wrap">{state.current!.text}</p>
+          <p className="text-caption text-muted">
             Подписано: {state.current!.authorName}, {day(state.current!.signedAt!)} · версия{" "}
             {state.current!.version}. Правка создаст новую версию — подписанный текст неизменен.
           </p>
         </div>
       ) : null}
 
-      <textarea
+      <Textarea
         rows={5}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -70,8 +71,8 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
             : ut("cn.placeholder")
         }
       />
-      <div className="row" style={{ marginTop: 8 }}>
-        <button
+      <div className="row mt-2">
+        <Button
           disabled={!text.trim()}
           onClick={() =>
             run(async () => {
@@ -80,9 +81,9 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           }
         >
           Сохранить черновик
-        </button>
-        <button
-          className="primary"
+        </Button>
+        <Button
+          variant="primary"
           disabled={!draft && !text.trim()}
           onClick={() =>
             run(async () => {
@@ -104,22 +105,22 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           }
         >
           Подписать
-        </button>
+        </Button>
         {state.versions.length > 1 ? (
-          <button onClick={() => setShowHistory((v) => !v)}>
+          <Button onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? ut("cn.hideHistory") : `История (${state.versions.length})`}
-          </button>
+          </Button>
         ) : null}
       </div>
-      <p className="hint">
+      <p className="text-caption text-muted">
         В печатный отчёт попадает только подписанная версия. Черновик виден только персоналу.
       </p>
 
       {showHistory
         ? state.versions.map((v) => (
-            <div key={v.id} className="conclusion-view" style={{ marginTop: 8 }}>
-              <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 13 }}>{v.text}</p>
-              <p className="hint">
+            <div key={v.id} className="conclusion-view mt-2">
+              <p className="m-0 whitespace-pre-wrap text-small">{v.text}</p>
+              <p className="text-caption text-muted">
                 Версия {v.version} · {v.status === "signed" ? `подписана ${day(v.signedAt!)}` : "черновик"} ·{" "}
                 {v.authorName}
               </p>

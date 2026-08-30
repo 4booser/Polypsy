@@ -891,7 +891,30 @@ function Row<T>({
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onRowClick(row);
+                return;
               }
+              /*
+               * Стрелки и j/k двигают по списку.
+               *
+               * Разбор очереди — это чтение строк подряд, и тянуться к мыши
+               * на каждую следующую строку значит тратить секунду там, где
+               * их сотни. Буквы продублированы к стрелкам, потому что на
+               * экране разбора случаев j/k уже означают то же самое, и
+               * держать два разных способа для одного действия — лишнее
+               * знание.
+               */
+              const step = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0;
+              if (!step) return;
+              const rows = Array.from(
+                e.currentTarget.closest("tbody")?.querySelectorAll<HTMLTableRowElement>("tr[tabindex]") ?? [],
+              );
+              const at = rows.indexOf(e.currentTarget);
+              const next = rows[at + step];
+              if (!next) return;
+              e.preventDefault();
+              next.focus();
+              // строка может быть у самого края: доводим её до видимой части
+              next.scrollIntoView({ block: "nearest" });
             }
           : undefined
       }

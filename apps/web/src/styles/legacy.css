@@ -52,23 +52,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 
 .icon-btn { padding: 6px; border-radius: var(--r-sm); }
-
-/* поиск выглядит полем, а работает как кнопка: набор идёт уже в палитре */
-.topsearch {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-width: 260px;
-  max-width: 420px;
-  padding: 6px 10px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: var(--fs-small);
-  font-weight: 400;
-}
-.topsearch:hover { border-color: var(--border-strong); background: var(--surface-2); }
 .topsearch .grow { text-align: left; }
 
 /* ═══ палитра команд ═══ */
@@ -141,19 +124,19 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /*
  * Рабочая область.
  *
- * `relative` и внутренняя прокрутка нужны на время переноса: экраны, уже
- * перенесённые на компонент Page, растягиваются здесь абсолютно и заводят
- * собственную прокрутку — заголовок и полоса фильтров у них не уезжают
- * вверх. Экраны, ещё не перенесённые, живут по-старому: с этими полями и
- * общей прокруткой. Поля уйдут вместе с последним непереносённым экраном.
+ * Ни полей, ни собственной прокрутки: и то и другое принадлежит экрану.
+ * Пока шёл перенос, здесь оставались прежние поля для непереносённых
+ * экранов, а Page растягивался поверх них абсолютно. Переносить больше
+ * нечего, поэтому подпорка убрана: Page — обычный ребёнок во всю высоту, и
+ * два экрана на одном маршруте теперь встали бы друг под другом, а не
+ * перекрыли бы друг друга молча.
  */
 .main {
-  position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 26px 32px 96px;
-  max-width: 1720px;
+  overflow: hidden;
 }
 
 /* ═══ узкие экраны ═══
@@ -162,7 +145,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
  */
 /* поведение рельсы и поиска на узком экране переехало в shell/*.tsx */
 @media (max-width: 900px) {
-  .main { padding: 16px 14px 64px; }
   .page-head { align-items: flex-start; }
   table { font-size: var(--fs-caption); }
 }
@@ -661,26 +643,6 @@ kbd, .kbd {
 }
 .sev-bar-row { display: flex; height: 8px; border-radius: 4px; overflow: hidden; }
 .sev-seg { height: 100%; }
-.sev-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--fs-caption); color: var(--muted); }
-
-/* ═══ очередь работы ═══ */
-.work-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--hairline);
-}
-.work-row:last-child { border-bottom: none; }
-.work-kind {
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  min-width: 92px;
-}
-.work-since { font-family: var(--font-mono); font-size: var(--fs-caption); color: var(--muted); }
 .assign-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
 
 /* ═══ всплывающие слои ═══ */
@@ -721,7 +683,6 @@ kbd, .kbd {
   z-index: 60;
   animation: slide-in var(--dur) var(--ease);
 }
-.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 
 @keyframes fade { from { opacity: 0; } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
@@ -950,10 +911,7 @@ kbd, .kbd {
   gap: 9px;
 }
 .date-range { display: flex; gap: 8px; align-items: center; }
-.lang-switch { display: flex; gap: 3px; }
-.build-tag { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--ink-faint); padding: 10px 9px 0; }
 .danger-card { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.muted-card { opacity: 0.62; }
 
 /* различия версий */
 .diff-block { display: grid; gap: 10px; }
@@ -1098,12 +1056,6 @@ kbd, .kbd {
   background: var(--primary-soft);
   color: var(--primary);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
-}
-.triage-count {
-  padding: 9px 12px;
-  font-size: var(--fs-caption);
-  color: var(--muted);
-  border-bottom: 1px solid var(--hairline);
 }
 .triage-list { display: flex; flex-direction: column; padding: 6px; gap: 2px; }
 
@@ -1305,28 +1257,6 @@ kbd, .kbd {
   align-items: start;
   margin-bottom: var(--gap);
 }
-.duty-now, .duty-figures { display: grid; gap: var(--gap); align-content: start; }
-
-.duty-alarm {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px 18px;
-  border-radius: var(--r-md);
-  border: 1px solid color-mix(in srgb, var(--sev-severe) 45%, transparent);
-  background: linear-gradient(90deg, var(--danger-soft), transparent 60%), var(--card);
-  color: var(--text);
-}
-.duty-alarm:hover { text-decoration: none; border-color: var(--sev-severe); }
-.duty-alarm-num {
-  font-family: var(--font-mono);
-  font-size: var(--fs-stat);
-  font-weight: 600;
-  color: var(--sev-severe-text);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-.duty-alarm-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .duty-alarm-text .hint {
   margin: 0;
   white-space: nowrap;
@@ -1346,7 +1276,6 @@ kbd, .kbd {
 }
 .duty-row:last-child { border-bottom: none; }
 a.duty-row:hover { text-decoration: none; color: var(--text); }
-.duty-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border-strong); flex: none; }
 
 @media (max-width: 1200px) {
   .duty { grid-template-columns: 1fr; }
@@ -1635,11 +1564,6 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   font-size: var(--fs-small);
 }
 
-.crisis-start {
-  margin-left: auto;
-  font-size: var(--fs-small);
-}
-
 @media print {
   .crisis-bar,
   .crisis-start {
@@ -1711,13 +1635,6 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   max-width: 68ch;
   font-size: var(--fs-small);
   color: var(--text-2, var(--text));
-}
-
-/* число когорты крупно и моноширинным: на него и смотрят, сужая условия */
-.stat-num {
-  font-family: var(--font-mono);
-  font-size: var(--fs-stat, 28px);
-  font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -2112,3 +2029,19 @@ button.preview-option.on {
 tbody tr.row-active { background: var(--surface-2); }
 tbody tr.row-active td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
 tbody tr[tabindex] { cursor: pointer; }
+
+/*
+ * Строка списка под клавиатурой.
+ *
+ * Обычное кольцо фокуса рисуется поверх границ ячеек и на строке высотой в
+ * тридцать восемь пикселей выглядит как ошибка вёрстки. Здесь фокус
+ * показывается тем же способом, что и выбор, — полосой слева и поверхностью,
+ * — но полоса янтарная: «вы здесь» это ровно то, что требует внимания.
+ */
+tbody tr[tabindex]:focus-visible {
+  outline: none;
+  background: var(--surface-2);
+}
+tbody tr[tabindex]:focus-visible td:first-child {
+  box-shadow: inset 2px 0 0 var(--focus);
+}

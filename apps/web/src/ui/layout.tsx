@@ -80,13 +80,7 @@ export function Page({
 
   return (
     <Ctx.Provider value={{ contextOpen, setContextOpen }}>
-      {/*
-        Абсолютное растягивание — приём на время переноса: рабочая область
-        сохраняет прежние поля для ещё не перенесённых экранов, а этот
-        занимает её целиком и заводит собственную прокрутку. Когда наследия
-        не останется, поля уйдут из .main, а отсюда — absolute.
-      */}
-      <div className="absolute inset-0 flex min-h-0 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <header
           className={cx(
             "shrink-0 px-7 max-[900px]:px-4",
@@ -96,12 +90,24 @@ export function Page({
           {crumbs ? <div className="mb-1.5 flex items-center gap-1.5 text-caption text-muted">{crumbs}</div> : null}
           <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
             <div className="min-w-0">
-              <h1 className="m-0 flex items-baseline gap-2.5 font-display text-page font-semibold leading-tight tracking-[-0.022em]">
-                <span className="text-balance">{title}</span>
+              {/*
+                Число стоит рядом с заголовком, а не внутри него.
+
+                Внутри оно попадало в текст заголовка целиком: диктор читал
+                «Пациенты восемь тысяч сто восемьдесят девять» как название
+                экрана, а смоук-тесты сверяли заголовок с константой и
+                спотыкались о меняющееся число. Заголовок — имя экрана,
+                число — сведения о его содержимом; это разные вещи, и
+                разметка теперь так и говорит.
+              */}
+              <div className="flex items-baseline gap-2.5">
+                <h1 className="m-0 text-balance font-display text-page font-semibold leading-tight tracking-[-0.022em]">
+                  {title}
+                </h1>
                 {count !== undefined && count !== null ? (
-                  <span className="font-mono text-section font-normal tabular-nums text-faint">{count}</span>
+                  <span className="font-mono text-section tabular-nums text-faint">{count}</span>
                 ) : null}
-              </h1>
+              </div>
               {sub ? <p className="m-0 mt-1 max-w-[70ch] text-small text-muted">{sub}</p> : null}
             </div>
             {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}

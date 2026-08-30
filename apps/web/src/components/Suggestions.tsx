@@ -7,6 +7,8 @@ import { useLang } from "../lang";
 import type { UiKey } from "@quizzy/shared";
 import { useResource } from "../useResource";
 import { useAction } from "../ui";
+import { Panel } from "../ui/layout";
+import { Button, Input } from "../ui/primitives";
 
 /**
  * Предложения правил.
@@ -32,18 +34,13 @@ export function Suggestions() {
   if (!items.length) return null;
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <h3>{ut("ds.title")}</h3>
-        <span className="muted">{ut("ds.sub")}</span>
-      </div>
-
+    <Panel title={ut("ds.title")} actions={<span className="text-caption text-muted">{ut("ds.sub")}</span>}>
       <div className="suggestions">
         {items.map((hit: RuleHit) => (
           <article key={hit.id} className="suggestion">
             <div className="row tight">
               <strong>{hit.ruleTitle}</strong>
-              <span className="muted">
+              <span className="text-muted">
                 {ut("ds.version")} {hit.ruleVersion} · {dateTime(hit.createdAt)}
               </span>
             </div>
@@ -57,19 +54,19 @@ export function Suggestions() {
               ))}
             </ul>
 
-            <p className="hint">
+            <p className="text-caption text-muted">
               {hit.explanation.actions.map((a) => actionText(a, ut)).join(" · ")}
             </p>
 
             {declining === hit.id ? (
               <div className="row tight">
-                <input
+                <Input
                   autoFocus
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder={ut("ds.whyDecline")}
                 />
-                <button
+                <Button
                   disabled={busy || !note.trim()}
                   onClick={() =>
                     void run(async () => {
@@ -81,15 +78,15 @@ export function Suggestions() {
                   }
                 >
                   {ut("ds.decline")}
-                </button>
-                <button className="ghost" onClick={() => setDeclining(null)}>
+                </Button>
+                <Button variant="quiet" onClick={() => setDeclining(null)}>
                   {ut("common.cancel")}
-                </button>
+                </Button>
               </div>
             ) : (
               <div className="row tight">
-                <button
-                  className="primary"
+                <Button
+                  variant="primary"
                   disabled={busy}
                   onClick={() =>
                     void run(async () => {
@@ -99,16 +96,16 @@ export function Suggestions() {
                   }
                 >
                   {ut("ds.accept")}
-                </button>
-                <button disabled={busy} onClick={() => setDeclining(hit.id)}>
+                </Button>
+                <Button disabled={busy} onClick={() => setDeclining(hit.id)}>
                   {ut("ds.decline")}
-                </button>
+                </Button>
               </div>
             )}
           </article>
         ))}
       </div>
-    </section>
+    </Panel>
   );
 }
 

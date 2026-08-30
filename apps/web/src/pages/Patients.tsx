@@ -7,7 +7,7 @@ import { versionMarks } from "../charts/marks";
 import { Hint } from "../components/Hint";
 import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
-import { Avatar, DataTable, Loading, PageHead, Search, useAction, useUrlState } from "../ui";
+import { Avatar, DataTable, Loading, Search, useAction, useUrlState } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
@@ -157,15 +157,14 @@ export function PatientDynamics() {
   if (!data) return <Loading rows={5} />;
 
   return (
-    <>
-      <PageHead
-        title={data.fullName}
-        sub={data.email}
-        crumbs={<Link to="/patients">{ut("patients.all")}</Link>}
-        actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>{ut("patients.summary")}</Link>}
-      />
-
-      {data.surveys.length === 0 ? <p className="muted">{ut("pt.noCompleted")}</p> : null}
+    <Page
+      title={data.fullName}
+      sub={data.email}
+      count={data.surveys.length || null}
+      crumbs={<Link to="/patients">{ut("patients.all")}</Link>}
+      actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>{ut("patients.summary")}</Link>}
+    >
+      {data.surveys.length === 0 ? <p className="text-muted">{ut("pt.noCompleted")}</p> : null}
 
       {data.surveys.map((sv) => (
         <div key={sv.surveyId}>
@@ -287,7 +286,7 @@ export function PatientDynamics() {
           </div>
         </div>
       ))}
-    </>
+    </Page>
   );
 }
 

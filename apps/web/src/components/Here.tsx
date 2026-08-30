@@ -25,7 +25,7 @@ export function Here({ resource }: { resource: string }) {
           <Avatar key={o.id} name={o.name} size={22} />
         ))}
       </div>
-      <span className="muted">
+      <span className="text-muted">
         {others.length === 1 ? others[0]!.name : `${ut("here.also")} ${others.length}`}
       </span>
     </div>

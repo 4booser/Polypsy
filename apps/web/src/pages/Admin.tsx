@@ -5,7 +5,7 @@ import { useResource } from "../useResource";
 import { Devices } from "../components/Devices";
 import { useAuth } from "../auth";
 import { dateTime } from "../format";
-import { Loading, PageHead, Search, useAction } from "../ui";
+import { Loading, Search, useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select, SectionLabel, Tag, Textarea } from "../ui/primitives";
 import { cx } from "../ui/cx";
@@ -242,9 +242,7 @@ export function Users() {
   );
 
   return (
-    <>
-      <PageHead title={ut("adm.accountsTitle")} sub={ut("adm.accountsSub")} />
-
+    <Page title={ut("adm.accountsTitle")} sub={ut("adm.accountsSub")} count={users.length}>
       <Panel title={ut("adm.newUser")}>
         <div className="flex flex-wrap items-end gap-3">
           <Field label={ut("adm.lastName")} className="min-w-[140px] flex-1">
@@ -348,7 +346,7 @@ export function Users() {
           </table>
         </div>
       </Panel>
-    </>
+    </Page>
   );
 }
 

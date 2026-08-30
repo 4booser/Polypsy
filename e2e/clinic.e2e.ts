@@ -84,7 +84,7 @@ test("запись приёма сохраняется, подписываетс
   await page.locator("table tbody tr td a").first().click();
   await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
-  const notes = page.locator(".card").filter({ hasText: "Записи приёма" }).first();
+  const notes = page.locator("[data-panel], .card").filter({ hasText: "Записи приёма" }).first();
   await expect(notes).toBeVisible();
 
   const text = `Беседа ${Date.now()}`;
@@ -116,7 +116,7 @@ test("план безопасности составляется и сохран
   await page.locator("table tbody tr td a").first().click();
   await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
-  const card = page.locator(".card").filter({ hasText: "План безопасности" }).first();
+  const card = page.locator("[data-panel], .card").filter({ hasText: "План безопасности" }).first();
   await expect(card).toBeVisible();
 
   await card.getByRole("button", { name: /Составить план|Пересмотреть/ }).click();
@@ -143,13 +143,13 @@ test("цель лечения ставится измеримо и показы�
   await page.locator("table tbody tr td a").first().click();
   await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
-  const card = page.locator(".card").filter({ hasText: "Цели лечения" }).first();
+  const card = page.locator("[data-panel], .card").filter({ hasText: "Цели лечения" }).first();
   await expect(card).toBeVisible();
 
   await card.getByRole("button", { name: "Поставить цель" }).click();
-  await card.locator("#goal-survey").selectOption({ index: 1 });
-  await card.locator("#goal-scale").selectOption({ index: 1 });
-  await card.locator("#goal-target").fill("0.1");
+  await card.getByLabel("Методика").selectOption({ index: 1 });
+  await card.getByLabel("Шкала").selectOption({ index: 1 });
+  await card.getByLabel("Целевое значение").fill("0.1");
   await card.getByRole("button", { name: "Поставить", exact: true }).click();
 
   const goal = card.locator(".goal").first();
@@ -172,7 +172,7 @@ test("консилиум собирает мнения и фиксирует р�
   await page.locator("table tbody tr td a").first().click();
   await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
-  const card = page.locator(".card").filter({ hasText: "Консилиум" }).first();
+  const card = page.locator("[data-panel], .card").filter({ hasText: "Консилиум" }).first();
   await expect(card).toBeVisible();
 
   const reason = `Повод ${Date.now()}`;

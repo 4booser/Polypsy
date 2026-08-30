@@ -86,7 +86,7 @@ test("шаблон маршрута собирается в редакторе",
   await page.getByRole("link", { name: "Новый маршрут" }).click();
 
   const name = `Смоук-маршрут ${Date.now()}`;
-  const title = page.locator(".field").filter({ hasText: "Название" }).first();
+  const title = page.locator("[data-field], .field").filter({ hasText: "Название" }).first();
   await title.getByPlaceholder("по-русски").fill(name);
 
   const step = page.locator(".pwe-step").first();
@@ -113,7 +113,7 @@ test("человек ставится на маршрут из своей кар
   await page.locator("table tbody tr td a").first().click();
   await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
-  const card = page.locator(".card").filter({ hasText: "Маршруты помощи" }).first();
+  const card = page.locator("[data-panel], .card").filter({ hasText: "Маршруты помощи" }).first();
   await expect(card).toBeVisible();
 
   const select = card.getByLabel("Поставить на маршрут");
