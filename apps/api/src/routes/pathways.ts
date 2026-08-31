@@ -16,7 +16,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /** Конец N-го дня от даты: срок истекает вечером, а не в момент старта */
 function endOfDay(from: Date, days: number): string {
@@ -26,7 +26,15 @@ function endOfDay(from: Date, days: number): string {
 }
 
 export const pathwayRoutes = new Hono<AppEnv>();
-pathwayRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+pathwayRoutes.use("*", requireAuth, requireStaff, requirePermission("pathways.manage"));
 
 /**
  * Маршруты помощи.

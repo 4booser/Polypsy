@@ -9,11 +9,19 @@ import { fullNameOf } from "../lib/auth";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { variance } from "../lib/stats";
 import { accessiblePatientIds } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
 
 export const goalRoutes = new Hono<AppEnv>();
-goalRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+goalRoutes.use("*", requireAuth, requireStaff, requirePermission("goals.manage"));
 
 /**
  * Цели лечения.

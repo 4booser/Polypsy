@@ -18,7 +18,7 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertSurveyAccess, isStaff } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const responseRoutes = new Hono<AppEnv>();
 
@@ -299,7 +299,7 @@ responseRoutes.get("/me/responses", async (c) => {
 });
 
 /** Все прохождения методики — админам */
-responseRoutes.get("/surveys/:id/responses", requireStaff, async (c) => {
+responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("patients.read"), async (c) => {
   await assertSurveyAccess(c.get("user"), c.req.param("id"));
 
   // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».

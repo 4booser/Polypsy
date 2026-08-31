@@ -1,15 +1,16 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import type { SafetyPlanContent } from "@quizzy/shared";
+import type { Permission, SafetyPlanContent } from "@quizzy/shared";
 import { db } from "../db";
 import { safetyPlans, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
-import { notFound, parseBody } from "../lib/http";
+import { forbidden, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
 import { requireAuth, type AppEnv } from "../middleware/auth";
+import { hasPermission } from "../lib/permissions";
 import { isStaff } from "../lib/scope";
 
 export const safetyRoutes = new Hono<AppEnv>();
@@ -50,6 +51,26 @@ function readPlan(row: typeof safetyPlans.$inferSelect, authorName: string) {
   };
 }
 
+/*
+ * Права здесь проверяются внутри обработчика, а не строкой middleware, и
+ * порядок двух проверок — часть защиты, а не деталь оформления.
+ *
+ * Первым отвечает isStaff, и отвечает «не найдено». Пациенту нельзя узнать
+ * по коду отказа, что план у него заведён: 403 означал бы «есть, но не
+ * покажем», а 404 не означает ничего. Middleware ответило бы 403 раньше, чем
+ * очередь дойдёт до isStaff, — так и вышло с первой редакцией, и это поймал
+ * тест «чужой план пациенту не отдаётся».
+ *
+ * Вторым — право, и уже честным 403: сотруднику скрывать нечего, ему надо
+ * знать, чего не хватает.
+ */
+async function assertSafetyStaff(c: Context<AppEnv>, permission: Permission) {
+  if (!isStaff(c.get("user"))) notFound("err.safetyPlanNotFound");
+  if (!(await hasPermission(c.get("user"), permission))) {
+    forbidden("err.permissionRequired", { permission });
+  }
+}
+
 /** Свой план: пациент открывает его сам, в том числе с телефона */
 safetyRoutes.get("/me", async (c) => {
   const user = c.get("user");
@@ -67,7 +88,7 @@ safetyRoutes.get("/me", async (c) => {
 
 safetyRoutes.get("/patients/:userId", async (c) => {
   const staff = c.get("user");
-  if (!isStaff(staff)) notFound("err.safetyPlanNotFound");
+  await assertSafetyStaff(c, "patients.read");
   const userId = c.req.param("userId");
 
   const allowed = await accessiblePatientIds(staff);
@@ -95,7 +116,7 @@ safetyRoutes.get("/patients/:userId", async (c) => {
 
 safetyRoutes.put("/patients/:userId", async (c) => {
   const staff = c.get("user");
-  if (!isStaff(staff)) notFound("err.safetyPlanNotFound");
+  await assertSafetyStaff(c, "safety.manage");
   const userId = c.req.param("userId");
 
   const allowed = await accessiblePatientIds(staff);

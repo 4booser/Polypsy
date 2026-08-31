@@ -9,10 +9,18 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, parseQuery } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
 import { queryFingerprints, stems } from "../lib/searchIndex";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const searchRoutes = new Hono<AppEnv>();
-searchRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+searchRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
 /**
  * Поиск по записям приёма.

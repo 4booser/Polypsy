@@ -16,10 +16,18 @@ import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const timelineRoutes = new Hono<AppEnv>();
-timelineRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+timelineRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
 /**
  * Хронология пациента: всё, что с ним происходило, на одной оси.

@@ -21,11 +21,20 @@ const batchQuery = z.object({
   from: z.string().optional(),
   to: z.string().optional(),
 });
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
 
 export const conclusionRoutes = new Hono<AppEnv>();
 
+/*
+ * Ради этого разделения справочник прав и заводился: стажёр ведёт приёмы и
+ * готовит заключения, но не подписывает их, а наставник подписывает за
+ * отделение. Одно право на весь файл сделало бы это разделение невозможным.
+ *
+ * Пакет для подшивки читает подписанные заключения поимённо — это чтение
+ * карты, и закрыт он правом на пациентов, а не правом готовить документы:
+ * подшивает дело тот, кто его ведёт, и заключения он при этом не пишет.
+ */
 conclusionRoutes.use("*", requireAuth, requireStaff);
 
 const saveSchema = z.object({
@@ -83,7 +92,7 @@ async function history(responseId: string) {
   }));
 }
 
-conclusionRoutes.get("/responses/:id/conclusion", async (c) => {
+conclusionRoutes.get("/responses/:id/conclusion", requirePermission("patients.read"), async (c) => {
   await assertResponse(c.get("user"), c.req.param("id"));
   const versions = await history(c.req.param("id"));
   return c.json({ current: versions[0] ?? null, versions });
@@ -93,7 +102,7 @@ conclusionRoutes.get("/responses/:id/conclusion", async (c) => {
  * Сохранение текста. Пока последняя версия — черновик, она правится на
  * месте; после подписи правка создаёт новую версию: подписанное неизменно.
  */
-conclusionRoutes.put("/responses/:id/conclusion", async (c) => {
+conclusionRoutes.put("/responses/:id/conclusion", requirePermission("conclusions.write"), async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
   await assertResponse(c.get("user"), responseId);
@@ -145,7 +154,7 @@ conclusionRoutes.put("/responses/:id/conclusion", async (c) => {
  * Подпись фиксирует снимок. Подписывает только автор осознанным действием;
  * дальше текст менять нельзя — только новая версия поверх.
  */
-conclusionRoutes.post("/responses/:id/conclusion/sign", async (c) => {
+conclusionRoutes.post("/responses/:id/conclusion/sign", requirePermission("conclusions.sign"), async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
   await assertResponse(c.get("user"), responseId);
@@ -194,7 +203,7 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", async (c) => {
  * Только подписанные. Черновик заключения — это мысль вслух, и попасть в дело
  * он не должен: подшитый черновик потом не отличить от решения.
  */
-conclusionRoutes.get("/batch", async (c) => {
+conclusionRoutes.get("/batch", requirePermission("patients.read"), async (c) => {
   const user = c.get("user");
   const { unit, from, to } = parseQuery(c, batchQuery);
   const lang = langOf(c);
