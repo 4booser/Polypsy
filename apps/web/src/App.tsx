@@ -52,6 +52,8 @@ const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const WorklistPage = lazy(() => import("./pages/Worklist"));
+const TodayPage = lazy(() => import("./pages/Today"));
+const SchedulePage = lazy(() => import("./pages/Schedule"));
 const UnitReportPage = lazy(() => import("./pages/UnitReport"));
 const ConclusionBatch = lazy(() => import("./pages/ConclusionBatch"));
 const Cohorts = lazy(() => import("./pages/Cohorts"));
@@ -92,6 +94,7 @@ export default function App() {
   const [openAlerts, setOpenAlerts] = useState(0);
   const [openReferrals, setOpenReferrals] = useState(0);
   const [worklistCount, setWorklistCount] = useState(0);
+  const [todayLeft, setTodayLeft] = useState(0);
   /*
    * Тема хранится явно: тёмная по умолчанию, но в кабинете при дневном свете
    * она неудобна, а системная настройка на рабочей станции часто не отражает
@@ -186,6 +189,19 @@ export default function App() {
       // направления в том же такте: незакрытое направление ждёт так же долго
       api.referrals().then((r) => setOpenReferrals(r.items.length)).catch(() => {});
       api.worklist().then((w) => setWorklistCount(w.total)).catch(() => {});
+      /*
+       * В бейдже — сколько ещё не принято, а не сколько записано. Число,
+       * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
+       * же самое, что утром, и смотреть на него перестают.
+       */
+      api
+        .today()
+        .then((d) =>
+          setTodayLeft(
+            d.items.filter((a) => a.status === "booked" || a.status === "confirmed").length,
+          ),
+        )
+        .catch(() => {});
     };
     load();
     /*
@@ -232,7 +248,7 @@ export default function App() {
   return (
     <CrisisProvider>
     <div className="flex min-h-screen">
-      <Rail counts={{ worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} collapsed={!railOpen}>
+      <Rail counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} collapsed={!railOpen}>
         <div className="mt-3 flex flex-col gap-2 border-t border-hairline pt-3">
           {railOpen ? (
             <>
@@ -351,6 +367,8 @@ export default function App() {
           <Route path="/surveillance" element={<Surveillance />} />
           <Route path="/alerts" element={<Alerts />} />
             <Route path="/worklist" element={<WorklistPage />} />
+            <Route path="/today" element={<TodayPage />} />
+            <Route path="/my-schedule" element={<SchedulePage />} />
             <Route path="/unit-report" element={<UnitReportPage />} />
             <Route path="/conclusion-batch" element={<ConclusionBatch />} />
             <Route path="/cohorts" element={<Cohorts />} />

@@ -96,6 +96,8 @@ const SCREENS = [
   "/users",
   "/consent-text",
   "/permissions",
+  "/today",
+  "/my-schedule",
 ];
 
 test("в украинском режиме не остаётся русских слов", async ({ page }) => {

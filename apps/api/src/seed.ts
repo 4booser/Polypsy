@@ -8,12 +8,13 @@
  * Перед клиническим использованием методики нужно завести через интерфейс,
  * согласовав нормы и формулировки с правообладателем.
  */
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageAt, answerScore, computeProfile, computeScores, createSurveySchema, normalizeLocalized, t, type Answer } from "@quizzy/shared";
 import { client, db } from "./db";
 import { attachToCase } from "./lib/alertCases";
 import { syncBuiltinRole } from "./lib/permissions";
-import { decryptField, encryptPersonFields } from "./lib/crypto";
+import { syncSlots } from "./lib/schedule";
+import { decryptField, encryptField, encryptPersonFields } from "./lib/crypto";
 import {
   answerEvents,
   answers,
@@ -30,6 +31,12 @@ import {
   schedules,
   surveys,
   users,
+  appointments,
+  departmentPatients,
+  departments,
+  scheduleTemplates,
+  slots,
+  specialistProfiles,
   type UserRow,
 } from "./db/schema";
 import { hashPassword } from "./lib/auth";
@@ -1055,6 +1062,116 @@ async function seedSchedule() {
 }
 
 await seedSchedule();
+
+/**
+ * Отделение, расписание приёма и несколько приёмов на сегодня.
+ *
+ * Без этого экраны «Сегодня» и «Расписание приёма» показывают пустоту, и
+ * посмотреть на них до первой настоящей записи нельзя — а посмотреть надо
+ * раньше, чем в системе появится первый живой пациент.
+ */
+async function seedClinic() {
+  const existing = await db.select().from(departments).limit(1);
+  if (existing.length) return;
+
+  const departmentId = "dept-psy";
+  await db.insert(departments).values({
+    id: departmentId,
+    title: { uk: "Психологічне відділення", ru: "Психологическое отделение" },
+    timezone: "Europe/Kyiv",
+  });
+
+  await db.insert(specialistProfiles).values([
+    { userId: psy!.id, departmentId, position: "Психолог", room: "214", defaultSlotMinutes: 50 },
+    { userId: psy2!.id, departmentId, position: "Психолог", room: "216", defaultSlotMinutes: 50 },
+  ]);
+
+  // будни: утром первичные, днём повторные — так и построено расписание отдела
+  for (const specialist of [psy!, psy2!]) {
+    for (const weekday of [1, 2, 3, 4, 5]) {
+      await db.insert(scheduleTemplates).values([
+        {
+          id: crypto.randomUUID(),
+          specialistId: specialist.id,
+          weekday,
+          startsAt: "09:00",
+          endsAt: "12:00",
+          slotMinutes: 50,
+          kind: "primary",
+          capacity: 1,
+        },
+        {
+          id: crypto.randomUUID(),
+          specialistId: specialist.id,
+          weekday,
+          startsAt: "14:00",
+          endsAt: "17:00",
+          slotMinutes: 50,
+          kind: "repeat",
+          capacity: 1,
+        },
+      ]);
+    }
+    await syncSlots(specialist.id);
+  }
+
+  /*
+   * Приёмы на сегодня — в разных состояниях. Экран дня должен показывать
+   * картину дня, а не список одинаковых строк: кто-то уже принят, кто-то
+   * ждёт, кто-то не подтвердил.
+   */
+  const todaySlots = await db
+    .select()
+    .from(slots)
+    .where(
+      and(
+        eq(slots.specialistId, psy!.id),
+        sql`starts_at >= date_trunc('day', now() at time zone 'Europe/Kyiv') at time zone 'Europe/Kyiv'`,
+        sql`starts_at < (date_trunc('day', now() at time zone 'Europe/Kyiv') + interval '1 day') at time zone 'Europe/Kyiv'`,
+      ),
+    )
+    .orderBy(slots.startsAt);
+
+  const states = ["done", "arrived", "confirmed", "booked"] as const;
+  const reasons = [
+    "Не сплю третью неделю, тяжело собраться",
+    "После командировки трудно вернуться в обычный режим",
+    "Направил командир после разбора",
+    null,
+  ];
+  let n = 0;
+  for (const slot of todaySlots.slice(0, 4)) {
+    const person = pool[n];
+    if (!person) break;
+    await db.insert(appointments).values({
+      id: crypto.randomUUID(),
+      slotId: slot.id,
+      patientId: person.id,
+      specialistId: psy!.id,
+      kind: slot.kind === "repeat" ? "repeat" : "primary",
+      status: states[n]!,
+      reasonEnc: reasons[n] ? encryptField(reasons[n]!) : null,
+      bookedBy: person.id,
+      ...(states[n] === "arrived" || states[n] === "done"
+        ? { arrivedAt: new Date().toISOString() }
+        : {}),
+      ...(states[n] === "confirmed" ? { confirmedAt: new Date().toISOString() } : {}),
+    });
+    await db
+      .insert(departmentPatients)
+      .values({ departmentId, patientId: person.id, attachedVia: "visit" })
+      .onConflictDoNothing();
+    n += 1;
+  }
+
+  // один человек уже закреплён: пометка «без ведущего» должна отличать одних от других
+  if (pool[0]) {
+    await db.update(users).set({ leadSpecialistId: psy!.id }).where(eq(users.id, pool[0].id));
+  }
+
+  console.log(`  отделение: приём двух специалистов, приёмов на сегодня: ${n}`);
+}
+await seedClinic();
 
 /** Стартовый текст информированного согласия */
 async function seedConsent() {

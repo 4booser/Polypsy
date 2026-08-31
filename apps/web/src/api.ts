@@ -1,4 +1,7 @@
 import type {
+  AppointmentView,
+  ScheduleExceptionView,
+  ScheduleTemplateView,
   LocalizedText,
   SafetyPlan,
   SafetyPlanContent,
@@ -1140,4 +1143,65 @@ export const api = {
       byActor: { actorEmail: string; count: number }[];
       deniedCount: number;
     }>("/api/audit/summary"),
+
+  /* ── поликлиника ── */
+  today: (params: { date?: string; specialistId?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.date) q.set("date", params.date);
+    if (params.specialistId) q.set("specialistId", params.specialistId);
+    return request<{ date: string; items: AppointmentView[] }>(`/api/clinic/today?${q}`);
+  },
+  appointmentStatus: (id: string, status: "arrived" | "in_progress" | "done" | "no_show") =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/status`, {
+      method: "POST",
+      body: JSON.stringify({ status }),
+    }),
+  takeLead: (userId: string, take: boolean) =>
+    request<{ ok: true }>(`/api/clinic/patients/${userId}/lead`, {
+      method: "POST",
+      body: JSON.stringify({ take }),
+    }),
+  schedule: (specialistId?: string) => {
+    const q = specialistId ? `?specialistId=${encodeURIComponent(specialistId)}` : "";
+    return request<{
+      specialistId: string;
+      templates: ScheduleTemplateView[];
+      exceptions: ScheduleExceptionView[];
+      horizonWeeks: number;
+    }>(`/api/clinic/schedule${q}`);
+  },
+  saveSchedule: (templates: Omit<ScheduleTemplateView, "id">[]) =>
+    request<{ ok: true; added: number; removed: number; flagged: number }>("/api/clinic/schedule", {
+      method: "PUT",
+      body: JSON.stringify({ templates }),
+    }),
+  addScheduleException: (input: {
+    date: string;
+    kind: "off" | "extra";
+    startsAt?: string | null;
+    endsAt?: string | null;
+    slotMinutes?: number | null;
+    note?: string | null;
+  }) =>
+    request<{ id: string; added: number; removed: number; flagged: number }>(
+      "/api/clinic/schedule/exceptions",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  removeScheduleException: (id: string) =>
+    request<{ ok: true }>(`/api/clinic/schedule/exceptions/${id}`, { method: "DELETE" }),
+  departments: () =>
+    request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
+  specialists: (departmentId?: string) => {
+    const q = departmentId ? `?departmentId=${encodeURIComponent(departmentId)}` : "";
+    return request<{
+      items: {
+        userId: string;
+        fullName: string;
+        departmentId: string;
+        position: string | null;
+        room: string | null;
+        isLead: boolean;
+      }[];
+    }>(`/api/clinic/specialists${q}`);
+  },
 };

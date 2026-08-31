@@ -53,6 +53,8 @@ interface Group {
 }
 
 export interface RailCounts {
+  /** Сколько людей ещё не принято сегодня: счётчик убывает по ходу дня */
+  today?: number;
   worklist?: number;
   alerts?: number;
   referrals?: number;
@@ -64,6 +66,11 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       key: "nav.group.today",
       items: [
         { to: "/", key: "nav.dashboard", icon: <IconDashboard />, end: true },
+        /*
+         * «Сегодня» стоит вторым, сразу за сводкой: с него начинается
+         * рабочий день, и до него не должно быть прокрутки.
+         */
+        { to: "/today", key: "nav.today", icon: <IconClock />, badge: counts.today },
         { to: "/worklist", key: "nav.worklist", icon: <IconClock />, badge: counts.worklist },
         { to: "/alerts", key: "nav.cases", icon: <IconAlert />, badge: counts.alerts },
         { to: "/referrals", key: "nav.referrals", icon: <IconReferral />, badge: counts.referrals },
@@ -76,6 +83,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         { to: "/groups", key: "nav.groups", icon: <IconGroup /> },
         { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
         { to: "/pathways", key: "pw.title", icon: <IconRoute /> },
+        { to: "/my-schedule", key: "nav.reception", icon: <IconClock /> },
       ],
     },
     {
