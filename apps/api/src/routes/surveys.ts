@@ -7,7 +7,8 @@ import { responses, surveyVersions, surveys } from "../db/schema";
 import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { attachContent, createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
 import { audit } from "../lib/audit";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { hasPermission } from "../lib/permissions";
 import { assertGroupAccess, assertSurveyAccess, isStaff, surveyInUse, surveyScopeFilter } from "../lib/scope";
 import { patientVisibilityFilter } from "./access";
 import { hasGrant } from "../lib/scope";
@@ -156,12 +157,12 @@ surveyRoutes.get("/:id", async (c) => {
  * Проверка методики без сохранения — конструктор зовёт её перед публикацией.
  * Отдельным маршрутом, чтобы можно было проверить черновик, ничего не записав.
  */
-surveyRoutes.post("/validate", requireStaff, async (c) => {
+surveyRoutes.post("/validate", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const input = await parseBody(c.req.raw, createSurveySchema);
   return c.json({ issues: validateSurvey(input) });
 });
 
-surveyRoutes.post("/", requireStaff, async (c) => {
+surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const input = await parseBody(c.req.raw, createSurveySchema);
   // методику нельзя положить в чужую группу
   if (input.groupId) await assertGroupAccess(c.get("user"), input.groupId);
@@ -202,7 +203,7 @@ surveyRoutes.post("/", requireStaff, async (c) => {
   return c.json({ ...full, issues: validateSurvey(input) satisfies Issue[] }, 201);
 });
 
-surveyRoutes.patch("/:id", requireStaff, async (c) => {
+surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
   const input = await parseBody(c.req.raw, updateSurveySchema);
@@ -210,6 +211,23 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
 
   const existing = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
   if (!existing) notFound("err.surveyNotFound");
+
+  /*
+   * Смена статуса — это публикация или снятие с использования, и закрыта она
+   * своим правом, а не правом на правку.
+   *
+   * Проверка стоит внутри обработчика, а не строкой middleware, потому что
+   * маршрут один: правка и публикация приезжают одним PATCH. Закрыть весь
+   * маршрут правом surveys.publish значило бы запретить стажёру править
+   * черновик; оставить публикацию под surveys.edit значило бы, что право
+   * «публиковать» не закрывает публикацию — и экран прав врал бы, обещая
+   * разделение, которого нет.
+   */
+  if (input.status !== undefined && input.status !== existing.status) {
+    if (!(await hasPermission(c.get("user"), "surveys.publish"))) {
+      forbidden("err.permissionRequired", { permission: "surveys.publish" });
+    }
+  }
 
   const changesContent = !!(input.questions || input.sections || input.scales);
 
@@ -289,7 +307,7 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
 });
 
 /** Копия методики — штатный способ «отредактировать» методику, по которой уже есть данные */
-surveyRoutes.post("/:id/duplicate", requireStaff, async (c) => {
+surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edit"), async (c) => {
   await assertSurveyAccess(c.get("user"), c.req.param("id"));
   const source = await getSurvey(c.req.param("id"));
   if (!source) notFound("err.surveyNotFound");
@@ -406,7 +424,7 @@ surveyRoutes.post("/:id/duplicate", requireStaff, async (c) => {
 });
 
 /** История версий методики со счётчиком прохождений на каждой */
-surveyRoutes.get("/:id/versions", requireStaff, async (c) => {
+surveyRoutes.get("/:id/versions", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
 
@@ -434,7 +452,7 @@ surveyRoutes.get("/:id/versions", requireStaff, async (c) => {
  * полгода, глядя на две группы результатов, нужно уметь ответить: они
  * сопоставимы или между ними переписали ключ? Ответ — здесь.
  */
-surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, async (c) => {
+surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
 
@@ -459,7 +477,7 @@ surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, async (c) => {
  * положить рядом распечатку ключей и оригинал, поэтому ключи выводятся
  * ровно в том виде, в каком они напечатаны в пособии.
  */
-surveyRoutes.get("/:id/key", requireStaff, async (c) => {
+surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
   const survey = await getSurvey(id, null, langOf(c));
@@ -504,7 +522,7 @@ surveyRoutes.get("/:id/key", requireStaff, async (c) => {
 });
 
 /** Выгрузка методики в том виде, в каком её принимает конструктор */
-surveyRoutes.get("/:id/export", requireStaff, async (c) => {
+surveyRoutes.get("/:id/export", requireStaff, requirePermission("surveys.read"), async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
   const survey = await getSurvey(id, null, "uk", true);
@@ -526,7 +544,7 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
  * Импортированное всегда черновик: публикация — осознанное действие после
  * сверки ключей.
  */
-surveyRoutes.post("/import", requireStaff, async (c) => {
+surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const user = c.get("user");
   const body = await c.req.json().catch(() => null);
   if (!body || typeof body !== "object") badRequest("err.jsonExportExpected");
@@ -606,7 +624,7 @@ surveyRoutes.post("/import", requireStaff, async (c) => {
  * Физическое удаление возможно только с сервера: `bun run survey:purge`,
  * и только для уже снятой методики.
  */
-surveyRoutes.delete("/:id", requireStaff, async (c) => {
+surveyRoutes.delete("/:id", requireStaff, requirePermission("surveys.publish"), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   await assertSurveyAccess(user, id);
@@ -638,7 +656,7 @@ surveyRoutes.delete("/:id", requireStaff, async (c) => {
 });
 
 /** Возврат методики в работу. Снятие — решение обратимое, в этом и смысл. */
-surveyRoutes.post("/:id/restore", requireStaff, async (c) => {
+surveyRoutes.post("/:id/restore", requireStaff, requirePermission("surveys.publish"), async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
 

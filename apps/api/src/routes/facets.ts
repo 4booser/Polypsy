@@ -7,11 +7,19 @@ import { notFound, parseQuery } from "../lib/http";
 import { percent, round } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const facetRoutes = new Hono<AppEnv>();
 
-facetRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+facetRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /** П-1: страта меньше пяти наружу не выходит */
 const SMALL_CELL_FLOOR = 5;

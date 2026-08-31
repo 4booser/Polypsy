@@ -8,7 +8,7 @@ import { fullNameOf } from "../lib/auth";
 import { forbidden, notFound, parseBody } from "../lib/http";
 import { findUsableInvite, hashInviteToken, newInviteCode, newInviteToken } from "../lib/invites";
 import { assertGroupAccess, isStaff } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const inviteRoutes = new Hono<AppEnv>();
 
@@ -32,7 +32,15 @@ inviteRoutes.get("/preview/:token", async (c) => {
   });
 });
 
-inviteRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+inviteRoutes.use("*", requireAuth, requireStaff, requirePermission("invites.manage"));
 
 /** Приглашение привязано к батарее — права на него идут от группы батареи */
 async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string | null) {

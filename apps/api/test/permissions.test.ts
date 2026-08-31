@@ -269,32 +269,38 @@ describe("маршруты под правом", () => {
    * который разъедется с кодом. Здесь объявление становится обязательством —
    * маршрут, помеченный правом, обязан его требовать.
    *
-   * Проверяются маршруты без параметров в пути: подставлять правдоподобные
-   * идентификаторы значило бы проверять заодно и то, что данные найдены, а
-   * это другой вопрос. Маршруты с параметрами закрыты тем же middleware на
-   * весь набор, так что покрытие набора одним маршрутом честно.
+   * Проверяется каждый объявленный маршрут, а не только удобные для вызова.
+   * Первая версия проверки брала лишь читающие маршруты без параметров в
+   * пути — и права, у которых таких маршрутов нет вовсе (surveys.edit,
+   * surveys.publish — они закрывают только запись), оставались без страховки
+   * ровно там, где она нужнее.
+   *
+   * Идентификаторы в путях подставляются заведомо несуществующие. Это не
+   * упрощение, а ровно то, что надо проверить: requirePermission стоит до
+   * обработчика, поэтому отказ по праву обязан прийти раньше, чем кто-либо
+   * пойдёт искать данные. Если вместо 403 приходит 404, значит проверка
+   * права стоит не там.
    */
-  const CLOSED = Object.entries(ROUTE_DOCS)
-    .filter(([key, doc]) => doc.permission && key.startsWith("GET ") && !key.includes(":"))
-    .map(([key, doc]) => [key.slice("GET ".length), doc.permission!] as const);
+  const NOWHERE = "00000000-0000-4000-8000-000000000000";
 
-  test("у каждого объявленного права есть проверяемый маршрут", () => {
-    /*
-     * Иначе пробел молчит. Набор маршрутов закрыт одним middleware, поэтому
-     * достаточно одного проверяемого маршрута на право — но хотя бы один
-     * быть обязан, иначе объявление снова становится комментарием.
-     *
-     * Если очередной набор состоит только из маршрутов с параметрами, это
-     * повод завести в нём читающий маршрут без параметра, а не ослабить
-     * проверку.
-     */
-    const declared = new Set(
-      Object.values(ROUTE_DOCS).flatMap((d) => (d.permission ? [d.permission] : [])),
-    );
-    const covered = new Set(CLOSED.map(([, permission]) => permission));
-    const uncovered = [...declared].filter((p) => !covered.has(p));
-    expect(uncovered).toEqual([]);
-  });
+  const DECLARED = Object.entries(ROUTE_DOCS)
+    .filter(([, doc]) => doc.permission)
+    .map(([key, doc]) => {
+      const [method, path] = key.split(" ") as [string, string];
+      return {
+        key,
+        method,
+        url: path.replace(/:[^/]+/g, NOWHERE),
+        permission: doc.permission!,
+        /*
+         * Положительная половина — «с правом проходит» — выполняется только
+         * на читающих маршрутах. На пишущем она означала бы выполнить запись
+         * ради проверки отказа; отказ и так доказан отрицательной половиной,
+         * а платить за него изменением данных незачем.
+         */
+        probeAllowed: method === "GET",
+      };
+    });
 
   test("объявленные права есть хотя бы у одного маршрута", () => {
     /*
@@ -302,11 +308,20 @@ describe("маршруты под правом", () => {
      * и перевод маршрутов остался бы без страховки ровно тогда, когда она
      * нужнее всего.
      */
-    expect(CLOSED.length).toBeGreaterThan(0);
+    expect(DECLARED.length).toBeGreaterThan(10);
   });
 
-  for (const [path, permission] of CLOSED) {
-    test(`${path} закрыт без права ${permission}`, async () => {
+  test("у каждого объявленного права есть проверяемый маршрут", () => {
+    // иначе право объявлено, но ни одним маршрутом не закрыто, и пробел молчит
+    const declared = new Set(
+      Object.values(ROUTE_DOCS).flatMap((d) => (d.permission ? [d.permission] : [])),
+    );
+    const covered = new Set(DECLARED.map((r) => r.permission));
+    expect([...declared].filter((p) => !covered.has(p))).toEqual([]);
+  });
+
+  for (const route of DECLARED) {
+    test(`${route.key} закрыт без права ${route.permission}`, async () => {
       const person = await makeUser("admin", `perm-route-${crypto.randomUUID()}@test`);
       // встроенная роль снимается: проверяем именно узкую роль без нужного права
       await db.delete(staffRoles).where(eq(staffRoles.userId, person.id));
@@ -315,13 +330,26 @@ describe("маршруты под правом", () => {
       await db.insert(rolePermissions).values({ roleId: id, permission: "patients.read" });
       await db.insert(staffRoles).values({ userId: person.id, roleId: id });
 
-      const denied = await api(path, person.token);
+      const init =
+        route.method === "GET"
+          ? {}
+          : { method: route.method, body: JSON.stringify({}) };
+
+      const denied = await api(route.url, person.token, init);
       expect(denied.status).toBe(403);
+      /*
+       * Отказ должен прийти именно по праву. Без этой строки проверку
+       * устраивал бы любой чужой 403 — от проверки группы, от учётки только
+       * на чтение, — и забытый requirePermission выглядел бы как рабочий.
+       */
+      expect(String(denied.body?.error ?? "")).toContain(route.permission);
+
+      if (!route.probeAllowed) return;
 
       // а с правом — проходит: иначе тест доказывал бы только то, что
       // маршрут сломан
-      await db.insert(rolePermissions).values({ roleId: id, permission });
-      const allowed = await api(path, person.token);
+      await db.insert(rolePermissions).values({ roleId: id, permission: route.permission });
+      const allowed = await api(route.url, person.token, init);
       expect(allowed.status).not.toBe(403);
     });
   }
