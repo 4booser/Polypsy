@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { SERIES } from "../format";
 import { Panel } from "../ui/layout";
+import { NoData } from "../ui/primitives";
 
 /**
  * Диаграммы консоли — plain SVG без библиотек.
@@ -135,7 +136,7 @@ export function LineChart({
     setHover(Math.min(n - 1, Math.max(0, Math.round(share * (n - 1)))));
   };
 
-  if (!all.length) return <p className="muted">Данных пока нет</p>;
+  if (!all.length) return <NoData />;
 
   const at = hover ?? -1;
   const label = series[0]?.points[at]?.x;
@@ -318,7 +319,7 @@ export function BarList({
   unit?: string;
   max?: number;
 }) {
-  if (!items.length) return <p className="muted">Данных пока нет</p>;
+  if (!items.length) return <NoData />;
   const top = max ?? Math.max(...items.map((i) => i.value), 1);
   return (
     <div style={{ display: "grid", gap: 10 }}>
@@ -362,7 +363,7 @@ export function Donut({
   size?: number;
 }) {
   const total = slices.reduce((s, x) => s + x.value, 0);
-  if (!total) return <p className="muted">Данных пока нет</p>;
+  if (!total) return <NoData />;
   const r = size / 2 - 10;
   const inner = r * 0.62;
   const c = size / 2;

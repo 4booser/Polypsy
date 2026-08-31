@@ -171,7 +171,7 @@ export function Groups() {
                         await load();
                       }}
                     >
-                      <option value="">— выберите сотрудника —</option>
+                      <option value="">{ut("sel.pickStaff")}</option>
                       {staff
                         .filter((u) => !g.admins.some((a) => a.userId === u.id))
                         .map((u) => (

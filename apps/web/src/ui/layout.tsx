@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { cx } from "./cx";
 import { SectionLabel } from "./primitives";
+import { useLang } from "../lang";
 
 /*
  * Рамка экрана.
@@ -67,6 +68,7 @@ export function Page({
   children: ReactNode;
   className?: string;
 }) {
+  const { ut } = useLang();
   const [contextOpen, setContextOpen] = useState(true);
 
   // на узком экране панель контекста не помещается рядом — она закрыта
@@ -151,7 +153,7 @@ export function Page({
                 <button
                   type="button"
                   onClick={() => setContextOpen(false)}
-                  aria-label="Закрыть панель"
+                  aria-label={ut("ui.closePanel")}
                   className="min-h-0 rounded-sm border-0 bg-transparent p-1 text-faint hover:text-text"
                 >
                   <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8}>

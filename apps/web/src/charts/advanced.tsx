@@ -1,5 +1,7 @@
 import { SERIES, severityColor } from "../format";
 import type { Severity } from "@quizzy/shared";
+import { NoData } from "../ui/primitives";
+import { useLang } from "../lang";
 
 /** Продвинутые формы: профиль, разброс, рассеяние, тепловая карта, воронка, знаковые столбики */
 
@@ -8,7 +10,7 @@ import type { Severity } from "@quizzy/shared";
 export function Radar({
   axes,
   compare,
-  labels = ["Текущий", "Первый"],
+  labels,
   size = 320,
 }: {
   axes: { label: string; value: number }[];
@@ -16,7 +18,11 @@ export function Radar({
   labels?: string[];
   size?: number;
 }) {
-  if (axes.length < 3) return <p className="muted">Профиль строится от трёх субшкал</p>;
+  const { ut } = useLang();
+  /* значение по умолчанию берётся здесь, а не в сигнатуре: словарь читается
+     хуком, а хук в значении параметра вызвать нельзя */
+  const names = labels ?? [ut("chart.current"), ut("chart.first")];
+  if (axes.length < 3) return <p className="muted">{ut("chart.radarHint")}</p>;
   const c = size / 2;
   const r = c - 62;
   const step = (Math.PI * 2) / axes.length;
@@ -63,8 +69,8 @@ export function Radar({
       </svg>
       {compare ? (
         <div className="legend">
-          <span><i className="dot" style={{ background: SERIES[0] }} /> {labels[0]}</span>
-          <span><i className="dot" style={{ background: SERIES[1] }} /> {labels[1]}</span>
+          <span><i className="dot" style={{ background: SERIES[0] }} /> {names[0]}</span>
+          <span><i className="dot" style={{ background: SERIES[1] }} /> {names[1]}</span>
         </div>
       ) : null}
       <p className="hint" style={{ marginTop: 8 }}>
@@ -98,7 +104,8 @@ export function boxOf(label: string, values: number[]): Box | null {
 }
 
 export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: Box[]; categorical?: boolean; height?: number }) {
-  if (!boxes.length) return <p className="muted">Данных пока нет</p>;
+  const { ut } = useLang();
+  if (!boxes.length) return <NoData />;
   const W = 900;
   const top = Math.max(...boxes.map((b) => b.max), 1);
   const ph = height - 46;
@@ -145,7 +152,7 @@ export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: B
           );
         })}
       </svg>
-      <p className="hint">Ящик — межквартильный размах, жирная черта — медиана, усы — крайние значения</p>
+      <p className="hint">{ut("chart.boxHint")}</p>
     </div>
   );
 }
@@ -165,7 +172,8 @@ export function Scatter({
   xThreshold?: number;
   height?: number;
 }) {
-  if (!points.length) return <p className="muted">Данных пока нет</p>;
+  const { ut } = useLang();
+  if (!points.length) return <NoData />;
   const W = 900;
   const xMax = Math.max(...points.map((p) => p.x), xThreshold ?? 0, 1);
   const yMax = Math.max(...points.map((p) => p.y), 1);
@@ -188,7 +196,7 @@ export function Scatter({
         {xThreshold !== undefined ? (
           <>
             <line x1={xAt(xThreshold)} x2={xAt(xThreshold)} y1={14} y2={14 + ph} stroke="var(--sev-severe)" strokeDasharray="4 3" />
-            <text x={xAt(xThreshold) + 5} y={26} fontSize="10" fill="var(--sev-severe)">порог</text>
+            <text x={xAt(xThreshold) + 5} y={26} fontSize="10" fill="var(--sev-severe)">{ut("chart.threshold")}</text>
           </>
         ) : null}
         {points.map((p, i) => (
@@ -219,7 +227,8 @@ export function Scatter({
 /* ─────────── тепловая карта ─────────── */
 
 export function Heatmap({ rows, columns, unit = "%" }: { rows: { label: string; cells: number[] }[]; columns: string[]; unit?: string }) {
-  if (!rows.length) return <p className="muted">Данных пока нет</p>;
+  const { ut } = useLang();
+  if (!rows.length) return <NoData />;
   const max = Math.max(...rows.flatMap((r) => r.cells), 1);
   return (
     <div className="scroll-x">
@@ -255,7 +264,7 @@ export function Heatmap({ rows, columns, unit = "%" }: { rows: { label: string; 
           ))}
         </tbody>
       </table>
-      <p className="hint">Насыщенность кодирует величину; значение продублировано числом</p>
+      <p className="hint">{ut("chart.heatHint")}</p>
     </div>
   );
 }
@@ -263,7 +272,8 @@ export function Heatmap({ rows, columns, unit = "%" }: { rows: { label: string; 
 /* ─────────── воронка ─────────── */
 
 export function Funnel({ stages }: { stages: { label: string; value: number; lost: number }[] }) {
-  if (!stages.length) return <p className="muted">Данных пока нет</p>;
+  const { ut } = useLang();
+  if (!stages.length) return <NoData />;
   const W = 900;
   const rowH = 38;
   const H = stages.length * rowH + 10;
@@ -297,7 +307,7 @@ export function Funnel({ stages }: { stages: { label: string; value: number; los
           );
         })}
       </svg>
-      <p className="hint">Сужение показывает, на каком вопросе прекращают прохождение</p>
+      <p className="hint">{ut("chart.funnelHint")}</p>
     </div>
   );
 }
@@ -305,7 +315,7 @@ export function Funnel({ stages }: { stages: { label: string; value: number; los
 /* ─────────── знаковые столбики ─────────── */
 
 export function DivergingBar({ items, domain = 1, goodThreshold }: { items: { label: string; value: number }[]; domain?: number; goodThreshold?: number }) {
-  if (!items.length) return <p className="muted">Данных пока нет</p>;
+  if (!items.length) return <NoData />;
   return (
     <div style={{ display: "grid", gap: 8 }}>
       {items.map((it) => {

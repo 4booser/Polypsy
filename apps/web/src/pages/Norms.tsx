@@ -39,7 +39,7 @@ export default function Norms() {
         return (
     <Page
       title={ut("nm.title")}
-      crumbs={<Link to={`/surveys/${id}`}>← Аналитика методики</Link>}
+      crumbs={<Link to={`/surveys/${id}`}>{ut("back.toSurveyAnalytics")}</Link>}
       sub="M и SD по фактической выборке учреждения против норм пособия"
       actions={
         picked.size ? (
@@ -129,7 +129,7 @@ export default function Norms() {
                       <td className="num">{cur ? `${cur.mean} / ${cur.sd}` : "—"}</td>
                       <td className="text-muted text-[12px]">{cur?.source ?? "—"}</td>
                       <td className="num">
-                        {cand ? `${cand.mean} / ${cand.sd}` : <span className="text-muted">мало данных</span>}
+                        {cand ? `${cand.mean} / ${cand.sd}` : <span className="text-muted">{ut("mark.fewData")}</span>}
                       </td>
                       <td className="num">{cand?.n ?? "—"}</td>
                       <td className="num">

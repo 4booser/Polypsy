@@ -269,7 +269,7 @@ export function PatientDynamics() {
                         <tr>
                           <td>{ut("pt.percentile")}</td>
                           <td className="num">
-                            {last.percentile === null ? <span className="muted">выборка мала</span> : `выше, чем у ${last.percentile}%`}
+                            {last.percentile === null ? <span className="muted">{ut("mark.smallSample")}</span> : `выше, чем у ${last.percentile}%`}
                           </td>
                         </tr>
                       </tbody>

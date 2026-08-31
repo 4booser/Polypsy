@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { forwardRef } from "react";
 import { cx } from "./cx";
+import { useLang } from "../lang";
 
 /*
  * Примитивы консоли на утилитах.
@@ -320,6 +321,18 @@ export function Field({
 }
 
 /* ─────────── разделители и раскладка ─────────── */
+
+/**
+ * «Данных пока нет».
+ *
+ * Одна строка на восемь диаграмм. Раньше она была написана в каждой из них
+ * отдельно — восемь одинаковых литералов, которые при переводе пришлось бы
+ * находить по одному, и один из них обязательно бы уцелел.
+ */
+export function NoData({ className }: { className?: string }) {
+  const { ut } = useLang();
+  return <p className={cx("m-0 text-small text-muted", className)}>{ut("chart.noData")}</p>;
+}
 
 export function Divider({ className }: { className?: string }) {
   return <hr className={cx("border-0 border-t border-hairline", className)} />;

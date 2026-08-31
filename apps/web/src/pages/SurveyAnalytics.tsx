@@ -86,7 +86,7 @@ export default function SurveyAnalyticsPage() {
   return (
     <Page
       title={data.title}
-      crumbs={<Link to="/">← Сводка</Link>}
+      crumbs={<Link to="/">{ut("back.toDashboard")}</Link>}
       sub={`${ut("an.version")} ${data.versionNumber} · ${ut("an.completedOf")} ${data.completed} ${ut("an.of")} ${data.started}`}
       actions={
         /*
@@ -127,7 +127,7 @@ export default function SurveyAnalyticsPage() {
               <i className="dot live" />
               Сейчас проходят: {data.inProgressNow.length}
             </h2>
-            <span className="text-caption text-muted">черновики с автосохранением за последние 30 минут</span>
+            <span className="text-caption text-muted">{ut("an.draftsAutosaved")}</span>
           </div>
           <div className="row tight">
             {data.inProgressNow.map((p, i) => (
@@ -216,9 +216,9 @@ export default function SurveyAnalyticsPage() {
               <label className="field m-0">
                 <span>{ut("an.profile")}</span>
                 <select value={profile} onChange={(e) => setProfile(e.target.value as never)}>
-                  <option value="full">полный (для клиники)</option>
-                  <option value="deidentified">деидентифицированный (для исследований)</option>
-                  <option value="anonymous">анонимный (без субъектов)</option>
+                  <option value="full">{ut("an.exportFull")}</option>
+                  <option value="deidentified">{ut("an.exportDeid")}</option>
+                  <option value="anonymous">{ut("an.exportAnon")}</option>
                 </select>
               </label>
               <button onClick={() => downloadCsv(data.surveyId)}>{ut("an.dataCsv")}</button>
@@ -386,7 +386,7 @@ export default function SurveyAnalyticsPage() {
                         items={s.reliability.items.map((it) => ({ label: it.title, value: it.itemTotalCorrelation }))}
                       />
                       <table className="mt-3">
-                        <thead><tr><th>{ut("an.item")}</th><th className="num">{ut("an.link")}</th><th className="num">α без него</th><th className="num">{ut("an.variance")}</th></tr></thead>
+                        <thead><tr><th>{ut("an.item")}</th><th className="num">{ut("an.link")}</th><th className="num">{ut("an.alphaWithout")}</th><th className="num">{ut("an.variance")}</th></tr></thead>
                         <tbody>
                           {s.reliability.items.map((it) => (
                             <tr key={it.questionId}>

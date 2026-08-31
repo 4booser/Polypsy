@@ -209,7 +209,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                   {a.cancelledAt ? (
                     <span className="text-muted">снято {day(a.cancelledAt)}</span>
                   ) : a.doneRequired === a.totalRequired ? (
-                    <span className="good">пройдена</span>
+                    <span className="good">{ut("mark.passed")}</span>
                   ) : (
                     <button
                       onClick={() =>
@@ -352,7 +352,7 @@ function BatteryEditor({
         <label className="field">
           <span>{ut("f.group")}</span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-            <option value="">вне групп</option>
+            <option value="">{ut("mark.outsideGroups")}</option>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>{g.title}</option>
             ))}

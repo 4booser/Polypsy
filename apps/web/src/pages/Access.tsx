@@ -73,7 +73,7 @@ export default function Access() {
                 <div className="flex flex-wrap items-end gap-3">
                   <Field label={ut("acc.patient")} className="min-w-[240px] flex-[2]">
                     <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
-                      <option value="">— выберите —</option>
+                      <option value="">{ut("sel.pick")}</option>
                       {free.map((p) => (
                         <option key={p.id} value={p.id}>{p.fullName} · {p.email}</option>
                       ))}
