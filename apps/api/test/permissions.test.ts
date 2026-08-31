@@ -298,9 +298,45 @@ describe("маршруты под правом", () => {
          * ради проверки отказа; отказ и так доказан отрицательной половиной,
          * а платить за него изменением данных незачем.
          */
-        probeAllowed: method === "GET",
+        probeAllowed: method === "GET" && !doc.streaming,
       };
     });
+
+  test("ни один маршрут персонала не остался без решения", () => {
+    /*
+     * Строгий режим: переход считается завершённым не «по памяти».
+     *
+     * Каждый маршрут персонала и суперадмина обязан либо требовать право,
+     * либо нести написанную причину, почему права ему не надо. Пустое поле —
+     * это не «решили не закрывать», а «забыли строку», и отличить одно от
+     * другого через полгода будет нечем.
+     *
+     * Причина требуется словами, а не флагом: флаг ставят не думая, а фразу
+     * надо сформулировать — и, формулируя, обычно обнаруживаешь, что право
+     * всё-таки нужно.
+     */
+    const undecided = Object.entries(ROUTE_DOCS)
+      .filter(([, doc]) => doc.access === "staff" || doc.access === "superadmin")
+      .filter(([, doc]) => !doc.permission && !doc.whyNoPermission)
+      .map(([key]) => key);
+    expect(undecided).toEqual([]);
+  });
+
+  test("причина отказа от права — фраза, а не отписка", () => {
+    // «нет», «не нужно», «TODO» ничего не объясняют читателю через полгода
+    const tooShort = Object.entries(ROUTE_DOCS)
+      .filter(([, doc]) => doc.whyNoPermission && doc.whyNoPermission.length < 40)
+      .map(([key]) => key);
+    expect(tooShort).toEqual([]);
+  });
+
+  test("право и причина не стоят вместе", () => {
+    // одно исключает другое: иначе непонятно, что из двух правда
+    const both = Object.entries(ROUTE_DOCS)
+      .filter(([, doc]) => doc.permission && doc.whyNoPermission)
+      .map(([key]) => key);
+    expect(both).toEqual([]);
+  });
 
   test("объявленные права есть хотя бы у одного маршрута", () => {
     /*
@@ -326,16 +362,23 @@ describe("маршруты под правом", () => {
       // встроенная роль снимается: проверяем именно узкую роль без нужного права
       await db.delete(staffRoles).where(eq(staffRoles.userId, person.id));
       const id = `role-${crypto.randomUUID()}`;
-      await db.insert(roles).values({ id, code: id, title: { uk: "Порожня", ru: "Пустая" } });
+      await db.insert(roles).values({ id, code: id, title: { uk: "Усе, крім", ru: "Всё, кроме" } });
       /*
-       * Роль заводится пустой, без единого права.
+       * Роль получает все права, кроме проверяемого.
        *
-       * Первая редакция клала в неё patients.read «чтобы роль была не
-       * пустой» — и семь маршрутов, закрытых как раз этим правом, проверка
-       * объявила сломанными: человек уже имел проверяемое право. Заполнитель
-       * в такой проверке обязан быть либо ничем, либо тем, чего не бывает;
-       * «каким-нибудь настоящим правом» он быть не может.
+       * Так проверяется именно оно. Пустая роль доказывала бы только, что
+       * маршрут кого-то не пускает, — а не пускать его мог бы и внешний
+       * заслон: выгрузка аналитики стоит за двумя правами сразу, и с пустой
+       * ролью отказ приходил от первого, хотя объявлено второе. Отличить
+       * «маршрут закрыт этим правом» от «маршрут закрыт вообще» иначе
+       * нечем.
+       *
+       * Первая же редакция клала в роль patients.read «чтобы была не
+       * пустой» — и семь маршрутов, закрытых как раз им, объявила
+       * сломанными: подопытный уже имел проверяемое право.
        */
+      const others = ALL_PERMISSIONS.filter((p) => p !== route.permission);
+      await db.insert(rolePermissions).values(others.map((permission) => ({ roleId: id, permission })));
       await db.insert(staffRoles).values({ userId: person.id, roleId: id });
 
       const init =
@@ -357,6 +400,7 @@ describe("маршруты под правом", () => {
       // а с правом — проходит: иначе тест доказывал бы только то, что
       // маршрут сломан
       await db.insert(rolePermissions).values({ roleId: id, permission: route.permission });
+
       const allowed = await api(route.url, person.token, init);
       expect(allowed.status).not.toBe(403);
     });

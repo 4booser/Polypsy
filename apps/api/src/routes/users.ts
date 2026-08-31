@@ -8,13 +8,21 @@ import { encryptPersonFields } from "../lib/crypto";
 import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
 import { conflict, forbidden, notFound, parseBody } from "../lib/http";
-import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { ensureBuiltinRole } from "../lib/permissions";
 
 export const userRoutes = new Hono<AppEnv>();
 
 // учётные записи и роли — зона ответственности суперадмина
-userRoutes.use("*", requireAuth, requireSuperadmin);
+/*
+ * requireSuperadmin заменён правом, а не дополнен им.
+ *
+ * Дополнить значило бы оставить право декоративным: маршрут всё равно
+ * пускал бы одного суперадмина, и выдать users.manage кому-то ещё было бы
+ * нельзя. Поведение сегодня прежнее — users.manage не входит во встроенную
+ * роль, а суперадмин обходит справочник, — но право стало настоящим.
+ */
+userRoutes.use("*", requireAuth, requireStaff, requirePermission("users.manage"));
 
 userRoutes.get("/", async (c) => {
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));

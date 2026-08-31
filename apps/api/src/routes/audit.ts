@@ -5,12 +5,17 @@ import { parseQuery } from "../lib/http";
 import { db } from "../db";
 import { auditLog } from "../db/schema";
 import { audit } from "../lib/audit";
-import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const auditRoutes = new Hono<AppEnv>();
 
 // журнал доступа читает только суперадмин
-auditRoutes.use("*", requireAuth, requireSuperadmin);
+/*
+ * Журнал доступа — под правом, а не под ролью: читать его должен и тот, кто
+ * разбирает обходы правил, не будучи суперадмином. Сегодня audit.read есть
+ * только у суперадмина, и поведение не меняется.
+ */
+auditRoutes.use("*", requireAuth, requireStaff, requirePermission("audit.read"));
 
 /**
  * Чтение журнала. Записи только читаются: методов правки и удаления нет

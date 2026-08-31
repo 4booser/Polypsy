@@ -7,10 +7,22 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, assertGroupAccess, isSuperadmin } from "../lib/scope";
-import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const groupRoutes = new Hono<AppEnv>();
 
+/*
+ * Здесь видно, зачем оси разведены. Список групп и переименование своей
+ * группы правами не закрываются вовсе: кто какую группу видит — это область
+ * ответственности, и её проверяет assertGroupAccess, а не справочник прав.
+ *
+ * Правом закрыто другое: завести группу, удалить её, назначить и снять
+ * администратора. Раньше это требовало суперадмина; теперь требует
+ * groups.manage, а суперадмин проходит потому, что обходит справочник
+ * целиком. Поведение то же, но право стало выдаваемым — иначе заведующий
+ * отделением, ради которого затевался справочник, так и остался бы без
+ * возможности набрать себе людей.
+ */
 groupRoutes.use("*", requireAuth, requireStaff);
 
 /**
@@ -79,7 +91,7 @@ groupRoutes.get("/", async (c) => {
 });
 
 /** Создавать группы может только суперадмин — это единица разграничения доступа */
-groupRoutes.post("/", requireSuperadmin, async (c) => {
+groupRoutes.post("/", requirePermission("groups.manage"), async (c) => {
   const input = await parseBody(c.req.raw, groupInputSchema);
   const [row] = await db
     .insert(surveyGroups)
@@ -129,7 +141,7 @@ groupRoutes.patch("/:id", async (c) => {
  * Ни то, ни другое не должно случаться как побочный эффект «прибраться в
  * списке групп»: сначала переносим содержимое, потом удаляем пустую.
  */
-groupRoutes.delete("/:id", requireSuperadmin, async (c) => {
+groupRoutes.delete("/:id", requirePermission("groups.manage"), async (c) => {
   const id = c.req.param("id");
   const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, id) });
   if (!group) notFound("err.groupNotFound");
@@ -178,7 +190,7 @@ groupRoutes.get("/:id/admins", async (c) => {
 });
 
 /** Назначение администратора на группу — прерогатива суперадмина */
-groupRoutes.post("/:id/admins", requireSuperadmin, async (c) => {
+groupRoutes.post("/:id/admins", requirePermission("groups.manage"), async (c) => {
   const groupId = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
   const userId = String(body?.userId ?? "");
@@ -209,7 +221,7 @@ groupRoutes.post("/:id/admins", requireSuperadmin, async (c) => {
   return c.json({ groupId, userId }, 201);
 });
 
-groupRoutes.delete("/:id/admins/:userId", requireSuperadmin, async (c) => {
+groupRoutes.delete("/:id/admins/:userId", requirePermission("groups.manage"), async (c) => {
   const groupId = c.req.param("id");
   const userId = c.req.param("userId");
   const deleted = await db

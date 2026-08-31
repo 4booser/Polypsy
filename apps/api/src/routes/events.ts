@@ -5,10 +5,15 @@ import { db } from "../db";
 import { surveys } from "../db/schema";
 import { subscribe, type AppEvent } from "../lib/events";
 import { surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const eventRoutes = new Hono<AppEnv>();
-eventRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+eventRoutes.use("*", requireAuth, requireStaff, requirePermission("alerts.review"));
 
 /**
  * Поток событий для консоли.
