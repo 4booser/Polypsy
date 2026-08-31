@@ -12,14 +12,15 @@ import {
   specialistProfiles,
   staffRoles,
 } from "../src/db/schema";
+import { sweepNoShows } from "../src/lib/noShow";
 import { syncSlots } from "../src/lib/schedule";
 
 /**
  * Запись на приём.
  *
  * Проверяется не «маршрут отвечает 201», а четыре вещи, каждая из которых
- * ломается тихо: два человека не занимают одно место, повторный приём не
- * открыт непрwould, прикрепление появляется само, а поздняя отмена
+ * ломается тихо: два человека не занимают одно место, повторный приём закрыт
+ * для неприкреплённых, прикрепление появляется само, а поздняя отмена
  * помечается, а не запрещается.
  */
 
@@ -518,5 +519,114 @@ describe("свой специалист", () => {
       body: JSON.stringify({ take: true }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("неявка", () => {
+  /** Приём, время которого давно прошло, а никто ничего не нажал */
+  async function missedVisit(tag: string, hoursAgo = 5) {
+    const patient = await makeUser("user", `clinic-${tag}-${crypto.randomUUID()}@test`);
+    const slotId = crypto.randomUUID();
+    await db.insert(slots).values({
+      id: slotId,
+      specialistId,
+      departmentId,
+      startsAt: new Date(Date.now() - hoursAgo * 3600_000).toISOString(),
+      endsAt: new Date(Date.now() - (hoursAgo - 1) * 3600_000).toISOString(),
+      kind: "any",
+    });
+    const id = crypto.randomUUID();
+    await db.insert(appointments).values({
+      id,
+      slotId,
+      patientId: patient.id,
+      specialistId,
+      kind: "primary",
+      status: "booked",
+    });
+    return { patient, id };
+  }
+
+  test("истёкший приём уходит в неявку", async () => {
+    const { id } = await missedVisit("ns1");
+    const swept = await sweepNoShows();
+    expect(swept).toBeGreaterThan(0);
+
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("no_show");
+  });
+
+  test("свежий приём не трогается", async () => {
+    /*
+     * Отсрочка не украшение: без неё специалист, не успевший нажать «пришёл»
+     * между двумя приёмами, получил бы неявку у человека, который сидит
+     * перед ним.
+     */
+    const { id } = await missedVisit("ns2", 1);
+    await sweepNoShows();
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("booked");
+  });
+
+  test("повторный проход ничего не меняет", async () => {
+    await missedVisit("ns3");
+    await sweepNoShows();
+    expect(await sweepNoShows()).toBe(0);
+  });
+
+  test("отмеченная явка неявкой не становится", async () => {
+    const { id } = await missedVisit("ns4");
+    await db.update(appointments).set({ status: "arrived" }).where(eq(appointments.id, id));
+    await sweepNoShows();
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("arrived");
+  });
+
+  test("неявку можно исправить на явку", async () => {
+    // ставит её и фоновый проход тоже, а он ошибается ровно там, где
+    // специалист забыл нажать кнопку
+    const { id } = await missedVisit("ns5");
+    await sweepNoShows();
+
+    const res = await api(`/api/clinic/appointments/${id}/status`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ status: "arrived" }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("неявка попадает в очередь работы к своему специалисту", async () => {
+    const { patient } = await missedVisit("ns6");
+    await sweepNoShows();
+
+    const mine = await api("/api/worklist", specialistToken);
+    const item = mine.body.items.find(
+      (i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id,
+    );
+    expect(item).toBeDefined();
+    expect(item.assignedTo).toBe(specialistId);
+
+    // и не попадает к постороннему специалисту
+    const other = await api("/api/worklist", adminA.token);
+    expect(
+      other.body.items.some((i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id),
+    ).toBe(false);
+  });
+
+  test("новая запись снимает неявку с очереди", async () => {
+    const { patient } = await missedVisit("ns7");
+    await sweepNoShows();
+
+    const slotId = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    expect(booked.status).toBe(201);
+
+    const mine = await api("/api/worklist", specialistToken);
+    expect(
+      mine.body.items.some((i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id),
+    ).toBe(false);
   });
 });

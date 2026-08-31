@@ -5,6 +5,7 @@ import { db } from "../db";
 import { currentCrisis } from "../lib/crisis";
 import {
   alertCases,
+  appointments,
   batteries,
   batteryAssignments,
   pathwayInstances,
@@ -12,6 +13,7 @@ import {
   pathways,
   pathwaySteps,
   referrals,
+  slots,
   treatmentGoals,
   surveyAccess,
   surveys,
@@ -19,6 +21,7 @@ import {
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { recentAlertPatients } from "../lib/noShow";
 import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -41,7 +44,7 @@ export const worklistRoutes = new Hono<AppEnv>();
  */
 worklistRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
-type Kind = "case" | "assignment" | "referral" | "followup" | "pathway" | "goal";
+type Kind = "case" | "noshow" | "assignment" | "referral" | "followup" | "pathway" | "goal";
 
 interface Item {
   kind: Kind;
@@ -77,7 +80,23 @@ interface Item {
  * потом по давности. Без общего правила список превратился бы в три списка,
  * склеенных подряд, — то есть в то же самое, от чего уходим.
  */
-const KIND_WEIGHT: Record<Kind, number> = { case: 0, pathway: 1, goal: 2, followup: 3, referral: 4, assignment: 5 };
+const KIND_WEIGHT: Record<Kind, number> = {
+  case: 0,
+  /*
+   * Неявка идёт сразу за случаем риска, а не в конце.
+   *
+   * Соблазн положить её к остальному велик: формально это всего лишь
+   * несостоявшаяся встреча. Но в психологическом отделе переставший
+   * приходить — это чаще ухудшение, чем потеря интереса, и чем позже это
+   * заметят, тем меньше от этого пользы.
+   */
+  noshow: 1,
+  pathway: 2,
+  goal: 3,
+  followup: 4,
+  referral: 5,
+  assignment: 6,
+};
 
 worklistRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -128,7 +147,82 @@ worklistRoutes.get("/", async (c) => {
     }
   }
 
-  // 2. Направления, по которым нет ответа
+  /*
+   * 2. Неявки.
+   *
+   * Свои, а не всего отделения: приём — это отношение между двумя людьми, и
+   * звонить не пришедшему должен тот, к кому он не пришёл. Отсюда же и
+   * область: фильтр по методикам групп здесь ни при чём, приём с методиками
+   * не связан вовсе.
+   *
+   * Берутся только неразобранные — те, где после неявки ничего не сделали:
+   * не перезаписали и не отметили, что человек всё-таки был.
+   */
+  const noShowRows = await db
+    .select({
+      a: appointments,
+      slot: slots,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+      unit: users.unit,
+      /* сколько раз подряд не приходил: «второй раз подряд» — другой разговор */
+      streak: sql<number>`(
+        select count(*)::int from appointments prev
+        join slots ps on ps.id = prev.slot_id
+        where prev.patient_id = ${appointments.patientId}
+          and prev.specialist_id = ${appointments.specialistId}
+          and prev.status = 'no_show'
+          and ps.starts_at > now() - interval '90 days'
+      )`,
+    })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .innerJoin(users, eq(users.id, appointments.patientId))
+    .where(
+      and(
+        eq(appointments.specialistId, user.id),
+        eq(appointments.status, "no_show"),
+        sql`${slots.startsAt} > now() - interval '30 days'`,
+        // разобранной считается неявка, после которой человек снова записан
+        sql`not exists (
+          select 1 from appointments later
+          join slots ls on ls.id = later.slot_id
+          where later.patient_id = ${appointments.patientId}
+            and later.status <> 'cancelled'
+            and ls.starts_at > ${slots.startsAt}
+        )`,
+      ),
+    )
+    .limit(200);
+
+  const alerted = await recentAlertPatients(noShowRows.map((r) => r.a.patientId));
+
+  for (const r of noShowRows) {
+    items.push({
+      kind: "noshow",
+      id: r.a.id,
+      userId: r.a.patientId,
+      userName: fullNameOf(r as never),
+      unit: r.unit,
+      title: t({ uk: "Не прийшов на прийом", ru: "Не пришёл на приём" } as never),
+      signals: Number(r.streak),
+      days: Math.max(0, Math.round((now - new Date(r.slot.startsAt).getTime()) / 86_400_000)),
+      /*
+       * Срочной неявка становится, если за последний месяц у человека
+       * срабатывала тревога риска: тогда «перестал приходить» и «стало
+       * хуже» — одно событие, увиденное с разных сторон.
+       */
+      overdue: alerted.has(r.a.patientId),
+      assignedTo: r.a.specialistId,
+      since: r.slot.startsAt,
+      href: `/patients/${r.a.patientId}`,
+    });
+  }
+
+  // 3. Направления, по которым нет ответа
   const referralRows = await db
     .select({
       r: referrals,
