@@ -37,7 +37,7 @@ export function Basics({
             value={draft.safetyPlan ?? undefined}
             onChange={(v) => patch({ safetyPlan: v })}
             multiline
-            hint="Показывается обследуемому сразу после сдачи, если сработал критический пункт: телефоны доверия, дежурный психолог, куда обратиться прямо сейчас."
+            hint={ut("co.safetyShown")}
           />
         </Stack>
       </Panel>
@@ -46,7 +46,7 @@ export function Basics({
         <Grid min={220}>
           <Field label={ut("cb.group")}>
             <Select value={draft.groupId ?? ""} onChange={(e) => patch({ groupId: e.target.value || null })}>
-              <option value="">— без группы —</option>
+              <option value="">{ut("sel.noGroup")}</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>{g.title}</option>
               ))}
@@ -90,8 +90,7 @@ export function Basics({
 
       <Panel
         title={ut("cb.thresholds")}
-        hint="Порог «слишком быстро» задаётся отдельно: матричный вопрос требует заметно больше
-          времени, чем «да/нет», и общий порог либо пропускает небрежность, либо клевещет"
+        hint={ut("cb.thresholdsHint")}
       >
         <Grid min={200}>
           <Field label={ut("cb.timeLimit")}>
@@ -101,10 +100,10 @@ export function Basics({
               onChange={(e) => patch({ timeLimitSec: e.target.value ? Number(e.target.value) * 60 : null })}
             />
           </Field>
-          <Field label="«Слишком быстро», мс на вопрос">
+          <Field label={ut("co.tooFastLabel")}>
             <Input
               type="number"
-              placeholder="1500 по умолчанию"
+              placeholder={ut("co.byDefault1500")}
               value={draft.tooFastMs ?? ""}
               onChange={(e) => patch({ tooFastMs: e.target.value ? Number(e.target.value) : null })}
             />

@@ -276,7 +276,7 @@ export default function App() {
             {railOpen ? ut("nav.logout") : "⏻"}
           </Button>
           {railOpen ? (
-            <span className="px-1 font-mono text-micro text-faint" title={`Сборка от ${__BUILD_DATE__}`}>
+            <span className="px-1 font-mono text-micro text-faint" title={`${ut("ui.buildFrom")} ${__BUILD_DATE__}`}>
               {__BUILD_SHA__}
             </span>
           ) : null}

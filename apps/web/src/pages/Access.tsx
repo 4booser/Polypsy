@@ -63,8 +63,7 @@ export default function Access() {
               {survey.visibility === "public" ? (
                 <Panel>
                   <p className="m-0 text-small">
-                    {ut("acc.publicHint")}
-                    Чтобы ограничить доступ, переключите видимость методики на «по назначению».
+                    {ut("acc.publicHint")} {ut("acc.restrictHint")}
                   </p>
                 </Panel>
               ) : null}
@@ -107,7 +106,7 @@ export default function Access() {
                             <td className="text-muted">{g.grantedByName ?? "—"}</td>
                             <td className="text-muted">{dateTime(g.grantedAt)}</td>
                             <td className="text-muted">{g.expiresAt ? g.expiresAt.slice(0, 10) : ut("acc.forever")}</td>
-                            <td>{g.completed ? "да" : ut("acc.no")}</td>
+                            <td>{g.completed ? ut("acc.yes") : ut("acc.no")}</td>
                             <td className="text-muted">{g.note ?? "—"}</td>
                             <td>
                               <Button
@@ -118,7 +117,7 @@ export default function Access() {
                                   await load();
                                 }}
                               >
-                                Отозвать
+                                {ut("inv.revoke")}
                               </Button>
                             </td>
                           </tr>

@@ -197,7 +197,7 @@ export default function Constructor() {
       setDraft(withUids({ ...EMPTY, ...parsed }));
       setTab("basics");
     } catch (e) {
-      setError(e instanceof Error ? `JSON не разобран: ${e.message}` : "JSON не разобран");
+      setError(e instanceof Error ? `${ut("co.jsonParseError")}: ${e.message}` : ut("co.jsonParseError"));
     }
   }
 
@@ -213,7 +213,7 @@ export default function Constructor() {
   return (
     <Page
       title={id ? ut("co.editTitle") : ut("co.newTitle")}
-      crumbs={id ? <Link to={`/surveys/${id}`}>← К аналитике</Link> : <Link to="/surveys">← Методики</Link>}
+      crumbs={id ? <Link to={`/surveys/${id}`}>{ut("back.toAnalytics")}</Link> : <Link to="/surveys">{ut("back.toSurveys")}</Link>}
       sub={id ? ut("co.editSub") : ut("co.newSub")}
       actions={
         <>
@@ -245,7 +245,7 @@ export default function Constructor() {
             */}
             <Button size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>↶</Button>
             <Button size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>↷</Button>
-            {dirty ? <span className="text-caption text-muted">черновик сохраняется сам</span> : null}
+            {dirty ? <span className="text-caption text-muted">{ut("co.draftAutosaves")}</span> : null}
           </div>
         </div>
       }
@@ -253,7 +253,7 @@ export default function Constructor() {
       {restored ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3">
           <p className="m-0 text-small text-text">
-            Восстановлен несохранённый черновик из этого браузера.
+            {ut("co.draftRestored")}
           </p>
           <Button
             variant="quiet"
@@ -270,7 +270,7 @@ export default function Constructor() {
               }
             }}
           >
-            Отбросить и загрузить серверную версию
+            {ut("co.discardDraft")}
           </Button>
         </div>
       ) : null}
@@ -291,11 +291,10 @@ export default function Constructor() {
           <h2 className="m-0 font-display text-section font-medium leading-tight">
             {issues.length === 0
               ? ut("co.noIssues")
-              : `Замечаний: ${issues.filter((i) => i.level === "error").length} ошибок, ${issues.filter((i) => i.level === "warning").length} предупреждений`}
+              : `${ut("co.issuesSummary")}: ${issues.filter((i) => i.level === "error").length} ${ut("co.errorsCount")}, ${issues.filter((i) => i.level === "warning").length} ${ut("co.warningsCount")}`}
           </h2>
           <p className="mt-1 text-caption text-muted">
-            Проверка формальная: она ловит ошибки переноса ключей и норм, но не знает
-            содержания методики
+            {ut("co.checkHint")}
           </p>
           {issues.map((i, k) => (
             <p key={k} className="my-1 text-small">
@@ -334,8 +333,7 @@ export default function Constructor() {
       {tab === "json" ? (
         <Panel
           title={ut("co.wholeJson")}
-          hint="Для методик на сотни пунктов заполнять форму бессмысленно. Вставьте сюда описание
-            в том же виде, какой принимает API — с ключами шкал, нормами и таблицами стенов."
+          hint={ut("co.jsonHint")}
         >
           <Textarea
             value={json}

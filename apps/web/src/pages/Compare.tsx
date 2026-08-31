@@ -79,9 +79,7 @@ export default function Compare() {
       {data?.unclassified ? (
         <Panel className="mb-4">
           <p className="m-0 text-muted">
-            {data.unclassified} прохождений не попало ни в одну когорту: соответствующее поле
-            паспортной части не заполнено. Они не учтены — растворять их в «прочих» значило бы
-            искажать сравнение.
+            {data.unclassified} {ut("cmp.unclassifiedHint")}
           </p>
         </Panel>
       ) : null}
@@ -92,11 +90,7 @@ export default function Compare() {
         return (
           <Chart key={scale.scaleId} title={scale.title} hint={scaleHint(scale, ut)}>
             {flip ? (
-              <p className="hint warn">
-                Стандартизация по полу и возрасту меняет порядок групп: сырая разница
-                объяснялась структурой когорт, а не состоянием. Сравнивайте
-                стандартизованные доли.
-              </p>
+              <p className="hint warn">{ut("cmp.standardizationFlipWarning")}</p>
             ) : null}
             <CohortBars scale={scale} />
           </Chart>
@@ -106,7 +100,7 @@ export default function Compare() {
       {corr && corr.codes.length >= 2 ? (
         <Chart
           title={ut("cmp.links")}
-          hint={`Коэффициент Пирсона. Считается только там, где есть оба балла, и не считается при выборке меньше ${corr.minSample}`}
+          hint={`${ut("cmp.pearsonHint")} ${corr.minSample}`}
         >
           <CorrelationGrid matrix={corr} />
         </Chart>
@@ -119,7 +113,11 @@ export default function Compare() {
  * Границы оси зависят от единиц: доля живёт в 0–1, T-балл около 100, стен 1–10.
  * Ставить сырой максимум под нормализованное значение — рисовать пустые полоски.
  */
-function axis(scale: ComparisonResult["scales"][number]): { top: number; fmt: (v: number) => string } {
+/* переводчик аргументом: функция чистая и живёт вне компонента */
+function axis(
+  scale: ComparisonResult["scales"][number],
+  ut: (k: UiKey) => string,
+): { top: number; fmt: (v: number) => string } {
   const observed = Math.max(...scale.cohorts.map((c) => c.max), 0);
   switch (scale.normalization) {
     case "ratio":
@@ -127,7 +125,7 @@ function axis(scale: ComparisonResult["scales"][number]): { top: number; fmt: (v
     case "tscore":
       return { top: Math.max(80, Math.ceil(observed / 10) * 10), fmt: (v) => `${v} T` };
     case "sten":
-      return { top: 10, fmt: (v) => `${v} ст.` };
+      return { top: 10, fmt: (v) => `${v} ${ut("cmp.stenShort")}` };
     default:
       return { top: Math.max(scale.maxScore, observed, 1), fmt: (v) => String(v) };
   }
@@ -149,7 +147,8 @@ function scaleHint(scale: ComparisonResult["scales"][number], ut: (k: UiKey) => 
 }
 
 function CohortBars({ scale }: { scale: ComparisonResult["scales"][number] }) {
-  const { top, fmt } = axis(scale);
+  const { ut } = useLang();
+  const { top, fmt } = axis(scale, ut);
   return (
     <div className="grid gap-3.5">
       {scale.cohorts.map((c) => (
@@ -159,9 +158,9 @@ function CohortBars({ scale }: { scale: ComparisonResult["scales"][number] }) {
               {c.cohort} <span className="text-muted">· n={c.n}</span>
             </span>
             <span className="text-caption tabular-nums text-muted">
-              среднее {fmt(c.mean)} · σ {c.sd} · риск {Math.round(c.rawRiskShare * 100)}%
+              {ut("cmp.mean")} {fmt(c.mean)} · σ {c.sd} · {ut("cmp.risk")} {Math.round(c.rawRiskShare * 100)}%
               {c.stdRiskShare !== null ? (
-                <> · станд. {Math.round(c.stdRiskShare * 100)}%</>
+                <> · {ut("cmp.standardizedAbbr")} {Math.round(c.stdRiskShare * 100)}%</>
               ) : null}
             </span>
           </div>
@@ -247,7 +246,7 @@ function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
                       color: weak ? "var(--muted)" : undefined,
                     }}
                   >
-                    {weak ? "мало" : v.r.toFixed(2)}
+                    {weak ? ut("cmp.tooFewSample") : v.r.toFixed(2)}
                   </td>
                 );
               })}

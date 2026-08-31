@@ -74,15 +74,12 @@ export default function ReferralsPage() {
         >
           <Stack>
             {truncated ? (
-              <p className="m-0 text-caption text-muted">
-                Показаны первые 200 направлений — самые свежие. Чтобы увидеть остальные,
-                сузьте выборку переключателем выше.
-              </p>
+              <p className="m-0 text-caption text-muted">{ut("ref.truncatedHint")}</p>
             ) : null}
             <Panel flush>
               <DataTable
                 rows={rows}
-                csvName="направления"
+                csvName={ut("ref.csvName")}
                 stateKey="referrals"
                 initialSort={{ key: "createdAt", desc: true }}
                 empty={

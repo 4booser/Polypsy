@@ -50,7 +50,7 @@ export default function UnitReportPage() {
             ))}
           </Select>
           <label className="flex items-center gap-1.5 text-caption text-muted">
-            <span>с</span>
+            <span>{ut("ec.since")}</span>
             <Input
               type="date"
               value={from}
@@ -60,7 +60,7 @@ export default function UnitReportPage() {
             />
           </label>
           <label className="flex items-center gap-1.5 text-caption text-muted">
-            <span>по</span>
+            <span>{ut("sch.to")}</span>
             <Input
               type="date"
               value={to}
@@ -95,8 +95,8 @@ export default function UnitReportPage() {
               <Stat value={data.atRisk} tone={data.atRisk ? "danger" : "plain"} label={ut("unit.atRisk")} />
               <p className="m-0 mt-1 text-caption text-muted">
                 {data.atRisk === null
-                  ? `меньше ${data.smallCellFloor} человек — не показываем`
-                  : "хотя бы по одной шкале"}
+                  ? `${ut("unit.lessThan")} ${data.smallCellFloor} ${ut("unit.hiddenBelowFloor")}`
+                  : ut("unit.atLeastOneScale")}
               </p>
             </Panel>
             <Panel>
@@ -106,7 +106,7 @@ export default function UnitReportPage() {
 
           <Panel
             title={ut("unit.distribution")}
-            hint={`Ячейки меньше ${data.smallCellFloor} человек скрыты: по единичному значению человека узнают сослуживцы`}
+            hint={`${ut("unit.cellsBelow")} ${data.smallCellFloor} ${ut("unit.cellsHiddenReason")}`}
             flush
           >
             <div className="overflow-x-auto">
@@ -132,7 +132,7 @@ export default function UnitReportPage() {
                               key={b.severity}
                               className="sev-seg"
                               style={{ width: `${b.percent}%`, background: severityColor[b.severity] }}
-                              title={`${ut(severityKey[b.severity])}: ${b.count ?? "скрыто"} (${b.percent}%)`}
+                              title={`${ut(severityKey[b.severity])}: ${b.count ?? ut("unit.hiddenValue")} (${b.percent}%)`}
                             />
                           ))}
                         </div>
@@ -150,7 +150,7 @@ export default function UnitReportPage() {
               </table>
               {data.scales.length === 0 ? (
                 <p className="m-0 p-5 text-muted">
-                  Замеров за период меньше {data.smallCellFloor} — свод не строится
+                  {ut("unit.tooFewMeasurements")} {data.smallCellFloor} {ut("unit.summaryNotBuilt")}
                 </p>
               ) : null}
             </div>

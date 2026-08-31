@@ -106,11 +106,8 @@ export default function Kiosk() {
         <h1>{state.title}</h1>
         <p className="text-section text-muted">
           «{state.batteryTitle}»: {selfSteps.length}{" "}
-          {lang === "uk"
-            ? plural(selfSteps.length, "методика", "методики", "методик")
-            : plural(selfSteps.length, "методика", "методики", "методик")}
-          , {selfSteps.reduce((n, s) => n + s.questionCount, 0)}{" "}
-          {lang === "uk" ? "запитань" : "вопросов"}.
+          {plural(selfSteps.length, ut("ksk.methodOne"), ut("ksk.methodFew"), ut("ksk.methodMany"))}
+          , {selfSteps.reduce((n, s) => n + s.questionCount, 0)} {ut("surveys.questions")}.
         </p>
         <Button
           variant="primary"
@@ -141,7 +138,7 @@ export default function Kiosk() {
         token={token!}
         participantId={phase.participantId}
         surveyId={step.surveyId}
-        stepLabel={`Методика ${phase.stepIndex + 1} из ${selfSteps.length}`}
+        stepLabel={`${ut("ksk.methodWord")} ${phase.stepIndex + 1} ${ut("common.of")} ${selfSteps.length}`}
         onDone={(safetyPlan) => {
           if (safetyPlan) setLastSafetyPlan(safetyPlan);
           if (phase.stepIndex + 1 < selfSteps.length) {

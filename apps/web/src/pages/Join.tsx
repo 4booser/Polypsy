@@ -14,7 +14,7 @@ import { Grid } from "../ui/layout";
  */
 export default function Join() {
   const { token } = useParams<{ token: string }>();
-  const { ut, lang } = useLang();
+  const { ut } = useLang();
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +57,7 @@ export default function Join() {
         }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error ?? `Ошибка ${res.status}`);
+      if (!res.ok) throw new Error(body?.error ?? `${ut("join.errorPrefix")} ${res.status}`);
       setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("join.registerFailed"));
@@ -110,11 +110,13 @@ export default function Join() {
               <h1 className="m-0">{ut("join.doneTitle")}</h1>
               <p className="m-0">
                 {ut("join.accountCreated")}
-                {preview?.batteryTitle
-                  ? lang === "uk"
-                    ? `, обстеження «${preview.batteryTitle}» вже призначено`
-                    : `, обследование «${preview.batteryTitle}» уже назначено`
-                  : null}
+                {preview?.batteryTitle ? (
+                  <>
+                    {ut("join.batteryAssignedPrefix")}
+                    {preview.batteryTitle}
+                    {ut("join.batteryAssignedSuffix")}
+                  </>
+                ) : null}
                 .
               </p>
               <p className="m-0 text-caption text-muted">{ut("join.installApp")}</p>

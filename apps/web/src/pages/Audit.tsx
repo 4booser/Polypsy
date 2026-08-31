@@ -127,9 +127,9 @@ export default function Audit() {
                         <td className="text-muted">{e.actorEmail ?? "—"}</td>
                         <td>
                           {e.outcome === "success" ? (
-                            "ок"
+                            ut("aud.outcomeOk")
                           ) : (
-                            <Tag tone="danger">{e.outcome === "denied" ? "отказано" : "ошибка"}</Tag>
+                            <Tag tone="danger">{e.outcome === "denied" ? ut("aud.outcomeDenied") : ut("aud.outcomeError")}</Tag>
                           )}
                         </td>
                         <td className="text-muted">{e.subjectUserId ? e.subjectUserId.slice(0, 8) : "—"}</td>
@@ -184,10 +184,7 @@ function Storage() {
           </tbody>
         </table>
       </div>
-      <p className="mb-0 mt-3 text-caption text-muted">
-        answer_events сдерживается ретенцией; audit_log растёт вечно by design — его
-        партиционирование по месяцам станет актуальным после первых миллионов записей.
-      </p>
+      <p className="mb-0 mt-3 text-caption text-muted">{ut("aud.retentionNote")}</p>
     </Panel>
   );
 }

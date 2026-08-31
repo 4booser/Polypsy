@@ -40,19 +40,21 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
         title={ut("dif.title")}
         hint={
           <>
-            Метод Mantel–Haenszel: сравниваются люди с одинаковым суммарным баллом. Группы меньше{" "}
-            {data.minGroup} наблюдений не считаются вовсе; от {data.minGroup} до {data.solidGroup} —
-            помечены как предварительные (мягкий критерий значимости). Различие в пункте — повод
-            разобрать формулировку, а не выбросить пункт.
+            {ut("dif.mhHintPart1")} {data.minGroup} {ut("dif.mhHintPart2")} {data.minGroup}{" "}
+            {ut("coh.ageTo")} {data.solidGroup} {ut("dif.mhHintPart3")}
           </>
         }
-        actions={<span className="text-caption text-muted">выборка {data.sample}</span>}
+        actions={
+          <span className="text-caption text-muted">
+            {ut("dif.sampleLabel")} {data.sample}
+          </span>
+        }
       >
         {flagged.length === 0 ? (
           <p className="m-0 text-muted">
             {data.scales.length
               ? ut("dif.none")
-              : ut("dif.notEnough") + data.minGroup + " прохождений."}
+              : ut("dif.notEnough") + data.minGroup + ut("dif.notEnoughSuffix")}
           </p>
         ) : null}
       </Panel>
@@ -80,7 +82,7 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
                   <td className="text-muted">{ut(FACTOR_KEY[f.factor as keyof typeof FACTOR_KEY])}</td>
                   <td className="text-caption text-muted">
                     {f.reference} ({f.refN}) ↔ {f.focal} ({f.focalN})
-                    {f.preliminary ? " · предварительно" : ""}
+                    {f.preliminary ? ut("dif.preliminarySuffix") : ""}
                   </td>
                   <td className="num">{f.result!.deltaMH}</td>
                   <td>
@@ -98,17 +100,14 @@ export function DifPanel({ surveyId }: { surveyId: string }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-3 text-caption text-muted">
-            ΔMH в дельта-единицах ETS: |Δ| &lt; 1 — класс A, 1–1.5 — B, &gt; 1.5 — C. Знак
-            показывает, какая группа чаще отвечает по ключу при равном уровне черты.
-          </p>
+          <p className="mt-3 text-caption text-muted">{ut("dif.deltaMhExplain")}</p>
         </Panel>
       ) : null}
 
       {data.reliability.length ? (
         <Panel
           title={ut("dif.reliabilityByGroup")}
-          hint="Альфа Кронбаха отдельно у мужчин и женщин. Расхождение больше 0.10 означает, что шкала измеряет одну группу точнее другой — сравнивать их баллы нужно осторожнее."
+          hint={ut("dif.alphaHint")}
           className="overflow-x-auto"
         >
           <table>

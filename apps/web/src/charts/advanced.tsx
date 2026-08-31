@@ -74,7 +74,7 @@ export function Radar({
         </div>
       ) : null}
       <p className="hint" style={{ marginTop: 8 }}>
-        Оси нормированы к максимуму своей субшкалы — сравнима форма профиля целиком
+        {ut("chart.radarNormNote")}
       </p>
     </div>
   );
@@ -216,8 +216,8 @@ export function Scatter({
       </svg>
       {flagged ? (
         <div className="legend">
-          <span><i className="dot" style={{ background: SERIES[0] }} /> обычные</span>
-          <span><i className="dot" style={{ background: "var(--sev-severe)" }} /> помечены как небрежные ({flagged})</span>
+          <span><i className="dot" style={{ background: SERIES[0] }} /> {ut("chart.ordinary")}</span>
+          <span><i className="dot" style={{ background: "var(--sev-severe)" }} /> {ut("chart.flaggedCareless")} ({flagged})</span>
         </div>
       ) : null}
     </div>
@@ -315,6 +315,7 @@ export function Funnel({ stages }: { stages: { label: string; value: number; los
 /* ─────────── знаковые столбики ─────────── */
 
 export function DivergingBar({ items, domain = 1, goodThreshold }: { items: { label: string; value: number }[]; domain?: number; goodThreshold?: number }) {
+  const { ut } = useLang();
   if (!items.length) return <NoData />;
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -345,7 +346,9 @@ export function DivergingBar({ items, domain = 1, goodThreshold }: { items: { la
         );
       })}
       {goodThreshold !== undefined ? (
-        <p className="hint">Пункты со связью ниже {goodThreshold} выделены — они плохо согласуются со шкалой</p>
+        <p className="hint">
+          {ut("chart.lowCorrPrefix")} {goodThreshold} {ut("chart.lowCorrSuffix")}
+        </p>
       ) : null}
     </div>
   );

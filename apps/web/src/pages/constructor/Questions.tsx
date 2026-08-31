@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { UI } from "@quizzy/shared";
 import { BulkPaste } from "./BulkPaste";
 import { Loc, Toggle } from "./fields";
 import { TYPES, newUid, type Draft, type DraftQuestion } from "./model";
@@ -46,8 +47,7 @@ export function Questions({
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="m-0 max-w-[60ch] text-caption text-muted">
-            Номера пунктов — это то, на что ссылаются ключи шкал. Перестановка вопросов
-            сдвигает ключи, поэтому меняйте порядок до того, как зададите ключ.
+            {ut("cq.reorderHint")}
           </p>
           <div className="flex shrink-0 items-center gap-2">
             <Button onClick={() => setBulk(true)}>{ut("co.bulkPaste")}</Button>
@@ -64,15 +64,15 @@ export function Questions({
                       title: { uk: "", ru: "" },
                       required: true,
                       options: [
-                        { text: { uk: ut("bp.yes"), ru: "Да" }, keyCode: "yes" },
-                        { text: { uk: "Ні", ru: ut("bp.no") }, keyCode: "no" },
+                        { text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
+                        { text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
                       ],
                     },
                   ],
                 }))
               }
             >
-              Добавить вопрос
+              {ut("cq.addQuestion")}
             </Button>
           </div>
         </div>
@@ -104,13 +104,13 @@ export function Questions({
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </Select>
-                <Button variant="quiet" size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Выше" title={ut("cq.moveUp")}>↑</Button>
+                <Button variant="quiet" size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={ut("cq.moveUp")} title={ut("cq.moveUp")}>↑</Button>
                 <Button
                   variant="quiet"
                   size="sm"
                   onClick={() => move(i, 1)}
                   disabled={i === draft.questions.length - 1}
-                  aria-label="Ниже"
+                  aria-label={ut("cq.moveDown")}
                   title={ut("cq.moveDown")}
                 >
                   ↓
@@ -121,7 +121,7 @@ export function Questions({
                   size="sm"
                   onClick={() => setDraft((d) => ({ ...d, questions: d.questions.filter((_, k) => k !== i) }))}
                 >
-                  Удалить
+                  {ut("ui.delete")}
                 </Button>
               </div>
             }
@@ -178,7 +178,7 @@ export function Questions({
                               className="size-4 shrink-0"
                               onChange={(e) => upd(i, { options: q.options.map((x, k) => (k === oi ? { ...x, riskFlag: e.target.checked } : x)) })}
                             />
-                            <span className="text-caption">критический</span>
+                            <span className="text-caption">{ut("mark.critical")}</span>
                           </label>
                         </td>
                       </tr>
@@ -191,7 +191,7 @@ export function Questions({
               className="mt-2"
               onClick={() => upd(i, { options: [...q.options, { text: { uk: "", ru: "" }, score: 0 }] })}
             >
-              Добавить вариант
+              {ut("mb.addOption")}
             </Button>
           </Panel>
         </div>

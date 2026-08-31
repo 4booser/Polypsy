@@ -63,10 +63,10 @@ export default function Surveillance() {
         <Panel title={`${ut("sv.signals")}: ${signals.length}`} className="mb-4 border border-[var(--sev-severe)]">
           {signals.slice(0, 6).map((s, i) => (
             <p key={i} className="my-1 text-small">
-              <strong>{s.unit ?? "вся выборка"}</strong> · неделя {s.week}:{" "}
-              {Math.round(s.p * 100)}% высокого риска ({s.x} из {s.n})
-              {s.beyondLimits ? " — выше контрольного предела" : ""}
-              {s.runSignal ? " — устойчивый сдвиг (8 недель по одну сторону)" : ""}
+              <strong>{s.unit ?? ut("sv.wholeSample")}</strong> · {ut("sv.week")} {s.week}:{" "}
+              {Math.round(s.p * 100)}% {ut("sv.highRiskPct")} ({s.x} {ut("an.of")} {s.n})
+              {s.beyondLimits ? ` ${ut("sv.beyondLimit")}` : ""}
+              {s.runSignal ? ` ${ut("sv.runSignalNote")}` : ""}
             </p>
           ))}
         </Panel>
@@ -80,7 +80,7 @@ export default function Surveillance() {
         <Chart
           key={s.unit ?? "__all__"}
           title={s.unit ?? ut("sv.wholeSample")}
-          hint={`центр ${Math.round(s.center * 100)}% · недели с n<${data.minWeekN} без сигналов`}
+          hint={`${ut("sv.center")} ${Math.round(s.center * 100)}% · ${ut("sv.weeksBelowN")}${data.minWeekN} ${ut("sv.noSignalsSuffix")}`}
         >
           <PBars series={s} />
         </Chart>
@@ -90,6 +90,7 @@ export default function Surveillance() {
 }
 
 function PBars({ series }: { series: NonNullable<Awaited<ReturnType<typeof api.surveillance>>>["series"][number] }) {
+  const { ut } = useLang();
   const max = Math.max(...series.weeks.map((w) => w.ucl), 0.05);
   return (
     <div className="flex h-[140px] items-end gap-1">
@@ -99,7 +100,7 @@ function PBars({ series }: { series: NonNullable<Awaited<ReturnType<typeof api.s
           <div
             key={w.week}
             className="flex flex-1 flex-col items-center gap-0.5"
-            title={`${w.week}: ${w.x} из ${w.n} (${Math.round(w.p * 100)}%), предел ${Math.round(w.ucl * 100)}%`}
+            title={`${w.week}: ${w.x} ${ut("an.of")} ${w.n} (${Math.round(w.p * 100)}%), ${ut("sv.limitLabel")} ${Math.round(w.ucl * 100)}%`}
           >
             <div className="relative h-[110px] w-full max-w-[26px] rounded bg-surface-2">
               {/* контрольный предел недели */}

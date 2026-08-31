@@ -33,13 +33,13 @@ export default function SurveyAnalyticsPage() {
   const downloadSpssSyntax = (sid: string) =>
     run(() => download(api.spssSyntaxUrl(sid, profile), "syntax.sps"), ut("an.syntaxExported"));
   const downloadCodebook = (sid: string) =>
-    run(() => download(api.codebookUrl(sid, profile), "codebook.csv"), "Codebook выгружен");
+    run(() => download(api.codebookUrl(sid, profile), "codebook.csv"), ut("an.codebookExported"));
   const downloadManifest = (sid: string) =>
     run(() => download(api.manifestUrl(sid, profile, purpose), "manifest.json"), ut("rep.manifestDone"));
   const downloadScript = (sid: string, ext: "r" | "py") =>
     run(() => download(api.loadScriptUrl(sid, ext, profile), `load.${ext}`), ut("rep.scriptDone"));
   const downloadLong = (sid: string) =>
-    run(() => download(api.longUrl(sid, profile), "long.csv"), "Long-format выгружен");
+    run(() => download(api.longUrl(sid, profile), "long.csv"), ut("an.longExported"));
   const [tab, setTab] = useState<Tab>("overview");
 
   /*
@@ -96,11 +96,11 @@ export default function SurveyAnalyticsPage() {
          */
         <div className="date-range">
           <label>
-            <span>с</span>
+            <span>{ut("sch.from")}</span>
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label={ut("unit.chooseHint")} />
           </label>
           <label>
-            <span>по</span>
+            <span>{ut("sch.to")}</span>
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label={ut("an.periodEnd")} />
           </label>
           {from || to ? (
@@ -125,14 +125,14 @@ export default function SurveyAnalyticsPage() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <h2 className="m-0 flex items-center gap-2 font-display text-section font-medium">
               <i className="dot live" />
-              Сейчас проходят: {data.inProgressNow.length}
+              {ut("an.inProgressNow")} {data.inProgressNow.length}
             </h2>
             <span className="text-caption text-muted">{ut("an.draftsAutosaved")}</span>
           </div>
           <div className="row tight">
             {data.inProgressNow.map((p, i) => (
               <span key={i} className="chip static">
-                {p.userName ?? ut("an.anon")} · {p.answered} отв.
+                {p.userName ?? ut("an.anon")} · {p.answered} {ut("an.answeredAbbr")}
               </span>
             ))}
           </div>
@@ -192,7 +192,7 @@ export default function SurveyAnalyticsPage() {
             title={ut("an.dropOff")}
             hint={
               dropOffStages.length < data.dropOff.length
-                ? `Показаны первый, последний и шаги с потерями — всего вопросов ${data.dropOff.length}`
+                ? `${ut("an.dropOffPartial")} ${data.dropOff.length}`
                 : ut("an.dropOffHint")
             }
           >
@@ -242,11 +242,7 @@ export default function SurveyAnalyticsPage() {
               <Link className="btn" to={`/surveys/${data.surveyId}/key`}>{ut("an.keys")}</Link>
             </div>
             <p className="mt-2.5 text-caption text-muted">
-              Матрица и синтаксис — пара: положите их рядом и запустите синтаксис, он подставит
-              метки переменных и значений. Пропуски закодированы как −99. Деидентифицированный
-              профиль заменяет субъектов необратимыми кодами (стабильными между выгрузками —
-              лонгитюд склеивается), возраст полосами, дату месяцем; подразделение и звание
-              не выгружаются. Каждая выгрузка фиксируется в журнале с SHA-256 датасета.
+              {ut("an.exportsNote")}
             </p>
           </Panel>
 
@@ -265,7 +261,7 @@ export default function SurveyAnalyticsPage() {
             <BoxPlot
               boxes={data.questions
                 .filter((q) => q.answered > 0)
-                .map((q) => boxOf(`В${q.position + 1}`, [q.minDurationMs / 1000, q.medianDurationMs / 1000, q.avgDurationMs / 1000, q.maxDurationMs / 1000]))
+                .map((q) => boxOf(`${ut("an.questionAbbr")}${q.position + 1}`, [q.minDurationMs / 1000, q.medianDurationMs / 1000, q.avgDurationMs / 1000, q.maxDurationMs / 1000]))
                 .filter((b): b is NonNullable<typeof b> => !!b)}
             />
           </Chart>
@@ -285,7 +281,7 @@ export default function SurveyAnalyticsPage() {
             </Chart>
             <Chart title={ut("an.firstChoice")} hint={ut("an.firstChoiceHint")}>
               <BarList
-                unit=" с"
+                unit={` ${ut("an.secAbbr")}`}
                 items={data.questions.map((q) => ({
                   label: `${q.position + 1}. ${q.title}`,
                   value: Math.round(q.avgTimeToFirstAnswerMs / 100) / 10,
@@ -329,7 +325,7 @@ export default function SurveyAnalyticsPage() {
           </Panel>
 
           {data.questions.filter((q) => q.numeric).map((q) => (
-            <Chart key={q.questionId} title={`${q.position + 1}. ${q.title}`} hint={`среднее ${q.numeric!.average} · медиана ${q.numeric!.median} · диапазон ${q.numeric!.min}–${q.numeric!.max}`}>
+            <Chart key={q.questionId} title={`${q.position + 1}. ${q.title}`} hint={`${ut("an.averageWord")} ${q.numeric!.average} · ${ut("bt.median")} ${q.numeric!.median} · ${ut("an.rangeWord")} ${q.numeric!.min}–${q.numeric!.max}`}>
                 <BarList items={q.numeric!.distribution.map((d) => ({ label: String(d.value), value: d.count }))} />
             </Chart>
           ))}
@@ -357,12 +353,12 @@ export default function SurveyAnalyticsPage() {
           ) : null}
 
           {data.scales.map((s) => (
-            <Panel key={s.scaleId} title={s.title} hint={`среднее ${s.average} · медиана ${s.median} · диапазон ${s.min}–${s.max} из ${s.maxPossible}`}>
+            <Panel key={s.scaleId} title={s.title} hint={`${ut("an.averageWord")} ${s.average} · ${ut("bt.median")} ${s.median} · ${ut("an.rangeWord")} ${s.min}–${s.max} ${ut("common.of")} ${s.maxPossible}`}>
               <Grid min={400}>
                 <div>
                   {s.bands.length === 0 ? (
                     <p className="text-muted">
-                      У шкалы нет интерпретационных норм — она используется как служебная
+                      {ut("an.noInterpretiveNorms")}
                     </p>
                   ) : (
                   <Donut
@@ -378,7 +374,7 @@ export default function SurveyAnalyticsPage() {
                       <p className="mb-1.5">
                         <strong>{ut("an.alpha")}: {s.reliability.alpha}</strong>{" "}
                         <span className="text-muted">
-                          ({s.reliability.alpha >= 0.8 ? ut("an.reliabilityGood") : s.reliability.alpha >= 0.7 ? ut("an.reliabilityOk") : ut("an.reliabilityLow")} согласованность по {s.reliability.itemCount} пунктам)
+                          ({s.reliability.alpha >= 0.8 ? ut("an.reliabilityGood") : s.reliability.alpha >= 0.7 ? ut("an.reliabilityOk") : ut("an.reliabilityLow")} {ut("an.consistency")} {ut("an.perItems")} {s.reliability.itemCount} {ut("an.itemsDat")})
                         </span>
                       </p>
                       <DivergingBar
@@ -415,8 +411,8 @@ export default function SurveyAnalyticsPage() {
         <Stack>
           <Panel title={ut("an.carelessTitle")}>
             <p className="text-caption text-muted">
-              Помечено {data.quality.length} из {data.completed}. Порог «слишком быстро» — {Math.round(data.tooFastThresholdMs / 1000)} с
-              на вопрос. Это флаг для проверки специалистом, а не основание исключать данные.
+              {ut("an.flaggedCount")} {data.quality.length} {ut("common.of")} {data.completed}. {ut("an.thresholdLabel")} {Math.round(data.tooFastThresholdMs / 1000)}{" "}
+              {ut("an.secPerQuestion")} {ut("an.flagHint")}
             </p>
           </Panel>
 
@@ -433,7 +429,7 @@ export default function SurveyAnalyticsPage() {
               <Chart title={ut("an.timeVsFast")} hint={ut("an.timeVsFastHint")}>
                 <Scatter
                   xLabel={ut("an.durationAxis")}
-                  yLabel="% быстрых"
+                  yLabel={ut("an.fastPercentLabel")}
                   xThreshold={(data.questions.length * data.tooFastThresholdMs) / 1000}
                   points={data.quality.map((q) => ({ x: Math.round(q.durationMs / 1000), y: q.tooFastShare, flagged: q.flagged }))}
                 />

@@ -26,7 +26,7 @@ export default function ApiDocs() {
   const byTag = new Map<string, { path: string; method: string; op: Operation }[]>();
   for (const [path, methods] of Object.entries(spec.paths)) {
     for (const [method, op] of Object.entries(methods)) {
-      const tag = op.tags[0] ?? "прочее";
+      const tag = op.tags[0] ?? ut("api.routesFallbackTag");
       if (!byTag.has(tag)) byTag.set(tag, []);
       byTag.get(tag)!.push({ path, method, op });
     }
@@ -44,15 +44,12 @@ export default function ApiDocs() {
   return (
     <Page
       title={ut("api.title")}
-      sub={`${spec.info.title} ${spec.info.version} · ${total} маршрутов`}
+      sub={`${spec.info.title} ${spec.info.version} · ${total} ${ut("api.routesCount")}`}
       actions={<Button variant="primary" onClick={() => void api.downloadOpenapi()}>{ut("api.download")}</Button>}
     >
       <Stack>
         <Panel>
-          <p className="m-0 text-small text-muted">
-            Пути и методы выведены из таблицы маршрутов приложения, поэтому разойтись с кодом
-            не могут. Схемы тел взяты из проверяющих схем — то же, что применяется к запросу.
-          </p>
+          <p className="m-0 text-small text-muted">{ut("api.routesDescription")}</p>
         </Panel>
 
         {[...byTag.entries()].sort().map(([tag, list]) => (

@@ -1030,11 +1030,12 @@ export function Search({
   placeholder?: string;
   width?: number;
 }) {
+  const { ut } = useLang();
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder ?? "Поиск"}
+      placeholder={placeholder ?? ut("ui.search")}
       style={{ maxWidth: width }}
     />
   );
