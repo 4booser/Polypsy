@@ -55,8 +55,8 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         <div className="conclusion-view">
           <p className="m-0 whitespace-pre-wrap">{state.current!.text}</p>
           <p className="text-caption text-muted">
-            Подписано: {state.current!.authorName}, {day(state.current!.signedAt!)} · версия{" "}
-            {state.current!.version}. Правка создаст новую версию — подписанный текст неизменен.
+            {ut("cnc.signedBy")} {state.current!.authorName}, {day(state.current!.signedAt!)} ·{" "}
+            {ut("ds.version")} {state.current!.version}. {ut("cnc.editCreatesVersion")}
           </p>
         </div>
       ) : null}
@@ -80,7 +80,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
             }, ut("cn.draftSaved"))
           }
         >
-          Сохранить черновик
+          {ut("cnc.saveDraft")}
         </Button>
         <Button
           variant="primary"
@@ -104,17 +104,15 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
             }, ut("cn.signed"))
           }
         >
-          Подписать
+          {ut("cnc.sign")}
         </Button>
         {state.versions.length > 1 ? (
           <Button onClick={() => setShowHistory((v) => !v)}>
-            {showHistory ? ut("cn.hideHistory") : `История (${state.versions.length})`}
+            {showHistory ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
           </Button>
         ) : null}
       </div>
-      <p className="text-caption text-muted">
-        В печатный отчёт попадает только подписанная версия. Черновик виден только персоналу.
-      </p>
+      <p className="text-caption text-muted">{ut("cnc.onlySignedInReport")}</p>
 
       {showHistory
         ? state.versions.map((v) => (
