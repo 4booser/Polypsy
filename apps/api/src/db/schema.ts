@@ -1,6 +1,7 @@
 import {
   boolean,
   customType,
+  date,
   doublePrecision,
   index,
   integer,
@@ -8,6 +9,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  time,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -97,6 +99,18 @@ export const users = pgTable(
      * этого компьютера».
      */
     workspace: jsonb("workspace"),
+    /**
+     * Свой специалист — тот, кто ведёт человека.
+     *
+     * Закрепляется явно, а не выводится из последнего приёма. Иначе один
+     * визит к коллеге на замене молча переназначал бы ведущего, и переписка
+     * пациента уходила бы не тому человеку.
+     *
+     * Не путать с прикреплением к отделению (department_patients): то
+     * отвечает «человек обслуживается здесь» и даёт право занять слот
+     * повторного приёма, это — «у человека есть ведущий».
+     */
+    leadSpecialistId: text("lead_specialist_id"),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({ emailIdx: uniqueIndex("users_email_idx").on(t.email) }),
@@ -2171,5 +2185,264 @@ export const permissionExceptions = pgTable(
   },
   (t) => ({
     userIdx: index("permission_exceptions_user_idx").on(t.userId, t.permission),
+  }),
+);
+
+/* ═══════════════════════════════════════════════════════════════════
+   Поликлиника: отделения, расписание, приёмы
+   ═══════════════════════════════════════════════════════════════════ */
+
+/**
+ * Отделение — организационная единица приёма.
+ *
+ * Часовой пояс лежит здесь, а не в настройках приложения, и это не
+ * перестраховка. Расписание задаётся стенными часами: «приём с девяти до
+ * часу». Слоты генерируются на восемь недель вперёд, то есть заведомо через
+ * перевод часов. Сгенерируй их сложением UTC-смещения — и половина осени
+ * уедет на час, причём молча: даты правдоподобные, приёмы не те.
+ *
+ * Пояс на отделении, а не на системе, потому что несколько экземпляров одной
+ * системы — это разные учреждения (см. волну 8), а в одном учреждении
+ * отделения могут оказаться в разных городах.
+ */
+export const departments = pgTable("departments", {
+  id: text("id").primaryKey(),
+  title: jsonb("title").notNull(),
+  /** IANA-имя, не смещение: смещение устаревает дважды в год */
+  timezone: text("timezone").notNull().default("Europe/Kyiv"),
+  createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  archivedAt: timestampCol("archived_at"),
+});
+
+/**
+ * Прикрепление пациента к отделению — «человек обслуживается здесь».
+ *
+ * Это не то же, что закреплённый специалист (users.leadSpecialistId). Слова
+ * похожи, сущности разные, и склеить их в одну колонку — самая вероятная
+ * ошибка этой волны. Прикрепление даёт право занять слот повторного приёма;
+ * закрепление отвечает, кто «свой».
+ *
+ * Создаётся самой записью на первичный приём: отдельного действия, о котором
+ * надо помнить, нет — человек с телефона доходит до приёма без участия
+ * сотрудника, и ровно ради этого всё затевалось.
+ */
+export const departmentPatients = pgTable(
+  "department_patients",
+  {
+    departmentId: text("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    attachedAt: timestampCol("attached_at").notNull().default(sql`now()`),
+    /** Записался сам или прикрепил сотрудник — разные истории, разный разбор */
+    attachedVia: text("attached_via", { enum: ["visit", "staff"] }).notNull(),
+    detachedAt: timestampCol("detached_at"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.departmentId, t.patientId] }),
+    patientIdx: index("department_patients_patient_idx").on(t.patientId),
+  }),
+);
+
+/**
+ * Профиль специалиста: где принимает и как долго длится приём по умолчанию.
+ *
+ * Отдельная таблица, а не колонки в users: специалистом человек становится и
+ * перестаёт быть, а учётная запись у него одна. Строка появляется, когда его
+ * заводят в отделение, и исчезает, когда он уходит, — записи при этом
+ * навсегда остаются за автором.
+ */
+export const specialistProfiles = pgTable(
+  "specialist_profiles",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    departmentId: text("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    position: text("position"),
+    room: text("room"),
+    /** Длительность приёма по умолчанию; шаблон недели может её переопределить */
+    defaultSlotMinutes: integer("default_slot_minutes").notNull().default(50),
+    /** Принимает ли сейчас: снятая галочка убирает из списка записи, не трогая прошлое */
+    acceptsBookings: boolean("accepts_bookings").notNull().default(true),
+  },
+  (t) => ({
+    departmentIdx: index("specialist_profiles_department_idx").on(t.departmentId),
+  }),
+);
+
+/**
+ * Обычная неделя специалиста. Из неё генерируются слоты.
+ *
+ * Время хранится как стенное (`time`), а не как метка: «с девяти» означает
+ * девять по часам на стене и в марте, и в ноябре. Перевод в настоящий момент
+ * происходит при генерации, через часовой пояс отделения.
+ */
+export const scheduleTemplates = pgTable(
+  "schedule_templates",
+  {
+    id: text("id").primaryKey(),
+    specialistId: text("specialist_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 1 — понедельник, 7 — воскресенье (ISO, как в date_part('isodow')) */
+    weekday: integer("weekday").notNull(),
+    startsAt: time("starts_at").notNull(),
+    endsAt: time("ends_at").notNull(),
+    slotMinutes: integer("slot_minutes").notNull(),
+    kind: text("kind", { enum: ["primary", "repeat", "any"] }).notNull().default("any"),
+    capacity: integer("capacity").notNull().default(1),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    specialistIdx: index("schedule_templates_specialist_idx").on(t.specialistId, t.weekday),
+  }),
+);
+
+/**
+ * Исключение из обычной недели: отпуск, замена, дополнительный день.
+ *
+ * Перекрывает шаблон на конкретную дату. `off` убирает приём целиком или на
+ * часть дня, `extra` добавляет часы, которых в шаблоне нет.
+ */
+export const scheduleExceptions = pgTable(
+  "schedule_exceptions",
+  {
+    id: text("id").primaryKey(),
+    specialistId: text("specialist_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: date("date").notNull(),
+    kind: text("kind", { enum: ["off", "extra"] }).notNull(),
+    /** null на обоих концах при kind=off означает «весь день» */
+    startsAt: time("starts_at"),
+    endsAt: time("ends_at"),
+    slotMinutes: integer("slot_minutes"),
+    note: text("note"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    specialistIdx: index("schedule_exceptions_specialist_idx").on(t.specialistId, t.date),
+  }),
+);
+
+/**
+ * Слот приёма — конкретное время у конкретного специалиста.
+ *
+ * Занятости здесь нет намеренно. Занят слот или нет — это число живых
+ * приёмов против вместимости, и хранить рядом ещё и признак значило бы
+ * завести второй источник правды, который рано или поздно разойдётся с
+ * первым: отменённый приём забыли бы вычесть, и слот остался бы «занятым»
+ * навсегда. `status` отвечает на другой вопрос — открыт ли слот для записи
+ * вообще.
+ *
+ * `capacity` заложена сразу, хотя групповая работа отложена: слот на одного —
+ * частный случай слота на многих, а обратный переход означал бы переписать
+ * запись, расписание и все экраны. Стоит одну колонку.
+ */
+export const slots = pgTable(
+  "slots",
+  {
+    id: text("id").primaryKey(),
+    specialistId: text("specialist_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    departmentId: text("department_id")
+      .notNull()
+      .references(() => departments.id, { onDelete: "cascade" }),
+    startsAt: timestampCol("starts_at").notNull(),
+    endsAt: timestampCol("ends_at").notNull(),
+    kind: text("kind", { enum: ["primary", "repeat", "any"] }).notNull().default("any"),
+    capacity: integer("capacity").notNull().default(1),
+    status: text("status", { enum: ["open", "closed"] }).notNull().default("open"),
+    /**
+     * Слот, который больше не попадает в расписание, но занят.
+     *
+     * Специалист сузил приёмные часы, а на выпавшее время уже кто-то записан.
+     * Слот остаётся и подсвечивается: переносить или оставить решает человек.
+     * Молчаливая отмена чужого приёма недопустима, а «изменил шаблон задним
+     * числом» — самый вероятный способ её устроить.
+     */
+    offSchedule: boolean("off_schedule").notNull().default(false),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    /*
+     * Идемпотентность генерации держится на этом индексе: повторный прогон
+     * не плодит дубликаты, потому что дубликат физически невозможен.
+     */
+    uniq: uniqueIndex("slots_specialist_start_uniq").on(t.specialistId, t.startsAt),
+    lookupIdx: index("slots_lookup_idx").on(t.departmentId, t.startsAt),
+  }),
+);
+
+/**
+ * Приём.
+ *
+ * Каждый переход статуса — в журнал: booked → confirmed → arrived →
+ * in_progress → done, плюс no_show и cancelled.
+ *
+ * Неявка — не строка статистики, а повод: слот кончился, статус остался
+ * booked, приём уходит в no_show и попадает в очередь работы отдельной
+ * задачей. В психологическом отделе переставший приходить — это чаще
+ * ухудшение, чем потеря интереса.
+ */
+export const appointments = pgTable(
+  "appointments",
+  {
+    id: text("id").primaryKey(),
+    slotId: text("slot_id")
+      .notNull()
+      .references(() => slots.id, { onDelete: "cascade" }),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    specialistId: text("specialist_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["primary", "repeat"] }).notNull(),
+    /** Очно или дистанционно; своей видеосвязи не пишем, ссылка на стороннюю встречу */
+    mode: text("mode", { enum: ["onsite", "remote"] }).notNull().default("onsite"),
+    meetingUrl: text("meeting_url"),
+    status: text("status", {
+      enum: ["booked", "confirmed", "arrived", "in_progress", "done", "no_show", "cancelled"],
+    })
+      .notNull()
+      .default("booked"),
+    /**
+     * Причина обращения словами пациента — шифруется как остальные записи о
+     * человеке. Это текст пациента, а не диагноз: в карточке он подписан «со
+     * слов пациента» и лежит отдельно от клинических записей.
+     */
+    reasonEnc: text("reason_enc"),
+    /** Записал сам или сотрудник — видно в журнале и в карточке приёма */
+    bookedBy: text("booked_by").references(() => users.id, { onDelete: "set null" }),
+    bookedAt: timestampCol("booked_at").notNull().default(sql`now()`),
+    confirmedAt: timestampCol("confirmed_at"),
+    arrivedAt: timestampCol("arrived_at"),
+    startedAt: timestampCol("started_at"),
+    finishedAt: timestampCol("finished_at"),
+    cancelledAt: timestampCol("cancelled_at"),
+    cancelledBy: text("cancelled_by").references(() => users.id, { onDelete: "set null" }),
+    /** Отмена позже чем за сутки видна специалисту так же, как неявка */
+    cancelledLate: boolean("cancelled_late").notNull().default(false),
+  },
+  (t) => ({
+    slotIdx: index("appointments_slot_idx").on(t.slotId),
+    patientIdx: index("appointments_patient_idx").on(t.patientId, t.bookedAt.desc()),
+    specialistIdx: index("appointments_specialist_idx").on(t.specialistId),
+    /*
+     * Один человек — один живой приём в слоте. Частичный индекс, потому что
+     * отменённый приём не должен мешать записаться снова: передумал, вернулся
+     * через час — это нормальная история, а не попытка занять два места.
+     */
+    liveUniq: uniqueIndex("appointments_slot_patient_live_uniq")
+      .on(t.slotId, t.patientId)
+      .where(sql`status <> 'cancelled'`),
   }),
 );
