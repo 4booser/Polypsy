@@ -366,6 +366,12 @@ export const ERRORS = {
 
   /* отказы маршрутов */
   "err.dbUnavailable": { uk: "База даних недоступна", ru: "База данных недоступна" },
+
+  /* отказы маршрутов */
+  "err.permissionRequired": {
+    uk: "Недостатньо прав: потрібне «{permission}»",
+    ru: "Недостаточно прав: нужно «{permission}»",
+  },
 } as const;
 
 export type ErrorKey = keyof typeof ERRORS;

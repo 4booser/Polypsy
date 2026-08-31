@@ -9,10 +9,18 @@ import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { SMALL_CELL_FLOOR, canBreakDown, suppress } from "../lib/privacy";
 import { surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const cohortRoutes = new Hono<AppEnv>();
-cohortRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право проверяется рядом со старой проверкой персонала, а не вместо неё.
+ *
+ * Замена идёт по одному набору маршрутов, от читающих к клиническим: так на
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+cohortRoutes.use("*", requireAuth, requireStaff, requirePermission("cohorts.read"));
 
 /**
  * Конструктор когорт: визуальный запрос без SQL.

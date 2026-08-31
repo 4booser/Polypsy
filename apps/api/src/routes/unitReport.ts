@@ -7,7 +7,7 @@ import { audit } from "../lib/audit";
 import { badRequest, parseQuery } from "../lib/http";
 import { surveyScopeFilter } from "../lib/scope";
 import { SMALL_CELL_FLOOR, suppress } from "../lib/privacy";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
 import { queryDate } from "@quizzy/shared";
 
@@ -24,7 +24,15 @@ import { queryDate } from "@quizzy/shared";
  */
 export const unitReportRoutes = new Hono<AppEnv>();
 
-unitReportRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право проверяется рядом со старой проверкой персонала, а не вместо неё.
+ *
+ * Замена идёт по одному набору маршрутов, от читающих к клиническим: так на
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+unitReportRoutes.use("*", requireAuth, requireStaff, requirePermission("unitReport.read"));
 
 
 

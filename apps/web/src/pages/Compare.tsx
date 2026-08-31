@@ -67,7 +67,19 @@ export default function Compare() {
       }
     >
       {error ? <p className="text-danger">{error}</p> : null}
-      {!data ? <Loading /> : null}
+
+      {/*
+        Скелет — только пока действительно грузим.
+        Раньше стояло `!data`, а data остаётся пустым и когда сравнивать
+        нечего: у методик нет ни одного завершённого прохождения, выбирать не
+        из чего, запрос не уходит вовсе. Экран показывал скелет вечно — то
+        есть говорил «подождите» там, где надо было сказать «нечего
+        сравнивать», и человек ждал.
+      */}
+      {list.loading || res.loading ? <Loading /> : null}
+      {!list.loading && !surveyId ? (
+        <Empty title={ut("cmp.nothing")} hint={ut("cmp.noData")} />
+      ) : null}
 
       {data && data.scales.every((s) => s.cohorts.length === 0) ? (
         <Empty

@@ -11,6 +11,7 @@
  * импорта приложения. Импорты ниже динамические по той же причине.
  */
 import { ADMIN_DATABASE_URL, TEST_DATABASE_NAME } from "./preload";
+import { ensureBuiltinRole, syncBuiltinRole } from "../src/lib/permissions";
 
 // пересоздаём тестовую базу через служебное подключение к рабочей
 {
@@ -69,6 +70,14 @@ export async function makeUser(
     role,
     ...Object.fromEntries(Object.entries(extra).filter(([k]) => k !== "birthDate")),
   } as never);
+  /*
+   * Тот же путь, что и в бою: администратор получает встроенную роль в
+   * момент, когда становится администратором. Без этого тесты работали бы с
+   * учётными записями, у которых прав нет вовсе, — и проверяли бы поведение,
+   * которого в бою не бывает.
+   */
+  if (role === "admin") await ensureBuiltinRole(id);
+
   return { id, token: await issueToken({ id, role }) };
 }
 
@@ -86,6 +95,11 @@ export async function api(path: string, token: string, init: RequestInit = {}) {
 }
 
 await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
+/*
+ * Набор встроенной роли приводится к справочнику до создания учётных
+ * записей: миграция заводит саму роль, а её права задаёт код.
+ */
+await syncBuiltinRole();
 
 export const root = await makeUser("superadmin", "root@test");
 export const adminA = await makeUser("admin", "a@test");

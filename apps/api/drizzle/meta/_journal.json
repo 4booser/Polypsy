@@ -351,6 +351,13 @@
       "when": 1788029670161,
       "tag": "0049_break_glass",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788029730161,
+      "tag": "0050_permissions",
+      "breakpoints": true
     }
   ]
 }

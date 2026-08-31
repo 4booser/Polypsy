@@ -18,11 +18,19 @@ import { notFound, parseQuery } from "../lib/http";
 import { average, median, pearson, percent, round, variance } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const comparisonRoutes = new Hono<AppEnv>();
 
-comparisonRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право проверяется рядом со старой проверкой персонала, а не вместо неё.
+ *
+ * Замена идёт по одному набору маршрутов, от читающих к клиническим: так на
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+comparisonRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /**
  * Минимальный размер когорты.
