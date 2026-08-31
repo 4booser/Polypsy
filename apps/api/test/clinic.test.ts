@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import {
   adminA,
   api,
+  app,
   db,
   makeUser,
   responsesTable,
@@ -1135,5 +1136,147 @@ describe("попытки по назначению", () => {
 
     expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
     expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+  });
+});
+
+describe("справка о посещении", () => {
+  async function visit(tag: string, status: "done" | "booked") {
+    const patient = await makeUser("user", `clinic-cert-${tag}-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    if (status === "done") {
+      for (const s of ["arrived", "in_progress", "done"]) {
+        await api(`/api/clinic/appointments/${booked.body.id}/status`, specialistToken, {
+          method: "POST",
+          body: JSON.stringify({ status: s }),
+        });
+      }
+    }
+    return { patient, id: booked.body.id };
+  }
+
+  test("о состоявшемся приёме выдаётся", async () => {
+    const { id } = await visit("ok", "done");
+    const res = await app.request(`/api/reports/visits/${id}`, {
+      headers: { Authorization: `Bearer ${specialistToken}` },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Довідка про відвідування");
+  });
+
+  test("о несостоявшемся — нет", async () => {
+    /*
+     * «Записан» — намерение, а не посещение. Справка о нём была бы
+     * документом о том, чего не было.
+     */
+    const { id } = await visit("pending", "booked");
+    const res = await api(`/api/reports/visits/${id}`, specialistToken);
+    expect(res.status).toBe(400);
+  });
+
+  test("в справке нет ни причины обращения, ни клинических сведений", async () => {
+    /*
+     * Её несут на работу или в часть, и увидит её тот, кому её отдадут.
+     */
+    const patient = await makeUser("user", `clinic-cert-r-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId, reason: "мысли о смерти по ночам" }),
+    });
+    for (const s of ["arrived", "in_progress", "done"]) {
+      await api(`/api/clinic/appointments/${booked.body.id}/status`, specialistToken, {
+        method: "POST",
+        body: JSON.stringify({ status: s }),
+      });
+    }
+
+    const res = await app.request(`/api/reports/visits/${booked.body.id}`, {
+      headers: { Authorization: `Bearer ${specialistToken}` },
+    });
+    const html = await res.text();
+    expect(html).not.toContain("мысли о смерти");
+    expect(html.toLowerCase()).not.toContain("психолог");
+    /*
+     * И названия отделения тоже: «психологічне відділення» в справке
+     * сообщает тому, кому её отдадут, к кому человек ходил.
+     */
+    expect(html.toLowerCase()).not.toContain("відділення");
+  });
+
+  test("свою справку берёт сам обследуемый", async () => {
+    const { patient, id } = await visit("self", "done");
+    const res = await app.request(`/api/reports/visits/${id}`, {
+      headers: { Authorization: `Bearer ${patient.token}` },
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("чужую не берёт никто", async () => {
+    const { id } = await visit("foreign", "done");
+    const stranger = await makeUser("user", `clinic-cert-x-${crypto.randomUUID()}@test`);
+    const res = await api(`/api/reports/visits/${id}`, stranger.token);
+    expect([403, 404]).toContain(res.status);
+  });
+});
+
+describe("отчёт отделения", () => {
+  test("считает принятых, первичных, неявки и учёт", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await api(
+      `/api/clinic/report?departmentId=${departmentId}&from=2000-01-01&to=${today}`,
+      specialistToken,
+    );
+    expect(res.status).toBe(200);
+    expect(typeof res.body.received).toBe("number");
+    expect(res.body.floor).toBeGreaterThan(0);
+  });
+
+  test("малые числа подавляются, а ноль показывается", async () => {
+    /*
+     * Отчёт уходит наружу, и по строке «в подразделении принято 2 человека»
+     * вместе с составом подразделения человек опознаётся. Подавление — не
+     * округление: null означает «мало».
+     *
+     * Ноль при этом показывается, и это не оплошность: «никого нет» не
+     * выдаёт никого, а спрятанный ноль заставляет думать, что там кто-то
+     * есть.
+     */
+    const empty = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: empty,
+      title: { uk: "Порожнє", ru: "Пустое" },
+      timezone: "Europe/Kyiv",
+    });
+    const zero = await api(
+      `/api/clinic/report?departmentId=${empty}&from=2000-01-01&to=2100-01-01`,
+      specialistToken,
+    );
+    expect(zero.body.attached).toBe(0);
+
+    // один прикреплённый — уже не ноль, но всё ещё мало
+    const one = await makeUser("user", `clinic-rep-${crypto.randomUUID()}@test`);
+    await db
+      .insert(departmentPatients)
+      .values({ departmentId: empty, patientId: one.id, attachedVia: "staff" });
+
+    const few = await api(
+      `/api/clinic/report?departmentId=${empty}&from=2000-01-01&to=2100-01-01`,
+      specialistToken,
+    );
+    expect(few.body.attached).toBeNull();
+    expect(few.body.floor).toBe(5);
+  });
+
+  test("несуществующее отделение — не найдено", async () => {
+    const res = await api(
+      `/api/clinic/report?departmentId=${crypto.randomUUID()}&from=2000-01-01&to=2100-01-01`,
+      specialistToken,
+    );
+    expect(res.status).toBe(404);
   });
 });
