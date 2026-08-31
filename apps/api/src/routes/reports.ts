@@ -27,14 +27,14 @@ reportRoutes.use("*", requireAuth);
 reportRoutes.get("/responses/:id", async (c) => {
   const user = c.get("user");
   const response = await db.query.responses.findFirst({ where: eq(responses.id, c.req.param("id")) });
-  if (!response) notFound("Прохождение не найдено");
+  if (!response) notFound("err.responseNotFound");
 
   const own = response.userId === user.id;
-  if (!own && !isStaff(user)) forbidden("Заключение доступно пациенту или сотруднику");
-  if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("Прохождение не найдено");
+  if (!own && !isStaff(user)) forbidden("err.conclusionAccessDenied");
+  if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
 
   const survey = await getSurveyForResponse(response.id);
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
   const [signedConclusion] = await db

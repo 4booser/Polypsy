@@ -39,9 +39,9 @@ batteryRoutes.use("*", requireAuth);
 /** Батарея видна тем же, кому видна её группа */
 async function assertBatteryAccess(user: Parameters<typeof accessibleGroupIds>[0], batteryId: string) {
   const row = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
-  if (!row) notFound("Батарея не найдена");
+  if (!row) notFound("err.batteryNotFound");
   if (row.groupId) await assertGroupAccess(user, row.groupId);
-  else if (!isStaff(user)) forbidden("Нет доступа к батарее");
+  else if (!isStaff(user)) forbidden("err.batteryAccessDenied");
   return row;
 }
 
@@ -89,7 +89,7 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
 /** Список батарей, доступных сотруднику */
 batteryRoutes.get("/", async (c) => {
   const user = c.get("user");
-  if (!isStaff(user)) forbidden("Доступ только для персонала");
+  if (!isStaff(user)) forbidden("err.staffAccessOnly");
   const lang = langOf(c.req.query("lang"));
   const groupIds = await accessibleGroupIds(user);
 
@@ -130,7 +130,7 @@ batteryRoutes.get("/", async (c) => {
 /** Создание батареи */
 batteryRoutes.post("/", async (c) => {
   const user = c.get("user");
-  if (!isStaff(user)) forbidden("Доступ только для персонала");
+  if (!isStaff(user)) forbidden("err.staffAccessOnly");
   const input = await parseBody(c.req.raw, batteryInputSchema);
   if (input.groupId) await assertGroupAccess(user, input.groupId);
   // право на методику проверяем поштучно: иначе через батарею можно было бы
@@ -224,10 +224,7 @@ batteryRoutes.delete("/:id", async (c) => {
     .from(batteryAssignments)
     .where(eq(batteryAssignments.batteryId, batteryId));
   if (Number(count) > 0)
-    badRequest(
-      `Батарея назначалась ${Number(count)} раз. Удаление стёрло бы историю назначений — ` +
-        `сдайте её в архив`,
-    );
+    badRequest("err.batteryHasAssignments", { count: Number(count) });
 
   await db.delete(batteries).where(eq(batteries.id, batteryId));
   await audit(c, {
@@ -371,15 +368,15 @@ batteryRoutes.post("/:id/assign", async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
   const battery = await assertBatteryAccess(user, batteryId);
-  if (battery.archived) badRequest("Батарея в архиве, назначать её нельзя");
+  if (battery.archived) badRequest("err.batteryArchived");
   await assertBatteryInUse(batteryId);
   const input = await parseBody(c.req.raw, assignBatterySchema);
 
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
-  if (!target) notFound("Обследуемый не найден");
+  if (!target) notFound("err.examineeNotFound");
 
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
-  if (!items.length) badRequest("В батарее нет методик");
+  if (!items.length) badRequest("err.batteryEmpty");
 
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
@@ -423,7 +420,7 @@ batteryRoutes.post("/assignments/:assignmentId/cancel", async (c) => {
   const row = await db.query.batteryAssignments.findFirst({
     where: eq(batteryAssignments.id, assignmentId),
   });
-  if (!row) notFound("Назначение не найдено");
+  if (!row) notFound("err.assignmentNotFound");
   await assertBatteryAccess(user, row.batteryId);
 
   await db

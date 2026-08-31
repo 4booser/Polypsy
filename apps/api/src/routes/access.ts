@@ -71,9 +71,9 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
   const input = await parseBody(c.req.raw, grantAccessSchema);
 
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
-  if (!target) notFound("Пользователь не найден");
+  if (!target) notFound("err.userNotFound");
   if (target.role !== "user") {
-    badRequest("Назначать методику имеет смысл только пациенту — сотрудники видят её и так");
+    badRequest("err.assignOnlyToPatient");
   }
 
   await db
@@ -114,7 +114,7 @@ accessRoutes.delete("/surveys/:id/grants/:userId", async (c) => {
     .delete(surveyAccess)
     .where(and(eq(surveyAccess.surveyId, surveyId), eq(surveyAccess.userId, userId)))
     .returning();
-  if (deleted.length === 0) notFound("Назначение не найдено");
+  if (deleted.length === 0) notFound("err.assignmentNotFound");
 
   await audit(c, {
     action: "access.revoke",

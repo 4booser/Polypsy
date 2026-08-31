@@ -101,7 +101,7 @@ export function Questions({
               <div className="flex flex-wrap items-center gap-1.5">
                 <Select value={q.type} onChange={(e) => upd(i, { type: e.target.value })} className="w-[170px]">
                   {TYPES.map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
+                    <option key={v} value={v}>{ut(l)}</option>
                   ))}
                 </Select>
                 <Button variant="quiet" size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={ut("cq.moveUp")} title={ut("cq.moveUp")}>↑</Button>

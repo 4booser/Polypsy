@@ -43,7 +43,7 @@ async function registerHandler(c: Context<AppEnv>) {
   const email = input.email.toLowerCase();
 
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (existing) conflict("Пользователь с таким email уже существует");
+  if (existing) conflict("err.emailExists");
 
   const [{ count } = { count: 0 }] = await db
     .select({ count: sql<number>`count(*)` })
@@ -64,14 +64,14 @@ async function registerHandler(c: Context<AppEnv>) {
       });
       badRequest(
         invite.reason === "expired"
-          ? "Срок приглашения истёк — попросите новое у своего специалиста"
+          ? "err.inviteExpired"
           : invite.reason === "exhausted"
-            ? "Приглашение уже использовано"
-            : "Приглашение не действует",
+            ? "err.inviteExhausted"
+            : "err.inviteInvalid",
       );
     }
   } else if (!env.openRegistration && !isBootstrap) {
-    badRequest("Регистрация только по приглашению. Попросите ссылку у своего специалиста");
+    badRequest("err.inviteRequired");
   }
 
   const [row] = await db
@@ -148,7 +148,7 @@ authRoutes.post("/login", async (c) => {
       outcome: "denied",
       details: { email, reason: "locked_out" },
     });
-    unauthorized("Слишком много попыток. Подождите 15 минут");
+    unauthorized("err.tooManyAttempts");
   }
 
   const row = await db.query.users.findFirst({ where: eq(users.email, email) });
@@ -164,7 +164,7 @@ authRoutes.post("/login", async (c) => {
       // пароль в журнал не попадает никогда — только сам факт и email
       details: { email, reason: row ? "wrong_password" : "unknown_email" },
     });
-    unauthorized("Неверный email или пароль");
+    unauthorized("err.invalidCredentials");
   }
 
   await clearFailures(email);
@@ -270,10 +270,10 @@ authRoutes.post("/password", requireAuth, async (c) => {
       resourceId: user.id,
       details: { reason: "wrong_current_password" },
     });
-    unauthorized("Текущий пароль не подходит");
+    unauthorized("err.wrongCurrentPassword");
   }
   if (input.currentPassword === input.newPassword) {
-    badRequest("Новый пароль совпадает с текущим");
+    badRequest("err.samePassword");
   }
 
   await db
@@ -301,7 +301,7 @@ authRoutes.post("/password", requireAuth, async (c) => {
 authRoutes.post("/refresh", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const raw = typeof body?.refreshToken === "string" ? body.refreshToken : "";
-  if (!raw) unauthorized("Нет refresh-токена");
+  if (!raw) unauthorized("err.noRefreshToken");
 
   const outcome = await rotateRefresh(raw);
   if (!outcome.ok) {
@@ -313,7 +313,7 @@ authRoutes.post("/refresh", async (c) => {
       subjectUserId: outcome.userId ?? null,
       details: { reason: outcome.reason },
     });
-    unauthorized("Сессия истекла, войдите заново");
+    unauthorized("err.sessionExpired");
   }
   return c.json(outcome.pair);
 });

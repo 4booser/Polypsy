@@ -37,11 +37,11 @@ inviteRoutes.use("*", requireAuth, requireStaff);
 /** Приглашение привязано к батарее — права на него идут от группы батареи */
 async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string | null) {
   if (!batteryId) {
-    if (!isStaff(user)) forbidden("Только для персонала");
+    if (!isStaff(user)) forbidden("err.forStaffOnly");
     return;
   }
   const battery = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
-  if (!battery) notFound("Батарея не найдена");
+  if (!battery) notFound("err.batteryNotFound");
   if (battery.groupId) await assertGroupAccess(user, battery.groupId);
 }
 
@@ -132,7 +132,7 @@ inviteRoutes.post("/", async (c) => {
 inviteRoutes.post("/:id/revoke", async (c) => {
   const user = c.get("user");
   const row = await db.query.invites.findFirst({ where: eq(invites.id, c.req.param("id")) });
-  if (!row) notFound("Приглашение не найдено");
+  if (!row) notFound("err.inviteNotFound");
   await assertInviteBattery(user, row.batteryId);
 
   await db.update(invites).set({ revokedAt: new Date().toISOString() }).where(eq(invites.id, row.id));

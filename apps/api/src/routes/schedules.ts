@@ -18,9 +18,9 @@ scheduleRoutes.use("*", requireAuth, requireStaff);
 /** Расписание наследует права от батареи, а та — от своей группы */
 async function assertScheduleBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string) {
   const battery = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
-  if (!battery) notFound("Батарея не найдена");
+  if (!battery) notFound("err.batteryNotFound");
   if (battery.groupId) await assertGroupAccess(user, battery.groupId);
-  else if (!isStaff(user)) forbidden("Нет доступа к батарее");
+  else if (!isStaff(user)) forbidden("err.batteryAccessDenied");
   return battery;
 }
 
@@ -119,7 +119,7 @@ scheduleRoutes.post("/", async (c) => {
 
   const startsAt = input.startsAt ? new Date(input.startsAt) : new Date();
   if (input.endsAt && new Date(input.endsAt) <= startsAt)
-    badRequest("Дата окончания должна быть позже даты начала");
+    badRequest("err.scheduleDateRange");
 
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
@@ -165,7 +165,7 @@ scheduleRoutes.put("/:id", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const existing = await db.query.schedules.findFirst({ where: eq(schedules.id, id) });
-  if (!existing) notFound("Расписание не найдено");
+  if (!existing) notFound("err.scheduleNotFound");
   await assertScheduleBattery(user, existing.batteryId);
 
   const input = await parseBody(c.req.raw, scheduleInputSchema);
@@ -174,7 +174,7 @@ scheduleRoutes.put("/:id", async (c) => {
 
   const startsAt = input.startsAt ? new Date(input.startsAt) : new Date(existing.startsAt);
   if (input.endsAt && new Date(input.endsAt) <= startsAt)
-    badRequest("Дата окончания должна быть позже даты начала");
+    badRequest("err.scheduleDateRange");
 
   // период изменился — пересчитываем ближайшее срабатывание от даты начала,
   // иначе новая частота вступит в силу только после старого срока
@@ -229,7 +229,7 @@ scheduleRoutes.delete("/:id", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const existing = await db.query.schedules.findFirst({ where: eq(schedules.id, id) });
-  if (!existing) notFound("Расписание не найдено");
+  if (!existing) notFound("err.scheduleNotFound");
   await assertScheduleBattery(user, existing.batteryId);
 
   // уже выданные назначения остаются: они часть истории обследования,
@@ -249,9 +249,9 @@ scheduleRoutes.post("/:id/run", async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const existing = await db.query.schedules.findFirst({ where: eq(schedules.id, id) });
-  if (!existing) notFound("Расписание не найдено");
+  if (!existing) notFound("err.scheduleNotFound");
   await assertScheduleBattery(user, existing.batteryId);
-  if (!existing.active) badRequest("Расписание выключено");
+  if (!existing.active) badRequest("err.scheduleDisabled");
 
   // сдвигаем срок в прошлое, чтобы общий проход подхватил именно это расписание
   await db

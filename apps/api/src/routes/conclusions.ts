@@ -60,8 +60,8 @@ async function lockConclusion(responseId: string) {
 
 async function assertResponse(user: User, responseId: string) {
   const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
-  if (!response) notFound("Прохождение не найдено");
-  if (!(await canAccessSurvey(user, response.surveyId))) notFound("Прохождение не найдено");
+  if (!response) notFound("err.responseNotFound");
+  if (!(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
   return response;
 }
 
@@ -113,9 +113,7 @@ conclusionRoutes.put("/responses/:id/conclusion", async (c) => {
    * нажал «сохранить» вторым, а первый об этом не узнает.
    */
   if (input.baseVersion !== undefined && input.baseVersion !== (latest?.version ?? 0)) {
-    conflict(
-      `Заключение изменилось: сейчас версия ${latest?.version ?? 0}, а правка велась поверх ${input.baseVersion}. Обновите текст.`,
-    );
+    conflict("err.conclusionChanged", { current: latest?.version ?? 0, base: input.baseVersion });
   }
 
   if (latest && latest.status === "draft") {
@@ -160,17 +158,15 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", async (c) => {
     .where(eq(conclusions.responseId, responseId))
     .orderBy(desc(conclusions.version))
     .limit(1);
-  if (!latest) notFound("Заключения ещё нет");
-  if (latest.status === "signed") badRequest("Последняя версия уже подписана");
+  if (!latest) notFound("err.conclusionNotYet");
+  if (latest.status === "signed") badRequest("err.lastVersionSigned");
   /*
    * Подпись удостоверяет конкретный текст. Без сверки версии сохранение,
    * прошедшее между открытием экрана и нажатием «подписать», подставило бы
    * под подпись текст, которого подписывающий не видел.
    */
   if (latest.version !== input.version) {
-    conflict(
-      `Текст изменился после открытия: сейчас версия ${latest.version}, подписывалась ${input.version}. Перечитайте заключение.`,
-    );
+    conflict("err.conclusionTextChangedAfterOpen", { current: latest.version, signing: input.version });
   }
 
   await db

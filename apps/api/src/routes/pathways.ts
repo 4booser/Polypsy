@@ -133,23 +133,23 @@ pathwayRoutes.post("/:id/start", async (c) => {
   const pathwayId = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
   const userId = typeof body?.userId === "string" ? body.userId : null;
-  if (!userId) badRequest("Нужен пациент");
+  if (!userId) badRequest("err.patientRequired");
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!patient || patient.role !== "user") notFound("Пациент не найден");
+  if (!patient || patient.role !== "user") notFound("err.patientNotFound");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   const template = await db.query.pathways.findFirst({ where: eq(pathways.id, pathwayId) });
-  if (!template) notFound("Маршрут не найден");
+  if (!template) notFound("err.pathwayNotFound");
 
   const steps = await db
     .select()
     .from(pathwaySteps)
     .where(eq(pathwaySteps.pathwayId, pathwayId))
     .orderBy(asc(pathwaySteps.position));
-  if (!steps.length) badRequest("В маршруте нет шагов");
+  if (!steps.length) badRequest("err.pathwayNoSteps");
 
   /*
    * Второй открытый маршрут того же вида — почти всегда ошибка: человек не
@@ -163,7 +163,7 @@ pathwayRoutes.post("/:id/start", async (c) => {
       isNull(pathwayInstances.closedAt),
     ),
   });
-  if (existing) badRequest("Этот маршрут у пациента уже открыт");
+  if (existing) badRequest("err.pathwayAlreadyOpen");
 
   const instanceId = crypto.randomUUID();
   const startedAt = new Date();
@@ -276,10 +276,10 @@ pathwayRoutes.get("/instances/:id", async (c) => {
     .innerJoin(pathways, eq(pathways.id, pathwayInstances.pathwayId))
     .leftJoin(users, eq(users.id, pathwayInstances.userId))
     .where(eq(pathwayInstances.id, c.req.param("id")));
-  if (!row) notFound("Маршрут не найден");
+  if (!row) notFound("err.pathwayNotFound");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(row.instance.userId)) notFound("Маршрут не найден");
+  if (allowed && !allowed.has(row.instance.userId)) notFound("err.pathwayNotFound");
 
   const steps = await db
     .select({ p: pathwayProgress, s: pathwaySteps, by: users })
@@ -337,11 +337,11 @@ pathwayRoutes.patch("/progress/:id", async (c) => {
     .innerJoin(pathwayInstances, eq(pathwayInstances.id, pathwayProgress.instanceId))
     .innerJoin(pathwaySteps, eq(pathwaySteps.id, pathwayProgress.stepId))
     .where(eq(pathwayProgress.id, c.req.param("id")));
-  if (!row) notFound("Шаг не найден");
-  if (row.i.closedAt) badRequest("Маршрут уже закрыт");
+  if (!row) notFound("err.pathwayStepNotFound");
+  if (row.i.closedAt) badRequest("err.pathwayClosed");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(row.i.userId)) notFound("Шаг не найден");
+  if (allowed && !allowed.has(row.i.userId)) notFound("err.pathwayStepNotFound");
 
   /*
    * Пропуск обязательного шага требует объяснения. Без него запись «шаг
@@ -349,7 +349,7 @@ pathwayRoutes.patch("/progress/:id", async (c) => {
    * когда разбирают, почему человек не дошёл до помощи.
    */
   if (input.state === "skipped" && row.s.required && !input.note?.trim()) {
-    badRequest("Пропуск обязательного шага нужно объяснить");
+    badRequest("err.pathwaySkipReasonRequired");
   }
 
   await db
@@ -385,11 +385,11 @@ pathwayRoutes.post("/instances/:id/close", async (c) => {
   const row = await db.query.pathwayInstances.findFirst({
     where: eq(pathwayInstances.id, c.req.param("id")),
   });
-  if (!row) notFound("Маршрут не найден");
-  if (row.closedAt) badRequest("Маршрут уже закрыт");
+  if (!row) notFound("err.pathwayNotFound");
+  if (row.closedAt) badRequest("err.pathwayClosed");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(row.userId)) notFound("Маршрут не найден");
+  if (allowed && !allowed.has(row.userId)) notFound("err.pathwayNotFound");
 
   await db
     .update(pathwayInstances)

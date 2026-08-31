@@ -112,7 +112,7 @@ groupRoutes.patch("/:id", async (c) => {
     })
     .where(eq(surveyGroups.id, id))
     .returning();
-  if (!row) notFound("Группа не найдена");
+  if (!row) notFound("err.groupNotFound");
   await audit(c, { action: "group.update", resourceType: "group", resourceId: row.id });
   return c.json(row);
 });
@@ -132,7 +132,7 @@ groupRoutes.patch("/:id", async (c) => {
 groupRoutes.delete("/:id", requireSuperadmin, async (c) => {
   const id = c.req.param("id");
   const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, id) });
-  if (!group) notFound("Группа не найдена");
+  if (!group) notFound("err.groupNotFound");
 
   const [counts] = await db
     .select({
@@ -145,10 +145,7 @@ groupRoutes.delete("/:id", requireSuperadmin, async (c) => {
   if (counts?.surveys) inside.push(`методик: ${counts.surveys}`);
   if (counts?.batteries) inside.push(`батарей: ${counts.batteries}`);
   if (inside.length) {
-    badRequest(
-      `Группа не пуста (${inside.join(", ")}). Перенесите содержимое в другую группу — ` +
-        `удаление утащило бы за собой батареи вместе с историей назначений`,
-    );
+    badRequest("err.groupNotEmpty", { details: inside.join(", ") });
   }
 
   await db.delete(surveyGroups).where(eq(surveyGroups.id, id));
@@ -185,15 +182,15 @@ groupRoutes.post("/:id/admins", requireSuperadmin, async (c) => {
   const groupId = c.req.param("id");
   const body = await c.req.json().catch(() => ({}));
   const userId = String(body?.userId ?? "");
-  if (!userId) badRequest("Не указан userId");
+  if (!userId) badRequest("err.userIdRequired");
 
   const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, groupId) });
-  if (!group) notFound("Группа не найдена");
+  if (!group) notFound("err.groupNotFound");
 
   const target = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!target) notFound("Пользователь не найден");
+  if (!target) notFound("err.userNotFound");
   if (target.role === "user") {
-    badRequest("Назначить можно только сотрудника — сначала выдайте роль администратора");
+    badRequest("err.assignStaffOnly");
   }
 
   await db
@@ -219,7 +216,7 @@ groupRoutes.delete("/:id/admins/:userId", requireSuperadmin, async (c) => {
     .delete(groupAdmins)
     .where(and(eq(groupAdmins.groupId, groupId), eq(groupAdmins.userId, userId)))
     .returning();
-  if (deleted.length === 0) notFound("Назначение не найдено");
+  if (deleted.length === 0) notFound("err.assignmentNotFound");
 
   await audit(c, {
     action: "group.admin_revoke",

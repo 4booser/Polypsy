@@ -128,9 +128,9 @@ export async function canAccessSurvey(user: User, surveyId: string): Promise<boo
 /** Бросает 404, если методики нет, и 403, если она вне зоны ответственности */
 export async function assertSurveyAccess(user: User, surveyId: string): Promise<void> {
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
   if (!(await canAccessSurvey(user, surveyId))) {
-    forbidden("Методика относится к группе, которой вы не управляете");
+    forbidden("err.surveyOutOfScope");
   }
 }
 
@@ -142,7 +142,7 @@ export async function canAccessGroup(user: User, groupId: string): Promise<boole
 
 export async function assertGroupAccess(user: User, groupId: string): Promise<void> {
   if (!(await canAccessGroup(user, groupId))) {
-    forbidden("Вы не управляете этой группой");
+    forbidden("err.groupNotManaged");
   }
 }
 
@@ -162,7 +162,7 @@ export async function assertSurveysInUse(surveyIds: string[]): Promise<void> {
     .where(and(inArray(surveys.id, surveyIds), isNotNull(surveys.archivedAt)));
   if (archived.length === 0) return;
   const names = archived.map((r) => t(r.title as never)).join(", ");
-  badRequest(`Снято с использования: ${names}. Верните методику в работу или уберите её из набора`);
+  badRequest("err.retiredSurveys", { names });
 }
 
 /** Те же проверки для батареи: её методики целиком */

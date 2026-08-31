@@ -21,10 +21,10 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   if (!header?.startsWith("Bearer ")) unauthorized();
 
   const claims = await readToken(header.slice("Bearer ".length).trim());
-  if (!claims) unauthorized("Токен недействителен или истёк");
+  if (!claims) unauthorized("err.tokenInvalid");
 
   const row = await db.query.users.findFirst({ where: eq(users.id, claims.sub) });
-  if (!row) unauthorized("Пользователь не найден");
+  if (!row) unauthorized("err.userNotFound");
 
   c.set("user", toPublicUser(row));
 
@@ -46,7 +46,7 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
       resourceId: c.req.path,
       details: { method: c.req.method, reason: "read_only_account" },
     });
-    forbidden("Учётная запись работает только на просмотр");
+    forbidden("err.readOnlyAccount");
   }
 
   /*
@@ -69,7 +69,7 @@ export const requireStaff = createMiddleware<AppEnv>(async (c, next) => {
       resourceId: c.req.path,
       details: { method: c.req.method, reason: "staff_required" },
     });
-    forbidden("Доступно только сотрудникам");
+    forbidden("err.staffOnly");
   }
   await next();
 });
@@ -84,7 +84,7 @@ export const requireSuperadmin = createMiddleware<AppEnv>(async (c, next) => {
       resourceId: c.req.path,
       details: { method: c.req.method, reason: "superadmin_required" },
     });
-    forbidden("Доступно только суперадминистратору");
+    forbidden("err.superadminOnly");
   }
   await next();
 });

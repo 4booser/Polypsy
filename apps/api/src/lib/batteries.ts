@@ -145,8 +145,6 @@ export async function assertBatteryOrder(
       .where(eq(surveys.id, blocking.item.surveyId));
     const title =
       typeof row?.title === "string" ? row.title : ((row?.title as { ru?: string })?.ru ?? "предыдущая методика");
-    badRequest(
-      `В батарее «${battery.title}» задан строгий порядок: сначала нужно пройти «${title}»`,
-    );
+    badRequest("err.batteryStrictOrder", { battery: battery.title, title });
   }
 }

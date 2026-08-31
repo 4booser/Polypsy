@@ -11,6 +11,8 @@ import { secureHeaders } from "hono/secure-headers";
 import { bodyLimit } from "hono/body-limit";
 import { compress } from "hono/compress";
 import { HTTPException } from "hono/http-exception";
+import { renderError, type ErrorParams } from "@quizzy/shared";
+import { langOf } from "./lib/http";
 import { env } from "./env";
 import { authRoutes } from "./routes/auth";
 import { surveyRoutes } from "./routes/surveys";
@@ -85,7 +87,7 @@ app.use(
   "*",
   bodyLimit({
     maxSize: 1024 * 1024,
-    onError: (c) => c.json({ error: "Слишком большой запрос" }, 413),
+    onError: (c) => c.json({ error: renderError("err.tooLarge", langOf(c)) }, 413),
   }),
 );
 // consola токенов живёт в localStorage, поэтому открытый CORS означал бы, что
@@ -107,7 +109,7 @@ app.get("/health/ready", async (c) => {
     await db.execute(sql`select 1`);
     return c.json({ ok: true });
   } catch {
-    return c.json({ ok: false, error: "База данных недоступна" }, 503);
+    return c.json({ ok: false, error: renderError("err.dbUnavailable", langOf(c)) }, 503);
   }
 });
 
@@ -177,8 +179,22 @@ app.route("/api", responseRoutes);
 app.onError((err, c) => {
   const id = currentRequestId();
   if (err instanceof HTTPException) {
+    /*
+     * Единственное место, где отказ превращается в текст, — и сразу на языке
+     * того, кто спрашивал.
+     *
+     * Раньше фраза писалась в каждом маршруте по-русски и уезжала клиенту
+     * готовой: словарь интерфейса такие строки не видит, переключатель языка
+     * на них не действует. Украиноязычный пациент читал «Вы уже проходили
+     * эту методику» на украинском экране.
+     *
+     * Отказы без ключа — разбор тела запроса — проходят как есть: там текст
+     * собирается на месте и адресован разработчику.
+     */
+    const info = err.cause as { key?: string; params?: ErrorParams } | undefined;
+    const text = info?.key ? renderError(info.key, langOf(c), info.params) : err.message;
     // ожидаемые отказы — не ошибки сервера, стек тут не нужен
-    return c.json({ error: err.message, requestId: id }, err.status);
+    return c.json({ error: text, requestId: id }, err.status);
   }
   /*
    * Номер запроса возвращается пользователю вместе с отказом: по нему
@@ -199,9 +215,11 @@ app.onError((err, c) => {
     message: err.message,
     stack: err.stack?.split("\n").slice(0, 6).join(" | "),
   });
-  return c.json({ error: "Внутренняя ошибка сервера", requestId: id }, 500);
+  return c.json({ error: renderError("err.internal", langOf(c)), requestId: id }, 500);
 });
 
-app.notFound((c) => c.json({ error: "Маршрут не найден", requestId: currentRequestId() }, 404));
+app.notFound((c) =>
+  c.json({ error: renderError("err.routeNotFound", langOf(c)), requestId: currentRequestId() }, 404),
+);
 
 export { app };

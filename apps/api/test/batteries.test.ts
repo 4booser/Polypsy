@@ -50,7 +50,7 @@ describe("батареи", () => {
 
     const out = await submitSurvey(secondSurvey, patient.token);
     expect(out.status).toBe(400);
-    expect(out.body.error).toContain("строгий порядок");
+    expect(out.body.error).toContain("суворий порядок");
   });
 
   test("после первого шага открывается второй; назначение закрывается само", async () => {

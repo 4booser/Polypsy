@@ -27,7 +27,7 @@ userRoutes.post("/", async (c) => {
   const email = input.email.toLowerCase();
 
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (existing) conflict("Пользователь с таким email уже существует");
+  if (existing) conflict("err.emailExists");
 
   const [row] = await db
     .insert(users)
@@ -58,14 +58,14 @@ userRoutes.post("/", async (c) => {
 userRoutes.patch("/:id/role", async (c) => {
   const id = c.req.param("id");
   const actor = c.get("user");
-  if (id === actor.id) forbidden("Нельзя изменить собственную роль");
+  if (id === actor.id) forbidden("err.cannotChangeOwnRole");
 
   const body = await c.req.json().catch(() => ({}));
   const role = body?.role;
-  if (!["superadmin", "admin", "user"].includes(role)) forbidden("Допустимые роли: superadmin, admin, user");
+  if (!["superadmin", "admin", "user"].includes(role)) forbidden("err.invalidRole");
 
   const [row] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
-  if (!row) notFound("Пользователь не найден");
+  if (!row) notFound("err.userNotFound");
 
   // старые сессии несут старую роль в токене — обрываем их
   await revokeAllFor(row.id);

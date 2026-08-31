@@ -1,4 +1,4 @@
-import type { Administration, SurveyFull, SurveyGroupWithCounts } from "@quizzy/shared";
+import type { Administration, SurveyFull, SurveyGroupWithCounts, UiKey } from "@quizzy/shared";
 
 export type Tab = "basics" | "questions" | "scales" | "json";
 
@@ -93,20 +93,28 @@ export const EMPTY: Draft = {
   scales: [],
 };
 
+/*
+ * Виды вопросов: код и ключ подписи.
+ *
+ * Подпись была написана здесь по-русски и уезжала на экран как есть — в
+ * конструкторе на украинском выпадающий список видов оставался русским.
+ * Файл живёт вне разметки, поэтому первая редакция проверки строк его не
+ * видела: она смотрела только .tsx.
+ */
 export const TYPES = [
-  ["yesno", "Да / Нет"],
-  ["single", "Один ответ"],
-  ["multiple", "Несколько"],
-  ["scale", "Шкала"],
-  ["slider", "Ползунок"],
-  ["matrix", "Матрица"],
-  ["ranking", "Ранжирование"],
-  ["number", "Число"],
-  ["text", "Строка"],
-  ["longtext", "Текст"],
-  ["date", "Дата"],
-  ["info", "Информация"],
-] as const;
+  ["yesno", "qt.yesno"],
+  ["single", "qt.single"],
+  ["multiple", "qt.multiple"],
+  ["scale", "qt.scale"],
+  ["slider", "qt.slider"],
+  ["matrix", "qt.matrix"],
+  ["ranking", "qt.ranking"],
+  ["number", "qt.number"],
+  ["text", "qt.text"],
+  ["longtext", "qt.longtext"],
+  ["date", "qt.date"],
+  ["info", "qt.info"],
+] as const satisfies readonly (readonly [string, UiKey])[];
 
 /** Приводит методику из API к черновику: строки уже могут быть объектами языков */
 export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {

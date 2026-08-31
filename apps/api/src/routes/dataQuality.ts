@@ -35,7 +35,7 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const allResponses = await db
     .select()
@@ -220,7 +220,7 @@ dataQualityRoutes.get("/surveys/:id/items", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, langOf(c));
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const { limit } = parseQuery(c, z.object({ limit: z.coerce.number().int().min(1).max(200).default(60) }));
 

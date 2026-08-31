@@ -166,7 +166,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     [...versions].sort((a, b) => b.responseCount - a.responseCount || b.version - a.version)[0] ??
     null;
   const survey = await getSurvey(surveyId, chosen?.id ?? null);
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   /*
    * «Сейчас проходят»: незавершённые прохождения с автосохранением моложе
@@ -568,7 +568,7 @@ analyticsRoutes.get("/surveys/:id/export", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId);
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const responseRows = await db
     .select()

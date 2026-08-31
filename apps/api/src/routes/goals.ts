@@ -40,9 +40,9 @@ const goalSchema = z.object({
 
 async function assertPatient(staff: User, userId: string) {
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!patient) notFound("Пациент не найден");
+  if (!patient) notFound("err.patientNotFound");
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 }
 
 /**
@@ -149,13 +149,13 @@ goalRoutes.post("/patients/:userId", async (c) => {
     .where(eq(surveyVersions.surveyId, input.surveyId))
     .orderBy(desc(surveyVersions.version))
     .limit(1);
-  if (!version) notFound("Методика не найдена");
+  if (!version) notFound("err.surveyNotFound");
 
   const known = await db
     .select({ code: scales.code })
     .from(scales)
     .where(and(eq(scales.versionId, version.id), eq(scales.code, input.scaleCode)));
-  if (!known.length) badRequest("В этой методике нет такой шкалы");
+  if (!known.length) badRequest("err.scaleNotInSurvey");
 
   const { mine } = await scaleSeries(userId, input.surveyId, input.scaleCode);
   const baseline = mine.length ? mine[mine.length - 1]!.value : null;
@@ -191,14 +191,14 @@ goalRoutes.patch("/:id", async (c) => {
   const row = await db.query.treatmentGoals.findFirst({
     where: eq(treatmentGoals.id, c.req.param("id")),
   });
-  if (!row) notFound("Цель не найдена");
+  if (!row) notFound("err.goalNotFound");
   await assertPatient(staff, row.userId);
 
   const body = await c.req.json().catch(() => ({}));
   const status = ["met", "missed", "cancelled", "open"].includes(body?.status)
     ? (body.status as "met" | "missed" | "cancelled" | "open")
     : null;
-  if (!status) badRequest("Нужен статус цели");
+  if (!status) badRequest("err.goalStatusRequired");
 
   await db
     .update(treatmentGoals)

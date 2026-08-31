@@ -46,6 +46,19 @@ import type {
   CohortPreview,
   CohortRow,
 } from "@quizzy/shared";
+import { UI } from "@quizzy/shared";
+import { currentLang } from "./lang";
+
+/*
+ * Текст сетевого отказа.
+ *
+ * Клиент живёт вне React, хука здесь нет — язык берётся из того же значения,
+ * которое уходит в Accept-Language. Строки были написаны прямо здесь
+ * по-русски и показывались на украинском экране при каждом обрыве связи.
+ */
+function netText(key: "net.offline" | "net.failed" | "net.request"): string {
+  return UI[key][currentLang];
+}
 
 const TOKEN_KEY = "quizzy.web.token";
 const REFRESH_KEY = "quizzy.web.refresh";
@@ -125,12 +138,23 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
       ...init,
       headers: {
         "Content-Type": "application/json",
+        /*
+         * Язык консоли сообщается серверу.
+         *
+         * По нему сервер выбирает язык названий методик, инструкций и текстов
+         * отказов. Без заголовка он отвечает по-украински — и переключатель в
+         * консоли менял только оболочку: специалист переключался на русский,
+         * а названия методик и сообщения об ошибках оставались украинскими.
+         * Мобильный клиент заголовок слал давно, веб — нет, хотя комментарий
+         * в lang.tsx уверял, что слал.
+         */
+        "Accept-Language": currentLang,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init.headers as Record<string, string>),
       },
     });
   } catch {
-    throw new ApiError("Нет связи с сервером", 0);
+    throw new ApiError(netText("net.offline"), 0);
   }
   if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
     if (await tryRefresh()) return request<T>(path, init, true);
@@ -146,8 +170,12 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
      * вечером что-то не сохранилось».
      */
     const requestId = res.headers.get("x-request-id") ?? body?.requestId ?? null;
-    const text = body?.error ?? `Ошибка ${res.status}`;
-    throw new ApiError(requestId ? `${text} · запрос ${requestId.slice(0, 8)}` : text, res.status, body);
+    const text = body?.error ?? `${netText("net.failed")} ${res.status}`;
+    throw new ApiError(
+      requestId ? `${text} · ${netText("net.request")} ${requestId.slice(0, 8)}` : text,
+      res.status,
+      body,
+    );
   }
   return body as T;
 }
@@ -167,7 +195,7 @@ export async function download(path: string, fallbackName: string): Promise<void
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status);
+    throw new ApiError(body?.error ?? `${netText("net.failed")} ${res.status}`, res.status);
   }
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? fallbackName;
@@ -190,7 +218,7 @@ export async function openInTab(path: string): Promise<void> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status);
+    throw new ApiError(body?.error ?? `${netText("net.failed")} ${res.status}`, res.status);
   }
   const url = URL.createObjectURL(await res.blob());
   window.open(url, "_blank", "noopener");

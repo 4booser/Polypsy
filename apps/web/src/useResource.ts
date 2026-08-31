@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./api";
+import { UI } from "@quizzy/shared";
+import { currentLang } from "./lang";
 
 /**
  * Загрузка данных с отменой устаревших ответов.
@@ -80,7 +82,7 @@ export function useResource<T>(
         if (id !== runId.current || !mounted.current) return;
         // status 0 — сети нет; это другое состояние, не поломка экрана
         if (e instanceof ApiError && e.status === 0) setOffline(true);
-        else setError(e instanceof Error ? e.message : "Не удалось загрузить");
+        else setError(e instanceof Error ? e.message : UI["net.loadFailed"][currentLang]);
       })
       .finally(() => {
         if (id === runId.current && mounted.current) setBusy(false);
@@ -205,7 +207,7 @@ export function usePagedResource<T>(
       .catch((e: unknown) => {
         if (id !== runId.current || !mounted.current) return;
         if (e instanceof ApiError && e.status === 0) setOffline(true);
-        else setError(e instanceof Error ? e.message : "Не удалось загрузить");
+        else setError(e instanceof Error ? e.message : UI["net.loadFailed"][currentLang]);
       })
       .finally(() => {
         if (id !== runId.current || !mounted.current) return;

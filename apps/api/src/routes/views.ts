@@ -87,15 +87,15 @@ viewRoutes.post("/", async (c) => {
     .onConflictDoNothing()
     .returning({ id: savedViews.id });
 
-  if (!saved) badRequest("Вид с таким названием уже сохранён");
+  if (!saved) badRequest("err.viewNameTaken");
   return c.json({ id }, 201);
 });
 
 viewRoutes.patch("/:id", async (c) => {
   const user = c.get("user");
   const row = await db.query.savedViews.findFirst({ where: eq(savedViews.id, c.req.param("id")) });
-  if (!row) notFound("Вид не найден");
-  if (row.ownerId !== user.id) forbidden("Чужой вид правит только его владелец");
+  if (!row) notFound("err.viewNotFound");
+  if (row.ownerId !== user.id) forbidden("err.viewEditOwnerOnly");
 
   const body = await c.req.json().catch(() => ({}));
   await db
@@ -113,8 +113,8 @@ viewRoutes.patch("/:id", async (c) => {
 viewRoutes.delete("/:id", async (c) => {
   const user = c.get("user");
   const row = await db.query.savedViews.findFirst({ where: eq(savedViews.id, c.req.param("id")) });
-  if (!row) notFound("Вид не найден");
-  if (row.ownerId !== user.id) forbidden("Чужой вид удаляет только его владелец");
+  if (!row) notFound("err.viewNotFound");
+  if (row.ownerId !== user.id) forbidden("err.viewDeleteOwnerOnly");
 
   await db.delete(savedViews).where(eq(savedViews.id, row.id));
   return c.body(null, 204);

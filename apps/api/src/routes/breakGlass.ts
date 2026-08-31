@@ -51,8 +51,8 @@ breakGlassRoutes.post("/", async (c) => {
   const input = await parseBody(c.req.raw, openSchema);
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, input.patientId) });
-  if (!patient) notFound("Пациент не найден");
-  if (patient!.role !== "user") badRequest("Стекло разбивают ради пациента, а не сотрудника");
+  if (!patient) notFound("err.patientNotFound");
+  if (patient!.role !== "user") badRequest("err.breakGlassPatientOnly");
 
   /*
    * Если доступ и так есть — отказ. Иначе запись «разбил стекло» появлялась бы
@@ -61,7 +61,7 @@ breakGlassRoutes.post("/", async (c) => {
    */
   const allowed = await accessiblePatientIds(user);
   if (!allowed || allowed.has(input.patientId)) {
-    badRequest("Доступ к этому человеку у вас и так есть");
+    badRequest("err.alreadyHasAccess");
   }
 
   const id = crypto.randomUUID();
@@ -149,9 +149,9 @@ breakGlassRoutes.post("/:id/close", async (c) => {
   const id = c.req.param("id");
 
   const row = await db.query.breakGlass.findFirst({ where: eq(breakGlass.id, id) });
-  if (!row) notFound("Доступ не найден");
+  if (!row) notFound("err.breakGlassNotFound");
   if (row!.actorId !== user.id && !isSuperadmin(user)) {
-    badRequest("Закрыть чужой доступ может только суперадмин");
+    badRequest("err.closeOthersSuperadminOnly");
   }
 
   await db

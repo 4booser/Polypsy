@@ -102,7 +102,7 @@ decisionRoutes.patch("/rules/:id", requireSuperadmin, async (c) => {
   const input = await parseBody(c.req.raw, ruleSchema.partial());
 
   const row = await db.query.decisionRules.findFirst({ where: eq(decisionRules.id, id) });
-  if (!row) notFound("Правило не найдено");
+  if (!row) notFound("err.ruleNotFound");
 
   /*
    * Правка поднимает версию. Срабатывания хранят версию, при которой сработали:
@@ -173,8 +173,8 @@ decisionRoutes.patch("/hits/:id", async (c) => {
   const input = await parseBody(c.req.raw, decisionSchema);
 
   const row = await db.query.ruleHits.findFirst({ where: eq(ruleHits.id, id) });
-  if (!row) notFound("Срабатывание не найдено");
-  if (row!.status !== "suggested") badRequest("Решение по этому предложению уже принято");
+  if (!row) notFound("err.hitNotFound");
+  if (row!.status !== "suggested") badRequest("err.hitAlreadyDecided");
 
   /*
    * Отклонение требует объяснения, принятие — нет. Принять предложение
@@ -183,7 +183,7 @@ decisionRoutes.patch("/hits/:id", async (c) => {
    * почему сигнал проигнорировали, будет не по чему.
    */
   if (input.status === "declined" && !input.note?.trim()) {
-    badRequest("Отклонение предложения нужно объяснить");
+    badRequest("err.declineNeedsNote");
   }
 
   await db
@@ -241,9 +241,9 @@ decisionRoutes.post("/duty", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, shiftSchema);
 
-  if (input.endsAt <= input.startsAt) badRequest("Смена должна заканчиваться позже, чем начинается");
+  if (input.endsAt <= input.startsAt) badRequest("err.shiftInvalidRange");
   if (!isSuperadmin(user) && input.userId !== user.id) {
-    badRequest("Ставить на смену другого может только суперадмин");
+    badRequest("err.shiftOthersSuperadminOnly");
   }
 
   const id = crypto.randomUUID();
@@ -278,7 +278,7 @@ decisionRoutes.post("/crisis", requireSuperadmin, async (c) => {
   const input = await parseBody(c.req.raw, crisisSchema);
 
   const open = await currentCrisis();
-  if (open.active) badRequest("Кризисный режим уже включён");
+  if (open.active) badRequest("err.crisisAlreadyActive");
 
   const id = crypto.randomUUID();
   await db.insert(crisisPeriods).values({
@@ -305,7 +305,7 @@ decisionRoutes.delete("/crisis", requireSuperadmin, async (c) => {
     .from(crisisPeriods)
     .where(isNull(crisisPeriods.endedAt))
     .limit(1);
-  if (!row) badRequest("Кризисный режим не включён");
+  if (!row) badRequest("err.crisisNotActive");
 
   await db
     .update(crisisPeriods)

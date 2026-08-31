@@ -19,7 +19,7 @@ metricsRoutes.get("/", async (c) => {
   const token = process.env.METRICS_TOKEN;
   if (!token) return c.notFound();
   const given = c.req.header("authorization")?.replace(/^Bearer /, "");
-  if (given !== token) unauthorized("Нужен токен сбора метрик");
+  if (given !== token) unauthorized("err.metricsTokenRequired");
 
   /*
    * Значения, которые дешевле спросить у базы в момент сбора, чем считать

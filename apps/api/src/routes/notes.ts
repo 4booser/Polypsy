@@ -41,9 +41,9 @@ const signSchema = z.object({ version: z.number().int().min(1) });
 
 async function assertPatient(staff: User, userId: string) {
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!patient) notFound("Пациент не найден");
+  if (!patient) notFound("err.patientNotFound");
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
   return patient;
 }
 
@@ -106,9 +106,7 @@ noteRoutes.put("/patients/:userId", async (c) => {
     .limit(1);
 
   if (input.baseVersion !== undefined && input.baseVersion !== (latest?.version ?? 0)) {
-    conflict(
-      `Заметки изменились: сейчас версия ${latest?.version ?? 0}, а правка велась поверх ${input.baseVersion}. Обновите текст.`,
-    );
+    conflict("err.notesChanged", { current: latest?.version ?? 0, base: input.baseVersion });
   }
 
   /*
@@ -173,12 +171,10 @@ noteRoutes.post("/patients/:userId/sign", async (c) => {
     .where(eq(patientNotes.userId, userId))
     .orderBy(desc(patientNotes.version))
     .limit(1);
-  if (!latest) notFound("Заметки ещё нет");
-  if (latest.status === "signed") badRequest("Последняя версия уже подписана");
+  if (!latest) notFound("err.noteNotYet");
+  if (latest.status === "signed") badRequest("err.lastVersionSigned");
   if (latest.version !== input.version) {
-    conflict(
-      `Текст изменился после открытия: сейчас версия ${latest.version}, подписывалась ${input.version}. Перечитайте запись.`,
-    );
+    conflict("err.noteTextChangedAfterOpen", { current: latest.version, signing: input.version });
   }
 
   await db

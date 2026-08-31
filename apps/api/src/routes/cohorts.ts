@@ -69,7 +69,7 @@ async function cohortWhere(
      * Методика вне зоны — не «пустая когорта», а отказ. Пустой ответ здесь
      * читался бы как «таких нет», хотя правильный ответ «вам не видно».
      */
-    badRequest("Методика недоступна");
+    badRequest("err.surveyUnavailable");
   }
 
   const surveyIds = spec.surveyId ? [spec.surveyId] : allowed;
@@ -281,7 +281,7 @@ cohortRoutes.delete("/:id", async (c) => {
     .delete(cohorts)
     .where(sql`${cohorts.id} = ${id} and ${cohorts.createdBy} = ${user.id}`)
     .returning();
-  if (!row) notFound("Когорта не найдена");
+  if (!row) notFound("err.cohortNotFound");
 
   await audit(c, { action: "cohort.delete", resourceType: "cohort", resourceId: id });
   return c.json({ ok: true });

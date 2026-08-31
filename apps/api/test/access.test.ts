@@ -244,7 +244,8 @@ describe("учётная запись только на просмотр", () =>
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       expect(res.status).toBe(403);
-      expect(res.body.error).toContain("только на просмотр");
+      // без Accept-Language сервер отвечает по-украински — как и на украинском рабочем месте
+      expect(res.body.error).toContain("лише на перегляд");
     }
   });
 
@@ -278,7 +279,7 @@ describe("защита от каскадного удаления", () => {
   test("непустая группа не удаляется", async () => {
     const res = await api(`/api/groups/${groupA}`, root.token, { method: "DELETE" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("не пуста");
+    expect(res.body.error).toContain("не порожня");
 
     // группа всё ещё на месте вместе с методикой
     const survey = await api(`/api/surveys/${surveyInA}`, adminA.token);
@@ -317,7 +318,7 @@ describe("защита от каскадного удаления", () => {
 
     const res = await api(`/api/batteries/${batteryId}`, adminA.token, { method: "DELETE" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain("историю назначений");
+    expect(res.body.error).toContain("історію призначень");
   });
 
   test("батарея без назначений удаляется", async () => {

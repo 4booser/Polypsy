@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue } from "@quizzy/shared";
+import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue, renderError } from "@quizzy/shared";
 import { createSurveySchema, updateSurveySchema, type SurveyFull, type SurveyListItem } from "@quizzy/shared";
 import { db } from "../db";
 import { responses, surveyVersions, surveys } from "../db/schema";
@@ -49,10 +49,10 @@ surveyRoutes.use("*", requireAuth);
  */
 surveyRoutes.patch("/:id/rights", async (c) => {
   const user = c.get("user");
-  if (user.role !== "superadmin") forbidden("Правовой статус меняет суперадмин");
+  if (user.role !== "superadmin") forbidden("err.rightsSuperadminOnly");
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, c.req.param("id")) });
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const body = await c.req.json().catch(() => ({}));
   const status = ["own", "licensed", "public_domain", "unclear"].includes(body?.rightsStatus)
@@ -139,12 +139,12 @@ surveyRoutes.get("/:id", async (c) => {
   // raw=1 отдаёт локализованные объекты целиком — этим живёт конструктор
   const raw = c.req.query("raw") === "1" && isStaff(user);
   const survey = await getSurvey(c.req.param("id"), null, langOf(c), raw);
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
   if (!isStaff(user)) {
-    if (survey.status !== "published") notFound("Методика не найдена");
-    if (survey.administration !== "self") notFound("Методика не найдена");
+    if (survey.status !== "published") notFound("err.surveyNotFound");
+    if (survey.administration !== "self") notFound("err.surveyNotFound");
     if (survey.visibility === "restricted" && !(await hasGrant(user.id, survey.id))) {
-      notFound("Методика не найдена");
+      notFound("err.surveyNotFound");
     }
   } else {
     await assertSurveyAccess(user, survey.id);
@@ -209,7 +209,7 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
   if (input.groupId) await assertGroupAccess(c.get("user"), input.groupId);
 
   const existing = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
-  if (!existing) notFound("Методика не найдена");
+  if (!existing) notFound("err.surveyNotFound");
 
   const changesContent = !!(input.questions || input.sections || input.scales);
 
@@ -226,10 +226,10 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
       : toValidatable(await getSurvey(id, null, "uk", true));
     const errors = validateSurvey(full as never).filter((i) => i.level === "error");
     if (errors.length) {
-      badRequest(
-        `Методику нельзя опубликовать: ${errors.length} структурных ошибок. ` +
-          errors.map((e) => `${e.where}: ${e.message}`).join("; "),
-      );
+      badRequest("err.surveyPublishErrors", {
+        count: errors.length,
+        details: errors.map((e) => `${e.where}: ${e.message}`).join("; "),
+      });
     }
   }
   const [row] = await db
@@ -292,7 +292,7 @@ surveyRoutes.patch("/:id", requireStaff, async (c) => {
 surveyRoutes.post("/:id/duplicate", requireStaff, async (c) => {
   await assertSurveyAccess(c.get("user"), c.req.param("id"));
   const source = await getSurvey(c.req.param("id"));
-  if (!source) notFound("Методика не найдена");
+  if (!source) notFound("err.surveyNotFound");
 
   const [row] = await db
     .insert(surveys)
@@ -442,7 +442,7 @@ surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, async (c) => {
     getSurvey(id, c.req.param("a"), langOf(c)),
     getSurvey(id, c.req.param("b"), langOf(c)),
   ]);
-  if (!before || !after) notFound("Версия не найдена");
+  if (!before || !after) notFound("err.surveyVersionNotFound");
 
   return c.json({
     before: { versionId: before.versionId, versionNumber: before.versionNumber },
@@ -463,7 +463,7 @@ surveyRoutes.get("/:id/key", requireStaff, async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
   const survey = await getSurvey(id, null, langOf(c));
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
   const compress = (nums: number[]) => nums.sort((a, b) => a - b).join(", ");
@@ -508,7 +508,7 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
   const id = c.req.param("id");
   await assertSurveyAccess(c.get("user"), id);
   const survey = await getSurvey(id, null, "uk", true);
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const draft = surveyToDraft(survey);
 
@@ -529,18 +529,18 @@ surveyRoutes.get("/:id/export", requireStaff, async (c) => {
 surveyRoutes.post("/import", requireStaff, async (c) => {
   const user = c.get("user");
   const body = await c.req.json().catch(() => null);
-  if (!body || typeof body !== "object") badRequest("Ожидается JSON файла экспорта");
+  if (!body || typeof body !== "object") badRequest("err.jsonExportExpected");
 
   const { formatVersion, groupId, ...raw } = body as Record<string, unknown>;
   if (formatVersion !== undefined && formatVersion !== 1) {
-    badRequest(`Неизвестная версия формата: ${formatVersion}. Эта сборка понимает версию 1`);
+    badRequest("err.unknownFormatVersion", { version: String(formatVersion) });
   }
   if (groupId) await assertGroupAccess(user, String(groupId));
 
   const parsed = createSurveySchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
-    badRequest(`Файл не разобран: ${first?.path.join(".")}: ${first?.message}`);
+    badRequest("err.importParseFailed", { path: first?.path.join(".") ?? "", message: first?.message ?? "" });
   }
   const input = parsed.data;
 
@@ -548,7 +548,13 @@ surveyRoutes.post("/import", requireStaff, async (c) => {
   const errors = issues.filter((i) => i.level === "error");
   if (errors.length) {
     // 422 с полным списком: чинить файл, а не половину методики в базе
-    return c.json({ error: "Структурные ошибки — методика не создана", issues }, 422);
+    /*
+       Отдаётся напрямую, а не через помощник отказа: вместе с текстом уходит
+       список замечаний, и терять его нельзя — по нему чинят файл. Текст при
+       этом всё равно переводится: язык здесь тот же, что и у всех остальных
+       отказов.
+    */
+    return c.json({ error: renderError("err.structureErrors", langOf(c)), issues }, 422);
   }
 
   const id = crypto.randomUUID();
@@ -606,8 +612,8 @@ surveyRoutes.delete("/:id", requireStaff, async (c) => {
   await assertSurveyAccess(user, id);
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
-  if (!survey) notFound("Методика не найдена");
-  if (survey.archivedAt) badRequest("Методика уже снята с использования");
+  if (!survey) notFound("err.surveyNotFound");
+  if (survey.archivedAt) badRequest("err.surveyAlreadyArchived");
 
   const [counted] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -637,8 +643,8 @@ surveyRoutes.post("/:id/restore", requireStaff, async (c) => {
   await assertSurveyAccess(c.get("user"), id);
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
-  if (!survey) notFound("Методика не найдена");
-  if (!survey.archivedAt) badRequest("Методика и так в работе");
+  if (!survey) notFound("err.surveyNotFound");
+  if (!survey.archivedAt) badRequest("err.surveyNotArchived");
 
   await db.update(surveys).set({ archivedAt: null, archivedBy: null }).where(eq(surveys.id, id));
   await audit(c, {

@@ -136,7 +136,7 @@ describe("снятие методики с использования", () => {
       body: JSON.stringify({ userId: patient.id }),
     });
     expect(assign.status).toBe(400);
-    expect(assign.body.error).toContain("Снято с использования");
+    expect(assign.body.error).toContain("Знято з використання");
   });
 
   test("сотрудник видит снятые по явному запросу, повторное снятие отклоняется", async () => {

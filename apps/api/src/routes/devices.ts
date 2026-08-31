@@ -75,7 +75,7 @@ deviceRoutes.post("/wiped", async (c) => {
     .set({ wipedAt: new Date().toISOString() })
     .where(and(eq(devices.id, input.deviceId), eq(devices.userId, user.id)))
     .returning();
-  if (!row) notFound("Устройство не найдено");
+  if (!row) notFound("err.deviceNotFound");
 
   await audit(c, {
     action: "device.wiped",
@@ -95,7 +95,7 @@ deviceRoutes.post("/wiped", async (c) => {
 deviceRoutes.get("/", async (c) => {
   const user = c.get("user");
   const forUser = c.req.query("userId");
-  if (forUser && forUser !== user.id && !isSuperadmin(user)) notFound("Устройства не найдены");
+  if (forUser && forUser !== user.id && !isSuperadmin(user)) notFound("err.devicesNotFound");
 
   const rows = await db
     .select({ device: devices, owner: users })
@@ -126,7 +126,7 @@ deviceRoutes.post("/:id/wipe", requireSuperadmin, async (c) => {
     .set({ wipeRequestedAt: new Date().toISOString(), wipeRequestedBy: user.id, wipedAt: null })
     .where(and(eq(devices.id, id), isNull(devices.wipedAt)))
     .returning();
-  if (!row) notFound("Устройство не найдено или уже стёрто");
+  if (!row) notFound("err.deviceNotFoundOrWiped");
 
   await audit(c, {
     action: "device.wipe_requested",
