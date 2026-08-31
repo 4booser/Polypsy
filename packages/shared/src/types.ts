@@ -154,6 +154,12 @@ export interface User {
   anonymous: boolean;
   pseudonym: string | null;
 
+  /**
+   * Кто ведёт человека. Закрепляется явно, а не выводится из последнего
+   * приёма: иначе визит к коллеге на замене молча переназначал бы ведущего.
+   */
+  leadSpecialistId?: string | null;
+
   /** Паспортная часть: нужна для норм по полу и возрасту и для заключения */
   sex: Sex | null;
   birthDate: string | null;
@@ -1451,4 +1457,79 @@ export interface CohortRow {
   note: string | null;
   spec: CohortSpec;
   createdAt: string;
+}
+
+/* ── Поликлиника: расписание и приёмы ── */
+
+export type SlotKind = "primary" | "repeat" | "any";
+export type AppointmentKind = "primary" | "repeat";
+export type AppointmentMode = "onsite" | "remote";
+export type AppointmentStatus =
+  | "booked"
+  | "confirmed"
+  | "arrived"
+  | "in_progress"
+  | "done"
+  | "no_show"
+  | "cancelled";
+
+/** Свободное время у специалиста — то, что видит записывающийся */
+export interface FreeSlot {
+  id: string;
+  specialistId: string;
+  specialistName: string;
+  /** Кабинет: человеку надо знать, куда идти, ещё до приёма */
+  room: string | null;
+  startsAt: string;
+  endsAt: string;
+  kind: SlotKind;
+  /** Сколько мест осталось; для обычного приёма это всегда 1 */
+  free: number;
+  capacity: number;
+}
+
+/** Приём в списке — и у пациента, и в «Сегодня» у специалиста */
+export interface AppointmentView {
+  id: string;
+  slotId: string;
+  startsAt: string;
+  endsAt: string;
+  kind: AppointmentKind;
+  mode: AppointmentMode;
+  meetingUrl: string | null;
+  status: AppointmentStatus;
+  specialistId: string;
+  specialistName: string;
+  room: string | null;
+  patientId: string;
+  /** Имя или код: анонимный аккаунт виден специалисту как «Респондент А-4821» */
+  patientName: string;
+  /** Причина обращения словами пациента; null — не указал, и это его право */
+  reason: string | null;
+  bookedAt: string;
+  confirmedAt: string | null;
+  /** Слот выпал из расписания после правки шаблона — приём цел, но требует решения */
+  offSchedule: boolean;
+}
+
+/** Обычная неделя специалиста */
+export interface ScheduleTemplateView {
+  id: string;
+  weekday: number;
+  startsAt: string;
+  endsAt: string;
+  slotMinutes: number;
+  kind: SlotKind;
+  capacity: number;
+}
+
+/** Исключение из обычной недели */
+export interface ScheduleExceptionView {
+  id: string;
+  date: string;
+  kind: "off" | "extra";
+  startsAt: string | null;
+  endsAt: string | null;
+  slotMinutes: number | null;
+  note: string | null;
 }

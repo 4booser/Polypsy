@@ -73,6 +73,7 @@ export function toPublicUser(row: UserRow): User {
     fullName: fullNameOf(row),
     anonymous: row.anonymous,
     pseudonym: row.pseudonym,
+    leadSpecialistId: row.leadSpecialistId ?? null,
     sex: row.sex,
     birthDate: decryptField(row.birthDate),
     unit: row.unit,
