@@ -1174,6 +1174,20 @@ export const api = {
     }>("/api/audit/summary"),
 
   /* ── поликлиника ── */
+  departmentReport: (from: string, to: string) =>
+    request<{
+      departmentId: string;
+      from: string;
+      to: string;
+      received: number;
+      people: number | null;
+      primary: number | null;
+      repeat: number | null;
+      noShow: number | null;
+      cancelled: number | null;
+      attached: number | null;
+      floor: number;
+    }>(`/api/clinic/report?from=${from}&to=${to}`),
   visitContext: (id: string) =>
     request<{
       appointment: {

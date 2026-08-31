@@ -102,6 +102,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         { to: "/cohorts", key: "coh.title", icon: <IconGroup /> },
         { to: "/search", key: "srch.title", icon: <IconStack /> },
         { to: "/surveillance", key: "nav.surveillance", icon: <IconPulse /> },
+        { to: "/department-report", key: "dep.title", icon: <IconClock /> },
         { to: "/unit-report", key: "nav.unitReport", icon: <IconGroup /> },
         { to: "/conclusion-batch", key: "cbatch.title", icon: <IconStack /> },
       ],
