@@ -228,7 +228,8 @@ informantRoutes.post("/form/:token", async (c) => {
       survey,
       patient!,
       { ...input, events: [], status: "completed" } as never,
-      { filledBySelf: false, lang: langOf(c) },
+      // взгляд со стороны: заполняет посторонний, и это не самоотчёт
+      { filledBySelf: false, lang: langOf(c), source: "informant" },
     );
 
     /*

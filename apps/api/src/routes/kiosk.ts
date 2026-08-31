@@ -205,6 +205,8 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
   const result = await persistSubmission(survey, subject, input, {
     filledBySelf: true,
     lang: langOf(c),
+    // за планшетом в коридоре нет учётной записи, по которой вывели бы источник
+    source: "kiosk",
   });
 
   // участник закончил, если закрылось назначение батареи
