@@ -171,7 +171,7 @@ export function PatientDynamics() {
           <div className="card">
             <h2>{sv.title}</h2>
             <p className="hint">
-              {sv.responseCount} замеров · с {sv.firstAt?.slice(0, 10)} по {sv.lastAt?.slice(0, 10)}
+              {sv.responseCount} {ut("sum.measurements")} · {ut("ec.since")} {sv.firstAt?.slice(0, 10)} {ut("sch.to")} {sv.lastAt?.slice(0, 10)}
             </p>
           </div>
 
@@ -250,7 +250,7 @@ export function PatientDynamics() {
                   {last ? (
                     <table style={{ marginTop: 10 }}>
                       <tbody>
-                        <tr><td>{ut("pt.lastMeasure")}</td><td className="num">{last.rawScore} из {last.maxScore}</td></tr>
+                        <tr><td>{ut("pt.lastMeasure")}</td><td className="num">{last.rawScore} {ut("an.of")} {last.maxScore}</td></tr>
                         {last.severity ? <tr><td>{ut("pt.interpretation")}</td><td className="num"><SeverityTag severity={last.severity} label={last.bandLabel ?? undefined} /></td></tr> : null}
                         {sc.reliableChange ? (
                           <tr>
@@ -258,10 +258,10 @@ export function PatientDynamics() {
                             <td className="num">
                               {sc.reliableChange.significant ? (
                                 <strong style={{ color: "var(--accent)" }}>
-                                  достоверный ({sc.reliableChange.direction === "up" ? ut("pt.growth") : ut("pt.decline")}, RCI {sc.reliableChange.rci})
+                                  {ut("pt.reliable")} ({sc.reliableChange.direction === "up" ? ut("pt.growth") : ut("pt.decline")}, RCI {sc.reliableChange.rci})
                                 </strong>
                               ) : (
-                                <span className="muted">в пределах ошибки (RCI {sc.reliableChange.rci})</span>
+                                <span className="muted">{ut("sum.withinError")} (RCI {sc.reliableChange.rci})</span>
                               )}
                             </td>
                           </tr>
@@ -269,7 +269,7 @@ export function PatientDynamics() {
                         <tr>
                           <td>{ut("pt.percentile")}</td>
                           <td className="num">
-                            {last.percentile === null ? <span className="muted">{ut("mark.smallSample")}</span> : `выше, чем у ${last.percentile}%`}
+                            {last.percentile === null ? <span className="muted">{ut("mark.smallSample")}</span> : `${ut("pt.higherThanPct")} ${last.percentile}%`}
                           </td>
                         </tr>
                       </tbody>
@@ -277,7 +277,7 @@ export function PatientDynamics() {
                   ) : null}
                   {last ? (
                     <button style={{ marginTop: 10 }} onClick={() => run(() => openInTab(api.reportUrl(last.responseId)))}>
-                      Заключение
+                      {ut("an.conclusion")}
                     </button>
                   ) : null}
                 </Chart>

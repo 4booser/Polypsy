@@ -119,7 +119,8 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
             <div key={v.id} className="conclusion-view mt-2">
               <p className="m-0 whitespace-pre-wrap text-small">{v.text}</p>
               <p className="text-caption text-muted">
-                Версия {v.version} · {v.status === "signed" ? `подписана ${day(v.signedAt!)}` : "черновик"} ·{" "}
+                {ut("cnc.versionN")} {v.version} ·{" "}
+                {v.status === "signed" ? `${ut("cnc.signedOn")} ${day(v.signedAt!)}` : ut("cnc.draftWord")} ·{" "}
                 {v.authorName}
               </p>
             </div>

@@ -51,7 +51,7 @@ export default function KioskSessions() {
       count={rows.length}
       actions={
         <Button variant="primary" disabled={!batteries.length} onClick={() => setShowForm(true)}>
-          Новый сеанс
+          {ut("ks.new")}
         </Button>
       }
     >
@@ -96,9 +96,9 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
       title={session.title}
       hint={
         <>
-          {session.batteryTitle} · создан {day(session.createdAt)} ({session.createdByName})
-          {session.closedAt ? ` · закрыт ${day(session.closedAt)}` : ` · действует до ${day(session.expiresAt)}`}
-          {" · "}прошли {done} из {session.participants.length}
+          {session.batteryTitle} · {ut("ks.createdOn")} {day(session.createdAt)} ({session.createdByName})
+          {session.closedAt ? ` · ${ut("ks.closedAt")} ${day(session.closedAt)}` : ` · ${ut("ks.activeUntil")} ${day(session.expiresAt)}`}
+          {" · "}{ut("ks.passedCount")} {done} {ut("common.of")} {session.participants.length}
         </>
       }
       actions={
@@ -109,7 +109,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
               variant="danger"
               onClick={() => run(async () => { await api.closeKioskSession(session.id); onChanged(); }, ut("ks.closed"))}
             >
-              Завершить сеанс
+              {ut("ks.finish")}
             </Button>
           ) : null}
         </div>
@@ -128,7 +128,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
                 <td>
                   {p.finishedAt
                     ? <span className="text-[var(--sev-none-text)]">{ut("mark.finished")}</span>
-                    : <span>{p.doneRequired} из {p.totalRequired} методик</span>}
+                    : <span>{p.doneRequired} {ut("common.of")} {p.totalRequired} {ut("f.methodsGen")}</span>}
                 </td>
               </tr>
             ))}
@@ -173,8 +173,7 @@ function SessionForm({
       </div>
       {clinicianSteps.length ? (
         <p className="mt-2 text-caption text-[var(--sev-mild-text)]">
-          В батарее есть {clinicianSteps.length} методик, которые заполняет специалист, — на киоске
-          они пропускаются. Внесите их через «Провести» после сеанса.
+          {ut("ks.clinicianStepsPrefix")} {clinicianSteps.length} {ut("f.methodsGen")}{ut("ks.clinicianStepsSuffix")}
         </p>
       ) : null}
       <div className="row mt-3">
@@ -188,7 +187,7 @@ function SessionForm({
             }, ut("ks.created"))
           }
         >
-          Создать сеанс
+          {ut("ks.createSession")}
         </Button>
       </div>
     </Panel>
@@ -209,9 +208,7 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
   return (
     <Panel title={ut("ks.ready")} actions={<button onClick={onClose}>{ut("f.hide")}</button>}>
       <p className="mb-3 text-caption text-[var(--sev-mild-text)]">
-        Откройте эту ссылку на планшете киоска. Показывается один раз — дальше хранится только
-        отпечаток. На планшете включите режим одного приложения (Guided Access / закрепление экрана),
-        чтобы из теста нельзя было выйти в систему.
+        {ut("ks.linkHint")}
       </p>
       <div className="invite-fresh">
         {/*
@@ -224,7 +221,7 @@ function FreshSession({ token, onClose }: { token: string; onClose: () => void }
             <input readOnly value={url} onFocus={(e) => e.currentTarget.select()} /></label>
           <div className="row tight">
             <button onClick={() => run(async () => navigator.clipboard.writeText(url), ut("ui.copied"))}>
-              Копировать
+              {ut("ks.copy")}
             </button>
             <a className="btn" href={url} target="_blank" rel="noreferrer">{ut("ks.openHere")}</a>
           </div>

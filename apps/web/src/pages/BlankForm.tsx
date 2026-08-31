@@ -40,7 +40,7 @@ export default function BlankForm() {
       title={ut("bf.title")}
       sub={
         <>
-          <Link to={`/surveys/${survey.id}`}>{survey.title}</Link> · {asked.length} пунктов
+          <Link to={`/surveys/${survey.id}`}>{survey.title}</Link> · {asked.length} {ut("bt.items")}
         </>
       }
       /*
@@ -55,11 +55,8 @@ export default function BlankForm() {
       <Stack>
         <Panel className="no-print">
           <p className="m-0 text-small text-muted">
-            Бланк для бумажного проведения. После заполнения ответы вносятся через
-            «Провести» — нумерация совпадает, сверять порядок не нужно.
-            {shared
-              ? " Варианты одинаковы у всех пунктов, поэтому бланк выведен таблицей."
-              : " Варианты у пунктов различаются, поэтому они напечатаны при каждом."}
+            {ut("blank.paperIntro")}
+            {shared ? ut("blank.sameOptionsNote") : ut("blank.differentOptionsNote")}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" onClick={() => window.print()}>
@@ -86,7 +83,7 @@ export default function BlankForm() {
             <Blank label={ut("sch.unit")} width="55%" />
             <Blank label={ut("cmp.rank")} width="40%" />
             <Blank label={ut("bf.birthDate")} width="30%" />
-            <Blank label="Пол" width="20%" />
+            <Blank label={ut("blank.sex")} width="20%" />
             <Blank label={ut("bf.examDate")} width="30%" />
             <Blank label={ut("bf.psychologist")} width="45%" />
           </div>
@@ -99,12 +96,10 @@ export default function BlankForm() {
             )}
           </div>
 
-          <p className="mt-5 text-caption text-muted">
-            Отвечайте на каждый пункт. Пропущенные пункты снижают достоверность результата.
-          </p>
+          <p className="mt-5 text-caption text-muted">{ut("blank.answerEachHint")}</p>
           <div className="mt-3 flex flex-wrap gap-3">
             <Blank label={ut("bf.signature")} width="45%" />
-            <Blank label="Дата" width="25%" />
+            <Blank label={ut("blank.date")} width="25%" />
           </div>
         </Panel>
       </Stack>

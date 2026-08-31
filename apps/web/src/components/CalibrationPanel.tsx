@@ -27,20 +27,17 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
         title={ut("cal.title")}
         hint={
           <>
-            Сравниваются баллы и клинические исходы разбора тревог. «Требует наблюдения» не
-            учитывается: это отложенное решение, а не диагноз. Кандидатный порог показывается
-            только при {data.minPerOutcome} подтверждённых и {data.minPerOutcome} не подтверждённых
-            случаях в страте — на меньшем кривая описывает шум.
+            {ut("cal.hintIntro")} {data.minPerOutcome} {ut("cal.hintAndConfirmed")}{" "}
+            {data.minPerOutcome} {ut("cal.hintNotConfirmedTail")}
           </>
         }
-        actions={<span className="text-caption text-muted">разобранных случаев: {data.cases}</span>}
+        actions={
+          <span className="text-caption text-muted">
+            {ut("cal.casesReviewed")}: {data.cases}
+          </span>
+        }
       >
-        {data.cases === 0 ? (
-          <p className="m-0 text-muted">
-            Исходов пока нет. Они появляются, когда специалист при разборе тревоги указывает,
-            подтвердился риск или нет.
-          </p>
-        ) : null}
+        {data.cases === 0 ? <p className="m-0 text-muted">{ut("cal.noOutcomesYet")}</p> : null}
       </Panel>
 
       {data.scales.map((scale) => (
@@ -49,7 +46,7 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
           title={`${scale.code} — ${scale.title}`}
           actions={
             <span className="text-caption text-muted">
-              {scale.normalization === "tscore" ? "T-баллы" : scale.normalization}
+              {scale.normalization === "tscore" ? ut("co.tScores") : scale.normalization}
             </span>
           }
           className="overflow-x-auto"
@@ -79,7 +76,9 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
                   <td className="num">{s.roc ? s.roc.auc : <span className="text-muted">{ut("cal.fewData")}</span>}</td>
                   <td className="num">
                     {s.roc ? (
-                      <span title={`чувствительность ${s.roc.bestSensitivity}, специфичность ${s.roc.bestSpecificity}`}>
+                      <span
+                        title={`${ut("cal.sensitivityWord")} ${s.roc.bestSensitivity}, ${ut("cal.specificityWord")} ${s.roc.bestSpecificity}`}
+                      >
                         {s.roc.bestThreshold}
                         <span className="text-caption text-muted">
                           {" "}({s.roc.bestSensitivity}/{s.roc.bestSpecificity})
@@ -93,12 +92,7 @@ export function CalibrationPanel({ surveyId }: { surveyId: string }) {
               ))}
             </tbody>
           </table>
-          <p className="mt-3 text-caption text-muted">
-            AUC — насколько балл вообще отличает подтверждённые случаи от неподтверждённых:
-            0.5 — не отличает, выше 0.8 — хорошо. Кандидатный порог не применяется
-            автоматически: перенос порога — решение специалиста, и оно публикуется новой
-            версией методики.
-          </p>
+          <p className="mt-3 text-caption text-muted">{ut("cal.aucExplain")}</p>
         </Panel>
       ))}
     </Stack>

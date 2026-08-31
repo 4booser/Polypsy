@@ -41,7 +41,7 @@ export default function Schedules() {
       count={rows?.length ?? null}
       actions={
         <Button variant="primary" disabled={!batteries.length} onClick={() => setEditing("new")}>
-          Новое расписание
+          {ut("sch.newTitle")}
         </Button>
       }
     >
@@ -300,7 +300,7 @@ function ScheduleEditor({
           <select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
             {batteries.map((b) => (
               <option key={b.id} value={b.id}>
-                {b.title} · {b.items.length} методик
+                {b.title} · {b.items.length} {ut("f.methodsGen")}
               </option>
             ))}
           </select>
@@ -348,20 +348,19 @@ function ScheduleEditor({
         </label>
       </div>
       <p className="mt-1 text-caption text-muted">
-        Первая выдача произойдёт в дату начала, дальше — каждые {intervalDays} дн. от плановой
-        сетки, а не от фактического запуска: задержка сервера не сдвигает график.
+        {ut("sch.firstRunPrefix")} {intervalDays} {ut("sch.daysAbbr")} {ut("sch.firstRunSuffix")}
         {dueDays >= intervalDays ? (
-          <> Срок на прохождение не меньше периода — задания начнут накладываться друг на друга.</>
+          <> {ut("sch.dueShorterThanPeriod")}</>
         ) : null}
       </p>
 
       <h3 className="mt-4">{ut("sch.coverage")}</h3>
       <div className="row tight">
         <button className={`chip ${scope === "unit" ? "active" : ""}`} onClick={() => setScope("unit")}>
-          Подразделение целиком
+          {ut("sch.scopeUnit")}
         </button>
         <button className={`chip ${scope === "users" ? "active" : ""}`} onClick={() => setScope("users")}>
-          Поимённый список
+          {ut("sch.scopeUsers")}
         </button>
       </div>
 
@@ -377,8 +376,7 @@ function ScheduleEditor({
             </select>
           </label>
           <p className="mt-1 text-caption text-muted">
-            Сейчас в подразделении {unitReach} обследуемых. Состав считается в момент выдачи, поэтому
-            те, кто придёт позже, попадут в ближайший повтор автоматически.
+            {ut("sch.unitReachPrefix")} {unitReach} {ut("sch.unitReachSuffix")}
           </p>
         </>
       ) : (
@@ -423,7 +421,7 @@ function ScheduleEditor({
       <div className="row mt-[18px]">
         <label className="check">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Расписание включено
+          {ut("nav.schedules")} {ut("sch.enabled")}
         </label>
         <div className="spacer" />
         <Button
@@ -435,7 +433,7 @@ function ScheduleEditor({
             (scope === "unit" ? !unit : picked.length === 0)
           }
         >
-          Сохранить
+          {ut("ui.save")}
         </Button>
         <button onClick={onClose}>{ut("ui.cancel")}</button>
       </div>

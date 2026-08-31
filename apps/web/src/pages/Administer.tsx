@@ -203,7 +203,7 @@ export default function Administer() {
           <Button variant="primary" onClick={submit} disabled={!subject || unanswered.length > 0 || busy}>
             {busy ? ut("ad.saving") : ut("ad.save")}
           </Button>
-          {unanswered.length ? <span className="text-muted">не заполнено обязательных: {unanswered.length}</span> : null}
+          {unanswered.length ? <span className="text-muted">{ut("adn.unansweredRequired")} {unanswered.length}</span> : null}
           {!subject ? <span className="text-muted">{ut("sel.pickPatient")}</span> : null}
         </div>
       </Stack>

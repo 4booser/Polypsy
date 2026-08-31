@@ -60,7 +60,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
                 <td className="text-muted">{s.band}</td>
                 {s.suppressed ? (
                   <td colSpan={4} className="text-muted">
-                    меньше {data.smallCellFloor} — не показывается
+                    {ut("dq.lessThan")} {data.smallCellFloor} {ut("dq.notShownDash")}
                   </td>
                 ) : (
                   <>
@@ -79,7 +79,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
       {data.drift.length ? (
         <Panel
           title={ut("dq.driftTitle")}
-          hint="Насколько распределение баллов последнего месяца отличается от предыдущих (PSI). Больше 0.2 — выборка существенно изменилась, и локальные нормы, посчитанные раньше, могут ей не подходить."
+          hint={ut("dq.psiHint")}
           className="overflow-x-auto"
         >
           <table>
@@ -115,7 +115,7 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
 
       <Panel
         title={ut("dq.repeatTitle")}
-        hint={`ICC по парам замеров одного человека с интервалом ${data.retestWindow.minDays}–${data.retestWindow.maxDays} дней: раньше — человек помнит ответы, позже — состояние реально меняется, и то и другое уже не про надёжность инструмента. Оценка независима от альфы: та говорит о согласованности пунктов, эта — о стабильности во времени.`}
+        hint={`${ut("dq.iccHintPart1")} ${data.retestWindow.minDays}–${data.retestWindow.maxDays} ${ut("dq.iccHintPart2")}`}
         className="overflow-x-auto"
       >
         <table>
@@ -129,7 +129,10 @@ export function DataQualityPanel({ surveyId }: { surveyId: string }) {
                 <td className="num">{r.pairs}</td>
                 <td className="num">
                   {r.icc === null ? (
-                    <span className="text-muted">нужно ≥{data.retestWindow.minPairs} пар</span>
+                    <span className="text-muted">
+                      {ut("dq.needAtLeast")}
+                      {data.retestWindow.minPairs} {ut("dq.pairsLower")}
+                    </span>
                   ) : (
                     r.icc
                   )}

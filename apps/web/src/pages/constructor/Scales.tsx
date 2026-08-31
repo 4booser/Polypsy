@@ -19,7 +19,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="m-0 max-w-[60ch] text-caption text-muted">
-            Ключ задаётся номерами пунктов через запятую — так же, как он напечатан в пособии
+            {ut("cs.keyNumbersHint")}
           </p>
           <Button
             variant="primary"
@@ -44,7 +44,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
               }))
             }
           >
-            Добавить шкалу
+            {ut("cs.addScale")}
           </Button>
         </div>
       </Panel>
@@ -55,7 +55,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
           title={s.code || ut("cs.newScale")}
           actions={
             <Button variant="danger" size="sm" onClick={() => setDraft((d) => ({ ...d, scales: d.scales.filter((_, k) => k !== i) }))}>
-              Удалить
+              {ut("ui.delete")}
             </Button>
           }
         >
@@ -76,7 +76,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
               >
                 <option value="raw">{ut("cs.raw")}</option>
                 <option value="ratio">{ut("cs.ratio")}</option>
-                <option value="tscore">T-баллы</option>
+                <option value="tscore">{ut("co.tScores")}</option>
                 <option value="sten">{ut("cs.sten")}</option>
               </Select>
             </Field>
@@ -111,8 +111,8 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                     value={s.validityDirection ?? "above"}
                     onChange={(e) => upd(i, { validityDirection: e.target.value as "above" | "below" })}
                   >
-                    <option value="above">выше порога</option>
-                    <option value="below">ниже порога</option>
+                    <option value="above">{ut("co.aboveThreshold")}</option>
+                    <option value="below">{ut("co.belowThreshold")}</option>
                   </Select>
                 </Field>
               </Grid>
@@ -151,14 +151,13 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
           </div>
 
           <p className="mt-3 text-caption text-muted">
-            В ключе {s.key.length} пунктов
-            {s.corrections.length ? ` · поправки: ${s.corrections.map((c) => `${c.from}×${c.coefficient}`).join(", ")}` : ""}
-            {s.norms.length ? ` · норм: ${s.norms.length}` : ""}
-            {s.stenTable.length ? ` · строк стенов: ${s.stenTable.length}` : ""}
+            {ut("cs.keyCountPrefix")} {s.key.length} {ut("co.itemsGenitive")}
+            {s.corrections.length ? ` · ${ut("cs.correctionsLabel")}: ${s.corrections.map((c) => `${c.from}×${c.coefficient}`).join(", ")}` : ""}
+            {s.norms.length ? ` · ${ut("cs.normsLabel")}: ${s.norms.length}` : ""}
+            {s.stenTable.length ? ` · ${ut("cs.stenRowsLabel")}: ${s.stenTable.length}` : ""}
           </p>
           <p className="text-caption text-muted">
-            Поправки, нормы по полу и таблицы стенов задаются во вкладке «JSON» — в форме
-            они занимали бы больше места, чем экономят
+            {ut("cs.jsonOnlyHint")}
           </p>
 
           <h3 className="mb-2 mt-4 font-display text-small font-medium">{ut("cs.bands")}</h3>
@@ -211,7 +210,7 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                           })
                         }
                       >
-                        <option value="">без каскада</option>
+                        <option value="">{ut("co.noCascade")}</option>
                         {batteries.map((bat) => (
                           <option key={bat.id} value={bat.id}>{bat.title}</option>
                         ))}
@@ -243,12 +242,10 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
             className="mt-2"
             onClick={() => upd(i, { bands: [...s.bands, { minScore: 0, maxScore: 0, label: { uk: "", ru: "" }, severity: "none" }] })}
           >
-            Добавить норму
+            {ut("cs.addNorm")}
           </Button>
           <p className="mt-2 text-caption text-muted">
-            Каскад назначает углублённую батарею при попадании в полосу; «повторы» ставят
-            пересдачу этой же методики через указанные дни. Автоматика назначает, но не
-            интерпретирует — вывод делает специалист.
+            {ut("cs.cascadeExplain")}
           </p>
         </Panel>
       ))}

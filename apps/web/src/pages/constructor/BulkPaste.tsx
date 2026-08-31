@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { UI, type UiKey } from "@quizzy/shared";
 import { newUid, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
 import { Grid, Panel } from "../../ui/layout";
@@ -37,19 +38,28 @@ export function parseBulk(raw: string): ParsedItem[] {
   return items;
 }
 
-/** Дыры и дубли в нумерации — почти наверняка ошибка распознавания PDF */
-export function numberingProblems(items: ParsedItem[]): string[] {
+/**
+ * Дыры и дубли в нумерации — почти наверняка ошибка распознавания PDF.
+ *
+ * `ut` необязателен и по умолчанию не задан: функция разбора не привязана к
+ * интерфейсу и должна остаться проверяемой без React вокруг. Когда её вызывает
+ * экран, он передаёт свой `ut` — и подписи приходят на выбранном языке; без
+ * него текст остаётся русским, как было раньше.
+ */
+export function numberingProblems(items: ParsedItem[], ut?: (key: UiKey) => string): string[] {
+  // без ut (например, в тестах) — русский по умолчанию, как раньше
+  const t = (key: UiKey) => (ut ? ut(key) : UI[key].ru);
   const problems: string[] = [];
   const numbers = items.map((i) => i.n).filter((n): n is number => n !== null);
   if (!numbers.length) return problems;
   const seen = new Set<number>();
   for (const n of numbers) {
-    if (seen.has(n)) problems.push(`Номер ${n} встречается дважды`);
+    if (seen.has(n)) problems.push(`${t("bp.numberWord")} ${n} ${t("bp.duplicateSuffix")}`);
     seen.add(n);
   }
   const max = Math.max(...numbers);
   for (let i = 1; i <= max; i++) {
-    if (!seen.has(i)) problems.push(`Пропущен номер ${i}`);
+    if (!seen.has(i)) problems.push(`${t("bp.missingNumber")} ${i}`);
   }
   return problems.slice(0, 8);
 }
@@ -67,7 +77,7 @@ export function BulkPaste({
   const [type, setType] = useState<"yesno" | "single">("yesno");
 
   const items = useMemo(() => parseBulk(raw), [raw]);
-  const problems = useMemo(() => numberingProblems(items), [items]);
+  const problems = useMemo(() => numberingProblems(items, ut), [items, ut]);
 
   function apply() {
     const questions: DraftQuestion[] = items.map((item) => ({
@@ -80,8 +90,8 @@ export function BulkPaste({
       options:
         type === "yesno"
           ? [
-              { text: { uk: ut("bp.yes"), ru: "Да" }, keyCode: "yes" },
-              { text: { uk: "Ні", ru: ut("bp.no") }, keyCode: "no" },
+              { text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
+              { text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
             ]
           : [],
     }));
@@ -93,21 +103,20 @@ export function BulkPaste({
     <Panel
       title={ut("bp.title")}
       actions={<Button variant="quiet" onClick={onClose}>{ut("bp.close")}</Button>}
-      hint="Скопируйте пункты из пособия — по одному на строку, с номерами или без. Номера «1.», «1)»
-        срезаются; строка без номера приклеивается к предыдущему пункту (переносы из PDF)."
+      hint={ut("bp.hint")}
     >
       <Textarea
         value={raw}
         onChange={(e) => setRaw(e.target.value)}
         rows={12}
-        placeholder={"1. Чи може життя втратити цінність?\n2. Життя іноді гірше за смерть.\n…"}
+        placeholder={ut("bp.placeholderExample")}
         spellCheck={false}
       />
       <Grid min={200} className="mt-3">
         <Field label={ut("bp.lang")}>
           <Select value={lang} onChange={(e) => setLang(e.target.value as never)}>
-            <option value="uk">украинский</option>
-            <option value="ru">русский</option>
+            <option value="uk">{ut("bp.langUk")}</option>
+            <option value="ru">{ut("bp.langRu")}</option>
           </Select>
         </Field>
         <Field label={ut("bp.type")}>
@@ -120,9 +129,9 @@ export function BulkPaste({
 
       {items.length ? (
         <p className="mt-3 text-caption text-muted">
-          Распознано пунктов: <strong className="font-medium text-text">{items.length}</strong>
-          {items[0] ? <> · первый: «{items[0].text.slice(0, 60)}»</> : null}
-          {items.length > 1 ? <> · последний: «{items[items.length - 1]!.text.slice(0, 60)}»</> : null}
+          {ut("bp.recognizedCount")}: <strong className="font-medium text-text">{items.length}</strong>
+          {items[0] ? <> · {ut("bp.firstItem")}: «{items[0].text.slice(0, 60)}»</> : null}
+          {items.length > 1 ? <> · {ut("bp.lastItem")}: «{items[items.length - 1]!.text.slice(0, 60)}»</> : null}
         </p>
       ) : null}
       {problems.length ? (
@@ -132,7 +141,7 @@ export function BulkPaste({
          * здесь уместен.
          */
         <div className="mt-3 rounded-md border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft p-3 text-caption text-accent">
-          Нумерация подозрительна — проверьте исходный текст:
+          {ut("bp.numberingWarn")}
           {problems.map((p) => (
             <div key={p}>• {p}</div>
           ))}
@@ -141,7 +150,7 @@ export function BulkPaste({
 
       <div className="mt-3">
         <Button variant="primary" disabled={!items.length} onClick={apply}>
-          Добавить {items.length} пунктов
+          {ut("bp.addPrefix")} {items.length} {ut("co.itemsGenitive")}
         </Button>
       </div>
     </Panel>

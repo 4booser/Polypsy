@@ -35,8 +35,8 @@ export default function KeyPrint() {
       title={ut("kp.title")}
       sub={
         <>
-          <Link to={`/surveys/${sheet.surveyId}`}>{sheet.title}</Link> · версия {sheet.version} ·{" "}
-          {sheet.questionCount} пунктов
+          <Link to={`/surveys/${sheet.surveyId}`}>{sheet.title}</Link> · {ut("ds.version")}{" "}
+          {sheet.version} · {sheet.questionCount} {ut("bt.items")}
         </>
       }
       // см. пояснение в BlankForm.tsx: подстраховка от печати только видимой прокрутки
@@ -44,17 +44,13 @@ export default function KeyPrint() {
     >
       <Stack>
         <Panel className="no-print">
-          <p className="m-0 text-small text-muted">
-            Распечатайте и сверьте с пособием. Автоматическая проверка ловит структурные
-            ошибки — выход номера за диапазон, противоречия, пересечения норм, — но перепутанные
-            местами номера выглядят для неё совершенно законно.
-          </p>
+          <p className="m-0 text-small text-muted">{ut("key.checkInstructions")}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button variant="primary" onClick={() => window.print()}>
               {ut("kp.print")}
             </Button>
             <Button onClick={() => run(() => download(api.methodologyUrl(sheet.surveyId), "methodology.json"))}>
-              Выгрузить JSON
+              {ut("key.exportJson")}
             </Button>
             <Link className="btn" to={`/surveys/${sheet.surveyId}/blank`}>
               {ut("kp.blank")}
@@ -76,10 +72,10 @@ export default function KeyPrint() {
             hint={
               <>
                 {s.kind === "validity" ? ut("kp.validityScale") : ut("kp.clinicalScale")} ·{" "}
-                {{ raw: ut("kp.rawScore"), ratio: ut("kp.ratio"), tscore: "T-баллы", sten: ut("kp.stens") }[
+                {{ raw: ut("kp.rawScore"), ratio: ut("kp.ratio"), tscore: ut("co.tScores"), sten: ut("kp.stens") }[
                   s.normalization
                 ] ?? s.normalization}{" "}
-                · пунктов в ключе {s.itemCount}
+                · {ut("key.itemsInKey")} {s.itemCount}
               </>
             }
           >

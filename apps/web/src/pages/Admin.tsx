@@ -77,16 +77,13 @@ export function Groups() {
                   await load();
                 }}
               >
-                Создать
+                {ut("adm.create")}
               </Button>
             </div>
           </Panel>
         ) : (
           <Panel>
-            <p className="m-0 text-caption text-muted">
-              Вы видите только группы, на которые назначены. Создавать группы и назначать
-              администраторов может суперадминистратор.
-            </p>
+            <p className="m-0 text-caption text-muted">{ut("adm.groupsReadOnlyHint")}</p>
           </Panel>
         )}
 
@@ -100,7 +97,7 @@ export function Groups() {
                 {g.color ? <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: g.color }} /> : null}
                 {g.title}
                 <span className="text-caption font-normal text-muted">
-                  {g.surveyCount} методик · {g.publishedCount} опубликовано · {g.responseCount} прохождений
+                  {g.surveyCount} {ut("adm.methodsCount")} · {g.publishedCount} {ut("dash.published")} · {g.responseCount} {ut("adm.responsesCount")}
                 </span>
               </span>
             }
@@ -111,7 +108,7 @@ export function Groups() {
                   size="sm"
                   onClick={() =>
                     run(async () => {
-                      if (!confirm(`Удалить группу «${g.title}»?`)) return;
+                      if (!confirm(`${ut("adm.confirmDeleteGroup")} «${g.title}»?`)) return;
                       // отказ сервера нужно показать: непустая группа не удаляется,
                       // и молчаливая кнопка выглядела бы сломанной
                       await api.deleteGroup(g.id);
@@ -119,7 +116,7 @@ export function Groups() {
                     }, ut("adm.groupDeleted"))
                   }
                 >
-                  Удалить
+                  {ut("adm.delete")}
                 </Button>
               ) : null
             }
@@ -149,7 +146,7 @@ export function Groups() {
                                   await load();
                                 }}
                               >
-                                Снять
+                                {ut("acc.revoke")}
                               </Button>
                             </td>
                           </tr>
@@ -182,7 +179,7 @@ export function Groups() {
                   </div>
                 ) : (
                   <Button variant="ghost" className="mt-3" onClick={() => setAssigning(g.id)}>
-                    Назначить администратора
+                    {ut("adm.addAdmin")}
                   </Button>
                 )}
               </>
@@ -290,7 +287,7 @@ export function Users() {
               }
             }}
           >
-            Создать
+            {ut("adm.create")}
           </Button>
         </div>
         {error ? <p className="mt-2 text-caption text-danger">{error}</p> : null}
@@ -311,7 +308,7 @@ export function Users() {
                   <tr>
                     <td>
                       {u.fullName}
-                      {u.anonymous ? <span className="text-muted"> · без имени</span> : null}
+                      {u.anonymous ? <span className="text-muted"> {ut("sel.noName")}</span> : null}
                     </td>
                     <td className="text-muted">{u.email}</td>
                     <td>{ut(ROLE_KEY[u.role as keyof typeof ROLE_KEY])}</td>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { AlertCase } from "@quizzy/shared";
+import type { AlertCase, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { dateTime, day, severityColor } from "../format";
@@ -18,12 +18,19 @@ const OUTCOME = [
   { value: "not_confirmed", key: "cases.notConfirmed" },
 ] as const;
 
-/** Сколько минут в человекочитаемом виде */
-function duration(minutes: number): string {
-  if (minutes < 60) return `${minutes} мин`;
+/**
+ * Сколько минут в человекочитаемом виде.
+ *
+ * Переводчик аргументом: функция чистая и живёт вне компонента, а сокращения
+ * единиц в двух языках разные — «мин» против «хв». В очереди случаев эта
+ * подпись стоит у каждой строки, то есть была самым частым русским словом на
+ * украинском экране.
+ */
+function duration(minutes: number, ut: (k: UiKey) => string): string {
+  if (minutes < 60) return `${minutes} ${ut("dur.min")}`;
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} ч`;
-  return `${Math.round(hours / 24)} дн`;
+  if (hours < 48) return `${hours} ${ut("dur.hour")}`;
+  return `${Math.round(hours / 24)} ${ut("dur.day")}`;
 }
 
 /**
@@ -267,7 +274,7 @@ function QueueRow({
         </span>
       </span>
       <span className="queue-right">
-        <span className="queue-since">{duration(c.minutesOpen)}</span>
+        <span className="queue-since">{duration(c.minutesOpen, ut)}</span>
         {c.signalCount > 1 ? <span className="queue-signals">{c.signalCount}</span> : null}
         {c.assignedTo ? (
           <span className="queue-who" title={c.assignedToName ?? ""}>
@@ -411,7 +418,7 @@ function CaseCard({
             {c.unit ? <span className="muted">· {c.unit}</span> : null}
           </div>
           <div className="hint" style={{ margin: 0 }}>
-            {c.surveyTitle} · {ut("cases.signals")} {c.signalCount} · {ut("cases.openedAgo")} {duration(c.minutesOpen)} {ut("cases.ago")}
+            {c.surveyTitle} · {ut("cases.signals")} {c.signalCount} · {ut("cases.openedAgo")} {duration(c.minutesOpen, ut)} {ut("cases.ago")}
           </div>
         </div>
         {c.overdue ? <span className="chip static bad">{ut("cases.overdue")}</span> : null}

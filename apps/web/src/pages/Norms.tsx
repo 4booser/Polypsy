@@ -40,7 +40,7 @@ export default function Norms() {
     <Page
       title={ut("nm.title")}
       crumbs={<Link to={`/surveys/${id}`}>{ut("back.toSurveyAnalytics")}</Link>}
-      sub="M и SD по фактической выборке учреждения против норм пособия"
+      sub={ut("nm.sub")}
       actions={
         picked.size ? (
           <Button
@@ -53,17 +53,17 @@ export default function Norms() {
               }, ut("nm.published"))
             }
           >
-            Опубликовать для {picked.size} шкал
+            {ut("nm.publishForCount")} {picked.size} {ut("nm.scalesGen")}
           </Button>
         ) : undefined
       }
     >
       <div className="tabs max-w-[420px]">
         <button className={tab === "table" ? "active" : ""} onClick={() => setTab("table")}>
-          Пособие против выборки
+          {ut("nm.tabPoolVsSample")}
         </button>
         <button className={tab === "curves" ? "active" : ""} onClick={() => setTab("curves")}>
-          Возрастные кривые
+          {ut("nm.tabAgeCurves")}
         </button>
       </div>
 
@@ -95,10 +95,10 @@ export default function Norms() {
                       setPicked(next);
                     }}
                   />
-                  перевести на локальные
+                  {ut("nm.switchToLocal")}
                 </label>
               ) : (
-                <span className="text-caption text-muted">выборка меньше {data.minGroup} — публиковать рано</span>
+                <span className="text-caption text-muted">{ut("nm.sampleSmallerThan")} {data.minGroup} {ut("nm.tooEarlyPublish")}</span>
               )
             }
           >
@@ -148,17 +148,14 @@ export default function Norms() {
               </tbody>
             </table>
             <p className="mt-3 text-caption text-muted">
-              «Сдвиг среднего T» — насколько средний человек выборки отклоняется от нормы пособия.
-              Больше ±5 T — выборка систематически отличается от нормировочной популяции, и
-              локальные нормы имеют смысл.
+              {ut("nm.shiftHint")}
             </p>
           </Panel>
         );
       })}
       <Panel>
         <p className="text-caption text-muted">
-          Публикация создаёт новую версию методики: собранные прохождения остаются на прежних
-          нормах, происхождение каждой нормы фиксируется («локальная выборка, N=…»).
+          {ut("nm.publishNote")}
           <Link to={`/surveys/${id}/key`} className="ml-1.5">{ut("nm.checkKeys")}</Link>
         </p>
       </Panel>
@@ -185,7 +182,7 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
     return (
       <Empty
         title={ut("nm.noCurves")}
-        hint={`Для кривой нужно минимум ${data.minWindow} прохождений одного пола с указанным возрастом. Накопится — появятся.`}
+        hint={`${ut("nm.curveMinPrefix")} ${data.minWindow} ${ut("nm.curveMinSuffix")}`}
       />
     );
   }
@@ -196,13 +193,13 @@ function AgeCurves({ surveyId }: { surveyId: string }) {
         <Panel
           key={scale.code}
           title={`${scale.code} — ${scale.title}`}
-          actions={<span className="text-caption text-muted">{scale.normalization === "tscore" ? "T-баллы" : scale.normalization}</span>}
+          actions={<span className="text-caption text-muted">{scale.normalization === "tscore" ? ut("nm.tScores") : scale.normalization}</span>}
         >
           <Grid min={400}>
             {scale.bySex.filter((b) => b.enough).map((b) => (
               <div key={b.sex}>
                 <p className="text-caption text-muted">
-                  {b.sex === "male" ? ut("nm.menCap") : ut("nm.womenCap")} · окно ±{b.points[0]?.halfWidth ?? "?"} лет
+                  {b.sex === "male" ? ut("nm.menCap") : ut("nm.womenCap")} · {ut("nm.windowPm")}{b.points[0]?.halfWidth ?? "?"} {ut("nm.years")}
                 </p>
                 <CurveTable points={b.points} />
               </div>

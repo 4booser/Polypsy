@@ -90,7 +90,7 @@ export default function Invites() {
                               ) : null}
                             </td>
                             <td className={dead ? "text-muted" : undefined}>
-                              {inv.revokedAt ? `отозвано ${day(inv.revokedAt)}` : day(inv.expiresAt)}
+                              {inv.revokedAt ? `${ut("inf.revoked")} ${day(inv.revokedAt)}` : day(inv.expiresAt)}
                             </td>
                             <td className="text-muted">{inv.createdByName}</td>
                             <td>
@@ -105,7 +105,7 @@ export default function Invites() {
                                     }, ut("inv.revoked"))
                                   }
                                 >
-                                  Отозвать
+                                  {ut("inv.revoke")}
                                 </Button>
                               ) : null}
                             </td>
@@ -153,7 +153,7 @@ function InviteForm({
           </Select>
         </Field>
         <Field label={ut("ui.unit")}>
-          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="проставится аккаунту" />
+          <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={ut("inv.unitToAccount")} />
         </Field>
         <Field label={ut("inv.uses")}>
           <Input type="number" min={1} max={500} value={maxUses}
@@ -167,10 +167,7 @@ function InviteForm({
           <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ut("inv.reasonExample")} />
         </Field>
       </div>
-      <p className="mt-3 text-caption text-muted">
-        Для группового обследования поставьте использований по числу людей — все войдут по одной
-        ссылке. Подразделение из приглашения главнее введённого пациентом.
-      </p>
+      <p className="mt-3 text-caption text-muted">{ut("inv.groupHint")}</p>
       <div className="mt-3">
         <Button
           variant="primary"
@@ -187,7 +184,7 @@ function InviteForm({
             }, ut("inv.created"))
           }
         >
-          Создать
+          {ut("inv.createSubmit")}
         </Button>
       </div>
     </Panel>
@@ -214,10 +211,7 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
         которого он существует, — ссылку нужно скопировать сейчас, второго
         показа не будет.
       */}
-      <p className="text-caption text-accent">
-        Ссылка показывается один раз — в системе хранится только её отпечаток. Скопируйте или
-        распечатайте сейчас. Код останется виден в списке.
-      </p>
+      <p className="text-caption text-accent">{ut("inv.linkWarning")}</p>
       <div className="flex flex-wrap gap-5">
         {/*
           biome-ignore lint/security/noDangerouslySetInnerHtml: SVG кода собирается
@@ -233,10 +227,10 @@ function FreshInvite({ token, code, onClose }: { token: string; code: string; on
           </Field>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Button onClick={() => run(async () => navigator.clipboard.writeText(url), ut("inv.linkCopied"))}>
-              Копировать ссылку
+              {ut("inv.copyLink")}
             </Button>
             <Button onClick={() => run(async () => navigator.clipboard.writeText(code), ut("inv.codeCopied"))}>
-              Копировать код
+              {ut("inv.copyCode")}
             </Button>
             <Button onClick={() => window.print()}>{ut("inv.printQr")}</Button>
           </div>

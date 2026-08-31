@@ -96,12 +96,10 @@ export function SurveyList() {
           warning={
             <>
               <p className="m-0 mb-1.5">
-                Методику перестанут выдавать и проходить: она исчезнет из списков,
-                батарей, киоска и расписаний.
+                {ut("cl.archiveWarnBody")}
               </p>
               <p className="m-0 text-muted">
-                Собранные прохождения ({confirming.responseCount}) останутся на месте —
-                в карте пациента, аналитике и журнале. Решение обратимо.
+                {ut("cl.responsesKeptPrefix")} ({confirming.responseCount}) {ut("cl.responsesKeptSuffix")}
               </p>
             </>
           }
@@ -152,7 +150,7 @@ export function SurveyList() {
                   </td>
                   <td className="text-muted">
                     {s.archivedAt ? (
-                      <span title={`Снята ${s.archivedAt.slice(0, 10)}`}>{ut("mark.retired")}</span>
+                      <span title={`${ut("cl.retiredOn")} ${s.archivedAt.slice(0, 10)}`}>{ut("mark.retired")}</span>
                     ) : (
                       s.status
                     )}
@@ -182,7 +180,7 @@ export function SurveyList() {
                           await load();
                         }}
                       >
-                        Копия
+                        {ut("cl.duplicateAction")}
                       </Button>
                       {s.archivedAt ? (
                         <Button
@@ -192,11 +190,11 @@ export function SurveyList() {
                             toast(ut("cl.restored"), "ok");
                           }}
                         >
-                          Вернуть в работу
+                          {ut("cl.restoreAction")}
                         </Button>
                       ) : (
                         <Button variant="danger" onClick={() => setConfirming(s)}>
-                          Снять
+                          {ut("cl.archiveButton")}
                         </Button>
                       )}
                     </div>

@@ -197,17 +197,17 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                 <td className="text-muted">{day(a.assignedAt)}</td>
                 <td className={a.overdue ? "bad" : "text-muted"}>
                   {a.dueAt ? day(a.dueAt) : ut("bt.noDeadline")}
-                  {a.overdue ? " · просрочено" : ""}
+                  {a.overdue ? ` · ${ut("bt.overdueNote")}` : ""}
                 </td>
                 <td>
                   <StepTrack steps={a.steps} />
                   <span className="text-caption text-muted">
-                    {a.doneRequired} из {a.totalRequired} обязательных
+                    {a.doneRequired} {ut("common.of")} {a.totalRequired} {ut("bt.requiredGen")}
                   </span>
                 </td>
                 <td>
                   {a.cancelledAt ? (
-                    <span className="text-muted">снято {day(a.cancelledAt)}</span>
+                    <span className="text-muted">{ut("bt.cancelledOn")} {day(a.cancelledAt)}</span>
                   ) : a.doneRequired === a.totalRequired ? (
                     <span className="good">{ut("mark.passed")}</span>
                   ) : (
@@ -219,7 +219,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                         }, ut("bt.assignmentRemoved"))
                       }
                     >
-                      Снять
+                      {ut("acc.revoke")}
                     </button>
                   )}
                 </td>
@@ -239,7 +239,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
         </label>
         <label className="field grow">
           <span>{ut("f.note")}</span>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="необязательно" />
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ut("mark.optional")} />
         </label>
       </div>
       {query ? (
@@ -254,7 +254,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                     setQuery("");
                     setNote("");
                     await reload();
-                  }, `Батарея назначена: ${p.fullName}`)
+                  }, `${ut("bt.assignedToast")} ${p.fullName}`)
                 }
               >
                 + {p.fullName}
@@ -266,8 +266,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
         </div>
       ) : null}
       <p className="mt-2 text-caption text-muted">
-        Назначение открывает доступ ко всем методикам набора. Срок назначения становится сроком
-        доступа: после него методики снова скрыты.
+        {ut("bt.assignHint")}
       </p>
     </div>
   );
@@ -275,21 +274,25 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
 
 /** Полоска шагов: пройдено / текущий / заблокировано */
 function StepTrack({ steps }: { steps: BatteryStep[] }) {
+  const { ut } = useLang();
+  const stateLabel: Record<BatteryStep["state"], string> = {
+    done: ut("bt.stepDone"),
+    current: ut("bt.stepCurrent"),
+    available: ut("bt.stepAvailable"),
+    locked: ut("bt.stepLocked"),
+  };
   return (
-    <span className="step-track" role="img" aria-label={`${steps.filter((s) => s.state === "done").length} из ${steps.length} пройдено`}>
+    <span
+      className="step-track"
+      role="img"
+      aria-label={`${steps.filter((s) => s.state === "done").length} ${ut("common.of")} ${steps.length} ${ut("bt.stepsDoneWord")}`}
+    >
       {steps.map((s) => (
-        <i key={s.surveyId} className={`step ${s.state}`} title={`${s.title} — ${STATE_LABEL[s.state]}`} />
+        <i key={s.surveyId} className={`step ${s.state}`} title={`${s.title} — ${stateLabel[s.state]}`} />
       ))}
     </span>
   );
 }
-
-const STATE_LABEL: Record<BatteryStep["state"], string> = {
-  done: "пройдена",
-  current: "следующая",
-  available: "доступна",
-  locked: "откроется позже",
-};
 
 function BatteryEditor({
   battery,
@@ -360,23 +363,22 @@ function BatteryEditor({
         </label>
         <label className="field grow">
           <span>{ut("f.description")}</span>
-          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="необязательно" />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={ut("mark.optional")} />
         </label>
       </div>
 
       <div className="row mt-2.5">
         <label className="check">
           <input type="checkbox" checked={strictOrder} onChange={(e) => setStrictOrder(e.target.checked)} />
-          Строгий порядок
+          {ut("bat.strictOrder")}
         </label>
         <label className="check">
           <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />
-          В архиве
+          {ut("bat.archived")}
         </label>
       </div>
       <p className="mt-1 text-caption text-muted">
-        При строгом порядке следующая методика открывается только после предыдущей. Это важно там,
-        где утомление от длинного опросника искажает результат короткого.
+        {ut("bt.strictOrderHint")}
       </p>
 
       <h3 className="mt-[18px]">{ut("bt.composition")}</h3>
@@ -394,12 +396,12 @@ function BatteryEditor({
                       setItems(items.map((x, j) => (i === j ? { ...x, required: e.target.checked } : x)))
                     }
                   />
-                  обязательная
+                  {ut("bt.required")}
                 </label>
-                <button onClick={() => move(i, -1)} disabled={i === 0} aria-label="Выше">↑</button>
-                <button onClick={() => move(i, 1)} disabled={i === items.length - 1} aria-label="Ниже">↓</button>
+                <button onClick={() => move(i, -1)} disabled={i === 0} aria-label={ut("mark.above")}>↑</button>
+                <button onClick={() => move(i, 1)} disabled={i === items.length - 1} aria-label={ut("mark.below")}>↓</button>
                 <Button variant="danger" onClick={() => setItems(items.filter((_, j) => j !== i))}>
-                  Убрать
+                  {ut("ui.remove")}
                 </Button>
               </div>
             </li>
@@ -421,7 +423,7 @@ function BatteryEditor({
 
       <div className="row mt-[18px]">
         <Button variant="primary" onClick={save} disabled={!title.trim() || !items.length}>
-          Сохранить
+          {ut("ui.save")}
         </Button>
         <button onClick={onClose}>{ut("ui.cancel")}</button>
       </div>

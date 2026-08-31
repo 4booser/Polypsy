@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { UI } from "@quizzy/shared";
 
 /**
@@ -17,7 +17,18 @@ import { UI } from "@quizzy/shared";
  * момент написания, а не через полгода в кабинете.
  */
 
-const SRC = "src";
+/*
+ * Пути считаются от самого файла проверки, а не от текущего каталога.
+ *
+ * `bun test` в этом проекте запускают из корня репозитория, и относительный
+ * "src" оттуда не существует. Обход каталога молча возвращал пустой список,
+ * проверка не находила ни одного файла — и проходила. Зелёная проверка,
+ * которая ничего не проверила, хуже её отсутствия: она отвечает «всё в
+ * порядке» на вопрос, который не задавала.
+ */
+const WEB = resolve(import.meta.dir, "..");
+const SRC = join(WEB, "src");
+const MOBILE = resolve(WEB, "../mobile");
 
 /*
  * Что разрешено оставить в разметке — с причиной для каждого случая.
@@ -49,18 +60,51 @@ function withoutComments(src: string): string {
 }
 
 function tsxFiles(dir: string): string[] {
+  return codeFiles(dir).filter((f) => f.endsWith(".tsx"));
+}
+
+/** Все исходники каталога: и .ts, и .tsx. Каталог может не существовать. */
+function codeFiles(dir: string): string[] {
   const out: string[] = [];
-  for (const name of readdirSync(dir)) {
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const name of names) {
+    if (name === "node_modules") continue;
     const path = join(dir, name);
-    if (statSync(path).isDirectory()) out.push(...tsxFiles(path));
-    else if (path.endsWith(".tsx")) out.push(path);
+    if (statSync(path).isDirectory()) out.push(...codeFiles(path));
+    else if (path.endsWith(".tsx") || path.endsWith(".ts")) out.push(path);
   }
   return out;
 }
 
-/** Видимый пользователю текст файла: узлы JSX и подписи в свойствах. */
+/**
+ * Диагностика для разработчика — не интерфейс.
+ *
+ * `throw new Error("useAuth вне AuthProvider")` читает тот, кто сломал код,
+ * а не человек в кабинете. Такие строки переводить незачем и вредно: они
+ * должны совпадать с тем, что написано в исходнике, чтобы их можно было
+ * найти поиском.
+ */
+function withoutDeveloperMessages(src: string): string {
+  return src
+    .replace(/throw new Error\([^)]*\)/g, " ")
+    .replace(/console\.\w+\([^)]*\)/g, " ");
+}
+
+/**
+ * Видимый пользователю текст файла.
+ *
+ * Ловятся не только узлы JSX: строка, присвоенная переменной или лежащая в
+ * массиве меток, доезжает до экрана ровно так же. Проверка только по разметке
+ * пропускала сорок три такие строки — а выглядела при этом зелёной, что хуже
+ * её отсутствия.
+ */
 function visibleStrings(source: string): string[] {
-  const src = withoutComments(source);
+  const src = withoutDeveloperMessages(withoutComments(source));
   const found = new Set<string>();
 
   for (const m of src.matchAll(/>([^<>]*)</g)) {
@@ -71,9 +115,22 @@ function visibleStrings(source: string): string[] {
     if (text && CYRILLIC.test(text)) found.add(text);
   }
 
-  const PROPS = "placeholder|title|aria-label|alt|label|actionLabel|hint|caption|centerLabel";
-  for (const m of src.matchAll(new RegExp(`(?:${PROPS})\\s*=\\s*"([^"]+)"`, "g"))) {
-    if (CYRILLIC.test(m[1]!)) found.add(m[1]!.trim());
+  for (const m of src.matchAll(/"([^"\n]{2,120})"|'([^'\n]{2,120})'/g)) {
+    const text = (m[1] ?? m[2] ?? "").trim();
+    if (text && CYRILLIC.test(text)) found.add(text);
+  }
+
+  /*
+   * Шаблонные строки тоже.
+   *
+   * `Методика ${i + 1} из ${n}` — обычная подпись на экране киоска, но живёт
+   * она внутри выражения, а не литералом, и первую редакцию этой проверки
+   * обходила насквозь. Пациент видел её по-русски на украинском экране.
+   * Подстановки вырезаются, проверяется то, что между ними.
+   */
+  for (const m of src.matchAll(/`([^`]{2,200})`/g)) {
+    const text = m[1]!.replace(/\$\{[^{}]*\}/g, " ").replace(/\s+/g, " ").trim();
+    if (text && CYRILLIC.test(text)) found.add(text);
   }
 
   return [...found].filter((t) => !LANGUAGE_LABELS.has(t));
@@ -81,14 +138,58 @@ function visibleStrings(source: string): string[] {
 
 describe("строки интерфейса", () => {
   test("в разметке не остаётся текста мимо словаря", () => {
+    const files = tsxFiles(SRC);
+    /*
+     * Сначала — что файлы вообще нашлись. Без этой строки проверка при
+     * неверном пути обходила пустой список и объявляла победу.
+     */
+    expect(files.length).toBeGreaterThan(30);
+
     const offenders: string[] = [];
-    for (const file of tsxFiles(SRC)) {
-      if (ALLOWED.has(file)) continue;
+    for (const file of files) {
+      if (ALLOWED.has(file.slice(WEB.length + 1))) continue;
       for (const text of visibleStrings(readFileSync(file, "utf8"))) {
-        offenders.push(`${file}: ${text.slice(0, 70)}`);
+        offenders.push(`${file.slice(WEB.length + 1)}: ${text.slice(0, 70)}`);
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  test("в словаре не копятся ключи, которых никто не зовёт", () => {
+    /*
+     * Экраны переписываются, ключи остаются. Через год словарь наполовину
+     * состоит из строк, которых нет ни на одном экране, и переводчик тратит
+     * время на текст, который никто не увидит.
+     *
+     * Часть ключей зовётся шаблоном: `ut(`dest.${destination}`)`. Такой ключ
+     * поимённо в коде не встречается, поэтому засчитывается и обращение по
+     * префиксу — иначе проверка требовала бы отказаться от шаблонов ради
+     * самой себя.
+     */
+    /*
+     * Читаются оба потребителя словаря, а не одна консоль.
+     *
+     * Словарь общий: из полутора тысяч ключей триста пятьдесят восемь
+     * консоль не зовёт вовсе — их зовёт мобильное приложение. Проверка,
+     * которая смотрит только сюда, объявила бы их мёртвыми и потребовала бы
+     * либо удалить нужное, либо завести порог «примерно триста», который
+     * ничего не значит.
+     */
+    const sources = [...codeFiles(SRC), ...codeFiles(join(MOBILE, "src")), ...codeFiles(join(MOBILE, "app"))]
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
+
+    const dynamicPrefixes = new Set(
+      [...sources.matchAll(/`([a-z][A-Za-z0-9]*)\.\$\{/g)].map((m) => m[1]!),
+    );
+
+    const unused = Object.keys(UI).filter((key) => {
+      if (sources.includes(`"${key}"`)) return false;
+      const prefix = key.slice(0, key.indexOf("."));
+      return !dynamicPrefixes.has(prefix);
+    });
+
+    expect(unused).toEqual([]);
   });
 
   test("у каждого ключа есть оба перевода и они не совпадают по недосмотру", () => {
