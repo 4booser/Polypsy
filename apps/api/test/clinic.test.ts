@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
-import { adminA, api, db, makeUser } from "./fixtures";
+import { adminA, api, db, makeUser, submitSurvey, surveyInA } from "./fixtures";
 import {
   appointments,
   departmentPatients,
@@ -9,10 +9,14 @@ import {
   roles,
   scheduleTemplates,
   slots,
+  pushTokens,
   specialistProfiles,
   staffRoles,
+  surveyAccess,
 } from "../src/db/schema";
 import { sweepNoShows } from "../src/lib/noShow";
+import { setPushSenderForTests } from "../src/lib/push";
+import { remindAppointments } from "../src/lib/remind";
 import { syncSlots } from "../src/lib/schedule";
 
 /**
@@ -628,5 +632,203 @@ describe("неявка", () => {
     expect(
       mine.body.items.some((i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id),
     ).toBe(false);
+  });
+});
+
+describe("напоминания", () => {
+  /** Приём через заданное число часов, чтобы попадать в нужное окно */
+  async function upcoming(tag: string, hoursAhead: number) {
+    const patient = await makeUser("user", `clinic-${tag}-${crypto.randomUUID()}@test`);
+    const slotId = crypto.randomUUID();
+    await db.insert(slots).values({
+      id: slotId,
+      specialistId,
+      departmentId,
+      startsAt: new Date(Date.now() + hoursAhead * 3600_000).toISOString(),
+      endsAt: new Date(Date.now() + (hoursAhead + 1) * 3600_000).toISOString(),
+      kind: "any",
+    });
+    const id = crypto.randomUUID();
+    await db.insert(appointments).values({
+      id,
+      slotId,
+      patientId: patient.id,
+      specialistId,
+      kind: "primary",
+      status: "booked",
+    });
+    await db.insert(pushTokens).values({
+      id: crypto.randomUUID(),
+      userId: patient.id,
+      token: `ExponentPushToken[${tag}]`,
+      platform: "ios",
+    });
+    return { patient, id };
+  }
+
+  test("за сутки приходит одно напоминание, а не по одному в минуту", async () => {
+    /*
+     * Тик рассыльщика минутный. Без отсечки по ключу события человек получал
+     * бы напоминание каждую минуту последних суток — это не напоминание, а
+     * травля.
+     */
+    const sent: { title: string; body: string }[] = [];
+    setPushSenderForTests(async (messages) => {
+      for (const m of messages) sent.push({ title: m.title, body: m.body });
+    });
+
+    await upcoming("rm1", 5);
+    const first = await remindAppointments();
+    expect(first.day).toBe(1);
+
+    const second = await remindAppointments();
+    expect(second.day).toBe(0);
+    expect(sent.length).toBe(1);
+
+    setPushSenderForTests(null);
+  });
+
+  test("напоминание за сутки не обещает «завтра», если приём сегодня", async () => {
+    /*
+     * Напоминание уходит за сутки — то есть и за двадцать часов, и за пять.
+     * Слово «завтра» верно лишь в части этих случаев, а в остальных
+     * отправляет человека не в тот день.
+     */
+    const sent: string[] = [];
+    setPushSenderForTests(async (messages) => {
+      for (const m of messages) sent.push(`${m.title} ${m.body}`);
+    });
+
+    await upcoming("rm-today", 5);
+    await remindAppointments();
+    expect(sent.length).toBe(1);
+    expect(sent[0]!.toLowerCase()).not.toContain("завтра");
+    // и дата в тексте есть: без неё человек не знает, о каком дне речь
+    expect(sent[0]).toMatch(/\d{2}\.\d{2}/);
+
+    setPushSenderForTests(null);
+  });
+
+  test("в тексте нет слов, выдающих, к кому человек идёт", async () => {
+    /*
+     * Уведомление видят посторонние — сосед в маршрутке, сослуживец. По нему
+     * не должно быть понятно, что человек идёт к психологу.
+     */
+    const sent: string[] = [];
+    setPushSenderForTests(async (messages) => {
+      for (const m of messages) sent.push(`${m.title} ${m.body}`);
+    });
+
+    await upcoming("rm2", 6);
+    await remindAppointments();
+    expect(sent.length).toBeGreaterThan(0);
+    for (const text of sent) {
+      expect(text.toLowerCase()).not.toContain("психолог");
+      expect(text.toLowerCase()).not.toContain("психіатр");
+      expect(text.toLowerCase()).not.toContain("психиатр");
+    }
+
+    setPushSenderForTests(null);
+  });
+
+  test("записавшийся в последний час получает только «через час»", async () => {
+    // иначе он получил бы оба сразу, и «завтра приём» было бы просто неправдой
+    const sent: string[] = [];
+    setPushSenderForTests(async (messages) => {
+      for (const m of messages) sent.push(m.title);
+    });
+
+    await upcoming("rm3", 0.5);
+    const result = await remindAppointments();
+    expect(result.hour).toBe(1);
+    expect(result.day).toBe(0);
+    expect(sent.length).toBe(1);
+
+    setPushSenderForTests(null);
+  });
+
+  test("отменённому приёму напоминания не идут", async () => {
+    const sent: string[] = [];
+    setPushSenderForTests(async (messages) => {
+      for (const m of messages) sent.push(m.title);
+    });
+
+    const { id } = await upcoming("rm4", 4);
+    await db.update(appointments).set({ status: "cancelled" }).where(eq(appointments.id, id));
+    const result = await remindAppointments();
+    expect(result.day).toBe(0);
+    expect(sent.length).toBe(0);
+
+    setPushSenderForTests(null);
+  });
+
+  test("подтверждение видно специалисту, а факт отправки — нет", async () => {
+    /*
+     * Специалист смотрит на подтверждение, а не на отправку: отправленный
+     * push и прочитанный push — разные вещи, и показывать первое вместо
+     * второго значит врать.
+     */
+    const { patient, id } = await upcoming("rm5", 3);
+    await api(`/api/clinic/appointments/${id}/confirm`, patient.token, { method: "POST" });
+
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("confirmed");
+    expect(row!.confirmedAt).not.toBeNull();
+  });
+});
+
+describe("несданное назначенное", () => {
+  test("пометка считает и назначенные методики, и батареи", async () => {
+    /*
+     * Предупреждаются оба: пациенту — напоминание, специалисту — пометка.
+     * Без неё специалист узнаёт о несданной методике в момент, когда
+     * собирался её обсуждать.
+     */
+    const patient = await makeUser("user", `clinic-pn-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    expect(booked.status).toBe(201);
+
+    // ничего не назначено — и пометки нет
+    const [slotRow] = await db.select().from(slots).where(eq(slots.id, slotId));
+    const date = new Date(slotRow!.startsAt).toISOString().slice(0, 10);
+    const before = await api(`/api/clinic/today?date=${date}`, specialistToken);
+    const mineBefore = before.body.items.find((a: { id: string }) => a.id === booked.body.id);
+    expect(mineBefore.pendingAssignments).toBe(0);
+
+    // назначаем методику и не сдаём её
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: patient.id,
+      grantedBy: adminA.id,
+    });
+
+    const after = await api(`/api/clinic/today?date=${date}`, specialistToken);
+    const mineAfter = after.body.items.find((a: { id: string }) => a.id === booked.body.id);
+    expect(mineAfter.pendingAssignments).toBe(1);
+  });
+
+  test("сданное из счёта уходит", async () => {
+    const patient = await makeUser("user", `clinic-pn2-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: patient.id,
+      grantedBy: adminA.id,
+    });
+    await submitSurvey(surveyInA, patient.token);
+
+    const [slotRow] = await db.select().from(slots).where(eq(slots.id, slotId));
+    const date = new Date(slotRow!.startsAt).toISOString().slice(0, 10);
+    const res = await api(`/api/clinic/today?date=${date}`, specialistToken);
+    const mine = res.body.items.find((a: { id: string }) => a.id === booked.body.id);
+    expect(mine.pendingAssignments).toBe(0);
   });
 });

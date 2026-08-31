@@ -550,6 +550,38 @@ async function loadAppointments(where: ReturnType<typeof and>) {
     .where(inArray(specialistProfiles.userId, [...new Set(rows.map((r) => r.row.specialistId))]));
   const rooms = new Map(profileRows.map((p) => [p.userId, p.room]));
 
+  /*
+   * Назначенное, но не сданное — одним запросом на весь список.
+   *
+   * Считается по двум источникам сразу: персональные назначения методик и
+   * батареи. Разделять их на экране незачем — специалисту важно, что человек
+   * пришёл без того, что должен был принести, а не какой формой это было
+   * назначено.
+   *
+   * Отменённые батареи не в счёт: их и не ждали.
+   */
+  const pendingRows = await db.execute<{ user_id: string; n: number }>(
+    sql`
+      select u.id as user_id, (
+        (select count(*) from survey_access sa
+          where sa.user_id = u.id
+            and (sa.expires_at is null or sa.expires_at > now())
+            and not exists (
+              select 1 from responses r
+              where r.user_id = u.id and r.survey_id = sa.survey_id and r.status = 'completed'))
+        +
+        (select count(*) from battery_assignments ba
+          join battery_items bi on bi.battery_id = ba.battery_id
+          where ba.user_id = u.id and ba.cancelled_at is null
+            and not exists (
+              select 1 from responses r
+              where r.user_id = u.id and r.survey_id = bi.survey_id and r.status = 'completed'))
+      )::int as n
+      from users u where u.id in ${patientIds}
+    `,
+  );
+  const pending = new Map(pendingRows.map((r) => [r.user_id, Number(r.n)]));
+
   return rows.map(
     (r): AppointmentView => ({
       id: r.row.id,
@@ -570,6 +602,7 @@ async function loadAppointments(where: ReturnType<typeof and>) {
       confirmedAt: r.row.confirmedAt,
       offSchedule: r.slot.offSchedule,
       leadSpecialistId: leads.get(r.row.patientId) ?? null,
+      pendingAssignments: pending.get(r.row.patientId) ?? 0,
     }),
   );
 }
