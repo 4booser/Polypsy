@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { UiKey } from "@quizzy/shared";
-import { api } from "../api";
+import { api, openInTab } from "../api";
 import { day } from "../format";
 import { Empty, Screen, useAction } from "../ui";
 import { Page, Panel } from "../ui/layout";
@@ -249,6 +249,20 @@ function Actions({
         <Link to={`/patients/${data.patient.id}`} className="btn">
           {ut("visit.openCard")}
         </Link>
+        {/*
+          Справка выдаётся о состоявшемся приёме, поэтому кнопка появляется
+          только тогда, когда человек уже пришёл: предложить её раньше значило
+          бы предложить документ о том, чего не было.
+        */}
+        {["arrived", "in_progress", "done"].includes(data.appointment.status) ? (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => openInTab(`/api/reports/visits/${data.appointment.id}`)}
+          >
+            {ut("visit.certificate")}
+          </button>
+        ) : null}
 
         {data.appointment.status === "in_progress" ? (
           <Button

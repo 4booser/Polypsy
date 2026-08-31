@@ -98,6 +98,7 @@ const SCREENS = [
   "/permissions",
   "/today",
   "/my-schedule",
+  "/department-report",
 ];
 
 test("в украинском режиме не остаётся русских слов", async ({ page }) => {
