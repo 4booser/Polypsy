@@ -16,6 +16,7 @@ import { db } from "../db";
 import { answerEvents, answers, responseScores, responses, riskAlerts, type UserRow } from "../db/schema";
 import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
+import { responseSource } from "./responseSource";
 import { attachToCase } from "./alertCases";
 import { applyRules } from "./decisions";
 import { publish } from "./events";
@@ -50,6 +51,9 @@ export function validateAnswers(survey: SurveyFull, input: SubmitResponseInput):
   return answerMap;
 }
 
+/** Откуда взялось прохождение — см. lib/responseSource */
+export type ResponseSource = "assigned" | "self" | "kiosk" | "clinician" | "informant" | "intake";
+
 export interface PersistResult {
   responseId: string;
   submittedAt: string;
@@ -65,7 +69,7 @@ export async function persistSubmission(
   survey: SurveyFull,
   subject: Pick<UserRow, "id" | "sex" | "birthDate">,
   input: SubmitResponseInput,
-  options: { filledBySelf: boolean; lang?: "uk" | "ru" },
+  options: { filledBySelf: boolean; lang?: "uk" | "ru"; source?: ResponseSource },
 ): Promise<PersistResult> {
   validateAnswers(survey, input);
 
@@ -121,6 +125,17 @@ export async function persistSubmission(
       respondentSex: linkedUserId ? subject.sex : null,
       respondentAgeBand: linkedUserId ? ageBand : null,
       lang: options.lang ?? null,
+      /*
+       * Источник выводится сервером, а не приходит с клиентом: клиент мог бы
+       * объявить своё прохождение назначенным, и «самообращение» — само по
+       * себе сведение о человеке — растворилось бы среди плановых замеров.
+       *
+       * Публичные конвейеры (киоск, форма информанта) называют источник
+       * прямо: там нет учётной записи, по которой его можно вывести.
+       */
+      source:
+        options.source ??
+        (linkedUserId ? await responseSource(linkedUserId, survey.id, input.onBehalfOf ?? null) : null),
     });
 
     // тревоги — до подсчёта: они не зависят от шкал и должны сработать даже

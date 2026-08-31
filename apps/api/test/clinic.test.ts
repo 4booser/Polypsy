@@ -1,6 +1,16 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray } from "drizzle-orm";
-import { adminA, api, db, makeUser, submitSurvey, surveyInA } from "./fixtures";
+import {
+  adminA,
+  api,
+  db,
+  makeUser,
+  responsesTable,
+  root,
+  submitSurvey,
+  surveyInA,
+  surveys as surveysTable,
+} from "./fixtures";
 import {
   appointments,
   departmentPatients,
@@ -11,6 +21,7 @@ import {
   slots,
   pushTokens,
   specialistProfiles,
+  alertCases,
   staffRoles,
   surveyAccess,
 } from "../src/db/schema";
@@ -830,5 +841,219 @@ describe("несданное назначенное", () => {
     const res = await api(`/api/clinic/today?date=${date}`, specialistToken);
     const mine = res.body.items.find((a: { id: string }) => a.id === booked.body.id);
     expect(mine.pendingAssignments).toBe(0);
+  });
+});
+
+describe("скрининг при записи", () => {
+  /**
+   * Первичный приём наполовину уходит на заполнение бланков: час разговора
+   * превращается в полчаса разговора и полчаса анкет. Если короткий скрининг
+   * пройден до приёма, специалист начинает с разговора.
+   */
+  test("отделение без скрининга ничего не предлагает", async () => {
+    const patient = await makeUser("user", `clinic-sc0-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const res = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.screeningSurveyId).toBeNull();
+  });
+
+  test("запись на первичный сразу отдаёт, что пройти", async () => {
+    /*
+     * В ответе на запись, а не отдельным вопросом «а есть ли скрининг»:
+     * человек только что нажал «записаться» и находится ровно в той точке,
+     * где готов потратить пять минут. Через день он забудет.
+     */
+    await db
+      .update(departments)
+      .set({ screeningSurveyId: surveyInA })
+      .where(eq(departments.id, departmentId));
+
+    const patient = await makeUser("user", `clinic-sc1-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const res = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.screeningSurveyId).toBe(surveyInA);
+  });
+
+  test("на повторный приём скрининг не предлагается", async () => {
+    // на повторном специалист уже знает, с чем имеет дело
+    const patient = await makeUser("user", `clinic-sc2-${crypto.randomUUID()}@test`);
+    const first = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId: first }),
+    });
+    await api(`/api/clinic/appointments/${booked.body.id}/status`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ status: "arrived" }),
+    });
+
+    const repeat = await freeSlot("repeat");
+    const res = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId: repeat }),
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.kind).toBe("repeat");
+    expect(res.body.screeningSurveyId).toBeNull();
+  });
+
+  test("сданный скрининг помечен как скрининг, а не как самообращение", async () => {
+    /*
+     * Источник выводится сервером. Если бы он приходил с клиентом,
+     * «самообращение» — само по себе сведение о человеке — растворилось бы
+     * среди плановых замеров.
+     */
+    const patient = await makeUser("user", `clinic-sc3-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    await submitSurvey(surveyInA, patient.token);
+
+    const [row] = await db
+      .select()
+      .from(responsesTable)
+      .where(eq(responsesTable.userId, patient.id));
+    expect(row!.source).toBe("intake");
+
+    const [slotRow] = await db.select().from(slots).where(eq(slots.id, slotId));
+    const date = new Date(slotRow!.startsAt).toISOString().slice(0, 10);
+    const day = await api(`/api/clinic/today?date=${date}`, specialistToken);
+    const mine = day.body.items.find((a: { patientId: string }) => a.patientId === patient.id);
+    expect(mine.screeningDone).toBe(true);
+  });
+
+  test("не сдавший скрининг виден специалисту до приёма", async () => {
+    const patient = await makeUser("user", `clinic-sc4-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+
+    const [slotRow] = await db.select().from(slots).where(eq(slots.id, slotId));
+    const date = new Date(slotRow!.startsAt).toISOString().slice(0, 10);
+    const day = await api(`/api/clinic/today?date=${date}`, specialistToken);
+    const mine = day.body.items.find((a: { patientId: string }) => a.patientId === patient.id);
+    expect(mine.screeningDone).toBe(false);
+  });
+
+  test("прохождение без записи скринингом не считается", async () => {
+    // человек мог проходить ту же методику год назад по другому поводу
+    const patient = await makeUser("user", `clinic-sc5-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, patient.token);
+
+    const [row] = await db
+      .select()
+      .from(responsesTable)
+      .where(eq(responsesTable.userId, patient.id));
+    expect(row!.source).toBe("self");
+  });
+
+  test("черновик методики скринингом не назначить", async () => {
+    /*
+     * Иначе пациент при записи упирается в методику, которой ещё нет, — и
+     * узнаёт об этом уже после того, как занял слот.
+     */
+    const draft = crypto.randomUUID();
+    await db.insert(surveysTable).values({
+      id: draft,
+      title: { uk: "Чернетка", ru: "Черновик" },
+      status: "draft",
+      createdBy: adminA.id,
+    });
+
+    const res = await api(`/api/clinic/departments/${departmentId}`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({ screeningSurveyId: draft }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("риск на скрининге", () => {
+  test("тревога заводит случай сразу, не дожидаясь даты приёма", async () => {
+    /*
+     * Иначе система собрала бы опасный сигнал и положила его ждать две
+     * недели. Проверяется на существующем конвейере, а не на новом: скрининг
+     * при записи — обычное прохождение, и тревога обязана срабатывать в нём
+     * так же, как везде.
+     */
+    const patient = await makeUser("user", `clinic-rk-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+
+    // методика скрининга — та, где есть критический пункт
+    await db
+      .update(departments)
+      .set({ screeningSurveyId: surveyInA })
+      .where(eq(departments.id, departmentId));
+
+    // СР-45: критические пункты — «да» на вопросы о попытках
+    const surveyRes = await api(`/api/surveys/${surveyInA}`, patient.token);
+    const yesAnswers = surveyRes.body.questions
+      .filter((q: { type: string; options: unknown[] }) => q.type !== "info")
+      .map((q: { id: string; options: { id: string; keyCode?: string }[] }) => ({
+        questionId: q.id,
+        optionIds: [
+          (q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!).id,
+        ],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      }));
+    const submitted = await api(`/api/surveys/${surveyInA}/responses`, patient.token, {
+      method: "POST",
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        events: [],
+        answers: yesAnswers,
+      }),
+    });
+    expect(submitted.status).toBe(201);
+
+    const [row] = await db
+      .select()
+      .from(responsesTable)
+      .where(eq(responsesTable.userId, patient.id));
+    expect(row!.source).toBe("intake");
+
+    const cases = await db
+      .select()
+      .from(alertCases)
+      .where(eq(alertCases.userId, patient.id));
+    expect(cases.length).toBeGreaterThan(0);
+  });
+
+  test("методику, показывающую баллы, скринингом не назначить", async () => {
+    const open = crypto.randomUUID();
+    await db.insert(surveysTable).values({
+      id: open,
+      title: { uk: "Відкрита", ru: "Открытая" },
+      status: "published",
+      administration: "self",
+      showResultsToPatient: true,
+      createdBy: adminA.id,
+    });
+
+    const res = await api(`/api/clinic/departments/${departmentId}`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({ screeningSurveyId: open }),
+    });
+    expect(res.status).toBe(400);
+    expect(String(res.body.error)).toContain("бал");
   });
 });

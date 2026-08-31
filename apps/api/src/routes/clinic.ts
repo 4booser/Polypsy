@@ -20,10 +20,12 @@ import {
   appointments,
   departmentPatients,
   departments,
+  responses,
   scheduleExceptions,
   scheduleTemplates,
   slots,
   specialistProfiles,
+  surveys,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -68,9 +70,81 @@ clinicRoutes.post(
   async (c) => {
     const input = await parseBody(c.req.raw, departmentSchema);
     const id = crypto.randomUUID();
-    await db.insert(departments).values({ id, title: input.title, timezone: input.timezone });
+    await db.insert(departments).values({
+      id,
+      title: input.title,
+      timezone: input.timezone,
+      screeningSurveyId: input.screeningSurveyId ?? null,
+    });
     await audit(c, { action: "clinic.department_create", resourceType: "department", resourceId: id });
     return c.json({ id }, 201);
+  },
+);
+
+/**
+ * Правка отделения.
+ *
+ * Отдельным маршрутом, а не полем при создании: скрининг заводят позже, чем
+ * отделение. Сначала отдел начинает принимать, потом решает, чем встречать
+ * человека, — и требовать выбрать методику в момент создания значило бы
+ * заставить выбрать её вслепую.
+ */
+clinicRoutes.patch(
+  "/departments/:id",
+  requireStaff,
+  requirePermission("departments.manage"),
+  async (c) => {
+    const id = c.req.param("id");
+    const input = await parseBody(c.req.raw, departmentSchema.partial());
+    const existing = await db.query.departments.findFirst({ where: eq(departments.id, id) });
+    if (!existing) notFound("err.departmentNotFound");
+
+    if (input.screeningSurveyId) {
+      const survey = await db.query.surveys.findFirst({
+        where: eq(surveys.id, input.screeningSurveyId),
+      });
+      if (!survey) notFound("err.surveyNotFound");
+      /*
+       * Скрининг обязан быть опубликован и заполняться самим человеком.
+       * Черновик означал бы, что пациент при записи упирается в методику,
+       * которой ещё нет; методика для специалиста — что он упирается в
+       * вопросы, на которые не может ответить сам.
+       */
+      if (survey.status !== "published") badRequest("err.screeningMustBePublished");
+      if (survey.administration !== "self") badRequest("err.screeningMustBeSelf");
+      /*
+       * Скрининг до приёма — не диагноз, и баллы пациенту не показываются.
+       *
+       * Интерпретировать их в этот момент некому: специалиста человек ещё не
+       * видел. Тревожный человек с цифрой и без объяснения — худший исход,
+       * чем человек без цифры, и ждать ему с ней до приёма две недели.
+       *
+       * Отказ, а не тихое переопределение флага: методику могли завести для
+       * другого применения, где показывать результат правильно, и молча
+       * менять её поведение из-за назначения скринингом значило бы поменять
+       * его во всех остальных местах заодно.
+       */
+      if (survey.showResultsToPatient) badRequest("err.screeningMustHideResults");
+    }
+
+    await db
+      .update(departments)
+      .set({
+        ...(input.title !== undefined && { title: input.title }),
+        ...(input.timezone !== undefined && { timezone: input.timezone }),
+        ...(input.screeningSurveyId !== undefined && {
+          screeningSurveyId: input.screeningSurveyId ?? null,
+        }),
+      })
+      .where(eq(departments.id, id));
+
+    await audit(c, {
+      action: "clinic.department_update",
+      resourceType: "department",
+      resourceId: id,
+      details: { screeningSurveyId: input.screeningSurveyId ?? null },
+    });
+    return c.json({ ok: true });
   },
 );
 
@@ -521,7 +595,23 @@ clinicRoutes.post("/appointments", async (c) => {
     subjectUserId: patientId,
     details: { slotId: slot.id, kind, bySelf: me.id === patientId },
   });
-  return c.json({ id, kind }, 201);
+
+  /*
+   * Что пройти до приёма — отдаётся сразу в ответе на запись.
+   *
+   * Не отдельным запросом «а есть ли скрининг»: человек только что нажал
+   * «записаться» и находится ровно в той точке, где готов потратить пять
+   * минут. Через час он будет занят, а через день забудет.
+   *
+   * Скрининг предлагается только на первичный приём: на повторном специалист
+   * уже знает, с чем имеет дело, и анкета на входе была бы данью форме.
+   */
+  const department = await db.query.departments.findFirst({
+    where: eq(departments.id, slot.departmentId),
+  });
+  const screeningSurveyId = kind === "primary" ? (department?.screeningSurveyId ?? null) : null;
+
+  return c.json({ id, kind, screeningSurveyId }, 201);
 });
 
 /** Приём вместе со слотом и людьми — общая заготовка для всех списков */
@@ -582,6 +672,38 @@ async function loadAppointments(where: ReturnType<typeof and>) {
   );
   const pending = new Map(pendingRows.map((r) => [r.user_id, Number(r.n)]));
 
+  /*
+   * Скрининг при записи: сдан или нет.
+   *
+   * Считается по прохождению с источником intake, а не по «есть ли вообще
+   * прохождение этой методики»: человек мог проходить её год назад по другому
+   * поводу, и засчитывать то прохождение за сегодняшний скрининг значило бы
+   * показать специалисту данные, которых у него нет.
+   */
+  const departmentIds = [...new Set(rows.map((r) => r.slot.departmentId))];
+  const departmentRows = await db
+    .select()
+    .from(departments)
+    .where(inArray(departments.id, departmentIds));
+  const screeningOf = new Map(departmentRows.map((d) => [d.id, d.screeningSurveyId]));
+
+  const screeningSurveyIds = [...new Set([...screeningOf.values()].filter((x): x is string => !!x))];
+  const doneScreenings = new Set<string>();
+  if (screeningSurveyIds.length) {
+    const submitted = await db
+      .select({ userId: responses.userId, surveyId: responses.surveyId })
+      .from(responses)
+      .where(
+        and(
+          inArray(responses.userId, patientIds),
+          inArray(responses.surveyId, screeningSurveyIds),
+          eq(responses.status, "completed"),
+          eq(responses.source, "intake"),
+        ),
+      );
+    for (const r of submitted) doneScreenings.add(`${r.userId}:${r.surveyId}`);
+  }
+
   return rows.map(
     (r): AppointmentView => ({
       id: r.row.id,
@@ -603,6 +725,11 @@ async function loadAppointments(where: ReturnType<typeof and>) {
       offSchedule: r.slot.offSchedule,
       leadSpecialistId: leads.get(r.row.patientId) ?? null,
       pendingAssignments: pending.get(r.row.patientId) ?? 0,
+      screeningDone: (() => {
+        const surveyId = screeningOf.get(r.slot.departmentId);
+        if (!surveyId) return null;
+        return doneScreenings.has(`${r.row.patientId}:${surveyId}`);
+      })(),
     }),
   );
 }

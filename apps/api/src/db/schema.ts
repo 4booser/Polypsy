@@ -668,6 +668,17 @@ export const responses = pgTable(
     respondentAgeBand: text("respondent_age_band"),
     /** Язык предъявления контента — психометрический фактор (7.4) */
     lang: text("lang", { enum: ["uk", "ru"] }),
+    /**
+     * Откуда взялось прохождение.
+     *
+     * Раньше все были неразличимы, и «пришёл сам» ничем не отличалось от
+     * «назначили». Для клинической записи это разные вещи: самообращение —
+     * само по себе сведение о человеке, а скрининг при записи нельзя
+     * показывать пациенту баллами.
+     */
+    source: text("source", {
+      enum: ["assigned", "self", "kiosk", "clinician", "informant", "intake"],
+    }),
     /** Общее время прохождения */
     durationMs: integer("duration_ms").notNull().default(0),
   },
@@ -2210,6 +2221,14 @@ export const departments = pgTable("departments", {
   title: jsonb("title").notNull(),
   /** IANA-имя, не смещение: смещение устаревает дважды в год */
   timezone: text("timezone").notNull().default("Europe/Kyiv"),
+  /**
+   * Методика, которую отделение даёт при записи на первичный приём.
+   *
+   * null — не даёт вовсе, и это нормальное состояние: скрининг заводится
+   * осознанно, а не появляется сам. Отделение, а не система: чем встречают
+   * человека — решение отделения, и оно у разных отделений разное.
+   */
+  screeningSurveyId: text("screening_survey_id"),
   createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   archivedAt: timestampCol("archived_at"),
 });

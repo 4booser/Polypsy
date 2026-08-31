@@ -9,6 +9,7 @@ import { currentRequestId, log } from "./log";
 export type AuditAction =
   /* поликлиника: каждый переход приёма — событие журнала */
   | "clinic.department_create"
+  | "clinic.department_update"
   | "clinic.specialist_profile"
   | "clinic.schedule_update"
   | "clinic.schedule_exception"

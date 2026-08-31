@@ -803,4 +803,6 @@ export const departmentSchema = z.object({
   title: localizedSchema,
   /** IANA-имя пояса: смещение устаревает дважды в год */
   timezone: z.string().min(1).max(80).default("Europe/Kyiv"),
+  /** Методика, которую дают при записи на первичный приём; null — не дают */
+  screeningSurveyId: z.string().nullish(),
 });

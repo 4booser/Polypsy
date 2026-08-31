@@ -312,6 +312,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
 
   /* ── поликлиника: расписание и приёмы ── */
   "GET /api/clinic/departments": { summary: "Отделения, куда можно записаться", access: "user", whyNoPermission: "вывеска учреждения: не увидев её, пациент не сможет выбрать, куда записаться" },
+  "PATCH /api/clinic/departments/:id": { summary: "Правка отделения, в том числе методика скрининга при записи", access: "staff", permission: "departments.manage" },
   "POST /api/clinic/departments": { summary: "Завести отделение", access: "staff", permission: "departments.manage", body: departmentSchema },
   "GET /api/clinic/specialists": { summary: "Кто принимает; свой специалист помечен и стоит первым", access: "user", whyNoPermission: "выбрать специалиста должен уметь любой записывающийся, иначе самозапись невозможна" },
   "PUT /api/clinic/specialists/:userId": { summary: "Профиль специалиста: отделение, кабинет, длительность приёма", access: "staff", permission: "departments.manage", body: specialistProfileSchema },
