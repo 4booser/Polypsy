@@ -243,8 +243,21 @@ export default function Constructor() {
               именно тогда, когда что-то пошло не так, и искать её в этот
               момент — последнее, чем стоит заниматься.
             */}
-            <Button size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>↶</Button>
-            <Button size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>↷</Button>
+            {/*
+              Значки нарисованы, а не набраны символами ↶ и ↷.
+
+              Шрифты подключены подмножествами — только те диапазоны, что
+              реально нужны, — и стрелок отмены в них нет. Браузер подставлял
+              запасную гарнитуру, и на кнопке оказывалась не стрелка, а то,
+              что нашлось. Заметно это стало ровно тогда, когда кнопки
+              перестали быть бледными.
+            */}
+            <Button size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>
+              <IconUndo />
+            </Button>
+            <Button size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>
+              <IconUndo flip />
+            </Button>
             {dirty ? <span className="text-caption text-muted">{ut("co.draftAutosaves")}</span> : null}
           </div>
         </div>
@@ -354,3 +367,21 @@ export default function Constructor() {
 
 /* ─────────── вкладки ─────────── */
 
+/** Стрелка отмены; `flip` разворачивает её в «вернуть». */
+function IconUndo({ flip }: { flip?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={flip ? { transform: "scaleX(-1)" } : undefined}
+    >
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h9a7 7 0 0 1 0 14h-3" />
+    </svg>
+  );
+}

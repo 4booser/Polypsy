@@ -179,17 +179,60 @@ describe("строки интерфейса", () => {
       .map((f) => readFileSync(f, "utf8"))
       .join("\n");
 
-    const dynamicPrefixes = new Set(
-      [...sources.matchAll(/`([a-z][A-Za-z0-9]*)\.\$\{/g)].map((m) => m[1]!),
-    );
+    /*
+     * Префикс берётся целиком, а не по первой точке.
+     *
+     * Первая редакция этой проверки распознавала только односоставный
+     * префикс — `dest.${…}`, — а `goal.status.${g.status}` состоит из двух
+     * частей. Ключи goal.status.* оказались «мёртвыми», проверка их
+     * удалила, и приложение падало пустым экраном на первом же закрытии
+     * цели: UI[key] был undefined. Ловится это только запуском, потому что
+     * шаблонный ключ компилятор не проверяет.
+     */
+    const dynamicPrefixes = [
+      ...new Set([...sources.matchAll(/`([a-z][A-Za-z0-9.]*)\.\$\{/g)].map((m) => m[1]!)),
+    ];
 
     const unused = Object.keys(UI).filter((key) => {
       if (sources.includes(`"${key}"`)) return false;
-      const prefix = key.slice(0, key.indexOf("."));
-      return !dynamicPrefixes.has(prefix);
+      return !dynamicPrefixes.some((prefix) => key.startsWith(`${prefix}.`));
     });
 
     expect(unused).toEqual([]);
+  });
+
+  test("семейства шаблонных ключей не пустеют", () => {
+    /*
+     * `ut(`goal.status.${g.status}`)` компилятор не проверяет: ключ
+     * складывается в рантайме. Если такое семейство исчезнет из словаря —
+     * а это уже случалось, — экран упадёт пустым в тот момент, когда
+     * человек нажмёт кнопку, и никакой тест до него не доберётся, кроме
+     * того, что специально идёт по этому пути.
+     *
+     * Здесь проверяется дешёвое и достаточное: у каждого шаблонного
+     * обращения в словаре есть хоть один ключ с таким началом.
+     */
+    const sources = [...codeFiles(SRC), ...codeFiles(join(MOBILE, "src")), ...codeFiles(join(MOBILE, "app"))]
+      .map((f) => readFileSync(f, "utf8"))
+      .join("\n");
+
+    /*
+     * Только обращения через ut(. Шаблоны вообще — это ещё и ключи
+     * localStorage вроде `quizzy.constructor.${id}`, к словарю отношения не
+     * имеющие; проверка на них ругалась бы вечно.
+     *
+     * В соседней проверке на мёртвые ключи распознавание, наоборот, нарочно
+     * широкое: там лишний префикс означает «не удалять на всякий случай», и
+     * ошибиться в эту сторону дешевле.
+     */
+    const prefixes = [
+      ...new Set([...sources.matchAll(/\but\(`([a-z][A-Za-z0-9.]*)\.\$\{/g)].map((m) => m[1]!)),
+    ];
+    expect(prefixes.length).toBeGreaterThan(0);
+
+    const keys = Object.keys(UI);
+    const empty = prefixes.filter((p) => !keys.some((k) => k.startsWith(`${p}.`)));
+    expect(empty).toEqual([]);
   });
 
   test("у каждого ключа есть оба перевода и они не совпадают по недосмотру", () => {

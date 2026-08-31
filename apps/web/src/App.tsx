@@ -273,7 +273,19 @@ export default function App() {
           ) : null}
 
           <Button variant="quiet" size="sm" onClick={logout} className={railOpen ? "justify-start" : "justify-center px-0"}>
-            {railOpen ? ut("nav.logout") : "⏻"}
+            {railOpen ? (
+              ut("nav.logout")
+            ) : (
+              /*
+                Значок нарисован, а не набран символом ⏻: шрифты подключены
+                подмножествами, и его там нет — браузер подставил бы запасную
+                гарнитуру, а какую именно, зависит от машины.
+              */
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+                <path d="M12 4v8" />
+                <path d="M7.5 7a7 7 0 1 0 9 0" />
+              </svg>
+            )}
           </Button>
           {railOpen ? (
             <span className="px-1 font-mono text-micro text-faint" title={`${ut("ui.buildFrom")} ${__BUILD_DATE__}`}>
