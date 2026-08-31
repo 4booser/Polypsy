@@ -164,6 +164,17 @@ function AppointmentRow({
             человек легко проходит несколько приёмов, так и не став ничьим.
           */}
           {a.leadSpecialistId === null ? <Badge>{ut("day.noLead")}</Badge> : null}
+          {/*
+            Несданное назначенное — единственная пометка здесь, которая
+            требует внимания до приёма, а не после: без неё специалист узнаёт
+            о ней в момент, когда собирался обсуждать результат, то есть
+            когда время приёма уже идёт.
+          */}
+          {a.pendingAssignments > 0 ? (
+            <Badge tone="warn">
+              {ut("day.pending")} {a.pendingAssignments}
+            </Badge>
+          ) : null}
         </div>
 
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-caption text-muted">

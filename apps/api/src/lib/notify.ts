@@ -15,6 +15,7 @@ import { auditSystem } from "./audit";
 import { parseTs } from "./time";
 import { log } from "./log";
 import { pushToUsers } from "./push";
+import { remindAppointments } from "./remind";
 
 /**
  * Уведомления о тревогах риска.
@@ -240,6 +241,14 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
 export function startNotifier(intervalMs = 60_000): () => void {
   const tick = () => {
     runNotifierOnce().catch((error) => log.error("notifier.tick_failed", { error: String(error) }));
+    /*
+     * Напоминания о приёме — тем же тактом. Отдельного таймера не заводим:
+     * повторов рассылка не боится (отсекает по ключу события), а минутный шаг
+     * означает, что «за час» приходит с точностью до минуты.
+     */
+    void systemContext(baseDb, () => remindAppointments()).catch((error) =>
+      log.warn("clinic.remind_failed", { error: String(error) }),
+    );
   };
   tick();
   const timer = setInterval(tick, intervalMs);
