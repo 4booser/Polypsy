@@ -12,6 +12,7 @@ import { eq, inArray } from "drizzle-orm";
 import { ageAt, answerScore, computeProfile, computeScores, createSurveySchema, normalizeLocalized, t, type Answer } from "@quizzy/shared";
 import { client, db } from "./db";
 import { attachToCase } from "./lib/alertCases";
+import { syncBuiltinRole } from "./lib/permissions";
 import { decryptField, encryptPersonFields } from "./lib/crypto";
 import {
   answerEvents,
@@ -1071,6 +1072,25 @@ async function seedConsent() {
   console.log("  текст согласия: версия 1");
 }
 await seedConsent();
+
+/*
+ * Роли персонала выдаются посевом, а не только при старте сервера.
+ *
+ * Посев заводит администраторов прямо в базе, минуя маршрут создания учётной
+ * записи, — то есть минуя единственное место, где встроенная роль выдавалась
+ * человеку. Миграция покрывает тех, кто был заведён до неё; старт сервера
+ * покрывает администраторов без единой роли на момент запуска. Учётная
+ * запись, появившаяся посевом уже после старта, не попадала ни в одно из трёх
+ * покрытий и оставалась без прав.
+ *
+ * Найдено на смоук-стенде: Playwright поднимает сервер раньше, чем
+ * пересоздаёт базу, поэтому сверка на старте успевала отработать до посева и
+ * её результат стирался вместе со схемой. Но дело не в порядке запуска
+ * стенда: тем же способом получил бы бесправного администратора и свежий
+ * установочный экземпляр, где посев — это способ завести первые учётки.
+ */
+await syncBuiltinRole();
+console.log("  роли персонала: встроенная роль выдана администраторам");
 
 console.log("\nГотово. Учётные записи:");
 for (const a of ACCOUNTS) console.log(`  ${a.role.padEnd(5)} ${a.email} / ${a.password}`);

@@ -9,11 +9,19 @@ import { badRequest, notFound, parseBody } from "../lib/http";
 import { runDueSchedules, scheduleReach } from "../lib/scheduler";
 import { assertBatteryInUse, assertGroupAccess, isStaff } from "../lib/scope";
 import { forbidden } from "../lib/http";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const scheduleRoutes = new Hono<AppEnv>();
 
-scheduleRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+scheduleRoutes.use("*", requireAuth, requireStaff, requirePermission("schedules.manage"));
 
 /** Расписание наследует права от батареи, а та — от своей группы */
 async function assertScheduleBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string) {

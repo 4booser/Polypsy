@@ -31,7 +31,7 @@ import { hashInviteToken, newInviteToken } from "../lib/invites";
 import { assertBatteryInUse, assertGroupAccess } from "../lib/scope";
 import { persistSubmission } from "../lib/submission";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { isPast } from "../lib/time";
 
 export const kioskRoutes = new Hono<AppEnv>();
@@ -256,8 +256,16 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
 
 /* ═══════════ Консоль: управление сеансами ═══════════ */
 
-kioskRoutes.use("/sessions", requireAuth, requireStaff);
-kioskRoutes.use("/sessions/*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще.
+ *
+ * Закрыт только консольный кусок: маршруты /state/* работают по токену
+ * сеанса и правами не закрываются вовсе — за планшетом в коридоре нет
+ * учётной записи.
+ */
+kioskRoutes.use("/sessions", requireAuth, requireStaff, requirePermission("kiosk.manage"));
+kioskRoutes.use("/sessions/*", requireAuth, requireStaff, requirePermission("kiosk.manage"));
 
 async function assertSessionBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string) {
   const battery = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });

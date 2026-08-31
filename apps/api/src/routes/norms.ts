@@ -10,11 +10,19 @@ import { badRequest, notFound, parseBody } from "../lib/http";
 import { average, round, variance } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const normRoutes = new Hono<AppEnv>();
 
-normRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+normRoutes.use("*", requireAuth, requireStaff, requirePermission("norms.manage"));
 
 /** Ниже этого нормы — шум, а не нормы */
 const MIN_GROUP = 30;

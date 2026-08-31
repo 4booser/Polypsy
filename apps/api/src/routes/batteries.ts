@@ -26,7 +26,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, assertBatteryInUse, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
-import { requireAuth, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { parseTs } from "../lib/time";
 
 /** Язык из запроса: всё, кроме украинского, отдаём по-русски */
@@ -86,8 +86,23 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
   return result;
 }
 
+/*
+ * Права здесь расставлены не файлом, а по смыслу действия, и файл разделён
+ * надвое: составить батарею и назначить её — разная работа. Стажёр назначает
+ * стандартную батарею, но состав её не меняет; менять состав — методическое
+ * решение, и оно влияет на все будущие назначения, а не на одно.
+ *
+ * requireStaff стоит рядом с правом, а не заменяется им: батареи лежат в
+ * одном роутере со своим пользовательским маршрутом /mine, и общего
+ * requireStaff на весь роутер быть не может.
+ *
+ * Проверки isStaff внутри обработчиков оставлены как были: снимать их
+ * означало бы править тела вместе с защитой и проверять уже не одно
+ * изменение, а два.
+ */
+
 /** Список батарей, доступных сотруднику */
-batteryRoutes.get("/", async (c) => {
+batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   if (!isStaff(user)) forbidden("err.staffAccessOnly");
   const lang = langOf(c.req.query("lang"));
@@ -128,7 +143,7 @@ batteryRoutes.get("/", async (c) => {
 });
 
 /** Создание батареи */
-batteryRoutes.post("/", async (c) => {
+batteryRoutes.post("/", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   if (!isStaff(user)) forbidden("err.staffAccessOnly");
   const input = await parseBody(c.req.raw, batteryInputSchema);
@@ -168,7 +183,7 @@ batteryRoutes.post("/", async (c) => {
 });
 
 /** Замена состава батареи целиком */
-batteryRoutes.put("/:id", async (c) => {
+batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
   await assertBatteryAccess(user, batteryId);
@@ -207,7 +222,7 @@ batteryRoutes.put("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-batteryRoutes.delete("/:id", async (c) => {
+batteryRoutes.delete("/:id", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
   const row = await assertBatteryAccess(user, batteryId);
@@ -340,7 +355,7 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
 }
 
 /** Назначения по батарее */
-batteryRoutes.get("/:id/assignments", async (c) => {
+batteryRoutes.get("/:id/assignments", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
   await assertBatteryAccess(user, batteryId);
@@ -364,7 +379,7 @@ batteryRoutes.get("/:id/assignments", async (c) => {
  * survey_access, и обходить их отдельной веткой для батарей значило бы завести
  * второй источник истины о том, кто что видит.
  */
-batteryRoutes.post("/:id/assign", async (c) => {
+batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
   const battery = await assertBatteryAccess(user, batteryId);
@@ -414,7 +429,7 @@ batteryRoutes.post("/:id/assign", async (c) => {
 });
 
 /** Снятие назначения: запись сохраняется, проставляется отметка отмены */
-batteryRoutes.post("/assignments/:assignmentId/cancel", async (c) => {
+batteryRoutes.post("/assignments/:assignmentId/cancel", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const assignmentId = c.req.param("assignmentId");
   const row = await db.query.batteryAssignments.findFirst({
