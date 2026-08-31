@@ -372,6 +372,16 @@ export const ERRORS = {
     uk: "Недостатньо прав: потрібне «{permission}»",
     ru: "Недостаточно прав: нужно «{permission}»",
   },
+
+  /* отказы маршрутов */
+  "err.builtinRoleReadOnly": {
+    uk: "Набір вбудованої ролі задається довідником і не змінюється вручну",
+    ru: "Набор встроенной роли задаётся справочником и не меняется вручную",
+  },
+  "err.exceptionAlreadyRevoked": { uk: "Виняток уже відкликано", ru: "Исключение уже отозвано" },
+  "err.exceptionNotFound": { uk: "Виняток не знайдено", ru: "Исключение не найдено" },
+  "err.roleNotFound": { uk: "Роль не знайдено", ru: "Роль не найдена" },
+  "err.unknownPermission": { uk: "Невідоме право: {permission}", ru: "Неизвестное право: {permission}" },
 } as const;
 
 export type ErrorKey = keyof typeof ERRORS;
