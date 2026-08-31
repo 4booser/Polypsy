@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { WorkItem } from "@quizzy/shared";
+import type { UiKey, WorkItem, WorkKind } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Avatar, Badge, Empty, Screen } from "../ui";
@@ -10,8 +10,17 @@ import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
 
-const KIND_KEY = {
+/*
+ * Полный перебор видов, а не частичный словарь.
+ *
+ * Record<WorkKind, …> означает, что новый вид работы не соберётся, пока ему
+ * не дадут названия. До этого словарь был просто объектом, и неявка приехала
+ * с сервера видом, которого консоль не знала, — строка нарисовалась без
+ * названия и никто бы не заметил.
+ */
+const KIND_KEY: Record<WorkKind, UiKey> = {
   case: "work.kindCase",
+  noshow: "work.kindNoshow",
   followup: "work.kindFollowup",
   referral: "work.kindReferral",
   assignment: "work.kindAssignment",
@@ -152,5 +161,18 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
       return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
     case "goal":
       return `${i.title} · ${t("work.goalOverdue")} ${i.days ?? 0} ${t("cases.ago")}`;
+    case "noshow":
+      /*
+       * «Второй раз подряд» — другой разговор, чем «не пришёл один раз», и
+       * счётчик здесь важнее давности: по нему видно, разовая это история
+       * или человек уходит.
+       */
+      return [
+        (i.signals ?? 0) > 1 ? `${t("work.noshowTimes")} ${i.signals}` : t("work.noshowOnce"),
+        `${i.days ?? 0} ${t("cases.ago")}`,
+        i.overdue ? t("work.noshowAfterAlert") : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
   }
 }

@@ -542,6 +542,7 @@ async function loadAppointments(where: ReturnType<typeof and>) {
   const patientIds = [...new Set(rows.map((r) => r.row.patientId))];
   const patientRows = await db.select().from(users).where(inArray(users.id, patientIds));
   const patientNames = new Map(patientRows.map((p) => [p.id, fullNameOf(p)]));
+  const leads = new Map(patientRows.map((p) => [p.id, p.leadSpecialistId ?? null]));
 
   const profileRows = await db
     .select()
@@ -568,6 +569,7 @@ async function loadAppointments(where: ReturnType<typeof and>) {
       bookedAt: r.row.bookedAt,
       confirmedAt: r.row.confirmedAt,
       offSchedule: r.slot.offSchedule,
+      leadSpecialistId: leads.get(r.row.patientId) ?? null,
     }),
   );
 }

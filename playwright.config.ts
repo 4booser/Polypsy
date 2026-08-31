@@ -41,7 +41,24 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
 
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        /*
+         * Язык интерфейса самого браузера, а не только страницы.
+         *
+         * `locale` выше задаёт Accept-Language и форматирование в JS, но поля
+         * `<input type="time">` Chrome рисует по языку СВОЕГО интерфейса. При
+         * английском он показывает «09:00 AM», хотя расписание отделения
+         * читают по 24 часам, — и смоук снимал экран, которого в отделении
+         * никто не увидит.
+         */
+        launchOptions: { args: ["--lang=uk-UA"] },
+      },
+    },
+  ],
 
   webServer: [
     {

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
-import { t } from "@quizzy/shared";
+import { t, type WorkKind } from "@quizzy/shared";
 import { db } from "../db";
 import { currentCrisis } from "../lib/crisis";
 import {
@@ -44,7 +44,8 @@ export const worklistRoutes = new Hono<AppEnv>();
  */
 worklistRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
-type Kind = "case" | "noshow" | "assignment" | "referral" | "followup" | "pathway" | "goal";
+/** Список видов один на сервер и консоль — см. WorkKind */
+type Kind = WorkKind;
 
 interface Item {
   kind: Kind;
