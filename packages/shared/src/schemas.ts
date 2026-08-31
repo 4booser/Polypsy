@@ -732,3 +732,75 @@ export const workspacePrefsSchema = z.object({
   dismissedHints: z.array(z.string().max(60)).max(100).optional(),
   eventsSeenAt: z.string().nullable().optional(),
 });
+
+/* ── Поликлиника: расписание и приёмы ── */
+
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "время в виде ЧЧ:ММ");
+
+export const scheduleTemplateSchema = z
+  .object({
+    weekday: z.number().int().min(1).max(7),
+    startsAt: timeOfDay,
+    endsAt: timeOfDay,
+    slotMinutes: z.number().int().min(5).max(480),
+    kind: z.enum(["primary", "repeat", "any"]).default("any"),
+    capacity: z.number().int().min(1).max(30).default(1),
+  })
+  .refine((v) => v.endsAt > v.startsAt, {
+    message: "приём не может кончаться раньше, чем начался",
+    path: ["endsAt"],
+  });
+
+export const scheduleExceptionSchema = z
+  .object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    kind: z.enum(["off", "extra"]),
+    startsAt: timeOfDay.nullish(),
+    endsAt: timeOfDay.nullish(),
+    slotMinutes: z.number().int().min(5).max(480).nullish(),
+    note: z.string().max(500).nullish(),
+  })
+  .refine((v) => v.kind !== "extra" || (v.startsAt && v.endsAt), {
+    message: "дополнительный день без часов бессмыслен: непонятно, что добавлять",
+    path: ["startsAt"],
+  })
+  .refine((v) => !v.startsAt || !v.endsAt || v.endsAt > v.startsAt, {
+    message: "интервал не может кончаться раньше, чем начался",
+    path: ["endsAt"],
+  });
+
+export const bookAppointmentSchema = z.object({
+  slotId: z.string().min(1),
+  /**
+   * Кого записываем. Пустое — себя: пациент из мобилки не знает и не должен
+   * знать своего идентификатора, а подставить чужой было бы способом
+   * записать за другого.
+   */
+  patientId: z.string().min(1).nullish(),
+  mode: z.enum(["onsite", "remote"]).default("onsite"),
+  meetingUrl: z.string().url().max(500).nullish(),
+  /** Причина обращения словами пациента; необязательна намеренно */
+  reason: z.string().max(2000).nullish(),
+});
+
+export const rescheduleAppointmentSchema = z.object({
+  slotId: z.string().min(1),
+});
+
+export const cancelAppointmentSchema = z.object({
+  reason: z.string().max(500).nullish(),
+});
+
+export const specialistProfileSchema = z.object({
+  departmentId: z.string().min(1),
+  position: z.string().max(200).nullish(),
+  room: z.string().max(50).nullish(),
+  defaultSlotMinutes: z.number().int().min(5).max(480).default(50),
+  acceptsBookings: z.boolean().default(true),
+});
+
+export const departmentSchema = z.object({
+  title: localizedSchema,
+  /** IANA-имя пояса: смещение устаревает дважды в год */
+  timezone: z.string().min(1).max(80).default("Europe/Kyiv"),
+});

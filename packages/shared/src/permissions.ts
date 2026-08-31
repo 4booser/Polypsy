@@ -31,6 +31,11 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    code: "reception",
+    title: { uk: "Прийом і розклад", ru: "Приём и расписание" },
+    permissions: ["schedule.own", "appointments.manage", "departments.manage"],
+  },
+  {
     code: "risk",
     title: { uk: "Тривоги та чергування", ru: "Тревоги и дежурство" },
     permissions: ["alerts.review", "duty.take", "emergency.breakGlass"],
@@ -111,6 +116,10 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
   "conferences.manage": { uk: "Виносити на консиліум", ru: "Выносить на консилиум" },
   "informants.manage": { uk: "Запитувати погляд збоку", ru: "Запрашивать взгляд со стороны" },
 
+  "schedule.own": { uk: "Вести свій розклад прийому", ru: "Вести своё расписание приёма" },
+  "appointments.manage": { uk: "Записувати, переносити й скасовувати прийоми", ru: "Записывать, переносить и отменять приёмы" },
+  "departments.manage": { uk: "Вести відділення та профілі фахівців", ru: "Вести отделения и профили специалистов" },
+
   "alerts.review": { uk: "Розбирати випадки ризику", ru: "Разбирать случаи риска" },
   "duty.take": { uk: "Заступати на чергування", ru: "Заступать на дежурство" },
   "emergency.breakGlass": {
@@ -144,12 +153,21 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
 /**
  * Набор прав встроенной роли «Психолог».
  *
- * Ровно то, что сегодня может администратор группы. Нужен, чтобы бэкфилл не
+ * Ровно то, что сегодня может администратор группы, плюс работа с приёмом:
+ * своё расписание и запись пациентов — это и есть повседневная работа
+ * специалиста, отбирать её у него незачем.
+ *
+ * Отделения и профили специалистов в набор не входят: завести отделение,
+ * посадить в него человека и назначить ему кабинет — это устройство
+ * учреждения, а не приём. Ошибка здесь переставляет всех, а не одного. Нужен, чтобы бэкфилл не
  * изменил поведение ни одной действующей учётной записи: сегодня «админ
  * группы» означает «всё, кроме суперадминских вещей», и роль обязана
  * означать то же самое — иначе переход на права начнётся с того, что у людей
  * пропадут возможности, которыми они пользовались вчера.
  */
 export const PSYCHOLOGIST_PERMISSIONS: readonly Permission[] = ALL_PERMISSIONS.filter(
-  (p) => !["users.manage", "groups.manage", "audit.read", "decisions.manage"].includes(p),
+  (p) =>
+    !["users.manage", "groups.manage", "audit.read", "decisions.manage", "departments.manage"].includes(
+      p,
+    ),
 );

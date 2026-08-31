@@ -1,7 +1,17 @@
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { User } from "@quizzy/shared";
 import { db } from "../db";
-import { batteryItems, breakGlass, groupAdmins, surveyAccess, surveys, users } from "../db/schema";
+import {
+  appointments,
+  batteryItems,
+  breakGlass,
+  departmentPatients,
+  groupAdmins,
+  specialistProfiles,
+  surveyAccess,
+  surveys,
+  users,
+} from "../db/schema";
 import { badRequest, forbidden, notFound } from "./http";
 import { t } from "@quizzy/shared";
 
@@ -209,7 +219,39 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
 
   // разбитое стекло добавляет ровно тех, ради кого его разбивали
   const emergency = await brokenGlassPatients(user);
-  if (!groupIds.length) return new Set(emergency);
+
+  /*
+   * Приём — самостоятельное основание видеть человека, и оно не зависит от
+   * групп методик.
+   *
+   * Прежний набор условий считал пациента своим, только если он соприкасался
+   * с методиками группы администратора. Первичный приём это допущение
+   * ломает: человек записывается с телефона, ни разу ничего не пройдя, — и
+   * специалист, к которому он записан, увидел бы его в расписании и не нашёл
+   * бы в карте. Поэтому «у меня к нему приём» и «он прикреплён к отделению,
+   * где я принимаю» считаются наравне.
+   *
+   * Считается отдельным запросом, а не ещё одним условием в общем: пустая
+   * зона по группам не должна отменять приёмы — и именно так было бы, если
+   * дописать условие внутрь ветки, которая до этого места не доходит.
+   */
+  const byClinic = await db
+    .select({ id: appointments.patientId })
+    .from(appointments)
+    .where(eq(appointments.specialistId, user.id));
+  const byDepartment = await db
+    .select({ id: departmentPatients.patientId })
+    .from(departmentPatients)
+    .innerJoin(
+      specialistProfiles,
+      eq(specialistProfiles.departmentId, departmentPatients.departmentId),
+    )
+    .where(
+      and(eq(specialistProfiles.userId, user.id), isNull(departmentPatients.detachedAt)),
+    );
+  const clinic = [...byClinic.map((r) => r.id), ...byDepartment.map((r) => r.id)];
+
+  if (!groupIds.length) return new Set([...emergency, ...clinic]);
 
   const rows = await db
     .select({ id: users.id })
@@ -231,5 +273,17 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
       ),
     );
 
-  return new Set([...rows.map((r) => r.id), ...emergency]);
+  return new Set([...rows.map((r) => r.id), ...emergency, ...clinic]);
+}
+
+/**
+ * Отказать, если пациент вне зоны ответственности.
+ *
+ * Отвечает «не найдено», а не «нельзя»: 403 подтвердил бы, что такой человек
+ * в системе есть, — а по коду отказа этого узнавать не следует.
+ */
+export async function assertPatientAccess(user: User, patientId: string): Promise<void> {
+  const allowed = await accessiblePatientIds(user);
+  if (allowed === null) return;
+  if (!allowed.has(patientId)) notFound("err.userNotFound");
 }

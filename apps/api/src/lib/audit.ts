@@ -7,6 +7,20 @@ import { currentRequestId, log } from "./log";
 
 /** Действия журнала. Строковый союз, чтобы опечатка ловилась типами. */
 export type AuditAction =
+  /* поликлиника: каждый переход приёма — событие журнала */
+  | "clinic.department_create"
+  | "clinic.specialist_profile"
+  | "clinic.schedule_update"
+  | "clinic.schedule_exception"
+  | "clinic.schedule_exception_delete"
+  | "clinic.book"
+  | "clinic.today"
+  | "clinic.confirm"
+  | "clinic.reschedule"
+  | "clinic.cancel"
+  | "clinic.status"
+  | "clinic.lead_take"
+  | "clinic.lead_release"
   /* права: кто кому что выдал — разбирается по журналу, а не по памяти */
   | "role.create"
   | "role.update"
