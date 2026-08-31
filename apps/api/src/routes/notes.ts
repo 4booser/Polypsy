@@ -43,6 +43,13 @@ const saveSchema = z.object({
   text: z.string().min(1).max(20_000),
   kind: z.enum(["intake", "session", "observation", "consult"]).optional(),
   pathwayInstanceId: z.string().uuid().nullable().optional(),
+  /**
+   * Приём, на котором запись сделана: заметка становится протоколом приёма.
+   *
+   * Необязателен: запись о человеке бывает и вне приёма — наблюдение, разбор
+   * случая, консультация коллеги.
+   */
+  appointmentId: z.string().nullable().optional(),
   /** Версия, поверх которой правили; 0 — заметок ещё не было */
   baseVersion: z.number().int().min(0).optional(),
 });
@@ -137,6 +144,7 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
         text: encryptField(input.text)!,
         kind: input.kind ?? latest.kind,
         pathwayInstanceId: input.pathwayInstanceId ?? latest.pathwayInstanceId,
+        appointmentId: input.appointmentId ?? latest.appointmentId,
         createdBy: staff.id,
         createdAt: new Date().toISOString(),
       })
@@ -151,6 +159,7 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
       kind: input.kind ?? "session",
       text: encryptField(input.text)!,
       pathwayInstanceId: input.pathwayInstanceId ?? null,
+      appointmentId: input.appointmentId ?? null,
       createdBy: staff.id,
     });
     await reindex(id);

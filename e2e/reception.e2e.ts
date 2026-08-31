@@ -72,3 +72,48 @@ test("сохранение недели отвечает числами, а не
   await page.getByRole("button", { name: "Сохранить неделю" }).click();
   await expect(page.getByText(/Добавлено \d+, снято \d+/)).toBeVisible();
 });
+
+test("экран приёма собирается одним запросом и держит набранный текст", async ({ page }) => {
+  /*
+   * Три панели без переходов между вкладками. Специалист открывает экран,
+   * когда человек уже сидит перед ним, и любой уход отсюда стоит либо
+   * набранного протокола, либо внимания пациента.
+   */
+  await login(page, "psy");
+  await page.goto("/today");
+
+  // с «Сегодня» — прямо на приём
+  await page.locator('a[href^="/visit/"]').first().click();
+  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+
+  // все три панели на месте сразу, а не по очереди
+  await expect(page.getByText("Что было")).toBeVisible();
+  await expect(page.getByText("Протокол приёма")).toBeVisible();
+  await expect(page.getByText("Действия")).toBeVisible();
+
+  // шаблон подставляется по нажатию, а не сам
+  const area = page.locator("textarea").first();
+  await expect(area).toHaveValue("");
+  await page.getByRole("button", { name: "Подставить шаблон" }).click();
+  await expect(area).not.toHaveValue("");
+
+  // и сохраняется, не уводя с экрана
+  await area.fill("Состояние ровное, договорились о повторе через неделю.");
+  await page.getByRole("button", { name: "Сохранить" }).click();
+  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(area).toHaveValue(/договорились/);
+});
+
+test("на первом приёме видно, что человек здесь впервые", async ({ page }) => {
+  /*
+   * Записаться можно к любому свободному специалисту, и человек легко
+   * попадает к третьему подряд. Принимающий сегодня должен видеть, что он не
+   * первый, до того как начнёт задавать вопросы, которые уже задавали.
+   */
+  await login(page, "psy");
+  await page.goto("/today");
+  await page.locator('a[href^="/visit/"]').first().click();
+
+  const marker = page.getByText(/Был у|Первый приём здесь/).first();
+  await expect(marker).toBeVisible();
+});

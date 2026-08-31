@@ -327,6 +327,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/clinic/appointments/:id/reschedule": { summary: "Перенести: отмена и запись одним действием", access: "user", whyNoPermission: "свой приём переносит сам пациент; перенос чужого проверяется правом внутри", body: rescheduleAppointmentSchema },
   "POST /api/clinic/appointments/:id/cancel": { summary: "Отменить; позже чем за сутки — с пометкой", access: "user", whyNoPermission: "свой приём отменяет сам пациент; отмена чужого проверяется правом внутри", body: cancelAppointmentSchema },
   "POST /api/clinic/appointments/:id/status": { summary: "Явка, начало, завершение, неявка", access: "staff", permission: "appointments.manage" },
+  "GET /api/clinic/appointments/:id/context": { summary: "Всё для экрана приёма одним запросом: хронология, что изменилось, протокол", access: "staff", permission: "patients.read" },
   "GET /api/clinic/today": { summary: "Приёмы дня: картина целиком, включая уже принятых", access: "staff", permission: "patients.read" },
   "POST /api/clinic/patients/:userId/lead": { summary: "Закрепить пациента за собой или отпустить", access: "staff", permission: "patients.read" },
   "GET /api/openapi.json": { summary: "Это описание", access: "staff", whyNoPermission: "описание самого API: что кому доступно, читает любой сотрудник, и скрывать состав маршрутов от своих же смысла нет" },

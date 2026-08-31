@@ -20,6 +20,7 @@ export type AuditAction =
   | "clinic.reschedule"
   | "clinic.cancel"
   | "clinic.status"
+  | "clinic.visit_open"
   | "clinic.lead_take"
   | "clinic.lead_release"
   /* права: кто кому что выдал — разбирается по журналу, а не по памяти */

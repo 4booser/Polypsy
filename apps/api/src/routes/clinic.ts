@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   bookAppointmentSchema,
@@ -20,7 +20,9 @@ import {
   appointments,
   departmentPatients,
   departments,
+  patientNotes,
   responses,
+  riskAlerts,
   scheduleExceptions,
   scheduleTemplates,
   slots,
@@ -1047,3 +1049,194 @@ clinicRoutes.post(
     return c.json({ ok: true });
   },
 );
+
+/* ═══════════ экран приёма ═══════════ */
+
+/**
+ * Всё, что нужно экрану приёма, — одним запросом.
+ *
+ * Три панели без переходов между вкладками означают три источника данных на
+ * одном экране. Три запроса дали бы три независимых состояния загрузки:
+ * хронология приехала, протокол ещё нет, результаты моргнули. Специалист
+ * открывает этот экран, когда человек уже сидит перед ним, и собирать
+ * картину по частям ему некогда.
+ */
+clinicRoutes.get(
+  "/appointments/:id/context",
+  requireStaff,
+  requirePermission("patients.read"),
+  async (c) => {
+    const row = await loadOne(c, c.req.param("id"));
+    await assertPatientAccess(c.get("user"), row.patientId);
+
+    const [slot] = await db.select().from(slots).where(eq(slots.id, row.slotId));
+    const patient = (await db.query.users.findFirst({ where: eq(users.id, row.patientId) }))!;
+
+    /*
+     * Предыдущий приём — первой строкой, и не «когда», а «у кого».
+     *
+     * Записаться можно к любому свободному специалисту, и человек легко
+     * попадает к третьему подряд. Принимающий сегодня должен видеть, что он
+     * не первый, ещё до того, как начнёт задавать вопросы, которые человеку
+     * уже задавали дважды.
+     */
+    const [previous] = await db
+      .select({ a: appointments, slot: slots, specialist: users })
+      .from(appointments)
+      .innerJoin(slots, eq(slots.id, appointments.slotId))
+      .innerJoin(users, eq(users.id, appointments.specialistId))
+      .where(
+        and(
+          eq(appointments.patientId, row.patientId),
+          ne(appointments.id, row.id),
+          inArray(appointments.status, ["done", "arrived", "in_progress", "no_show"]),
+          lt(slots.startsAt, slot!.startsAt),
+        ),
+      )
+      .orderBy(desc(slots.startsAt))
+      .limit(1);
+
+    /* С какого времени человека здесь ведут — по первому состоявшемуся приёму */
+    const [firstVisit] = await db
+      .select({ startsAt: slots.startsAt })
+      .from(appointments)
+      .innerJoin(slots, eq(slots.id, appointments.slotId))
+      .where(
+        and(
+          eq(appointments.patientId, row.patientId),
+          inArray(appointments.status, ["done", "arrived", "in_progress"]),
+        ),
+      )
+      .orderBy(asc(slots.startsAt))
+      .limit(1);
+
+    const lead = patient.leadSpecialistId
+      ? await db.query.users.findFirst({ where: eq(users.id, patient.leadSpecialistId) })
+      : null;
+
+    /*
+     * Что изменилось с прошлого приёма.
+     *
+     * Считается от даты предыдущего приёма, а не «за последний месяц»:
+     * специалисту важно то, чего он ещё не видел, а видел он ровно до
+     * прошлой встречи. Первый приём — сравнивать не с чем, и сводка пуста,
+     * а не заполнена всей историей.
+     */
+    const since = previous ? previous.slot.startsAt : null;
+    const changes = since ? await changesSince(row.patientId, since) : [];
+
+    /* Черновик протокола этого приёма, если он уже начат */
+    const [note] = await db
+      .select()
+      .from(patientNotes)
+      .where(eq(patientNotes.appointmentId, row.id))
+      .orderBy(desc(patientNotes.version))
+      .limit(1);
+
+    await audit(c, {
+      action: "clinic.visit_open",
+      resourceType: "appointment",
+      resourceId: row.id,
+      subjectUserId: row.patientId,
+    });
+
+    return c.json({
+      appointment: {
+        id: row.id,
+        startsAt: slot!.startsAt,
+        endsAt: slot!.endsAt,
+        kind: row.kind,
+        mode: row.mode,
+        status: row.status,
+        reason: decryptField(row.reasonEnc),
+      },
+      patient: {
+        id: patient.id,
+        fullName: fullNameOf(patient),
+        unit: patient.unit,
+        leadSpecialistId: patient.leadSpecialistId ?? null,
+        leadName: lead ? fullNameOf(lead) : null,
+      },
+      previous: previous
+        ? {
+            at: previous.slot.startsAt,
+            specialistName: fullNameOf(previous.specialist),
+            status: previous.a.status,
+          }
+        : null,
+      followedSince: firstVisit?.startsAt ?? null,
+      changes,
+      note: note ? { id: note.id, version: note.version, status: note.status } : null,
+    });
+  },
+);
+
+/** Одно изменение с прошлого приёма — факт, а не готовая строка */
+interface VisitChange {
+  kind: "response" | "alert" | "referral" | "noShow" | "conclusion";
+  at: string;
+  title: string;
+  detail?: string | null;
+}
+
+/**
+ * Что произошло с человеком с прошлой встречи.
+ *
+ * Отдаются факты, а не собранная фраза: подписи и порядок слов принадлежат
+ * клиенту, у которого есть язык интерфейса. Сервер отвечает на вопрос «что
+ * случилось», а не «как это назвать».
+ */
+async function changesSince(patientId: string, since: string): Promise<VisitChange[]> {
+  const out: VisitChange[] = [];
+
+  const newResponses = await db
+    .select({ r: responses, title: surveys.title })
+    .from(responses)
+    .innerJoin(surveys, eq(surveys.id, responses.surveyId))
+    .where(
+      and(
+        eq(responses.userId, patientId),
+        eq(responses.status, "completed"),
+        gt(responses.submittedAt, since),
+      ),
+    )
+    .orderBy(desc(responses.submittedAt))
+    .limit(50);
+  for (const r of newResponses) {
+    out.push({
+      kind: "response",
+      at: r.r.submittedAt ?? since,
+      title: t(r.title as never, "uk"),
+      // источник важнее подробностей: «пришёл сам» — само по себе сведение
+      detail: r.r.source,
+    });
+  }
+
+  const newAlerts = await db
+    .select()
+    .from(riskAlerts)
+    .where(and(eq(riskAlerts.userId, patientId), gt(riskAlerts.at, since)))
+    .orderBy(desc(riskAlerts.at))
+    .limit(50);
+  for (const a of newAlerts) {
+    out.push({ kind: "alert", at: a.at, title: a.label, detail: a.severity });
+  }
+
+  const missed = await db
+    .select({ a: appointments, slot: slots })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .where(
+      and(
+        eq(appointments.patientId, patientId),
+        eq(appointments.status, "no_show"),
+        gt(slots.startsAt, since),
+      ),
+    )
+    .limit(50);
+  for (const m of missed) {
+    out.push({ kind: "noShow", at: m.slot.startsAt, title: "", detail: null });
+  }
+
+  return out.sort((a, b) => (a.at < b.at ? 1 : -1));
+}

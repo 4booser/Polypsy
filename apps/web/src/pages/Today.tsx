@@ -138,7 +138,15 @@ function AppointmentRow({
         Время — первое и моноширинным: колонка времени читается сверху вниз,
         а не по строкам, и глаз ищет в ней ближайший приём.
       */}
-      <Num className="w-[52px] shrink-0 pt-0.5 text-body">{clock(a.startsAt)}</Num>
+      {/*
+        Время ведёт на экран приёма: именно с него начинается работа, а имя
+        по-прежнему ведёт в карту. Две разные цели в одной строке — потому
+        что и вопроса тут два: «принять этого человека» и «посмотреть, кто
+        он».
+      */}
+      <Link to={`/visit/${a.id}`} className="w-[52px] shrink-0 pt-0.5">
+        <Num className="text-body">{clock(a.startsAt)}</Num>
+      </Link>
 
       <Avatar name={a.patientName} />
 
