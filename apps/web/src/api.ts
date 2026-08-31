@@ -1,4 +1,5 @@
 import type {
+  LocalizedText,
   SafetyPlan,
   SafetyPlanContent,
   AuditPage,
@@ -827,6 +828,77 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ outcome, note }),
     }),
+
+  /* ── права ── */
+  permissionCatalogue: () =>
+    request<{
+      groups: { code: string; title: LocalizedText; permissions: { code: string; title: LocalizedText }[] }[];
+      exceptionable: string[];
+    }>("/api/permissions/catalogue"),
+  permissionRoles: () =>
+    unwrap(
+      request<Items<{
+        id: string;
+        code: string;
+        title: LocalizedText;
+        isBuiltin: boolean;
+        permissions: string[];
+        people: number;
+      }>>("/api/permissions/roles"),
+    ),
+  createRole: (input: { code: string; title: LocalizedText; permissions: string[] }) =>
+    request<{ id: string }>("/api/permissions/roles", { method: "POST", body: JSON.stringify(input) }),
+  setRolePermissions: (id: string, permissions: string[]) =>
+    request<{ ok: true }>(`/api/permissions/roles/${id}/permissions`, {
+      method: "PUT",
+      body: JSON.stringify({ permissions }),
+    }),
+  userPermissions: (id: string) =>
+    request<{
+      userId: string;
+      fullName: string;
+      role: string;
+      readOnly: boolean;
+      roles: { roleId: string; code: string; title: LocalizedText; isBuiltin: boolean }[];
+      exceptions: {
+        id: string;
+        permission: string;
+        mode: "grant" | "revoke";
+        reason: string;
+        grantedAt: string;
+        expiresAt: string | null;
+        revokedAt: string | null;
+      }[];
+      effective: string[];
+    }>(`/api/permissions/users/${id}`),
+  setUserRoles: (id: string, roleIds: string[]) =>
+    request<{ ok: true }>(`/api/permissions/users/${id}/roles`, {
+      method: "PUT",
+      body: JSON.stringify({ roleIds }),
+    }),
+  addException: (
+    id: string,
+    input: { permission: string; mode: "grant" | "revoke"; reason: string; days?: number },
+  ) =>
+    request<{ id: string }>(`/api/permissions/users/${id}/exceptions`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  revokeException: (id: string) =>
+    request<{ ok: true }>(`/api/permissions/exceptions/${id}/revoke`, { method: "POST" }),
+  activeExceptions: () =>
+    unwrap(
+      request<Items<{
+        id: string;
+        userId: string;
+        userName: string;
+        permission: string;
+        mode: "grant" | "revoke";
+        reason: string;
+        grantedAt: string;
+        expiresAt: string | null;
+      }>>("/api/permissions/exceptions"),
+    ),
 
   views: (scope: string) => unwrap(request<Items<SavedView>>(`/api/views?scope=${scope}`)),
   saveView: (input: { scope: string; name: string; params: string; shared?: boolean }) =>
