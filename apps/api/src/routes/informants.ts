@@ -12,7 +12,7 @@ import { accessiblePatientIds, assertSurveyAccess } from "../lib/scope";
 import { persistSubmission } from "../lib/submission";
 import { getSurvey } from "../lib/surveys";
 import { isPast } from "../lib/time";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const informantRoutes = new Hono<AppEnv>();
 
@@ -43,7 +43,7 @@ const createSchema = z.object({
 
 /* ── сотрудник: выдать ссылку ── */
 
-informantRoutes.post("/patients/:userId", requireAuth, requireStaff, async (c) => {
+informantRoutes.post("/patients/:userId", requireAuth, requireStaff, requirePermission("informants.manage"), async (c) => {
   const staff = c.get("user");
   const patientId = c.req.param("userId");
 
@@ -94,7 +94,7 @@ informantRoutes.post("/patients/:userId", requireAuth, requireStaff, async (c) =
   return c.json({ id, token: raw }, 201);
 });
 
-informantRoutes.get("/patients/:userId", requireAuth, requireStaff, async (c) => {
+informantRoutes.get("/patients/:userId", requireAuth, requireStaff, requirePermission("informants.manage"), async (c) => {
   const staff = c.get("user");
   const patientId = c.req.param("userId");
 
@@ -124,7 +124,7 @@ informantRoutes.get("/patients/:userId", requireAuth, requireStaff, async (c) =>
   });
 });
 
-informantRoutes.post("/:id/revoke", requireAuth, requireStaff, async (c) => {
+informantRoutes.post("/:id/revoke", requireAuth, requireStaff, requirePermission("informants.manage"), async (c) => {
   const staff = c.get("user");
   const id = c.req.param("id");
 
@@ -265,7 +265,7 @@ informantRoutes.post("/form/:token", async (c) => {
  * у которых кода нет с одной из сторон, не показываются: сравнивать «тревогу»
  * с «дисциплиной» нельзя, даже если очень хочется получить одну цифру.
  */
-informantRoutes.get("/compare/:userId", requireAuth, requireStaff, async (c) => {
+informantRoutes.get("/compare/:userId", requireAuth, requireStaff, requirePermission("informants.manage"), async (c) => {
   const staff = c.get("user");
   const patientId = c.req.param("userId");
   const lang = langOf(c);

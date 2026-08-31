@@ -9,10 +9,20 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { indexOf } from "../lib/searchIndex";
 import { badRequest, conflict, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
 
 export const noteRoutes = new Hono<AppEnv>();
+/*
+ * Право вместо «просто персонал», и файл разделён по действию: прочитать
+ * запись приёма может тот, кто вообще работает с пациентами, а дописать в
+ * карту — только тот, кому это разрешено. Заведующий, который читает карту
+ * перед консилиумом, не обязан иметь права в неё писать.
+ *
+ * Подпись заметки идёт под тем же правом, что и запись: подписать — значит
+ * закрыть свою же запись от правок, а не удостоверить чужую. Отдельным
+ * правом закрыта подпись заключения, и это другое действие.
+ */
 noteRoutes.use("*", requireAuth, requireStaff);
 
 /**
@@ -73,7 +83,7 @@ async function history(userId: string) {
   }));
 }
 
-noteRoutes.get("/patients/:userId", async (c) => {
+noteRoutes.get("/patients/:userId", requirePermission("patients.read"), async (c) => {
   const staff = c.get("user");
   const userId = c.req.param("userId");
   await assertPatient(staff, userId);
@@ -91,7 +101,7 @@ noteRoutes.get("/patients/:userId", async (c) => {
   return c.json({ current: versions[0] ?? null, versions });
 });
 
-noteRoutes.put("/patients/:userId", async (c) => {
+noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) => {
   const staff = c.get("user");
   const userId = c.req.param("userId");
   await assertPatient(staff, userId);
@@ -158,7 +168,7 @@ noteRoutes.put("/patients/:userId", async (c) => {
   return c.json({ current: versions[0], versions });
 });
 
-noteRoutes.post("/patients/:userId/sign", async (c) => {
+noteRoutes.post("/patients/:userId/sign", requirePermission("notes.write"), async (c) => {
   const staff = c.get("user");
   const userId = c.req.param("userId");
   await assertPatient(staff, userId);

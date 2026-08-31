@@ -29,11 +29,19 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { round, variance } from "../lib/stats";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const referralRoutes = new Hono<AppEnv>();
 
-referralRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ *
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+referralRoutes.use("*", requireAuth, requireStaff, requirePermission("referrals.manage"));
 
 /** Статусы движутся вперёд: принятое направление нельзя «отменить» задним числом */
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {

@@ -326,8 +326,16 @@ describe("маршруты под правом", () => {
       // встроенная роль снимается: проверяем именно узкую роль без нужного права
       await db.delete(staffRoles).where(eq(staffRoles.userId, person.id));
       const id = `role-${crypto.randomUUID()}`;
-      await db.insert(roles).values({ id, code: id, title: { uk: "Вузька", ru: "Узкая" } });
-      await db.insert(rolePermissions).values({ roleId: id, permission: "patients.read" });
+      await db.insert(roles).values({ id, code: id, title: { uk: "Порожня", ru: "Пустая" } });
+      /*
+       * Роль заводится пустой, без единого права.
+       *
+       * Первая редакция клала в неё patients.read «чтобы роль была не
+       * пустой» — и семь маршрутов, закрытых как раз этим правом, проверка
+       * объявила сломанными: человек уже имел проверяемое право. Заполнитель
+       * в такой проверке обязан быть либо ничем, либо тем, чего не бывает;
+       * «каким-нибудь настоящим правом» он быть не может.
+       */
       await db.insert(staffRoles).values({ userId: person.id, roleId: id });
 
       const init =
