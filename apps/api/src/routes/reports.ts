@@ -1,15 +1,27 @@
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { answers, conclusions, responseScores, responses, scales, users } from "../db/schema";
+import {
+  answers,
+  appointments,
+  conclusions,
+  departments,
+  responseScores,
+  responses,
+  scales,
+  slots,
+  specialistProfiles,
+  users,
+} from "../db/schema";
 import { env } from "../env";
 import { audit } from "../lib/audit";
-import { forbidden, notFound } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
-import { canAccessSurvey, isStaff } from "../lib/scope";
+import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { ageAt } from "@quizzy/shared";
+import { t } from "@quizzy/shared";
 import { getSurveyForResponse } from "../lib/surveys";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
@@ -335,5 +347,159 @@ function renderReport(d: ReportData): string {
   <div class="meta footer">
     Распечатано: ${esc(d.printedBy)}, ${esc(d.printedAt.slice(0, 16).replace("T", " "))}
   </div>
+</body></html>`;
+}
+
+/**
+ * Справка о посещении.
+ *
+ * Административный факт, а не клиническое суждение: человек был на приёме
+ * такого-то числа. Ни диагноза, ни содержания разговора здесь нет и быть не
+ * может — справку человек несёт на работу или в часть, и всё, что в ней
+ * написано, увидит тот, кому он её отдаст.
+ */
+reportRoutes.get("/visits/:id", async (c) => {
+  const user = c.get("user");
+  const appointment = await db.query.appointments.findFirst({
+    where: eq(appointments.id, c.req.param("id")),
+  });
+  if (!appointment) notFound("err.appointmentNotFound");
+
+  const own = appointment.patientId === user.id;
+  if (!own) {
+    if (!isStaff(user)) forbidden("err.conclusionAccessDenied");
+    const { hasPermission } = await import("../lib/permissions");
+    if (!(await hasPermission(user, "appointments.manage"))) {
+      forbidden("err.permissionRequired", { permission: "appointments.manage" });
+    }
+    await assertPatientAccess(user, appointment.patientId);
+  }
+
+  /*
+   * Справка выдаётся только о состоявшемся приёме.
+   *
+   * «Записан» — это намерение, а не посещение. Справка о нём была бы
+   * документом о том, чего не было, и подписать её нельзя ни при каких
+   * обстоятельствах.
+   */
+  if (!["arrived", "in_progress", "done"].includes(appointment.status)) {
+    badRequest("err.visitNotHappened", { status: appointment.status });
+  }
+
+  const patient = (await db.query.users.findFirst({
+    where: eq(users.id, appointment.patientId),
+  }))!;
+
+  /*
+   * Без имени документа не бывает.
+   *
+   * Аккаунт под кодом анонимен для специалиста, но в справке по закону нужно
+   * имя: «Респондент А-4821 был на приёме» — не документ. Отказ объясняет,
+   * что делать, а не просто запрещает.
+   */
+  if (patient.anonymous) badRequest("err.certificateNeedsName");
+
+  const specialist = (await db.query.users.findFirst({
+    where: eq(users.id, appointment.specialistId),
+  }))!;
+  const [slot] = await db.select().from(slots).where(eq(slots.id, appointment.slotId));
+  const profile = await db.query.specialistProfiles.findFirst({
+    where: eq(specialistProfiles.userId, appointment.specialistId),
+  });
+  /* отделение нужно здесь только ради часового пояса: его названия в справке нет */
+  const department = profile
+    ? await db.query.departments.findFirst({ where: eq(departments.id, profile.departmentId) })
+    : null;
+  const tz = department?.timezone ?? "Europe/Kyiv";
+
+  await audit(c, {
+    action: "report.visit_certificate",
+    resourceType: "appointment",
+    resourceId: appointment.id,
+    subjectUserId: appointment.patientId,
+  });
+
+  return c.html(
+    visitCertificateHtml({
+      fullName: fullNameOf(patient),
+      unit: patient.unit,
+      startsAt: slot!.startsAt,
+      endsAt: slot!.endsAt,
+      timezone: tz,
+      specialistName: fullNameOf(specialist),
+    }),
+  );
+});
+
+/**
+ * Разметка справки.
+ *
+ * Ни причины обращения, ни содержания разговора, ни НАЗВАНИЯ ОТДЕЛЕНИЯ здесь
+ * нет. Первые два очевидны; третье — нет, и первая редакция его печатала:
+ * строка «психологическое отделение» сообщает тому, кому справку отдадут, к
+ * кому человек ходил, — а отдают её на работу или в часть. Название
+ * учреждения в шапке остаётся: это обычный уровень раскрытия, и без него
+ * документ перестаёт быть документом.
+ *
+ * Пояснение живёт здесь, а не HTML-комментарием внутри страницы. Комментарий
+ * в разметке уезжает вместе с ней: объяснение того, чего в документе нет,
+ * лежало бы в самом документе и читалось бы в исходном коде страницы. Это
+ * тоже поймала проверка.
+ */
+function visitCertificateHtml(d: {
+  fullName: string;
+  unit: string | null;
+  startsAt: string;
+  endsAt: string;
+  timezone: string;
+  specialistName: string;
+}): string {
+  const date = new Date(d.startsAt).toLocaleDateString("uk-UA", { timeZone: d.timezone });
+  const from = new Date(d.startsAt).toLocaleTimeString("uk-UA", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: d.timezone,
+  });
+  const to = new Date(d.endsAt).toLocaleTimeString("uk-UA", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: d.timezone,
+  });
+
+  return `<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<title>Довідка про відвідування</title>
+<style>
+  @page { margin: 20mm; }
+  body { font: 14px/1.6 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
+  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 24px; }
+  .letterhead .org { font-size: 14px; font-weight: 700; }
+  .letterhead .unit { font-size: 12px; color: #555; margin-top: 2px; }
+  h1 { font-size: 18px; margin: 0 0 20px; text-align: center; }
+  p { margin: 0 0 12px; }
+  .sign { margin-top: 44px; display: flex; gap: 32px; flex-wrap: wrap; break-inside: avoid; }
+  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
+  .sign-line i { display: inline-block; width: 200px; border-bottom: 1px solid #111; }
+  .issued { margin-top: 28px; font-size: 12px; color: #666; }
+</style></head>
+<body>
+  ${
+    env.institutionName
+      ? `<div class="letterhead">
+      <div class="org">${esc(env.institutionName)}</div>
+      ${env.institutionUnit ? `<div class="unit">${esc(env.institutionUnit)}</div>` : ""}
+    </div>`
+      : ""
+  }
+  <h1>Довідка про відвідування</h1>
+  <p>Видана ${esc(d.fullName)}${d.unit ? `, ${esc(d.unit)}` : ""} у тому, що ${esc(date)}
+     з ${esc(from)} до ${esc(to)} він(вона) перебував(ла) на прийомі.</p>
+  <p>Довідка видана для пред’явлення за місцем вимоги.</p>
+
+  <div class="sign">
+    <div class="sign-line">Фахівець <i></i></div>
+    <div class="sign-line">${esc(d.specialistName)}</div>
+  </div>
+  <p class="issued">Дата видачі: ${esc(new Date().toLocaleDateString("uk-UA", { timeZone: d.timezone }))}</p>
 </body></html>`;
 }
