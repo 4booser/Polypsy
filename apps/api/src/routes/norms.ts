@@ -40,7 +40,7 @@ interface CandidateGroup {
  */
 async function candidateStats(surveyId: string) {
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const completed = await db
     .select({ response: responses, sex: users.sex })
@@ -136,17 +136,15 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
   const byCode = new Map(stats.map((s) => [s.code, s]));
   for (const code of input.scaleCodes) {
     const stat = byCode.get(code);
-    if (!stat) badRequest(`Шкала «${code}» не найдена или не использует T-баллы`);
+    if (!stat) badRequest("err.scaleNotFoundOrNotTscore", { code });
     const publishable = stat.candidate.filter((g) => g.sex !== null && g.publishable);
     if (!publishable.length) {
-      badRequest(
-        `Шкала «${code}»: ни одна половая группа не набрала ${MIN_GROUP} наблюдений — публиковать нечего`,
-      );
+      badRequest("err.scaleGroupTooSmall", { code, minGroup: MIN_GROUP });
     }
   }
 
   const raw = await getSurvey(surveyId, null, "uk", true);
-  if (!raw) notFound("Методика не найдена");
+  if (!raw) notFound("err.surveyNotFound");
   const draft = surveyToDraft(raw) as { scales?: { code: string; norms?: unknown[] }[] };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -196,7 +194,7 @@ normRoutes.get("/surveys/:id/age-curves", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const rows = await db
     .select({

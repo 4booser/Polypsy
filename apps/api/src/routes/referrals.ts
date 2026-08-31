@@ -93,8 +93,8 @@ referralRoutes.post("/", async (c) => {
   const input = await parseBody(c.req.raw, createReferralSchema);
 
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
-  if (!target) notFound("Пациент не найден");
-  if (target.role !== "user") badRequest("Направление выписывается пациенту");
+  if (!target) notFound("err.patientNotFound");
+  if (target.role !== "user") badRequest("err.referralPatientOnly");
 
   const id = crypto.randomUUID();
   await db.insert(referrals).values({
@@ -122,13 +122,11 @@ referralRoutes.post("/", async (c) => {
 referralRoutes.patch("/:id", async (c) => {
   const id = c.req.param("id");
   const existing = await db.query.referrals.findFirst({ where: eq(referrals.id, id) });
-  if (!existing) notFound("Направление не найдено");
+  if (!existing) notFound("err.referralNotFound");
 
   const input = await parseBody(c.req.raw, updateReferralSchema);
   if (!ALLOWED_TRANSITIONS[existing.status]?.includes(input.status)) {
-    badRequest(
-      `Из состояния «${existing.status}» нельзя перейти в «${input.status}»: история направления не переписывается`,
-    );
+    badRequest("err.referralTransitionInvalid", { from: existing.status, to: input.status });
   }
 
   await db
@@ -164,7 +162,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
   const userId = c.req.param("userId");
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!patient) notFound("Пациент не найден");
+  if (!patient) notFound("err.patientNotFound");
 
   /*
    * Пациент должен быть в зоне ответственности сотрудника. Раньше здесь
@@ -174,12 +172,12 @@ referralRoutes.get("/summary/:userId", async (c) => {
    * пациент», который задавать ему никто не разрешал.
    */
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   const scope = await surveyScopeFilterFor(staff, userId);
   const scoped = await db.select().from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) notFound("Пациент не найден");
+  if (!surveyIds.length) notFound("err.patientNotFound");
 
   const own = await db
     .select()

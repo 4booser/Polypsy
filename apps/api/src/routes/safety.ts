@@ -67,11 +67,11 @@ safetyRoutes.get("/me", async (c) => {
 
 safetyRoutes.get("/patients/:userId", async (c) => {
   const staff = c.get("user");
-  if (!isStaff(staff)) notFound("План не найден");
+  if (!isStaff(staff)) notFound("err.safetyPlanNotFound");
   const userId = c.req.param("userId");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("План не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.safetyPlanNotFound");
 
   const rows = await db
     .select({ plan: safetyPlans, author: users })
@@ -95,11 +95,11 @@ safetyRoutes.get("/patients/:userId", async (c) => {
 
 safetyRoutes.put("/patients/:userId", async (c) => {
   const staff = c.get("user");
-  if (!isStaff(staff)) notFound("План не найден");
+  if (!isStaff(staff)) notFound("err.safetyPlanNotFound");
   const userId = c.req.param("userId");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("План не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.safetyPlanNotFound");
 
   const content = await parseBody(c.req.raw, contentSchema);
 

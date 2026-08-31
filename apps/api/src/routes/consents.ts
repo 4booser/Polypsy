@@ -44,7 +44,7 @@ consentRoutes.get("/me", async (c) => {
 consentRoutes.post("/me/accept", async (c) => {
   const user = c.get("user");
   const current = await latestText();
-  if (!current) badRequest("Текст согласия не настроен");
+  if (!current) badRequest("err.consentTextNotConfigured");
 
   await db
     .insert(consents)

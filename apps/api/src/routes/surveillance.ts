@@ -28,7 +28,7 @@ surveillanceRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const rows = await db
     .select({

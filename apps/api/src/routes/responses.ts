@@ -62,11 +62,11 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   }
 
   const survey = await getSurvey(surveyId, null, langOf(c));
-  if (!survey) notFound("Методика не найдена");
-  if (survey.status !== "published") badRequest("Методика недоступна для прохождения");
-  if (survey.archivedAt) badRequest("Методика снята с использования");
+  if (!survey) notFound("err.surveyNotFound");
+  if (survey.status !== "published") badRequest("err.surveyNotAvailableToTake");
+  if (survey.archivedAt) badRequest("err.surveyArchived");
   if (survey.administration !== "self" && !isStaff(user)) {
-    forbidden("Методику заполняет специалист, а не респондент");
+    forbidden("err.staffFillsOnly");
   }
 
   /*
@@ -76,14 +76,14 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
    */
   let subjectId = user.id;
   if (input.onBehalfOf) {
-    if (!isStaff(user)) forbidden("Заполнять за другого может только сотрудник");
+    if (!isStaff(user)) forbidden("err.onBehalfStaffOnly");
     await assertSurveyAccess(user, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
-    if (!subject) notFound("Пациент не найден");
-    if (subject.role !== "user") badRequest("Заполнять можно только за пациента");
+    if (!subject) notFound("err.patientNotFound");
+    if (subject.role !== "user") badRequest("err.onBehalfPatientOnly");
     subjectId = subject.id;
   } else if (survey.administration === "clinician") {
-    badRequest("Для этой методики нужно указать пациента, за которого она заполняется");
+    badRequest("err.onBehalfRequired");
   }
 
   if (!survey.allowRetake && !survey.anonymous) {
@@ -94,7 +94,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
         eq(responses.status, "completed"),
       ),
     });
-    if (existing) conflict("Вы уже проходили эту методику");
+    if (existing) conflict("err.alreadyTaken");
   }
 
   // незавершённый черновик того же пользователя убираем: иначе он остался бы
@@ -170,10 +170,10 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   const input = await parseBody(c.req.raw, draftSchema);
 
   const survey = await getSurvey(surveyId, null, langOf(c));
-  if (!survey) notFound("Методика не найдена");
-  if (survey.status !== "published") badRequest("Методика недоступна");
-  if (survey.archivedAt) badRequest("Методика снята с использования");
-  if (survey.anonymous) badRequest("Анонимная методика не сохраняет черновики");
+  if (!survey) notFound("err.surveyNotFound");
+  if (survey.status !== "published") badRequest("err.surveyNotAvailable");
+  if (survey.archivedAt) badRequest("err.surveyArchived");
+  if (survey.anonymous) badRequest("err.anonymousNoDraft");
 
   const existing = await db.query.responses.findFirst({
     where: and(
@@ -414,9 +414,9 @@ responseRoutes.get("/responses/:id", async (c) => {
   const response = await db.query.responses.findFirst({
     where: eq(responses.id, c.req.param("id")),
   });
-  if (!response) notFound("Прохождение не найдено");
+  if (!response) notFound("err.responseNotFound");
   if (!isStaff(user) && response.userId !== user.id) {
-    forbidden("Доступно только автору прохождения или сотруднику");
+    forbidden("err.responseOwnerOrStaffOnly");
   }
   // сотрудник видит карту, только если методика в зоне его ответственности
   if (isStaff(user) && response.userId !== user.id) {
@@ -425,7 +425,7 @@ responseRoutes.get("/responses/:id", async (c) => {
 
   // читаем методику той версии, которую респондент реально видел
   const survey = await getSurveyForResponse(response.id);
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const [answerRows, scoreRows, eventRows] = await Promise.all([
     db.select().from(answers).where(eq(answers.responseId, response.id)),

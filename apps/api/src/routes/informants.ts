@@ -53,21 +53,21 @@ informantRoutes.post("/patients/:userId", requireAuth, requireStaff, async (c) =
    * подтверждал бы существование человека тем, что дошёл до валидации.
    */
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(patientId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(patientId)) notFound("err.patientNotFound");
 
   const input = await parseBody(c.req.raw, createSchema);
   await assertSurveyAccess(staff, input.surveyId);
 
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, input.surveyId) });
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
   if ((survey.administration as Administration) !== "informant") {
     /*
      * Иначе самоотчётная методика заполнялась бы посторонним человеком и
      * попадала в ту же выборку — норма и альфа поехали бы молча.
      */
-    badRequest("Это не форма информанта: выберите методику, заполняемую со стороны");
+    badRequest("err.notInformantForm");
   }
-  if (survey.status !== "published") badRequest("Методика не опубликована");
+  if (survey.status !== "published") badRequest("err.surveyNotPublished");
 
   const raw = newInviteToken();
   const id = crypto.randomUUID();
@@ -99,7 +99,7 @@ informantRoutes.get("/patients/:userId", requireAuth, requireStaff, async (c) =>
   const patientId = c.req.param("userId");
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(patientId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(patientId)) notFound("err.patientNotFound");
 
   const rows = await db
     .select({ req: informantRequests, survey: surveys })
@@ -129,9 +129,9 @@ informantRoutes.post("/:id/revoke", requireAuth, requireStaff, async (c) => {
   const id = c.req.param("id");
 
   const row = await db.query.informantRequests.findFirst({ where: eq(informantRequests.id, id) });
-  if (!row) notFound("Запрос не найден");
+  if (!row) notFound("err.informantRequestNotFound");
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(row.patientId)) notFound("Запрос не найден");
+  if (allowed && !allowed.has(row.patientId)) notFound("err.informantRequestNotFound");
 
   await db
     .update(informantRequests)
@@ -206,14 +206,14 @@ const submitSchema = z.object({
 
 informantRoutes.post("/form/:token", async (c) => {
   const { row } = await findRequest(c.req.param("token"));
-  if (!row) notFound("Ссылка не действует");
+  if (!row) notFound("err.informantLinkInvalid");
 
   const body = await c.req.json();
   const input = submitSchema.parse(body);
 
   const result = await systemContext(baseDb, async () => {
     const survey = await getSurvey(row.surveyId, null, langOf(c));
-    if (!survey) notFound("Методика не найдена");
+    if (!survey) notFound("err.surveyNotFound");
 
     /*
      * Пациент передаётся как «субъект» только ради проверок порядка батарей;
@@ -222,7 +222,7 @@ informantRoutes.post("/form/:token", async (c) => {
      * стороны легла бы в динамику пациента наравне с его самоотчётом.
      */
     const patient = await db.query.users.findFirst({ where: eq(users.id, row.patientId) });
-    if (!patient) notFound("Пациент не найден");
+    if (!patient) notFound("err.patientNotFound");
 
     const saved = await persistSubmission(
       survey,
@@ -271,7 +271,7 @@ informantRoutes.get("/compare/:userId", requireAuth, requireStaff, async (c) => 
   const lang = langOf(c);
 
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(patientId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(patientId)) notFound("err.patientNotFound");
 
   const done = await db
     .select({ req: informantRequests })

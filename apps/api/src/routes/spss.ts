@@ -121,7 +121,7 @@ async function buildSchema(
   kanon: Generalization | null = null,
 ) {
   const survey = await getSurvey(surveyId, null, lang === "uk" ? "uk" : "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const asked = survey.questions.filter((q) => q.type !== "info");
   const used = new Set<string>();
@@ -698,7 +698,7 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const ext = c.req.param("ext");
-  if (ext !== "r" && ext !== "py") notFound("Такого скрипта нет");
+  if (ext !== "r" && ext !== "py") notFound("err.scriptNotFound");
   const { profile, lang } = exportOptions(c);
   const { vars } = await buildSchema(surveyId, lang, profile);
 

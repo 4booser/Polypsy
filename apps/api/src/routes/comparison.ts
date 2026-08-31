@@ -61,7 +61,7 @@ comparisonRoutes.get("/surveys/:id", async (c) => {
 
   const { by } = parseQuery(c, cohortQuery);
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const rows = await db
     .select({ response: responses, user: users })
@@ -221,7 +221,7 @@ comparisonRoutes.get("/surveys/:id/correlations", async (c) => {
   await assertSurveyAccess(c.get("user"), surveyId);
 
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   const responseRows = await db
     .select()

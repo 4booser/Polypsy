@@ -99,7 +99,7 @@ difRoutes.get("/surveys/:id", async (c) => {
 
 async function buildDif(c: Context<AppEnv>, surveyId: string) {
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   // последние 500 завершённых: страты и ключевые попадания
   const responseRows = await db

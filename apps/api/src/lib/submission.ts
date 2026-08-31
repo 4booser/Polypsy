@@ -44,7 +44,7 @@ export function validateAnswers(survey: SurveyFull, input: SubmitResponseInput):
     // маскироваться сообщением «не отвечен обязательный вопрос»
     if (answer) validateAnswerShape(question, answer);
     if (question.required && !isAnswered(question, answer)) {
-      badRequest(`Не отвечен обязательный вопрос: ${question.title}`);
+      badRequest("err.requiredUnanswered", { title: question.title });
     }
   }
   return answerMap;
@@ -257,28 +257,28 @@ function validateAnswerShape(question: Question, answer: Answer): void {
     // biome-ignore lint/suspicious/noFallthroughSwitchClause: см. выше
     case "yesno":
       if ((answer.optionIds?.length ?? 0) > 1) {
-        badRequest(`Можно выбрать только один вариант: ${question.title}`);
+        badRequest("err.singleChoiceOnly", { title: question.title });
       }
     case "multiple":
       for (const id of answer.optionIds ?? []) {
-        if (!optionIds.has(id)) badRequest(`Недопустимый вариант ответа: ${question.title}`);
+        if (!optionIds.has(id)) badRequest("err.invalidOption", { title: question.title });
       }
       break;
 
     case "matrix":
       for (const [rowId, optionId] of Object.entries(answer.matrix ?? {})) {
-        if (!rowIds.has(rowId)) badRequest(`Недопустимая строка матрицы: ${question.title}`);
-        if (!optionIds.has(optionId)) badRequest(`Недопустимый вариант в матрице: ${question.title}`);
+        if (!rowIds.has(rowId)) badRequest("err.invalidMatrixRow", { title: question.title });
+        if (!optionIds.has(optionId)) badRequest("err.invalidMatrixOption", { title: question.title });
       }
       break;
 
     case "ranking": {
       const ranking = answer.ranking ?? [];
       if (new Set(ranking).size !== ranking.length) {
-        badRequest(`В ранжировании есть повторы: ${question.title}`);
+        badRequest("err.rankingDuplicates", { title: question.title });
       }
       for (const id of ranking) {
-        if (!optionIds.has(id)) badRequest(`Недопустимый вариант в ранжировании: ${question.title}`);
+        if (!optionIds.has(id)) badRequest("err.invalidRankingOption", { title: question.title });
       }
       break;
     }
@@ -290,14 +290,14 @@ function validateAnswerShape(question: Question, answer: Answer): void {
       const min = question.minValue ?? 0;
       const max = question.maxValue ?? 100;
       if (answer.number < min || answer.number > max) {
-        badRequest(`Значение вне диапазона ${min}–${max}: ${question.title}`);
+        badRequest("err.valueOutOfRange", { min, max, title: question.title });
       }
       break;
     }
 
     case "date":
       if (answer.date && Number.isNaN(Date.parse(answer.date))) {
-        badRequest(`Некорректная дата: ${question.title}`);
+        badRequest("err.invalidDate", { title: question.title });
       }
       break;
 

@@ -48,7 +48,7 @@ unitReportRoutes.get("/", async (c) => {
 
   const scope = await surveyScopeFilter(user);
   const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
-  if (!scoped.length) badRequest("Нет доступных методик");
+  if (!scoped.length) badRequest("err.noAccessibleSurveys");
   const surveyIds = scoped.map((s) => s.id);
   const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never)]));
 

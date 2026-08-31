@@ -42,7 +42,7 @@ searchRoutes.get("/notes", async (c) => {
      * «ничего не найдено» здесь означало бы «в записях нет слова “на”», что
      * неправда и сбивает с толку.
      */
-    badRequest("Слишком короткие слова: ищем от трёх букв");
+    badRequest("err.searchTooShort");
   }
 
   const fps = queryFingerprints(q);

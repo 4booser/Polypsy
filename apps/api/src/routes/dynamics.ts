@@ -139,7 +139,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   const userId = c.req.param("userId");
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!patient) notFound("Пациент не найден");
+  if (!patient) notFound("err.patientNotFound");
 
   /*
    * Зона ответственности — до всего остального. Раньше маршрут возвращал ФИО
@@ -148,7 +148,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
    * пустым списком замеров.
    */
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   const scope = await surveyScopeFilterFor(staff, userId);
   const scoped = await db.select().from(surveys).where(scope);

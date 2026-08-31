@@ -46,7 +46,7 @@ calibrationRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId, null, "ru");
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
 
   // прохождения с разобранными тревогами и определённым исходом
   const outcomeRows = await db

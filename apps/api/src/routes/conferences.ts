@@ -28,7 +28,7 @@ conferenceRoutes.use("*", requireAuth, requireStaff);
 
 async function assertPatient(staff: User, userId: string) {
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 }
 
 async function load(conferenceId: string) {
@@ -115,9 +115,9 @@ conferenceRoutes.post("/patients/:userId", async (c) => {
 conferenceRoutes.post("/:id/opinions", async (c) => {
   const staff = c.get("user");
   const row = await load(c.req.param("id"));
-  if (!row) notFound("Консилиум не найден");
+  if (!row) notFound("err.conferenceNotFound");
   await assertPatient(staff, row.conference.userId);
-  if (row.conference.status !== "open") badRequest("Консилиум уже закрыт");
+  if (row.conference.status !== "open") badRequest("err.conferenceClosed");
 
   const input = await parseBody(
     c.req.raw,
@@ -158,9 +158,9 @@ conferenceRoutes.post("/:id/opinions", async (c) => {
 conferenceRoutes.post("/:id/decide", async (c) => {
   const staff = c.get("user");
   const row = await load(c.req.param("id"));
-  if (!row) notFound("Консилиум не найден");
+  if (!row) notFound("err.conferenceNotFound");
   await assertPatient(staff, row.conference.userId);
-  if (row.conference.status !== "open") badRequest("Консилиум уже закрыт");
+  if (row.conference.status !== "open") badRequest("err.conferenceClosed");
 
   const input = await parseBody(
     c.req.raw,
@@ -173,7 +173,7 @@ conferenceRoutes.post("/:id/decide", async (c) => {
    * Такую следует делать заметкой приёма, и отказ здесь честнее, чем
    * протокол, в котором никто не высказался.
    */
-  if (!opinions.length && !input.cancel) badRequest("Ни один участник не высказался");
+  if (!opinions.length && !input.cancel) badRequest("err.noOpinionsExpressed");
 
   await db
     .update(caseConferences)

@@ -246,8 +246,8 @@ alertCaseRoutes.get("/units", async (c) => {
 
 async function loadCase(user: { id: string; role: string }, id: string) {
   const row = await db.query.alertCases.findFirst({ where: eq(alertCases.id, id) });
-  if (!row) notFound("Случай не найден");
-  if (!(await canAccessSurvey(user as never, row.surveyId))) notFound("Случай не найден");
+  if (!row) notFound("err.caseNotFound");
+  if (!(await canAccessSurvey(user as never, row.surveyId))) notFound("err.caseNotFound");
   return row;
 }
 
@@ -292,13 +292,13 @@ alertCaseRoutes.get("/:id/history", async (c) => {
 alertCaseRoutes.post("/:id/assign", async (c) => {
   const user = c.get("user");
   const row = await loadCase(user, c.req.param("id"));
-  if (row.acknowledgedAt) badRequest("Случай уже разобран");
+  if (row.acknowledgedAt) badRequest("err.caseAlreadyHandled");
 
   const body = await c.req.json().catch(() => ({}));
   const release = body?.release === true;
 
   if (!release && row.assignedTo && row.assignedTo !== user.id) {
-    badRequest("Случай уже взят другим специалистом");
+    badRequest("err.caseTakenByOther");
   }
 
   const [updated] = await db
@@ -346,7 +346,7 @@ alertCaseRoutes.patch("/:id", async (c) => {
   const outcome = ["confirmed", "not_confirmed", "needs_followup"].includes(body?.outcome)
     ? (body.outcome as "confirmed" | "not_confirmed" | "needs_followup")
     : null;
-  if (!outcome) badRequest("Нужен исход разбора: подтверждён, не подтверждён или требует наблюдения");
+  if (!outcome) badRequest("err.outcomeRequired");
 
   const at = new Date().toISOString();
   const note = typeof body?.note === "string" ? body.note.slice(0, 2000) : null;

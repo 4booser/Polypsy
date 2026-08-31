@@ -53,7 +53,7 @@ timelineRoutes.get("/:userId", async (c) => {
   const lang = langOf(c);
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (!patient) notFound("Пациент не найден");
+  if (!patient) notFound("err.patientNotFound");
 
   /*
    * Зона ответственности проверяется до всего остального: сотрудник видит
@@ -68,12 +68,12 @@ timelineRoutes.get("/:userId", async (c) => {
    * пациент», который задавать ему никто не разрешал.
    */
   const allowed = await accessiblePatientIds(staff);
-  if (allowed && !allowed.has(userId)) notFound("Пациент не найден");
+  if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   const scope = await surveyScopeFilterFor(staff, userId);
   const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) notFound("Пациент не найден");
+  if (!surveyIds.length) notFound("err.patientNotFound");
   const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never, lang)]));
 
   const items: TimelineItem[] = [];

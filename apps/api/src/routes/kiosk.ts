@@ -93,7 +93,7 @@ kioskRoutes.get("/state/:token", async (c) => {
  */
 kioskRoutes.post("/state/:token/join", async (c) => {
   const { row } = await findSession(c.req.param("token"));
-  if (!row) notFound("Сеанс не действует");
+  if (!row) notFound("err.kioskSessionInvalid");
   const input = await parseBody(c.req.raw, kioskJoinSchema);
 
   const userId = crypto.randomUUID();
@@ -164,22 +164,22 @@ kioskRoutes.post("/state/:token/join", async (c) => {
 /** Контент методики для раннера киоска */
 kioskRoutes.get("/state/:token/surveys/:surveyId", async (c) => {
   const { row } = await findSession(c.req.param("token"));
-  if (!row) notFound("Сеанс не действует");
+  if (!row) notFound("err.kioskSessionInvalid");
   const surveyId = c.req.param("surveyId");
   const items = await db
     .select()
     .from(batteryItems)
     .where(and(eq(batteryItems.batteryId, row.batteryId), eq(batteryItems.surveyId, surveyId)));
-  if (!items.length) notFound("Методика не входит в сеанс");
+  if (!items.length) notFound("err.surveyNotInBattery");
   const survey = await getSurvey(surveyId, null, langOf(c));
-  if (!survey) notFound("Методика не найдена");
+  if (!survey) notFound("err.surveyNotFound");
   return c.json(survey);
 });
 
 /** Сдача от имени участника: тот же конвейер, что и обычная сдача */
 kioskRoutes.post("/state/:token/submit", async (c) => {
   const { row } = await findSession(c.req.param("token"));
-  if (!row) notFound("Сеанс не действует");
+  if (!row) notFound("err.kioskSessionInvalid");
 
   const body = await c.req.json();
   const participantId = typeof body?.participantId === "string" ? body.participantId : "";
@@ -189,17 +189,17 @@ kioskRoutes.post("/state/:token/submit", async (c) => {
   const participant = await db.query.kioskParticipants.findFirst({
     where: and(eq(kioskParticipants.id, participantId), eq(kioskParticipants.sessionId, row.id)),
   });
-  if (!participant) notFound("Участник не найден в этом сеансе");
+  if (!participant) notFound("err.kioskParticipantNotFound");
 
   const inBattery = await db
     .select()
     .from(batteryItems)
     .where(and(eq(batteryItems.batteryId, row.batteryId), eq(batteryItems.surveyId, surveyId)));
-  if (!inBattery.length) badRequest("Методика не входит в сеанс");
+  if (!inBattery.length) badRequest("err.surveyNotInBattery");
 
   const survey = await getSurvey(surveyId, null, langOf(c));
-  if (!survey) notFound("Методика не найдена");
-  if (survey.administration !== "self") badRequest("Методику заполняет специалист — на киоске она недоступна");
+  if (!survey) notFound("err.surveyNotFound");
+  if (survey.administration !== "self") badRequest("err.surveyStaffOnly");
 
   const subject = (await db.query.users.findFirst({ where: eq(users.id, participant.userId) }))!;
   const result = await persistSubmission(survey, subject, input, {
@@ -261,7 +261,7 @@ kioskRoutes.use("/sessions/*", requireAuth, requireStaff);
 
 async function assertSessionBattery(user: Parameters<typeof assertGroupAccess>[0], batteryId: string) {
   const battery = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
-  if (!battery) notFound("Батарея не найдена");
+  if (!battery) notFound("err.batteryNotFound");
   if (battery.groupId) await assertGroupAccess(user, battery.groupId);
   return battery;
 }
@@ -270,7 +270,7 @@ kioskRoutes.post("/sessions", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, createKioskSessionSchema);
   const battery = await assertSessionBattery(user, input.batteryId);
-  if (battery.archived) badRequest("Батарея в архиве");
+  if (battery.archived) badRequest("err.batteryArchived");
   await assertBatteryInUse(input.batteryId);
 
   const rawToken = newInviteToken();
@@ -374,7 +374,7 @@ async function participantStates(sessionId: string, batteryId: string) {
 kioskRoutes.post("/sessions/:id/close", async (c) => {
   const user = c.get("user");
   const row = await db.query.kioskSessions.findFirst({ where: eq(kioskSessions.id, c.req.param("id")) });
-  if (!row) notFound("Сеанс не найден");
+  if (!row) notFound("err.kioskSessionNotFound");
   await assertSessionBattery(user, row.batteryId);
 
   await db.update(kioskSessions).set({ closedAt: new Date().toISOString() }).where(eq(kioskSessions.id, row.id));

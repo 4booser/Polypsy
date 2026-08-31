@@ -3,6 +3,7 @@ export * from "./schemas";
 export * from "./scoring";
 export * from "./validate";
 export * from "./uiStrings";
+export * from "./errorStrings";
 export * from "./rci";
 export * from "./medstats";
 export * from "./versionDiff";
