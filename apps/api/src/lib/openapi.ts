@@ -245,6 +245,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },
   "GET /api/referrals/summary/:userId": { summary: "Сводка для консилиума", access: "staff", permission: "referrals.manage" },
   "GET /api/conclusions/responses/:id/conclusion": { summary: "Заключение по прохождению", access: "staff", permission: "patients.read" },
+  "GET /api/conclusions/responses/:id/conclusion/draft": { summary: "Черновик заключения из результатов: подставляет то, что и так есть в системе", access: "staff", permission: "conclusions.write" },
   "PUT /api/conclusions/responses/:id/conclusion": { summary: "Черновик заключения", access: "staff", permission: "conclusions.write" },
   "POST /api/conclusions/responses/:id/conclusion/sign": { summary: "Подпись заключения — фиксирует снапшот", access: "staff", permission: "conclusions.sign" },
 

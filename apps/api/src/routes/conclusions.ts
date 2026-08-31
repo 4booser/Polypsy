@@ -1,14 +1,15 @@
 import { Hono } from "hono";
-import { aliasedTable, and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { aliasedTable, and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { t } from "@quizzy/shared";
+import { ageAt, t } from "@quizzy/shared";
 import { db } from "../db";
-import { conclusions, responses, surveys, users } from "../db/schema";
+import { conclusions, responseScores, responses, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { getSurvey } from "../lib/surveys";
 
 /*
  * Псевдоним таблицы пользователей для автора заключения: в одном запросе
@@ -97,6 +98,106 @@ conclusionRoutes.get("/responses/:id/conclusion", requirePermission("patients.re
   const versions = await history(c.req.param("id"));
   return c.json({ current: versions[0] ?? null, versions });
 });
+
+/**
+ * Черновик заключения из результатов.
+ *
+ * Отдаётся текстом, но НЕ сохраняется. Сохранённый автоматически черновик
+ * стал бы клиническим документом, которого никто не писал: он лежал бы в
+ * карте, выглядел бы как работа специалиста и попал бы в историю версий
+ * раньше, чем его кто-нибудь прочитал. Здесь только предложение — сохранит
+ * его тот, кто с ним согласился.
+ *
+ * Подставляется то, что и так есть в системе: кто, сколько лет, какие баллы,
+ * что говорят полосы норм, как изменилось с прошлого раза. Специалист правит
+ * и дописывает главное — вывод, — а не переписывает цифры из соседнего окна.
+ * Собственно, ради этого: переписывание цифр руками и есть та работа, где
+ * ошибка не видна, а время уходит.
+ */
+conclusionRoutes.get(
+  "/responses/:id/conclusion/draft",
+  requirePermission("conclusions.write"),
+  async (c) => {
+    const responseId = c.req.param("id");
+    await assertResponse(c.get("user"), responseId);
+    const lang = langOf(c);
+
+    const response = (await db.query.responses.findFirst({
+      where: eq(responses.id, responseId),
+    }))!;
+    const survey = await getSurvey(response.surveyId, null, lang);
+    const patient = response.userId
+      ? await db.query.users.findFirst({ where: eq(users.id, response.userId) })
+      : null;
+
+    const scoreRows = await db
+      .select({ score: responseScores, scale: scales })
+      .from(responseScores)
+      .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+      .where(eq(responseScores.responseId, responseId));
+
+    /*
+     * Прошлое прохождение той же методики — для строки динамики.
+     *
+     * Берётся предыдущее по времени, а не «первое»: специалисту важно, что
+     * изменилось с последнего раза, а не с начала наблюдения. Нет прошлого —
+     * строки динамики нет вовсе, а не «динамика не изменилась».
+     */
+    const [previous] = response.userId
+      ? await db
+          .select({ id: responses.id, submittedAt: responses.submittedAt })
+          .from(responses)
+          .where(
+            and(
+              eq(responses.userId, response.userId),
+              eq(responses.surveyId, response.surveyId),
+              eq(responses.status, "completed"),
+              lt(responses.submittedAt, response.submittedAt ?? response.startedAt),
+            ),
+          )
+          .orderBy(desc(responses.submittedAt))
+          .limit(1)
+      : [];
+
+    const previousScores = previous
+      ? await db
+          .select()
+          .from(responseScores)
+          .where(eq(responseScores.responseId, previous.id))
+      : [];
+    const before = new Map(previousScores.map((p) => [p.scaleId, p.value]));
+
+    return c.json({
+      patient: patient
+        ? {
+            fullName: fullNameOf(patient),
+            age: ageAt(decryptField(patient.birthDate), response.submittedAt ?? response.startedAt),
+            unit: patient.unit,
+          }
+        : null,
+      surveyTitle: survey ? t(survey.title as never, lang) : "",
+      submittedAt: response.submittedAt,
+      /*
+       * Факты, а не готовый абзац.
+       *
+       * Собрать текст на сервере значило бы зашить в него язык и порядок
+       * слов; консоль знает язык интерфейса и соберёт фразу сама — тем же
+       * механизмом, которым переводит всё остальное.
+       */
+      scales: scoreRows.map((r) => ({
+        scaleId: r.scale.id,
+        title: t(r.scale.title as never, lang),
+        value: r.score.value,
+        normalization: r.score.normalization,
+        percent: r.score.percent,
+        band: r.score.bandLabel,
+        severity: r.score.severity,
+        previousValue: before.has(r.scale.id) ? before.get(r.scale.id)! : null,
+      })),
+      previousAt: previous?.submittedAt ?? null,
+    });
+  },
+);
 
 /**
  * Сохранение текста. Пока последняя версия — черновик, она правится на

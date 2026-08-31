@@ -1204,3 +1204,82 @@ describe("сведение версий", () => {
     expect(eq.slope * 25 + eq.intercept).toBeCloseTo(30, 6);
   });
 });
+
+describe("черновик заключения из результатов", () => {
+  /**
+   * Переписывание цифр из соседнего окна и есть та работа, где ошибка не
+   * видна, а время уходит. Черновик подставляет то, что система знает
+   * наверняка, и оставляет специалисту вывод.
+   */
+  test("подставляет человека, методику и баллы", async () => {
+    const person = await makeUser("user", `cn-draft-${crypto.randomUUID()}@test`);
+    const submitted = await submitSurvey(surveyInA, person.token);
+    expect(submitted.status).toBe(201);
+
+    const res = await api(
+      `/api/conclusions/responses/${submitted.body.id}/conclusion/draft`,
+      adminA.token,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.patient.fullName).toContain("cn-draft-");
+    expect(res.body.surveyTitle.length).toBeGreaterThan(0);
+    expect(res.body.scales.length).toBeGreaterThan(0);
+  });
+
+  test("черновик не сохраняется сам", async () => {
+    /*
+     * Сохранённый автоматически, он стал бы клиническим документом, которого
+     * никто не писал: лежал бы в карте и попал бы в историю версий раньше,
+     * чем его прочитали.
+     */
+    const person = await makeUser("user", `cn-draft2-${crypto.randomUUID()}@test`);
+    const submitted = await submitSurvey(surveyInA, person.token);
+    await api(`/api/conclusions/responses/${submitted.body.id}/conclusion/draft`, adminA.token);
+
+    const state = await api(
+      `/api/conclusions/responses/${submitted.body.id}/conclusion`,
+      adminA.token,
+    );
+    expect(state.body.current).toBeNull();
+    expect(state.body.versions).toEqual([]);
+  });
+
+  test("первое прохождение не показывает динамику", async () => {
+    // сравнивать не с чем, и строки динамики нет вовсе, а не «не изменилось»
+    const person = await makeUser("user", `cn-draft3-${crypto.randomUUID()}@test`);
+    const submitted = await submitSurvey(surveyInA, person.token);
+
+    const res = await api(
+      `/api/conclusions/responses/${submitted.body.id}/conclusion/draft`,
+      adminA.token,
+    );
+    expect(res.body.previousAt).toBeNull();
+    expect(res.body.scales.every((s: { previousValue: number | null }) => s.previousValue === null)).toBe(true);
+  });
+
+  test("повторное прохождение показывает, с чем сравнивать", async () => {
+    const person = await makeUser("user", `cn-draft4-${crypto.randomUUID()}@test`);
+    const first = await submitSurvey(surveyInA, person.token);
+    expect(first.status).toBe(201);
+    const second = await submitSurvey(surveyInA, person.token);
+    expect(second.status).toBe(201);
+
+    const res = await api(
+      `/api/conclusions/responses/${second.body.id}/conclusion/draft`,
+      adminA.token,
+    );
+    expect(res.body.previousAt).not.toBeNull();
+    expect(res.body.scales.some((s: { previousValue: number | null }) => s.previousValue !== null)).toBe(true);
+  });
+
+  test("чужое прохождение черновика не отдаёт", async () => {
+    const person = await makeUser("user", `cn-draft5-${crypto.randomUUID()}@test`);
+    const submitted = await submitSurvey(surveyInA, person.token);
+
+    const res = await api(
+      `/api/conclusions/responses/${submitted.body.id}/conclusion/draft`,
+      adminB.token,
+    );
+    expect([403, 404]).toContain(res.status);
+  });
+});

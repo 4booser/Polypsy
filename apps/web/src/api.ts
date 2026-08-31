@@ -1075,6 +1075,23 @@ export const api = {
 
   conclusion: (responseId: string) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`),
+  conclusionDraft: (responseId: string) =>
+    request<{
+      patient: { fullName: string; age: number | null; unit: string | null } | null;
+      surveyTitle: string;
+      submittedAt: string | null;
+      scales: {
+        scaleId: string;
+        title: string;
+        value: number;
+        normalization: "raw" | "ratio" | "tscore" | "sten";
+        percent: number;
+        band: string | null;
+        severity: "none" | "mild" | "moderate" | "severe" | null;
+        previousValue: number | null;
+      }[];
+      previousAt: string | null;
+    }>(`/api/conclusions/responses/${responseId}/conclusion/draft`),
   /** baseVersion — версия, поверх которой правили: сервер не даст затереть чужую работу */
   saveConclusion: (responseId: string, text: string, baseVersion: number) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {

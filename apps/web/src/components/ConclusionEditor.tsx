@@ -72,6 +72,22 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         }
       />
       <div className="row mt-2">
+        {/*
+          Черновик собирается по нажатию и не сохраняется сам.
+          Сохранённый автоматически, он стал бы клиническим документом,
+          которого никто не писал: лежал бы в карте, выглядел бы как работа
+          специалиста и попал бы в историю версий раньше, чем его прочитали.
+        */}
+        <Button
+          onClick={() =>
+            run(async () => {
+              if (text.trim() && !window.confirm(ut("cn.draftReplaced"))) return;
+              setText(await buildDraft(responseId, ut));
+            })
+          }
+        >
+          {ut("cn.fromResults")}
+        </Button>
         <Button
           disabled={!text.trim()}
           onClick={() =>
@@ -128,4 +144,59 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         : null}
     </div>
   );
+}
+
+
+/**
+ * Собрать черновик из фактов.
+ *
+ * Фразу собирает клиент, а не сервер: у сервера нет языка интерфейса, и
+ * собранный там текст пришлось бы переводить вторым словарём. Здесь тот же
+ * механизм, которым переведено всё остальное.
+ *
+ * Подставляется только то, что система знает наверняка: кто, сколько лет,
+ * какие баллы, что говорят полосы норм, как изменилось с прошлого раза.
+ * Вывод не подставляется вовсе — его пишет человек, и место под него
+ * оставлено пустым намеренно: заготовка вывода читалась бы как вывод.
+ */
+async function buildDraft(responseId: string, ut: (k: never) => string): Promise<string> {
+  const t = (k: string) => ut(k as never);
+  const d = await api.conclusionDraft(responseId);
+  const lines: string[] = [];
+
+  if (d.patient) {
+    const age = d.patient.age !== null ? `, ${d.patient.age} ${t("cn.draftAge")}` : "";
+    const unit = d.patient.unit ? `, ${d.patient.unit}` : "";
+    lines.push(`${t("cn.draftHeader")}: ${d.patient.fullName}${age}${unit}`);
+  }
+  lines.push(`${t("cn.draftMethod")}: ${d.surveyTitle}`);
+  if (d.submittedAt) lines.push(`${t("cn.draftDate")}: ${day(d.submittedAt)}`);
+
+  if (d.scales.length) {
+    lines.push("", `${t("cn.draftScales")}:`);
+    for (const s of d.scales) {
+      /*
+       * Значение печатается в том виде, в каком шкала нормирована: доля в
+       * процентах, T-балл и стен — числом. Приводить всё к процентам значило
+       * бы напечатать «T-балл 65 %» — правдоподобно и неверно.
+       */
+      const shown =
+        s.normalization === "ratio"
+          ? `${Math.round(s.percent)} %`
+          : String(Math.round(s.value * 10) / 10);
+      const band = s.band ? ` — ${s.band}` : "";
+      const before =
+        s.previousValue !== null
+          ? ` (${t("cn.draftWas")} ${
+              s.normalization === "ratio"
+                ? `${Math.round(s.previousValue * 100)} %`
+                : Math.round(s.previousValue * 10) / 10
+            }${d.previousAt ? `, ${day(d.previousAt)}` : ""})`
+          : "";
+      lines.push(`· ${s.title}: ${shown}${band}${before}`);
+    }
+  }
+
+  lines.push("", t("cn.draftConclusionHere"));
+  return lines.join("\n");
 }
