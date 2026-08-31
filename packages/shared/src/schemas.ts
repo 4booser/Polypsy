@@ -139,6 +139,11 @@ export const grantAccessSchema = z.object({
   userId: z.string().min(1),
   expiresAt: z.string().nullish(),
   note: z.string().max(500).nullish(),
+  /**
+   * Сколько раз можно пройти. Одна попытка по умолчанию — не потому, что так
+   * строже, а потому, что вторая портит измерение: человек помнит вопросы.
+   */
+  attemptsAllowed: z.number().int().min(1).max(10).default(1),
 });
 
 export const batteryInputSchema = z.object({

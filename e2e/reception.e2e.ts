@@ -117,3 +117,30 @@ test("на первом приёме видно, что человек здес�
   const marker = page.getByText(/Был у|Первый приём здесь/).first();
   await expect(marker).toBeVisible();
 });
+
+test("методика назначается прямо с приёма, не теряя набранного протокола", async ({ page }) => {
+  /*
+   * Уход с экрана стоит набранного текста: текстовое поле не переживает
+   * навигацию, и специалист либо теряет написанное, либо не назначает вовсе.
+   */
+  await login(page, "psy");
+  await page.goto("/today");
+  await page.locator('a[href^="/visit/"]').first().click();
+  await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+
+  const area = page.locator("textarea").first();
+  await area.fill("Набранный текст, который не должен пропасть.");
+
+  await page.getByRole("button", { name: "Назначить методику" }).click();
+
+  // ждём, пока список методик приедет: до этого выбирать нечего
+  const picker = page.getByLabel("Методика");
+  await expect(picker.locator("option")).not.toHaveCount(1);
+  await picker.selectOption({ index: 1 });
+
+  await page.getByRole("button", { name: "Назначить методику" }).click();
+
+  // остались на том же экране, и текст на месте
+  await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
+  await expect(area).toHaveValue(/не должен пропасть/);
+});

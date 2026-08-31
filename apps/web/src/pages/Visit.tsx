@@ -5,7 +5,7 @@ import { api } from "../api";
 import { day } from "../format";
 import { Empty, Screen, useAction } from "../ui";
 import { Page, Panel } from "../ui/layout";
-import { Button, Num, SectionLabel, Textarea } from "../ui/primitives";
+import { Button, Field, Input, Num, SectionLabel, Select, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -237,12 +237,15 @@ function Actions({
           </Button>
         ) : null}
 
-        <Link to={`/access?user=${data.patient.id}`} className="btn">
-          {ut("visit.assign")}
-        </Link>
-        <Link to={`/referrals?user=${data.patient.id}`} className="btn">
-          {ut("visit.refer")}
-        </Link>
+        {/*
+          Назначение и направление делаются здесь, а не по ссылке отсюда.
+          Уход с экрана стоит набранного протокола: текстовое поле не
+          переживает навигацию, и специалист либо теряет написанное, либо не
+          назначает вовсе. Обе формы раскрываются на месте.
+        */}
+        <Assign patientId={data.patient.id} busy={busy} run={run} />
+        <Refer patientId={data.patient.id} busy={busy} run={run} />
+
         <Link to={`/patients/${data.patient.id}`} className="btn">
           {ut("visit.openCard")}
         </Link>
@@ -258,5 +261,163 @@ function Actions({
         ) : null}
       </div>
     </Panel>
+  );
+}
+
+
+/**
+ * Назначить методику — не уходя с приёма.
+ *
+ * Срок и число попыток задаются явно, без умолчаний в разметке: одна попытка
+ * по умолчанию не потому, что так строже, а потому что вторая портит
+ * измерение — человек помнит вопросы.
+ */
+function Assign({
+  patientId,
+  busy,
+  run,
+}: {
+  patientId: string;
+  busy: boolean;
+  run: (fn: () => Promise<unknown>, ok?: string) => Promise<boolean>;
+}) {
+  const { ut } = useLang();
+  const [open, setOpen] = useState(false);
+  const [surveyId, setSurveyId] = useState("");
+  const [due, setDue] = useState("");
+  const [attempts, setAttempts] = useState(1);
+  const surveys = useResource(() => (open ? api.surveys() : Promise.resolve(null)), [open]);
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        {ut("visit.assign")}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-hairline p-2">
+      <Field label={ut("visit.assignPick")}>
+        <Select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
+          <option value="" />
+          {(surveys.data ?? [])
+            .filter((s) => s.status === "published")
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+        </Select>
+      </Field>
+      <Field label={ut("visit.assignDue")}>
+        <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+      </Field>
+      <Field label={ut("visit.assignAttempts")}>
+        <Input
+          type="number"
+          min={1}
+          max={10}
+          value={attempts}
+          onChange={(e) => setAttempts(Number(e.target.value))}
+        />
+      </Field>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          disabled={busy || !surveyId}
+          onClick={() =>
+            run(
+              () =>
+                api
+                  .grant(surveyId, patientId, undefined, due || null, attempts)
+                  .then(() => setOpen(false)),
+              ut("visit.assigned"),
+            )
+          }
+        >
+          {ut("visit.assign")}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          {ut("visit.cancel")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Выписать направление — тоже здесь: уход с экрана стоит протокола */
+function Refer({
+  patientId,
+  busy,
+  run,
+}: {
+  patientId: string;
+  busy: boolean;
+  run: (fn: () => Promise<unknown>, ok?: string) => Promise<boolean>;
+}) {
+  const { ut } = useLang();
+  const [open, setOpen] = useState(false);
+  const [destination, setDestination] = useState<
+    "psychiatrist" | "inpatient" | "outpatient" | "commander" | "other"
+  >("psychiatrist");
+  const [urgency, setUrgency] = useState<"routine" | "urgent" | "immediate">("routine");
+  const [reason, setReason] = useState("");
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        {ut("visit.refer")}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-hairline p-2">
+      <Field label={ut("visit.referDest")}>
+        <Select
+          value={destination}
+          onChange={(e) => setDestination(e.target.value as typeof destination)}
+        >
+          {(["psychiatrist", "inpatient", "outpatient", "commander", "other"] as const).map((d) => (
+            <option key={d} value={d}>
+              {ut(`dest.${d}` as UiKey)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label={ut("visit.referUrgency")}>
+        <Select value={urgency} onChange={(e) => setUrgency(e.target.value as typeof urgency)}>
+          {(["routine", "urgent", "immediate"] as const).map((u) => (
+            <option key={u} value={u}>
+              {ut(`urg.${u}` as UiKey)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label={ut("visit.referReason")}>
+        <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+      </Field>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() =>
+            run(
+              () =>
+                api
+                  .createReferral({ userId: patientId, destination, urgency, reason: reason || null })
+                  .then(() => setOpen(false)),
+              ut("visit.referred"),
+            )
+          }
+        >
+          {ut("visit.refer")}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          {ut("visit.cancel")}
+        </Button>
+      </div>
+    </div>
   );
 }

@@ -37,6 +37,7 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
       grantedAt: surveyAccess.grantedAt,
       expiresAt: surveyAccess.expiresAt,
       note: surveyAccess.note,
+      attemptsAllowed: surveyAccess.attemptsAllowed,
       completed: sql<number>`(select count(*) from responses r where r.survey_id = ${surveyId} and r.user_id = "survey_access"."user_id" and r.status = 'completed')`,
     })
     .from(surveyAccess)
@@ -59,6 +60,8 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
     grantedAt: r.grantedAt,
     expiresAt: r.expiresAt,
     note: r.note,
+    attemptsAllowed: r.attemptsAllowed,
+    attemptsUsed: Number(r.completed ?? 0),
     completed: Number(r.completed ?? 0) > 0,
   }));
 
@@ -92,6 +95,7 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
       grantedBy: c.get("user").id,
       expiresAt: input.expiresAt ?? null,
       note: input.note ?? null,
+      attemptsAllowed: input.attemptsAllowed,
     })
     .onConflictDoUpdate({
       target: [surveyAccess.surveyId, surveyAccess.userId],
@@ -99,6 +103,7 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
         grantedBy: c.get("user").id,
         expiresAt: input.expiresAt ?? null,
         note: input.note ?? null,
+        attemptsAllowed: input.attemptsAllowed,
       },
     });
 
@@ -107,7 +112,11 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
     resourceType: "survey",
     resourceId: surveyId,
     subjectUserId: input.userId,
-    details: { patient: target.email, expiresAt: input.expiresAt ?? null },
+    details: {
+      patient: target.email,
+      expiresAt: input.expiresAt ?? null,
+      attemptsAllowed: input.attemptsAllowed,
+    },
   });
 
   return c.json({ surveyId, userId: input.userId }, 201);
