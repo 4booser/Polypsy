@@ -14,6 +14,7 @@ import { auditSystem } from "./audit";
 import { publish } from "./events";
 import { currentCrisis } from "./crisis";
 import { sweepPresence } from "../routes/presence";
+import { sweepNoShows } from "./noShow";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -294,6 +295,13 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      */
     void systemContext(baseDb, () => sweepPresence()).catch((error) =>
       log.warn("presence.sweep_failed", { error: String(error) }),
+    );
+    /*
+     * И разводим истёкшие приёмы по неявкам. Раз в час — подходящий шаг:
+     * задержка сигнала выходит меньше половины рабочего дня, а чаще незачем.
+     */
+    void systemContext(baseDb, () => sweepNoShows()).catch((error) =>
+      log.warn("clinic.no_show_sweep_failed", { error: String(error) }),
     );
   };
   tick();
