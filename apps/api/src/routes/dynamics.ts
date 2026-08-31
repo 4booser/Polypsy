@@ -14,12 +14,17 @@ import { reliabilityOf } from "../lib/psychometrics";
 import { round, variance } from "../lib/stats";
 import { answers as answersTable } from "../db/schema";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { log } from "../lib/log";
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
-dynamicsRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+dynamicsRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
 /**
  * Кто проходил методики повторно — в зоне ответственности сотрудника.

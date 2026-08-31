@@ -7,11 +7,16 @@ import { questions, riskAlerts, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const alertRoutes = new Hono<AppEnv>();
 
-alertRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+alertRoutes.use("*", requireAuth, requireStaff, requirePermission("alerts.review"));
 
 /** Тревоги по методикам, доступным этому сотруднику. По умолчанию — только неразобранные. */
 alertRoutes.get("/", async (c) => {

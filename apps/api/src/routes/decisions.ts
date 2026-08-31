@@ -8,9 +8,19 @@ import { currentCrisis } from "../lib/crisis";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, isSuperadmin, surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const decisionRoutes = new Hono<AppEnv>();
+/*
+ * Три разных права в одном наборе, и это не разнобой.
+ *
+ * Правила и срабатывания читает и разбирает тот, кто вообще разбирает риск.
+ * Заступить на дежурство — отдельное право: дежурство временная нагрузка,
+ * а не свойство должности, и выдаётся исключением на срок смены. Менять сами
+ * правила и включать кризисный режим — decisions.manage; раньше это требовало
+ * суперадмина, теперь требует права, и суперадмин проходит потому, что
+ * обходит справочник целиком.
+ */
 decisionRoutes.use("*", requireAuth, requireStaff);
 
 /**
@@ -53,7 +63,7 @@ const ruleSchema = z.object({
 
 /* ── правила ── */
 
-decisionRoutes.get("/rules", async (c) => {
+decisionRoutes.get("/rules", requirePermission("alerts.review"), async (c) => {
   const user = c.get("user");
   const groups = await accessibleGroupIds(user);
 
@@ -77,7 +87,7 @@ decisionRoutes.get("/rules", async (c) => {
  * группы и подсказывает клинические шаги — это уровень настройки учреждения,
  * а не рабочий инструмент дежурного.
  */
-decisionRoutes.post("/rules", requireSuperadmin, async (c) => {
+decisionRoutes.post("/rules", requirePermission("decisions.manage"), async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, ruleSchema);
 
@@ -97,7 +107,7 @@ decisionRoutes.post("/rules", requireSuperadmin, async (c) => {
   return c.json({ id }, 201);
 });
 
-decisionRoutes.patch("/rules/:id", requireSuperadmin, async (c) => {
+decisionRoutes.patch("/rules/:id", requirePermission("decisions.manage"), async (c) => {
   const id = c.req.param("id");
   const input = await parseBody(c.req.raw, ruleSchema.partial());
 
@@ -129,7 +139,7 @@ decisionRoutes.patch("/rules/:id", requireSuperadmin, async (c) => {
 
 /* ── срабатывания ── */
 
-decisionRoutes.get("/hits", async (c) => {
+decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
   const user = c.get("user");
   const scope = await surveyScopeFilter(user);
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
@@ -167,7 +177,7 @@ const decisionSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
 });
 
-decisionRoutes.patch("/hits/:id", async (c) => {
+decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
   const input = await parseBody(c.req.raw, decisionSchema);
@@ -216,7 +226,7 @@ const shiftSchema = z.object({
   endsAt: z.string(),
 });
 
-decisionRoutes.get("/duty", async (c) => {
+decisionRoutes.get("/duty", requirePermission("duty.take"), async (c) => {
   const now = new Date().toISOString();
   const rows = await db
     .select({ shift: dutyShifts, person: users })
@@ -237,7 +247,7 @@ decisionRoutes.get("/duty", async (c) => {
   });
 });
 
-decisionRoutes.post("/duty", async (c) => {
+decisionRoutes.post("/duty", requirePermission("duty.take"), async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, shiftSchema);
 
@@ -271,9 +281,9 @@ decisionRoutes.post("/duty", async (c) => {
 
 const crisisSchema = z.object({ reason: z.string().min(3).max(300) });
 
-decisionRoutes.get("/crisis", async (c) => c.json(await currentCrisis()));
+decisionRoutes.get("/crisis", requirePermission("alerts.review"), async (c) => c.json(await currentCrisis()));
 
-decisionRoutes.post("/crisis", requireSuperadmin, async (c) => {
+decisionRoutes.post("/crisis", requirePermission("decisions.manage"), async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, crisisSchema);
 
@@ -297,7 +307,7 @@ decisionRoutes.post("/crisis", requireSuperadmin, async (c) => {
   return c.json({ ok: true }, 201);
 });
 
-decisionRoutes.delete("/crisis", requireSuperadmin, async (c) => {
+decisionRoutes.delete("/crisis", requirePermission("decisions.manage"), async (c) => {
   const user = c.get("user");
 
   const [row] = await db

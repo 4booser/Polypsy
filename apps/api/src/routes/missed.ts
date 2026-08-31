@@ -7,10 +7,15 @@ import { alertCases, batteries, referrals, scheduleRuns, schedules, surveys, use
 import { fullNameOf } from "../lib/auth";
 import { langOf, parseQuery } from "../lib/http";
 import { accessibleGroupIds, accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const missedRoutes = new Hono<AppEnv>();
-missedRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+missedRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
 /**
  * «Что произошло, пока меня не было».

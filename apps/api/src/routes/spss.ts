@@ -7,14 +7,20 @@ import { env } from "../env";
 import { answers, responseScores, responses, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { notFound, parseQuery } from "../lib/http";
+import { forbidden, notFound, parseQuery } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { hasPermission } from "../lib/permissions";
 
 export const spssRoutes = new Hono<AppEnv>();
 
-spssRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». Набор закрыт правом на обезличенную
+ * выгрузку — это нижняя граница: без него сюда нечего ходить вовсе. Выгрузка
+ * с именами требует второго права и проверяется по профилю (см. ниже).
+ */
+spssRoutes.use("*", requireAuth, requireStaff, requirePermission("export.deidentified"));
 
 /** Пропущенное значение: SPSS не понимает пустую ячейку в числовом поле */
 const MISSING = -99;
@@ -348,16 +354,30 @@ async function loadRows(surveyId: string): Promise<RowContext[]> {
  * Раньше неизвестный профиль молча становился «full»: опечатка в
  * `?profile=deidentifed` отдавала выгрузку с фамилиями тому, кто был уверен,
  * что забирает обезличенную. Теперь — отказ.
+ *
+ * Здесь же проверяется право на выгрузку с именами. Проверка стоит в разборе
+ * параметров, а не строкой middleware, потому что маршрут один, а выгрузок
+ * две: обезличенная и с идентификаторами. Закрыть весь набор правом
+ * export.full значило бы запретить обезличенную выгрузку тем, кому она
+ * разрешена; оставить обе под одним правом значило бы, что различие профилей
+ * ничего не значит для доступа — а оно и есть всё различие.
+ *
+ * Точка одна на все четыре маршрута выгрузки: разложить ту же проверку по
+ * маршрутам означало бы завести четыре места, где её можно забыть.
  */
-function exportOptions(c: Context) {
-  return parseQuery(c, exportQuery);
+async function exportOptions(c: Context<AppEnv>) {
+  const options = parseQuery(c, exportQuery);
+  if (options.profile === "full" && !(await hasPermission(c.get("user"), "export.full"))) {
+    forbidden("err.permissionRequired", { permission: "export.full" });
+  }
+  return options;
 }
 
 /** Числовая матрица: варианты закодированы порядковыми номерами */
 spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang, purpose } = exportOptions(c);
+  const { profile, lang, purpose } = await exportOptions(c);
   const kanon = await quasiPlan(surveyId, profile);
   const { vars } = await buildSchema(surveyId, lang, profile, kanon);
   const rows = await loadRows(surveyId);
@@ -403,7 +423,7 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
 spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang } = exportOptions(c);
+  const { profile, lang } = await exportOptions(c);
   const { survey, vars } = await buildSchema(surveyId, lang, profile);
   const dataFile = `quizzy-${surveyId}-data.csv`;
 
@@ -469,7 +489,7 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
 spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang } = exportOptions(c);
+  const { profile, lang } = await exportOptions(c);
   const { survey, vars } = await buildSchema(surveyId, lang, profile);
 
   const lines = [["variable", "type", "label", "values"].join(";")];
@@ -516,7 +536,7 @@ spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
 spssRoutes.get("/surveys/:id/long.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, purpose } = exportOptions(c);
+  const { profile, purpose } = await exportOptions(c);
 
   const { sql } = await import("drizzle-orm");
   const rows = await db.execute(sql`
@@ -612,7 +632,7 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
 spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang, purpose } = exportOptions(c);
+  const { profile, lang, purpose } = await exportOptions(c);
   const kanon = await quasiPlan(surveyId, profile);
   const { survey, vars } = await buildSchema(surveyId, lang, profile, kanon);
 
@@ -699,7 +719,7 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
   await assertSurveyAccess(c.get("user"), surveyId);
   const ext = c.req.param("ext");
   if (ext !== "r" && ext !== "py") notFound("err.scriptNotFound");
-  const { profile, lang } = exportOptions(c);
+  const { profile, lang } = await exportOptions(c);
   const { vars } = await buildSchema(surveyId, lang, profile);
 
   const dataFile = `quizzy-${surveyId}-data.csv`;

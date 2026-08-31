@@ -8,7 +8,7 @@ import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseQuery } from "../lib/http";
 import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
 
 /**
@@ -20,7 +20,12 @@ import { z } from "zod";
  */
 export const alertCaseRoutes = new Hono<AppEnv>();
 
-alertCaseRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+alertCaseRoutes.use("*", requireAuth, requireStaff, requirePermission("alerts.review"));
 
 /** Сколько сигналов показывать внутри случая сразу */
 const SIGNALS_PREVIEW = 12;

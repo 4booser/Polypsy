@@ -20,7 +20,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
  * Что от меня ждут сегодня.
@@ -34,7 +34,12 @@ import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
  */
 export const worklistRoutes = new Hono<AppEnv>();
 
-worklistRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+worklistRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.read"));
 
 type Kind = "case" | "assignment" | "referral" | "followup" | "pathway" | "goal";
 

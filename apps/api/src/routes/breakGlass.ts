@@ -7,9 +7,19 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds, isSuperadmin } from "../lib/scope";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const breakGlassRoutes = new Hono<AppEnv>();
+/*
+ * Право стоит на маршрутах, а не на наборе, и это не оформление.
+ *
+ * Разбить стекло и закрыть свой доступ — право emergency.breakGlass, оно
+ * временное и выдаётся исключением на срок смены. А список всех обходов
+ * открыт каждому, кто работает с пациентами: смысл механизма в громкости,
+ * и разбирает обход как раз тот, кому самому разбивать стекло не положено.
+ * Закрой список тем же правом — и видеть чужие обходы смогли бы только те,
+ * кто и сам их совершает.
+ */
 breakGlassRoutes.use("*", requireAuth, requireStaff);
 
 /**
@@ -46,7 +56,7 @@ const openSchema = z.object({
   reason: z.string().min(10).max(500),
 });
 
-breakGlassRoutes.post("/", async (c) => {
+breakGlassRoutes.post("/", requirePermission("emergency.breakGlass"), async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, openSchema);
 
@@ -86,7 +96,7 @@ breakGlassRoutes.post("/", async (c) => {
 });
 
 /** Свои открытые доступы — для обратного отсчёта на экране */
-breakGlassRoutes.get("/mine", async (c) => {
+breakGlassRoutes.get("/mine", requirePermission("emergency.breakGlass"), async (c) => {
   const user = c.get("user");
   const now = new Date().toISOString();
 
@@ -118,7 +128,7 @@ breakGlassRoutes.get("/mine", async (c) => {
  * громкости. Обход правил, о котором знает один человек, ничем не лучше
  * тихого.
  */
-breakGlassRoutes.get("/", async (c) => {
+breakGlassRoutes.get("/", requirePermission("patients.read"), async (c) => {
   const rows = await db
     .select({ row: breakGlass, patient: users })
     .from(breakGlass)
@@ -144,7 +154,7 @@ breakGlassRoutes.get("/", async (c) => {
 });
 
 /** Закрыть доступ досрочно: свой — сам, чужой — суперадмин */
-breakGlassRoutes.post("/:id/close", async (c) => {
+breakGlassRoutes.post("/:id/close", requirePermission("emergency.breakGlass"), async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
 

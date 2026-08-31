@@ -54,6 +54,29 @@ interface RouteDoc {
    * доступно.
    */
   permission?: Permission;
+  /**
+   * Почему маршрут не закрыт правом — если он и не должен быть.
+   *
+   * Не всякий маршрут персонала стоит закрывать правом. Список групп нужен
+   * всем, кто вообще видит методики; сохранённый вид экрана — личная
+   * настройка; присутствие на экране видно тем, кто на этом же экране.
+   * Право на такое — бюрократия, а не защита: его выдали бы всем в первый же
+   * день и забыли.
+   *
+   * Но и молчаливый пробел не годится: маршрут без права неотличим от
+   * маршрута, где строку забыли. Поэтому здесь требуется не флаг, а
+   * причина — её пишут один раз и читают, когда решают, закрывать ли
+   * похожий маршрут. Проверка полноты требует ровно одного из двух полей.
+   */
+  whyNoPermission?: string;
+  /**
+   * Маршрут отдаёт поток, а не ответ.
+   *
+   * Проверке прав это нужно знать: убедиться, что без права приходит отказ,
+   * на потоке можно, а вот «с правом проходит» повисло бы — поток и не
+   * должен закрываться.
+   */
+  streaming?: true;
   body?: ZodTypeAny;
 }
 
@@ -73,24 +96,24 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/auth/password": { summary: "Смена собственного пароля", access: "user", body: changePasswordSchema },
 
   /* ── права ── */
-  "GET /api/permissions/catalogue": { summary: "Справочник прав с пояснениями", access: "superadmin" },
-  "GET /api/permissions/roles": { summary: "Роли и их наборы прав", access: "superadmin" },
-  "POST /api/permissions/roles": { summary: "Новая роль", access: "superadmin" },
+  "GET /api/permissions/catalogue": { summary: "Справочник прав с пояснениями", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
+  "GET /api/permissions/roles": { summary: "Роли и их наборы прав", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
+  "POST /api/permissions/roles": { summary: "Новая роль", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
   "PUT /api/permissions/roles/:id/permissions": {
     summary: "Набор прав роли; встроенная роль не правится вручную",
-    access: "superadmin",
+    access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
   },
   "GET /api/permissions/users/:id": {
     summary: "Что человек может и из чего это сложилось: роли, исключения, итог",
-    access: "superadmin",
+    access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
   },
-  "PUT /api/permissions/users/:id/roles": { summary: "Роли человека", access: "superadmin" },
+  "PUT /api/permissions/users/:id/roles": { summary: "Роли человека", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
   "POST /api/permissions/users/:id/exceptions": {
     summary: "Личное исключение: одно право, с причиной и сроком",
-    access: "superadmin",
+    access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
   },
-  "POST /api/permissions/exceptions/:id/revoke": { summary: "Отзыв исключения", access: "superadmin" },
-  "GET /api/permissions/exceptions": { summary: "Действующие исключения по всем", access: "superadmin" },
+  "POST /api/permissions/exceptions/:id/revoke": { summary: "Отзыв исключения", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
+  "GET /api/permissions/exceptions": { summary: "Действующие исключения по всем", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
 
   /* ── методики ── */
   "GET /api/surveys": { summary: "Список методик; ?archived=1 — снятые с использования", access: "user" },
@@ -112,10 +135,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PUT /api/surveys/:id/draft": { summary: "Сохранение черновика", access: "user", body: draftSchema },
   "GET /api/surveys/:id/draft": { summary: "Свой незавершённый черновик", access: "user" },
   "GET /api/surveys/:id/responses": { summary: "Прохождения по методике", access: "staff", permission: "patients.read" },
-  "GET /api/responses/:id": { summary: "Прохождение целиком", access: "staff" },
+  "GET /api/responses/:id": { summary: "Прохождение целиком", access: "staff", whyNoPermission: "своё прохождение открывает сам обследуемый; персоналу доступ ограничен областью ответственности" },
   "GET /api/me/responses": { summary: "Свои прохождения", access: "user" },
   "GET /api/me/dynamics": { summary: "Своя динамика — только по разрешённым методикам", access: "user" },
-  "GET /api/reports/responses/:id": { summary: "Отчёт по прохождению для печати", access: "staff" },
+  "GET /api/reports/responses/:id": { summary: "Отчёт по прохождению для печати", access: "staff", whyNoPermission: "своё прохождение печатает сам обследуемый; персоналу доступ уже ограничен областью ответственности" },
 
   /* ── назначения ── */
   "GET /api/access/surveys/:id/grants": { summary: "Кому назначена методика", access: "staff", permission: "assignments.manage" },
@@ -124,13 +147,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/access/patients": { summary: "Обследуемые в зоне ответственности", access: "staff", permission: "assignments.manage" },
 
   /* ── группы ── */
-  "GET /api/groups": { summary: "Группы методик", access: "staff" },
-  "POST /api/groups": { summary: "Создание группы", access: "superadmin", body: groupInputSchema },
-  "PATCH /api/groups/:id": { summary: "Правка группы", access: "superadmin", body: groupInputSchema },
-  "DELETE /api/groups/:id": { summary: "Удаление пустой группы", access: "superadmin" },
-  "GET /api/groups/:id/admins": { summary: "Администраторы группы", access: "staff" },
-  "POST /api/groups/:id/admins": { summary: "Назначить администратора группы", access: "superadmin" },
-  "DELETE /api/groups/:id/admins/:userId": { summary: "Снять администратора группы", access: "superadmin" },
+  "GET /api/groups": { summary: "Группы методик", access: "staff", whyNoPermission: "список групп — это область ответственности, а не действие: его читает каждый, кто вообще видит методики, и ограничивает его assertGroupAccess" },
+  "POST /api/groups": { summary: "Создание группы", access: "superadmin", permission: "groups.manage", body: groupInputSchema },
+  "PATCH /api/groups/:id": { summary: "Правка группы", access: "superadmin", whyNoPermission: "переименовать можно только свою группу, и это проверяет область ответственности, а не право", body: groupInputSchema },
+  "DELETE /api/groups/:id": { summary: "Удаление пустой группы", access: "superadmin", permission: "groups.manage" },
+  "GET /api/groups/:id/admins": { summary: "Администраторы группы", access: "staff", whyNoPermission: "состав администраторов группы виден тем, кто с этой группой работает; кого именно видно — решает область ответственности" },
+  "POST /api/groups/:id/admins": { summary: "Назначить администратора группы", access: "superadmin", permission: "groups.manage" },
+  "DELETE /api/groups/:id/admins/:userId": { summary: "Снять администратора группы", access: "superadmin", permission: "groups.manage" },
 
   /* ── батареи ── */
   "GET /api/batteries": { summary: "Батареи методик", access: "staff", permission: "batteries.manage" },
@@ -164,7 +187,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/kiosk/state/:token/submit": { summary: "Сдача прохождения из киоска", access: "public", body: submitResponseSchema },
 
   /* ── тревоги, направления, заключения ── */
-  "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff" },
+  "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff", permission: "alerts.review" },
   "GET /api/unit-report": { summary: "Состояние подразделения за период; малые ячейки подавляются", access: "staff", permission: "unitReport.read" },
   "GET /api/unit-report/units": { summary: "Подразделения для отчёта", access: "staff", permission: "unitReport.read" },
   "PUT /api/auth/me/workspace": { summary: "Настройки рабочего места: стартовый экран, тема, плотность", access: "user" },
@@ -175,15 +198,15 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/informants/form/:token": { summary: "Сдача формы информантом; ссылка одноразовая", access: "public" },
   "GET /api/informants/compare/:userId": { summary: "Самоотчёт против взгляда со стороны", access: "staff", permission: "informants.manage" },
   "GET /api/conclusions/batch": { summary: "Пакет подписанных заключений подразделения за период", access: "staff", permission: "patients.read" },
-  "GET /api/spss/surveys/:id/manifest.json": { summary: "Снимок параметров выгрузки: версии, нормы, профиль обезличивания", access: "staff" },
-  "GET /api/spss/surveys/:id/load/:ext": { summary: "Готовый скрипт загрузки выгрузки в R или Python", access: "staff" },
+  "GET /api/spss/surveys/:id/manifest.json": { summary: "Снимок параметров выгрузки: версии, нормы, профиль обезличивания", access: "staff", permission: "export.deidentified" },
+  "GET /api/spss/surveys/:id/load/:ext": { summary: "Готовый скрипт загрузки выгрузки в R или Python", access: "staff", permission: "export.deidentified" },
   "GET /api/data-quality/surveys/:id/items": { summary: "Тепловая карта пунктов: время ответа и серии одинаковых ответов", access: "staff", permission: "analytics.read" },
-  "GET /api/missed": { summary: "Что произошло, пока меня не было: новые случаи, разобранные другими, направления, расписания", access: "staff" },
+  "GET /api/missed": { summary: "Что произошло, пока меня не было: новые случаи, разобранные другими, направления, расписания", access: "staff", permission: "patients.read" },
   "GET /api/search/notes": { summary: "Поиск по записям приёма через слепой индекс; текст запроса в журнал не пишется", access: "staff", permission: "patients.read" },
-  "POST /api/break-glass": { summary: "Разбить стекло: доступ к пациенту вне своей группы, с обоснованием и на срок", access: "staff" },
-  "GET /api/break-glass/mine": { summary: "Свои открытые доступы вне правил", access: "staff" },
-  "GET /api/break-glass": { summary: "Все случаи обхода правил — для разбора; видны всем сотрудникам", access: "staff" },
-  "POST /api/break-glass/:id/close": { summary: "Закрыть доступ досрочно", access: "staff" },
+  "POST /api/break-glass": { summary: "Разбить стекло: доступ к пациенту вне своей группы, с обоснованием и на срок", access: "staff", permission: "emergency.breakGlass" },
+  "GET /api/break-glass/mine": { summary: "Свои открытые доступы вне правил", access: "staff", permission: "emergency.breakGlass" },
+  "GET /api/break-glass": { summary: "Все случаи обхода правил — для разбора; видны всем сотрудникам", access: "staff", permission: "patients.read" },
+  "POST /api/break-glass/:id/close": { summary: "Закрыть доступ досрочно", access: "staff", permission: "emergency.breakGlass" },
   "POST /api/cohorts/preview": { summary: "Размер и распределения когорты; малые ячейки подавляются", access: "staff", permission: "cohorts.read" },
   "POST /api/cohorts/members": { summary: "Когорта поимённо — отдельное действие и отдельная запись в журнале", access: "staff", permission: "cohorts.read" },
   "GET /api/cohorts": { summary: "Свои сохранённые когорты", access: "staff", permission: "cohorts.read" },
@@ -192,25 +215,25 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/devices/checkin": { summary: "Отметка устройства; отвечает, надо ли стереть локальные данные", access: "user" },
   "POST /api/devices/wiped": { summary: "Подтверждение стирания устройством", access: "user" },
   "GET /api/devices": { summary: "Свои устройства; чужие — только суперадмину", access: "user" },
-  "POST /api/devices/:id/wipe": { summary: "Запросить стирание: исполнится при следующем выходе на связь", access: "superadmin" },
-  "GET /api/decisions/crisis": { summary: "Включён ли кризисный режим учреждения", access: "staff" },
-  "POST /api/decisions/crisis": { summary: "Включить кризисный режим: плановые замеры стоп, очередь по тяжести", access: "superadmin" },
-  "DELETE /api/decisions/crisis": { summary: "Выключить кризисный режим", access: "superadmin" },
-  "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff" },
-  "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin" },
-  "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin" },
-  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека", access: "staff" },
-  "PATCH /api/decisions/hits/:id": { summary: "Принять или отклонить предложение (отклонение — с объяснением)", access: "staff" },
-  "GET /api/decisions/duty": { summary: "Кто сейчас на дежурной смене", access: "staff" },
-  "POST /api/decisions/duty": { summary: "Поставить на дежурную смену", access: "staff" },
-  "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff" },
-  "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff" },
-  "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff" },
-  "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff" },
-  "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff" },
-  "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff" },
-  "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff" },
-  "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке", access: "staff" },
+  "POST /api/devices/:id/wipe": { summary: "Запросить стирание: исполнится при следующем выходе на связь", access: "superadmin", whyNoPermission: "стирание устройства — крайняя мера, делегировать её мы не собираемся" },
+  "GET /api/decisions/crisis": { summary: "Включён ли кризисный режим учреждения", access: "staff", permission: "alerts.review" },
+  "POST /api/decisions/crisis": { summary: "Включить кризисный режим: плановые замеры стоп, очередь по тяжести", access: "superadmin", permission: "decisions.manage" },
+  "DELETE /api/decisions/crisis": { summary: "Выключить кризисный режим", access: "superadmin", permission: "decisions.manage" },
+  "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff", permission: "alerts.review" },
+  "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin", permission: "decisions.manage" },
+  "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin", permission: "decisions.manage" },
+  "GET /api/decisions/hits": { summary: "Предложения правил, ждущие решения человека", access: "staff", permission: "alerts.review" },
+  "PATCH /api/decisions/hits/:id": { summary: "Принять или отклонить предложение (отклонение — с объяснением)", access: "staff", permission: "alerts.review" },
+  "GET /api/decisions/duty": { summary: "Кто сейчас на дежурной смене", access: "staff", permission: "duty.take" },
+  "POST /api/decisions/duty": { summary: "Поставить на дежурную смену", access: "staff", permission: "duty.take" },
+  "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff", whyNoPermission: "пульс присутствия шлёт сам клиент за того, кто уже вошёл" },
+  "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff", whyNoPermission: "кто ещё держит открытым этот экран — видно тем, кто на этом же экране; скрывать нечего" },
+  "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff", permission: "patients.read" },
+  "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff", permission: "alerts.review" },
+  "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff", permission: "alerts.review" },
+  "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff", permission: "alerts.review" },
+  "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
+  "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке", access: "staff", permission: "alerts.review" },
   "GET /api/referrals": { summary: "Направления; ?all=1 — вместе с завершёнными", access: "staff", permission: "referrals.manage" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", permission: "referrals.manage", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },
@@ -220,11 +243,11 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/conclusions/responses/:id/conclusion/sign": { summary: "Подпись заключения — фиксирует снапшот", access: "staff", permission: "conclusions.sign" },
 
   /* ── аналитика ── */
-  "GET /api/analytics/overview": { summary: "Сводка по всем методикам", access: "staff" },
-  "GET /api/analytics/surveys/:id": { summary: "Аналитика методики: распределения, психометрика, воронка", access: "staff" },
-  "GET /api/analytics/surveys/:id/export": { summary: "Выгрузка прохождений методики", access: "staff" },
-  "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами", access: "staff" },
-  "GET /api/dynamics/respondents/:userId": { summary: "Динамика обследуемого с метками RCI", access: "staff" },
+  "GET /api/analytics/overview": { summary: "Сводка по всем методикам", access: "staff", permission: "analytics.read" },
+  "GET /api/analytics/surveys/:id": { summary: "Аналитика методики: распределения, психометрика, воронка", access: "staff", permission: "analytics.read" },
+  "GET /api/analytics/surveys/:id/export": { summary: "Выгрузка прохождений методики", access: "staff", permission: "export.full" },
+  "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами", access: "staff", permission: "patients.read" },
+  "GET /api/dynamics/respondents/:userId": { summary: "Динамика обследуемого с метками RCI", access: "staff", permission: "patients.read" },
   "GET /api/compare/surveys/:id": { summary: "Сравнение когорт по методике", access: "staff", permission: "analytics.read" },
   "GET /api/compare/surveys/:id/correlations": { summary: "Корреляции шкал", access: "staff", permission: "analytics.read" },
   "GET /api/facets/surveys/:id": { summary: "Срезы по полу и возрасту", access: "staff", permission: "analytics.read" },
@@ -238,22 +261,22 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/norms/surveys/:id/age-curves": { summary: "Возрастные кривые по шкалам", access: "staff", permission: "norms.manage" },
 
   /* ── выгрузка для статпакетов ── */
-  "GET /api/spss/surveys/:id/data.csv": { summary: "Данные в широком формате", access: "staff" },
-  "GET /api/spss/surveys/:id/syntax.sps": { summary: "Синтаксис SPSS под выгрузку", access: "staff" },
-  "GET /api/spss/surveys/:id/codebook.csv": { summary: "Кодовая книга переменных", access: "staff" },
-  "GET /api/spss/surveys/:id/long.csv": { summary: "Данные в длинном формате для R и Python", access: "staff" },
+  "GET /api/spss/surveys/:id/data.csv": { summary: "Данные в широком формате", access: "staff", permission: "export.deidentified" },
+  "GET /api/spss/surveys/:id/syntax.sps": { summary: "Синтаксис SPSS под выгрузку", access: "staff", permission: "export.deidentified" },
+  "GET /api/spss/surveys/:id/codebook.csv": { summary: "Кодовая книга переменных", access: "staff", permission: "export.deidentified" },
+  "GET /api/spss/surveys/:id/long.csv": { summary: "Данные в длинном формате для R и Python", access: "staff", permission: "export.deidentified" },
 
   /* ── администрирование ── */
-  "GET /api/users": { summary: "Учётные записи", access: "superadmin" },
-  "POST /api/users": { summary: "Создание учётной записи", access: "superadmin", body: createUserSchema },
-  "PATCH /api/users/:id/role": { summary: "Смена роли", access: "superadmin" },
-  "GET /api/audit": { summary: "Журнал доступа", access: "superadmin" },
-  "GET /api/audit/summary": { summary: "Сводка по журналу", access: "superadmin" },
-  "GET /api/audit/verify": { summary: "Проверка хэш-цепочки журнала", access: "superadmin" },
-  "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin" },
+  "GET /api/users": { summary: "Учётные записи", access: "superadmin", permission: "users.manage" },
+  "POST /api/users": { summary: "Создание учётной записи", access: "superadmin", permission: "users.manage", body: createUserSchema },
+  "PATCH /api/users/:id/role": { summary: "Смена роли", access: "superadmin", permission: "users.manage" },
+  "GET /api/audit": { summary: "Журнал доступа", access: "superadmin", permission: "audit.read" },
+  "GET /api/audit/summary": { summary: "Сводка по журналу", access: "superadmin", permission: "audit.read" },
+  "GET /api/audit/verify": { summary: "Проверка хэш-цепочки журнала", access: "superadmin", permission: "audit.read" },
+  "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin", whyNoPermission: "техническое состояние хранилища; делегировать его мы не собираемся, и право осталось бы навсегда только у суперадмина" },
   "GET /api/timeline/:userId": { summary: "Хронология пациента: всё на одной оси", access: "staff", permission: "patients.read" },
-  "GET /api/events": { summary: "Поток событий (SSE): тревоги и изменения случаев", access: "staff" },
-  "PATCH /api/surveys/:id/rights": { summary: "Правовой статус и отметка о сверке ключей", access: "superadmin" },
+  "GET /api/events": { summary: "Поток событий (SSE): тревоги и изменения случаев", access: "staff", permission: "alerts.review", streaming: true },
+  "PATCH /api/surveys/:id/rights": { summary: "Правовой статус и отметка о сверке ключей", access: "superadmin", whyNoPermission: "правовой статус методики утверждает учреждение, а не тот, кто методику завёл; делегировать не собираемся" },
   "GET /api/conferences/patients/:userId": { summary: "Консилиумы по пациенту с мнениями", access: "staff", permission: "conferences.manage" },
   "POST /api/conferences/patients/:userId": { summary: "Вынести случай на консилиум", access: "staff", permission: "conferences.manage" },
   "POST /api/conferences/:id/opinions": { summary: "Высказать мнение или особое мнение", access: "staff", permission: "conferences.manage" },
@@ -276,15 +299,15 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/pathways/instances/:id": { summary: "Маршрут пациента по шагам", access: "staff", permission: "pathways.manage" },
   "POST /api/pathways/instances/:id/close": { summary: "Закрыть маршрут с исходом", access: "staff", permission: "pathways.manage" },
   "PATCH /api/pathways/progress/:id": { summary: "Отметить шаг маршрута", access: "staff", permission: "pathways.manage" },
-  "GET /api/views": { summary: "Сохранённые виды экрана: свои и общие", access: "staff" },
-  "POST /api/views": { summary: "Сохранить текущий срез экрана", access: "staff" },
-  "PATCH /api/views/:id": { summary: "Переименовать вид или открыть его коллегам", access: "staff" },
-  "DELETE /api/views/:id": { summary: "Удалить свой вид", access: "staff" },
-  "GET /api/openapi.json": { summary: "Это описание", access: "staff" },
+  "GET /api/views": { summary: "Сохранённые виды экрана: свои и общие", access: "staff", whyNoPermission: "сохранённый вид — личная настройка экрана; право на неё было бы бюрократией" },
+  "POST /api/views": { summary: "Сохранить текущий срез экрана", access: "staff", whyNoPermission: "то же: человек сохраняет свой срез своего экрана" },
+  "PATCH /api/views/:id": { summary: "Переименовать вид или открыть его коллегам", access: "staff", whyNoPermission: "правится только свой вид; чужой закрыт проверкой владельца" },
+  "DELETE /api/views/:id": { summary: "Удалить свой вид", access: "staff", whyNoPermission: "удаляется только свой вид; чужой закрыт проверкой владельца, а не правом" },
+  "GET /api/openapi.json": { summary: "Это описание", access: "staff", whyNoPermission: "описание самого API: что кому доступно, читает любой сотрудник, и скрывать состав маршрутов от своих же смысла нет" },
 
   /* ── согласие ── */
-  "GET /api/consents/text": { summary: "Действующий текст согласия", access: "public" },
-  "PUT /api/consents/text": { summary: "Новая версия текста согласия", access: "superadmin" },
+  "GET /api/consents/text": { summary: "Действующий текст согласия", access: "public", whyNoPermission: "действующий текст согласия читают до входа в систему" },
+  "PUT /api/consents/text": { summary: "Новая версия текста согласия", access: "superadmin", whyNoPermission: "текст согласия — заявление учреждения, а не действие специалиста" },
   "GET /api/consents/me": { summary: "Своё согласие", access: "user" },
   "POST /api/consents/me/accept": { summary: "Принятие согласия", access: "user" },
 };

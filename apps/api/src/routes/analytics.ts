@@ -18,11 +18,16 @@ import { decryptField } from "../lib/crypto";
 import { average, distribution, median, percent, round, timelineByDay } from "../lib/stats";
 import { TOO_FAST_MS, qualityOf, reliabilityOf } from "../lib/psychometrics";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const analyticsRoutes = new Hono<AppEnv>();
 
-analyticsRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
+ * на другой вопрос — сотрудник ли это вообще, — и снимать его значило бы
+ * отдать проверку класса учётной записи проверке права.
+ */
+analyticsRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /** Сводка по всем методикам */
 /** Черновик считается живым полчаса с последнего сохранения */
@@ -564,7 +569,15 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
 });
 
 /** Выгрузка сырых данных прохождений в CSV */
-analyticsRoutes.get("/surveys/:id/export", async (c) => {
+/*
+ * Право на выгрузку с именами, а не на аналитику.
+ *
+ * В этой выгрузке есть колонка user_id — по ней строка возвращается к
+ * человеку. Она не обезличена, и закрывать её тем же правом, что сводные
+ * распределения, значит отдать поимённые данные каждому, кто смотрит
+ * графики.
+ */
+analyticsRoutes.get("/surveys/:id/export", requirePermission("export.full"), async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId);
