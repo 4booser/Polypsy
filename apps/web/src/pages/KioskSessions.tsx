@@ -103,7 +103,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
       }
       actions={
         <div className="row tight">
-          {live ? <span className="chip static"><i className="dot live" />идёт</span> : null}
+          {live ? <span className="chip static"><i className="dot live" />{ut("mark.running")}</span> : null}
           {live ? (
             <Button
               variant="danger"
@@ -127,7 +127,7 @@ function SessionCard({ session, onChanged, live }: { session: KioskSession; onCh
                 <td className="text-muted">{new Date(p.startedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</td>
                 <td>
                   {p.finishedAt
-                    ? <span className="text-[var(--sev-none-text)]">завершил</span>
+                    ? <span className="text-[var(--sev-none-text)]">{ut("mark.finished")}</span>
                     : <span>{p.doneRequired} из {p.totalRequired} методик</span>}
                 </td>
               </tr>

@@ -195,6 +195,7 @@ function CohortBars({ scale }: { scale: ComparisonResult["scales"][number] }) {
 }
 
 function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
+  const { ut } = useLang();
   const value = (a: string, b: string) => {
     if (a === b) return { r: 1, n: -1 };
     const p = matrix.pairs.find((x) => (x.a === a && x.b === b) || (x.a === b && x.b === a));
@@ -255,9 +256,9 @@ function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
         </tbody>
       </table>
       <div className="legend">
-        <span><i className="dot" style={{ background: "var(--s1)" }} /> прямая связь</span>
-        <span><i className="dot" style={{ background: "var(--sev-severe)" }} /> обратная связь</span>
-        <span className="text-muted">насыщенность — сила связи, число продублировано</span>
+        <span><i className="dot" style={{ background: "var(--s1)" }} /> {ut("chart.corrDirect")}</span>
+        <span><i className="dot" style={{ background: "var(--sev-severe)" }} /> {ut("chart.corrInverse")}</span>
+        <span className="text-muted">{ut("chart.corrHint")}</span>
       </div>
     </div>
   );

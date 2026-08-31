@@ -113,7 +113,7 @@ export default function Administer() {
               </table>
             </div>
           </Panel>
-          <Button variant="primary" onClick={() => navigate(`/surveys/${survey.id}`)}>К аналитике методики</Button>
+          <Button variant="primary" onClick={() => navigate(`/surveys/${survey.id}`)}>{ut("back.toSurveyAnalytics")}</Button>
         </Stack>
       </Page>
     );
@@ -122,7 +122,7 @@ export default function Administer() {
   return (
     <Page
       title={survey.title}
-      crumbs={<Link to={`/surveys/${survey.id}`}>← К методике</Link>}
+      crumbs={<Link to={`/surveys/${survey.id}`}>{ut("back.toSurvey")}</Link>}
       sub={`${ut("adn.byClinician")} · ${visible.filter((q) => q.type !== "info").length} ${ut("adn.items")}`}
     >
       <Stack>
@@ -204,7 +204,7 @@ export default function Administer() {
             {busy ? ut("ad.saving") : ut("ad.save")}
           </Button>
           {unanswered.length ? <span className="text-muted">не заполнено обязательных: {unanswered.length}</span> : null}
-          {!subject ? <span className="text-muted">выберите пациента</span> : null}
+          {!subject ? <span className="text-muted">{ut("sel.pickPatient")}</span> : null}
         </div>
       </Stack>
     </Page>

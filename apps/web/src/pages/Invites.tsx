@@ -81,7 +81,7 @@ export default function Invites() {
                         return (
                           <tr key={inv.id} className={dead ? "muted-row" : undefined}>
                             <td className="font-mono font-semibold">{inv.code}</td>
-                            <td>{inv.batteryTitle ?? <span className="text-muted">без батареи</span>}</td>
+                            <td>{inv.batteryTitle ?? <span className="text-muted">{ut("inv.noBattery")}</span>}</td>
                             <td className="text-muted">{inv.unit ?? "—"}</td>
                             <td className="num">
                               {inv.usedCount}/{inv.maxUses}
@@ -146,7 +146,7 @@ function InviteForm({
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
         <Field label={ut("inv.batteryOnRegister")} className="sm:col-span-2">
           <Select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
-            <option value="">без батареи — только доступ в систему</option>
+            <option value="">{ut("inv.noBatteryHint")}</option>
             {batteries.map((b) => (
               <option key={b.id} value={b.id}>{b.title}</option>
             ))}
@@ -164,7 +164,7 @@ function InviteForm({
             onChange={(e) => setTtlDays(Math.max(1, Number(e.target.value) || 1))} />
         </Field>
         <Field label={ut("inv.noteStaffOnly")} className="sm:col-span-2">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="например, «поступление 3-й роты»" />
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ut("inv.reasonExample")} />
         </Field>
       </div>
       <p className="mt-3 text-caption text-muted">

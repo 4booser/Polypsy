@@ -370,7 +370,7 @@ function ScheduleEditor({
           <label className="field grow mt-3 max-w-[380px]">
             <span>{ut("sch.unit")}</span>
             <select value={unit} onChange={(e) => setUnit(e.target.value)}>
-              {units.length ? null : <option value="">— нет подразделений —</option>}
+              {units.length ? null : <option value="">{ut("sel.noUnits")}</option>}
               {units.map((u) => (
                 <option key={u} value={u}>{u}</option>
               ))}

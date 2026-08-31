@@ -148,11 +148,11 @@ export function SurveyList() {
                 <tr key={s.id}>
                   <td>
                     <Link to={`/surveys/${s.id}`}>{s.title}</Link>
-                    {s.isDemo ? <Tag className="ml-2">демо</Tag> : null}
+                    {s.isDemo ? <Tag className="ml-2">{ut("mark.demo")}</Tag> : null}
                   </td>
                   <td className="text-muted">
                     {s.archivedAt ? (
-                      <span title={`Снята ${s.archivedAt.slice(0, 10)}`}>снята с использования</span>
+                      <span title={`Снята ${s.archivedAt.slice(0, 10)}`}>{ut("mark.retired")}</span>
                     ) : (
                       s.status
                     )}
