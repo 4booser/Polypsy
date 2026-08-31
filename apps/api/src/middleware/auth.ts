@@ -6,7 +6,8 @@ import { users } from "../db/schema";
 import { readToken, toPublicUser } from "../lib/auth";
 import { forbidden, unauthorized } from "../lib/http";
 import { audit } from "../lib/audit";
-import type { User } from "@quizzy/shared";
+import type { Permission, User } from "@quizzy/shared";
+import { hasPermission } from "../lib/permissions";
 
 export interface AppEnv {
   Variables: {
@@ -88,3 +89,35 @@ export const requireSuperadmin = createMiddleware<AppEnv>(async (c, next) => {
   }
   await next();
 });
+
+/**
+ * Доступ по конкретному праву.
+ *
+ * Ставится рядом с requireStaff, а не вместо него: старые проверки остаются
+ * как есть и не переписываются изнутри. Переписать их разом означало бы
+ * тронуть сорок два файла и сто семь мест одним изменением — и проверять
+ * результат пришлось бы целиком, а не по одному маршруту.
+ *
+ * Порядок замены: сначала читающие и отчётные маршруты, потом клинические по
+ * одной области, последними — учётки, группы, журнал и кризисный режим. На
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ *
+ * Отказ пишется в журнал с кодом права: «не хватило conclusions.sign» —
+ * это разбирается за минуту, а «недостаточно прав» разбирается вечер.
+ */
+export function requirePermission(permission: Permission) {
+  return createMiddleware<AppEnv>(async (c, next) => {
+    const user = c.get("user");
+    if (!(await hasPermission(user, permission))) {
+      await audit(c, {
+        action: "access.denied",
+        outcome: "denied",
+        resourceType: "route",
+        resourceId: c.req.path,
+        details: { method: c.req.method, reason: "permission_required", permission },
+      });
+      forbidden("err.permissionRequired", { permission });
+    }
+    await next();
+  });
+}

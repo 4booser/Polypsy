@@ -9,11 +9,19 @@ import { langOf, notFound, parseQuery } from "../lib/http";
 import { percent, round } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const dataQualityRoutes = new Hono<AppEnv>();
 
-dataQualityRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право проверяется рядом со старой проверкой персонала, а не вместо неё.
+ *
+ * Замена идёт по одному набору маршрутов, от читающих к клиническим: так на
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+dataQualityRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /** Страта меньше — наружу не показываем (П-1: подавление малых ячеек) */
 const SMALL_CELL_FLOOR = 5;

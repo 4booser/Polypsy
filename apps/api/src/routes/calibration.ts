@@ -8,11 +8,19 @@ import { notFound } from "../lib/http";
 import { percent, round } from "../lib/stats";
 import { assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const calibrationRoutes = new Hono<AppEnv>();
 
-calibrationRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право проверяется рядом со старой проверкой персонала, а не вместо неё.
+ *
+ * Замена идёт по одному набору маршрутов, от читающих к клиническим: так на
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+calibrationRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /** Минимум исходов КАЖДОГО вида на страту: ниже — кривая рисует шум */
 const MIN_PER_OUTCOME = 30;

@@ -2094,3 +2094,82 @@ export const breakGlass = pgTable(
     patientIdx: index("break_glass_patient_idx").on(t.patientId, t.grantedAt),
   }),
 );
+
+/* ── права: роли-шаблоны и личные исключения ──
+ *
+ * Три оси доступа не смешиваются: users.readOnly отвечает «может ли вообще
+ * писать», эти таблицы — «что может делать», group_admins — «над кем».
+ * Область здесь не переопределяется: она берётся оттуда, где была.
+ */
+
+export const roles = pgTable("roles", {
+  id: text("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  title: localized("title").notNull(),
+  /** Встроенную роль нельзя удалить: на ней держится бэкфилл */
+  isBuiltin: boolean("is_builtin").notNull().default(false),
+  createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+});
+
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    roleId: text("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    /** Код права, а не ссылка: справочник живёт в коде, см. shared/permissions */
+    permission: text("permission").notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.roleId, t.permission] }) }),
+);
+
+export const staffRoles = pgTable(
+  "staff_roles",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    roleId: text("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "cascade" }),
+    /** NULL — область берётся из group_admins, как и раньше */
+    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "cascade" }),
+    grantedBy: text("granted_by").references(() => users.id, { onDelete: "set null" }),
+    grantedAt: timestampCol("granted_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.roleId] }),
+    roleIdx: index("staff_roles_role_idx").on(t.roleId),
+  }),
+);
+
+export const permissionExceptions = pgTable(
+  "permission_exceptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+    /** grant добавляет, revoke отнимает; отнятое побеждает добавленное */
+    mode: text("mode", { enum: ["grant", "revoke"] }).notNull(),
+    /**
+     * Причина обязательна и пишется словами.
+     *
+     * Список превратился бы в «выбрать первое», а написанное словами читают.
+     * Через год именно по причине понятно, было ли исключение осмысленным.
+     */
+    reason: text("reason").notNull(),
+    grantedBy: text("granted_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    grantedAt: timestampCol("granted_at").notNull().default(sql`now()`),
+    /** Срок обязателен по смыслу, но не по схеме: бессрочное исключение
+     *  заводится осознанно и видно в списке как бессрочное */
+    expiresAt: timestampCol("expires_at"),
+    revokedAt: timestampCol("revoked_at"),
+  },
+  (t) => ({
+    userIdx: index("permission_exceptions_user_idx").on(t.userId, t.permission),
+  }),
+);

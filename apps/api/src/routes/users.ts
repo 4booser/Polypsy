@@ -9,6 +9,7 @@ import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
 import { conflict, forbidden, notFound, parseBody } from "../lib/http";
 import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
+import { ensureBuiltinRole } from "../lib/permissions";
 
 export const userRoutes = new Hono<AppEnv>();
 
@@ -43,6 +44,10 @@ userRoutes.post("/", async (c) => {
       role: input.role,
     })
     .returning();
+  // администратор получает встроенную роль сразу: иначе он остался бы без
+  // прав до следующего перезапуска приложения
+  if (row!.role === "admin") await ensureBuiltinRole(row!.id);
+
 
   await audit(c, {
     action: "user.create",
@@ -65,6 +70,8 @@ userRoutes.patch("/:id/role", async (c) => {
   if (!["superadmin", "admin", "user"].includes(role)) forbidden("err.invalidRole");
 
   const [row] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
+  // повышение до администратора — тот же случай, что и создание
+  if (role === "admin") await ensureBuiltinRole(id);
   if (!row) notFound("err.userNotFound");
 
   // старые сессии несут старую роль в токене — обрываем их

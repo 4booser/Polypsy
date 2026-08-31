@@ -7,11 +7,19 @@ import { audit } from "../lib/audit";
 import { notFound } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
-import { requireAuth, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const surveillanceRoutes = new Hono<AppEnv>();
 
-surveillanceRoutes.use("*", requireAuth, requireStaff);
+/*
+ * Право проверяется рядом со старой проверкой персонала, а не вместо неё.
+ *
+ * Замена идёт по одному набору маршрутов, от читающих к клиническим: так на
+ * каждом шаге видно, что сломалось, потому что сломаться может немногое.
+ * Сегодня разницы в поведении нет — встроенная роль есть у каждого
+ * администратора, — и это ровно то, чего мы хотим от перехода.
+ */
+surveillanceRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /** Меньше — карта из шума; недели с n<этого рисуются, но без сигналов */
 const MIN_WEEK_N = 5;
