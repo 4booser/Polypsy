@@ -1057,3 +1057,83 @@ describe("риск на скрининге", () => {
     expect(String(res.body.error)).toContain("бал");
   });
 });
+
+describe("попытки по назначению", () => {
+  test("одна попытка по умолчанию, вторая отклоняется", async () => {
+    /*
+     * Повторное прохождение той же методики через день портит измерение:
+     * человек помнит вопросы и свои ответы.
+     */
+    const patient = await makeUser("user", `clinic-at1-${crypto.randomUUID()}@test`);
+    const granted = await api(`/api/access/surveys/${surveyInA}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(granted.status).toBe(201);
+
+    const first = await submitSurvey(surveyInA, patient.token);
+    expect(first.status).toBe(201);
+
+    const second = await submitSurvey(surveyInA, patient.token);
+    expect(second.status).toBe(400);
+    expect(String(second.body.error)).toContain("1");
+  });
+
+  test("две попытки — значит две", async () => {
+    const patient = await makeUser("user", `clinic-at2-${crypto.randomUUID()}@test`);
+    await api(`/api/access/surveys/${surveyInA}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id, attemptsAllowed: 2 }),
+    });
+
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(400);
+  });
+
+  test("прошлогоднее прохождение сегодняшнюю попытку не тратит", async () => {
+    /*
+     * Назначили — значит хотят измерить сейчас, а не зачесть старое. Считать
+     * от начала времён значило бы выдать назначение, которое сразу
+     * исчерпано.
+     */
+    const patient = await makeUser("user", `clinic-at3-${crypto.randomUUID()}@test`);
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+
+    await api(`/api/access/surveys/${surveyInA}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+  });
+
+  test("без назначения ограничения нет", async () => {
+    // методику, которую человек проходит сам, никто не ограничивал
+    const patient = await makeUser("user", `clinic-at4-${crypto.randomUUID()}@test`);
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+  });
+
+  test("выданные до перехода назначения остались без ограничения", async () => {
+    /*
+     * Умолчания на уровне базы нет намеренно: оно сделало бы одноразовыми все
+     * уже выданные назначения, и человек, проходящий вторую волну замеров,
+     * упёрся бы в отказ на ровном месте.
+     */
+    const patient = await makeUser("user", `clinic-at5-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: patient.id,
+      grantedBy: adminA.id,
+    });
+
+    const [row] = await db
+      .select()
+      .from(surveyAccess)
+      .where(and(eq(surveyAccess.userId, patient.id), eq(surveyAccess.surveyId, surveyInA)));
+    expect(row!.attemptsAllowed).toBeNull();
+
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+    expect((await submitSurvey(surveyInA, patient.token)).status).toBe(201);
+  });
+});

@@ -1108,10 +1108,16 @@ export const api = {
     }),
 
   grants: (surveyId: string) => unwrap(request<Items<SurveyGrant>>(`/api/access/surveys/${surveyId}/grants`)),
-  grant: (surveyId: string, userId: string, note?: string, expiresAt?: string | null) =>
+  grant: (
+    surveyId: string,
+    userId: string,
+    note?: string,
+    expiresAt?: string | null,
+    attemptsAllowed?: number,
+  ) =>
     request<unknown>(`/api/access/surveys/${surveyId}/grants`, {
       method: "POST",
-      body: JSON.stringify({ userId, note, expiresAt }),
+      body: JSON.stringify({ userId, note, expiresAt, attemptsAllowed }),
     }),
   revoke: (surveyId: string, userId: string) =>
     request<void>(`/api/access/surveys/${surveyId}/grants/${userId}`, { method: "DELETE" }),

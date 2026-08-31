@@ -21,6 +21,7 @@ import { attachToCase } from "./alertCases";
 import { applyRules } from "./decisions";
 import { publish } from "./events";
 import { detectRisks } from "./risk";
+import { assertAttemptsLeft } from "./attempts";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
 
@@ -92,6 +93,21 @@ export async function persistSubmission(
   // очерёдность внутри батареи проверяем до записи: отказ после сохранения
   // означал бы прохождение, которого не должно было быть
   await assertBatteryOrder(subject.id, survey.id, options.filledBySelf);
+
+  /*
+   * Число попыток по назначению — тоже до записи.
+   *
+   * Проверяется только там, где есть назначение: у методики, которую человек
+   * проходит сам, попыток никто не выдавал, и ограничивать нечего. Иначе
+   * ограничение из назначения молча распространилось бы на общедоступные
+   * методики, которых оно не касается.
+   *
+   * Без этой проверки число попыток было бы украшением карточки: оно
+   * показывалось бы специалисту и ничего не значило.
+   */
+  if (linkedUserId && options.filledBySelf) {
+    await assertAttemptsLeft(linkedUserId, survey.id);
+  }
 
   const respondent = {
     sex: subject.sex,

@@ -212,6 +212,9 @@ export interface SurveyGrant {
   grantedAt: string;
   expiresAt: string | null;
   note: string | null;
+  /** Сколько попыток выдано; null — не ограничивали */
+  attemptsAllowed: number | null;
+  attemptsUsed: number;
   /** Проходил ли уже */
   completed: boolean;
 }
