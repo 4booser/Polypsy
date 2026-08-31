@@ -54,6 +54,7 @@ const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const WorklistPage = lazy(() => import("./pages/Worklist"));
 const TodayPage = lazy(() => import("./pages/Today"));
 const SchedulePage = lazy(() => import("./pages/Schedule"));
+const VisitPage = lazy(() => import("./pages/Visit"));
 const UnitReportPage = lazy(() => import("./pages/UnitReport"));
 const ConclusionBatch = lazy(() => import("./pages/ConclusionBatch"));
 const Cohorts = lazy(() => import("./pages/Cohorts"));
@@ -369,6 +370,7 @@ export default function App() {
             <Route path="/worklist" element={<WorklistPage />} />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/my-schedule" element={<SchedulePage />} />
+            <Route path="/visit/:id" element={<VisitPage />} />
             <Route path="/unit-report" element={<UnitReportPage />} />
             <Route path="/conclusion-batch" element={<ConclusionBatch />} />
             <Route path="/cohorts" element={<Cohorts />} />

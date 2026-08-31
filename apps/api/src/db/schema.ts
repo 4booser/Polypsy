@@ -1553,6 +1553,15 @@ export const patientNotes = pgTable(
     pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
       onDelete: "set null",
     }),
+    /**
+     * Приём, на котором запись сделана: заметка становится протоколом приёма.
+     *
+     * Необязательна намеренно: запись о человеке бывает и вне приёма —
+     * наблюдение, разбор случая, консультация коллеги. Сделать привязку
+     * обязательной значило бы отобрать у половины клинических записей место,
+     * где они живут.
+     */
+    appointmentId: text("appointment_id"),
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

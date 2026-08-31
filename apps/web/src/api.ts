@@ -789,10 +789,16 @@ export const api = {
     }),
 
   notes: (userId: string) => request<NoteState>(`/api/notes/patients/${userId}`),
-  saveNote: (userId: string, text: string, baseVersion: number, kind?: string) =>
+  saveNote: (
+    userId: string,
+    text: string,
+    baseVersion: number,
+    kind?: string,
+    appointmentId?: string,
+  ) =>
     request<NoteState>(`/api/notes/patients/${userId}`, {
       method: "PUT",
-      body: JSON.stringify({ text, baseVersion, kind }),
+      body: JSON.stringify({ text, baseVersion, kind, appointmentId }),
     }),
   signNote: (userId: string, version: number) =>
     request<NoteState>(`/api/notes/patients/${userId}/sign`, {
@@ -1145,6 +1151,29 @@ export const api = {
     }>("/api/audit/summary"),
 
   /* ── поликлиника ── */
+  visitContext: (id: string) =>
+    request<{
+      appointment: {
+        id: string;
+        startsAt: string;
+        endsAt: string;
+        kind: "primary" | "repeat";
+        mode: "onsite" | "remote";
+        status: string;
+        reason: string | null;
+      };
+      patient: {
+        id: string;
+        fullName: string;
+        unit: string | null;
+        leadSpecialistId: string | null;
+        leadName: string | null;
+      };
+      previous: { at: string; specialistName: string; status: string } | null;
+      followedSince: string | null;
+      changes: { kind: string; at: string; title: string; detail?: string | null }[];
+      note: { id: string; version: number; status: string } | null;
+    }>(`/api/clinic/appointments/${id}/context`),
   today: (params: { date?: string; specialistId?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.date) q.set("date", params.date);

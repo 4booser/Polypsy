@@ -1,18 +1,21 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import type { Severity } from "@quizzy/shared";
 import { db } from "../db";
 import {
+  appointments,
   batteryAssignments,
   conclusions,
   referrals,
   responses,
   riskAlerts,
+  slots,
   surveys,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
@@ -42,7 +45,13 @@ timelineRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.r
  * которого есть язык интерфейса.
  */
 
-export type TimelineKind = "response" | "alert" | "referral" | "conclusion" | "assignment";
+export type TimelineKind =
+  | "response"
+  | "alert"
+  | "referral"
+  | "conclusion"
+  | "assignment"
+  | "visit";
 
 export interface TimelineItem {
   id: string;
@@ -81,10 +90,49 @@ timelineRoutes.get("/:userId", async (c) => {
   const scope = await surveyScopeFilterFor(staff, userId);
   const scoped = await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
-  if (!surveyIds.length) notFound("err.patientNotFound");
   const titleOf = new Map(scoped.map((s) => [s.id, t(s.title as never, lang)]));
 
+  /*
+   * Пустая зона по методикам больше не означает «пациента нет».
+   *
+   * Раньше означала: человек становился виден только через методики, и без
+   * них его история была пуста по определению. Теперь основанием видеть
+   * человека может быть приём — и записавшийся с телефона, ни разу ничего не
+   * проходивший, стоял бы в расписании и получал бы «не найдено» в карте.
+   *
+   * Права спрашивают выше: сюда доходят только те, кто в зоне
+   * ответственности.
+   */
+
   const items: TimelineItem[] = [];
+
+  /*
+   * Приёмы — первое, что должно быть в хронологии.
+   *
+   * Записаться можно к любому свободному специалисту: это выбор в пользу
+   * доступности, и плата за него — размывание преемственности. Гасит её эта
+   * строка: принимающий сегодня видит, что он не первый, и у кого человек
+   * был до него.
+   */
+  const visits = await db
+    .select({ a: appointments, slot: slots, specialist: users })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .innerJoin(users, eq(users.id, appointments.specialistId))
+    .where(and(eq(appointments.patientId, userId), ne(appointments.status, "cancelled")))
+    .orderBy(desc(slots.startsAt))
+    .limit(200);
+
+  for (const v of visits) {
+    items.push({
+      id: `visit:${v.a.id}`,
+      kind: "visit",
+      at: v.slot.startsAt,
+      title: fullNameOf(v.specialist),
+      detail: v.a.status,
+      href: `/visit/${v.a.id}`,
+    });
+  }
 
   const own = await db
     .select()
