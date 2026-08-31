@@ -29,6 +29,7 @@ import { Loading } from "./ui";
  */
 const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
 const Access = lazy(() => import("./pages/Access"));
+const Permissions = lazy(() => import("./pages/Permissions"));
 const Audit = lazy(() => import("./pages/Audit"));
 const Compare = lazy(() => import("./pages/Compare"));
 const Schedules = lazy(() => import("./pages/Schedules"));
@@ -367,6 +368,7 @@ export default function App() {
             недостижима.
           */}
           {isSuper ? <Route path="/users" element={<Users />} /> : null}
+          {isSuper ? <Route path="/permissions" element={<Permissions />} /> : null}
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
             <Route path="*" element={<Navigate to="/" replace />} />

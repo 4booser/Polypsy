@@ -104,6 +104,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       key: "nav.admin",
       items: [
         { to: "/users", key: "nav.users", icon: <IconUsers /> },
+        { to: "/permissions", key: "perm.title", icon: <IconGroup /> },
         { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
         /* текст согласия жил на одном маршруте с учётками; разведён в свой */
         { to: "/consent-text", key: "consent.title", icon: <IconInvite /> },
