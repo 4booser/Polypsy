@@ -25,6 +25,7 @@ import { alertRoutes } from "./routes/alerts";
 import { dynamicsRoutes } from "./routes/dynamics";
 import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
+import { permissionRoutes } from "./routes/permissions";
 import { storageRoutes } from "./routes/storage";
 import { timelineRoutes } from "./routes/timeline";
 import { eventRoutes } from "./routes/events";
@@ -173,6 +174,7 @@ app.route("/api/dif", difRoutes);
 app.route("/api/calibration", calibrationRoutes);
 app.route("/api/data-quality", dataQualityRoutes);
 app.route("/api/facets", facetRoutes);
+app.route("/api/permissions", permissionRoutes);
 app.route("/api/referrals", referralRoutes);
 app.route("/api", responseRoutes);
 

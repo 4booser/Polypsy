@@ -14,6 +14,7 @@ import { users } from "../src/db/schema";
 import { toPublicUser } from "../src/lib/auth";
 import { permissionExceptions, rolePermissions, roles, staffRoles } from "../src/db/schema";
 import { hasPermission, permissionsOf, syncBuiltinRole } from "../src/lib/permissions";
+import { ROUTE_DOCS } from "../src/lib/openapi";
 import { adminA, api, makeUser, root } from "./fixtures";
 
 /**
@@ -263,22 +264,44 @@ describe("маршруты под правом", () => {
   /**
    * Поведенческая проверка перехода.
    *
-   * Декларации мало: она говорит, что маршрут защищён, а проверяет ли его
-   * код — другой вопрос. Здесь сотрудник с ролью, но без нужного права,
-   * проходит по всем переведённым маршрутам и обязан получить отказ на
-   * каждом. Это ловит самую тихую ошибку такой миграции — забытую строку
-   * requirePermission: маршрут выглядит переведённым, а пускает всех.
+   * Список берётся из ROUTE_DOCS, а не пишется рядом: объявление права в
+   * описании маршрута обязано что-то значить, иначе это просто комментарий,
+   * который разъедется с кодом. Здесь объявление становится обязательством —
+   * маршрут, помеченный правом, обязан его требовать.
    *
-   * Список ниже растёт вместе с переводом. Пустой список означал бы, что
-   * проверка проходит, ничего не проверив.
+   * Проверяются маршруты без параметров в пути: подставлять правдоподобные
+   * идентификаторы значило бы проверять заодно и то, что данные найдены, а
+   * это другой вопрос. Маршруты с параметрами закрыты тем же middleware на
+   * весь набор, так что покрытие набора одним маршрутом честно.
    */
-  const CLOSED: [string, Permission][] = [
-    ["/api/cohorts/saved", "cohorts.read"],
-    ["/api/unit-report/units", "unitReport.read"],
-    ["/api/surveillance/scales", "analytics.read"],
-  ];
+  const CLOSED = Object.entries(ROUTE_DOCS)
+    .filter(([key, doc]) => doc.permission && key.startsWith("GET ") && !key.includes(":"))
+    .map(([key, doc]) => [key.slice("GET ".length), doc.permission!] as const);
 
-  test("список переведённых маршрутов не пуст", () => {
+  test("у каждого объявленного права есть проверяемый маршрут", () => {
+    /*
+     * Иначе пробел молчит. Набор маршрутов закрыт одним middleware, поэтому
+     * достаточно одного проверяемого маршрута на право — но хотя бы один
+     * быть обязан, иначе объявление снова становится комментарием.
+     *
+     * Если очередной набор состоит только из маршрутов с параметрами, это
+     * повод завести в нём читающий маршрут без параметра, а не ослабить
+     * проверку.
+     */
+    const declared = new Set(
+      Object.values(ROUTE_DOCS).flatMap((d) => (d.permission ? [d.permission] : [])),
+    );
+    const covered = new Set(CLOSED.map(([, permission]) => permission));
+    const uncovered = [...declared].filter((p) => !covered.has(p));
+    expect(uncovered).toEqual([]);
+  });
+
+  test("объявленные права есть хотя бы у одного маршрута", () => {
+    /*
+     * Пустой список означал бы, что проверка проходит, ничего не проверив, —
+     * и перевод маршрутов остался бы без страховки ровно тогда, когда она
+     * нужнее всего.
+     */
     expect(CLOSED.length).toBeGreaterThan(0);
   });
 

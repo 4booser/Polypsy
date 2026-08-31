@@ -1,5 +1,6 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { ZodTypeAny } from "zod";
+import type { Permission } from "@quizzy/shared";
 import {
   assignBatterySchema,
   batteryInputSchema,
@@ -39,6 +40,20 @@ type Access = "public" | "user" | "staff" | "superadmin";
 interface RouteDoc {
   summary: string;
   access: Access;
+  /**
+   * Право, которым маршрут закрыт, если он уже переведён на права.
+   *
+   * Поле необязательное намеренно: перевод идёт по одному набору маршрутов, и
+   * заполненное поле означает «переведён», а пустое — «пока по старой
+   * проверке персонала». Второго реестра не заводим — этот уже есть и его
+   * полнота уже проверяется.
+   *
+   * Само по себе поле ничего не закрывает: настоящая защита — строка
+   * requirePermission в маршруте, и проверяется она поведенческим тестом.
+   * Здесь оно нужно, чтобы описание API говорило правду о том, что кому
+   * доступно.
+   */
+  permission?: Permission;
   body?: ZodTypeAny;
 }
 
@@ -56,6 +71,26 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/auth/me": { summary: "Текущий пользователь", access: "user" },
   "PATCH /api/auth/me": { summary: "Правка своей паспортной части", access: "user", body: updateProfileSchema },
   "POST /api/auth/password": { summary: "Смена собственного пароля", access: "user", body: changePasswordSchema },
+
+  /* ── права ── */
+  "GET /api/permissions/catalogue": { summary: "Справочник прав с пояснениями", access: "superadmin" },
+  "GET /api/permissions/roles": { summary: "Роли и их наборы прав", access: "superadmin" },
+  "POST /api/permissions/roles": { summary: "Новая роль", access: "superadmin" },
+  "PUT /api/permissions/roles/:id/permissions": {
+    summary: "Набор прав роли; встроенная роль не правится вручную",
+    access: "superadmin",
+  },
+  "GET /api/permissions/users/:id": {
+    summary: "Что человек может и из чего это сложилось: роли, исключения, итог",
+    access: "superadmin",
+  },
+  "PUT /api/permissions/users/:id/roles": { summary: "Роли человека", access: "superadmin" },
+  "POST /api/permissions/users/:id/exceptions": {
+    summary: "Личное исключение: одно право, с причиной и сроком",
+    access: "superadmin",
+  },
+  "POST /api/permissions/exceptions/:id/revoke": { summary: "Отзыв исключения", access: "superadmin" },
+  "GET /api/permissions/exceptions": { summary: "Действующие исключения по всем", access: "superadmin" },
 
   /* ── методики ── */
   "GET /api/surveys": { summary: "Список методик; ?archived=1 — снятые с использования", access: "user" },
@@ -130,8 +165,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
 
   /* ── тревоги, направления, заключения ── */
   "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff" },
-  "GET /api/unit-report": { summary: "Состояние подразделения за период; малые ячейки подавляются", access: "staff" },
-  "GET /api/unit-report/units": { summary: "Подразделения для отчёта", access: "staff" },
+  "GET /api/unit-report": { summary: "Состояние подразделения за период; малые ячейки подавляются", access: "staff", permission: "unitReport.read" },
+  "GET /api/unit-report/units": { summary: "Подразделения для отчёта", access: "staff", permission: "unitReport.read" },
   "PUT /api/auth/me/workspace": { summary: "Настройки рабочего места: стартовый экран, тема, плотность", access: "user" },
   "POST /api/informants/patients/:userId": { summary: "Выдать ссылку человеку со стороны (командир, близкий, врач)", access: "staff" },
   "GET /api/informants/patients/:userId": { summary: "Запросы к информантам по пациенту", access: "staff" },
@@ -142,18 +177,18 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/conclusions/batch": { summary: "Пакет подписанных заключений подразделения за период", access: "staff" },
   "GET /api/spss/surveys/:id/manifest.json": { summary: "Снимок параметров выгрузки: версии, нормы, профиль обезличивания", access: "staff" },
   "GET /api/spss/surveys/:id/load/:ext": { summary: "Готовый скрипт загрузки выгрузки в R или Python", access: "staff" },
-  "GET /api/data-quality/surveys/:id/items": { summary: "Тепловая карта пунктов: время ответа и серии одинаковых ответов", access: "staff" },
+  "GET /api/data-quality/surveys/:id/items": { summary: "Тепловая карта пунктов: время ответа и серии одинаковых ответов", access: "staff", permission: "analytics.read" },
   "GET /api/missed": { summary: "Что произошло, пока меня не было: новые случаи, разобранные другими, направления, расписания", access: "staff" },
   "GET /api/search/notes": { summary: "Поиск по записям приёма через слепой индекс; текст запроса в журнал не пишется", access: "staff" },
   "POST /api/break-glass": { summary: "Разбить стекло: доступ к пациенту вне своей группы, с обоснованием и на срок", access: "staff" },
   "GET /api/break-glass/mine": { summary: "Свои открытые доступы вне правил", access: "staff" },
   "GET /api/break-glass": { summary: "Все случаи обхода правил — для разбора; видны всем сотрудникам", access: "staff" },
   "POST /api/break-glass/:id/close": { summary: "Закрыть доступ досрочно", access: "staff" },
-  "POST /api/cohorts/preview": { summary: "Размер и распределения когорты; малые ячейки подавляются", access: "staff" },
-  "POST /api/cohorts/members": { summary: "Когорта поимённо — отдельное действие и отдельная запись в журнале", access: "staff" },
-  "GET /api/cohorts": { summary: "Свои сохранённые когорты", access: "staff" },
-  "POST /api/cohorts": { summary: "Сохранить правило отбора", access: "staff" },
-  "DELETE /api/cohorts/:id": { summary: "Удалить свою когорту", access: "staff" },
+  "POST /api/cohorts/preview": { summary: "Размер и распределения когорты; малые ячейки подавляются", access: "staff", permission: "cohorts.read" },
+  "POST /api/cohorts/members": { summary: "Когорта поимённо — отдельное действие и отдельная запись в журнале", access: "staff", permission: "cohorts.read" },
+  "GET /api/cohorts": { summary: "Свои сохранённые когорты", access: "staff", permission: "cohorts.read" },
+  "POST /api/cohorts": { summary: "Сохранить правило отбора", access: "staff", permission: "cohorts.read" },
+  "DELETE /api/cohorts/:id": { summary: "Удалить свою когорту", access: "staff", permission: "cohorts.read" },
   "POST /api/devices/checkin": { summary: "Отметка устройства; отвечает, надо ли стереть локальные данные", access: "user" },
   "POST /api/devices/wiped": { summary: "Подтверждение стирания устройством", access: "user" },
   "GET /api/devices": { summary: "Свои устройства; чужие — только суперадмину", access: "user" },
@@ -190,14 +225,14 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/analytics/surveys/:id/export": { summary: "Выгрузка прохождений методики", access: "staff" },
   "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами", access: "staff" },
   "GET /api/dynamics/respondents/:userId": { summary: "Динамика обследуемого с метками RCI", access: "staff" },
-  "GET /api/compare/surveys/:id": { summary: "Сравнение когорт по методике", access: "staff" },
-  "GET /api/compare/surveys/:id/correlations": { summary: "Корреляции шкал", access: "staff" },
+  "GET /api/compare/surveys/:id": { summary: "Сравнение когорт по методике", access: "staff", permission: "analytics.read" },
+  "GET /api/compare/surveys/:id/correlations": { summary: "Корреляции шкал", access: "staff", permission: "analytics.read" },
   "GET /api/facets/surveys/:id": { summary: "Срезы по полу и возрасту", access: "staff" },
-  "GET /api/surveillance/surveys/:id": { summary: "Надзор: контрольные карты и стандартизованные показатели", access: "staff" },
-  "GET /api/dif/surveys/:id": { summary: "Дифференциальное функционирование пунктов по полу", access: "staff" },
-  "GET /api/calibration/surveys/:id": { summary: "Калибровка порогов по подтверждённым исходам (ROC)", access: "staff" },
-  "GET /api/calibration/ppv": { summary: "Прогностическая ценность тревог", access: "staff" },
-  "GET /api/data-quality/surveys/:id": { summary: "Дрейф выборки, отсев по стратам, тест-ретест", access: "staff" },
+  "GET /api/surveillance/surveys/:id": { summary: "Надзор: контрольные карты и стандартизованные показатели", access: "staff", permission: "analytics.read" },
+  "GET /api/dif/surveys/:id": { summary: "Дифференциальное функционирование пунктов по полу", access: "staff", permission: "analytics.read" },
+  "GET /api/calibration/surveys/:id": { summary: "Калибровка порогов по подтверждённым исходам (ROC)", access: "staff", permission: "analytics.read" },
+  "GET /api/calibration/ppv": { summary: "Прогностическая ценность тревог", access: "staff", permission: "analytics.read" },
+  "GET /api/data-quality/surveys/:id": { summary: "Дрейф выборки, отсев по стратам, тест-ретест", access: "staff", permission: "analytics.read" },
   "GET /api/norms/surveys/:id/candidates": { summary: "Кандидатные локальные нормы по выборке", access: "staff" },
   "POST /api/norms/surveys/:id/apply": { summary: "Публикация локальных норм", access: "staff" },
   "GET /api/norms/surveys/:id/age-curves": { summary: "Возрастные кривые по шкалам", access: "staff" },
