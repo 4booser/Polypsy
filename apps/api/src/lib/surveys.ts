@@ -575,7 +575,20 @@ export function surveyToDraft(survey: SurveyFull) {
         return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
       }),
       corrections: s.corrections.map((x) => ({ from: x.sourceScaleCode, coefficient: x.coefficient })),
-      norms: s.norms,
+      /*
+       * Нормы из пособия переносятся, нормы местной выборки — нет.
+       *
+       * T-балл значит разное относительно мирной популяции и относительно
+       * своего госпиталя. Норма, посчитанная по выборке одного учреждения и
+       * молча уехавшая в другое, означает, что второе учреждение считает
+       * своих людей по чужой популяции и об этом не знает. Норма из пособия
+       * общая для всех — она и едет.
+       *
+       * Различает их поле source: локальные помечены «локальная выборка,
+       * N=…». Отбрасываем по нему, а не по флагу: флаг пришлось бы
+       * проставлять руками, и однажды его забыли бы.
+       */
+      norms: s.norms.filter((n) => !String(n.source ?? "").startsWith("локальная выборка")),
       stenTable: s.stenTable,
       bands: s.bands.map((b) => ({
         minScore: b.minScore,
@@ -585,7 +598,15 @@ export function surveyToDraft(survey: SurveyFull) {
         description: b.description,
         grade: b.grade,
         recommendation: b.recommendation,
-        cascadeBatteryId: b.cascadeBatteryId,
+        /*
+         * Ссылка на батарею НЕ переносится.
+         *
+         * Идентификатор батареи принадлежит своему экземпляру; в чужом он
+         * либо не найдётся, либо — что хуже — найдётся и укажет на другую
+         * батарею. Автоматика назначения по полосе настраивается на месте, и
+         * пустое поле честнее случайного попадания.
+         */
+        cascadeBatteryId: null,
         cascadeDueDays: b.cascadeDueDays,
         followUpDays: b.followUpDays,
       })),
