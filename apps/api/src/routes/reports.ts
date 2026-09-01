@@ -1,11 +1,13 @@
 import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import {
   answers,
   appointments,
   conclusions,
   departments,
+  episodes,
+  referrals,
   responseScores,
   responses,
   scales,
@@ -607,6 +609,185 @@ function departmentReportHtml(d: {
      додають — одна людина за період приходить кілька разів.</p>
   <div class="sign">
     <div class="sign-line">Завідувач відділення <i></i></div>
+  </div>
+</body></html>`;
+}
+
+/**
+ * Выписка по обращению — печатным листом.
+ *
+ * То, ради чего эпизод и заводился: одно обращение целиком, от повода до
+ * исхода, на одном листе. Раньше это собирали из четырёх экранов и держали
+ * порядок событий в голове.
+ *
+ * В выписку идёт только подписанное: черновик заключения — рабочий текст, и
+ * подшитый черновик потом не отличить от решения.
+ */
+reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read"), async (c) => {
+  const episode = await db.query.episodes.findFirst({ where: eq(episodes.id, c.req.param("id")) });
+  if (!episode) notFound("err.episodeNotFound");
+  await assertPatientAccess(c.get("user"), episode.patientId);
+
+  const patient = (await db.query.users.findFirst({ where: eq(users.id, episode.patientId) }))!;
+  /*
+   * Без имени документа не бывает — то же правило, что у справки. «Респондент
+   * А-4821 обращался с 12.03 по 20.05» не подшивается в дело.
+   */
+  if (patient.anonymous) badRequest("err.certificateNeedsName");
+
+  const lead = episode.leadSpecialistId
+    ? await db.query.users.findFirst({ where: eq(users.id, episode.leadSpecialistId) })
+    : null;
+
+  const visits = await db
+    .select({ a: appointments, slot: slots, specialist: users })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .innerJoin(users, eq(users.id, appointments.specialistId))
+    .where(eq(appointments.episodeId, episode.id))
+    .orderBy(asc(slots.startsAt));
+
+  const signed = await db
+    .select({ row: conclusions, author: users })
+    .from(conclusions)
+    .leftJoin(users, eq(users.id, conclusions.signedBy))
+    .where(and(eq(conclusions.episodeId, episode.id), eq(conclusions.status, "signed")))
+    .orderBy(asc(conclusions.signedAt));
+
+  const sent = await db
+    .select()
+    .from(referrals)
+    .where(eq(referrals.episodeId, episode.id))
+    .orderBy(asc(referrals.createdAt));
+
+  await audit(c, {
+    action: "report.episode_extract",
+    resourceType: "episode",
+    resourceId: episode.id,
+    subjectUserId: episode.patientId,
+  });
+
+  return c.html(
+    episodeExtractHtml({
+      fullName: fullNameOf(patient),
+      unit: patient.unit,
+      openedAt: episode.openedAt,
+      closedAt: episode.closedAt,
+      reason: decryptField(episode.reasonEnc),
+      outcome: decryptField(episode.outcomeEnc),
+      leadName: lead ? fullNameOf(lead) : null,
+      visits: visits.map((v) => ({
+        at: v.slot.startsAt,
+        specialist: fullNameOf(v.specialist),
+        status: v.a.status,
+      })),
+      conclusions: signed.map((s) => ({
+        at: s.row.signedAt ?? s.row.createdAt,
+        author: s.author ? fullNameOf(s.author) : "—",
+        text: decryptField(s.row.text) ?? "",
+      })),
+      referrals: sent.map((r) => ({
+        at: r.createdAt,
+        destination: r.destination,
+        status: r.status,
+      })),
+    }),
+  );
+});
+
+function episodeExtractHtml(d: {
+  fullName: string;
+  unit: string | null;
+  openedAt: string;
+  closedAt: string | null;
+  reason: string | null;
+  outcome: string | null;
+  leadName: string | null;
+  visits: { at: string; specialist: string; status: string }[];
+  conclusions: { at: string; author: string; text: string }[];
+  referrals: { at: string; destination: string; status: string }[];
+}): string {
+  const day = (iso: string) => new Date(iso).toLocaleDateString("uk-UA");
+  const rows = (items: string[]) => items.join("");
+
+  return `<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<title>Витяг за зверненням</title>
+<style>
+  @page { margin: 18mm; }
+  body { font: 13px/1.55 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
+  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 16px; }
+  .letterhead .org { font-size: 14px; font-weight: 700; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 14px; margin: 22px 0 6px; }
+  .meta { color: #555; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e3e3e3; vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
+  .conclusion { white-space: pre-wrap; padding: 8px 10px; border: 1px solid #d8d8d4; border-radius: 6px; margin-top: 6px; }
+  .sign { margin-top: 32px; display: flex; gap: 32px; break-inside: avoid; }
+  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
+  .sign-line i { display: inline-block; width: 200px; border-bottom: 1px solid #111; }
+  tr { break-inside: avoid; }
+  h2 { break-after: avoid; }
+</style></head>
+<body>
+  ${
+    env.institutionName
+      ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
+      : ""
+  }
+  <h1>Витяг за зверненням</h1>
+  <p class="meta">${esc(d.fullName)}${d.unit ? `, ${esc(d.unit)}` : ""} ·
+     ${esc(day(d.openedAt))} — ${d.closedAt ? esc(day(d.closedAt)) : "триває"}
+     ${d.leadName ? ` · веде ${esc(d.leadName)}` : ""}</p>
+
+  ${d.reason ? `<h2>Привід звернення</h2><p>${esc(d.reason)}</p>` : ""}
+
+  <h2>Прийоми</h2>
+  ${
+    d.visits.length
+      ? `<table><tr><th>Дата</th><th>Фахівець</th><th>Стан</th></tr>${rows(
+          d.visits.map(
+            (v) =>
+              `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td><td>${esc(v.status)}</td></tr>`,
+          ),
+        )}</table>`
+      : "<p>Прийомів не було.</p>"
+  }
+
+  <h2>Висновки</h2>
+  ${
+    /*
+     * Только подписанные. Черновик — мысль вслух, и попасть в дело он не
+     * должен: подшитый черновик потом не отличити от рішення.
+     */
+    d.conclusions.length
+      ? rows(
+          d.conclusions.map(
+            (x) =>
+              `<div class="conclusion">${esc(x.text)}<div class="meta">${esc(x.author)}, ${esc(day(x.at))}</div></div>`,
+          ),
+        )
+      : "<p>Підписаних висновків немає.</p>"
+  }
+
+  ${
+    d.referrals.length
+      ? `<h2>Направлення</h2><table><tr><th>Дата</th><th>Куди</th><th>Стан</th></tr>${rows(
+          d.referrals.map(
+            (r) =>
+              `<tr><td>${esc(day(r.at))}</td><td>${esc(r.destination)}</td><td>${esc(r.status)}</td></tr>`,
+          ),
+        )}</table>`
+      : ""
+  }
+
+  ${d.outcome ? `<h2>Результат</h2><p>${esc(d.outcome)}</p>` : ""}
+
+  <div class="sign">
+    <div class="sign-line">Фахівець <i></i></div>
+    ${d.leadName ? `<div class="sign-line">${esc(d.leadName)}</div>` : ""}
   </div>
 </body></html>`;
 }

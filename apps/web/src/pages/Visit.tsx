@@ -10,6 +10,7 @@ import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { TemplatePicker } from "../components/TemplatePicker";
 import { VisitRecorder } from "../components/VisitRecorder";
+import { Episodes } from "../components/Episodes";
 
 const SOURCE_KEY: Record<string, UiKey> = {
   self: "visit.sourceSelf",
@@ -150,6 +151,11 @@ export default function VisitPage() {
                 протокол не попадает: стенограмма это то, что было сказано, а
                 протокол — то, что специалист из этого вынес.
               */}
+              {/*
+                Обращение — здесь же: приём относят к нему в тот момент, когда
+                он идёт, а не вспоминают потом, разбирая хронологию.
+              */}
+              <Episodes patientId={data.patient.id} appointmentId={data.appointment.id} />
               <VisitRecorder
                 appointmentId={data.appointment.id}
                 onTranscript={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
