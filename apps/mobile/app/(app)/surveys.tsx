@@ -69,9 +69,25 @@ export default function SurveysScreen() {
   // и та же карточка встречается дважды и порядок прохождения теряется
   const inBattery = new Set(batteries.flatMap((b) => b.steps.map((s) => s.surveyId)));
   const loose = surveys.filter((s) => !inBattery.has(s.id));
-  const ungrouped = loose.filter((s) => !s.groupId);
+
+  /*
+   * Назначенное отделяется от общедоступного, и порядок именно такой.
+   *
+   * Общедоступную методику человек проходит, если захочет; назначенную от
+   * него ждут, и у неё есть срок. Одним списком без различия не видно ни
+   * того ни другого: назначенное теряется среди доступного, а доступное
+   * выглядит обязательным — и человек либо не проходит нужное, либо проходит
+   * лишнее, считая, что должен.
+   *
+   * Для сотрудника разделения нет: он смотрит каталог, а не свой список дел,
+   * и «назначено вам» у него означало бы не то.
+   */
+  const assigned = isAdmin ? [] : loose.filter((s) => s.assigned && !s.completedByMe);
+  const assignedIds = new Set(assigned.map((s) => s.id));
+  const rest = loose.filter((s) => !assignedIds.has(s.id));
+  const ungrouped = rest.filter((s) => !s.groupId);
   const sections = [
-    ...groups.map((g) => ({ group: g, items: loose.filter((s) => s.groupId === g.id) })),
+    ...groups.map((g) => ({ group: g, items: rest.filter((s) => s.groupId === g.id) })),
     ...(ungrouped.length ? [{ group: null, items: ungrouped }] : []),
   ].filter((s) => s.items.length > 0);
 
@@ -97,6 +113,54 @@ export default function SurveysScreen() {
       {batteries.map((b) => (
         <BatteryCard key={b.id} assignment={b} onOpen={(id) => router.push(`/survey/${id}${forPatient}`)} />
       ))}
+
+      {/*
+        Назначенное — первым разделом и со сроком. Срок стоит на карточке, а
+        не в подписи раздела: сроки у назначений разные, и один общий
+        заголовок «до такого-то» врал бы про половину из них.
+      */}
+      {assigned.length ? (
+        <View style={{ gap: spacing.md }}>
+          <Text style={{ color: c.text, fontSize: 15, fontWeight: "600" }}>
+            {ut("sv.assigned")}
+          </Text>
+          {assigned.map((item) => (
+            <Pressable
+              key={item.id}
+              onPress={() => router.push(`/survey/${item.id}${forPatient}`)}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.title}. ${ut("sv.assigned")}`}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+            >
+              <Card>
+                <Body>{item.title}</Body>
+                <Row gap={spacing.md}>
+                  <Text style={{ color: c.muted, fontSize: 12 }}>
+                    {item.questionCount} {ut("surveys.questions")}
+                  </Text>
+                  {item.timeLimitSec ? (
+                    <Text style={{ color: c.muted, fontSize: 12 }}>
+                      ~{Math.round(item.timeLimitSec / 60)} {ut("sv.minutes")}
+                    </Text>
+                  ) : null}
+                  {item.dueAt ? (
+                    <Text
+                      style={{
+                        color: new Date(item.dueAt) < new Date() ? c.danger : c.muted,
+                        fontSize: 12,
+                      }}
+                    >
+                      {new Date(item.dueAt) < new Date()
+                        ? ut("sv.overdue")
+                        : `${ut("sv.due")} ${new Date(item.dueAt).toLocaleDateString()}`}
+                    </Text>
+                  ) : null}
+                </Row>
+              </Card>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {sections.length === 0 && batteries.length === 0 && !error ? (
         <Empty

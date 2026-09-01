@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Alert, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { ageAt, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
@@ -98,6 +98,14 @@ export default function AccountScreen() {
       contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
     >
       <Title>{ut("profile.title")}</Title>
+
+      {/*
+        Раскрытие — первым блоком, а не в конце настроек.
+        Человек под кодом упирается в него в единственный момент: когда ему
+        понадобилась справка и он услышал «нужно имя». Искать эту кнопку под
+        выбором темы он не будет.
+      */}
+      <RevealCard />
 
       <Card>
         <Body>{ut("profile.language")}</Body>
@@ -310,6 +318,93 @@ function BiometricsCard() {
         variant="secondary"
         onPress={() => void toggle()}
       />
+    </Card>
+  );
+}
+
+
+/**
+ * Назвать имя: раскрытие учётной записи под кодом.
+ *
+ * Показывается только тем, у кого имени нет. Необратимость названа до
+ * нажатия, а не после: пройденные под кодом методики привяжутся к имени, и
+ * обратной операции нет — карта уже собрана, и притворяться, что данные
+ * исчезли, было бы обманом.
+ */
+function RevealCard() {
+  const c = useColors();
+  const { ut } = useLang();
+  const { user, refresh } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [passed, setPassed] = useState<number | null>(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!user?.anonymous) return null;
+
+  const start = async () => {
+    setOpen(true);
+    /*
+     * Число уже пройденного берётся у сервера. Считать его на клиенте
+     * значило бы показать «0 методик» тому, кто прошёл двенадцать, — то
+     * есть предупредить не о том.
+     */
+    setPassed(await api.myResponsesCount().catch(() => null));
+  };
+
+  return (
+    <Card>
+      <Body>{ut("rv.title")}</Body>
+      <Body muted>{ut("rv.why")}</Body>
+
+      {!open ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Button title={ut("rv.title")} variant="secondary" onPress={() => void start()} />
+        </View>
+      ) : (
+        <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+          <Text style={{ color: c.danger }}>{ut("rv.irreversible")}</Text>
+          {passed !== null && passed > 0 ? (
+            <Text style={{ color: c.danger }}>
+              {ut("rv.alreadyPassed").replace("{n}", String(passed))}
+            </Text>
+          ) : null}
+          <Field label={ut("person.lastName")} value={lastName} onChangeText={setLastName} />
+          <Field label={ut("person.firstName")} value={firstName} onChangeText={setFirstName} />
+          <ErrorText>{error}</ErrorText>
+          <Button
+            title={ut("rv.confirm")}
+            disabled={busy || !firstName.trim() || !lastName.trim()}
+            onPress={() => {
+              Alert.alert(ut("rv.title"), ut("rv.irreversible"), [
+                { text: ut("bk.screeningLater"), style: "cancel" },
+                {
+                  text: ut("rv.confirm"),
+                  style: "destructive",
+                  onPress: async () => {
+                    setBusy(true);
+                    setError(null);
+                    try {
+                      await api.reveal({
+                        firstName: firstName.trim(),
+                        lastName: lastName.trim(),
+                      });
+                      await refresh();
+                      Alert.alert(ut("rv.done"));
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : ut("join.registerFailed"));
+                    } finally {
+                      setBusy(false);
+                    }
+                  },
+                },
+              ]);
+            }}
+          />
+        </View>
+      )}
     </Card>
   );
 }
