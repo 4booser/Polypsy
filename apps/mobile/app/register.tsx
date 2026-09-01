@@ -20,6 +20,7 @@ export default function RegisterScreen() {
   const [birthDate, setBirthDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,6 +41,7 @@ export default function RegisterScreen() {
         sex,
         birthDate: birthDate.trim() || null,
         email: email.trim(),
+        phone: phone.trim(),
         password,
         inviteCode: inviteCode.trim() || null,
       });
@@ -52,8 +54,16 @@ export default function RegisterScreen() {
     }
   }
 
+  /*
+   * Телефон в условии готовности наравне с почтой и паролем: он обязателен в
+   * обоих режимах, и «анонимный» аккаунт здесь не исключение — иначе человек
+   * дошёл бы до кнопки и получил отказ сервера, не поняв, за что.
+   */
   const ready =
-    email.trim() && password.length >= 8 && (anonymous || (lastName.trim() && firstName.trim()));
+    email.trim() &&
+    phone.trim() &&
+    password.length >= 8 &&
+    (anonymous || (lastName.trim() && firstName.trim()));
 
   return (
     <KeyboardAvoidingView
@@ -98,13 +108,17 @@ export default function RegisterScreen() {
               );
             })}
           </View>
+          {/*
+            Оговорка стоит на экране регистрации, а не в правилах.
+            Телефон обязателен и здесь, и это меняет смысл слова «анонимно»:
+            запись анонимна ДЛЯ СПЕЦИАЛИСТА — он видит код, а не имя, — но не
+            для учреждения. Обещать полную анонимность и при этом хранить
+            телефон было бы обманом, а обман здесь — это человек, который
+            рассказал лишнее, считая, что его не найдут.
+          */}
           {anonymous ? (
             <Card>
-              <Body muted>
-                Фамилия и имя не сохраняются — вместо них система выдаст код вида
-                «Респондент А-4821». Email всё равно хранится: по нему выполняется вход,
-                поэтому это не полная анонимность.
-              </Body>
+              <Body muted>{ut("reg.codedMeaning")}</Body>
             </Card>
           ) : null}
         </View>
@@ -119,7 +133,7 @@ export default function RegisterScreen() {
 
         {/* пол и возраст нужны в обоих режимах: без них не применить нормы методик */}
         <View style={{ gap: spacing.xs }}>
-          <Text style={{ color: c.muted, fontSize: 13 }}>Пол</Text>
+          <Text style={{ color: c.muted, fontSize: 13 }}>{ut("reg.sex")}</Text>
           <Row gap={spacing.xs}>
             <Chip label={ut("person.sex.male")} selected={sex === "male"} onPress={() => setSex("male")} />
             <Chip label={ut("person.sex.female")} selected={sex === "female"} onPress={() => setSex("female")} />
@@ -133,11 +147,23 @@ export default function RegisterScreen() {
           keyboardType="numbers-and-punctuation"
         />
         {!sex || !birthDate.trim() ? (
-          <Body muted>
-            Пол и дата рождения не обязательны, но часть методик считает нормы по ним —
-            без этих полей результат будет без нормирования.
-          </Body>
+          <Body muted>{ut("reg.normsHint")}</Body>
         ) : null}
+
+        {/*
+          Телефон стоит рядом с почтой, а не в конце формы: он такое же
+          обязательное поле, и прятать его ниже кнопки «зарегистрироваться»
+          значило бы делать вид, что он необязателен.
+        */}
+        <Field
+          label={ut("reg.phone")}
+          value={phone}
+          onChangeText={setPhone}
+          autoCapitalize="none"
+          keyboardType="phone-pad"
+          placeholder="+380 50 111 22 33"
+        />
+        <Body muted>{ut("reg.phoneWhy")}</Body>
 
         <Field
           label="Email"
@@ -159,10 +185,7 @@ export default function RegisterScreen() {
           autoCapitalize="characters"
           placeholder="XXXX-XXXX"
         />
-        <Body muted>
-          Код открывает назначенное обследование сразу после входа. Если развёрнута закрытая
-          регистрация — без кода войти не получится.
-        </Body>
+        <Body muted>{ut("reg.inviteHint")}</Body>
 
         <ErrorText>{error}</ErrorText>
 

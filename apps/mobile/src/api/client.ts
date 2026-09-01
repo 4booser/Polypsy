@@ -179,6 +179,8 @@ export const api = {
   register: (input: {
     email: string;
     password: string;
+    /** Обязателен для всех, включая учётки под кодом */
+    phone: string;
     firstName?: string;
     lastName?: string;
     middleName?: string | null;

@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { eq, sql } from "drizzle-orm";
+import { z } from "zod";
+import { and, eq, sql } from "drizzle-orm";
 import {
   changePasswordSchema,
   loginSchema,
@@ -9,14 +10,15 @@ import {
 } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
-import { users } from "../db/schema";
+import { responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { hashPassword, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
 import { issuePair, revokeAllFor, revokeByToken, rotateRefresh } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
-import { badRequest, conflict, parseBody, unauthorized } from "../lib/http";
+import { badRequest, conflict, notFound, parseBody, unauthorized } from "../lib/http";
+import { normalizePhone, phoneFingerprint } from "../lib/phone";
 import { consumeInvite, findUsableInvite } from "../lib/invites";
-import { encryptPersonFields } from "../lib/crypto";
+import { encryptField, encryptPersonFields } from "../lib/crypto";
 import { env } from "../env";
 import type { Context } from "hono";
 import { requireAuth, type AppEnv } from "../middleware/auth";
@@ -44,6 +46,28 @@ async function registerHandler(c: Context<AppEnv>) {
 
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (existing) conflict("err.emailExists");
+
+  /*
+   * Номер приводится к международному виду до проверки на дубликат.
+   *
+   * Один и тот же телефон человек записывает пятью способами; без
+   * нормализации слепой индекс ловил бы не дубликаты, а совпадения
+   * написания — то есть почти ничего.
+   */
+  const phone = normalizePhone(input.phone);
+  if (!phone) badRequest("err.phoneInvalid");
+  const phoneIndex = phoneFingerprint(phone);
+
+  /*
+   * Один человек — один аккаунт. Проверка по слепому индексу: сравнить можно,
+   * расшифровывать для этого не нужно.
+   *
+   * Отказ не говорит, чей это номер, и не подтверждает, что владелец здесь
+   * зарегистрирован под другим именем: «номер уже используется» — это всё,
+   * что посторонний вправе узнать.
+   */
+  const samePhone = await db.query.users.findFirst({ where: eq(users.phoneIndex, phoneIndex) });
+  if (samePhone) conflict("err.phoneExists");
 
   const [{ count } = { count: 0 }] = await db
     .select({ count: sql<number>`count(*)` })
@@ -88,6 +112,10 @@ async function registerHandler(c: Context<AppEnv>) {
       }),
       anonymous: input.anonymous,
       pseudonym: input.anonymous ? makePseudonym() : null,
+      phoneEnc: encryptField(phone),
+      phoneIndex,
+      // подтверждать нечем: внешнего шлюза нет и не будет
+      phoneVerified: false,
       sex: input.sex ?? null,
       birthDate: input.birthDate ?? null,
       // подразделение из приглашения главнее введённого: его задал специалист
@@ -322,4 +350,67 @@ authRoutes.post("/logout", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   if (typeof body?.refreshToken === "string") await revokeByToken(body.refreshToken);
   return c.json({ ok: true });
+});
+
+
+/**
+ * Раскрытие учётной записи под кодом.
+ *
+ * Необратимо, и об этом сказано до нажатия. Пройденные под кодом методики
+ * привязываются к имени — обратной операции нет: карта уже собрана, и
+ * притворяться, что данные исчезли, было бы обманом.
+ *
+ * Раскрытие добавляет имя, а не контакты: телефон был указан при регистрации,
+ * потому что он обязателен для всех.
+ */
+authRoutes.post("/me/reveal", requireAuth, async (c) => {
+  const user = c.get("user");
+  const row = await db.query.users.findFirst({ where: eq(users.id, user.id) });
+  if (!row) notFound("err.userNotFound");
+  if (!row.anonymous) badRequest("err.alreadyNamed");
+
+  const input = await parseBody(
+    c.req.raw,
+    z.object({
+      firstName: z.string().min(1).max(80),
+      lastName: z.string().min(1).max(80),
+      middleName: z.string().max(80).nullish(),
+    }),
+  );
+
+  /*
+   * Сколько уже пройдено — считается здесь и возвращается в ответе, чтобы
+   * клиент мог назвать это число в предупреждении ДО нажатия. Считать его на
+   * клиенте значило бы показать «0 методик» тому, кто прошёл двенадцать.
+   */
+  const [passed] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(responses)
+    .where(and(eq(responses.userId, user.id), eq(responses.status, "completed")));
+
+  await db
+    .update(users)
+    .set({
+      anonymous: false,
+      ...encryptPersonFields({
+        firstName: input.firstName,
+        lastName: input.lastName,
+        middleName: input.middleName ?? null,
+        birthDate: null,
+      }),
+      // дату рождения не трогаем: она хранилась и под кодом
+      birthDate: row.birthDate,
+    })
+    .where(eq(users.id, user.id));
+
+  await audit(c, {
+    action: "account.reveal",
+    resourceType: "user",
+    resourceId: user.id,
+    subjectUserId: user.id,
+    details: { responsesLinked: Number(passed?.n ?? 0), pseudonym: row.pseudonym },
+  });
+
+  const fresh = (await db.query.users.findFirst({ where: eq(users.id, user.id) }))!;
+  return c.json({ user: toPublicUser(fresh), responsesLinked: Number(passed?.n ?? 0) });
 });

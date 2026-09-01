@@ -332,6 +332,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/templates": { summary: "Шаблоны заключений и заметок, справочник формулировок", access: "staff", permission: "patients.read" },
   "POST /api/templates": { summary: "Завести шаблон или формулировку", access: "staff", permission: "conclusions.write" },
   "DELETE /api/templates/:id": { summary: "Снять с использования; из базы не удаляется", access: "staff", permission: "conclusions.write" },
+  "GET /api/clinic/patients/:userId/phone": { summary: "Показать телефон: отдельным действием и с записью в журнал", access: "staff", permission: "patients.read" },
+  "POST /api/auth/me/reveal": { summary: "Раскрыть учётную запись под кодом: необратимо", access: "user", whyNoPermission: "своё имя называет сам человек, и только своё" },
   "GET /api/clinic/report": { summary: "Отчёт отделения за период: принято, первичных, повторных, неявок, на учёте", access: "staff", permission: "unitReport.read" },
   "GET /api/reports/department": { summary: "Печатный отчёт отделения; считает та же функция, что и экранный", access: "staff", permission: "unitReport.read" },
   "GET /api/reports/visits/:id": { summary: "Справка о посещении — печатная страница", access: "user", whyNoPermission: "свою справку берёт сам обследуемый; выдача чужой проверяется правом внутри" },
