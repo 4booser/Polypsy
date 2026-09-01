@@ -1195,6 +1195,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  episodes: (userId: string) =>
+    request<{
+      items: {
+        id: string;
+        openedAt: string;
+        closedAt: string | null;
+        reason: string | null;
+        outcome: string | null;
+        outcomeKind: string | null;
+        leadName: string | null;
+        visits: number;
+        conclusions: number;
+        referrals: number;
+      }[];
+    }>(`/api/episodes/patients/${userId}`),
+  openEpisode: (input: { patientId: string; reason?: string | null }) =>
+    request<{ id: string }>("/api/episodes", { method: "POST", body: JSON.stringify(input) }),
+  closeEpisode: (id: string, outcomeKind: string, outcome?: string | null) =>
+    request<{ ok: true }>(`/api/episodes/${id}/close`, {
+      method: "POST",
+      body: JSON.stringify({ outcomeKind, outcome }),
+    }),
+  attachVisit: (episodeId: string, appointmentId: string) =>
+    request<{ ok: true }>(`/api/episodes/${episodeId}/appointments/${appointmentId}`, {
+      method: "POST",
+    }),
   recording: (appointmentId: string) =>
     request<{
       id: string;

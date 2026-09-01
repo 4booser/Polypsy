@@ -25,6 +25,9 @@ export type AuditAction =
   | "clinic.phone_view"
   | "account.reveal"
   | "message.send"
+  | "episode.open"
+  | "episode.close"
+  | "episode.attach"
   | "recording.consent"
   | "recording.consent_revoke"
   | "recording.start"
@@ -33,6 +36,7 @@ export type AuditAction =
   | "template.create"
   | "template.archive"
   | "report.visit_certificate"
+  | "report.episode_extract"
   | "clinic.lead_take"
   | "clinic.lead_release"
   /* права: кто кому что выдал — разбирается по журналу, а не по памяти */

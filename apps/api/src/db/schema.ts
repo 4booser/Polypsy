@@ -1765,6 +1765,8 @@ export const conclusions = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     signedAt: timestampCol("signed_at"),
+    /** Обращение, к которому относится запись; необязательно — см. episodes */
+    episodeId: text("episode_id"),
     signedBy: text("signed_by").references(() => users.id, { onDelete: "restrict" }),
   },
   (t) => ({
@@ -1850,6 +1852,8 @@ export const referrals = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    /** Обращение, к которому относится запись; необязательно — см. episodes */
+    episodeId: text("episode_id"),
     updatedAt: timestampCol("updated_at"),
   },
   (t) => ({
@@ -2497,6 +2501,13 @@ export const appointments = pgTable(
     cancelledBy: text("cancelled_by").references(() => users.id, { onDelete: "set null" }),
     /** Отмена позже чем за сутки видна специалисту так же, как неявка */
     cancelledLate: boolean("cancelled_late").notNull().default(false),
+    /**
+     * Обращение, к которому относится приём.
+     *
+     * Необязательно: приём вне эпизода — это нормально, а не ошибка. Человек
+     * может прийти один раз и не начать обращения вовсе.
+     */
+    episodeId: text("episode_id"),
   },
   (t) => ({
     slotIdx: index("appointments_slot_idx").on(t.slotId),
@@ -2688,5 +2699,49 @@ export const visitRecordings = pgTable(
      */
     appointmentUniq: uniqueIndex("visit_recordings_appointment_uniq").on(t.appointmentId),
     queueIdx: index("visit_recordings_status_idx").on(t.status),
+  }),
+);
+
+/**
+ * Эпизод обслуживания: одно обращение целиком.
+ *
+ * Приёмы, прохождения, заключения и направления лежали рядом, но не были
+ * связаны: чтобы понять, «с чем человек приходил в марте и чем это
+ * кончилось», приходилось складывать хронологию в голове. Эпизод делает
+ * обращение единицей, у которой есть повод, ход и исход.
+ */
+export const episodes = pgTable(
+  "episodes",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Кто ведёт обращение.
+     *
+     * Не то же, что ведущий специалист человека: человека ведёт один, а
+     * обращений у него бывает несколько, и вести их могут разные люди.
+     */
+    leadSpecialistId: text("lead_specialist_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    departmentId: text("department_id").references(() => departments.id, { onDelete: "set null" }),
+
+    openedAt: timestampCol("opened_at").notNull().default(sql`now()`),
+    closedAt: timestampCol("closed_at"),
+
+    /** Повод словами: «после командировки», «направлен командиром» */
+    reasonEnc: text("reason_enc"),
+    /** Исход при закрытии — тоже словами */
+    outcomeEnc: text("outcome_enc"),
+    outcomeKind: text("outcome_kind", {
+      enum: ["improved", "stable", "worse", "referred", "dropped", "transferred"],
+    }),
+
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    patientIdx: index("episodes_patient_idx").on(t.patientId, t.openedAt.desc()),
   }),
 );
