@@ -1174,6 +1174,27 @@ export const api = {
     }>("/api/audit/summary"),
 
   /* ── поликлиника ── */
+  threads: () =>
+    request<{
+      items: {
+        id: string;
+        withName: string;
+        patientId?: string;
+        lastMessageAt: string;
+        unread: number;
+      }[];
+      lead: string | null;
+    }>("/api/messages"),
+  thread: (id: string) =>
+    request<{
+      id: string;
+      items: { id: string; mine: boolean; text: string; sentAt: string; readAt: string | null }[];
+    }>(`/api/messages/${id}`),
+  sendMessage: (input: { patientId?: string; text: string }) =>
+    request<{ id: string; threadId: string }>("/api/messages", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   templates: () =>
     request<{
       items: {

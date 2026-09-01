@@ -72,6 +72,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
          */
         { to: "/today", key: "nav.today", icon: <IconClock />, badge: counts.today },
         { to: "/worklist", key: "nav.worklist", icon: <IconClock />, badge: counts.worklist },
+        { to: "/messages", key: "ms.title", icon: <IconStack /> },
         { to: "/alerts", key: "nav.cases", icon: <IconAlert />, badge: counts.alerts },
         { to: "/referrals", key: "nav.referrals", icon: <IconReferral />, badge: counts.referrals },
       ],

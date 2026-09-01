@@ -24,6 +24,7 @@ export type AuditAction =
   | "clinic.report"
   | "clinic.phone_view"
   | "account.reveal"
+  | "message.send"
   | "template.create"
   | "template.archive"
   | "report.visit_certificate"

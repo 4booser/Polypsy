@@ -12,8 +12,10 @@ import {
   pathwayProgress,
   pathways,
   pathwaySteps,
+  messages,
   referrals,
   slots,
+  threads,
   treatmentGoals,
   surveyAccess,
   surveys,
@@ -92,11 +94,19 @@ const KIND_WEIGHT: Record<Kind, number> = {
    * заметят, тем меньше от этого пользы.
    */
   noshow: 1,
-  pathway: 2,
-  goal: 3,
-  followup: 4,
-  referral: 5,
-  assignment: 6,
+  /*
+   * Непрочитанное письмо стоит выше маршрутов и целей, но ниже неявки.
+   *
+   * Человек, который написал, ждёт ответа и знает, что письмо доставлено —
+   * ждать он будет до тех пор, пока не решит, что о нём забыли. Но неявка
+   * важнее: там человек не написал ничего, и молчание — это и есть сигнал.
+   */
+  message: 2,
+  pathway: 3,
+  goal: 4,
+  followup: 5,
+  referral: 6,
+  assignment: 7,
 };
 
 worklistRoutes.get("/", async (c) => {
@@ -223,7 +233,64 @@ worklistRoutes.get("/", async (c) => {
     });
   }
 
-  // 3. Направления, по которым нет ответа
+  /*
+   * 3. Непрочитанные письма.
+   *
+   * В общую очередь, а не отдельным местом, куда надо не забыть зайти.
+   * Отдельный экран переписки означал бы, что письмо ждёт ровно столько,
+   * сколько специалист не вспоминал о нём, — а вспоминают о таких экранах
+   * в конце дня.
+   */
+  const unreadRows = await db
+    .select({
+      thread: threads,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+      unit: users.unit,
+      unread: sql<number>`(
+        select count(*)::int from messages m
+        where m.thread_id = ${threads.id} and m.author_id <> ${user.id} and m.read_at is null
+      )`,
+      oldest: sql<string>`(
+        select min(m.sent_at) from messages m
+        where m.thread_id = ${threads.id} and m.author_id <> ${user.id} and m.read_at is null
+      )`,
+    })
+    .from(threads)
+    .innerJoin(users, eq(users.id, threads.patientId))
+    .where(and(eq(threads.specialistId, user.id), isNull(threads.closedAt)))
+    .limit(200);
+
+  for (const r of unreadRows) {
+    if (Number(r.unread) === 0) continue;
+    const waitingDays = r.oldest
+      ? Math.floor((now - new Date(r.oldest).getTime()) / 86_400_000)
+      : 0;
+    items.push({
+      kind: "message",
+      id: r.thread.id,
+      userId: r.thread.patientId,
+      userName: fullNameOf(r as never),
+      unit: r.unit,
+      title: t({ uk: "Непрочитане повідомлення", ru: "Непрочитанное сообщение" } as never),
+      signals: Number(r.unread),
+      days: waitingDays,
+      /*
+       * Просроченным письмо считается через сутки. Ответ обещан в рабочее
+       * время, и сутки — это уже «завтра», то есть срок, о котором человеку
+       * говорили, прошёл.
+       */
+      overdue: waitingDays >= 1,
+      assignedTo: user.id,
+      since: r.oldest ?? r.thread.lastMessageAt,
+      href: `/messages/${r.thread.id}`,
+    });
+  }
+
+  // 4. Направления, по которым нет ответа
   const referralRows = await db
     .select({
       r: referrals,

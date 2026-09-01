@@ -33,7 +33,7 @@ export const PERMISSION_GROUPS = [
   {
     code: "reception",
     title: { uk: "Прийом і розклад", ru: "Приём и расписание" },
-    permissions: ["schedule.own", "appointments.manage", "departments.manage"],
+    permissions: ["schedule.own", "appointments.manage", "departments.manage", "messages.write"],
   },
   {
     code: "risk",
@@ -119,6 +119,7 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
   "schedule.own": { uk: "Вести свій розклад прийому", ru: "Вести своё расписание приёма" },
   "appointments.manage": { uk: "Записувати, переносити й скасовувати прийоми", ru: "Записывать, переносить и отменять приёмы" },
   "departments.manage": { uk: "Вести відділення та профілі фахівців", ru: "Вести отделения и профили специалистов" },
+  "messages.write": { uk: "Листуватися з пацієнтами", ru: "Переписываться с пациентами" },
 
   "alerts.review": { uk: "Розбирати випадки ризику", ru: "Разбирать случаи риска" },
   "duty.take": { uk: "Заступати на чергування", ru: "Заступать на дежурство" },

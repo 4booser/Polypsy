@@ -1251,6 +1251,7 @@ export interface AlertCaseFilters {
 export type WorkKind =
   | "case"
   | "noshow"
+  | "message"
   | "assignment"
   | "referral"
   | "followup"

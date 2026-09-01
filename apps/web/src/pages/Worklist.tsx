@@ -21,6 +21,7 @@ import { useLiveReload } from "../events";
 const KIND_KEY: Record<WorkKind, UiKey> = {
   case: "work.kindCase",
   noshow: "work.kindNoshow",
+  message: "work.kindMessage",
   followup: "work.kindFollowup",
   referral: "work.kindReferral",
   assignment: "work.kindAssignment",
@@ -161,6 +162,15 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
       return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
     case "goal":
       return `${i.title} · ${t("work.goalOverdue")} ${i.days ?? 0} ${t("cases.ago")}`;
+    case "message":
+      /*
+       * Число непрочитанных важнее давности: одно письмо — обычная работа,
+       * три подряд без ответа — уже другая история.
+       */
+      return [
+        `${t("work.msgUnread")} ${i.signals ?? 1}`,
+        (i.days ?? 0) > 0 ? `${t("work.msgWaiting")} ${i.days}` : t("work.msgToday"),
+      ].join(" · ");
     case "noshow":
       /*
        * «Второй раз подряд» — другой разговор, чем «не пришёл один раз», и

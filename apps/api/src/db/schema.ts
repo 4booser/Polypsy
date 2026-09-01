@@ -2539,3 +2539,59 @@ export const textTemplates = pgTable(
     lookupIdx: index("text_templates_lookup_idx").on(t.kind, t.departmentId),
   }),
 );
+
+/**
+ * Переписка пациента со своим специалистом.
+ *
+ * Асинхронная и с честными границами: ответ в рабочее время, это не
+ * экстренная связь. Обещание круглосуточного ответа в психологическом отделе
+ * опаснее отсутствия переписки вовсе — человек в кризис напишет и будет
+ * ждать вместо того, чтобы позвонить.
+ */
+export const threads = pgTable(
+  "threads",
+  {
+    id: text("id").primaryKey(),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    specialistId: text("specialist_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    lastMessageAt: timestampCol("last_message_at").notNull().default(sql`now()`),
+    closedAt: timestampCol("closed_at"),
+  },
+  (t) => ({
+    /**
+     * Один разговор на пару. Переписка — это не заявки: второй тред с тем же
+     * человеком означал бы потерять контекст ровно там, где он и нужен.
+     */
+    pairUniq: uniqueIndex("threads_pair_uniq").on(t.patientId, t.specialistId),
+    specialistIdx: index("threads_specialist_idx").on(t.specialistId, t.lastMessageAt.desc()),
+    patientIdx: index("threads_patient_idx").on(t.patientId, t.lastMessageAt.desc()),
+  }),
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Шифруется как остальные клинические записи: человек пишет сюда о своём
+     * состоянии, и это такие же сведения о нём, как заметка приёма.
+     */
+    textEnc: text("text_enc").notNull(),
+    sentAt: timestampCol("sent_at").notNull().default(sql`now()`),
+    readAt: timestampCol("read_at"),
+  },
+  (t) => ({
+    threadIdx: index("messages_thread_idx").on(t.threadId, t.sentAt),
+  }),
+);
