@@ -43,6 +43,17 @@ const schema = z.object({
    */
   INSTITUTION_NAME: z.string().max(200).optional(),
   INSTITUTION_UNIT: z.string().max(200).optional(),
+  /** Каталог записей приёмов; должен попадать в резервное копирование отдельно */
+  RECORDINGS_DIR: z.string().max(400).optional(),
+  /**
+   * Свой whisper.cpp: путь к исполняемому файлу и к модели.
+   *
+   * Пусто — расшифровки нет, и это видно на экране. Облачные сервисы
+   * распознавания сюда не подставляются намеренно: отправить запись
+   * психотерапевтической сессии наружу значит раскрыть её третьей стороне.
+   */
+  WHISPER_BIN: z.string().max(400).optional(),
+  WHISPER_MODEL: z.string().max(400).optional(),
   /** Открытая регистрация пациентов без приглашения (в бою выключать) */
   OPEN_REGISTRATION: z
     .string()
@@ -80,6 +91,24 @@ export const env = {
   consoleUrl: raw.CONSOLE_URL,
   institutionName: raw.INSTITUTION_NAME,
   institutionUnit: raw.INSTITUTION_UNIT,
+  /**
+   * Каталог, где лежат записи приёмов.
+   *
+   * Файлы, а не строки в базе: часовой приём — десятки мегабайт, и класть их
+   * в строку значит превратить бэкап базы в неподъёмный. Каталог обязан
+   * попадать в резервное копирование отдельно, и об этом сказано в RUNBOOK.
+   */
+  recordingsDir: raw.RECORDINGS_DIR ?? "./data/recordings",
+  /**
+   * Путь к своему whisper.cpp. Пусто — расшифровки нет, и это видно на
+   * экране: запись остаётся аудио, а не молча числится «в обработке».
+   *
+   * Облачные сервисы распознавания сюда не подставляются намеренно: отправить
+   * запись психотерапевтической сессии наружу значит раскрыть её третьей
+   * стороне, и никакая настройка этого не оправдывает.
+   */
+  whisperBin: raw.WHISPER_BIN,
+  whisperModel: raw.WHISPER_MODEL,
   corsOrigins: raw.CORS_ORIGINS
     ? raw.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
     : isProduction

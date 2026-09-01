@@ -117,6 +117,13 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {/*
+        Запись приёма — сразу под ближайшим приёмом, а не в настройках.
+        Согласие на запись даётся в тот приём, который записывают, и человек
+        должен видеть его там же, где видит сам приём.
+      */}
+      {next ? <RecordingBlock appointmentId={next.id} /> : null}
+
       {/* ── 2. что пройти до приёма ── */}
       <View style={{ gap: spacing.sm }}>
         <Title>{ut("home.toDo")}</Title>
@@ -225,6 +232,108 @@ function NextVisit({
         <Button title={ut("home.reschedule")} variant="secondary" onPress={onReschedule} />
         <Button title={ut("home.cancel")} variant="secondary" onPress={onCancel} disabled={busy} />
       </View>
+    </Card>
+  );
+}
+
+
+/**
+ * Согласие на запись этого приёма и остановка.
+ *
+ * Согласие даётся именно на этот разговор, а не «вообще»: галочка в общем
+ * согласии, подписанном год назад, относилась к обследованию, а не к тому,
+ * что сегодняшний разговор запишут.
+ *
+ * Остановить может пациент — в первую очередь он: это его разговор о себе, и
+ * право прекратить запись у него не меньше, чем у специалиста.
+ */
+function RecordingBlock({ appointmentId }: { appointmentId: string }) {
+  const c = useColors();
+  const { ut } = useLang();
+  const [state, setState] = useState<{ status: string; consentAt: string | null } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setState(await api.recording(appointmentId).catch(() => null));
+  }, [appointmentId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  if (!state) return null;
+  const live = state.status === "recording";
+
+  return (
+    <Card>
+      <Body>{ut("rec.title")}</Body>
+
+      {live ? (
+        <>
+          {/*
+            Пока идёт запись, человек видит это на своём экране — не по
+            словам специалиста и не по красной лампочке на чужом устройстве.
+          */}
+          <Body muted>{ut("rec.patientNote")}</Body>
+          <View style={{ marginTop: spacing.md }}>
+            <Button
+              title={ut("rec.stop")}
+              variant="secondary"
+              disabled={busy}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await api.recordingStopByPatient(appointmentId);
+                  await load();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          </View>
+        </>
+      ) : state.consentAt ? (
+        <>
+          <Body muted>{ut("rec.consentBySelf")}</Body>
+          <View style={{ marginTop: spacing.md }}>
+            <Button
+              title={ut("rec.consentRevoke")}
+              variant="secondary"
+              disabled={busy}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await api.recordingRevoke(appointmentId);
+                  await load();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          </View>
+        </>
+      ) : (
+        <>
+          <Body muted>{ut("rec.consentAsk")}</Body>
+          <View style={{ marginTop: spacing.md }}>
+            <Button
+              title={ut("rec.consentGive")}
+              disabled={busy}
+              onPress={async () => {
+                setBusy(true);
+                try {
+                  await api.recordingConsent(appointmentId);
+                  await load();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            />
+          </View>
+        </>
+      )}
     </Card>
   );
 }

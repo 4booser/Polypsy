@@ -247,6 +247,26 @@ export const api = {
   myResponsesCount: () =>
     request<{ items: { id: string }[] }>("/api/me/responses").then((r) => r.items.length),
 
+  /* ── запись приёма ── */
+  recording: (appointmentId: string) =>
+    request<{
+      id: string;
+      status: string;
+      consentAt: string | null;
+      consentBySelf: boolean;
+      startedAt: string | null;
+      transcript: string | null;
+      transcriptionAvailable: boolean;
+    }>(`/api/recordings/${appointmentId}`),
+  recordingConsent: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/consent`, { method: "POST" }),
+  recordingRevoke: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/consent/revoke`, { method: "POST" }),
+  recordingStopByPatient: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/stop`, { method: "POST" }),
+  recordingDiscard: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/discard`, { method: "POST" }),
+
   /* ── переписка ── */
   threads: () =>
     request<{

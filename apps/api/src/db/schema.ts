@@ -2601,3 +2601,92 @@ export const messages = pgTable(
     threadIdx: index("messages_thread_idx").on(t.threadId, t.sentAt),
   }),
 );
+
+/**
+ * Запись приёма голосом.
+ *
+ * Самые чувствительные данные в системе: не «результат методики», а разговор
+ * человека о себе целиком. Отсюда всё устройство этой таблицы — согласие на
+ * конкретный приём, файл вне базы, стенограмма под шифрованием и след
+ * удаления.
+ */
+export const visitRecordings = pgTable(
+  "visit_recordings",
+  {
+    id: text("id").primaryKey(),
+    appointmentId: text("appointment_id")
+      .notNull()
+      .references(() => appointments.id, { onDelete: "cascade" }),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    specialistId: text("specialist_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    /**
+     * Согласие на запись ИМЕННО ЭТОГО приёма.
+     *
+     * Не галочка в общем согласии, подписанном год назад: согласие на запись
+     * разговора даётся в тот разговор, который записывают. Без отметки запись
+     * не начинается, и это проверяет сервер, а не кнопка.
+     */
+    consentAt: timestampCol("consent_at"),
+    /**
+     * Кто отметил согласие. Пациент со своего устройства — сам; на приёме без
+     * телефона отмечает специалист, и тогда по журналу видно, что согласие
+     * получено голосом, а не нажатием пациента.
+     */
+    consentBy: text("consent_by").references(() => users.id, { onDelete: "set null" }),
+
+    startedAt: timestampCol("started_at"),
+    endedAt: timestampCol("ended_at"),
+    durationMs: integer("duration_ms"),
+
+    /**
+     * Путь к зашифрованному файлу. Само аудио в базе не лежит: часовой приём
+     * — десятки мегабайт, и класть их в строку значит превратить бэкап базы
+     * в неподъёмный.
+     */
+    audioPath: text("audio_path"),
+    audioBytes: integer("audio_bytes"),
+
+    /** Расшифровка. Шифруется как остальные клинические записи */
+    transcriptEnc: text("transcript_enc"),
+    /** Чем расшифровано: без этого через год не понять, почему одна стенограмма лучше другой */
+    transcriptEngine: text("transcript_engine"),
+    transcriptAt: timestampCol("transcript_at"),
+
+    status: text("status", {
+      enum: [
+        "consent_pending",
+        "ready",
+        "recording",
+        "uploaded",
+        "transcribing",
+        "done",
+        "failed",
+        "discarded",
+      ],
+    })
+      .notNull()
+      .default("consent_pending"),
+    failure: text("failure"),
+
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    /**
+     * Удаление: файл стирается, строка остаётся. Иначе не видно, что запись
+     * была и её убрали, — а это ровно то, что нужно знать при разборе.
+     */
+    discardedAt: timestampCol("discarded_at"),
+    discardedBy: text("discarded_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    /**
+     * Одна запись на приём. Две дорожки одного разговора — это две версии
+     * того, что было сказано, и выбирать между ними некому.
+     */
+    appointmentUniq: uniqueIndex("visit_recordings_appointment_uniq").on(t.appointmentId),
+    queueIdx: index("visit_recordings_status_idx").on(t.status),
+  }),
+);

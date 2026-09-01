@@ -414,6 +414,13 @@
       "when": 1788029730169,
       "tag": "0058_scale_labels_localized",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788029730170,
+      "tag": "0059_recordings",
+      "breakpoints": true
     }
   ]
 }
