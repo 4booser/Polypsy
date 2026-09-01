@@ -1195,6 +1195,51 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  recording: (appointmentId: string) =>
+    request<{
+      id: string;
+      status: string;
+      consentAt: string | null;
+      consentBySelf: boolean;
+      startedAt: string | null;
+      durationMs: number | null;
+      transcript: string | null;
+      transcriptEngine: string | null;
+      failure: string | null;
+      transcriptionAvailable: boolean;
+      queued: number;
+    }>(`/api/recordings/${appointmentId}`),
+  recordingConsent: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/consent`, { method: "POST" }),
+  recordingRevoke: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/consent/revoke`, { method: "POST" }),
+  recordingStart: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/start`, { method: "POST" }),
+  /**
+   * Остановить и передать аудио.
+   *
+   * Мимо общего request: тот ставит Content-Type: application/json, а
+   * multipart требует границы, которую браузер вписывает сам. Подставить
+   * заголовок руками значит сломать разбор на сервере.
+   */
+  recordingStop: async (appointmentId: string, audio: Blob | null) => {
+    const form = new FormData();
+    if (audio) form.append("audio", audio, "visit.webm");
+    const res = await fetch(`/api/recordings/${appointmentId}/stop`, {
+      method: "POST",
+      headers: {
+        "Accept-Language": currentLang,
+        ...(tokenStore.get() ? { Authorization: `Bearer ${tokenStore.get()}` } : {}),
+      },
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new ApiError(body?.error ?? `HTTP ${res.status}`, res.status);
+    }
+  },
+  recordingDiscard: (appointmentId: string) =>
+    request<{ ok: true }>(`/api/recordings/${appointmentId}/discard`, { method: "POST" }),
   templates: () =>
     request<{
       items: {

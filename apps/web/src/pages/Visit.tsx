@@ -9,6 +9,7 @@ import { Button, Field, Input, Num, SectionLabel, Select, Textarea } from "../ui
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { TemplatePicker } from "../components/TemplatePicker";
+import { VisitRecorder } from "../components/VisitRecorder";
 
 const SOURCE_KEY: Record<string, UiKey> = {
   self: "visit.sourceSelf",
@@ -140,7 +141,20 @@ export default function VisitPage() {
               </div>
             </Panel>
 
-            <Actions data={data} busy={busy} run={run} reload={reload} />
+            <div className="flex flex-col gap-3">
+              <Actions data={data} busy={busy} run={run} reload={reload} />
+              {/*
+                Запись — в правой колонке, под действиями: её включают в
+                начале приёма, а не читают перед ним. Стенограмма приезжает
+                сюда же и вставляется в протокол по нажатию — сама она в
+                протокол не попадает: стенограмма это то, что было сказано, а
+                протокол — то, что специалист из этого вынес.
+              */}
+              <VisitRecorder
+                appointmentId={data.appointment.id}
+                onTranscript={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
+              />
+            </div>
           </div>
         </Page>
       )}
