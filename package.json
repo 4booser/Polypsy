@@ -17,7 +17,8 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "lint": "biome lint",
-    "lint:fix": "biome lint --write"
+    "lint:fix": "biome lint --write",
+    "install:instance": "bun run --cwd apps/api install:instance"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

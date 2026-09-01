@@ -19,7 +19,8 @@
     "survey:purge": "bun src/surveyPurge.ts",
     "db:simulate": "bun src/simulate.ts",
     "content:check": "bun src/contentCheck.ts",
-    "search:reindex": "bun src/reindex.ts"
+    "search:reindex": "bun src/reindex.ts",
+    "install:instance": "bun src/install.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",
