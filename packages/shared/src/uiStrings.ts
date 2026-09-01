@@ -524,6 +524,7 @@ export const UI = {
   "dep.from": { uk: "З", ru: "С" },
   "dep.to": { uk: "До", ru: "По" },
   "dep.build": { uk: "Порахувати", ru: "Посчитать" },
+  "dep.print": { uk: "На друк", ru: "На печать" },
   "dep.received": { uk: "Прийнято прийомів", ru: "Принято приёмов" },
   "dep.people": { uk: "Людей", ru: "Людей" },
   "dep.primary": { uk: "Перших", ru: "Первичных" },

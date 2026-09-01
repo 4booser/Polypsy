@@ -1280,3 +1280,35 @@ describe("отчёт отделения", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("печатный отчёт", () => {
+  test("считает те же числа, что и экранный", async () => {
+    /*
+     * Два расчёта одного числа однажды разойдутся, и разойдутся молча —
+     * сверить их будет некому, а подпишут бумажное. Проверка сверяет их
+     * сейчас, пока это ещё возможно.
+     */
+    const today = new Date().toISOString().slice(0, 10);
+    const json = await api(
+      `/api/clinic/report?departmentId=${departmentId}&from=2000-01-01&to=${today}`,
+      specialistToken,
+    );
+    expect(json.status).toBe(200);
+
+    const printed = await app.request(
+      `/api/reports/department?departmentId=${departmentId}&from=2000-01-01&to=${today}`,
+      { headers: { Authorization: `Bearer ${specialistToken}` } },
+    );
+    expect(printed.status).toBe(200);
+    const html = await printed.text();
+
+    expect(html).toContain(`>${json.body.received}<`);
+    // подавленные печатаются словом, а не прочерком и не нулём
+    if (json.body.people === null) expect(html).toContain("мало");
+  });
+
+  test("без периода отказывает, а не считает за всё время", async () => {
+    const res = await api("/api/reports/department", specialistToken);
+    expect(res.status).toBe(400);
+  });
+});

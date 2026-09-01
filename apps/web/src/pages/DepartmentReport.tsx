@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api";
+import { api, openInTab } from "../api";
 import { Screen } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Button, Field, Input, Num } from "../ui/primitives";
@@ -41,6 +41,19 @@ export default function DepartmentReportPage() {
               </Field>
               <Button size="sm" onClick={() => setRange({ from, to })}>
                 {ut("dep.build")}
+              </Button>
+              {/*
+                Печатный лист считает та же функция, что и экран: два расчёта
+                одного числа однажды разойдутся, а подпишут бумажное.
+              */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  openInTab(`/api/reports/department?from=${range.from}&to=${range.to}`)
+                }
+              >
+                {ut("dep.print")}
               </Button>
             </div>
           }
