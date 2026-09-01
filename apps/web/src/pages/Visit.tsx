@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
@@ -8,6 +8,7 @@ import { Page, Panel } from "../ui/layout";
 import { Button, Field, Input, Num, SectionLabel, Select, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { TemplatePicker } from "../components/TemplatePicker";
 
 const SOURCE_KEY: Record<string, UiKey> = {
   self: "visit.sourceSelf",
@@ -49,6 +50,7 @@ export default function VisitPage() {
   );
 
   const [text, setText] = useState<string | null>(null);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
     if (notes.data && text === null) setText(notes.data.current?.text ?? "");
   }, [notes.data, text]);
@@ -73,6 +75,7 @@ export default function VisitPage() {
             <Panel title={ut("visit.protocol")}>
               <div className="flex flex-col gap-2 p-4">
                 <Textarea
+                  ref={areaRef}
                   rows={18}
                   value={text ?? ""}
                   onChange={(e) => setText(e.target.value)}
@@ -103,6 +106,12 @@ export default function VisitPage() {
                   >
                     {ut("visit.template")}
                   </Button>
+                  <TemplatePicker
+                    kind="note"
+                    value={text ?? ""}
+                    onChange={setText}
+                    textareaRef={areaRef}
+                  />
                   <Button
                     size="sm"
                     disabled={busy || !text}

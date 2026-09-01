@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { adminA, adminB, api, app, db, eq, makeUser, patient, root, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { textTemplates } from "../src/db/schema";
 
 /* Клинические документы: заключения, направления, консилиум */
 
@@ -1281,5 +1282,68 @@ describe("черновик заключения из результатов", ()
       adminB.token,
     );
     expect([403, 404]).toContain(res.status);
+  });
+});
+
+describe("библиотека шаблонов", () => {
+  /**
+   * Отделение пишет одни и те же обороты десятками раз, и каждый раз заново.
+   * Это не только время, но и разнобой: одно и то же состояние в двух
+   * заключениях описано разными словами, и сравнить их потом нельзя.
+   */
+  test("формулировка заводится и отдаётся списком", async () => {
+    const created = await api("/api/templates", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "phrase",
+        title: "Жалоб не предъявляет",
+        body: "жалоб на момент осмотра не предъявляет",
+      }),
+    });
+    expect(created.status).toBe(201);
+
+    const list = await api("/api/templates?kind=phrase", adminA.token);
+    expect(list.body.items.some((t: { id: string }) => t.id === created.body.id)).toBe(true);
+  });
+
+  test("снятая формулировка уходит из списка, но не из базы", async () => {
+    /*
+     * Формулировка, которой уже написаны заключения, не должна исчезать: по
+     * ней потом разбираются, откуда взялась фраза.
+     */
+    const created = await api("/api/templates", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ kind: "phrase", title: "Устарело", body: "устаревший оборот" }),
+    });
+    const removed = await api(`/api/templates/${created.body.id}`, adminA.token, {
+      method: "DELETE",
+    });
+    expect(removed.status).toBe(200);
+
+    const list = await api("/api/templates", adminA.token);
+    expect(list.body.items.some((t: { id: string }) => t.id === created.body.id)).toBe(false);
+
+    const [row] = await db
+      .select()
+      .from(textTemplates)
+      .where(eq(textTemplates.id, created.body.id));
+    expect(row).toBeDefined();
+    expect(row!.archivedAt).not.toBeNull();
+  });
+
+  test("повторное снятие отклоняется", async () => {
+    const created = await api("/api/templates", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ kind: "note", title: "Дважды", body: "текст" }),
+    });
+    await api(`/api/templates/${created.body.id}`, adminA.token, { method: "DELETE" });
+    const again = await api(`/api/templates/${created.body.id}`, adminA.token, { method: "DELETE" });
+    expect(again.status).toBe(404);
+  });
+
+  test("пациенту библиотека не отдаётся", async () => {
+    const person = await makeUser("user", `tpl-${crypto.randomUUID()}@test`);
+    const res = await api("/api/templates", person.token);
+    expect(res.status).toBe(403);
   });
 });

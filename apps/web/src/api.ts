@@ -1174,6 +1174,24 @@ export const api = {
     }>("/api/audit/summary"),
 
   /* ── поликлиника ── */
+  templates: () =>
+    request<{
+      items: {
+        id: string;
+        kind: "conclusion" | "note" | "phrase";
+        title: string;
+        body: string;
+        departmentId: string | null;
+      }[];
+    }>("/api/templates"),
+  createTemplate: (input: {
+    kind: "conclusion" | "note" | "phrase";
+    title: string;
+    body: string;
+    departmentId?: string | null;
+  }) => request<{ id: string }>("/api/templates", { method: "POST", body: JSON.stringify(input) }),
+  archiveTemplate: (id: string) =>
+    request<{ ok: true }>(`/api/templates/${id}`, { method: "DELETE" }),
   departmentReport: (from: string, to: string) =>
     request<{
       departmentId: string;
