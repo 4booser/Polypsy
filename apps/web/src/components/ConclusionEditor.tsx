@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
 import { useResource } from "../useResource";
 import { useLang } from "../lang";
 import { Button, Textarea } from "../ui/primitives";
+import { TemplatePicker } from "./TemplatePicker";
 
 /**
  * Заключение специалиста поверх автоматической интерпретации.
@@ -17,6 +18,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
   const { ut } = useLang();
   const [text, setText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const { run } = useAction();
 
   const res = useResource(() => api.conclusion(responseId), [responseId]);
@@ -62,6 +64,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
       ) : null}
 
       <Textarea
+        ref={areaRef}
         rows={5}
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -88,6 +91,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         >
           {ut("cn.fromResults")}
         </Button>
+        <TemplatePicker kind="conclusion" value={text} onChange={setText} textareaRef={areaRef} />
         <Button
           disabled={!text.trim()}
           onClick={() =>

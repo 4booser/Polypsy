@@ -2483,3 +2483,36 @@ export const appointments = pgTable(
       .where(sql`status <> 'cancelled'`),
   }),
 );
+
+/**
+ * Шаблоны заключений и заметок, справочник формулировок.
+ *
+ * Отделение пишет одни и те же обороты десятками раз. Каждый раз набирать их
+ * заново — это не только время, но и разнобой: одно и то же состояние в двух
+ * заключениях описано разными словами, и сравнить их потом нельзя.
+ */
+export const textTemplates = pgTable(
+  "text_templates",
+  {
+    id: text("id").primaryKey(),
+    /**
+     * Чья библиотека. null — общая для учреждения: часть формулировок
+     * одинакова везде, и заводить их в каждом отделении заново значит
+     * получить пять расходящихся копий.
+     */
+    departmentId: text("department_id").references(() => departments.id, { onDelete: "cascade" }),
+    /**
+     * Шаблон подставляется целиком, формулировка — в место курсора. Это
+     * разное поведение, а не разное оформление, поэтому вид хранится.
+     */
+    kind: text("kind", { enum: ["conclusion", "note", "phrase"] }).notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    archivedAt: timestampCol("archived_at"),
+  },
+  (t) => ({
+    lookupIdx: index("text_templates_lookup_idx").on(t.kind, t.departmentId),
+  }),
+);
