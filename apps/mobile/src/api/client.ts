@@ -232,6 +232,21 @@ export const api = {
     ),
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
 
+  /**
+   * Раскрыть учётную запись под кодом.
+   *
+   * Необратимо: пройденные под кодом методики привяжутся к имени. Число уже
+   * пройденного возвращает сервер — считать его на клиенте значило бы
+   * показать «0 методик» тому, кто прошёл двенадцать.
+   */
+  reveal: (input: { firstName: string; lastName: string; middleName?: string | null }) =>
+    request<{ user: User; responsesLinked: number }>("/api/auth/me/reveal", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  myResponsesCount: () =>
+    request<{ items: { id: string }[] }>("/api/me/responses").then((r) => r.items.length),
+
   /* ── приём ── */
   myAppointments: (past = false) =>
     request<{ items: AppointmentView[] }>(`/api/clinic/appointments/mine${past ? "?past=1" : ""}`),
