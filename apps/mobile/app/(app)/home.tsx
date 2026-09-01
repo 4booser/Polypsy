@@ -148,6 +148,11 @@ export default function HomeScreen() {
           </Body>
           <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
             <Button
+              title={ut("ms.write")}
+              variant="secondary"
+              onPress={() => router.push("/messages")}
+            />
+            <Button
               title={ut("home.safetyPlan")}
               variant="secondary"
               onPress={() => router.push("/safety")}

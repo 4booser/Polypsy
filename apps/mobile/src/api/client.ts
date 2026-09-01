@@ -247,6 +247,23 @@ export const api = {
   myResponsesCount: () =>
     request<{ items: { id: string }[] }>("/api/me/responses").then((r) => r.items.length),
 
+  /* ── переписка ── */
+  threads: () =>
+    request<{
+      items: { id: string; withName: string; lastMessageAt: string; unread: number }[];
+      lead: string | null;
+    }>("/api/messages"),
+  thread: (id: string) =>
+    request<{
+      id: string;
+      items: { id: string; mine: boolean; text: string; sentAt: string; readAt: string | null }[];
+    }>(`/api/messages/${id}`),
+  sendMessage: (text: string) =>
+    request<{ id: string; threadId: string }>("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }),
+
   /* ── приём ── */
   myAppointments: (past = false) =>
     request<{ items: AppointmentView[] }>(`/api/clinic/appointments/mine${past ? "?past=1" : ""}`),
