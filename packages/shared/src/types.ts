@@ -585,6 +585,16 @@ export interface SurveyListItem extends Survey {
   responseCount: number;
   /** Проходил ли текущий пользователь */
   completedByMe: boolean;
+  /**
+   * Назначена лично, а не просто доступна.
+   *
+   * Общедоступную методику человек проходит, если захочет; назначенную от
+   * него ждут, и у неё есть срок. Одним списком без различия не видно ни
+   * того ни другого.
+   */
+  assigned?: boolean;
+  /** Срок назначения; null — не ограничивали */
+  dueAt?: string | null;
   /** Когда ключи сверены с пособием */
   keysVerifiedAt?: string | null;
 }

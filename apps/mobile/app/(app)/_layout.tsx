@@ -35,6 +35,13 @@ export default function AppLayout() {
         sceneStyle: { backgroundColor: c.bg },
       }}
     >
+      {/*
+        Порядок вкладок — порядок дня пациента: сначала «что у меня сегодня»,
+        потом «записаться», потом «что пройти». «Здоровье» и «Профиль» —
+        то, куда заходят в спокойную минуту, и они последние.
+      */}
+      <Tabs.Screen name="home" options={{ title: ut("tab.home") }} />
+      <Tabs.Screen name="booking" options={{ title: ut("tab.booking") }} />
       <Tabs.Screen name="surveys" options={{ title: ut("tab.surveys") }} />
       {/*
         Обход — вкладка специалиста: планшет в палате вместо ноутбука.
@@ -48,8 +55,14 @@ export default function AppLayout() {
         name="insights"
         options={{ title: ut("tab.analytics"), headerShown: false, href: isAdmin ? "/insights" : null }}
       />
-      {/* план безопасности — отдельной вкладкой: в кризис его ищут, а не вспоминают, где он */}
-      <Tabs.Screen name="safety" options={{ title: ut("tab.safety") }} />
+      <Tabs.Screen name="health" options={{ title: ut("tab.health") }} />
+      {/*
+        План безопасности остаётся отдельным экраном, но не вкладкой: в
+        кризис его ищут, а не вспоминают, где он, — и ведут туда две кнопки,
+        с главной и со «Здоровья». Шестая вкладка ради него сделала бы
+        нижнюю панель нечитаемой на узком телефоне.
+      */}
+      <Tabs.Screen name="safety" options={{ href: null, title: ut("tab.safety") }} />
       <Tabs.Screen name="profile" options={{ title: ut("tab.account") }} />
       {/* очередь открывается из полосы состояния, отдельной вкладки ей не нужно */}
       <Tabs.Screen name="queue" options={{ href: null, title: ut("tab.queue") }} />
