@@ -2745,3 +2745,38 @@ export const episodes = pgTable(
     patientIdx: index("episodes_patient_idx").on(t.patientId, t.openedAt.desc()),
   }),
 );
+
+/**
+ * Диспансерное наблюдение.
+ *
+ * Человек на учёте должен показываться раз в столько-то месяцев. Сейчас это
+ * держат в голове и в бумажном журнале, а значит теряют: просрочка не видна
+ * никому, пока кто-нибудь случайно не вспомнит.
+ */
+export const dispensary = pgTable(
+  "dispensary",
+  {
+    patientId: text("patient_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Группа учёта — словами учреждения, а не кодом. Разряды у отделений
+     * разные, и справочник в коде устарел бы в первом же учреждении.
+     */
+    groupLabel: text("group_label").notNull(),
+    /**
+     * Раз в сколько месяцев показываться. Без умолчания в коде: срок задаёт
+     * специалист, а «раз в квартал по умолчанию» стало бы правилом, которого
+     * никто не принимал.
+     */
+    intervalMonths: integer("interval_months").notNull(),
+    lastSeenAt: timestampCol("last_seen_at"),
+    nextDueAt: timestampCol("next_due_at").notNull(),
+    note: text("note"),
+    addedBy: text("added_by").references(() => users.id, { onDelete: "set null" }),
+    addedAt: timestampCol("added_at").notNull().default(sql`now()`),
+    removedAt: timestampCol("removed_at"),
+    removedBy: text("removed_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({ dueIdx: index("dispensary_due_idx").on(t.nextDueAt) }),
+);

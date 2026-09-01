@@ -28,6 +28,9 @@ export type AuditAction =
   | "episode.open"
   | "episode.close"
   | "episode.attach"
+  | "dispensary.set"
+  | "dispensary.seen"
+  | "dispensary.remove"
   | "recording.consent"
   | "recording.consent_revoke"
   | "recording.start"
@@ -37,6 +40,7 @@ export type AuditAction =
   | "template.archive"
   | "report.visit_certificate"
   | "report.episode_extract"
+  | "report.patient_chart"
   | "clinic.lead_take"
   | "clinic.lead_release"
   /* права: кто кому что выдал — разбирается по журналу, а не по памяти */

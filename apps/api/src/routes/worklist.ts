@@ -6,6 +6,7 @@ import { currentCrisis } from "../lib/crisis";
 import {
   alertCases,
   appointments,
+  dispensary,
   batteries,
   batteryAssignments,
   pathwayInstances,
@@ -102,11 +103,17 @@ const KIND_WEIGHT: Record<Kind, number> = {
    * важнее: там человек не написал ничего, и молчание — это и есть сигнал.
    */
   message: 2,
-  pathway: 3,
-  goal: 4,
-  followup: 5,
-  referral: 6,
-  assignment: 7,
+  /*
+   * Просроченный диспансерный осмотр идёт после письма, но раньше маршрутов:
+   * человек на учёте не написал и не пришёл — и это молчание, а не отсутствие
+   * повода.
+   */
+  dispensary: 3,
+  pathway: 4,
+  goal: 5,
+  followup: 6,
+  referral: 7,
+  assignment: 8,
 };
 
 worklistRoutes.get("/", async (c) => {
@@ -290,7 +297,69 @@ worklistRoutes.get("/", async (c) => {
     });
   }
 
-  // 4. Направления, по которым нет ответа
+  /*
+   * 4. Просроченные диспансерные осмотры.
+   *
+   * Учёт держали в голове и в бумажном журнале — и теряли: просрочка не была
+   * видна никому, пока кто-нибудь случайно не вспомнит. Здесь она в общей
+   * очереди наравне с остальной работой.
+   */
+  /*
+   * Зона считается один раз на весь маршрут.
+   *
+   * Первая редакция считала её дважды — здесь и ниже, для маршрутов, — и это
+   * не «лишний запрос»: расчёт зоны обходит четыре таблицы, и на живой базе
+   * очередь работы стала вдвое медленнее. Заметил не по коду, а по тому, что
+   * смоук перестал укладываться в свои сроки и шесть сценариев отвалились по
+   * времени.
+   */
+  const allowedPatients = await accessiblePatientIds(user);
+  if (allowedPatients === null || allowedPatients.size) {
+    const dispRows = await db
+      .select({
+        d: dispensary,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        middleName: users.middleName,
+        anonymous: users.anonymous,
+        pseudonym: users.pseudonym,
+        unit: users.unit,
+      })
+      .from(dispensary)
+      .innerJoin(users, eq(users.id, dispensary.patientId))
+      .where(
+        and(
+          isNull(dispensary.removedAt),
+          lt(dispensary.nextDueAt, new Date().toISOString()),
+          allowedPatients ? inArray(dispensary.patientId, [...allowedPatients]) : undefined,
+        ),
+      )
+      .limit(200);
+
+    for (const r of dispRows) {
+      const days = Math.floor((now - new Date(r.d.nextDueAt).getTime()) / 86_400_000);
+      items.push({
+        kind: "dispensary",
+        id: r.d.patientId,
+        userId: r.d.patientId,
+        userName: fullNameOf(r as never),
+        unit: r.unit,
+        title: r.d.groupLabel,
+        days,
+        /*
+         * Просроченным считается сразу: срок и есть срок. Мягкая граница
+         * «плюс неделя» превратила бы правило в пожелание, а пожелание — в
+         * привычку не смотреть.
+         */
+        overdue: true,
+        assignedTo: null,
+        since: r.d.nextDueAt,
+        href: `/patients/${r.d.patientId}`,
+      });
+    }
+  }
+
+  // 5. Направления, по которым нет ответа
   const referralRows = await db
     .select({
       r: referrals,
@@ -430,7 +499,6 @@ worklistRoutes.get("/", async (c) => {
    * который надо не забыть открыть, — то есть ровно тем, от чего уходим:
    * очередь работы существует, чтобы держать всё входящее в одном месте.
    */
-  const allowedPatients = await accessiblePatientIds(user);
   if (!allowedPatients || allowedPatients.size) {
     const overdueSteps = await db
       .select({

@@ -72,6 +72,17 @@ export function Episodes({ patientId, appointmentId }: { patientId: string; appo
           <p className="text-caption text-muted">{ut("ep.oneOpen")}</p>
         )}
 
+        {/*
+          Карта целиком — здесь же, рядом с обращениями: человека собирают в
+          один документ ровно тогда, когда смотрят его обращения, а не ищут
+          отдельную кнопку на четвёртом экране.
+        */}
+        <button className="btn" onClick={() => openInTab(`/api/reports/patients/${patientId}/chart`)}>
+          {ut("ep.chart")}
+        </button>
+
+        <Dispensary patientId={patientId} />
+
         {items.length === 0 ? <Empty title={ut("ep.none")} /> : null}
 
         {items.map((e) => (
@@ -164,5 +175,108 @@ export function Episodes({ patientId, appointmentId }: { patientId: string; appo
         ))}
       </div>
     </Panel>
+  );
+}
+
+
+/**
+ * Диспансерный учёт.
+ *
+ * Держали в голове и в бумажном журнале — и теряли: просрочка не была видна
+ * никому, пока кто-нибудь случайно не вспомнит. Здесь срок виден рядом с
+ * человеком, а просрочка попадает в общую очередь работы.
+ */
+function Dispensary({ patientId }: { patientId: string }) {
+  const { ut } = useLang();
+  const { run, busy } = useAction();
+  const res = useResource(() => api.dispensary(patientId), [patientId]);
+  const reload = res.reload;
+  const [group, setGroup] = useState("");
+  const [months, setMonths] = useState(3);
+
+  const d = res.data;
+  if (!d) return null;
+
+  if (!d.on) {
+    return (
+      <div className="flex flex-col gap-2 rounded-md border border-hairline p-3">
+        <p className="text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+          {ut("disp.title")}
+        </p>
+        <p className="text-caption text-muted">{ut("disp.notOn")}</p>
+        <Field label={ut("disp.group")} hint={ut("disp.groupHint")}>
+          <Input value={group} onChange={(e) => setGroup(e.target.value)} />
+        </Field>
+        <Field label={ut("disp.every")}>
+          <Input
+            type="number"
+            min={1}
+            max={36}
+            value={months}
+            onChange={(e) => setMonths(Number(e.target.value))}
+          />
+        </Field>
+        <Button
+          size="sm"
+          disabled={busy || !group.trim()}
+          onClick={() =>
+            run(async () => {
+              await api.setDispensary({ patientId, groupLabel: group.trim(), intervalMonths: months });
+              setGroup("");
+              await reload();
+            })
+          }
+        >
+          {ut("disp.put")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-hairline p-3">
+      <p className="text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+        {ut("disp.title")}
+      </p>
+      <div className="flex flex-wrap items-baseline gap-x-3">
+        <span>{d.groupLabel}</span>
+        <span className="text-caption text-muted">
+          {ut("disp.next")} <Num>{d.nextDueAt ? day(d.nextDueAt) : "—"}</Num>
+        </span>
+        {d.lastSeenAt ? (
+          <span className="text-caption text-muted">
+            {ut("disp.lastSeen")} <Num>{day(d.lastSeenAt)}</Num>
+          </span>
+        ) : null}
+        {/*
+          Просрочка числом дней, а не пометкой: «на три дня» и «на полгода» —
+          разный разговор, и одинаковым знаком их делать нельзя.
+        */}
+        {(d.overdueDays ?? 0) > 0 ? (
+          <span className="text-caption text-accent">
+            {ut("disp.overdue")} <Num>{d.overdueDays}</Num>
+          </span>
+        ) : null}
+      </div>
+      <p className="text-caption text-muted">{ut("disp.seenNote")}</p>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => run(() => api.dispensarySeen(patientId).then(reload))}
+        >
+          {ut("disp.seen")}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => run(() => api.dispensaryRemove(patientId).then(reload))}
+        >
+          {ut("disp.remove")}
+        </Button>
+      </div>
+    </div>
   );
 }
