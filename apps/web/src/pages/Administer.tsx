@@ -8,6 +8,7 @@ import { SeverityTag } from "../charts/advanced";
 import { Loading } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
+import { FastEntry } from "../components/FastEntry";
 import { useLang } from "../lang";
 
 /**
@@ -25,6 +26,7 @@ export default function Administer() {
   const [result, setResult] = useState<Awaited<ReturnType<typeof api.submitFor>> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [fast, setFast] = useState(false);
   const started = useMemo(() => new Date().toISOString(), []);
 
   const res = useResource(
@@ -137,9 +139,39 @@ export default function Administer() {
             </select>
           </div>
           {survey.instructions ? <p className="mt-3 text-caption text-muted">{survey.instructions}</p> : null}
+          {/*
+            Быстрый ввод — не альтернативный экран, а переключатель здесь же.
+            Отдельный экран означал бы выбор до начала работы, а выбирать
+            хочется по ходу: длинную методику переносят с клавиатуры, короткую
+            быстрее ткнуть мышью.
+          */}
+          <div className="mt-3 flex gap-2">
+            <Button
+              size="sm"
+              variant={fast ? "primary" : "ghost"}
+              onClick={() => setFast(true)}
+            >
+              {ut("fast.mode")}
+            </Button>
+            <Button
+              size="sm"
+              variant={fast ? "ghost" : "primary"}
+              onClick={() => setFast(false)}
+            >
+              {ut("fast.byMouse")}
+            </Button>
+          </div>
         </Panel>
 
-        {visible.map((q, i) => {
+        {fast ? (
+          <Panel>
+            <div className="p-4">
+              <FastEntry survey={survey} answers={answers} onSet={set} />
+            </div>
+          </Panel>
+        ) : null}
+
+        {fast ? null : visible.map((q, i) => {
           if (q.type === "info") {
             return (
               <Panel key={q.id}>
