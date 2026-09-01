@@ -14,6 +14,7 @@ import { client, db } from "./db";
 import { attachToCase } from "./lib/alertCases";
 import { syncBuiltinRole } from "./lib/permissions";
 import { syncSlots } from "./lib/schedule";
+import { bilingual } from "./seedTranslations";
 import { decryptField, encryptField, encryptPersonFields } from "./lib/crypto";
 import {
   answerEvents,
@@ -533,9 +534,31 @@ async function upsertSurvey(draft: CreateSurveyDraft, status: "published" | "dra
   return { ...row!, currentVersionId: versionId };
 }
 
-const emotionalRow = await upsertSurvey(emotional, "published");
-const sleepRow = await upsertSurvey(sleep, "published");
-const followUpRow = await upsertSurvey(followUp, "published");
+/*
+ * Демонстрационные методики заводятся двуязычными.
+ *
+ * Раньше они были только по-русски — и приложение в украинском режиме
+ * выглядело русским: интерфейс переведён, а на экране методики, вопросы и
+ * варианты по-русски. Локализованное поле, заполненное одним языком, — это то
+ * же самое, что незаполненное: в другом режиме оно всё равно покажет чужой
+ * язык.
+ *
+ * Пропущенный перевод роняет посев, а не остаётся молча: молчаливый пропуск —
+ * ровно то, из-за чего это и накопилось.
+ */
+const missing = new Set<string>();
+const emotionalUk = bilingual(emotional, missing);
+const sleepUk = bilingual(sleep, missing);
+const followUpUk = bilingual(followUp, missing);
+if (missing.size) {
+  console.error("Нет украинского перевода для строк демо-методик:");
+  for (const m of missing) console.error(`  · ${m}`);
+  throw new Error(`не переведено строк: ${missing.size}`);
+}
+
+const emotionalRow = await upsertSurvey(emotionalUk, "published");
+const sleepRow = await upsertSurvey(sleepUk, "published");
+const followUpRow = await upsertSurvey(followUpUk, "published");
 // демо-методики помечаются флагом: в клинических списках они с плашкой,
 // и перепутать их с выверенным инструментом нельзя
 await db

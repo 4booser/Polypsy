@@ -607,8 +607,14 @@ export const questions = pgTable(
     minValue: doublePrecision("min_value"),
     maxValue: doublePrecision("max_value"),
     step: doublePrecision("step"),
-    minLabel: text("min_label"),
-    maxLabel: text("max_label"),
+    /**
+     * Подписи концов шкалы — локализованные.
+     *
+     * Их читает пациент во время прохождения. Простой строкой они означали
+     * один язык: под украинским вопросом стояли русские подписи.
+     */
+    minLabel: localized("min_label"),
+    maxLabel: localized("max_label"),
 
     randomizeOptions: boolean("randomize_options").notNull().default(false),
     timeLimitSec: integer("time_limit_sec"),

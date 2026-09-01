@@ -404,8 +404,8 @@ export const questionInputSchema = z
     minValue: z.number().nullish(),
     maxValue: z.number().nullish(),
     step: z.number().positive().nullish(),
-    minLabel: z.string().max(120).nullish(),
-    maxLabel: z.string().max(120).nullish(),
+    minLabel: localizedSchema.nullish(),
+    maxLabel: localizedSchema.nullish(),
 
     randomizeOptions: z.boolean().default(false),
     timeLimitSec: z.number().int().positive().max(3600).nullish(),
