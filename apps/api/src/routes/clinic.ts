@@ -35,7 +35,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { HORIZON_WEEKS, syncSlots } from "../lib/schedule";
-import { SMALL_CELL_FLOOR, suppress } from "../lib/privacy";
+import { departmentReport, resolveDepartment } from "../lib/departmentReport";
 import { assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -1268,91 +1268,18 @@ clinicRoutes.get(
   requirePermission("unitReport.read"),
   async (c) => {
     const q = parseQuery(c, reportQuery);
-
-    const profile = await db.query.specialistProfiles.findFirst({
-      where: eq(specialistProfiles.userId, c.get("user").id),
-    });
-    const departmentId = q.departmentId ?? profile?.departmentId;
-    if (!departmentId) badRequest("err.departmentNotFound");
-
-    const department = await db.query.departments.findFirst({
-      where: eq(departments.id, departmentId),
-    });
+    const department = await resolveDepartment(c.get("user").id, q.departmentId);
     if (!department) notFound("err.departmentNotFound");
-    const tz = department.timezone;
 
-    /*
-     * Границы периода — по часам отделения. Отчёт за месяц, посчитанный по
-     * часам сервера, теряет или прихватывает приёмы последнего вечера.
-     */
-    const within = and(
-      eq(slots.departmentId, departmentId),
-      sql`${slots.startsAt} >= (${`${q.from} 00:00`}::timestamp at time zone ${tz})`,
-      sql`${slots.startsAt} < (${`${q.to} 00:00`}::timestamp at time zone ${tz}) + interval '1 day'`,
-    );
-
-    const rows = await db
-      .select({
-        status: appointments.status,
-        kind: appointments.kind,
-        n: sql<number>`count(*)::int`,
-      })
-      .from(appointments)
-      .innerJoin(slots, eq(slots.id, appointments.slotId))
-      .where(within)
-      .groupBy(appointments.status, appointments.kind);
-
-    const count = (pred: (r: (typeof rows)[number]) => boolean) =>
-      rows.filter(pred).reduce((sum, r) => sum + Number(r.n), 0);
-
-    const held = (r: (typeof rows)[number]) => r.status === "done";
-    const received = count(held);
-
-    /*
-     * Сколько человек, а не сколько приёмов. Один человек за месяц приходит
-     * трижды, и «принято 30» рядом с «на учёте 12» — это два разных числа,
-     * которые нельзя складывать и нельзя путать.
-     */
-    const [people] = await db
-      .select({ n: sql<number>`count(distinct ${appointments.patientId})::int` })
-      .from(appointments)
-      .innerJoin(slots, eq(slots.id, appointments.slotId))
-      .where(and(within, eq(appointments.status, "done")));
-
-    const [attached] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(departmentPatients)
-      .where(
-        and(
-          eq(departmentPatients.departmentId, departmentId),
-          isNull(departmentPatients.detachedAt),
-        ),
-      );
+    const report = await departmentReport(department.id, q.from, q.to, department.timezone);
 
     await audit(c, {
       action: "clinic.report",
       resourceType: "department",
-      resourceId: departmentId,
-      details: { from: q.from, to: q.to, received },
+      resourceId: department.id,
+      details: { from: q.from, to: q.to, received: report.received },
     });
-
-    return c.json({
-      departmentId,
-      from: q.from,
-      to: q.to,
-      /*
-       * Числа подавляются по одному порогу, но подавляются не все: общее
-       * число принятых — это работа отделения, а не сведение о человеке.
-       * Подавляются разрезы, по которым человека можно опознать.
-       */
-      received,
-      people: suppress(Number(people?.n ?? 0)),
-      primary: suppress(count((r) => held(r) && r.kind === "primary")),
-      repeat: suppress(count((r) => held(r) && r.kind === "repeat")),
-      noShow: suppress(count((r) => r.status === "no_show")),
-      cancelled: suppress(count((r) => r.status === "cancelled")),
-      attached: suppress(Number(attached?.n ?? 0)),
-      floor: SMALL_CELL_FLOOR,
-    });
+    return c.json(report);
   },
 );
+
