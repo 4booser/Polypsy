@@ -22,6 +22,8 @@ export type AuditAction =
   | "clinic.status"
   | "clinic.visit_open"
   | "clinic.report"
+  | "clinic.phone_view"
+  | "account.reveal"
   | "template.create"
   | "template.archive"
   | "report.visit_certificate"

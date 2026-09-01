@@ -1283,3 +1283,49 @@ clinicRoutes.get(
   },
 );
 
+
+
+/* ═══════════ телефон ═══════════ */
+
+/**
+ * Показать телефон пациента.
+ *
+ * Отдельным действием, а не колонкой в списках. Номер нужен в двух случаях —
+ * перенести приём и связаться в кризис; в остальное время он на экране
+ * лишний, а лишний он не безобидно: список с телефонами выносится из
+ * учреждения одним снимком экрана.
+ *
+ * Просмотр попадает в журнал наравне с открытием карты: по журналу потом
+ * видно, кто и когда брал номера, и это единственное, что удерживает от
+ * привычки открывать их «на всякий случай».
+ */
+clinicRoutes.get(
+  "/patients/:userId/phone",
+  requireStaff,
+  requirePermission("patients.read"),
+  async (c) => {
+    const patientId = c.req.param("userId");
+    await assertPatientAccess(c.get("user"), patientId);
+
+    const patient = await db.query.users.findFirst({ where: eq(users.id, patientId) });
+    if (!patient) notFound("err.userNotFound");
+
+    await audit(c, {
+      action: "clinic.phone_view",
+      resourceType: "user",
+      resourceId: patientId,
+      subjectUserId: patientId,
+    });
+
+    return c.json({
+      phone: decryptField(patient.phoneEnc),
+      /*
+       * Подтверждения нет и не будет: внешнего шлюза нет, кодом из SMS
+       * проверять нечем. Значит номер может оказаться неверным, и специалист
+       * должен это видеть: показывать непроверенное как проверенное опаснее,
+       * чем не показывать вовсе.
+       */
+      verified: patient.phoneVerified,
+    });
+  },
+);

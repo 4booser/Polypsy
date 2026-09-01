@@ -27,6 +27,7 @@ export default function Join() {
   const [anonymous, setAnonymous] = useState(false);
   const [sex, setSex] = useState<"male" | "female" | "">("");
   const [birthDate, setBirthDate] = useState("");
+  const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function Join() {
         body: JSON.stringify({
           email,
           password,
+          phone,
           anonymous,
           firstName: anonymous ? undefined : firstName,
           lastName: anonymous ? undefined : lastName,
@@ -132,6 +134,21 @@ export default function Join() {
                 {preview.unit ? <> · {preview.unit}</> : null}
               </p>
 
+              {/*
+                Телефон обязателен и здесь: регистрация по приглашению — та же
+                регистрация, и заводить аккаунт без номера значит завести
+                человека, которому при сработавшей тревоге некуда позвонить.
+              */}
+              <Field label={ut("reg.phone")} htmlFor="join-phone" hint={ut("reg.phoneWhy")}>
+                <Input
+                  id="join-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  autoComplete="tel"
+                  placeholder="+380 50 111 22 33"
+                />
+              </Field>
               <Field label={ut("person.email")} htmlFor="join-email">
                 <Input
                   id="join-email"
@@ -198,7 +215,7 @@ export default function Join() {
               <Button
                 variant="primary"
                 className="mt-2 w-full"
-                disabled={busy || !email || password.length < 8 || (!anonymous && (!firstName || !lastName))}
+                disabled={busy || !email || !phone || password.length < 8 || (!anonymous && (!firstName || !lastName))}
                 onClick={submit}
               >
                 {busy ? ut("join.creating") : ut("join.register")}

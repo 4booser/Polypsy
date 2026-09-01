@@ -236,6 +236,7 @@ describe("приглашения", () => {
       body: JSON.stringify({
         email: "invited@test.dev",
         password: "longpass123",
+        phone: "+380501112233",
         anonymous: false,
         firstName: "Новый",
         lastName: "Пациент",
@@ -258,7 +259,8 @@ describe("приглашения", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: "invited2@test.dev", password: "longpass123", anonymous: true, inviteCode: code,
+        email: "invited2@test.dev", password: "longpass123", phone: "+380501112244",
+        anonymous: true, inviteCode: code,
       }),
     });
     expect(second.status).toBe(201);
@@ -268,7 +270,10 @@ describe("приглашения", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: "invited3@test.dev", password: "longpass123", anonymous: true, inviteCode: code,
+        // телефон валидный намеренно: отказ должен прийти по лимиту приглашения,
+        // а не по отсутствию номера — иначе проверка прошла бы не за то
+        email: "invited3@test.dev", password: "longpass123", phone: "+380501112255",
+        anonymous: true, inviteCode: code,
       }),
     });
     expect(third.status).toBe(400);
