@@ -7,12 +7,14 @@ import {
   conclusions,
   departments,
   episodes,
+  patientNotes,
   referrals,
   responseScores,
   responses,
   scales,
   slots,
   specialistProfiles,
+  surveys,
   users,
 } from "../db/schema";
 import { env } from "../env";
@@ -789,5 +791,211 @@ function episodeExtractHtml(d: {
     <div class="sign-line">Фахівець <i></i></div>
     ${d.leadName ? `<div class="sign-line">${esc(d.leadName)}</div>` : ""}
   </div>
+</body></html>`;
+}
+
+/**
+ * Амбулаторная карта одним документом.
+ *
+ * Сейчас человек разложен по трём экранам: динамика, сводка, хронология. Это
+ * удобно, пока смотришь с монитора, и бесполезно, когда карту надо подшить,
+ * передать коллеге или показать на разборе — там нужен лист, а не три
+ * вкладки.
+ *
+ * Собирается из того, что уже есть, и ничего не пересчитывает: карта обязана
+ * показывать то же самое, что экраны, иначе она станет вторым источником
+ * правды, и правды в ней будет меньше.
+ */
+reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("patients.read"), async (c) => {
+  const userId = c.req.param("userId");
+  await assertPatientAccess(c.get("user"), userId);
+
+  const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!patient) notFound("err.patientNotFound");
+  if (patient.anonymous) badRequest("err.certificateNeedsName");
+
+  const lang = langOf(c);
+
+  const eps = await db
+    .select({ e: episodes, lead: users })
+    .from(episodes)
+    .leftJoin(users, eq(users.id, episodes.leadSpecialistId))
+    .where(eq(episodes.patientId, userId))
+    .orderBy(desc(episodes.openedAt));
+
+  const visits = await db
+    .select({ a: appointments, slot: slots, specialist: users })
+    .from(appointments)
+    .innerJoin(slots, eq(slots.id, appointments.slotId))
+    .innerJoin(users, eq(users.id, appointments.specialistId))
+    .where(eq(appointments.patientId, userId))
+    .orderBy(desc(slots.startsAt))
+    .limit(200);
+
+  const signedNotes = await db
+    .select({ n: patientNotes, author: users })
+    .from(patientNotes)
+    .leftJoin(users, eq(users.id, patientNotes.signedBy))
+    .where(and(eq(patientNotes.userId, userId), eq(patientNotes.status, "signed")))
+    .orderBy(desc(patientNotes.createdAt))
+    .limit(100);
+
+  const done = await db
+    .select({ r: responses, title: surveys.title })
+    .from(responses)
+    .innerJoin(surveys, eq(surveys.id, responses.surveyId))
+    .where(and(eq(responses.userId, userId), eq(responses.status, "completed")))
+    .orderBy(desc(responses.submittedAt))
+    .limit(200);
+
+  await audit(c, {
+    action: "report.patient_chart",
+    resourceType: "user",
+    resourceId: userId,
+    subjectUserId: userId,
+  });
+
+  return c.html(
+    chartHtml({
+      fullName: fullNameOf(patient),
+      unit: patient.unit,
+      rank: patient.rank,
+      birthDate: decryptField(patient.birthDate),
+      episodes: eps.map((x) => ({
+        openedAt: x.e.openedAt,
+        closedAt: x.e.closedAt,
+        reason: decryptField(x.e.reasonEnc),
+        outcome: decryptField(x.e.outcomeEnc),
+        outcomeKind: x.e.outcomeKind,
+        lead: x.lead ? fullNameOf(x.lead) : null,
+      })),
+      visits: visits.map((v) => ({
+        at: v.slot.startsAt,
+        specialist: fullNameOf(v.specialist),
+        kind: v.a.kind,
+        status: v.a.status,
+      })),
+      notes: signedNotes.map((x) => ({
+        at: x.n.createdAt,
+        author: x.author ? fullNameOf(x.author) : "—",
+        kind: x.n.kind,
+        text: decryptField(x.n.text) ?? "",
+      })),
+      responses: done.map((x) => ({
+        at: x.r.submittedAt ?? x.r.startedAt,
+        title: t(x.title as never, lang),
+        source: x.r.source,
+      })),
+    }),
+  );
+});
+
+function chartHtml(d: {
+  fullName: string;
+  unit: string | null;
+  rank: string | null;
+  birthDate: string | null;
+  episodes: {
+    openedAt: string;
+    closedAt: string | null;
+    reason: string | null;
+    outcome: string | null;
+    outcomeKind: string | null;
+    lead: string | null;
+  }[];
+  visits: { at: string; specialist: string; kind: string; status: string }[];
+  notes: { at: string; author: string; kind: string; text: string }[];
+  responses: { at: string; title: string; source: string | null }[];
+}): string {
+  const day = (iso: string) => new Date(iso).toLocaleDateString("uk-UA");
+
+  return `<!doctype html>
+<html lang="uk"><head><meta charset="utf-8">
+<title>Амбулаторна карта — ${esc(d.fullName)}</title>
+<style>
+  @page { margin: 16mm; }
+  body { font: 12.5px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
+  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 14px; }
+  .letterhead .org { font-size: 14px; font-weight: 700; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 13px; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .05em; color: #555; }
+  .meta { color: #555; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  td, th { text-align: left; padding: 5px 8px; border-bottom: 1px solid #e6e6e6; vertical-align: top; }
+  th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: #666; }
+  .note { white-space: pre-wrap; padding: 7px 9px; border: 1px solid #ddd; border-radius: 5px; margin-top: 5px; }
+  .empty { color: #777; }
+  tr, .note { break-inside: avoid; }
+  h2 { break-after: avoid; }
+</style></head>
+<body>
+  ${
+    env.institutionName
+      ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
+      : ""
+  }
+  <h1>Амбулаторна карта</h1>
+  <p class="meta">${esc(d.fullName)}${d.birthDate ? `, ${esc(day(d.birthDate))} р. н.` : ""}${
+    d.unit ? ` · ${esc(d.unit)}` : ""
+  }${d.rank ? ` · ${esc(d.rank)}` : ""}</p>
+
+  <h2>Звернення</h2>
+  ${
+    d.episodes.length
+      ? `<table><tr><th>Період</th><th>Привід</th><th>Веде</th><th>Результат</th></tr>${d.episodes
+          .map(
+            (e) =>
+              `<tr><td>${esc(day(e.openedAt))} — ${e.closedAt ? esc(day(e.closedAt)) : "триває"}</td>` +
+              `<td>${esc(e.reason ?? "—")}</td><td>${esc(e.lead ?? "—")}</td>` +
+              `<td>${esc(e.outcome ?? e.outcomeKind ?? "—")}</td></tr>`,
+          )
+          .join("")}</table>`
+      : '<p class="empty">Звернень не було.</p>'
+  }
+
+  <h2>Прийоми</h2>
+  ${
+    d.visits.length
+      ? `<table><tr><th>Дата</th><th>Фахівець</th><th>Вид</th><th>Стан</th></tr>${d.visits
+          .map(
+            (v) =>
+              `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td>` +
+              `<td>${v.kind === "primary" ? "перший" : "повторний"}</td><td>${esc(v.status)}</td></tr>`,
+          )
+          .join("")}</table>`
+      : '<p class="empty">Прийомів не було.</p>'
+  }
+
+  <h2>Обстеження</h2>
+  ${
+    /*
+     * Источник прохождения печатается рядом: «сам» и «за призначенням» — это
+     * разные сведения о человеке, и в карте они значат разное.
+     */
+    d.responses.length
+      ? `<table><tr><th>Дата</th><th>Методика</th><th>Звідки</th></tr>${d.responses
+          .map(
+            (r) =>
+              `<tr><td>${esc(day(r.at))}</td><td>${esc(r.title)}</td><td>${esc(r.source ?? "—")}</td></tr>`,
+          )
+          .join("")}</table>`
+      : '<p class="empty">Обстежень не було.</p>'
+  }
+
+  <h2>Записи прийому</h2>
+  ${
+    /*
+     * Только подписанные. Черновик — рабочий текст, и в карте, которую
+     * подшивают, он неотличим от решения.
+     */
+    d.notes.length
+      ? d.notes
+          .map(
+            (n) =>
+              `<div class="note">${esc(n.text)}<div class="meta">${esc(n.author)}, ${esc(day(n.at))}</div></div>`,
+          )
+          .join("")
+      : '<p class="empty">Підписаних записів немає.</p>'
+  }
 </body></html>`;
 }

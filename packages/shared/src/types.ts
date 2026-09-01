@@ -1252,6 +1252,7 @@ export type WorkKind =
   | "case"
   | "noshow"
   | "message"
+  | "dispensary"
   | "assignment"
   | "referral"
   | "followup"

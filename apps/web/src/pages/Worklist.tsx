@@ -22,6 +22,7 @@ const KIND_KEY: Record<WorkKind, UiKey> = {
   case: "work.kindCase",
   noshow: "work.kindNoshow",
   message: "work.kindMessage",
+  dispensary: "work.kindDispensary",
   followup: "work.kindFollowup",
   referral: "work.kindReferral",
   assignment: "work.kindAssignment",
@@ -171,6 +172,13 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
         `${t("work.msgUnread")} ${i.signals ?? 1}`,
         (i.days ?? 0) > 0 ? `${t("work.msgWaiting")} ${i.days}` : t("work.msgToday"),
       ].join(" · ");
+    case "dispensary":
+      /*
+       * Название группы учёта плюс число дней: «просрочено на три дня» и
+       * «просрочено на полгода» — разный разговор, и одинаковой пометкой их
+       * делать нельзя.
+       */
+      return `${i.title} · ${t("work.dispOverdue")} ${i.days ?? 0}`;
     case "noshow":
       /*
        * «Второй раз подряд» — другой разговор, чем «не пришёл один раз», и

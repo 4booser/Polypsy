@@ -6,6 +6,7 @@ import {
   appointments,
   conclusions,
   departments,
+  dispensary,
   episodes,
   referrals,
   responses,
@@ -182,6 +183,150 @@ episodeRoutes.post("/:id/appointments/:appointmentId", requirePermission("episod
     resourceId: row.id,
     subjectUserId: row.patientId,
     details: { appointmentId: visit.id },
+  });
+  return c.json({ ok: true });
+});
+
+/* ═══════════ диспансерное наблюдение ═══════════ */
+
+const dispensarySchema = z.object({
+  patientId: z.string().min(1),
+  groupLabel: z.string().min(1).max(120),
+  intervalMonths: z.number().int().min(1).max(36),
+  note: z.string().max(500).nullish(),
+});
+
+/** Через сколько месяцев показываться снова */
+function dueAfter(months: number, from = new Date()): string {
+  const d = new Date(from);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString();
+}
+
+/** Состоит ли человек на учёте и когда следующий осмотр */
+episodeRoutes.get("/dispensary/:userId", requirePermission("patients.read"), async (c) => {
+  const patientId = c.req.param("userId");
+  await assertPatientAccess(c.get("user"), patientId);
+
+  const row = await db.query.dispensary.findFirst({
+    where: and(eq(dispensary.patientId, patientId), isNull(dispensary.removedAt)),
+  });
+  if (!row) return c.json({ on: false });
+
+  return c.json({
+    on: true,
+    groupLabel: row.groupLabel,
+    intervalMonths: row.intervalMonths,
+    lastSeenAt: row.lastSeenAt,
+    nextDueAt: row.nextDueAt,
+    note: row.note,
+    /*
+     * Просрочка считается сервером и отдаётся числом дней, а не флагом:
+     * «просрочено на три дня» и «просрочено на полгода» — это разный разговор,
+     * а флаг делает их одинаковыми.
+     */
+    overdueDays: Math.max(
+      0,
+      Math.floor((Date.now() - new Date(row.nextDueAt).getTime()) / 86_400_000),
+    ),
+  });
+});
+
+/** Поставить на учёт или изменить периодичность */
+episodeRoutes.put("/dispensary", requirePermission("episodes.manage"), async (c) => {
+  const input = await parseBody(c.req.raw, dispensarySchema);
+  const me = c.get("user");
+  await assertPatientAccess(me, input.patientId);
+
+  await db
+    .insert(dispensary)
+    .values({
+      patientId: input.patientId,
+      groupLabel: input.groupLabel,
+      intervalMonths: input.intervalMonths,
+      nextDueAt: dueAfter(input.intervalMonths),
+      note: input.note ?? null,
+      addedBy: me.id,
+    })
+    .onConflictDoUpdate({
+      target: dispensary.patientId,
+      set: {
+        groupLabel: input.groupLabel,
+        intervalMonths: input.intervalMonths,
+        note: input.note ?? null,
+        /*
+         * Постановка заново снимает прежнее снятие: человека вернули на учёт,
+         * а не завели вторую запись. Срок считается от сегодня — от даты
+         * решения, а не от последнего осмотра, которого могло не быть годы.
+         */
+        removedAt: null,
+        removedBy: null,
+        nextDueAt: dueAfter(input.intervalMonths),
+      },
+    });
+
+  await audit(c, {
+    action: "dispensary.set",
+    resourceType: "user",
+    resourceId: input.patientId,
+    subjectUserId: input.patientId,
+    details: { group: input.groupLabel, months: input.intervalMonths },
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * Отметить состоявшийся осмотр по учёту.
+ *
+ * Отдельным действием, а не автоматически по любому приёму: человек мог
+ * прийти по другому поводу, и засчитать это за диспансерный осмотр значило бы
+ * отодвинуть срок, ничего не проверив.
+ */
+episodeRoutes.post("/dispensary/:userId/seen", requirePermission("episodes.manage"), async (c) => {
+  const patientId = c.req.param("userId");
+  await assertPatientAccess(c.get("user"), patientId);
+
+  const row = await db.query.dispensary.findFirst({
+    where: and(eq(dispensary.patientId, patientId), isNull(dispensary.removedAt)),
+  });
+  if (!row) notFound("err.dispensaryNotFound");
+
+  const now = new Date();
+  await db
+    .update(dispensary)
+    .set({ lastSeenAt: now.toISOString(), nextDueAt: dueAfter(row.intervalMonths, now) })
+    .where(eq(dispensary.patientId, patientId));
+
+  await audit(c, {
+    action: "dispensary.seen",
+    resourceType: "user",
+    resourceId: patientId,
+    subjectUserId: patientId,
+  });
+  return c.json({ ok: true });
+});
+
+/** Снять с учёта. Строка остаётся: снятие — это событие, а не забвение */
+episodeRoutes.delete("/dispensary/:userId", requirePermission("episodes.manage"), async (c) => {
+  const patientId = c.req.param("userId");
+  await assertPatientAccess(c.get("user"), patientId);
+  const me = c.get("user");
+
+  const row = await db.query.dispensary.findFirst({
+    where: and(eq(dispensary.patientId, patientId), isNull(dispensary.removedAt)),
+  });
+  if (!row) notFound("err.dispensaryNotFound");
+
+  await db
+    .update(dispensary)
+    .set({ removedAt: new Date().toISOString(), removedBy: me.id })
+    .where(eq(dispensary.patientId, patientId));
+
+  await audit(c, {
+    action: "dispensary.remove",
+    resourceType: "user",
+    resourceId: patientId,
+    subjectUserId: patientId,
   });
   return c.json({ ok: true });
 });

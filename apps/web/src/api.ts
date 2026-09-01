@@ -1210,6 +1210,26 @@ export const api = {
         referrals: number;
       }[];
     }>(`/api/episodes/patients/${userId}`),
+  dispensary: (userId: string) =>
+    request<{
+      on: boolean;
+      groupLabel?: string;
+      intervalMonths?: number;
+      lastSeenAt?: string | null;
+      nextDueAt?: string;
+      note?: string | null;
+      overdueDays?: number;
+    }>(`/api/episodes/dispensary/${userId}`),
+  setDispensary: (input: {
+    patientId: string;
+    groupLabel: string;
+    intervalMonths: number;
+    note?: string | null;
+  }) => request<{ ok: true }>("/api/episodes/dispensary", { method: "PUT", body: JSON.stringify(input) }),
+  dispensarySeen: (userId: string) =>
+    request<{ ok: true }>(`/api/episodes/dispensary/${userId}/seen`, { method: "POST" }),
+  dispensaryRemove: (userId: string) =>
+    request<{ ok: true }>(`/api/episodes/dispensary/${userId}`, { method: "DELETE" }),
   openEpisode: (input: { patientId: string; reason?: string | null }) =>
     request<{ id: string }>("/api/episodes", { method: "POST", body: JSON.stringify(input) }),
   closeEpisode: (id: string, outcomeKind: string, outcome?: string | null) =>

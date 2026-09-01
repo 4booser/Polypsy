@@ -214,3 +214,143 @@ describe("выписка", () => {
     expect(html).not.toContain("ЧЕРНОВИК не для дела");
   });
 });
+
+describe("диспансерный учёт", () => {
+  test("срок считается от постановки и попадает в очередь при просрочке", async () => {
+    /*
+     * Учёт держали в голове и в бумажном журнале — и теряли: просрочка не
+     * была видна никому, пока кто-нибудь случайно не вспомнит.
+     */
+    const person = await patientOf("d1");
+    const put = await api("/api/episodes/dispensary", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ patientId: person.id, groupLabel: "Д-II", intervalMonths: 3 }),
+    });
+    expect(put.status).toBe(200);
+
+    const state = await api(`/api/episodes/dispensary/${person.id}`, adminA.token);
+    expect(state.body.on).toBe(true);
+    expect(state.body.groupLabel).toBe("Д-II");
+    expect(state.body.overdueDays).toBe(0);
+
+    // отодвигаем срок в прошлое и смотрим очередь
+    const { dispensary } = await import("../src/db/schema");
+    await db
+      .update(dispensary)
+      .set({ nextDueAt: new Date(Date.now() - 10 * 86_400_000).toISOString() })
+      .where(eq(dispensary.patientId, person.id));
+
+    const work = await api("/api/worklist", adminA.token);
+    const item = work.body.items.find(
+      (i: { kind: string; userId: string }) => i.kind === "dispensary" && i.userId === person.id,
+    );
+    expect(item).toBeDefined();
+    expect(item.days).toBeGreaterThanOrEqual(9);
+  });
+
+  test("осмотр отмечается отдельно и отодвигает срок", async () => {
+    /*
+     * Отдельным действием, а не автоматически по любому приёму: человек мог
+     * прийти по другому поводу, и засчитать это значило бы отодвинуть срок,
+     * ничего не проверив.
+     */
+    const person = await patientOf("d2");
+    await api("/api/episodes/dispensary", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ patientId: person.id, groupLabel: "Д-I", intervalMonths: 1 }),
+    });
+    const { dispensary } = await import("../src/db/schema");
+    await db
+      .update(dispensary)
+      .set({ nextDueAt: new Date(Date.now() - 86_400_000).toISOString() })
+      .where(eq(dispensary.patientId, person.id));
+
+    const seen = await api(`/api/episodes/dispensary/${person.id}/seen`, adminA.token, {
+      method: "POST",
+    });
+    expect(seen.status).toBe(200);
+
+    const state = await api(`/api/episodes/dispensary/${person.id}`, adminA.token);
+    expect(state.body.overdueDays).toBe(0);
+    expect(state.body.lastSeenAt).not.toBeNull();
+  });
+
+  test("снятие оставляет след, а не стирает запись", async () => {
+    const person = await patientOf("d3");
+    await api("/api/episodes/dispensary", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ patientId: person.id, groupLabel: "Д-III", intervalMonths: 6 }),
+    });
+    await api(`/api/episodes/dispensary/${person.id}`, adminA.token, { method: "DELETE" });
+
+    const state = await api(`/api/episodes/dispensary/${person.id}`, adminA.token);
+    expect(state.body.on).toBe(false);
+
+    const { dispensary } = await import("../src/db/schema");
+    const [row] = await db
+      .select()
+      .from(dispensary)
+      .where(eq(dispensary.patientId, person.id));
+    expect(row).toBeDefined();
+    expect(row!.removedAt).not.toBeNull();
+    expect(row!.removedBy).toBe(adminA.id);
+  });
+
+  test("возврат на учёт не заводит вторую запись", async () => {
+    const person = await patientOf("d4");
+    await api("/api/episodes/dispensary", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ patientId: person.id, groupLabel: "Д-I", intervalMonths: 3 }),
+    });
+    await api(`/api/episodes/dispensary/${person.id}`, adminA.token, { method: "DELETE" });
+    const back = await api("/api/episodes/dispensary", adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ patientId: person.id, groupLabel: "Д-II", intervalMonths: 12 }),
+    });
+    expect(back.status).toBe(200);
+
+    const state = await api(`/api/episodes/dispensary/${person.id}`, adminA.token);
+    expect(state.body.on).toBe(true);
+    expect(state.body.groupLabel).toBe("Д-II");
+  });
+});
+
+describe("амбулаторная карта", () => {
+  test("собирает обращения, приёмы и обследования на один лист", async () => {
+    /*
+     * Человек был разложен по трём экранам: динамика, сводка, хронология. Это
+     * удобно с монитора и бесполезно, когда карту надо подшить или показать
+     * на разборе.
+     */
+    const person = await patientOf("ch");
+    const opened = await api("/api/episodes", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ patientId: person.id, reason: "Плохо спит после выезда" }),
+    });
+    const visitId = await visitFor(person.id);
+    await api(`/api/episodes/${opened.body.id}/appointments/${visitId}`, adminA.token, {
+      method: "POST",
+    });
+
+    const res = await app.request(`/api/reports/patients/${person.id}/chart`, {
+      headers: { Authorization: `Bearer ${adminA.token}` },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Амбулаторна карта");
+    expect(html).toContain("Плохо спит после выезда");
+    // обследование из фикстуры тоже на месте
+    expect(html).toContain("Обстеження");
+  });
+
+  test("карту под кодом не выписать", async () => {
+    // «Респондент А-4821» — не документ, как и в справке
+    const coded = await makeUser("user", `ch-anon-${crypto.randomUUID()}@test`, {
+      anonymous: true,
+      pseudonym: "А-0001",
+    });
+    await submitSurvey(surveyInA, coded.token);
+    const res = await api(`/api/reports/patients/${coded.id}/chart`, adminA.token);
+    expect(res.status).toBe(400);
+  });
+});
