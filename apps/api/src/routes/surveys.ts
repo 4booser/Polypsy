@@ -114,6 +114,25 @@ surveyRoutes.get("/", async (c) => {
       questionCount: sql<number>`(select count(*) from questions q where q.survey_id = "surveys"."id")`,
       responseCount: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.status = 'completed')`,
       completedByMe: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.user_id = ${user.id} and r.status = 'completed')`,
+      /*
+       * Назначена лично или доступна всем — это разные вещи для того, кто
+       * смотрит список.
+       *
+       * Общедоступную методику человек проходит, если захочет; назначенную от
+       * него ждут, и у неё есть срок. Показывать их одним списком без
+       * различия значит не показать ни того ни другого: назначенное теряется
+       * среди доступного, а доступное выглядит обязательным.
+       */
+      assignedAt: sql<string | null>`(
+        select sa.granted_at from survey_access sa
+        where sa.survey_id = "surveys"."id" and sa.user_id = ${user.id}
+          and (sa.expires_at is null or sa.expires_at > now())
+        limit 1)`,
+      dueAt: sql<string | null>`(
+        select sa.expires_at from survey_access sa
+        where sa.survey_id = "surveys"."id" and sa.user_id = ${user.id}
+          and (sa.expires_at is null or sa.expires_at > now())
+        limit 1)`,
     })
     .from(surveys)
     .where(filters.length ? and(...filters) : undefined)
@@ -131,6 +150,8 @@ surveyRoutes.get("/", async (c) => {
     questionCount: Number(r.questionCount ?? 0),
     responseCount: Number(r.responseCount ?? 0),
     completedByMe: Number(r.completedByMe ?? 0) > 0,
+    assigned: r.assignedAt !== null,
+    dueAt: r.dueAt,
   }));
   return c.json({ items: list });
 });

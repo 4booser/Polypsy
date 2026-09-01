@@ -1312,3 +1312,45 @@ describe("печатный отчёт", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("список методик для пациента", () => {
+  test("назначенное отличается от общедоступного", async () => {
+    /*
+     * Общедоступную методику человек проходит, если захочет; назначенную от
+     * него ждут. Одним списком без различия не видно ни того ни другого:
+     * назначенное теряется среди доступного, а доступное выглядит
+     * обязательным.
+     */
+    const patient = await makeUser("user", `clinic-ls-${crypto.randomUUID()}@test`);
+
+    const before = await api("/api/surveys", patient.token);
+    expect(before.status).toBe(200);
+    const mine = before.body.items.find((s: { id: string }) => s.id === surveyInA);
+    if (mine) expect(mine.assigned).toBe(false);
+
+    await api(`/api/access/surveys/${surveyInA}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id, expiresAt: "2100-01-01T00:00:00.000Z" }),
+    });
+
+    const after = await api("/api/surveys", patient.token);
+    const assigned = after.body.items.find((s: { id: string }) => s.id === surveyInA);
+    expect(assigned.assigned).toBe(true);
+    expect(assigned.dueAt).not.toBeNull();
+  });
+
+  test("истёкшее назначение назначенным не считается", async () => {
+    // срок прошёл — от человека этого больше не ждут
+    const patient = await makeUser("user", `clinic-ls2-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: patient.id,
+      grantedBy: adminA.id,
+      expiresAt: "2000-01-01T00:00:00.000Z",
+    });
+
+    const res = await api("/api/surveys", patient.token);
+    const row = res.body.items.find((s: { id: string }) => s.id === surveyInA);
+    if (row) expect(row.assigned).toBe(false);
+  });
+});

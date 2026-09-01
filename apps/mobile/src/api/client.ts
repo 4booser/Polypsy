@@ -1,4 +1,6 @@
 import type {
+  AppointmentView,
+  FreeSlot,
   Answer,
   SafetyPlan,
   AnswerEvent,
@@ -227,6 +229,46 @@ export const api = {
       (error) => offlineFallback(error, cache.batteries()),
     ),
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
+
+  /* ── приём ── */
+  myAppointments: (past = false) =>
+    request<{ items: AppointmentView[] }>(`/api/clinic/appointments/mine${past ? "?past=1" : ""}`),
+  departments: () =>
+    request<{ items: { id: string; title: string; timezone: string }[] }>("/api/clinic/departments"),
+  specialists: (departmentId?: string) =>
+    request<{
+      items: {
+        userId: string;
+        fullName: string;
+        departmentId: string;
+        position: string | null;
+        room: string | null;
+        isLead: boolean;
+      }[];
+    }>(`/api/clinic/specialists${departmentId ? `?departmentId=${departmentId}` : ""}`),
+  freeSlots: (params: { specialistId?: string; kind?: "primary" | "repeat" } = {}) => {
+    const q = new URLSearchParams();
+    if (params.specialistId) q.set("specialistId", params.specialistId);
+    if (params.kind) q.set("kind", params.kind);
+    return request<{ items: FreeSlot[] }>(`/api/clinic/slots?${q}`);
+  },
+  book: (input: { slotId: string; reason?: string | null }) =>
+    request<{ id: string; kind: "primary" | "repeat"; screeningSurveyId: string | null }>(
+      "/api/clinic/appointments",
+      { method: "POST", body: JSON.stringify(input) },
+    ),
+  confirmAppointment: (id: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/confirm`, { method: "POST" }),
+  rescheduleAppointment: (id: string, slotId: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/reschedule`, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    }),
+  cancelAppointment: (id: string) =>
+    request<{ ok: true; late: boolean }>(`/api/clinic/appointments/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   registerPush: (token: string, platform: "ios" | "android") =>
     request<{ ok: true }>("/api/push/register", {
       method: "POST",

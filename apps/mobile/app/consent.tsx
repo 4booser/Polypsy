@@ -30,7 +30,7 @@ export default function ConsentScreen() {
       .consentStatus()
       .then((s) => {
         if (!s.required || s.accepted) {
-          router.replace("/(app)/surveys");
+          router.replace("/(app)/home");
           return;
         }
         setText(s.text);
@@ -39,7 +39,7 @@ export default function ConsentScreen() {
         // без сети экран не должен запирать уже работавшего человека:
         // согласие проверится при следующем онлайне
         if ((e as { status?: number }).status === 0) {
-          router.replace("/(app)/surveys");
+          router.replace("/(app)/home");
           return;
         }
         setError(ut("common.error"));
@@ -76,7 +76,7 @@ export default function ConsentScreen() {
           setError(null);
           try {
             await api.acceptConsent();
-            router.replace("/(app)/surveys");
+            router.replace("/(app)/home");
           } catch (e) {
             setError(e instanceof Error ? e.message : ut("common.error"));
           } finally {
