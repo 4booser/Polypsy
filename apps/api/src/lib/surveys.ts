@@ -226,6 +226,9 @@ export async function attachContent(
         title: L(q.title),
         help: Lnull(q.help),
         riskLabel: Lnull(q.riskLabel),
+        /* подписи концов шкалы читает пациент — разрешаются так же, как текст вопроса */
+        minLabel: Lnull(q.minLabel),
+        maxLabel: Lnull(q.maxLabel),
         options: (optionsByQuestion.get(q.id) ?? []).map(
           (o): Option => ({ ...o, text: L(o.text), riskLabel: Lnull(o.riskLabel) }),
         ),
@@ -370,8 +373,8 @@ export async function createVersion(
         minValue: isNumeric ? (question.minValue ?? (question.type === "scale" ? 1 : 0)) : null,
         maxValue: isNumeric ? (question.maxValue ?? (question.type === "scale" ? 5 : 100)) : null,
         step: isNumeric ? (question.step ?? 1) : null,
-        minLabel: question.minLabel ?? null,
-        maxLabel: question.maxLabel ?? null,
+        minLabel: normalizeLocalized(question.minLabel),
+        maxLabel: normalizeLocalized(question.maxLabel),
         randomizeOptions: question.randomizeOptions,
         timeLimitSec: question.timeLimitSec ?? null,
         riskThreshold: question.riskThreshold ?? null,

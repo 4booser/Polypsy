@@ -407,6 +407,13 @@
       "when": 1788029730168,
       "tag": "0057_threads",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1788029730169,
+      "tag": "0058_scale_labels_localized",
+      "breakpoints": true
     }
   ]
 }
