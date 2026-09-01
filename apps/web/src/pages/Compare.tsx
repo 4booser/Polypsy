@@ -235,7 +235,20 @@ function CorrelationGrid({ matrix }: { matrix: CorrelationMatrix }) {
           {matrix.codes.map((a) => (
             <tr key={a}>
               <td className="whitespace-nowrap font-semibold" title={matrix.titles[a]}>
-                {a} <span className="font-normal text-muted">{matrix.titles[a]?.slice(0, 26)}</span>
+                {a}{" "}
+                {/*
+                  Обрезка была slice(0, 26) — то есть обрыв посреди слова:
+                  «Военно-профессиональная на». Это не сокращение, это
+                  поломка, и читатель не может понять, чего не хватает.
+                  Теперь режет браузер и ставит многоточие, а полное название
+                  остаётся в подсказке.
+                */}
+                <span
+                  className="inline-block max-w-[26ch] truncate align-bottom font-normal text-muted"
+                  title={matrix.titles[a] ?? ""}
+                >
+                  {matrix.titles[a]}
+                </span>
               </td>
               {matrix.codes.map((b) => {
                 const v = value(a, b);
