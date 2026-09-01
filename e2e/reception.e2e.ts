@@ -144,3 +144,35 @@ test("методика назначается прямо с приёма, не �
   await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
   await expect(area).toHaveValue(/не должен пропасть/);
 });
+
+test("бланк вводится с клавиатуры и строкой целиком", async ({ page }) => {
+  /*
+   * Двести пунктов МЛО мышью — это двести прицельных щелчков по мелким
+   * кнопкам, и это ровно та работа, где время уходит, а ошибка не видна:
+   * промахнулся по соседнему варианту — балл другой, а заметить нечем.
+   */
+  await login(page, "psy");
+  await page.goto("/surveys");
+  await page.locator("h1").first().waitFor();
+
+  // берём короткую методику: сценарий про способ ввода, а не про длину
+  await page.locator('a[href^="/surveys/"]').first().click();
+  await page.waitForTimeout(800);
+  const url = page.url();
+  const surveyId = url.split("/surveys/")[1]!.split(/[/?#]/)[0]!;
+  await page.goto(`/surveys/${surveyId}/administer`);
+  await page.getByRole("button", { name: "Быстрый ввод" }).click();
+
+  // цифра — это ответ, и пункт сам сменяется на следующий
+  const field = page.getByLabel("Быстрый ввод");
+  await expect(field).toBeFocused();
+  const before = await page.getByText(/Пункт\s+1\s+из/).count();
+  expect(before).toBeGreaterThan(0);
+  await field.press("1");
+  await expect(page.getByText(/Пункт\s+2\s+из/)).toBeVisible();
+
+  // строка не той длины не применяется вовсе, и сказано почему
+  await page.getByLabel("Вставить строку ответов").fill("1,2");
+  await page.getByRole("button", { name: "Заполнить" }).click();
+  await expect(page.getByText(/Заполнять частично не будем/)).toBeVisible();
+});
