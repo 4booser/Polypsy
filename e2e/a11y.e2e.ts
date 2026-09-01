@@ -35,6 +35,17 @@ for (const theme of ["dark", "light"] as const) {
     // проверка доступности, какая у нас есть
     ["библиотека", "/ui"],
     ["направления", "/referrals"],
+    /*
+     * Экраны, появившиеся с расписанием и приёмом. Их шесть, и ни один не
+     * проверялся: доступность ловится автоматически ровно наполовину, но эта
+     * половина возвращается при каждой правке вёрстки — а вёрстки за
+     * последние волны написано больше, чем за всё до них.
+     */
+    ["сегодня", "/today"],
+    ["расписание приёма", "/my-schedule"],
+    ["переписка", "/messages"],
+    ["отчёт отделения", "/department-report"],
+    ["права", "/permissions"],
   ] as const) {
     test(`экран «${name}» доступен, тема ${theme}`, async ({ page }) => {
       await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
@@ -44,4 +55,22 @@ for (const theme of ["dark", "light"] as const) {
       expect(digest((await scan(page)).violations)).toEqual([]);
     });
   }
+}
+
+/*
+ * Экран приёма — с параметром, поэтому отдельно. Именно на нём больше всего
+ * новой вёрстки: три панели, запись приёма, обращения, диспансерный учёт,
+ * вставка из библиотеки. Пропустить его значило бы проверить всё, кроме
+ * самого плотного места.
+ */
+for (const theme of ["dark", "light"] as const) {
+  test(`экран приёма доступен, тема ${theme}`, async ({ page }) => {
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await login(page, "psy");
+    await page.goto("/today");
+    await page.locator('a[href^="/visit/"]').first().click();
+    await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
+    await page.waitForTimeout(600);
+    expect(digest((await scan(page)).violations)).toEqual([]);
+  });
 }

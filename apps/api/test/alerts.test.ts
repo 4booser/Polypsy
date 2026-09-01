@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, and, api, db, eq, isNull, patient, responsesTable, root, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, and, api, db, eq, isNull, makeUser, patient, responsesTable, root, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Риск: тревоги, случаи, разбор и передача смены */
 
@@ -159,39 +159,76 @@ describe("safety-план", () => {
 });
 
 describe("исход разбора", () => {
+  /**
+   * Свой неразобранный случай.
+   *
+   * Прежняя редакция брала любой открытый случай из общей базы — и это
+   * держалось на порядке файлов: стоило появиться новому тестовому файлу
+   * раньше по алфавиту, как случаев не оставалось и проверка падала, ничего
+   * не сломав. Тест, зависящий от того, что делали до него, проверяет не то,
+   * что написано в его названии.
+   */
+  async function ownOpenCase() {
+    const person = await makeUser("user", `outcome-${crypto.randomUUID()}@test`);
+    const surveyRes = await api(`/api/surveys/${surveyInA}`, person.token);
+    const yesAnswers = surveyRes.body.questions
+      .filter((q: { type: string }) => q.type !== "info")
+      .map((q: { id: string; options: { id: string; keyCode?: string }[] }) => ({
+        questionId: q.id,
+        optionIds: [(q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!).id],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      }));
+    const submitted = await api(`/api/surveys/${surveyInA}/responses`, person.token, {
+      method: "POST",
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        events: [],
+        answers: yesAnswers,
+      }),
+    });
+    expect(submitted.status).toBe(201);
+
+    const { alertCases: casesTable } = await import("../src/db/schema");
+    const open = await db.query.alertCases.findFirst({
+      where: (t, { eq: eqOp }) => eqOp(t.userId, person.id),
+    });
+    expect(open).toBeDefined();
+    return { open: open!, casesTable };
+  }
+
   test("исход ставится на случай и виден в списке", async () => {
     /*
      * Раньше исход ставился на отдельную тревогу. Тот путь убран: решение
      * принимается о человеке, и два источника истины о клиническом решении
      * недопустимы — по этим исходам калибруются пороги скрининга.
      */
-    const { alertCases: casesTable } = await import("../src/db/schema");
-    const open = await db.query.alertCases.findFirst({
-      where: (t, { isNull: isNullOp }) => isNullOp(t.acknowledgedAt),
-    });
-    expect(open).toBeDefined();
+    const { open, casesTable } = await ownOpenCase();
 
-    const ack = await api(`/api/alert-cases/${open!.id}`, adminA.token, {
+    const ack = await api(`/api/alert-cases/${open.id}`, adminA.token, {
       method: "PATCH",
       body: JSON.stringify({ note: "Беседа проведена", outcome: "confirmed" }),
     });
     expect(ack.status).toBe(200);
 
-    const row = await db.query.alertCases.findFirst({ where: eq(casesTable.id, open!.id) });
+    const row = await db.query.alertCases.findFirst({ where: eq(casesTable.id, open.id) });
     expect(row!.outcome).toBe("confirmed");
     expect(row!.note).toBe("Беседа проведена");
 
     const list = await api("/api/alert-cases?all=1&limit=100", adminA.token);
-    const found = list.body.items.find((x: { id: string }) => x.id === open!.id);
+    const found = list.body.items.find((x: { id: string }) => x.id === open.id);
     expect(found.outcome).toBe("confirmed");
     expect(found.acknowledgedByName.length).toBeGreaterThan(0);
   });
 
   test("мусорный исход не проходит — случай остаётся открытым", async () => {
-    const open = await db.query.alertCases.findFirst({
-      where: (t, { isNull: isNullOp }) => isNullOp(t.acknowledgedAt),
-    });
-    if (!open) return;
+    /*
+     * Прежняя редакция молча выходила, если открытых случаев не нашлось, —
+     * то есть проходила, ничего не проверив. Свой случай убирает и это.
+     */
+    const { open } = await ownOpenCase();
     const res = await api(`/api/alert-cases/${open.id}`, adminA.token, {
       method: "PATCH",
       body: JSON.stringify({ outcome: "чепуха" }),
