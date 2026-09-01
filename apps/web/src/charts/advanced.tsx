@@ -1,6 +1,7 @@
 import { SERIES, severityColor } from "../format";
 import type { Severity } from "@quizzy/shared";
 import { NoData } from "../ui/primitives";
+import { useChartWidth } from "./index";
 import { useLang } from "../lang";
 
 /** Продвинутые формы: профиль, разброс, рассеяние, тепловая карта, воронка, знаковые столбики */
@@ -105,15 +106,15 @@ export function boxOf(label: string, values: number[]): Box | null {
 
 export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: Box[]; categorical?: boolean; height?: number }) {
   const { ut } = useLang();
+  const [W, box] = useChartWidth();
   if (!boxes.length) return <NoData />;
-  const W = 900;
   const top = Math.max(...boxes.map((b) => b.max), 1);
   const ph = height - 46;
   const yAt = (v: number) => 14 + ph - (v / top) * ph;
   const slot = (W - 60) / boxes.length;
 
   return (
-    <div className="scroll-x">
+    <div className="scroll-x" ref={box}>
       <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height}>
         {[0, top / 2, top].map((t) => (
           <g key={t}>
@@ -173,17 +174,25 @@ export function Scatter({
   height?: number;
 }) {
   const { ut } = useLang();
-  if (!points.length) return <NoData />;
-  const W = 900;
+  /*
+   * Крючки — до любого раннего выхода.
+   *
+   * Здесь стоял `if (!points.length) return` перед вызовом крючка: при
+   * пустых данных React видел на один крючок меньше, чем в прошлый раз, и
+   * это ломается не сразу, а когда график впервые окажется пустым — то есть
+   * у первого же пользователя без данных.
+   */
+  const [W, box] = useChartWidth();
   const xMax = Math.max(...points.map((p) => p.x), xThreshold ?? 0, 1);
   const yMax = Math.max(...points.map((p) => p.y), 1);
+  if (!points.length) return <NoData />;
   const ph = height - 50;
   const xAt = (v: number) => 50 + (v / xMax) * (W - 70);
   const yAt = (v: number) => 14 + ph - (v / yMax) * ph;
   const flagged = points.filter((p) => p.flagged).length;
 
   return (
-    <div className="scroll-x">
+    <div className="scroll-x" ref={box}>
       <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height}>
         {[0, yMax / 2, yMax].map((t) => (
           <g key={t}>
@@ -273,8 +282,8 @@ export function Heatmap({ rows, columns, unit = "%" }: { rows: { label: string; 
 
 export function Funnel({ stages }: { stages: { label: string; value: number; lost: number }[] }) {
   const { ut } = useLang();
+  const [W, box] = useChartWidth();
   if (!stages.length) return <NoData />;
-  const W = 900;
   const rowH = 38;
   const H = stages.length * rowH + 10;
   const max = Math.max(...stages.map((s) => s.value), 1);
@@ -283,7 +292,7 @@ export function Funnel({ stages }: { stages: { label: string; value: number; los
   const cx = labelW + (W - labelW - 60) / 2;
 
   return (
-    <div className="scroll-x">
+    <div className="scroll-x" ref={box}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H}>
         {stages.map((s, i) => {
           const next = stages[i + 1] ?? s;

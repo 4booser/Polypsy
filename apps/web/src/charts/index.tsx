@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { SERIES } from "../format";
 import { Panel } from "../ui/layout";
-import { NoData } from "../ui/primitives";
+import { NoData, Num } from "../ui/primitives";
+import { useLang } from "../lang";
 
 /**
  * Диаграммы консоли — plain SVG без библиотек.
@@ -63,6 +64,32 @@ export function Chart({
   );
 }
 
+/**
+ * Настоящая ширина контейнера в пикселях.
+ *
+ * Общая для всех графиков, потому что ошибка была общая: рисовать в
+ * выдуманной системе координат и растягивать картинку под контейнер. При
+ * растяжении по одной оси вместе с линиями растягивается текст — подписи
+ * выходят шире задуманного, шрифт «плывёт», и график выглядит кривым, потому
+ * что кривым и является. Если рисовать в пикселях контейнера, растягивать
+ * нечего.
+ */
+export function useChartWidth(fallback = 900): [number, React.RefObject<HTMLDivElement | null>] {
+  const [w, setW] = useState(fallback);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const next = Math.round(entry?.contentRect.width ?? 0);
+      if (next > 0) setW(next);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [w, ref];
+}
+
 /* ─────────── линия / область ─────────── */
 
 export interface LinePoint {
@@ -104,9 +131,23 @@ export function LineChart({
   yMax?: number;
   marks?: TimeMark[];
 }) {
-  const W = 900;
+  const { ut } = useLang();
   const [hover, setHover] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+
+  /*
+   * Ширина берётся настоящая, а не выдуманная.
+   *
+   * Раньше здесь стояло W = 900 и preserveAspectRatio="none": браузер
+   * растягивал картинку под ширину контейнера — и вместе с линиями
+   * растягивал текст. Подписи осей выходили на четверть шире, чем задумано,
+   * шрифт «плыл», и график выглядел кривым, потому что кривым и был.
+   *
+   * Измеряем контейнер и рисуем в его собственных пикселях: тогда единица
+   * viewBox равна пикселю экрана, и растягивать нечего.
+   */
+  const [W, boxRef] = useChartWidth();
 
   const all = series.flatMap((s) => s.points);
   // верх шкалы учитывает полосу ошибки: иначе она обрезалась бы краем поля
@@ -138,17 +179,38 @@ export function LineChart({
 
   if (!all.length) return <NoData />;
 
+  /*
+   * По одной точке динамики не бывает.
+   *
+   * Раньше единственный замер рисовался точкой посреди пустой сетки в
+   * тысячу пикселей шириной, и ось времени показывала одну и ту же дату с
+   * обоих концов. Это выглядит как поломка и читается как «данных нет», хотя
+   * данные есть — их просто нечем сравнивать.
+   *
+   * Показываем число и говорим прямо: сравнивать не с чем.
+   */
+  if (all.length === 1) {
+    const only = all[0]!;
+    return (
+      <div className="flex items-baseline gap-3 px-1 py-3">
+        <Num className="text-stat leading-none">{fmt(only.y)}</Num>
+        <span className="text-caption text-muted">
+          {only.x} · {ut("chart.singlePoint")}
+        </span>
+      </div>
+    );
+  }
+
   const at = hover ?? -1;
   const label = series[0]?.points[at]?.x;
 
   return (
-    <div className="chart-wrap">
+    <div className="chart-wrap" ref={boxRef}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${W} ${height}`}
         width="100%"
         height={height}
-        preserveAspectRatio="none"
         onMouseMove={onMove}
         onMouseLeave={() => setHover(null)}
         role="img"

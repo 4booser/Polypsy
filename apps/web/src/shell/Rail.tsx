@@ -6,13 +6,11 @@ import { cx } from "../ui/cx";
 import {
   IconAlert,
   IconAudit,
-  IconBattery,
   IconClock,
   IconCompare,
   IconDashboard,
   IconGroup,
   IconInvite,
-  IconKiosk,
   IconPatients,
   IconPulse,
   IconReferral,
@@ -82,19 +80,27 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       items: [
         { to: "/patients", key: "nav.patients", icon: <IconPatients /> },
         { to: "/groups", key: "nav.groups", icon: <IconGroup /> },
-        { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
         { to: "/pathways", key: "pw.title", icon: <IconRoute /> },
         { to: "/my-schedule", key: "nav.reception", icon: <IconClock /> },
       ],
     },
+    /*
+     * Из рельса убраны батареи, сеансы киоска, расписание повторов и
+     * приглашения. Экраны остались — убраны только пункты меню.
+     *
+     * Пункт в рельсе стоит внимания на каждом открытии консоли, а нужен раз
+     * в месяц: батарею назначают с приёма и из карты, киоск разворачивают
+     * раз в неделю, приглашения выписывают в администрировании, повторные
+     * замеры настраивают однажды. Тринадцать пунктов, из которых четыре
+     * трогают редко, — это не богатый интерфейс, а список, по которому
+     * перестают читать.
+     *
+     * Открываются они оттуда, где ими пользуются, и по прямому адресу:
+     * /batteries, /kiosk-sessions, /schedules, /invites.
+     */
     {
       key: "nav.group.methods",
-      items: [
-        { to: "/surveys", key: "nav.surveys", icon: <IconSurvey /> },
-        { to: "/batteries", key: "nav.batteries", icon: <IconBattery /> },
-        { to: "/schedules", key: "nav.schedules", icon: <IconClock /> },
-        { to: "/kiosk-sessions", key: "nav.kiosk", icon: <IconKiosk /> },
-      ],
+      items: [{ to: "/surveys", key: "nav.surveys", icon: <IconSurvey /> }],
     },
     {
       key: "nav.group.analysis",
@@ -118,6 +124,8 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
         /* текст согласия жил на одном маршруте с учётками; разведён в свой */
         { to: "/consent-text", key: "consent.title", icon: <IconInvite /> },
+        /* приглашения — редкая административная работа, а не повседневная */
+        { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
         { to: "/api-docs", key: "nav.api", icon: <IconSurvey /> },
         { to: "/ui", key: "nav.ui", icon: <IconDashboard /> },
       ],
