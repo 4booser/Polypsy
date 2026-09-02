@@ -141,6 +141,68 @@ describe("RLS-политики (роль без прав владельца)", (
     });
     await expect((async () => { await attempt; })()).rejects.toThrow(/row-level security|policy/i);
   });
+  test("запись сеанса видна только двоим — тому, кого писали, и тому, кто писал", async () => {
+    /*
+     * Самые чувствительные данные в системе: не «результат методики», а
+     * разговор человека о себе целиком. Политика на этой таблице
+     * проверяется поведением, а не только фактом существования — «политика
+     * есть» и «политика пускает кого надо» это разные утверждения, и
+     * второе дороже.
+     *
+     * Проверяется в том числе посторонний специалист: он персонал, у него
+     * есть права на маршруты записи, — и именно поэтому важно, что строка
+     * чужого приёма ему не видна на уровне базы, а не только на уровне
+     * маршрута.
+     */
+    const { appointments, slots, specialistProfiles, departments, visitRecordings } =
+      await import("../src/db/schema");
+
+    const departmentId = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: departmentId,
+      title: { uk: "Запис", ru: "Запись" },
+      timezone: "Europe/Kyiv",
+    });
+    const doctor = await makeUser("admin", `rec-doc-${crypto.randomUUID()}@test`);
+    const stranger = await makeUser("admin", `rec-x-${crypto.randomUUID()}@test`);
+    const person = await makeUser("user", `rec-p-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values({ userId: doctor.id, departmentId });
+
+    const slotId = crypto.randomUUID();
+    await db.insert(slots).values({
+      id: slotId,
+      departmentId,
+      specialistId: doctor.id,
+      startsAt: new Date().toISOString(),
+      endsAt: new Date(Date.now() + 3000_000).toISOString(),
+      kind: "primary",
+    });
+    const appointmentId = crypto.randomUUID();
+    await db.insert(appointments).values({
+      id: appointmentId,
+      slotId,
+      patientId: person.id,
+      specialistId: doctor.id,
+      kind: "primary",
+      status: "done",
+      bookedBy: doctor.id,
+    });
+    await db.insert(visitRecordings).values({
+      id: crypto.randomUUID(),
+      appointmentId,
+      patientId: person.id,
+      specialistId: doctor.id,
+    } as never);
+
+    const count = `select count(*)::int n from visit_recordings where appointment_id = '${appointmentId}'`;
+
+    expect(await as({ userId: doctor.id, role: "admin" }, count)).toBe(1);
+    expect(await as({ userId: person.id, role: "user" }, count)).toBe(1);
+    // посторонний специалист — тоже персонал, и именно поэтому это важно
+    expect(await as({ userId: stranger.id, role: "admin" }, count)).toBe(0);
+    expect(await as({}, count)).toBe(0);
+  });
+
 });
 
 describe("RLS покрывает все клинические таблицы", () => {
@@ -196,9 +258,49 @@ describe("RLS покрывает все клинические таблицы", 
           select 1 from information_schema.columns col
           where col.table_schema = 'public'
             and col.table_name = c.relname
-            and col.column_name in ('user_id', 'response_id', 'subject_user_id')
+            -- Имена колонок, по которым таблица считается клинической.
+            -- Первые три — наследие первой половины проекта. Весь контур
+            -- поликлиники ссылается на человека иначе, через patient_id,
+            -- specialist_id и author_id, — и потому тринадцать таблиц с
+            -- приёмами, перепиской и записями сеансов проходили мимо этой
+            -- проверки целиком. Политики у них есть, но никто этого не
+            -- сторожил: следующая таблица приехала бы без политики молча.
+            -- Ровно то, о чём предупреждает комментарий выше: список,
+            -- вписанный руками, устаревает в день появления новой сущности.
+            and col.column_name in (
+              'user_id', 'response_id', 'subject_user_id',
+              'patient_id', 'specialist_id', 'author_id'
+            )
         )
     `);
+
+    const seen = new Set([...rows].map((r) => String(r.relname)));
+
+    /*
+     * Сначала — что определитель вообще что-то видит, и видит то, что надо.
+     *
+     * «Незащищённых нет» истинно и тогда, когда список таблиц пуст: именно
+     * так проверка и жила, пока искала только user_id, response_id и
+     * subject_user_id. Весь контур поликлиники ссылается на человека через
+     * patient_id — тринадцать таблиц с приёмами, перепиской и записями
+     * сеансов не попадали в выборку вовсе, и проверка объявляла победу,
+     * ни разу на них не взглянув.
+     *
+     * Поэтому здесь поимённо названы таблицы, которые определитель обязан
+     * находить. Сузить список колонок обратно теперь нельзя молча.
+     */
+    const mustSee = [
+      "responses",
+      "answers",
+      "appointments",
+      "threads",
+      "messages",
+      "visit_recordings",
+      "episodes",
+      "dispensary",
+      "department_patients",
+    ];
+    expect(mustSee.filter((t) => !seen.has(t))).toEqual([]);
 
     const unprotected = [...rows]
       .filter((r) => Number(r.n) === 0 && !notClinical.has(String(r.relname)))
