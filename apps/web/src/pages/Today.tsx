@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { AppointmentView, UiKey } from "@quizzy/shared";
 import { api } from "../api";
+import { dayFull } from "../format";
 import { Avatar, Badge, Empty, Screen, useAction, useUrlState } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Button, Num, SectionLabel } from "../ui/primitives";
@@ -68,15 +69,28 @@ export default function TodayPage() {
   return (
     <Screen res={res} rows={5}>
       {(data) => {
-        const waiting = data.items.filter((a) => a.status === "booked" || a.status === "confirmed");
-        const received = data.items.filter((a) => a.status === "done");
+        /*
+         * Сводка дня разбивает день без остатка.
+         *
+         * Раньше считались только ждущие и принятые, а пришедший и сидящий
+         * на приёме не попадали никуда: рядом с числом 4 стояло «Ждут 2 ·
+         * Принято 1», и человек за стойкой искал четвёртого. Пустые группы
+         * не показываются, но каждый приём попадает ровно в одну — сумма
+         * показанных всегда равна числу приёмов.
+         */
+        const groups: Array<[string, number]> = [
+          [ut("day.waiting"), data.items.filter((a) => a.status === "booked" || a.status === "confirmed").length],
+          [ut("day.inRoom"), data.items.filter((a) => a.status === "arrived" || a.status === "in_progress").length],
+          [ut("day.received"), data.items.filter((a) => a.status === "done").length],
+          [ut("day.absent"), data.items.filter((a) => a.status === "no_show" || a.status === "cancelled").length],
+        ];
         return (
           <Page
             title={ut("day.title")}
             count={data.items.length || null}
             sub={
               data.items.length
-                ? `${ut("day.waiting")} ${waiting.length} · ${ut("day.received")} ${received.length}`
+                ? groups.filter(([, n]) => n > 0).map(([label, n]) => `${label} ${n}`).join(" · ")
                 : null
             }
             toolbar={
@@ -84,7 +98,7 @@ export default function TodayPage() {
                 <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, -1))}>
                   {ut("day.prev")}
                 </Button>
-                <Num className="min-w-[92px] text-center text-caption text-muted">{data.date}</Num>
+                <span className="min-w-[132px] text-center text-caption text-muted">{dayFull(data.date)}</span>
                 <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, 1))}>
                   {ut("day.next")}
                 </Button>

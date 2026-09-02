@@ -35,8 +35,11 @@ import {
   appointments,
   departmentPatients,
   departments,
+  messages,
+  scheduleExceptions,
   scheduleTemplates,
   slots,
+  threads,
   specialistProfiles,
   type UserRow,
 } from "./db/schema";
@@ -1097,6 +1100,10 @@ async function seedClinic() {
   const existing = await db.select().from(departments).limit(1);
   if (existing.length) return;
 
+  /** Сегодняшняя дата в часовом поясе отделения, а не машины: слоты строятся по нему */
+  const todayInKyiv = () =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date());
+
   const departmentId = "dept-psy";
   await db.insert(departments).values({
     id: departmentId,
@@ -1134,6 +1141,27 @@ async function seedClinic() {
           capacity: 1,
         },
       ]);
+    }
+    /*
+     * Выходной день: отделение по субботам и воскресеньям не принимает, а
+     * посев должен показывать день приёма — иначе экран дня пуст, и шесть
+     * сценариев приёма падают по календарю, а не по существу. Добавлять
+     * выходные в шаблон недели было бы неправдой: отдел работает по будням.
+     * Дополнительный день — существующее исключение, и оно же оказывается
+     * посеяно на живом примере.
+     */
+    const weekday = new Date().getDay();
+    if (weekday === 0 || weekday === 6) {
+      await db.insert(scheduleExceptions).values({
+        id: crypto.randomUUID(),
+        specialistId: specialist.id,
+        date: todayInKyiv(),
+        kind: "extra",
+        startsAt: "09:00",
+        endsAt: "12:00",
+        slotMinutes: 50,
+        note: "Дополнительный приём",
+      });
     }
     await syncSlots(specialist.id);
   }
@@ -1190,6 +1218,51 @@ async function seedClinic() {
   // один человек уже закреплён: пометка «без ведущего» должна отличать одних от других
   if (pool[0]) {
     await db.update(users).set({ leadSpecialistId: psy!.id }).where(eq(users.id, pool[0].id));
+  }
+
+  /*
+   * Одна переписка с непрочитанным.
+   *
+   * Без неё экран переписки в посеве пуст, и всё, что на нём проверяется, —
+   * что пустое состояние отрисовалось. Непрочитанное со стороны пациента
+   * нужно отдельно: очередь работы специалиста показывает именно его, и
+   * пустая очередь не отличает «нет писем» от «счётчик не считает».
+   */
+  if (pool[0]) {
+    const threadId = crypto.randomUUID();
+    await db.insert(threads).values({
+      id: threadId,
+      patientId: pool[0].id,
+      specialistId: psy!.id,
+    });
+    const talk: Array<[string, string]> = [
+      [pool[0].id, "Добрый день. После прошлого приёма стало полегче засыпать, но просыпаюсь в четыре и больше не сплю."],
+      [psy!.id, "Хорошо, что засыпать стало легче. Раннее пробуждение мы разберём на приёме — запишите, во сколько ложитесь и когда просыпаетесь, всю неделю."],
+      [pool[0].id, "Записываю. Ещё вопрос: дыхательное упражнение делать утром или перед сном?"],
+    ];
+    /*
+     * Время отправки разносится по часам, а не берётся из умолчания: иначе
+     * у всех трёх писем один и тот же момент, порядок в переписке
+     * произволен, и «последнее сообщение» — какое повезёт.
+     */
+    let sentAt = Date.now() - 3 * 3600_000;
+    for (const [authorId, body] of talk) {
+      // прочитано всё, кроме последнего вопроса пациента
+      const readAt = body.startsWith("Записываю") ? undefined : new Date().toISOString();
+      await db.insert(messages).values({
+        id: crypto.randomUUID(),
+        threadId,
+        authorId,
+        textEnc: encryptField(body)!,
+        sentAt: new Date(sentAt).toISOString(),
+        readAt,
+      });
+      sentAt += 3600_000;
+    }
+    await db
+      .update(threads)
+      .set({ lastMessageAt: new Date(sentAt - 3600_000).toISOString() })
+      .where(eq(threads.id, threadId));
   }
 
   console.log(`  отделение: приём двух специалистов, приёмов на сегодня: ${n}`);
