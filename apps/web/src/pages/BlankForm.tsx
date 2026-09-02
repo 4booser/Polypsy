@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import qrcode from "qrcode-generator";
 import { Link, useParams } from "react-router-dom";
 import type { SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
@@ -72,6 +73,20 @@ export default function BlankForm() {
 
         <Panel title={survey.title} hint={survey.instructions}>
           {/*
+            Метка бланка: какая методика и какой её версии перед вами.
+            
+            Нужна прямо сейчас и без всякого распознавания отметок: заполненный
+            бланк приносят через неделю, и оператор ищет методику в списке
+            руками — а версий у методики несколько, и нумерация пунктов между
+            ними отличается. Ввести ответы не в ту версию значит получить
+            правдоподобные, но чужие баллы.
+
+            Она же — единственная дешёвая часть фотоввода, которую стоит
+            сделать заранее: распознавать отметки без указания, что это за
+            лист, всё равно нельзя.
+          */}
+          <SheetCode surveyId={survey.id} version={survey.versionNumber} />
+          {/*
             Раньше строка вёрсталась CSS-гридом (.fields), где явная ширина
             каждого поля ничего не решала — грид сам режет на равные колонки,
             и «ФИО на всю строку, дата рождения/пол/дата обследования в одну»
@@ -104,6 +119,36 @@ export default function BlankForm() {
         </Panel>
       </Stack>
     </Page>
+  );
+}
+
+/**
+ * Код листа: методика и версия, а не ссылка на прохождение.
+ *
+ * Именно методика с версией, потому что бланк печатают пачкой заранее и
+ * раздают неизвестно кому. Привязать лист к конкретному человеку в момент
+ * печати нельзя — а если бы и было можно, пачка одинаковых листов с чужими
+ * именами в коридоре хуже, чем её отсутствие.
+ */
+function SheetCode({ surveyId, version }: { surveyId: string; version: number }) {
+  const { ut } = useLang();
+  const svg = useMemo(() => {
+    const qr = qrcode(0, "M");
+    qr.addData(`${window.location.origin}/surveys/${surveyId}/administer?v=${version}`);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 3, margin: 0, scalable: true });
+  }, [surveyId, version]);
+
+  return (
+    <div className="mb-4 flex items-start gap-3 border-b border-hairline pb-4">
+      <div className="w-[76px] shrink-0" dangerouslySetInnerHTML={{ __html: svg }} />
+      <div className="text-caption text-muted">
+        <p className="m-0">
+          {ut("bf.sheetCode")}: <span className="font-mono">{surveyId.slice(0, 8)}·v{version}</span>
+        </p>
+        <p className="m-0 mt-1">{ut("bf.sheetCodeHint")}</p>
+      </div>
+    </div>
   );
 }
 
