@@ -213,7 +213,30 @@ export async function batterySurveysInUse(batteryId: string): Promise<string[]> 
  * условий уже применялся на экране пациентов; здесь он вынесен, чтобы
  * маршруты и списки не разошлись в понимании слова «свой».
  */
+/*
+ * Счётчик вызовов — для проверки, а не для наблюдения за боем.
+ *
+ * Зона видимости обязана считаться один раз на запрос: однажды очередь
+ * работы посчитала её дважды, и смоук замедлился вдвое. Проверить это
+ * секундомером не выходит — зона считается быстро, и полсотни лишних
+ * вычислений укладываются в любой разумный порог; проверка выглядела бы
+ * рабочей, ничего не проверяя. Считать вызовы — единственный способ
+ * спросить ровно то, что нужно.
+ *
+ * Стоит одно целочисленное увеличение на вызов.
+ */
+let scopeCalls = 0;
+
+export function scopeCallsForTests(): number {
+  return scopeCalls;
+}
+
+export function resetScopeCallsForTests(): void {
+  scopeCalls = 0;
+}
+
 export async function accessiblePatientIds(user: User): Promise<Set<string> | null> {
+  scopeCalls += 1;
   const groupIds = await accessibleGroupIds(user);
   if (groupIds === null) return null;
 
