@@ -3,7 +3,7 @@ import type { ScheduleTemplateView, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { Empty, Screen, useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
-import { Button, Field, Input, Select } from "../ui/primitives";
+import { Button, Field, Input, Num, Select } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -44,6 +44,15 @@ export default function SchedulePage() {
   const reload = res.reload;
 
   const [rows, setRows] = useState<Row[] | null>(null);
+  /*
+   * Неделю по умолчанию читают, а не правят.
+   *
+   * Раньше экран открывался таблицей из шестидесяти полей ввода — по шесть
+   * на каждую из десяти строк. Настраивают расписание раз в год, а смотрят
+   * на него постоянно: «во сколько я во вторник», «принимаю ли в пятницу».
+   * Читать это по выпадающим спискам нельзя, а случайно изменить — можно.
+   */
+  const [editing, setEditing] = useState(false);
   const [result, setResult] = useState<{ added: number; removed: number; flagged: number } | null>(
     null,
   );
@@ -64,7 +73,19 @@ export default function SchedulePage() {
             <Panel
               title={ut("sched.week")}
               actions={
+                editing ? (
                 <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      // отказ возвращает то, что на сервере, а не то, что успели натыкать
+                      setRows(res.data?.templates.map(({ id: _id, ...rest }) => rest) ?? []);
+                      setEditing(false);
+                    }}
+                  >
+                    {ut("sched.cancelEdit")}
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -89,6 +110,7 @@ export default function SchedulePage() {
                         const r = await api.saveSchedule(rows ?? []);
                         await reload();
                         setResult(r);
+                        setEditing(false);
                         return r;
                       }, ut("sched.saved"))
                     }
@@ -96,6 +118,11 @@ export default function SchedulePage() {
                     {ut("sched.save")}
                   </Button>
                 </div>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+                    {ut("sched.edit")}
+                  </Button>
+                )
               }
             >
               {/*
@@ -118,6 +145,8 @@ export default function SchedulePage() {
 
               {rows === null || rows.length === 0 ? (
                 <Empty title={ut("sched.empty")} />
+              ) : !editing ? (
+                <WeekRead rows={rows} />
               ) : (
                 /*
                  * Одна шапка на всю неделю, а не подписи у каждого поля.
@@ -132,7 +161,9 @@ export default function SchedulePage() {
                 <div className="overflow-x-auto px-4 pb-4">
                   <div className="min-w-[720px]">
                     <div
-                      className="grid items-end gap-2 pb-1 text-micro uppercase tracking-[var(--tracking-label)] text-faint"
+                      /* px-2 — те же отступы, что у строки: иначе подпись столбца
+                         стоит на десять пикселей левее своего поля */
+                      className="grid items-end gap-2 px-2 pb-1 text-micro uppercase tracking-[var(--tracking-label)] text-faint"
                       style={{ gridTemplateColumns: COLUMNS }}
                     >
                       <span>{ut("sched.weekday")}</span>
@@ -168,6 +199,67 @@ export default function SchedulePage() {
         </Page>
       )}
     </Screen>
+  );
+}
+
+/**
+ * Неделя как текст.
+ *
+ * Дни идут все семь подряд, включая те, в которые приёма нет: расписание
+ * читают вопросом «принимаю ли я в четверг», и день, которого просто нет в
+ * списке, на этот вопрос не отвечает — его приходится искать, чтобы
+ * убедиться, что не нашёл.
+ */
+function WeekRead({ rows }: { rows: Row[] }) {
+  const { ut } = useLang();
+  const KIND: Record<Row["kind"], UiKey> = {
+    any: "sched.kindAny",
+    primary: "sched.kindPrimary",
+    repeat: "sched.kindRepeat",
+  };
+
+  return (
+    <div className="px-4 pb-4">
+      {[1, 2, 3, 4, 5, 6, 7].map((weekday) => {
+        const day = rows
+          .filter((r) => r.weekday === weekday)
+          .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+        return (
+          <div
+            key={weekday}
+            className="grid grid-cols-[132px_minmax(0,1fr)] items-baseline gap-x-4 border-t border-hairline py-2 first:border-t-0"
+          >
+            <span className={day.length ? "font-medium" : "text-faint"}>
+              {ut(WEEKDAY_KEY[weekday]!)}
+            </span>
+            {day.length === 0 ? (
+              <span className="text-caption text-faint">{ut("sched.dayOff")}</span>
+            ) : (
+              <div className="flex flex-col gap-0.5">
+                {day.map((r, i) => (
+                  <div key={i} className="flex flex-wrap items-baseline gap-x-3 text-caption">
+                    <Num>
+                      {r.startsAt}–{r.endsAt}
+                    </Num>
+                    <span className="text-muted">
+                      {ut("sched.perSlot").replace("{n}", String(r.slotMinutes))}
+                    </span>
+                    <span className="text-muted">{ut(KIND[r.kind])}</span>
+                    {/* мест показываем только когда их больше одного: «1 место» —
+                        это обычный приём, и писать об этом в каждой строке незачем */}
+                    {r.capacity > 1 ? (
+                      <span className="text-muted">
+                        <Num>{r.capacity}</Num> {ut("sched.places")}
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
