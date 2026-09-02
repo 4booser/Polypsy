@@ -5,7 +5,7 @@ import { api, openInTab } from "../api";
 import { day } from "../format";
 import { Empty, Screen, useAction } from "../ui";
 import { Page, Panel } from "../ui/layout";
-import { Button, Field, Input, Num, SectionLabel, Select, Textarea } from "../ui/primitives";
+import { Button, Field, Input, SectionLabel, Select, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { TemplatePicker } from "../components/TemplatePicker";
@@ -143,23 +143,31 @@ export default function VisitPage() {
             </Panel>
 
             <div className="flex flex-col gap-3">
-              <Actions data={data} busy={busy} run={run} reload={reload} />
               {/*
-                Запись — в правой колонке, под действиями: её включают в
-                начале приёма, а не читают перед ним. Стенограмма приезжает
-                сюда же и вставляется в протокол по нажатию — сама она в
-                протокол не попадает: стенограмма это то, что было сказано, а
-                протокол — то, что специалист из этого вынес.
+                Запись — первая в колонке, потому что её включают на первой
+                минуте приёма. Стояла третьей, под действиями и обращениями,
+                то есть ниже сгиба: чтобы начать запись, надо было сначала
+                прокрутить экран, — а начинают её тогда, когда человек уже
+                сел и разговор пошёл.
+
+                Действия под ней намеренно: назначить методику, выписать
+                направление и справку — это конец приёма, а не начало.
+
+                Стенограмма приезжает сюда же и вставляется в протокол по
+                нажатию — сама она в протокол не попадает: стенограмма это то,
+                что было сказано, а протокол — то, что специалист из этого
+                вынес.
               */}
+              <VisitRecorder
+                appointmentId={data.appointment.id}
+                onTranscript={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
+              />
+              <Actions data={data} busy={busy} run={run} reload={reload} />
               {/*
                 Обращение — здесь же: приём относят к нему в тот момент, когда
                 он идёт, а не вспоминают потом, разбирая хронологию.
               */}
               <Episodes patientId={data.patient.id} appointmentId={data.appointment.id} />
-              <VisitRecorder
-                appointmentId={data.appointment.id}
-                onTranscript={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
-              />
             </div>
           </div>
         </Page>
@@ -186,14 +194,14 @@ function History({ data }: { data: Ctx }) {
           {data.previous ? (
             <p>
               <SectionLabel>{ut("visit.wasWith")}</SectionLabel>{" "}
-              {data.previous.specialistName} · <Num>{day(data.previous.at)}</Num>
+              {data.previous.specialistName} · {day(data.previous.at)}
             </p>
           ) : (
             <p className="text-muted">{ut("visit.firstVisit")}</p>
           )}
           {data.followedSince ? (
             <p className="text-muted">
-              {ut("visit.followedSince")} <Num>{day(data.followedSince)}</Num>
+              {ut("visit.followedSince")} {day(data.followedSince)}
             </p>
           ) : null}
           <p className={data.patient.leadName ? "text-muted" : "text-accent"}>
@@ -211,7 +219,7 @@ function History({ data }: { data: Ctx }) {
 
       <Panel title={ut("visit.changes")}>
         {data.changes.length === 0 ? (
-          <Empty title={ut("visit.noChanges")} />
+          <Empty compact title={ut("visit.noChanges")} />
         ) : (
           <div className="flex flex-col">
             {data.changes.map((ch, i) => (
@@ -219,7 +227,7 @@ function History({ data }: { data: Ctx }) {
                 key={i}
                 className="flex items-baseline gap-2 border-t border-hairline px-4 py-2 text-caption first:border-t-0"
               >
-                <Num className="w-[68px] shrink-0 text-muted">{day(ch.at)}</Num>
+                <span className="w-[68px] shrink-0 text-muted">{day(ch.at)}</span>
                 <span className="min-w-0">
                   {ut(CHANGE_KEY[ch.kind] ?? "visit.changeResponse")}
                   {ch.title ? ` · ${ch.title}` : ""}

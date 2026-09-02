@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { onAppEvent, type AppEvent } from "../events";
 import { useLang } from "../lang";
@@ -48,9 +48,22 @@ export function EventCenter() {
    * Точка отсчёта: когда человек в прошлый раз сказал «прочитано». Если такой
    * отметки нет — берём сутки назад, а не начало времён: первое открытие
    * панели не должно вываливать всю историю учреждения.
+   *
+   * Значение обязано быть устойчивым между отрисовками, и это не
+   * придирка. Раньше запасная точка считалась выражением прямо в теле
+   * компонента: каждая отрисовка давала новую строку, строка стояла в
+   * зависимостях запроса, ответ вызывал отрисовку — и консоль уходила в
+   * бесконечный опрос сервера. В записи ответов видно двенадцать запросов
+   * к одному и тому же адресу за сто семьдесят миллисекунд.
+   *
+   * Страдал от этого каждый, кто ни разу не отмечал события прочитанными,
+   * то есть по умолчанию все.
    */
-  const since =
-    user?.workspace?.eventsSeenAt ?? new Date(Date.now() - 86_400_000).toISOString();
+  const seenAt = user?.workspace?.eventsSeenAt;
+  const since = useMemo(
+    () => seenAt ?? new Date(Date.now() - 86_400_000).toISOString(),
+    [seenAt],
+  );
 
   const missed = useResource(() => api.missed(since), [since]);
   const missedCount = (missed.data?.groups ?? []).reduce((n, g) => n + g.count, 0);

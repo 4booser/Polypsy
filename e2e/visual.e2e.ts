@@ -265,7 +265,16 @@ const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Pag
       await page.goto("/today");
       await page.locator('a[href^="/visit/"]').first().click();
       await page.waitForURL(/\/visit\//);
-      await page.locator("h1").waitFor();
+      /*
+       * Ждём заголовок ИМЕННО приёма, а не любой h1.
+       *
+       * Экран дня к этому моменту ещё в разметке, и `h1` совпадал с ним:
+       * ожидание заканчивалось до того, как приезжали данные приёма, и в
+       * записанные ответы они не попадали. Тест при записи проходил —
+       * снимок успевал дорисоваться, — а при воспроизведении экран получал
+       * на свой запрос выдуманный 404.
+       */
+      await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
     },
   },
   {
