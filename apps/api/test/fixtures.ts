@@ -81,7 +81,35 @@ export async function makeUser(
   return { id, token: await issueToken({ id, role }) };
 }
 
-export async function api(path: string, token: string, init: RequestInit = {}) {
+/**
+ * Запрос к приложению от имени владельца токена.
+ *
+ * Тело ответа объявлено параметром типа с умолчанием `any`, и это
+ * сознательный компромисс. Раньше `res.json()` возвращал `unknown`, из-за
+ * чего проверку типов на каталог тестов включить было нельзя: 583 ошибки из
+ * 606 — это одно и то же «тело неизвестного типа». Из-за них не
+ * проверялось и всё остальное: опечатки в импортах, неверные аргументы,
+ * переименованные поля.
+ *
+ * Умолчание `any` возвращает проверку типов всему коду тестов, кроме
+ * обращений к телу, и оставляет путь ужесточать по одному месту:
+ * `api<DepartmentReport>(...)` начинает проверять и поля тела.
+ */
+/**
+ * Тело ответа, полученного не через `api` — например от запроса без токена.
+ *
+ * Тот же компромисс, что и там: умолчание `any` возвращает проверку типов
+ * всему вокруг, а знающий, чего ждёт, пишет `json<Invite>(res)`.
+ */
+export async function json<T = any>(res: Response): Promise<T> {
+  return (await res.json().catch(() => null)) as T;
+}
+
+export async function api<T = any>(
+  path: string,
+  token: string,
+  init: RequestInit = {},
+): Promise<{ status: number; headers: Headers; body: T }> {
   const res = await app.request(path, {
     ...init,
     headers: {
@@ -90,7 +118,7 @@ export async function api(path: string, token: string, init: RequestInit = {}) {
       ...(init.headers as Record<string, string>),
     },
   });
-  const body = await res.json().catch(() => null);
+  const body = (await res.json().catch(() => null)) as T;
   return { status: res.status, headers: res.headers, body };
 }
 
@@ -117,8 +145,8 @@ await db.insert(surveyGroups).values([
   { id: groupB, title: "Группа Б", createdBy: root.id },
 ]);
 await db.insert(groupAdmins).values([
-  { groupId: groupA, userId: adminA.id, assignedBy: root.id },
-  { groupId: groupB, userId: adminB.id, assignedBy: root.id },
+  { groupId: groupA, userId: adminA.id, addedBy: root.id },
+  { groupId: groupB, userId: adminB.id, addedBy: root.id },
 ]);
 
 // методика в группе А — через реальный конвейер посева

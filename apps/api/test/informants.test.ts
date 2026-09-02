@@ -13,6 +13,7 @@ import {
   submitSurvey,
   surveyInA,
   surveys,
+  json,
 } from "./fixtures";
 
 /**
@@ -55,7 +56,7 @@ async function invite(role = "commander") {
 
 async function fillForm(token: string) {
   const state = await app.request(`/api/informants/form/${token}`);
-  const body = (await state.json()) as {
+  const body = (await json(state)) as {
     valid: boolean;
     survey: { questions: { id: string; type: string; options: { id: string }[] }[] };
   };
@@ -89,7 +90,7 @@ describe("запрос к информанту", () => {
     // без заголовка Authorization — у информанта нет учётной записи
     const form = await app.request(`/api/informants/form/${created.body.token}`);
     expect(form.status).toBe(200);
-    const body = await form.json();
+    const body = await json(form);
     expect(body.valid).toBe(true);
     expect(body.role).toBe("commander");
   });
@@ -101,7 +102,7 @@ describe("запрос к информанту", () => {
      */
     const created = await invite();
     const form = await app.request(`/api/informants/form/${created.body.token}`);
-    const body = await form.json();
+    const body = await json(form);
     expect(body.about.length).toBeLessThanOrEqual(2);
   });
 
@@ -130,7 +131,7 @@ describe("заполнение информантом", () => {
     expect((await fillForm(created.body.token)).status).toBe(201);
 
     const second = await app.request(`/api/informants/form/${created.body.token}`);
-    const body = await second.json();
+    const body = await json(second);
     expect(body.valid).toBe(false);
     expect(body.reason).toBe("used");
   });
@@ -140,7 +141,7 @@ describe("заполнение информантом", () => {
     await api(`/api/informants/${created.body.id}/revoke`, adminA.token, { method: "POST" });
 
     const form = await app.request(`/api/informants/form/${created.body.token}`);
-    expect((await form.json()).reason).toBe("revoked");
+    expect((await json(form)).reason).toBe("revoked");
   });
 
   test("оценка со стороны не попадает в динамику пациента", async () => {
