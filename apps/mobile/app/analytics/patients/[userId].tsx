@@ -53,9 +53,9 @@ export default function PatientDynamicsScreen() {
           <Card>
             <Body>{sv.title}</Body>
             <Body muted>
-              {sv.responseCount} замеров
-              {sv.firstAt ? ` · с ${sv.firstAt.slice(0, 10)}` : ""}
-              {sv.lastAt ? ` по ${sv.lastAt.slice(0, 10)}` : ""}
+              {ut("mpa.measurements").replace("{n}", String(sv.responseCount))}
+              {sv.firstAt ? ut("mpa.since").replace("{d}", sv.firstAt.slice(0, 10)) : ""}
+              {sv.lastAt ? ut("mpa.until").replace("{d}", sv.lastAt.slice(0, 10)) : ""}
             </Body>
           </Card>
 
@@ -99,8 +99,8 @@ export default function PatientDynamicsScreen() {
                 title={sc.title}
                 subtitle={
                   sc.delta === null
-                    ? "нужен минимум второй замер, чтобы говорить о динамике"
-                    : `изменение за период: ${sc.delta > 0 ? "+" : ""}${sc.delta}`
+                    ? ut("mpa.needSecond")
+                    : ut("mpa.periodChange").replace("{d}", `${sc.delta > 0 ? "+" : ""}${sc.delta}`)
                 }
               >
                 <LineChart
@@ -125,7 +125,7 @@ export default function PatientDynamicsScreen() {
                       <Body muted>{ut("mdy.last")}</Body>
                       <View style={{ flex: 1 }} />
                       <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-                        {last.rawScore} из {last.maxScore}
+                        {ut("qi.pointOf").replace("{n}", String(last.rawScore)).replace("{max}", String(last.maxScore))}
                       </Text>
                     </Row>
                     {last.severity ? (
@@ -135,8 +135,7 @@ export default function PatientDynamicsScreen() {
                       <PercentileBar percentile={last.percentile} />
                     ) : (
                       <Body muted>
-                        Перцентиль не считается: накопленная выборка слишком мала, чтобы он что-то
-                        значил
+                        {ut("mpa.noPercentile")}
                       </Body>
                     )}
                     <Button

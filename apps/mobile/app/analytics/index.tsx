@@ -6,7 +6,7 @@ import { api } from "@/api/client";
 import { ChartCard, StatTile } from "@/components/charts";
 import { Donut, LineChart } from "@/components/viz";
 import { Body, Button, Card, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
-import { formatDuration, severityColor, severityLabel, spacing, useColors } from "@/theme";
+import { formatDuration, severityColor, severityKey, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
 
 export default function OverviewScreen() {
@@ -75,7 +75,7 @@ export default function OverviewScreen() {
                   backgroundColor: severityColor.severe,
                 }}
               />
-              <Body>Случаев на разбор: {openCases}</Body>
+              <Body>{ut("ma.casesToReview").replace("{n}", String(openCases))}</Body>
               <View style={{ flex: 1 }} />
               <Text style={{ color: c.muted, fontSize: 18 }}>›</Text>
             </Row>
@@ -97,13 +97,13 @@ export default function OverviewScreen() {
         <StatTile
           label={ut("ma.responses")}
           value={String(data.responseCount)}
-          hint={`доходимость ${data.completionRate}%`}
+          hint={ut("ma.completion").replace("{n}", String(data.completionRate))}
         />
         <StatTile label={ut("ma.respondents")} value={String(data.respondentCount)} />
         <StatTile
           label={ut("ma.surveys")}
           value={String(data.surveyCount)}
-          hint={`опубликовано ${data.publishedCount}`}
+          hint={`${ut("ma.published")} ${data.publishedCount}`}
         />
         <StatTile label={ut("ma.avgTime")} value={formatDuration(data.avgDurationMs)} />
       </View>
@@ -128,9 +128,9 @@ export default function OverviewScreen() {
         >
           <Donut
             centerValue={String(data.severityBreakdown.reduce((sum, s) => sum + s.count, 0))}
-            centerLabel="результатов"
+            centerLabel={ut("ma.results")}
             slices={data.severityBreakdown.map((s) => ({
-              label: severityLabel[s.severity],
+              label: ut(severityKey[s.severity]),
               value: s.count,
               color: severityColor[s.severity],
             }))}
@@ -155,7 +155,10 @@ export default function OverviewScreen() {
                   {s.title}
                 </Text>
                 <Text style={{ color: c.muted, fontSize: 12 }}>
-                  {s.questionCount} вопросов · {s.responseCount} прохождений · {s.status}
+                  {ut("ma.surveyLine")
+                    .replace("{q}", String(s.questionCount))
+                    .replace("{r}", String(s.responseCount))
+                    .replace("{s}", s.status)}
                 </Text>
               </View>
               <Text style={{ color: c.muted, fontSize: 18 }}>›</Text>
@@ -183,7 +186,7 @@ export default function OverviewScreen() {
                     {s.title}
                   </Text>
                   <Text style={{ color: c.muted, fontSize: 12 }}>
-                    среднее время {formatDuration(s.avgDurationMs)}
+                    {ut("ma.avgTime").toLowerCase()} {formatDuration(s.avgDurationMs)}
                   </Text>
                 </View>
                 <Text

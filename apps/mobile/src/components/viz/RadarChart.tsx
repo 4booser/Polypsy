@@ -38,7 +38,7 @@ export function RadarChart({
   const [width, onLayout] = useMeasuredWidth();
 
   if (axes.length < 3) {
-    return <Caption>Профиль строится от трёх субшкал — сейчас их {axes.length}</Caption>;
+    return <Caption>{ut("mv.radarNeedsThree").replace("{n}", String(axes.length))}</Caption>;
   }
 
   const cx = width / 2;

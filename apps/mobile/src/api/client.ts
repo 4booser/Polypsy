@@ -34,7 +34,20 @@ import type {
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
-import { currentLang } from "../lang";
+import { UI } from "@quizzy/shared";
+import { currentLang } from "../currentLang";
+
+/*
+ * Текст сетевого отказа.
+ *
+ * Клиент живёт вне React, хука здесь нет — язык берётся из того же
+ * значения, которое уходит в Accept-Language. Строки были написаны прямо
+ * здесь по-русски и показывались на украинском экране при каждом обрыве
+ * связи. В консоли это уже решено ровно так же.
+ */
+function netText(key: "net.offline" | "net.failed"): string {
+  return UI[key][currentLang];
+}
 import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { deviceId, platformName, wipeLocalData } from "../offline/device";
@@ -94,7 +107,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   try {
     res = await fetch(`${API_URL}${path}`, { ...init, headers });
   } catch {
-    throw new ApiError(`Не удалось связаться с сервером (${API_URL})`, 0);
+    throw new ApiError(`${netText("net.offline")} (${API_URL})`, 0);
   }
 
   // истёкший access продлеваем молча и повторяем запрос один раз
@@ -104,7 +117,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
 
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(body?.error ?? `Ошибка ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError(body?.error ?? `${netText("net.failed")} ${res.status}`, res.status);
   return body as T;
 }
 

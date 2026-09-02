@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import type { Answer, Option, Question } from "@quizzy/shared";
+import type { Answer, Option, Question, UiKey } from "@quizzy/shared";
 import { radius, spacing, useColors } from "../theme";
 import { useTextScale } from "../textScale";
 import { Body, Row, TOUCH_TARGET } from "./ui";
@@ -15,10 +15,11 @@ function scalePointLabel(
   point: number,
   min: number,
   max: number,
+  ut: (key: UiKey) => string,
 ): string {
   if (point === min && question.minLabel) return `${point} — ${question.minLabel}`;
   if (point === max && question.maxLabel) return `${point} — ${question.maxLabel}`;
-  return `${point} из ${max}`;
+  return ut("qi.pointOf").replace("{n}", String(point)).replace("{max}", String(max));
 }
 
 interface Props {
@@ -173,7 +174,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                     key={id}
                     onPress={() => onChange({ ranking: order.filter((x) => x !== id) })}
                     accessibilityRole="button"
-                    accessibilityLabel={`${index + 1}: ${option?.text ?? ""}. Нажмите, чтобы убрать`}
+                    accessibilityLabel={ut("qi.removeHint").replace("{n}", String(index + 1)).replace("{text}", option?.text ?? "")}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
@@ -200,7 +201,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                       </Text>
                     </View>
                     <Text style={{ color: c.text, fontSize: fs(15), flex: 1 }}>{option?.text}</Text>
-                    <Text style={{ color: c.muted, fontSize: 12 }}>убрать</Text>
+                    <Text style={{ color: c.muted, fontSize: 12 }}>{ut("qi.remove")}</Text>
                   </Pressable>
                 );
               })}
@@ -211,7 +212,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
               key={option.id}
               onPress={() => onChange({ ranking: [...order, option.id] })}
               accessibilityRole="button"
-              accessibilityLabel={`${option.text}. Нажмите, чтобы поставить на место ${order.length + 1}`}
+              accessibilityLabel={ut("qi.placeHint").replace("{text}", option.text).replace("{n}", String(order.length + 1))}
               style={{
                 padding: spacing.lg,
                 borderRadius: radius.sm,
@@ -245,7 +246,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
                   key={point}
                   onPress={() => onChange({ number: point })}
                   accessibilityRole="radio"
-                  accessibilityLabel={scalePointLabel(question, point, min, max)}
+                  accessibilityLabel={scalePointLabel(question, point, min, max, ut)}
                   accessibilityState={{ checked: on }}
                   style={{
                     minWidth: TOUCH_TARGET,
@@ -291,7 +292,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
           }}
           keyboardType="numeric"
           accessibilityLabel={question.title}
-          placeholder={`от ${question.minValue ?? 0} до ${question.maxValue ?? 100}`}
+          placeholder={ut("qi.rangeHint").replace("{min}", String(question.minValue ?? 0)).replace("{max}", String(question.maxValue ?? 100))}
           placeholderTextColor={c.muted}
           style={inputStyle(c)}
         />
@@ -303,7 +304,7 @@ export function QuestionInput({ question, value, onChange }: Props) {
           value={value?.date ?? ""}
           onChangeText={(t) => onChange({ date: t })}
           accessibilityLabel={question.title}
-          placeholder="ГГГГ-ММ-ДД"
+          placeholder={ut("qi.datePattern")}
           placeholderTextColor={c.muted}
           style={inputStyle(c)}
         />

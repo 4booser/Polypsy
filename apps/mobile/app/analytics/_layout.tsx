@@ -29,7 +29,7 @@ export default function AnalyticsLayout() {
       hitSlop={12}
       style={{ paddingRight: spacing.sm }}
     >
-      <Text style={{ color: c.primary, fontSize: 16 }}>‹ Меню</Text>
+      <Text style={{ color: c.primary, fontSize: 16 }}>{ut("ma.backToMenu")}</Text>
     </Pressable>
   );
 

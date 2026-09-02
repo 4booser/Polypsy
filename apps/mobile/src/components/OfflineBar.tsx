@@ -65,8 +65,8 @@ export function OfflineBar() {
       accessibilityRole="button"
       accessibilityLabel={
         problem
-          ? `Не удалось отправить: ${rejected}. Нажмите, чтобы посмотреть`
-          : `Ждут отправки: ${left}. Нажмите, чтобы отправить сейчас`
+          ? ut("ob.rejectedHint").replace("{n}", String(rejected))
+          : ut("ob.waitingHint").replace("{n}", String(left))
       }
       style={{
         flexDirection: "row",
@@ -87,8 +87,8 @@ export function OfflineBar() {
       />
       <Text style={{ flex: 1, fontSize: 13, color: problem ? "#fff" : c.text }}>
         {problem
-          ? `Не удалось отправить: ${rejected}`
-          : `Ответы сохранены на устройстве и ждут связи: ${left}`}
+          ? ut("ob.rejected").replace("{n}", String(rejected))
+          : ut("ob.waiting").replace("{n}", String(left))}
       </Text>
       <Text style={{ fontSize: 13, fontWeight: "600", color: problem ? "#fff" : c.primary }}>
         {problem ? ut("mob.resolve") : busy ? ut("mob.sending") : ut("common.retry")}

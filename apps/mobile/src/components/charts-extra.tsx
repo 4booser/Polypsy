@@ -1,10 +1,12 @@
 import { Text, View } from "react-native";
 import { radius, spacing, useChart, useColors } from "../theme";
+import { useLang } from "@/lang";
 
 /** Положение балла в накопленной выборке */
 export function PercentileBar({ percentile }: { percentile: number }) {
   const chart = useChart();
   const c = useColors();
+  const { ut } = useLang();
   return (
     <View style={{ gap: spacing.xs }}>
       <View style={{ height: 8, backgroundColor: chart.grid, borderRadius: radius.sm }}>
@@ -20,7 +22,7 @@ export function PercentileBar({ percentile }: { percentile: number }) {
         />
       </View>
       <Text style={{ color: c.muted, fontSize: 12 }}>
-        выше, чем у {percentile}% обследованных
+        {ut("mv.aboveShare").replace("{n}", String(percentile))}
       </Text>
     </View>
   );
