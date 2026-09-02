@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { day } from "../format";
 import { Empty, Screen, useAction } from "../ui";
@@ -31,40 +31,72 @@ export default function MessagesPage() {
         const current = data.items.find((t) => t.id === id) ?? null;
         return (
           <Page title={ut("ms.title")} count={data.items.length || null} bleed>
-            <div className="grid gap-3 p-4 max-[900px]:grid-cols-1 grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
+            {/*
+              Панели тянутся на высоту экрана, а не сжимаются до содержимого.
+              Переписку читают сверху вниз, и панель в двести пикселей на
+              пустом экране означает, что три письма уже не помещаются, а
+              место под ними пустует.
+            */}
+            <div className="grid min-h-[70vh] items-stretch gap-3 p-4 max-[900px]:grid-cols-1 grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
               <Panel>
                 {data.items.length === 0 ? (
                   <Empty title={ut("ms.none")} />
                 ) : (
                   data.items.map((t) => (
-                    <a
+                    /*
+                      Link, а не <a href>: обычная ссылка перезагружала всю
+                      консоль на каждое переключение переписки — заново вход,
+                      заново боковая колонка, заново все запросы.
+                    */
+                    <Link
                       key={t.id}
-                      href={`/messages/${t.id}`}
-                      className={`flex items-center gap-2 border-t border-hairline px-4 py-3 first:border-t-0 ${
+                      to={`/messages/${t.id}`}
+                      className={`block border-t border-hairline px-4 py-3 first:border-t-0 ${
                         t.id === id ? "bg-surface-3" : ""
                       }`}
                     >
-                      <span className="min-w-0 flex-1 truncate">{t.withName}</span>
                       {/*
-                        Число непрочитанных, а не точка: одно письмо — обычная
-                        работа, три подряд без ответа — другая история, и по
-                        точке их не различить.
+                        Имя занимает строку целиком, дата и непрочитанное —
+                        следующую. В одну строку имя не помещалось и
+                        обрезалось на «Гончаренко Та…», хотя справа пустовало
+                        три четверти экрана: собеседника в переписке узнают
+                        по имени, и обрезать надо что угодно, только не его.
                       */}
-                      {t.unread > 0 ? (
-                        <Num className="rounded-sm bg-accent px-1.5 text-micro text-bg">
-                          {t.unread}
-                        </Num>
-                      ) : null}
-                      <span className="text-caption text-muted">{day(t.lastMessageAt)}</span>
-                    </a>
+                      <span className="block truncate">{t.withName}</span>
+                      <span className="mt-0.5 flex items-center gap-2 text-caption text-muted">
+                        <span>{day(t.lastMessageAt)}</span>
+                        {/*
+                          Число непрочитанных, а не точка: одно письмо —
+                          обычная работа, три подряд без ответа — другая
+                          история, и по точке их не различить.
+                        */}
+                        {t.unread > 0 ? (
+                          <Num className="rounded-sm bg-accent px-1.5 text-micro text-bg">
+                            {t.unread}
+                          </Num>
+                        ) : null}
+                      </span>
+                    </Link>
                   ))
                 )}
               </Panel>
 
-              <Panel title={current?.withName ?? ut("ms.title")}>
+              {/*
+                Заголовок панели — имя собеседника, и только оно. Запасным
+                значением стояло название экрана, и слово «Переписка»
+                оказывалось на экране трижды: в заголовке страницы, в
+                заголовке панели и в пустом состоянии.
+              */}
+              <Panel title={current?.withName}>
                 <p className="px-4 pb-3 text-caption text-muted">{ut("ms.boundaries")}</p>
                 {!id ? (
-                  <Empty title={ut("ms.none")} />
+                  /*
+                    «Выберите переписку», а не «Переписки нет»: переписки
+                    есть, просто ни одна не открыта. Панель путала «ничего не
+                    выбрано» с «ничего нет» — и сообщала об отсутствии того,
+                    что стояло слева в списке.
+                  */
+                  <Empty title={ut(data.items.length ? "ms.pick" : "ms.none")} />
                 ) : (
                   <>
                     <div className="flex flex-col gap-2 px-4">
