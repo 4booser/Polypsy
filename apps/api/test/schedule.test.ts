@@ -290,6 +290,55 @@ describe("генерация", () => {
     expect(after.length).toBe(planned.length - planned.filter((w) => w.date === day).length);
   });
 
+  test("дополнительный день даёт приём там, где шаблона нет вовсе", async () => {
+    /*
+     * Отделение работает по будням, но принять могут и в выходной. Пока это
+     * не проверено, механизм существует только на бумаге: «отпуск» и
+     * «дополнительный день» — одна таблица, и легко написать генерацию,
+     * которая умеет отнимать часы и не умеет добавлять.
+     *
+     * Проверяется день, у которого шаблона нет ни одного: если бы
+     * дополнительные часы лишь дополняли уже существующий интервал, здесь
+     * не появилось бы ничего.
+     */
+    const extra = await makeUser("admin", `sched-extra-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values({ userId: extra.id, departmentId });
+    await db.insert(scheduleTemplates).values({
+      id: crypto.randomUUID(),
+      specialistId: extra.id,
+      weekday: 1,
+      startsAt: "09:00",
+      endsAt: "10:00",
+      slotMinutes: 60,
+      kind: "primary",
+      capacity: 1,
+    });
+
+    // ближайшее воскресенье: день, в который шаблон заведомо не попадает
+    const sunday = new Date();
+    sunday.setDate(sunday.getDate() + ((7 - sunday.getDay()) % 7 || 7));
+    const key = sunday.toISOString().slice(0, 10);
+    const planned = await plannedSlots(extra.id, 3);
+    expect(planned.some((w) => w.date === key)).toBe(false);
+
+    await db.insert(scheduleExceptions).values({
+      id: crypto.randomUUID(),
+      specialistId: extra.id,
+      date: key,
+      kind: "extra",
+      startsAt: "10:00",
+      endsAt: "12:00",
+      slotMinutes: 60,
+      note: "Дополнительный приём",
+    });
+
+    const after = await plannedSlots(extra.id, 3);
+    expect(after.filter((w) => w.date === key).map((w) => [w.from, w.to])).toEqual([
+      ["10:00", "11:00"],
+      ["11:00", "12:00"],
+    ]);
+  });
+
   test("специалиста без профиля генерация не трогает", async () => {
     const stranger = await makeUser("admin", `sched-x-${crypto.randomUUID()}@test`);
     expect(await syncSlots(stranger.id, 2)).toEqual({ added: 0, removed: 0, flagged: 0 });

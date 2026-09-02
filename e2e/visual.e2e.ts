@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { login } from "./helpers";
 
@@ -151,3 +153,170 @@ test("подсказка закрывается один раз и не возв
   await page.waitForSelector("h1");
   await expect(page.locator(".hint-box")).toHaveCount(0);
 });
+
+/**
+ * Скриншотные эталоны рабочих экранов.
+ *
+ * Витрина выше показывает компоненты поодиночке; здесь — то, что из них
+ * собрано. Разница существенная: кнопка и таблица могут быть в порядке
+ * каждая, а экран приёма при этом разъезжается на три панели неравной
+ * высоты. Жалоба «неудобно и криво» приходит именно про собранный экран.
+ *
+ * Снимается только тёмная тема, и это выбор, а не экономия. Цвета обеих тем
+ * уже держит проверка токенов, а компоновку вторая тема повторяет один в
+ * один: те же элементы, те же размеры. Второй набор эталонов удваивал бы
+ * стоимость любой правки вёрстки, ничего нового не проверяя.
+ */
+
+/**
+ * Данные экрана берутся из записанных ответов, а не из базы стенда.
+ *
+ * Первая версия снимала живой экран — и покраснела в первом же полном
+ * прогоне, хотя вёрстку никто не трогал: сценарии приёма, идущие раньше,
+ * успевали назначить методику и отметить неявку, и на экране дня появлялась
+ * лишняя пометка. Снимок вёрстки, зависящий от того, кто до него нажал
+ * «Пришёл», ломается от чужих правок и потому будет отключён при первой же
+ * спешке.
+ *
+ * Поэтому ответы API записываются один раз вместе с эталоном и дальше
+ * воспроизводятся. Экран становится функцией от данных, а данные — частью
+ * эталона; проверяется ровно то, ради чего тест написан, — как консоль
+ * раскладывает известные ей данные.
+ *
+ * Записываются только чтения. Записи (POST, PUT, DELETE) при открытии
+ * экрана не случаются, а если случатся — пусть идут в стенд и падают там
+ * заметно, а не подменяются тишиной.
+ */
+const API_DIR = "e2e/visual.e2e.ts-snapshots/api";
+
+async function withRecordedApi(
+  page: import("@playwright/test").Page,
+  screen: string,
+  recording: boolean,
+) {
+  const file = `${API_DIR}/${screen}.json`;
+  const saved: Record<string, { status: number; body: string }> = recording
+    ? {}
+    : JSON.parse(await readFile(file, "utf8"));
+
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") return route.fallback();
+    const key = new URL(request.url()).pathname + new URL(request.url()).search;
+
+    if (!recording) {
+      const hit = saved[key];
+      /*
+       * Незаписанный запрос — это не повод молча сходить в базу: значит
+       * экран стал спрашивать что-то новое, и эталон устарел. Пустой ответ
+       * покажет это на снимке, а не спрячет.
+       */
+      if (!hit) return route.fulfill({ status: 404, body: "{}" });
+      return route.fulfill({
+        status: hit.status,
+        contentType: "application/json",
+        body: hit.body,
+      });
+    }
+
+    /*
+     * Консоль опрашивает очередь работы в фоне и после снимка. Такой запрос
+     * застаёт закрывающийся контекст, и обработчик падает уже за пределами
+     * проверяемого — гасим, чтобы падение было только по существу.
+     */
+    try {
+      const response = await route.fetch();
+      // тело читается до fulfill: тот освобождает ответ, и чтение после него падает
+      const body = await response.text();
+      saved[key] = { status: response.status(), body };
+      await route.fulfill({ status: response.status(), contentType: "application/json", body });
+    } catch {
+      await route.abort().catch(() => {});
+    }
+  });
+
+  return async () => {
+    if (!recording) return;
+    await mkdir(API_DIR, { recursive: true });
+    // ключи сортируются: иначе порядок запросов гуляет и файл шумит в истории
+    const ordered = Object.fromEntries(Object.entries(saved).sort(([a], [b]) => a.localeCompare(b)));
+    await writeFile(file, `${JSON.stringify(ordered, null, 2)}\n`);
+  };
+}
+
+const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Page) => Promise<void> }> = [
+  {
+    name: "today",
+    open: async (page) => {
+      await page.goto("/today");
+      await page.getByRole("heading", { name: "Сегодня" }).waitFor();
+    },
+  },
+  {
+    name: "schedule",
+    open: async (page) => {
+      await page.goto("/my-schedule");
+      await page.locator("h1").waitFor();
+    },
+  },
+  {
+    name: "visit",
+    open: async (page) => {
+      await page.goto("/today");
+      await page.locator('a[href^="/visit/"]').first().click();
+      await page.waitForURL(/\/visit\//);
+      await page.locator("h1").waitFor();
+    },
+  },
+  {
+    name: "department-report",
+    open: async (page) => {
+      await page.goto("/department-report");
+      await page.locator("h1").waitFor();
+    },
+  },
+  {
+    name: "messages",
+    open: async (page) => {
+      await page.goto("/messages");
+      await page.locator("h1").waitFor();
+    },
+  },
+];
+
+for (const screen of SCREENS) {
+  test(`экран не разъехался: ${screen.name}`, async ({ page }, testInfo) => {
+    /*
+     * Запись — только когда эталоны обновляют намеренно или когда их ещё
+     * нет. Сравнение с «none» было ошибкой: по умолчанию Playwright ставит
+     * «missing», и тест каждый раз перезаписывал ответы живыми — то есть
+     * снова снимал экран с тем, что натворили предыдущие сценарии, ради
+     * избавления от чего всё и делалось.
+     */
+    const mode = testInfo.config.updateSnapshots;
+    const recording =
+      mode === "all" || mode === "changed" || !existsSync(`${API_DIR}/${screen.name}.json`);
+    await page.addInitScript(() => {
+      localStorage.setItem("quizzy.theme", "dark");
+    });
+
+    // вход идёт в настоящий стенд: перехват ставится после него
+    await login(page, "psy");
+    const save = await withRecordedApi(page, screen.name, recording);
+    await screen.open(page);
+    await page.evaluate(() => document.fonts.ready);
+    await save();
+
+    await expect(page.locator("main.main")).toHaveScreenshot(
+      `screen-${screen.name}.png`,
+      TOLERANCE,
+    );
+
+    /*
+     * Перехват снимается после снимка, а не до. До — значит отдать фоновому
+     * опросу право подставить живые данные ровно в момент съёмки, и вся
+     * затея с записанными ответами теряет смысл.
+     */
+    await page.unroute("**/api/**");
+  });
+}

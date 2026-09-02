@@ -844,6 +844,8 @@ export const UI = {
   "day.statusCancelled": { uk: "скасовано", ru: "отменён" },
   "day.waiting": { uk: "Чекають", ru: "Ждут" },
   "day.received": { uk: "Прийнято", ru: "Принято" },
+  "day.inRoom": { uk: "На прийомі", ru: "На приёме" },
+  "day.absent": { uk: "Не прийшли", ru: "Не пришли" },
 
   /* приём: розклад */
   "sched.title": { uk: "Розклад прийому", ru: "Расписание приёма" },
