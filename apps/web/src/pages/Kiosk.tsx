@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useIdle, type IdleWatch } from "../kiosk/useIdle";
 import { useParams } from "react-router-dom";
 import { LangSwitch, useLang } from "../lang";
 import {
@@ -50,6 +51,37 @@ export default function Kiosk() {
   const [state, setState] = useState<KioskState | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [lastSafetyPlan, setLastSafetyPlan] = useState<string | null>(null);
+
+  /*
+   * Возврат к началу: у планшета в коридоре нет оператора, который сменит
+   * экран между двумя людьми.
+   *
+   * В середине прохождения — с предупреждением: человек мог задуматься над
+   * вопросом, и сбросить его ответы молча было бы хамством. Полторы минуты
+   * тишины плюс двадцать секунд на отклик.
+   *
+   * После завершения — молча и быстрее: спрашивать «вы ещё здесь» у пустого
+   * стула незачем, а на экране может стоять план безопасности, который
+   * показывается только при сработавшей тревоге. Самое чувствительное из
+   * всего, что показывает планшет, не должно висеть дольше остального.
+   */
+  const backToStart = () => {
+    setLastSafetyPlan(null);
+    setPhase({ kind: "idle" });
+  };
+  const running = useIdle({
+    active: phase.kind === "running" || phase.kind === "join",
+    idleMs: 90_000,
+    graceMs: 20_000,
+    onReset: backToStart,
+  });
+  const finished = useIdle({
+    active: phase.kind === "finished",
+    idleMs: 45_000,
+    graceMs: 0,
+    onReset: backToStart,
+  });
+  void finished;
 
   useEffect(() => {
     if (!token) return;
@@ -124,7 +156,12 @@ export default function Kiosk() {
   }
 
   if (phase.kind === "join") {
-    return <JoinForm token={token!} onJoined={(participantId) => setPhase({ kind: "running", participantId, stepIndex: 0 })} onCancel={() => setPhase({ kind: "idle" })} />;
+    return (
+      <>
+        {running.warning ? <StillHere watch={running} /> : null}
+        <JoinForm token={token!} onJoined={(participantId) => setPhase({ kind: "running", participantId, stepIndex: 0 })} onCancel={() => setPhase({ kind: "idle" })} />
+      </>
+    );
   }
 
   // safety-план последней сдачи поднимается из раннера наверх
@@ -133,6 +170,8 @@ export default function Kiosk() {
     const step = selfSteps[phase.stepIndex];
     if (!step) return <Shell><h1>{ut("ks.done")}</h1></Shell>;
     return (
+      <>
+      {running.warning ? <StillHere watch={running} /> : null}
       <Runner
         key={step.surveyId}
         token={token!}
@@ -148,6 +187,7 @@ export default function Kiosk() {
           }
         }}
       />
+      </>
     );
   }
 
@@ -165,10 +205,7 @@ export default function Kiosk() {
       <Button
         variant="primary"
         className={heroBtn}
-        onClick={() => {
-          setLastSafetyPlan(null);
-          setPhase({ kind: "join" });
-        }}
+        onClick={backToStart}
       >
         {ut("kiosk.nextParticipant")}
       </Button>
@@ -182,6 +219,32 @@ function plural(n: number, one: string, few: string, many: string): string {
   if (mod10 === 1 && mod100 !== 11) return one;
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
   return many;
+}
+
+/**
+ * «Вы ещё здесь?» поверх прохождения.
+ *
+ * Написано, что произойдёт и почему: не «сессия истекла», а «ответы этой
+ * методики не сохранятся, чтобы они не попали в чужую карту». Человек в
+ * коридоре имеет право знать, что планшет собирается сделать с тем, что он
+ * уже успел ответить.
+ */
+function StillHere({ watch }: { watch: IdleWatch }) {
+  const { ut } = useLang();
+  return (
+    <div className="kiosk-idle" role="alertdialog" aria-live="assertive">
+      <div className="kiosk-idle-box">
+        <h2 className="m-0 font-display text-section">{ut("kiosk.stillHere")}</h2>
+        <p className="mt-2 text-muted">{ut("kiosk.stillHereWhy")}</p>
+        <p className="mt-3 font-mono text-stat leading-none">
+          {ut("kiosk.secondsLeft").replace("{n}", String(watch.secondsLeft))}
+        </p>
+        <Button variant="primary" className={heroBtn} onClick={watch.stay}>
+          {ut("kiosk.continue")}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
