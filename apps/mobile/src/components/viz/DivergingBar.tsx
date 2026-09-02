@@ -83,7 +83,7 @@ export function DivergingBar({
       </Svg>
       {goodThreshold !== undefined ? (
         <Caption>
-          Пункты со связью ниже {goodThreshold} выделены — они плохо согласуются со своей шкалой
+          {ut("mv.lowItemLink").replace("{n}", String(goodThreshold))}
         </Caption>
       ) : null}
     </View>

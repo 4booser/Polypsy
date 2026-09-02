@@ -211,7 +211,7 @@ export default function SurveysScreen() {
                   <Text style={{ color: c.muted, fontSize: 12 }}>{item.questionCount} {ut("surveys.questions")}</Text>
                   {item.timeLimitSec ? (
                     <Text style={{ color: c.muted, fontSize: 12 }}>
-                      ~{Math.round(item.timeLimitSec / 60)} мин
+                      {`~${ut("common.minutes").replace("{n}", String(Math.round(item.timeLimitSec / 60)))}`}
                     </Text>
                   ) : null}
                   {isAdmin && item.status !== "published" ? <Chip label={item.status} /> : null}

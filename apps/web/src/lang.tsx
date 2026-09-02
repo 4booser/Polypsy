@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
+import { LANG_NAMES, detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
 
 /**
  * Язык консоли.
@@ -106,7 +106,7 @@ export function LangSwitch() {
               : "text-faint hover:text-text")
           }
         >
-          {code === "uk" ? "УКР" : "РУС"}
+          {LANG_NAMES[code].short}
         </button>
       ))}
     </div>

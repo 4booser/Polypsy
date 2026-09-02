@@ -87,8 +87,7 @@ export default function SurveyAnalyticsScreen() {
             ))}
           </View>
           <Body muted>
-            Срезы посчитаны по версии {data.versionNumber}. Прохождения разных версий не
-            смешиваются — вопросы у них разные.
+            {ut("msa.versionNote").replace("{v}", String(data.versionNumber))}
           </Body>
         </Card>
       ) : null}
@@ -100,7 +99,7 @@ export default function SurveyAnalyticsScreen() {
           { value: "overview", label: ut("msv.general") },
           { value: "questions", label: ut("msv.questions") },
           { value: "scales", label: ut("msv.scales") },
-          { value: "quality", label: `Качество${data.quality.length ? " " + data.quality.length : ""}` },
+          { value: "quality", label: `${ut("msa.quality")}${data.quality.length ? " " + data.quality.length : ""}` },
         ]}
       />
 
@@ -110,9 +109,9 @@ export default function SurveyAnalyticsScreen() {
             <StatTile
               label={ut("msv.completed")}
               value={String(data.completed)}
-              hint={`начато ${data.started}`}
+              hint={ut("msa.started").replace("{n}", String(data.started))}
             />
-            <StatTile label={ut("msv.completion")} value={`${data.completionRate}%`} hint={`брошено ${data.abandoned}`} />
+            <StatTile label={ut("msv.completion")} value={`${data.completionRate}%`} hint={ut("msa.abandoned").replace("{n}", String(data.abandoned))} />
             <StatTile label={ut("ma.avgTime")} value={formatDuration(data.avgDurationMs)} />
             <StatTile label={ut("msv.median")} value={formatDuration(data.medianDurationMs)} />
           </View>
@@ -133,7 +132,7 @@ export default function SurveyAnalyticsScreen() {
           <ChartCard title={ut("msv.completion")} subtitle={ut("msv.completedVsAbandoned")}>
             <Donut
               centerValue={`${data.completionRate}%`}
-              centerLabel="дошли до конца"
+              centerLabel={ut("msa.reachedEnd")}
               slices={[
                 { label: ut("msv.completed"), value: data.completed, color: severityColor.none },
                 { label: ut("msv.abandoned"), value: data.abandoned, color: severityColor.severe },
@@ -175,7 +174,7 @@ export default function SurveyAnalyticsScreen() {
               boxes={data.questions
                 .filter((q) => q.answered > 0)
                 .map((q) =>
-                  boxStatsOf(`В${q.position + 1}`, [
+                  boxStatsOf(ut("msa.itemShort").replace("{n}", String(q.position + 1)), [
                     q.minDurationMs / 1000,
                     q.medianDurationMs / 1000,
                     q.avgDurationMs / 1000,
@@ -231,14 +230,19 @@ export default function SurveyAnalyticsScreen() {
           ) : null}
           {data.scales.length === 0 ? (
             <Card>
-              <Body muted>У методики нет субшкал — подсчёт баллов отключён.</Body>
+              <Body muted>{ut("msa.noSubscales")}</Body>
             </Card>
           ) : (
             data.scales.map((s) => (
               <ChartCard
                 key={s.scaleId}
                 title={s.title}
-                subtitle={`среднее ${s.average} · медиана ${s.median} · диапазон ${s.min}–${s.max} из ${s.maxPossible}`}
+                subtitle={ut("msa.spread")
+                  .replace("{avg}", String(s.average))
+                  .replace("{med}", String(s.median))
+                  .replace("{min}", String(s.min))
+                  .replace("{max}", String(s.max))
+                  .replace("{of}", String(s.maxPossible))}
               >
                 <SeverityBar bands={s.bands} />
                 {s.reliability ? (
@@ -264,9 +268,10 @@ export default function SurveyAnalyticsScreen() {
           <Card>
             <Body>{ut("msv.careless")}</Body>
             <Body muted>
-              Помечено {data.quality.length} из {data.completed} прохождений. Порог «слишком
-              быстро» — {Math.round(data.tooFastThresholdMs / 1000)} с на вопрос. Это флаг для
-              проверки специалистом, а не основание автоматически исключать данные.
+              {ut("msa.flaggedNote")
+                .replace("{n}", String(data.quality.length))
+                .replace("{total}", String(data.completed))
+                .replace("{sec}", String(Math.round(data.tooFastThresholdMs / 1000)))}
             </Body>
           </Card>
 
@@ -276,8 +281,8 @@ export default function SurveyAnalyticsScreen() {
               subtitle={ut("msv.fastHint")}
             >
               <Scatter
-                xLabel="время прохождения, с"
-                yLabel="% быстрых"
+                xLabel={ut("msa.durationAxis")}
+                yLabel={ut("msa.fastAxis")}
                 xThreshold={(data.questions.length * data.tooFastThresholdMs) / 1000}
                 points={data.quality.map((q) => ({
                   x: Math.round(q.durationMs / 1000),
@@ -314,11 +319,11 @@ export default function SurveyAnalyticsScreen() {
               ))}
               <Row gap={spacing.md}>
                 <Text style={{ color: c.muted, fontSize: 12 }}>
-                  быстрых ответов {q.tooFastShare}%
+                  {ut("msa.fastAnswers").replace("{n}", String(q.tooFastShare))}
                 </Text>
                 {q.longestStraightLine > 1 ? (
                   <Text style={{ color: c.muted, fontSize: 12 }}>
-                    серия одинаковых: {q.longestStraightLine}
+                    {ut("msa.straightLine").replace("{n}", String(q.longestStraightLine))}
                   </Text>
                 ) : null}
               </Row>
@@ -355,7 +360,7 @@ function Reliability({ r }: { r: NonNullable<SurveyAnalytics["scales"][number]["
         <Text style={{ color: c.muted, fontSize: 12 }}>{verdict}</Text>
       </Row>
       <Body muted>
-        Внутренняя согласованность по {r.itemCount} пунктам: насколько они измеряют одно и то же.
+        {ut("msa.consistencyNote").replace("{n}", String(r.itemCount))}
       </Body>
       {r.items.map((it) => {
         const weak = it.itemTotalCorrelation < 0.3;
@@ -373,15 +378,15 @@ function Reliability({ r }: { r: NonNullable<SurveyAnalytics["scales"][number]["
                   fontVariant: ["tabular-nums"],
                 }}
               >
-                связь с остальными {it.itemTotalCorrelation}
+                {ut("msa.itemTotal").replace("{n}", String(it.itemTotalCorrelation))}
               </Text>
               <Text style={{ color: c.muted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
-                α без него {it.alphaIfDeleted ?? "—"}
+                {ut("msa.alphaIfDeleted").replace("{n}", String(it.alphaIfDeleted ?? "—"))}
               </Text>
             </Row>
             {harmful ? (
               <Text style={{ color: c.danger, fontSize: 12 }}>
-                без этого пункта шкала становится согласованнее — стоит пересмотреть формулировку
+                {ut("msa.reviseItem")}
               </Text>
             ) : null}
           </View>
@@ -401,9 +406,9 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
       </Text>
       <Row gap={spacing.md}>
         <Text style={{ color: c.muted, fontSize: 12 }}>{q.type}</Text>
-        <Text style={{ color: c.muted, fontSize: 12 }}>ответов {q.answered}</Text>
+        <Text style={{ color: c.muted, fontSize: 12 }}>{ut("msa.answersCount").replace("{n}", String(q.answered))}</Text>
         {q.skipped > 0 ? (
-          <Text style={{ color: c.muted, fontSize: 12 }}>пропусков {q.skipRate}%</Text>
+          <Text style={{ color: c.muted, fontSize: 12 }}>{ut("msa.skipsCount").replace("{n}", String(q.skipRate))}</Text>
         ) : null}
       </Row>
 
@@ -464,7 +469,7 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
             items={q.options.map((o) => ({
               label: o.text,
               value: o.count,
-              caption: o.avgRank !== undefined ? `ранг ${o.avgRank}` : `${o.percent}%`,
+              caption: o.avgRank !== undefined ? ut("msa.rank").replace("{n}", String(o.avgRank)) : `${o.percent}%`,
             }))}
           />
         </View>
@@ -473,8 +478,11 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
       {q.numeric ? (
         <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
           <Body muted>
-            среднее {q.numeric.average} · медиана {q.numeric.median} · диапазон {q.numeric.min}–
-            {q.numeric.max}
+            {ut("msa.spreadNoMax")
+              .replace("{avg}", String(q.numeric.average))
+              .replace("{med}", String(q.numeric.median))
+              .replace("{min}", String(q.numeric.min))
+              .replace("{max}", String(q.numeric.max))}
           </Body>
           <Histogram data={q.numeric.distribution} />
         </View>
@@ -482,7 +490,7 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
 
       {q.texts?.length ? (
         <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
-          <Body muted>Свободные ответы ({q.texts.length})</Body>
+          <Body muted>{ut("msa.freeText").replace("{n}", String(q.texts.length))}</Body>
           {q.texts.slice(0, 8).map((t, i) => (
             <Text key={i} style={{ color: c.text, fontSize: 14 }}>
               — {t}

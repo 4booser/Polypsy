@@ -80,7 +80,7 @@ export function Scatter({
               strokeDasharray="4 3"
             />
             <SvgText x={xAt(xThreshold) + 4} y={PLOT.padTop + 10} fontSize={9} fill={severityColor.severe}>
-              порог
+              {ut("mv.threshold")}
             </SvgText>
           </>
         ) : null}
@@ -109,8 +109,8 @@ export function Scatter({
         items={
           flagged
             ? [
-                { label: "обычные", color: chart.series[0]! },
-                { label: `помечены как небрежные (${flagged})`, color: severityColor.severe },
+                { label: ut("mv.ordinary"), color: chart.series[0]! },
+                { label: ut("mv.markedCareless").replace("{n}", String(flagged)), color: severityColor.severe },
               ]
             : []
         }

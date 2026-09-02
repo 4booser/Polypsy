@@ -86,7 +86,7 @@ export default function ResponsesScreen() {
                     </Text>
                     <Text style={{ color: c.muted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
                       {formatDuration(a.durationMs)}
-                      {a.changeCount ? ` · правок ${a.changeCount}` : ""}
+                      {a.changeCount ? ut("ma.edits").replace("{n}", String(a.changeCount)) : ""}
                       {a.answered ? "" : " · пропуск"}
                     </Text>
                   </Row>

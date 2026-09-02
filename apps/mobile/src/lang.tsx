@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { NativeModules, Platform } from "react-native";
 import { prefStorage } from "./storage";
+import { setCurrentLang } from "./currentLang";
 import { detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
 
 /**
@@ -12,8 +13,12 @@ import { detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
  */
 const KEY = "quizzy.lang";
 
-/** Текущий выбор — синхронно для API-клиента (он вне React) */
-export let currentLang: Lang = "uk";
+/*
+ * Текущий выбор — синхронно для тех, кто вне React. Значение живёт в
+ * отдельном модуле без зависимостей: его спрашивает и очередь несданных
+ * прохождений, а она обязана оставаться проверяемой без эмулятора.
+ */
+export { currentLang } from "./currentLang";
 
 function deviceLocales(): string[] {
   if (Platform.OS === "web" && typeof navigator !== "undefined") {
@@ -43,7 +48,7 @@ export function LangProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    currentLang = lang;
+    setCurrentLang(lang);
   }, [lang]);
 
   const value = useMemo<LangState>(

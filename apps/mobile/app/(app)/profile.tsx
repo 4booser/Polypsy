@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { ageAt, type MyDynamics } from "@quizzy/shared";
+import { LANG_NAMES, ageAt, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { authenticate, isAvailable, isEnabled, setEnabled as setBiometrics } from "@/auth/biometrics";
 import { useAuth } from "@/auth/AuthContext";
@@ -81,11 +81,9 @@ export default function AccountScreen() {
   async function onLogout() {
     // непустая очередь = несданные ответы; выход стёр бы контекст их отправки
     if (api.pendingCount() > 0) {
-      setError(
-        lang === "uk"
-          ? "Є невідправлені відповіді — зачекайте на мережу, вони підуть самі."
-          : ut("mp.unsentAnswers"),
-      );
+      // строка уже есть в словаре на обоих языках; ветвление по языку в
+      // разметке означало два текста, из которых правят обычно один
+      setError(ut("mp.unsentAnswers"));
       return;
     }
     await logout();
@@ -110,8 +108,14 @@ export default function AccountScreen() {
       <Card>
         <Body>{ut("profile.language")}</Body>
         <Row>
-          <Chip label="Українська" selected={lang === "uk"} onPress={() => setLang("uk")} />
-          <Chip label="Русский" selected={lang === "ru"} onPress={() => setLang("ru")} />
+          {(["uk", "ru"] as const).map((code) => (
+            <Chip
+              key={code}
+              label={LANG_NAMES[code].full}
+              selected={lang === code}
+              onPress={() => setLang(code)}
+            />
+          ))}
         </Row>
       </Card>
 
@@ -136,9 +140,7 @@ export default function AccountScreen() {
       {queueLeft > 0 ? (
         <Card style={{ borderColor: severityColor.mild, borderWidth: 1 }}>
           <Body>
-            {lang === "uk"
-              ? `Не відправлено відповідей: ${queueLeft}. Підуть самі, щойно з’явиться мережа.`
-              : `Не отправлено ответов: ${queueLeft}. Уйдут сами, как только появится сеть.`}
+            {ut("mp.queueLeft").replace("{n}", String(queueLeft))}
           </Body>
           <Button
             title={ut("mq.tryNow")}
@@ -241,8 +243,7 @@ export default function AccountScreen() {
       {!user?.sex || !user?.birthDate ? (
         <Card>
           <Body muted>
-            Не заполнены пол и дата рождения. Часть методик использует нормы, которые
-            зависят от пола и возраста, — без них результат будет посчитан без нормирования.
+            {ut("mp.noSexBirth")}
           </Body>
         </Card>
       ) : null}

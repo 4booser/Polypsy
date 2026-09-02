@@ -337,22 +337,22 @@ export default function TakeSurveyScreen() {
       >
         <Title>{ut("ms.done")}</Title>
         <Body muted>
-          {queued
-            ? `Прохождение заняло ${formatDuration(Date.now() - sessionStart.current)}. Сети нет — ответы сохранены на устройстве и уйдут сами, как только она появится. Баллы ниже посчитаны на устройстве тем же движком.`
-            : `Прохождение заняло ${formatDuration(Date.now() - sessionStart.current)}. Ответы сохранены.`}
+          {ut(queued ? "msv.tookQueued" : "msv.tookSaved").replace(
+            "{d}",
+            formatDuration(Date.now() - sessionStart.current),
+          )}
         </Body>
         {assigned.length ? (
           <Card>
             <Body>
-              По результату назначено дополнительное обследование:{" "}
-              {assigned.join(", ")}. Оно уже ждёт на главном экране.
+              {ut("msv.alsoAssigned").replace("{list}", assigned.join(", "))}
             </Body>
           </Card>
         ) : null}
         {safetyPlan ? (
           <Card style={{ borderColor: severityColor.severe, borderWidth: 2 }}>
             <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginBottom: 6 }}>
-              Важно прямо сейчас
+              {ut("msv.importantNow")}
             </Text>
             <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>{safetyPlan}</Text>
           </Card>
@@ -366,7 +366,7 @@ export default function TakeSurveyScreen() {
                   <Body>{s.scaleTitle}</Body>
                   <View style={{ flex: 1 }} />
                   <Text style={{ color: c.muted, fontVariant: ["tabular-nums"] }}>
-                    {s.rawScore} из {s.maxScore}
+                    {ut("qi.pointOf").replace("{n}", String(s.rawScore)).replace("{max}", String(s.maxScore))}
                   </Text>
                 </Row>
                 {s.band ? <SeverityTag severity={s.band.severity} label={s.band.label} /> : null}
@@ -374,7 +374,7 @@ export default function TakeSurveyScreen() {
               </View>
             ))}
             <Body muted>
-              Результат скрининга не является диагнозом — его интерпретирует специалист.
+              {ut("msv.notDiagnosis")}
             </Body>
           </Card>
         ) : null}
@@ -385,7 +385,7 @@ export default function TakeSurveyScreen() {
             onPress={() => Linking.openURL(api.reportUrl(responseId))}
           />
         ) : null}
-        <Button title="К списку методик" onPress={() => router.replace("/(app)/surveys")} />
+        <Button title={ut("msv.toSurveys")} onPress={() => router.replace("/(app)/surveys")} />
       </ScrollView>
     );
   }
@@ -415,8 +415,10 @@ export default function TakeSurveyScreen() {
           <Card>
             <Body>{ut("ms.unfinishedFound")}</Body>
             <Body muted>
-              Ответы сохранены{savedAt ? ` ${savedAt.slice(0, 16).replace("T", " ")}` : ""} —
-              продолжите с того места, где остановились.
+              {ut("msv.resumeAt").replace(
+                "{at}",
+                savedAt ? ` ${savedAt.slice(0, 16).replace("T", " ")}` : "",
+              )}
             </Body>
           </Card>
         ) : null}
@@ -435,7 +437,7 @@ export default function TakeSurveyScreen() {
             <Row>
               <Body muted>{ut("ms.timeLimit")}</Body>
               <View style={{ flex: 1 }} />
-              <Body>{Math.round(survey.timeLimitSec / 60)} мин</Body>
+              <Body>{ut("common.minutes").replace("{n}", String(Math.round(survey.timeLimitSec / 60)))}</Body>
             </Row>
           ) : null}
         </Card>
@@ -522,7 +524,7 @@ export default function TakeSurveyScreen() {
             ) : null}
             {remainingMinutes !== null ? (
               <Text style={{ color: c.muted, fontSize: 12 }}>
-                ≈{remainingMinutes} мин осталось
+                {ut("msv.minutesLeft").replace("{n}", String(remainingMinutes))}
               </Text>
             ) : null}
             <View style={{ flex: 1 }} />
@@ -541,7 +543,9 @@ export default function TakeSurveyScreen() {
             ) : null}
             <Text style={{ color: overtime ? c.danger : c.muted, fontSize: 12 }}>
               {formatDuration(elapsed)}
-              {survey.timeLimitSec ? ` / ${Math.round(survey.timeLimitSec / 60)} мин` : ""}
+              {survey.timeLimitSec
+                ? ut("msv.ofMinutes").replace("{n}", String(Math.round(survey.timeLimitSec / 60)))
+                : ""}
             </Text>
             {/*
               Укрупнение текста прямо на экране прохождения: лезть в
@@ -550,7 +554,7 @@ export default function TakeSurveyScreen() {
             <Pressable
               onPress={cycle}
               accessibilityRole="button"
-              accessibilityLabel={`Размер текста, сейчас ${Math.round(scale * 100)} процентов`}
+              accessibilityLabel={ut("msv.textSize").replace("{n}", String(Math.round(scale * 100)))}
               hitSlop={12}
               style={{ paddingLeft: spacing.sm }}
             >

@@ -90,16 +90,15 @@ export default function AlertsScreen() {
     >
       <Title>{ut("mal.title")}</Title>
       <Body muted>
-        Случай — это человек, а не отдельный пункт. Решение принимается один раз обо всех
-        его сигналах.
+        {ut("mal.caseIsPerson")}
       </Body>
 
       <Segmented
         value={mode}
         onChange={setMode}
         options={[
-          { value: "open", label: `Открытые${total ? ` · ${total}` : ""}` },
-          { value: "all", label: "Все" },
+          { value: "open", label: `${ut("mal.open")}${total ? ` · ${total}` : ""}` },
+          { value: "all", label: ut("mal.all") },
         ]}
       />
 
@@ -120,7 +119,7 @@ export default function AlertsScreen() {
             <Text style={{ color: c.text, fontSize: 13, fontWeight: "700" }}>
               {a.severity === "severe" ? ut("mal.urgent") : ut("mal.attention")}
             </Text>
-            {a.overdue ? <Chip label="просрочен" color={severityColor.severe} /> : null}
+            {a.overdue ? <Chip label={ut("mal.overdue")} color={severityColor.severe} /> : null}
             <View style={{ flex: 1 }} />
             <Text style={{ color: c.muted, fontSize: 12 }}>
               {a.lastAlertAt.slice(0, 16).replace("T", " ")}
@@ -130,7 +129,7 @@ export default function AlertsScreen() {
           <Body>{a.userName}</Body>
           <Body muted>
             {a.surveyTitle}
-            {a.unit ? ` · ${a.unit}` : ""} · сигналов {a.signalCount}
+            {a.unit ? ` · ${a.unit}` : ""} · {ut("mal.signals").replace("{n}", String(a.signalCount))}
           </Body>
 
           {/* что именно сработало — коротко, полный разбор в консоли */}
@@ -140,19 +139,20 @@ export default function AlertsScreen() {
             </Text>
           ))}
           {a.signalCount > 3 ? (
-            <Text style={{ color: c.muted, fontSize: 12 }}>…и ещё {a.signalCount - 3}</Text>
+            <Text style={{ color: c.muted, fontSize: 12 }}>{ut("mal.andMore").replace("{n}", String(a.signalCount - 3))}</Text>
           ) : null}
 
           {a.acknowledgedAt ? (
             <Body muted>
-              Разобрано: {a.acknowledgedByName ?? "—"},{" "}
-              {a.acknowledgedAt.slice(0, 16).replace("T", " ")}
+              {ut("mal.resolvedBy")
+                .replace("{who}", a.acknowledgedByName ?? "—")
+                .replace("{at}", a.acknowledgedAt.slice(0, 16).replace("T", " "))}
               {a.note ? ` — ${a.note}` : ""}
             </Body>
           ) : (
             <View style={{ gap: spacing.sm }}>
               {a.assignedToName ? (
-                <Body muted>Взял: {a.assignedToName}</Body>
+                <Body muted>{ut("mal.takenBy").replace("{who}", a.assignedToName)}</Body>
               ) : (
                 <Button
                   title={ut("mal.take")}

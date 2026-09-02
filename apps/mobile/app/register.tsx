@@ -140,7 +140,7 @@ export default function RegisterScreen() {
           </Row>
         </View>
         <Field
-          label={`${ut("person.birthDate")} (ГГГГ-ММ-ДД)`}
+          label={`${ut("person.birthDate")} (${ut("qi.datePattern")})`}
           value={birthDate}
           onChangeText={setBirthDate}
           placeholder="1994-03-12"

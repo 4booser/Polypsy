@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useColorScheme } from "react-native";
 import { chartDark, chartLight, chartNight, dark, light, night } from "./palettes";
 import { prefStorage } from "./storage";
-import { SEVERITY_FILL, formatDuration as sharedDuration, type Severity } from "@quizzy/shared";
+import { SEVERITY_FILL, formatDuration as sharedDuration, type Severity, type UiKey } from "@quizzy/shared";
 
 
 
@@ -16,16 +16,20 @@ import { SEVERITY_FILL, formatDuration as sharedDuration, type Severity } from "
 export const severityColor = SEVERITY_FILL;
 
 /**
- * Подписи степеней. Только для мест, где нет доступа к языковому контексту
- * (конструктор в мобилке). Везде, где есть `ut`, брать из словаря: там
- * подпись двуязычна, а здесь всегда по-русски.
+ * Ключи подписей степеней — как в консоли, из общего словаря.
+ *
+ * Здесь лежала своя копия подписей простыми строками, с оговоркой «только
+ * для мест, где нет языкового контекста». Оговорка устарела: оба места,
+ * которые ею пользовались, языковой контекст имеют. Копия же означала
+ * русские подписи в украинском режиме и второй список, который однажды
+ * разойдётся с первым.
  */
-export const severityLabel: Record<Severity, string> = {
-  none: "Норма",
-  mild: "Лёгкая",
-  moderate: "Умеренная",
-  severe: "Выраженная",
-};
+export const severityKey = {
+  none: "severity.none",
+  mild: "severity.mild",
+  moderate: "severity.moderate",
+  severe: "severity.severe",
+} as const satisfies Record<Severity, UiKey>;
 
 export type Colors = typeof light;
 export type ChartColors = typeof chartLight;

@@ -245,7 +245,7 @@ export function Timeline({ data }: { data: { date: string; count: number }[] }) 
       <View style={{ height: 1, backgroundColor: chart.axis, opacity: 0.5 }} />
       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
         <Text style={{ color: chart.axis, fontSize: 11 }}>{short(first)}</Text>
-        <Text style={{ color: c.muted, fontSize: 11 }}>пик: {max} в день</Text>
+        <Text style={{ color: c.muted, fontSize: 11 }}>{ut("mv.peakPerDay").replace("{n}", String(max))}</Text>
         <Text style={{ color: chart.axis, fontSize: 11 }}>{short(last)}</Text>
       </View>
     </View>

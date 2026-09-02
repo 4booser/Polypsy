@@ -1,3 +1,5 @@
+import { UI } from "@quizzy/shared";
+import { currentLang } from "../currentLang";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
 import { prefStorage } from "../storage";
@@ -43,8 +45,9 @@ export async function setEnabled(on: boolean): Promise<void> {
 export async function authenticate(): Promise<boolean> {
   try {
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: "Подтвердите личность",
-      cancelLabel: "Отмена",
+      // системный диалог рисует ОС, языкового контекста здесь нет
+      promptMessage: UI["bio.prompt"][currentLang],
+      cancelLabel: UI["common.cancel"][currentLang],
     });
     return result.success;
   } catch {
