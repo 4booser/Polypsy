@@ -7,10 +7,6 @@
     "status": 200,
     "body": "{\"id\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"email\":\"psy@quizzy.dev\",\"firstName\":\"Анна\",\"lastName\":\"Иванова\",\"middleName\":\"Петровна\",\"fullName\":\"Иванова Анна Петровна\",\"anonymous\":false,\"pseudonym\":null,\"leadSpecialistId\":null,\"sex\":null,\"birthDate\":null,\"unit\":null,\"position\":null,\"specialty\":null,\"rank\":null,\"role\":\"admin\",\"readOnly\":false,\"workspace\":{\"dismissedHints\":[\"stens\"]},\"createdAt\":\"2026-09-02T22:11:55.839Z\"}"
   },
-  "/api/clinic/appointments/04d9bd2b-5d97-4792-858f-40d8b2d17f14/context": {
-    "status": 200,
-    "body": "{\"appointment\":{\"id\":\"04d9bd2b-5d97-4792-858f-40d8b2d17f14\",\"startsAt\":\"2026-09-03T06:00:00.000Z\",\"endsAt\":\"2026-09-03T06:50:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"status\":\"done\",\"reason\":\"Не сплю третью неделю, тяжело собраться\"},\"patient\":{\"id\":\"aa23236c-2d13-40b4-af94-cb7ad7935758\",\"fullName\":\"Гончаренко Тарас Ігорович\",\"unit\":\"1-й батальон\",\"leadSpecialistId\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"leadName\":\"Иванова Анна Петровна\"},\"previous\":null,\"followedSince\":\"2026-09-03T06:00:00.000Z\",\"changes\":[],\"note\":null}"
-  },
   "/api/clinic/today": {
     "status": 200,
     "body": "{\"date\":\"2026-09-03\",\"items\":[{\"id\":\"04d9bd2b-5d97-4792-858f-40d8b2d17f14\",\"slotId\":\"07d46bb3-fd6d-4d28-8537-8d708b61942b\",\"startsAt\":\"2026-09-03T06:00:00.000Z\",\"endsAt\":\"2026-09-03T06:50:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"done\",\"specialistId\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"aa23236c-2d13-40b4-af94-cb7ad7935758\",\"patientName\":\"Гончаренко Тарас Ігорович\",\"reason\":\"Не сплю третью неделю, тяжело собраться\",\"bookedAt\":\"2026-09-02T22:11:58.796Z\",\"confirmedAt\":null,\"offSchedule\":false,\"leadSpecialistId\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"pendingAssignments\":0,\"screeningDone\":null},{\"id\":\"dcf5cb4c-2f86-4961-a4d6-5c16406edb79\",\"slotId\":\"fbc28a3d-82ce-40b3-974e-7171f83eac88\",\"startsAt\":\"2026-09-03T06:50:00.000Z\",\"endsAt\":\"2026-09-03T07:40:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"arrived\",\"specialistId\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"6270a7df-dbbf-45bf-a6a8-176e86f82765\",\"patientName\":\"Савченко Оксана Миколаївна\",\"reason\":\"После командировки трудно вернуться в обычный режим\",\"bookedAt\":\"2026-09-02T22:11:58.798Z\",\"confirmedAt\":null,\"offSchedule\":false,\"leadSpecialistId\":null,\"pendingAssignments\":0,\"screeningDone\":null},{\"id\":\"5e96ce51-7bb4-439f-970e-ff9c4a5d4b35\",\"slotId\":\"1b53997f-89c1-4a0c-bf32-02ef1d318ba8\",\"startsAt\":\"2026-09-03T07:40:00.000Z\",\"endsAt\":\"2026-09-03T08:30:00.000Z\",\"kind\":\"primary\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"confirmed\",\"specialistId\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"a642bc90-4f5e-47bb-9f7d-d4548d10f403\",\"patientName\":\"Ковальчук Андрей Игоревич\",\"reason\":\"Направил командир после разбора\",\"bookedAt\":\"2026-09-02T22:11:58.800Z\",\"confirmedAt\":\"2026-09-02T22:11:58.800Z\",\"offSchedule\":false,\"leadSpecialistId\":null,\"pendingAssignments\":0,\"screeningDone\":null},{\"id\":\"f86c3980-d24e-4b49-a992-08825fc9ba8e\",\"slotId\":\"fae65f25-9965-40bd-83d9-a222f0324117\",\"startsAt\":\"2026-09-03T11:00:00.000Z\",\"endsAt\":\"2026-09-03T11:50:00.000Z\",\"kind\":\"repeat\",\"mode\":\"onsite\",\"meetingUrl\":null,\"status\":\"booked\",\"specialistId\":\"8b0fb5c1-a8ac-4d05-9db9-0f1a47490b56\",\"specialistName\":\"Иванова Анна Петровна\",\"room\":\"214\",\"patientId\":\"7de2284f-b375-4f2a-b7b0-15b40df36867\",\"patientName\":\"Мельник Оксана Василівна\",\"reason\":null,\"bookedAt\":\"2026-09-02T22:11:58.801Z\",\"confirmedAt\":null,\"offSchedule\":false,\"leadSpecialistId\":null,\"pendingAssignments\":0,\"screeningDone\":null}]}"
@@ -19,21 +15,9 @@
     "status": 200,
     "body": "{\"active\":false,\"reason\":null,\"startedAt\":null,\"startedBy\":null}"
   },
-  "/api/episodes/dispensary/aa23236c-2d13-40b4-af94-cb7ad7935758": {
+  "/api/missed?since=2026-09-01T22%3A12%3A09.124Z": {
     "status": 200,
-    "body": "{\"on\":false}"
-  },
-  "/api/episodes/patients/aa23236c-2d13-40b4-af94-cb7ad7935758": {
-    "status": 200,
-    "body": "{\"items\":[]}"
-  },
-  "/api/missed?since=2026-09-01T22%3A12%3A06.890Z": {
-    "status": 200,
-    "body": "{\"since\":\"2026-09-01T22:12:06.890Z\",\"groups\":[]}"
-  },
-  "/api/recordings/04d9bd2b-5d97-4792-858f-40d8b2d17f14": {
-    "status": 200,
-    "body": "{\"id\":\"165d73cc-d8b0-46ab-a7ad-109c6eb8bcae\",\"status\":\"consent_pending\",\"consentAt\":null,\"consentBySelf\":false,\"startedAt\":null,\"durationMs\":null,\"transcript\":null,\"transcriptEngine\":null,\"failure\":null,\"transcriptionAvailable\":false,\"queued\":0}"
+    "body": "{\"since\":\"2026-09-01T22:12:09.124Z\",\"groups\":[]}"
   },
   "/api/referrals": {
     "status": 200,

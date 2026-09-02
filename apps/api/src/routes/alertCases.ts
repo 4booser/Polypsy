@@ -6,7 +6,7 @@ import { alertCases, auditLog, questions, riskAlerts, surveys, users } from "../
 import { audit } from "../lib/audit";
 import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, notFound, parseQuery } from "../lib/http";
+import { badRequest, langOf, notFound, parseQuery } from "../lib/http";
 import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
@@ -65,6 +65,8 @@ function decodeCursor(raw: string): { at: string; id: string } | null {
 }
 
 alertCaseRoutes.get("/", async (c) => {
+  // язык читателя: t() без него отдаёт украинский всегда
+  const lang = langOf(c);
   const user = c.get("user");
   const q = parseQuery(c, listQuery);
 
@@ -150,7 +152,7 @@ alertCaseRoutes.get("/", async (c) => {
           id: s.a.id,
           responseId: s.a.responseId,
           questionId: s.a.questionId,
-          questionTitle: t(s.questionTitle as never),
+          questionTitle: t(s.questionTitle as never, lang),
           label: s.a.label,
           severity: s.a.severity,
           at: s.a.at,
@@ -188,7 +190,7 @@ alertCaseRoutes.get("/", async (c) => {
       userName: r.userName,
       unit: r.unit,
       surveyId: r.c.surveyId,
-      surveyTitle: t(r.surveyTitle as never),
+      surveyTitle: t(r.surveyTitle as never, lang),
       severity: r.c.severity,
       openedAt: r.c.openedAt,
       lastAlertAt: r.c.lastAlertAt,

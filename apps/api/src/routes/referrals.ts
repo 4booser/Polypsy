@@ -26,7 +26,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
-import { badRequest, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { round, variance } from "../lib/stats";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -166,6 +166,8 @@ referralRoutes.patch("/:id", async (c) => {
  * собирать по семи экранам за минуту до заседания.
  */
 referralRoutes.get("/summary/:userId", async (c) => {
+  // язык читателя: t() без него отдаёт украинский всегда
+  const lang = langOf(c);
   const staff = c.get("user");
   const userId = c.req.param("userId");
 
@@ -259,7 +261,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
 
     return {
       surveyId,
-      title: t(survey.title as never, "ru"),
+      title: t(survey.title as never, lang),
       lastAt: list[list.length - 1]?.submittedAt ?? null,
       count: list.length,
       scales: [...byCode.entries()].map(([code, rows]) => {
@@ -293,7 +295,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
 
         return {
           code,
-          title: t(last.title as never, "ru"),
+          title: t(last.title as never, lang),
           lastValue: round(last.score.value, 2),
           normalization: last.score.normalization as ScaleNormalization,
           bandLabel: last.score.bandLabel,
@@ -347,11 +349,11 @@ referralRoutes.get("/summary/:userId", async (c) => {
         label: a.alert.label,
         severity: a.alert.severity,
         at: a.alert.at,
-        surveyTitle: t(a.surveyTitle as never, "ru"),
+        surveyTitle: t(a.surveyTitle as never, lang),
       })),
     conclusions: conclusionRows.map((c2) => ({
       responseId: c2.row.responseId,
-      surveyTitle: t(scoped.find((s) => s.id === c2.surveyId)?.title as never, "ru"),
+      surveyTitle: t(scoped.find((s) => s.id === c2.surveyId)?.title as never, lang),
       text: decryptField(c2.row.text) ?? "",
       signedAt: c2.row.signedAt,
       authorName: c2.author ? fullNameOf(c2.author) : "—",

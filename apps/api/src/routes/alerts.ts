@@ -5,6 +5,7 @@ import type { RiskAlert } from "@quizzy/shared";
 import { db } from "../db";
 import { questions, riskAlerts, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { langOf } from "../lib/http";
 import { fullNameOf } from "../lib/auth";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -20,6 +21,8 @@ alertRoutes.use("*", requireAuth, requireStaff, requirePermission("alerts.review
 
 /** Тревоги по методикам, доступным этому сотруднику. По умолчанию — только неразобранные. */
 alertRoutes.get("/", async (c) => {
+  // язык читателя: t() без него отдаёт украинский всегда
+  const lang = langOf(c);
   const user = c.get("user");
   const includeAcknowledged = c.req.query("all") === "1";
 
@@ -78,9 +81,9 @@ alertRoutes.get("/", async (c) => {
     id: r.alert.id,
     responseId: r.alert.responseId,
     surveyId: r.alert.surveyId,
-    surveyTitle: t(r.surveyTitle as never),
+    surveyTitle: t(r.surveyTitle as never, lang),
     questionId: r.alert.questionId,
-    questionTitle: t(r.questionTitle as never),
+    questionTitle: t(r.questionTitle as never, lang),
     userId: r.alert.userId,
     respondent: r.respondentLast ? fullNameOf({ firstName: r.respondentFirst!, lastName: r.respondentLast, middleName: r.respondentMiddle }) : null,
     label: r.alert.label,

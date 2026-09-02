@@ -171,7 +171,9 @@ export function PatientDynamics() {
           <div className="card">
             <h2>{sv.title}</h2>
             <p className="hint">
-              {sv.responseCount} {ut("sum.measurements")} · {ut("ec.since")} {sv.firstAt?.slice(0, 10)} {ut("sch.to")} {sv.lastAt?.slice(0, 10)}
+              {sv.responseCount} {ut("sum.measurements")} · {ut("ec.since")}{" "}
+              {sv.firstAt ? day(sv.firstAt) : "—"} {ut("sch.to")}{" "}
+              {sv.lastAt ? day(sv.lastAt) : "—"}
             </p>
           </div>
 
