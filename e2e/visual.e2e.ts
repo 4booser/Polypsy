@@ -291,6 +291,25 @@ const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Pag
       await page.locator("h1").waitFor();
     },
   },
+  {
+    name: "worklist",
+    open: async (page) => {
+      await page.goto("/worklist");
+      await page.locator("h1").waitFor();
+    },
+  },
+  {
+    name: "patient",
+    open: async (page) => {
+      await page.goto("/patients");
+      await page.locator("table tbody tr").first().waitFor();
+      await page.locator("table tbody tr td a").first().click();
+      await page.waitForURL(/\/patients\//);
+      await page.locator("h1").waitFor();
+      // карта дозагружает динамику и эпизоды отдельными запросами
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+  },
 ];
 
 for (const screen of SCREENS) {

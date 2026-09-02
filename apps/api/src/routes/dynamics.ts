@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ageAt, equate, itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics, Sex } from "@quizzy/shared";
 import { db } from "../db";
+import { langOf } from "../lib/http";
 import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
@@ -140,6 +141,8 @@ dynamicsRoutes.get("/respondents", async (c) => {
  * иначе правка методики разрывала бы график пополам.
  */
 dynamicsRoutes.get("/respondents/:userId", async (c) => {
+  // язык читателя: t() без него отдаёт украинский всегда
+  const lang = langOf(c);
   const staff = c.get("user");
   const userId = c.req.param("userId");
 
@@ -349,7 +352,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
           const entry = byCode.get(scale.code) ?? {
             scaleId: scale.id,
             code: scale.code,
-            title: t(scale.title as never),
+            title: t(scale.title as never, lang),
             points: [],
             delta: null,
             direction: null,
@@ -464,7 +467,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
 
       return {
         surveyId,
-        title: t(survey.title as never),
+        title: t(survey.title as never, lang),
         responseCount: list.length,
         firstAt: list[0]?.submittedAt ?? null,
         lastAt: list[list.length - 1]?.submittedAt ?? null,

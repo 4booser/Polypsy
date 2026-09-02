@@ -25,6 +25,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
+import { langOf } from "../lib/http";
 import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -118,6 +119,16 @@ const KIND_WEIGHT: Record<Kind, number> = {
 
 worklistRoutes.get("/", async (c) => {
   const user = c.get("user");
+  /*
+   * Язык читателя, а не язык по умолчанию.
+   *
+   * `t()` без второго аргумента отдаёт украинский всегда — и очередь
+   * работы, первый экран рабочего дня, показывала названия методик
+   * по-украински тому, кто выбрал русский интерфейс. Строка «СР-45.
+   * Схильність до суїцидальних реакцій · Срочно» — это не двуязычие, это
+   * две половины от разных языков в одной строке.
+   */
+  const lang = langOf(c);
   const scope = await surveyScopeFilter(user);
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const surveyIds = scoped.map((s) => s.id);
@@ -154,7 +165,7 @@ worklistRoutes.get("/", async (c) => {
         userId: r.c.userId,
         userName: fullNameOf(r as never),
         unit: r.unit,
-        title: t(r.surveyTitle as never),
+        title: t(r.surveyTitle as never, lang),
         severity: r.c.severity,
         signals: Number(r.signals),
         overdue: r.escalate !== null && minutes >= r.escalate,
@@ -225,7 +236,7 @@ worklistRoutes.get("/", async (c) => {
       userId: r.a.patientId,
       userName: fullNameOf(r as never),
       unit: r.unit,
-      title: t({ uk: "Не прийшов на прийом", ru: "Не пришёл на приём" } as never),
+      title: t({ uk: "Не прийшов на прийом", ru: "Не пришёл на приём" } as never, lang),
       signals: Number(r.streak),
       days: Math.max(0, Math.round((now - new Date(r.slot.startsAt).getTime()) / 86_400_000)),
       /*
@@ -282,7 +293,7 @@ worklistRoutes.get("/", async (c) => {
       userId: r.thread.patientId,
       userName: fullNameOf(r as never),
       unit: r.unit,
-      title: t({ uk: "Непрочитане повідомлення", ru: "Непрочитанное сообщение" } as never),
+      title: t({ uk: "Непрочитане повідомлення", ru: "Непрочитанное сообщение" } as never, lang),
       signals: Number(r.unread),
       days: waitingDays,
       /*
@@ -485,7 +496,7 @@ worklistRoutes.get("/", async (c) => {
       userId: r.userId,
       userName: fullNameOf(r as never),
       unit: r.unit,
-      title: t(r.surveyTitle as never),
+      title: t(r.surveyTitle as never, lang),
       days,
       overdue: true,
       assignedTo: null,
@@ -532,7 +543,7 @@ worklistRoutes.get("/", async (c) => {
         userId: row.instance.userId,
         userName: row.patient ? fullNameOf(row.patient) : "—",
         unit: row.patient?.unit ?? null,
-        title: `${t(row.pathway.title as never)}: ${t(row.step.title as never)}`,
+        title: `${t(row.pathway.title as never, lang)}: ${t(row.step.title as never, lang)}`,
         days,
         overdue: true,
         assignedTo: null,
@@ -571,7 +582,7 @@ worklistRoutes.get("/", async (c) => {
         userId: row.goal.userId,
         userName: row.patient ? fullNameOf(row.patient) : "—",
         unit: row.patient?.unit ?? null,
-        title: `${t(row.survey.title as never)}: ${row.goal.scaleCode}`,
+        title: `${t(row.survey.title as never, lang)}: ${row.goal.scaleCode}`,
         days,
         overdue: true,
         assignedTo: null,

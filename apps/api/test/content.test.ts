@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { db } from "./fixtures";
+import { beforeAll, describe, expect, test } from "bun:test";
+import { adminA, api, db, patient, surveyInA } from "./fixtures";
 import { sql } from "drizzle-orm";
 
 /**
@@ -142,5 +142,65 @@ describe("двуязычность содержимого", () => {
       sql`select count(*)::int as n from surveys where title is not null`,
     );
     expect(Number(row?.n ?? 0)).toBeGreaterThan(0);
+  });
+});
+
+describe("язык содержимого следует за читателем", () => {
+  /*
+   * `t()` без второго аргумента отдаёт украинский всегда. Так и жила
+   * очередь работы — первый экран рабочего дня: названия методик
+   * по-украински тому, кто выбрал русский интерфейс. «СР-45. Схильність до
+   * суїцидальних реакцій · Срочно» — это не двуязычие, это две половины от
+   * разных языков в одной строке.
+   *
+   * В направлениях было зеркально и хуже: язык был прибит к «ru» прямо в
+   * коде, и украиноязычный специалист читал русские названия.
+   *
+   * Проверяется поведением через настоящий заголовок Accept-Language:
+   * одна и та же выдача на двух языках обязана отличаться.
+   */
+  const ask = (path: string, token: string, lang: string) =>
+    api(path, token, { headers: { "Accept-Language": lang } });
+
+  beforeAll(async () => {
+    /*
+     * Свой случай, а не одолженный у соседей: занятый в общей базе случай
+     * делает проверку зависимой от порядка файлов, и падать она начинает
+     * не там, где сломано.
+     */
+    const { alertCases } = await import("../src/db/schema");
+    await db.insert(alertCases).values({
+      id: crypto.randomUUID(),
+      userId: patient.id,
+      surveyId: surveyInA,
+      severity: "severe",
+    });
+  });
+
+  test("очередь работы отдаёт названия на языке запроса", async () => {
+    const uk = await ask("/api/worklist", adminA.token, "uk");
+    const ru = await ask("/api/worklist", adminA.token, "ru");
+    expect(uk.status).toBe(200);
+    expect(ru.status).toBe(200);
+
+    const titles = (r: typeof uk) =>
+      (r.body.items as { kind: string; title: string }[])
+        .filter((i) => i.kind === "case" || i.kind === "alert")
+        .map((i) => i.title);
+
+    const inUk = titles(uk);
+    const inRu = titles(ru);
+    expect(inUk.length, "в очереди нет ни одной строки — проверять нечего").toBeGreaterThan(0);
+    expect(inRu).not.toEqual(inUk);
+  });
+
+  test("случаи риска отдают названия на языке запроса", async () => {
+    const uk = await ask("/api/alert-cases", adminA.token, "uk");
+    const ru = await ask("/api/alert-cases", adminA.token, "ru");
+    const titles = (r: typeof uk) =>
+      (r.body.items as { surveyTitle: string }[]).map((i) => i.surveyTitle);
+
+    expect(titles(uk).length, "случаев нет — проверять нечего").toBeGreaterThan(0);
+    expect(titles(ru)).not.toEqual(titles(uk));
   });
 });
