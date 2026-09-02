@@ -74,3 +74,49 @@ for (const theme of ["dark", "light"] as const) {
     expect(digest((await scan(page)).violations)).toEqual([]);
   });
 }
+
+/*
+ * Планшет в коридоре. Проверяется отдельно, потому что открывается без
+ * входа — по токену сеанса, — и потому что это единственный экран, который
+ * человек видит стоя, один и без объяснений от сотрудника.
+ *
+ * Токен постоянный: его кладёт посев, и без него экран устройства нельзя
+ * ни открыть, ни проверить. До этой волны его не открывал ни один тест.
+ */
+for (const theme of ["dark", "light"] as const) {
+  test(`планшет в коридоре доступен, тема ${theme}`, async ({ page }) => {
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.goto("/kiosk/kiosk-demo-token");
+    await page.locator("h1").waitFor();
+    expect(digest((await scan(page)).violations)).toEqual([]);
+  });
+}
+
+test("день отмечается с клавиатуры, без мыши", async ({ page }) => {
+  /*
+   * Автопроверка ловит подписи и контраст, но не отвечает на вопрос
+   * «можно ли этим пользоваться без мыши». А за стойкой мышь — не всегда
+   * самое быстрое: явку отмечают между двумя людьми, не глядя на экран.
+   *
+   * Проверяется путь целиком: дойти до кнопки табуляцией и нажать её
+   * пробелом. Клик мышью по той же кнопке этого бы не доказал.
+   */
+  await login(page, "psy");
+  await page.goto("/today");
+  await page.getByRole("heading", { name: "Сегодня" }).waitFor();
+
+  const came = page.getByRole("button", { name: "Пришёл" }).first();
+  await expect(came).toBeVisible();
+
+  // до кнопки добираемся табуляцией, а не фокусируем её напрямую:
+  // focus() доказал бы, что кнопка принимает фокус, но не что до неё дойти
+  let reached = false;
+  for (let i = 0; i < 60 && !reached; i += 1) {
+    await page.keyboard.press("Tab");
+    reached = await came.evaluate((el) => el === document.activeElement);
+  }
+  expect(reached, "до кнопки «Пришёл» нельзя добраться табуляцией").toBe(true);
+
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("button", { name: "Начать" }).first()).toBeVisible();
+});
