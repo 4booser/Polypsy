@@ -1272,6 +1272,83 @@ describe("отчёт отделения", () => {
     expect(few.body.floor).toBe(5);
   });
 
+  test("подавленное слагаемое не восстанавливается вычитанием", async () => {
+    /*
+     * Отделение строится специально с перекосом: первичных много, повторный
+     * один. Иначе проверка ничего не значила бы — в отделении, где обоих
+     * разрезов больше порога, «показаны оба или ни одного» верно само собой.
+     */
+    const dept = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: dept,
+      title: { uk: "Перекіс", ru: "Перекос" },
+      timezone: "Europe/Kyiv",
+    });
+    const doc = await makeUser("admin", `rep-doc-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values({ userId: doc.id, departmentId: dept });
+
+    let at = Date.parse("2024-05-06T07:00:00Z");
+    const held = async (kind: "primary" | "repeat") => {
+      const slotId = crypto.randomUUID();
+      const patient = await makeUser("user", `rep-p-${crypto.randomUUID()}@test`);
+      await db.insert(slots).values({
+        id: slotId,
+        departmentId: dept,
+        specialistId: doc.id,
+        startsAt: new Date(at).toISOString(),
+        endsAt: new Date(at + 3000_000).toISOString(),
+        kind,
+      });
+      await db.insert(appointments).values({
+        id: crypto.randomUUID(),
+        slotId,
+        patientId: patient.id,
+        specialistId: doc.id,
+        kind,
+        status: "done",
+        bookedBy: doc.id,
+      });
+      at += 86_400_000;
+    };
+
+    for (let i = 0; i < 6; i += 1) await held("primary");
+    await held("repeat");
+
+    const skew = await api(
+      `/api/clinic/report?departmentId=${dept}&from=2024-01-01&to=2024-12-31`,
+      specialistToken,
+    );
+    expect(skew.status).toBe(200);
+    expect(skew.body.received).toBe(7);
+    // повторный один — мало; значит и первичные обязаны исчезнуть, хотя их шесть
+    expect(skew.body.repeat).toBeNull();
+    expect(skew.body.primary).toBeNull();
+  });
+
+  test("показанные разрезы сходятся с общим числом", async () => {
+    /*
+     * Первичные и повторные в сумме дают принятых, а принятые показываются
+     * всегда. Спрятать одно слагаемое мало: «Принято 1, первичных мало,
+     * повторных 0» восстанавливает первичных точно — вычитанием, для
+     * которого не нужно ни прав, ни доступа к базе. Подавление,
+     * обходимое арифметикой, хуже отсутствующего: оно создаёт уверенность.
+     *
+     * Проверяется именно пара: показаны оба разреза или ни один.
+     */
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await api(
+      `/api/clinic/report?departmentId=${departmentId}&from=2000-01-01&to=${today}`,
+      specialistToken,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.primary === null).toBe(res.body.repeat === null);
+
+    if (res.body.primary !== null) {
+      // показаны — значит должны сходиться с общим числом
+      expect(res.body.primary + res.body.repeat).toBe(res.body.received);
+    }
+  });
+
   test("несуществующее отделение — не найдено", async () => {
     const res = await api(
       `/api/clinic/report?departmentId=${crypto.randomUUID()}&from=2000-01-01&to=2100-01-01`,

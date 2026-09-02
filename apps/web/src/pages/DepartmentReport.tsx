@@ -58,27 +58,40 @@ export default function DepartmentReportPage() {
             </div>
           }
         >
+          {/*
+            Семь чисел — не список, а три группы, и рядами они разложены
+            по смыслу, а не по тому, сколько влезает в строку. Плоская сетка
+            в три столбца ставила «первичных» под «принято приёмов» случайно
+            и оставляла в последнем ряду пустой блок на два места.
+
+            Группа «из них по виду приёма» подписана именно так: это разрез
+            принятых, а не ещё два самостоятельных числа рядом.
+          */}
           <Panel>
-            <div className="grid gap-px bg-border max-[900px]:grid-cols-2 grid-cols-3">
-              {/*
-                «Принято приёмов» и «людей» стоят рядом и подписаны по-разному
-                намеренно: один человек за месяц приходит несколько раз, и
-                сложить эти числа нельзя. Подпись под ними это и говорит.
-              */}
+            {/*
+              «Принято приёмов» и «людей» стоят рядом и подписаны по-разному
+              намеренно: один человек за месяц приходит несколько раз, и
+              сложить эти числа нельзя. Подпись под ними это и говорит.
+            */}
+            <Group title={ut("dep.groupVolume")}>
               <Cell label={ut("dep.received")} value={data.received} />
               <Cell label={ut("dep.people")} value={data.people} />
               <Cell label={ut("dep.attached")} value={data.attached} />
+            </Group>
+            <Group title={ut("dep.groupKind")} columns={2}>
               <Cell label={ut("dep.primary")} value={data.primary} />
               <Cell label={ut("dep.repeat")} value={data.repeat} />
+            </Group>
+            {/*
+              Отмены стоят рядом с неявками, а не отдельно: и то и другое —
+              освободившееся время, но отменённое время можно было отдать
+              другому, а потерянное на неявке — нет. Числа рядом показывают,
+              сколько из потерянного было потеряно молча.
+            */}
+            <Group title={ut("dep.groupLost")} columns={2}>
               <Cell label={ut("dep.noShow")} value={data.noShow} />
-              {/*
-                Отмены стоят рядом с неявками, а не отдельно: и то и другое —
-                освободившееся время, но отменённое время можно было отдать
-                другому, а потерянное на неявке — нет. Числа рядом показывают,
-                сколько из потерянного было потеряно молча.
-              */}
               <Cell label={ut("dep.cancelled")} value={data.cancelled} />
-            </div>
+            </Group>
             <p className="px-4 pb-2 pt-3 text-caption text-muted">{ut("dep.peopleNote")}</p>
             <p className="px-4 pb-4 text-caption text-muted">
               {ut("dep.floorNote").replace("{floor}", String(data.floor))}
@@ -87,6 +100,31 @@ export default function DepartmentReportPage() {
         </Page>
       )}
     </Screen>
+  );
+}
+
+function Group({
+  title,
+  columns = 3,
+  children,
+}: {
+  title: string;
+  columns?: 2 | 3;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-t border-hairline first:border-t-0">
+      <h2 className="px-4 pt-4 text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+        {title}
+      </h2>
+      <div
+        className={`m-4 grid gap-px bg-border ${
+          columns === 2 ? "grid-cols-2" : "grid-cols-3 max-[900px]:grid-cols-2"
+        }`}
+      >
+        {children}
+      </div>
+    </section>
   );
 }
 
