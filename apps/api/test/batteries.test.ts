@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, and, api, app, batteries, batteryAssignments, batteryItems, createSurveySchema, createVersion, db, eq, groupA, isNull, makeUser, patient, runDueSchedules, scheduleRuns, schedules, sr45, submitSurvey, surveyInA, surveys, users } from "./fixtures";
+import { adminA, adminB, and, api, app, json, batteries, batteryAssignments, batteryItems, createSurveySchema, createVersion, db, eq, groupA, isNull, makeUser, patient, runDueSchedules, scheduleRuns, schedules, sr45, submitSurvey, surveyInA, surveys, users } from "./fixtures";
 
 /* Батареи, назначения, расписания и приглашения */
 
@@ -223,7 +223,7 @@ describe("приглашения", () => {
 
   test("предпросмотр публичен и не раскрывает лишнего", async () => {
     const res = await app.request(`/api/invites/preview/${token}`);
-    const body = await res.json();
+    const body = await json(res);
     expect(body.valid).toBe(true);
     expect(body.batteryTitle).toBe("Батарея приглашения");
     expect(Object.keys(body).sort()).toEqual(["batteryTitle", "unit", "valid"]);
@@ -245,7 +245,7 @@ describe("приглашения", () => {
       }),
     });
     expect(res.status).toBe(201);
-    const body = await res.json();
+    const body = await json(res);
     expect(body.user.unit).toBe("Рота Б");
 
     const mine = await api("/api/batteries/mine", body.token);
@@ -289,7 +289,7 @@ describe("приглашения", () => {
     });
     await api(`/api/invites/${created.body.id}/revoke`, adminA.token, { method: "POST" });
     const preview = await app.request(`/api/invites/preview/${created.body.token}`);
-    const body = await preview.json();
+    const body = await json(preview);
     expect(body.valid).toBe(false);
     expect(body.reason).toBe("revoked");
   });

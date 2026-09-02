@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import postgres from "postgres";
 import { adminA, adminB, and, api, app, batteries, batteryAssignments, batteryItems, db, eq, groupA, groupAdmins, makeUser, patient, root, surveyGroups, submitSurvey, surveyInA, surveys, users, type Person } from "./fixtures";
 
 /* Права доступа: кто что видит и чего не может */
@@ -54,7 +55,7 @@ describe("скоупинг групп", () => {
 /* ── RLS под не-владельцем ── */
 
 describe("RLS-политики (роль без прав владельца)", () => {
-  let rlsSql: ReturnType<(typeof import("postgres"))["default"]>;
+  let rlsSql: ReturnType<typeof postgres>;
 
   beforeAll(async () => {
     const postgres = (await import("postgres")).default;
@@ -81,7 +82,7 @@ describe("RLS-политики (роль без прав владельца)", (
 
   /** Выполнить запрос в транзакции с заданной RLS-идентичностью */
   async function as(identity: { userId?: string; role?: string }, query: string): Promise<number> {
-    const rows = await rlsSql.begin(async (tx) => {
+    const rows = await rlsSql.begin(async (tx: postgres.TransactionSql) => {
       await tx`select set_config('app.user_id', ${identity.userId ?? ""}, true),
                       set_config('app.role', ${identity.role ?? ""}, true)`;
       return tx.unsafe(query);
@@ -132,7 +133,7 @@ describe("RLS-политики (роль без прав владельца)", (
   });
 
   test("пациент не может подсунуть прохождение за другого", async () => {
-    const attempt = rlsSql.begin(async (tx) => {
+    const attempt = rlsSql.begin(async (tx: postgres.TransactionSql) => {
       await tx`select set_config('app.user_id', ${patient.id}, true),
                       set_config('app.role', 'user', true)`;
       await tx`insert into responses (id, survey_id, user_id, status, started_at, duration_ms)
@@ -221,7 +222,7 @@ describe("учётная запись только на просмотр", () =>
   beforeAll(async () => {
     viewer = await makeUser("admin", "viewer@test");
     await db.update(users).set({ readOnly: true }).where(eq(users.id, viewer.id));
-    await db.insert(groupAdmins).values({ groupId: groupA, userId: viewer.id, assignedBy: root.id });
+    await db.insert(groupAdmins).values({ groupId: groupA, userId: viewer.id, addedBy: root.id });
   });
 
   test("читать можно всё, что положено роли", async () => {

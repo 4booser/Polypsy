@@ -54,10 +54,6 @@ function withoutComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
 }
 
-function tsxFiles(dir: string): string[] {
-  return codeFiles(dir).filter((f) => f.endsWith(".tsx"));
-}
-
 /** Все исходники каталога: и .ts, и .tsx. Каталог может не существовать. */
 function codeFiles(dir: string): string[] {
   const out: string[] = [];

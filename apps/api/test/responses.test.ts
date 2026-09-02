@@ -5,30 +5,11 @@ import { adminA, adminB, and, api, createSurveySchema, createVersion, db, eq, gr
 
 /* ── сдача и атрибуция ── */
 
-async function submitSurvey(surveyId: string, token: string, extra: Record<string, unknown> = {}) {
-  const surveyRes = await api(`/api/surveys/${surveyId}`, token);
-  if (surveyRes.status !== 200) return surveyRes;
-  const survey = surveyRes.body;
-  const answers = survey.questions
-    .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length)
-    .map((q: { id: string; options: { id: string }[] }) => ({
-      questionId: q.id,
-      optionIds: [q.options[1]?.id ?? q.options[0]!.id], // «Нет» — безопасные ответы
-      durationMs: 2000,
-      changeCount: 0,
-      visitCount: 1,
-    }));
-  return api(`/api/surveys/${surveyId}/responses`, token, {
-    method: "POST",
-    body: JSON.stringify({
-      startedAt: new Date(Date.now() - 60_000).toISOString(),
-      durationMs: 60_000,
-      events: [],
-      answers,
-      ...extra,
-    }),
-  });
-}
+/*
+ * submitSurvey живёт в фикстурах: здесь стояла его дословная копия,
+ * заслонявшая импорт. Две одинаковые функции — это две функции, которые
+ * однажды разойдутся, и разойдутся молча.
+ */
 
 describe("сдача прохождения", () => {
   test("пациент сдаёт сам; прохождение записано на него", async () => {
@@ -287,7 +268,7 @@ describe("ретенция answer_events", () => {
         responseId: old.body.id,
         questionId: (q as { id: string }).id,
         sequence: i + 100,
-        kind: "set",
+        kind: "set" as const,
         elapsedMs: 1000 * i,
         at: new Date().toISOString(),
         value: null,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { adminA, api, app, db, makeUser } from "./fixtures";
+import { adminA, api, app, db, json, makeUser } from "./fixtures";
 import { users } from "../src/db/schema";
 import { normalizePhone, phoneFingerprint } from "../src/lib/phone";
 
@@ -18,7 +18,7 @@ async function register(body: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return { status: res.status, body: await res.json().catch(() => null) };
+  return { status: res.status, body: await json(res) };
 }
 
 describe("нормализация номера", () => {

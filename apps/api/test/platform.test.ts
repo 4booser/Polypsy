@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { adminA, adminB, api, app, batteries, batteryItems, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveyInB, surveys, users } from "./fixtures";
 
@@ -1152,5 +1154,37 @@ describe("что произошло, пока меня не было", () => {
     const foreign = await api(`/api/missed?since=${encodeURIComponent(cutoff)}`, adminB.token);
     const opened = foreign.body.groups.find((g: { kind: string }) => g.kind === "case.opened");
     expect(opened?.count ?? 0).toBe(0);
+  });
+});
+
+describe("проверка типов покрывает тесты", () => {
+  test("каталог тестов входит в tsconfig каждого приложения", () => {
+    /*
+     * Пока `include` перечислял только `src`, ошибка типа в тесте всплывала
+     * лишь в момент выполнения строки — а `res.body.itms` вместо
+     * `res.body.items` не всплывало вовсе: сравнение с `undefined` даёт
+     * честное падение не всегда.
+     *
+     * Включить мешали 583 ошибки из 606 — все одно и то же «тело ответа
+     * неизвестного типа». Из-за них не проверялось и всё остальное:
+     * опечатки в импортах, неверные аргументы, переименованные поля.
+     * Как только фикстура стала обобщённой, осталось два десятка настоящих
+     * находок — среди них дословный дубликат функции, заслонявший импорт,
+     * и запись в несуществующую колонку.
+     *
+     * Сторож нужен, потому что сузить `include` обратно легко и тихо:
+     * проверка типов останется зелёной, просто перестанет смотреть на
+     * половину кода.
+     */
+    const roots = [
+      { path: "apps/api/tsconfig.json", dir: "test" },
+      { path: "apps/web/tsconfig.json", dir: "test" },
+    ];
+    const missing = roots.filter(({ path, dir }) => {
+      const raw = readFileSync(resolve(import.meta.dir, "../../..", path), "utf8");
+      const config = JSON.parse(raw) as { include?: string[] };
+      return !(config.include ?? []).includes(dir);
+    });
+    expect(missing.map((m) => m.path)).toEqual([]);
   });
 });
