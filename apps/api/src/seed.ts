@@ -11,6 +11,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageAt, answerScore, computeProfile, computeScores, createSurveySchema, normalizeLocalized, t, type Answer } from "@quizzy/shared";
 import { client, db } from "./db";
+import { hashInviteToken } from "./lib/invites";
 import { attachToCase } from "./lib/alertCases";
 import { syncBuiltinRole } from "./lib/permissions";
 import { syncSlots } from "./lib/schedule";
@@ -35,6 +36,7 @@ import {
   appointments,
   departmentPatients,
   departments,
+  kioskSessions,
   messages,
   scheduleExceptions,
   scheduleTemplates,
@@ -1057,6 +1059,27 @@ async function seedBattery() {
 }
 
 const demoBattery = await seedBattery();
+
+/**
+ * Сеанс киоска для планшета в коридоре.
+ *
+ * Токен постоянный и известный: без него экран устройства не открыть, а
+ * значит и не проверить — ни доступность, ни то, что он вообще
+ * отрисовывается. До сих пор `/kiosk/:token` не открывал ни один тест.
+ *
+ * Постоянный токен допустим ровно потому, что посев — это дев и стенд.
+ * В настоящем экземпляре сеансы заводит человек, и токен там случайный.
+ */
+const KIOSK_DEMO_TOKEN = "kiosk-demo-token";
+await db.insert(kioskSessions).values({
+  id: crypto.randomUUID(),
+  tokenHash: hashInviteToken(KIOSK_DEMO_TOKEN),
+  title: "Планшет в коридоре",
+  batteryId: demoBattery.id,
+  createdBy: psy!.id,
+  expiresAt: new Date(Date.now() + 365 * 86_400_000).toISOString(),
+});
+console.log(`  киоск: /kiosk/${KIOSK_DEMO_TOKEN}`);
 
 /**
  * Демонстрационное расписание: плановый повтор по подразделению.
