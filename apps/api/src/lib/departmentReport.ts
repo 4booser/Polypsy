@@ -74,6 +74,23 @@ export async function departmentReport(
       and(eq(departmentPatients.departmentId, departmentId), isNull(departmentPatients.detachedAt)),
     );
 
+  /*
+   * Дополняющее подавление.
+   *
+   * Первичные и повторные в сумме дают принятых, а принятые показываются
+   * всегда. Значит спрятать одно из слагаемых недостаточно: «Принято 1,
+   * первичных мало, повторных 0» восстанавливает первичных точно —
+   * вычитанием, за которое не нужно ни прав, ни доступа к базе.
+   *
+   * Поэтому подавляются оба слагаемых или ни одного. Читателю остаётся
+   * знание, что приёмы были, — то есть ровно работа отделения, которую
+   * отчёт и обязан показывать, — но не то, какого рода был приём у
+   * единственного за месяц человека.
+   */
+  const primaryN = count((r) => held(r) && r.kind === "primary");
+  const repeatN = count((r) => held(r) && r.kind === "repeat");
+  const breakdownShown = suppress(primaryN) !== null && suppress(repeatN) !== null;
+
   return {
     departmentId,
     from,
@@ -85,8 +102,8 @@ export async function departmentReport(
      */
     received: count(held),
     people: suppress(Number(people?.n ?? 0)),
-    primary: suppress(count((r) => held(r) && r.kind === "primary")),
-    repeat: suppress(count((r) => held(r) && r.kind === "repeat")),
+    primary: breakdownShown ? primaryN : null,
+    repeat: breakdownShown ? repeatN : null,
     noShow: suppress(count((r) => r.status === "no_show")),
     cancelled: suppress(count((r) => r.status === "cancelled")),
     attached: suppress(Number(attached?.n ?? 0)),
