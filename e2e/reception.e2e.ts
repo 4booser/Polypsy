@@ -69,6 +69,17 @@ test("сохранение недели отвечает числами, а не
   // предупреждение о занятом времени стоит до кнопки, а не в справке
   await expect(page.getByText("Занятое время вне расписания не исчезает")).toBeVisible();
 
+  /*
+   * Неделя открывается на чтение: экран смотрят постоянно, а правят раз в
+   * год. Проверяем заодно, что читаемый вид действительно показывает
+   * неделю, а не пустое место, — и что выходной назван словами, а не
+   * пропущен.
+   */
+  await expect(page.getByText("Понедельник")).toBeVisible();
+  await expect(page.getByText("не принимаю").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Сохранить неделю" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Изменить неделю" }).click();
   await page.getByRole("button", { name: "Сохранить неделю" }).click();
   await expect(page.getByText(/Добавлено \d+, снято \d+/)).toBeVisible();
 });
