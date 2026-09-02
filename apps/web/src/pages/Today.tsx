@@ -185,7 +185,24 @@ function AppointmentRow({
             пришлось бы искать. Записаться можно к любому свободному, и
             человек легко проходит несколько приёмов, так и не став ничьим.
           */}
-          {a.leadSpecialistId === null ? <Badge>{ut("day.noLead")}</Badge> : null}
+          {a.leadSpecialistId === null ? (
+            <span className="inline-flex items-center gap-1">
+              <Badge>{ut("day.noLead")}</Badge>
+              {/*
+                Кнопка стоит вплотную к пометке, а не в общем строю действий
+                справа. Там она пряталась среди «Пришёл» и «Не пришёл» и
+                вдобавок сдвигала их: в строке без ведущего кнопок было три,
+                в строке с ведущим — две, и одно и то же действие оказывалось
+                на разном отступе в соседних строках.
+
+                Здесь связь видна глазом: пометка называет недостачу, кнопка
+                рядом её закрывает.
+              */}
+              <Button size="sm" variant="ghost" onClick={onLead} disabled={busy}>
+                {ut("day.takeLead")}
+              </Button>
+            </span>
+          ) : null}
           {/*
             Несданное назначенное — единственная пометка здесь, которая
             требует внимания до приёма, а не после: без неё специалист узнаёт
@@ -215,14 +232,13 @@ function AppointmentRow({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {/* закрепить предлагаем только тем, у кого ведущего нет: остальным это
-            означало бы перевод человека, а он делается не кнопкой в списке */}
-        {a.leadSpecialistId === null ? (
-          <Button size="sm" variant="ghost" onClick={onLead} disabled={busy}>
-            {ut("day.takeLead")}
-          </Button>
-        ) : null}
+      {/*
+        Справа остаются только действия над самим приёмом, и последнее из
+        них — всегда главное. Так столбец читается сверху вниз: глаз ищет в
+        нём «что нажать по этой строке», а не разбирает, какая из трёх
+        кнопок относится к приёму, а какая к человеку.
+      */}
+      <div className="flex shrink-0 items-center justify-end gap-2">
         {a.status === "booked" || a.status === "confirmed" ? (
           <Button size="sm" variant="ghost" onClick={() => onStatus("no_show")} disabled={busy}>
             {ut("day.noShow")}
