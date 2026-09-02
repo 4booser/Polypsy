@@ -836,6 +836,27 @@ kbd, .kbd {
 }
 .kiosk-runner { display: grid; gap: 16px; }
 
+/*
+ * Предупреждение о возврате к началу.
+ *
+ * Поверх всего и непрозрачно: вопросы методики под ним читать не нужно, а
+ * полупрозрачная подложка на планшете в коридоре означает, что чужие
+ * ответы всё ещё видны сквозь неё.
+ */
+.kiosk-idle {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  padding: 24px;
+}
+.kiosk-idle-box {
+  max-width: 44ch;
+  text-align: center;
+}
+
 /* ═══ конструктор и служебное ═══ */
 .battery-steps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 7px; }
 .battery-steps li {
