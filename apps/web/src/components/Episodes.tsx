@@ -245,7 +245,7 @@ function Dispensary({ patientId }: { patientId: string }) {
         </span>
         {d.lastSeenAt ? (
           <span className="text-caption text-muted">
-            {ut("disp.lastSeen")} <Num>{day(d.lastSeenAt)}</Num>
+            {ut("disp.lastSeen")} {day(d.lastSeenAt)}
           </span>
         ) : null}
         {/*

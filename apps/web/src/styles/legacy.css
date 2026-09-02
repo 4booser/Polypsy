@@ -729,6 +729,25 @@ kbd, .kbd {
   color: var(--muted);
 }
 .empty strong { color: var(--text-2); font-family: var(--font-display); font-weight: 500; }
+
+/*
+ * Пустое состояние внутри заполненного экрана.
+ *
+ * Обычное пустое состояние — это ответ на вопрос всего экрана: «пациентов
+ * ещё нет», и оно вправе занимать место и звать к действию. Но та же
+ * вёрстка внутри боковой панели превращает отсутствие новостей в
+ * утверждение: «С прошлого приёма ничего не произошло» набиралось крупным
+ * по центру и читалось как вывод, ради которого открыли экран.
+ *
+ * Здесь то же самое сообщение занимает одну строку и говорит обычным
+ * голосом.
+ */
+.empty.is-compact {
+  justify-items: start;
+  text-align: left;
+  padding: 10px 16px;
+}
+.empty.is-compact strong { font-family: inherit; font-weight: 400; color: var(--muted); font-size: var(--fs-caption); }
 .end-of-list { text-align: center; color: var(--muted); font-size: var(--fs-caption); padding: 12px; }
 .load-more { width: 100%; justify-content: center; margin-top: 10px; }
 
@@ -1407,7 +1426,7 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 10px 0;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--hairline);
 }
 .goal:last-child { border-bottom: none; }

@@ -345,9 +345,25 @@ export function Loading({ rows = 4, error }: { rows?: number; error?: string | n
   );
 }
 
-export function Empty({ title, hint, action }: { title: string; hint?: string; action?: ReactNode }) {
+/**
+ * Пустое состояние.
+ *
+ * `compact` — для случая, когда пусто не на экране, а в одной его панели:
+ * тогда это подробность, а не ответ на вопрос, с которым пришли.
+ */
+export function Empty({
+  title,
+  hint,
+  action,
+  compact,
+}: {
+  title: string;
+  hint?: string;
+  action?: ReactNode;
+  compact?: boolean;
+}) {
   return (
-    <div className="empty">
+    <div className={compact ? "empty is-compact" : "empty"}>
       <strong>{title}</strong>
       {hint ? <div style={{ fontSize: 13, marginBottom: action ? 14 : 0 }}>{hint}</div> : null}
       {action}

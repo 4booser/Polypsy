@@ -55,7 +55,7 @@ export default function MessagesPage() {
                           {t.unread}
                         </Num>
                       ) : null}
-                      <Num className="text-caption text-muted">{day(t.lastMessageAt)}</Num>
+                      <span className="text-caption text-muted">{day(t.lastMessageAt)}</span>
                     </a>
                   ))
                 )}

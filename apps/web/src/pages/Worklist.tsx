@@ -5,7 +5,6 @@ import { api } from "../api";
 import { day } from "../format";
 import { Avatar, Badge, Empty, Screen } from "../ui";
 import { Page, Panel } from "../ui/layout";
-import { Num } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
@@ -113,7 +112,7 @@ export default function WorklistPage() {
                 {ut(KIND_KEY[i.kind])}
               </span>
               {i.overdue ? <Badge tone="bad">{ut("cases.overdue")}</Badge> : null}
-              <Num className="w-[86px] shrink-0 text-right text-caption text-muted">{day(i.since)}</Num>
+              <span className="w-[86px] shrink-0 text-right text-caption text-muted">{day(i.since)}</span>
             </Link>
           ))}
         </Panel>
