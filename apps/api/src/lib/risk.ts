@@ -31,15 +31,28 @@ function riskOf(
   question: Question,
   answer: Answer,
 ): { label: string; severity: RiskSeverity } | null {
-  // выбранный вариант помечен как критический
+  /*
+   * Выбранный вариант помечен как критический — берём САМЫЙ ТЯЖЁЛЫЙ из
+   * отмеченных, а не первый попавшийся.
+   *
+   * Прежний цикл выходил на первом совпадении, то есть на том варианте,
+   * который стоит раньше по порядку. В вопросе с выбором нескольких —
+   * «мысли о смерти» (умеренная) и «план ухода из жизни» (тяжёлая) —
+   * человек, отметивший оба, поднимал тревогу как умеренную. Случай
+   * открывался умеренным, и в очереди разбора оказывался ниже.
+   */
   const picked = new Set([...(answer.optionIds ?? []), ...Object.values(answer.matrix ?? {})]);
+  const weight: Record<RiskSeverity, number> = { moderate: 1, severe: 2 };
+  let worst: { label: string; severity: RiskSeverity } | null = null;
   for (const option of question.options) {
     if (!option.riskFlag || !picked.has(option.id)) continue;
-    return {
+    const found = {
       label: option.riskLabel ?? `${question.title} — ${option.text}`,
-      severity: option.riskSeverity ?? "severe",
+      severity: option.riskSeverity ?? ("severe" as RiskSeverity),
     };
+    if (!worst || weight[found.severity] > weight[worst.severity]) worst = found;
   }
+  if (worst) return worst;
 
   // числовой ответ достиг порога
   if (question.riskThreshold !== null && typeof answer.number === "number") {

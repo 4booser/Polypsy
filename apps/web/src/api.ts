@@ -469,6 +469,7 @@ export const api = {
     }),
   me: () => request<User>("/api/auth/me"),
   googleUnlink: () => request<{ ok: true }>("/api/auth/google/unlink", { method: "POST" }),
+  googleLinkUrl: () => request<{ url: string }>("/api/auth/google/link", { method: "POST" }),
   googleStatus: () => request<{ enabled: boolean }>("/api/auth/google/status"),
 
   groups: () => unwrap(request<Items<SurveyGroupWithCounts>>("/api/groups")),

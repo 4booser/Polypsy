@@ -45,9 +45,6 @@ async function registerHandler(c: Context<AppEnv>) {
   const input = await parseBody(c.req.raw, registerSchema);
   const email = input.email.toLowerCase();
 
-  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
-  if (existing) conflict("err.emailExists");
-
   /*
    * Номер приводится к международному виду до проверки на дубликат.
    *
@@ -67,9 +64,6 @@ async function registerHandler(c: Context<AppEnv>) {
    * зарегистрирован под другим именем: «номер уже используется» — это всё,
    * что посторонний вправе узнать.
    */
-  const samePhone = await db.query.users.findFirst({ where: eq(users.phoneIndex, phoneIndex) });
-  if (samePhone) conflict("err.phoneExists");
-
   const [{ count } = { count: 0 }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(users);
@@ -98,6 +92,25 @@ async function registerHandler(c: Context<AppEnv>) {
   } else if (!env.openRegistration && !isBootstrap) {
     badRequest("err.inviteRequired");
   }
+
+  /*
+   * Дубликаты проверяются ПОСЛЕ права зарегистрироваться, а не до.
+   *
+   * Раньше порядок был обратный, и закрытая регистрация этих проверок не
+   * закрывала. Неаутентифицированный запрос с чужим номером телефона
+   * получал три различимых ответа: «номер занят», «почта занята» и «нужно
+   * приглашение». По одному номеру телефона это давало ответ на вопрос,
+   * состоит ли человек на учёте в психоневрологическом учреждении, — при
+   * том что ни войти, ни зарегистрироваться отвечающий не мог.
+   *
+   * Теперь без приглашения запрос останавливается раньше, чем что-либо
+   * узнаёт о существующих людях.
+   */
+  const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (existing) conflict("err.emailExists");
+
+  const samePhone = await db.query.users.findFirst({ where: eq(users.phoneIndex, phoneIndex) });
+  if (samePhone) conflict("err.phoneExists");
 
   const [row] = await db
     .insert(users)
@@ -478,13 +491,25 @@ authRoutes.get("/google/start", async (c) => {
  * прислал браузер. Иначе связать Google можно было бы с чужой записью,
  * подсунув её идентификатор в адресе.
  */
-authRoutes.get("/google/link", requireAuth, async (c) => {
+authRoutes.post("/google/link", requireAuth, async (c) => {
+  /*
+   * Отдаём адрес, а не перенаправляем.
+   *
+   * Маршрут закрыт `requireAuth`, то есть требует заголовка Authorization.
+   * Консоль хранит токен в localStorage и шлёт его заголовком — обычная
+   * ссылка такого заголовка не несёт, и переход браузером всегда получал
+   * 401. Связать учётную запись было нельзя вовсе, а значит и вход через
+   * Google не мог завершиться ничем, кроме «не привязано».
+   *
+   * Ровно об этой ловушке предупреждает комментарий в api.ts клиента —
+   * и я в неё всё равно попал.
+   */
   if (!googleEnabled()) notFound("err.googleDisabled");
   const user = c.get("user");
   if (user.anonymous) badRequest("err.googleAnonymous");
   const verifier = newVerifier();
   const state = rememberState(verifier, user.id);
-  return c.redirect(authorizeUrl(state, await challengeOf(verifier)));
+  return c.json({ url: authorizeUrl(state, await challengeOf(verifier)) });
 });
 
 authRoutes.post("/google/unlink", requireAuth, async (c) => {

@@ -36,7 +36,14 @@ type Sender = (messages: { to: string; title: string; body: string; data?: unkno
  */
 let sender: Sender = async (messages) => {
   if (!messages.length) return;
+  /*
+   * С таймаутом: без него зависший (не отказавший) сервис уведомлений
+   * держит соединение из пула базы столько, сколько ему угодно, а тик
+   * рассылки идёт каждую минуту. Десять таких — и пул кончился, вместе с
+   * ним и обслуживание запросов.
+   */
   const res = await fetch("https://exp.host/--/api/v2/push/send", {
+    signal: AbortSignal.timeout(15_000),
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(messages),
@@ -79,6 +86,17 @@ export async function forgetDevice(token: string): Promise<void> {
  * отправки.
  */
 export async function pushToUser(userId: string, message: PushMessage): Promise<boolean> {
+  /*
+   * Устройства проверяются ДО заявки на отправку.
+   *
+   * Раньше заявка вставлялась первой, и человек без зарегистрированного
+   * устройства получал строку с признаком «успешно». Зарегистрировал
+   * телефон через десять минут — напоминание за сутки ему уже не придёт
+   * никогда: ключ (человек, событие) занят доставкой, которой не было.
+   */
+  const devices = await db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
+  if (!devices.length) return false;
+
   const [claimed] = await db
     .insert(pushDeliveries)
     .values({
@@ -93,9 +111,6 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
   // уже отправляли — второй раз не тревожим
   if (!claimed) return false;
 
-  const devices = await db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
-  if (!devices.length) return false;
-
   try {
     await sender(
       devices.map((d) => ({
@@ -107,10 +122,18 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
     );
     return true;
   } catch (error) {
-    await db
-      .update(pushDeliveries)
-      .set({ ok: false, error: String(error).slice(0, 300) })
-      .where(eq(pushDeliveries.id, claimed.id));
+    /*
+     * Заявка снимается, чтобы следующий проход попробовал снова.
+     *
+     * Прежде она оставалась с пометкой «не вышло», а уникальный ключ
+     * (человек, событие) навсегда закрывал повтор: сеть моргнула на две
+     * секунды в момент рассылки — и напоминание о завтрашнем приёме не
+     * придёт уже никогда. Push здесь единственный канал, второго нет.
+     *
+     * Отказ остаётся в журнале приложения; в таблице доставок ему делать
+     * нечего — она отвечает на вопрос «отправляли ли», а не «пытались ли».
+     */
+    await db.delete(pushDeliveries).where(eq(pushDeliveries.id, claimed.id));
     log.warn("push.failed", { userId, kind: message.kind, error: String(error) });
     return false;
   }

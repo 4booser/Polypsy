@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { percentileOf } from "../src/lib/norms";
 import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Аналитика: нормы, DIF, калибровка, витрина, отчёты */
@@ -724,5 +725,27 @@ describe("k-анонимность выгрузки", () => {
     // он и не притворяется обезличенным: там есть имя и подразделение
     const res = await api(`/api/spss/surveys/${surveyInA}/manifest.json`, adminA.token);
     expect(res.body.kanon).toBeNull();
+  });
+});
+
+describe("однородность величин", () => {
+  test("перцентиль считается по тому же, из чего набрана выборка", () => {
+    /*
+     * Выборка набирается из нормированных значений (стены, T-баллы, доли),
+     * а перцентиль запрашивался для сырого балла. Для МЛО это сырой 0–57
+     * против стенов 1–10: пациент со стеном 1 — «крайне низкий уровень»,
+     * группа риска — имел сырой балл выше любого стена в выборке и получал
+     * перцентиль около ста. Худший результат показывался как лучший.
+     *
+     * Проверяется на числах, а не через маршрут: беда здесь чисто
+     * арифметическая, и показать её нагляднее всего арифметикой.
+     */
+    // выборка не меньше порога, иначе перцентиль честно не считается вовсе
+    const stens = [3, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9];
+    const rawOfWorstPatient = 57; // сырой балл, соответствующий стену 1
+    const stenOfWorstPatient = 1;
+
+    expect(percentileOf(rawOfWorstPatient, stens), "сырой балл против стенов").toBe(100);
+    expect(percentileOf(stenOfWorstPatient, stens), "стен против стенов").toBe(0);
   });
 });
