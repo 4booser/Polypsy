@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
+import { checkRls, rlsRefusal } from "../src/lib/rlsGuard";
 import { adminA, adminB, and, api, app, batteries, batteryAssignments, batteryItems, db, eq, groupA, groupAdmins, makeUser, patient, root, surveyGroups, submitSurvey, surveyInA, surveys, users, type Person } from "./fixtures";
 
 /* Права доступа: кто что видит и чего не может */
@@ -141,6 +142,42 @@ describe("RLS-политики (роль без прав владельца)", (
     });
     await expect((async () => { await attempt; })()).rejects.toThrow(/row-level security|policy/i);
   });
+  test("сторож развёртывания различает роль владельца и роль приложения", async () => {
+    /*
+     * Самая дорогая находка при подготовке к развёртыванию: поставляемый
+     * docker-compose подключал приложение владельцем базы. Владелец в
+     * PostgreSQL обходит политики строк, FORCE у нас намеренно не стоит —
+     * значит все сорок семь политик оставались на месте, а видел каждый
+     * всё. Заметить это нельзя ничем: запросы отрабатывают, экраны
+     * рисуются.
+     *
+     * Сторож спрашивается двумя ролями подряд, потому что «вернул true»
+     * доказывает не больше, чем «вернул false»: различать он обязан.
+     */
+    // роль тестов владеет схемой — сторож обязан отказать
+    const owner = await checkRls();
+    expect(owner.bypasses).toBe(true);
+    expect(rlsRefusal(owner)).toContain(owner.role);
+
+    // та же проверка от имени роли без прав владельца
+    const [row] = (await rlsSql.unsafe(`
+      select current_user as role,
+             r.rolsuper as is_super,
+             r.rolbypassrls as bypass,
+             (select count(*)::int
+                from pg_class c
+                join pg_roles o on o.oid = c.relowner
+               where c.relnamespace = 'public'::regnamespace
+                 and c.relkind = 'r' and c.relrowsecurity
+                 and o.rolname = current_user) as owned
+        from pg_roles r where r.rolname = current_user
+    `)) as unknown as { role: string; is_super: boolean; bypass: boolean; owned: number }[];
+
+    expect(row!.is_super).toBe(false);
+    expect(row!.bypass).toBe(false);
+    expect(Number(row!.owned)).toBe(0);
+  });
+
   test("запись сеанса видна только двоим — тому, кого писали, и тому, кто писал", async () => {
     /*
      * Самые чувствительные данные в системе: не «результат методики», а

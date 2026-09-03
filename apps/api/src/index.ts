@@ -6,6 +6,7 @@ import { startRetention } from "./lib/retention";
 import { client } from "./db";
 import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
+import { checkRls, rlsRefusal } from "./lib/rlsGuard";
 
 // расписания меряются днями, поэтому часового тика достаточно; первый проход
 // идёт сразу при старте, чтобы простой сервера не сдвигал выдачу заданий.
@@ -31,6 +32,29 @@ import { syncBuiltinRole } from "./lib/permissions";
  * Отказ по-прежнему не роняет запуск: без сверки система работает по старым
  * проверкам, а не поднявшийся сервер не работает вовсе.
  */
+/*
+ * Политики строк должны действовать — иначе поднимать сервер незачем.
+ *
+ * Отказ, а не предупреждение. Предупреждение в журнале при старте читают
+ * один раз, в день установки, и с тех пор оно тонет в обычных строках; а
+ * система с выключенной RLS работает совершенно нормально на вид. Между
+ * «не поднялся с внятной причиной» и «работает, показывая каждому всё»
+ * выбор очевиден.
+ *
+ * Только в production: в разработке и тестах подключение идёт владельцем
+ * намеренно — иначе миграции и посев не выполнить, а разграничение там
+ * проверяется отдельной ролью в access.test.ts.
+ */
+if (process.env.NODE_ENV === "production") {
+  const rls = await checkRls();
+  if (rls.bypasses) {
+    log.error("rls inactive", { role: rls.role, reason: rls.reason });
+    console.error(`\n${rlsRefusal(rls)}\n`);
+    process.exit(1);
+  }
+  log.info("rls active", { role: rls.role });
+}
+
 await syncBuiltinRole().catch((error) =>
   log.error("builtin role sync failed", { error: String(error) }),
 );
