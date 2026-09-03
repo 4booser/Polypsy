@@ -141,6 +141,11 @@ function SheetCode({ surveyId, version }: { surveyId: string; version: number })
 
   return (
     <div className="mb-4 flex items-start gap-3 border-b border-hairline pb-4">
+      {/*
+        biome-ignore lint/security/noDangerouslySetInnerHtml: SVG кода
+        собирается здесь же из идентификатора методики и номера версии,
+        никакие внешние данные в разметку не попадают
+      */}
       <div className="w-[76px] shrink-0" dangerouslySetInnerHTML={{ __html: svg }} />
       <div className="text-caption text-muted">
         <p className="m-0">

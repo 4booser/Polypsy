@@ -8,7 +8,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
 import { assertPatientAccess, isStaff } from "../lib/scope";
-import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { requireAuth, type AppEnv } from "../middleware/auth";
 
 /**
  * Переписка пациента со своим специалистом.

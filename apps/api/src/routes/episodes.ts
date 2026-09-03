@@ -4,13 +4,8 @@ import { z } from "zod";
 import { db } from "../db";
 import {
   appointments,
-  conclusions,
-  departments,
   dispensary,
   episodes,
-  referrals,
-  responses,
-  slots,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";

@@ -19,7 +19,7 @@ import { spacing, type, useColors } from "@/theme";
  * видеть её на первом экране — это само по себе вмешательство.
  */
 export default function HomeScreen() {
-  const c = useColors();
+  const _c = useColors();
   const { ut } = useLang();
   const router = useRouter();
   const { user } = useAuth();
@@ -248,7 +248,7 @@ function NextVisit({
  * право прекратить запись у него не меньше, чем у специалиста.
  */
 function RecordingBlock({ appointmentId }: { appointmentId: string }) {
-  const c = useColors();
+  const _c = useColors();
   const { ut } = useLang();
   const [state, setState] = useState<{ status: string; consentAt: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
