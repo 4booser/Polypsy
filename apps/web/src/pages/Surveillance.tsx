@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Chart } from "../charts";
+import { day } from "../format";
 import { Loading } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Select } from "../ui/primitives";
@@ -91,6 +92,26 @@ export default function Surveillance() {
 
 function PBars({ series }: { series: NonNullable<Awaited<ReturnType<typeof api.surveillance>>>["series"][number] }) {
   const { ut } = useLang();
+
+  /*
+   * Контрольная карта по одной неделе — не карта.
+   *
+   * Смысл карты в том, чтобы видеть, выходит ли доля за свои пределы со
+   * временем. По одной точке этого не видно ни при каких обстоятельствах, а
+   * столбик посреди пустого поля выглядит как полноценный график и
+   * приглашает делать выводы. Пишем число словами и говорим, чего не хватает.
+   */
+  if (series.weeks.length < 2) {
+    const only = series.weeks[0];
+    return (
+      <p className="m-0 py-6 text-caption text-muted">
+        {only
+          ? `${Math.round(only.p * 100)}% (${only.x} ${ut("an.of")} ${only.n}) · ${ut("sv.needMoreWeeks")}`
+          : ut("sv.noWeeks")}
+      </p>
+    );
+  }
+
   const max = Math.max(...series.weeks.map((w) => w.ucl), 0.05);
   return (
     <div className="flex h-[140px] items-end gap-1">
@@ -116,7 +137,7 @@ function PBars({ series }: { series: NonNullable<Awaited<ReturnType<typeof api.s
                 }}
               />
             </div>
-            <span className="text-[9px] text-muted">{w.week.slice(5)}</span>
+            <span className="text-[9px] text-muted">{day(`${w.week}T00:00:00`)}</span>
           </div>
         );
       })}

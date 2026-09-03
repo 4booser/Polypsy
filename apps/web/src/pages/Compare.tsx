@@ -78,7 +78,7 @@ export default function Compare() {
       */}
       {list.loading || res.loading ? <Loading /> : null}
       {!list.loading && !surveyId ? (
-        <Empty title={ut("cmp.nothing")} hint={ut("cmp.noData")} />
+        <Empty compact title={ut("cmp.nothing")} hint={ut("cmp.noData")} />
       ) : null}
 
       {data && data.scales.every((s) => s.cohorts.length === 0) ? (

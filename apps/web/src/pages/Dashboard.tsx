@@ -32,7 +32,22 @@ export default function Dashboard() {
     return {
       data: overview,
       surveys,
-      cases: alerts.items,
+      /*
+       * Не имена, а то, что помогает решить, идти ли разбирать сейчас.
+       *
+       * Сами случаи со сводки больше не нужны: имена людей со сработавшей
+       * тревогой на первом экране — это раскрытие того самого факта, ради
+       * сокрытия которого в системе есть коды вместо имён и спрятанный
+       * телефон.
+       */
+      urgentCases: alerts.items.filter((x) => x.severity === "severe").length,
+      oldestCaseDays: alerts.items.length
+        ? Math.max(
+            ...alerts.items.map((x) =>
+              Math.floor((Date.now() - new Date(x.openedAt).getTime()) / 86_400_000),
+            ),
+          )
+        : 0,
       openCases: alerts.total ?? alerts.items.length,
       work,
     };
@@ -42,7 +57,7 @@ export default function Dashboard() {
 
   return (
     <Screen res={res} rows={5}>
-      {({ data, surveys, cases, openCases, work }) => (
+      {({ data, surveys, urgentCases, oldestCaseDays, openCases, work }) => (
         <Page title={ut("dash.title")} sub={ut("dash.sub")}>
           <Stack>
             {/*
@@ -74,9 +89,27 @@ export default function Dashboard() {
                 <span className="font-mono text-stat leading-none tabular-nums text-accent">{openCases}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-body font-medium text-text">{ut("dash.casesOpen")}</span>
+                  {/*
+                    Здесь стояли три фамилии людей со сработавшей тревогой
+                    риска — на стартовом экране, который открывается первым и
+                    висит на мониторе весь день.
+
+                    Система в остальном бережёт ровно этот факт: анонимный
+                    аккаунт виден специалисту как «Респондент А-4821», телефон
+                    спрятан из списков, а его показ пишется в журнал. Три
+                    фамилии людей с суицидальным риском для любого, кто
+                    прошёл мимо, отменяли всё это одной строкой.
+
+                    Вместо имён — то, что помогает решить, идти ли разбирать
+                    прямо сейчас: сколько срочных и сколько ждёт самый давний.
+                    Имена в двух нажатиях, на экране разбора, куда просто так
+                    не заглядывают.
+                  */}
                   <span className="block truncate text-caption text-muted">
-                    {cases.slice(0, 3).map((c) => c.userName).join(" · ")}
-                    {openCases > 3 ? ` ${ut("ui.andMore")} ${openCases - 3}` : ""}
+                    {urgentCases > 0
+                      ? `${ut("dash.casesUrgent").replace("{n}", String(urgentCases))} · `
+                      : ""}
+                    {ut("dash.casesOldest").replace("{n}", String(oldestCaseDays))}
                   </span>
                 </span>
                 <span className="btn primary shrink-0">{ut("dash.review")}</span>
@@ -114,7 +147,20 @@ export default function Dashboard() {
                           повод убегал к правому краю — глазу приходилось
                           прыгать через полэкрана, чтобы связать одно с другим.
                         */}
+                        {/*
+                          Сначала то, что различает строки, потом общее.
+                          На экране очереди это уже сделано, а здесь осталась
+                          своя отрисовка: семь строк подряд с одинаковой
+                          методикой и одинаковой точкой, различающиеся только
+                          фамилией. Выбрать, за что взяться, по такому списку
+                          нельзя — а открывают именно сводку.
+                        */}
                         <span className="shrink-0 truncate text-text">{i.userName}</span>
+                        {i.signals ? (
+                          <span className="shrink-0 text-caption text-muted">
+                            <Num>{i.signals}</Num>
+                          </span>
+                        ) : null}
                         <span className="min-w-0 flex-1 truncate text-caption text-muted">{i.title}</span>
                         {i.overdue ? <span className="badge bad shrink-0">{ut("cases.overdue")}</span> : null}
                       </Link>

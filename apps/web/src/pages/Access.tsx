@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
-import { dateTime } from "../format";
+import { dateTime, day} from "../format";
 import { Screen } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select } from "../ui/primitives";
@@ -105,7 +105,7 @@ export default function Access() {
                             <td className="text-muted">{g.email}</td>
                             <td className="text-muted">{g.grantedByName ?? "—"}</td>
                             <td className="text-muted">{dateTime(g.grantedAt)}</td>
-                            <td className="text-muted">{g.expiresAt ? g.expiresAt.slice(0, 10) : ut("acc.forever")}</td>
+                            <td className="text-muted">{g.expiresAt ? day(g.expiresAt) : ut("acc.forever")}</td>
                             <td>{g.completed ? ut("acc.yes") : ut("acc.no")}</td>
                             <td className="text-muted">{g.note ?? "—"}</td>
                             <td>
