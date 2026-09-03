@@ -47,7 +47,23 @@ describe("что уезжает", () => {
      */
     const keysOf = (f: { scales: { code: string; key: { item: number; weight: number }[] }[] }) =>
       Object.fromEntries(
-        f.scales.map((s) => [s.code, s.key.map((k) => `${k.item}:${k.weight}`).join(",")]),
+        /*
+         * Ключ сравнивается как множество: порядок в нём смысла не несёт —
+         * шкала хранится строками «пункт, вес», — а сортировка делает
+         * проверку про то, что действительно должно совпасть.
+         *
+         * Первая редакция сравнивала строку как есть и потому проверяла
+         * порядок, который база не обещает: у себя проходила, в CI упала.
+         * Проверка, зависящая от везения, хуже отсутствующей — она молчит
+         * ровно до того дня, когда сломается что-то настоящее.
+         */
+        f.scales.map((s) => [
+          s.code,
+          s.key
+            .map((k) => `${k.item}:${k.weight}`)
+            .sort()
+            .join(","),
+        ]),
       );
     expect(keysOf(again)).toEqual(keysOf(file));
   });
@@ -177,4 +193,26 @@ describe("что не уезжает", () => {
     const [row] = await db.select().from(surveys).where(eq(surveys.id, imported.body.id));
     expect(row!.status).toBe("draft");
   });
+});
+
+test("выгрузка одной и той же методики совпадает дословно", async () => {
+  /*
+   * Файл методики возят между учреждениями и сравнивают. Выгрузка, которая
+   * при каждом запуске переставляет строки, делает сравнение бессмысленным:
+   * на вопрос «изменилась методика или только порядок» человек отвечать не
+   * должен.
+   *
+   * Именно так и всплыло: проверка ключей сравнивала порядок, у себя
+   * проходила, а в CI получила тот же набор пунктов в другом порядке.
+   */
+  const { sr45 } = await import("../src/instruments/sr45");
+  const created = await api("/api/surveys", root.token, {
+    method: "POST",
+    body: JSON.stringify(sr45),
+  });
+  expect(created.status).toBe(201);
+
+  const first = await exportOf(created.body.id);
+  const second = await exportOf(created.body.id);
+  expect(JSON.stringify(second)).toBe(JSON.stringify(first));
 });
