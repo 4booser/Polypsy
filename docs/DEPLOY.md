@@ -21,16 +21,50 @@
 
 ## Первая установка
 
+Репозиторий приватный, поэтому серверу нужен ключ на чтение. Заводится он
+на самом сервере — закрытая часть никуда не уезжает:
+
 ```sh
-# 1. Docker
-curl -fsSL https://get.docker.com | sh
+ssh-keygen -t ed25519 -f ~/.ssh/quizzy_deploy -N "" -C "quizzy@$(hostname)"
+cat ~/.ssh/quizzy_deploy.pub
+```
 
-# 2. Код
-git clone https://github.com/4booser/Quizzy.git /opt/quizzy
+Открытую часть добавьте в репозиторий: Settings → Deploy keys → Add,
+**без** права записи. И научите ssh ею пользоваться:
+
+```sh
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/quizzy_deploy
+  IdentitiesOnly yes
+EOF
+```
+
+Дальше всё делает один скрипт:
+
+```sh
+git clone git@github.com:4booser/Quizzy.git /opt/quizzy
 cd /opt/quizzy
+sudo ./scripts/vps-setup.sh polypsy.ink
+```
 
-# 3. Окружение
-cp .env.docker.example .env.docker
+Он ставит Docker, заводит `.env.docker` со случайными паролями, поднимает
+стек, **проверяет что политики строк действуют и шифрование включено** и
+заводит первого администратора, печатая его пароль один раз.
+
+Пароли генерируются алфавитом base64url. Это не придирка: они попадают в
+строку подключения вида `postgres://user:ПАРОЛЬ@host/db`, а обычный base64
+даёт «/» и «+» — первый обрывает адрес на месте пароля.
+
+Скрипт идемпотентен и **не перегенерирует пароли** на повторном запуске.
+Перегенерация `ENCRYPTION_KEY` на работающем экземпляре означала бы, что
+все зашифрованные поля больше не читаются — ни ФИО, ни заключения.
+
+### Если ставить руками
+
+```sh
+curl -fsSL https://get.docker.com | sh
+cp .env.docker.example .env.docker   # и заполнить
 ```
 
 Заполнить `.env.docker`. Три значения обязаны быть случайными и разными:

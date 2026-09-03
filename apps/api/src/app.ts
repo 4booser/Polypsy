@@ -13,6 +13,7 @@ import { compress } from "hono/compress";
 import { HTTPException } from "hono/http-exception";
 import { renderError, type ErrorParams } from "@quizzy/shared";
 import { langOf } from "./lib/http";
+import { checkRls } from "./lib/rlsGuard";
 import { env } from "./env";
 import { authRoutes } from "./routes/auth";
 import { surveyRoutes } from "./routes/surveys";
@@ -113,7 +114,21 @@ app.get("/health", (c) => c.json({ ok: true, uptime: process.uptime() }));
 app.get("/health/ready", async (c) => {
   try {
     await db.execute(sql`select 1`);
-    return c.json({ ok: true });
+    /*
+     * Заодно отвечаем, действуют ли политики строк.
+     *
+     * Это состояние развёртывания, а не приложения: оно зависит от того,
+     * какой ролью приложение подключено к базе, и снаружи узнать его больше
+     * неоткуда. Проверять по журналу («была ли строка при старте») хуже:
+     * журнал ротируется, строка одна на весь запуск, и вопрос «а сейчас-то
+     * как» остаётся без ответа.
+     *
+     * Отдаём только «да/нет» и без подробностей: маршрут открыт без
+     * авторизации, и рассказывать постороннему, каким пользователем мы
+     * ходим в базу, незачем.
+     */
+    const rls = await checkRls();
+    return c.json({ ok: true, rls: !rls.bypasses });
   } catch {
     return c.json({ ok: false, error: renderError("err.dbUnavailable", langOf(c)) }, 503);
   }
