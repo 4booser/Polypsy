@@ -299,10 +299,57 @@ export async function syncSlots(
   const toRemove = stale.filter((s) => !busy.has(s.id)).map((s) => s.id);
   const toFlag = stale.filter((s) => busy.has(s.id) && !s.offSchedule).map((s) => s.id);
 
-  if (toRemove.length) await db.delete(slots).where(inArray(slots.id, toRemove));
+  /*
+   * Удаляем с проверкой занятости в самом операторе, а не по списку,
+   * прочитанному выше.
+   *
+   * Между чтением занятых слотов и удалением проходит время, и в это окно
+   * пациент может записаться на слот, который мы уже решили удалить. У
+   * `appointments.slot_id` стоит `on delete cascade`, поэтому удаление
+   * слота уносит и приём — молча, без строки в журнале, без уведомления.
+   * Пациент при этом видел на экране «вы записаны».
+   *
+   * Это ровно та «молчаливая отмена чужого приёма», которую пояснение к
+   * `offSchedule` объявляет недопустимой ни при каких обстоятельствах:
+   * пометка защищала от последовательного случая, но не от параллельного.
+   *
+   * Условие в самом DELETE закрывает окно; ключ базы (`on delete restrict`)
+   * закрывает его окончательно, чем бы гонка ни кончилась. Здесь учитывается
+   * ЛЮБОЙ приём, включая отменённый: он тоже история, и удаление слота под
+   * ним упёрлось бы во внешний ключ.
+   */
+  let removedSlots: { id: string }[] = [];
+  if (toRemove.length) {
+    removedSlots = await db
+      .delete(slots)
+      .where(
+        and(
+          inArray(slots.id, toRemove),
+          sql`not exists (
+            select 1 from appointments a where a.slot_id = ${slots.id}
+          )`,
+        ),
+      )
+      .returning({ id: slots.id });
+  }
+  /*
+   * Кого записали в последний момент — помечаем «вне расписания», как и
+   * тех, кто был занят на момент чтения. Иначе слот остался бы обычным, и
+   * специалист не увидел бы, что приём выпал из его часов.
+   */
+  const survived = toRemove.filter((id) => !removedSlots.some((r) => r.id === id));
+  if (survived.length) {
+    await db.update(slots).set({ offSchedule: true }).where(inArray(slots.id, survived));
+  }
   if (toFlag.length) {
     await db.update(slots).set({ offSchedule: true }).where(inArray(slots.id, toFlag));
   }
 
-  return { added, removed: toRemove.length, flagged: toFlag.length };
+  // считаем удалённые по факту, а не по намерению: часть могла уцелеть
+  // из-за записи, появившейся между чтением и удалением
+  return {
+    added,
+    removed: removedSlots.length,
+    flagged: toFlag.length + survived.length,
+  };
 }
