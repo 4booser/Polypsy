@@ -48,6 +48,22 @@ services:
       # на старте — и это правильно: половинчатая проверка пропускает как раз
       # ту переменную, которой не хватит потом
       JWT_SECRET: ${JWT_SECRET}
+      # А вот ключ шифрования нужен по-настоящему: через этот же контейнер
+      # заводится первый администратор, и без ключа его ФИО легло бы в базу
+      # открытым — молча и навсегда.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # Остальное — чтобы отчёт установщика говорил о настоящем окружении.
+      # Он проверяет СВОИ переменные, и без них жалуется на ненастроенную
+      # расшифровку там, где она настроена у сервера: предупреждение,
+      # которое неверно, учит не читать предупреждения.
+      RECORDINGS_DIR: /data/recordings
+      WHISPER_BIN: /usr/local/bin/whisper-cli
+      WHISPER_MODEL: /models/ggml-${WHISPER_MODEL_NAME:-small}.bin
+      INSTITUTION_NAME: ${INSTITUTION_NAME:-}
+      INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
+    volumes:
+      - recordings:/data/recordings
+      - models:/models
     depends_on:
       postgres:
         condition: service_healthy
