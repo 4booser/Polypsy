@@ -48,3 +48,68 @@ export async function assertAttemptsLeft(userId: string, surveyId: string): Prom
     badRequest("err.attemptsSpent", { allowed: grant.allowed });
   }
 }
+
+/**
+ * Списать попытку — атомарно, одним оператором.
+ *
+ * Проверка чтением (`assertAttemptsLeft` выше) неустранимо гоночная: две
+ * одновременные отправки — пациент дважды нажал «отправить», клиент
+ * повторил по таймауту — обе видят «использовано 0 из 1» и обе проходят.
+ * В базе оказываются два завершённых прохождения при одной разрешённой
+ * попытке, и второе попадает в динамику, в RCI и в выборку норм. Для
+ * методики с ограничением попыток это прямая порча измерения: человек
+ * помнит вопросы.
+ *
+ * Возвращает ложь, если попытки кончились. Вызывается ВНУТРИ транзакции
+ * сдачи — иначе списание и прохождение могут разъехаться.
+ */
+export async function consumeAttempt(
+  tx: typeof db,
+  userId: string,
+  surveyId: string,
+): Promise<boolean> {
+  const taken = await tx
+    .update(surveyAccess)
+    .set({ attemptsUsed: sql`${surveyAccess.attemptsUsed} + 1` })
+    .where(
+      and(
+        eq(surveyAccess.userId, userId),
+        eq(surveyAccess.surveyId, surveyId),
+        or(isNull(surveyAccess.expiresAt), gt(surveyAccess.expiresAt, sql`now()`)),
+        // ограничения нет — списывать нечего, но и отказывать не за что
+        or(
+          isNull(surveyAccess.attemptsAllowed),
+          sql`${surveyAccess.attemptsUsed} < ${surveyAccess.attemptsAllowed}`,
+        ),
+      ),
+    )
+    .returning({ userId: surveyAccess.userId });
+
+  if (taken.length) return true;
+
+  /*
+   * Ноль строк означает одно из трёх, и различать их надо аккуратно:
+   * «попытки кончились», «назначения нет вовсе» и «назначение просрочено».
+   *
+   * Второе и третье — не отказ. Методику можно пройти и без назначения,
+   * если доступ дан иначе, а просроченное назначение ничего не ограничивает
+   * (так же считал и прежний код: он просто не находил такой строки и
+   * пропускал проверку). Первая редакция этого не различала и отказывала
+   * при просроченном назначении — то есть чинила гонку, ломая обычный путь.
+   *
+   * Гонки здесь уже нет: решение принято оператором выше, это только
+   * объяснение нуля строк.
+   */
+  const [live] = await tx
+    .select({ used: surveyAccess.attemptsUsed, allowed: surveyAccess.attemptsAllowed })
+    .from(surveyAccess)
+    .where(
+      and(
+        eq(surveyAccess.userId, userId),
+        eq(surveyAccess.surveyId, surveyId),
+        or(isNull(surveyAccess.expiresAt), gt(surveyAccess.expiresAt, sql`now()`)),
+      ),
+    )
+    .limit(1);
+  return !live || live.allowed === null;
+}

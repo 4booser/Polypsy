@@ -339,3 +339,56 @@ describe("триггеры неизменяемости", () => {
     );
   });
 });
+
+describe("списание попытки", () => {
+  test("две одновременные отправки не тратят одну попытку дважды", async () => {
+    /*
+     * Проверка «сколько прохождений уже есть» неустранимо гоночная: две
+     * отправки — пациент дважды нажал «отправить», клиент повторил по
+     * таймауту — обе видят «использовано 0 из 1» и обе проходят. В базе
+     * оказываются два завершённых прохождения при одной разрешённой
+     * попытке, и второе попадает в динамику, в RCI и в выборку норм. Для
+     * методики с ограничением это прямая порча измерения: человек помнит
+     * вопросы.
+     *
+     * Гонку в этом стенде не воспроизвести — драйвер сериализует запросы, —
+     * поэтому проверяется то, чем она чинится: списание однократно.
+     */
+    const { consumeAttempt } = await import("../src/lib/attempts");
+    const { surveyAccess } = await import("../src/db/schema");
+    const person = await makeUser("user", `att-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: person.id,
+      grantedBy: root.id,
+      attemptsAllowed: 1,
+    } as never);
+
+    expect(await consumeAttempt(db, person.id, surveyInA), "первая попытка").toBe(true);
+    expect(
+      await consumeAttempt(db, person.id, surveyInA),
+      "вторая отправка получила попытку, которой нет",
+    ).toBe(false);
+  });
+
+  test("просроченное назначение ничего не ограничивает", async () => {
+    /*
+     * Просроченное назначение — не отказ, а отсутствие ограничения: так
+     * считал и прежний код. Первая редакция списания этого не различала и
+     * отказывала — то есть чинила гонку, ломая обычный путь.
+     */
+    const { consumeAttempt } = await import("../src/lib/attempts");
+    const { surveyAccess } = await import("../src/db/schema");
+    const person = await makeUser("user", `att-old-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: person.id,
+      grantedBy: root.id,
+      attemptsAllowed: 1,
+      expiresAt: new Date(Date.now() - 86_400_000).toISOString(),
+    } as never);
+
+    expect(await consumeAttempt(db, person.id, surveyInA)).toBe(true);
+    expect(await consumeAttempt(db, person.id, surveyInA)).toBe(true);
+  });
+});

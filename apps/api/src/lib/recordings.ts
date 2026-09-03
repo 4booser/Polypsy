@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { visitRecordings } from "../db/schema";
 import { env } from "../env";
@@ -136,17 +136,32 @@ export async function transcribeNext(): Promise<boolean> {
   const engine = transcriber ?? localWhisper();
   if (!engine) return false;
 
-  const [row] = await db
-    .select()
-    .from(visitRecordings)
-    .where(eq(visitRecordings.status, "uploaded"))
-    .limit(1);
-  if (!row || !row.audioPath) return false;
-
-  await db
-    .update(visitRecordings)
-    .set({ status: "transcribing" })
-    .where(eq(visitRecordings.id, row.id));
+  /*
+   * Запись забирается одним оператором, а не «выбрать, потом пометить».
+   *
+   * Два действия порознь означают, что второй воркер видит ту же строку
+   * ещё не помеченной и берётся за неё тоже: расшифровка идёт двадцать
+   * минут, всё это время его UPDATE ждёт на строчном замке, а потом
+   * перезаписывает уже готовый результат — двойная нагрузка на процессор и
+   * затёртая стенограмма.
+   *
+   * `for update skip locked` вдобавок пропускает занятые строки вместо
+   * ожидания, поэтому второй воркер сразу берёт следующую.
+   */
+  const [claimed] = await db.execute<{ id: string; audio_path: string | null }>(sql`
+    update visit_recordings
+       set status = 'transcribing'
+     where id = (
+       select id from visit_recordings
+        where status = 'uploaded'
+        order by created_at
+        for update skip locked
+        limit 1
+     )
+    returning id, audio_path
+  `);
+  if (!claimed?.audio_path) return false;
+  const row = { id: String(claimed.id), audioPath: String(claimed.audio_path) };
 
   try {
     const audio = await readAudio(row.audioPath);
