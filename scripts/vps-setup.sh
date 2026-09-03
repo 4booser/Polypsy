@@ -25,10 +25,26 @@ die() { printf '\n\033[31m%s\033[0m\n\n' "$*" >&2; exit 1; }
 # ── 1. Docker ────────────────────────────────────────────────────────────────
 if ! command -v docker >/dev/null 2>&1; then
   say "Ставлю Docker…"
-  curl -fsSL https://get.docker.com | sh
+  # Скрипт get.docker.com покрывает Debian, Ubuntu, RHEL и родственников, но
+  # не Arch: там он отвечает «Unsupported distribution» и выходит. А дешёвые
+  # VPS нередко раздают именно Arch, и упереться в это в середине установки —
+  # значит выяснять причину вместо развёртывания.
+  if command -v pacman >/dev/null 2>&1; then
+    pacman -Sy --noconfirm --needed docker docker-compose git
+    systemctl enable --now docker
+  elif command -v apt-get >/dev/null 2>&1 || command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable --now docker 2>/dev/null || true
+  else
+    die "Не знаю, как поставить Docker в этой системе. Поставьте его сами и запустите скрипт снова."
+  fi
 else
   say "Docker уже стоит: $(docker --version)"
 fi
+
+# Ждём сокет: systemctl enable --now возвращается раньше, чем демон готов
+for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+docker info >/dev/null 2>&1 || die "Демон Docker не поднялся: systemctl status docker"
 
 docker compose version >/dev/null 2>&1 || die "Нужен docker compose v2 (плагин compose)."
 
