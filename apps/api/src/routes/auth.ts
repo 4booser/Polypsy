@@ -459,9 +459,49 @@ const pending = new Map<string, { verifier: string; at: number; linkUserId?: str
  */
 function rememberState(verifier: string, linkUserId?: string): string {
   const state = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
+  /*
+   * Просроченное убирается, и размер ограничен.
+   *
+   * Маршрут начала входа открыт без аутентификации, а полный проход по
+   * карте на каждой вставке делает расход процессора квадратичным от
+   * частоты запросов. Потолок превращает поток запросов в вытеснение
+   * старых записей вместо неограниченного роста.
+   */
   for (const [key, value] of pending) if (Date.now() - value.at > 600_000) pending.delete(key);
+  while (pending.size >= 5000) pending.delete(pending.keys().next().value as string);
   pending.set(state, { verifier, at: Date.now(), linkUserId });
   return state;
+}
+
+/**
+ * Cookie, привязывающая начатый вход к этому браузеру.
+ *
+ * Без неё `state` доказывает только, что мы его когда-то выдавали, — а
+ * выдаём мы его кому угодно: маршрут начала входа открыт. Злоумышленник мог
+ * получить свой `state` и `code`, не давая им дойти до сервера, и привести
+ * сотрудника по этому адресу: сервер выдал бы пару для ЕГО учётной записи,
+ * а консоль молча её приняла бы. Сотрудник продолжал бы работать, будучи
+ * залогинен в чужую запись, и заметки с заключениями уходили бы туда, куда
+ * у злоумышленника есть доступ.
+ *
+ * HttpOnly и SameSite=Lax: cookie не читается скриптом и не уезжает с
+ * чужого сайта, но переживает возврат от Google (переход верхнего уровня).
+ */
+const STATE_COOKIE = "quizzy_oauth_state";
+
+function setStateCookie(c: Context, state: string): void {
+  const secure = (env.consoleUrl ?? "").startsWith("https") ? "; Secure" : "";
+  c.header(
+    "Set-Cookie",
+    `${STATE_COOKIE}=${state}; Path=/api/auth/google; Max-Age=600; HttpOnly; SameSite=Lax${secure}`,
+    { append: true },
+  );
+}
+
+function stateCookieOf(c: Context): string | null {
+  const raw = c.req.header("Cookie") ?? "";
+  const found = raw.split(";").map((x) => x.trim().split("="));
+  return found.find(([k]) => k === STATE_COOKIE)?.[1] ?? null;
 }
 
 async function challengeOf(verifier: string): Promise<string> {
@@ -507,6 +547,7 @@ authRoutes.get("/google/start", async (c) => {
   if (!googleEnabled()) notFound("err.googleDisabled");
   const verifier = newVerifier();
   const state = rememberState(verifier);
+  setStateCookie(c, state);
   return c.redirect(authorizeUrl(state, await challengeOf(verifier)));
 });
 
@@ -536,6 +577,7 @@ authRoutes.post("/google/link", requireAuth, async (c) => {
   if (user.anonymous) badRequest("err.googleAnonymous");
   const verifier = newVerifier();
   const state = rememberState(verifier, user.id);
+  setStateCookie(c, state);
   return c.json({ url: authorizeUrl(state, await challengeOf(verifier)) });
 });
 
@@ -558,7 +600,12 @@ authRoutes.get("/google/callback", async (c) => {
   const state = c.req.query("state");
   const saved = state ? pending.get(state) : undefined;
   if (state) pending.delete(state);
-  if (!code || !saved) unauthorized("err.googleState");
+  /*
+   * Состояние должно совпасть и с выданным нами, и с тем, что лежит в
+   * cookie этого браузера. Первое доказывает, что вход начинали мы; второе
+   * — что начинал его ЭТОТ человек, а не тот, кто привёл его по ссылке.
+   */
+  if (!code || !saved || stateCookieOf(c) !== state) unauthorized("err.googleState");
 
   let identity: Awaited<ReturnType<typeof exchangeCode>>;
   try {
