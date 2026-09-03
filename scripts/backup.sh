@@ -25,10 +25,23 @@ dest="$BACKUP_DIR/$kind"
 mkdir -p "$dest"
 out="$dest/quizzy_${stamp}.dump.zst"
 
+# Клиентские утилиты берутся той же версии, что и сервер.
+#
+# PG_EXEC — префикс запуска. Пусто: pg_dump с хоста. В развёртывании через
+# Docker сюда ставится «docker compose exec -T postgres», и тогда дамп
+# снимает тот же PostgreSQL, который хранит данные.
+#
+# Это не аккуратность ради аккуратности. На сервере оказался pg_dump 18 при
+# базе 16 — сочетание неподдерживаемое: дамп получается, но несёт
+# «SET transaction_timeout», которого шестнадцатая версия не знает, и
+# восстановление идёт с ошибками. Заметно это только при восстановлении,
+# то есть в тот единственный момент, когда бэкап и нужен.
+PG_EXEC="${PG_EXEC:-}"
+
 # custom-формат pg_dump: селективное восстановление и параллельный restore
 tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
-pg_dump --format=custom --compress=0 "$DATABASE_URL" > "$tmp"
+$PG_EXEC pg_dump --format=custom --compress=0 "$DATABASE_URL" > "$tmp"
 
 if command -v age >/dev/null; then
   zstd -q -c "$tmp" | age -e -p > "$out.age" <<< "$BACKUP_PASSPHRASE" 2>/dev/null \
