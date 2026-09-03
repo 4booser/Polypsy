@@ -273,3 +273,71 @@ describe("удаление", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("запись ведёт специалист, а не пациент", () => {
+  test("пациент не может начать запись", async () => {
+    /*
+     * Доступ к маршрутам записи даёт общая проверка «сторона приёма», и она
+     * пускает обоих — это правильно для согласия и остановки. Но начинать
+     * запись вправе только тот, кто ведёт приём.
+     */
+    const { id, patient } = await visit("startby");
+    await api(`/api/recordings/${id}/consent`, patient.token, { method: "POST" });
+
+    const res = await api(`/api/recordings/${id}/start`, patient.token, { method: "POST" });
+    expect(res.status).toBe(403);
+  });
+
+  test("пациент не может подложить своё аудио", async () => {
+    /*
+     * Главное здесь. Без проверки пациент начинал запись, затем отправлял
+     * «остановку» со своим файлом — и подготовленная им запись шифровалась,
+     * расшифровывалась и показывалась специалисту как стенограмма ЭТОГО
+     * приёма. Подделка клинической записи о разговоре, которого не было.
+     *
+     * Остановку без файла пациенту оставляем: прекратить запись разговора о
+     * себе он вправе в любой момент.
+     */
+    const { id, patient, specialist } = await visit("uploadby");
+    await api(`/api/recordings/${id}/consent`, patient.token, { method: "POST" });
+    await api(`/api/recordings/${id}/start`, specialist.token, { method: "POST" });
+
+    const form = new FormData();
+    form.append("audio", new File([new Uint8Array(64)], "fake.wav", { type: "audio/wav" }));
+    const res = await app.request(`/api/recordings/${id}/stop`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${patient.token}` },
+      body: form,
+    });
+    expect(res.status, "пациент передал аудио как стенограмму приёма").toBe(403);
+
+    // а остановить без файла — по-прежнему может
+    const stopped = await api(`/api/recordings/${id}/stop`, patient.token, { method: "POST" });
+    expect(stopped.status).toBe(200);
+  });
+
+  test("удаление записи уносит и стенограмму", async () => {
+    /*
+     * Раньше обнулялся только файл. Расшифровка идёт минутами, и текст мог
+     * лечь в базу уже после просьбы удалить — оставаясь там навсегда при
+     * надписи «удалена». Стенограмма — тот же разговор, только буквами.
+     */
+    const { id, patient, specialist } = await visit("discard");
+    await api(`/api/recordings/${id}/consent`, patient.token, { method: "POST" });
+    await api(`/api/recordings/${id}/start`, specialist.token, { method: "POST" });
+
+    const { visitRecordings } = await import("../src/db/schema");
+    await db
+      .update(visitRecordings)
+      .set({ transcriptEnc: "нечто", status: "uploaded" })
+      .where(eq(visitRecordings.appointmentId, id));
+
+    const res = await api(`/api/recordings/${id}/discard`, patient.token, { method: "POST" });
+    expect(res.status).toBe(200);
+
+    const row = await db.query.visitRecordings.findFirst({
+      where: eq(visitRecordings.appointmentId, id),
+    });
+    expect(row?.transcriptEnc, "стенограмма пережила удаление записи").toBeNull();
+  });
+});

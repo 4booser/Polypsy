@@ -6,7 +6,7 @@ import { responses, responseScores, scales, surveys, users } from "../db/schema"
 import { audit } from "../lib/audit";
 import { badRequest, parseQuery } from "../lib/http";
 import { surveyScopeFilter } from "../lib/scope";
-import { SMALL_CELL_FLOOR, suppress } from "../lib/privacy";
+import { SMALL_CELL_FLOOR, cell, suppress } from "../lib/privacy";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
 import { queryDate } from "@quizzy/shared";
@@ -154,10 +154,8 @@ unitReportRoutes.get("/", async (c) => {
         const n = s.counts[sev] ?? 0;
         return {
           severity: sev,
-          // подавляем маленькую ячейку, а не всю строку: доля по остальным
-          // остаётся полезной, а по одному человеку его не вычислят
-          count: suppress(n),
-          percent: Math.round((n / s.total) * 100),
+          // число и доля подавляются вместе — см. cell() в lib/privacy.ts
+          ...cell(n, s.total),
         };
       }),
     }))

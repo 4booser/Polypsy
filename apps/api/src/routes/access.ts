@@ -6,7 +6,7 @@ import { surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertSurveyAccess, assertSurveysInUse, surveyInUse } from "../lib/scope";
+import { accessibleGroupIds, accessiblePatientIds, assertSurveyAccess, assertSurveysInUse, surveyInUse } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const accessRoutes = new Hono<AppEnv>();
@@ -107,6 +107,22 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
       },
     });
 
+  /*
+   * Отмечаем, был ли человек в зоне видимости ДО выдачи.
+   *
+   * Выдача методики — штатный способ, которым новый самозаписавшийся
+   * пациент попадает в зону специалиста, и запрещать её нельзя: иначе
+   * назначить методику новому человеку станет невозможно вовсе. Но у
+   * этого есть оборотная сторона: зная идентификатор чужого пациента,
+   * сотрудник может выписать себе доступ к его карте — и сегодня это
+   * неотличимо от обычной работы.
+   *
+   * Отличать теперь можно. Расширение собственной зоны — событие журнала
+   * с отдельной пометкой, а не строка, теряющаяся среди сотен назначений.
+   */
+  const seenBefore = await accessiblePatientIds(c.get("user"));
+  const wasOutside = seenBefore !== null && !seenBefore.has(input.userId);
+
   await audit(c, {
     action: "access.grant",
     resourceType: "survey",
@@ -116,6 +132,12 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
       patient: target.email,
       expiresAt: input.expiresAt ?? null,
       attemptsAllowed: input.attemptsAllowed,
+      /*
+       * Истина здесь означает: сотрудник получил доступ к карте человека,
+       * которого до этого не видел. Само по себе законно (новый пациент),
+       * но именно так выглядит и восстановление отобранного доступа.
+       */
+      ...(wasOutside ? { widenedOwnScope: true } : {}),
     },
   });
 

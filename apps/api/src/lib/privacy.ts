@@ -25,3 +25,26 @@ export function suppress(count: number): number | null {
 export function canBreakDown(total: number): boolean {
   return total >= SMALL_CELL_FLOOR;
 }
+
+/**
+ * Ячейка отчёта: число и его доля подавляются вместе.
+ *
+ * Отдельная функция, потому что порознь это правило уже нарушалось дважды —
+ * и оба раза одинаково: число подавляли, а долю, посчитанную из
+ * НЕподавленного числа, отдавали рядом со знаменателем. Восстановить
+ * скрытое умножением может кто угодно: n = percent × total / 100.
+ * Подразделение с двадцатью замерами и одним тяжёлым по шкале
+ * суицидального риска отдавало «count: null, percent: 5, total: 20» —
+ * единственный человек вычислялся точно.
+ *
+ * Пока доля считалась отдельным выражением рядом, ничто не мешало забыть
+ * про неё в третий раз. Здесь забыть нельзя: она возвращается вместе с
+ * числом или не возвращается вовсе.
+ */
+export function cell(count: number, total: number): { count: number | null; percent: number | null } {
+  const shown = suppress(count);
+  return {
+    count: shown,
+    percent: shown === null || total <= 0 ? null : Math.round((count / total) * 100),
+  };
+}

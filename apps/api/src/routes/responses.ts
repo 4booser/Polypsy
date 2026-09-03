@@ -528,6 +528,9 @@ async function withScores(
       scaleCode: scaleById.get(s.scaleId)?.code ?? "",
       scaleTitle: t(scaleById.get(s.scaleId)?.title as never),
       kind: "clinical",
+      // из сохранённого, а не выведенное задним числом: пол и нормы могли
+      // измениться с момента подсчёта
+      normalized: s.normalized,
       correctedScore: s.rawScore,
       value: s.value,
       normalization: s.normalization,
