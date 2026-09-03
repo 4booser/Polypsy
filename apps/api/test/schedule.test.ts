@@ -339,6 +339,102 @@ describe("генерация", () => {
     ]);
   });
 
+  test("слот с приёмом не удаляется, а помечается «вне расписания»", async () => {
+    /*
+     * У appointments.slot_id стоит on delete cascade: удаление слота уносит
+     * приём. Занятость читалась отдельным запросом ДО удаления, и в окно
+     * между чтением и удалением пациент успевал записаться — приём исчезал
+     * молча, без строки в журнале и без уведомления, при том что пациент
+     * видел «вы записаны».
+     *
+     * Само окно снаружи не воспроизвести — оно живёт внутри одного вызова.
+     * Поэтому здесь проверяется последовательный случай, а окно закрыто
+     * ключом базы: `on delete restrict` не даст удалить слот с приёмом,
+     * чем бы гонка ни кончилась. Отдельная проверка на это — ниже.
+     */
+    const person = await makeUser("admin", `sched-race-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values({ userId: person.id, departmentId });
+    await db.insert(scheduleTemplates).values({
+      id: crypto.randomUUID(),
+      specialistId: person.id,
+      weekday: 3,
+      startsAt: "09:00",
+      endsAt: "11:00",
+      slotMinutes: 60,
+      kind: "primary",
+      capacity: 1,
+    });
+    await syncSlots(person.id, 2);
+
+    const [slot] = await db
+      .select()
+      .from(slots)
+      .where(eq(slots.specialistId, person.id))
+      .limit(1);
+    expect(slot, "слоты не сгенерировались").toBeTruthy();
+
+    // расписание сужается: слот попадает в удаляемые
+    await db.delete(scheduleTemplates).where(eq(scheduleTemplates.specialistId, person.id));
+
+    // и ровно в этот момент на него записываются
+    const patient = await makeUser("user", `sched-race-p-${crypto.randomUUID()}@test`);
+    await db.insert(appointments).values({
+      id: crypto.randomUUID(),
+      slotId: slot!.id,
+      patientId: patient.id,
+      specialistId: person.id,
+      kind: "primary",
+      status: "booked",
+      bookedBy: patient.id,
+    });
+
+    await syncSlots(person.id, 2);
+
+    const kept = await db.select().from(slots).where(eq(slots.id, slot!.id));
+    expect(kept.length, "слот с приёмом удалён — приём уничтожен каскадом").toBe(1);
+    expect(kept[0]!.offSchedule, "уцелевший слот не помечен «вне расписания»").toBe(true);
+
+    const alive = await db.select().from(appointments).where(eq(appointments.slotId, slot!.id));
+    expect(alive.length, "приём исчез вместе со слотом").toBe(1);
+  });
+
+  test("база не даёт удалить слот с приёмом", async () => {
+    /*
+     * Последний рубеж, и единственный, который не зависит от порядка
+     * действий в коде. Раньше здесь стоял каскад: удаление слота молча
+     * уносило приём — без строки в журнале, без уведомления, при том что
+     * пациент видел «вы записаны».
+     */
+    const doc = await makeUser("admin", `sched-fk-${crypto.randomUUID()}@test`);
+    const patient = await makeUser("user", `sched-fk-p-${crypto.randomUUID()}@test`);
+    const slotId = crypto.randomUUID();
+    await db.insert(slots).values({
+      id: slotId,
+      departmentId,
+      specialistId: doc.id,
+      startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+      endsAt: new Date(Date.now() + 90_000_000).toISOString(),
+      kind: "primary",
+    });
+    await db.insert(appointments).values({
+      id: crypto.randomUUID(),
+      slotId,
+      patientId: patient.id,
+      specialistId: doc.id,
+      kind: "primary",
+      status: "booked",
+      bookedBy: patient.id,
+    });
+
+    let refused = false;
+    try {
+      await db.delete(slots).where(eq(slots.id, slotId));
+    } catch {
+      refused = true;
+    }
+    expect(refused, "база позволила удалить слот вместе с приёмом").toBe(true);
+  });
+
   test("специалиста без профиля генерация не трогает", async () => {
     const stranger = await makeUser("admin", `sched-x-${crypto.randomUUID()}@test`);
     expect(await syncSlots(stranger.id, 2)).toEqual({ added: 0, removed: 0, flagged: 0 });
