@@ -13,7 +13,7 @@ import { systemContext } from "../db/context";
 import { responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { hashPassword, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
-import { issuePair, revokeAllFor, revokeByToken, rotateRefresh } from "../lib/refresh";
+import { issuePair, revokeAllFor, revokeByToken, rotateRefresh, type IssuedPair } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { badRequest, conflict, notFound, parseBody, unauthorized } from "../lib/http";
 import { normalizePhone, phoneFingerprint } from "../lib/phone";
@@ -473,6 +473,33 @@ function newVerifier(): string {
   return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 }
 
+/**
+ * Одноразовая передача пары токенов консоли.
+ *
+ * Живёт тридцать секунд и обменивается ровно один раз. В памяти процесса —
+ * как и состояние входа: запись нужна на один переход браузера, и хранить
+ * её в базе значило бы копить там мусор ради секунд.
+ */
+const handoffs = new Map<string, { pair: IssuedPair; at: number }>();
+
+function handoff(pair: IssuedPair): string {
+  const code = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
+  for (const [key, value] of handoffs) if (Date.now() - value.at > 30_000) handoffs.delete(key);
+  handoffs.set(code, { pair, at: Date.now() });
+  return code;
+}
+
+/**
+ * Обмен кода на пару. Только POST: код не должен уезжать в адресе второй раз.
+ */
+authRoutes.post("/google/exchange", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { code?: string };
+  const saved = body.code ? handoffs.get(body.code) : undefined;
+  if (body.code) handoffs.delete(body.code);
+  if (!saved || Date.now() - saved.at > 30_000) unauthorized("err.googleState");
+  return c.json(saved.pair);
+});
+
 /** Настроен ли способ — консоль спрашивает, чтобы не рисовать кнопку в никуда */
 authRoutes.get("/google/status", (c) => c.json({ enabled: googleEnabled() }));
 
@@ -596,12 +623,21 @@ authRoutes.get("/google/callback", async (c) => {
 
   const pair = await issuePair(row);
   /*
-   * Пара уезжает в адресе возврата, а не в теле: сюда человек приходит
-   * переходом браузера, а не запросом из кода, и вернуть JSON некому.
-   * Консоль забирает значения из адреса и сразу его чистит.
+   * В адресе — одноразовый код, а не сама пара токенов.
+   *
+   * Прежде уезжали токены: refresh живёт тридцать дней и не привязан ни к
+   * устройству, ни к адресу. Адрес возврата попадает в историю браузера
+   * общего компьютера в кабинете, в журнал обратного прокси и в заголовок
+   * Referer первого же подзапроса — то есть кто угодно с доступом к
+   * журналам получал месячный доступ к учётной записи специалиста. Чистка
+   * адреса на клиенте от этого не спасает: она случается позже, чем адрес
+   * отдан браузеру.
+   *
+   * Код живёт тридцать секунд и обменивается один раз. Даже попав в журнал,
+   * он бесполезен: к моменту, когда журнал прочтут, его уже нет.
    */
+  const handoffCode = handoff(pair);
   const back = new URL(`${env.consoleUrl || ""}/auth/google`, "http://localhost");
-  back.searchParams.set("token", pair.token);
-  back.searchParams.set("refresh", pair.refreshToken);
+  back.searchParams.set("code", handoffCode);
   return c.redirect(env.consoleUrl ? back.toString() : `${back.pathname}${back.search}`);
 });
