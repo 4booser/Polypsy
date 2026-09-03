@@ -336,15 +336,22 @@ const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Pag
 for (const screen of SCREENS) {
   test(`экран не разъехался: ${screen.name}`, async ({ page }, testInfo) => {
     /*
-     * Запись — только когда эталоны обновляют намеренно или когда их ещё
-     * нет. Сравнение с «none» было ошибкой: по умолчанию Playwright ставит
-     * «missing», и тест каждый раз перезаписывал ответы живыми — то есть
-     * снова снимал экран с тем, что натворили предыдущие сценарии, ради
-     * избавления от чего всё и делалось.
+     * Ответы записываются, только если их ещё нет. `--update-snapshots`
+     * обновляет картинки, но НЕ данные.
+     *
+     * Данные — это вход, картинка — результат. Пока обновление картинок
+     * заодно перезаписывало и данные, два набора эталонов (macOS у
+     * разработчика, Linux в CI) затирали данные друг у друга: снятые на
+     * одной системе картинки переставали сходиться, потому что под ними
+     * менялись идентификаторы и даты. Каждая система по очереди «чинила»
+     * себя и ломала соседа.
+     *
+     * Обновить данные теперь — отдельное осознанное действие: удалить
+     * файл в `visual.e2e.ts-snapshots/api/` и снять эталоны заново на
+     * обеих системах.
      */
-    const mode = testInfo.config.updateSnapshots;
-    const recording =
-      mode === "all" || mode === "changed" || !existsSync(`${API_DIR}/${screen.name}.json`);
+    const recording = !existsSync(`${API_DIR}/${screen.name}.json`);
+    void testInfo;
     await page.addInitScript(() => {
       localStorage.setItem("quizzy.theme", "dark");
     });

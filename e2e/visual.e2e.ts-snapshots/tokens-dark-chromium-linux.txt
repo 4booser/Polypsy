@@ -1,0 +1,13 @@
+--bg: #070d0f
+--surface: #0e1518
+--surface-2: #131c20
+--border: #203036
+--text: #eef4f4
+--muted: #8fa8ad
+--accent: #ffb020
+--primary: #5fd3d8
+--sev-none: #4fa97a
+--sev-mild: #d0a72a
+--sev-moderate: #e0813f
+--sev-severe: #e45c5c
+--focus: #ffb020
