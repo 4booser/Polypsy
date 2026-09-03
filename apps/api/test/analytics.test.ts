@@ -451,7 +451,21 @@ describe("витрина фактов и фасеты", () => {
     for (const scale of res.body.scales) {
       for (const s of scale.strata) {
         expect(s.n).toBeGreaterThanOrEqual(5);
-        expect(s.riskShare).toBeGreaterThanOrEqual(0);
+        /*
+         * Доля риска — либо число, либо прочерк, и прочерк не оплошность.
+         *
+         * Порог раньше применялся к размеру страты, но не к числу людей в
+         * риске внутри неё: страта из пяти с одним в риске отдавала
+         * riskShare 20, и этот один вычислялся точно — n × share / 100.
+         * Скрывается и обратный край: «четверо из пяти» так же однозначно
+         * называет пятого.
+         */
+        if (s.riskShare !== null) {
+          expect(s.riskShare).toBeGreaterThanOrEqual(0);
+          const inRisk = Math.round((s.riskShare * s.n) / 100);
+          expect(inRisk, "доля показана, а по ней восстанавливается один человек").toBeGreaterThanOrEqual(5);
+          expect(s.n - inRisk, "доля показана, а по ней восстанавливается один человек").toBeGreaterThanOrEqual(5);
+        }
       }
     }
   });

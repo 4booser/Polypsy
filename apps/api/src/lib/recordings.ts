@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { visitRecordings } from "../db/schema";
 import { env } from "../env";
@@ -152,7 +152,15 @@ export async function transcribeNext(): Promise<boolean> {
     const audio = await readAudio(row.audioPath);
     const { encryptField } = await import("./crypto");
     const text = await engine.run(audio, "uk");
-    await db
+    /*
+     * Пишем только если запись всё ещё расшифровывается.
+     *
+     * Расшифровка идёт минутами, и за это время человек может попросить её
+     * удалить. Без условия в самом UPDATE текст разговора ложился бы в базу
+     * ПОСЛЕ просьбы удалить — и оставался там, потому что удаление уже
+     * отработало.
+     */
+    const written = await db
       .update(visitRecordings)
       .set({
         status: "done",
@@ -160,7 +168,12 @@ export async function transcribeNext(): Promise<boolean> {
         transcriptEngine: engine.name,
         transcriptAt: new Date().toISOString(),
       })
-      .where(eq(visitRecordings.id, row.id));
+      .where(and(eq(visitRecordings.id, row.id), eq(visitRecordings.status, "transcribing")))
+      .returning({ id: visitRecordings.id });
+    if (!written.length) {
+      log.info("recording.transcribe_discarded", { id: row.id });
+      return true;
+    }
     log.info("recording.transcribed", { id: row.id, chars: text.length });
     return true;
   } catch (error) {

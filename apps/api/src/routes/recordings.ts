@@ -85,7 +85,12 @@ recordingRoutes.get("/:appointmentId", async (c) => {
      * его запись о себе, а рабочий материал приёма, и читать её без
      * объяснений — то же, что читать черновик заключения.
      */
-    transcript: isStaff(me) ? decryptField(rec.transcriptEnc) : null,
+    /*
+     * Только у завершённой расшифровки. Прежде отдавалась при любом
+     * статусе — в том числе у записи, помеченной удалённой: гонка с
+     * расшифровщиком могла дописать текст уже после просьбы удалить.
+     */
+    transcript: isStaff(me) && rec.status === "done" ? decryptField(rec.transcriptEnc) : null,
     transcriptEngine: rec.transcriptEngine,
     failure: rec.failure,
     /*
@@ -159,6 +164,15 @@ recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
 recordingRoutes.post("/:appointmentId/start", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
   const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
+  /*
+   * Начинает запись только специалист.
+   *
+   * Раньше проверки не было: доступ давала общая `visitOf`, пускающая обе
+   * стороны приёма. Комментарий говорил «пишет специалист», код этого не
+   * требовал — и пациент мог начать запись сам, а затем передать любой
+   * файл (см. остановку ниже).
+   */
+  if (c.get("user").id !== visit.specialistId) forbidden("err.recordingSpecialistOnly");
 
   /*
    * Без согласия запись не начинается, и проверяет это сервер.
@@ -200,6 +214,20 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
 
   const form = await c.req.formData().catch(() => null);
   const file = form?.get("audio");
+
+  /*
+   * Файл принимается только от специалиста.
+   *
+   * Остановить запись вправе обе стороны — это разговор двоих, и пациент
+   * должен иметь возможность его прекратить. Но передать аудио — другое
+   * действие: без этой проверки пациент вызывал `/start`, затем `/stop` со
+   * своим файлом, и подготовленная им запись шифровалась, расшифровывалась
+   * и показывалась специалисту как стенограмма ЭТОГО приёма. То есть
+   * подделка клинической записи о разговоре, которого не было.
+   */
+  if (file instanceof File && file.size > 0 && me.id !== visit.specialistId) {
+    forbidden("err.recordingSpecialistOnly");
+  }
 
   if (file instanceof File && file.size > 0) {
     /*
@@ -265,6 +293,18 @@ recordingRoutes.post("/:appointmentId/discard", async (c) => {
       status: "discarded",
       audioPath: null,
       audioBytes: null,
+      /*
+       * Стенограмма стирается вместе с аудио.
+       *
+       * Раньше обнулялся только файл. Расшифровка идёт минутами, и если
+       * она успела записать текст (или дописала его сразу после), в базе
+       * оставался разговор целиком — при том, что человек попросил запись
+       * удалить и на экране написано «удалена». Стенограмма — это тот же
+       * разговор, только буквами.
+       */
+      transcriptEnc: null,
+      transcriptEngine: null,
+      transcriptAt: null,
       discardedAt: new Date().toISOString(),
       discardedBy: me.id,
     })

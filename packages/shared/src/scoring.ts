@@ -198,20 +198,46 @@ export function computeProfile(
     const correctedScore = corrected.get(scale.code) ?? 0;
     const maxScore = Math.round(scaleMaxScore(scale, survey.questions) * 100) / 100;
 
-    // 3. нормирование
+    /*
+     * 3. Нормирование — и отметка о том, удалось ли оно.
+     *
+     * `normalized` существует потому, что полосы интерпретации и пороги
+     * шкал достоверности заданы В ЕДИНИЦАХ НОРМИРОВКИ: T-баллах, стенах,
+     * долях. Если нормировать не вышло — нормы для этого пола нет, балл
+     * вне таблицы стенов, знаменатель нулевой, — в `value` остаётся сырой
+     * балл, и применять к нему те же полосы и пороги нельзя.
+     *
+     * Раньше применялись. Мини-мульт с неизвестным полом давал по всем
+     * одиннадцати шкалам «Низкий» и severity none: сырой балл 0–20 всегда
+     * попадает в полосу 0–44.9. А порог шкалы лжи в 70 T-баллов сырым
+     * баллом (максимум 5) не достигается никогда — шкала лжи выключалась
+     * молча. Проверено запуском: те же ответы дают T=90 и «недостоверно»
+     * при известном поле и «достоверно, норма» при неизвестном.
+     */
     let value = correctedScore;
-    if (scale.normalization === "ratio") {
+    let normalized = true;
+    if (scale.normalization === "raw") {
+      // сырой балл и есть итог — полосы заданы в тех же единицах
+    } else if (scale.normalization === "ratio") {
       const denominator = scale.ratioDenominator ?? maxScore;
-      value = denominator > 0 ? Math.round((correctedScore / denominator) * 1000) / 1000 : 0;
+      if (denominator > 0) {
+        value = Math.round((correctedScore / denominator) * 1000) / 1000;
+      } else {
+        normalized = false;
+        warnings.push(
+          `Шкала «${t(scale.title)}»: не задан знаменатель доли, показан сырой балл`,
+        );
+      }
     } else if (scale.normalization === "tscore") {
       const norm = pickNorm(scale.norms, respondent.sex, respondent.age);
-      value =
-        norm && norm.sd > 0
-          ? Math.round((50 + (10 * (correctedScore - norm.mean)) / norm.sd) * 10) / 10
-          : correctedScore;
-      if (!norm) {
+      if (norm && norm.sd > 0) {
+        value = Math.round((50 + (10 * (correctedScore - norm.mean)) / norm.sd) * 10) / 10;
+      } else {
+        normalized = false;
         warnings.push(
-          `Шкала «${t(scale.title)}»: нет нормы для этого пола и возраста, показан сырой балл`,
+          norm
+            ? `Шкала «${t(scale.title)}»: у нормы нулевое стандартное отклонение, показан сырой балл`
+            : `Шкала «${t(scale.title)}»: нет нормы для этого пола и возраста, показан сырой балл`,
         );
       }
     } else if (scale.normalization === "sten") {
@@ -225,26 +251,45 @@ export function computeProfile(
       );
       if (row) value = row.sten;
       else {
+        normalized = false;
         warnings.push(`Шкала «${t(scale.title)}»: сырой балл вне таблицы стенов`);
       }
     }
 
-    // 4. полоса подбирается по итоговому значению, а не по сырому баллу
-    const band = scale.bands.find((b) => value >= b.minScore && value <= b.maxScore) ?? null;
+    // 4. Полоса — только по нормированному значению. Ненормированное
+    //    значение не в тех единицах, в которых полосы заданы.
+    const band = normalized
+      ? (scale.bands.find((b) => value >= b.minScore && value <= b.maxScore) ?? null)
+      : null;
 
-    // 5. гейт достоверности
+    /*
+     * 5. Гейт достоверности.
+     *
+     * Если шкалу достоверности не удалось нормировать, протокол считается
+     * НЕдостоверным. Это не перестраховка: «мы не смогли проверить, честно
+     * ли заполнен бланк» и «бланк заполнен честно» — разные утверждения, и
+     * выдавать первое за второе в заключении нельзя. Заодно это создаёт
+     * давление заполнить пол и возраст, то есть чинит причину.
+     */
     let validityFailed: boolean | undefined;
     if (scale.kind === "validity" && scale.validityThreshold !== null) {
-      validityFailed =
-        scale.validityDirection === "below"
-          ? value < scale.validityThreshold
-          : value > scale.validityThreshold;
-      if (validityFailed) {
+      if (!normalized) {
         reliable = false;
         warnings.push(
-          t(scale.validityMessage) ||
-            `Шкала достоверности «${t(scale.title)}» вышла за порог ${scale.validityThreshold} — результат ненадёжен`,
+          `Шкалу достоверности «${t(scale.title)}» проверить не удалось: результат не нормирован`,
         );
+      } else {
+        validityFailed =
+          scale.validityDirection === "below"
+            ? value < scale.validityThreshold
+            : value > scale.validityThreshold;
+        if (validityFailed) {
+          reliable = false;
+          warnings.push(
+            t(scale.validityMessage) ||
+              `Шкала достоверности «${t(scale.title)}» вышла за порог ${scale.validityThreshold} — результат ненадёжен`,
+          );
+        }
       }
     }
 
@@ -256,6 +301,7 @@ export function computeProfile(
       rawScore,
       correctedScore,
       value,
+      normalized,
       normalization: scale.normalization,
       maxScore,
       percent: maxScore > 0 ? Math.round((correctedScore / maxScore) * 1000) / 10 : 0,

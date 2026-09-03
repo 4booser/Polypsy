@@ -1,3 +1,4 @@
+import { SMALL_CELL_FLOOR } from "../lib/privacy";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { facetQuery } from "@quizzy/shared";
@@ -22,7 +23,13 @@ export const facetRoutes = new Hono<AppEnv>();
 facetRoutes.use("*", requireAuth, requireStaff, requirePermission("analytics.read"));
 
 /** П-1: страта меньше пяти наружу не выходит */
-const SMALL_CELL_FLOOR = 5;
+/*
+ * Порог берётся из общего места, а не объявляется здесь заново.
+ *
+ * Своя копия числа означает, что изменить порог в одном месте и забыть о
+ * другом — вопрос времени, а расходятся такие копии молча. Ровно об этом
+ * предупреждает докстрока в lib/privacy.ts.
+ */
 
 /**
  * Стратифицированные срезы аналитики (5.1) поверх витрины фактов.
@@ -98,7 +105,20 @@ facetRoutes.get("/surveys/:id", async (c) => {
             mean: r.mean === null ? null : round(Number(r.mean), 2),
             sd: r.sd === null ? null : round(Number(r.sd), 2),
             median: r.median === null ? null : round(Number(r.median), 2),
-            riskShare: percent(Number(r.risk), Number(r.n)),
+            /*
+             * Доля риска скрывается, если по ней восстанавливается человек.
+             *
+             * Порог применялся к размеру страты, но не к числу людей в
+             * риске внутри неё: страта из пяти с одним в риске отдавала
+             * riskShare 20 — и этот один вычислялся точно. Скрывать надо и
+             * обратный край: «четверо из пяти» так же однозначно называет
+             * пятого.
+             */
+            riskShare:
+              Number(r.risk) < SMALL_CELL_FLOOR ||
+              Number(r.n) - Number(r.risk) < SMALL_CELL_FLOOR
+                ? null
+                : percent(Number(r.risk), Number(r.n)),
           })),
       };
     })

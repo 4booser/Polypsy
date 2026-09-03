@@ -142,6 +142,11 @@ export async function persistSubmission(
       respondentAgeBand: linkedUserId ? ageBand : null,
       lang: options.lang ?? null,
       /*
+       * Достоверность фиксируется вместе с прохождением, а не выводится
+       * потом: она зависит от норм и от пола, известных в этот момент.
+       */
+      reliable: profile.reliable,
+      /*
        * Источник выводится сервером, а не приходит с клиентом: клиент мог бы
        * объявить своё прохождение назначенным, и «самообращение» — само по
        * себе сведение о человеке — растворилось бы среди плановых замеров.
@@ -240,6 +245,7 @@ export async function persistSubmission(
         normalization: score.normalization,
         maxScore: score.maxScore,
         percent: score.percent,
+        normalized: score.normalized,
         bandLabel: score.band?.label ?? null,
         severity: score.band?.severity ?? null,
       });
