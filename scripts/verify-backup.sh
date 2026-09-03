@@ -15,6 +15,20 @@
 # В cron: раз в неделю, вывод — в систему оповещений.
 set -euo pipefail
 
+# Клиентские утилиты берутся той же версии, что и сервер.
+#
+# PG_EXEC — префикс запуска. Пусто: pg_dump с хоста. В развёртывании через
+# Docker сюда ставится «docker compose exec -T postgres», и тогда дамп
+# снимает тот же PostgreSQL, который хранит данные.
+#
+# Это не аккуратность ради аккуратности. На сервере оказался pg_dump 18 при
+# базе 16 — сочетание неподдерживаемое: дамп получается, но несёт
+# «SET transaction_timeout», которого шестнадцатая версия не знает, и
+# восстановление идёт с ошибками. Заметно это только при восстановлении,
+# то есть в тот единственный момент, когда бэкап и нужен.
+PG_EXEC="${PG_EXEC:-}"
+
+
 : "${DATABASE_URL:?DATABASE_URL обязателен — из него берутся хост и учётные данные}"
 : "${BACKUP_DIR:?BACKUP_DIR обязателен}"
 : "${BACKUP_PASSPHRASE:?BACKUP_PASSPHRASE обязателен}"
@@ -47,13 +61,13 @@ base_url="${DATABASE_URL%/*}"
 admin_url="$base_url/postgres"
 
 cleanup() {
-  psql "$admin_url" -q -c "DROP DATABASE IF EXISTS \"$check_db\"" >/dev/null 2>&1 || true
+  $PG_EXEC psql "$admin_url" -q -c "DROP DATABASE IF EXISTS \"$check_db\"" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-psql "$admin_url" -q -c "CREATE DATABASE \"$check_db\""
+$PG_EXEC psql "$admin_url" -q -c "CREATE DATABASE \"$check_db\""
 DATABASE_URL="$base_url/$check_db" BACKUP_PASSPHRASE="$BACKUP_PASSPHRASE" \
-  ./scripts/restore.sh "$latest" >/dev/null
+  PG_EXEC="$PG_EXEC" ./scripts/restore.sh "$latest" >/dev/null
 
 restored_url="$base_url/$check_db"
 
@@ -63,7 +77,7 @@ say_fail() { echo "ПРОВАЛ: $1"; fail=1; }
 # 1. Ключевые таблицы существуют и непусты. Пустая таблица прохождений в
 #    дампе живой системы означает, что дамп снят не с той базы.
 for table in users surveys responses audit_log; do
-  n="$(psql "$restored_url" -tAc "select count(*) from $table" 2>/dev/null || echo "нет")"
+  n="$($PG_EXEC psql "$restored_url" -tAc "select count(*) from $table" 2>/dev/null || echo "нет")"
   if [ "$n" = "нет" ]; then
     say_fail "таблицы $table нет в восстановленной базе"
   elif [ "$n" = "0" ]; then
@@ -75,8 +89,8 @@ done
 
 # 2. Миграции накатаны полностью: восстановленная база должна знать столько же
 #    миграций, сколько рабочая, иначе дамп снят со старой схемы.
-have="$(psql "$restored_url" -tAc 'select count(*) from drizzle."__drizzle_migrations"' 2>/dev/null || echo 0)"
-want="$(psql "$DATABASE_URL"  -tAc 'select count(*) from drizzle."__drizzle_migrations"' 2>/dev/null || echo 0)"
+have="$($PG_EXEC psql "$restored_url" -tAc 'select count(*) from drizzle."__drizzle_migrations"' 2>/dev/null || echo 0)"
+want="$($PG_EXEC psql "$DATABASE_URL"  -tAc 'select count(*) from drizzle."__drizzle_migrations"' 2>/dev/null || echo 0)"
 if [ "$have" != "$want" ]; then
   say_fail "миграций в бэкапе $have, в рабочей базе $want"
 else
@@ -86,7 +100,7 @@ fi
 # 3. Цепочка журнала цела. Хэш-цепочка — единственное, что доказывает, что
 #    журнал не переписан; если она рвётся в бэкапе, восстанавливать его в
 #    качестве доказательства бессмысленно.
-broken="$(psql "$restored_url" -tAc "
+broken="$($PG_EXEC psql "$restored_url" -tAc "
   with chained as (
     select seq, prev_hash, lag(entry_hash) over (order by seq) as expected
     from audit_log
