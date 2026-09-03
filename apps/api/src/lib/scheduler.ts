@@ -15,7 +15,6 @@ import { publish } from "./events";
 import { currentCrisis } from "./crisis";
 import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
-import { transcribeNext } from "./recordings";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -305,14 +304,15 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
       log.warn("clinic.no_show_sweep_failed", { error: String(error) }),
     );
     /*
-     * И расшифровываем одну запись приёма. По одной, а не пачкой:
-     * расшифровка часового приёма занимает минуты, и очередь из пяти,
-     * взятая разом, заняла бы процессор на полчаса — а рядом работает
-     * приложение, которым в это время пользуются.
+     * Расшифровка записей приёма здесь больше не идёт — она вынесена в
+     * отдельный процесс (`transcriber.ts`).
+     *
+     * Здесь она занимала процессор минутами рядом с обслуживанием запросов
+     * («консоль подтормаживает после обеда» — это и есть очередь
+     * расшифровок изнутри кабинета) и шла раз в час по одной записи: восемь
+     * приёмов за день разгребались бы восемь часов, и стенограмма первого
+     * утреннего приезжала бы к вечеру.
      */
-    void systemContext(baseDb, () => transcribeNext()).catch((error) =>
-      log.warn("recording.transcribe_tick_failed", { error: String(error) }),
-    );
   };
   tick();
   const timer = setInterval(tick, intervalMs);

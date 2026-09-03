@@ -7,7 +7,7 @@
     "dev": "vite --port 5199 --strictPort",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "bun test"
   },
   "dependencies": {
