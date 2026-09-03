@@ -570,10 +570,22 @@ export function surveyToDraft(survey: SurveyFull) {
       validityThreshold: s.validityThreshold,
       validityDirection: s.validityDirection,
       validityMessage: s.validityMessage,
-      key: s.items.flatMap((i) => {
-        const item = indexById.get(i.questionId);
-        return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
-      }),
+      /*
+       * Ключ выводится по номерам пунктов, а не в том порядке, в каком его
+       * вернула база.
+       *
+       * Для подсчёта порядок не значит ничего — ключ хранится множеством
+       * строк, — но файл методики возят между учреждениями и сравнивают:
+       * выгрузка, которая при каждом запуске переставляет строки, делает
+       * любое сравнение бессмысленным. «Изменилась методика или только
+       * порядок» — вопрос, на который человек отвечать не должен.
+       */
+      key: s.items
+        .flatMap((i) => {
+          const item = indexById.get(i.questionId);
+          return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
+        })
+        .sort((a, b) => a.item - b.item),
       corrections: s.corrections.map((x) => ({ from: x.sourceScaleCode, coefficient: x.coefficient })),
       /*
        * Нормы из пособия переносятся, нормы местной выборки — нет.
