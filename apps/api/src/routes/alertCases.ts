@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { t, type AlertCase, type AlertSignal, type Page } from "@quizzy/shared";
 import { db } from "../db";
 import { alertCases, auditLog, questions, riskAlerts, surveys, users } from "../db/schema";
@@ -47,18 +47,37 @@ const listQuery = z.object({
 });
 
 /**
- * Курсор — «время последней тревоги + идентификатор».
+ * Порядок очереди: тяжёлые впереди, дальше — свежие.
  *
- * Одного времени мало: у случаев, заведённых в одну секунду, порядок между
- * страницами разъехался бы и часть записей человек бы не увидел вовсе.
+ * Раньше сортировка делалась в приложении, уже после выборки страницы, а
+ * выбирала база по одному времени последней тревоги. То есть порядок
+ * действовал внутри страницы и только: тяжёлый случай, попавший на третью
+ * страницу, там и оставался, а очередь на первом экране выглядела
+ * упорядоченной. Тяжесть — свойство самого случая и не меняется со временем,
+ * поэтому её можно поставить в ORDER BY и в курсор.
+ *
+ * Просроченность в ключ не берётся намеренно: она зависит от текущего
+ * времени, и случай, ставший просроченным между двумя страницами, переехал
+ * бы через границу — часть записей человек не увидел бы вовсе. Она остаётся
+ * пометкой на строке.
  */
-function encodeCursor(row: { lastAlertAt: string; id: string }): string {
-  return Buffer.from(`${row.lastAlertAt}|${row.id}`).toString("base64url");
+const severityRank = sql<number>`(case when ${alertCases.severity} = 'severe' then 1 else 0 end)`;
+
+/**
+ * Курсор — «тяжесть + время последней тревоги + идентификатор».
+ *
+ * Идентификатор нужен даже при точном времени: у случаев, заведённых в одну
+ * секунду, порядок между страницами разъехался бы и часть записей человек бы
+ * не увидел вовсе.
+ */
+function encodeCursor(row: { severity: string; lastAlertAt: string; id: string }): string {
+  const rank = row.severity === "severe" ? 1 : 0;
+  return Buffer.from(`${rank}|${row.lastAlertAt}|${row.id}`).toString("base64url");
 }
-function decodeCursor(raw: string): { at: string; id: string } | null {
+function decodeCursor(raw: string): { rank: number; at: string; id: string } | null {
   try {
-    const [at, id] = Buffer.from(raw, "base64url").toString().split("|");
-    return at && id ? { at, id } : null;
+    const [rank, at, id] = Buffer.from(raw, "base64url").toString().split("|");
+    return at && id && (rank === "0" || rank === "1") ? { rank: Number(rank), at, id } : null;
   } catch {
     return null;
   }
@@ -123,11 +142,10 @@ alertCaseRoutes.get("/", async (c) => {
    */
   const cursor = q.cursor ? decodeCursor(q.cursor) : null;
   if (cursor) {
+    // сравнение тройкой целиком: по частям оно разъезжается на границах
     filters.push(
-      or(
-        lt(alertCases.lastAlertAt, cursor.at),
-        and(eq(alertCases.lastAlertAt, cursor.at), lt(alertCases.id, cursor.id)),
-      )!,
+      sql`(${severityRank}, ${alertCases.lastAlertAt}, ${alertCases.id})
+          < (${cursor.rank}, ${cursor.at}::timestamptz, ${cursor.id})`,
     );
   }
 
@@ -156,7 +174,7 @@ alertCaseRoutes.get("/", async (c) => {
     .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
     .innerJoin(users, eq(users.id, alertCases.userId))
     .where(where)
-    .orderBy(desc(alertCases.lastAlertAt), desc(alertCases.id))
+    .orderBy(desc(severityRank), desc(alertCases.lastAlertAt), desc(alertCases.id))
     .limit(overfetch);
 
   const named = rows.map((r) => ({ ...r, userName: fullNameOf(r as never) }));
@@ -242,8 +260,12 @@ alertCaseRoutes.get("/", async (c) => {
     };
   });
 
-  // просроченные первыми: их и надо разбирать раньше всех
-  items.sort((a, b) => Number(b.overdue) - Number(a.overdue) || b.lastAlertAt.localeCompare(a.lastAlertAt));
+  /*
+   * Порядок задан в ORDER BY и здесь не переставляется. Пересортировка
+   * страницы после выборки как раз и создавала видимость упорядоченной
+   * очереди: она наводила порядок среди тридцати уже выбранных случаев и
+   * ничего не могла сделать с тридцать первым.
+   */
 
   // общее число — только на первой странице: считать его на каждой лишняя работа
   let total: number | undefined;
@@ -264,7 +286,10 @@ alertCaseRoutes.get("/", async (c) => {
   const last = page[page.length - 1];
   return c.json({
     items,
-    nextCursor: hasMore && last ? encodeCursor({ lastAlertAt: last.c.lastAlertAt, id: last.c.id }) : null,
+    nextCursor:
+      hasMore && last
+        ? encodeCursor({ severity: last.c.severity, lastAlertAt: last.c.lastAlertAt, id: last.c.id })
+        : null,
     total,
   } satisfies Page<AlertCase>);
 });
