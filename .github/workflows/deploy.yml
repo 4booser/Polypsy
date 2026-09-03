@@ -85,6 +85,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      # чтобы сервер вошёл в реестр токеном этого прогона
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -99,22 +103,44 @@ jobs:
 
       # Снимок базы ДО миграций. Миграции не откатываются переключением тега:
       # схема уже изменена, и старый образ на новую схему не встанет.
+      #
+      # Через systemd, а не напрямую: там уже лежат адрес базы, каталог
+      # копий и парольная фраза. Второй список тех же значений в секретах
+      # означал бы два места, которые однажды разойдутся.
       - name: Снимок базы
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "cd ${{ secrets.VPS_PATH }} && ./scripts/backup.sh"
+            "systemctl start quizzy-backup.service"
+
+      # Вход в реестр — токеном этого прогона, а не хранимым на сервере.
+      # Постоянный токен в файле у root живёт до тех пор, пока о нём не
+      # забудут, а забывают о таких сразу.
+      - name: Вход сервера в реестр
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
 
       - name: Выкатка
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          PREFIX: ${{ env.REGISTRY }}/${{ github.repository }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" bash -s <<'REMOTE'
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "VERSION='$VERSION' PREFIX='$PREFIX' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
-          cd "${{ secrets.VPS_PATH }}"
-          export QUIZZY_VERSION="${{ needs.build.outputs.version }}"
-          echo "$QUIZZY_VERSION" > .version
+          cd "$TARGET"
+          # версия и адрес образов живут в .env.docker, а не в переменных
+          # оболочки: перезапуск сервера не должен откатывать выкатку
+          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION"; do
+            k="${kv%%=*}"
+            grep -q "^$k=" .env.docker               && sed -i "s|^$k=.*|$kv|" .env.docker               || echo "$kv" >> .env.docker
+          done
           docker compose --env-file .env.docker pull
           # provision отрабатывает до api: миграции и права роли приложения
-          docker compose --env-file .env.docker up -d --wait
+          docker compose --env-file .env.docker up -d
           docker image prune -f --filter "until=168h"
+          docker logout ghcr.io
           REMOTE
 
       # Проверяем не «контейнер поднялся», а «приложение отвечает». Поднявшийся
