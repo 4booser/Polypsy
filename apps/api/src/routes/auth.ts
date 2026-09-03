@@ -26,6 +26,15 @@ import { requireAuth, type AppEnv } from "../middleware/auth";
 
 export const authRoutes = new Hono<AppEnv>();
 
+/*
+ * Хеш, с которым сверяется пароль для несуществующего адреса.
+ *
+ * Настоящий argon2-хеш от случайной строки: совпасть с ним нельзя, а время
+ * проверки такое же, как у настоящей учётной записи. Ради этого он и нужен —
+ * чтобы по времени ответа нельзя было узнать, есть ли такой человек.
+ */
+const DUMMY_HASH = await hashPassword(crypto.randomUUID() + crypto.randomUUID());
+
 /**
  * Самостоятельная регистрация всегда создаёт обычного пользователя.
  * Роль с клиента не принимается: раздавать себе права администратора,
@@ -195,7 +204,19 @@ authRoutes.post("/login", async (c) => {
 
   const row = await db.query.users.findFirst({ where: eq(users.email, email) });
 
-  if (!row || !(await verifyPassword(input.password, row.passwordHash))) {
+  /*
+   * Пароль проверяется всегда, даже для неизвестного адреса.
+   *
+   * Короткое замыкание не вызывало argon2, когда учётной записи нет, и
+   * ответ приходил за миллисекунды вместо сотни с лишним. Тело ответа
+   * одинаковое, а время — нет: перебор списка адресов одним заведомо
+   * неверным паролем отделял существующие учётные записи от несуществующих
+   * с первой попытки, до всякой блокировки.
+   */
+  const hash = row?.passwordHash ?? DUMMY_HASH;
+  const ok = await verifyPassword(input.password, hash);
+
+  if (!row || !ok) {
     await recordFailure(email, c.req.header("X-Forwarded-For") ?? null);
     await audit(c, {
       action: "auth.login_failed",
@@ -583,6 +604,20 @@ authRoutes.post("/google/link", requireAuth, async (c) => {
 
 authRoutes.post("/google/unlink", requireAuth, async (c) => {
   const user = c.get("user");
+  /*
+   * Требуется текущий пароль — как при его смене.
+   *
+   * Отвязать Google значит снять второй ключ от учётной записи (а следом
+   * привязать свой). Это операция того же класса, что смена пароля, и
+   * угнанного получасового токена доступа для неё быть не должно
+   * достаточно.
+   */
+  const body = (await c.req.json().catch(() => ({}))) as { password?: string };
+  const row = await db.query.users.findFirst({ where: eq(users.id, user.id) });
+  if (!row || !(await verifyPassword(body.password ?? "", row.passwordHash))) {
+    unauthorized("err.invalidCredentials");
+  }
+
   await db.update(users).set({ googleSub: null }).where(eq(users.id, user.id));
   await audit(c, {
     action: "auth.google_unlinked",

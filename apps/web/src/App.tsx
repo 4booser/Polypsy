@@ -303,7 +303,13 @@ export default function App() {
                       variant="quiet"
                       size="sm"
                       className="justify-start"
-                      onClick={() => void api.googleUnlink().then(refreshUser).catch(() => {})}
+                      onClick={() => {
+                        // отвязка снимает второй ключ от учётной записи —
+                        // сервер спрашивает пароль, и спросить его надо здесь
+                        const pass = window.prompt(ut("lg.googleUnlinkAsk"));
+                        if (!pass) return;
+                        void api.googleUnlink(pass).then(refreshUser).catch(() => {});
+                      }}
                     >
                       {ut("lg.googleUnlink")}
                     </Button>

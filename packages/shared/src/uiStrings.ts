@@ -1924,6 +1924,7 @@ export const UI = {
   "lg.google": { uk: "Увійти через Google", ru: "Войти через Google" },
   "lg.googleLink": { uk: "Прив’язати Google", ru: "Привязать Google" },
   "lg.googleUnlink": { uk: "Відв’язати Google", ru: "Отвязать Google" },
+  "lg.googleUnlinkAsk": { uk: "Введіть пароль, щоб відв’язати Google", ru: "Введите пароль, чтобы отвязать Google" },
   "lg.googleLinked": { uk: "Google прив’язано", ru: "Google привязан" },
   "lg.or": { uk: "або", ru: "или" },
   "lg.googleFailed": {

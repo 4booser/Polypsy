@@ -468,7 +468,11 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   me: () => request<User>("/api/auth/me"),
-  googleUnlink: () => request<{ ok: true }>("/api/auth/google/unlink", { method: "POST" }),
+  googleUnlink: (password: string) =>
+    request<{ ok: true }>("/api/auth/google/unlink", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
   googleLinkUrl: () => request<{ url: string }>("/api/auth/google/link", { method: "POST" }),
   googleExchange: (code: string) =>
     request<{ token: string; refreshToken: string }>("/api/auth/google/exchange", {
