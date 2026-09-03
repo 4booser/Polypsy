@@ -247,7 +247,23 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           severity: risk.severity,
           at: now,
         })
-        .onConflictDoNothing();
+        /*
+         * Тяжесть повышается, а не игнорируется.
+         *
+         * Автосохранение пишет тревогу на каждом шаге. Если человек сначала
+         * отметил умеренный вариант, а потом добавил тяжёлый, вторая запись
+         * упиралась в уникальный ключ (прохождение, вопрос) и молча
+         * отбрасывалась — тревога навсегда оставалась умеренной, хотя на
+         * экране уже стоял тяжёлый ответ.
+         *
+         * Понижать нельзя: снятая галочка не отменяет того, что человек её
+         * ставил, а случай уже мог уйти в работу.
+         */
+        .onConflictDoUpdate({
+          target: [riskAlerts.responseId, riskAlerts.questionId],
+          set: { label: risk.label, severity: risk.severity, at: now },
+          setWhere: sql`${riskAlerts.severity} <> 'severe'`,
+        });
     }
   });
 

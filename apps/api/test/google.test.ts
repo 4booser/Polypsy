@@ -49,7 +49,7 @@ describe("вход через Google", () => {
       anonymous: true,
       pseudonym: "А-4821",
     });
-    const res = await api("/api/auth/google/link", coded.token);
+    const res = await api("/api/auth/google/link", coded.token, { method: "POST" });
     // 404 — способ не настроен в тестах; проверяем, что и настроенный откажет
     expect([400, 404]).toContain(res.status);
   });
@@ -96,5 +96,31 @@ describe("вход через Google", () => {
   test("список доменов пуст — пускаем любые, непуст — только свои", () => {
     // единственное, что отделяет «вошёл наш сотрудник» от «вошёл кто угодно»
     expect(domainAllowed("кто-угодно@gmail.com")).toBe(true);
+  });
+});
+
+describe("связывание достижимо из консоли", () => {
+  test("адрес отдаётся ответом, а не перенаправлением", async () => {
+    /*
+     * Маршрут закрыт requireAuth, то есть требует заголовка Authorization.
+     * Консоль хранит токен в localStorage и шлёт его заголовком — обычная
+     * ссылка такого заголовка не несёт, и переход браузером всегда получал
+     * 401. Связать учётную запись было нельзя вовсе, а значит и вход через
+     * Google не мог завершиться ничем, кроме «не привязано»: новый контур
+     * аутентификации не был проверен сквозным сценарием ни разу.
+     *
+     * Отсюда форма проверки: маршрут обязан быть POST и отвечать телом.
+     * Перенаправление сюда не годится по построению.
+     */
+    const person = await makeUser("admin", `g-link-${crypto.randomUUID()}@test`);
+
+    // GET больше не существует — именно он и был недостижим
+    const asGet = await api("/api/auth/google/link", person.token);
+    expect(asGet.status).toBe(404);
+
+    const asPost = await api("/api/auth/google/link", person.token, { method: "POST" });
+    // 404 — способ не настроен в тестах; настроенный отдал бы { url }
+    expect([200, 404]).toContain(asPost.status);
+    expect(asPost.status, "маршрут отвечает перенаправлением — консоль так не умеет").not.toBe(302);
   });
 });

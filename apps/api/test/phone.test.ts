@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { adminA, api, app, db, json, makeUser } from "./fixtures";
 import { users } from "../src/db/schema";
 import { normalizePhone, phoneFingerprint } from "../src/lib/phone";
+import { env } from "../src/env";
 
 /**
  * Телефон обязателен для всех, включая учётные записи под кодом.
@@ -194,5 +195,56 @@ describe("раскрытие учётной записи", () => {
       body: JSON.stringify({ firstName: "Уже", lastName: "Именной" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("закрытая регистрация не отвечает о существующих людях", () => {
+  test("без приглашения ответ один и тот же, чей бы номер ни прислали", async () => {
+    /*
+     * Проверки дубликатов шли ДО проверки права зарегистрироваться, и
+     * закрытая регистрация их не закрывала. Неаутентифицированный запрос с
+     * чужим номером получал три различимых ответа: «номер занят», «почта
+     * занята», «нужно приглашение». По одному номеру телефона это давало
+     * ответ на вопрос, состоит ли человек на учёте в психоневрологическом
+     * учреждении, — при том что ни войти, ни зарегистрироваться
+     * спрашивающий не мог.
+     */
+    const settled = await makeUser("user", `oracle-${crypto.randomUUID()}@test`);
+    // номер случайный: постоянный однажды пересечётся с номером из соседней
+    // проверки, и падать будет не там, где сломано
+    const tail = String(Math.floor(Math.random() * 9_000_000) + 1_000_000);
+    const phone = `+38050${tail}`;
+    await db
+      .update(users)
+      // отпечаток берётся от НОРМАЛИЗОВАННОГО номера — так же, как в маршруте;
+      // иначе он не совпадёт, и проверка пройдёт, ничего не проверив
+      .set({ phoneIndex: phoneFingerprint(normalizePhone(phone)!) })
+      .where(eq(users.id, settled.id));
+
+    const wasOpen = env.openRegistration;
+    (env as { openRegistration: boolean }).openRegistration = false;
+    try {
+      const known = await register({
+        email: `probe-${crypto.randomUUID()}@example.org`,
+        password: "secret12345",
+        firstName: "Проба",
+        lastName: "Пробин",
+        phone,
+      });
+      const unknown = await register({
+        email: `probe-${crypto.randomUUID()}@example.org`,
+        password: "secret12345",
+        firstName: "Проба",
+        lastName: "Пробин",
+        phone: `+38063${tail}`,
+      });
+
+      expect(
+        known.status,
+        "ответ на чужой номер отличается от ответа на неизвестный — это оракул",
+      ).toBe(unknown.status);
+    } finally {
+      (env as { openRegistration: boolean }).openRegistration = wasOpen;
+    }
   });
 });

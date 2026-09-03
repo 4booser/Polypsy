@@ -308,9 +308,21 @@ export default function App() {
                       {ut("lg.googleUnlink")}
                     </Button>
                   ) : (
-                    <a className="btn btn-quiet justify-start text-small" href="/api/auth/google/link">
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      className="justify-start"
+                      onClick={() =>
+                        void api
+                          .googleLinkUrl()
+                          .then((r) => {
+                            window.location.href = r.url;
+                          })
+                          .catch(() => {})
+                      }
+                    >
                       {ut("lg.googleLink")}
-                    </a>
+                    </Button>
                   )}
                 </div>
               ) : null}

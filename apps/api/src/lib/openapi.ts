@@ -99,7 +99,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/auth/google/status": { summary: "Настроен ли вход через Google", access: "public" },
   "GET /api/auth/google/start": { summary: "Начало входа через Google", access: "public" },
   "GET /api/auth/google/callback": { summary: "Возврат от Google", access: "public" },
-  "GET /api/auth/google/link": { summary: "Связать свою учётную запись с Google", access: "user" },
+  "POST /api/auth/google/link": { summary: "Адрес для связывания с Google", access: "user" },
   "POST /api/auth/google/unlink": { summary: "Отвязать Google", access: "user" },
   "POST /api/auth/logout": { summary: "Отзыв refresh-токена", access: "user" },
   "GET /api/auth/me": { summary: "Текущий пользователь", access: "user" },

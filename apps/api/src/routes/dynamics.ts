@@ -372,7 +372,18 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             percent: score.percent,
             bandLabel: score.bandLabel,
             severity: score.severity,
-            percentile: percentileOf(score.rawScore, sampleByKey.get(`${surveyId}:${scale.code}`) ?? []),
+            /*
+             * Сравниваем однородное с однородным.
+             *
+             * Выборка набрана из `score.value` — нормированных значений
+             * (стены, T-баллы, доли), а перцентиль запрашивался для
+             * `score.rawScore`. Для МЛО это сырой 0–57 против стенов 1–10:
+             * пациент со стеном 1 («крайне низкий уровень», группа риска)
+             * имел сырой балл выше любого стена в выборке и получал
+             * перцентиль около ста. Худший возможный результат
+             * показывался как лучший.
+             */
+            percentile: percentileOf(score.value, sampleByKey.get(`${surveyId}:${scale.code}`) ?? []),
           });
           byCode.set(scale.code, entry);
         }

@@ -33,7 +33,25 @@ let transporter: Transporter | null | undefined;
 
 function getTransport(): Transporter | null {
   if (transporter !== undefined) return transporter;
-  transporter = env.smtpUrl ? nodemailer.createTransport(env.smtpUrl) : null;
+  /*
+   * Таймауты обязательны, и вот почему.
+   *
+   * У nodemailer сокетный таймаут по умолчанию — десять минут, а отправка
+   * идёт внутри транзакции запроса и держит соединение из пула. Тик
+   * минутный и предыдущего не ждёт. Зависший (не отказавший, а именно
+   * зависший — обычный случай) почтовый сервер учреждения за десять минут
+   * набирает десять одновременных проходов, пул из десяти соединений
+   * кончается, и API перестаёт обслуживать запросы. Отказ почты
+   * превращался в отказ консоли и мобильного приложения целиком, включая
+   * экран приёма.
+   */
+  transporter = env.smtpUrl
+    ? nodemailer.createTransport(env.smtpUrl, {
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 20_000,
+      })
+    : null;
   return transporter;
 }
 
@@ -239,8 +257,25 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
 
 /** Минутный тик: тревога должна догонять специалиста быстро */
 export function startNotifier(intervalMs = 60_000): () => void {
+  let running = false;
   const tick = () => {
-    runNotifierOnce().catch((error) => log.error("notifier.tick_failed", { error: String(error) }));
+    /*
+     * Такты не накладываются друг на друга.
+     *
+     * `setInterval` стрелял каждую минуту независимо от того, закончился ли
+     * прошлый проход. При медленной почте это множит одновременные проходы,
+     * каждый из которых держит соединение, — и они кончаются.
+     */
+    if (running) {
+      log.warn("notifier.tick_skipped", { reason: "предыдущий проход ещё идёт" });
+      return;
+    }
+    running = true;
+    runNotifierOnce()
+      .catch((error) => log.error("notifier.tick_failed", { error: String(error) }))
+      .finally(() => {
+        running = false;
+      });
     /*
      * Напоминания о приёме — тем же тактом. Отдельного таймера не заводим:
      * повторов рассылка не боится (отсекает по ключу события), а минутный шаг
