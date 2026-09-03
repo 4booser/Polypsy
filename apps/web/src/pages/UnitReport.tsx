@@ -74,7 +74,7 @@ export default function UnitReportPage() {
       actions={data ? <Button onClick={() => window.print()}>{ut("unit.print")}</Button> : null}
     >
       {!unit ? (
-        <Empty title={ut("unit.choose")} hint={ut("unit.chooseHint")} />
+        <Empty compact title={ut("unit.choose")} hint={ut("unit.chooseHint")} />
       ) : error ? (
         <p className="text-danger">{error}</p>
       ) : !data ? (

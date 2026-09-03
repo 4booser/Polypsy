@@ -371,36 +371,6 @@ export function Empty({
   );
 }
 
-export function PageHead({
-  title,
-  sub,
-  crumbs,
-  actions,
-}: {
-  title: string;
-  sub?: ReactNode;
-  crumbs?: ReactNode;
-  actions?: ReactNode;
-}) {
-  // заголовок вкладки следует за страницей: десяток вкладок «Quizzy» неразличимы
-  useEffect(() => {
-    document.title = `${title} — Quizzy`;
-    return () => {
-      document.title = "Quizzy";
-    };
-  }, [title]);
-
-  return (
-    <div className="page-head">
-      <div>
-        {crumbs ? <div className="crumbs">{crumbs}</div> : null}
-        <h1>{title}</h1>
-        {sub ? <p className="sub">{sub}</p> : null}
-      </div>
-      {actions ? <div className="row">{actions}</div> : null}
-    </div>
-  );
-}
 
 /* ─────────── всплывающие сообщения ─────────── */
 

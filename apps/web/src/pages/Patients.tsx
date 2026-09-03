@@ -132,7 +132,7 @@ export function PatientList() {
               header: ut("patients.last"),
               sort: (r) => r.last ?? "",
               csv: (r) => r.last?.slice(0, 10) ?? "",
-              render: (r) => <span className="muted">{r.last?.slice(0, 10) ?? "—"}</span>,
+              render: (r) => <span className="muted">{r.last ? day(r.last) : "—"}</span>,
             },
           ]}
         />

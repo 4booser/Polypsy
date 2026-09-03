@@ -5,7 +5,7 @@ import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { ItemHeatmap } from "../components/ItemHeatmap";
 import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
-import { duration, day, severityColor } from "../format";
+import { dateTime, day, duration, severityColor} from "../format";
 import { Loading, OfflineBar, useAction } from "../ui";
 import { Page, Panel, Grid, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
@@ -509,7 +509,7 @@ function Responses({ surveyId }: { surveyId: string }) {
               <Fragment key={r.id}>
               <tr>
                 <td>{r.userName ?? ut("an.anonCap")}</td>
-                <td className="text-muted">{r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "—"}</td>
+                <td className="text-muted">{dateTime(r.submittedAt)}</td>
                 <td className="num">{duration(r.durationMs)}</td>
                 <td className="text-muted">{r.status}</td>
                 <td>

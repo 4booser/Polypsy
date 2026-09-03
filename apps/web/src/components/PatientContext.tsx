@@ -5,7 +5,7 @@ import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Avatar, Loading } from "../ui";
 import { Num, SectionLabel, Tag } from "../ui/primitives";
-import { severityColor } from "../format";
+import { day, severityColor} from "../format";
 
 /**
  * Кто этот человек — не уходя со списка.
@@ -59,7 +59,7 @@ export function PatientContext({ person }: { person: ContextPerson }) {
         </div>
         <div>
           <SectionLabel>{ut("patients.last")}</SectionLabel>
-          <Num className="text-section">{person.last?.slice(0, 10) ?? "—"}</Num>
+          <span className="text-section">{person.last ? day(person.last) : "—"}</span>
         </div>
       </div>
 

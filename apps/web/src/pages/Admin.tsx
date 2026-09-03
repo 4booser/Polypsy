@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useResource } from "../useResource";
 import { Devices } from "../components/Devices";
 import { useAuth } from "../auth";
-import { dateTime } from "../format";
+import { dateTime, day} from "../format";
 import { Loading, Search, useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select, SectionLabel, Tag, Textarea } from "../ui/primitives";
@@ -314,7 +314,7 @@ export function Users() {
                     <td>{ut(ROLE_KEY[u.role as keyof typeof ROLE_KEY])}</td>
                     <td className="text-muted">{u.sex === "male" ? ut("adm.male") : u.sex === "female" ? ut("adm.female") : "—"}</td>
                     <td className="text-muted">
-                      {u.createdAt.slice(0, 10)}
+                      {day(u.createdAt)}
                       {/*
                         Устройства раскрываются по требованию, а не висят в
                         таблице: это сведения о человеке, и показывать их всем
