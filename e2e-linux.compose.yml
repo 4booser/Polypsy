@@ -1,0 +1,39 @@
+# Снятие скриншотных эталонов в той же системе, в которой их проверяет CI.
+#
+# Шрифты на macOS и Linux рисуются по-разному, и один набор картинок не
+# годится для обеих систем. Playwright это учитывает — имена эталонов несут
+# платформу, — но снимать линуксовый набор надо в Linux, иначе CI краснеет
+# на первом же прогоне, и краснеет навсегда.
+#
+#   docker compose -f e2e-linux.compose.yml -p qlinux up -d
+#   docker compose -f e2e-linux.compose.yml -p qlinux exec runner bash -c \
+#     'apt-get update -qq && apt-get install -y -qq unzip && \
+#      curl -fsSL https://bun.sh/install | bash && \
+#      export PATH="/root/.bun/bin:$PATH" && bun install --frozen-lockfile && \
+#      bunx playwright test --update-snapshots'
+#   docker compose -f e2e-linux.compose.yml -p qlinux down -v
+#
+# Записанные ответы API при этом не перезаписываются: они вход, а не
+# результат, и обе системы обязаны снимать картинки с одних и тех же данных.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      retries: 20
+  runner:
+    image: mcr.microsoft.com/playwright:v1.62.1-noble
+    working_dir: /repo
+    environment:
+      E2E_DATABASE_URL: postgres://postgres@db:5432/quizzy_e2e
+      CI: "1"
+    volumes:
+      - .:/repo
+    depends_on:
+      db: { condition: service_healthy }
+    command: ["sleep", "infinity"]
