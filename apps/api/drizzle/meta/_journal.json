@@ -463,6 +463,13 @@
       "when": 1788470702685,
       "tag": "0065_attempts_used",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1788472735043,
+      "tag": "0066_one_open_episode",
+      "breakpoints": true
     }
   ]
 }

@@ -63,7 +63,16 @@ describe("вход через Google", () => {
     const person = await makeUser("admin", `g-unlink-${crypto.randomUUID()}@test`);
     await db.update(users).set({ googleSub: "sub-123" }).where(eq(users.id, person.id));
 
-    const res = await api("/api/auth/google/unlink", person.token, { method: "POST" });
+    const withoutPassword = await api("/api/auth/google/unlink", person.token, { method: "POST" });
+    expect(
+      withoutPassword.status,
+      "второй ключ от учётной записи снимается угнанным токеном доступа",
+    ).toBe(401);
+
+    const res = await api("/api/auth/google/unlink", person.token, {
+      method: "POST",
+      body: JSON.stringify({ password: "secret12345" }),
+    });
     expect(res.status).toBe(200);
 
     const after = await db.query.users.findFirst({ where: eq(users.id, person.id) });

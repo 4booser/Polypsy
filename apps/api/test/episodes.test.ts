@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { adminA, api, app, db, makeUser, submitSurvey, surveyInA } from "./fixtures";
 import { appointments, departments, episodes, slots, specialistProfiles } from "../src/db/schema";
 
@@ -352,5 +352,67 @@ describe("амбулаторная карта", () => {
     await submitSurvey(surveyInA, coded.token);
     const res = await api(`/api/reports/patients/${coded.id}/chart`, adminA.token);
     expect(res.status).toBe(400);
+  });
+});
+
+describe("одно открытое обращение на человека", () => {
+  test("база не даёт завести второе", async () => {
+    /*
+     * Инвариант держался проверкой «нет ли уже открытого» с последующей
+     * вставкой — гоночной по построению. Два специалиста, открывающих
+     * обращение одному человеку одновременно (обычное дело при передаче
+     * пациента), создавали два. Дальше код брал произвольное из двух, и
+     * часть приёмов подшивалась к одному, часть к другому — ровно та
+     * потерянная связь между событиями, ради которой обращение и заведено.
+     */
+    const { episodes } = await import("../src/db/schema");
+    const person = await makeUser("user", `ep-uniq-${crypto.randomUUID()}@test`);
+
+    await db.insert(episodes).values({
+      id: crypto.randomUUID(),
+      patientId: person.id,
+      openedAt: new Date().toISOString(),
+    } as never);
+
+    let refused = false;
+    try {
+      await db.insert(episodes).values({
+        id: crypto.randomUUID(),
+        patientId: person.id,
+        openedAt: new Date().toISOString(),
+      } as never);
+    } catch {
+      refused = true;
+    }
+    expect(refused, "у человека стало два открытых обращения").toBe(true);
+  });
+
+  test("закрытое обращение не мешает открыть новое", async () => {
+    /*
+     * Индекс частичный, и это существенно: человек обращается повторно
+     * через год, и запрет на второе обращение вообще сделал бы систему
+     * непригодной после первого же закрытого случая.
+     */
+    const { episodes } = await import("../src/db/schema");
+    const person = await makeUser("user", `ep-again-${crypto.randomUUID()}@test`);
+
+    await db.insert(episodes).values({
+      id: crypto.randomUUID(),
+      patientId: person.id,
+      openedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      closedAt: new Date().toISOString(),
+    } as never);
+
+    await db.insert(episodes).values({
+      id: crypto.randomUUID(),
+      patientId: person.id,
+      openedAt: new Date().toISOString(),
+    } as never);
+
+    const open = await db
+      .select()
+      .from(episodes)
+      .where(and(eq(episodes.patientId, person.id), isNull(episodes.closedAt)));
+    expect(open.length, "повторное обращение завести не удалось").toBe(1);
   });
 });
