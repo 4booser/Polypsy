@@ -95,6 +95,16 @@ services:
       INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
       PORT: "3001"
       RECORDINGS_DIR: /data/recordings
+      # Вход через Google. Пусто — способа нет и кнопки нет.
+      #
+      # Перечислять обязательно: .env.docker кормит подстановку в этом файле,
+      # а не окружение контейнера. Переменная, вписанная туда и не названная
+      # здесь, до приложения не доезжает — и способ входа тихо остаётся
+      # выключенным при внешне верной настройке.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-}
     volumes:
       # тот же том, что у расшифровщика: API кладёт аудио, воркер его читает
       - recordings:/data/recordings
