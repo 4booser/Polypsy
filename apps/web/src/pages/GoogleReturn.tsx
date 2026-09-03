@@ -32,20 +32,29 @@ export default function GoogleReturn() {
     handled.current = true;
 
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const refreshToken = params.get("refresh");
+    const code = params.get("code");
     window.history.replaceState(null, "", window.location.pathname);
 
-    if (!token || !refreshToken) {
+    if (!code) {
       setError(ut("lg.googleFailed"));
       return;
     }
 
-    tokenStore.set(token);
-    tokenStore.setRefresh(refreshToken);
-
+    /*
+     * В адресе приезжает одноразовый код, а не сама пара токенов.
+     *
+     * Токены в адресе попадали в историю браузера общего компьютера, в
+     * журнал обратного прокси и в Referer первого же подзапроса — а refresh
+     * живёт тридцать дней. Чистка адреса здесь от этого не спасала: она
+     * случается позже, чем адрес отдан браузеру.
+     */
     api
-      .me()
+      .googleExchange(code)
+      .then((pair) => {
+        tokenStore.set(pair.token);
+        tokenStore.setRefresh(pair.refreshToken);
+        return api.me();
+      })
       .then((user) => {
         /*
          * То же правило, что и при входе паролем: консоль — для сотрудников.

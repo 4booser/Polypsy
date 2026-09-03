@@ -124,3 +124,30 @@ describe("связывание достижимо из консоли", () => {
     expect(asPost.status, "маршрут отвечает перенаправлением — консоль так не умеет").not.toBe(302);
   });
 });
+
+describe("передача пары токенов", () => {
+  test("код обменивается один раз и живёт секунды", async () => {
+    /*
+     * Прежде в адресе возврата уезжали сами токены: refresh живёт тридцать
+     * дней и не привязан ни к устройству, ни к адресу. Адрес попадает в
+     * историю браузера общего компьютера в кабинете, в журнал обратного
+     * прокси и в Referer первого же подзапроса — кто угодно с доступом к
+     * журналам получал месячный доступ к учётной записи специалиста.
+     * Чистка адреса на клиенте от этого не спасает: она случается позже,
+     * чем адрес отдан браузеру.
+     */
+    const bogus = await app.request("/api/auth/google/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "выдумка" }),
+    });
+    expect(bogus.status, "выдуманный код принят").toBe(401);
+
+    const empty = await app.request("/api/auth/google/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(empty.status).toBe(401);
+  });
+});

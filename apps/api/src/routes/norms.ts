@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { mergeNorms } from "../lib/norms";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { ageAt, createSurveySchema, quantile, type Sex } from "@quizzy/shared";
@@ -159,7 +160,7 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
   for (const scale of draft.scales ?? []) {
     if (!input.scaleCodes.includes(scale.code)) continue;
     const stat = byCode.get(scale.code)!;
-    scale.norms = stat.candidate
+    const fresh = stat.candidate
       .filter((g) => g.sex !== null && g.publishable)
       .map((g) => ({
         sex: g.sex,
@@ -167,6 +168,12 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
         sd: g.sd,
         source: `локальная выборка, N=${g.n}, ${today}`,
       }));
+
+    // локальные нормы дополняют, а не заменяют — см. mergeNorms в lib/norms.ts
+    scale.norms = mergeNorms(
+      (scale.norms ?? []).map((n) => n as { sex: string | null }),
+      fresh,
+    );
   }
 
   const parsed = createSurveySchema.parse(draft);
