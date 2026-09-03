@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, sql } from "drizzle-orm";
 import { z } from "zod";
+import { moveAppointment, type AppointmentStatus } from "../lib/appointmentMove";
 import {
   bookAppointmentSchema,
   cancelAppointmentSchema,
@@ -866,16 +867,18 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
     badRequest(row.kind === "primary" ? "err.slotForRepeatOnly" : "err.slotForPrimaryOnly");
   }
 
-  await db
-    .update(appointments)
-    .set({
-      slotId: slot.id,
-      specialistId: slot.specialistId,
-      // подтверждение относилось к прежнему времени и на новое не переносится
-      status: "booked",
-      confirmedAt: null,
-    })
-    .where(eq(appointments.id, row.id));
+  /*
+   * Прежнее состояние проверяется в самой записи, а не только прочитанным
+   * выше значением: см. moveAppointment.
+   */
+  const moved = await moveAppointment(row.id, ["booked", "confirmed", "arrived", "in_progress"], {
+    slotId: slot.id,
+    specialistId: slot.specialistId,
+    // подтверждение относилось к прежнему времени и на новое не переносится
+    status: "booked",
+    confirmedAt: null,
+  });
+  if (!moved) badRequest("err.appointmentClosed");
 
   await audit(c, {
     action: "clinic.reschedule",
@@ -916,15 +919,17 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
   const hoursLeft = (new Date(slot!.startsAt).getTime() - Date.now()) / 3600000;
   const late = hoursLeft < LATE_CANCEL_HOURS && hoursLeft > 0;
 
-  await db
-    .update(appointments)
-    .set({
+  const cancelled = await moveAppointment(
+    row.id,
+    ["booked", "confirmed", "arrived", "in_progress", "no_show"],
+    {
       status: "cancelled",
       cancelledAt: new Date().toISOString(),
       cancelledBy: me.id,
       cancelledLate: late,
-    })
-    .where(eq(appointments.id, row.id));
+    },
+  );
+  if (!cancelled) badRequest("err.appointmentClosed");
 
   await audit(c, {
     action: "clinic.cancel",
@@ -980,15 +985,18 @@ clinicRoutes.post(
     }
 
     const now = new Date().toISOString();
-    await db
-      .update(appointments)
-      .set({
-        status: input.status,
-        ...(input.status === "arrived" && { arrivedAt: now }),
-        ...(input.status === "in_progress" && { startedAt: now }),
-        ...(input.status === "done" && { finishedAt: now }),
-      })
-      .where(eq(appointments.id, row.id));
+    // допустимые исходные состояния — те, из которых разрешён именно этот
+    // переход: список NEXT читается в обратную сторону
+    const allowedFrom = (Object.keys(NEXT) as AppointmentStatus[]).filter((from) =>
+      NEXT[from]!.includes(input.status),
+    );
+    const moved = await moveAppointment(row.id, allowedFrom, {
+      status: input.status,
+      ...(input.status === "arrived" && { arrivedAt: now }),
+      ...(input.status === "in_progress" && { startedAt: now }),
+      ...(input.status === "done" && { finishedAt: now }),
+    });
+    if (!moved) badRequest("err.appointmentBadTransition", { from: row.status, to: input.status });
 
     await audit(c, {
       action: "clinic.status",

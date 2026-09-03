@@ -1,7 +1,8 @@
 import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import { renderPush, type Lang } from "@quizzy/shared";
-import { db } from "../db";
-import { appointments, responses, slots, specialistProfiles, } from "../db/schema";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
+import { appointments, departments, responses, slots, specialistProfiles } from "../db/schema";
 import { log } from "./log";
 import { pushToUser } from "./push";
 
@@ -31,14 +32,24 @@ const HOUR_AHEAD_MS = 3600_000;
  * раз проходил методику: это его собственный выбор, сделанный в этой же
  * системе. Не проходил ничего — украинский, государственный язык учреждения.
  */
-async function langOfPatient(userId: string): Promise<Lang> {
-  const [row] = await db
-    .select({ lang: responses.lang })
+async function langsOfPatients(userIds: string[]): Promise<Map<string, Lang>> {
+  const out = new Map<string, Lang>();
+  if (!userIds.length) return out;
+  /*
+   * Одним запросом на всю рассылку, а не по запросу на человека.
+   *
+   * Проход берёт до 500 приёмов и идёт раз в минуту: на человека приходился
+   * отдельный запрос за языком, то есть до 500 обращений к базе в минуту
+   * ради одного поля. DISTINCT ON отдаёт последнее прохождение каждого
+   * человека за один раз.
+   */
+  const rows = await db
+    .selectDistinctOn([responses.userId], { userId: responses.userId, lang: responses.lang })
     .from(responses)
-    .where(and(eq(responses.userId, userId), sql`${responses.lang} is not null`))
-    .orderBy(desc(responses.submittedAt))
-    .limit(1);
-  return (row?.lang as Lang) ?? "uk";
+    .where(and(inArray(responses.userId, userIds), sql`${responses.lang} is not null`))
+    .orderBy(responses.userId, desc(responses.submittedAt));
+  for (const r of rows) if (r.userId && r.lang) out.set(r.userId, r.lang as Lang);
+  return out;
 }
 
 function timeOf(iso: string, timezone: string): string {
@@ -67,50 +78,70 @@ function dateOf(iso: string, timezone: string): string {
  * последних суток.
  */
 export async function remindAppointments(now = new Date()): Promise<{ day: number; hour: number }> {
-  const rows = await db
-    .select({ a: appointments, slot: slots, room: specialistProfiles.room })
-    .from(appointments)
-    .innerJoin(slots, eq(slots.id, appointments.slotId))
-    .leftJoin(specialistProfiles, eq(specialistProfiles.userId, appointments.specialistId))
-    .where(
-      and(
-        inArray(appointments.status, ["booked", "confirmed"]),
-        gt(slots.startsAt, now.toISOString()),
-        lte(slots.startsAt, new Date(now.getTime() + DAY_AHEAD_MS).toISOString()),
-      ),
-    )
-    .limit(500);
+  /*
+   * Чтение — одной транзакцией, отправка — вне её.
+   *
+   * Отправка push уходит наружу по сети, и раньше весь проход, включая эти
+   * пятьсот сетевых вызовов, шёл внутри одной транзакции: соединение из
+   * пула держалось открытым всё это время. Ровно та беда, что уже описана
+   * у почтового транспорта в notify.ts, — зависший поставщик уведомлений
+   * съедал пул и останавливал API. Здесь она чинится границей: снимок
+   * данных берётся разом, дальше каждая отправка живёт своей короткой
+   * транзакцией — соединение занято на одно уведомление, а не на весь
+   * проход, и заявка на отправку фиксируется сразу, а не спустя пятьсот
+   * сетевых вызовов.
+   */
+  const { rows, tz, langs } = await systemContext(baseDb, async () => {
+    const rows = await db
+      .select({ a: appointments, slot: slots, room: specialistProfiles.room })
+      .from(appointments)
+      .innerJoin(slots, eq(slots.id, appointments.slotId))
+      .leftJoin(specialistProfiles, eq(specialistProfiles.userId, appointments.specialistId))
+      .where(
+        and(
+          inArray(appointments.status, ["booked", "confirmed"]),
+          gt(slots.startsAt, now.toISOString()),
+          lte(slots.startsAt, new Date(now.getTime() + DAY_AHEAD_MS).toISOString()),
+        ),
+      )
+      .limit(500);
+    if (!rows.length) return { rows, tz: new Map<string, string>(), langs: new Map<string, Lang>() };
+
+    // часовые пояса отделений — одним запросом, а не по запросу на отделение
+    const depIds = [...new Set(rows.map((r) => r.slot.departmentId))];
+    const deps = await db
+      .select({ id: departments.id, timezone: departments.timezone })
+      .from(departments)
+      .where(inArray(departments.id, depIds));
+    const tz = new Map(deps.map((d) => [d.id, d.timezone ?? "Europe/Kyiv"]));
+
+    const langs = await langsOfPatients([...new Set(rows.map((r) => r.a.patientId))]);
+    return { rows, tz, langs };
+  });
 
   if (!rows.length) return { day: 0, hour: 0 };
-
-  const departments = new Map<string, string>();
-  for (const r of rows) {
-    if (!departments.has(r.slot.departmentId)) {
-      const dep = await db.query.departments.findFirst({
-        where: (d, { eq: e }) => e(d.id, r.slot.departmentId),
-      });
-      departments.set(r.slot.departmentId, dep?.timezone ?? "Europe/Kyiv");
-    }
-  }
 
   let day = 0;
   let hour = 0;
   for (const r of rows) {
     const left = new Date(r.slot.startsAt).getTime() - now.getTime();
-    const lang = await langOfPatient(r.a.patientId);
-    const tz = departments.get(r.slot.departmentId) ?? "Europe/Kyiv";
-    const time = timeOf(r.slot.startsAt, tz);
-    const date = dateOf(r.slot.startsAt, tz);
+    // не проходил ничего — украинский, государственный язык учреждения
+    const lang = langs.get(r.a.patientId) ?? "uk";
+    const tzName = tz.get(r.slot.departmentId) ?? "Europe/Kyiv";
+    const time = timeOf(r.slot.startsAt, tzName);
+    const date = dateOf(r.slot.startsAt, tzName);
     const room = r.room ? renderPush("push.room", lang, { room: r.room }) : "";
 
     if (left <= HOUR_AHEAD_MS) {
-      const sent = await pushToUser(r.a.patientId, {
-        eventKey: `appointment:${r.a.id}:hour`,
-        kind: "appointment",
-        title: renderPush("push.appointmentSoonTitle", lang),
-        body: renderPush("push.appointmentSoonBody", lang, { time, room }),
-        path: "/appointments",
-      });
+      const sent = await systemContext(baseDb, () =>
+        pushToUser(r.a.patientId, {
+          eventKey: `appointment:${r.a.id}:hour`,
+          kind: "appointment",
+          title: renderPush("push.appointmentSoonTitle", lang),
+          body: renderPush("push.appointmentSoonBody", lang, { time, room }),
+          path: "/appointments",
+        }),
+      );
       if (sent) hour += 1;
       continue;
     }
@@ -120,13 +151,15 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
      * иначе он получил бы оба сразу — «завтра приём» и «приём через час» — и
      * первое было бы просто неправдой.
      */
-    const sent = await pushToUser(r.a.patientId, {
-      eventKey: `appointment:${r.a.id}:day`,
-      kind: "appointment",
-      title: renderPush("push.appointmentDayTitle", lang),
-      body: renderPush("push.appointmentDayBody", lang, { date, time, room }),
-      path: "/appointments",
-    });
+    const sent = await systemContext(baseDb, () =>
+      pushToUser(r.a.patientId, {
+        eventKey: `appointment:${r.a.id}:day`,
+        kind: "appointment",
+        title: renderPush("push.appointmentDayTitle", lang),
+        body: renderPush("push.appointmentDayBody", lang, { date, time, room }),
+        path: "/appointments",
+      }),
+    );
     if (sent) day += 1;
   }
 

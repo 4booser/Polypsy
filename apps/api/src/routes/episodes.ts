@@ -56,14 +56,37 @@ episodeRoutes.get("/patients/:userId", requirePermission("patients.read"), async
    * — это то, ради чего эпизод и заводился, и собирать это тремя запросами с
    * экрана значило бы вернуть человека к складыванию картины в голове.
    */
+  /*
+   * Счётчики берутся одним запросом на всю страницу, а не тремя на каждое
+   * обращение: у человека с десятком обращений это была тридцать одна
+   * поездка в базу вместо двух.
+   */
+  const counts = new Map<string, { visits: number; conclusions: number; referrals: number }>();
+  if (rows.length) {
+    const ids = sql`(${sql.join(rows.map((r) => sql`${r.e.id}`), sql`, `)})`;
+    const rowsOfCounts = await db.execute<{
+      id: string;
+      visits: number;
+      conclusions: number;
+      referrals: number;
+    }>(sql`
+      select e.id,
+        (select count(*)::int from appointments a where a.episode_id = e.id) as visits,
+        (select count(*)::int from conclusions cn where cn.episode_id = e.id) as conclusions,
+        (select count(*)::int from referrals rf where rf.episode_id = e.id) as referrals
+      from episodes e where e.id in ${ids}`);
+    for (const row of rowsOfCounts) {
+      counts.set(String(row.id), {
+        visits: Number(row.visits ?? 0),
+        conclusions: Number(row.conclusions ?? 0),
+        referrals: Number(row.referrals ?? 0),
+      });
+    }
+  }
+
   const items = [];
   for (const r of rows) {
-    const [counts] = await db.execute<{ visits: number; conclusions: number; referrals: number }>(
-      sql`select
-        (select count(*)::int from appointments a where a.episode_id = ${r.e.id}) as visits,
-        (select count(*)::int from conclusions cn where cn.episode_id = ${r.e.id}) as conclusions,
-        (select count(*)::int from referrals rf where rf.episode_id = ${r.e.id}) as referrals`,
-    );
+    const n = counts.get(r.e.id) ?? { visits: 0, conclusions: 0, referrals: 0 };
     items.push({
       id: r.e.id,
       openedAt: r.e.openedAt,
@@ -72,9 +95,9 @@ episodeRoutes.get("/patients/:userId", requirePermission("patients.read"), async
       outcome: decryptField(r.e.outcomeEnc),
       outcomeKind: r.e.outcomeKind,
       leadName: r.lead ? fullNameOf(r.lead) : null,
-      visits: Number(counts?.visits ?? 0),
-      conclusions: Number(counts?.conclusions ?? 0),
-      referrals: Number(counts?.referrals ?? 0),
+      visits: n.visits,
+      conclusions: n.conclusions,
+      referrals: n.referrals,
     });
   }
   return c.json({ items });

@@ -64,6 +64,11 @@ function decodeCursor(raw: string): { at: string; id: string } | null {
   }
 }
 
+/** Список идентификаторов для сырого SQL: drizzle внутри sql`` их не разложит. */
+function sqlIds(ids: string[]): SQL {
+  return sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
+}
+
 alertCaseRoutes.get("/", async (c) => {
   // язык читателя: t() без него отдаёт украинский всегда
   const lang = langOf(c);
@@ -75,10 +80,35 @@ alertCaseRoutes.get("/", async (c) => {
   const surveyIds = scoped.map((s) => s.id);
   if (!surveyIds.length) return c.json({ items: [], nextCursor: null, total: 0 } satisfies Page<AlertCase>);
 
-  const filters: SQL[] = [inArray(alertCases.surveyId, surveyIds)];
+  /*
+   * Область видимости считается по СИГНАЛАМ случая, а не по методике, с
+   * которой он начался.
+   *
+   * Случай теперь заводится на человека и собирает сигналы разных методик
+   * (см. attachToCase). Колонка survey_id осталась — она говорит, с чего
+   * случай начался, — но правом на просмотр она больше не заведует: случай,
+   * начавшийся с методики А и продолжившийся тревогой по методике Б, иначе
+   * был бы невидим для специалиста, ведущего Б, и при этом показывал бы
+   * сигналы Б специалисту, ведущему только А.
+   *
+   * Методика начала оставлена вторым основанием: случай, видимый вчера, не
+   * должен пропасть сегодня.
+   */
+  const inScope = sql`exists (
+    select 1 from risk_alerts ra
+    where ra.case_id = ${alertCases.id} and ra.survey_id in ${sqlIds(surveyIds)}
+  )`;
+  const filters: SQL[] = [or(inArray(alertCases.surveyId, surveyIds), inScope)!];
   if (q.all !== "1") filters.push(isNull(alertCases.acknowledgedAt));
   if (q.severity) filters.push(eq(alertCases.severity, q.severity));
-  if (q.surveyId) filters.push(eq(alertCases.surveyId, q.surveyId));
+  if (q.surveyId) {
+    filters.push(
+      or(
+        eq(alertCases.surveyId, q.surveyId),
+        sql`exists (select 1 from risk_alerts ra where ra.case_id = ${alertCases.id} and ra.survey_id = ${q.surveyId})`,
+      )!,
+    );
+  }
   if (q.assigned === "me") filters.push(eq(alertCases.assignedTo, user.id));
   else if (q.assigned === "none") filters.push(isNull(alertCases.assignedTo));
   else if (q.assigned) filters.push(eq(alertCases.assignedTo, q.assigned));
@@ -117,7 +147,10 @@ alertCaseRoutes.get("/", async (c) => {
       middleName: users.middleName,
       anonymous: users.anonymous,
       pseudonym: users.pseudonym,
-      signalCount: sql<number>`(select count(*)::int from risk_alerts ra where ra.case_id = ${alertCases.id})`,
+      // считаются только сигналы по доступным методикам — столько же, сколько
+      // будет показано ниже: число, не сходящееся со списком, хуже отсутствия
+      signalCount: sql<number>`(select count(*)::int from risk_alerts ra
+        where ra.case_id = ${alertCases.id} and ra.survey_id in ${sqlIds(surveyIds)})`,
     })
     .from(alertCases)
     .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
@@ -143,7 +176,7 @@ alertCaseRoutes.get("/", async (c) => {
       .select({ a: riskAlerts, questionTitle: questions.title })
       .from(riskAlerts)
       .innerJoin(questions, eq(questions.id, riskAlerts.questionId))
-      .where(inArray(riskAlerts.caseId, caseIds))
+      .where(and(inArray(riskAlerts.caseId, caseIds), inArray(riskAlerts.surveyId, surveyIds)))
       .orderBy(desc(riskAlerts.at));
     for (const s of sig) {
       const list = signalsByCase.get(s.a.caseId!) ?? [];

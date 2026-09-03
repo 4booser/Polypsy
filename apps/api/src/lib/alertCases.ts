@@ -49,13 +49,25 @@ export async function attachToCase(
   });
   const windowHours = survey?.alertCaseWindowHours ?? DEFAULT_CASE_WINDOW_HOURS;
 
+  /*
+   * Случай ищется по ЧЕЛОВЕКУ, а не по паре «человек + методика».
+   *
+   * Так и написано на экране разбора: «Случай — это человек, а не отдельный
+   * пункт. Решение принимается один раз обо всех его сигналах». Код же
+   * искал по методике тоже — и человек, у которого риск сработал по двум
+   * опросникам, висел в очереди дважды и требовал двух решений. Второе
+   * принималось в отрыве от первого: разбирающий мог не знать, что этот же
+   * человек уже разобран.
+   *
+   * Окно берётся от методики нового сигнала — она и определяет, через
+   * сколько повтор считается новым обращением.
+   */
   const [open] = await tx
     .select({ id: alertCases.id, severity: alertCases.severity })
     .from(alertCases)
     .where(
       and(
         eq(alertCases.userId, params.userId),
-        eq(alertCases.surveyId, params.surveyId),
         isNull(alertCases.acknowledgedAt),
         sql`${alertCases.lastAlertAt} > ${params.at}::timestamptz - make_interval(hours => ${windowHours})`,
       ),

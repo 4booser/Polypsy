@@ -169,21 +169,32 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
 const SCHEDULER_LOCK_KEY = 7_154_202;
 
 export async function runDueSchedules(now = new Date()): Promise<number> {
-  // фоновый процесс работает в явном системном контексте RLS
-  return systemContext(baseDb, () => runDueSchedulesInner(now));
-}
-
-async function runDueSchedulesInner(now: Date): Promise<number> {
-  // Две реплики не должны выдать задания дважды: идемпотентность через
-  // schedule_runs — первый пояс, лок на время прохода — второй.
-  //
-  // Лок именно транзакционный (pg_try_advisory_xact_lock): сессионный вариант
-  // в пуле соединений ломается — захват и освобождение могут уйти в разные
-  // соединения, и лок либо повисает, либо снимается с предупреждением.
-  // Транзакция-обёртка держит одно соединение и не делает записей: вся работа
-  // внутри идёт обычным пулом, а лок отпускается сам при выходе — в том числе
-  // при ошибке.
-  return db.transaction(async (tx) => {
+  /*
+   * Две реплики не должны выдать задания дважды: идемпотентность через
+   * schedule_runs — первый пояс, лок на время прохода — второй.
+   *
+   * Лок именно транзакционный (pg_try_advisory_xact_lock): сессионный вариант
+   * в пуле соединений ломается — захват и освобождение могут уйти в разные
+   * соединения, и лок либо повисает, либо снимается с предупреждением.
+   * Транзакция-обёртка держит одно соединение и не делает записей: вся работа
+   * внутри идёт обычным пулом, а лок отпускается сам при выходе — в том числе
+   * при ошибке.
+   *
+   * Обёртка берётся от baseDb НАПРЯМУЮ и не открывает системного контекста.
+   * Это существенно: контекст кладёт свою транзакцию в AsyncLocalStorage, и
+   * тогда каждый db.* внутри прохода уходил бы в неё же — то есть весь
+   * проход шёл бы одной транзакцией, ровно вопреки написанному здесь. Цена
+   * ошибки была не в производительности: первое же расписание, упавшее с
+   * ошибкой postgres, переводило транзакцию в aborted, и дальше не проходило
+   * ничего — ни запись о неудаче, ни сдвиг срока (обе гасят исключение
+   * через .catch), ни одно из следующих расписаний. Одно кривое расписание
+   * останавливало работу всей больницы и крутилось каждый тик, потому что
+   * его срок сдвинуть не удавалось.
+   *
+   * Из пула при этом занято на одно соединение больше обычного: обёртка
+   * ждёт, пока работа внутри берёт свои. При max = 10 это несущественно.
+   */
+  return baseDb.transaction(async (tx) => {
     const [lock] = await tx.execute(
       sql`select pg_try_advisory_xact_lock(${SCHEDULER_LOCK_KEY}) as ok`,
     );
@@ -201,84 +212,117 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
    * догонит себя, когда режим выключат, — пропущенный тик это отложенный, а
    * не отменённый замер.
    */
-  const crisis = await currentCrisis();
+  const crisis = await systemContext(baseDb, () => currentCrisis());
   if (crisis.active) {
     log.info("scheduler.skipped_crisis", { reason: crisis.reason });
     return 0;
   }
 
-  const due = await db
-    .select()
-    .from(schedules)
-    .where(
-      and(
-        eq(schedules.active, true),
-        lte(schedules.nextRunAt, now.toISOString()),
-        lte(schedules.startsAt, now.toISOString()),
-        or(isNull(schedules.endsAt), sql`${schedules.endsAt} > ${now.toISOString()}`),
-      ),
-    )
-    .orderBy(asc(schedules.nextRunAt));
+  const due = await systemContext(baseDb, () =>
+    db
+      .select()
+      .from(schedules)
+      .where(
+        and(
+          eq(schedules.active, true),
+          lte(schedules.nextRunAt, now.toISOString()),
+          lte(schedules.startsAt, now.toISOString()),
+          or(
+            isNull(schedules.endsAt),
+            sql`${schedules.endsAt} > ${now.toISOString()}`,
+          ),
+        ),
+      )
+      .orderBy(asc(schedules.nextRunAt)),
+  );
 
   let handled = 0;
   for (const schedule of due) {
+    /*
+     * Каждое расписание — своя транзакция. Так «ошибка одного не
+     * останавливает остальные» перестаёт быть пожеланием: упавшее
+     * откатывается целиком (не остаётся наполовину розданных назначений с
+     * отметкой о прогоне), а следующее начинает с чистого соединения.
+     */
     try {
-      const { assigned, skipped } = await runSchedule(schedule);
-      const planned = new Date(schedule.nextRunAt);
-      await db
-        .update(schedules)
-        .set({
-          lastRunAt: now.toISOString(),
-          nextRunAt: nextRun(planned, schedule.intervalDays, now).toISOString(),
-        })
-        .where(eq(schedules.id, schedule.id));
-      await db.insert(scheduleRuns).values({
-        id: crypto.randomUUID(),
-        scheduleId: schedule.id,
-        ranAt: now.toISOString(),
-        assigned,
-        skipped,
-        note: assigned === 0 && skipped === 0 ? "Некого охватить" : null,
-      });
-      if (assigned > 0) {
-        /*
-         * Только когда что-то реально назначено: тик расписания случается
-         * каждые несколько минут, и пустой прогон не новость для консоли.
-         */
-        await publish(db, {
-          kind: "schedule.run",
-          surveyIds: null,
-          userId: null,
-          at: now.toISOString(),
+      await systemContext(baseDb, async () => {
+        const { assigned, skipped } = await runSchedule(schedule);
+        const planned = new Date(schedule.nextRunAt);
+        await db
+          .update(schedules)
+          .set({
+            lastRunAt: now.toISOString(),
+            nextRunAt: nextRun(
+              planned,
+              schedule.intervalDays,
+              now,
+            ).toISOString(),
+          })
+          .where(eq(schedules.id, schedule.id));
+        await db.insert(scheduleRuns).values({
+          id: crypto.randomUUID(),
+          scheduleId: schedule.id,
+          ranAt: now.toISOString(),
+          assigned,
+          skipped,
+          note: assigned === 0 && skipped === 0 ? "Некого охватить" : null,
         });
-      }
+        if (assigned > 0) {
+          /*
+           * Только когда что-то реально назначено: тик расписания случается
+           * каждые несколько минут, и пустой прогон не новость для консоли.
+           */
+          await publish(db, {
+            kind: "schedule.run",
+            surveyIds: null,
+            userId: null,
+            at: now.toISOString(),
+          });
+        }
 
-      await auditSystem({
-        action: "schedule.run",
-        resourceType: "schedule",
-        resourceId: schedule.id,
-        details: { title: schedule.title, assigned, skipped },
+        await auditSystem({
+          action: "schedule.run",
+          resourceType: "schedule",
+          resourceId: schedule.id,
+          details: { title: schedule.title, assigned, skipped },
+        });
       });
       handled++;
     } catch (error) {
-      log.error("schedule.failed", { scheduleId: schedule.id, error: String(error) });
-      await db
-        .insert(scheduleRuns)
-        .values({
+      log.error("schedule.failed", {
+        scheduleId: schedule.id,
+        error: String(error),
+      });
+      // отдельной транзакцией: та, в которой упало, откачена целиком
+      await systemContext(baseDb, async () => {
+        await db.insert(scheduleRuns).values({
           id: crypto.randomUUID(),
           scheduleId: schedule.id,
           ranAt: now.toISOString(),
           assigned: 0,
           skipped: 0,
-          note: error instanceof Error ? error.message.slice(0, 300) : "Неизвестная ошибка",
-        })
-        .catch(() => {});
-      // сдвигаем срок, иначе сломанное расписание будет крутиться каждый тик
-      await db
-        .update(schedules)
-        .set({ nextRunAt: nextRun(new Date(schedule.nextRunAt), schedule.intervalDays, now).toISOString() })
-        .where(eq(schedules.id, schedule.id))
-        .catch(() => {});
+          note:
+            error instanceof Error
+              ? error.message.slice(0, 300)
+              : "Неизвестная ошибка",
+        });
+        // сдвигаем срок, иначе сломанное расписание будет крутиться каждый тик
+        await db
+          .update(schedules)
+          .set({
+            nextRunAt: nextRun(
+              new Date(schedule.nextRunAt),
+              schedule.intervalDays,
+              now,
+            ).toISOString(),
+          })
+          .where(eq(schedules.id, schedule.id));
+      }).catch((e) =>
+        log.error("schedule.failure_record_failed", {
+          scheduleId: schedule.id,
+          error: String(e),
+        }),
+      );
     }
   }
   return handled;
@@ -287,7 +331,9 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
 /** Периодический запуск. Часа достаточно: расписания меряются днями. */
 export function startScheduler(intervalMs = 3_600_000): () => void {
   const tick = () => {
-    runDueSchedules().catch((error) => log.error("scheduler.tick_failed", { error: String(error) }));
+    runDueSchedules().catch((error) =>
+      log.error("scheduler.tick_failed", { error: String(error) }),
+    );
     /*
      * Заодно вычищаем протухшее присутствие. Отдельного таймера оно не
      * заслуживает: строки безвредны, а раз в час их не наберётся столько,

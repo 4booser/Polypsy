@@ -350,6 +350,49 @@ describe("перенос и отмена", () => {
     expect(free.body.items.some((s: { id: string }) => s.id === first)).toBe(true);
   });
 
+  test("перевод приёма не затирает чужое решение, принятое между чтением и записью", async () => {
+    /*
+     * Отмена, перенос и движение по приёму устроены одинаково: прочитать
+     * приём, проверить допустимость перехода, записать. Между чтением и
+     * записью помещается второй запрос — пациент отменяет приём с телефона,
+     * пока регистратор переносит его же на другое время. Оба проходили
+     * проверку по одному прочитанному состоянию, и записывал последний:
+     * перенос после отмены воскрешал отменённый приём, отмена после
+     * переноса оставляла новый слот занятым за отменённым визитом.
+     *
+     * Проверяется здесь сам moveAppointment, а не пара запросов к API:
+     * тестовый драйвер выполняет запросы по очереди, и «одновременная»
+     * пара прошла бы и на сломанном коде — такая проверка сторожила бы
+     * пустоту. Условие живёт в moveAppointment, там и проверяется.
+     */
+    const { moveAppointment } = await import("../src/lib/appointmentMove");
+    const patient = await makeUser("user", `clinic-race-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot("primary");
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    const id = booked.body.id;
+
+    // первый успевает: приём был booked
+    const first = await moveAppointment(id, ["booked", "confirmed"], {
+      status: "cancelled",
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: patient.id,
+    });
+    expect(first).not.toBeNull();
+
+    // второй пришёл с тем же прочитанным состоянием и должен уйти ни с чем
+    const second = await moveAppointment(id, ["booked", "confirmed"], {
+      status: "booked",
+      confirmedAt: null,
+    });
+    expect(second, "опоздавший запрос всё равно записал своё — отменённый приём воскрес").toBeNull();
+
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("cancelled");
+  });
+
   test("отмена заранее не помечается поздней", async () => {
     const patient = await makeUser("user", `clinic-c1-${crypto.randomUUID()}@test`);
     const slotId = await freeSlot("primary");
