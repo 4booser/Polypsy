@@ -1,9 +1,17 @@
-# Развёртывание одним файлом: база, API, консоль за Caddy.
+# Развёртывание одним файлом: база, подготовка схемы, API, консоль за Caddy.
 #
 #   cp .env.docker.example .env.docker && отредактировать
 #   docker compose --env-file .env.docker up -d
 #
 # Мобильное приложение ходит на тот же адрес, что и консоль (/api/*).
+#
+# Ролей две, и это не педантизм. Владелец базы (quizzy) нужен миграциям —
+# им требуются права на схему. Приложение подключается ролью quizzy_app,
+# которая таблицами не владеет: владелец в PostgreSQL обходит политики
+# строк, и с ним все сорок семь политик остаются на месте, но каждый видит
+# всё. Отличить это от исправной работы нельзя ничем — запросы отрабатывают,
+# экраны рисуются. Сервер в production такой запуск не примет и скажет
+# почему.
 services:
   postgres:
     image: postgres:16
@@ -20,13 +28,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # Одноразовая подготовка: миграции и роль приложения. Владельцем базы.
+  provision:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["bun", "apps/api/src/provision.ts"]
+    restart: "no"
+    environment:
+      DATABASE_URL: postgres://quizzy:${POSTGRES_PASSWORD}@postgres:5432/quizzy
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?задайте APP_DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://quizzy:${POSTGRES_PASSWORD}@postgres:5432/quizzy
+      # роль приложения, а не владелец: см. пояснение вверху файла
+      DATABASE_URL: postgres://quizzy_app:${APP_DB_PASSWORD}@postgres:5432/quizzy
+      NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (32+ символов)}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
@@ -40,6 +64,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      # схема и роль должны существовать до первого запроса
+      provision:
+        condition: service_completed_successfully
 
   web:
     build:

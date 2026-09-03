@@ -25,5 +25,8 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD bun -e "fetch('http://localhost:'+(process.env.PORT??3001)+'/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-# миграции применяются на старте: контейнер сам приводит базу к своей схеме
-CMD ["sh", "-c", "bun apps/api/src/migrate.ts && bun apps/api/src/index.ts"]
+# Только сервер. Миграции вынесены в отдельный шаг (provision.ts) намеренно:
+# им нужен владелец базы, а приложение обязано подключаться ролью без прав
+# владельца — иначе политики строк для него не действуют. Один контейнер не
+# может быть одновременно и тем, и другим.
+CMD ["bun", "apps/api/src/index.ts"]
