@@ -21,7 +21,7 @@ import { attachToCase } from "./alertCases";
 import { applyRules } from "./decisions";
 import { publish } from "./events";
 import { detectRisks } from "./risk";
-import { assertAttemptsLeft } from "./attempts";
+import { assertAttemptsLeft, consumeAttempt } from "./attempts";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
 
@@ -105,6 +105,11 @@ export async function persistSubmission(
    * Без этой проверки число попыток было бы украшением карточки: оно
    * показывалось бы специалисту и ничего не значило.
    */
+  /*
+   * Быстрая проверка до всей работы — чтобы отказать понятной ошибкой, не
+   * считая профиль. Настоящее списание идёт внутри транзакции ниже: только
+   * там его нельзя обойти двумя одновременными отправками.
+   */
   if (linkedUserId && options.filledBySelf) {
     await assertAttemptsLeft(linkedUserId, survey.id);
   }
@@ -127,6 +132,11 @@ export async function persistSubmission(
   const risks = detectRisks(survey, input.answers as Answer[]);
 
   await db.transaction(async (tx) => {
+    if (linkedUserId && options.filledBySelf) {
+      const left = await consumeAttempt(tx as never, linkedUserId, survey.id);
+      if (!left) badRequest("err.attemptsSpent");
+    }
+
     await tx.insert(responses).values({
       id: responseId,
       surveyId: survey.id,
