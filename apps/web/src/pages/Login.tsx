@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useAuth } from "../auth";
 import { LangSwitch, useLang } from "../lang";
 import { Button, Field, Input } from "../ui/primitives";
@@ -15,6 +15,17 @@ import { Button, Field, Input } from "../ui/primitives";
 export default function Login() {
   const { ut } = useLang();
   const { login } = useAuth();
+  /*
+   * Спрашиваем сервер, настроен ли вход через Google. Не переменной сборки:
+   * образ консоли один на все учреждения, а настроен способ в одном из них.
+   */
+  const [googleReady, setGoogleReady] = useState(false);
+  useEffect(() => {
+    fetch("/api/auth/google/status")
+      .then((r) => r.json())
+      .then((j: { enabled?: boolean }) => setGoogleReady(Boolean(j.enabled)))
+      .catch(() => {});
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +100,29 @@ export default function Login() {
           <Button type="submit" variant="primary" disabled={busy} className="w-full">
             {busy ? ut("lg.signingIn") : ut("lg.signIn")}
           </Button>
+
+          {/*
+            Кнопка Google появляется, только если способ настроен на сервере.
+            Нарисованная всегда, она вела бы в отказ — а человек у экрана
+            входа не должен разбираться, какой из двух способов сегодня
+            работает.
+
+            Вход паролем остаётся первым и главным: это учреждение, где
+            работают по записи, и потеря доступа из-за сбоя у внешнего
+            поставщика — несостоявшийся приём.
+          */}
+          {googleReady ? (
+            <>
+              <div className="flex items-center gap-3 text-caption text-faint">
+                <span className="h-px flex-1 bg-hairline" />
+                {ut("lg.or")}
+                <span className="h-px flex-1 bg-hairline" />
+              </div>
+              <a className="btn w-full justify-center" href="/api/auth/google/start">
+                {ut("lg.google")}
+              </a>
+            </>
+          ) : null}
         </form>
 
         {/*

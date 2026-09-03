@@ -44,6 +44,7 @@ const Batteries = lazy(() => import("./pages/Batteries"));
 const BlankForm = lazy(() => import("./pages/BlankForm"));
 const Invites = lazy(() => import("./pages/Invites"));
 const Join = lazy(() => import("./pages/Join"));
+const GoogleReturn = lazy(() => import("./pages/GoogleReturn"));
 const InformantForm = lazy(() => import("./pages/InformantForm"));
 const Kiosk = lazy(() => import("./pages/Kiosk"));
 const KioskSessions = lazy(() => import("./pages/KioskSessions"));
@@ -93,6 +94,18 @@ function StartScreen({ prefs }: { prefs: WorkspacePrefs | null }) {
 
 export default function App() {
   const { user, loading, logout, refreshUser } = useAuth();
+  /*
+   * Настроен ли вход через Google — спрашиваем сервер, а не переменную
+   * сборки: образ консоли один на все учреждения, а настроен способ в
+   * одном из них.
+   */
+  const [googleReady, setGoogleReady] = useState(false);
+  useEffect(() => {
+    void api
+      .googleStatus()
+      .then((r) => setGoogleReady(r.enabled))
+      .catch(() => {});
+  }, []);
   const { ut } = useLang();
   const [openAlerts, setOpenAlerts] = useState(0);
   const [openReferrals, setOpenReferrals] = useState(0);
@@ -235,6 +248,8 @@ export default function App() {
     return (
       <Suspense fallback={<Loading />}>
         <Routes>
+          {/* возврат от Google: сюда сервер приводит браузер после входа */}
+          <Route path="/auth/google" element={<GoogleReturn />} />
           <Route path="/join/:token" element={<Join />} />
           <Route path="/kiosk/:token" element={<Kiosk />} />
           <Route path="/informant/:token" element={<InformantForm />} />
@@ -267,6 +282,37 @@ export default function App() {
                   того как решит, что консоль сломана.
                 */
                 <Tag tone="attention" className="self-start">{ut("nav.readOnly")}</Tag>
+              ) : null}
+
+              {/*
+                Связь с Google — второй ключ от учётной записи, поэтому
+                состояние видно всегда, а не прячется в настройках: человек
+                должен знать, каких дверей у его записи две.
+
+                Привязка уходит переходом на сервер, а не запросом из кода:
+                Google показывает свой экран выбора учётной записи, и провести
+                через него можно только браузер целиком.
+              */}
+              {googleReady ? (
+                <div className="flex flex-col gap-1">
+                  <span className="text-micro text-faint">
+                    {user.googleLinked ? ut("lg.googleLinked") : ""}
+                  </span>
+                  {user.googleLinked ? (
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      className="justify-start"
+                      onClick={() => void api.googleUnlink().then(refreshUser).catch(() => {})}
+                    >
+                      {ut("lg.googleUnlink")}
+                    </Button>
+                  ) : (
+                    <a className="btn btn-quiet justify-start text-small" href="/api/auth/google/link">
+                      {ut("lg.googleLink")}
+                    </a>
+                  )}
+                </div>
               ) : null}
 
               {/*

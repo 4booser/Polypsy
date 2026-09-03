@@ -468,6 +468,8 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   me: () => request<User>("/api/auth/me"),
+  googleUnlink: () => request<{ ok: true }>("/api/auth/google/unlink", { method: "POST" }),
+  googleStatus: () => request<{ enabled: boolean }>("/api/auth/google/status"),
 
   groups: () => unwrap(request<Items<SurveyGroupWithCounts>>("/api/groups")),
   surveys: (archived = false) =>

@@ -74,6 +74,18 @@ export const users = pgTable(
     anonymous: boolean("anonymous").notNull().default(false),
     /** Код вида «Респондент А-4821», заменяет ФИО у псевдонимизированных */
     pseudonym: text("pseudonym"),
+    /**
+     * Связь с учётной записью Google: её стабильный идентификатор (sub).
+     *
+     * Именно sub, а не почта: почту в Google Workspace переназначают
+     * уволившемуся сотруднику следующему, и вход по почте отдал бы новому
+     * человеку чужую учётную запись вместе с доступом к картам.
+     *
+     * Связь добавляется к существующей учётной записи и никогда её не
+     * создаёт: роль и область видимости назначает человек, а не внешний
+     * поставщик входа.
+     */
+    googleSub: text("google_sub"),
 
     /*
      * Паспортная часть. Регистрационный бланк каждой методики требует пол,
@@ -136,7 +148,11 @@ export const users = pgTable(
     leadSpecialistId: text("lead_specialist_id"),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
-  (t) => ({ emailIdx: uniqueIndex("users_email_idx").on(t.email) }),
+  (t) => ({
+    emailIdx: uniqueIndex("users_email_idx").on(t.email),
+    // одна учётная запись Google — одна наша: иначе двое входят как один
+    googleSubIdx: uniqueIndex("users_google_sub_idx").on(t.googleSub),
+  }),
 );
 
 /** Группа опросов — батарея методик */

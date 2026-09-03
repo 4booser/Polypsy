@@ -7,6 +7,11 @@ import { currentRequestId, log } from "./log";
 
 /** Действия журнала. Строковый союз, чтобы опечатка ловилась типами. */
 export type AuditAction =
+  /* вход через Google: связывание — это выдача второго ключа от учётной
+     записи, и оно обязано быть видно в журнале так же, как смена пароля */
+  | "auth.google_linked"
+  | "auth.google_unlinked"
+  | "auth.google_denied"
   /* поликлиника: каждый переход приёма — событие журнала */
   | "clinic.department_create"
   | "clinic.department_update"

@@ -74,6 +74,12 @@ export function toPublicUser(row: UserRow): User {
     anonymous: row.anonymous,
     pseudonym: row.pseudonym,
     leadSpecialistId: row.leadSpecialistId ?? null,
+    /*
+     * Только факт связи, без идентификатора Google. Экрану нужно решить,
+     * показывать «привязать» или «отвязать»; сам идентификатор ему для
+     * этого не нужен, а отдавать наружу то, что не нужно, незачем.
+     */
+    googleLinked: Boolean(row.googleSub),
     sex: row.sex,
     birthDate: decryptField(row.birthDate),
     unit: row.unit,
