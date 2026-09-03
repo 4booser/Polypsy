@@ -20,6 +20,7 @@ import { normalizePhone, phoneFingerprint } from "../lib/phone";
 import { consumeInvite, findUsableInvite } from "../lib/invites";
 import { encryptField, encryptPersonFields } from "../lib/crypto";
 import { env } from "../env";
+import { authorizeUrl, domainAllowed, exchangeCode, googleEnabled } from "../lib/google";
 import type { Context } from "hono";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
@@ -413,4 +414,169 @@ authRoutes.post("/me/reveal", requireAuth, async (c) => {
 
   const fresh = (await db.query.users.findFirst({ where: eq(users.id, user.id) }))!;
   return c.json({ user: toPublicUser(fresh), responsesLinked: Number(passed?.n ?? 0) });
+});
+
+/* ═══════════ Вход через Google ═══════════ */
+
+/**
+ * Три правила, на которых здесь всё держится.
+ *
+ * **Google не создаёт учётных записей.** Роль и область видимости — кого
+ * сотрудник вправе видеть — назначает человек. Учётная запись, заведённая
+ * входом извне, либо бесправна и бесполезна, либо получает права по
+ * умолчанию, и тогда доступ к картам раздаёт внешний поставщик.
+ *
+ * **Google не входит в учётную запись под кодом.** Анонимность здесь
+ * означает, что специалист видит «Респондент А-4821» вместо имени. Связать
+ * такую запись с Google — значит подставить в неё настоящее имя и почту,
+ * то есть отменить ровно то, ради чего она заведена.
+ *
+ * **Пароль остаётся.** Это дополнительная дверь, а не замена: в учреждении,
+ * где работают по записи, потеря доступа из-за сбоя у внешнего поставщика —
+ * это несостоявшийся приём.
+ */
+
+/** Состояние между началом входа и возвратом: живёт минуты, в памяти процесса */
+const pending = new Map<string, { verifier: string; at: number; linkUserId?: string }>();
+
+/*
+ * Хранится в памяти, а не в базе, намеренно: запись живёт минуты и не нужна
+ * после возврата. Плата — перезапуск сервера роняет начатые входы; человек
+ * нажимает «войти» ещё раз. Обратная плата, забытые строки в базе, дороже.
+ */
+function rememberState(verifier: string, linkUserId?: string): string {
+  const state = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
+  for (const [key, value] of pending) if (Date.now() - value.at > 600_000) pending.delete(key);
+  pending.set(state, { verifier, at: Date.now(), linkUserId });
+  return state;
+}
+
+async function challengeOf(verifier: string): Promise<string> {
+  const digest = new Bun.CryptoHasher("sha256").update(verifier).digest();
+  return Buffer.from(digest).toString("base64url");
+}
+
+function newVerifier(): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
+}
+
+/** Настроен ли способ — консоль спрашивает, чтобы не рисовать кнопку в никуда */
+authRoutes.get("/google/status", (c) => c.json({ enabled: googleEnabled() }));
+
+authRoutes.get("/google/start", async (c) => {
+  if (!googleEnabled()) notFound("err.googleDisabled");
+  const verifier = newVerifier();
+  const state = rememberState(verifier);
+  return c.redirect(authorizeUrl(state, await challengeOf(verifier)));
+});
+
+/**
+ * Связывание с уже открытой учётной записью.
+ *
+ * Отдельный вход, потому что здесь мы знаем, кого связываем: идентификатор
+ * кладётся в состояние и на возврате берётся оттуда, а не из того, что
+ * прислал браузер. Иначе связать Google можно было бы с чужой записью,
+ * подсунув её идентификатор в адресе.
+ */
+authRoutes.get("/google/link", requireAuth, async (c) => {
+  if (!googleEnabled()) notFound("err.googleDisabled");
+  const user = c.get("user");
+  if (user.anonymous) badRequest("err.googleAnonymous");
+  const verifier = newVerifier();
+  const state = rememberState(verifier, user.id);
+  return c.redirect(authorizeUrl(state, await challengeOf(verifier)));
+});
+
+authRoutes.post("/google/unlink", requireAuth, async (c) => {
+  const user = c.get("user");
+  await db.update(users).set({ googleSub: null }).where(eq(users.id, user.id));
+  await audit(c, {
+    action: "auth.google_unlinked",
+    resourceType: "user",
+    resourceId: user.id,
+    actor: user,
+  });
+  return c.json({ ok: true });
+});
+
+authRoutes.get("/google/callback", async (c) => {
+  if (!googleEnabled()) notFound("err.googleDisabled");
+
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  const saved = state ? pending.get(state) : undefined;
+  if (state) pending.delete(state);
+  if (!code || !saved) unauthorized("err.googleState");
+
+  let identity: Awaited<ReturnType<typeof exchangeCode>>;
+  try {
+    identity = await exchangeCode(code, saved.verifier);
+  } catch {
+    unauthorized("err.googleExchange");
+  }
+
+  /*
+   * Непроверенную почту не принимаем. Google отдаёт её и для записей, где
+   * адрес просто вписан, — а мы по адресу ищем, к какой учётной записи
+   * привязываться.
+   */
+  if (!identity.emailVerified) unauthorized("err.googleUnverified");
+  if (!domainAllowed(identity.email)) unauthorized("err.googleDomain");
+
+  // ── связывание с открытой учётной записью ──
+  if (saved.linkUserId) {
+    const taken = await db.query.users.findFirst({
+      where: eq(users.googleSub, identity.sub),
+    });
+    if (taken && taken.id !== saved.linkUserId) conflict("err.googleTaken");
+    await db
+      .update(users)
+      .set({ googleSub: identity.sub })
+      .where(eq(users.id, saved.linkUserId));
+    const linked = await db.query.users.findFirst({ where: eq(users.id, saved.linkUserId) });
+    await audit(c, {
+      action: "auth.google_linked",
+      resourceType: "user",
+      resourceId: saved.linkUserId,
+      actor: linked ? toPublicUser(linked) : null,
+      details: { email: identity.email },
+    });
+    return c.redirect(`${env.consoleUrl ?? ""}/?google=linked`);
+  }
+
+  // ── вход ──
+  const row = await db.query.users.findFirst({ where: eq(users.googleSub, identity.sub) });
+  if (!row) {
+    /*
+     * Учётная запись не создаётся. Ответ намеренно один и тот же и для
+     * «такого человека нет», и для «есть, но Google не связан»: иначе по
+     * коду отказа можно перебирать, кто в учреждении есть.
+     */
+    await audit(c, {
+      action: "auth.google_denied",
+      outcome: "denied",
+      details: { email: identity.email, reason: "not_linked" },
+    });
+    unauthorized("err.googleNotLinked");
+  }
+  if (row.anonymous) unauthorized("err.googleAnonymous");
+
+  await audit(c, {
+    action: "auth.login",
+    resourceType: "user",
+    resourceId: row.id,
+    actor: toPublicUser(row),
+    details: { via: "google" },
+  });
+
+  const pair = await issuePair(row);
+  /*
+   * Пара уезжает в адресе возврата, а не в теле: сюда человек приходит
+   * переходом браузера, а не запросом из кода, и вернуть JSON некому.
+   * Консоль забирает значения из адреса и сразу его чистит.
+   */
+  const back = new URL(`${env.consoleUrl || ""}/auth/google`, "http://localhost");
+  back.searchParams.set("token", pair.token);
+  back.searchParams.set("refresh", pair.refreshToken);
+  return c.redirect(env.consoleUrl ? back.toString() : `${back.pathname}${back.search}`);
 });

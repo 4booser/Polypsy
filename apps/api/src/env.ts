@@ -54,6 +54,28 @@ const schema = z.object({
    */
   WHISPER_BIN: z.string().max(400).optional(),
   WHISPER_MODEL: z.string().max(400).optional(),
+  /**
+   * Вход через Google. Пусто — способа входа просто нет, и кнопки тоже.
+   *
+   * Дополнительный способ, а не замена паролю. В учреждении, где по записи
+   * работают, потеря доступа из-за сбоя у внешнего поставщика — это
+   * несостоявшийся приём; пароль обязан оставаться рабочим всегда.
+   */
+  GOOGLE_CLIENT_ID: z.string().max(300).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().max(300).optional(),
+  /**
+   * Куда Google возвращает человека. Полный адрес, тот же самый должен быть
+   * вписан в консоли Google — расхождение даёт «redirect_uri_mismatch».
+   */
+  GOOGLE_REDIRECT_URI: z.string().max(500).optional(),
+  /**
+   * Разрешённые почтовые домены через запятую; пусто — любые.
+   *
+   * Для персонала это единственное, что отделяет «вошёл сотрудник» от
+   * «вошёл кто угодно с почтой Google»: связывание требует уже
+   * существующей учётной записи, но лишний рубеж здесь дёшев.
+   */
+  GOOGLE_ALLOWED_DOMAINS: z.string().default(""),
   /** Открытая регистрация пациентов без приглашения (в бою выключать) */
   OPEN_REGISTRATION: z
     .string()
@@ -107,6 +129,12 @@ export const env = {
    * запись психотерапевтической сессии наружу значит раскрыть её третьей
    * стороне, и никакая настройка этого не оправдывает.
    */
+  googleClientId: raw.GOOGLE_CLIENT_ID,
+  googleClientSecret: raw.GOOGLE_CLIENT_SECRET,
+  googleRedirectUri: raw.GOOGLE_REDIRECT_URI,
+  googleAllowedDomains: raw.GOOGLE_ALLOWED_DOMAINS.split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean),
   whisperBin: raw.WHISPER_BIN,
   whisperModel: raw.WHISPER_MODEL,
   corsOrigins: raw.CORS_ORIGINS
