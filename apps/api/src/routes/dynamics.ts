@@ -445,7 +445,24 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
             if (!entry.equated.length) entry.equated = null;
           }
         }
-        if (entry.points.length >= 2) {
+        /*
+         * Изменение и RCI считаются только там, где числа сравнимы.
+         *
+         * Точки разных версий методики лежат в разных шкалах: правка ключа
+         * одного пункта сдвигает средний балл, и разность «до» и «после»
+         * читается как улучшение, которого не было. Коэффициенты приведения
+         * тут же и посчитаны (`entry.equated`), но на числа не влияли:
+         * `first` и `last` брались из неприведённых точек. При типичных SD
+         * и альфе это давало |RCI| > 1.96, то есть «достоверное улучшение».
+         *
+         * Если версий несколько и привести их не удалось — не считаем
+         * вовсе. Прочерк честнее выдуманного улучшения.
+         */
+        const mixedVersions =
+          new Set(entry.points.map((x) => x.versionNo).filter((v) => v !== null)).size > 1;
+        const comparable = !mixedVersions || Boolean(entry.equated?.length);
+
+        if (entry.points.length >= 2 && comparable) {
           const first = entry.points[0]!.rawScore;
           const last = entry.points[entry.points.length - 1]!.rawScore;
           entry.delta = Math.round((last - first) * 100) / 100;
