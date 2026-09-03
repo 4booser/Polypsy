@@ -1,0 +1,132 @@
+# Выкатка на сервер учреждения.
+#
+# Собираем образы здесь, на сервере — только скачивание и перезапуск. Сборка
+# на самом сервере выглядит проще, но означает, что при ошибке сборки сервис
+# уже остановлен, а машина занята компиляцией whisper.cpp вместо приёма.
+#
+# Откат — переключением тега: образы остаются в реестре, и вернуться на
+# предыдущий выпуск можно за время скачивания.
+name: Выкатка
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Тег или коммит для выкатки"
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # Тесты идут перед сборкой намеренно: собранный, но не проверенный образ
+  # в реестре — это приглашение выкатить его руками «по-быстрому».
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - id: meta
+        name: Версия выпуска
+        run: echo "version=${GITHUB_REF_NAME#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Образ API несёт и сервер, и расшифровщик, и подготовку базы: это один
+      # и тот же код, и три образа означали бы три версии одного приложения,
+      # способные разъехаться между собой.
+      - name: Образ API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/api:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Образ консоли
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/web:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ github.repository }}/web:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ключ доступа к серверу
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # отпечаток берётся из секрета, а не с сервера: ssh-keyscan на живом
+          # соединении принимает любой ключ, то есть и подменённый
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      # Снимок базы ДО миграций. Миграции не откатываются переключением тега:
+      # схема уже изменена, и старый образ на новую схему не встанет.
+      - name: Снимок базы
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "cd ${{ secrets.VPS_PATH }} && ./scripts/backup.sh"
+
+      - name: Выкатка
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "${{ secrets.VPS_PATH }}"
+          export QUIZZY_VERSION="${{ needs.build.outputs.version }}"
+          echo "$QUIZZY_VERSION" > .version
+          docker compose --env-file .env.docker pull
+          # provision отрабатывает до api: миграции и права роли приложения
+          docker compose --env-file .env.docker up -d --wait
+          docker image prune -f --filter "until=168h"
+          REMOTE
+
+      # Проверяем не «контейнер поднялся», а «приложение отвечает». Поднявшийся
+      # контейнер с упавшим внутри процессом выглядит успешной выкаткой.
+      - name: Проверка после выкатки
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${{ secrets.SITE_ADDRESS }}/health/ready" || true)
+            [ "$code" = "200" ] && echo "готово" && exit 0
+            sleep 5
+          done
+          echo "приложение не ответило за 150 секунд"
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker logs --tail 80 api"
+          exit 1

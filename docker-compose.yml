@@ -5,6 +5,11 @@
 #
 # Мобильное приложение ходит на тот же адрес, что и консоль (/api/*).
 #
+# Образы берутся из реестра, если заданы QUIZZY_IMAGE_PREFIX и QUIZZY_VERSION,
+# и собираются на месте, если нет (`docker compose up --build`). Один образ на
+# api, provision и transcriber — это один и тот же код; три образа означали бы
+# три версии одного приложения, способные разъехаться между собой.
+#
 # Ролей две, и это не педантизм. Владелец базы (quizzy) нужен миграциям —
 # им требуются права на схему. Приложение подключается ролью quizzy_app,
 # которая таблицами не владеет: владелец в PostgreSQL обходит политики
@@ -30,6 +35,7 @@ services:
 
   # Одноразовая подготовка: миграции и роль приложения. Владельцем базы.
   provision:
+    image: ${QUIZZY_IMAGE_PREFIX:-quizzy}/api:${QUIZZY_VERSION:-local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -38,11 +44,16 @@ services:
     environment:
       DATABASE_URL: postgres://quizzy:${POSTGRES_PASSWORD}@postgres:5432/quizzy
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?задайте APP_DB_PASSWORD}
+      # подготовке он не нужен, но конфигурация процесса проверяется целиком
+      # на старте — и это правильно: половинчатая проверка пропускает как раз
+      # ту переменную, которой не хватит потом
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
 
   api:
+    image: ${QUIZZY_IMAGE_PREFIX:-quizzy}/api:${QUIZZY_VERSION:-local}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -61,6 +72,10 @@ services:
       INSTITUTION_NAME: ${INSTITUTION_NAME:-}
       INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
       PORT: "3001"
+      RECORDINGS_DIR: /data/recordings
+    volumes:
+      # тот же том, что у расшифровщика: API кладёт аудио, воркер его читает
+      - recordings:/data/recordings
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,7 +83,76 @@ services:
       provision:
         condition: service_completed_successfully
 
+  # Загрузка модели распознавания. Одноразовая: модель весит сотни мегабайт и
+  # живёт в томе, а не в образе — образ иначе пришлось бы качать целиком при
+  # каждой выкатке, а модель меняется раз в год.
+  whisper-model:
+    image: curlimages/curl:latest
+    restart: "no"
+    user: root
+    environment:
+      MODEL: ${WHISPER_MODEL_NAME:-small}
+    volumes:
+      - models:/models
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        f="/models/ggml-$${MODEL}.bin"
+        if [ -s "$$f" ]; then echo "модель уже на месте: $$f"; exit 0; fi
+        echo "качаю модель $${MODEL}…"
+        curl -fL --retry 3 -o "$$f.part" \
+          "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$${MODEL}.bin"
+        mv "$$f.part" "$$f"
+        echo "готово: $$f"
+
+  # Расшифровка — отдельным процессом, а не внутри API.
+  #
+  # Расшифровка часового приёма занимает минуты, иногда десятки минут, и
+  # рядом в том же процессе обслуживаются запросы специалистов: «консоль
+  # подтормаживает после обеда» — это и есть очередь расшифровок изнутри
+  # кабинета. Отдельный контейнер к тому же можно ограничить по процессору,
+  # не трогая отзывчивость консоли.
+  transcriber:
+    image: ${QUIZZY_IMAGE_PREFIX:-quizzy}/api:${QUIZZY_VERSION:-local}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["bun", "apps/api/src/transcriber.ts"]
+    restart: unless-stopped
+    # Проверка здоровья из образа стучится в HTTP приложения, которого у
+    # воркера нет: контейнер вечно «unhealthy». Постоянно ложная тревога
+    # хуже её отсутствия — на неё перестают смотреть, и вместе с ней
+    # перестают смотреть на настоящие.
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL: postgres://quizzy_app:${APP_DB_PASSWORD}@postgres:5432/quizzy
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      RECORDINGS_DIR: /data/recordings
+      WHISPER_BIN: /usr/local/bin/whisper-cli
+      WHISPER_MODEL: /models/ggml-${WHISPER_MODEL_NAME:-small}.bin
+      # планировщик живёт в api: два тика на одну базу выдали бы задания дважды
+      SCHEDULER_ENABLED: "0"
+    volumes:
+      - recordings:/data/recordings
+      - models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: ${TRANSCRIBER_CPUS:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      provision:
+        condition: service_completed_successfully
+      whisper-model:
+        condition: service_completed_successfully
+
   web:
+    image: ${QUIZZY_IMAGE_PREFIX:-quizzy}/web:${QUIZZY_VERSION:-local}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -84,3 +168,5 @@ services:
 
 volumes:
   pgdata:
+  recordings:
+  models:

@@ -189,6 +189,27 @@ test("подсказка закрывается один раз и не возв
  */
 const API_DIR = "e2e/visual.e2e.ts-snapshots/api";
 
+/**
+ * Ключ записанного ответа: путь и параметры, но без дат и меток времени.
+ *
+ * Они попадают в АДРЕС запроса: отчёт отделения спрашивает период «с начала
+ * месяца по сегодня», очередь событий — «что было после такого-то момента».
+ * Назавтра адрес другой, записанного ответа под ним нет, экран получает
+ * выдуманный 404 и не отрисовывается.
+ *
+ * То есть ровно та беда, от которой уходили: изменчивость просто переехала
+ * из ответа в запрос. Даты и метки времени заменяются заглушкой — сам ответ
+ * всё равно заморожен, и различать запросы по дате здесь незачем.
+ */
+function keyOf(url: string): string {
+  const parsed = new URL(url);
+  return (parsed.pathname + parsed.search)
+    // метка времени часто приходит кодированной: «T10%3A56%3A52.935Z»,
+    // и класс из цифр с двоеточиями её не ловит — в %3A есть буква
+    .replace(/\d{4}-\d{2}-\d{2}T[^&#]*?Z/g, "<time>")
+    .replace(/\d{4}-\d{2}-\d{2}/g, "<date>");
+}
+
 async function withRecordedApi(
   page: import("@playwright/test").Page,
   screen: string,
@@ -202,7 +223,7 @@ async function withRecordedApi(
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") return route.fallback();
-    const key = new URL(request.url()).pathname + new URL(request.url()).search;
+    const key = keyOf(request.url());
 
     if (!recording) {
       const hit = saved[key];
@@ -333,12 +354,22 @@ for (const screen of SCREENS) {
     const save = await withRecordedApi(page, screen.name, recording);
     await screen.open(page);
     await page.evaluate(() => document.fonts.ready);
-    await save();
-
+    /*
+     * Снимок раньше сохранения набора ответов.
+     *
+     * Было наоборот — и панели, догружающиеся отдельными запросами, успевали
+     * попасть в картинку, но не в набор: при записи они рисовались живыми
+     * данными, при воспроизведении их запрос не находился и панель исчезала
+     * совсем. Эталон и набор расходились в одном и том же прогоне.
+     *
+     * В этом порядке всё, что видно на снимке, заведомо уже записано.
+     */
     await expect(page.locator("main.main")).toHaveScreenshot(
       `screen-${screen.name}.png`,
       TOLERANCE,
     );
+
+    await save();
 
     /*
      * Перехват снимается после снимка, а не до. До — значит отдать фоновому

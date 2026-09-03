@@ -1176,13 +1176,20 @@ describe("проверка типов покрывает тесты", () => {
      * проверка типов останется зелёной, просто перестанет смотреть на
      * половину кода.
      */
+    /*
+     * У консоли конфигурация тестов отдельная: сборка боевого образа не
+     * должна тянуть типы bun-types, а тесты без них не проверить. Общая
+     * конфигурация означала бы либо непроверенные тесты, либо лишнюю
+     * зависимость в образе — и падала бы сборка, а не проверка.
+     */
     const roots = [
       { path: "apps/api/tsconfig.json", dir: "test" },
-      { path: "apps/web/tsconfig.json", dir: "test" },
+      { path: "apps/web/tsconfig.test.json", dir: "test" },
     ];
     const missing = roots.filter(({ path, dir }) => {
       const raw = readFileSync(resolve(import.meta.dir, "../../..", path), "utf8");
-      const config = JSON.parse(raw) as { include?: string[] };
+      // в файле есть комментарий-пояснение — JSON.parse его не переварит
+      const config = JSON.parse(raw.replace(/\/\*[\s\S]*?\*\//g, "")) as { include?: string[] };
       return !(config.include ?? []).includes(dir);
     });
     expect(missing.map((m) => m.path)).toEqual([]);
