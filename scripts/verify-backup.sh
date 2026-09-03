@@ -24,7 +24,14 @@ latest="$(ls -1t "$BACKUP_DIR"/daily/* 2>/dev/null | head -1 || true)"
 [ -n "$latest" ] || latest="$(find "$BACKUP_DIR" -type f -name 'quizzy_*' | sort -r | head -1 || true)"
 [ -n "$latest" ] || { echo "ПРОВАЛ: в $BACKUP_DIR нет ни одного бэкапа"; exit 1; }
 
-age_hours=$(( ( $(date +%s) - $(stat -f %m "$latest" 2>/dev/null || stat -c %Y "$latest") ) / 3600 ))
+# Сначала форма GNU, потом BSD. Обратный порядок не работает: на Linux
+# `stat -f` — это «показать файловую систему», а не «формат», и команда не
+# падает, а печатает совсем другое. Запасной вариант при этом не
+# срабатывает, а арифметика ниже получает текст вместо числа и роняет
+# скрипт с «unbound variable» — то есть проверка бэкапов не работала
+# именно на той системе, ради которой написана.
+mtime="$(stat -c %Y "$latest" 2>/dev/null || stat -f %m "$latest")"
+age_hours=$(( ( $(date +%s) - mtime ) / 3600 ))
 echo "проверяю: $latest (возраст ${age_hours} ч)"
 
 # свежесть — часть проверки: разворачивающийся, но недельной давности бэкап
