@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { sql } from "drizzle-orm";
 import { adminA, adminB, and, api, app, json, batteries, batteryAssignments, batteryItems, createSurveySchema, createVersion, db, eq, groupA, isNull, makeUser, patient, runDueSchedules, scheduleRuns, schedules, sr45, submitSurvey, surveyInA, surveys, users } from "./fixtures";
 
 /* Батареи, назначения, расписания и приглашения */
@@ -187,6 +188,123 @@ describe("планировщик", () => {
     // срабатывание одно: второй прогон не дошёл до выдачи, срок уже сдвинут
     expect(runs.length).toBe(1);
     expect(runs[0]!.assigned).toBe(1);
+  });
+
+  test("упавшее расписание не останавливает следующие и само сдвигает срок", async () => {
+    /*
+     * «Ошибка одного расписания не останавливает остальные» было написано в
+     * комментарии к проходу, но проход шёл одной транзакцией на все
+     * расписания. Ошибка postgres переводит транзакцию в aborted, и дальше
+     * в ней не проходит ничего — ни запись о неудаче, ни сдвиг срока (обе
+     * гасят исключение через .catch и потому молчат), ни одно из следующих
+     * расписаний. Одно кривое расписание вставало поперёк работы всей
+     * больницы и возвращалось каждый тик, потому что срок ему сдвинуть не
+     * удавалось.
+     *
+     * Сбой подстраивается триггером — нужна именно ошибка postgres, только
+     * она портит транзакцию, — и подстраивается он на ОБНОВЛЕНИИ
+     * расписания после выдачи. Место выбрано не случайно: выдача внутри
+     * runSchedule обёрнута своей транзакцией, то есть savepoint'ом, и сбой
+     * в ней откатывается, не трогая внешнюю. Первая версия этой проверки
+     * ломала именно выдачу — и проходила на сломанном коде тоже. Всё, что
+     * идёт в проходе вне этого savepoint'а (отметка о прогоне, сдвиг срока,
+     * подсчёт охвата), такой защиты не имеет.
+     */
+    const battery = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: battery,
+      title: "Батарея для сбоя",
+      groupId: groupA,
+      strictOrder: false,
+      createdBy: adminA.id,
+    });
+    await db.insert(batteryItems).values([{ batteryId: battery, surveyId: surveyInA, position: 0, required: true }]);
+
+    const broken = crypto.randomUUID();
+    const healthy = crypto.randomUUID();
+    const mark = `СБОЙ-${crypto.randomUUID().slice(0, 8)}`;
+    // кривое идёт первым: проход берёт расписания по возрастанию nextRunAt
+    await db.insert(schedules).values([
+      {
+        id: broken,
+        title: mark,
+        batteryId: battery,
+        scope: "unit",
+        unit: "Рота А",
+        intervalDays: 30,
+        dueDays: 7,
+        startsAt: new Date(Date.now() - 120_000).toISOString(),
+        nextRunAt: new Date(Date.now() - 120_000).toISOString(),
+        active: true,
+        createdBy: adminA.id,
+      },
+      {
+        id: healthy,
+        title: `Исправное ${mark}`,
+        batteryId: battery,
+        scope: "unit",
+        unit: "Рота А",
+        intervalDays: 30,
+        dueDays: 7,
+        startsAt: new Date(Date.now() - 60_000).toISOString(),
+        nextRunAt: new Date(Date.now() - 60_000).toISOString(),
+        active: true,
+        createdBy: adminA.id,
+      },
+    ]);
+
+    /*
+     * Условие `new.last_run_at is not null` отделяет успешное обновление
+     * (оно проставляет отметку о запуске) от восстановительного в catch (оно
+     * трогает только срок). Иначе триггер запретил бы и сдвиг срока, и
+     * проверка не смогла бы отличить починенный код от сломанного.
+     *
+     * Метка подставляется в текст функции, а не параметром: в теле CREATE
+     * FUNCTION связывать нечего — postgres не выводит тип $1.
+     */
+    await db.execute(
+      sql.raw(`
+      create or replace function quizzy_test_break_schedule() returns trigger as $fn$
+      begin
+        if new.title = '${mark}' and new.last_run_at is not null then
+          raise exception 'подстроенный сбой расписания';
+        end if;
+        return new;
+      end $fn$ language plpgsql`),
+    );
+    await db.execute(sql`
+      create trigger quizzy_test_break_schedule_trg before update on schedules
+      for each row execute function quizzy_test_break_schedule()`);
+
+    try {
+      await runDueSchedules();
+    } finally {
+      await db.execute(sql`drop trigger if exists quizzy_test_break_schedule_trg on schedules`);
+      await db.execute(sql`drop function if exists quizzy_test_break_schedule()`);
+    }
+
+    const brokenRuns = await db.select().from(scheduleRuns).where(eq(scheduleRuns.scheduleId, broken));
+    expect(brokenRuns.length, "неудача кривого расписания нигде не записана").toBe(1);
+    expect(brokenRuns[0]!.assigned).toBe(0);
+    expect(brokenRuns[0]!.note).toContain("подстроенный сбой");
+
+    const healthyRuns = await db.select().from(scheduleRuns).where(eq(scheduleRuns.scheduleId, healthy));
+    expect(healthyRuns.length, "следующее расписание не отработало — проход встал на первом сбое").toBe(1);
+    expect(healthyRuns[0]!.assigned).toBeGreaterThan(0);
+
+    // срок кривого сдвинут: иначе оно вернётся на следующем же тике
+    const [after] = await db.select().from(schedules).where(eq(schedules.id, broken));
+    expect(
+      new Date(after!.nextRunAt).getTime(),
+      "срок кривого расписания не сдвинут — оно будет падать каждый тик",
+    ).toBeGreaterThan(Date.now());
+
+    // от кривого не осталось наполовину розданных назначений
+    const leftovers = await db
+      .select()
+      .from(batteryAssignments)
+      .where(and(eq(batteryAssignments.batteryId, battery), sql`${batteryAssignments.note} like ${`%${mark}%`}`));
+    expect(leftovers.every((a) => a.note?.includes("Исправное"))).toBe(true);
   });
 });
 

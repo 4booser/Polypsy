@@ -281,7 +281,10 @@ export function startNotifier(intervalMs = 60_000): () => void {
      * повторов рассылка не боится (отсекает по ключу события), а минутный шаг
      * означает, что «за час» приходит с точностью до минуты.
      */
-    void systemContext(baseDb, () => remindAppointments()).catch((error) =>
+    // без обёртки контекстом: рассылка сама берёт снимок данных одной
+    // транзакцией и отправляет вне её — общая обёртка держала бы соединение
+    // из пула открытым на все сетевые вызовы разом
+    void remindAppointments().catch((error) =>
       log.warn("clinic.remind_failed", { error: String(error) }),
     );
   };

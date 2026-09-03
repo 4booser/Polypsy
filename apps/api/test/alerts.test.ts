@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, and, api, db, eq, isNull, makeUser, patient, responsesTable, root, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, adminB, and, api, db, eq, isNull, makeUser, patient, responsesTable, root, submitSurvey, surveyInA, surveyInB, surveys } from "./fixtures";
 
 /* Риск: тревоги, случаи, разбор и передача смены */
 
@@ -290,6 +290,52 @@ describe("случаи риска", () => {
 
     const signals = await db.select().from(riskAlerts).where(eq(riskAlerts.caseId, open!.id));
     expect(signals.length).toBeGreaterThan(1);
+  });
+
+  test("сигналы по разным методикам собираются в один случай на человека", async () => {
+    /*
+     * Случай заводится на ЧЕЛОВЕКА. Так написано на экране разбора: «Случай —
+     * это человек, а не отдельный пункт. Решение принимается один раз обо
+     * всех его сигналах», — а код искал открытый случай по паре «человек +
+     * методика». Человек, у которого риск сработал по двум опросникам, висел
+     * в очереди дважды, и второе решение принималось в отрыве от первого:
+     * разбирающий мог не знать, что этот же человек уже разобран.
+     */
+    const { attachToCase } = await import("../src/lib/alertCases");
+    const { alertCases: casesTable } = await import("../src/db/schema");
+    const person = await makeUser("user", `two-surveys-${crypto.randomUUID()}@test`);
+    const at = new Date().toISOString();
+
+    const first = await attachToCase(db as never, {
+      userId: person.id,
+      surveyId: surveyInA,
+      severity: "severe",
+      at,
+    });
+    const second = await attachToCase(db as never, {
+      userId: person.id,
+      surveyId: surveyInB,
+      severity: "moderate",
+      at,
+    });
+
+    expect(first).not.toBeNull();
+    expect(second, "вторая методика завела человеку второй случай — решение придётся принимать дважды").toBe(first);
+
+    const open = await db
+      .select()
+      .from(casesTable)
+      .where(and(eq(casesTable.userId, person.id), isNull(casesTable.acknowledgedAt)));
+    expect(open.length).toBe(1);
+    // тяжесть случая — по худшему сигналу, а не по последнему
+    expect(open[0]!.severity).toBe("severe");
+
+    /*
+     * За собой прибираемся: случай заведён напрямую, без единого сигнала, и
+     * соседняя проверка «разбор ставит исход на все сигналы» берёт первый
+     * открытый случай из списка — она бы взяла этот и не нашла в нём ничего.
+     */
+    await db.delete(casesTable).where(eq(casesTable.id, first!));
   });
 
   test("список отдаётся страницами с курсором", async () => {

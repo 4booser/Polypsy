@@ -18,36 +18,53 @@ import { log } from "./log";
  * след в журнале с числом удалённых строк.
  */
 
+const BATCH = 5000;
+
 export async function runRetentionOnce(now = new Date()): Promise<number> {
   if (env.answerEventsRetentionDays <= 0) return 0; // ретенция выключена
-  return systemContext(baseDb, () => runRetentionInner(now));
-}
-
-async function runRetentionInner(now: Date): Promise<number> {
 
   const cutoff = new Date(now.getTime() - env.answerEventsRetentionDays * 86_400_000).toISOString();
 
-  // порциями: одна гигантская DELETE держала бы блокировку и WAL
+  /*
+   * Порциями — и КАЖДАЯ порция в своей транзакции.
+   *
+   * Порции задумывались, чтобы не держать блокировку и не раздувать WAL
+   * одной гигантской DELETE, но весь проход шёл внутри одного
+   * systemContext, то есть внутри одной транзакции: строки не
+   * освобождались до самого конца, WAL не переиспользовался, autovacuum не
+   * мог убрать ни одной удалённой версии, — и порции не давали ровно того,
+   * ради чего заведены. На годовой таблице это часы одной открытой
+   * транзакции.
+   *
+   * Плата за отдельные транзакции — проход прерываем: упав на пятой порции,
+   * мы оставляем четыре удалёнными. Для чистки по сроку это правильное
+   * поведение: следующий суточный тик доберёт остаток.
+   */
   let total = 0;
   for (;;) {
-    const rows = await db.execute(sql`
-      delete from answer_events
-      where id in (
-        select ae.id from answer_events ae
-        join responses r on r.id = ae.response_id
-        where r.submitted_at is not null and r.submitted_at < ${cutoff}
-        limit 5000
-      )
-      returning id`);
-    total += rows.length;
-    if (rows.length < 5000) break;
+    const deleted = await systemContext(baseDb, async () => {
+      const rows = await db.execute(sql`
+        delete from answer_events
+        where id in (
+          select ae.id from answer_events ae
+          join responses r on r.id = ae.response_id
+          where r.submitted_at is not null and r.submitted_at < ${cutoff}
+          limit ${BATCH}
+        )
+        returning id`);
+      return rows.length;
+    });
+    total += deleted;
+    if (deleted < BATCH) break;
   }
 
   if (total > 0) {
-    await auditSystem({
-      action: "retention.answer_events",
-      details: { deleted: total, olderThanDays: env.answerEventsRetentionDays },
-    });
+    await systemContext(baseDb, () =>
+      auditSystem({
+        action: "retention.answer_events",
+        details: { deleted: total, olderThanDays: env.answerEventsRetentionDays },
+      }),
+    );
   }
   return total;
 }
