@@ -124,7 +124,17 @@ async function main(): Promise<void> {
      */
     const { hashPassword } = await import("./lib/auth");
     const { encryptPersonFields } = await import("./lib/crypto");
-    const email = process.env.ADMIN_EMAIL ?? "admin@local";
+    /*
+     * Адрес обязан проходить проверку формы — той самой, что стоит на входе.
+     *
+     * По умолчанию было «admin@local», и вход с ним невозможен: домен без
+     * точки zod за адрес не считает. То есть установщик заводил единственную
+     * учётную запись свежего экземпляра и делал её непригодной — молча, с
+     * бодрым «создан первый суперадминистратор» и напечатанным паролем.
+     * Обнаруживается это в первую же попытку войти, когда установщик уже
+     * отработал и пароль показан один раз.
+     */
+    const email = process.env.ADMIN_EMAIL ?? "admin@quizzy.local";
     const password = randomBytes(12).toString("base64url");
     await db.insert(users).values({
       id: crypto.randomUUID(),
