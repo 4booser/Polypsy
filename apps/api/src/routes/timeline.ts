@@ -18,7 +18,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
-import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const timelineRoutes = new Hono<AppEnv>();

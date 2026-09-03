@@ -21,7 +21,6 @@ import type {
   AlertCase,
   AuditPage,
   Worklist,
-  WorkItem,
   Page,
   Respondent,
   CreateUserInput,
@@ -52,7 +51,7 @@ import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { deviceId, platformName, wipeLocalData } from "../offline/device";
 import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
-import { ageAt, computeProfile } from "@quizzy/shared";
+import { computeProfile } from "@quizzy/shared";
 
 export class ApiError extends Error {
   constructor(

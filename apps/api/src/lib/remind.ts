@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import { renderPush, type Lang } from "@quizzy/shared";
 import { db } from "../db";
-import { appointments, responses, slots, specialistProfiles, users } from "../db/schema";
+import { appointments, responses, slots, specialistProfiles, } from "../db/schema";
 import { log } from "./log";
 import { pushToUser } from "./push";
 

@@ -10,7 +10,7 @@ export default function RegisterScreen() {
   const c = useColors();
   const router = useRouter();
   const { register } = useAuth();
-  const { ut, lang } = useLang();
+  const { ut } = useLang();
 
   const [anonymous, setAnonymous] = useState(false);
   const [lastName, setLastName] = useState("");

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, asc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { departments, specialistProfiles, textTemplates, users } from "../db/schema";
+import { departments, specialistProfiles, textTemplates, } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";

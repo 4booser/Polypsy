@@ -4,7 +4,6 @@ import {
   ageAt,
   directStandardize,
   cohortQuery,
-  type CohortBy,
   type ScaleNormalization,
   type ComparisonResult,
   type CorrelationMatrix,

@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { inArray } from "drizzle-orm";
 import { db } from "../db";
 import { surveys } from "../db/schema";
 import { subscribe, type AppEvent } from "../lib/events";

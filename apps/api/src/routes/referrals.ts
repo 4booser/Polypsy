@@ -28,7 +28,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { round, variance } from "../lib/stats";
-import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const referralRoutes = new Hono<AppEnv>();

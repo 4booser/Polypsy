@@ -1,11 +1,10 @@
 import { Hono, type Context } from "hono";
 import { eq } from "drizzle-orm";
-import { z } from "zod";
 import { db } from "../db";
-import { appointments, slots, users, visitRecordings } from "../db/schema";
+import { appointments, visitRecordings } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
+import { badRequest, forbidden, notFound, } from "../lib/http";
 import {
   eraseAudio,
   pendingTranscriptions,
