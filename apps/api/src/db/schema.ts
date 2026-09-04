@@ -2555,7 +2555,14 @@ export const appointments = pgTable(
     specialistId: text("specialist_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["primary", "repeat"] }).notNull(),
+    /**
+     * Первый раз человек здесь или уже был.
+     *
+     * Условием записи это больше не является — слот один на всех, — но
+     * остаётся описанием: «первичный» и «повторный» разные вещи для того,
+     * кто принимает. Заполняется сервером по факту прикрепления.
+     */
+    kind: text("kind", { enum: ["primary", "repeat"] }).notNull().default("primary"),
     /** Очно или дистанционно; своей видеосвязи не пишем, ссылка на стороннюю встречу */
     mode: text("mode", { enum: ["onsite", "remote"] }).notNull().default("onsite"),
     meetingUrl: text("meeting_url"),

@@ -32,8 +32,6 @@ async function specialistWithWeek(tag: string, hoursPerDay: number) {
       startsAt: "09:00",
       endsAt: `${String(9 + hoursPerDay).padStart(2, "0")}:00`,
       slotMinutes: 60,
-      kind: "any",
-      capacity: 1,
     });
   }
   return person.id;

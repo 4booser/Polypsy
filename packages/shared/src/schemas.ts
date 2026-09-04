@@ -760,8 +760,6 @@ export const scheduleTemplateSchema = z
     startsAt: timeOfDay,
     endsAt: timeOfDay,
     slotMinutes: z.number().int().min(5).max(480),
-    kind: z.enum(["primary", "repeat", "any"]).default("any"),
-    capacity: z.number().int().min(1).max(30).default(1),
   })
   .refine((v) => v.endsAt > v.startsAt, {
     message: "приём не может кончаться раньше, чем начался",

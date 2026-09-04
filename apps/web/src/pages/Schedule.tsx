@@ -24,8 +24,6 @@ const BLANK: Row = {
   startsAt: "09:00",
   endsAt: "13:00",
   slotMinutes: 50,
-  kind: "any",
-  capacity: 1,
 };
 
 /**
@@ -170,8 +168,6 @@ export default function SchedulePage() {
                       <span>{ut("sched.from")}</span>
                       <span>{ut("sched.to")}</span>
                       <span>{ut("sched.slotMinutes")}</span>
-                      <span>{ut("sched.kind")}</span>
-                      <span>{ut("sched.capacity")}</span>
                       <span />
                     </div>
                     <div className="flex flex-col gap-1">
@@ -212,11 +208,6 @@ export default function SchedulePage() {
  */
 function WeekRead({ rows }: { rows: Row[] }) {
   const { ut } = useLang();
-  const KIND: Record<Row["kind"], UiKey> = {
-    any: "sched.kindAny",
-    primary: "sched.kindPrimary",
-    repeat: "sched.kindRepeat",
-  };
 
   return (
     <div className="px-4 pb-4">
@@ -244,14 +235,6 @@ function WeekRead({ rows }: { rows: Row[] }) {
                     <span className="text-muted">
                       {ut("sched.perSlot").replace("{n}", String(r.slotMinutes))}
                     </span>
-                    <span className="text-muted">{ut(KIND[r.kind])}</span>
-                    {/* мест показываем только когда их больше одного: «1 место» —
-                        это обычный приём, и писать об этом в каждой строке незачем */}
-                    {r.capacity > 1 ? (
-                      <span className="text-muted">
-                        <Num>{r.capacity}</Num> {ut("sched.places")}
-                      </span>
-                    ) : null}
                   </div>
                 ))}
               </div>
@@ -264,7 +247,8 @@ function WeekRead({ rows }: { rows: Row[] }) {
 }
 
 /** Ширины столбцов заданы один раз: шапка и строки обязаны совпадать */
-const COLUMNS = "150px 116px 116px 92px 170px 76px 1fr";
+// день · с · по · длительность · удалить
+const COLUMNS = "150px 116px 116px 92px 1fr";
 
 function TemplateRow({
   row,
@@ -315,23 +299,6 @@ function TemplateRow({
         max={480}
         value={row.slotMinutes}
         onChange={(e) => onChange({ ...row, slotMinutes: Number(e.target.value) })}
-      />
-      <Select
-        aria-label={ut("sched.kind")}
-        value={row.kind}
-        onChange={(e) => onChange({ ...row, kind: e.target.value as Row["kind"] })}
-      >
-        <option value="any">{ut("sched.kindAny")}</option>
-        <option value="primary">{ut("sched.kindPrimary")}</option>
-        <option value="repeat">{ut("sched.kindRepeat")}</option>
-      </Select>
-      <Input
-        aria-label={ut("sched.capacity")}
-        type="number"
-        min={1}
-        max={30}
-        value={row.capacity}
-        onChange={(e) => onChange({ ...row, capacity: Number(e.target.value) })}
       />
       <Button className="justify-self-start" size="sm" variant="ghost" onClick={onRemove}>
         {ut("sched.remove")}

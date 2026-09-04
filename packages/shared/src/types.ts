@@ -1553,10 +1553,6 @@ export interface FreeSlot {
   room: string | null;
   startsAt: string;
   endsAt: string;
-  kind: SlotKind;
-  /** Сколько мест осталось; для обычного приёма это всегда 1 */
-  free: number;
-  capacity: number;
 }
 
 /** Приём в списке — и у пациента, и в «Сегодня» у специалиста */
@@ -1614,8 +1610,6 @@ export interface ScheduleTemplateView {
   startsAt: string;
   endsAt: string;
   slotMinutes: number;
-  kind: SlotKind;
-  capacity: number;
 }
 
 /** Исключение из обычной недели */

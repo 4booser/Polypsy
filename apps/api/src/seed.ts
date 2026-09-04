@@ -1150,8 +1150,6 @@ async function seedClinic() {
           startsAt: "09:00",
           endsAt: "12:00",
           slotMinutes: 50,
-          kind: "primary",
-          capacity: 1,
         },
         {
           id: crypto.randomUUID(),
@@ -1160,8 +1158,6 @@ async function seedClinic() {
           startsAt: "14:00",
           endsAt: "17:00",
           slotMinutes: 50,
-          kind: "repeat",
-          capacity: 1,
         },
       ]);
     }
@@ -1173,7 +1169,18 @@ async function seedClinic() {
      * Дополнительный день — существующее исключение, и оно же оказывается
      * посеяно на живом примере.
      */
-    const weekday = new Date().getDay();
+    /*
+     * День недели считается ПО КИЕВУ, а не по часам машины.
+     *
+     * Здесь стояло `new Date().getDay()` — местное время сервера, — а
+     * «сегодня» ниже берётся из todayInKyiv(). Два ответа на вопрос «какой
+     * сегодня день», и они расходятся каждую пятницу после 21:00 UTC: по
+     * серверу ещё пятница, дополнительный день не заводится, а экран дня
+     * показывает киевскую субботу, где по шаблону недели приёма нет. Шесть
+     * сценариев приёма падали по календарю — ровно то, ради чего этот
+     * дополнительный день и заводился.
+     */
+    const weekday = new Date(`${todayInKyiv()}T12:00:00Z`).getUTCDay();
     if (weekday === 0 || weekday === 6) {
       await db.insert(scheduleExceptions).values({
         id: crypto.randomUUID(),
@@ -1181,7 +1188,13 @@ async function seedClinic() {
         date: todayInKyiv(),
         kind: "extra",
         startsAt: "09:00",
-        endsAt: "12:00",
+        /*
+         * До 14:00, а не до 12:00: экран дня показывает четыре приёма в
+         * разных состояниях, и на трёх слотах четвёртого — «не подтвердил» —
+         * просто не существует. Проверка искала его и падала по субботам,
+         * то есть по календарю, а не по существу.
+         */
+        endsAt: "14:00",
         slotMinutes: 50,
         note: "Дополнительный приём",
       });
@@ -1222,7 +1235,6 @@ async function seedClinic() {
       slotId: slot.id,
       patientId: person.id,
       specialistId: psy!.id,
-      kind: slot.kind === "repeat" ? "repeat" : "primary",
       status: states[n]!,
       reasonEnc: reasons[n] ? encryptField(reasons[n]!) : null,
       bookedBy: person.id,

@@ -39,7 +39,7 @@ beforeAll(async () => {
 
 describe("календарная арифметика", () => {
   test("интервал режется на слоты, хвост короче слота отбрасывается", () => {
-    const pieces = sliceInterval({ from: "09:00", to: "10:40", slotMinutes: 50, kind: "any", capacity: 1 });
+    const pieces = sliceInterval({ from: "09:00", to: "10:40", slotMinutes: 50 });
     expect(pieces).toEqual([
       { from: "09:00", to: "09:50" },
       { from: "09:50", to: "10:40" },
@@ -48,14 +48,14 @@ describe("календарная арифметика", () => {
 
   test("остаток в двадцать минут слотом не становится", () => {
     // приём в 20 минут вместо 50 — это не приём, а строка в расписании
-    const pieces = sliceInterval({ from: "09:00", to: "10:10", slotMinutes: 50, kind: "any", capacity: 1 });
+    const pieces = sliceInterval({ from: "09:00", to: "10:10", slotMinutes: 50 });
     expect(pieces).toEqual([{ from: "09:00", to: "09:50" }]);
   });
 
   test("отпуск с часами разрывает интервал надвое", () => {
     const result = intervalsForDay(
       2,
-      [{ weekday: 2, from: "09:00", to: "17:00", slotMinutes: 60, kind: "any", capacity: 1 }],
+      [{ weekday: 2, from: "09:00", to: "17:00", slotMinutes: 60 }],
       [{ from: "12:00", to: "13:00" }],
       [],
     );
@@ -68,9 +68,9 @@ describe("календарная арифметика", () => {
   test("отпуск на весь день не оставляет ничего, кроме дополнительных часов", () => {
     const result = intervalsForDay(
       2,
-      [{ weekday: 2, from: "09:00", to: "17:00", slotMinutes: 60, kind: "any", capacity: 1 }],
+      [{ weekday: 2, from: "09:00", to: "17:00", slotMinutes: 60 }],
       [{ from: null, to: null }],
-      [{ from: "18:00", to: "19:00", slotMinutes: 60, kind: "any", capacity: 1 }],
+      [{ from: "18:00", to: "19:00", slotMinutes: 60 }],
     );
     expect(result.map((i) => [i.from, i.to])).toEqual([["18:00", "19:00"]]);
   });
@@ -78,7 +78,7 @@ describe("календарная арифметика", () => {
   test("шаблон другого дня недели в этот день не попадает", () => {
     const result = intervalsForDay(
       3,
-      [{ weekday: 2, from: "09:00", to: "17:00", slotMinutes: 60, kind: "any", capacity: 1 }],
+      [{ weekday: 2, from: "09:00", to: "17:00", slotMinutes: 60 }],
       [],
       [],
     );
@@ -133,8 +133,6 @@ describe("генерация", () => {
       startsAt: "09:00",
       endsAt: "12:00",
       slotMinutes: 60,
-      kind: "any",
-      capacity: 1,
     });
 
     const first = await syncSlots(specialistId, 2);
@@ -184,8 +182,6 @@ describe("генерация", () => {
       startsAt: "09:00",
       endsAt: "10:00",
       slotMinutes: 60,
-      kind: "any",
-      capacity: 1,
     });
     await syncSlots(long.id, 40);
 
@@ -245,7 +241,6 @@ describe("генерация", () => {
       slotId,
       patientId: patient.id,
       specialistId,
-      kind: "primary",
     });
 
     // а теперь специалист сужает часы задним числом
@@ -310,8 +305,6 @@ describe("генерация", () => {
       startsAt: "09:00",
       endsAt: "10:00",
       slotMinutes: 60,
-      kind: "primary",
-      capacity: 1,
     });
 
     // ближайшее воскресенье: день, в который шаблон заведомо не попадает
@@ -361,8 +354,6 @@ describe("генерация", () => {
       startsAt: "09:00",
       endsAt: "11:00",
       slotMinutes: 60,
-      kind: "primary",
-      capacity: 1,
     });
     await syncSlots(person.id, 2);
 
@@ -383,7 +374,6 @@ describe("генерация", () => {
       slotId: slot!.id,
       patientId: patient.id,
       specialistId: person.id,
-      kind: "primary",
       status: "booked",
       bookedBy: patient.id,
     });
@@ -414,14 +404,12 @@ describe("генерация", () => {
       specialistId: doc.id,
       startsAt: new Date(Date.now() + 86_400_000).toISOString(),
       endsAt: new Date(Date.now() + 90_000_000).toISOString(),
-      kind: "primary",
     });
     await db.insert(appointments).values({
       id: crypto.randomUUID(),
       slotId,
       patientId: patient.id,
       specialistId: doc.id,
-      kind: "primary",
       status: "booked",
       bookedBy: patient.id,
     });
