@@ -45,10 +45,14 @@ let specialistId: string;
 let specialistToken: string;
 
 /** Свободный слот подальше в будущем — чтобы не спорить с «уже прошло» */
-async function freeSlot(kind: "primary" | "repeat" | "any" = "any") {
+/*
+ * Свободный слот. Вида у слота больше нет: приём перестал делиться на
+ * первичный и повторный, и слот один на всех.
+ */
+async function freeSlot() {
   const [row] = await db.execute<{ id: string }>(
     `select s.id from slots s
-     where s.specialist_id = '${specialistId}' and s.kind = '${kind}'
+     where s.specialist_id = '${specialistId}'
        and s.starts_at > now() + interval '3 days'
        and not exists (select 1 from appointments a where a.slot_id = s.id and a.status <> 'cancelled')
      order by s.starts_at limit 1`,
@@ -78,8 +82,6 @@ beforeAll(async () => {
         startsAt: "09:00",
         endsAt: "11:00",
         slotMinutes: 60,
-        kind: "primary",
-        capacity: 1,
       },
       {
         id: crypto.randomUUID(),
@@ -88,8 +90,6 @@ beforeAll(async () => {
         startsAt: "14:00",
         endsAt: "16:00",
         slotMinutes: 60,
-        kind: "repeat",
-        capacity: 1,
       },
     ]);
   }
@@ -97,28 +97,22 @@ beforeAll(async () => {
 });
 
 describe("свободное время", () => {
-  test("первичные слоты видит любой зарегистрированный", async () => {
+  test("свободное время видит любой зарегистрированный", async () => {
+    /*
+     * Деление на первичный и повторный снято. Оно несло одну обязанность —
+     * не пускать неприкреплённых на повторное время, — и оплачивало
+     * правило, которого в поликлинике нет: человек записывается к
+     * специалисту, а не доказывает право на второй визит.
+     */
     const stranger = await makeUser("user", `clinic-x-${crypto.randomUUID()}@test`);
-    const res = await api(`/api/clinic/slots?kind=primary&specialistId=${specialistId}`, stranger.token);
+    const res = await api(`/api/clinic/slots?specialistId=${specialistId}`, stranger.token);
     expect(res.status).toBe(200);
     expect(res.body.items.length).toBeGreaterThan(0);
-    expect(res.body.items.every((s: { kind: string }) => s.kind === "primary")).toBe(true);
-  });
-
-  test("повторные слоты неприкреплённому не показываются", async () => {
-    /*
-     * Требовать прикрепления на первичный приём означало бы требовать прийти,
-     * чтобы получить право прийти. На повторный — наоборот: это время для
-     * тех, кто здесь уже обслуживается.
-     */
-    const stranger = await makeUser("user", `clinic-y-${crypto.randomUUID()}@test`);
-    const res = await api(`/api/clinic/slots?kind=repeat&specialistId=${specialistId}`, stranger.token);
-    expect(res.body.items).toEqual([]);
   });
 
   test("кабинет виден до приёма", async () => {
     const stranger = await makeUser("user", `clinic-r-${crypto.randomUUID()}@test`);
-    const res = await api(`/api/clinic/slots?kind=primary&specialistId=${specialistId}`, stranger.token);
+    const res = await api(`/api/clinic/slots?specialistId=${specialistId}`, stranger.token);
     expect(res.body.items[0].room).toBe("214");
   });
 });
@@ -126,7 +120,7 @@ describe("свободное время", () => {
 describe("запись", () => {
   test("первичная запись прикрепляет к отделению сама", async () => {
     const patient = await makeUser("user", `clinic-p1-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
 
     const res = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
@@ -148,13 +142,13 @@ describe("запись", () => {
     expect(attached[0]!.attachedVia).toBe("visit");
 
     // и повторные слоты ему теперь видны
-    const repeat = await api(`/api/clinic/slots?kind=repeat&specialistId=${specialistId}`, patient.token);
+    const repeat = await api(`/api/clinic/slots?specialistId=${specialistId}`, patient.token);
     expect(repeat.body.items.length).toBeGreaterThan(0);
   });
 
   test("причина обращения хранится зашифрованной", async () => {
     const patient = await makeUser("user", `clinic-p2-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId, reason: "тревога перед выездом" }),
@@ -174,7 +168,7 @@ describe("запись", () => {
   test("за другого записывает только тот, кому это разрешено", async () => {
     const patient = await makeUser("user", `clinic-p3-${crypto.randomUUID()}@test`);
     const other = await makeUser("user", `clinic-p4-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
 
     const res = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
@@ -196,14 +190,20 @@ describe("запись", () => {
     expect(attached!.attachedVia).toBe("staff");
   });
 
-  test("на повторный слот без прикрепления не записаться", async () => {
+  test("незнакомый человек записывается без предварительного прикрепления", async () => {
+    /*
+     * Обратная сторона того же решения: раньше здесь ждали отказа 400 —
+     * «сначала прикрепись». Прикрепление теперь создаётся самой записью,
+     * какой бы она ни была, и требовать прийти, чтобы получить право
+     * прийти, больше не нужно.
+     */
     const stranger = await makeUser("user", `clinic-p5-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("repeat");
+    const slotId = await freeSlot();
     const res = await api("/api/clinic/appointments", stranger.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
   });
 
   test("двое одновременно не занимают одно место", async () => {
@@ -217,7 +217,7 @@ describe("запись", () => {
      */
     const a = await makeUser("user", `clinic-race-a-${crypto.randomUUID()}@test`);
     const b = await makeUser("user", `clinic-race-b-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
 
     const [first, second] = await Promise.all([
       api("/api/clinic/appointments", a.token, {
@@ -249,7 +249,6 @@ describe("запись", () => {
       departmentId,
       startsAt: new Date(Date.now() - 3600_000).toISOString(),
       endsAt: new Date(Date.now() - 1800_000).toISOString(),
-      kind: "any",
     });
     const res = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
@@ -262,7 +261,7 @@ describe("запись", () => {
 describe("движение приёма", () => {
   test("подтверждение, явка, начало, завершение", async () => {
     const patient = await makeUser("user", `clinic-m1-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -291,7 +290,7 @@ describe("движение приёма", () => {
      * неявок, и хронологию пациента.
      */
     const patient = await makeUser("user", `clinic-m2-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -308,7 +307,7 @@ describe("движение приёма", () => {
   test("подтверждает только тот, кого записали", async () => {
     const patient = await makeUser("user", `clinic-m3-${crypto.randomUUID()}@test`);
     const nosy = await makeUser("user", `clinic-m4-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -325,14 +324,14 @@ describe("движение приёма", () => {
 describe("перенос и отмена", () => {
   test("перенос освобождает прежнее время и снимает подтверждение", async () => {
     const patient = await makeUser("user", `clinic-r1-${crypto.randomUUID()}@test`);
-    const first = await freeSlot("primary");
+    const first = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId: first }),
     });
     await api(`/api/clinic/appointments/${booked.body.id}/confirm`, patient.token, { method: "POST" });
 
-    const second = await freeSlot("primary");
+    const second = await freeSlot();
     expect(second).not.toBe(first);
     const res = await api(`/api/clinic/appointments/${booked.body.id}/reschedule`, patient.token, {
       method: "POST",
@@ -346,7 +345,7 @@ describe("перенос и отмена", () => {
     expect(row!.confirmedAt).toBeNull();
 
     // прежнее время снова свободно
-    const free = await api(`/api/clinic/slots?kind=primary&specialistId=${specialistId}`, patient.token);
+    const free = await api(`/api/clinic/slots?specialistId=${specialistId}`, patient.token);
     expect(free.body.items.some((s: { id: string }) => s.id === first)).toBe(true);
   });
 
@@ -367,7 +366,7 @@ describe("перенос и отмена", () => {
      */
     const { moveAppointment } = await import("../src/lib/appointmentMove");
     const patient = await makeUser("user", `clinic-race-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -395,7 +394,7 @@ describe("перенос и отмена", () => {
 
   test("отмена заранее не помечается поздней", async () => {
     const patient = await makeUser("user", `clinic-c1-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -422,7 +421,6 @@ describe("перенос и отмена", () => {
       departmentId,
       startsAt: new Date(Date.now() + 2 * 3600_000).toISOString(),
       endsAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
-      kind: "any",
     });
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
@@ -443,7 +441,7 @@ describe("перенос и отмена", () => {
   test("отменённый приём освобождает место", async () => {
     const a = await makeUser("user", `clinic-c3-${crypto.randomUUID()}@test`);
     const b = await makeUser("user", `clinic-c4-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
 
     const booked = await api("/api/clinic/appointments", a.token, {
       method: "POST",
@@ -480,7 +478,7 @@ describe("сегодня", () => {
     const [slot] = await db.execute<{ id: string; date: string }>(
       `select id, to_char(starts_at at time zone 'Europe/Kyiv', 'YYYY-MM-DD') as date
        from slots
-       where specialist_id = '${specialistId}' and kind = 'primary'
+       where specialist_id = '${specialistId}'
          and starts_at > now() + interval '5 days'
          and not exists (select 1 from appointments a where a.slot_id = slots.id and a.status <> 'cancelled')
        order by starts_at limit 1`,
@@ -514,7 +512,7 @@ describe("свой специалист", () => {
    */
   async function patientWithVisit(tag: string) {
     const patient = await makeUser("user", `clinic-${tag}-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -592,7 +590,6 @@ describe("неявка", () => {
       departmentId,
       startsAt: new Date(Date.now() - hoursAgo * 3600_000).toISOString(),
       endsAt: new Date(Date.now() - (hoursAgo - 1) * 3600_000).toISOString(),
-      kind: "any",
     });
     const id = crypto.randomUUID();
     await db.insert(appointments).values({
@@ -600,7 +597,6 @@ describe("неявка", () => {
       slotId,
       patientId: patient.id,
       specialistId,
-      kind: "primary",
       status: "booked",
     });
     return { patient, id };
@@ -676,7 +672,7 @@ describe("неявка", () => {
     const { patient } = await missedVisit("ns7");
     await sweepNoShows();
 
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -701,7 +697,6 @@ describe("напоминания", () => {
       departmentId,
       startsAt: new Date(Date.now() + hoursAhead * 3600_000).toISOString(),
       endsAt: new Date(Date.now() + (hoursAhead + 1) * 3600_000).toISOString(),
-      kind: "any",
     });
     const id = crypto.randomUUID();
     await db.insert(appointments).values({
@@ -709,7 +704,6 @@ describe("напоминания", () => {
       slotId,
       patientId: patient.id,
       specialistId,
-      kind: "primary",
       status: "booked",
     });
     await db.insert(pushTokens).values({
@@ -840,7 +834,7 @@ describe("несданное назначенное", () => {
      * собирался её обсуждать.
      */
     const patient = await makeUser("user", `clinic-pn-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -868,7 +862,7 @@ describe("несданное назначенное", () => {
 
   test("сданное из счёта уходит", async () => {
     const patient = await makeUser("user", `clinic-pn2-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -896,7 +890,7 @@ describe("скрининг при записи", () => {
    */
   test("отделение без скрининга ничего не предлагает", async () => {
     const patient = await makeUser("user", `clinic-sc0-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const res = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -917,7 +911,7 @@ describe("скрининг при записи", () => {
       .where(eq(departments.id, departmentId));
 
     const patient = await makeUser("user", `clinic-sc1-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const res = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -929,7 +923,7 @@ describe("скрининг при записи", () => {
   test("на повторный приём скрининг не предлагается", async () => {
     // на повторном специалист уже знает, с чем имеет дело
     const patient = await makeUser("user", `clinic-sc2-${crypto.randomUUID()}@test`);
-    const first = await freeSlot("primary");
+    const first = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId: first }),
@@ -939,7 +933,7 @@ describe("скрининг при записи", () => {
       body: JSON.stringify({ status: "arrived" }),
     });
 
-    const repeat = await freeSlot("repeat");
+    const repeat = await freeSlot();
     const res = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId: repeat }),
@@ -956,7 +950,7 @@ describe("скрининг при записи", () => {
      * среди плановых замеров.
      */
     const patient = await makeUser("user", `clinic-sc3-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -978,7 +972,7 @@ describe("скрининг при записи", () => {
 
   test("не сдавший скрининг виден специалисту до приёма", async () => {
     const patient = await makeUser("user", `clinic-sc4-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -1033,7 +1027,7 @@ describe("риск на скрининге", () => {
      * так же, как везде.
      */
     const patient = await makeUser("user", `clinic-rk-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -1185,7 +1179,7 @@ describe("попытки по назначению", () => {
 describe("справка о посещении", () => {
   async function visit(tag: string, status: "done" | "booked") {
     const patient = await makeUser("user", `clinic-cert-${tag}-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -1226,7 +1220,7 @@ describe("справка о посещении", () => {
      * Её несут на работу или в часть, и увидит её тот, кому её отдадут.
      */
     const patient = await makeUser("user", `clinic-cert-r-${crypto.randomUUID()}@test`);
-    const slotId = await freeSlot("primary");
+    const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
       method: "POST",
       body: JSON.stringify({ slotId, reason: "мысли о смерти по ночам" }),

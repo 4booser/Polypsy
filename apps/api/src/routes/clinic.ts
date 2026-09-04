@@ -268,8 +268,6 @@ clinicRoutes.get("/schedule", requireStaff, requirePermission("schedule.own"), a
         startsAt: r.startsAt.slice(0, 5),
         endsAt: r.endsAt.slice(0, 5),
         slotMinutes: r.slotMinutes,
-        kind: r.kind,
-        capacity: r.capacity,
       }),
     ),
     exceptions: exceptions.map(
@@ -384,7 +382,6 @@ const slotQuery = z.object({
   departmentId: z.string().optional(),
   from: z.string().optional(),
   to: z.string().optional(),
-  kind: z.enum(["primary", "repeat"]).optional(),
 });
 
 /** К каким отделениям человек прикреплён */
@@ -409,7 +406,6 @@ async function attachedDepartments(patientId: string): Promise<string[]> {
  */
 clinicRoutes.get("/slots", async (c) => {
   const q = parseQuery(c, slotQuery);
-  const me = c.get("user");
   const now = new Date().toISOString();
   const from = q.from && q.from > now ? q.from : now;
   const to = q.to ?? new Date(Date.now() + HORIZON_WEEKS * 7 * 24 * 3600 * 1000).toISOString();
@@ -446,17 +442,18 @@ clinicRoutes.get("/slots", async (c) => {
     .groupBy(appointments.slotId);
   const busy = new Map(taken.map((t) => [t.slotId, Number(t.n)]));
 
-  const attached = isStaff(me) ? null : new Set(await attachedDepartments(me.id));
-
+  /*
+   * Слот либо свободен, либо занят. Раньше считалось «сколько мест
+   * осталось» — вместимость закладывалась под групповую работу, которой
+   * нет, — и это же число считалось в трёх местах по-разному.
+   *
+   * Деление на первичный и повторный тоже снято: оно несло одну
+   * обязанность — не пускать неприкреплённых на повторный приём, — и
+   * оплачивало правило, которого в поликлинике нет. Человек записывается к
+   * специалисту, а не доказывает право на второй визит.
+   */
   const items: FreeSlot[] = rows
-    .filter((r) => {
-      const free = r.slot.capacity - (busy.get(r.slot.id) ?? 0);
-      if (free <= 0) return false;
-      if (q.kind && r.slot.kind !== "any" && r.slot.kind !== q.kind) return false;
-      // повторный приём — только прикреплённым; персонал видит всё
-      if (attached && r.slot.kind === "repeat" && !attached.has(r.slot.departmentId)) return false;
-      return true;
-    })
+    .filter((r) => !busy.get(r.slot.id))
     .map((r) => ({
       id: r.slot.id,
       specialistId: r.slot.specialistId,
@@ -464,9 +461,6 @@ clinicRoutes.get("/slots", async (c) => {
       room: r.profile?.room ?? null,
       startsAt: r.slot.startsAt,
       endsAt: r.slot.endsAt,
-      kind: r.slot.kind,
-      free: r.slot.capacity - (busy.get(r.slot.id) ?? 0),
-      capacity: r.slot.capacity,
     }));
 
   return c.json({ items });
@@ -549,16 +543,18 @@ clinicRoutes.post("/appointments", async (c) => {
   }
 
   const slot = await takeSlot(input.slotId);
+  /*
+   * Вид приёма определяется по факту, а не проверяется.
+   *
+   * Раньше он был условием записи: повторные слоты видели только
+   * прикреплённые, а прикрепление создавалось записью на первичный. Это
+   * оплачивало правило, которого в поликлинике нет — человек записывается к
+   * специалисту, а не доказывает право на второй визит. Само различие
+   * осталось: «первый раз» и «уже был» — разные вещи для того, кто
+   * принимает, и они попадают в карту. Но записаться оно больше не мешает.
+   */
   const kind = await appointmentKind(patientId, slot.departmentId);
-
-  if (slot.kind !== "any" && slot.kind !== kind) {
-    badRequest(kind === "primary" ? "err.slotForRepeatOnly" : "err.slotForPrimaryOnly");
-  }
-
   const attached = await attachedDepartments(patientId);
-  if (kind === "repeat" && !attached.includes(slot.departmentId)) {
-    badRequest("err.notAttachedToDepartment");
-  }
 
   const id = crypto.randomUUID();
   await db.insert(appointments).values({
@@ -574,13 +570,13 @@ clinicRoutes.post("/appointments", async (c) => {
   });
 
   /*
-   * Прикрепление создаётся самой записью на первичный приём.
+   * Прикрепление создаётся первой же записью, какой бы она ни была.
    *
    * Отдельного действия «прикрепить», которое кто-то должен не забыть
    * сделать, нет: человек с телефона доходит до приёма без участия
    * сотрудника, и ровно ради этого всё затевалось.
    */
-  if (kind === "primary" && !attached.includes(slot.departmentId)) {
+  if (!attached.includes(slot.departmentId)) {
     await db
       .insert(departmentPatients)
       .values({
@@ -612,6 +608,8 @@ clinicRoutes.post("/appointments", async (c) => {
   const department = await db.query.departments.findFirst({
     where: eq(departments.id, slot.departmentId),
   });
+  // скрининг предлагается на первом приёме: на повторном специалист уже
+  // знает, с чем имеет дело, и анкета на входе была бы данью форме
   const screeningSurveyId = kind === "primary" ? (department?.screeningSurveyId ?? null) : null;
 
   return c.json({ id, kind, screeningSurveyId }, 201);
@@ -862,9 +860,6 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
   if (["done", "no_show", "cancelled"].includes(row.status)) badRequest("err.appointmentClosed");
 
   const slot = await takeSlot(input.slotId);
-  if (slot.kind !== "any" && slot.kind !== row.kind) {
-    badRequest(row.kind === "primary" ? "err.slotForRepeatOnly" : "err.slotForPrimaryOnly");
-  }
 
   /*
    * Прежнее состояние проверяется в самой записи, а не только прочитанным

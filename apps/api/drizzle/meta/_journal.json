@@ -484,6 +484,13 @@
       "when": 1788472737043,
       "tag": "0068_catalog_key",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1788472738043,
+      "tag": "0069_simpler_slots",
+      "breakpoints": true
     }
   ]
 }

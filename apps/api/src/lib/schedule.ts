@@ -32,8 +32,6 @@ interface Interval {
   /** Стенное время конца, HH:MM */
   to: string;
   slotMinutes: number;
-  kind: "primary" | "repeat" | "any";
-  capacity: number;
 }
 
 /** Календарная дата без времени и без пояса: с ней часовых ошибок не бывает */
@@ -115,8 +113,6 @@ interface Wanted {
   date: string;
   from: string;
   to: string;
-  kind: "primary" | "repeat" | "any";
-  capacity: number;
 }
 
 /** Желаемая сетка специалиста на окно вперёд — в стенных часах, без поясов */
@@ -146,8 +142,6 @@ export async function plannedSlots(specialistId: string, weeks = HORIZON_WEEKS):
     from: hhmm(t.startsAt),
     to: hhmm(t.endsAt),
     slotMinutes: t.slotMinutes,
-    kind: t.kind,
-    capacity: t.capacity,
   }));
 
   const wanted: Wanted[] = [];
@@ -163,14 +157,12 @@ export async function plannedSlots(specialistId: string, weeks = HORIZON_WEEKS):
         from: hhmm(e.startsAt!),
         to: hhmm(e.endsAt!),
         slotMinutes: e.slotMinutes ?? 50,
-        kind: "any" as const,
-        capacity: 1,
       }));
 
     const intervals = intervalsForDay(isoWeekday(d), dayTemplates, offs, extras);
     for (const interval of intervals) {
       for (const piece of sliceInterval(interval)) {
-        wanted.push({ date: key, from: piece.from, to: piece.to, kind: interval.kind, capacity: interval.capacity });
+        wanted.push({ date: key, from: piece.from, to: piece.to });
       }
     }
   }
@@ -227,8 +219,6 @@ export async function syncSlots(
       departmentId: profile.departmentId,
       startsAt: sql`(${`${w.date} ${w.from}`}::timestamp at time zone ${tz})`,
       endsAt: sql`(${`${w.date} ${w.to}`}::timestamp at time zone ${tz})`,
-      kind: w.kind,
-      capacity: w.capacity,
     }));
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
