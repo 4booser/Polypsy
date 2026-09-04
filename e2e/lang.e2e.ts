@@ -11,21 +11,28 @@ import { login } from "./helpers";
 test("переключение языка меняет оболочку и запоминается", async ({ page }) => {
   await login(page, "psy");
 
+  /*
+   * Берутся пункты РАСКРЫТОГО раздела и подпись самого раздела: группы в
+   * рельсе закрыты, кроме текущей, и пунктов закрытой группы нет в
+   * разметке вовсе. «Пациенты» лежат в закрытой «Люди» — проверять по ним
+   * значило бы проверять заодно умолчание раскрытия.
+   */
   // конфигурация смоука ходит с русской локалью — стартуем с неё
-  await expect(page.getByRole("link", { name: "Пациенты" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Сводка" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Люди/ })).toBeVisible();
 
   await page.getByRole("button", { name: "УКР" }).click();
-  await expect(page.getByRole("link", { name: "Пацієнти" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Зведення" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Випадки ризику" })).toBeVisible();
 
   // язык страницы меняется тоже: от него зависят диктор и переносы слов
   await expect(page.locator("html")).toHaveAttribute("lang", "uk");
 
   await page.reload();
-  await expect(page.getByRole("link", { name: "Пацієнти" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Зведення" })).toBeVisible();
 
   await page.getByRole("button", { name: "РУС" }).click();
-  await expect(page.getByRole("link", { name: "Пациенты" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Сводка" })).toBeVisible();
 });
 
 test("экраны ежедневного пути переведены целиком", async ({ page }) => {

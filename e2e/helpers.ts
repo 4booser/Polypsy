@@ -66,3 +66,24 @@ export async function rowTexts(page: Page): Promise<string[]> {
     .toBeGreaterThan(0);
   return texts;
 }
+
+/**
+ * Перейти по разделу рельсы.
+ *
+ * Группы раскрываются по нажатию, и пунктов закрытой группы нет в разметке
+ * вовсе — не «не видно», а не существует. Сценарий, который просто кликает
+ * по ссылке, повисает на семь секунд и падает по таймауту, и падает так,
+ * что причина не названа: «locator not found» ничего не говорит о том, что
+ * раздел закрыт.
+ *
+ * Поэтому переход через рельсу идёт одним помощником: сперва раскрывается
+ * группа, потом нажимается пункт. Свёрнутая до значков рельса групп не
+ * имеет — там пункт уже на месте, и раскрывать нечего.
+ */
+export async function goVia(page: Page, group: RegExp | string, link: RegExp | string) {
+  const header = page.locator(".sidebar button[aria-expanded]").filter({ hasText: group }).first();
+  if (await header.count()) {
+    if ((await header.getAttribute("aria-expanded")) === "false") await header.click();
+  }
+  await page.getByRole("link", { name: link }).first().click();
+}

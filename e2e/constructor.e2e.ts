@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fieldByLabel, login } from "./helpers";
+import { fieldByLabel, login, goVia } from "./helpers";
 
 const ITEMS = [
   "1. Я легко засыпаю после дежурства.",
@@ -9,7 +9,7 @@ const ITEMS = [
 
 test("методика создаётся из вставленного текста и публикуется", async ({ page }) => {
   await login(page, "psy");
-  await page.getByRole("link", { name: "Методики" }).click();
+  await goVia(page, /Методики и сбор/, "Методики");
   await page.getByRole("link", { name: "Создать методику" }).click();
   await expect(page.getByRole("heading", { name: "Новая методика" })).toBeVisible();
 
@@ -32,7 +32,7 @@ test("методика создаётся из вставленного текс
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(page.getByText("версия 1")).toBeVisible();
 
-  await page.getByRole("link", { name: "Методики" }).click();
+  await goVia(page, /Методики и сбор/, "Методики");
   await expect(page.getByRole("link", { name: title })).toBeVisible();
 });
 

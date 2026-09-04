@@ -51,6 +51,8 @@ export const IconKiosk = icon(<><rect x="4" y="2" width="16" height="20" rx="2" 
 export const IconPulse = icon(<><path d="M2 12h4l2-7 4 14 3-9 2 2h5" /></>);
 export const IconRoute = icon(<><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="5" r="2.5" /><path d="M8.5 19h6a3.5 3.5 0 0 0 0-7h-5a3.5 3.5 0 0 1 0-7h6" /></>);
 export const IconReferral = icon(<><path d="M4 12h11" /><path d="M12 6l6 6-6 6" /><path d="M20 4v16" /></>);
+/* уголок раскрытия группы в рельсе: повёрнут вниз, когда группа открыта */
+export const IconChevron = icon(<path d="M9 6l6 6-6 6" />);
 export const IconCompare = icon(<><path d="M3 20V10M9 20V4M15 20v-7M21 20V8" /></>);
 
 /* ─────────── состояния ─────────── */
