@@ -126,6 +126,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         { to: "/consent-text", key: "consent.title", icon: <IconInvite /> },
         /* приглашения — редкая административная работа, а не повседневная */
         { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
+        { to: "/console", key: "nav.console", icon: <IconStack /> },
         { to: "/api-docs", key: "nav.api", icon: <IconSurvey /> },
         { to: "/ui", key: "nav.ui", icon: <IconDashboard /> },
       ],

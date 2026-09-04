@@ -88,6 +88,8 @@ export type AuditAction =
   /* установка общего каталога: заведение отделения и методик по умолчанию */
   | "department.create"
   | "catalog.install"
+  /* командная консоль: вызов команды пишется до выполнения */
+  | "console.run"
   | "survey.update"
   | "survey.archive"
   | "survey.restore"

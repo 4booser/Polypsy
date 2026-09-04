@@ -289,6 +289,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin", whyNoPermission: "техническое состояние хранилища; делегировать его мы не собираемся, и право осталось бы навсегда только у суперадмина" },
   "GET /api/timeline/:userId": { summary: "Хронология пациента: всё на одной оси", access: "staff", permission: "patients.read" },
   "GET /api/events": { summary: "Поток событий (SSE): тревоги и изменения случаев", access: "staff", permission: "alerts.review", streaming: true },
+
+  /* ── командная консоль ── */
+  "GET /api/console/commands": { summary: "Список команд консоли с отметкой доступности", access: "staff", permission: "console.use" },
+  "POST /api/console/run": { summary: "Выполнить команду консоли; право проверяется отдельно на каждую команду", access: "staff", permission: "console.use" },
   "PATCH /api/surveys/:id/rights": { summary: "Правовой статус и отметка о сверке ключей", access: "superadmin", whyNoPermission: "правовой статус методики утверждает учреждение, а не тот, кто методику завёл; делегировать не собираемся" },
   "GET /api/conferences/patients/:userId": { summary: "Консилиумы по пациенту с мнениями", access: "staff", permission: "conferences.manage" },
   "POST /api/conferences/patients/:userId": { summary: "Вынести случай на консилиум", access: "staff", permission: "conferences.manage" },

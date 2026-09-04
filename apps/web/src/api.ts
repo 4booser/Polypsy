@@ -1185,6 +1185,23 @@ export const api = {
       deniedCount: number;
     }>("/api/audit/summary"),
 
+  /* ── командная консоль ── */
+  consoleCommands: () =>
+    request<{
+      items: {
+        name: string;
+        usage: string;
+        summary: string;
+        permission: string | null;
+        allowed: boolean;
+      }[];
+    }>("/api/console/commands"),
+  consoleRun: (line: string) =>
+    request<{ lines: string[]; ok: boolean }>("/api/console/run", {
+      method: "POST",
+      body: JSON.stringify({ line }),
+    }),
+
   /* ── поликлиника ── */
   threads: () =>
     request<{

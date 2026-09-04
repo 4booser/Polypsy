@@ -52,6 +52,7 @@ const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
+const Console = lazy(() => import("./pages/Console"));
 const WorklistPage = lazy(() => import("./pages/Worklist"));
 const TodayPage = lazy(() => import("./pages/Today"));
 const SchedulePage = lazy(() => import("./pages/Schedule"));
@@ -425,6 +426,7 @@ export default function App() {
           <Route path="/pathways/new" element={<PathwayEditor />} />
           <Route path="/pathways/:id" element={<PathwayDetail />} />
           <Route path="/api-docs" element={<ApiDocs />} />
+          <Route path="/console" element={<Console />} />
           <Route path="/ui" element={<UiKit />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
