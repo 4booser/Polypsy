@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import { NavLink } from "react-router-dom";
 import { forwardRef } from "react";
 import { cx } from "./cx";
 import { useLang } from "../lang";
@@ -347,4 +348,38 @@ export function Toolbar({ children, className }: { children: ReactNode; classNam
 
 export function Spacer() {
   return <span className="flex-1" />;
+}
+
+/**
+ * Вкладки внутри экрана.
+ *
+ * Ссылки, а не переключатель состояния: вкладка попадает в адрес, и её
+ * можно переслать коллеге, положить в закладку и вернуться на неё кнопкой
+ * «назад». Вкладка на состоянии всё это ломает молча — человек присылает
+ * ссылку на карту, а открывается она не на том, что он смотрел.
+ */
+export function Tabs({ items }: { items: { to: string; label: string; end?: boolean }[] }) {
+  return (
+    <nav className="flex items-center gap-1 border-b border-hairline" role="tablist">
+      {items.map((t) => (
+        <NavLink
+          key={t.to}
+          to={t.to}
+          end={t.end}
+          className={({ isActive }) =>
+            cx(
+              "relative -mb-px px-3 py-2 text-small",
+              "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
+              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+              isActive
+                ? "border-b-2 border-primary font-medium text-text"
+                : "border-b-2 border-transparent text-muted hover:text-text",
+            )
+          }
+        >
+          {t.label}
+        </NavLink>
+      ))}
+    </nav>
+  );
 }

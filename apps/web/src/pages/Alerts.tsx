@@ -305,7 +305,7 @@ function PatientContext({ userId }: { userId: string }) {
       <div className="ctx-head">
         <Avatar name={data.fullName} size={30} />
         <div className="grow">
-          <Link to={`/patients/${userId}/summary`}>
+          <Link to={`/patients/${userId}`}>
             <strong>{data.fullName}</strong>
           </Link>
           <div className="hint" style={{ margin: 0 }}>
@@ -412,7 +412,7 @@ function CaseCard({
         <Avatar name={c.userName} size={30} />
         <div className="grow">
           <div className="row tight">
-            <Link to={`/patients/${c.userId}/summary`}>
+            <Link to={`/patients/${c.userId}`}>
               <strong>{c.userName}</strong>
             </Link>
             {c.unit ? <span className="muted">· {c.unit}</span> : null}

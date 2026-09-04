@@ -111,7 +111,6 @@ test("человек ставится на маршрут из своей кар
   await login(page, "psy");
   await page.goto("/patients");
   await page.locator("table tbody tr td a").first().click();
-  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
   const card = page.locator("[data-panel], .card").filter({ hasText: "Маршруты помощи" }).first();
   await expect(card).toBeVisible();

@@ -289,7 +289,7 @@ export default function Cohorts() {
                   {names.map((p) => (
                     <tr key={p.userId}>
                       <td>
-                        <Link to={`/patients/${p.userId}/summary`}>{p.fullName}</Link>
+                        <Link to={`/patients/${p.userId}`}>{p.fullName}</Link>
                       </td>
                       <td className="text-muted">{p.unit ?? "—"}</td>
                     </tr>

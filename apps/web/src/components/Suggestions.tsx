@@ -45,7 +45,7 @@ export function Suggestions() {
               </span>
             </div>
 
-            <Link to={`/patients/${hit.userId}/summary`}>{hit.userName}</Link>
+            <Link to={`/patients/${hit.userId}`}>{hit.userName}</Link>
 
             {/* объяснение — то, на основании чего человек примет решение */}
             <ul className="because">

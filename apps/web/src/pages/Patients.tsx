@@ -146,6 +146,13 @@ export function PatientList() {
   );
 }
 
+/**
+ * Вкладка «Динамика» карты пациента: как менялось.
+ *
+ * Была отдельным экраном со своим заголовком и кнопкой перехода на сводку.
+ * Имя, подразделение и действия переехали в шапку карты — здесь остались
+ * только графики, ради которых на неё и заходят.
+ */
 export function PatientDynamics() {
   const { ut } = useLang();
   const [equating, setEquating] = useState(false);
@@ -157,13 +164,7 @@ export function PatientDynamics() {
   if (!data) return <Loading rows={5} />;
 
   return (
-    <Page
-      title={data.fullName}
-      sub={data.email}
-      count={data.surveys.length || null}
-      crumbs={<Link to="/patients">{ut("patients.all")}</Link>}
-      actions={<Link className="btn primary" to={`/patients/${data.userId}/summary`}>{ut("patients.summary")}</Link>}
-    >
+    <>
       {data.surveys.length === 0 ? <p className="text-muted">{ut("pt.noCompleted")}</p> : null}
 
       {data.surveys.map((sv) => (
@@ -288,7 +289,7 @@ export function PatientDynamics() {
           </div>
         </div>
       ))}
-    </Page>
+    </>
   );
 }
 

@@ -55,7 +55,7 @@ export default function Search() {
                 {result.items.map((hit) => (
                   <li key={hit.id}>
                     <div className="flex items-center gap-2">
-                      <Link to={`/patients/${hit.userId}/summary`}>{hit.userName}</Link>
+                      <Link to={`/patients/${hit.userId}`}>{hit.userName}</Link>
                       <span className="text-muted">
                         {dateTime(hit.createdAt)} · {ut("note.version")} {hit.version}
                       </span>

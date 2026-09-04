@@ -1,22 +1,18 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
 import type { ReferralDestination, ReferralUrgency } from "@quizzy/shared";
 import { api } from "../api";
 import { SeverityTag } from "../charts/advanced";
 import { day, dateTime } from "../format";
-import { useAuth } from "../auth";
-import { Screen, useAction } from "../ui";
-import { Page } from "../ui/layout";
+import { useAction } from "../ui";
 import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
-import { Here } from "../components/Here";
 import { Informants } from "../components/Informants";
 import { Hint } from "../components/Hint";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
 import { Goals } from "../components/Goals";
 import { Conferences } from "../components/Conferences";
 import { PatientPathways } from "../components/PatientPathways";
-import { useResource } from "../useResource";
+import { usePatientCard } from "./PatientCard";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
  * тех же словарей — верный способ однажды показать «принято» в одном месте
@@ -26,61 +22,25 @@ import { DESTINATION_KEY, NEXT_STATUS, STATUS_KEY, URGENCY_KEY } from "./Referra
 
 
 /**
- * Сводка для консилиума: всё о пациенте на одной странице.
+ * Вкладка «Обзор» карты пациента: что с человеком сейчас.
  *
- * Новизна не в данных — они уже есть на семи экранах, — а в том, что их не
- * надо собирать за минуту до заседания. Печать даёт документ, который
- * подшивается.
+ * Была отдельным экраном «сводка для консилиума» со своим заголовком,
+ * своими крошками и кнопками перехода на два соседних экрана того же
+ * человека. Заголовок, имя и действия переехали в шапку карты
+ * (PatientCard) — они свойства человека, а не вкладки, — а здесь осталось
+ * содержимое.
+ *
+ * Смысл не изменился: собрать в одном месте то, что иначе приходится
+ * складывать за минуту до заседания. Печать по-прежнему даёт документ,
+ * который подшивается.
  */
-export default function CaseSummaryPage() {
-  const { userId } = useParams<{ userId: string }>();
-  const [showForm, setShowForm] = useState(false);
-  const { user } = useAuth();
+export default function CaseSummaryTab() {
   const { ut } = useLang();
   const { run } = useAction();
-
-  const res = useResource(() => api.caseSummary(userId!), [userId], { enabled: !!userId });
-  const reload = res.reload;
+  const { data, reload } = usePatientCard();
 
   return (
-    <Screen res={res}>
-      {(data) => (
     <>
-      {/* штамп для подшивки: без «кто и когда распечатал» лист в деле безымянный */}
-      <p className="print-only hint">
-        {ut("sum.formedAt")} {dateTime(new Date().toISOString())}
-        {user ? ` · ${user.lastName ?? ""} ${user.firstName ?? ""}`.trimEnd() : ""}
-      </p>
-      <Page
-        title={data.fullName}
-        crumbs={<Link to={`/patients/${data.userId}`}>← {ut("pt.dynamics")}</Link>}
-        sub={[
-          data.sex === "male" ? ut("adm.male") : data.sex === "female" ? ut("adm.female") : null,
-          data.age !== null ? `${data.age}` : null,
-          data.unit,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-        actions={
-          <>
-            <Here resource={`patient:${data.userId}`} />
-            <Link className="btn" to={`/patients/${data.userId}/timeline`}>{ut("tl.title")}</Link>
-            <button onClick={() => setShowForm((v) => !v)}>{ut("ref.new")}</button>
-            <button onClick={() => window.print()}>{ut("sum.print")}</button>
-          </>
-        }
-      >
-
-      {showForm ? (
-        <ReferralForm
-          userId={data.userId}
-          onDone={() => {
-            setShowForm(false);
-            reload();
-          }}
-        />
-      ) : null}
-
       {data.openAlerts.length ? (
         /*
           Незакрытые тревоги стоят первыми и отмечены полосой выраженности
@@ -236,14 +196,11 @@ export default function CaseSummaryPage() {
           </div>
         </div>
       </div>
-    </Page>
     </>
-      )}
-    </Screen>
   );
 }
 
-function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }) {
+export function ReferralForm({ userId, onDone }: { userId: string; onDone: () => void }) {
   const { ut } = useLang();
   const [destination, setDestination] = useState<ReferralDestination>("psychiatrist");
   const [urgency, setUrgency] = useState<ReferralUrgency>("routine");

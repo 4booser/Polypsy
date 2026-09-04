@@ -18,18 +18,17 @@ test("от тревоги до закрытого направления", async
   const firstPatient = page.locator("table tbody tr td a").first();
   await firstPatient.click();
 
-  // сначала дожидаемся, что страница пациента отрисовалась: заголовок читается
-  // сразу после клика и успевает вернуть ещё «Пациенты»
-  const summaryLink = page.getByRole("link", { name: "Сводка для консилиума" });
-  await summaryLink.waitFor();
+  /*
+   * Отдельного перехода на сводку больше нет: карта открывается сразу на
+   * вкладке «Обзор». Дожидаемся, что вкладки отрисовались, — это и есть
+   * признак, что карта на месте, а не список.
+   */
+  await page.getByRole("link", { name: "Хронология" }).waitFor();
 
   // имя берём с самой страницы: в ссылке рядом с ним стоят инициалы-аватарка,
   // и textContent вернул бы «ПДПетров Дмитрий»
   const patientName = (await page.locator("h1").textContent())!.trim();
   expect(patientName.length).toBeGreaterThan(0);
-
-  await summaryLink.click();
-  await expect(page.locator("h1")).toHaveText(patientName);
   await expect(page.getByRole("heading", { name: "Направления" })).toBeVisible();
   await expect(page.getByText("Направлений нет")).toBeVisible();
 
@@ -82,7 +81,6 @@ test("запись приёма сохраняется, подписываетс
   await login(page, "psy");
   await page.goto("/patients");
   await page.locator("table tbody tr td a").first().click();
-  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
   const notes = page.locator("[data-panel], .card").filter({ hasText: "Записи приёма" }).first();
   await expect(notes).toBeVisible();
@@ -114,7 +112,6 @@ test("план безопасности составляется и сохран
   await login(page, "psy");
   await page.goto("/patients");
   await page.locator("table tbody tr td a").first().click();
-  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
   const card = page.locator("[data-panel], .card").filter({ hasText: "План безопасности" }).first();
   await expect(card).toBeVisible();
@@ -141,7 +138,6 @@ test("цель лечения ставится измеримо и показы�
   await login(page, "psy");
   await page.goto("/patients");
   await page.locator("table tbody tr td a").first().click();
-  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
   const card = page.locator("[data-panel], .card").filter({ hasText: "Цели лечения" }).first();
   await expect(card).toBeVisible();
@@ -170,7 +166,6 @@ test("консилиум собирает мнения и фиксирует р�
   await login(page, "psy");
   await page.goto("/patients");
   await page.locator("table tbody tr td a").first().click();
-  await page.getByRole("link", { name: "Сводка для консилиума" }).click();
 
   const card = page.locator("[data-panel], .card").filter({ hasText: "Консилиум" }).first();
   await expect(card).toBeVisible();

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { CrisisBar, CrisisProvider, CrisisSwitch } from "./components/CrisisBar";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
@@ -50,6 +50,13 @@ const Kiosk = lazy(() => import("./pages/Kiosk"));
 const KioskSessions = lazy(() => import("./pages/KioskSessions"));
 const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
+const PatientCard = lazy(() => import("./pages/PatientCard"));
+
+/** Прежний адрес сводки — теперь вкладка «Обзор» карты */
+function RedirectToCard() {
+  const { userId } = useParams<{ userId: string }>();
+  return <Navigate to={`/patients/${userId}`} replace />;
+}
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
 const Console = lazy(() => import("./pages/Console"));
@@ -418,9 +425,25 @@ export default function App() {
           <Route path="/constructor/:id" element={<Constructor />} />
           <Route path="/surveys/:id/access" element={<Access />} />
           <Route path="/patients" element={<PatientList />} />
-          <Route path="/patients/:userId" element={<PatientDynamics />} />
-          <Route path="/patients/:userId/summary" element={<CaseSummaryPage />} />
-          <Route path="/patients/:userId/timeline" element={<Timeline />} />
+          {/*
+            Карта пациента — один экран с вкладками. Вкладка стоит в адресе:
+            карту пересылают коллеге и кладут в закладку, и открываться она
+            должна на том, что человек смотрел.
+          */}
+          <Route path="/patients/:userId" element={<PatientCard />}>
+            <Route index element={<CaseSummaryPage />} />
+            <Route path="dynamics" element={<PatientDynamics />} />
+            <Route path="timeline" element={<Timeline />} />
+          </Route>
+          {/*
+            Прежний адрес сводки остаётся рабочим: на него ссылается очередь
+            работы с сервера (routes/worklist.ts) и чьи-то закладки. Ломать
+            их ради чистоты адресов незачем — перенаправление стоит строку.
+          */}
+          <Route
+            path="/patients/:userId/summary"
+            element={<RedirectToCard />}
+          />
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/pathways" element={<Pathways />} />
           <Route path="/pathways/new" element={<PathwayEditor />} />

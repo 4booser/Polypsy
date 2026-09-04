@@ -93,7 +93,7 @@ export default function ReferralsPage() {
                     key: "userName",
                     header: ut("ref.patient"),
                     render: (r: Referral) => (
-                      <Link className="row tight" to={`/patients/${r.userId}/summary`}>
+                      <Link className="row tight" to={`/patients/${r.userId}`}>
                         <Avatar name={r.userName} />
                         {r.userName}
                       </Link>
