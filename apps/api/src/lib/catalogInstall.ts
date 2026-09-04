@@ -32,10 +32,21 @@ import { createVersion } from "./surveys";
  */
 
 export interface InstallReport {
-  departmentId: string;
+  departmentId: string | null;
   departmentCreated: boolean;
   installed: string[];
   skipped: string[];
+  /**
+   * Почему установка не состоялась вовсе.
+   *
+   * Единственная причина — в базе ещё нет ни одного сотрудника: методику
+   * надо записать на кого-то, `created_by` обязателен. Так бывает ровно
+   * один раз, между первым выкатом и заведением администратора, и само
+   * проходит на следующем выкате. Возвращаем причину, а не бросаем: выкат
+   * не должен падать из-за того, что учреждение ещё не завело себе
+   * заведующего.
+   */
+  notReady: string | null;
 }
 
 const DEPARTMENT_TITLE: LocalizedText = {
@@ -44,14 +55,11 @@ const DEPARTMENT_TITLE: LocalizedText = {
 };
 
 /** Кем числится установка: первый суперадмин, иначе первый администратор */
-async function installerId(): Promise<string> {
+async function installerId(): Promise<string | null> {
   const staff = await db.select().from(users).where(eq(users.role, "superadmin")).limit(1);
   if (staff[0]) return staff[0].id;
   const admin = await db.select().from(users).where(eq(users.role, "admin")).limit(1);
-  if (admin[0]) return admin[0].id;
-  throw new Error(
-    "В базе нет ни одного сотрудника: сначала заведите администратора, потом ставьте каталог",
-  );
+  return admin[0]?.id ?? null;
 }
 
 /**
@@ -129,6 +137,16 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<boole
 
 export async function installCatalog(): Promise<InstallReport> {
   const createdBy = await installerId();
+  if (!createdBy) {
+    return {
+      departmentId: null,
+      departmentCreated: false,
+      installed: [],
+      skipped: [],
+      notReady: "в базе нет ни одного сотрудника — методику не на кого записать",
+    };
+  }
+
   const department = await ensureDepartment();
 
   const installed: string[] = [];
@@ -149,5 +167,6 @@ export async function installCatalog(): Promise<InstallReport> {
     departmentCreated: department.created,
     installed,
     skipped,
+    notReady: null,
   };
 }
