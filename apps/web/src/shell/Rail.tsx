@@ -10,15 +10,11 @@ import {
   IconBattery,
   IconChevron,
   IconClock,
-  IconCompare,
   IconDashboard,
   IconGroup,
   IconInvite,
-  IconKiosk,
   IconPatients,
-  IconPulse,
   IconReferral,
-  IconRoute,
   IconStack,
   IconSurvey,
   IconUsers,
@@ -85,24 +81,12 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       key: "nav.group.today",
       icon: <IconClock />,
       items: [
-        { to: "/", key: "nav.dashboard", icon: <IconDashboard />, end: true },
         /*
-         * «Сегодня» стоит вторым, сразу за сводкой: с него начинается
-         * рабочий день, и до него не должно быть прокрутки.
+         * Сводка и «Сегодня» слиты в один экран с вкладками: и то и другое
+         * отвечает на вопрос «с чего начать смену», и выбирать между двумя
+         * ответами на один вопрос человеку незачем.
          */
-        { to: "/today", key: "nav.today", icon: <IconClock />, badge: counts.today },
-        /*
-         * Переписки в рельсе нет намеренно, и это не пропажа.
-         *
-         * План волны 5 требовал: «Черга непрочитаного у фахівця — в ту саму
-         * чергу роботи, а не окремим місцем, куди треба не забути зайти».
-         * Очередь работы это уже делает (routes/worklist.ts: непрочитанные
-         * ветки идут наравне с неявками и тревогами) — а пункт «Переписка»
-         * рядом с ней был ровно тем вторым местом, мимо которого проходят.
-         *
-         * Ветка конкретного человека открывается из его карты, общий экран
-         * остаётся по адресу /messages.
-         */
+        { to: "/", key: "nav.dashboard", icon: <IconDashboard />, end: true, badge: counts.today },
         { to: "/worklist", key: "nav.worklist", icon: <IconClock />, badge: counts.worklist },
         { to: "/alerts", key: "nav.cases", icon: <IconAlert />, badge: counts.alerts },
         { to: "/referrals", key: "nav.referrals", icon: <IconReferral />, badge: counts.referrals },
@@ -113,13 +97,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       icon: <IconPatients />,
       items: [
         { to: "/patients", key: "nav.patients", icon: <IconPatients /> },
-        /*
-         * «Когорты» переименованы в «Подбор людей» и переехали сюда из
-         * разбора. Слово было жаргонным ровно там, где не должно: экран
-         * отвечает на вопрос «кто подходит под условия», его открывают,
-         * когда ищут людей, — и искать его надо среди людей, а не среди
-         * аналитики.
-         */
+        { to: "/search", key: "srch.title", icon: <IconStack /> },
         { to: "/cohorts", key: "coh.title", icon: <IconGroup /> },
         { to: "/groups", key: "nav.groups", icon: <IconGroup /> },
         { to: "/my-schedule", key: "nav.reception", icon: <IconClock /> },
@@ -132,27 +110,6 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         { to: "/surveys", key: "nav.surveys", icon: <IconSurvey /> },
         { to: "/batteries", key: "nav.batteries", icon: <IconBattery /> },
         { to: "/schedules", key: "nav.schedules", icon: <IconClock /> },
-        /*
-         * Маршрут помощи — заготовка протокола, а не повседневная работа:
-         * его настраивают однажды и потом назначают. В «Людях» он стоял
-         * рядом с пациентами и читался как «список чьих-то маршрутов», хотя
-         * это справочник шаблонов. Маршрут КОНКРЕТНОГО человека лежит там,
-         * где ему место, — в его карте (components/PatientPathways).
-         */
-        { to: "/pathways", key: "pw.title", icon: <IconRoute /> },
-        { to: "/kiosk-sessions", key: "nav.kiosk", icon: <IconKiosk /> },
-      ],
-    },
-    {
-      key: "nav.group.analysis",
-      icon: <IconCompare />,
-      items: [
-        { to: "/compare", key: "nav.compare", icon: <IconCompare /> },
-        { to: "/search", key: "srch.title", icon: <IconStack /> },
-        { to: "/surveillance", key: "nav.surveillance", icon: <IconPulse /> },
-        { to: "/department-report", key: "dep.title", icon: <IconClock /> },
-        { to: "/unit-report", key: "nav.unitReport", icon: <IconGroup /> },
-        { to: "/conclusion-batch", key: "cbatch.title", icon: <IconStack /> },
       ],
     },
   ];
@@ -161,20 +118,32 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       key: "nav.admin",
       icon: <IconUsers />,
       items: [
+        /* текст согласия стал вкладкой учётных записей: это настройка
+           учреждения, а не отдельный раздел работы */
         { to: "/users", key: "nav.users", icon: <IconUsers /> },
         { to: "/permissions", key: "perm.title", icon: <IconGroup /> },
         { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
-        /* текст согласия жил на одном маршруте с учётками; разведён в свой */
-        { to: "/consent-text", key: "consent.title", icon: <IconInvite /> },
         { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
         { to: "/console", key: "nav.console", icon: <IconStack /> },
-        { to: "/api-docs", key: "nav.api", icon: <IconSurvey /> },
-        { to: "/ui", key: "nav.ui", icon: <IconDashboard /> },
       ],
     });
   }
   return groups;
 }
+
+/*
+ * Чего в рельсе нет и почему — чтобы не завели заново.
+ *
+ * Убраны по прямому решению: сравнение когорт, эпидемиологическое
+ * наблюдение, отчёт отделения, отчёт подразделения, пакет заключений,
+ * сеансы киоска, маршруты помощи. Аналитика осталась там, где ей место, —
+ * на самой методике (/surveys/:id): вопрос «что показывает эта методика»
+ * задают, глядя на методику, а не на отдельный экран сравнения.
+ *
+ * Библиотека компонентов и описание API открываются по адресам /ui и
+ * /api-docs. Это инструменты того, кто пишет систему, а не того, кто
+ * принимает людей, и в меню они занимали место наравне с журналом доступа.
+ */
 
 /**
  * Какой группе принадлежит текущий адрес.

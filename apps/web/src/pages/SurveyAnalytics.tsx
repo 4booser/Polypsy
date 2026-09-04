@@ -10,13 +10,11 @@ import { Loading, OfflineBar, useAction } from "../ui";
 import { Page, Panel, Grid, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
 import { ConclusionEditor } from "../components/ConclusionEditor";
-import { DifPanel } from "../components/DifPanel";
-import { CalibrationPanel } from "../components/CalibrationPanel";
 import { DataQualityPanel } from "../components/DataQualityPanel";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
-type Tab = "overview" | "questions" | "scales" | "quality" | "dif" | "calibration" | "responses";
+type Tab = "overview" | "questions" | "scales" | "quality" | "responses";
 
 export default function SurveyAnalyticsPage() {
   const { ut } = useLang();
@@ -459,8 +457,6 @@ export default function SurveyAnalyticsPage() {
         </Stack>
       ) : null}
 
-      {tab === "dif" ? <DifPanel surveyId={data.surveyId} /> : null}
-      {tab === "calibration" ? <CalibrationPanel surveyId={data.surveyId} /> : null}
       {tab === "quality" ? <DataQualityPanel surveyId={data.surveyId} /> : null}
       {tab === "responses" ? <Responses surveyId={data.surveyId} /> : null}
       </Stack>

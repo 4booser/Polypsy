@@ -30,7 +30,6 @@ const STATIC: Screen[] = [
   { name: "батареи", path: "/batteries" },
   { name: "расписание", path: "/schedules" },
   { name: "приглашения", path: "/invites" },
-  { name: "сеансы киоска", path: "/kiosk-sessions" },
   { name: "группы", path: "/groups" },
   { name: "пациенты", path: "/patients" },
   { name: "сравнение", path: "/compare" },

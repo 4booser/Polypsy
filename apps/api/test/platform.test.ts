@@ -556,44 +556,6 @@ describe("реальное время", () => {
     expect(seen.match(new RegExp(mark, "g"))).toHaveLength(1);
   });
 
-  test("вход участника в киоск публикует прогресс", async () => {
-    const { subscribe } = await import("../src/lib/events");
-    const received: { kind: string; sessionId?: string }[] = [];
-    const unsubscribe = await subscribe((e) => received.push(e as { kind: string }));
-
-    const kioskBattery = crypto.randomUUID();
-    await db.insert(batteries).values({
-      id: kioskBattery,
-      title: "Батарея киоска",
-      groupId: groupA,
-      strictOrder: false,
-      createdBy: adminA.id,
-    });
-    await db
-      .insert(batteryItems)
-      .values([{ batteryId: kioskBattery, surveyId: surveyInA, position: 0, required: true }]);
-
-    const session = await api("/api/kiosk/sessions", adminA.token, {
-      method: "POST",
-      body: JSON.stringify({ title: "Поток", batteryId: kioskBattery, hours: 4 }),
-    });
-    expect(session.status).toBe(201);
-
-    const joined = await app.request(`/api/kiosk/state/${session.body.token}/join`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ firstName: "Ігор", lastName: "Кіоскенко" }),
-    });
-    expect(joined.status).toBe(201);
-
-    for (let i = 0; i < 60 && !received.some((e) => e.kind === "kiosk.progress"); i++) {
-      await Bun.sleep(25);
-    }
-    unsubscribe();
-
-    const progress = received.find((e) => e.kind === "kiosk.progress");
-    expect(progress?.sessionId).toBe(session.body.id);
-  });
 });
 
 /* ── сохранённые виды ── */

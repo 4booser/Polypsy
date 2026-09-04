@@ -102,7 +102,7 @@ test("консоль не опрашивает сервер без остано�
   });
 
   await page.goto("/today");
-  await page.getByRole("heading", { name: "Сегодня" }).waitFor();
+  await page.getByRole("link", { name: "Сегодня" }).waitFor();
   await page.waitForTimeout(3000);
 
   const worst = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];

@@ -2,15 +2,13 @@ import { Link } from "react-router-dom";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { duration, day, severityColor, severityKey } from "../format";
-import { PpvCard } from "../components/CalibrationPanel";
 import { Screen } from "../ui";
-import { Page, Panel, Grid, Stack } from "../ui/layout";
+import { Panel, Grid, Stack } from "../ui/layout";
 import { Num, SectionLabel } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
 import { Suggestions } from "../components/Suggestions";
-import { DutyNow } from "../components/DutyNow";
 
 export default function Dashboard() {
   const { ut } = useLang();
@@ -58,7 +56,7 @@ export default function Dashboard() {
   return (
     <Screen res={res} rows={5}>
       {({ data, surveys, urgentCases, oldestCaseDays, openCases, work }) => (
-        <Page title={ut("dash.title")} sub={ut("dash.sub")}>
+        <>
           <Stack>
             {/*
               Порядок экрана задан, а не сложился: сначала то, что требует
@@ -66,7 +64,6 @@ export default function Dashboard() {
               первой шла подтверждаемость тревог — важный, но справочный
               показатель, который стоял даже выше заголовка страницы.
             */}
-            <DutyNow />
             {/*
               Предложения правил стоят выше очереди работы, но ниже тревог:
               это подсказка, а не сигнал. Если предложений нет, блок не
@@ -216,7 +213,6 @@ export default function Dashboard() {
 
             {/* подтверждаемость — справочный показатель качества скрининга:
                 он объясняет цифры выше, а не требует действия */}
-            <PpvCard />
 
             <Chart title={ut("dash.timeline")} hint={ut("dash.timelineHint")}>
               <LineChart
@@ -280,7 +276,7 @@ export default function Dashboard() {
               </div>
             </Panel>
           </Stack>
-        </Page>
+        </>
       )}
     </Screen>
   );

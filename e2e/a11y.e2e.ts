@@ -44,7 +44,6 @@ for (const theme of ["dark", "light"] as const) {
     ["сегодня", "/today"],
     ["расписание приёма", "/my-schedule"],
     ["переписка", "/messages"],
-    ["отчёт отделения", "/department-report"],
     ["права", "/permissions"],
   ] as const) {
     test(`экран «${name}» доступен, тема ${theme}`, async ({ page }) => {
@@ -75,22 +74,6 @@ for (const theme of ["dark", "light"] as const) {
   });
 }
 
-/*
- * Планшет в коридоре. Проверяется отдельно, потому что открывается без
- * входа — по токену сеанса, — и потому что это единственный экран, который
- * человек видит стоя, один и без объяснений от сотрудника.
- *
- * Токен постоянный: его кладёт посев, и без него экран устройства нельзя
- * ни открыть, ни проверить. До этой волны его не открывал ни один тест.
- */
-for (const theme of ["dark", "light"] as const) {
-  test(`планшет в коридоре доступен, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
-    await page.goto("/kiosk/kiosk-demo-token");
-    await page.locator("h1").waitFor();
-    expect(digest((await scan(page)).violations)).toEqual([]);
-  });
-}
 
 test("день отмечается с клавиатуры, без мыши", async ({ page }) => {
   /*
@@ -103,7 +86,11 @@ test("день отмечается с клавиатуры, без мыши", a
    */
   await login(page, "psy");
   await page.goto("/today");
-  await page.getByRole("heading", { name: "Сегодня" }).waitFor();
+  /*
+   * Заголовком экрана стоит дата, а «Сегодня» — вкладка: сводка и приём
+   * слиты в один экран.
+   */
+  await page.getByRole("link", { name: "Сегодня" }).waitFor();
 
   const came = page.getByRole("button", { name: "Пришёл" }).first();
   await expect(came).toBeVisible();

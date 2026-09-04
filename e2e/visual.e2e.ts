@@ -270,7 +270,7 @@ const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Pag
     name: "today",
     open: async (page) => {
       await page.goto("/today");
-      await page.getByRole("heading", { name: "Сегодня" }).waitFor();
+      await page.getByRole("link", { name: "Сегодня" }).waitFor();
     },
   },
   {
@@ -296,13 +296,6 @@ const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Pag
        * на свой запрос выдуманный 404.
        */
       await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
-    },
-  },
-  {
-    name: "department-report",
-    open: async (page) => {
-      await page.goto("/department-report");
-      await page.locator("h1").waitFor();
     },
   },
   {

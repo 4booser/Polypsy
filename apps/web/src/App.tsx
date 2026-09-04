@@ -31,9 +31,7 @@ const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
 const Access = lazy(() => import("./pages/Access"));
 const Permissions = lazy(() => import("./pages/Permissions"));
 const Audit = lazy(() => import("./pages/Audit"));
-const Compare = lazy(() => import("./pages/Compare"));
 const Schedules = lazy(() => import("./pages/Schedules"));
-const Surveillance = lazy(() => import("./pages/Surveillance"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -45,12 +43,10 @@ const BlankForm = lazy(() => import("./pages/BlankForm"));
 const Invites = lazy(() => import("./pages/Invites"));
 const Join = lazy(() => import("./pages/Join"));
 const GoogleReturn = lazy(() => import("./pages/GoogleReturn"));
-const InformantForm = lazy(() => import("./pages/InformantForm"));
-const Kiosk = lazy(() => import("./pages/Kiosk"));
-const KioskSessions = lazy(() => import("./pages/KioskSessions"));
 const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
 const PatientCard = lazy(() => import("./pages/PatientCard"));
+const Start = lazy(() => import("./pages/Start"));
 
 /** Прежний адрес сводки — теперь вкладка «Обзор» карты */
 function RedirectToCard() {
@@ -64,17 +60,11 @@ const WorklistPage = lazy(() => import("./pages/Worklist"));
 const TodayPage = lazy(() => import("./pages/Today"));
 const SchedulePage = lazy(() => import("./pages/Schedule"));
 const VisitPage = lazy(() => import("./pages/Visit"));
-const DepartmentReportPage = lazy(() => import("./pages/DepartmentReport"));
 const MessagesPage = lazy(() => import("./pages/Messages"));
-const UnitReportPage = lazy(() => import("./pages/UnitReport"));
-const ConclusionBatch = lazy(() => import("./pages/ConclusionBatch"));
 const Cohorts = lazy(() => import("./pages/Cohorts"));
 const SearchPage = lazy(() => import("./pages/Search"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
-const Pathways = lazy(() => import("./pages/Pathways"));
-const PathwayEditor = lazy(() => import("./pages/PathwayEditor"));
-const PathwayDetail = lazy(() => import("./pages/Pathways").then((m) => ({ default: m.PathwayDetailPage })));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 
 type Theme = "dark" | "light";
@@ -259,8 +249,6 @@ export default function App() {
           {/* возврат от Google: сюда сервер приводит браузер после входа */}
           <Route path="/auth/google" element={<GoogleReturn />} />
           <Route path="/join/:token" element={<Join />} />
-          <Route path="/kiosk/:token" element={<Kiosk />} />
-          <Route path="/informant/:token" element={<InformantForm />} />
         </Routes>
       </Suspense>
     );
@@ -414,7 +402,16 @@ export default function App() {
             лишнюю запись в историю браузера, и «назад» возвращало бы на пустой
             экран.
           */}
-          <Route path="/" element={<StartScreen prefs={user?.workspace ?? null} />} />
+          {/*
+            Сводка и приём — вкладки одного экрана: и то и другое отвечает на
+            вопрос «с чего начать смену».
+          */}
+          <Route path="/" element={<Start />}>
+            <Route index element={<StartScreen prefs={user?.workspace ?? null} />} />
+          </Route>
+          <Route path="/today" element={<Start />}>
+            <Route index element={<TodayPage />} />
+          </Route>
           <Route path="/surveys" element={<SurveyList />} />
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
@@ -445,28 +442,18 @@ export default function App() {
             element={<RedirectToCard />}
           />
           <Route path="/referrals" element={<ReferralsPage />} />
-          <Route path="/pathways" element={<Pathways />} />
-          <Route path="/pathways/new" element={<PathwayEditor />} />
-          <Route path="/pathways/:id" element={<PathwayDetail />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/console" element={<Console />} />
           <Route path="/ui" element={<UiKit />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
-          <Route path="/kiosk-sessions" element={<KioskSessions />} />
           <Route path="/schedules" element={<Schedules />} />
-          <Route path="/compare" element={<Compare />} />
-          <Route path="/surveillance" element={<Surveillance />} />
           <Route path="/alerts" element={<Alerts />} />
             <Route path="/worklist" element={<WorklistPage />} />
-            <Route path="/today" element={<TodayPage />} />
             <Route path="/my-schedule" element={<SchedulePage />} />
             <Route path="/visit/:id" element={<VisitPage />} />
-            <Route path="/department-report" element={<DepartmentReportPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/messages/:id" element={<MessagesPage />} />
-            <Route path="/unit-report" element={<UnitReportPage />} />
-            <Route path="/conclusion-batch" element={<ConclusionBatch />} />
             <Route path="/cohorts" element={<Cohorts />} />
             <Route path="/search" element={<SearchPage />} />
           <Route path="/groups" element={<Groups />} />

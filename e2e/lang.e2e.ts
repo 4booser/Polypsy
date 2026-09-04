@@ -18,34 +18,42 @@ test("переключение языка меняет оболочку и за�
    * значило бы проверять заодно умолчание раскрытия.
    */
   // конфигурация смоука ходит с русской локалью — стартуем с неё
-  await expect(page.getByRole("link", { name: "Сводка" })).toBeVisible();
+  await expect(page.locator(".sidebar").getByRole("link", { name: "Сводка" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Люди/ })).toBeVisible();
 
   await page.getByRole("button", { name: "УКР" }).click();
-  await expect(page.getByRole("link", { name: "Зведення" })).toBeVisible();
+  await expect(page.locator(".sidebar").getByRole("link", { name: "Зведення" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Випадки ризику" })).toBeVisible();
 
   // язык страницы меняется тоже: от него зависят диктор и переносы слов
   await expect(page.locator("html")).toHaveAttribute("lang", "uk");
 
   await page.reload();
-  await expect(page.getByRole("link", { name: "Зведення" })).toBeVisible();
+  await expect(page.locator(".sidebar").getByRole("link", { name: "Зведення" })).toBeVisible();
 
   await page.getByRole("button", { name: "РУС" }).click();
-  await expect(page.getByRole("link", { name: "Сводка" })).toBeVisible();
+  await expect(page.locator(".sidebar").getByRole("link", { name: "Сводка" })).toBeVisible();
 });
 
 test("экраны ежедневного пути переведены целиком", async ({ page }) => {
   await login(page, "psy");
   await page.getByRole("button", { name: "УКР" }).click();
 
+  /*
+   * У экрана начала смены заголовком стоит дата, а не название: сводка и
+   * приём слиты, и называть экран одним из двух было бы неправдой. Его
+   * перевод проверяется по вкладке — и заодно проверяется, что дата
+   * склоняется по-украински, чего словарь не покрывает вовсе.
+   */
+  await page.goto("/");
+  await expect(page.locator(".main").getByRole("link", { name: "Зведення" })).toBeVisible();
+  await expect(page.locator("h1")).toContainText("вересня");
+
   for (const [path, marker] of [
-    ["/", "Зведення"],
     ["/worklist", "Черга роботи"],
     ["/alerts", "Розбір випадків"],
     ["/patients", "Пацієнти"],
     ["/referrals", "Направлення"],
-    ["/unit-report", "Стан підрозділу"],
   ] as const) {
     await page.goto(path);
     await expect(page.locator("h1")).toHaveText(marker);
@@ -85,27 +93,20 @@ const SCREENS = [
   "/alerts",
   "/patients",
   "/referrals",
-  "/unit-report",
   "/surveys",
   "/batteries",
   "/schedules",
   "/invites",
-  "/kiosk-sessions",
   "/audit",
-  "/compare",
-  "/surveillance",
   "/groups",
-  "/pathways",
   "/cohorts",
   "/search",
-  "/conclusion-batch",
   "/constructor",
   "/users",
   "/consent-text",
   "/permissions",
   "/today",
   "/my-schedule",
-  "/department-report",
   "/messages",
 ];
 
