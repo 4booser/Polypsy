@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { t } from "@quizzy/shared";
 import type { RiskAlert } from "@quizzy/shared";
 import { db } from "../db";
-import { questions, riskAlerts, surveys, users } from "../db/schema";
+import { questions, riskAlerts, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { langOf } from "../lib/http";
 import { fullNameOf } from "../lib/auth";
@@ -37,13 +37,19 @@ alertRoutes.get("/", async (c) => {
       surveyTitle: surveys.title,
       escalateMinutes: surveys.alertEscalateMinutes,
       questionTitle: questions.title,
+      scaleTitle: scales.title,
       respondentFirst: users.firstName,
       respondentLast: users.lastName,
       respondentMiddle: users.middleName,
     })
     .from(riskAlerts)
     .innerJoin(surveys, eq(surveys.id, riskAlerts.surveyId))
-    .innerJoin(questions, eq(questions.id, riskAlerts.questionId))
+    /*
+     * Левое соединение, а не внутреннее: у сигнала по полосе шкалы пункта
+     * нет, и внутреннее выбросило бы его из списка тревог целиком.
+     */
+    .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
+    .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
     .leftJoin(users, eq(users.id, riskAlerts.userId))
     // условия строим средствами drizzle: подстановка массива в шаблон sql``
     // зависит от драйвера и легко ломается при смене СУБД
@@ -83,7 +89,9 @@ alertRoutes.get("/", async (c) => {
     surveyId: r.alert.surveyId,
     surveyTitle: t(r.surveyTitle as never, lang),
     questionId: r.alert.questionId,
-    questionTitle: t(r.questionTitle as never, lang),
+    // у сигнала по шкале здесь стоит название шкалы: поле одно, и
+    // оставлять его пустым значило бы показать тревогу без повода
+    questionTitle: t((r.questionTitle ?? r.scaleTitle) as never, lang),
     userId: r.alert.userId,
     respondent: r.respondentLast ? fullNameOf({ firstName: r.respondentFirst!, lastName: r.respondentLast, middleName: r.respondentMiddle }) : null,
     label: r.alert.label,

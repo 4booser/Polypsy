@@ -5,8 +5,11 @@ import {
   adminB,
   and,
   api,
+  createSurveySchema,
+  createVersion,
   db,
   eq,
+  groupA,
   isNull,
   makeUser,
   patient,
@@ -428,6 +431,104 @@ describe("случаи риска", () => {
      * открытый случай из списка — она бы взяла этот и не нашла в нём ничего.
      */
     await db.delete(casesTable).where(eq(casesTable.id, first!));
+  });
+
+  test("полоса шкалы поднимает случай без жодного розміченого варіанта", async () => {
+    /*
+     * Тревогу поднимал ТОЛЬКО вариант ответа с riskFlag. У МЛО
+     * «Адаптивність-200» — основной методики учреждения — таких вариантов
+     * нет ни одного (`grep -c riskFlag instruments/mlo.ts` → 0): её
+     * суицидальный риск выражен полосой стенов. Полоса «вкрай низький
+     * рівень» с severity=severe не поднимала ни тревоги, ни случая, и
+     * человек с крайним значением по СР не появлялся в очереди разбора
+     * вовсе — при том что на экране у него стояло «високий ризик».
+     *
+     * Методика здесь заводится своя и намеренно без единого riskFlag:
+     * взять МЛО значило бы проверять заодно двести пунктов и таблицу
+     * стенов, а ломается не в них.
+     */
+    const { alertCases: casesTable, riskAlerts } = await import("../src/db/schema");
+    const sid = crypto.randomUUID();
+    const draft = createSurveySchema.parse({
+      title: { uk: "Смуга без прапорців", ru: "Полоса без флажков" },
+      administration: "self",
+      scoringEnabled: true,
+      questions: [
+        {
+          type: "single",
+          title: { uk: "Наскільки важко?", ru: "Насколько тяжело?" },
+          required: true,
+          scaleCode: "S",
+          options: [
+            { text: { uk: "Зовсім ні", ru: "Совсем нет" }, score: 0 },
+            { text: { uk: "Дуже", ru: "Очень" }, score: 3 },
+          ],
+        },
+      ],
+      scales: [
+        {
+          code: "S",
+          title: { uk: "Тяжкість стану", ru: "Тяжесть состояния" },
+          kind: "clinical",
+          normalization: "raw",
+          key: [{ item: 1 }],
+          bands: [
+            { minScore: 0, maxScore: 1, label: { uk: "Немає", ru: "Нет" }, severity: "none" },
+            { minScore: 2, maxScore: 3, label: { uk: "Виражена", ru: "Выраженная" }, severity: "severe" },
+          ],
+        },
+      ],
+    });
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: { uk: "Смуга без прапорців", ru: "Полоса без флажков" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, draft, adminA.id, "v1");
+
+    const person = await makeUser("user", `band-${crypto.randomUUID()}@test`);
+    const loaded = await api(`/api/surveys/${sid}`, person.token);
+    const question = loaded.body.questions[0];
+    const worst = question.options.find((o: { text: string }) => String(o.text).includes("Дуже"))
+      ?? question.options[1];
+
+    const submitted = await api(`/api/surveys/${sid}/responses`, person.token, {
+      method: "POST",
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        answers: [
+          { questionId: question.id, optionIds: [worst.id], durationMs: 2500, changeCount: 0, visitCount: 1 },
+        ],
+      }),
+    });
+    expect(submitted.status).toBe(201);
+
+    const signals = await db
+      .select()
+      .from(riskAlerts)
+      .where(eq(riskAlerts.responseId, submitted.body.id));
+    expect(
+      signals.length,
+      "смуга severity=severe не підняла сигналу — людина з крайнім значенням у чергу не потрапляє",
+    ).toBe(1);
+    expect(signals[0]!.questionId, "сигнал за смугою не належить жодному пункту").toBeNull();
+    expect(signals[0]!.scaleId).not.toBeNull();
+    expect(signals[0]!.label).toContain("Тяжкість стану");
+
+    const open = await db
+      .select()
+      .from(casesTable)
+      .where(and(eq(casesTable.userId, person.id), isNull(casesTable.acknowledgedAt)));
+    expect(open.length, "сигнал є, а випадку немає — розбирати нікому").toBe(1);
+    expect(open[0]!.severity).toBe("severe");
   });
 
   test("список отдаётся страницами с курсором", async () => {
