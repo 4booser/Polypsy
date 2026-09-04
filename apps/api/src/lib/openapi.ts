@@ -263,6 +263,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
 
   /* ── командная консоль ── */
   "GET /api/console/commands": { summary: "Список команд консоли с отметкой доступности", access: "staff", permission: "console.use" },
+  "GET /api/meet/status": { summary: "Подключён ли календарь специалиста для встреч Meet", access: "staff", permission: "appointments.manage" },
+  "POST /api/meet/connect": { summary: "Адрес согласия Google на создание встреч в календаре специалиста", access: "staff", permission: "appointments.manage" },
+  "POST /api/meet/callback": { summary: "Возврат от Google: сохранить разрешение", access: "staff", permission: "appointments.manage" },
+  "POST /api/meet/disconnect": { summary: "Отключить календарь", access: "staff", permission: "appointments.manage" },
   "POST /api/console/run": { summary: "Выполнить команду консоли; право проверяется отдельно на каждую команду", access: "staff", permission: "console.use" },
   "PATCH /api/surveys/:id/rights": { summary: "Правовой статус и отметка о сверке ключей", access: "superadmin", whyNoPermission: "правовой статус методики утверждает учреждение, а не тот, кто методику завёл; делегировать не собираемся" },
   "POST /api/push/register": { summary: "Зарегистрировать устройство для пушей", access: "user" },

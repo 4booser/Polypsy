@@ -486,6 +486,14 @@ export const ERRORS = {
   "err.exceptionAlreadyRevoked": { uk: "Виняток уже відкликано", ru: "Исключение уже отозвано" },
   "err.exceptionNotFound": { uk: "Виняток не знайдено", ru: "Исключение не найдено" },
   "err.roleNotFound": { uk: "Роль не знайдено", ru: "Роль не найдена" },
+  "err.googleNotConfigured": {
+    uk: "Вхід через Google не налаштований на цьому сервері",
+    ru: "Вход через Google не настроен на этом сервере",
+  },
+  "err.googleBadCallback": {
+    uk: "Повернення від Google не прийнято: підпис не збігається або строк вийшов",
+    ru: "Возврат от Google не принят: подпись не совпадает или срок вышел",
+  },
   "err.unknownPermission": { uk: "Невідоме право: {permission}", ru: "Неизвестное право: {permission}" },
 } as const;
 
