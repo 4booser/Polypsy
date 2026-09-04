@@ -556,6 +556,30 @@ clinicRoutes.post("/appointments", async (c) => {
   const kind = await appointmentKind(patientId, slot.departmentId);
   const attached = await attachedDepartments(patientId);
 
+  /*
+   * Ссылка на встречу создаётся сама, если специалист подключил календарь.
+   *
+   * Придумать её нельзя: код Google Meet выдаёт сам Google при создании
+   * события. Не получилось — оставляем пусто, и специалист вписывает свою:
+   * ссылка, которая не открывается, хуже отсутствующей, потому что человек в
+   * назначенное время стучится в закрытую дверь и решает, что его не приняли.
+   *
+   * Отказ Google запись не срывает: приём назначается, ссылка добавляется
+   * потом.
+   */
+  let meetingUrl = input.meetingUrl ?? null;
+  if (input.mode === "remote" && !meetingUrl) {
+    const { createMeetLink } = await import("../lib/meet");
+    meetingUrl = await createMeetLink({
+      specialistId: slot.specialistId,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      // без имени пациента: событие попадает в личный календарь и видно на
+      // экране блокировки телефона, в том числе посторонним
+      title: "Приём",
+    });
+  }
+
   const id = crypto.randomUUID();
   await db.insert(appointments).values({
     id,
@@ -564,7 +588,7 @@ clinicRoutes.post("/appointments", async (c) => {
     specialistId: slot.specialistId,
     kind,
     mode: input.mode,
-    meetingUrl: input.meetingUrl ?? null,
+    meetingUrl,
     reasonEnc: input.reason ? encryptField(input.reason) : null,
     bookedBy: me.id,
   });

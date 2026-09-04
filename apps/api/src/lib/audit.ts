@@ -90,6 +90,10 @@ export type AuditAction =
   | "catalog.install"
   /* командная консоль: вызов команды пишется до выполнения */
   | "console.run"
+  /* календарь специалиста: подключение права создавать встречи Meet */
+  | "meet.connect_start"
+  | "meet.connected"
+  | "meet.disconnected"
   | "survey.update"
   | "survey.archive"
   | "survey.restore"

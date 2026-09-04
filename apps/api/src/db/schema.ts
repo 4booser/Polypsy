@@ -1254,6 +1254,28 @@ export const scheduleRuns = pgTable(
  * каждое обновление выдаёт новый и гасит старый. Повторное предъявление
  * погашенного токена — признак кражи, по нему отзывается вся семья.
  */
+/**
+ * Разрешение создавать события в календаре специалиста.
+ *
+ * Нужно ровно для одного: получить ссылку на встречу Google Meet. Её нельзя
+ * придумать — код выдаёт сам Google при создании события, — а самодельная
+ * ссылка ведёт в никуда, и «дистанционный приём» с неоткрывающейся ссылкой
+ * хуже, чем без неё: человек в назначенное время стучится в закрытую дверь.
+ *
+ * Отдельно от входа через Google: вход просит только почту и имя и
+ * refresh-токена не получает вовсе, а право писать в чужой календарь
+ * несопоставимо чувствительнее и нужно немногим.
+ */
+export const googleCalendarTokens = pgTable("google_calendar_tokens", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** Шифруется тем же ключом, что клинические записи: это ключ от календаря */
+  refreshTokenEnc: text("refresh_token_enc").notNull(),
+  googleEmail: text("google_email"),
+  connectedAt: timestampCol("connected_at").notNull().default(sql`now()`),
+});
+
 export const refreshTokens = pgTable(
   "refresh_tokens",
   {

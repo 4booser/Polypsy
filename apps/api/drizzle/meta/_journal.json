@@ -491,6 +491,13 @@
       "when": 1788472738043,
       "tag": "0069_simpler_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1788472739043,
+      "tag": "0070_calendar_tokens",
+      "breakpoints": true
     }
   ]
 }
