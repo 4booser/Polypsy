@@ -371,10 +371,19 @@ for (const screen of SCREENS) {
      *
      * В этом порядке всё, что видно на снимке, заведомо уже записано.
      */
-    await expect(page.locator("main.main")).toHaveScreenshot(
-      `screen-${screen.name}.png`,
-      TOLERANCE,
-    );
+    /*
+     * Поля даты закрываются маской.
+     *
+     * Часть из них подставляет СЕГОДНЯ — отчёт отделения открывается с «по»
+     * = текущий день, — и эталон, снятый вчера, краснеет сегодня. Ответы API
+     * тут не спасают: значение считает клиент, в перехваченный набор оно не
+     * попадает вовсе. Маска по границам поля оставляет вёрстку под
+     * наблюдением: съехавшее поле сдвинет соседей, и это будет видно.
+     */
+    await expect(page.locator("main.main")).toHaveScreenshot(`screen-${screen.name}.png`, {
+      ...TOLERANCE,
+      mask: [page.locator('input[type="date"]')],
+    });
 
     await save();
 

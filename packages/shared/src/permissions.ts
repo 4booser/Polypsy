@@ -71,7 +71,7 @@ export const PERMISSION_GROUPS = [
   {
     code: "admin",
     title: { uk: "Адміністрування", ru: "Администрирование" },
-    permissions: ["users.manage", "groups.manage", "audit.read", "decisions.manage"],
+    permissions: ["users.manage", "groups.manage", "audit.read", "decisions.manage", "console.use"],
   },
 ] as const;
 
@@ -106,6 +106,7 @@ export const EXCEPTION_PERMISSIONS: readonly Permission[] = [
 
 /** Пояснение к праву на двух языках: экран прав объясняет, а не перечисляет. */
 export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> = {
+  "console.use": { uk: "Командна консоль", ru: "Командная консоль" },
   "patients.read": { uk: "Бачити пацієнтів і їхню динаміку", ru: "Видеть пациентов и их динамику" },
   "notes.write": { uk: "Вести записи прийому", ru: "Вести записи приёма" },
   "conclusions.write": { uk: "Готувати висновки", ru: "Готовить заключения" },
