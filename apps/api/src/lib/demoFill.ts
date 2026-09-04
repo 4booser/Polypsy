@@ -65,8 +65,19 @@ async function ensurePerson(p: Person): Promise<{ id: string; created: boolean }
   if (existing) return { id: existing.id, created: false };
 
   const id = crypto.randomUUID();
-  const r = rng(p.slug.length * 31 + p.birthYear);
-  const phone = `+38050${String(1000000 + Math.floor(r() * 8999999))}`;
+  /*
+   * Зерно берётся из НОМЕРА человека, а не из длины его кода.
+   *
+   * Стояло `p.slug.length * 31 + p.birthYear`, а длина кода у всех
+   * одинаковая — «demo-001» и «demo-120» по восемь знаков. Зерно зависело
+   * только от года рождения, и у ровесников совпадали телефоны: слепой
+   * индекс уникален по построению, и посев падал на первой же паре. Ошибка
+   * ровно того рода, ради которой этот индекс и заведён, — он поймал
+   * дубликат, которого не должно быть.
+   */
+  const ordinal = Number(p.slug.replace(/\D/g, "")) || 1;
+  const r = rng(ordinal * 7907 + p.birthYear);
+  const phone = `+380${String(500000000 + ordinal * 4093 + Math.floor(r() * 4000))}`;
   await db.insert(users).values({
     id,
     email,
