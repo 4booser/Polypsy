@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, goVia } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -15,7 +15,7 @@ const detail = (page: import("@playwright/test").Page) => page.locator(".triage-
 
 test.beforeEach(async ({ page }) => {
   await login(page, "psy");
-  await page.getByRole("link", { name: /^Случаи риска/ }).click();
+  await goVia(page, /Сегодня/, /^Случаи риска/);
   await expect(rows(page).first()).toBeVisible();
 });
 

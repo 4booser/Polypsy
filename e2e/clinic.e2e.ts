@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, rowTexts } from "./helpers";
+import { login, rowTexts, goVia } from "./helpers";
 
 /**
  * Сквозной клинический сценарий: тревога → пациент → сводка → направление →
@@ -9,12 +9,12 @@ import { login, rowTexts } from "./helpers";
 test("от тревоги до закрытого направления", async ({ page }) => {
   await login(page, "psy");
 
-  await page.getByRole("link", { name: /^Случаи риска/ }).click();
+  await goVia(page, /Сегодня/, /^Случаи риска/);
   // экран разбора: единица работы — человек, а не сработавший пункт
   await expect(page.getByRole("heading", { name: "Разбор случаев" })).toBeVisible();
 
   // из тревоги — к пациенту
-  await page.getByRole("link", { name: "Пациенты" }).click();
+  await goVia(page, /Люди/, "Пациенты");
   const firstPatient = page.locator("table tbody tr td a").first();
   await firstPatient.click();
 
@@ -51,7 +51,7 @@ test("от тревоги до закрытого направления", async
   await expect(row.getByRole("button")).toHaveCount(0);
 
   // завершённого нет в реестре открытых, но оно находится с фильтром
-  await page.getByRole("link", { name: "Направления" }).click();
+  await goVia(page, /Сегодня/, "Направления");
   await expect(page.getByText(reason)).toHaveCount(0);
   await page.getByRole("button", { name: "Показать завершённые" }).click();
   await expect(page.getByText(reason)).toBeVisible();
@@ -59,12 +59,12 @@ test("от тревоги до закрытого направления", async
 
 test("групповой админ не видит чужих пациентов", async ({ page }) => {
   await login(page, "psy");
-  await page.getByRole("link", { name: "Пациенты" }).click();
+  await goVia(page, /Люди/, "Пациенты");
   const mine = await rowTexts(page);
 
   await page.getByRole("button", { name: /Выйти/i }).click();
   await login(page, "psy2");
-  await page.getByRole("link", { name: "Пациенты" }).click();
+  await goVia(page, /Люди/, "Пациенты");
   const theirs = await rowTexts(page);
 
   expect(mine.length).toBeGreaterThan(0);

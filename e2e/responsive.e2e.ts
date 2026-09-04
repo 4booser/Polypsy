@@ -50,6 +50,25 @@ for (const size of SIZES) {
        */
       const toggle = page.getByRole("button", { name: /меню|меню/i }).first();
       if (await toggle.isVisible()) await toggle.click();
+
+      /*
+       * Раздел сперва раскрывают. Группы в рельсе закрыты, кроме той, в
+       * которой человек сейчас находится, — и пунктов закрытой группы нет
+       * в разметке вовсе, а не просто не видно. На телефоне это тем более
+       * верно: раскрытый список из двадцати пяти строк там не помещается
+       * ни при каком раскладе.
+       */
+      const group = page.locator(".sidebar button[aria-expanded]", { hasText: "Люди" }).first();
+      /*
+       * Свёрнутая до значков рельса групп не раскрывает — там плоский
+       * список, и пункт уже на месте. Поэтому раздел ищется, но его
+       * отсутствие не ошибка: проверяется не устройство рельсы, а то, что
+       * до пациентов можно дойти в обоих её видах.
+       */
+      if (await group.count()) {
+        if ((await group.getAttribute("aria-expanded")) === "false") await group.click();
+      }
+
       const link = page.locator(`.sidebar a[href="/patients"]`);
       await expect(link).toBeVisible();
       await link.click();
