@@ -3,7 +3,7 @@ import type { AppointmentView, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { dayFull } from "../format";
 import { Avatar, Badge, Empty, Screen, useAction, useUrlState } from "../ui";
-import { Page, Panel } from "../ui/layout";
+import { Panel } from "../ui/layout";
 import { Button, Num, SectionLabel } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -85,31 +85,32 @@ export default function TodayPage() {
           [ut("day.absent"), data.items.filter((a) => a.status === "no_show" || a.status === "cancelled").length],
         ];
         return (
-          <Page
-            title={ut("day.title")}
-            count={data.items.length || null}
-            sub={
-              data.items.length
-                ? groups.filter(([, n]) => n > 0).map(([label, n]) => `${label} ${n}`).join(" · ")
-                : null
-            }
-            toolbar={
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, -1))}>
-                  {ut("day.prev")}
+          <>
+            {/*
+              Листание дней стоит над списком, а не в панели экрана: оно
+              относится к этому списку, а панель теперь общая у сводки и
+              приёма — кнопки «вчера/завтра» рядом со сводкой означали бы,
+              что и её можно листать.
+            */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, -1))}>
+                {ut("day.prev")}
+              </Button>
+              <span className="min-w-[132px] text-center text-caption text-muted">{dayFull(data.date)}</span>
+              <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, 1))}>
+                {ut("day.next")}
+              </Button>
+              {dateParam ? (
+                <Button size="sm" variant="ghost" onClick={() => setDate("")}>
+                  {ut("day.today")}
                 </Button>
-                <span className="min-w-[132px] text-center text-caption text-muted">{dayFull(data.date)}</span>
-                <Button size="sm" variant="ghost" onClick={() => setDate(shiftDate(data.date, 1))}>
-                  {ut("day.next")}
-                </Button>
-                {dateParam ? (
-                  <Button size="sm" variant="ghost" onClick={() => setDate("")}>
-                    {ut("day.today")}
-                  </Button>
-                ) : null}
-              </div>
-            }
-          >
+              ) : null}
+              {data.items.length ? (
+                <span className="ml-auto text-caption text-muted">
+                  {groups.filter(([, n]) => n > 0).map(([label, n]) => `${label} ${n}`).join(" · ")}
+                </span>
+              ) : null}
+            </div>
             {data.items.length === 0 ? (
               <Empty title={ut("day.nobody")} />
             ) : (
@@ -125,7 +126,7 @@ export default function TodayPage() {
                 ))}
               </Panel>
             )}
-          </Page>
+          </>
         );
       }}
     </Screen>

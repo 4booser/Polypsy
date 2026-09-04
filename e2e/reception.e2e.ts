@@ -13,7 +13,8 @@ test("день виден целиком и явка отмечается одн
   await login(page, "psy");
   await page.goto("/today");
 
-  await expect(page.getByRole("heading", { name: "Сегодня" })).toBeVisible();
+  // «Сегодня» — вкладка экрана начала смены; заголовком стоит дата
+  await expect(page.getByRole("link", { name: "Сегодня" })).toBeVisible();
 
   /*
    * В посеве четыре приёма в разных состояниях — именно поэтому экран и

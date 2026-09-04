@@ -6,12 +6,8 @@ import { day, dateTime } from "../format";
 import { useAction } from "../ui";
 import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
-import { Informants } from "../components/Informants";
 import { Hint } from "../components/Hint";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
-import { Goals } from "../components/Goals";
-import { Conferences } from "../components/Conferences";
-import { PatientPathways } from "../components/PatientPathways";
 import { usePatientCard } from "./PatientCard";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
@@ -118,21 +114,15 @@ export default function CaseSummaryTab() {
 
       {/* подсказка стоит рядом с числом, а не в справке: вопрос возникает здесь */}
       <Hint id="rci" text="hint.rci" />
-      <Goals userId={data.userId} summary={data} />
-      <Informants userId={data.userId} />
         </div>
 
         <div className="pc-actions">
-          <PatientPathways userId={data.userId} />
-
           {/* план безопасности первым: в кризис открывают его */}
           <SafetyPlanEditor userId={data.userId} />
 
           <div className="card">
             <NotesEditor userId={data.userId} />
           </div>
-
-          <Conferences userId={data.userId} />
 
           {data.conclusions.length ? (
         <div className="card">

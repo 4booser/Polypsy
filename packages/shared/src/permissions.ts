@@ -23,12 +23,8 @@ export const PERMISSION_GROUPS = [
       "conclusions.write",
       "conclusions.sign",
       "referrals.manage",
-      "pathways.manage",
       "episodes.manage",
-      "goals.manage",
       "safety.manage",
-      "conferences.manage",
-      "informants.manage",
     ],
   },
   {
@@ -39,7 +35,7 @@ export const PERMISSION_GROUPS = [
   {
     code: "risk",
     title: { uk: "Тривоги та чергування", ru: "Тревоги и дежурство" },
-    permissions: ["alerts.review", "duty.take", "emergency.breakGlass"],
+    permissions: ["alerts.review"],
   },
   {
     code: "measure",
@@ -51,7 +47,6 @@ export const PERMISSION_GROUPS = [
       "batteries.manage",
       "schedules.manage",
       "assignments.manage",
-      "kiosk.manage",
       "invites.manage",
       "administer",
       "norms.manage",
@@ -63,7 +58,6 @@ export const PERMISSION_GROUPS = [
     permissions: [
       "analytics.read",
       "cohorts.read",
-      "unitReport.read",
       "export.deidentified",
       "export.full",
     ],
@@ -100,8 +94,6 @@ export const ALL_PERMISSIONS: readonly Permission[] = PERMISSION_GROUPS.flatMap(
 export const EXCEPTION_PERMISSIONS: readonly Permission[] = [
   "conclusions.sign",
   "surveys.edit",
-  "duty.take",
-  "emergency.breakGlass",
 ];
 
 /** Пояснение к праву на двух языках: экран прав объясняет, а не перечисляет. */
@@ -112,12 +104,8 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
   "conclusions.write": { uk: "Готувати висновки", ru: "Готовить заключения" },
   "conclusions.sign": { uk: "Підписувати висновки", ru: "Подписывать заключения" },
   "referrals.manage": { uk: "Виписувати й вести направлення", ru: "Выписывать и вести направления" },
-  "pathways.manage": { uk: "Вести маршрути допомоги", ru: "Вести маршруты помощи" },
   "episodes.manage": { uk: "Вести звернення: відкривати й закривати", ru: "Вести обращения: открывать и закрывать" },
-  "goals.manage": { uk: "Ставити цілі лікування", ru: "Ставить цели лечения" },
   "safety.manage": { uk: "Складати план безпеки", ru: "Составлять план безопасности" },
-  "conferences.manage": { uk: "Виносити на консиліум", ru: "Выносить на консилиум" },
-  "informants.manage": { uk: "Запитувати погляд збоку", ru: "Запрашивать взгляд со стороны" },
 
   "schedule.own": { uk: "Вести свій розклад прийому", ru: "Вести своё расписание приёма" },
   "appointments.manage": { uk: "Записувати, переносити й скасовувати прийоми", ru: "Записывать, переносить и отменять приёмы" },
@@ -125,11 +113,6 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
   "messages.write": { uk: "Листуватися з пацієнтами", ru: "Переписываться с пациентами" },
 
   "alerts.review": { uk: "Розбирати випадки ризику", ru: "Разбирать случаи риска" },
-  "duty.take": { uk: "Заступати на чергування", ru: "Заступать на дежурство" },
-  "emergency.breakGlass": {
-    uk: "Відкривати доступ поза своєю групою в невідкладній ситуації",
-    ru: "Открывать доступ вне своей группы в неотложной ситуации",
-  },
 
   "surveys.read": { uk: "Бачити методики", ru: "Видеть методики" },
   "surveys.edit": { uk: "Редагувати методики та ключі підрахунку", ru: "Редактировать методики и ключи подсчёта" },
@@ -137,14 +120,12 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
   "batteries.manage": { uk: "Складати батареї", ru: "Составлять батареи" },
   "schedules.manage": { uk: "Вести розклад повторів", ru: "Вести расписание повторов" },
   "assignments.manage": { uk: "Призначати методики й давати доступ", ru: "Назначать методики и давать доступ" },
-  "kiosk.manage": { uk: "Вести сеанси кіоску", ru: "Вести сеансы киоска" },
   "invites.manage": { uk: "Створювати запрошення", ru: "Создавать приглашения" },
   "administer": { uk: "Заповнювати методику за пацієнта", ru: "Заполнять методику за пациента" },
   "norms.manage": { uk: "Вести локальні норми", ru: "Вести локальные нормы" },
 
   "analytics.read": { uk: "Дивитися аналітику методик", ru: "Смотреть аналитику методик" },
   "cohorts.read": { uk: "Збирати когорти", ru: "Собирать когорты" },
-  "unitReport.read": { uk: "Бачити стан підрозділу", ru: "Видеть состояние подразделения" },
   "export.deidentified": { uk: "Вивантажувати знеособлені дані", ru: "Выгружать обезличенные данные" },
   "export.full": { uk: "Вивантажувати дані з іменами", ru: "Выгружать данные с именами" },
 

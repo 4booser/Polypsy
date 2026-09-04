@@ -176,7 +176,7 @@ describe("личные исключения", () => {
     const reason = `Проверка журнала ${crypto.randomUUID()}`;
     await api(`/api/permissions/users/${person.id}/exceptions`, root.token, {
       method: "POST",
-      body: JSON.stringify({ permission: "duty.take", mode: "grant", reason }),
+      body: JSON.stringify({ permission: "conclusions.sign", mode: "grant", reason }),
     });
 
     const log = await api("/api/audit?action=permission.exception&limit=20", root.token);

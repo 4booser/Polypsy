@@ -21,7 +21,6 @@ import { env } from "../env";
 import { audit } from "../lib/audit";
 import { badRequest, forbidden, langOf, notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
-import { departmentReport, resolveDepartment } from "../lib/departmentReport";
 import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
@@ -509,111 +508,6 @@ function visitCertificateHtml(d: {
 </body></html>`;
 }
 
-/**
- * Печатный отчёт отделения.
- *
- * Тот же расчёт, что и на экране, но листом, который подшивают. Считает
- * маршрут отчёта, а не эта страница: два расчёта одного числа — это два
- * числа, которые однажды разойдутся, и разойдутся молча.
- */
-reportRoutes.get("/department", requireStaff, requirePermission("unitReport.read"), async (c) => {
-  const from = c.req.query("from") ?? "";
-  const to = c.req.query("to") ?? "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    badRequest("err.reportPeriodRequired");
-  }
-
-  /*
-   * Считает та же функция, что и экранный отчёт. Сходить к себе же по HTTP
-   * было бы и лишним кругом, и кольцевым импортом; посчитать здесь заново —
-   * завести второе число, которое однажды разойдётся с первым, а подпишут
-   * бумажное.
-   */
-  const department = await resolveDepartment(c.get("user").id, c.req.query("departmentId"));
-  if (!department) notFound("err.departmentNotFound");
-  const data = await departmentReport(department.id, from, to, department.timezone);
-
-  const row = await db.query.departments.findFirst({ where: eq(departments.id, department.id) });
-
-  return c.html(
-    departmentReportHtml({
-      title: row ? t(row.title as never, langOf(c)) : "",
-      from,
-      to,
-      rows: [
-        ["Прийнято прийомів", data.received],
-        ["Людей", data.people],
-        ["Первинних", data.primary],
-        ["Повторних", data.repeat],
-        ["Неявок", data.noShow],
-        ["Скасувань", data.cancelled],
-        ["На обліку", data.attached],
-      ],
-      floor: data.floor,
-    }),
-  );
-});
-
-function departmentReportHtml(d: {
-  title: string;
-  from: string;
-  to: string;
-  rows: [string, number | null][];
-  floor: number;
-}): string {
-  const rows = d.rows
-    .map(
-      ([label, value]) => `
-      <tr>
-        <td>${esc(label)}</td>
-        <td class="num">${
-          /*
-           * Подавленное печатается словом, а не прочерком и не нулём.
-           * Прочерк на бумаге читается как «не считали», ноль — как
-           * «никого», а правда в том, что людей мало и назвать их число
-           * нельзя.
-           */
-          value === null ? "мало" : value
-        }</td>
-      </tr>`,
-    )
-    .join("");
-
-  return `<!doctype html>
-<html lang="uk"><head><meta charset="utf-8">
-<title>Звіт відділення</title>
-<style>
-  @page { margin: 18mm; }
-  body { font: 13px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
-  .letterhead { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 16px; }
-  .letterhead .org { font-size: 14px; font-weight: 700; }
-  h1 { font-size: 18px; margin: 0 0 4px; }
-  .meta { color: #555; font-size: 12px; margin-bottom: 14px; }
-  table { width: 100%; border-collapse: collapse; max-width: 460px; }
-  td { padding: 7px 8px; border-bottom: 1px solid #e3e3e3; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .note { margin-top: 18px; font-size: 11px; color: #666; max-width: 70ch; }
-  .sign { margin-top: 36px; display: flex; gap: 32px; break-inside: avoid; }
-  .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
-  .sign-line i { display: inline-block; width: 200px; border-bottom: 1px solid #111; }
-</style></head>
-<body>
-  ${
-    env.institutionName
-      ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
-      : ""
-  }
-  <h1>Звіт відділення${d.title ? `: ${esc(d.title)}` : ""}</h1>
-  <p class="meta">Період: ${esc(d.from)} — ${esc(d.to)}</p>
-  <table>${rows}</table>
-  <p class="note">Числа, менші за ${d.floor}, не наводяться: за малим числом
-     разом зі складом підрозділу людина впізнається. «Людей» і «прийомів» не
-     додають — одна людина за період приходить кілька разів.</p>
-  <div class="sign">
-    <div class="sign-line">Завідувач відділення <i></i></div>
-  </div>
-</body></html>`;
-}
 
 /**
  * Выписка по обращению — печатным листом.

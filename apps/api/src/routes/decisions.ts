@@ -1,13 +1,13 @@
 import { Hono } from "hono";
-import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { crisisPeriods, decisionRules, dutyShifts, ruleHits, surveys, users } from "../db/schema";
+import { crisisPeriods, decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { currentCrisis } from "../lib/crisis";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, isSuperadmin, surveyScopeFilter } from "../lib/scope";
+import { accessibleGroupIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const decisionRoutes = new Hono<AppEnv>();
@@ -219,62 +219,11 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
 
 /* ── дежурная смена ── */
 
-const shiftSchema = z.object({
+const _shiftSchema = z.object({
   userId: z.string(),
   groupId: z.string().nullable().optional(),
   startsAt: z.string(),
   endsAt: z.string(),
-});
-
-decisionRoutes.get("/duty", requirePermission("duty.take"), async (c) => {
-  const now = new Date().toISOString();
-  const rows = await db
-    .select({ shift: dutyShifts, person: users })
-    .from(dutyShifts)
-    .innerJoin(users, eq(users.id, dutyShifts.userId))
-    .where(and(lte(dutyShifts.startsAt, now), gt(dutyShifts.endsAt, now)))
-    .orderBy(dutyShifts.endsAt);
-
-  return c.json({
-    items: rows.map((r) => ({
-      id: r.shift.id,
-      userId: r.shift.userId,
-      name: fullNameOf(r.person),
-      groupId: r.shift.groupId,
-      startsAt: r.shift.startsAt,
-      endsAt: r.shift.endsAt,
-    })),
-  });
-});
-
-decisionRoutes.post("/duty", requirePermission("duty.take"), async (c) => {
-  const user = c.get("user");
-  const input = await parseBody(c.req.raw, shiftSchema);
-
-  if (input.endsAt <= input.startsAt) badRequest("err.shiftInvalidRange");
-  if (!isSuperadmin(user) && input.userId !== user.id) {
-    badRequest("err.shiftOthersSuperadminOnly");
-  }
-
-  const id = crypto.randomUUID();
-  await db.insert(dutyShifts).values({
-    id,
-    userId: input.userId,
-    groupId: input.groupId ?? null,
-    startsAt: input.startsAt,
-    endsAt: input.endsAt,
-    createdBy: user.id,
-  });
-
-  await audit(c, {
-    action: "duty.assign",
-    resourceType: "duty_shift",
-    resourceId: id,
-    subjectUserId: input.userId,
-    details: { startsAt: input.startsAt, endsAt: input.endsAt },
-  });
-
-  return c.json({ id }, 201);
 });
 
 /* ── кризисный режим ── */

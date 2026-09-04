@@ -36,7 +36,6 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { HORIZON_WEEKS, syncSlots } from "../lib/schedule";
-import { departmentReport, resolveDepartment } from "../lib/departmentReport";
 import { assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -1249,47 +1248,6 @@ async function changesSince(patientId: string, since: string): Promise<VisitChan
 
   return out.sort((a, b) => (a.at < b.at ? 1 : -1));
 }
-
-/* ═══════════ отчёт отделения ═══════════ */
-
-const reportQuery = z.object({
-  departmentId: z.string().optional(),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
-
-/**
- * Отчёт отделения за период.
- *
- * То, что сейчас считают руками в конце месяца: принято всего, первичных и
- * повторных, неявок, на учёте. Ручной подсчёт занимает вечер и ошибается
- * молча — пересчитать его некому.
- *
- * Малые числа подавляются тем же порогом, что и везде в системе: отчёт
- * уходит наружу, и по строке «в подразделении Н. принято 2 человека» вместе
- * с составом подразделения человек опознаётся. Порог берётся из готового
- * lib/privacy.ts, а не заводится здесь заново, — иначе однажды они разойдутся.
- */
-clinicRoutes.get(
-  "/report",
-  requireStaff,
-  requirePermission("unitReport.read"),
-  async (c) => {
-    const q = parseQuery(c, reportQuery);
-    const department = await resolveDepartment(c.get("user").id, q.departmentId);
-    if (!department) notFound("err.departmentNotFound");
-
-    const report = await departmentReport(department.id, q.from, q.to, department.timezone);
-
-    await audit(c, {
-      action: "clinic.report",
-      resourceType: "department",
-      resourceId: department.id,
-      details: { from: q.from, to: q.to, received: report.received },
-    });
-    return c.json(report);
-  },
-);
 
 
 

@@ -90,11 +90,16 @@ describe("подавление малых ячеек", () => {
     }
   });
 
-  test("порог тот же, что в отчёте по подразделению", async () => {
-    // два числа в разных файлах однажды разойдутся, и разойдутся молча
+  test("порог берётся из общего места, а не назначается экраном", async () => {
+    /*
+     * Раньше здесь сверялись два экрана между собой: подбор людей и отчёт
+     * подразделения. Отчёт убран, но проверка не потеряла смысла —
+     * сверяться надо было не с соседним экраном, а с источником: два числа
+     * в разных файлах однажды разойдутся, и разойдутся молча.
+     */
+    const { SMALL_CELL_FLOOR } = await import("../src/lib/privacy");
     const cohort = await preview({});
-    const report = await api(`/api/unit-report?unit=${encodeURIComponent(unit)}`, adminA.token);
-    expect(cohort.body.smallCellFloor).toBe(report.body.smallCellFloor);
+    expect(cohort.body.smallCellFloor).toBe(SMALL_CELL_FLOOR);
   });
 });
 

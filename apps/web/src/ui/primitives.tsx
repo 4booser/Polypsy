@@ -358,9 +358,16 @@ export function Spacer() {
  * «назад». Вкладка на состоянии всё это ломает молча — человек присылает
  * ссылку на карту, а открывается она не на том, что он смотрел.
  */
-export function Tabs({ items }: { items: { to: string; label: string; end?: boolean }[] }) {
+export function Tabs({ items, label }: { items: { to: string; label: string; end?: boolean }[]; label?: string }) {
+  /*
+   * Это НЕ role="tablist". Здесь ссылки, меняющие адрес, а вкладка в смысле
+   * ARIA — переключатель панелей внутри одной страницы, и от него диктор
+   * ждёт role="tab" у детей и связанных панелей. Проверка доступности это
+   * поймала сразу: tablist со ссылками внутри — нарушение, а не придирка.
+   * Раздел навигации <nav> описывает происходящее верно.
+   */
   return (
-    <nav className="flex items-center gap-1 border-b border-hairline" role="tablist">
+    <nav aria-label={label} className="flex items-center gap-1 border-b border-hairline">
       {items.map((t) => (
         <NavLink
           key={t.to}
