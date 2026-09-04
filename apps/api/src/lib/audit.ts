@@ -4,6 +4,7 @@ import { db } from "../db";
 import { auditLog } from "../db/schema";
 import type { User } from "@quizzy/shared";
 import { currentRequestId, log } from "./log";
+import { publish } from "./events";
 
 /** Действия журнала. Строковый союз, чтобы опечатка ловилась типами. */
 export type AuditAction =
@@ -252,6 +253,40 @@ function withRequestId(details: Record<string, unknown> | null | undefined) {
   return { ...(details ?? {}), requestId: id };
 }
 
+/**
+ * Событие потока по записи журнала.
+ *
+ * Выпускается ЗДЕСЬ, а не вызовом рядом с каждым действием. Разница не в
+ * удобстве: событие, которое надо не забыть выпустить, однажды забудут — и
+ * узнать об этом будет неоткуда, потому что отсутствие события ничего не
+ * ломает и ни на что не жалуется. Журнал же обязателен для каждого
+ * изменяющего маршрута, и его полноту сторожит проверка по реестру
+ * маршрутов. Привязав одно к другому, мы получаем полноту потока событий
+ * даром: новое действие, попавшее в журнал, попадает и в поток.
+ *
+ * В событие идут только действие и адреса записей. `details` не идёт
+ * НИКОГДА: там лежат причины отмены, заметки и прочий свободный текст, а
+ * событие рассылается всем подписанным сотрудникам сразу, тогда как сам
+ * журнал лежит под политиками строк и отдельным правом. Событие говорит
+ * «вот это изменилось, перечитай, если тебе положено», а не рассказывает
+ * содержимое.
+ */
+async function emit(input: AuditInput, actorId: string | null): Promise<void> {
+  await publish(db, {
+    kind: "action",
+    action: input.action,
+    resourceType: input.resourceType ?? null,
+    resourceId: input.resourceId ?? null,
+    actorId,
+    // область видимости событию не сужаем: имён и содержимого в нём нет, а
+    // сузить по методике здесь нечем — большинство действий к методике не
+    // относится вовсе
+    surveyIds: null,
+    userId: input.subjectUserId ?? null,
+    at: new Date().toISOString(),
+  });
+}
+
 export async function audit(c: Context, input: AuditInput): Promise<void> {
   try {
     const actor = input.actor ?? (c.get("user") as User | undefined) ?? null;
@@ -275,6 +310,17 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
        */
       details: withRequestId(input.details),
     });
+
+    /*
+     * Чтение событием не становится. Различаются они не списком действий, а
+     * методом запроса: GET и HEAD ничего не меняют по определению HTTP, и
+     * список «какие действия читающие» пришлось бы вести руками — то есть
+     * однажды разойтись с кодом. Без этого разделения открытая консоль
+     * рассылала бы событие на каждый просмотр списка тревог, и поток,
+     * заведённый ради срочного, утонул бы в обычном.
+     */
+    const method = c.req.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD") await emit(input, actor?.id ?? null);
   } catch (err) {
     log.error("audit.write_failed", { action: input.action, error: String(err) });
   }
@@ -301,6 +347,8 @@ export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<voi
       userAgent: "система",
       details: input.details ?? null,
     });
+    // фоновой проход читающим не бывает: он на то и проход, что что-то делает
+    await emit(input, null);
   } catch (err) {
     log.error("audit.system_write_failed", { action: input.action, error: String(err) });
   }

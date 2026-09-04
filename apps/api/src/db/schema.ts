@@ -1027,9 +1027,16 @@ export const riskAlerts = pgTable(
     surveyId: text("survey_id")
       .notNull()
       .references(() => surveys.id, { onDelete: "cascade" }),
-    questionId: text("question_id")
-      .notNull()
-      .references(() => questions.id, { onDelete: "cascade" }),
+    /**
+     * Пункт, ответ на который поднял тревогу.
+     *
+     * Пуст у сигнала по полосе шкалы: там тревогу поднимает не отдельный
+     * ответ, а суммарный балл, и указывать какой-то один пункт значило бы
+     * назвать виновным случайный.
+     */
+    questionId: text("question_id").references(() => questions.id, { onDelete: "cascade" }),
+    /** Шкала, полоса которой подняла тревогу; пусто у сигнала по пункту */
+    scaleId: text("scale_id").references(() => scales.id, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
     /**
      * Случай, к которому относится сигнал. Nullable только ради миграции:

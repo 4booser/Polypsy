@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import { t, type AlertCase, type AlertSignal, type Page } from "@quizzy/shared";
 import { db } from "../db";
-import { alertCases, auditLog, questions, riskAlerts, surveys, users } from "../db/schema";
+import { alertCases, auditLog, questions, riskAlerts, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
@@ -190,10 +190,19 @@ alertCaseRoutes.get("/", async (c) => {
   const caseIds = page.map((r) => r.c.id);
   const signalsByCase = new Map<string, AlertSignal[]>();
   if (caseIds.length) {
+    /*
+     * Связь с пунктом и со шкалой — ЛЕВЫМИ соединениями.
+     *
+     * У сигнала по полосе шкалы пункта нет, у сигнала по пункту нет шкалы;
+     * внутреннее соединение выбросило бы половину сигналов из списка, ничем
+     * себя не выдав — случай остался бы в очереди, а сигналы внутри него
+     * молча пропали.
+     */
     const sig = await db
-      .select({ a: riskAlerts, questionTitle: questions.title })
+      .select({ a: riskAlerts, questionTitle: questions.title, scaleTitle: scales.title })
       .from(riskAlerts)
-      .innerJoin(questions, eq(questions.id, riskAlerts.questionId))
+      .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
+      .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
       .where(and(inArray(riskAlerts.caseId, caseIds), inArray(riskAlerts.surveyId, surveyIds)))
       .orderBy(desc(riskAlerts.at));
     for (const s of sig) {
@@ -203,7 +212,9 @@ alertCaseRoutes.get("/", async (c) => {
           id: s.a.id,
           responseId: s.a.responseId,
           questionId: s.a.questionId,
-          questionTitle: t(s.questionTitle as never, lang),
+          // у сигнала по шкале в этом поле стоит название шкалы: место одно,
+          // и подписывать его «пункт» было бы неправдой ровно в половине строк
+          questionTitle: t((s.questionTitle ?? s.scaleTitle) as never, lang),
           label: s.a.label,
           severity: s.a.severity,
           at: s.a.at,

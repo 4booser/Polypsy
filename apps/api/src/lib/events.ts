@@ -23,7 +23,17 @@ export type AppEventKind =
   | "response.submitted"
   | "kiosk.progress"
   | "schedule.run"
-  | "presence.changed";
+  | "presence.changed"
+  /**
+   * Любое изменяющее действие, попавшее в журнал.
+   *
+   * Заводится не вместо перечисленных выше, а под ними: те несут смысл
+   * («пришла тревога», «сдано прохождение») и подписчик знает, что с ними
+   * делать. Это — общий поток, чтобы не заводить kind под каждое новое
+   * действие и не обнаруживать через полгода, что половина системы событий
+   * не выпускает вовсе.
+   */
+  | "action";
 
 export interface AppEvent {
   kind: AppEventKind;
@@ -42,6 +52,15 @@ export interface AppEvent {
   sessionId?: string;
   /** Экран, на котором находится сотрудник: `patient:<id>` и подобные */
   resource?: string;
+
+  /* ── поля общего потока «action» ── */
+
+  /** Действие журнала: `clinic.cancel`, `episode.open` и так далее */
+  action?: string;
+  resourceType?: string | null;
+  resourceId?: string | null;
+  /** Кто сделал; null у фоновых проходов */
+  actorId?: string | null;
 }
 
 type Handler = (event: AppEvent) => void;

@@ -245,6 +245,62 @@ export async function persistSubmission(
       });
     }
 
+    /*
+     * Сигнал по полосе шкалы.
+     *
+     * Тревогу до сих пор поднимал только вариант ответа с riskFlag. У МЛО
+     * «Адаптивність-200» — основной методики учреждения — таких вариантов
+     * нет ни одного: её суицидальный риск выражен полосой стенов, и полоса
+     * «вкрай низький рівень» не поднимала ни тревоги, ни случая. Человек с
+     * крайним значением по СР не появлялся в очереди разбора вовсе. То же у
+     * PHQ-9: 27 баллов из 27 при ответе «жодного разу» на девятый пункт не
+     * давали ничего.
+     *
+     * Берутся только содержательные шкалы: полоса шкалы достоверности
+     * говорит о качестве протокола, а не о состоянии человека, и звать по
+     * ней специалиста незачем.
+     *
+     * `normalized === false` пропускается: полосы заданы в единицах
+     * нормировки, и при неудавшейся нормировке движок полосу не назначает —
+     * но проверить это здесь дешевле, чем однажды получить тревогу по
+     * сырому баллу, случайно попавшему в диапазон стенов.
+     */
+    for (const score of scores) {
+      const severity = score.band?.severity;
+      if (score.kind !== "clinical" || !score.normalized) continue;
+      if (severity !== "moderate" && severity !== "severe") continue;
+
+      const caseId = await attachToCase(tx as never, {
+        userId: linkedUserId,
+        surveyId: survey.id,
+        severity,
+        at: riskAt,
+      });
+      await tx
+        .insert(riskAlerts)
+        .values({
+          id: crypto.randomUUID(),
+          responseId,
+          surveyId: survey.id,
+          questionId: null,
+          scaleId: score.scaleId,
+          userId: linkedUserId,
+          caseId,
+          label: `${score.scaleTitle}: ${score.band?.label ?? ""}`.trim(),
+          severity,
+          at: riskAt,
+        })
+        .onConflictDoNothing();
+
+      await publish(tx as never, {
+        kind: "alert.created",
+        surveyIds: [survey.id],
+        userId: linkedUserId,
+        severity,
+        at: riskAt,
+      });
+    }
+
     for (const score of scores) {
       await tx.insert(responseScores).values({
         id: crypto.randomUUID(),

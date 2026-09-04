@@ -302,7 +302,9 @@ export interface RiskAlert {
   responseId: string;
   surveyId: string;
   surveyTitle: string;
-  questionId: string;
+  /** Пункт, поднявший тревогу; null у сигнала по полосе шкалы */
+  questionId: string | null;
+  /** Заголовок пункта, а у сигнала по шкале — название шкалы */
   questionTitle: string;
   userId: string | null;
   respondent: string | null;
@@ -1204,7 +1206,9 @@ export interface AuditPage {
 export interface AlertSignal {
   id: string;
   responseId: string;
-  questionId: string;
+  /** Пункт, поднявший тревогу; null у сигнала по полосе шкалы */
+  questionId: string | null;
+  /** Заголовок пункта, а у сигнала по шкале — название шкалы */
   questionTitle: string;
   label: string;
   severity: RiskSeverity;

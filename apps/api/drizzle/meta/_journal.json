@@ -470,6 +470,13 @@
       "when": 1788472735043,
       "tag": "0066_one_open_episode",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1788472736043,
+      "tag": "0067_band_alerts",
+      "breakpoints": true
     }
   ]
 }
