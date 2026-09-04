@@ -111,7 +111,7 @@ export function CommandPalette({
                   <Command.Item
                     key={p.id}
                     value={`${p.fullName} ${p.email}`}
-                    onSelect={() => go(`/patients/${p.id}/summary`)}
+                    onSelect={() => go(`/patients/${p.id}`)}
                   >
                     <span className="grow">{p.fullName}</span>
                     <span className="muted">{p.email}</span>

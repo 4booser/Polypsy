@@ -326,7 +326,12 @@ const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Pag
       await page.locator("table tbody tr").first().waitFor();
       await page.locator("table tbody tr td a").first().click();
       await page.waitForURL(/\/patients\//);
-      await page.locator("h1").waitFor();
+      /*
+       * Ждём вкладки карты, а не просто заголовок: заголовок «Пациенты»
+       * есть и на списке, с которого мы уходим, — ожидание проходило
+       * мгновенно, и снимок ловил карту в состоянии загрузки.
+       */
+      await page.getByRole("link", { name: "Хронология" }).waitFor();
       // карта дозагружает динамику и эпизоды отдельными запросами
       await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
     },

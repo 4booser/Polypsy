@@ -130,10 +130,16 @@ test.describe("экраны с параметром", () => {
     await login(page, "psy");
     await page.goto("/patients");
     await page.locator("table tbody tr td a").first().click();
-    // ссылка на хронологию живёт на сводке: туда приходят разбираться
-    await page.getByRole("link", { name: "Сводка для консилиума" }).click();
-    await page.getByRole("link", { name: "Хронология" }).click();
-    await expect(page.locator("h1")).toHaveText("Хронология");
+    /*
+     * Дожидаемся карты, ПОТОМ читаем имя. Без ожидания заголовок читается
+     * ещё со списка — «Пациенты», — и проверка сравнивает вкладку со
+     * списком, а не с картой.
+     */
+    const tab = page.getByRole("link", { name: "Хронология" });
+    await tab.waitFor();
+    const name = (await page.locator("h1").textContent())!.trim();
+    await tab.click();
+    await expect(page.locator("h1")).toHaveText(name);
     await expect(page.locator(".tl-event").first()).toBeVisible();
 
     // дни идут от свежего к старому: историю читают с конца

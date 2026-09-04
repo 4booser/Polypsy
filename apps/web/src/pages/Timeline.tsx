@@ -2,7 +2,6 @@ import { Link, useParams } from "react-router-dom";
 import { api, type TimelineItem } from "../api";
 import { dateTime, severityColor } from "../format";
 import { Empty, Loading } from "../ui";
-import { Page } from "../ui/layout";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
@@ -17,6 +16,9 @@ import type { UiKey } from "@quizzy/shared";
  *
  * События сгруппированы по дням: без группировки лента из двухсот строк
  * читается как журнал, а не как история.
+ *
+ * Вкладка карты пациента: заголовок и имя стоят в шапке карты, здесь —
+ * только лента.
  */
 
 const KIND_KEY = {
@@ -43,12 +45,13 @@ export default function Timeline() {
   }
 
   return (
-    <Page
-      title={ut("tl.title")}
-      sub={ut("tl.sub")}
-      count={items.length || null}
-      crumbs={<Link to={`/patients/${userId}/summary`}>← {ut("nav.patients")}</Link>}
-    >
+    <>
+      {/*
+        Подпись остаётся: без неё вкладка не говорит, ЧТО именно на оси, а
+        отсутствие события легко прочесть как «этого не было», хотя события
+        такого рода лента может просто не собирать.
+      */}
+      <p className="hint mb-3">{ut("tl.sub")}</p>
       {items.length === 0 ? (
         <Empty title={ut("tl.empty")} hint={ut("tl.emptyHint")} />
       ) : (
@@ -76,6 +79,6 @@ export default function Timeline() {
           ))}
         </div>
       )}
-    </Page>
+    </>
   );
 }
