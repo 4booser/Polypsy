@@ -4,6 +4,7 @@ import { api } from "../api";
 import { Empty, Screen, useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Num, Select } from "../ui/primitives";
+import { cx } from "../ui/cx";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -156,8 +157,13 @@ export default function SchedulePage() {
                  * «во сколько я начинаю» читается сверху вниз, — и столбцы
                  * обязаны стоять на месте.
                  */
+                <>
+                <SimpleWeek onApply={(next) => setRows(next)} />
+                <div className="border-t border-hairline px-4 pt-3 text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+                  {ut("sched.byDay")}
+                </div>
                 <div className="overflow-x-auto px-4 pb-4">
-                  <div className="min-w-[720px]">
+                  <div className="min-w-[560px]">
                     <div
                       /* px-2 — те же отступы, что у строки: иначе подпись столбца
                          стоит на десять пикселей левее своего поля */
@@ -182,6 +188,7 @@ export default function SchedulePage() {
                     </div>
                   </div>
                 </div>
+                </>
               )}
             </Panel>
 
@@ -206,6 +213,85 @@ export default function SchedulePage() {
  * списке, на этот вопрос не отвечает — его приходится искать, чтобы
  * убедиться, что не нашёл.
  */
+/**
+ * Обычная неделя одной строкой.
+ *
+ * Настраивают расписание один раз, и настраивает его человек, который знает
+ * про свой приём ровно три вещи: в какие дни, с которого по который час и
+ * сколько длится приём. Таблица из строк на каждый интервал спрашивала то же
+ * самое пять раз подряд, и заполнить её без ошибки труднее, чем сказать
+ * вслух.
+ *
+ * Построчная правка не убрана: обеденный перерыв и короткая пятница иначе не
+ * задаются. Но она перестала быть первым, что видит человек, — и стала тем,
+ * чем и является: поправкой к обычной неделе.
+ */
+function SimpleWeek({ onApply }: { onApply: (rows: Row[]) => void }) {
+  const { ut } = useLang();
+  const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [from, setFrom] = useState("09:00");
+  const [to, setTo] = useState("17:00");
+  const [minutes, setMinutes] = useState(50);
+
+  const toggle = (d: number) =>
+    setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
+
+  return (
+    <div className="px-4 pb-4">
+      <div className="pb-1 text-micro uppercase tracking-[var(--tracking-label)] text-faint">
+        {ut("sched.simple")}
+      </div>
+      <p className="pb-3 text-caption text-muted">{ut("sched.simpleHint")}</p>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap gap-1">
+          {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+            <button
+              key={d}
+              type="button"
+              aria-pressed={days.includes(d)}
+              onClick={() => toggle(d)}
+              className={cx(
+                "h-9 rounded-sm px-3 text-small transition-colors",
+                "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+                days.includes(d)
+                  ? "bg-surface-3 font-medium text-text"
+                  : "text-muted hover:bg-surface-2 hover:text-text",
+              )}
+            >
+              {ut(WEEKDAY_KEY[d]!).slice(0, 2)}
+            </button>
+          ))}
+        </div>
+        <Field label={ut("sched.from")}>
+          <Input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </Field>
+        <Field label={ut("sched.to")}>
+          <Input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
+        </Field>
+        <Field label={ut("sched.slotMinutes")}>
+          <Input
+            type="number"
+            min={5}
+            max={480}
+            value={minutes}
+            onChange={(e) => setMinutes(Number(e.target.value))}
+          />
+        </Field>
+        <Button
+          size="sm"
+          disabled={!days.length || to <= from}
+          onClick={() =>
+            onApply(days.map((weekday) => ({ weekday, startsAt: from, endsAt: to, slotMinutes: minutes })))
+          }
+        >
+          {ut("sched.apply")}
+        </Button>
+      </div>
+      <p className="pt-2 text-caption text-faint">{ut("sched.applyWarn")}</p>
+    </div>
+  );
+}
+
 function WeekRead({ rows }: { rows: Row[] }) {
   const { ut } = useLang();
 
