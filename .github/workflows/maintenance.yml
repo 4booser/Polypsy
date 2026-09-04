@@ -1,0 +1,62 @@
+# Обслуживание живого экземпляра.
+#
+# Запускается только руками, с выбором действия из списка. Списком, а не
+# строкой команды: доступ к серверу учреждения через кнопку в вебе — это
+# выполнение произвольного кода на машине с медицинскими данными, и
+# единственное, что отличает обслуживание от чёрного хода, — закрытый
+# перечень того, что можно сделать.
+#
+# Каждое действие идёт в журнал приложения так же, как если бы его сделал
+# человек за консолью: контейнер тот же, код тот же.
+name: Обслуживание
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Что сделать на сервере"
+        required: true
+        type: choice
+        options:
+          - catalog-install
+          - demo-fill
+          - demo-purge
+          - rls-check
+          - audit-verify
+      count:
+        description: "Сколько вымышленных людей завести (только для demo-fill)"
+        required: false
+        default: "120"
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ключ доступа
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Выполнить
+        env:
+          ACTION: ${{ inputs.action }}
+          COUNT: ${{ inputs.count }}
+        run: |
+          # команда собирается ЗДЕСЬ, из выбранного действия, а не приходит
+          # строкой снаружи: иначе перечень действий ничего не ограничивает
+          case "$ACTION" in
+            catalog-install) CMD="bun apps/api/src/installCatalog.ts" ;;
+            demo-fill)       CMD="bun apps/api/src/demoFill.ts ${COUNT:-120}" ;;
+            demo-purge)      CMD="bun apps/api/src/demoFill.ts purge" ;;
+            rls-check)       CMD="bun apps/api/src/rlsReport.ts" ;;
+            audit-verify)    CMD="bun apps/api/src/auditReport.ts" ;;
+            *) echo "неизвестное действие: $ACTION"; exit 1 ;;
+          esac
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker run --rm --no-deps api $CMD"
