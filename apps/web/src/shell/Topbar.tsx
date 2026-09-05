@@ -26,8 +26,6 @@ export function Topbar({
   railOpen,
   theme,
   onToggleTheme,
-  density,
-  onToggleDensity,
   right,
 }: {
   onSearch: () => void;
@@ -35,8 +33,6 @@ export function Topbar({
   railOpen: boolean;
   theme: "dark" | "light";
   onToggleTheme: () => void;
-  density: "cozy" | "compact";
-  onToggleDensity: () => void;
   right?: React.ReactNode;
 }) {
   const { ut } = useLang();
@@ -96,15 +92,12 @@ export function Topbar({
       {/* вид отделён от работы: настройки экрана — отдельная группа справа */}
       <span aria-hidden className="mx-1 h-5 w-px bg-hairline" />
 
-      <button
-        type="button"
-        className={iconBtn}
-        onClick={onToggleDensity}
-        aria-label={ut("shell.density")}
-        title={`${ut("shell.density")}: ${density === "compact" ? "compact" : "cozy"}`}
-      >
-        {density === "compact" ? <IconRows /> : <IconRowsWide />}
-      </button>
+      {/*
+        Переключателя плотности здесь больше нет. Он менял отступы в
+        таблицах, но на экранах, которые открывают каждый день, разница не
+        читалась вовсе — значок в панели выглядел кнопкой, которая ничего не
+        делает, и обучал не нажимать на соседние.
+      */}
       <button
         type="button"
         className={iconBtn}
@@ -136,10 +129,4 @@ function IconSun() {
 }
 function IconMoon() {
   return <svg {...s}><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" /></svg>;
-}
-function IconRows() {
-  return <svg {...s}><path d="M3 6h18M3 10h18M3 14h18M3 18h18" /></svg>;
-}
-function IconRowsWide() {
-  return <svg {...s}><path d="M3 7h18M3 12h18M3 17h18" /></svg>;
 }

@@ -8,6 +8,17 @@ import { cx } from "../ui/cx";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
+/** Короткие подписи дней: срез длинного названия даёт «Че» и «Су» */
+const SHORT_KEY: Record<number, UiKey> = {
+  1: "wd.1",
+  2: "wd.2",
+  3: "wd.3",
+  4: "wd.4",
+  5: "wd.5",
+  6: "wd.6",
+  7: "wd.7",
+};
+
 const WEEKDAY_KEY: Record<number, UiKey> = {
   1: "sched.mon",
   2: "sched.tue",
@@ -258,7 +269,7 @@ function SimpleWeek({ onApply }: { onApply: (rows: Row[]) => void }) {
                   : "text-muted hover:bg-surface-2 hover:text-text",
               )}
             >
-              {ut(WEEKDAY_KEY[d]!).slice(0, 2)}
+              {ut(SHORT_KEY[d]!)}
             </button>
           ))}
         </div>
