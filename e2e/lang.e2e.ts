@@ -95,7 +95,6 @@ const SCREENS = [
   "/referrals",
   "/surveys",
   "/batteries",
-  "/schedules",
   "/invites",
   "/audit",
   "/groups",
@@ -108,6 +107,7 @@ const SCREENS = [
   "/today",
   "/my-schedule",
   "/messages",
+  "/account",
 ];
 
 test("в украинском режиме не остаётся русских слов", async ({ page }) => {
@@ -122,7 +122,16 @@ test("в украинском режиме не остаётся русских 
    * на секундомер.
    */
   test.setTimeout(SCREENS.length * 3_000);
-  await login(page, "psy");
+  /*
+   * Вход суперадмином, а не рядовым специалистом.
+   *
+   * Список экранов содержит и те, что открыты только сверху: учётные записи,
+   * журнал, текст согласия, права. Специалисту они отвечают отказом или
+   * уводят на главную — и проверка четырежды пересчитывала слова на главной,
+   * считая, что смотрит на четыре разных экрана. Дыра была тихой: тест
+   * зеленел, а половина списка не открывалась ни разу.
+   */
+  await login(page, "superadmin");
 
   const wordsOf = async (path: string) => {
     await page.goto(path);
@@ -141,9 +150,14 @@ test("в украинском режиме не остаётся русских 
 
   const found: string[] = [];
   for (const path of SCREENS) {
-    await page.getByRole("button", { name: "РУС" }).click();
+    /*
+     * Переключатель берётся из шапки поимённо: на «Учётной записи» стоит
+     * второй такой же, и общий поиск по всей странице находит оба.
+     */
+    const header = page.getByRole("banner");
+    await header.getByRole("button", { name: "РУС" }).click();
     const inRussian = await wordsOf(path);
-    await page.getByRole("button", { name: "УКР" }).click();
+    await header.getByRole("button", { name: "УКР" }).click();
     const inUkrainian = await wordsOf(path);
 
     // осталось в украинском ровно то же, что было в русском, — значит данные;

@@ -3,12 +3,14 @@ import type {
   ScheduleExceptionView,
   ScheduleTemplateView,
   LocalizedText,
+  PermissionEffectKind,
   SafetyPlan,
   SafetyPlanContent,
   AuditPage,
   OverviewAnalytics,
   RespondentDynamics,
   RiskAlert,
+  SeverityTrendResult,
   SurveyAnalytics,
   SurveyFull,
   SurveyGrant,
@@ -37,6 +39,9 @@ import type {
   CaseSummary,
   VersionDiff,
   AlertCase,
+  AlertSignalBasis,
+  GroupAnalytics,
+  ResponseDetail,
   Page,
   Respondent,
   UnitReport,
@@ -495,6 +500,7 @@ export const api = {
   googleStatus: () => request<{ enabled: boolean }>("/api/auth/google/status"),
 
   groups: () => unwrap(request<Items<SurveyGroupWithCounts>>("/api/groups")),
+  groupAnalytics: (id: string) => request<GroupAnalytics>(`/api/analytics/groups/${id}`),
   surveys: (archived = false) =>
     unwrap(request<Items<SurveyListItem>>(`/api/surveys${archived ? "?archived=1" : ""}`)),
   survey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
@@ -530,6 +536,7 @@ export const api = {
     request<VersionDiffResult>(`/api/surveys/${id}/versions/${a}/diff/${b}`),
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
+  severityTrend: () => request<SeverityTrendResult>("/api/analytics/severity-trend"),
   analytics: (id: string, versionId?: string, range?: { from?: string; to?: string }) => {
     const params = new URLSearchParams();
     if (versionId) params.set("versionId", versionId);
@@ -595,6 +602,11 @@ export const api = {
     return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
+  /** Основание тревог случая: пункт с отмеченным вариантом либо полоса шкалы */
+  alertCaseSignals: (id: string) =>
+    unwrap(request<Items<AlertSignalBasis>>(`/api/alert-cases/${id}/signals`)),
+  /** Прохождение целиком: ответы по пунктам вместе с вариантами той же версии */
+  responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
   worklist: () => request<Worklist>("/api/worklist"),
 
   ruleHits: (status = "suggested") =>
@@ -709,16 +721,6 @@ export const api = {
   wipeDevice: (id: string) =>
     request<{ ok: true; note: string }>(`/api/devices/${id}/wipe`, { method: "POST" }),
 
-  crisis: () =>
-    request<{ active: boolean; reason: string | null; startedAt: string | null }>(
-      "/api/decisions/crisis",
-    ),
-  startCrisis: (reason: string) =>
-    request<{ ok: true }>("/api/decisions/crisis", {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    }),
-  endCrisis: () => request<{ ok: true }>("/api/decisions/crisis", { method: "DELETE" }),
 
   informants: (userId: string) =>
     request<{ items: InformantRequestRow[] }>(`/api/informants/patients/${userId}`).then(
@@ -866,7 +868,16 @@ export const api = {
   /* ── права ── */
   permissionCatalogue: () =>
     request<{
-      groups: { code: string; title: LocalizedText; permissions: { code: string; title: LocalizedText }[] }[];
+      groups: {
+        code: string;
+        title: LocalizedText;
+        permissions: {
+          code: string;
+          title: LocalizedText;
+          /* что право открывает на деле: раздел меню, аналитика или действие */
+          effect: { kind: PermissionEffectKind; opens: LocalizedText };
+        }[];
+      }[];
       exceptionable: string[];
     }>("/api/permissions/catalogue"),
   permissionRoles: () =>
@@ -878,6 +889,8 @@ export const api = {
         isBuiltin: boolean;
         permissions: string[];
         people: number;
+        /** вправе ли я выдать эту роль — считает сервер по лестнице должностей */
+        assignable: boolean;
       }>>("/api/permissions/roles"),
     ),
   createRole: (input: { code: string; title: LocalizedText; permissions: string[] }) =>
@@ -920,6 +933,13 @@ export const api = {
     }),
   revokeException: (id: string) =>
     request<{ ok: true }>(`/api/permissions/exceptions/${id}/revoke`, { method: "POST" }),
+  /* люди, которых я вправе назначать: не список учёток, а моя часть лестницы */
+  assignableStaff: () =>
+    unwrap(
+      request<Items<{ id: string; email: string; role: string; fullName: string }>>(
+        "/api/permissions/staff",
+      ),
+    ),
   activeExceptions: () =>
     unwrap(
       request<Items<{
@@ -1180,6 +1200,14 @@ export const api = {
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
   createGroup: (input: GroupInput) =>
     request<SurveyGroup>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
+  updateGroup: (id: string, input: Partial<GroupInput>) =>
+    request<SurveyGroup>(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  /** Снять группу с использования или вернуть в работу — одним маршрутом со знаком */
+  archiveGroup: (id: string, archived: boolean) =>
+    request<SurveyGroup>(`/api/groups/${id}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ archived }),
+    }),
   deleteGroup: (id: string) => request<void>(`/api/groups/${id}`, { method: "DELETE" }),
   assignGroupAdmin: (groupId: string, userId: string) =>
     request<unknown>(`/api/groups/${groupId}/admins`, { method: "POST", body: JSON.stringify({ userId }) }),

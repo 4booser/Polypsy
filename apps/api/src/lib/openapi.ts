@@ -105,24 +105,31 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/auth/password": { summary: "Смена собственного пароля", access: "user", body: changePasswordSchema },
 
   /* ── права ── */
-  "GET /api/permissions/catalogue": { summary: "Справочник прав с пояснениями", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
-  "GET /api/permissions/roles": { summary: "Роли и их наборы прав", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
+  "GET /api/permissions/catalogue": { summary: "Справочник прав с пояснениями", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
+  "GET /api/permissions/roles": { summary: "Роли и их наборы прав", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
   "POST /api/permissions/roles": { summary: "Новая роль", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
   "PUT /api/permissions/roles/:id/permissions": {
     summary: "Набор прав роли; встроенная роль не правится вручную",
     access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
   },
+  "GET /api/permissions/staff": { summary: "Люди, которых актор вправе назначать", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
   "GET /api/permissions/users/:id": {
     summary: "Что человек может и из чего это сложилось: роли, исключения, итог",
-    access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
+    access: "staff",
+    whyNoPermission:
+      "карточку доступа читает тот, кто назначает: правило то же, что у назначения — ступенью ниже своей и свою собственную, и второе правило про одну лестницу однажды разошлось бы с первым молча",
   },
-  "PUT /api/permissions/users/:id/roles": { summary: "Роли человека", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
+  "PUT /api/permissions/users/:id/roles": {
+    summary: "Роли человека; цепочка назначения: только ступень ниже своей",
+    access: "staff",
+    whyNoPermission: "цепочка назначения держится на должности, а не на праве: право «назначать роли» раздавалось бы вместе с ролью, и заведующий, получив его, назначил бы себе главного врача — лестница перестала бы быть лестницей. Ограничение проверяется в самом маршруте: назначить и снять можно только роль ниже собственной ступени",
+  },
   "POST /api/permissions/users/:id/exceptions": {
     summary: "Личное исключение: одно право, с причиной и сроком",
     access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
   },
   "POST /api/permissions/exceptions/:id/revoke": { summary: "Отзыв исключения", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
-  "GET /api/permissions/exceptions": { summary: "Действующие исключения по всем", access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать" },
+  "GET /api/permissions/exceptions": { summary: "Действующие исключения по тем, кого можно назначать", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
 
   /* ── методики ── */
   "GET /api/surveys": { summary: "Список методик; ?archived=1 — снятые с использования", access: "user" },
@@ -159,6 +166,11 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/groups": { summary: "Группы методик", access: "staff", whyNoPermission: "список групп — это область ответственности, а не действие: его читает каждый, кто вообще видит методики, и ограничивает его assertGroupAccess" },
   "POST /api/groups": { summary: "Создание группы", access: "superadmin", permission: "groups.manage", body: groupInputSchema },
   "PATCH /api/groups/:id": { summary: "Правка группы", access: "superadmin", whyNoPermission: "переименовать можно только свою группу, и это проверяет область ответственности, а не право", body: groupInputSchema },
+  "POST /api/groups/:id/archive": {
+    summary: "Снять группу с использования или вернуть в работу",
+    access: "superadmin",
+    permission: "groups.manage",
+  },
   "DELETE /api/groups/:id": { summary: "Удаление пустой группы", access: "superadmin", permission: "groups.manage" },
   "GET /api/groups/:id/admins": { summary: "Администраторы группы", access: "staff", whyNoPermission: "состав администраторов группы виден тем, кто с этой группой работает; кого именно видно — решает область ответственности" },
   "POST /api/groups/:id/admins": { summary: "Назначить администратора группы", access: "superadmin", permission: "groups.manage" },
@@ -200,9 +212,6 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/devices/wiped": { summary: "Подтверждение стирания устройством", access: "user" },
   "GET /api/devices": { summary: "Свои устройства; чужие — только суперадмину", access: "user" },
   "POST /api/devices/:id/wipe": { summary: "Запросить стирание: исполнится при следующем выходе на связь", access: "superadmin", whyNoPermission: "стирание устройства — крайняя мера, делегировать её мы не собираемся" },
-  "GET /api/decisions/crisis": { summary: "Включён ли кризисный режим учреждения", access: "staff", permission: "alerts.review" },
-  "POST /api/decisions/crisis": { summary: "Включить кризисный режим: плановые замеры стоп, очередь по тяжести", access: "superadmin", permission: "decisions.manage" },
-  "DELETE /api/decisions/crisis": { summary: "Выключить кризисный режим", access: "superadmin", permission: "decisions.manage" },
   "GET /api/decisions/rules": { summary: "Правила поддержки решений", access: "staff", permission: "alerts.review" },
   "POST /api/decisions/rules": { summary: "Завести правило", access: "superadmin", permission: "decisions.manage" },
   "PATCH /api/decisions/rules/:id": { summary: "Правка правила: поднимает версию", access: "superadmin", permission: "decisions.manage" },
@@ -213,6 +222,11 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff", permission: "patients.read" },
   "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff", permission: "alerts.review" },
   "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff", permission: "alerts.review" },
+  "GET /api/alert-cases/:id/signals": {
+    summary: "Основание тревоги: пункт и отмеченный вариант либо шкала, значение и границы полосы",
+    access: "staff",
+    permission: "alerts.review",
+  },
   "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff", permission: "alerts.review" },
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
   "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке", access: "staff", permission: "alerts.review" },
@@ -227,6 +241,22 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
 
   /* ── аналитика ── */
   "GET /api/analytics/overview": { summary: "Сводка по всем методикам", access: "staff", permission: "analytics.read" },
+  /*
+   * Тот же `analytics.read`, что и у остальной аналитики, и по той же
+   * причине: маршрут отдаёт счётчики по неделям без единого имени и без
+   * единого идентификатора прохождения. Заводить ему отдельное право
+   * значило бы выдавать два права там, где показывается один и тот же экран.
+   */
+  "GET /api/analytics/severity-trend": {
+    summary: "Степени выраженности по неделям: обезличенные счётчики за полгода",
+    access: "staff",
+    permission: "analytics.read",
+  },
+  "GET /api/analytics/groups/:id": {
+    summary: "Аналитика группы: люди, прохождения, распределение по степеням выраженности",
+    access: "staff",
+    permission: "analytics.read",
+  },
   "GET /api/analytics/surveys/:id": { summary: "Аналитика методики: распределения, психометрика, воронка", access: "staff", permission: "analytics.read" },
   "GET /api/analytics/surveys/:id/export": { summary: "Выгрузка прохождений методики", access: "staff", permission: "export.full" },
   "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами", access: "staff", permission: "patients.read" },

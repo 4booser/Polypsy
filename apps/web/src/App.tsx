@@ -1,13 +1,12 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { CrisisProvider } from "./components/CrisisBar";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
 import { Topbar } from "./shell/Topbar";
 import { Rail } from "./shell/Rail";
-import { Button, Field, Select, Tag } from "./ui/primitives";
+import { Button, Tag } from "./ui/primitives";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
 import type { WorkspacePrefs } from "@quizzy/shared";
@@ -46,6 +45,7 @@ const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
 const PatientCard = lazy(() => import("./pages/PatientCard"));
 const Start = lazy(() => import("./pages/Start"));
+const Account = lazy(() => import("./pages/Account"));
 /* кабинет пациента: отдельная оболочка, а не консоль с урезанным меню */
 const PatientApp = lazy(() => import("./patient/PatientApp"));
 const PatientHome = lazy(() => import("./patient/Home"));
@@ -291,9 +291,8 @@ export default function App() {
   const isSuper = user.role === "superadmin";
 
   return (
-    <CrisisProvider>
     <div className="flex min-h-screen">
-      <Rail counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} collapsed={!railOpen}>
+      <Rail counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} canAssign={(user.ladderRank ?? 0) > 1} collapsed={!railOpen}>
         <div className="mt-3 flex flex-col gap-2 border-t border-hairline pt-3">
           {railOpen ? (
             <>
@@ -361,26 +360,27 @@ export default function App() {
               ) : null}
 
               {/*
-                Стартовый экран. Дежурному нужна сводка, а тому, кто весь день
-                разбирает случаи, — очередь: попадать каждый раз не туда стоит
-                лишнего нажатия в начале каждой смены.
+                Стартовый экран переехал в «Учётную запись». Подвал рельсы —
+                место для имени, роли и выхода; выпадающий список настройки
+                стоял там рядом с кнопкой выхода и в свёрнутом виде исчезал
+                вовсе, то есть настройка была доступна не всегда.
               */}
-              <Field label={ut("ws.startScreen")} htmlFor="start-screen">
-                <Select
-                  id="start-screen"
-                  value={user.workspace?.startScreen ?? "dashboard"}
-                  onChange={(e) => {
-                    const value = e.target.value as NonNullable<WorkspacePrefs["startScreen"]>;
-                    void api.saveWorkspace({ startScreen: value }).then(refreshUser).catch(() => {});
-                  }}
-                >
-                  <option value="dashboard">{ut("nav.dashboard")}</option>
-                  <option value="worklist">{ut("nav.worklist")}</option>
-                  <option value="alerts">{ut("nav.cases")}</option>
-                  <option value="patients">{ut("nav.patients")}</option>
-                </Select>
-              </Field>
             </>
+          ) : null}
+
+          {/*
+            Учётная запись — в подвале рельсы, рядом с именем и выходом, а не
+            разделом работы. Туда ходят раз в месяц: сменить пароль, привязать
+            Google, поменять тему. Пункт в списке разделов стоил бы внимания
+            при каждом открытии консоли.
+          */}
+          {railOpen ? (
+            <Link
+              to="/account"
+              className="rounded-sm px-2 py-1.5 text-caption text-muted transition-colors hover:bg-surface-2 hover:text-text"
+            >
+              {ut("acct.title")}
+            </Link>
           ) : null}
 
           <Button variant="quiet" size="sm" onClick={logout} className={railOpen ? "justify-start" : "justify-center px-0"}>
@@ -471,6 +471,7 @@ export default function App() {
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/console" element={<Console />} />
+          <Route path="/account" element={<Account />} />
           <Route path="/ui" element={<UiKit />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
@@ -495,7 +496,7 @@ export default function App() {
             недостижима.
           */}
           {isSuper ? <Route path="/users" element={<Users />} /> : null}
-          {isSuper ? <Route path="/permissions" element={<Permissions />} /> : null}
+          <Route path="/permissions" element={<Permissions />} />
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
             <Route path="*" element={<Navigate to="/" replace />} />
@@ -511,7 +512,6 @@ export default function App() {
         onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
       />
     </div>
-    </CrisisProvider>
   );
 }
 

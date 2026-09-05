@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { api, app, db, makeUser } from "./fixtures";
 import { users } from "../src/db/schema";
 import { domainAllowed, googleEnabled } from "../src/lib/google";
+import { env } from "../src/env";
 
 /**
  * Вход через Google.
@@ -22,7 +23,12 @@ describe("вход через Google", () => {
 
     const res = await app.request("/api/auth/google/status");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ enabled: false });
+    /*
+     * Сверка целиком, а не по одному полю: экран входа читает весь ответ, и
+     * новое поле, приехавшее сюда молча, меняет то, что нарисовано, — пусть
+     * его добавление ломает тест и требует решения.
+     */
+    expect(await res.json()).toEqual({ enabled: false, openRegistration: env.openRegistration });
 
     const start = await app.request("/api/auth/google/start");
     expect(start.status).toBe(404);

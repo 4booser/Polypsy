@@ -47,9 +47,18 @@ export function Basics({
           <Field label={ut("cb.group")}>
             <Select value={draft.groupId ?? ""} onChange={(e) => patch({ groupId: e.target.value || null })}>
               <option value="">{ut("sel.noGroup")}</option>
-              {groups.map((g) => (
-                <option key={g.id} value={g.id}>{g.title}</option>
-              ))}
+              {/*
+                Снятые с использования группы не предлагаются — кроме той, в
+                которой методика уже лежит. Убрать её из списка целиком
+                нельзя: <select> без совпадающего значения показывает первый
+                вариант, и правка чего угодно на этом экране молча
+                переносила бы методику в чужую группу.
+              */}
+              {groups
+                .filter((g) => !g.archivedAt || g.id === draft.groupId)
+                .map((g) => (
+                  <option key={g.id} value={g.id}>{g.title}</option>
+                ))}
             </Select>
           </Field>
           <Field label={ut("cb.whoFills")}>

@@ -1,8 +1,21 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
-import { t, type AlertCase, type AlertSignal, type Page } from "@quizzy/shared";
+import { t, type AlertCase, type AlertSignal, type AlertSignalBasis, type Page } from "@quizzy/shared";
 import { db } from "../db";
-import { alertCases, auditLog, questions, riskAlerts, scales, surveys, users } from "../db/schema";
+import {
+  alertCases,
+  answers,
+  auditLog,
+  options,
+  questions,
+  responseScores,
+  responses,
+  riskAlerts,
+  scaleBands,
+  scales,
+  surveys,
+  users,
+} from "../db/schema";
 import { audit } from "../lib/audit";
 import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
@@ -211,6 +224,7 @@ alertCaseRoutes.get("/", async (c) => {
         list.push({
           id: s.a.id,
           responseId: s.a.responseId,
+          kind: s.a.questionId ? "option" : "band",
           questionId: s.a.questionId,
           // у сигнала по шкале в этом поле стоит название шкалы: место одно,
           // и подписывать его «пункт» было бы неправдой ровно в половине строк
@@ -326,6 +340,196 @@ async function loadCase(user: { id: string; role: string }, id: string) {
   if (!(await canAccessSurvey(user as never, row.surveyId))) notFound("err.caseNotFound");
   return row;
 }
+
+/**
+ * Основание тревоги: по какой методике и какому ответу или полосе шкалы
+ * система решила, что у человека риск.
+ *
+ * Отдельный маршрут, а не поля в самой очереди. Очередь отдаёт тридцать
+ * случаев со всеми их сигналами, а основание читают у одного, и на который
+ * смотрят — заранее неизвестно. Тянуть ответы, варианты, баллы и полосы на
+ * все тридцать значило бы платить четырьмя запросами за то, что откроют
+ * один раз.
+ *
+ * Сигнал бывает двух видов, и подписаны они по-разному:
+ *
+ * `option` — человек отметил вариант, помеченный как критический. Основание
+ * здесь — сам пункт и то, что человек в нём выбрал: «Пункт 9. Мысли, что
+ * лучше было бы умереть → Почти каждый день». Без отмеченного варианта
+ * подпись врёт наполовину: она называет пункт, но не говорит, чем ответ
+ * плох, — а критическим бывает один вариант из пяти.
+ *
+ * `band` — суммарный балл шкалы попал в полосу. Пункта здесь нет вовсе (см.
+ * risk_alerts.question_id), и называть какой-то один значило бы назвать
+ * виновным случайный. Основание — шкала, значение в единицах нормировки и
+ * границы полосы: «Суицидальный риск: 2 стена, полоса 1–2 — крайне низкий
+ * уровень». Без границ значение нечитаемо: 2 — это много или мало, зависит
+ * от того, из чего оно.
+ */
+alertCaseRoutes.get("/:id/signals", async (c) => {
+  const lang = langOf(c);
+  const user = c.get("user");
+  const row = await loadCase(user, c.req.param("id"));
+
+  /*
+   * Сигналы фильтруются по области видимости так же, как в очереди: случай
+   * собирает тревоги разных методик, и специалист, ведущий одну из них, не
+   * должен читать ответы по чужой. Иначе основание стало бы обходным путём к
+   * данным, которых человек не видит нигде больше.
+   */
+  const scope = await surveyScopeFilter(user);
+  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
+  const surveyIds = scoped.map((s) => s.id);
+  if (!surveyIds.length) return c.json({ items: [] satisfies AlertSignalBasis[] });
+
+  const signals = await db
+    .select({
+      a: riskAlerts,
+      surveyTitle: surveys.title,
+      submittedAt: responses.submittedAt,
+      questionTitle: questions.title,
+      questionPosition: questions.position,
+      scaleCode: scales.code,
+      scaleTitle: scales.title,
+    })
+    .from(riskAlerts)
+    .innerJoin(surveys, eq(surveys.id, riskAlerts.surveyId))
+    .innerJoin(responses, eq(responses.id, riskAlerts.responseId))
+    /*
+     * Пункт и шкала — ЛЕВЫМИ соединениями: у сигнала по полосе нет пункта, у
+     * сигнала по варианту нет шкалы. Внутреннее соединение выбросило бы
+     * половину сигналов, ничем себя не выдав.
+     */
+    .leftJoin(questions, eq(questions.id, riskAlerts.questionId))
+    .leftJoin(scales, eq(scales.id, riskAlerts.scaleId))
+    .where(and(eq(riskAlerts.caseId, row.id), inArray(riskAlerts.surveyId, surveyIds)))
+    .orderBy(desc(riskAlerts.at));
+
+  if (!signals.length) return c.json({ items: [] satisfies AlertSignalBasis[] });
+
+  /*
+   * Что человек отметил — читается из ответов, а не из подписи тревоги.
+   *
+   * В `label` лежит текст, собранный в момент срабатывания: либо заданная
+   * методикой подпись риска, либо «пункт — вариант». Первая ничего не
+   * говорит об ответе вовсе («Суицидальные мысли»), и разбирающему пришлось
+   * бы верить ей на слово. Ответ же лежит рядом и не меняется задним числом.
+   */
+  const optionSignals = signals.filter((s) => s.a.questionId);
+  const answerRows = optionSignals.length
+    ? await db
+        .select()
+        .from(answers)
+        .where(
+          and(
+            inArray(answers.responseId, [...new Set(optionSignals.map((s) => s.a.responseId))]),
+            inArray(answers.questionId, [...new Set(optionSignals.map((s) => s.a.questionId!))]),
+          ),
+        )
+    : [];
+  const optionRows = optionSignals.length
+    ? await db
+        .select()
+        .from(options)
+        .where(inArray(options.questionId, [...new Set(optionSignals.map((s) => s.a.questionId!))]))
+    : [];
+  const answerBy = new Map(answerRows.map((a) => [`${a.responseId}|${a.questionId}`, a]));
+  const optionText = new Map(optionRows.map((o) => [o.id, t(o.text as never, lang)]));
+
+  const bandSignals = signals.filter((s) => s.a.scaleId);
+  const scoreRows = bandSignals.length
+    ? await db
+        .select()
+        .from(responseScores)
+        .where(
+          and(
+            inArray(responseScores.responseId, [...new Set(bandSignals.map((s) => s.a.responseId))]),
+            inArray(responseScores.scaleId, [...new Set(bandSignals.map((s) => s.a.scaleId!))]),
+          ),
+        )
+    : [];
+  const bandRows = bandSignals.length
+    ? await db
+        .select()
+        .from(scaleBands)
+        .where(inArray(scaleBands.scaleId, [...new Set(bandSignals.map((s) => s.a.scaleId!))]))
+    : [];
+  const scoreBy = new Map(scoreRows.map((s) => [`${s.responseId}|${s.scaleId}`, s]));
+
+  const items: AlertSignalBasis[] = signals.map((s) => {
+    const answer = s.a.questionId ? answerBy.get(`${s.a.responseId}|${s.a.questionId}`) : undefined;
+    const score = s.a.scaleId ? scoreBy.get(`${s.a.responseId}|${s.a.scaleId}`) : undefined;
+    /*
+     * Полоса ищется по значению, а не по совпадению подписи: подпись в
+     * `response_scores` уже разрешена на язык, на котором считали, и на
+     * другом языке не совпала бы ни с одной полосой — границы пропали бы
+     * ровно у того читателя, который переключил язык.
+     */
+    const band =
+      score && score.value !== null
+        ? bandRows.find(
+            (b) => b.scaleId === s.a.scaleId && score.value >= b.minScore && score.value <= b.maxScore,
+          )
+        : undefined;
+
+    return {
+      id: s.a.id,
+      kind: s.a.questionId ? "option" : "band",
+      responseId: s.a.responseId,
+      surveyId: s.a.surveyId,
+      surveyTitle: t(s.surveyTitle as never, lang),
+      label: s.a.label,
+      severity: s.a.severity,
+      at: s.a.at,
+      responseSubmittedAt: s.submittedAt,
+
+      questionId: s.a.questionId,
+      // человек читает бланк по номерам, а не по нулевому смещению
+      questionNumber: s.questionPosition === null ? null : s.questionPosition + 1,
+      questionTitle: s.questionTitle ? t(s.questionTitle as never, lang) : null,
+      /*
+       * Матричный ответ тоже отдаёт выбранное: у матрицы вариант лежит в
+       * значениях `matrix`, а не в `optionIds`, и без него сигнал по матрице
+       * остался бы без основания вовсе.
+       */
+      pickedOptions: [
+        ...(answer?.optionIds ?? []),
+        ...Object.values(answer?.matrix ?? {}),
+      ]
+        .map((id) => optionText.get(id))
+        .filter((x): x is string => !!x),
+      answeredNumber: answer?.number ?? null,
+
+      scaleId: s.a.scaleId,
+      scaleCode: s.scaleCode,
+      scaleTitle: s.scaleTitle ? t(s.scaleTitle as never, lang) : null,
+      scaleValue: score?.value ?? null,
+      scaleRawScore: score?.rawScore ?? null,
+      normalization: score?.normalization ?? null,
+      bandLabel: score?.bandLabel ?? null,
+      bandMin: band?.minScore ?? null,
+      bandMax: band?.maxScore ?? null,
+      bandDescription: band ? t(band.description as never, lang) || null : null,
+      bandRecommendation: band ? t(band.recommendation as never, lang) || null : null,
+    };
+  });
+
+  /*
+   * Чтение оснований — это доступ к ответам обследуемого по пунктам, а не
+   * просмотр карточки очереди. В журнал оно должно попадать отдельно от
+   * `alert.list`: иначе «открыл очередь» и «прочитал, что человек ответил
+   * про мысли о смерти» неотличимы.
+   */
+  await audit(c, {
+    action: "alert.signals",
+    resourceType: "alert_case",
+    resourceId: row.id,
+    subjectUserId: row.userId,
+    details: { signals: items.length },
+  });
+
+  return c.json({ items });
+});
 
 /**
  * Кто и что делал со случаем.

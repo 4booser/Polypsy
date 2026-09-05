@@ -4,7 +4,7 @@ import type { SurveyResponse } from "@quizzy/shared";
 import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
 import { ItemHeatmap } from "../components/ItemHeatmap";
-import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag, boxOf } from "../charts/advanced";
+import { BoxPlot, DivergingBar, Funnel, Heatmap, Scatter, SeverityTag } from "../charts/advanced";
 import { dateTime, day, duration, severityColor} from "../format";
 import { Loading, OfflineBar, useAction } from "../ui";
 import { Page, Panel, Grid, Stack } from "../ui/layout";
@@ -255,12 +255,37 @@ export default function SurveyAnalyticsPage() {
 
       {tab === "questions" ? (
         <Stack>
+          {/*
+            Линия медианы с полосой межквартильного размаха вместо ряда ящиков.
+            Ящики отвечали на вопрос про каждый пункт по отдельности, а
+            спрашивают здесь другое: где по ходу методики люди начинают
+            задумываться. Ряд из пятидесяти ящиков этого не показывает — он
+            рассыпается на пятьдесят отдельных картинок, между которыми глаз не
+            проводит линии.
+          */}
           <Chart title={ut("an.timePerQuestion")} hint={ut("an.spreadNotMean")}>
-            <BoxPlot
-              boxes={data.questions
-                .filter((q) => q.answered > 0)
-                .map((q) => boxOf(`${ut("an.questionAbbr")}${q.position + 1}`, [q.minDurationMs / 1000, q.medianDurationMs / 1000, q.avgDurationMs / 1000, q.maxDurationMs / 1000]))
-                .filter((b): b is NonNullable<typeof b> => !!b)}
+            <LineChart
+              unit={` ${ut("an.secAbbr")}`}
+              series={[
+                {
+                  label: ut("an.medianTime"),
+                  points: data.questions
+                    .filter((q) => q.answered > 0)
+                    .map((q) => ({
+                      x: `${ut("an.questionAbbr")}${q.position + 1}`,
+                      y: Math.round(q.medianDurationMs / 100) / 10,
+                      /*
+                       * Квартили, а не минимум с максимумом. Минимум и максимум —
+                       * это один самый быстрый и один отвлёкшийся на телефон:
+                       * полоса по ним всюду одинаково широкая и не говорит
+                       * ничего. Между четвертью и тремя четвертями лежит половина
+                       * обследованных — это и есть разброс.
+                       */
+                      lo: Math.round(q.p25DurationMs / 100) / 10,
+                      hi: Math.round(q.p75DurationMs / 100) / 10,
+                    })),
+                },
+              ]}
             />
           </Chart>
 
@@ -343,9 +368,23 @@ export default function SurveyAnalyticsPage() {
         <Stack>
           {data.scales.length > 1 ? (
             <Chart title={ut("an.subscales")} hint={ut("an.subscalesHint")}>
+              {/*
+                Коробка строится из настоящих квартилей выборки, а не из
+                четырёх сводных чисел. Раньше сюда подавались min, среднее,
+                медиана и max, и «квартили» считались от них: рисунок выходил
+                правдоподобным и неверным — коробка означала «между средним и
+                медианой», а читается она как «половина обследованных».
+              */}
               <BoxPlot
                 categorical
-                boxes={data.scales.map((s) => boxOf(s.code, [s.min, s.average, s.median, s.max])).filter((b): b is NonNullable<typeof b> => !!b)}
+                boxes={data.scales.map((s) => ({
+                  label: s.code,
+                  min: s.min,
+                  q1: s.p25,
+                  median: s.median,
+                  q3: s.p75,
+                  max: s.max,
+                }))}
               />
             </Chart>
           ) : null}

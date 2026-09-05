@@ -4,6 +4,7 @@ import { SERIES } from "../format";
 import { Panel } from "../ui/layout";
 import { NoData, Num } from "../ui/primitives";
 import { useLang } from "../lang";
+import { axisFor, type Axis } from "./scale";
 
 /**
  * Диаграммы консоли — plain SVG без библиотек.
@@ -15,17 +16,62 @@ import { useLang } from "../lang";
 
 const PAD = { top: 14, right: 16, bottom: 26, left: 44 };
 
-function ticks(max: number, count = 4): number[] {
-  if (max <= 0) return [0];
-  const raw = max / count;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? mag * 10;
-  const out: number[] = [];
-  for (let v = 0; v <= max + step / 2; v += step) out.push(Math.round(v * 100) / 100);
-  return out;
+const fmt = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v * 100) / 100));
+
+/**
+ * Подпись под графиком, объясняющая ось.
+ *
+ * Обязательная часть подгонки оси под данные, а не украшение. Ось, начатая
+ * не с нуля, читается как обычная — разница в два балла на ней выглядит так
+ * же, как разница в двадцать на полной шкале. Пока рядом не написано, где
+ * именно живут данные и какова полная шкала, подогнанный график врёт
+ * убедительнее растянутого.
+ */
+export function AxisNote({
+  axis,
+  lo,
+  hi,
+  fullRange,
+  unit = "",
+}: {
+  axis: Axis;
+  lo: number;
+  hi: number;
+  fullRange?: number | null;
+  unit?: string;
+}) {
+  const { ut } = useLang();
+  const hidesFull = fullRange != null && fullRange > axis.max;
+  if (!axis.zoomed && !hidesFull) return null;
+
+  return (
+    <p className="hint">
+      {axis.zoomed ? <strong>{ut("chart.axisCut")} · </strong> : null}
+      {ut("chart.actualRange")} {fmt(lo)}–{fmt(hi)}
+      {unit}
+      {hidesFull ? ` · ${ut("chart.fullScale")} 0–${fmt(fullRange)}${unit}` : ""}
+    </p>
+  );
 }
 
-const fmt = (v: number) => (Math.abs(v) >= 1000 ? `${Math.round(v / 100) / 10}k` : String(Math.round(v * 100) / 100));
+/**
+ * Излом на оси: общепринятый знак «здесь вырезан кусок».
+ *
+ * Подписи хватает не всем и не всегда — её читают после графика, а форму
+ * видят до. Излом стоит там, где взгляд ищет ноль, и сообщает то же самое
+ * раньше, чем человек успеет прочесть подпись.
+ */
+export function AxisBreak({ x, y }: { x: number; y: number }) {
+  return (
+    <path
+      aria-hidden
+      d={`M${x - 4},${y - 3} l8,-4 M${x - 4},${y + 2} l8,-4`}
+      stroke="var(--axis)"
+      strokeWidth={1.5}
+      fill="none"
+    />
+  );
+}
 
 export function Legend({ items }: { items: { label: string; color: string }[] }) {
   if (items.length < 2) return null;
@@ -104,6 +150,23 @@ export interface LinePoint {
    * где интервал известен, — придумывать его нельзя.
    */
   err?: number | null;
+  /**
+   * Несимметричная полоса разброса: нижний и верхний край.
+   *
+   * Отдельно от `err`, потому что бывает не только ошибка измерения.
+   * Межквартильный размах времени ответа вокруг медианы несимметричен почти
+   * всегда — сверху его тянет хвост задумавшихся, — и приводить его к
+   * «медиана ± половина» значило бы нарисовать разброс, которого нет.
+   */
+  lo?: number | null;
+  hi?: number | null;
+}
+
+/** Края полосы разброса точки: явные `lo`/`hi` либо симметричный SEM */
+function bandOf(p: LinePoint): [number, number] {
+  if (p.lo != null && p.hi != null) return [p.lo, p.hi];
+  if (p.err != null) return [Math.max(0, p.y - p.err), p.y + p.err];
+  return [p.y, p.y];
 }
 
 /**
@@ -122,13 +185,27 @@ export function LineChart({
   series,
   height = 220,
   area = false,
-  yMax,
+  fullRange,
+  unit,
   marks,
 }: {
   series: { label: string; points: LinePoint[]; color?: string }[];
   height?: number;
   area?: boolean;
-  yMax?: number;
+  /**
+   * Полный диапазон величины, если он известен: 27 у PHQ-9, 80 у PCL-5.
+   *
+   * Раньше это был `yMax` — и ось растягивалась до него. Именно из-за этого
+   * все графики динамики выглядели одинаково: на демонстрационной базе
+   * данные занимали пятую часть высоты, а четыре пятых были пустым полем над
+   * прижатой к низу линией.
+   *
+   * Теперь ось идёт по данным, а полный диапазон уходит в подпись. Он не
+   * лишний: без него «14» на графике не отличить от «14 из 15» и «14 из 80».
+   */
+  fullRange?: number | null;
+  /** Единица для подписи диапазона: « с», « %». Ось подписывается числами */
+  unit?: string;
   marks?: TimeMark[];
 }) {
   const { ut } = useLang();
@@ -150,15 +227,29 @@ export function LineChart({
   const [W, boxRef] = useChartWidth();
 
   const all = series.flatMap((s) => s.points);
-  // верх шкалы учитывает полосу ошибки: иначе она обрезалась бы краем поля
-  const top = Math.max(yMax ?? 0, ...all.map((p) => p.y + (p.err ?? 0)), 1);
-  const ts = ticks(top);
-  const scale = Math.max(...ts, top);
+  const bands = all.map(bandOf);
+
+  /*
+   * Ось строится по тому, что нарисовано, — вместе с полосами разброса:
+   * полоса, вылезшая за край поля, читается как обрезанные данные.
+   *
+   * `atom` — ширина самой полосы. Это и есть та разница, ниже которой
+   * различать нечего: сдвиг медианы на четверть межквартильного размаха не
+   * событие, а обычное дрожание выборки. Из-за него узкий ряд внутри широкой
+   * полосы останется плоским, а не растянется во весь экран.
+   */
+  const lo = bands.length ? Math.min(...bands.map(([a]) => a)) : 0;
+  const hi = bands.length ? Math.max(...bands.map(([, b]) => b)) : 0;
+  const widths = bands.map(([a, b]) => b - a).sort((a, b) => a - b);
+  const atom = widths[Math.floor(widths.length / 2)] ?? 0;
+  const axis = axisFor({ lo, hi, atom });
+
   const pw = W - PAD.left - PAD.right;
   const ph = height - PAD.top - PAD.bottom;
   const n = Math.max(1, ...series.map((s) => s.points.length));
   const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
-  const yAt = (v: number) => PAD.top + ph - (v / scale) * ph;
+  const span = Math.max(axis.max - axis.min, Number.EPSILON);
+  const yAt = (v: number) => PAD.top + ph - ((v - axis.min) / span) * ph;
 
   /*
    * Индекс точки под курсором считается из доли ширины, а не поиском
@@ -221,7 +312,7 @@ export function LineChart({
          */
         aria-label={`${series.map((s) => s.label).join(", ")}: ${all[0]?.x ?? ""} — ${series[0]?.points.at(-1)?.x ?? ""}`}
       >
-        {ts.map((t) => (
+        {axis.ticks.map((t) => (
           <g key={t}>
             <line x1={PAD.left} x2={W - PAD.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
             <text x={PAD.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
@@ -229,6 +320,7 @@ export function LineChart({
             </text>
           </g>
         ))}
+        {axis.zoomed ? <AxisBreak x={PAD.left} y={PAD.top + ph} /> : null}
 
         {/* перекрестье под линиями: оно ориентир, а не содержание */}
         {at >= 0 ? (
@@ -248,29 +340,34 @@ export function LineChart({
           const d = s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y)}`).join(" ");
 
           /*
-           * Полоса ошибки рисуется под линией и без обводки: это фон, в
+           * Полоса разброса рисуется под линией и без обводки: это фон, в
            * котором лежит измерение, а не второй ряд данных. Строится только
-           * если интервал известен у всех точек ряда — полоса «местами» врала
+           * если разброс известен у всех точек ряда — полоса «местами» врала
            * бы про то, где измерение точнее.
            */
-          const hasErr = s.points.length > 1 && s.points.every((p) => (p.err ?? null) !== null);
-          const band = hasErr
-            ? [
-                ...s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y + p.err!)}`),
-                ...s.points
-                  .map((p, i) => ({ p, i }))
-                  .reverse()
-                  .map(({ p, i }) => `L${xAt(i)},${yAt(Math.max(0, p.y - p.err!))}`),
-                "Z",
-              ].join(" ")
-            : null;
+          const edges = s.points.map(bandOf);
+          const hasBand = s.points.length > 1 && edges.some(([a, b]) => b > a) && edges.every(([a, b]) => b >= a);
+          const known = s.points.every((p) => (p.lo != null && p.hi != null) || p.err != null);
+          const band =
+            hasBand && known
+              ? [
+                  ...edges.map(([, b], i) => `${i ? "L" : "M"}${xAt(i)},${yAt(b)}`),
+                  ...edges
+                    .map(([a], i) => ({ a, i }))
+                    .reverse()
+                    .map(({ a, i }) => `L${xAt(i)},${yAt(a)}`),
+                  "Z",
+                ].join(" ")
+              : null;
 
           return (
             <g key={s.label}>
               {band ? <path d={band} fill={color} opacity={0.14} /> : null}
               {area ? (
+                /* заливка идёт до низа поля, а не до нуля: на срезанной оси
+                   ноль лежит ниже рамки, и фигура вывернулась бы наизнанку */
                 <path
-                  d={`${d} L${xAt(s.points.length - 1)},${yAt(0)} L${xAt(0)},${yAt(0)} Z`}
+                  d={`${d} L${xAt(s.points.length - 1)},${yAt(axis.min)} L${xAt(0)},${yAt(axis.min)} Z`}
                   fill={color}
                   opacity={0.12}
                 />
@@ -335,7 +432,13 @@ export function LineChart({
           );
         })}
 
-        <line x1={PAD.left} x2={W - PAD.right} y1={yAt(0)} y2={yAt(0)} stroke="var(--axis)" />
+        <line
+          x1={PAD.left}
+          x2={W - PAD.right}
+          y1={yAt(axis.min)}
+          y2={yAt(axis.min)}
+          stroke="var(--axis)"
+        />
         <text x={PAD.left} y={height - 6} fontSize="11" fill="var(--axis)">
           {all[0]?.x}
         </text>
@@ -354,11 +457,19 @@ export function LineChart({
           {series.map((s, si) => {
             const point = s.points[at];
             if (!point) return null;
+            /* в подсказке разброс стоит рядом со значением: типичное без
+               разброса — половина ответа, а на графике их разделяет цвет */
+            const [a, b] = bandOf(point);
             return (
               <span key={s.label} className="chart-tip-row">
                 <i style={{ background: s.color ?? SERIES[si % SERIES.length] }} />
                 {series.length > 1 ? <span className="grow">{s.label}</span> : null}
                 <b>{fmt(point.y)}</b>
+                {b > a ? (
+                  <span className="text-muted">
+                    {fmt(a)}–{fmt(b)}
+                  </span>
+                ) : null}
               </span>
             );
           })}
@@ -366,6 +477,176 @@ export function LineChart({
       ) : null}
 
       <Legend items={series.map((s, i) => ({ label: s.label, color: s.color ?? SERIES[i % SERIES.length]! }))} />
+      <AxisNote axis={axis} lo={lo} hi={hi} fullRange={fullRange} unit={unit} />
+    </div>
+  );
+}
+
+/* ─────────── область с накоплением ─────────── */
+
+export interface StackSeries {
+  label: string;
+  color: string;
+  /** По значению на каждую точку оси времени; длина равна длине `x` */
+  values: number[];
+}
+
+/**
+ * Слои, сложенные друг на друга по оси времени.
+ *
+ * Отвечает на вопрос, на который не отвечает кольцо: не «сколько тяжёлых
+ * всего», а «становится ли их больше». Одно и то же кольцо получается и
+ * когда тяжёлые копились полгода ровно, и когда все пришли на прошлой
+ * неделе.
+ *
+ * Ось здесь всегда от нуля, и это не оплошность на фоне остальных графиков,
+ * а свойство самой формы: у сложенных слоёв читается высота слоя, а высота
+ * измеряется от нуля. Срезать низ значило бы отрезать нижний слой и оставить
+ * висеть остальные.
+ *
+ * Порядок слоёв задан снизу вверх и не сортируется по величине: слои —
+ * степени выраженности, у них есть собственный порядок, и перестановка его
+ * сломала бы главное свойство графика — узнаваемость с одного взгляда.
+ */
+export function StackedArea({
+  x,
+  series,
+  height = 240,
+  total,
+}: {
+  x: string[];
+  series: StackSeries[];
+  height?: number;
+  /** Подпись итога в подсказке: «всего», «обследований» */
+  total?: string;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [W, boxRef] = useChartWidth();
+
+  const n = x.length;
+  const totals = x.map((_, i) => series.reduce((sum, s) => sum + (s.values[i] ?? 0), 0));
+  const axis = axisFor({ lo: 0, hi: Math.max(...totals, 0) });
+
+  const pw = W - PAD.left - PAD.right;
+  const ph = height - PAD.top - PAD.bottom;
+  const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
+  const yAt = (v: number) => PAD.top + ph - ((v - axis.min) / Math.max(axis.max - axis.min, 1)) * ph;
+
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const share = (((e.clientX - box.left) / box.width) * W - PAD.left) / pw;
+    if (share < -0.02 || share > 1.02) {
+      setHover(null);
+      return;
+    }
+    setHover(Math.min(n - 1, Math.max(0, Math.round(share * (n - 1)))));
+  };
+
+  if (!n || !series.length) return <NoData />;
+
+  /*
+   * Слои считаются один раз снизу вверх: верх предыдущего — низ следующего.
+   * Считать каждый слой отдельной суммой значило бы получить между ними щель
+   * в полпикселя от округления — и график распался бы на полоски.
+   */
+  const floors: number[][] = [];
+  const running = x.map(() => 0);
+  for (const s of series) {
+    floors.push([...running]);
+    for (let i = 0; i < n; i++) running[i] = running[i]! + (s.values[i] ?? 0);
+  }
+
+  const at = hover ?? -1;
+
+  return (
+    <div className="chart-wrap" ref={boxRef}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${height}`}
+        width="100%"
+        height={height}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+        role="img"
+        aria-label={`${series.map((s) => s.label).join(", ")}: ${x[0] ?? ""} — ${x.at(-1) ?? ""}`}
+      >
+        {axis.ticks.map((t) => (
+          <g key={t}>
+            <line x1={PAD.left} x2={W - PAD.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
+            <text x={PAD.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
+              {fmt(t)}
+            </text>
+          </g>
+        ))}
+
+        {series.map((s, si) => {
+          const base = floors[si]!;
+          const upper = base.map((b, i) => b + (s.values[i] ?? 0));
+          const d = [
+            ...upper.map((v, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(v)}`),
+            ...base.map((v, i) => ({ v, i })).reverse().map(({ v, i }) => `L${xAt(i)},${yAt(v)}`),
+            "Z",
+          ].join(" ");
+          return (
+            <path
+              key={s.label}
+              d={d}
+              fill={s.color}
+              /* заливка приглушена, кромка нет: без кромки соседние слои
+                 сливаются там, где один из них тонкий */
+              fillOpacity={0.55}
+              stroke={s.color}
+              strokeWidth={1}
+            />
+          );
+        })}
+
+        {at >= 0 ? (
+          <line
+            x1={xAt(at)}
+            x2={xAt(at)}
+            y1={PAD.top}
+            y2={PAD.top + ph}
+            stroke="var(--accent)"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+          />
+        ) : null}
+
+        <line x1={PAD.left} x2={W - PAD.right} y1={yAt(0)} y2={yAt(0)} stroke="var(--axis)" />
+        <text x={PAD.left} y={height - 6} fontSize="11" fill="var(--axis)">
+          {x[0]}
+        </text>
+        <text x={W - PAD.right} y={height - 6} fontSize="11" fill="var(--axis)" textAnchor="end">
+          {x.at(-1)}
+        </text>
+      </svg>
+
+      {at >= 0 ? (
+        <div className="chart-tip" style={{ left: `${((xAt(at) / W) * 100).toFixed(2)}%` }} role="status">
+          <span className="chart-tip-x">{x[at]}</span>
+          {/* сверху вниз, как на графике: снизу лежит первый слой, и в
+              подсказке он должен оказаться последним, иначе список читается
+              задом наперёд относительно картинки */}
+          {[...series].reverse().map((s) => (
+            <span key={s.label} className="chart-tip-row">
+              <i style={{ background: s.color }} />
+              <span className="grow">{s.label}</span>
+              <b>{s.values[at] ?? 0}</b>
+            </span>
+          ))}
+          {total ? (
+            <span className="chart-tip-row">
+              <span className="grow">{total}</span>
+              <b>{totals[at]}</b>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <Legend items={series.map((s) => ({ label: s.label, color: s.color }))} />
     </div>
   );
 }

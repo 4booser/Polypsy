@@ -1,195 +1,26 @@
 import { Fragment, useEffect, useState } from "react";
-import type { GroupAdmin, UiKey } from "@quizzy/shared";
+import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useResource } from "../useResource";
 import { Devices } from "../components/Devices";
-import { useAuth } from "../auth";
-import { dateTime, day} from "../format";
+import { day } from "../format";
 import { Loading, Search, useAction } from "../ui";
-import { Page, Panel, Stack } from "../ui/layout";
-import { Button, Field, Input, Select, SectionLabel, Tag, Textarea } from "../ui/primitives";
-import { cx } from "../ui/cx";
+import { Page, Panel } from "../ui/layout";
+import { Button, Field, Input, Select, Tag, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
 
-const PRESET_COLORS = ["#3b5bfd", "#1baf7a", "#eb6834", "#4a3aa7", "#e87ba4"];
-
-/** Группы методик и назначение их администраторов */
-export function Groups() {
-  const { ut } = useLang();
-  const { run } = useAction();
-  const { user } = useAuth();
-  const isSuper = user?.role === "superadmin";
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [color, setColor] = useState(PRESET_COLORS[0]!);
-  const [assigning, setAssigning] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const res = useResource(async () => {
-    const [groups, users] = await Promise.all([
-      api.groups(),
-      isSuper ? api.users() : Promise.resolve([]),
-    ]);
-    return { groups, staff: users.filter((u) => u.role !== "user") };
-  }, [isSuper]);
-  const load = async () => res.reload();
-  const groups = res.data?.groups ?? null;
-  const staff = res.data?.staff ?? [];
-
-  if (!groups) return <Loading error={res.error} />;
-
-  return (
-    <Page title={ut("adm.groupsTitle")} sub={ut("adm.groupsSub")} count={groups.length}>
-      <Stack>
-        {isSuper ? (
-          <Panel title={ut("adm.newGroup")}>
-            <div className="flex flex-wrap items-end gap-3">
-              <Field label={ut("f.name")} className="min-w-[200px] flex-1">
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={ut("adm.groupExample")} />
-              </Field>
-              <Field label={ut("f.description")} className="min-w-[240px] flex-[2]">
-                <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-              </Field>
-              <div className="flex items-center gap-1.5">
-                {PRESET_COLORS.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setColor(p)}
-                    title={p}
-                    className={cx(
-                      "size-[26px] rounded-sm border-2 p-0",
-                      color === p ? "border-[var(--text)]" : "border-transparent",
-                    )}
-                    style={{ background: p }}
-                  />
-                ))}
-              </div>
-              <Button
-                variant="primary"
-                disabled={!title.trim()}
-                onClick={async () => {
-                  await api
-                    .createGroup({ title: title.trim(), description: description.trim() || null, color })
-                    .catch((e) => setError(e.message));
-                  setTitle("");
-                  setDescription("");
-                  await load();
-                }}
-              >
-                {ut("adm.create")}
-              </Button>
-            </div>
-          </Panel>
-        ) : (
-          <Panel>
-            <p className="m-0 text-caption text-muted">{ut("adm.groupsReadOnlyHint")}</p>
-          </Panel>
-        )}
-
-        {error ? <p className="text-caption text-danger">{error}</p> : null}
-
-        {groups.map((g) => (
-          <Panel
-            key={g.id}
-            title={
-              <span className="flex flex-wrap items-center gap-2">
-                {g.color ? <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: g.color }} /> : null}
-                {g.title}
-                <span className="text-caption font-normal text-muted">
-                  {g.surveyCount} {ut("adm.methodsCount")} · {g.publishedCount} {ut("dash.published")} · {g.responseCount} {ut("adm.responsesCount")}
-                </span>
-              </span>
-            }
-            actions={
-              isSuper ? (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() =>
-                    run(async () => {
-                      if (!confirm(`${ut("adm.confirmDeleteGroup")} «${g.title}»?`)) return;
-                      // отказ сервера нужно показать: непустая группа не удаляется,
-                      // и молчаливая кнопка выглядела бы сломанной
-                      await api.deleteGroup(g.id);
-                      await load();
-                    }, ut("adm.groupDeleted"))
-                  }
-                >
-                  {ut("adm.delete")}
-                </Button>
-              ) : null
-            }
-            hint={g.description || undefined}
-          >
-            {isSuper ? (
-              <>
-                <SectionLabel className="mb-2">{ut("adm.admins")}</SectionLabel>
-                {g.admins.length === 0 ? (
-                  <p className="m-0 text-caption text-muted">{ut("adm.noAdmins")}</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table>
-                      <thead><tr><th>{ut("adm.fullName")}</th><th>Email</th><th>{ut("adm.assignedAt")}</th><th /></tr></thead>
-                      <tbody>
-                        {g.admins.map((a: GroupAdmin) => (
-                          <tr key={a.userId}>
-                            <td>{a.fullName}</td>
-                            <td className="text-muted">{a.email}</td>
-                            <td className="text-muted">{dateTime(a.addedAt)}</td>
-                            <td>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={async () => {
-                                  await api.revokeGroupAdmin(g.id, a.userId).catch(() => null);
-                                  await load();
-                                }}
-                              >
-                                {ut("acc.revoke")}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {assigning === g.id ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <Select
-                      defaultValue=""
-                      className="max-w-[420px]"
-                      onChange={async (e) => {
-                        if (!e.target.value) return;
-                        await api.assignGroupAdmin(g.id, e.target.value).catch((err) => setError(err.message));
-                        setAssigning(null);
-                        await load();
-                      }}
-                    >
-                      <option value="">{ut("sel.pickStaff")}</option>
-                      {staff
-                        .filter((u) => !g.admins.some((a) => a.userId === u.id))
-                        .map((u) => (
-                          <option key={u.id} value={u.id}>{u.fullName} · {u.email}</option>
-                        ))}
-                    </Select>
-                    <Button variant="quiet" onClick={() => setAssigning(null)}>{ut("ui.cancel")}</Button>
-                  </div>
-                ) : (
-                  <Button variant="ghost" className="mt-3" onClick={() => setAssigning(g.id)}>
-                    {ut("adm.addAdmin")}
-                  </Button>
-                )}
-              </>
-            ) : null}
-          </Panel>
-        ))}
-      </Stack>
-    </Page>
-  );
-}
+/*
+ * Экран групп переехал в собственный файл.
+ *
+ * Он вырос из «списка с кнопкой удалить» в администрирование плюс аналитику
+ * и рядом с учётными записями держаться перестал: два несвязанных экрана в
+ * одном файле — это диффы, в которых не видно, что менялось.
+ *
+ * Реэкспорт остаётся: маршрут «/groups» в App.tsx подгружает `Groups`
+ * именно отсюда, и убрать эту строку значит сломать его — а App.tsx сейчас
+ * правят другие.
+ */
+export { default as Groups } from "./Groups";
 
 /*
  * Ключи, а не готовые строки: карта живёт вне компонента, а перевод зависит
@@ -370,17 +201,25 @@ export function ConsentText() {
     setRu(current.body.ru ?? "");
   }, [current]);
 
+  /*
+   * Отдельный экран открывается по своему адресу — значит у него должен быть
+   * заголовок экрана, а не заголовок панели.
+   *
+   * Панель без страницы вокруг оставляла консоль без единственного h1: экран
+   * выглядел цельным, но читалка с экрана начинала с поля ввода, а проверка
+   * полноты перевода, ждущая заголовок, зависала именно здесь.
+   */
   return (
-    <Panel
-      className="mt-4"
+    <Page
       title={ut("adm.consentTitle")}
-      hint={ut("adm.consentHint")}
+      sub={ut("adm.consentHint")}
       actions={
         <Tag tone="plain">
           {version ? `${ut("adm.consentVersion")} ${version}` : ut("adm.consentUnset")}
         </Tag>
       }
     >
+      <Panel>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={ut("adm.inUkrainian")}>
           <Textarea rows={5} value={uk} onChange={(e) => setUk(e.target.value)} />
@@ -403,6 +242,7 @@ export function ConsentText() {
           {ut("adm.consentSave")}
         </Button>
       </div>
-    </Panel>
+      </Panel>
+    </Page>
   );
 }

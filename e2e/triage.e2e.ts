@@ -15,7 +15,7 @@ const detail = (page: import("@playwright/test").Page) => page.locator(".triage-
 
 test.beforeEach(async ({ page }) => {
   await login(page, "psy");
-  await goVia(page, /Сегодня/, /^Случаи риска/);
+  await goVia(page, /Обзор/, /^Случаи риска/);
   await expect(rows(page).first()).toBeVisible();
 });
 

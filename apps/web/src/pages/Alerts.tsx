@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { AlertCase, UiKey } from "@quizzy/shared";
+import type { AlertCase, AlertSignal, AlertSignalBasis, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { dateTime, day, severityColor } from "../format";
-import { Avatar, Empty, HotkeyHint, Loading, useAction, useHotkeys, useUrlState } from "../ui";
+import { dateTime, day, severityColor, severityKey } from "../format";
+import { Avatar, Empty, HotkeyHint, Loading, Modal, useAction, useHotkeys, useUrlState } from "../ui";
 import { Page } from "../ui/layout";
+import { Button, Num, SectionLabel, SeverityTag, Tag } from "../ui/primitives";
 import { useLang } from "../lang";
 import { SavedViews } from "../ui/SavedViews";
 import { onAppEvent } from "../events";
@@ -440,20 +441,7 @@ function CaseCard({
         {expanded ? ut("cases.hideSignals") : `${ut("cases.showSignals")} (${c.signalCount})`}
       </button>
 
-      {expanded ? (
-        <div className="signals">
-          {c.signals.map((s) => (
-            <div key={s.id} className="signal">
-              <span className="muted">{dateTime(s.at)}</span>
-              <span>{s.label}</span>
-              <span className="muted">{s.questionTitle}</span>
-            </div>
-          ))}
-          {c.signalCount > c.signals.length ? (
-            <p className="hint">…{ut("ui.andMore")} {c.signalCount - c.signals.length}</p>
-          ) : null}
-        </div>
-      ) : null}
+      {expanded ? <CaseBasis caseId={c.id} preview={c.signals} total={c.signalCount} /> : null}
 
       {done ? (
         <p className="hint" style={{ marginBottom: 0 }}>
@@ -502,5 +490,282 @@ function CaseCard({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Основание тревог случая.
+ *
+ * Раньше здесь стояли три поля из очереди: время, готовая подпись и
+ * «заголовок» — который у половины строк был вовсе не заголовком пункта, а
+ * названием шкалы. Разбирающий видел «Суицидальный риск» и не мог узнать
+ * главного: человек это отметил или так посчиталось. Разница клиническая:
+ * отмеченный вариант — прямое высказывание, полоса — вывод из суммы баллов.
+ *
+ * Поэтому оба вида подписаны прямо и показываются по-разному, а рядом стоит
+ * ход к самому прохождению: ответы по пунктам — единственное, что закрывает
+ * вопрос «на основании чего» окончательно.
+ *
+ * Грузится по раскрытию, а не вместе с очередью: очередь отдаёт тридцать
+ * случаев, а основание читают у одного.
+ */
+function CaseBasis({
+  caseId,
+  preview,
+  total,
+}: {
+  caseId: string;
+  /** Что уже пришло со случаем: показывается, пока грузится основание */
+  preview: AlertSignal[];
+  total: number;
+}) {
+  const { ut } = useLang();
+  const [openResponse, setOpenResponse] = useState<string | null>(null);
+  const res = useResource(() => api.alertCaseSignals(caseId), [caseId]);
+  const items = res.data;
+
+  if (!items) {
+    return (
+      <div className="signals">
+        {preview.map((s) => (
+          <div key={s.id} className="signal">
+            <span className="muted">{dateTime(s.at)}</span>
+            <span>{s.label}</span>
+            <span className="muted">{s.questionTitle}</span>
+          </div>
+        ))}
+        {res.error ? <p className="hint">{ut("cases.loadBasisFailed")}</p> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <SectionLabel>{ut("cases.basis")}</SectionLabel>
+      {/*
+        Пояснение стоит здесь, а не в документации: два вида сигнала —
+        отмеченный вариант и полоса шкалы — разные по клиническому весу, и
+        разбирающий должен знать это в момент чтения, а не когда-нибудь.
+      */}
+      <p className="m-0 max-w-[68ch] text-caption text-muted">{ut("cases.basisHint")}</p>
+      {items.map((s) => (
+        <SignalBasisRow key={s.id} s={s} onOpen={() => setOpenResponse(s.responseId)} />
+      ))}
+      {/*
+        Число сигналов в шапке считается по доступным методикам, а список
+        здесь — тоже. Расхождение возможно только если тревогу разобрали
+        между двумя запросами, и тогда честнее сказать, сколько не показано,
+        чем молча показать меньше.
+      */}
+      {total > items.length ? (
+        <p className="hint">…{ut("ui.andMore")} {total - items.length}</p>
+      ) : null}
+      {openResponse ? (
+        <ResponseModal id={openResponse} onClose={() => setOpenResponse(null)} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Одна строка основания: слева вид сигнала, справа — на чём он держится */
+function SignalBasisRow({ s, onOpen }: { s: AlertSignalBasis; onOpen: () => void }) {
+  const { ut } = useLang();
+  const answered = s.pickedOptions.length > 0 || s.answeredNumber !== null;
+
+  return (
+    <div className="rounded-sm border border-hairline p-2.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <SeverityTag level={s.severity}>{ut(severityKey[s.severity])}</SeverityTag>
+        <Tag>{ut(s.kind === "option" ? "cases.kind.option" : "cases.kind.band")}</Tag>
+        <span className="text-caption text-muted">{s.surveyTitle}</span>
+        <span className="text-caption text-muted">{dateTime(s.at)}</span>
+        <span className="grow" />
+        <Button size="sm" variant="ghost" onClick={onOpen}>
+          {ut("cases.openResponse")}
+        </Button>
+      </div>
+
+      {s.kind === "option" ? (
+        <div className="mt-1.5 text-small">
+          <div>
+            <span className="text-muted">{ut("cases.item")}</span>{" "}
+            {s.questionNumber !== null ? <Num>{s.questionNumber}</Num> : null}
+            {s.questionNumber !== null ? ". " : ""}
+            {s.questionTitle}
+          </div>
+          {answered ? (
+            <div>
+              <span className="text-muted">{ut("cases.picked")}:</span>{" "}
+              <strong>
+                {s.pickedOptions.length ? s.pickedOptions.join(", ") : String(s.answeredNumber)}
+              </strong>
+            </div>
+          ) : (
+            /*
+             * Ответа нет, а тревога есть: так бывает у сигнала, поднятого
+             * автосохранением черновика, который потом переписали. Молчать
+             * об этом нельзя — иначе пустая строка читается как «человек
+             * ничего не отмечал», и сигнал выглядит ложным.
+             */
+            <p className="m-0 text-caption text-muted">{ut("cases.noAnswerStored")}</p>
+          )}
+        </div>
+      ) : (
+        <div className="mt-1.5 text-small">
+          <div>
+            <span className="text-muted">{ut("cases.scale")}:</span> {s.scaleTitle}
+            {s.scaleCode ? <span className="text-muted"> · {s.scaleCode}</span> : null}
+          </div>
+          <div>
+            {s.scaleValue !== null ? (
+              <>
+                <strong>
+                  <Num>{s.scaleValue}</Num>
+                </strong>{" "}
+                {s.normalization ? ut(`norm.${s.normalization}`) : ""}
+                {s.scaleRawScore !== null ? (
+                  <span className="text-muted">
+                    {" "}
+                    · {ut("cases.rawScore")} <Num>{s.scaleRawScore}</Num>
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          {s.bandLabel ? (
+            <div>
+              <span className="text-muted">{ut("cases.band")}:</span> <strong>{s.bandLabel}</strong>
+              {/*
+                Границы полосы — не украшение: без них значение нечитаемо.
+                «2 стена» — это много или мало, зависит от того, где проходит
+                полоса, и держать это в голове разбирающий не обязан.
+              */}
+              {s.bandMin !== null && s.bandMax !== null ? (
+                <span className="text-muted">
+                  {" "}
+                  (<Num>{s.bandMin}</Num>–<Num>{s.bandMax}</Num>)
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          {s.bandRecommendation ? (
+            <p className="m-0 text-caption text-muted">{s.bandRecommendation}</p>
+          ) : s.bandDescription ? (
+            <p className="m-0 text-caption text-muted">{s.bandDescription}</p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Прохождение целиком: ответы по пунктам и баллы по шкалам.
+ *
+ * Открывается прямо из разбора, а не переходом на другой экран: уйдя из
+ * очереди, дежурный теряет место в ней, а вернувшись — уже другой порядок.
+ *
+ * Варианты ответа приходят вместе с прохождением и той версии, которую
+ * человек реально видел. Сопоставлять их с действующей версией методики
+ * нельзя: после правки набор вариантов другой, и «что он ответил» получилось
+ * бы не из того списка.
+ */
+function ResponseModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const { ut } = useLang();
+  const res = useResource(() => api.responseDetail(id), [id]);
+  const data = res.data;
+
+  return (
+    <Modal title={ut("cases.responseTitle")} onClose={onClose} wide>
+      {!data ? (
+        <Loading rows={5} error={res.error} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <div>
+            <strong>{data.survey.title}</strong>
+            <span className="text-muted"> · {dateTime(data.submittedAt ?? data.startedAt)}</span>
+          </div>
+
+          {data.scores.length ? (
+            <div>
+              <SectionLabel className="mb-2">{ut("cases.scoresTitle")}</SectionLabel>
+              <div className="overflow-x-auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{ut("cs.scaleTitle")}</th>
+                      <th>{ut("cs.raw")}</th>
+                      <th>{ut("cs.normalization")}</th>
+                      <th>{ut("cs.bands")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.scores.map((sc) => (
+                      <tr key={sc.scaleId}>
+                        <td>{sc.scaleTitle}</td>
+                        <td><Num>{sc.rawScore}</Num></td>
+                        <td>
+                          <Num>{sc.value}</Num> <span className="text-muted">{ut(`norm.${sc.normalization}`)}</span>
+                        </td>
+                        <td>
+                          {sc.band ? (
+                            <SeverityTag level={sc.band.severity}>{sc.band.label}</SeverityTag>
+                          ) : (
+                            <span className="text-muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          <div>
+            <SectionLabel className="mb-2">{ut("cases.answersTitle")}</SectionLabel>
+            <ol className="m-0 flex flex-col gap-1.5 pl-6">
+              {data.answers.map((a) => {
+                const picked = new Set([
+                  ...(a.optionIds ?? []),
+                  ...Object.values(a.matrix ?? {}),
+                ]);
+                const chosen = a.options.filter((o) => picked.has(o.id));
+                return (
+                  <li key={a.questionId} className="text-small">
+                    <div>{a.title}</div>
+                    {!a.answered ? (
+                      <span className="text-muted">{ut("cases.skipped")}</span>
+                    ) : chosen.length ? (
+                      <span>
+                        {chosen.map((o, i) => (
+                          <span key={o.id}>
+                            {i ? ", " : ""}
+                            <strong className={o.riskFlag ? "text-danger" : undefined}>{o.text}</strong>
+                            {/*
+                              Критический вариант помечается словом, а не
+                              только цветом: цвет один не работает, и на
+                              разборе риска это не тот случай, где можно
+                              положиться на оттенок.
+                            */}
+                            {o.riskFlag ? (
+                              <span className="text-caption text-danger"> · {ut("cases.criticalOption")}</span>
+                            ) : null}
+                          </span>
+                        ))}
+                      </span>
+                    ) : (
+                      <span>
+                        {a.text ?? (a.number !== null ? String(a.number) : (a.date ?? "—"))}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }

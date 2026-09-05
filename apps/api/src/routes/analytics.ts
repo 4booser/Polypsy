@@ -2,20 +2,22 @@ import { dateRangeQuery, guttmanErrorsNormed, itemContribution, t } from "@quizz
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
+  GroupAnalytics,
   OverviewAnalytics,
   QuestionAnalytics,
   ScaleAnalytics,
   Severity,
+  SeverityTrendResult,
   SurveyAnalytics,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { answerEvents, answers, responseScores, responses, surveyVersions, surveys, users } from "../db/schema";
-import { notFound, parseQuery } from "../lib/http";
+import { answerEvents, answers, responseScores, responses, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
+import { langOf, notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
+import { assertGroupAccess, assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
 import { decryptField } from "../lib/crypto";
-import { average, distribution, median, percent, round, timelineByDay } from "../lib/stats";
+import { average, distribution, median, percent, quantile, round, timelineByDay } from "../lib/stats";
 import { TOO_FAST_MS, qualityOf, reliabilityOf } from "../lib/psychometrics";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -140,6 +142,298 @@ analyticsRoutes.get("/overview", async (c) => {
   };
 
   await audit(c, { action: "analytics.overview", details: { responseCount: result.responseCount } });
+  return c.json(result);
+});
+
+/** Сколько недель показывает область выраженности: полгода */
+const TREND_WEEKS = 26;
+
+/**
+ * Степени выраженности по неделям.
+ *
+ * Кольцо на сводке отвечает на вопрос «сколько тяжёлых всего» — и не отвечает
+ * на тот, который задают на планёрке: становится ли их больше. Одно и то же
+ * кольцо получается и когда тяжёлые случаи копились полгода ровно, и когда
+ * они все пришли на прошлой неделе, а это разные новости.
+ *
+ * Считается в базе по тем же соображениям, что и сводка: выбирать десятки
+ * тысяч баллов в память ради четырёх счётчиков на неделю значит расти
+ * линейно там, где Postgres группирует.
+ *
+ * Три решения, каждое из которых меняет ответ:
+ *
+ * 1. Единица счёта — прохождение, а не шкала. У методики с восемью
+ *    субшкалами одно обследование дало бы восемь отметок и перевесило бы
+ *    восемь коротких скринингов.
+ * 2. Степень прохождения — самая тяжёлая из его шкал. Обследование, где хоть
+ *    что-то тяжёлое, — это срочный случай; «в среднем спокойно» тут значило
+ *    бы усреднить тревогу с благополучием.
+ * 3. Шкалы достоверности не участвуют: их полоса говорит о качестве
+ *    протокола, а не о состоянии человека, и завысила бы «тяжёлых» ровно на
+ *    число недостоверных профилей.
+ */
+analyticsRoutes.get("/severity-trend", async (c) => {
+  const scope = await surveyScopeFilter(c.get("user"));
+  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
+  if (!scoped.length) return c.json({ weeks: [], unbanded: 0 } satisfies SeverityTrendResult);
+
+  const idList = sql`(${sql.join(scoped.map((s) => sql`${s.id}`), sql`, `)})`;
+
+  /*
+   * Неделя считается в базе через date_trunc, а не в приложении делением
+   * миллисекунд на семь суток. Деление даёт недели, начинающиеся в день
+   * первого замера, — при смене периода границы съезжают, и один и тот же
+   * замер попадает то в одну неделю, то в другую. date_trunc всегда режет по
+   * понедельнику.
+   *
+   * Пустые недели берутся из generate_series, а не пропускаются. Область без
+   * недели, в которую никто не обследовался, рисует прямую от соседа к
+   * соседу — то есть показывает поток там, где его не было. Ноль надо
+   * показать нулём.
+   */
+  const rows = await db.execute<{
+    week: string;
+    none: number;
+    mild: number;
+    moderate: number;
+    severe: number;
+    unbanded: number;
+  } & Record<string, unknown>>(sql`
+    with span as (
+      select generate_series(
+        date_trunc('week', now()) - interval '1 week' * ${TREND_WEEKS - 1},
+        date_trunc('week', now()),
+        interval '1 week'
+      ) as week_start
+    ),
+    per_response as (
+      select
+        r.id,
+        date_trunc('week', r.submitted_at) as week_start,
+        max(
+          case sc.kind when 'clinical' then
+            case rs.severity
+              when 'severe' then 4 when 'moderate' then 3
+              when 'mild' then 2 when 'none' then 1
+            end
+          end
+        ) as worst
+      from responses r
+      left join response_scores rs on rs.response_id = r.id
+      left join scales sc on sc.id = rs.scale_id
+      where r.survey_id in ${idList}
+        and r.status = 'completed'
+        and r.submitted_at is not null
+        and r.submitted_at >= date_trunc('week', now()) - interval '1 week' * ${TREND_WEEKS - 1}
+      group by 1, 2
+    )
+    select to_char(span.week_start, 'YYYY-MM-DD') as week,
+           count(p.id) filter (where p.worst = 1)::int as none,
+           count(p.id) filter (where p.worst = 2)::int as mild,
+           count(p.id) filter (where p.worst = 3)::int as moderate,
+           count(p.id) filter (where p.worst = 4)::int as severe,
+           count(p.id) filter (where p.worst is null)::int as unbanded
+    from span
+    left join per_response p on p.week_start = span.week_start
+    group by span.week_start
+    order by span.week_start
+  `);
+
+  /*
+   * Пустое начало отрезается. Полугодовой хвост нулей до первого замера — это
+   * не «спокойных не было», а «здесь ещё не обследовали»; нарисованный
+   * областью, он читается как первое.
+   */
+  const all = [...rows];
+  const total = (r: (typeof all)[number]) =>
+    Number(r.none) + Number(r.mild) + Number(r.moderate) + Number(r.severe) + Number(r.unbanded);
+  const firstFilled = all.findIndex((r) => total(r) > 0);
+
+  const weeks = firstFilled < 0 ? [] : all.slice(firstFilled);
+  const result: SeverityTrendResult = {
+    weeks: weeks.map((r) => ({
+      week: String(r.week),
+      none: Number(r.none),
+      mild: Number(r.mild),
+      moderate: Number(r.moderate),
+      severe: Number(r.severe),
+    })),
+    unbanded: weeks.reduce((sum, r) => sum + Number(r.unbanded), 0),
+  };
+
+  await audit(c, { action: "analytics.severityTrend", details: { weeks: result.weeks.length } });
+  return c.json(result);
+});
+
+/**
+ * Аналитика группы: сколько людей, сколько прохождений, как распределены
+ * степени выраженности.
+ *
+ * Отдельный маршрут, а не подсчёт на экране из аналитики каждой методики.
+ * Заведующему отделением нужен ответ про отделение, а собранный из десяти
+ * ответов он был бы не тем же самым: людей пришлось бы складывать, а человек,
+ * прошедший три методики группы, — один человек, а не три. Различить это
+ * можно только там, где видно все прохождения сразу, то есть в базе.
+ *
+ * Права: тот же `analytics.read`, что и у остальной аналитики, плюс область
+ * ответственности — чужую группу не посмотреть даже с правом.
+ */
+analyticsRoutes.get("/groups/:id", async (c) => {
+  const groupId = c.req.param("id");
+  const user = c.get("user");
+
+  /*
+   * Сначала «есть ли такая группа», потом «моя ли она» — тот же порядок, что
+   * у assertSurveyAccess, и он не косметический.
+   *
+   * Обратный порядок отвечал «нельзя» на несуществующий идентификатор, то
+   * есть подтверждал существование группы тому, кому её и не показывают:
+   * перебором идентификаторов по коду ответа читалась бы вся структура
+   * учреждения. Заодно он ломал поведенческую проверку прав, которая
+   * стучится по заведомо несуществующему пути и ждёт, что отказ по праву
+   * придёт раньше любого обращения к данным.
+   */
+  const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, groupId) });
+  if (!group) notFound("err.groupNotFound");
+  await assertGroupAccess(user, groupId);
+
+  const surveyRows = await db.select().from(surveys).where(eq(surveys.groupId, groupId));
+  const lang = langOf(c);
+
+  const empty: GroupAnalytics = {
+    groupId,
+    title: group.title,
+    archivedAt: group.archivedAt,
+    surveyCount: 0,
+    publishedCount: 0,
+    startedCount: 0,
+    responseCount: 0,
+    patientCount: 0,
+    completionRate: 0,
+    avgDurationMs: 0,
+    openCaseCount: 0,
+    severityBreakdown: [],
+    surveys: [],
+    timeline: [],
+  };
+  if (!surveyRows.length) return c.json(empty);
+
+  const ids = surveyRows.map((s) => s.id);
+  const idList = sql`(${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`;
+
+  /*
+   * Считает база, а не приложение — по тем же соображениям, что и сводка:
+   * на четырнадцати тысячах замеров выборка всех прохождений в память ради
+   * пяти счётчиков растёт линейно, а группировка нет.
+   *
+   * Степени берутся только по содержательным шкалам. Полоса шкалы
+   * достоверности говорит о качестве протокола, а не о состоянии человека, и
+   * в распределении выраженности ей делать нечего: она завысила бы «тяжёлых»
+   * ровно на число недостоверных профилей.
+   */
+  const [totals, severities, perSurvey, perSurveySeverity, timelineRows, openCases] = await Promise.all([
+    db.execute<{ completed: number; started: number; respondents: number; avg_ms: number } & Record<string, unknown>>(sql`
+      select
+        count(*) filter (where status = 'completed')::int                 as completed,
+        count(*)::int                                                     as started,
+        count(distinct user_id) filter (where status = 'completed')::int  as respondents,
+        coalesce(avg(duration_ms) filter (where status = 'completed' and duration_ms > 0), 0)::int as avg_ms
+      from responses where survey_id in ${idList}
+    `),
+    db.execute<{ severity: Severity; n: number } & Record<string, unknown>>(sql`
+      select rs.severity, count(*)::int as n
+      from response_scores rs
+      join responses r on r.id = rs.response_id
+      join scales sc on sc.id = rs.scale_id
+      where r.survey_id in ${idList} and rs.severity is not null and sc.kind = 'clinical'
+      group by rs.severity
+    `),
+    db.execute<{ survey_id: string; n: number; people: number } & Record<string, unknown>>(sql`
+      select survey_id,
+             count(*)::int as n,
+             count(distinct user_id)::int as people
+      from responses
+      where survey_id in ${idList} and status = 'completed'
+      group by survey_id
+    `),
+    db.execute<{ survey_id: string; severity: Severity; n: number } & Record<string, unknown>>(sql`
+      select r.survey_id, rs.severity, count(*)::int as n
+      from response_scores rs
+      join responses r on r.id = rs.response_id
+      join scales sc on sc.id = rs.scale_id
+      where r.survey_id in ${idList} and rs.severity is not null and sc.kind = 'clinical'
+      group by r.survey_id, rs.severity
+    `),
+    db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
+      select to_char(submitted_at, 'YYYY-MM-DD') as date, count(*)::int as n
+      from responses
+      where survey_id in ${idList} and status = 'completed' and submitted_at is not null
+      group by 1 order by 1
+    `),
+    /*
+     * Открытые случаи — по сигналам, а не по колонке `survey_id` случая:
+     * случай заводится на человека и собирает сигналы разных методик, так
+     * что «случай этой группы» — тот, у которого есть хоть один сигнал по её
+     * методике. По колонке случая счёт был бы меньше настоящего ровно на тех
+     * людей, у кого риск начался с методики другого отделения.
+     */
+    db.execute<{ n: number } & Record<string, unknown>>(sql`
+      select count(distinct ac.id)::int as n
+      from alert_cases ac
+      join risk_alerts ra on ra.case_id = ac.id
+      where ra.survey_id in ${idList} and ac.acknowledged_at is null
+    `),
+  ]);
+
+  const total = [...totals][0];
+  const started = Number(total?.started ?? 0);
+  const completed = Number(total?.completed ?? 0);
+  const bySurvey = new Map([...perSurvey].map((r) => [String(r.survey_id), r]));
+  const severityRows = [...perSurveySeverity];
+
+  const breakdown = (rows: { severity: Severity; n: number }[]) =>
+    (["none", "mild", "moderate", "severe"] as Severity[])
+      .map((severity) => ({ severity, count: Number(rows.find((x) => x.severity === severity)?.n ?? 0) }))
+      .filter((s) => s.count > 0);
+
+  const result: GroupAnalytics = {
+    groupId,
+    title: group.title,
+    archivedAt: group.archivedAt,
+    surveyCount: surveyRows.length,
+    publishedCount: surveyRows.filter((s) => s.status === "published").length,
+    startedCount: started,
+    responseCount: completed,
+    patientCount: Number(total?.respondents ?? 0),
+    completionRate: percent(completed, started),
+    avgDurationMs: Number(total?.avg_ms ?? 0),
+    openCaseCount: Number([...openCases][0]?.n ?? 0),
+    severityBreakdown: breakdown([...severities].map((r) => ({ severity: r.severity, n: Number(r.n) }))),
+    surveys: surveyRows
+      .map((s) => ({
+        surveyId: s.id,
+        title: t(s.title as never, lang),
+        status: s.status,
+        // снятая методика остаётся в разбивке: её прохождения — часть истории группы
+        archived: s.archivedAt !== null,
+        responseCount: Number(bySurvey.get(s.id)?.n ?? 0),
+        patientCount: Number(bySurvey.get(s.id)?.people ?? 0),
+        severityBreakdown: breakdown(
+          severityRows
+            .filter((r) => String(r.survey_id) === s.id)
+            .map((r) => ({ severity: r.severity, n: Number(r.n) })),
+        ),
+      }))
+      .sort((a, b) => b.responseCount - a.responseCount || a.title.localeCompare(b.title)),
+    timeline: [...timelineRows].map((r) => ({ date: String(r.date), count: Number(r.n) })),
+  };
+
+  await audit(c, {
+    action: "analytics.group",
+    resourceType: "group",
+    resourceId: groupId,
+    details: { responseCount: result.responseCount, patientCount: result.patientCount },
+  });
   return c.json(result);
 });
 
@@ -273,6 +567,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         medianDurationMs: Math.round(median(times)),
         minDurationMs: times.length ? Math.min(...times) : 0,
         maxDurationMs: times.length ? Math.max(...times) : 0,
+        p25DurationMs: Math.round(quantile(times, 0.25)),
+        p75DurationMs: Math.round(quantile(times, 0.75)),
         avgChangeCount: round(average(real.map((a) => a.changeCount)), 2),
         avgTimeToFirstAnswerMs: Math.round(
           average(
@@ -436,6 +732,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       median: round(median(values)),
       min: values.length ? Math.min(...values) : 0,
       max: values.length ? Math.max(...values) : 0,
+      p25: round(quantile(values, 0.25)),
+      p75: round(quantile(values, 0.75)),
       maxPossible: own[0]?.maxScore ?? 0,
       bands: scale.bands.map((band) => ({
         label: band.label,

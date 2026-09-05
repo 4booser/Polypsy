@@ -75,10 +75,10 @@ export interface RailCounts {
   referrals?: number;
 }
 
-export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
+export function railGroups(counts: RailCounts, isSuper: boolean, canAssign = false): Group[] {
   const groups: Group[] = [
     {
-      key: "nav.group.today",
+      key: "nav.group.overview",
       icon: <IconClock />,
       items: [
         /*
@@ -89,7 +89,6 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         { to: "/", key: "nav.dashboard", icon: <IconDashboard />, end: true, badge: counts.today },
         { to: "/worklist", key: "nav.worklist", icon: <IconClock />, badge: counts.worklist },
         { to: "/alerts", key: "nav.cases", icon: <IconAlert />, badge: counts.alerts },
-        { to: "/referrals", key: "nav.referrals", icon: <IconReferral />, badge: counts.referrals },
       ],
     },
     {
@@ -97,6 +96,13 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       icon: <IconPatients />,
       items: [
         { to: "/patients", key: "nav.patients", icon: <IconPatients /> },
+        /*
+         * Направления переехали из «Обзора» к людям. Направление — это
+         * человек, отправленный дальше, и открывают его, думая о человеке, а
+         * не о том, что сегодня за день. В обзоре оно стояло рядом со
+         * случаями риска и читалось как ещё один сорт тревоги.
+         */
+        { to: "/referrals", key: "nav.referrals", icon: <IconReferral />, badge: counts.referrals },
         { to: "/search", key: "srch.title", icon: <IconStack /> },
         { to: "/cohorts", key: "coh.title", icon: <IconGroup /> },
         { to: "/groups", key: "nav.groups", icon: <IconGroup /> },
@@ -112,6 +118,20 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       ],
     },
   ];
+  /*
+   * «Права» видит тот, кому есть кому назначать: главный врач, заведующий
+   * отделением и технический администратор. Специалисту пункт не показываем —
+   * назначать он никого не может, и меню обещало бы ему то, чего сервер не
+   * даст. Само правило живёт на маршрутах назначения, здесь только меню.
+   */
+  if (canAssign || isSuper) {
+    groups.push({
+      key: "nav.group.people",
+      icon: <IconUsers />,
+      items: [{ to: "/permissions", key: "perm.title", icon: <IconGroup /> }],
+    });
+  }
+
   if (isSuper) {
     groups.push({
       key: "nav.admin",
@@ -120,7 +140,6 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
         /* текст согласия стал вкладкой учётных записей: это настройка
            учреждения, а не отдельный раздел работы */
         { to: "/users", key: "nav.users", icon: <IconUsers /> },
-        { to: "/permissions", key: "perm.title", icon: <IconGroup /> },
         { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
         { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
         { to: "/console", key: "nav.console", icon: <IconStack /> },
@@ -296,16 +315,19 @@ function GroupHeader({
 export function Rail({
   counts,
   isSuper,
+  canAssign,
   collapsed,
   children,
 }: {
   counts: RailCounts;
   isSuper: boolean;
+  /** Есть ли кому назначать роли: от этого зависит пункт «Права» */
+  canAssign: boolean;
   collapsed: boolean;
   children?: ReactNode;
 }) {
   const { pathname } = useLocation();
-  const groups = useMemo(() => railGroups(counts, isSuper), [counts, isSuper]);
+  const groups = useMemo(() => railGroups(counts, isSuper, canAssign), [counts, isSuper, canAssign]);
   const active = groupOfPath(groups, pathname);
 
   /*
@@ -316,7 +338,7 @@ export function Rail({
   const [open, setOpen] = useState<Set<string>>(() => {
     const stored = readOpen();
     if (stored) return new Set(stored);
-    return new Set(active ? [active] : ["nav.group.today"]);
+    return new Set(active ? [active] : ["nav.group.overview"]);
   });
 
   // группа текущего экрана раскрывается сама: навигация, в которой не видно,

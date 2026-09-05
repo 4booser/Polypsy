@@ -243,7 +243,22 @@ authRoutes.post("/login", async (c) => {
   return c.json({ ...pair, user: toPublicUser(row) });
 });
 
-authRoutes.get("/me", requireAuth, (c) => c.json(c.get("user")));
+/**
+ * Кто я и что мне можно назначать.
+ *
+ * Ступень лестницы должностей отдаётся вместе с профилем, а не отдельным
+ * запросом: по ней консоль решает, показывать ли пункт «Права». Без неё
+ * пункт стоял бы у всех, включая специалиста, — а специалист не назначает
+ * никого, и меню обещало бы ему то, чего сервер не даст.
+ *
+ * Само правило это НЕ ограничивает: оно живёт на маршрутах назначения и
+ * проверяется там. Здесь только подсказка меню.
+ */
+authRoutes.get("/me", requireAuth, async (c) => {
+  const user = c.get("user");
+  const { ladderRankOf } = await import("../lib/permissions");
+  return c.json({ ...user, ladderRank: await ladderRankOf(user) });
+});
 
 /**
  * Настройки рабочего места.

@@ -1588,29 +1588,6 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
   }
 }
 
-/*
- * Полоса кризисного режима. Единственное место в интерфейсе, где цвет
- * выраженности используется как фон: режим касается всего экрана, и приглушить
- * его до обычной карточки значит сделать вид, что ничего не изменилось.
- */
-.crisis-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
-  border-bottom: 2px solid var(--sev-severe);
-  background: color-mix(in srgb, var(--sev-severe) 12%, transparent);
-  font-size: var(--fs-small);
-}
-
-@media print {
-  .crisis-bar,
-  .crisis-start {
-    display: none;
-  }
-}
-
 /* заголовок группы в сводке событий: разделитель, а не кнопка */
 .events-group {
   padding: 6px 10px 2px;

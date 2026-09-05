@@ -356,9 +356,16 @@ function BatteryEditor({
           <span>{ut("f.group")}</span>
           <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
             <option value="">{ut("mark.outsideGroups")}</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>{g.title}</option>
-            ))}
+            {/*
+              Снятые группы не предлагаются, но выбранная остаётся: <select>
+              без совпадающего значения показывает первый вариант, и правка
+              названия батареи молча переносила бы её в чужую группу.
+            */}
+            {groups
+              .filter((g) => !g.archivedAt || g.id === groupId)
+              .map((g) => (
+                <option key={g.id} value={g.id}>{g.title}</option>
+              ))}
           </select>
         </label>
         <label className="field grow">

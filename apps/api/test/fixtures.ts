@@ -42,7 +42,7 @@ export const { createVersion } = await import("../src/lib/surveys");
 export const { runDueSchedules } = await import("../src/lib/scheduler");
 export const { createSurveySchema } = await import("@quizzy/shared");
 export const { sr45 } = await import("../src/instruments/sr45");
-export const { eq, and, isNull } = await import("drizzle-orm");
+export const { eq, and, isNull, sql } = await import("drizzle-orm");
 
 const { migrate } = await import("drizzle-orm/postgres-js/migrator");
 

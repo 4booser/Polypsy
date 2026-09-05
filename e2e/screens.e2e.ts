@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { login } from "./helpers";
 
 /**
@@ -114,11 +114,31 @@ test.describe("экраны с параметром", () => {
     }
   });
 
+/**
+ * Пациент из посева, а не первый в списке.
+ *
+ * Список пациентов отсортирован по свежести последнего замера, и наверх
+ * поднимается тот, кого только что завёл соседний сценарий: «Тестовый
+ * Пациент» без единого события в хронологии и без карты, доступной этому
+ * специалисту. Проверка карты превращалась в лотерею — в одиночку зелёная,
+ * в общем прогоне красная через раз, и падала она не там, где сломано.
+ *
+ * Петров из посева существует всегда, у него серия из пяти повторных
+ * замеров, и завести или удалить его по ходу дела некому.
+ */
+const SEEDED_PATIENT = "Петров";
+
+async function openSeededPatient(page: Page) {
+  await page.goto("/patients");
+  await page.getByPlaceholder("Поиск").fill(SEEDED_PATIENT);
+  const row = page.locator("table tbody tr td a").first();
+  await expect(row).toContainText(SEEDED_PATIENT);
+  return row;
+}
+
   test("карта пациента и сводка консилиума", async ({ page }) => {
     await login(page, "psy");
-    await page.goto("/patients");
-    const first = page.locator("table tbody tr td a").first();
-    await first.waitFor();
+    const first = await openSeededPatient(page);
     const id = (await first.getAttribute("href"))!.split("/").pop()!;
 
     await open(page, { name: "динамика", path: `/patients/${id}` });
@@ -127,8 +147,7 @@ test.describe("экраны с параметром", () => {
 
   test("хронология пациента открывается и упорядочена", async ({ page }) => {
     await login(page, "psy");
-    await page.goto("/patients");
-    await page.locator("table tbody tr td a").first().click();
+    await (await openSeededPatient(page)).click();
     /*
      * Дожидаемся карты, ПОТОМ читаем имя. Без ожидания заголовок читается
      * ещё со списка — «Пациенты», — и проверка сравнивает вкладку со

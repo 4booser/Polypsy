@@ -9,6 +9,7 @@ import {
   scheduleTemplates,
   slots,
   specialistProfiles,
+  surveyAccess,
   surveys,
   users,
 } from "../db/schema";
@@ -51,6 +52,7 @@ export interface FillReport {
   responses: number;
   appointments: number;
   episodes: number;
+  assignments: number;
 }
 
 /** Сколько недель назад делался замер номер step из steps */
@@ -161,6 +163,81 @@ async function ensureDemoSpecialist(departmentId: string): Promise<string | null
   return id;
 }
 
+/**
+ * Обращение у человека, если его ещё нет.
+ *
+ * Проверяется по факту, а не по «только что завели»: наполнение должно
+ * уметь дополнять уже существующую картотеку — иначе каждое новое умение
+ * системы требовало бы стереть всё и начать сначала.
+ */
+async function ensureEpisode(p: Person, userId: string, specialistId: string): Promise<boolean> {
+  const [has] = await db.select().from(episodes).where(eq(episodes.patientId, userId)).limit(1);
+  if (has) return false;
+
+  const r = rng(p.birthYear * 31 + p.slug.length * 7);
+  // не у всех: обращение заводят, когда человека ведут, а не при первом замере
+  if (r() > 0.55) return false;
+
+  const opened = new Date(Date.now() - (30 + Math.floor(r() * 120)) * 86_400_000);
+  const closes = p.trend === "improving" && r() < 0.6;
+  await db.insert(episodes).values({
+    id: crypto.randomUUID(),
+    patientId: userId,
+    leadSpecialistId: specialistId,
+    openedAt: opened.toISOString(),
+    reasonEnc: encryptField(p.reason),
+    ...(closes
+      ? {
+          closedAt: new Date(opened.getTime() + 60 * 86_400_000).toISOString(),
+          outcomeKind: "improved" as const,
+          outcomeEnc: encryptField("Стан покращився, спостереження завершено"),
+        }
+      : {}),
+  });
+  return true;
+}
+
+/**
+ * Личное назначение методики со сроком.
+ *
+ * Без него в картотеке не видно разницы между «можно пройти» и «от вас
+ * ждут»: у всех методик стоял бы один вид, просроченных назначений не
+ * возникало бы вовсе, и очередь работы оставалась бы пустой в той её части,
+ * ради которой она заведена. Часть сроков ставится в прошлое намеренно —
+ * просрочка это то, что специалист должен видеть.
+ */
+async function ensureAssignment(
+  p: Person,
+  userId: string,
+  specialistId: string,
+  surveyId: string,
+): Promise<boolean> {
+  const [has] = await db
+    .select()
+    .from(surveyAccess)
+    .where(and(eq(surveyAccess.userId, userId), eq(surveyAccess.surveyId, surveyId)))
+    .limit(1);
+  if (has) return false;
+
+  const r = rng(p.birthYear * 17 + p.slug.length * 3 + surveyId.length);
+  if (r() > 0.4) return false;
+
+  // треть назначений просрочена: без просроченных очередь работы пуста
+  const overdue = r() < 0.33;
+  const dueAt = new Date(Date.now() + (overdue ? -1 : 1) * (2 + Math.floor(r() * 12)) * 86_400_000);
+  await db
+    .insert(surveyAccess)
+    .values({
+      surveyId,
+      userId,
+      grantedBy: specialistId,
+      expiresAt: dueAt.toISOString(),
+      note: "Призначено для спостереження",
+    })
+    .onConflictDoNothing();
+  return true;
+}
+
 export async function fillDemoData(count: number): Promise<FillReport> {
   const catalog = await db
     .select({ id: surveys.id, key: surveys.catalogKey })
@@ -186,15 +263,51 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     .limit(1);
 
   const people = makePeople(count);
-  const report: FillReport = { created: 0, existing: 0, responses: 0, appointments: 0, episodes: 0 };
+  const report: FillReport = {
+    created: 0,
+    existing: 0,
+    responses: 0,
+    appointments: 0,
+    episodes: 0,
+    assignments: 0,
+  };
 
   for (const p of people) {
     const { id: userId, created } = await ensurePerson(p);
     if (created) report.created += 1;
-    else {
-      report.existing += 1;
-      continue; // человек уже заведён — его обследования тоже
+    else report.existing += 1;
+
+    /*
+     * Клиническая часть делается ВСЕМ, а не только заведённым сейчас.
+     *
+     * Раньше здесь стоял `continue`: уже существующий человек пропускался
+     * целиком. Из-за этого повторный прогон ничего не добавлял, и когда в
+     * системе появилось то, чего в первом наполнении не было — приёмы,
+     * обращения, специалист с расписанием, — картотека так и осталась без
+     * них: сто двадцать человек с измерениями и пустой экран дня. Дополнять
+     * уже заведённых надо уметь, иначе каждое новое умение системы требует
+     * стирать всё и наполнять заново.
+     *
+     * Прохождения при этом не повторяются: они делаются только для тех,
+     * кого завели сейчас, — иначе каждый прогон дорисовывал бы человеку
+     * лишнюю историю, и динамика показывала бы не течение, а число
+     * запусков посева.
+     */
+    if (department && specialist) {
+      await db
+        .insert(departmentPatients)
+        .values({ departmentId: department.id, patientId: userId, attachedVia: "staff" })
+        .onConflictDoNothing();
+      if (await ensureEpisode(p, userId, specialist.id)) report.episodes += 1;
+
+      // назначение на одну из методик каталога: со сроком, часть просрочена
+      const target = catalog[Math.floor(rng(p.slug.length + p.birthYear)() * catalog.length)];
+      if (target && (await ensureAssignment(p, userId, specialist.id, target.id))) {
+        report.assignments += 1;
+      }
     }
+
+    if (!created) continue;
 
     /*
      * Не все проходят всё. Человек, прошедший восемь опросников подряд,
@@ -263,33 +376,6 @@ export async function fillDemoData(count: number): Promise<FillReport> {
       }
     }
 
-    // приёмы и обращение — только там, где есть отделение и специалист
-    if (department && specialist) {
-      await db
-        .insert(departmentPatients)
-        .values({ departmentId: department.id, patientId: userId, attachedVia: "staff" })
-        .onConflictDoNothing();
-
-      if (r() < 0.55) {
-        const opened = new Date(Date.now() - (30 + Math.floor(r() * 120)) * 86_400_000);
-        const closes = p.trend === "improving" && r() < 0.6;
-        await db.insert(episodes).values({
-          id: crypto.randomUUID(),
-          patientId: userId,
-          leadSpecialistId: specialist.id,
-          openedAt: opened.toISOString(),
-          reasonEnc: encryptField(p.reason),
-          ...(closes
-            ? {
-                closedAt: new Date(opened.getTime() + 60 * 86_400_000).toISOString(),
-                outcomeKind: "improved" as const,
-                outcomeEnc: encryptField("Стан покращився, спостереження завершено"),
-              }
-            : {}),
-        });
-        report.episodes += 1;
-      }
-    }
   }
 
   // приёмы раздаются в конце: свободные слоты надо делить между всеми

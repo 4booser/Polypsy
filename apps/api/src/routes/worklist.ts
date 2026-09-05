@@ -2,21 +2,14 @@ import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { t, type WorkKind } from "@quizzy/shared";
 import { db } from "../db";
-import { currentCrisis } from "../lib/crisis";
 import {
-  alertCases,
   appointments,
   dispensary,
   batteries,
   batteryAssignments,
-  pathwayInstances,
-  pathwayProgress,
-  pathways,
-  pathwaySteps,
   referrals,
   slots,
   threads,
-  treatmentGoals,
   surveyAccess,
   surveys,
   users,
@@ -25,7 +18,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
 import { langOf } from "../lib/http";
-import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -85,7 +78,6 @@ interface Item {
  * склеенных подряд, — то есть в то же самое, от чего уходим.
  */
 const KIND_WEIGHT: Record<Kind, number> = {
-  case: 0,
   /*
    * Неявка идёт сразу за случаем риска, а не в конце.
    *
@@ -104,76 +96,37 @@ const KIND_WEIGHT: Record<Kind, number> = {
    */
   message: 2,
   /*
-   * Просроченный диспансерный осмотр идёт после письма, но раньше маршрутов:
+   * Просроченный диспансерный осмотр идёт после письма, но раньше повторов:
    * человек на учёте не написал и не пришёл — и это молчание, а не отсутствие
    * повода.
    */
   dispensary: 3,
-  pathway: 4,
-  goal: 5,
-  followup: 6,
-  referral: 7,
-  assignment: 8,
+  followup: 4,
+  referral: 5,
+  assignment: 6,
 };
 
 worklistRoutes.get("/", async (c) => {
   const user = c.get("user");
-  /*
-   * Язык читателя, а не язык по умолчанию.
-   *
-   * `t()` без второго аргумента отдаёт украинский всегда — и очередь
-   * работы, первый экран рабочего дня, показывала названия методик
-   * по-украински тому, кто выбрал русский интерфейс. Строка «СР-45.
-   * Схильність до суїцидальних реакцій · Срочно» — это не двуязычие, это
-   * две половины от разных языков в одной строке.
-   */
+  // язык читателя: t() без него отдаёт украинский всегда
   const lang = langOf(c);
-  const scope = await surveyScopeFilter(user);
-  const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  const surveyIds = scoped.map((s) => s.id);
-
   const items: Item[] = [];
   const now = Date.now();
 
-  if (surveyIds.length) {
-    // 1. Случаи риска — самое срочное по определению
-    const caseRows = await db
-      .select({
-        c: alertCases,
-        surveyTitle: surveys.title,
-        escalate: surveys.alertEscalateMinutes,
-        unit: users.unit,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        middleName: users.middleName,
-        anonymous: users.anonymous,
-        pseudonym: users.pseudonym,
-        signals: sql<number>`(select count(*)::int from risk_alerts ra where ra.case_id = ${alertCases.id})`,
-      })
-      .from(alertCases)
-      .innerJoin(surveys, eq(surveys.id, alertCases.surveyId))
-      .innerJoin(users, eq(users.id, alertCases.userId))
-      .where(and(inArray(alertCases.surveyId, surveyIds), isNull(alertCases.acknowledgedAt)))
-      .limit(300);
-
-    for (const r of caseRows) {
-      const minutes = Math.round((now - new Date(r.c.openedAt).getTime()) / 60_000);
-      items.push({
-        kind: "case",
-        id: r.c.id,
-        userId: r.c.userId,
-        userName: fullNameOf(r as never),
-        unit: r.unit,
-        title: t(r.surveyTitle as never, lang),
-        severity: r.c.severity,
-        signals: Number(r.signals),
-        overdue: r.escalate !== null && minutes >= r.escalate,
-        assignedTo: r.c.assignedTo,
-        since: r.c.openedAt,
-        href: `/alerts?q=${encodeURIComponent(fullNameOf(r as never))}`,
-      });
-    }
-  }
+  /*
+   * Случаи риска в очередь НЕ идут, и это разведение, а не потеря.
+   *
+   * Они шли сюда наравне с неявками и непрочитанным — и рядом в рельсе
+   * стоял отдельный пункт «Случаи риска» с тем же содержимым. Оба
+   * показывали одно число, оба вели к одним людям, и выбрать между ними
+   * было невозможно: два входа в одно место читаются как два разных места,
+   * и человек ходит в оба, чтобы убедиться, что не пропустил.
+   *
+   * Разбор случая — не «дело на сегодня», а работа со своими правилами:
+   * взять на себя, зафиксировать исход, увидеть все сигналы человека
+   * разом. Для неё есть свой экран, и очередь на него ссылается, а не
+   * пересказывает его.
+   */
 
   /*
    * 2. Неявки.
@@ -504,92 +457,7 @@ worklistRoutes.get("/", async (c) => {
     });
   }
 
-  /*
-   * Просроченные шаги маршрутов. Без этого маршрут был бы отдельным списком,
-   * который надо не забыть открыть, — то есть ровно тем, от чего уходим:
-   * очередь работы существует, чтобы держать всё входящее в одном месте.
-   */
-  if (!allowedPatients || allowedPatients.size) {
-    const overdueSteps = await db
-      .select({
-        progress: pathwayProgress,
-        step: pathwaySteps,
-        instance: pathwayInstances,
-        pathway: pathways,
-        patient: users,
-      })
-      .from(pathwayProgress)
-      .innerJoin(pathwaySteps, eq(pathwaySteps.id, pathwayProgress.stepId))
-      .innerJoin(pathwayInstances, eq(pathwayInstances.id, pathwayProgress.instanceId))
-      .innerJoin(pathways, eq(pathways.id, pathwayInstances.pathwayId))
-      .leftJoin(users, eq(users.id, pathwayInstances.userId))
-      .where(
-        and(
-          eq(pathwayProgress.state, "pending"),
-          isNull(pathwayInstances.closedAt),
-          isNotNull(pathwayProgress.dueAt),
-          sql`${pathwayProgress.dueAt} < now()`,
-          allowedPatients ? inArray(pathwayInstances.userId, [...allowedPatients]) : undefined,
-        ),
-      )
-      .limit(200);
 
-    for (const row of overdueSteps) {
-      const days = Math.floor((now - new Date(row.progress.dueAt!).getTime()) / 86_400_000);
-      items.push({
-        kind: "pathway",
-        id: row.progress.id,
-        userId: row.instance.userId,
-        userName: row.patient ? fullNameOf(row.patient) : "—",
-        unit: row.patient?.unit ?? null,
-        title: `${t(row.pathway.title as never, lang)}: ${t(row.step.title as never, lang)}`,
-        days,
-        overdue: true,
-        assignedTo: null,
-        since: row.progress.dueAt!,
-        href: `/pathways/${row.instance.id}`,
-      });
-    }
-  }
-
-  /*
-   * Просроченные цели лечения. У цели есть срок, и без этого он был бы
-   * украшением: никто не открывает карту каждого пациента, чтобы проверить,
-   * не прошёл ли третий месяц.
-   */
-  if (!allowedPatients || allowedPatients.size) {
-    const overdueGoals = await db
-      .select({ goal: treatmentGoals, survey: surveys, patient: users })
-      .from(treatmentGoals)
-      .innerJoin(surveys, eq(surveys.id, treatmentGoals.surveyId))
-      .leftJoin(users, eq(users.id, treatmentGoals.userId))
-      .where(
-        and(
-          eq(treatmentGoals.status, "open"),
-          isNotNull(treatmentGoals.dueAt),
-          sql`${treatmentGoals.dueAt} < now()`,
-          allowedPatients ? inArray(treatmentGoals.userId, [...allowedPatients]) : undefined,
-        ),
-      )
-      .limit(200);
-
-    for (const row of overdueGoals) {
-      const days = Math.floor((now - new Date(row.goal.dueAt!).getTime()) / 86_400_000);
-      items.push({
-        kind: "goal",
-        id: row.goal.id,
-        userId: row.goal.userId,
-        userName: row.patient ? fullNameOf(row.patient) : "—",
-        unit: row.patient?.unit ?? null,
-        title: `${t(row.survey.title as never, lang)}: ${row.goal.scaleCode}`,
-        days,
-        overdue: true,
-        assignedTo: null,
-        since: row.goal.dueAt!,
-        href: `/patients/${row.goal.userId}/summary`,
-      });
-    }
-  }
 
   /*
    * В кризисном режиме порядок другой: сначала тяжесть, потом всё остальное.
@@ -601,15 +469,11 @@ worklistRoutes.get("/", async (c) => {
    * Меняется только порядок. Состав очереди и всё остальное — те же: режим,
    * который заодно что-то скрывает, опаснее любого потока пациентов.
    */
-  const crisis = await currentCrisis();
-  const byCrisis = (i: Item) => (i.kind === "case" ? 0 : i.overdue ? 1 : 2);
-
-  items.sort((a, b) =>
-    crisis.active
-      ? byCrisis(a) - byCrisis(b) || (b.days ?? 0) - (a.days ?? 0)
-      : Number(b.overdue) - Number(a.overdue) ||
-        KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind] ||
-        a.since.localeCompare(b.since),
+  items.sort(
+    (a, b) =>
+      Number(b.overdue) - Number(a.overdue) ||
+      KIND_WEIGHT[a.kind] - KIND_WEIGHT[b.kind] ||
+      a.since.localeCompare(b.since),
   );
 
   const mine = items.filter((i) => i.assignedTo === user.id).length;
@@ -619,16 +483,21 @@ worklistRoutes.get("/", async (c) => {
     items: items.slice(0, 100),
     total: items.length,
     truncated: items.length > 100,
-    /** Порядок очереди сейчас кризисный: сначала тяжесть */
-    crisis: crisis.active,
-    byKind: {
-      case: items.filter((i) => i.kind === "case").length,
-      followup: items.filter((i) => i.kind === "followup").length,
-      referral: items.filter((i) => i.kind === "referral").length,
-      assignment: items.filter((i) => i.kind === "assignment").length,
-      pathway: items.filter((i) => i.kind === "pathway").length,
-      goal: items.filter((i) => i.kind === "goal").length,
-    },
+    /*
+     * Счётчики по всем видам сразу, а не по трём выбранным вручную.
+     *
+     * Перечисленные поимённо, они отстали от списка видов: экран рисовал
+     * вкладки «Просроченные повторы · 0 · Направления · 0 · Назначения · 0»
+     * над строкой с непрочитанным письмом. Сумма вкладок не сходилась с
+     * «Всё · 1», а до самой строки нельзя было отфильтроваться вовсе.
+     *
+     * Обход ключей KIND_WEIGHT привязывает счётчики к тому же списку, из
+     * которого берётся порядок: новый вид работы приезжает со своей вкладкой
+     * сам, и забыть его негде.
+     */
+    byKind: Object.fromEntries(
+      (Object.keys(KIND_WEIGHT) as Kind[]).map((kind) => [kind, items.filter((i) => i.kind === kind).length]),
+    ) as Record<Kind, number>,
     mine,
   });
 });
