@@ -13,4 +13,17 @@
 # сборка падает с «COPY failed: no source files were specified».
 set -e
 [ -z "$SITE_ADDRESS" ] && export SITE_ADDRESS=":80"
-exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+
+# Почта учётной записи ACME дописывается блоком глобальных настроек, и только
+# когда она задана. Пустое значение здесь — не то же, что отсутствие строки:
+# `email` без аргумента Caddy отвергает целиком («wrong argument count»), и
+# конфиг не разбирается вовсе — тот же класс ошибки, что с пустым
+# SITE_ADDRESS выше, и проверять его надо так же, запуском образа.
+CONFIG=/etc/caddy/Caddyfile
+if [ -n "$ACME_EMAIL" ]; then
+  CONFIG=/tmp/Caddyfile
+  printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL" > "$CONFIG"
+  cat /etc/caddy/Caddyfile >> "$CONFIG"
+fi
+
+exec caddy run --config "$CONFIG" --adapter caddyfile
