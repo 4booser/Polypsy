@@ -6,6 +6,7 @@ import {
   departments,
   episodes,
   responses,
+  scheduleTemplates,
   slots,
   specialistProfiles,
   surveys,
@@ -97,6 +98,69 @@ async function ensurePerson(p: Person): Promise<{ id: string; created: boolean }
   return { id, created: true };
 }
 
+/**
+ * Вымышленный специалист с обычной неделей приёма.
+ *
+ * Без него наполнение показывает только измерения: экран дня, расписание и
+ * очередь приёмов остаются пустыми, потому что принимать некому. Заводится
+ * только если ни у кого ещё нет расписания — на работающем экземпляре
+ * специалисты настоящие, и подставлять к ним вымышленного незачем.
+ *
+ * Помечен тем же доменом, что и остальные вымышленные, и убирается той же
+ * командой: учётная запись персонала, оставшаяся после демонстрации, — это
+ * рабочий доступ в систему с медицинскими данными.
+ */
+async function ensureDemoSpecialist(departmentId: string): Promise<string | null> {
+  const [withSlots] = await db
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(specialistProfiles, eq(specialistProfiles.userId, users.id))
+    .where(sql`exists (select 1 from slots s where s.specialist_id = ${users.id})`)
+    .limit(1);
+  if (withSlots) return withSlots.id;
+
+  const email = `demo-specialist@${DEMO_DOMAIN}`;
+  const [existing] = await db.select().from(users).where(eq(users.email, email));
+  const id = existing?.id ?? crypto.randomUUID();
+  if (!existing) {
+    await db.insert(users).values({
+      id,
+      email,
+      ...encryptPersonFields({
+        firstName: "Олена",
+        lastName: "Демченко",
+        middleName: "Петрівна",
+      }),
+      passwordHash: await hashPassword(DEMO_PASSWORD),
+      role: "admin",
+      sex: "female",
+    } as never);
+    const { ensureBuiltinRole } = await import("./permissions");
+    await ensureBuiltinRole(id);
+  }
+
+  await db
+    .insert(specialistProfiles)
+    .values({ userId: id, departmentId, room: "212" })
+    .onConflictDoNothing();
+
+  // будни с перерывом: обычная неделя, по которой строится сетка слотов
+  for (const weekday of [1, 2, 3, 4, 5]) {
+    for (const [startsAt, endsAt] of [
+      ["09:00", "13:00"] as const,
+      ["14:00", "17:00"] as const,
+    ]) {
+      await db
+        .insert(scheduleTemplates)
+        .values({ id: crypto.randomUUID(), specialistId: id, weekday, startsAt, endsAt, slotMinutes: 50 })
+        .onConflictDoNothing();
+    }
+  }
+  const { syncSlots } = await import("./schedule");
+  await syncSlots(id);
+  return id;
+}
+
 export async function fillDemoData(count: number): Promise<FillReport> {
   const catalog = await db
     .select({ id: surveys.id, key: surveys.catalogKey })
@@ -107,6 +171,7 @@ export async function fillDemoData(count: number): Promise<FillReport> {
   }
 
   const [department] = await db.select().from(departments).limit(1);
+  if (department) await ensureDemoSpecialist(department.id);
   /*
    * Специалист берётся тот, у КОГО ЕСТЬ РАСПИСАНИЕ, а не первый попавшийся
    * сотрудник. Первым в таблице обычно оказывается технический
