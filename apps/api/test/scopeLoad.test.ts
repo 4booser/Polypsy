@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { api, db, makeUser } from "./fixtures";
-import { alertCases, groupAdmins, surveyAccess, surveyGroups, surveys, users } from "../src/db/schema";
+import { groupAdmins, referrals, surveyAccess, surveyGroups, surveys, users } from "../src/db/schema";
 import { encryptPersonFields } from "../src/lib/crypto";
 import { hashPassword } from "../src/lib/auth";
 import {
@@ -112,14 +112,20 @@ describe("зона видимости под нагрузкой", () => {
        * Спрашиваем прямо: сколько раз позвали. Ответ обязан быть «один» —
        * независимо от того, сколько строк в выдаче.
        */
-      const { token, surveyId, patientIds } = await bigGroupWithPatients();
+      const { staffId, token, patientIds } = await bigGroupWithPatients();
 
-      await db.insert(alertCases).values(
+      /*
+       * Строки очереди берутся направлениями, а не случаями риска: случай
+       * ушёл на свой экран и в очередь больше не попадает. Вид работы здесь
+       * не важен — важно, чтобы строк было заведомо много.
+       */
+      await db.insert(referrals).values(
         patientIds.slice(0, 50).map((userId) => ({
           id: crypto.randomUUID(),
           userId,
-          surveyId,
-          severity: "severe" as const,
+          destination: "psychiatrist" as const,
+          status: "created" as const,
+          createdBy: staffId,
         })),
       );
 

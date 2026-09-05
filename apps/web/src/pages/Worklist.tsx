@@ -18,15 +18,31 @@ import { useLiveReload } from "../events";
  * названия и никто бы не заметил.
  */
 const KIND_KEY: Record<WorkKind, UiKey> = {
-  case: "work.kindCase",
   noshow: "work.kindNoshow",
   message: "work.kindMessage",
   dispensary: "work.kindDispensary",
   followup: "work.kindFollowup",
   referral: "work.kindReferral",
   assignment: "work.kindAssignment",
-  pathway: "work.kindPathway",
-  goal: "work.kindGoal",
+} as const;
+
+/*
+ * Название вкладки фильтра — не то же самое, что метка в столбце.
+ *
+ * В столбце стоит «сообщение» — одно слово в родительном разряде, по нему
+ * глаз ищет строку. На вкладке нужно «Непрочитанные»: она отвечает не «что
+ * это за строка», а «что я сейчас увижу, если нажму». Одна строка на оба
+ * места дала бы вкладку «СООБЩЕНИЕ · 1», читающуюся как заголовок раздела.
+ *
+ * Перебор снова полный: вид без названия вкладки не соберётся.
+ */
+const FILTER_KEY: Record<WorkKind, UiKey> = {
+  noshow: "work.filterNoshows",
+  message: "work.filterMessages",
+  dispensary: "work.filterDispensary",
+  followup: "work.filterFollowups",
+  referral: "work.filterReferrals",
+  assignment: "work.filterAssignments",
 } as const;
 
 /**
@@ -60,25 +76,27 @@ export default function WorklistPage() {
           : ut("work.nothing")
       }
       toolbar={
+        /*
+         * Вкладки строятся по тому, что в очереди есть, а не по списку,
+         * набранному руками.
+         *
+         * Набранный руками отставал: над строкой с непрочитанным письмом
+         * висели три вкладки с нулями, сумма не сходилась с «Всё · 1», и
+         * до самой строки нельзя было отфильтроваться. Пустые виды не
+         * показываются: вкладка с нулём — это место, куда нажимают и
+         * попадают в пустоту.
+         */
         <div className="tabs !mb-0 !border-0">
           <button className={kind === "" ? "active" : ""} onClick={() => setKind("")}>
             {ut("work.all")} · {data.total}
           </button>
-          <button className={kind === "case" ? "active" : ""} onClick={() => setKind("case")}>
-            {ut("work.filterCases")} · {data.byKind.case}
-          </button>
-          <button className={kind === "followup" ? "active" : ""} onClick={() => setKind("followup")}>
-            {ut("work.filterFollowups")} · {data.byKind.followup}
-          </button>
-          <button className={kind === "referral" ? "active" : ""} onClick={() => setKind("referral")}>
-            {ut("work.filterReferrals")} · {data.byKind.referral}
-          </button>
-          <button
-            className={kind === "assignment" ? "active" : ""}
-            onClick={() => setKind("assignment")}
-          >
-            {ut("work.filterAssignments")} · {data.byKind.assignment}
-          </button>
+          {(Object.keys(FILTER_KEY) as WorkKind[])
+            .filter((k) => (data.byKind[k] ?? 0) > 0)
+            .map((k) => (
+              <button key={k} className={kind === k ? "active" : ""} onClick={() => setKind(k)}>
+                {ut(FILTER_KEY[k])} · {data.byKind[k]}
+              </button>
+            ))}
         </div>
       }
     >
@@ -139,24 +157,6 @@ export default function WorklistPage() {
 function describe(i: WorkItem, ut: (k: never) => string): string {
   const t = (k: string) => ut(k as never);
   switch (i.kind) {
-    case "case":
-      /*
-       * Сначала то, что различает строки, потом то, что у них общее.
-       *
-       * Название методики стояло первым — и десять строк подряд начинались
-       * одинаково: «СР-45. Склонность к суицидальным реакциям · Срочно ·
-       * сигналов 2». Выбрать, за что взяться, по такому списку нельзя:
-       * взгляд читает начало строки, а различается конец.
-       *
-       * Число сигналов идёт первым как единственная величина, которая
-       * между строками действительно меняется; название методики — в конец,
-       * оно и так одно на весь список.
-       */
-      return [
-        `${t("cases.signals")} ${i.signals ?? 0}`,
-        i.severity === "severe" ? t("work.urgent") : t("work.attention"),
-        i.title,
-      ].join(" · ");
     case "referral":
       return [
         i.title === "created" ? t("work.refNotAccepted") : t("work.refNotDone"),
@@ -169,11 +169,6 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
       return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
     case "followup":
       return `${i.title} · ${t("work.followupMissed")} · ${i.days ?? 0} ${t("work.daysOverdue")}`;
-    case "pathway":
-      // у шага маршрута заголовок уже несёт «маршрут: шаг» — остаётся просрочка
-      return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
-    case "goal":
-      return `${i.title} · ${t("work.goalOverdue")} ${i.days ?? 0} ${t("cases.ago")}`;
     case "message":
       /*
        * Число непрочитанных важнее давности: одно письмо — обычная работа,

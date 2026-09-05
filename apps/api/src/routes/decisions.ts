@@ -2,9 +2,8 @@ import { Hono } from "hono";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { crisisPeriods, decisionRules, ruleHits, surveys, users } from "../db/schema";
+import { decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { currentCrisis } from "../lib/crisis";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, surveyScopeFilter } from "../lib/scope";
@@ -226,51 +225,3 @@ const _shiftSchema = z.object({
   endsAt: z.string(),
 });
 
-/* ── кризисный режим ── */
-
-const crisisSchema = z.object({ reason: z.string().min(3).max(300) });
-
-decisionRoutes.get("/crisis", requirePermission("alerts.review"), async (c) => c.json(await currentCrisis()));
-
-decisionRoutes.post("/crisis", requirePermission("decisions.manage"), async (c) => {
-  const user = c.get("user");
-  const input = await parseBody(c.req.raw, crisisSchema);
-
-  const open = await currentCrisis();
-  if (open.active) badRequest("err.crisisAlreadyActive");
-
-  const id = crypto.randomUUID();
-  await db.insert(crisisPeriods).values({
-    id,
-    reason: input.reason,
-    startedBy: user.id,
-  });
-
-  await audit(c, {
-    action: "crisis.start",
-    resourceType: "crisis",
-    resourceId: id,
-    details: { reason: input.reason },
-  });
-
-  return c.json({ ok: true }, 201);
-});
-
-decisionRoutes.delete("/crisis", requirePermission("decisions.manage"), async (c) => {
-  const user = c.get("user");
-
-  const [row] = await db
-    .select()
-    .from(crisisPeriods)
-    .where(isNull(crisisPeriods.endedAt))
-    .limit(1);
-  if (!row) badRequest("err.crisisNotActive");
-
-  await db
-    .update(crisisPeriods)
-    .set({ endedAt: new Date().toISOString(), endedBy: user.id })
-    .where(eq(crisisPeriods.id, row!.id));
-
-  await audit(c, { action: "crisis.end", resourceType: "crisis", resourceId: row!.id });
-  return c.json({ ok: true });
-});

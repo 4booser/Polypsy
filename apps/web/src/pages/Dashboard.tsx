@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { BarList, Chart, Donut, LineChart } from "../charts";
+import { BarList, Chart, Donut, LineChart, StackedArea } from "../charts";
 import { duration, day, severityColor, severityKey } from "../format";
 import { Screen } from "../ui";
 import { Panel, Grid, Stack } from "../ui/layout";
@@ -19,17 +19,21 @@ export default function Dashboard() {
    * объяснения.
    */
   const res = useResource(async () => {
-    const [overview, surveys, alerts, work] = await Promise.all([
+    const [overview, surveys, alerts, work, trend] = await Promise.all([
       api.overview(),
       api.surveys(),
       api.alertCases({ limit: "6" }),
       // очередь работы — то, с чего начинается день; её отказ не должен
       // прятать остальную сводку
       api.worklist().catch(() => ({ items: [], total: 0, truncated: false })),
+      // то же и с рядом по неделям: он объясняет кольцо рядом, а не заменяет
+      // сводку, и его отказ не повод прятать всё остальное
+      api.severityTrend().catch(() => ({ weeks: [], unbanded: 0 })),
     ]);
     return {
       data: overview,
       surveys,
+      trend,
       /*
        * Не имена, а то, что помогает решить, идти ли разбирать сейчас.
        *
@@ -55,7 +59,7 @@ export default function Dashboard() {
 
   return (
     <Screen res={res} rows={5}>
-      {({ data, surveys, urgentCases, oldestCaseDays, openCases, work }) => (
+      {({ data, surveys, trend, urgentCases, oldestCaseDays, openCases, work }) => (
         <>
           <Stack>
             {/*
@@ -220,6 +224,43 @@ export default function Dashboard() {
                 series={[{ label: ut("cl.responses"), points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]}
               />
             </Chart>
+
+            {/*
+              Кольцо ниже отвечает на вопрос «сколько тяжёлых всего», и это не
+              тот вопрос, который задают на планёрке. Спрашивают, становится ли
+              их больше, — а одно и то же кольцо получается и когда тяжёлые
+              копились полгода ровно, и когда все пришли на прошлой неделе.
+              Поэтому ряд по неделям стоит выше кольца, а не вместо него: итог
+              за всё время тоже нужен, но вторым.
+            */}
+            {trend.weeks.length > 1 ? (
+              <Chart title={ut("dash.severityTrend")} hint={ut("dash.severityTrendHint")}>
+                <StackedArea
+                  x={trend.weeks.map((w) => day(w.week))}
+                  total={ut("dash.severityTrendTotal")}
+                  /*
+                   * Снизу вверх — от спокойных к срочным. Порядок не по
+                   * величине: степени выраженности упорядочены сами по себе, и
+                   * перестановка слоёв ради «покрасивее» сломала бы главное
+                   * свойство графика — узнаваемость с одного взгляда. Срочные
+                   * сверху ещё и потому, что верхняя кромка читается лучше
+                   * прочих, а следят именно за ними.
+                   */
+                  series={(["none", "mild", "moderate", "severe"] as const).map((sev) => ({
+                    label: ut(severityKey[sev]),
+                    color: severityColor[sev],
+                    values: trend.weeks.map((w) => w[sev]),
+                  }))}
+                />
+                {trend.unbanded > 0 ? (
+                  /* прохождения без полос норм не попадают ни в один слой:
+                     промолчать о них значило бы занизить все четыре */
+                  <p className="hint">
+                    {ut("dash.severityTrendUnbanded")}: <Num>{trend.unbanded}</Num>
+                  </p>
+                ) : null}
+              </Chart>
+            ) : null}
 
             <Grid min={380}>
               {data.severityBreakdown.length ? (

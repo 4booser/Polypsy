@@ -1,11 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import { cronbachAlpha, median, pearson, percent, round, variance } from "./stats";
+import { cronbachAlpha, median, pearson, percent, quantile, round, variance } from "./stats";
 
 describe("статистика", () => {
   test("median: нечётное, чётное, пустое", () => {
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1, 3, 2])).toBe(2.5);
     expect(median([])).toBe(0);
+  });
+
+  test("quantile: границы, середина и интерполяция", () => {
+    const nine = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    expect(quantile(nine, 0)).toBe(1);
+    expect(quantile(nine, 1)).toBe(9);
+    expect(quantile(nine, 0.5)).toBe(5);
+    // четверть от восьми промежутков — ровно третье наблюдение
+    expect(quantile(nine, 0.25)).toBe(3);
+    // а на четырёх наблюдениях четверть приходится между первым и вторым
+    expect(quantile([10, 20, 30, 40], 0.25)).toBe(17.5);
+    expect(quantile([], 0.5)).toBe(0);
+    // порядок на входе неважен: выборка сортируется внутри
+    expect(quantile([9, 1, 5], 0.5)).toBe(5);
+  });
+
+  test("quantile: выброс не двигает коробку, но двигает край", () => {
+    /*
+     * Ради этого квартили и заведены. Один человек, отвлёкшийся на телефон,
+     * растягивает максимум вчетверо — и график по краям показывает его, а не
+     * то, сколько пункт занимает у людей.
+     */
+    const times = [3, 3, 4, 4, 4, 5, 5, 5, 6, 60];
+    expect(Math.max(...times)).toBe(60);
+    expect(quantile(times, 0.75)).toBeLessThan(6);
   });
 
   test("pearson: идеальные корреляции и константа", () => {

@@ -6,7 +6,8 @@ import { groupAdmins, surveyGroups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertGroupAccess, isSuperadmin } from "../lib/scope";
+import { hasPermission } from "../lib/permissions";
+import { accessibleGroupIds, assertGroupAccess } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const groupRoutes = new Hono<AppEnv>();
@@ -26,12 +27,22 @@ export const groupRoutes = new Hono<AppEnv>();
 groupRoutes.use("*", requireAuth, requireStaff);
 
 /**
- * Список групп. Суперадмин видит все и с составом администраторов,
- * администратор — только те, на которые назначен, и без чужих админов.
+ * Список групп. Суперадмин видит все, администратор — только те, на которые
+ * назначен; состав администраторов приходит по каждой видимой группе.
+ *
+ * Снятые с использования приходят вместе с действующими, а не отфильтровываются
+ * здесь. На экране групп их обязаны показать: расформированное отделение
+ * никуда не делось, у него остались люди, прохождения и аналитика. А там, где
+ * список работает выбором — конструктор методики, сборка батареи, — снятые
+ * отсеиваются на месте выбора: только там известно, что выбранная группа уже
+ * снята и её всё равно надо оставить в списке, иначе правка методики молча
+ * перенесла бы её в первую попавшуюся группу.
  */
 groupRoutes.get("/", async (c) => {
   const user = c.get("user");
   const allowed = await accessibleGroupIds(user);
+  // право спрашивается один раз на запрос: оно одно на все группы читателя
+  const manageable = await hasPermission(user, "groups.manage");
 
   const rows = await db
     .select({
@@ -42,16 +53,57 @@ groupRoutes.get("/", async (c) => {
       position: surveyGroups.position,
       createdBy: surveyGroups.createdBy,
       createdAt: surveyGroups.createdAt,
+      archivedAt: surveyGroups.archivedAt,
       surveyCount: sql<number>`(select count(*) from surveys s where s.group_id = "survey_groups"."id")`,
       publishedCount: sql<number>`(select count(*) from surveys s where s.group_id = "survey_groups"."id" and s.status = 'published')`,
       responseCount: sql<number>`(select count(*) from responses r join surveys s on s.id = r.survey_id where s.group_id = "survey_groups"."id" and r.status = 'completed')`,
+      /*
+       * Людей считаем по завершённым прохождениям и различая по человеку:
+       * «сколько людей прошло» и «сколько прохождений» расходятся тем
+       * сильнее, чем больше в группе повторных замеров, а заведующему нужны
+       * оба числа — иначе двадцать замеров одного человека читаются как
+       * двадцать обследованных.
+       */
+      patientCount: sql<number>`(select count(distinct r.user_id) from responses r
+        join surveys s on s.id = r.survey_id
+        where s.group_id = "survey_groups"."id" and r.status = 'completed' and r.user_id is not null)`,
+      /*
+       * Открытые случаи считаются по сигналам, а не по колонке survey_id
+       * случая: случай заводится на человека и собирает сигналы разных
+       * методик, поэтому «случай этой группы» — тот, у которого есть хоть
+       * один сигнал по её методике.
+       */
+      openCaseCount: sql<number>`(select count(distinct ac.id) from alert_cases ac
+        join risk_alerts ra on ra.case_id = ac.id
+        join surveys s on s.id = ra.survey_id
+        where s.group_id = "survey_groups"."id" and ac.acknowledged_at is null)`,
     })
     .from(surveyGroups)
     .where(allowed === null ? undefined : allowed.length ? inArray(surveyGroups.id, allowed) : sql`1 = 0`)
-    .orderBy(asc(surveyGroups.position), asc(surveyGroups.createdAt));
+    /*
+     * Действующие впереди снятых. Порядок задан в базе, а не сортировкой на
+     * экране: тот же список читает мобильное приложение и конструктор, и
+     * договориться о порядке в одном месте дешевле, чем в трёх.
+     */
+    .orderBy(
+      asc(sql`(${surveyGroups.archivedAt} is not null)`),
+      asc(surveyGroups.position),
+      asc(surveyGroups.createdAt),
+    );
 
   const adminsByGroup = new Map<string, GroupAdmin[]>();
-  if (isSuperadmin(user) && rows.length) {
+  /*
+   * Состав администраторов приходит всем, кто вообще видит группу, а не
+   * только суперадмину.
+   *
+   * Так уже отвечает `GET /api/groups/:id/admins`: кого видно — решает
+   * область ответственности, и в этот список попадают только доступные
+   * группы. Прежнее ограничение оставляло администратора группы перед
+   * пустым разделом «администраторы» — не потому, что их нет, а потому, что
+   * их не прислали, — и он не мог понять, кому писать о доступе. Отдельного
+   * запроса на каждую группу ради того же ответа тоже не нужно.
+   */
+  if (rows.length) {
     const adminRows = await db
       .select({
         groupId: groupAdmins.groupId,
@@ -85,12 +137,15 @@ groupRoutes.get("/", async (c) => {
     surveyCount: Number(r.surveyCount ?? 0),
     publishedCount: Number(r.publishedCount ?? 0),
     responseCount: Number(r.responseCount ?? 0),
+    patientCount: Number(r.patientCount ?? 0),
+    openCaseCount: Number(r.openCaseCount ?? 0),
     admins: adminsByGroup.get(r.id) ?? [],
+    manageable,
   }));
   return c.json({ items: result });
 });
 
-/** Создавать группы может только суперадмин — это единица разграничения доступа */
+/** Заводить группы — по праву `groups.manage`: группа есть единица разграничения доступа */
 groupRoutes.post("/", requirePermission("groups.manage"), async (c) => {
   const input = await parseBody(c.req.raw, groupInputSchema);
   const [row] = await db
@@ -126,6 +181,48 @@ groupRoutes.patch("/:id", async (c) => {
     .returning();
   if (!row) notFound("err.groupNotFound");
   await audit(c, { action: "group.update", resourceType: "group", resourceId: row.id });
+  return c.json(row);
+});
+
+/**
+ * Снять группу с использования или вернуть в работу.
+ *
+ * Мягкая альтернатива удалению — и единственная возможная для группы, в
+ * которой что-то есть. Расформированное отделение удалить нельзя: за ним
+ * годы прохождений, а удаление разрешено только пустой группе. Оставлять же
+ * его в списке наравне с действующими значит предлагать его при заведении
+ * каждой новой методики.
+ *
+ * Снятие НИЧЕГО не отбирает: администраторы группы продолжают видеть её
+ * методики и данные, аналитика считается, прохождения открываются. Это
+ * пометка «не предлагать», а не запрет — иначе снятие группы стало бы
+ * скрытым отзывом доступа у людей, которых об этом никто не спрашивал.
+ *
+ * Одно тело на оба направления, а не два маршрута: возврат в работу — то же
+ * действие с другим знаком, и разводить их значило бы дважды написать одну
+ * проверку прав.
+ */
+groupRoutes.post("/:id/archive", requirePermission("groups.manage"), async (c) => {
+  const id = c.req.param("id");
+  const group = await db.query.surveyGroups.findFirst({ where: eq(surveyGroups.id, id) });
+  if (!group) notFound("err.groupNotFound");
+
+  const body = await c.req.json().catch(() => ({}));
+  // умолчание — снять: маршрут называется archive, и пустое тело должно делать то, что написано
+  const archived = body?.archived !== false;
+
+  const [row] = await db
+    .update(surveyGroups)
+    .set({ archivedAt: archived ? new Date().toISOString() : null })
+    .where(eq(surveyGroups.id, id))
+    .returning();
+
+  await audit(c, {
+    action: archived ? "group.archive" : "group.restore",
+    resourceType: "group",
+    resourceId: id,
+    details: { title: group.title },
+  });
   return c.json(row);
 });
 

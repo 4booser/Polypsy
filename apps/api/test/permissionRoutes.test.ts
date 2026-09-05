@@ -46,11 +46,25 @@ describe("справочник и роли", () => {
   test("справочник отдаёт все права с пояснениями", async () => {
     const res = await api("/api/permissions/catalogue", root.token);
     expect(res.status).toBe(200);
-    const codes = res.body.groups.flatMap((g: { permissions: { code: string }[] }) =>
-      g.permissions.map((p) => p.code),
+    const perms = res.body.groups.flatMap(
+      (g: { permissions: { code: string; effect?: { kind: string; opens: { uk: string; ru: string } } }[] }) =>
+        g.permissions,
     );
-    expect(codes.sort()).toEqual([...ALL_PERMISSIONS].sort());
+    expect(perms.map((p: { code: string }) => p.code).sort()).toEqual([...ALL_PERMISSIONS].sort());
     expect(res.body.exceptionable.length).toBeGreaterThan(0);
+
+    /*
+     * Экран собирает роль по последствиям, и берёт он их отсюда. Отдай
+     * справочник одни коды — конструктор молча вернулся бы к списку
+     * «console.use», причём выглядел бы рабочим.
+     */
+    const silent = perms.filter(
+      (p: { effect?: { kind: string; opens: { ru: string } } }) => !p.effect?.opens?.ru?.trim(),
+    );
+    expect(silent).toEqual([]);
+    expect(new Set(perms.map((p: { effect: { kind: string } }) => p.effect.kind))).toEqual(
+      new Set(["screen", "analysis", "action"]),
+    );
   });
 
   test("встроенная роль видна и помечена", async () => {

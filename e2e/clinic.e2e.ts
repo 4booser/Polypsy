@@ -9,7 +9,7 @@ import { login, rowTexts, goVia } from "./helpers";
 test("от тревоги до закрытого направления", async ({ page }) => {
   await login(page, "psy");
 
-  await goVia(page, /Сегодня/, /^Случаи риска/);
+  await goVia(page, /Обзор/, /^Случаи риска/);
   // экран разбора: единица работы — человек, а не сработавший пункт
   await expect(page.getByRole("heading", { name: "Разбор случаев" })).toBeVisible();
 
@@ -50,7 +50,7 @@ test("от тревоги до закрытого направления", async
   await expect(row.getByRole("button")).toHaveCount(0);
 
   // завершённого нет в реестре открытых, но оно находится с фильтром
-  await goVia(page, /Сегодня/, "Направления");
+  await goVia(page, /Люди/, "Направления");
   await expect(page.getByText(reason)).toHaveCount(0);
   await page.getByRole("button", { name: "Показать завершённые" }).click();
   await expect(page.getByText(reason)).toBeVisible();

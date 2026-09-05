@@ -201,6 +201,14 @@ export interface User {
    * ними означал бы, что консоль на мгновение открывается не в той теме.
    */
   workspace?: WorkspacePrefs | null;
+  /**
+   * Ступень лестницы должностей: 0 — вне лестницы, выше — главнее.
+   *
+   * По ней консоль решает, показывать ли пункт «Права»: назначает только
+   * тот, у кого есть кому назначать. Ограничением это не является —
+   * правило живёт на маршрутах назначения и проверяется там.
+   */
+  ladderRank?: number;
 }
 
 export type Sex = "male" | "female";
@@ -252,14 +260,74 @@ export interface SurveyGroup {
   position: number;
   createdBy: string;
   createdAt: string;
+  /**
+   * Снята с использования: остаётся в списках и в аналитике, но не
+   * предлагается при выборе группы для новой методики или батареи.
+   */
+  archivedAt: string | null;
 }
 
 export interface SurveyGroupWithCounts extends SurveyGroup {
   surveyCount: number;
   publishedCount: number;
   responseCount: number;
-  /** Заполняется только для суперадмина — обычный админ чужих админов не видит */
+  /** Сколько людей вообще прошло хоть одну методику группы */
+  patientCount: number;
+  /** Сколько случаев риска по методикам группы сейчас не разобрано */
+  openCaseCount: number;
+  /** Кто ведёт группу. Приходит по доступным группам — чужих в списке нет */
   admins: GroupAdmin[];
+  /**
+   * Может ли читатель вести эту группу: заводить, снимать, назначать
+   * администраторов.
+   *
+   * Считает сервер, а не экран. Экран проверял роль суперадмина — а право
+   * `groups.manage` с тех пор стало выдаваемым, и заведующий отделением,
+   * ради которого его заводили, кнопок не видел вовсе, хотя сервер его
+   * пропускал. Роль на клиенте известна, состав прав — нет, поэтому ответ
+   * приходит вместе с самой группой.
+   */
+  manageable: boolean;
+}
+
+/**
+ * Аналитика группы: сколько людей, сколько прохождений, как распределены
+ * степени выраженности.
+ *
+ * Отдельно от аналитики методики: заведующему нужен ответ про отделение
+ * целиком, а не про один опросник, и складывать его из десяти запросов на
+ * экране значит считать одно и то же разными способами.
+ */
+export interface GroupAnalytics {
+  groupId: string;
+  title: string;
+  archivedAt: string | null;
+  surveyCount: number;
+  publishedCount: number;
+  /** Начатых прохождений, включая брошенные */
+  startedCount: number;
+  /** Завершённых прохождений */
+  responseCount: number;
+  /** Разных людей среди завершённых прохождений */
+  patientCount: number;
+  /** Доля доведённых до конца, в процентах */
+  completionRate: number;
+  avgDurationMs: number;
+  openCaseCount: number;
+  /** Распределение по степеням выраженности — по содержательным шкалам */
+  severityBreakdown: { severity: Severity; count: number }[];
+  /** Разбивка по методикам группы: где именно набралось */
+  surveys: {
+    surveyId: string;
+    title: string;
+    status: SurveyStatus;
+    archived: boolean;
+    responseCount: number;
+    patientCount: number;
+    severityBreakdown: { severity: Severity; count: number }[];
+  }[];
+  /** Прохождения по дням — для линии динамики */
+  timeline: { date: string; count: number }[];
 }
 
 export type RiskSeverity = "moderate" | "severe";
@@ -725,6 +793,54 @@ export interface SurveyResponse {
   scores: ScoreResult[];
 }
 
+/**
+ * Прохождение целиком: ответы по пунктам, баллы, телеметрия.
+ *
+ * Варианты пункта приходят вместе с ответом, а не отдельным запросом за
+ * методикой. Иначе читающий видит `optionIds` — набор идентификаторов, — и
+ * чтобы узнать, что человек ответил, должен догрузить методику той версии,
+ * которую тот проходил, и сопоставить руками. Ровно этого ему делать и не
+ * следует: разбирающий смотрит на прохождение, чтобы прочитать ответы, а не
+ * чтобы собрать их из двух источников.
+ */
+export interface ResponseDetail {
+  id: string;
+  survey: { id: string; title: string; scoringEnabled: boolean };
+  status: ResponseStatus;
+  startedAt: string;
+  submittedAt: string | null;
+  durationMs: number;
+  scores: ScoreResult[];
+  answers: ResponseDetailAnswer[];
+}
+
+export interface ResponseDetailAnswer {
+  questionId: string;
+  title: string;
+  type: QuestionType;
+  position: number;
+  answered: boolean;
+  optionIds: string[] | null;
+  /** Варианты пункта в том виде, в каком их видел проходивший */
+  options: {
+    id: string;
+    text: string;
+    /** Выбор этого варианта поднимает тревогу немедленно */
+    riskFlag: boolean;
+    riskSeverity: RiskSeverity | null;
+  }[];
+  text: string | null;
+  number: number | null;
+  date: string | null;
+  matrix: Record<string, string> | null;
+  ranking: string[] | null;
+  score: number | null;
+  durationMs: number;
+  changeCount: number;
+  visitCount: number;
+  events: { kind: string; elapsedMs: number; at: string; value: string | null }[];
+}
+
 /* ─────────────── Аналитика ─────────────── */
 
 export interface QuestionAnalytics {
@@ -743,6 +859,16 @@ export interface QuestionAnalytics {
   medianDurationMs: number;
   minDurationMs: number;
   maxDurationMs: number;
+  /**
+   * Квартили времени ответа.
+   *
+   * Нужны потому, что min и max — это один самый быстрый и один самый
+   * медленный человек, а не разброс: одного отвлёк телефон, и максимум по
+   * пункту вырастает вчетверо. График, построенный по краям, показывает
+   * выброс, а не то, сколько времени пункт занимает у людей.
+   */
+  p25DurationMs: number;
+  p75DurationMs: number;
   /** Среднее число смен ответа — маркер сложных/неоднозначных формулировок */
   avgChangeCount: number;
   /** Среднее время до первого выбора: сколько думали, прежде чем ответить */
@@ -822,6 +948,16 @@ export interface ScaleAnalytics {
   median: number;
   min: number;
   max: number;
+  /**
+   * Квартили итогового значения.
+   *
+   * Ящик с усами раньше строился из min/среднего/медианы/max, то есть его
+   * коробка была квартилями четырёх сводных чисел, а не выборки. Рисунок
+   * получался правдоподобным и неверным: коробка означала «между средним и
+   * медианой», хотя читается она как «половина обследованных».
+   */
+  p25: number;
+  p75: number;
   maxPossible: number;
   /** Сколько прохождений попало в каждую интерпретационную полосу */
   bands: { label: string; severity: Severity; count: number; percent: number }[];
@@ -1167,6 +1303,35 @@ export interface OverviewAnalytics {
   }[];
 }
 
+/**
+ * Степени выраженности по неделям — для области с накоплением.
+ *
+ * Неделя, а не день: результаты приходят неровно, и по дням ряд состоит из
+ * нулей с одиночными всплесками — по такому графику не видно ни уровня, ни
+ * направления. Неделя — самый короткий шаг, на котором в поликлинике
+ * набирается осмысленное число обследований.
+ *
+ * Счётчики — по прохождениям, а не по шкалам: у методики с восемью
+ * субшкалами одно обследование дало бы восемь отметок и перевесило бы
+ * восемь обследований по короткому скринингу. Степень прохождения — самая
+ * тяжёлая из его шкал: обследование, где хоть что-то тяжёлое, — это срочный
+ * случай, а не «в среднем спокойный».
+ */
+export interface SeverityTrend {
+  /** Понедельник недели, YYYY-MM-DD */
+  week: string;
+  none: number;
+  mild: number;
+  moderate: number;
+  severe: number;
+}
+
+export interface SeverityTrendResult {
+  weeks: SeverityTrend[];
+  /** Сколько прохождений осталось без интерпретации: у шкал нет норм */
+  unbanded: number;
+}
+
 export interface AuthPayload {
   /** Одноразовый refresh-токен: хранить в защищённом хранилище */
   refreshToken: string;
@@ -1202,10 +1367,27 @@ export interface AuditPage {
 
 /* ─────────── случаи риска ─────────── */
 
+/**
+ * Откуда взялся сигнал.
+ *
+ * Два вида, и путать их нельзя: `option` — человек отметил помеченный
+ * вариант ответа, `band` — суммарный балл шкалы попал в полосу. У первого
+ * есть пункт и отмеченный вариант, у второго — шкала, значение и границы
+ * полосы. Общего поля «заголовок» им хватало ровно до вопроса «на каком
+ * основании», который и задаёт разбирающий.
+ */
+export type AlertSignalKind = "option" | "band";
+
 /** Один сигнал внутри случая: какой пункт сработал */
 export interface AlertSignal {
   id: string;
   responseId: string;
+  /**
+   * Откуда сигнал. Приходит явно, а не выводится из `questionId`: экран
+   * подписывает строку словом «пункт» или «шкала», и вычислять это из
+   * пустоты соседнего поля значит однажды подписать неверно.
+   */
+  kind: AlertSignalKind;
   /** Пункт, поднявший тревогу; null у сигнала по полосе шкалы */
   questionId: string | null;
   /** Заголовок пункта, а у сигнала по шкале — название шкалы */
@@ -1213,6 +1395,54 @@ export interface AlertSignal {
   label: string;
   severity: RiskSeverity;
   at: string;
+}
+
+/**
+ * Основание сигнала целиком: по какой методике и какому ответу или полосе
+ * шкалы система решила, что у человека риск.
+ *
+ * Приходит отдельным запросом, а не вместе с очередью: очередь показывает
+ * тридцать случаев, а основание читают у одного, и тянуть ответы, варианты
+ * и баллы на все тридцать значило бы платить за то, чего никто не смотрит.
+ */
+export interface AlertSignalBasis {
+  id: string;
+  kind: AlertSignalKind;
+  responseId: string;
+  /** Методика, по которой поднят сигнал — у случая их может быть несколько */
+  surveyId: string;
+  surveyTitle: string;
+  /** Готовая подпись, записанная в момент срабатывания */
+  label: string;
+  severity: RiskSeverity;
+  at: string;
+  /** Прохождение целиком доступно только если методика в зоне ответственности */
+  responseSubmittedAt: string | null;
+
+  /* ── kind === "option" ── */
+  questionId: string | null;
+  /** Номер пункта в методике: по нему пункт ищут в бланке */
+  questionNumber: number | null;
+  questionTitle: string | null;
+  /** Что человек отметил: тексты выбранных вариантов */
+  pickedOptions: string[];
+  /** Числовой ответ, если сигнал поднял порог по числу */
+  answeredNumber: number | null;
+
+  /* ── kind === "band" ── */
+  scaleId: string | null;
+  scaleCode: string | null;
+  scaleTitle: string | null;
+  /** Значение в единицах нормировки: стены, T-баллы, доля */
+  scaleValue: number | null;
+  scaleRawScore: number | null;
+  normalization: ScaleNormalization | null;
+  bandLabel: string | null;
+  /** Границы полосы — чтобы видеть, насколько значение зашло внутрь */
+  bandMin: number | null;
+  bandMax: number | null;
+  bandDescription: string | null;
+  bandRecommendation: string | null;
 }
 
 /**
@@ -1287,15 +1517,12 @@ export interface AlertCaseFilters {
  * одной из них нельзя.
  */
 export type WorkKind =
-  | "case"
   | "noshow"
   | "message"
   | "dispensary"
   | "assignment"
   | "referral"
-  | "followup"
-  | "pathway"
-  | "goal";
+  | "followup";
 
 export interface WorkItem {
   kind: WorkKind;
@@ -1320,14 +1547,14 @@ export interface Worklist {
   items: WorkItem[];
   total: number;
   truncated: boolean;
-  byKind: { case: number; followup: number; referral: number; assignment: number };
+  /* полный перебор видов: вкладка забытого вида не нарисуется, а сумма разойдётся с total */
+  byKind: Record<WorkKind, number>;
   mine: number;
   /**
    * Очередь построена по кризисному правилу: сначала тяжесть, потом всё
    * остальное. Флаг отдаётся, чтобы экран мог сказать об этом прямо —
    * изменившийся порядок без объяснения читается как сбой.
    */
-  crisis?: boolean;
 }
 
 

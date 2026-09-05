@@ -7,6 +7,23 @@ export function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
+/**
+ * Квантиль с линейной интерполяцией между соседями.
+ *
+ * Интерполяция, а не «взять элемент по индексу»: на девяти наблюдениях
+ * четверть приходится ровно между вторым и третьим, и округление индекса
+ * сдвигает границу коробки на целое наблюдение. На малых выборках, а в
+ * поликлинике они малые, это заметный сдвиг.
+ */
+export function quantile(values: number[], p: number): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (sorted.length - 1) * Math.min(1, Math.max(0, p));
+  const lo = Math.floor(at);
+  const hi = Math.ceil(at);
+  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (at - lo);
+}
+
 export function average(values: number[]): number {
   if (!values.length) return 0;
   return values.reduce((a, b) => a + b, 0) / values.length;

@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import {
   ALL_PERMISSIONS,
   EXCEPTION_PERMISSIONS,
+  PERMISSION_EFFECTS,
   PERMISSION_GROUPS,
   PERMISSION_TITLES,
   PSYCHOLOGIST_PERMISSIONS,
@@ -52,6 +53,42 @@ describe("справочник", () => {
       (p) => !PERMISSION_TITLES[p]?.uk?.trim() || !PERMISSION_TITLES[p]?.ru?.trim(),
     );
     expect(missing).toEqual([]);
+  });
+
+  test("у каждого права сказано, что оно открывает", () => {
+    /*
+     * Роль собирают по последствиям, а не по кодам. Право без этой строки
+     * выглядело бы на экране пустым местом под названием — и собирающий
+     * решил бы, что галочка ничего не делает, а не что пояснение забыли.
+     */
+    const missing = ALL_PERMISSIONS.filter(
+      (p) => !PERMISSION_EFFECTS[p]?.opens?.uk?.trim() || !PERMISSION_EFFECTS[p]?.opens?.ru?.trim(),
+    );
+    expect(missing).toEqual([]);
+  });
+
+  test("что открывает право — сказано иначе, чем как оно называется", () => {
+    /*
+     * Повтор названия другими словами не отвечает на вопрос, ради которого
+     * справочник и заведён. «Смотреть аналитику методик» → «Аналитика
+     * методик» не говорит собирающему роль ничего нового, и такой строки
+     * лучше бы не было вовсе, чем была бы видимость объяснения.
+     */
+    const echo = ALL_PERMISSIONS.filter(
+      (p) => PERMISSION_EFFECTS[p].opens.ru.toLowerCase() === PERMISSION_TITLES[p].ru.toLowerCase(),
+    );
+    expect(echo).toEqual([]);
+  });
+
+  test("быстрые исключения — те три случая, что описаны словами", () => {
+    /*
+     * Подпись на экране обещает три случая: подпись заключений, ключи
+     * подсчёта и дежурство. Список из двух под этой подписью — не мелочь:
+     * дежурство приходилось выдавать в обход, а текст оставался вроде бы
+     * правдивым.
+     */
+    const three: Permission[] = ["alerts.review", "conclusions.sign", "surveys.edit"];
+    expect([...EXCEPTION_PERMISSIONS].sort()).toEqual(three.sort());
   });
 
   test("коды прав не повторяются между группами", () => {

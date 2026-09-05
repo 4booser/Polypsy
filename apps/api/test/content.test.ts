@@ -168,13 +168,32 @@ describe("язык содержимого следует за читателем
      * делает проверку зависимой от порядка файлов, и падать она начинает
      * не там, где сломано.
      */
-    const { alertCases } = await import("../src/db/schema");
+    const { alertCases, surveyAccess } = await import("../src/db/schema");
     await db.insert(alertCases).values({
       id: crypto.randomUUID(),
       userId: patient.id,
       surveyId: surveyInA,
       severity: "severe",
     });
+
+    /*
+     * Просроченный повтор наблюдения — строка очереди, чьё название приходит
+     * из методики, а значит двуязычно.
+     *
+     * Раньше проверялся случай риска, но случай ушёл на свой экран. Из того,
+     * что осталось в очереди, перевод несут только повторы: у неявки и
+     * непрочитанного название задано прямо в коде, а у набора методик
+     * заголовок вообще одноязычный (см. batteries.title) — на нём проверять
+     * язык нечего.
+     */
+    const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: patient.id,
+      grantedBy: adminA.id,
+      expiresAt: past,
+      note: "Протокол наблюдения · проверка языка",
+    } as never);
   });
 
   test("очередь работы отдаёт названия на языке запроса", async () => {
@@ -185,7 +204,7 @@ describe("язык содержимого следует за читателем
 
     const titles = (r: typeof uk) =>
       (r.body.items as { kind: string; title: string }[])
-        .filter((i) => i.kind === "case" || i.kind === "alert")
+        .filter((i) => i.kind === "followup")
         .map((i) => i.title);
 
     const inUk = titles(uk);

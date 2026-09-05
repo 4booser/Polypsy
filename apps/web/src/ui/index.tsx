@@ -53,6 +53,34 @@ export const IconRoute = icon(<><circle cx="6" cy="19" r="2.5" /><circle cx="18"
 export const IconReferral = icon(<><path d="M4 12h11" /><path d="M12 6l6 6-6 6" /><path d="M20 4v16" /></>);
 /* уголок раскрытия группы в рельсе: повёрнут вниз, когда группа открыта */
 export const IconChevron = icon(<path d="M9 6l6 6-6 6" />);
+/*
+ * Значки действий и состояний.
+ *
+ * Заводятся здесь, а не в отдельном наборе и не картинками: обводка у всех
+ * одна (24×24, штрих 1.8, скруглённые концы), и покупной растровый набор
+ * выбивался бы из строя на первом же экране, где стоит рядом со своими.
+ * Заодно значок наследует цвет текста и меняется вместе с темой — картинке
+ * пришлось бы держать две версии.
+ */
+export const IconPlus = icon(<><path d="M12 5v14M5 12h14" /></>);
+export const IconEdit = icon(<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>);
+export const IconTrash = icon(<><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /><path d="M10 11v6M14 11v6" /></>);
+export const IconSave = icon(<><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" /><path d="M17 21v-8H7v8M7 3v5h8" /></>);
+export const IconSearchGlass = icon(<><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>);
+export const IconFilter = icon(<><path d="M3 5h18l-7 8v6l-4 2v-8Z" /></>);
+export const IconDownload = icon(<><path d="M12 3v12M7 11l5 5 5-5" /><path d="M4 20h16" /></>);
+export const IconPrint = icon(<><path d="M7 8V3h10v5" /><rect x="4" y="8" width="16" height="8" rx="2" /><path d="M7 14h10v7H7z" /></>);
+export const IconLink = icon(<><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1" /><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1" /></>);
+export const IconWarn = icon(<><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16h.01" /></>);
+export const IconInfo = icon(<><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>);
+export const IconOk = icon(<><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></>);
+export const IconLock = icon(<><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>);
+export const IconEye = icon(<><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></>);
+export const IconArchive = icon(<><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9" /><path d="M10 13h4" /></>);
+export const IconNote = icon(<><path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" /><path d="M14 3v5h5M8 13h8M8 17h5" /></>);
+export const IconChart = icon(<><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>);
+export const IconMessage = icon(<><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z" /></>);
+
 export const IconCompare = icon(<><path d="M3 20V10M9 20V4M15 20v-7M21 20V8" /></>);
 
 /* ─────────── состояния ─────────── */

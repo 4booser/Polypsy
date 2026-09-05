@@ -1,6 +1,6 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import type { Permission, User } from "@quizzy/shared";
-import { ALL_PERMISSIONS, PSYCHOLOGIST_PERMISSIONS } from "@quizzy/shared";
+import { ALL_PERMISSIONS, PSYCHOLOGIST_PERMISSIONS, SUPERADMIN_RANK, roleRank } from "@quizzy/shared";
 import { db } from "../db";
 import { permissionExceptions, rolePermissions, roles, staffRoles, users } from "../db/schema";
 
@@ -65,6 +65,29 @@ export async function permissionsOf(user: User): Promise<Set<Permission>> {
 
 export async function hasPermission(user: User, permission: Permission): Promise<boolean> {
   return (await permissionsOf(user)).has(permission);
+}
+
+/**
+ * На какой ступени лестницы должностей стоит человек.
+ *
+ * Берётся максимум по его ролям, а не первая попавшаяся: у заведующего,
+ * которому оставили и роль специалиста, ступень определяется старшей — иначе
+ * назначать он смог бы меньше, чем вчера, и причина была бы невидимой.
+ *
+ * Ступень считается по кодам ролей, а не по набору прав. Права редактируются
+ * на этом же экране, и вывод старшинства из них означал бы, что снятая
+ * галочка молча понижает человека в должности.
+ */
+export async function ladderRankOf(user: User): Promise<number> {
+  if (user.role === "superadmin") return SUPERADMIN_RANK;
+
+  const mine = await db
+    .select({ code: roles.code })
+    .from(staffRoles)
+    .innerJoin(roles, eq(roles.id, staffRoles.roleId))
+    .where(eq(staffRoles.userId, user.id));
+
+  return mine.reduce((top, r) => Math.max(top, roleRank(r.code)), 0);
 }
 
 /**

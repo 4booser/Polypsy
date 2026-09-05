@@ -792,14 +792,24 @@ describe("передача смены и просроченные повторы
 });
 
 describe("очередь работы", () => {
-  test("собирает случаи, направления и просроченные назначения в один список", async () => {
+  test("собирает направления и просроченные назначения, но не случаи риска", async () => {
     const res = await api("/api/worklist", adminA.token);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.items)).toBe(true);
     expect(typeof res.body.total).toBe("number");
-    expect(res.body.byKind).toHaveProperty("case");
+    expect(res.body.byKind).toHaveProperty("followup");
     expect(res.body.byKind).toHaveProperty("referral");
     expect(res.body.byKind).toHaveProperty("assignment");
+
+    /*
+     * Случай риска в очередь не попадает — ни счётчиком, ни строкой.
+     *
+     * Он живёт на своём экране, где его берут и разбирают поимённо. Пока он
+     * стоял здесь же, оба экрана показывали одно и то же разными словами, и
+     * разобранный на одном оставался висеть на другом.
+     */
+    expect(res.body.byKind).not.toHaveProperty("case");
+    expect((res.body.items as { kind: string }[]).some((i) => i.kind === "case")).toBe(false);
   });
 
   test("просроченное идёт первым — порядок один на все виды работы", async () => {

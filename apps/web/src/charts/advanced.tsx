@@ -1,7 +1,8 @@
 import { SERIES, severityColor } from "../format";
 import type { Severity } from "@quizzy/shared";
 import { NoData } from "../ui/primitives";
-import { useChartWidth } from "./index";
+import { AxisBreak, AxisNote, useChartWidth } from "./index";
+import { axisFor } from "./scale";
 import { useLang } from "../lang";
 
 /** Продвинутые формы: профиль, разброс, рассеяние, тепловая карта, воронка, знаковые столбики */
@@ -92,31 +93,34 @@ export interface Box {
   max: number;
 }
 
-export function boxOf(label: string, values: number[]): Box | null {
-  if (!values.length) return null;
-  const s = [...values].sort((a, b) => a - b);
-  const at = (p: number) => {
-    const i = (s.length - 1) * p;
-    const lo = Math.floor(i);
-    const hi = Math.ceil(i);
-    return s[lo]! + (s[hi]! - s[lo]!) * (i - lo);
-  };
-  return { label, min: s[0]!, q1: at(0.25), median: at(0.5), q3: at(0.75), max: s.at(-1)! };
-}
-
 export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: Box[]; categorical?: boolean; height?: number }) {
   const { ut } = useLang();
   const [W, box] = useChartWidth();
   if (!boxes.length) return <NoData />;
-  const top = Math.max(...boxes.map((b) => b.max), 1);
+
+  /*
+   * Ось — по нарисованному, а не по теоретическому максимуму шкалы. Ящики
+   * субшкал раньше жались к низу поля, потому что верх держал максимум
+   * опросника, до которого никто не доходит.
+   *
+   * `atom` — типичная высота коробки: сдвиг медианы меньше межквартильного
+   * размаха не тянет на разницу между шкалами, и разворачивать поле под него
+   * не за чем.
+   */
+  const widths = boxes.map((b) => b.q3 - b.q1).sort((a, b) => a - b);
+  const axis = axisFor({
+    lo: Math.min(...boxes.map((b) => b.min)),
+    hi: Math.max(...boxes.map((b) => b.max)),
+    atom: widths[Math.floor(widths.length / 2)] ?? 0,
+  });
   const ph = height - 46;
-  const yAt = (v: number) => 14 + ph - (v / top) * ph;
+  const yAt = (v: number) => 14 + ph - ((v - axis.min) / Math.max(axis.max - axis.min, 1)) * ph;
   const slot = (W - 60) / boxes.length;
 
   return (
     <div className="scroll-x" ref={box}>
       <svg viewBox={`0 0 ${W} ${height}`} width="100%" height={height}>
-        {[0, top / 2, top].map((t) => (
+        {axis.ticks.map((t) => (
           <g key={t}>
             <line x1={50} x2={W - 10} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
             <text x={44} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end">
@@ -152,8 +156,14 @@ export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: B
             </g>
           );
         })}
+        {axis.zoomed ? <AxisBreak x={50} y={14 + ph} /> : null}
       </svg>
       <p className="hint">{ut("chart.boxHint")}</p>
+      <AxisNote
+        axis={axis}
+        lo={Math.min(...boxes.map((b) => b.min))}
+        hi={Math.max(...boxes.map((b) => b.max))}
+      />
     </div>
   );
 }

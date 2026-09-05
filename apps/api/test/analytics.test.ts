@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { percentileOf } from "../src/lib/norms";
-import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sql, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Аналитика: нормы, DIF, калибровка, витрина, отчёты */
 
@@ -432,5 +432,71 @@ describe("однородность величин", () => {
 
     expect(percentileOf(rawOfWorstPatient, stens), "сырой балл против стенов").toBe(100);
     expect(percentileOf(stenOfWorstPatient, stens), "стен против стенов").toBe(0);
+  });
+});
+
+/* ── степени выраженности по неделям ── */
+
+describe("ряд выраженности по неделям", () => {
+  /*
+   * Ряд отвечает на вопрос, на который не отвечает кольцо сводки: не
+   * «сколько тяжёлых всего», а «становится ли их больше». Проверяется здесь
+   * ровно то, из-за чего ответ может оказаться неверным, — способ счёта, а не
+   * форма ответа.
+   */
+
+  test("прохождение считается один раз, а не по разу на каждую свою шкалу", async () => {
+    await submitSurvey(surveyInA, patient.token);
+    const res = await api("/api/analytics/severity-trend", root.token);
+    expect(res.status).toBe(200);
+
+    const weeks = res.body.weeks as { none: number; mild: number; moderate: number; severe: number }[];
+    const counted =
+      weeks.reduce((s, w) => s + w.none + w.mild + w.moderate + w.severe, 0) + (res.body.unbanded as number);
+
+    /*
+     * Столько же, сколько завершённых прохождений за период, — и меньше, чем
+     * строк баллов с интерпретацией. Вторая половина и есть суть проверки: у
+     * СР-45 две шкалы, у мини-мульта одиннадцать, и счёт по шкалам вместо
+     * прохождений дал бы методике с одиннадцатью субшкалами вес одиннадцати
+     * коротких скринингов.
+     */
+    const [totals] = [
+      ...(await db.execute<{ responses: number; scored: number } & Record<string, unknown>>(sql`
+        select
+          count(distinct r.id)::int as responses,
+          count(rs.id) filter (where rs.severity is not null and sc.kind = 'clinical')::int as scored
+        from responses r
+        left join response_scores rs on rs.response_id = r.id
+        left join scales sc on sc.id = rs.scale_id
+        where r.status = 'completed'
+          and r.submitted_at is not null
+          and r.submitted_at >= date_trunc('week', now()) - interval '25 weeks'
+      `)),
+    ];
+
+    expect(counted).toBe(Number(totals!.responses));
+    expect(Number(totals!.scored)).toBeGreaterThan(counted);
+  });
+
+  test("недели идут подряд, без пропусков посередине", async () => {
+    /*
+     * Пропущенная неделя в области рисуется прямой от соседа к соседу, то
+     * есть показывает поток обследований там, где его не было. Ноль должен
+     * приходить нулём, а не отсутствием точки.
+     */
+    const res = await api("/api/analytics/severity-trend", adminA.token);
+    const weeks = res.body.weeks as { week: string }[];
+    for (let i = 1; i < weeks.length; i++) {
+      const previous = new Date(`${weeks[i - 1]!.week}T00:00:00Z`).getTime();
+      const current = new Date(`${weeks[i]!.week}T00:00:00Z`).getTime();
+      expect(current - previous).toBe(7 * 86_400_000);
+    }
+  });
+
+  test("пациент к ряду не допущен", async () => {
+    // счётчики обезличены, но это всё равно сводка по чужим обследованиям
+    const res = await api("/api/analytics/severity-trend", patient.token);
+    expect(res.status).toBe(403);
   });
 });

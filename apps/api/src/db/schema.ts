@@ -180,8 +180,23 @@ export const surveyGroups = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    /**
+     * Группа снята с использования.
+     *
+     * Не удаление и не запрет: администраторы группы продолжают видеть её
+     * методики, аналитика продолжает считаться, история остаётся целой.
+     * Снятая группа лишь не предлагается при выборе группы для новой
+     * методики или батареи — ровно как снятая методика не предлагается к
+     * выдаче. Иначе расформированное отделение можно было бы убрать из
+     * списка только удалением, а удаление требует пустой группы, каковой
+     * отделение с годами прохождений не бывает.
+     */
+    archivedAt: timestampCol("archived_at"),
   },
-  (t) => ({ positionIdx: index("groups_position_idx").on(t.position) }),
+  (t) => ({
+    positionIdx: index("groups_position_idx").on(t.position),
+    archivedIdx: index("groups_archived_idx").on(t.archivedAt),
+  }),
 );
 
 /**
