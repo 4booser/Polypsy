@@ -43,8 +43,24 @@ describe("страницы списка обследованных", () => {
     const seen: string[] = [];
     let cursor: string | null = null;
 
-    for (let page = 0; page < 40; page++) {
-      const url: string = `/api/dynamics/respondents?limit=3${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+    /*
+     * Список обходится ДО КОНЦА, а не заданное число страниц.
+     *
+     * Стоял потолок в сорок страниц по три — сто двадцать человек. Локально
+     * их столько и не набиралось, а в общей базе, где следы оставляют все
+     * остальные файлы, обход обрывался на середине, и семеро с общим
+     * временем замера просто не успевали показаться. Проверка краснела на
+     * последнем условии — «человек не попал ни на одну страницу», — и
+     * называла виновником постраничность, которая была цела.
+     *
+     * Потолок остаётся, но как защита от бесконечного цикла, а не как
+     * длина списка: упёршись в него, проверка говорит именно это.
+     */
+    let pages = 0;
+    const LIMIT = 3;
+    const MAX_PAGES = 2000;
+    do {
+      const url: string = `/api/dynamics/respondents?limit=${LIMIT}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
       const res = await api<{ items: { userId: string }[]; nextCursor: string | null; total?: number }>(
         url,
         adminA.token,
@@ -52,8 +68,10 @@ describe("страницы списка обследованных", () => {
       expect(res.status).toBe(200);
       for (const item of res.body.items) seen.push(item.userId);
       cursor = res.body.nextCursor;
-      if (!cursor) break;
-    }
+      pages += 1;
+    } while (cursor && pages < MAX_PAGES);
+
+    expect(cursor, `список не кончился за ${MAX_PAGES} страниц — курсор не двигается`).toBeNull();
 
     const unique = new Set(seen);
     expect(unique.size, "один и тот же человек показан на двух страницах").toBe(seen.length);

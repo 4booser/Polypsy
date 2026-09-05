@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { t, type WorkKind } from "@quizzy/shared";
 import { db } from "../db";
 import {
@@ -15,6 +15,7 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { FOLLOWUP_NOTE } from "../lib/followup";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
 import { langOf } from "../lib/http";
@@ -376,7 +377,20 @@ worklistRoutes.get("/", async (c) => {
       and(
         isNull(batteryAssignments.completedAt),
         isNull(batteryAssignments.cancelledAt),
-        ne(batteryAssignments.dueAt, sql`null`),
+        /*
+         * isNotNull, а не сравнение с null.
+         *
+         * Здесь стояло `due_at <> null`, а в SQL сравнение с null не даёт
+         * истины никогда — ни для заполненного срока, ни для пустого. Всё
+         * условие целиком не выполнялось ни разу, и вид работы «просроченное
+         * назначение» не мог попасть в очередь вообще: вкладка стояла с нулём
+         * при любом числе просроченных назначений в базе.
+         *
+         * Заметить это по экрану было нельзя — ноль выглядит как «ничего не
+         * просрочено», а не как «не ищем». Нашлось при наполнении: назначений
+         * завелось двадцать шесть, в очереди осталось ноль.
+         */
+        isNotNull(batteryAssignments.dueAt),
         lt(batteryAssignments.dueAt, new Date().toISOString()),
       ),
     )
@@ -427,7 +441,7 @@ worklistRoutes.get("/", async (c) => {
       and(
         isNotNull(surveyAccess.expiresAt),
         lt(surveyAccess.expiresAt, new Date().toISOString()),
-        sql`${surveyAccess.note} like ${"Протокол наблюдения%"}`,
+        sql`${surveyAccess.note} like ${`${FOLLOWUP_NOTE}%`}`,
         // повтора так и не было: последнее прохождение раньше выдачи доступа
         sql`not exists (
           select 1 from responses r

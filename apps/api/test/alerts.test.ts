@@ -812,6 +812,46 @@ describe("очередь работы", () => {
     expect((res.body.items as { kind: string }[]).some((i) => i.kind === "case")).toBe(false);
   });
 
+  test("просроченное назначение набора доходит до очереди", async () => {
+    /*
+     * Отдельная проверка на один вид работы, потому что сломан он был
+     * молча и целиком: условие отбора сравнивало срок с null, а в SQL
+     * такое сравнение не даёт истины никогда. Ни одно просроченное
+     * назначение не попадало в очередь — при любом их числе в базе.
+     *
+     * На экране это выглядело как «ничего не просрочено», а не как
+     * «не ищем», и общая проверка состава очереди этого не видела: она
+     * спрашивала, есть ли у byKind такое поле, а поле было — с нулём.
+     * Поэтому здесь заводится настоящее просроченное назначение и
+     * спрашивается, видно ли ЕГО.
+     */
+    const { batteries, batteryAssignments, surveyAccess } = await import("../src/db/schema");
+    const person = await makeUser("user", `bat-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({ surveyId: surveyInA, userId: person.id, grantedBy: adminA.id });
+
+    const batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      title: "Просроченный набор",
+      groupId: groupA,
+      createdBy: adminA.id,
+    } as never);
+    await db.insert(batteryAssignments).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      userId: person.id,
+      assignedBy: adminA.id,
+      dueAt: new Date(Date.now() - 5 * 86_400_000).toISOString(),
+    } as never);
+
+    const res = await api("/api/worklist", adminA.token);
+    const mine = (res.body.items as { kind: string; userId: string }[]).filter(
+      (i) => i.kind === "assignment" && i.userId === person.id,
+    );
+    expect(mine.length, "просроченное назначение не дошло до очереди работы").toBe(1);
+    expect(res.body.byKind.assignment).toBeGreaterThan(0);
+  });
+
   test("просроченное идёт первым — порядок один на все виды работы", async () => {
     const res = await api("/api/worklist", adminA.token);
     const items = res.body.items as { overdue: boolean }[];
