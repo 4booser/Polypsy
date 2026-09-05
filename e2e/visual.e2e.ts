@@ -265,13 +265,26 @@ async function withRecordedApi(
   };
 }
 
-const SCREENS: Array<{ name: string; open: (page: import("@playwright/test").Page) => Promise<void> }> = [
+const SCREENS: Array<{
+  name: string;
+  open: (page: import("@playwright/test").Page) => Promise<void>;
+  /** Заголовок экрана — сегодняшняя дата, и в снимке его надо закрыть */
+  maskTitle?: true;
+}> = [
   {
     name: "today",
     open: async (page) => {
       await page.goto("/today");
       await page.getByRole("link", { name: "Сегодня" }).waitFor();
     },
+    /*
+     * Заголовком этого экрана стоит сегодняшняя дата — и это сознательно:
+     * название экрана ничего не сообщает тому, кто уже здесь, а дата
+     * отвечает на вопрос, который тут задают. Расплата — снимок, который
+     * менялся бы каждое утро; закрываем заголовок маской по тем же
+     * основаниям, что и поля даты.
+     */
+    maskTitle: true,
   },
   {
     name: "schedule",
@@ -380,7 +393,10 @@ for (const screen of SCREENS) {
      */
     await expect(page.locator("main.main")).toHaveScreenshot(`screen-${screen.name}.png`, {
       ...TOLERANCE,
-      mask: [page.locator('input[type="date"]')],
+      mask: [
+        page.locator('input[type="date"]'),
+        ...(screen.maskTitle ? [page.locator("main.main h1")] : []),
+      ],
     });
 
     await save();
