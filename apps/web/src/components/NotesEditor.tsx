@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type NoteVersion } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
@@ -35,16 +35,37 @@ export function NotesEditor({ userId }: { userId: string }) {
   const [text, setText] = useState("");
   const [kind, setKind] = useState<NoteVersion["kind"]>("session");
   const [showHistory, setShowHistory] = useState(false);
+  /*
+   * Тронул ли человек поле с момента загрузки.
+   *
+   * В комментарии рядом было написано «подставляется один раз на загрузку»,
+   * но зависимостью стояло `res.data` — то есть подставлялось на КАЖДОЕ
+   * обновление записей. Обновление же случается само: по событию от другого
+   * сотрудника, после назначения методики, после любого действия на экране
+   * приёма. Специалист печатал протокол, коллега в соседнем кабинете что-то
+   * делал — и набранное молча заменялось сохранённым черновиком.
+   *
+   * Потеря не видна: поле не пустеет, а показывает прежний текст, и
+   * заметить подмену можно только вспомнив, что писал. Признак «тронуто»
+   * закрывает это: пока человек не печатал, поле следует за сервером; как
+   * начал — сервер в него больше не пишет.
+   */
+  const touched = useRef(false);
 
   const res = useResource(() => api.notes(userId), [userId]);
   const state = res.data;
 
-  // черновик подставляется один раз на загрузку: иначе затирался бы набор
   useEffect(() => {
+    if (touched.current) return;
     const current = res.data?.current;
     setText(current?.status === "draft" ? current.text : "");
     if (current?.status === "draft") setKind(current.kind);
   }, [res.data]);
+
+  // смена пациента — это другой протокол: признак сбрасывается вместе с ним
+  useEffect(() => {
+    touched.current = false;
+  }, [userId]);
 
   if (!state) {
     return res.error ? (
@@ -107,7 +128,10 @@ export function NotesEditor({ userId }: { userId: string }) {
       <Textarea
         rows={4}
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          touched.current = true;
+          setText(e.target.value);
+        }}
         placeholder={signed ? ut("note.placeholderNext") : ut("note.placeholder")}
       />
 
@@ -133,6 +157,9 @@ export function NotesEditor({ userId }: { userId: string }) {
               }
               // подписываем ровно ту версию, что вернуло сохранение
               res.patch(await api.signNote(userId, latest.current!.version));
+              // подписано — набранного больше нет, и поле снова следует за
+              // сервером: иначе следующий протокол начинался бы с прежнего
+              touched.current = false;
               setText("");
             }, ut("note.signed"))
           }
