@@ -53,7 +53,6 @@ import { buildOpenApi } from "./lib/openapi";
 import pkg from "../package.json" with { type: "json" };
 import { spssRoutes } from "./routes/spss";
 import { batteryRoutes } from "./routes/batteries";
-import { scheduleRoutes } from "./routes/schedules";
 import { inviteRoutes } from "./routes/invites";
 import { conclusionRoutes } from "./routes/conclusions";
 import { consentRoutes } from "./routes/consents";
@@ -168,7 +167,6 @@ app.get("/api/openapi.json", requireAuth, requireStaff, (c) =>
 );
 app.route("/api/spss", spssRoutes);
 app.route("/api/batteries", batteryRoutes);
-app.route("/api/schedules", scheduleRoutes);
 app.route("/api/invites", inviteRoutes);
 app.route("/api/conclusions", conclusionRoutes);
 app.route("/api/consents", consentRoutes);

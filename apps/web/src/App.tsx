@@ -31,7 +31,6 @@ const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
 const Access = lazy(() => import("./pages/Access"));
 const Permissions = lazy(() => import("./pages/Permissions"));
 const Audit = lazy(() => import("./pages/Audit"));
-const Schedules = lazy(() => import("./pages/Schedules"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -447,7 +446,6 @@ export default function App() {
           <Route path="/ui" element={<UiKit />} />
           <Route path="/batteries" element={<Batteries />} />
           <Route path="/invites" element={<Invites />} />
-          <Route path="/schedules" element={<Schedules />} />
           <Route path="/alerts" element={<Alerts />} />
             <Route path="/worklist" element={<WorklistPage />} />
             <Route path="/my-schedule" element={<SchedulePage />} />

@@ -109,7 +109,6 @@ export function railGroups(counts: RailCounts, isSuper: boolean): Group[] {
       items: [
         { to: "/surveys", key: "nav.surveys", icon: <IconSurvey /> },
         { to: "/batteries", key: "nav.batteries", icon: <IconBattery /> },
-        { to: "/schedules", key: "nav.schedules", icon: <IconClock /> },
       ],
     },
   ];

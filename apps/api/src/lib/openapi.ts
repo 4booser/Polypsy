@@ -19,7 +19,6 @@ import {
   registerSchema,
   rescheduleAppointmentSchema,
   scheduleExceptionSchema,
-  scheduleInputSchema,
   specialistProfileSchema,
   submitResponseSchema,
   updateProfileSchema,
@@ -176,12 +175,6 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/batteries/assignments/:assignmentId/cancel": { summary: "Отмена назначения", access: "staff", permission: "assignments.manage" },
 
   /* ── расписания ── */
-  "GET /api/schedules": { summary: "Расписания повторных замеров", access: "staff", permission: "schedules.manage" },
-  "POST /api/schedules": { summary: "Создание расписания", access: "staff", permission: "schedules.manage", body: scheduleInputSchema },
-  "PUT /api/schedules/:id": { summary: "Правка расписания", access: "staff", permission: "schedules.manage", body: scheduleInputSchema },
-  "DELETE /api/schedules/:id": { summary: "Удаление расписания", access: "staff", permission: "schedules.manage" },
-  "POST /api/schedules/:id/run": { summary: "Ручной прогон расписания", access: "staff", permission: "schedules.manage" },
-  "GET /api/schedules/units": { summary: "Подразделения для охвата расписанием", access: "staff", permission: "schedules.manage" },
 
   /* ── приглашения и киоск ── */
   "GET /api/invites": { summary: "Приглашения", access: "staff", permission: "invites.manage" },

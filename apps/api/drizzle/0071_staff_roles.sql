@@ -39,7 +39,7 @@ select 'role-head', p from unnest(array[
   'patients.read','notes.write','conclusions.write','conclusions.sign','referrals.manage',
   'episodes.manage','safety.manage','schedule.own','appointments.manage','departments.manage',
   'messages.write','alerts.review','surveys.read','surveys.publish','batteries.manage',
-  'schedules.manage','assignments.manage','administer','norms.manage',
+  'assignments.manage','administer','norms.manage',
   'analytics.read','cohorts.read','export.deidentified'
 ]) p
 on conflict do nothing;
@@ -53,7 +53,7 @@ select 'role-chief', p from unnest(array[
   'patients.read','notes.write','conclusions.write','conclusions.sign','referrals.manage',
   'episodes.manage','safety.manage','schedule.own','appointments.manage','departments.manage',
   'messages.write','alerts.review','surveys.read','surveys.publish','surveys.edit',
-  'batteries.manage','schedules.manage','assignments.manage','administer','norms.manage',
+  'batteries.manage','assignments.manage','administer','norms.manage',
   'analytics.read','cohorts.read','export.deidentified','export.full'
 ]) p
 on conflict do nothing;
