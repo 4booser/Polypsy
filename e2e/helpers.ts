@@ -5,6 +5,8 @@ export const ACCOUNTS = {
   superadmin: { email: "root@quizzy.dev", password: "root12345" },
   psy: { email: "psy@quizzy.dev", password: "psy12345" },
   psy2: { email: "psy2@quizzy.dev", password: "psy212345" },
+  /* пациент: у него своя оболочка, и рельсы специалиста он не видит вовсе */
+  patient: { email: "patient1@quizzy.dev", password: "patient12345" },
 };
 
 export async function login(page: Page, who: keyof typeof ACCOUNTS) {
@@ -13,7 +15,12 @@ export async function login(page: Page, who: keyof typeof ACCOUNTS) {
   await page.getByLabel("Email").fill(acc.email);
   await page.getByLabel("Пароль").fill(acc.password);
   await page.getByRole("button", { name: "Войти" }).click();
-  await page.getByRole("navigation").or(page.locator(".sidebar")).first().waitFor();
+  /*
+   * Ждём оболочку, а не рельсу: у пациента её нет. Признак входа — любая
+   * навигация на экране, и у сотрудника это рельса, у пациента — нижняя
+   * полоса вкладок.
+   */
+  await page.getByRole("navigation").first().waitFor();
 }
 
 export async function logout(page: Page) {

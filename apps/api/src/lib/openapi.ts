@@ -93,7 +93,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/auth/register": { summary: "Регистрация обследуемого", access: "public", body: registerSchema },
   "POST /api/auth/login": { summary: "Вход", access: "public", body: loginSchema },
   "POST /api/auth/refresh": { summary: "Обновление пары токенов", access: "public" },
-  "GET /api/auth/google/status": { summary: "Настроен ли вход через Google", access: "public" },
+  "GET /api/auth/google/status": { summary: "Способы входа: Google и открытая регистрация", access: "public" },
   "GET /api/auth/google/start": { summary: "Начало входа через Google", access: "public" },
   "GET /api/auth/google/callback": { summary: "Возврат от Google", access: "public" },
   "POST /api/auth/google/exchange": { summary: "Обмен одноразового кода на пару токенов", access: "public" },

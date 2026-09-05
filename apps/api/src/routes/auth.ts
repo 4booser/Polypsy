@@ -562,7 +562,17 @@ authRoutes.post("/google/exchange", async (c) => {
 });
 
 /** Настроен ли способ — консоль спрашивает, чтобы не рисовать кнопку в никуда */
-authRoutes.get("/google/status", (c) => c.json({ enabled: googleEnabled() }));
+/*
+ * Что этот сервер предлагает на входе.
+ *
+ * Адрес остался прежним ради тех, кто уже его спрашивает, но отвечает он
+ * теперь про способы входа целиком: настроен ли Google и можно ли завести
+ * учётную запись самому. Экран входа обязан знать оба ответа ДО того, как
+ * что-то нарисует: кнопка, ведущая в отказ, хуже отсутствующей.
+ */
+authRoutes.get("/google/status", (c) =>
+  c.json({ enabled: googleEnabled(), openRegistration: env.openRegistration }),
+);
 
 authRoutes.get("/google/start", async (c) => {
   if (!googleEnabled()) notFound("err.googleDisabled");

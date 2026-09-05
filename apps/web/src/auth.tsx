@@ -9,6 +9,8 @@ interface AuthState {
   logout: () => void;
   /** Перечитать профиль — после правки настроек рабочего места */
   refreshUser: () => void;
+  /** Принять готовую пару токенов: регистрация входит без второго запроса */
+  adopt: (res: { token: string; refreshToken: string; user: User }) => void;
 }
 
 const Ctx = createContext<AuthState | null>(null);
@@ -29,16 +31,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  async function login(email: string, password: string) {
-    const res = await api.login(email, password);
-    // консоль предназначена только для сотрудников: пациенту здесь нечего делать,
-    // и пускать его внутрь, чтобы потом показывать пустые экраны, неправильно
-    if (res.user.role === "user") {
-      throw new Error("Консоль доступна только сотрудникам. Пациенты работают в мобильном приложении.");
-    }
+  /*
+   * Принять уже выданную пару токенов.
+   *
+   * Нужно регистрации: сервер отдаёт токены сразу с созданной учётной
+   * записью, и заставлять человека тут же входить заново значило бы
+   * спрашивать пароль, который он ввёл секунду назад.
+   */
+  function adopt(res: { token: string; refreshToken: string; user: User }) {
     tokenStore.set(res.token);
     tokenStore.setRefresh(res.refreshToken);
     setUser(res.user);
+  }
+
+  async function login(email: string, password: string) {
+    /*
+     * Пациента больше не разворачиваем.
+     *
+     * Здесь стоял отказ «консоль доступна только сотрудникам, пациенты
+     * работают в мобильном приложении» — и он был правдой ровно до
+     * появления кабинета пациента в вебе. Приложения нет, а человек, которому
+     * назначили методику, упирался в отказ на входе: система обещала ему
+     * доступ и не давала войти вовсе. Куда его пустить, решает App по классу
+     * учётной записи.
+     */
+    adopt(await api.login(email, password));
   }
 
   function logout() {
@@ -59,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, adopt }}>{children}</Ctx.Provider>
   );
 }
 

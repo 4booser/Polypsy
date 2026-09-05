@@ -46,6 +46,13 @@ const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
 const PatientCard = lazy(() => import("./pages/PatientCard"));
 const Start = lazy(() => import("./pages/Start"));
+/* кабинет пациента: отдельная оболочка, а не консоль с урезанным меню */
+const PatientApp = lazy(() => import("./patient/PatientApp"));
+const PatientHome = lazy(() => import("./patient/Home"));
+const PatientTests = lazy(() => import("./patient/Tests"));
+const PatientBooking = lazy(() => import("./patient/Booking"));
+const PatientProfile = lazy(() => import("./patient/Profile"));
+const Runner = lazy(() => import("./patient/Runner"));
 
 /** Прежний адрес сводки — теперь вкладка «Обзор» карты */
 function RedirectToCard() {
@@ -255,6 +262,31 @@ export default function App() {
 
   if (loading) return <div style={{ padding: 40 }}><Loading rows={3} /></div>;
   if (!user) return <Login />;
+
+  /*
+   * Пациент попадает в свой кабинет, а не в консоль специалиста.
+   *
+   * До этого он видел рельсу с «Пациентами», «Очередью работы» и «Случаями
+   * риска» и получал отказ доступа на каждом пункте: интерфейс обещал то,
+   * чего не даст. Хуже того, он показывал, что такие экраны существуют, — и
+   * человек мог решить, что его карту читает кто угодно.
+   */
+  if (user.role === "user") {
+    return (
+      <Suspense fallback={<Loading rows={4} />}>
+        <Routes>
+          <Route path="/me" element={<PatientApp />}>
+            <Route index element={<PatientHome />} />
+            <Route path="tests" element={<PatientTests />} />
+            <Route path="booking" element={<PatientBooking />} />
+            <Route path="profile" element={<PatientProfile />} />
+          </Route>
+          <Route path="/me/tests/:id" element={<Runner />} />
+          <Route path="*" element={<Navigate to="/me" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
 
   const isSuper = user.role === "superadmin";
 
