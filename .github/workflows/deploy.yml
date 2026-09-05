@@ -146,10 +146,31 @@ jobs:
           host="${{ secrets.SITE_ADDRESS }}"
           dots=$(printf '%s' "$host" | tr -cd . | wc -c | tr -d ' ')
           if [ "$dots" = "1" ]; then ALIASES="www.$host"; fi
+          # Описание состава уезжает на сервер вместе с образами.
+          #
+          # Раньше не уезжало вовсе: на сервере лежала копия, сделанная руками
+          # при первичной настройке, и любая правка docker-compose.yml в
+          # хранилище до продакшена не доходила в принципе. Обнаружилось это
+          # худшим из возможных способов — через выкатку, которая проходила
+          # зелёной и не меняла ничего, дважды подряд.
+          #
+          # Прежний файл сохраняется рядом с отметкой времени: если на сервере
+          # были правки руками, они не исчезают молча, а остаются под именем,
+          # по которому их видно.
+          scp -i ~/.ssh/id_ed25519 docker-compose.yml \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/docker-compose.new.yml"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "VERSION='$VERSION' PREFIX='$PREFIX' ALIASES='$ALIASES' MAIL='${{ secrets.ACME_EMAIL }}' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
+
+          if ! cmp -s /tmp/docker-compose.new.yml docker-compose.yml; then
+            cp docker-compose.yml "docker-compose.yml.$(date +%Y%m%d-%H%M%S).bak"
+            cp /tmp/docker-compose.new.yml docker-compose.yml
+            echo "состав обновлён, прежний сохранён рядом"
+          fi
+          rm -f /tmp/docker-compose.new.yml
+
           # версия и адрес образов живут в .env.docker, а не в переменных
           # оболочки: перезапуск сервера не должен откатывать выкатку
           for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION" "SITE_ALIASES=$ALIASES" "ACME_EMAIL=$MAIL"; do
@@ -190,6 +211,37 @@ jobs:
       # секунд», хотя приложение всё это время отдавало 200 на тот же путь.
       # Проверка, называющая не того виновника, хуже отсутствующей: по ней
       # чинят не то.
+      # Настройка проверяется В КОНТЕЙНЕРЕ, а не в файле на сервере.
+      #
+      # Ровно здесь и была потеряна половина вечера: имя сайта доезжало до
+      # .env.docker и там останавливалось — сначала потому, что compose не
+      # объявлял переменную, потом потому, что сам compose на сервер не
+      # копировался. Обе выкатки прошли зелёными и не изменили ничего, а
+      # искать приходилось с начала цепи, потому что сообщить о разрыве было
+      # некому.
+      #
+      # Сравнение идёт на сервере, наружу выходит только «совпало» или нет:
+      # адрес сайта — секрет, и печатать его в журнал незачем.
+      - name: Настройка доехала до контейнера
+        run: |
+          ALIASES=""
+          host="${{ secrets.SITE_ADDRESS }}"
+          dots=$(printf '%s' "$host" | tr -cd . | wc -c | tr -d ' ')
+          if [ "$dots" = "1" ]; then ALIASES="www.$host"; fi
+          out=$(ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "WANT_A='$host' WANT_L='$ALIASES' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$TARGET"
+          got_a=$(docker compose --env-file .env.docker exec -T web printenv SITE_ADDRESS 2>/dev/null || true)
+          got_l=$(docker compose --env-file .env.docker exec -T web printenv SITE_ALIASES 2>/dev/null || true)
+          [ "$(printf '%s' "$got_a" | tr -d '\r')" = "$WANT_A" ] && echo "адрес: совпал" || echo "адрес: НЕ ДОЕХАЛ"
+          [ "$(printf '%s' "$got_l" | tr -d '\r')" = "$WANT_L" ] && echo "имена: совпали" || echo "имена: НЕ ДОЕХАЛИ"
+          REMOTE
+          )
+          echo "$out"
+          echo "$out" | grep -q "НЕ ДОЕХАЛ" && { echo "настройка не дошла до контейнера — смотрите docker-compose.yml на сервере"; exit 1; }
+          exit 0
+
       - name: Проверка приложения
         run: |
           ok=""
