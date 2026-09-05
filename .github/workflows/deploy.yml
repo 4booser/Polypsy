@@ -137,9 +137,15 @@ jobs:
           # и выбранный предел на одно имя перестаёт держать сайт лежащим до
           # конца недели. Добавляется только к домену второго уровня — у
           # «www.чего-то» вышло бы «www.www».
+          #
+          # Условие завершается `|| true` не для красоты: шаг выполняется
+          # через `bash -e`, и `[ … ] && …` с ложным условием возвращает
+          # ненулевой код — то есть на домене третьего уровня выкатка падала
+          # бы прямо здесь, ничего не выкатив.
           ALIASES=""
           host="${{ secrets.SITE_ADDRESS }}"
-          [ "$(echo "$host" | tr -cd . | wc -c)" = "1" ] && ALIASES="www.$host"
+          dots=$(printf '%s' "$host" | tr -cd . | wc -c | tr -d ' ')
+          if [ "$dots" = "1" ]; then ALIASES="www.$host"; fi
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "VERSION='$VERSION' PREFIX='$PREFIX' ALIASES='$ALIASES' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
