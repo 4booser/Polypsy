@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { CrisisBar, CrisisProvider, CrisisSwitch } from "./components/CrisisBar";
+import { CrisisProvider } from "./components/CrisisBar";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { api } from "./api";
 import { useAuth } from "./auth";
@@ -376,16 +376,12 @@ export default function App() {
 
       <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar
-          right={<CrisisSwitch canSwitch={isSuper} />}
           onSearch={() => setPaletteOpen(true)}
           onToggleRail={() => setRailOpen((v) => !v)}
           railOpen={railOpen}
           theme={theme}
           onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
-          density={density}
-          onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
         />
-        <CrisisBar canSwitch={isSuper} />
         <main className="main">
         {/*
           Пока догружается экран, на его месте стоит скелет — то же, что при
