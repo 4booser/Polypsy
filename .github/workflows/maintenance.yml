@@ -23,6 +23,8 @@ on:
           - demo-purge
           - rls-check
           - audit-verify
+          - logs-web
+          - logs-api
       count:
         description: "Сколько вымышленных людей завести (только для demo-fill)"
         required: false
@@ -56,6 +58,13 @@ jobs:
             demo-purge)      CMD="bun apps/api/src/demoFill.ts purge" ;;
             rls-check)       CMD="bun apps/api/src/rlsReport.ts" ;;
             audit-verify)    CMD="bun apps/api/src/auditReport.ts" ;;
+            # чтение журналов службы — не запуск кода: отдельная ветка, где
+            # выполняется docker compose logs, а не команда внутри контейнера
+            logs-web|logs-api)
+              SVC="${ACTION#logs-}"
+              ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+                "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker logs --tail 120 $SVC"
+              exit 0 ;;
             *) echo "неизвестное действие: $ACTION"; exit 1 ;;
           esac
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
