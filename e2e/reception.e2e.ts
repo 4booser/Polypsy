@@ -140,7 +140,16 @@ test("методика назначается прямо с приёма, не �
   await page.locator('a[href^="/visit/"]').first().click();
   await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
 
-  const area = page.locator("textarea").first();
+  /*
+   * Поле выбирается по подсказке, а не как «первое textarea на странице».
+   *
+   * На экране приёма их несколько — протокол, расшифровка записи, поля
+   * панелей, — и какое окажется первым, зависит от того, что на этом
+   * приёме есть. Проверка падала в CI на данных субботы: заполнялось одно
+   * поле, читалось другое, и сообщение об ошибке про «текст пропал» уводило
+   * в сторону от настоящей причины.
+   */
+  const area = page.getByPlaceholder(/Жалобы/);
   await area.fill("Набранный текст, который не должен пропасть.");
 
   await page.getByRole("button", { name: "Назначить методику" }).click();
@@ -156,6 +165,7 @@ test("методика назначается прямо с приёма, не �
   await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
   await expect(area).toHaveValue(/не должен пропасть/);
 });
+
 
 test("бланк вводится с клавиатуры и строкой целиком", async ({ page }) => {
   /*
