@@ -39,6 +39,28 @@ dynamicsRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.r
  * расшифровка всей выборки ради сортировки была бы самой дорогой частью
  * запроса.
  */
+/**
+ * Курсор списка обследованных: время последнего замера и человек.
+ *
+ * Одного времени мало — оно повторяется, и на границе страницы люди
+ * терялись. Пара кодируется одной строкой, чтобы клиенту не пришлось знать
+ * её устройство: сегодня это два поля, завтра может быть три.
+ */
+function encodeCursor(at: string, userId: string): string {
+  return Buffer.from(`${at}|${userId}`).toString("base64url");
+}
+
+function decodeCursor(raw: string | undefined): { at: string; id: string } | null {
+  if (!raw) return null;
+  try {
+    const [at, id] = Buffer.from(raw, "base64url").toString().split("|");
+    return at && id ? { at, id } : null;
+  } catch {
+    // испорченный курсор — это первая страница, а не пятисотка
+    return null;
+  }
+}
+
 dynamicsRoutes.get("/respondents", async (c) => {
   const scope = await surveyScopeFilter(c.get("user"));
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
@@ -46,7 +68,8 @@ dynamicsRoutes.get("/respondents", async (c) => {
   if (!surveyIds.length) return c.json({ items: [], nextCursor: null, total: 0 });
 
   // ?limit=abc давал NaN, который уезжал в .limit() и ронял запрос пятисоткой
-  const { limit, cursor, search } = parseQuery(c, respondentQuery);
+  const { limit, cursor: rawCursor, search } = parseQuery(c, respondentQuery);
+  const cursor = decodeCursor(rawCursor);
 
   const base = and(
     inArray(responses.surveyId, surveyIds),
@@ -96,9 +119,21 @@ dynamicsRoutes.get("/respondents", async (c) => {
      * более старые — и он выпадал бы на следующей странице снова, уже с
      * меньшим максимумом. Пагинация по группам обязана фильтровать по тому
      * же значению, по которому сортирует.
+     *
+     * В курсоре ДВА поля: время последнего замера и идентификатор человека.
+     * Одного времени мало — оно повторяется. Двое обследованных в одну
+     * минуту (обычное дело: приём идёт потоком, замеры сдают подряд)
+     * попадали на границу страницы, и условие «строго раньше курсора»
+     * выбрасывало обоих: один показывался, второй не попадал НИ НА ОДНУ
+     * страницу. Список молча терял людей, и заметить это можно было только
+     * по несовпадению с общим числом.
      */
-    .having(cursor ? sql`max(${responses.submittedAt}) < ${cursor}` : sql`true`)
-    .orderBy(sql`max(${responses.submittedAt}) desc`)
+    .having(
+      cursor
+        ? sql`(max(${responses.submittedAt}), ${responses.userId}) < (${cursor.at}::timestamptz, ${cursor.id})`
+        : sql`true`,
+    )
+    .orderBy(sql`max(${responses.submittedAt}) desc`, sql`${responses.userId} desc`)
     .limit(search ? 2000 : limit + 1);
 
   const named = rows.map((r) => ({
@@ -126,10 +161,11 @@ dynamicsRoutes.get("/respondents", async (c) => {
     total = row?.n ?? 0;
   }
 
+  const last = items[items.length - 1];
   return c.json({
     items,
-    // курсор — время последнего замера: сортировка идёт по нему же
-    nextCursor: hasMore && items.length ? items[items.length - 1]!.last : null,
+    // курсор — время последнего замера и человек: время повторяется
+    nextCursor: hasMore && last ? encodeCursor(last.last, last.userId) : null,
     total,
   });
 });
