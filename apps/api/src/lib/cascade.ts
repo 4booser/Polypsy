@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { ScoreResult } from "@quizzy/shared";
 import { db } from "../db";
+import { FOLLOWUP_NOTE } from "./followup";
 import {
   batteries,
   batteryAssignments,
@@ -189,7 +190,7 @@ async function scheduleFollowUps(
       userId,
       grantedBy: userId,
       expiresAt: new Date(Date.now() + (maxDay + 14) * 86_400_000).toISOString(),
-      note: `Протокол наблюдения: повтор через ${days.join(", ")} дн.`,
+      note: `${FOLLOWUP_NOTE}: повтор через ${days.join(", ")} дн.`,
     })
     .onConflictDoNothing();
 

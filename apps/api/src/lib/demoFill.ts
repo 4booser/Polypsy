@@ -2,21 +2,32 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   appointments,
+  batteries,
+  batteryAssignments,
+  batteryItems,
   departmentPatients,
   departments,
+  dispensary,
   episodes,
+  messages,
+  referrals,
   responses,
+  roles,
   scheduleTemplates,
   slots,
   specialistProfiles,
+  staffRoles,
   surveyAccess,
+  surveyGroups,
   surveys,
+  threads,
   users,
 } from "../db/schema";
 import { hashPassword } from "./auth";
 import { encryptField, encryptPersonFields } from "./crypto";
 import { normalizePhone, phoneFingerprint } from "./phone";
 import { log } from "./log";
+import { FOLLOWUP_NOTE } from "./followup";
 import { getSurvey } from "./surveys";
 import { persistSubmission } from "./submission";
 import { demoAnswers } from "./demoAnswers";
@@ -53,6 +64,10 @@ export interface FillReport {
   appointments: number;
   episodes: number;
   assignments: number;
+  referrals: number;
+  threads: number;
+  dispensary: number;
+  ladder: number;
 }
 
 /** Сколько недель назад делался замер номер step из steps */
@@ -232,10 +247,221 @@ async function ensureAssignment(
       userId,
       grantedBy: specialistId,
       expiresAt: dueAt.toISOString(),
-      note: "Призначено для спостереження",
+      note: `${FOLLOWUP_NOTE}: повтор через 14 дн.`,
     })
     .onConflictDoNothing();
   return true;
+}
+
+/**
+ * Лестница должностей: главный врач, заведующий, специалист.
+ *
+ * Без неё экран прав показывает одну встроенную роль и никого, кому её можно
+ * выдать: цепочка назначения есть в коде, но посмотреть на неё не на чем.
+ * Заводятся именно люди на ступенях, а не роли — роли уже есть в справочнике.
+ */
+async function ensureLadder(departmentId: string | null): Promise<number> {
+  const ladder = await db.select().from(roles).where(inArray(roles.code, ["chief", "head", "specialist"]));
+  if (!ladder.length) return 0;
+
+  const WHO = [
+    { code: "chief", firstName: "Ярослав", lastName: "Ковальчук", middleName: "Богданович", sex: "male" as const },
+    { code: "head", firstName: "Ірина", lastName: "Мельник", middleName: "Василівна", sex: "female" as const },
+    { code: "specialist", firstName: "Андрій", lastName: "Гриценко", middleName: "Сергійович", sex: "male" as const },
+  ];
+
+  let made = 0;
+  for (const who of WHO) {
+    const role = ladder.find((r) => r.code === who.code);
+    if (!role) continue;
+
+    const email = `demo-${who.code}@${DEMO_DOMAIN}`;
+    const [existing] = await db.select().from(users).where(eq(users.email, email));
+    const id = existing?.id ?? crypto.randomUUID();
+    if (!existing) {
+      await db.insert(users).values({
+        id,
+        email,
+        ...encryptPersonFields({ firstName: who.firstName, lastName: who.lastName, middleName: who.middleName }),
+        passwordHash: await hashPassword(DEMO_PASSWORD),
+        role: "admin",
+        sex: who.sex,
+      } as never);
+      made += 1;
+    }
+
+    await db.insert(staffRoles).values({ userId: id, roleId: role.id }).onConflictDoNothing();
+    if (departmentId) {
+      await db
+        .insert(specialistProfiles)
+        .values({ userId: id, departmentId, room: who.code === "chief" ? "101" : who.code === "head" ? "205" : "214" })
+        .onConflictDoNothing();
+    }
+  }
+  return made;
+}
+
+/**
+ * Направления, часть — без движения дольше недели.
+ *
+ * Направление живёт своим экраном и своей строкой в очереди работы, и обе
+ * пустовали: наполнение о направлениях не знало вовсе. Просроченность здесь
+ * не украшение — это единственный вид работы, где срок считается не по
+ * назначенной дате, а по молчанию принимающей стороны.
+ */
+async function ensureReferrals(patientIds: string[], specialistId: string): Promise<number> {
+  const WHERE_TO = ["psychiatrist", "inpatient", "outpatient", "commander"] as const;
+  let made = 0;
+
+  for (const [i, patientId] of patientIds.entries()) {
+    const [has] = await db.select().from(referrals).where(eq(referrals.userId, patientId)).limit(1);
+    if (has) continue;
+
+    // каждое третье — старое: без них строка «столько-то дней без движения» пуста
+    const daysAgo = i % 3 === 0 ? 9 + (i % 5) : 1 + (i % 4);
+    await db.insert(referrals).values({
+      id: crypto.randomUUID(),
+      userId: patientId,
+      destination: WHERE_TO[i % WHERE_TO.length]!,
+      urgency: i % 7 === 0 ? "urgent" : "routine",
+      status: i % 2 === 0 ? "created" : "accepted",
+      reason: "Потрібна консультація за результатами скринінгу",
+      createdBy: specialistId,
+      createdAt: new Date(Date.now() - daysAgo * 86_400_000).toISOString(),
+    } as never);
+    made += 1;
+  }
+  return made;
+}
+
+/**
+ * Переписка с непрочитанными письмами от пациентов.
+ *
+ * Непрочитанное — вид работы, и в очереди он стоит выше рутины: человек
+ * написал и знает, что письмо дошло. Пустая переписка означала, что вид
+ * работы существует только в коде.
+ */
+async function ensureThreads(patientIds: string[], specialistId: string): Promise<number> {
+  const SAID = [
+    "Доброго дня. Останній тиждень майже не сплю, прокидаюсь о третій і більше не засинаю.",
+    "Чи можна перенести прийом? На роботі поставили в зміну.",
+    "Ліки допомагають, але з'явилась сонливість вдень. Це нормально?",
+  ];
+
+  let made = 0;
+  for (const [i, patientId] of patientIds.entries()) {
+    const [has] = await db.select().from(threads).where(eq(threads.patientId, patientId)).limit(1);
+    if (has) continue;
+
+    const threadId = crypto.randomUUID();
+    const sentAt = new Date(Date.now() - (1 + (i % 3)) * 86_400_000).toISOString();
+    await db.insert(threads).values({ id: threadId, patientId, specialistId, lastMessageAt: sentAt } as never);
+    await db.insert(messages).values({
+      id: crypto.randomUUID(),
+      threadId,
+      authorId: patientId,
+      textEnc: encryptField(SAID[i % SAID.length]!),
+      sentAt,
+      /* readAt намеренно пуст: прочитанное письмо в очередь работы не идёт */
+    } as never);
+    made += 1;
+  }
+  return made;
+}
+
+/**
+ * Диспансерный учёт с просроченными осмотрами.
+ *
+ * Просрочка на учёте — то, что сейчас держат в бумажном журнале и теряют.
+ * Ради неё раздел и написан, а посмотреть на него было не на чем.
+ */
+async function ensureDispensary(patientIds: string[], specialistId: string): Promise<number> {
+  const GROUPS = ["Група Д-II", "Група Д-III"];
+  let made = 0;
+
+  for (const [i, patientId] of patientIds.entries()) {
+    const [has] = await db.select().from(dispensary).where(eq(dispensary.patientId, patientId)).limit(1);
+    if (has) continue;
+
+    const months = i % 2 === 0 ? 3 : 6;
+    // половина просрочена: срок в прошлом, а осмотра не было
+    const overdue = i % 2 === 0;
+    const nextDueAt = new Date(Date.now() + (overdue ? -1 : 1) * (5 + (i % 20)) * 86_400_000);
+    await db.insert(dispensary).values({
+      patientId,
+      groupLabel: GROUPS[i % GROUPS.length]!,
+      intervalMonths: months,
+      lastSeenAt: new Date(nextDueAt.getTime() - months * 30 * 86_400_000).toISOString(),
+      nextDueAt: nextDueAt.toISOString(),
+      addedBy: specialistId,
+    } as never);
+    made += 1;
+  }
+  return made;
+}
+
+/**
+ * Набор методик и назначения по нему, часть просрочена.
+ *
+ * Шестой и последний вид работы. Набор — это то, что специалист выдаёт
+ * человеку целиком: «пройдите вот это, вот это и вот это к пятнице». Ни
+ * одного набора в наполнении не было, и вкладка «Просроченные назначения»
+ * стояла с нулём при том, что комментарий рядом обещал обратное.
+ */
+async function ensureBatteryWork(
+  patientIds: string[],
+  specialistId: string,
+  catalog: { id: string; key: string | null }[],
+): Promise<number> {
+  const title = "Первинний скринінг";
+  const [existing] = await db.select().from(batteries).where(eq(batteries.title, title)).limit(1);
+  const batteryId = existing?.id ?? crypto.randomUUID();
+
+  if (!existing) {
+    const [group] = await db.select({ id: surveyGroups.id }).from(surveyGroups).limit(1);
+    await db.insert(batteries).values({
+      id: batteryId,
+      title,
+      description: "Тривога, настрій, самопочуття — три методики одним призначенням",
+      groupId: group?.id ?? null,
+      createdBy: specialistId,
+    } as never);
+
+    /* порядок обязателен: методики влияют друг на друга через утомление */
+    const wanted = ["gad7", "phq9", "who5"];
+    let position = 0;
+    for (const key of wanted) {
+      const found = catalog.find((c) => c.key === key);
+      if (!found) continue;
+      await db
+        .insert(batteryItems)
+        .values({ batteryId, surveyId: found.id, position: position++ })
+        .onConflictDoNothing();
+    }
+  }
+
+  let made = 0;
+  for (const [i, userId] of patientIds.entries()) {
+    const [has] = await db
+      .select()
+      .from(batteryAssignments)
+      .where(and(eq(batteryAssignments.userId, userId), eq(batteryAssignments.batteryId, batteryId)))
+      .limit(1);
+    if (has) continue;
+
+    // половина просрочена: только просроченные попадают в очередь работы
+    const overdue = i % 2 === 0;
+    const dueAt = new Date(Date.now() + (overdue ? -1 : 1) * (2 + (i % 9)) * 86_400_000);
+    await db.insert(batteryAssignments).values({
+      id: crypto.randomUUID(),
+      batteryId,
+      userId,
+      assignedBy: specialistId,
+      dueAt: dueAt.toISOString(),
+    } as never);
+    made += 1;
+  }
+  return made;
 }
 
 export async function fillDemoData(count: number): Promise<FillReport> {
@@ -270,12 +496,20 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     appointments: 0,
     episodes: 0,
     assignments: 0,
+    referrals: 0,
+    threads: 0,
+    dispensary: 0,
+    ladder: 0,
   };
+
+  /* кого завели за прогон — им и раздаются направления, переписка и учёт */
+  const touched: string[] = [];
 
   for (const p of people) {
     const { id: userId, created } = await ensurePerson(p);
     if (created) report.created += 1;
     else report.existing += 1;
+    touched.push(userId);
 
     /*
      * Клиническая часть делается ВСЕМ, а не только заведённым сейчас.
@@ -381,6 +615,22 @@ export async function fillDemoData(count: number): Promise<FillReport> {
   // приёмы раздаются в конце: свободные слоты надо делить между всеми
   if (department && specialist) {
     report.appointments = await bookDemoAppointments(specialist.id);
+  }
+
+  /*
+   * Остальные виды работы раздаются немногим, а не всем.
+   *
+   * Очередь работы, где у каждого из ста двадцати человек направление,
+   * письмо и просроченный учёт, — это не наполненная система, а стена: по
+   * ней нельзя понять ни порядок, ни веса видов. В настоящем отделении
+   * направлений единицы, писем — единицы, на учёте — десятки.
+   */
+  report.ladder = await ensureLadder(department?.id ?? null);
+  if (specialist) {
+    report.referrals = await ensureReferrals(touched.slice(0, 9), specialist.id);
+    report.threads = await ensureThreads(touched.slice(9, 14), specialist.id);
+    report.dispensary = await ensureDispensary(touched.slice(14, 32), specialist.id);
+    report.assignments += await ensureBatteryWork(touched.slice(32, 44), specialist.id, catalog);
   }
 
   log.info("demo.filled", { ...report });
