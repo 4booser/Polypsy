@@ -505,6 +505,13 @@
       "when": 1788472740043,
       "tag": "0071_staff_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1788472741043,
+      "tag": "0072_drop_schedules_perm",
+      "breakpoints": true
     }
   ]
 }
