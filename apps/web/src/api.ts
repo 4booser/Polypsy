@@ -468,6 +468,19 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
   me: () => request<User>("/api/auth/me"),
+  register: (body: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+  }) =>
+    request<{ token: string; refreshToken: string; user: User }>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ ...body, anonymous: false }),
+    }),
+  updateMe: (body: { firstName?: string; lastName?: string; middleName?: string | null }) =>
+    request<{ user: User }>("/api/auth/me", { method: "PATCH", body: JSON.stringify(body) }),
   googleUnlink: (password: string) =>
     request<{ ok: true }>("/api/auth/google/unlink", {
       method: "POST",
@@ -1429,4 +1442,53 @@ export const api = {
       }[];
     }>(`/api/clinic/specialists${q}`);
   },
+
+  /* ── кабинет пациента ── */
+  submitResponse: (
+    surveyId: string,
+    body: { startedAt: string; durationMs: number; answers: unknown[]; events: unknown[] },
+  ) =>
+    request<{ id: string; safetyPlan: string | null }>(`/api/surveys/${surveyId}/responses`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  freeSlots: (params: { specialistId?: string; departmentId?: string } = {}) => {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+    return request<{
+      items: {
+        id: string;
+        specialistId: string;
+        specialistName: string;
+        room: string | null;
+        startsAt: string;
+        endsAt: string;
+      }[];
+    }>(`/api/clinic/slots?${q}`);
+  },
+  myAppointments: () =>
+    request<{
+      items: {
+        id: string;
+        startsAt: string;
+        endsAt: string;
+        specialistName: string;
+        room: string | null;
+        status: string;
+        mode: string;
+        meetingUrl: string | null;
+      }[];
+    }>("/api/clinic/appointments/mine"),
+  book: (body: { slotId: string; reason?: string | null; mode?: "onsite" | "remote" }) =>
+    request<{ id: string; screeningSurveyId: string | null }>("/api/clinic/appointments", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  confirmAppointment: (id: string) =>
+    request<{ ok: true }>(`/api/clinic/appointments/${id}/confirm`, { method: "POST" }),
+  cancelAppointment: (id: string, reason?: string) =>
+    request<{ ok: true; late: boolean }>(`/api/clinic/appointments/${id}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null }),
+    }),
 };

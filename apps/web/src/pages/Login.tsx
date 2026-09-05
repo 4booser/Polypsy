@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { api } from "../api";
 import { useAuth } from "../auth";
 import { LangSwitch, useLang } from "../lang";
 import { Button, Field, Input } from "../ui/primitives";
@@ -14,18 +15,32 @@ import { Button, Field, Input } from "../ui/primitives";
  */
 export default function Login() {
   const { ut } = useLang();
-  const { login } = useAuth();
+  const { login, adopt } = useAuth();
   /*
    * Спрашиваем сервер, настроен ли вход через Google. Не переменной сборки:
    * образ консоли один на все учреждения, а настроен способ в одном из них.
    */
   const [googleReady, setGoogleReady] = useState(false);
+  /*
+   * Можно ли завести учётную запись самому. Спрашивается у сервера вместе
+   * со способами входа: ссылка «создать аккаунт» там, где регистрация
+   * закрыта, ведёт в отказ — а человек у экрана входа не должен выяснять
+   * опытным путём, что ему доступно.
+   */
+  const [openReg, setOpenReg] = useState(false);
+  const [mode, setMode] = useState<"login" | "register">("login");
   useEffect(() => {
     fetch("/api/auth/google/status")
       .then((r) => r.json())
-      .then((j: { enabled?: boolean }) => setGoogleReady(Boolean(j.enabled)))
+      .then((j: { enabled?: boolean; openRegistration?: boolean }) => {
+        setGoogleReady(Boolean(j.enabled));
+        setOpenReg(Boolean(j.openRegistration));
+      })
       .catch(() => {});
   }, []);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +51,18 @@ export default function Login() {
     setBusy(true);
     setError(null);
     try {
-      await login(email.trim(), password);
+      if (mode === "register") {
+        const created = await api.register({
+          email: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+        });
+        adopt(created);
+      } else {
+        await login(email.trim(), password);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : ut("lg.failed"));
     } finally {
@@ -64,6 +90,26 @@ export default function Login() {
               <p className="m-0 text-caption text-muted">{ut("lg.consoleSub")}</p>
             </div>
           </div>
+
+          {mode === "register" ? (
+            <>
+              <Field label={ut("adm.lastName")} htmlFor="reg-last">
+                <Input id="reg-last" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              </Field>
+              <Field label={ut("adm.firstName")} htmlFor="reg-first">
+                <Input id="reg-first" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              </Field>
+              <Field label={ut("rg.phone")} htmlFor="reg-phone" hint={ut("rg.phoneHint")}>
+                <Input
+                  id="reg-phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  type="tel"
+                  autoComplete="tel"
+                />
+              </Field>
+            </>
+          ) : null}
 
           <Field label="Email" htmlFor="login-email">
             <Input
@@ -98,8 +144,21 @@ export default function Login() {
           ) : null}
 
           <Button type="submit" variant="primary" disabled={busy} className="w-full">
-            {busy ? ut("lg.signingIn") : ut("lg.signIn")}
+            {busy ? ut("lg.signingIn") : mode === "register" ? ut("rg.create") : ut("lg.signIn")}
           </Button>
+
+          {openReg ? (
+            <button
+              type="button"
+              className="text-caption text-muted underline-offset-2 hover:underline"
+              onClick={() => {
+                setMode(mode === "login" ? "register" : "login");
+                setError(null);
+              }}
+            >
+              {mode === "login" ? ut("rg.create") : ut("rg.haveAccount")}
+            </button>
+          ) : null}
 
           {/*
             Кнопка Google появляется, только если способ настроен на сервере.
