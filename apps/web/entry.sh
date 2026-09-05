@@ -26,6 +26,22 @@ export SITE_ALIASES="${SITE_ALIASES:-}"
 # `email` без аргумента Caddy отвергает целиком («wrong argument count»), и
 # конфиг не разбирается вовсе — тот же класс ошибки, что с пустым
 # SITE_ADDRESS выше, и проверять его надо так же, запуском образа.
+# Запасной удостоверяющий центр — только вместе с почтой.
+#
+# Buypass требует контакт при регистрации учётной записи. Без почты он
+# отказывает на самой регистрации, и запасной путь молча перестаёт быть
+# запасным: в логах отказ, в настройке — «второй центр подключён».
+if [ -n "$ACME_EMAIL" ]; then
+  export TLS_BLOCK='tls {
+		issuer acme
+		issuer acme {
+			dir https://api.buypass.com/acme/directory
+		}
+	}'
+else
+  export TLS_BLOCK=""
+fi
+
 CONFIG=/etc/caddy/Caddyfile
 if [ -n "$ACME_EMAIL" ]; then
   CONFIG=/tmp/Caddyfile
