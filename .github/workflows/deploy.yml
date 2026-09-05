@@ -132,13 +132,21 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
           PREFIX: ${{ needs.build.outputs.prefix }}
         run: |
+          # Второе имя того же сайта. Предел выдачи сертификатов Let's Encrypt
+          # считается на ТОЧНЫЙ набор имён: набор из двух — отдельный счётчик,
+          # и выбранный предел на одно имя перестаёт держать сайт лежащим до
+          # конца недели. Добавляется только к домену второго уровня — у
+          # «www.чего-то» вышло бы «www.www».
+          ALIASES=""
+          host="${{ secrets.SITE_ADDRESS }}"
+          [ "$(echo "$host" | tr -cd . | wc -c)" = "1" ] && ALIASES="www.$host"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "VERSION='$VERSION' PREFIX='$PREFIX' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+            "VERSION='$VERSION' PREFIX='$PREFIX' ALIASES='$ALIASES' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
           # версия и адрес образов живут в .env.docker, а не в переменных
           # оболочки: перезапуск сервера не должен откатывать выкатку
-          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION"; do
+          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION" "SITE_ALIASES=$ALIASES"; do
             k="${kv%%=*}"
             grep -q "^$k=" .env.docker               && sed -i "s|^$k=.*|$kv|" .env.docker               || echo "$kv" >> .env.docker
           done
@@ -164,16 +172,46 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker run --rm --no-deps api bun apps/api/src/installCatalog.ts"
 
-      # Проверяем не «контейнер поднялся», а «приложение отвечает». Поднявшийся
+      # Проверяем не «контейнер поднялся», а «приложение отвечает»: поднявшийся
       # контейнер с упавшим внутри процессом выглядит успешной выкаткой.
-      - name: Проверка после выкатки
+      #
+      # Спрашивается приложение ИЗНУТРИ сервера, а не через публичный адрес.
+      #
+      # Через публичный адрес спрашивать нельзя: между проверкой и приложением
+      # стоит TLS, и сломанный сертификат отвечает ровно тем же, чем упавшее
+      # приложение, — молчанием. Так и вышло: сертификат не выдался по пределу
+      # Let's Encrypt, а выкатка сообщила «приложение не ответило за 150
+      # секунд», хотя приложение всё это время отдавало 200 на тот же путь.
+      # Проверка, называющая не того виновника, хуже отсутствующей: по ней
+      # чинят не то.
+      - name: Проверка приложения
         run: |
+          ok=""
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://${{ secrets.SITE_ADDRESS }}/health/ready" || true)
-            [ "$code" = "200" ] && echo "готово" && exit 0
+            code=$(ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+              "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker exec -T api bun -e 'fetch(\"http://localhost:3001/health/ready\").then(r=>console.log(r.status)).catch(()=>console.log(0))'" || true)
+            [ "$code" = "200" ] && ok="да" && break
             sleep 5
           done
-          echo "приложение не ответило за 150 секунд"
+          if [ -z "$ok" ]; then
+            echo "приложение не ответило за 150 секунд"
+            ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+              "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker logs --tail 80 api"
+            exit 1
+          fi
+          echo "приложение отвечает"
+
+      # Отдельным шагом, потому что это отдельная неисправность: приложение
+      # может быть цело, а снаружи недоступно. Шаг не валит выкатку — код уже
+      # на сервере и работает, — но говорит вслух, что снаружи сайта нет, и
+      # приносит логи того, кто за это отвечает.
+      - name: Доступность снаружи
+        run: |
+          for i in $(seq 1 24); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://${{ secrets.SITE_ADDRESS }}/health/ready" || true)
+            [ "$code" = "200" ] && echo "сайт отвечает по https" && exit 0
+            sleep 5
+          done
+          echo "::warning::приложение работает, но снаружи по https не отвечает — смотрите сертификат"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker logs --tail 80 api"
-          exit 1
+            "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker logs --tail 60 web"
