@@ -147,12 +147,12 @@ jobs:
           dots=$(printf '%s' "$host" | tr -cd . | wc -c | tr -d ' ')
           if [ "$dots" = "1" ]; then ALIASES="www.$host"; fi
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "VERSION='$VERSION' PREFIX='$PREFIX' ALIASES='$ALIASES' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+            "VERSION='$VERSION' PREFIX='$PREFIX' ALIASES='$ALIASES' MAIL='${{ secrets.ACME_EMAIL }}' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
           # версия и адрес образов живут в .env.docker, а не в переменных
           # оболочки: перезапуск сервера не должен откатывать выкатку
-          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION" "SITE_ALIASES=$ALIASES"; do
+          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION" "SITE_ALIASES=$ALIASES" "ACME_EMAIL=$MAIL"; do
             k="${kv%%=*}"
             grep -q "^$k=" .env.docker               && sed -i "s|^$k=.*|$kv|" .env.docker               || echo "$kv" >> .env.docker
           done
