@@ -208,7 +208,7 @@ function RailLink({ item, collapsed }: { item: Item; collapsed: boolean }) {
           "group relative flex items-center rounded-sm text-small",
           "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
           "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-          collapsed ? "h-9 w-9 justify-center" : "h-8 gap-2.5 px-2.5",
+          collapsed ? "h-9 w-9 justify-center" : "h-[30px] gap-2.5 px-2",
           isActive
             ? "bg-surface-3 text-text font-medium"
             : "text-muted hover:bg-surface-2 hover:text-text",
@@ -279,7 +279,7 @@ function GroupHeader({
       aria-expanded={open}
       aria-controls={`rail-${group.key}`}
       className={cx(
-        "flex h-9 w-full items-center gap-2.5 rounded-sm px-2.5 text-small",
+        "flex h-8 w-full items-center gap-2.5 rounded-sm px-2 text-small",
         "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
         "outline-none hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
         open ? "font-medium text-text" : "text-muted hover:text-text",
@@ -396,9 +396,20 @@ export function Rail({
           collapsed && "justify-center px-0",
         )}
       >
+        {/*
+          Знак обведён, а не залит.
+          Nocturne держит акцент линией и свечением, а не заливкой: залитый
+          квадрат — единственное пятно чистого акцента на всём экране, и он
+          перетягивал взгляд с того, ради чего рельса существует, — со
+          счётчиков срочного.
+        */}
         <span
           aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-sm bg-primary font-display text-small font-bold text-primary-text"
+          className={cx(
+            "grid size-[26px] shrink-0 place-items-center rounded-[7px]",
+            "border border-primary font-display text-small font-semibold text-primary",
+            "shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_35%,transparent)]",
+          )}
         >
           Q
         </span>
@@ -454,7 +465,20 @@ export function Rail({
           );
         })}
       </nav>
-      {children ? <div className="shrink-0">{children}</div> : null}
+      {children ? (
+        <div className="shrink-0">
+          {/*
+            Черта гаснет к краям, а не обрывается.
+            Подпись системы: сплошная линия во всю ширину делит рельсу на две
+            коробки, гаснущая — просто отделяет подвал от списка.
+          */}
+          <div
+            aria-hidden
+            className="my-2.5 h-px bg-[linear-gradient(to_right,transparent,var(--hairline)_32px,var(--hairline)_calc(100%-32px),transparent)]"
+          />
+          {children}
+        </div>
+      ) : null}
     </aside>
   );
 }

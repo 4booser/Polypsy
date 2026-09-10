@@ -26,8 +26,18 @@ type Variant = "primary" | "ghost" | "quiet" | "danger";
 type Size = "sm" | "md";
 
 const variants: Record<Variant, string> = {
+  /*
+   * Первичное действие обведено, а не залито.
+   *
+   * Залитая кнопка — самое яркое пятно на экране, и на экране приёма их
+   * несколько сразу: «подписать», «пришёл», «закрепить за собой». Заливка
+   * делает главным то, что ближе к курсору, а не то, что важнее; обводка
+   * называет действие первичным, не перекрикивая данные, ради которых
+   * экран открыт. Заодно акцент остаётся редким — тогда он и работает.
+   */
   primary:
-    "bg-primary text-primary-text border-transparent hover:brightness-110 active:brightness-95",
+    "bg-transparent text-primary border-primary font-medium hover:bg-primary-soft " +
+    "active:bg-[color-mix(in_srgb,var(--primary)_22%,transparent)]",
   ghost:
     "bg-transparent text-text border-border hover:bg-surface-3 hover:border-border-strong",
   quiet:

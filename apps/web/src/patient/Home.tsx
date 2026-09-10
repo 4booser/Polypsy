@@ -31,13 +31,15 @@ export default function PatientHome() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <section>
-        <h2 className="mb-2 text-caption uppercase tracking-[var(--tracking-label)] text-faint">
+        <h2 className="mb-2.5 text-micro uppercase tracking-[var(--tracking-label)] text-muted">
           {ut("pt.nextVisit")}
         </h2>
         {next ? (
-          <div className="rounded-sm border border-border bg-surface p-4">
-            <div className="flex items-center gap-2 font-display text-section font-semibold">
-              <IconClock />
+          <div className="rounded-xl bg-surface-2 p-4 shadow-[0_0_0_1px_var(--border)]">
+            <div className="flex items-center gap-2.5 font-display text-section font-medium tracking-tight">
+              <span className="text-primary [&>svg]:size-[19px]">
+                <IconClock />
+              </span>
               {dateTime(next.startsAt)}
             </div>
             <p className="mt-1 text-small text-muted">{next.specialistName}</p>
@@ -50,12 +52,19 @@ export default function PatientHome() {
                   : ""}
             </p>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            {/*
+              Кнопки ростом 44 px, а не «мелкие».
+              Это телефон: 44 — нижняя граница, ниже которой палец
+              промахивается. Подтверждение приёма — то действие, ради
+              которого экран открывают по дороге, и промах здесь стоит
+              несостоявшейся встречи.
+            */}
+            <div className="mt-3.5 flex flex-wrap items-stretch gap-2">
               {next.status === "booked" ? (
                 <Button
-                  size="sm"
                   variant="primary"
                   disabled={busy}
+                  className="min-h-[44px] flex-1"
                   onClick={() => run(() => api.confirmAppointment(next.id).then(visits.reload), ut("pt.confirmed"))}
                 >
                   {ut("pt.confirm")}
@@ -71,9 +80,9 @@ export default function PatientHome() {
                 </a>
               ) : null}
               <Button
-                size="sm"
                 variant="quiet"
                 disabled={busy}
+                className="min-h-[44px] px-4"
                 onClick={() => run(() => api.cancelAppointment(next.id).then(visits.reload), ut("pt.cancelled"))}
               >
                 {ut("pt.cancel")}
@@ -81,7 +90,7 @@ export default function PatientHome() {
             </div>
           </div>
         ) : (
-          <div className="rounded-sm border border-border bg-surface p-4">
+          <div className="rounded-xl bg-surface-2 p-4 shadow-[0_0_0_1px_var(--border)]">
             <p className="m-0 text-muted">{ut("pt.noVisit")}</p>
             <Link className="btn primary mt-3 inline-flex" to="/me/booking">
               {ut("pt.bookNow")}
@@ -91,7 +100,7 @@ export default function PatientHome() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-caption uppercase tracking-[var(--tracking-label)] text-faint">
+        <h2 className="mb-2.5 text-micro uppercase tracking-[var(--tracking-label)] text-muted">
           {ut("pt.available")}
         </h2>
         {todo.length === 0 ? (
@@ -102,10 +111,10 @@ export default function PatientHome() {
               <Link
                 key={s.id}
                 to={`/me/tests/${s.id}`}
-                className="flex items-center justify-between rounded-sm border border-border bg-surface p-3 text-small"
+                className="flex min-h-[56px] items-center justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-2.5 text-small shadow-[0_0_0_1px_var(--border)]"
               >
                 <span className="min-w-0 truncate pr-2">{s.title}</span>
-                <span className="shrink-0 text-primary">{ut("pt.start")}</span>
+                <span className="shrink-0 font-medium text-primary">{ut("pt.start")}</span>
               </Link>
             ))}
           </div>
