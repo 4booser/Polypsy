@@ -58,6 +58,14 @@ export function LangProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(KEY, lang);
     // язык страницы — для экранного диктора и переносов слов
     document.documentElement.lang = lang;
+    /*
+     * Заголовок вкладки тоже следует за языком.
+     *
+     * Он был зашит в index.html по-русски и оставался таким при украинском
+     * интерфейсе. Место видное: вкладка, закладка, история браузера — и
+     * единственное, где язык не переключался вовсе.
+     */
+    document.title = makeUiT(lang)("app.title");
   }, [lang]);
 
   const value = useMemo<LangState>(
@@ -90,7 +98,7 @@ export function LangSwitch() {
     <div
       role="group"
       aria-label="Мова / Язык"
-      className="flex items-center gap-0.5 rounded-sm border border-border bg-surface-2 p-0.5"
+      className="flex items-center overflow-hidden rounded-md border border-hairline"
     >
       {(["uk", "ru"] as const).map((code) => (
         <button
@@ -99,11 +107,17 @@ export function LangSwitch() {
           onClick={() => setLang(code)}
           aria-pressed={lang === code}
           className={
-            "min-h-0 rounded-[4px] px-2 py-1 text-micro font-semibold tracking-[var(--tracking-label)] " +
+            "min-h-0 rounded-md px-2.5 py-1.5 text-micro font-semibold tracking-[var(--tracking-label)] " +
             "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " +
+            /*
+              Выбранный язык отмечен вписанной рамкой акцента, а не заливкой.
+              Заливка внутри и без того обведённой группы даёт коробку в
+              коробке; вписанная рамка занимает те же пиксели, что и граница
+              группы, и читается как «эта доля выбрана».
+            */
             (lang === code
-              ? "bg-surface-3 text-text"
-              : "text-faint hover:text-text")
+              ? "text-primary shadow-[inset_0_0_0_1px_var(--primary)]"
+              : "text-muted hover:text-text")
           }
         >
           {LANG_NAMES[code].short}

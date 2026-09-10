@@ -71,14 +71,23 @@ export function Topbar({
           // а место нужно
           "flex h-8 min-h-0 min-w-[240px] max-w-[420px] flex-1 items-center gap-2 rounded-sm px-2.5",
           "max-[900px]:min-w-0 max-[900px]:flex-none max-[900px]:justify-center max-[900px]:px-2",
-          "border border-border bg-surface text-small text-muted",
+          "bg-surface-2 text-small text-muted",
+          /*
+            Слабое свечение акцента вместо рамки.
+            Поиск здесь — не поле ввода среди прочих, а вход в командную
+            строку: рамка ставила его в один ряд с фильтрами, свечение
+            выделяет, не крича.
+          */
+          "shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_18%,transparent)]",
           "transition-colors duration-[var(--dur-fast)]",
-          "hover:border-border-strong hover:bg-surface-2 hover:text-text",
+          "hover:bg-surface-3 hover:text-text",
           "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
         )}
         onClick={onSearch}
       >
-        <IconSearch />
+        <span className="shrink-0 text-primary [&>svg]:size-[15px]">
+          <IconSearch />
+        </span>
         <span className="flex-1 text-left max-[900px]:hidden">{ut("shell.search")}</span>
         <kbd className="rounded-[4px] border border-border bg-surface-2 px-1.5 py-0.5 font-mono text-micro text-faint max-[900px]:hidden">
           {mac ? "⌘K" : "Ctrl K"}

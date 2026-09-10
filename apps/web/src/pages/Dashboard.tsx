@@ -78,14 +78,21 @@ export default function Dashboard() {
 
             {openCases ? (
               /*
-                Полоса случаев — единственное место сводки, где уместен янтарь:
-                это ровно «требует внимания». Раньше она была красной, но
-                красный в этой системе занят выраженностью, и полоса выглядела
-                так, будто сама по себе означает тяжёлое состояние.
+                Янтарь ушёл из заливки в само число.
+                Полоса была залита янтарём — «требует внимания», — и на
+                светлой теме эта заливка сдвигала землю настолько, что текст
+                на ней переставал проходить по контрасту: приглушённый давал
+                4,35:1, действие 4,08:1 при пороге 4,5. Нашла это проверка
+                доступности, а не глаз.
+
+                Заливка была и лишней: внимание держит число, набранное
+                крупно и янтарём, а не подложка под ним. Поверхность
+                осталась обычной панелью — и вместе с ней вернулся весь
+                запас контраста.
               */
               <Link
                 to="/alerts"
-                className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border border-[color-mix(in_srgb,var(--accent)_40%,transparent)] bg-accent-soft px-5 py-4 no-underline"
+                className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-md bg-surface-2 px-5 py-4 no-underline shadow-[0_0_0_1px_var(--border)]"
               >
                 <span className="font-mono text-stat leading-none tabular-nums text-accent">{openCases}</span>
                 <span className="min-w-0 flex-1">
@@ -201,19 +208,19 @@ export default function Dashboard() {
             </Grid>
 
             {/*
-              Показатели — одной панелью с разделителями, а не четырьмя
-              карточками. Четыре отдельные карточки читались как четыре
-              самостоятельных блока; на деле это один ряд одного порядка, и
-              сравнивают их между собой, а не с очередью работы.
+              Показатели — четыре плитки в ряд.
+              Раньше это была одна панель с разделителями: тогда панель
+              рисовалась рамкой, и четыре карточки подряд давали двойную
+              линию на каждом стыке. Теперь панель — обод в один пиксель,
+              двойных линий не бывает, и разъехавшиеся плитки дают каждому
+              числу воздух вокруг, а не делят общую коробку.
             */}
-            <Panel flush>
-              <div className="grid grid-cols-2 divide-x divide-y divide-hairline md:grid-cols-4 md:divide-y-0">
-                <Figure label={ut("dash.responses")} value={data.responseCount} hint={`${ut("dash.completion")} ${data.completionRate}%`} />
-                <Figure label={ut("dash.respondents")} value={data.respondentCount} />
-                <Figure label={ut("dash.surveys")} value={data.surveyCount} hint={`${ut("dash.published")} ${data.publishedCount}`} />
-                <Figure label={ut("dash.avgTime")} value={duration(data.avgDurationMs)} />
-              </div>
-            </Panel>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <Figure label={ut("dash.responses")} value={data.responseCount} hint={`${ut("dash.completion")} ${data.completionRate}%`} />
+              <Figure label={ut("dash.respondents")} value={data.respondentCount} />
+              <Figure label={ut("dash.surveys")} value={data.surveyCount} hint={`${ut("dash.published")} ${data.publishedCount}`} />
+              <Figure label={ut("dash.avgTime")} value={duration(data.avgDurationMs)} />
+            </div>
 
             {/* подтверждаемость — справочный показатель качества скрининга:
                 он объясняет цифры выше, а не требует действия */}
@@ -326,16 +333,22 @@ export default function Dashboard() {
 /**
  * Показатель в ряду.
  *
- * Число первым, подпись под ним, пояснение ещё ниже. Порядок именно такой,
- * потому что ряд читают сканированием сверху вниз по числам, а подпись
- * нужна только там, где взгляд остановился.
+ * Подпись первой, число под ней, пояснение ещё ниже.
+ *
+ * Раньше было наоборот — числом вверх, из соображения «ряд сканируют по
+ * числам». Числа выравниваются по строке в обоих порядках, так что
+ * сравнивать одинаково удобно; а вот сказать, ЧТО сравниваешь, подпись
+ * успевает только стоя первой. Сводку открывают не каждый день, и «1284»
+ * без подписи над ним — это число, которое надо разгадывать.
  */
 function Figure({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
   return (
-    <div className="flex flex-col gap-1 p-4">
-      <span className="font-mono text-stat leading-none tracking-[-0.03em] tabular-nums">{value}</span>
+    <Panel className="flex flex-col gap-1.5 px-[18px] py-3.5">
       <SectionLabel>{label}</SectionLabel>
+      <span className="font-mono text-page font-medium leading-none tracking-[-0.03em] tabular-nums">
+        {value}
+      </span>
       {hint ? <span className="text-caption text-muted">{hint}</span> : null}
-    </div>
+    </Panel>
   );
 }

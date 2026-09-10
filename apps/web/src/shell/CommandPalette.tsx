@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
 import { api } from "../api";
 import { useLang } from "../lang";
+import { IconSearchGlass } from "../ui";
 import type { UiKey } from "@quizzy/shared";
 
 /**
@@ -96,12 +97,24 @@ export function CommandPalette({
     <div className="palette-backdrop" onClick={onClose} role="presentation">
       <div className="palette" onClick={(e) => e.stopPropagation()}>
         <Command label={ut("cmd.title")} shouldFilter>
-          <Command.Input
-            autoFocus
-            value={query}
-            onValueChange={setQuery}
-            placeholder={ut("cmd.placeholder")}
-          />
+          {/*
+            Строка поиска со значком и подсказкой выхода.
+            Голое поле не говорило, чем оно является: над списком разделов и
+            людей оно читалось как ещё один фильтр. Лупа акцентом называет
+            место, «esc» — единственный выход, который иначе надо угадать.
+          */}
+          <div className="palette-search">
+            <span aria-hidden className="palette-search-icon">
+              <IconSearchGlass />
+            </span>
+            <Command.Input
+              autoFocus
+              value={query}
+              onValueChange={setQuery}
+              placeholder={ut("cmd.placeholder")}
+            />
+            <kbd>esc</kbd>
+          </div>
           <Command.List>
             <Command.Empty>{ut("cmd.nothing")}</Command.Empty>
 

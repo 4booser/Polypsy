@@ -210,7 +210,20 @@ export function Panel({
   as?: "section" | "div" | "article" | "aside";
 }) {
   return (
-    <As data-panel className={cx("overflow-hidden rounded-lg bg-surface", className)}>
+    /*
+      Панель — заливка плюс обод в один пиксель, а не рамка.
+      Рамка занимает место в потоке и на стыке двух панелей даёт двойную
+      линию; обод рисуется тенью, поэтому соседние панели разделяет ровно
+      один пиксель. Радиус 8: у Nocturne это шаг мягкости для всего, что
+      крупнее поля ввода.
+    */
+    <As
+      data-panel
+      className={cx(
+        "overflow-hidden rounded-md bg-surface-2 shadow-[0_0_0_1px_var(--border)]",
+        className,
+      )}
+    >
       {title || actions ? (
         <div
           className={cx(

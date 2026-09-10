@@ -71,7 +71,7 @@ export default function Login() {
   }
 
   return (
-    <div className="login">
+    <div className="login relative">
       <div className="w-full max-w-[380px]">
         <form
           className="card flex w-full flex-col gap-4 !mb-0 !p-7 shadow-panel"
@@ -81,13 +81,22 @@ export default function Login() {
           <div className="flex items-center gap-2.5">
             <span
               aria-hidden
-              className="grid size-9 shrink-0 place-items-center rounded-md bg-primary font-display text-section font-bold text-primary-text"
+              className="grid size-9 shrink-0 place-items-center rounded-[9px] border border-primary font-display text-section font-semibold text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_40%,transparent)]"
             >
               Q
             </span>
             <div className="min-w-0">
               <h1 className="!m-0 font-display text-section font-semibold leading-tight">Quizzy</h1>
-              <p className="m-0 text-caption text-muted">{ut("lg.consoleSub")}</p>
+              {/*
+                Подпись следует за экраном, а не стоит одна на оба.
+                «Консоль аналитики для сотрудников» висела и над формой
+                регистрации — той самой, где просят телефон, «чтобы связаться,
+                если ответы вызовут беспокойство». Человек, которого прислали
+                пройти методику, читал на ней, что попал не туда.
+              */}
+              <p className="m-0 text-caption text-muted">
+                {ut(mode === "register" ? "lg.registerSub" : "lg.consoleSub")}
+              </p>
             </div>
           </div>
 
@@ -173,9 +182,9 @@ export default function Login() {
           {googleReady ? (
             <>
               <div className="flex items-center gap-3 text-caption text-faint">
-                <span className="h-px flex-1 bg-hairline" />
+                <span className="h-px flex-1 bg-[linear-gradient(to_right,transparent,var(--hairline))]" />
                 {ut("lg.or")}
-                <span className="h-px flex-1 bg-hairline" />
+                <span className="h-px flex-1 bg-[linear-gradient(to_left,transparent,var(--hairline))]" />
               </div>
               <a className="btn w-full justify-center" href="/api/auth/google/start">
                 {ut("lg.google")}
@@ -184,13 +193,18 @@ export default function Login() {
           ) : null}
         </form>
 
-        {/*
-          Переключатель языка — до входа, а не после. Иначе выбрать язык можно
-          только пройдя экран, который сам показан не на том языке.
-        */}
-        <div className="mt-4 flex justify-center">
-          <LangSwitch />
-        </div>
+      </div>
+
+      {/*
+        Переключатель языка — до входа, а не после. Иначе выбрать язык можно
+        только пройдя экран, который сам показан не на том языке.
+
+        Стоит в углу экрана, а не под карточкой: он относится ко всей
+        странице, а не к форме, и под карточкой читался как ещё один её шаг —
+        после «создать аккаунт», хотя выбирают язык до всего остального.
+      */}
+      <div className="absolute right-4 top-4">
+        <LangSwitch />
       </div>
     </div>
   );

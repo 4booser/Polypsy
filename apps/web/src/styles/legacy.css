@@ -21,8 +21,22 @@ body {
   font-feature-settings: "cv01", "ss01";
 }
 
-a { color: var(--primary); text-decoration: none; }
+/*
+ * Ссылка наследует цвет текста, а не красится акцентом.
+ *
+ * В этой консоли ссылка — почти всегда строка списка: имя человека, название
+ * методики, направление. Крашенные акцентом, они давали колонку кричащих
+ * имён на каждом экране, где список и есть содержимое, — то есть акцент
+ * терял смысл ровно там, где смысл нужен: на действии рядом («взять»,
+ * «пришёл», «разобрать»).
+ *
+ * Нажимаемость держится на другом: строка подсвечивается под курсором, а
+ * ссылка внутри текста получает подчёркивание. Прозаических ссылок в
+ * проекте четыре — им цвет ставится классом .link.
+ */
+a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.link { color: var(--primary); }
 
 /* Фокус — янтарный и всегда видимый. Ни одного `outline: none` в проекте. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
@@ -63,28 +77,48 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   align-items: start;
   justify-items: center;
   padding: 12vh 20px 20px;
-  background: color-mix(in srgb, var(--slate-950) 60%, transparent);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   backdrop-filter: blur(4px);
   animation: fade var(--dur-fast) var(--ease);
 }
 .palette {
-  width: min(620px, 100%);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow);
+  width: min(600px, 100%);
+  background: var(--surface-2);
+  border: none;
+  border-radius: 12px;
+  /* обод плюс глубокая тень: палитра висит над всем, и край должен читаться */
+  box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-pop);
   overflow: hidden;
   animation: rise var(--dur) var(--ease);
 }
-.palette [cmdk-input] {
-  width: 100%;
-  border: none;
+/* строка поиска: лупа акцентом слева, «esc» справа, поле между ними */
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--hairline);
+}
+.palette-search-icon { display: grid; place-items: center; color: var(--primary); }
+.palette-search-icon svg { width: 17px; height: 17px; }
+.palette-search kbd {
+  flex: none;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font: var(--fs-micro) / 1 var(--font-mono);
+  color: var(--ink-faint);
+}
+.palette [cmdk-input] {
+  flex: 1;
+  min-width: 0;
+  border: none;
   border-radius: 0;
   background: transparent;
-  padding: 15px 18px;
+  padding: 15px 0;
   font-size: var(--fs-body);
   font-family: var(--font-text);
+  caret-color: var(--primary);
 }
 .palette [cmdk-input]:focus-visible { outline: none; }
 .palette [cmdk-list] { max-height: 52vh; overflow-y: auto; padding: 6px; scroll-padding: 6px; }
@@ -417,16 +451,17 @@ th .arrow { margin-left: 4px; color: var(--text); }
 :where(button, .btn):active { filter: brightness(0.94); }
 :where(button):disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Первичное действие обведено, а не залито — см. primitives.tsx */
 button.primary, .btn.primary {
-  background: var(--primary);
-  border-color: transparent;
-  color: var(--primary-text);
-  font-weight: 600;
+  background: transparent;
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 500;
 }
 button.primary:hover, .btn.primary:hover {
-  background: var(--primary);
-  border-color: transparent;
-  filter: brightness(1.1);
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  filter: none;
 }
 
 button.ghost {
@@ -773,7 +808,7 @@ kbd, .kbd {
   place-items: center;
   padding: 24px;
   background:
-    radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--primary) 9%, transparent), transparent),
+    radial-gradient(1100px 520px at 50% -10%, color-mix(in srgb, var(--primary) 16%, transparent), transparent 70%),
     var(--bg);
 }
 /* вход собран на утилитах в pages/Login.tsx — здесь осталось приглашение */
@@ -891,50 +926,46 @@ kbd, .kbd {
 
 /* сегментированный переключатель: группа читается как одно целое,
    а три подряд идущих фильтра не сливаются в кашу из подчёркиваний */
+/*
+ * Сегментированный выбор: обводка вокруг группы, вписанная рамка у
+ * выбранного.
+ *
+ * Раньше внутри обведённой группы выбранный сегмент рисовался ещё и
+ * заливкой посветлее — коробка внутри коробки, три линии там, где нужна
+ * одна. Вписанная рамка занимает те же пиксели, что и граница группы, и
+ * читается как «эта доля выбрана», а не как «здесь ещё одна панель».
+ */
 .segmented {
   display: inline-flex;
-  padding: 2px;
-  gap: 2px;
+  overflow: hidden;
   border-radius: var(--r-md);
-  border: 1px solid var(--border);
-  background: var(--surface-2);
+  border: 1px solid var(--hairline);
 }
 .segmented button {
   border: none;
   background: transparent;
   color: var(--muted);
-  padding: 5px 11px;
-  border-radius: var(--r-sm);
+  padding: 6px 11px;
+  border-radius: var(--r-md);
   font-size: var(--fs-caption);
   font-weight: 500;
   white-space: nowrap;
 }
-.segmented button:hover { background: var(--surface-3); color: var(--text-2); }
+.segmented button + button { border-left: 1px solid var(--hairline); }
+.segmented button:hover { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); }
 .segmented button.active {
-  background: var(--surface);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 /*
- * Точка у выбранного сегмента — бирюзовая, а не янтарная.
+ * Точки у выбранного сегмента больше нет.
  *
- * Янтарь означает «требует внимания». Выбранный сегмент внимания не требует:
- * это состояние экрана, которое человек только что задал сам. Один экран
- * (фильтры разбора случаев) уже гасил эту точку у себя отдельным правилом —
- * признак того, что проблему замечали, но чинили по месту, а не в источнике.
+ * Она появилась, когда выбранный сегмент отличался только заливкой чуть
+ * светлее: на плохом мониторе разницы не видно, и точка была вторым
+ * признаком. Теперь выбранный сегмент назван цветом акцента и вписанной
+ * рамкой — два признака, и оба видны. Третий превращал короткое слово в
+ * строку из точки и слова разной высоты.
  */
-.segmented button.active::before {
-  content: "";
-  display: block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--primary);
-  margin-right: 6px;
-  float: left;
-  margin-top: 6px;
-}
 
 .conclusion-view {
   border-left: 2px solid var(--border-strong);
@@ -1091,7 +1122,6 @@ kbd, .kbd {
   font-size: var(--fs-micro);
   padding: 4px 8px;
 }
-.triage-filters .segmented button.active::before { display: none; }
 .triage-filters .segmented button.active {
   background: var(--primary-soft);
   color: var(--primary);

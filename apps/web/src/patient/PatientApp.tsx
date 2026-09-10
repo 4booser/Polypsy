@@ -37,7 +37,7 @@ export default function PatientApp() {
       <header className="flex items-center gap-2 border-b border-hairline px-4 py-3">
         <span
           aria-hidden
-          className="grid size-7 shrink-0 place-items-center rounded-sm bg-primary font-display text-small font-bold text-primary-text"
+          className="grid size-6 shrink-0 place-items-center rounded-[7px] border border-primary font-display text-caption font-semibold text-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_35%,transparent)]"
         >
           Q
         </span>
@@ -49,7 +49,12 @@ export default function PatientApp() {
         <Outlet />
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-hairline bg-rail">
+      {/*
+        Полоса отступает снизу на безопасную зону.
+        Под ней у телефона своя домашняя черта, и вкладка, прижатая к самому
+        краю, попадает под неё: нажатие уходит системе, а не приложению.
+      */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex border-t border-hairline bg-rail pb-[max(env(safe-area-inset-bottom),8px)]">
         {tabs.map((t) => (
           <NavLink
             key={t.to}
@@ -57,7 +62,7 @@ export default function PatientApp() {
             end={t.end}
             className={({ isActive }) =>
               cx(
-                "flex flex-1 flex-col items-center gap-0.5 py-2 text-micro",
+                "flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-micro",
                 "transition-colors duration-[var(--dur-fast)]",
                 "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
                 isActive ? "text-primary" : "text-muted",
