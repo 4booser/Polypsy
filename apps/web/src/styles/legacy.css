@@ -731,6 +731,8 @@ kbd, .kbd {
   gap: 8px;
   z-index: 80;
 }
+/* две живые области внутри — раскладка должна остаться прежней */
+.toasts > div { display: grid; gap: 8px; }
 .toast {
   padding: 10px 14px;
   border-radius: var(--r-md);

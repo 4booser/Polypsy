@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { onAppEvent, type AppEvent } from "../events";
+import { onAppEvent, type AppEvent, type AppEventKind } from "../events";
+import type { UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { api } from "../api";
 import { useAuth } from "../auth";
@@ -92,8 +93,26 @@ export function EventCenter() {
     };
   }, [open]);
 
-  const label = (e: AppEvent) =>
-    e.kind === "alert.created" ? ut("ev.alert") : e.kind === "case.changed" ? ut("ev.case") : e.kind;
+/*
+ * Полный перебор видов, а не два известных и «остальное как есть».
+ *
+ * Раньше здесь стояла цепочка из двух условий, а всё прочее падало в
+ * `e.kind` — то есть человек читал в списке событий голую строку «action».
+ * Приходила она на КАЖДОЕ журналируемое изменение, так что список событий
+ * состоял из неё едва ли не целиком.
+ *
+ * Record<AppEventKind, …> означает, что новый вид события не соберётся, пока
+ * ему не дадут имени на человеческом языке.
+ */
+const EVENT_KEY: Record<AppEventKind, UiKey> = {
+  "alert.created": "ev.alert",
+  "case.changed": "ev.case",
+  "response.submitted": "ev.response",
+  "kiosk.progress": "ev.kiosk",
+  "schedule.run": "ev.schedule",
+  "presence.changed": "ev.presence",
+  action: "ev.action",
+} as const;
 
   return (
     <div className="events" ref={ref}>
@@ -195,7 +214,7 @@ export function EventCenter() {
                     className="events-mark"
                     style={{ background: e.severity ? severityColor[e.severity] : "var(--border-strong)" }}
                   />
-                  <span className="grow">{label(e)}</span>
+                  <span className="grow">{ut(EVENT_KEY[e.kind])}</span>
                   <span className="muted">{dateTime(e.at).slice(11)}</span>
                 </Link>
               ))}

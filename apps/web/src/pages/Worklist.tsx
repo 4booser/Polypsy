@@ -166,7 +166,8 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
         .filter(Boolean)
         .join(" · ");
     case "assignment":
-      return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("cases.ago")}`;
+      /* единица обязательна: «Срок вышел 3 назад» — это число ни о чём */
+      return `${i.title} · ${t("work.dueExpired")} ${i.days ?? 0} ${t("work.daysOverdue")}`;
     case "followup":
       return `${i.title} · ${t("work.followupMissed")} · ${i.days ?? 0} ${t("work.daysOverdue")}`;
     case "message":
@@ -193,7 +194,7 @@ function describe(i: WorkItem, ut: (k: never) => string): string {
        */
       return [
         (i.signals ?? 0) > 1 ? `${t("work.noshowTimes")} ${i.signals}` : t("work.noshowOnce"),
-        `${i.days ?? 0} ${t("cases.ago")}`,
+        `${i.days ?? 0} ${t("work.daysAgo")}`,
         i.overdue ? t("work.noshowAfterAlert") : null,
       ]
         .filter(Boolean)

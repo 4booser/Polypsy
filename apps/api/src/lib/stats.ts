@@ -1,3 +1,4 @@
+import { dayOf } from "./day";
 /** Небольшие статистические помощники для аналитики */
 
 export function median(values: number[]): number {
@@ -47,12 +48,19 @@ export function distribution(values: number[]): { value: number; count: number }
     .sort((a, b) => a.value - b.value);
 }
 
-/** Группировка по дню в формате YYYY-MM-DD */
+/**
+ * Группировка по дню в формате YYYY-MM-DD, в поясе учреждения.
+ *
+ * Здесь стояло `ts.slice(0, 10)` — то есть день по Гринвичу. Для Киева всё,
+ * сданное после девяти вечера, уезжало во вчерашний день, независимо от
+ * того, где развёрнут сервер. Соседний экран считал тот же замер средствами
+ * Postgres и получал другой день.
+ */
 export function timelineByDay(timestamps: (string | null)[]): { date: string; count: number }[] {
   const counts = new Map<string, number>();
   for (const ts of timestamps) {
-    if (!ts) continue;
-    const date = ts.slice(0, 10);
+    const date = dayOf(ts);
+    if (!date) continue;
     counts.set(date, (counts.get(date) ?? 0) + 1);
   }
   return [...counts.entries()]

@@ -13,7 +13,7 @@ import type { WorkspacePrefs } from "@quizzy/shared";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
 import Alerts from "./pages/Alerts";
-import { Loading } from "./ui";
+import { Loading, useAction } from "./ui";
 
 /*
  * Экраны догружаются по требованию.
@@ -98,6 +98,8 @@ function StartScreen({ prefs }: { prefs: WorkspacePrefs | null }) {
 
 export default function App() {
   const { user, loading, logout, refreshUser } = useAuth();
+  /* отказ отвязки должен быть виден: см. кнопку ниже */
+  const { run } = useAction();
   /*
    * Настроен ли вход через Google — спрашиваем сервер, а не переменную
    * сборки: образ консоли один на все учреждения, а настроен способ в
@@ -334,7 +336,18 @@ export default function App() {
                         // сервер спрашивает пароль, и спросить его надо здесь
                         const pass = window.prompt(ut("lg.googleUnlinkAsk"));
                         if (!pass) return;
-                        void api.googleUnlink(pass).then(refreshUser).catch(() => {});
+                        /*
+                          Отказ показывается, а не глотается.
+                          Здесь стоял пустой catch: на неверный пароль не
+                          происходило ровно ничего — ни сообщения, ни
+                          изменения на экране. Та же кнопка в разделе
+                          «Учётная запись» ошибку показывает; две версии
+                          одной кнопки, одна из них немая.
+                        */
+                        void run(
+                          () => api.googleUnlink(pass).then(refreshUser),
+                          ut("acct.saved"),
+                        );
                       }}
                     >
                       {ut("lg.googleUnlink")}

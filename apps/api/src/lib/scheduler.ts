@@ -7,10 +7,10 @@ import {
   scheduleRuns,
   scheduleTargets,
   schedules,
-  surveyAccess,
   users,
 } from "../db/schema";
 import { auditSystem } from "./audit";
+import { grantAccess } from "./grantAccess";
 import { publish } from "./events";
 import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
@@ -118,20 +118,18 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
         note: `Расписание «${schedule.title}»`,
       })),
     );
-    await tx
-      .insert(surveyAccess)
-      .values(
-        fresh.flatMap((userId) =>
-          grantable.map((item) => ({
-            surveyId: item.surveyId,
-            userId,
-            grantedBy: schedule.createdBy,
-            expiresAt: dueAt,
-            note: `Расписание «${schedule.title}»`,
-          })),
-        ),
-      )
-      .onConflictDoNothing();
+    await grantAccess(
+      tx as never,
+      fresh.flatMap((userId) =>
+        grantable.map((item) => ({
+          surveyId: item.surveyId,
+          userId,
+          grantedBy: schedule.createdBy,
+          expiresAt: dueAt,
+          note: `Расписание «${schedule.title}»`,
+        })),
+      ),
+    );
   });
 
   /*

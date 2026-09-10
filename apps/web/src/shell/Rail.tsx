@@ -17,6 +17,7 @@ import {
   IconReferral,
   IconStack,
   IconSurvey,
+  IconUserGear,
   IconUsers,
 } from "../ui";
 
@@ -119,32 +120,48 @@ export function railGroups(counts: RailCounts, isSuper: boolean, canAssign = fal
     },
   ];
   /*
-   * «Права» видит тот, кому есть кому назначать: главный врач, заведующий
-   * отделением и технический администратор. Специалисту пункт не показываем —
-   * назначать он никого не может, и меню обещало бы ему то, чего сервер не
-   * даст. Само правило живёт на маршрутах назначения, здесь только меню.
+   * Администрирование собирается ОДНОЙ группой, а не двумя.
+   *
+   * «Права» жили отдельной группой с ключом «Люди» — тем же, что у группы
+   * пациентов. В рельсе получалось два раздела «Люди»: один с пациентами,
+   * второй с одним пунктом. Хуже видимого: состояние раскрытия хранится по
+   * ключу, поэтому обе группы открывались и закрывались вместе.
+   *
+   * По смыслу «Права» и не про людей, которых лечат, а про тех, кто лечит, —
+   * это администрирование. Группа показывается тому, кому есть что в ней
+   * делать: назначающему — права, техническому администратору — всё
+   * остальное.
+   *
+   * Само правило доступа живёт на маршрутах; здесь только меню.
    */
+  const adminItems: Item[] = [];
   if (canAssign || isSuper) {
-    groups.push({
-      key: "nav.group.people",
-      icon: <IconUsers />,
-      items: [{ to: "/permissions", key: "perm.title", icon: <IconGroup /> }],
-    });
+    adminItems.push({ to: "/permissions", key: "perm.title", icon: <IconGroup /> });
+  }
+  if (isSuper) {
+    /* текст согласия стал вкладкой учётных записей: это настройка
+       учреждения, а не отдельный раздел работы */
+    adminItems.push(
+      { to: "/users", key: "nav.users", icon: <IconUsers /> },
+      { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
+      { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
+      { to: "/console", key: "nav.console", icon: <IconStack /> },
+    );
+  }
+  if (adminItems.length) {
+    groups.push({ key: "nav.admin", icon: <IconUserGear />, items: adminItems });
   }
 
-  if (isSuper) {
-    groups.push({
-      key: "nav.admin",
-      icon: <IconUsers />,
-      items: [
-        /* текст согласия стал вкладкой учётных записей: это настройка
-           учреждения, а не отдельный раздел работы */
-        { to: "/users", key: "nav.users", icon: <IconUsers /> },
-        { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
-        { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
-        { to: "/console", key: "nav.console", icon: <IconStack /> },
-      ],
-    });
+  /*
+   * Ключи групп обязаны быть разными: по ключу хранится состояние
+   * раскрытия и по нему же ищется группа активного экрана. Совпадение
+   * ключей — не косметика, а склейка двух разделов в один, и заметить её
+   * можно только глазами на живом экране. Здесь она стоит денег один раз.
+   */
+  const seen = new Set<string>();
+  for (const g of groups) {
+    if (seen.has(g.key)) throw new Error(`рельса: ключ группы «${g.key}» повторяется`);
+    seen.add(g.key);
   }
   return groups;
 }

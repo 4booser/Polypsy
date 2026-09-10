@@ -165,6 +165,37 @@ describe("запись", () => {
     expect(mine.body.items[0].reason).toBe("тревога перед выездом");
   });
 
+  test("записью нельзя выдать себе доступ к чужому пациенту", async () => {
+    /*
+     * Приём — самостоятельное основание видеть человека, и этим можно было
+     * пользоваться: зная идентификатор чужого пациента, сотрудник записывал
+     * его к себе и получал хронологию, заключения и амбулаторную карту.
+     * Разбитое стекло требует обоснования и срока; этот путь не требовал
+     * ничего и оставлял в журнале рядовую запись на приём.
+     *
+     * Проверяется именно чужой пациент — прикреплённый к другому отделению.
+     * Ничей остаётся разрешённым: так в отделение и попадает новый человек,
+     * и на это есть проверка ниже.
+     */
+    const { departments, departmentPatients: dp } = await import("../src/db/schema");
+    const stranger = await makeUser("user", `clinic-foreign-${crypto.randomUUID()}@test`);
+    const otherDept = crypto.randomUUID();
+    await db.insert(departments).values({ id: otherDept, title: "Чужое отделение" } as never);
+    await db.insert(dp).values({ departmentId: otherDept, patientId: stranger.id, attachedVia: "staff" } as never);
+
+    const before = await api(`/api/timeline/${stranger.id}`, adminA.token);
+    expect(before.status, "чужой пациент не должен быть виден до записи").toBe(404);
+
+    const res = await api("/api/clinic/appointments", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId: await freeSlot(), patientId: stranger.id }),
+    });
+    expect(res.status, "запись за чужого пациента должна быть отклонена").toBe(403);
+
+    const after = await api(`/api/timeline/${stranger.id}`, adminA.token);
+    expect(after.status, "после отказа доступ не должен появиться").toBe(404);
+  });
+
   test("за другого записывает только тот, кому это разрешено", async () => {
     const patient = await makeUser("user", `clinic-p3-${crypto.randomUUID()}@test`);
     const other = await makeUser("user", `clinic-p4-${crypto.randomUUID()}@test`);

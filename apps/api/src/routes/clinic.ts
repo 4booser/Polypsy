@@ -36,7 +36,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { HORIZON_WEEKS, syncSlots } from "../lib/schedule";
-import { assertPatientAccess, isStaff } from "../lib/scope";
+import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const clinicRoutes = new Hono<AppEnv>();
@@ -533,11 +533,48 @@ clinicRoutes.post("/appointments", async (c) => {
    * бы способом занять слот за постороннего.
    */
   let patientId = me.id;
+  /* записал сотрудник человека, которого до этого не видел — это в журнал */
+  let outsideScope = false;
   if (input.patientId && input.patientId !== me.id) {
     if (!isStaff(me)) forbidden("err.bookForSelfOnly");
     const { hasPermission } = await import("../lib/permissions");
     if (!(await hasPermission(me, "appointments.manage"))) {
       forbidden("err.permissionRequired", { permission: "appointments.manage" });
+    }
+    /*
+     * Право отвечает «можно ли записывать за других», зона — «за этого ли».
+     * Здесь стояло только первое, и этого хватало, чтобы записать кого
+     * угодно по идентификатору.
+     *
+     * Дыра не в самой записи, а в том, что за ней следует: приём —
+     * самостоятельное основание видеть человека (см. byClinic в lib/scope.ts
+     * и зеркальную ей политику rls_admin_sees_patient). То есть запись на
+     * приём была способом ВЫДАТЬ СЕБЕ доступ к чужой карте — с хронологией,
+     * заключениями и амбулаторной картой, — и RLS не спасала: после вставки
+     * строки она соглашалась, что пациент свой. В журнале оставалось рядовое
+     * «записан на приём», неотличимое от обычной работы.
+     *
+     * Запретить запись вне зоны целиком нельзя: это законный и задуманный
+     * путь. Человек зарегистрировался, его ещё не видит никто, регистратор
+     * записывает его на первичный — и прикрепление к отделению создаётся
+     * этой самой записью (attachedVia: "staff").
+     *
+     * Различаются два случая, и различие простое: человек, которого не видит
+     * НИКТО, — это приём нового; человек, уже прикреплённый к ЧУЖОМУ
+     * отделению, — это чужой пациент, и запись за него без ведома его
+     * отделения не приём, а обход зоны. Второе запрещено, первое разрешено и
+     * помечается в журнале — тем же приёмом, что уже применён к выдаче
+     * методики (см. widenedOwnScope в routes/access.ts).
+     */
+    const seen = await accessiblePatientIds(me);
+    outsideScope = seen !== null && !seen.has(input.patientId);
+    if (outsideScope) {
+      const [elsewhere] = await db
+        .select({ id: departmentPatients.departmentId })
+        .from(departmentPatients)
+        .where(eq(departmentPatients.patientId, input.patientId))
+        .limit(1);
+      if (elsewhere) forbidden("err.patientOfAnotherDepartment");
     }
     patientId = input.patientId;
   }
@@ -616,7 +653,18 @@ clinicRoutes.post("/appointments", async (c) => {
     resourceType: "appointment",
     resourceId: id,
     subjectUserId: patientId,
-    details: { slotId: slot.id, kind, bySelf: me.id === patientId },
+    details: {
+      slotId: slot.id,
+      kind,
+      bySelf: me.id === patientId,
+      /*
+       * Истина означает: сотрудник получил доступ к карте человека, которого
+       * до этого не видел. Само по себе законно — так в отделение и попадает
+       * новый пациент, — но именно так выглядит и обход зоны, поэтому
+       * событие обязано быть отличимым от рядовой записи.
+       */
+      ...(outsideScope ? { widenedOwnScope: true } : {}),
+    },
   });
 
   /*
@@ -781,7 +829,22 @@ clinicRoutes.get("/appointments/mine", async (c) => {
  * вернуться к записи предыдущего приёма.
  */
 clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), async (c) => {
-  const specialistId = c.req.query("specialistId") ?? c.get("user").id;
+  /*
+   * Чужой день открывается только тому, кому разрешено вести чужое
+   * расписание.
+   *
+   * Идентификатор специалиста приходил параметром и не проверялся ничем:
+   * любой сотрудник читал приёмный день любого другого — с расшифрованными
+   * ФИО пациентов и поводом обращения их же словами. Список специалистов
+   * при этом отдаётся всякому вошедшему, так что подставлять было нечего.
+   *
+   * В бою это прикрывала политика RLS. Но опираться на неё как на
+   * единственный заслон здесь нельзя — ровно это и написано в соседнем
+   * докблоке про loadOne: своя проверка обязана быть, а RLS остаётся
+   * страховкой. Такая же проверка уже стоит на чужом расписании
+   * (scheduleTarget), и здесь она просто отсутствовала.
+   */
+  const specialistId = await ownSpecialistOr(c, c.req.query("specialistId"));
 
   /*
    * Сутки считаются по часам отделения, а не по часам сервера.
@@ -833,12 +896,42 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
  * Постороннему отвечаем «не найдено», а не «нельзя»: 403 подтвердил бы, что
  * приём существует, — а это уже сведения о человеке.
  */
+/**
+ * Специалист, чьё расписание спрашивают.
+ *
+ * Своё — всегда; чужое — только с правом вести чужие приёмы. Возвращает
+ * идентификатор, а не «да/нет», чтобы вызывающий не мог случайно взять
+ * непроверенное значение из запроса.
+ */
+async function ownSpecialistOr(c: Context<AppEnv>, asked: string | undefined): Promise<string> {
+  const me = c.get("user");
+  if (!asked || asked === me.id) return me.id;
+  const { hasPermission } = await import("../lib/permissions");
+  if (!(await hasPermission(me, "appointments.manage"))) {
+    forbidden("err.permissionRequired", { permission: "appointments.manage" });
+  }
+  return asked;
+}
+
 async function loadOne(c: Context<AppEnv>, id: string) {
   const row = await db.query.appointments.findFirst({ where: eq(appointments.id, id) });
   if (!row) notFound("err.appointmentNotFound");
   const me = c.get("user");
   const mine = row.patientId === me.id || row.specialistId === me.id;
-  if (!mine && !isStaff(me)) notFound("err.appointmentNotFound");
+  if (mine) return row;
+  if (!isStaff(me)) notFound("err.appointmentNotFound");
+  /*
+   * Персоналу — только приёмы своей зоны.
+   *
+   * Здесь хватало самого факта «это сотрудник», и любой из них мог отменить,
+   * перенести или сменить статус ЛЮБОГО приёма учреждения. Тихая отмена
+   * приёма чужого отделения означает, что пациента перестают ждать: за ней
+   * идут неявка и напоминания, а человек просто не приходит.
+   *
+   * В бою это прикрывала RLS — и здесь же, строкой выше, написано, почему
+   * так нельзя: своя проверка обязана быть.
+   */
+  await assertPatientAccess(me, row.patientId);
   return row;
 }
 

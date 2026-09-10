@@ -73,7 +73,8 @@ export default function PatientProfile() {
               onClick={() =>
                 run(async () => {
                   const pass = window.prompt(ut("lg.googleUnlinkAsk"));
-                  if (!pass) return;
+                  /* отказался вводить пароль — ничего не произошло */
+                  if (!pass) return false;
                   await api.googleUnlink(pass);
                   await refreshUser();
                 }, ut("pt.saved"))

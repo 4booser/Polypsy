@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { ageAt, equate, itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics, Sex } from "@quizzy/shared";
 import { db } from "../db";
+import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
 import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -17,6 +18,19 @@ import { answers as answersTable } from "../db/schema";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { log } from "../lib/log";
+
+/**
+ * Год рождения из зашифрованной даты.
+ *
+ * Год, а не возраст: возраст меняется каждый год, а различают тёзок по
+ * неизменному. И год, а не полная дата: списка это не касается, а полная
+ * дата рождения — та самая мелочь, из которой складывается опознание.
+ */
+function yearOf(birthDate: string | null): number | null {
+  if (!birthDate) return null;
+  const year = Number(birthDate.slice(0, 4));
+  return Number.isFinite(year) && year > 1900 ? year : null;
+}
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
@@ -39,27 +53,6 @@ dynamicsRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.r
  * расшифровка всей выборки ради сортировки была бы самой дорогой частью
  * запроса.
  */
-/**
- * Курсор списка обследованных: время последнего замера и человек.
- *
- * Одного времени мало — оно повторяется, и на границе страницы люди
- * терялись. Пара кодируется одной строкой, чтобы клиенту не пришлось знать
- * её устройство: сегодня это два поля, завтра может быть три.
- */
-function encodeCursor(at: string, userId: string): string {
-  return Buffer.from(`${at}|${userId}`).toString("base64url");
-}
-
-function decodeCursor(raw: string | undefined): { at: string; id: string } | null {
-  if (!raw) return null;
-  try {
-    const [at, id] = Buffer.from(raw, "base64url").toString().split("|");
-    return at && id ? { at, id } : null;
-  } catch {
-    // испорченный курсор — это первая страница, а не пятисотка
-    return null;
-  }
-}
 
 dynamicsRoutes.get("/respondents", async (c) => {
   const scope = await surveyScopeFilter(c.get("user"));
@@ -97,6 +90,16 @@ dynamicsRoutes.get("/respondents", async (c) => {
       // постоянно, а второй запрос за теми же людьми был бы чистой тратой
       unit: users.unit,
       sex: users.sex,
+      /*
+       * Год рождения — чтобы различить тёзок.
+       *
+       * В списке из ста двадцати человек одинаковые ФИО встречаются: имена
+       * в стране не бесконечны, и в поликлинике это обычное дело. Различить
+       * их было нечем — одинаковые строки, разные люди, и открыть карту не
+       * того стоит ровно того, чего такая система обязана не допускать.
+       * В регистратуре различают годом рождения; здесь тоже.
+       */
+      birthDate: users.birthDate,
     })
     .from(responses)
     .innerJoin(users, eq(users.id, responses.userId))
@@ -111,6 +114,7 @@ dynamicsRoutes.get("/respondents", async (c) => {
       users.email,
       users.unit,
       users.sex,
+      users.birthDate,
     )
     /*
      * Курсор проверяется на агрегате, а не на строках прохождений.
@@ -144,6 +148,8 @@ dynamicsRoutes.get("/respondents", async (c) => {
     last: r.last,
     unit: r.unit,
     sex: r.sex as "male" | "female" | null,
+    /* только год: полная дата рождения в списке — лишнее раскрытие */
+    birthYear: yearOf(decryptField(r.birthDate)),
   }));
   const matched = search
     ? named.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(search))
@@ -264,6 +270,15 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   const byVersionKey = new Map<string, number[]>();
   for (const row of allScores) {
     const key = `${row.surveyId}:${row.scaleCode}`;
+    /*
+     * Непронормированный балл в выборку не идёт.
+     *
+     * Из неё считаются перцентиль человека и SD для RCI. Смешав T-баллы с
+     * сырыми, оба получаешь бессмысленными: перцентиль — относительно
+     * выборки в двух единицах сразу, RCI — по разбросу, которого нет.
+     * Правило то же, что в аналитике, см. comparableScores.
+     */
+    if (!row.score.normalized) continue;
     const list = sampleByKey.get(key) ?? [];
     list.push(row.score.value);
     sampleByKey.set(key, list);
@@ -439,6 +454,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
          * него: приведение опирается на допущение о сопоставимости выборок, и
          * знает о нём только человек, который помнит, менялся ли контингент.
          */
+        /* номер версии → коэффициенты приведения к версии последнего замера */
+        const toTarget = new Map<number, { slope: number; intercept: number }>();
         const versionIdsOfPoints = new Set(
           list.map((r) => r.versionId).filter(Boolean) as string[],
         );
@@ -469,6 +486,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
               const from = momentsOf(versionId);
               const eq = from && to ? equate(from, to) : null;
               if (!eq) continue;
+              /* неокруглённые коэффициенты — для счёта; округлённые уходят наружу */
+              toTarget.set(eq.from.version, { slope: eq.slope, intercept: eq.intercept });
               entry.equated.push({
                 fromVersion: eq.from.version,
                 toVersion: eq.to.version,
@@ -498,9 +517,28 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
           new Set(entry.points.map((x) => x.versionNo).filter((v) => v !== null)).size > 1;
         const comparable = !mixedVersions || Boolean(entry.equated?.length);
 
+        /**
+         * Балл точки в шкале последней версии.
+         *
+         * Коэффициенты приведения считались тут же и отдавались наружу, но на
+         * числа не влияли: разность бралась из неприведённых баллов. Правка
+         * ключа одного пункта сдвигает средний балл версии — и при типичных
+         * SD и альфе разность «до» и «после» давала |RCI| > 1.96, то есть
+         * «достоверное улучшение состояния» там, где изменился только
+         * инструмент. Это уходило в карту, в заключение и в решение о снятии
+         * с наблюдения.
+         *
+         * Комментарий ниже описывал эту ошибку как исправленную. Исправлено
+         * было условие «считать или не считать», а сам счёт — нет.
+         */
+        const inTargetScale = (p: { rawScore: number; versionNo?: number | null }): number => {
+          const eq = p.versionNo == null ? null : toTarget.get(p.versionNo);
+          return eq ? eq.slope * p.rawScore + eq.intercept : p.rawScore;
+        };
+
         if (entry.points.length >= 2 && comparable) {
-          const first = entry.points[0]!.rawScore;
-          const last = entry.points[entry.points.length - 1]!.rawScore;
+          const first = inTargetScale(entry.points[0]!);
+          const last = inTargetScale(entry.points[entry.points.length - 1]!);
           entry.delta = Math.round((last - first) * 100) / 100;
           entry.direction = entry.delta > 0 ? "up" : entry.delta < 0 ? "down" : "flat";
 

@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import type { SurveyStatus, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart, StackedArea } from "../charts";
 import { duration, day, severityColor, severityKey } from "../format";
@@ -9,6 +10,16 @@ import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
 import { Suggestions } from "../components/Suggestions";
+
+/*
+ * Статус методики словами, а не кодом. Тот же перебор, что в списке методик:
+ * в колонке «Статус» стояло «published» латиницей на обоих языках.
+ */
+const SURVEY_STATUS: Record<SurveyStatus, UiKey> = {
+  draft: "st.surveyDraft",
+  published: "st.surveyPublished",
+  closed: "st.surveyClosed",
+} as const;
 
 export default function Dashboard() {
   const { ut } = useLang();
@@ -311,7 +322,8 @@ export default function Dashboard() {
                     {surveys.map((s) => (
                       <tr key={s.id}>
                         <td><Link to={`/surveys/${s.id}`}>{s.title}</Link></td>
-                        <td className="text-muted">{s.status}</td>
+                        {/* статус словами, а не кодом: см. SURVEY_STATUS */}
+                        <td className="text-muted">{ut(SURVEY_STATUS[s.status])}</td>
                         <td className="text-muted">
                           {s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}
                         </td>
@@ -343,12 +355,20 @@ export default function Dashboard() {
  */
 function Figure({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
   return (
-    <Panel className="flex flex-col gap-1.5 px-[18px] py-3.5">
+    /*
+      Плитка собрана своей разметкой, а не через Panel.
+      Panel кладёт содержимое в собственную обёртку, поэтому раскладка,
+      заданная ему классом, до строк не доходила: подпись, число и пояснение
+      вставали в одну строку без отбивки — «1633доходимость 100%». Внешний
+      вид у плитки тот же, что у панели, но собирается он здесь, где и
+      раскладка.
+    */
+    <div className="flex flex-col gap-1.5 rounded-md bg-surface-2 px-[18px] py-3.5 shadow-[0_0_0_1px_var(--border)]">
       <SectionLabel>{label}</SectionLabel>
       <span className="font-mono text-page font-medium leading-none tracking-[-0.03em] tabular-nums">
         {value}
       </span>
       {hint ? <span className="text-caption text-muted">{hint}</span> : null}
-    </Panel>
+    </div>
   );
 }

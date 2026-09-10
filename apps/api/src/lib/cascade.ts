@@ -2,13 +2,13 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { ScoreResult } from "@quizzy/shared";
 import { db } from "../db";
 import { FOLLOWUP_NOTE } from "./followup";
+import { grantAccess } from "./grantAccess";
 import {
   batteries,
   batteryAssignments,
   batteryItems,
   scaleBands,
   scales,
-  surveyAccess,
   surveys,
 } from "../db/schema";
 import { auditSystem } from "./audit";
@@ -139,18 +139,16 @@ async function assignCascade(
       dueAt,
       note: "Каскад по результату скрининга",
     });
-    await tx
-      .insert(surveyAccess)
-      .values(
-        grantable.map((item) => ({
-          surveyId: item.surveyId,
-          userId,
-          grantedBy: battery.createdBy,
-          expiresAt: dueAt,
-          note: "Каскад по результату скрининга",
-        })),
-      )
-      .onConflictDoNothing();
+    await grantAccess(
+      tx as never,
+      grantable.map((item) => ({
+        surveyId: item.surveyId,
+        userId,
+        grantedBy: battery.createdBy,
+        expiresAt: dueAt,
+        note: "Каскад по результату скрининга",
+      })),
+    );
   });
 
   outcome.assignedBatteries.push(battery.title);
@@ -183,16 +181,15 @@ async function scheduleFollowUps(
   // переоткрывать по расписанию значило бы плодить фоновые задания там, где
   // достаточно одного срока
   const maxDay = Math.max(...days);
-  await db
-    .insert(surveyAccess)
-    .values({
+  await grantAccess(db, [
+    {
       surveyId,
       userId,
       grantedBy: userId,
       expiresAt: new Date(Date.now() + (maxDay + 14) * 86_400_000).toISOString(),
       note: `${FOLLOWUP_NOTE}: повтор через ${days.join(", ")} дн.`,
-    })
-    .onConflictDoNothing();
+    },
+  ]);
 
   await auditSystem({
     action: "cascade.followup",

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { Issue, SurveyListItem } from "@quizzy/shared";
+import type { Issue, SurveyListItem, SurveyStatus, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { ConfirmByName, Loading, useToast } from "../../ui";
@@ -8,6 +8,19 @@ import { Page, Panel } from "../../ui/layout";
 import { Button, Tag } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
+
+/*
+ * Статус методики словами, а не кодом.
+ *
+ * Стояло голое `s.status` — «published» латиницей в колонке «Статус»,
+ * одинаково на русском и на украинском экране. Перебор полный: новый статус
+ * не соберётся, пока ему не дадут имени.
+ */
+const SURVEY_STATUS: Record<SurveyStatus, UiKey> = {
+  draft: "st.surveyDraft",
+  published: "st.surveyPublished",
+  closed: "st.surveyClosed",
+} as const;
 
 export function SurveyList() {
   const { ut } = useLang();
@@ -152,7 +165,7 @@ export function SurveyList() {
                     {s.archivedAt ? (
                       <span title={`${ut("cl.retiredOn")} ${s.archivedAt.slice(0, 10)}`}>{ut("mark.retired")}</span>
                     ) : (
-                      s.status
+                      ut(SURVEY_STATUS[s.status])
                     )}
                     {/*
                       Правовой статус стоит рядом со статусом публикации: это

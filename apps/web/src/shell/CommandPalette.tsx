@@ -24,24 +24,34 @@ interface Item {
   hint?: string;
 }
 
+/*
+ * Шесть команд вели в никуда.
+ *
+ * «Расписание повторов», «Сеансы киоска», «Сравнение», «Надзор», «Состояние
+ * подразделения» и «Создать сеанс киоска» указывали на маршруты, которых в
+ * приложении нет: их ловил общий перехват и молча уводил на сводку. Человек
+ * набирал «расписание», выбирал — и оказывался не там, где просил.
+ *
+ * Это хвост сквозных удалений: экраны убирали по решению, рельсу чистили, а
+ * палитру забыли. Проверка ниже следит, чтобы такое не повторилось.
+ */
 const ITEMS: Item[] = [
   { key: "nav.dashboard", to: "/", group: "cmd.navigate" },
+  { key: "day.title", to: "/today", group: "cmd.navigate" },
   { key: "nav.worklist", to: "/worklist", group: "cmd.navigate" },
   { key: "nav.cases", to: "/alerts", group: "cmd.navigate" },
   { key: "nav.patients", to: "/patients", group: "cmd.navigate" },
   { key: "nav.referrals", to: "/referrals", group: "cmd.navigate" },
   { key: "nav.surveys", to: "/surveys", group: "cmd.navigate" },
   { key: "nav.batteries", to: "/batteries", group: "cmd.navigate" },
-  { key: "nav.schedules", to: "/schedules", group: "cmd.navigate" },
+  { key: "nav.reception", to: "/my-schedule", group: "cmd.navigate" },
+  { key: "ms.title", to: "/messages", group: "cmd.navigate" },
   { key: "nav.invites", to: "/invites", group: "cmd.navigate" },
-  { key: "nav.kiosk", to: "/kiosk-sessions", group: "cmd.navigate" },
   { key: "nav.groups", to: "/groups", group: "cmd.navigate" },
-  { key: "nav.compare", to: "/compare", group: "cmd.navigate" },
-  { key: "nav.surveillance", to: "/surveillance", group: "cmd.navigate" },
-  { key: "nav.unitReport", to: "/unit-report", group: "cmd.navigate" },
+  { key: "perm.title", to: "/permissions", group: "cmd.navigate" },
+  { key: "acct.title", to: "/account", group: "cmd.navigate" },
   { key: "cmd.newSurvey", to: "/constructor", group: "cmd.actions" },
   { key: "cmd.newInvite", to: "/invites", group: "cmd.actions" },
-  { key: "cmd.newKiosk", to: "/kiosk-sessions", group: "cmd.actions" },
 ];
 
 export function CommandPalette({

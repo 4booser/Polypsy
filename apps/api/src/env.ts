@@ -30,6 +30,20 @@ const schema = z.object({
    * прохождений. 0 — хранить вечно. Агрегаты (время, переключения) остаются.
    */
   ANSWER_EVENTS_RETENTION_DAYS: z.coerce.number().int().min(0).default(365),
+  /**
+   * Пояс учреждения — по нему считаются сутки во всех сводках.
+   *
+   * Сутки считались двумя способами сразу: сводка резала строку ISO (то есть
+   * всегда UTC), аналитика методики — средствами Postgres (то есть по поясу
+   * машины с базой). На одном и том же замере в 22:30 по Киеву два экрана
+   * показывали РАЗНЫЕ дни, а на разных стендах поведение отличалось ещё и
+   * между собой.
+   *
+   * Учреждение на экземпляр одно (см. план, волна 8), поэтому пояс здесь
+   * один. У отделения свой пояс есть в departments.timezone — он для
+   * расписания приёма, где важен именно приёмный день конкретного кабинета.
+   */
+  INSTITUTION_TZ: z.string().default("Europe/Kyiv"),
   /** SMTP для уведомлений: smtp://user:pass@host:587; пусто — только журнал */
   SMTP_URL: z.string().default(""),
   MAIL_FROM: z.string().default("Quizzy <noreply@localhost>"),
@@ -108,6 +122,7 @@ export const env = {
   openRegistration: raw.OPEN_REGISTRATION,
   answerEventsRetentionDays: raw.ANSWER_EVENTS_RETENTION_DAYS,
   encryptionKeys: raw.ENCRYPTION_KEY,
+  institutionTz: raw.INSTITUTION_TZ,
   smtpUrl: raw.SMTP_URL,
   mailFrom: raw.MAIL_FROM,
   consoleUrl: raw.CONSOLE_URL,

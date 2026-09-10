@@ -84,7 +84,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         <Button
           onClick={() =>
             run(async () => {
-              if (text.trim() && !window.confirm(ut("cn.draftReplaced"))) return;
+              if (text.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
               setText(await buildDraft(responseId, ut));
             })
           }

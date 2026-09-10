@@ -495,6 +495,65 @@ describe("реальное время", () => {
     expect(received.some((e) => e.kind === "alert.created")).toBe(true);
   });
 
+  test("поток молчит о чужом пациенте в общем потоке действий", async () => {
+    /*
+     * Общий поток «action» выпускается на КАЖДОЕ журналируемое изменение и
+     * несёт идентификатор пациента. Методики у него нет — surveyIds: null, —
+     * поэтому фильтр по зоне методик пропускал его насквозь, и всякий
+     * сотрудник учреждения видел, что с конкретным человеком работают по
+     * риску, ставят его на учёт или разбивают ради него стекло. Плюс поток
+     * раздавал идентификаторы пациентов, которых у получателя не было
+     * ниоткуда.
+     */
+    const { publish } = await import("../src/lib/events");
+    const stranger = await makeUser("user", `ev-stranger-${crypto.randomUUID()}@test`);
+
+    const res = await app.request("/api/events", {
+      headers: { Authorization: `Bearer ${adminA.token}`, Accept: "text/event-stream" },
+    });
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    expect((await reader.read()).value).toContain("ready");
+
+    const mark = crypto.randomUUID();
+    /* о чужом — не должно дойти */
+    await publish(db, {
+      kind: "action",
+      action: "safety.save",
+      surveyIds: null,
+      userId: stranger.id,
+      resourceId: mark,
+      at: new Date().toISOString(),
+    });
+    /* о своём — должно: иначе проверка запрещала бы всё подряд */
+    await publish(db, {
+      kind: "action",
+      action: "safety.save",
+      surveyIds: null,
+      userId: patient.id,
+      resourceId: `mine-${mark}`,
+      at: new Date().toISOString(),
+    });
+
+    let seen = "";
+    const pump = (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          seen += value;
+        }
+      } catch {
+        /* поток закрыт отменой ниже */
+      }
+    })();
+    await new Promise((r) => setTimeout(r, 400));
+    await reader.cancel();
+    await pump;
+
+    expect(seen, "событие о своём пациенте должно дойти").toContain(`mine-${mark}`);
+    expect(seen.includes(stranger.id), "идентификатор чужого пациента ушёл в поток").toBe(false);
+  });
+
   test("поток отдаёт событие своей методики и молчит о чужой", async () => {
 
     /*

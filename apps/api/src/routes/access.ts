@@ -7,6 +7,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, accessiblePatientIds, assertSurveyAccess, assertSurveysInUse, surveyInUse } from "../lib/scope";
+import { grantAccess } from "../lib/grantAccess";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const accessRoutes = new Hono<AppEnv>();
@@ -87,25 +88,16 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
     badRequest("err.assignOnlyToPatient");
   }
 
-  await db
-    .insert(surveyAccess)
-    .values({
+  await grantAccess(db, [
+    {
       surveyId,
       userId: input.userId,
       grantedBy: c.get("user").id,
       expiresAt: input.expiresAt ?? null,
       note: input.note ?? null,
       attemptsAllowed: input.attemptsAllowed,
-    })
-    .onConflictDoUpdate({
-      target: [surveyAccess.surveyId, surveyAccess.userId],
-      set: {
-        grantedBy: c.get("user").id,
-        expiresAt: input.expiresAt ?? null,
-        note: input.note ?? null,
-        attemptsAllowed: input.attemptsAllowed,
-      },
-    });
+    },
+  ]);
 
   /*
    * Отмечаем, был ли человек в зоне видимости ДО выдачи.

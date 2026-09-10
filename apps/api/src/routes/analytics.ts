@@ -1,4 +1,4 @@
-import { dateRangeQuery, guttmanErrorsNormed, itemContribution, t } from "@quizzy/shared";
+import { comparableScores, dateRangeQuery, guttmanErrorsNormed, itemContribution, t } from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
@@ -11,6 +11,7 @@ import type {
   SurveyAnalytics,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { env } from "../env";
 import { answerEvents, answers, responseScores, responses, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
@@ -85,7 +86,7 @@ analyticsRoutes.get("/overview", async (c) => {
       group by rs.severity
     `),
     db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
-      select to_char(submitted_at, 'YYYY-MM-DD') as date, count(*)::int as n
+      select to_char(submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
       from responses
       where survey_id in ${idList} and status = 'completed' and submitted_at is not null
       group by 1 order by 1
@@ -365,7 +366,7 @@ analyticsRoutes.get("/groups/:id", async (c) => {
       group by r.survey_id, rs.severity
     `),
     db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
-      select to_char(submitted_at, 'YYYY-MM-DD') as date, count(*)::int as n
+      select to_char(submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
       from responses
       where survey_id in ${idList} and status = 'completed' and submitted_at is not null
       group by 1 order by 1
@@ -651,7 +652,10 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       }
 
       if (["text", "longtext"].includes(question.type)) {
-        base.texts = real.map((a) => a.text).filter((t): t is string => !!t);
+        /* тот же случай, что в formatAnswer: текст хранится шифрованным */
+        base.texts = real
+          .map((a) => (a.text ? decryptField(a.text) : null))
+          .filter((t): t is string => !!t);
       }
 
       return base;
@@ -712,14 +716,19 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
 
   const scaleStats: ScaleAnalytics[] = survey.scales.map((scale) => {
     const own = scoresByScale.get(scale.id) ?? [];
-    // распределение считаем по итоговому значению: полосы норм заданы на нём,
-    // а не на сыром балле
-    const values = own.map((s) => s.value);
+    /*
+     * Распределение считаем по итоговому значению: полосы норм заданы на нём,
+     * а не на сыром балле. Но только по ОДНОРОДНЫМ значениям — см.
+     * comparableScores: пока фильтра не было, T-баллы складывались с сырыми,
+     * и одного человека без нормы хватало, чтобы средний балл подразделения
+     * перестал что-либо значить.
+     */
+    const { values, kept } = comparableScores(own);
 
     // порядок берём из определения шкалы, а не из порядка появления в данных:
     // нормы должны идти по возрастанию тяжести, и пустые тоже видны
     const counts = new Map<string, number>();
-    for (const s of own) {
+    for (const s of kept) {
       if (!s.bandLabel) continue;
       counts.set(s.bandLabel, (counts.get(s.bandLabel) ?? 0) + 1);
     }
@@ -964,7 +973,16 @@ function formatAnswer(
   if (a.ranking?.length) return a.ranking.map((id) => optionText.get(id) ?? id).join(" > ");
   if (a.number !== null && a.number !== undefined) return String(a.number);
   if (a.date) return a.date;
-  return a.text ?? "";
+  /*
+   * Свободный текст расшифровывается.
+   *
+   * Он пишется через encryptField, а здесь читался напрямую — и в выгрузку
+   * уходило «enc1:v1:CxhIudAk…» вместо жалобы пациента. Заметить это трудно:
+   * шифртекст в base64 не содержит запятых, кавычек и переносов, поэтому CSV
+   * не ломается и выглядит правильным файлом. Свободнотекстовые ответы для
+   * исследования и отчётности терялись молча.
+   */
+  return a.text ? (decryptField(a.text) ?? "") : "";
 }
 
 function csvCell(value: string): string {

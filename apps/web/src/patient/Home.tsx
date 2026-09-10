@@ -26,7 +26,19 @@ export default function PatientHome() {
     .filter((a) => new Date(a.startsAt).getTime() > Date.now() && a.status !== "cancelled")
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
   const next = upcoming[0];
-  const todo = (surveys.data ?? []).filter((s) => s.status === "published").slice(0, 3);
+  /*
+   * Только непройденное.
+   *
+   * Здесь стояло «всё опубликованное», и главная звала проходить то, что
+   * человек уже сдал: на соседней вкладке та же методика была помечена
+   * «пройдено», а тут — кнопкой «Пройти». Нажав, он отвечал на все пункты —
+   * у МЛО их двести — и получал «вы уже проходили эту методику» только при
+   * отправке. Экран «Тесты» это разделение делает и объясняет, зачем;
+   * главная его не унаследовала.
+   */
+  const todo = (surveys.data ?? [])
+    .filter((s) => s.status === "published" && !s.completedByMe)
+    .slice(0, 3);
 
   return (
     <div className="flex flex-col gap-4 p-4">
