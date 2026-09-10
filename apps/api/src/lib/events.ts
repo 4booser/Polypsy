@@ -17,51 +17,10 @@ import { log } from "./log";
 
 export const CHANNEL = "quizzy_events";
 
-export type AppEventKind =
-  | "alert.created"
-  | "case.changed"
-  | "response.submitted"
-  | "kiosk.progress"
-  | "schedule.run"
-  | "presence.changed"
-  /**
-   * Любое изменяющее действие, попавшее в журнал.
-   *
-   * Заводится не вместо перечисленных выше, а под ними: те несут смысл
-   * («пришла тревога», «сдано прохождение») и подписчик знает, что с ними
-   * делать. Это — общий поток, чтобы не заводить kind под каждое новое
-   * действие и не обнаруживать через полгода, что половина системы событий
-   * не выпускает вовсе.
-   */
-  | "action";
+import type { AppEvent } from "@quizzy/shared";
 
-export interface AppEvent {
-  kind: AppEventKind;
-  /**
-   * Методики, к которым относится событие: событие видит тот, кому доступна
-   * хотя бы одна из них. Список, а не одна методика, потому что события
-   * киоска относятся к батарее целиком. `null` — системное событие,
-   * видимое всем сотрудникам.
-   */
-  surveyIds: string[] | null;
-  /** Кого касается; null у анонимных прохождений */
-  userId: string | null;
-  at: string;
-  severity?: "moderate" | "severe";
-  /** Сеанс киоска — чтобы открытый экран сеанса обновлял только себя */
-  sessionId?: string;
-  /** Экран, на котором находится сотрудник: `patient:<id>` и подобные */
-  resource?: string;
-
-  /* ── поля общего потока «action» ── */
-
-  /** Действие журнала: `clinic.cancel`, `episode.open` и так далее */
-  action?: string;
-  resourceType?: string | null;
-  resourceId?: string | null;
-  /** Кто сделал; null у фоновых проходов */
-  actorId?: string | null;
-}
+/* договор события — общий с консолью, см. packages/shared/src/types.ts */
+export type { AppEvent, AppEventKind } from "@quizzy/shared";
 
 type Handler = (event: AppEvent) => void;
 const handlers = new Set<Handler>();

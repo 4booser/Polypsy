@@ -13,23 +13,15 @@ import { api, tokenStore } from "./api";
  * путь доставки.
  */
 
-export type AppEventKind =
-  | "alert.created"
-  | "case.changed"
-  | "response.submitted"
-  | "kiosk.progress"
-  | "schedule.run"
-  | "presence.changed";
-
-export interface AppEvent {
-  kind: AppEventKind;
-  surveyIds: string[] | null;
-  userId: string | null;
-  at: string;
-  severity?: "moderate" | "severe";
-  sessionId?: string;
-  resource?: string;
-}
+/*
+ * Договор события общий с сервером, см. packages/shared/src/types.ts.
+ *
+ * Здесь стояла своя копия, и она отстала: сервер завёл вид «action» на
+ * каждое журналируемое изменение, а этот файл о нём не знал — центр событий
+ * показывал человеку голое слово «action».
+ */
+export type { AppEvent, AppEventKind } from "@quizzy/shared";
+import type { AppEvent, AppEventKind } from "@quizzy/shared";
 
 type Listener = (event: AppEvent) => void;
 

@@ -269,7 +269,8 @@ function GroupCard({
                 variant="danger"
                 onClick={() =>
                   run(async () => {
-                    if (!confirm(`${ut("adm.confirmDeleteGroup")} «${g.title}»?`)) return;
+                    /* отказ — не успех: см. useAction */
+                    if (!confirm(`${ut("adm.confirmDeleteGroup")} «${g.title}»?`)) return false;
                     await api.deleteGroup(g.id);
                     onChanged();
                   }, ut("adm.groupDeleted"))

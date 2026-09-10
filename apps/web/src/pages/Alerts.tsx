@@ -150,7 +150,13 @@ export default function Alerts() {
       sub={
         all === "1"
           ? ut("cases.allSub")
-          : `${ut("cases.openCount")}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}${mine ? ` · ${ut("cases.mine")} ${mine}` : ""}`
+          : /*
+               Число стоит в самой строке, а не только счётчиком у заголовка.
+               Без него подзаголовок читался обрывком фразы — «Открытых», — и
+               рядом с ним «просрочено 41 · на мне 5», где числа есть. Строка
+               выглядела так, будто из неё выпало слово.
+             */
+            `${ut("cases.openCount")} ${total ?? items.length}${overdue ? ` · ${ut("cases.overdue")} ${overdue}` : ""}${mine ? ` · ${ut("cases.mine")} ${mine}` : ""}`
       }
     >
     <div className="triage">
@@ -214,7 +220,17 @@ export default function Alerts() {
         {selected ? (
           <CaseCard c={selected} focused onChanged={page.reload} run={run} me={user?.id} />
         ) : (
-          <Empty title={ut("cases.emptyOpen")} hint={ut("cases.emptyHint")} />
+          /*
+            «Ничего не выбрано» — не то же, что «ничего нет».
+            Здесь стояло «Открытых случаев нет» — и висело оно при полном
+            списке слева: панель разбора путала пустую очередь с невыбранной
+            строкой и врала о состоянии отделения. Ровно эту же ошибку уже
+            находили в переписке.
+          */
+          <Empty
+            title={ut(items.length ? "cases.pickOne" : "cases.emptyOpen")}
+            hint={ut(items.length ? "cases.pickOneHint" : "cases.emptyHint")}
+          />
         )}
         <HotkeyHint
           keys={[

@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { dayFull } from "../format";
 import { Page } from "../ui/layout";
 import { Tabs } from "../ui/primitives";
@@ -13,16 +13,21 @@ import { useLang } from "../lang";
  * отдельный экран: сводка говорит, как идут дела вообще, приём — кто придёт
  * сегодня.
  *
- * Заголовком стоит дата, а не название экрана. Название («Начало») ничего не
- * сообщает тому, кто уже здесь, а дата отвечает на вопрос, который на этом
- * экране действительно задают, — особенно когда листаешь приём на другой
- * день и надо понимать, где ты.
+ * Заголовок называет экран, дата стоит подзаголовком.
+ *
+ * Сначала было наоборот — датой вместо названия, из соображения «название
+ * ничего не сообщает тому, кто уже здесь». Соображение верное, а решение
+ * било мимо: над вкладками «Сводка» и «Сегодня» висело «чт, 10 сентября», и
+ * заголовок экрана не совпадал ни с одной из них. Дата отвечает на свой
+ * вопрос и подзаголовком — там она ничего не заслоняет.
  */
 export default function Start() {
   const { ut } = useLang();
+  const onToday = useLocation().pathname.startsWith("/today");
   return (
     <Page
-      title={dayFull(new Date().toISOString().slice(0, 10))}
+      title={ut(onToday ? "day.title" : "dash.title")}
+      sub={dayFull(new Date().toISOString().slice(0, 10))}
       toolbar={
         <Tabs
           items={[

@@ -15,6 +15,7 @@ import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
 import { persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
+import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertSurveyAccess, isStaff } from "../lib/scope";
@@ -40,21 +41,48 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       where: eq(responses.clientRequestId, input.clientRequestId),
     });
     if (existing) {
-      const scores = await db
+      /*
+       * Повтор отдаёт СОХРАНЁННЫЙ результат, а не пустой.
+       *
+       * Здесь стояли `scores: []`, `reliable: true` и `safetyPlan: null` —
+       * при том, что баллы тут же вычитывались из базы и выбрасывались.
+       * Ветка срабатывает на обычном пути мобильного клиента: связь
+       * оборвалась после коммита, очередь повторяет ту же попытку.
+       *
+       * Цена была клинической. План безопасности показывается ровно в момент
+       * отправки и больше нигде: человек, у которого сработал критический
+       * пункт — суицидальные мысли, — при повторе не видел кризисной
+       * карточки вовсе. А `reliable: true` объявляло достоверным протокол,
+       * заваливший шкалу лжи.
+       */
+      const stored = await db
         .select()
         .from(responseScores)
         .where(eq(responseScores.responseId, existing.id));
+      const risks = await db
+        .select({ id: riskAlerts.id })
+        .from(riskAlerts)
+        .where(eq(riskAlerts.responseId, existing.id))
+        .limit(1);
+      const survey = await getSurvey(existing.surveyId, null, langOf(c));
+
       return c.json(
         {
           id: existing.id,
           surveyId: existing.surveyId,
           submittedAt: existing.submittedAt,
-          scores: [],
-          reliable: true,
+          scores: stored,
+          reliable: existing.reliable,
+          /*
+           * Предупреждений в строке не хранится: они собираются при подсчёте
+           * и в базу не попадают. Пустой список здесь — честное «нечего
+           * сказать», а не утверждение «замечаний не было»: в отличие от
+           * достоверности, предупреждения ни на что не влияют.
+           */
           warnings: [],
-          safetyPlan: null,
+          safetyPlan:
+            risks.length > 0 && existing.userId === user.id ? (survey?.safetyPlan ?? null) : null,
           duplicate: true,
-          storedScores: scores.length,
         },
         200,
       );
@@ -321,6 +349,7 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("pa
   // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».
   // offset-вариант на живой таблице съезжает при вставках между страницами
   const { limit, before } = parseQuery(c, responseListQuery);
+  const cursor = decodeCursor(before);
 
   const rows = await db
     .select({ response: responses, userName: users.lastName })
@@ -329,10 +358,21 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("pa
     .where(
       and(
         eq(responses.surveyId, c.req.param("id")),
-        before ? sql`${responses.submittedAt} < ${before}` : undefined,
+        /*
+         * Пара «время и идентификатор», а не одно время.
+         *
+         * Групповое обследование сдаётся одновременно, метка ставится в JS и
+         * совпадает до миллисекунды. Условие «строго раньше» по одному
+         * времени выбрасывало на границе страницы всю такую группу целиком,
+         * включая непоказанных: из шести прохождений консоль обходила пять,
+         * и пометки об этом не было никакой.
+         */
+        cursor
+          ? sql`(${responses.submittedAt}, ${responses.id}) < (${cursor.at}::timestamptz, ${cursor.id})`
+          : undefined,
       ),
     )
-    .orderBy(desc(responses.submittedAt))
+    .orderBy(desc(responses.submittedAt), desc(responses.id))
     .limit(limit + 1);
 
   const hasMore = rows.length > limit;
@@ -358,7 +398,9 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("pa
   return c.json({
     rows: enriched,
     hasMore,
-    nextBefore: hasMore ? page[page.length - 1]!.response.submittedAt : null,
+    nextBefore: hasMore
+      ? encodeCursor(page[page.length - 1]!.response.submittedAt ?? "", page[page.length - 1]!.response.id)
+      : null,
   });
 });
 

@@ -267,7 +267,7 @@ export async function persistSubmission(
      */
     for (const score of scores) {
       const severity = score.band?.severity;
-      if (score.kind !== "clinical" || !score.normalized) continue;
+      if (score.kind !== "clinical") continue;
       if (severity !== "moderate" && severity !== "severe") continue;
 
       const caseId = await attachToCase(tx as never, {

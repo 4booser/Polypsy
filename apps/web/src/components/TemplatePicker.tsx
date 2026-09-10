@@ -84,7 +84,7 @@ export function TemplatePicker({
                 size="sm"
                 variant="ghost"
                 onClick={() => {
-                  if (value.trim() && !window.confirm(ut("tpl.replaces"))) return;
+                  if (value.trim() && !window.confirm(ut("tpl.replaces"))) return false;
                   onChange(t.body);
                   setOpen(false);
                 }}
@@ -129,10 +129,11 @@ export function TemplatePicker({
                   : "";
               if (!picked.trim()) {
                 window.alert(ut("tpl.selectFirst"));
-                return;
+                return false;
               }
               const title = window.prompt(ut("tpl.addTitle"), picked.slice(0, 60));
-              if (!title) return;
+              /* отказ от ввода названия — не добавление */
+              if (!title) return false;
               await api.createTemplate({ kind: "phrase", title, body: picked });
               await res.reload();
             }, ut("tpl.added"))

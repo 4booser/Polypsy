@@ -43,6 +43,8 @@ export const IconAlert = icon(<><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2
 export const IconUsers = icon(<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /></>);
 /* стопка листов: пакет заключений — это подшивка, а не отдельный документ */
 export const IconStack = icon(<><rect x="4" y="3" width="12" height="15" rx="1" /><path d="M8 21h10a2 2 0 0 0 2-2V8" /><path d="M8 8h4M8 12h4" /></>);
+/* Администрирование: человек с шестерёнкой — настройка того, кто что может */
+export const IconUserGear = icon(<><circle cx="9" cy="7" r="4" /><path d="M2 21v-2a4 4 0 0 1 4-4h5" /><circle cx="18" cy="17" r="2.5" /><path d="M18 13v1.2M18 19.8V21M21.5 15l-1 .6M15.5 18.4l-1 .6M21.5 19l-1-.6M15.5 15.6l-1-.6" /></>);
 export const IconAudit = icon(<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></>);
 export const IconBattery = icon(<><rect x="2" y="7" width="16" height="10" rx="2" /><path d="M22 11v2" /><path d="M6 11v2M10 11v2" /></>);
 export const IconClock = icon(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>);
@@ -356,7 +358,7 @@ export function Screen<T>({
         </>
       );
     }
-    return <Loading rows={rows} error={res.error} />;
+    return <Loading rows={rows} error={res.error} onRetry={res.reload} busy={res.loading} />;
   }
   return (
     <>
@@ -367,16 +369,45 @@ export function Screen<T>({
   );
 }
 
-export function Loading({ rows = 4, error }: { rows?: number; error?: string | null }) {
+export function Loading({
+  rows = 4,
+  error,
+  onRetry,
+  busy,
+}: {
+  rows?: number;
+  error?: string | null;
+  /** Повторить запрос; без него экран, который не загрузился, — тупик */
+  onRetry?: () => void;
+  busy?: boolean;
+}) {
+  const { ut } = useLang();
   if (error) {
     return (
-      <div className="card">
+      /*
+        Отказ обязан давать выход.
+        Здесь стояла одна строка с текстом ошибки — и всё: экран, не
+        загрузившийся из-за минутного сбоя, оставался мёртвым до тех пор,
+        пока человек не догадается обновить страницу целиком. Полоса
+        «нет связи» кнопку «повторить» имела, а эта ветка — нет, хотя
+        попадают в неё чаще.
+      */
+      <div className="card" role="alert">
         <p className="error" style={{ margin: 0 }}>{error}</p>
+        {onRetry ? (
+          <button type="button" className="mt-3" disabled={busy} onClick={onRetry}>
+            {ut("common.retry")}
+          </button>
+        ) : null}
       </div>
     );
   }
   return (
-    <div className="card">
+    /*
+      Скелет объявляет себя занятым: без этого диктор читает пустую
+      страницу и не узнаёт, когда содержимое приехало.
+    */
+    <div className="card" role="status" aria-busy="true">
       <div className="skeleton" style={{ height: 20, width: "38%", marginBottom: 14 }} />
       <Skeleton lines={rows} />
     </div>
@@ -428,12 +459,43 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
+      {/*
+        Живая область: иначе вся обратная связь приложения нема.
+        Плашки — единственный канал подтверждений и отказов действий во всём
+        приложении, и диктор их не произносил вовсе. Человек нажимал
+        «сохранить», ничего не слышал и не знал, сохранилось ли.
+
+        Отказы объявляются настойчиво (assertive) и ролью alert: их пропускать
+        нельзя. Подтверждения — вежливо (polite), в паузе: «сохранено» не
+        должно перебивать чтение.
+      */}
       <div className="toasts">
-        {items.map((t) => (
-          <div key={t.id} className={`toast ${t.kind === "ok" ? "ok" : t.kind === "err" ? "err" : ""}`}>
-            {t.text}
-          </div>
-        ))}
+        {/*
+          Живая область объявлена через aria-live, но БЕЗ role="alert".
+          role="alert" означает «прямо сейчас есть тревога», а контейнер живёт
+          на странице всегда и пуст почти всё время: постоянный пустой alert —
+          это ложное объявление и заодно ловушка для всякого, кто ищет
+          настоящий отказ по этой роли. aria-live даёт то же объявление, не
+          утверждая ничего, пока плашки нет.
+        */}
+        <div aria-live="assertive">
+          {items
+            .filter((t) => t.kind === "err")
+            .map((t) => (
+              <div key={t.id} className="toast err">
+                {t.text}
+              </div>
+            ))}
+        </div>
+        <div aria-live="polite">
+          {items
+            .filter((t) => t.kind !== "err")
+            .map((t) => (
+              <div key={t.id} className={`toast ${t.kind === "ok" ? "ok" : ""}`}>
+                {t.text}
+              </div>
+            ))}
+        </div>
       </div>
     </ToastCtx.Provider>
   );
@@ -457,13 +519,26 @@ export function useAction() {
    */
   const inFlight = useRef(false);
 
+  /*
+   * Действие, вернувшее ложь, считается несделанным.
+   *
+   * Раньше любой штатный возврат означал успех — и подтверждение
+   * показывалось даже тогда, когда действие не состоялось. Так и выходило:
+   * человек нажимал «удалить», отказывался в системном окне, и ему
+   * сообщали «группа удалена». Группа при этом оставалась на месте.
+   *
+   * Вопрос лучше задавать ДО run — тогда обманывать нечему. Но там, где он
+   * должен быть внутри, у действия теперь есть способ сказать «я ничего не
+   * сделал»: вернуть false.
+   */
   const run = useCallback(
     async (fn: () => Promise<unknown>, okText?: string) => {
       if (inFlight.current) return false;
       inFlight.current = true;
       setBusy(true);
       try {
-        await fn();
+        const outcome = await fn();
+        if (outcome === false) return false;
         if (okText) toast(okText, "ok");
         return true;
       } catch (e) {

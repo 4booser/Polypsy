@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { db } from "../db";
 import { surveys } from "../db/schema";
 import { subscribe, type AppEvent } from "../lib/events";
-import { surveyScopeFilter } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const eventRoutes = new Hono<AppEnv>();
@@ -35,7 +35,19 @@ eventRoutes.get("/", async (c) => {
     return new Set(scoped.map((s) => s.id));
   }
 
+  /**
+   * Кого этот сотрудник вправе видеть.
+   *
+   * Нужна отдельно от зоны по методикам: событие общего потока «action»
+   * относится не к методике, а к человеку, и сузить его по методикам нечем.
+   * `null` — суперадмин, видит всех.
+   */
+  async function readPatients(): Promise<Set<string> | null> {
+    return accessiblePatientIds(user);
+  }
+
   let allowed = await readScope();
+  let patients = await readPatients();
 
   return streamSSE(c, async (stream) => {
     let alive = true;
@@ -47,6 +59,21 @@ eventRoutes.get("/", async (c) => {
       if (!alive) return;
       // событие без методик (системное) видно всем сотрудникам
       if (event.surveyIds && !event.surveyIds.some((id) => allowed.has(id))) return;
+      /*
+       * Событие БЕЗ методики, но о человеке, — только тому, кто вправе
+       * видеть человека.
+       *
+       * У событий с методикой правило своё и достаточное: зона по методикам,
+       * условие выше. А общий поток «action» выпускается с surveyIds: null —
+       * то есть проходил фильтр насквозь и шёл всем сотрудникам без разбора.
+       * Комментарий рядом с его выпуском обосновывал это тем, что «имён и
+       * содержимого в нём нет». Имён нет, а идентификатор пациента есть — и
+       * он сообщает ровно то, что система в остальном бережёт: что с этим
+       * человеком работают по риску, ставят на учёт, разбивают ради него
+       * стекло. Заодно поток раздавал идентификаторы, которых у получателя
+       * не было ниоткуда, — готовый вход для захвата чужой карты.
+       */
+      if (!event.surveyIds && event.userId && patients && !patients.has(event.userId)) return;
       void stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
     });
 

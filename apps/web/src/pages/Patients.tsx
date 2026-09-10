@@ -108,6 +108,27 @@ export function PatientList() {
               ),
             },
             {
+              /*
+                Год рождения стоит сразу за именем.
+                В списке из сотни человек тёзки встречаются — имена в стране
+                не бесконечны, — и различить их было нечем: одинаковые
+                строки, разные люди. Открыть карту не того человека в
+                поликлинике стоит дорого, а в регистратуре их различают
+                именно годом.
+              */
+              key: "birthYear",
+              header: ut("person.birthYear"),
+              num: true,
+              sort: (r) => r.birthYear ?? 0,
+              csv: (r) => (r.birthYear ? String(r.birthYear) : ""),
+              render: (r) =>
+                r.birthYear ? (
+                  <span className="tabular-nums">{r.birthYear}</span>
+                ) : (
+                  <span className="text-faint">—</span>
+                ),
+            },
+            {
               key: "unit",
               header: ut("person.unit"),
               sort: (r) => r.unit ?? "",
