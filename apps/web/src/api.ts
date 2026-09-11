@@ -23,17 +23,11 @@ import type {
   CreateUserInput,
   GroupInput,
   SurveyGroup,
-  ComparisonResult,
-  CorrelationMatrix,
   Battery,
   BatteryAssignment,
   BatteryInput,
-  Schedule,
-  ScheduleInput,
   Invite,
   CreateInviteInput,
-  KioskSession,
-  CreateKioskSessionInput,
   Referral,
   CreateReferralInput,
   CaseSummary,
@@ -44,13 +38,9 @@ import type {
   ResponseDetail,
   Page,
   Respondent,
-  UnitReport,
   Worklist,
   RuleHit,
-  DutyShiftRow,
   WorkspacePrefs,
-  InformantRequestRow,
-  InformantComparison,
   CohortSpec,
   CohortPreview,
   CohortRow,
@@ -304,57 +294,6 @@ export type OpenApiSpec = {
   paths: Record<string, Record<string, OpenApiOperation>>;
 };
 
-/**
- * Списочный ответ API.
- *
- * Списки отдаются объектом, а не голым массивом: в массив нельзя добавить ни
- * «всего», ни курсор, ни признак усечения, не сломав всех, кто его читает.
- * Реестр направлений — как раз тот случай: двухсотое направление раньше
- * молча исчезало, и экран выглядел полным.
- *
- * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
- * неё ничего не нужно.
- */
-export interface Conference {
-  id: string;
-  reason: string;
-  status: "open" | "decided" | "cancelled";
-  decision: string | null;
-  decidedAt: string | null;
-  decidedByName: string | null;
-  createdAt: string;
-  opinions: {
-    id: string;
-    kind: "opinion" | "dissent";
-    text: string;
-    authorName: string;
-    createdAt: string;
-  }[];
-}
-
-export interface TreatmentGoal {
-  id: string;
-  surveyId: string;
-  surveyTitle: string;
-  scaleCode: string;
-  direction: "down" | "up";
-  targetValue: number;
-  baselineValue: number | null;
-  currentValue: number | null;
-  measurements: number;
-  /** Значение достигло цели по её направлению */
-  reached: boolean;
-  /** Изменение больше ошибки измерения — иное утверждение, чем «стало лучше» */
-  reliable: boolean | null;
-  rci: number | null;
-  status: "open" | "met" | "missed" | "cancelled";
-  dueAt: string | null;
-  note: string | null;
-  authorName: string;
-  createdAt: string;
-  closedAt: string | null;
-}
-
 export interface NoteVersion {
   id: string;
   version: number;
@@ -369,63 +308,6 @@ export interface NoteVersion {
 export interface NoteState {
   current: NoteVersion | null;
   versions: NoteVersion[];
-}
-
-export interface PathwayTemplate {
-  id: string;
-  title: string;
-  description: string | null;
-  groupId: string | null;
-  steps: {
-    id: string;
-    title: string;
-    kind: "survey" | "battery" | "referral" | "action" | "decision";
-    surveyId: string | null;
-    batteryId: string | null;
-    dueDays: number | null;
-    required: boolean;
-  }[];
-}
-
-export interface PathwayInstance {
-  id: string;
-  pathwayTitle: string;
-  userId: string;
-  userName: string;
-  unit: string | null;
-  startedAt: string;
-  closedAt: string | null;
-  outcome: string | null;
-  total: number;
-  done: number;
-  overdue: number;
-  /** Первый незакрытый шаг — ответ на вопрос «где стоим» */
-  currentStep: string | null;
-  currentDueAt: string | null;
-}
-
-export interface PathwayDetail {
-  id: string;
-  pathwayTitle: string;
-  userId: string;
-  userName: string;
-  startedAt: string;
-  closedAt: string | null;
-  outcome: string | null;
-  note: string | null;
-  steps: {
-    id: string;
-    title: string;
-    kind: "survey" | "battery" | "referral" | "action" | "decision";
-    surveyId: string | null;
-    batteryId: string | null;
-    required: boolean;
-    state: "pending" | "done" | "skipped";
-    dueAt: string | null;
-    doneAt: string | null;
-    doneByName: string | null;
-    note: string | null;
-  }[];
 }
 
 export interface SavedView {
@@ -450,6 +332,17 @@ export interface TimelineItem {
   href?: string | null;
 }
 
+/**
+ * Списочный ответ API.
+ *
+ * Списки отдаются объектом, а не голым массивом: в массив нельзя добавить ни
+ * «всего», ни курсор, ни признак усечения, не сломав всех, кто его читает.
+ * Реестр направлений — как раз тот случай: двухсотое направление раньше
+ * молча исчезало, и экран выглядел полным.
+ *
+ * Разворачивается здесь, чтобы страницы не знали про обёртку там, где им от
+ * неё ничего не нужно.
+ */
 export interface Items<T> {
   items: T[];
 }
@@ -577,15 +470,6 @@ export const api = {
   cancelAssignment: (assignmentId: string) =>
     request<{ ok: true }>(`/api/batteries/assignments/${assignmentId}/cancel`, { method: "POST" }),
 
-  kioskSessions: () => unwrap(request<Items<KioskSession>>("/api/kiosk/sessions")),
-  createKioskSession: (input: CreateKioskSessionInput) =>
-    request<{ id: string; token: string }>("/api/kiosk/sessions", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
-  closeKioskSession: (id: string) =>
-    request<{ ok: true }>(`/api/kiosk/sessions/${id}/close`, { method: "POST" }),
-
   invites: () => unwrap(request<Items<Invite>>("/api/invites")),
   createInvite: (input: CreateInviteInput) =>
     request<{ id: string; token: string; code: string }>("/api/invites", {
@@ -616,13 +500,6 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ status, note: note ?? null }),
     }),
-  duty: () => request<{ items: DutyShiftRow[] }>("/api/decisions/duty").then((r) => r.items),
-  takeDuty: (startsAt: string, endsAt: string, userId: string) =>
-    request<{ id: string }>("/api/decisions/duty", {
-      method: "POST",
-      body: JSON.stringify({ userId, startsAt, endsAt }),
-    }),
-
   conclusionBatch: (unit: string, from: string, to: string) => {
     const q = new URLSearchParams();
     if (unit) q.set("unit", unit);
@@ -721,23 +598,6 @@ export const api = {
   wipeDevice: (id: string) =>
     request<{ ok: true; note: string }>(`/api/devices/${id}/wipe`, { method: "POST" }),
 
-
-  informants: (userId: string) =>
-    request<{ items: InformantRequestRow[] }>(`/api/informants/patients/${userId}`).then(
-      (r) => r.items,
-    ),
-  askInformant: (userId: string, surveyId: string, role: string, note?: string) =>
-    request<{ id: string; token: string }>(`/api/informants/patients/${userId}`, {
-      method: "POST",
-      body: JSON.stringify({ surveyId, role, note: note ?? null }),
-    }),
-  revokeInformant: (id: string) =>
-    request<{ ok: true }>(`/api/informants/${id}/revoke`, { method: "POST" }),
-  informantCompare: (userId: string) =>
-    request<{ items: InformantComparison[] }>(`/api/informants/compare/${userId}`).then(
-      (r) => r.items,
-    ),
-
   saveWorkspace: (prefs: WorkspacePrefs) =>
     request<WorkspacePrefs>("/api/auth/me/workspace", {
       method: "PUT",
@@ -750,13 +610,6 @@ export const api = {
     request<{ others: { id: string; name: string }[] }>(
       `/api/presence?resource=${encodeURIComponent(resource)}`,
     ),
-  unitReportUnits: () => unwrap(request<Items<string>>("/api/unit-report/units")),
-  unitReport: (unit: string, from?: string, to?: string) => {
-    const qs = new URLSearchParams({ unit });
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
-    return request<UnitReport>(`/api/unit-report?${qs}`);
-  },
   assignCase: (id: string, release = false) =>
     request<void>(`/api/alert-cases/${id}/assign`, {
       method: "POST",
@@ -781,32 +634,6 @@ export const api = {
       body: JSON.stringify({ status, outcomeNote }),
     }),
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
-  conferences: (userId: string) =>
-    unwrap(request<Items<Conference>>(`/api/conferences/patients/${userId}`)),
-  openConference: (userId: string, reason: string) =>
-    request<{ id: string }>(`/api/conferences/patients/${userId}`, {
-      method: "POST",
-      body: JSON.stringify({ reason }),
-    }),
-  addOpinion: (conferenceId: string, text: string, kind: "opinion" | "dissent") =>
-    request<{ id: string }>(`/api/conferences/${conferenceId}/opinions`, {
-      method: "POST",
-      body: JSON.stringify({ text, kind }),
-    }),
-  decideConference: (conferenceId: string, decision: string) =>
-    request<{ ok: true }>(`/api/conferences/${conferenceId}/decide`, {
-      method: "POST",
-      body: JSON.stringify({ decision }),
-    }),
-
-  goals: (userId: string) => unwrap(request<Items<TreatmentGoal>>(`/api/goals/patients/${userId}`)),
-  createGoal: (
-    userId: string,
-    input: { surveyId: string; scaleCode: string; direction: "down" | "up"; targetValue: number; dueAt?: string | null; note?: string },
-  ) => request<{ id: string }>(`/api/goals/patients/${userId}`, { method: "POST", body: JSON.stringify(input) }),
-  closeGoal: (id: string, status: "met" | "missed" | "cancelled" | "open", note?: string) =>
-    request<{ ok: true }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify({ status, note }) }),
-
   safetyPlans: (userId: string) =>
     request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`),
   saveSafetyPlan: (userId: string, content: SafetyPlanContent) =>
@@ -831,38 +658,6 @@ export const api = {
     request<NoteState>(`/api/notes/patients/${userId}/sign`, {
       method: "POST",
       body: JSON.stringify({ version }),
-    }),
-
-  pathways: () => unwrap(request<Items<PathwayTemplate>>("/api/pathways")),
-  createPathway: (input: {
-    title: Record<string, string>;
-    description?: Record<string, string> | null;
-    steps: {
-      title: Record<string, string>;
-      kind: "survey" | "battery" | "referral" | "action" | "decision";
-      surveyId?: string | null;
-      batteryId?: string | null;
-      dueDays?: number | null;
-      required?: boolean;
-    }[];
-  }) => request<{ id: string }>("/api/pathways", { method: "POST", body: JSON.stringify(input) }),
-  pathwayInstances: (all = false) =>
-    unwrap(request<Items<PathwayInstance>>(`/api/pathways/instances${all ? "?all=1" : ""}`)),
-  pathwayInstance: (id: string) => request<PathwayDetail>(`/api/pathways/instances/${id}`),
-  startPathway: (pathwayId: string, userId: string) =>
-    request<{ id: string }>(`/api/pathways/${pathwayId}/start`, {
-      method: "POST",
-      body: JSON.stringify({ userId }),
-    }),
-  setPathwayStep: (progressId: string, state: "pending" | "done" | "skipped", note?: string) =>
-    request<{ ok: true }>(`/api/pathways/progress/${progressId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ state, note }),
-    }),
-  closePathway: (id: string, outcome: string, note?: string) =>
-    request<{ ok: true }>(`/api/pathways/instances/${id}/close`, {
-      method: "POST",
-      body: JSON.stringify({ outcome, note }),
     }),
 
   /* ── права ── */
@@ -981,72 +776,6 @@ export const api = {
       retest: { code: string; title: string; pairs: number; icc: number | null }[];
     }>(`/api/data-quality/surveys/${surveyId}`),
 
-  calibration: (surveyId: string) =>
-    request<{
-      minPerOutcome: number;
-      cases: number;
-      scales: {
-        code: string;
-        title: string;
-        normalization: string;
-        strata: {
-          stratum: string;
-          confirmed: number;
-          notConfirmed: number;
-          enough: boolean;
-          currentThreshold: number | null;
-          currentSensitivity: number | null;
-          currentSpecificity: number | null;
-          roc: {
-            auc: number;
-            bestThreshold: number;
-            bestSensitivity: number;
-            bestSpecificity: number;
-            points: { threshold: number; tpr: number; fpr: number }[];
-          } | null;
-        }[];
-      }[];
-    }>(`/api/calibration/surveys/${surveyId}`),
-  ppv: () =>
-    request<{
-      overall: { n: number; confirmed: number; ppv: number } | null;
-      withoutOutcome: number;
-      bySurvey: { surveyId: string; title: string; n: number; confirmed: number; ppv: number }[];
-      byMonth: { month: string; n: number; confirmed: number; ppv: number }[];
-    }>("/api/calibration/ppv"),
-
-  dif: (surveyId: string) =>
-    request<{
-      surveyId: string;
-      title: string;
-      sample: number;
-      minGroup: number;
-      solidGroup: number;
-      scales: {
-        code: string;
-        title: string;
-        items: {
-          questionId: string;
-          position: number;
-          title: string;
-          entries: {
-            factor: "sex" | "age" | "lang";
-            reference: string;
-            focal: string;
-            refN: number;
-            focalN: number;
-            preliminary: boolean;
-            result: { chi2: number; alphaMH: number; deltaMH: number; etsClass: "A" | "B" | "C"; significant: boolean } | null;
-          }[];
-        }[];
-      }[];
-      reliability: {
-        code: string;
-        title: string;
-        groups: { group: string; n: number; alpha: number | null }[];
-        alphaSpread: number | null;
-      }[];
-    }>(`/api/dif/surveys/${surveyId}`),
   ageCurves: (surveyId: string) =>
     request<{
       minWindow: number;
@@ -1061,18 +790,6 @@ export const api = {
         }[];
       }[];
     }>(`/api/norms/surveys/${surveyId}/age-curves`),
-
-  surveillance: (surveyId: string) =>
-    request<{
-      surveyId: string;
-      title: string;
-      minWeekN: number;
-      series: {
-        unit: string | null;
-        center: number;
-        weeks: { week: string; n: number; x: number; p: number; ucl: number; beyondLimits: boolean; runSignal: boolean }[];
-      }[];
-    }>(`/api/surveillance/surveys/${surveyId}`),
 
   normCandidates: (surveyId: string) =>
     request<{
@@ -1108,16 +825,6 @@ export const api = {
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
 
-  schedules: () => unwrap(request<Items<Schedule>>("/api/schedules")),
-  scheduleUnits: () => unwrap(request<Items<string>>("/api/schedules/units")),
-  createSchedule: (input: ScheduleInput) =>
-    request<{ id: string }>("/api/schedules", { method: "POST", body: JSON.stringify(input) }),
-  updateSchedule: (id: string, input: ScheduleInput) =>
-    request<{ ok: true }>(`/api/schedules/${id}`, { method: "PUT", body: JSON.stringify(input) }),
-  deleteSchedule: (id: string) => request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
-  runSchedule: (id: string) =>
-    request<Schedule>(`/api/schedules/${id}/run`, { method: "POST" }),
-
   conclusion: (responseId: string) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`),
   conclusionDraft: (responseId: string) =>
@@ -1150,11 +857,6 @@ export const api = {
       body: JSON.stringify({ version }),
     }),
 
-  compare: (surveyId: string, by: string) =>
-    request<ComparisonResult>(`/api/compare/surveys/${surveyId}?by=${by}`),
-  correlations: (surveyId: string) =>
-    request<CorrelationMatrix>(`/api/compare/surveys/${surveyId}/correlations`),
-
   respondents: (params: { search?: string; cursor?: string; limit?: string } = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
@@ -1163,11 +865,6 @@ export const api = {
   dynamics: (userId: string) => request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
 
   alerts: (all = false) => unwrap(request<Items<RiskAlert>>(`/api/alerts${all ? "?all=1" : ""}`)),
-  acknowledgeAlert: (id: string, note?: string, outcome?: "confirmed" | "not_confirmed" | "needs_followup") =>
-    request<unknown>(`/api/alerts/${id}/acknowledge`, {
-      method: "PATCH",
-      body: JSON.stringify({ note, outcome }),
-    }),
 
   grants: (surveyId: string) => unwrap(request<Items<SurveyGrant>>(`/api/access/surveys/${surveyId}/grants`)),
   grant: (
@@ -1366,28 +1063,16 @@ export const api = {
         departmentId: string | null;
       }[];
     }>("/api/templates"),
+  /*
+   * Отделение не передаётся: сервер берёт его из профиля автора. Позволить
+   * клиенту назвать чужое отделение значило бы дать писать в его библиотеку,
+   * а разбираться, откуда взялась строка, потом пришлось бы по журналу.
+   */
   createTemplate: (input: {
     kind: "conclusion" | "note" | "phrase";
     title: string;
     body: string;
-    departmentId?: string | null;
   }) => request<{ id: string }>("/api/templates", { method: "POST", body: JSON.stringify(input) }),
-  archiveTemplate: (id: string) =>
-    request<{ ok: true }>(`/api/templates/${id}`, { method: "DELETE" }),
-  departmentReport: (from: string, to: string) =>
-    request<{
-      departmentId: string;
-      from: string;
-      to: string;
-      received: number;
-      people: number | null;
-      primary: number | null;
-      repeat: number | null;
-      noShow: number | null;
-      cancelled: number | null;
-      attached: number | null;
-      floor: number;
-    }>(`/api/clinic/report?from=${from}&to=${to}`),
   visitContext: (id: string) =>
     request<{
       appointment: {

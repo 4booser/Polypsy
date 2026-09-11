@@ -824,76 +824,6 @@ kbd, .kbd {
 .join-card { width: min(520px, 100%); }
 .join-card h1 { font-size: var(--fs-section); margin-bottom: 2px; }
 
-/* ═══ киоск: крупно, издалека, без лишнего ═══ */
-.kiosk-page { min-height: 100vh; background: var(--bg); display: grid; place-items: center; padding: 26px; }
-.kiosk-card { width: min(720px, 100%); }
-.kiosk-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
-.kiosk-progress { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
-.kiosk-progress > i { display: block; height: 100%; background: var(--accent); transition: width var(--dur) var(--ease); }
-.kiosk-question {
-  font-family: var(--font-display);
-  font-size: 27px;
-  font-weight: 500;
-  line-height: 1.3;
-  margin: 22px 0 26px;
-  letter-spacing: -0.01em;
-}
-.kiosk-options { display: grid; gap: 11px; }
-.kiosk-option {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 17px 20px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  font-size: 18px;
-  text-align: left;
-  width: 100%;
-}
-.kiosk-option:hover { border-color: var(--primary); background: var(--surface-2); }
-.kiosk-option.active { border-color: var(--accent); background: var(--accent-soft); }
-.kiosk-option.num { justify-content: center; font-family: var(--font-mono); font-size: 21px; }
-.kiosk-number {
-  font-family: var(--font-mono);
-  font-size: var(--fs-caption);
-  color: var(--muted);
-  min-width: 26px;
-}
-.kiosk-big { font-family: var(--font-display); font-size: var(--fs-hero); font-weight: 600; letter-spacing: -0.02em; }
-.kiosk-scale { display: grid; grid-auto-flow: column; gap: 9px; }
-.kiosk-scale-labels { display: flex; justify-content: space-between; font-size: var(--fs-caption); color: var(--muted); }
-.kiosk-lang { display: flex; gap: 7px; }
-.kiosk-safety {
-  border-left: 3px solid var(--sev-severe);
-  background: var(--danger-soft);
-  padding: 14px 16px;
-  border-radius: 0 var(--r-md) var(--r-md) 0;
-  margin-top: 18px;
-}
-.kiosk-runner { display: grid; gap: 16px; }
-
-/*
- * Предупреждение о возврате к началу.
- *
- * Поверх всего и непрозрачно: вопросы методики под ним читать не нужно, а
- * полупрозрачная подложка на планшете в коридоре означает, что чужие
- * ответы всё ещё видны сквозь неё.
- */
-.kiosk-idle {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  background: var(--bg);
-  padding: 24px;
-}
-.kiosk-idle-box {
-  max-width: 44ch;
-  text-align: center;
-}
-
 /* ═══ конструктор и служебное ═══ */
 .battery-steps { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 7px; }
 .battery-steps li {
@@ -1317,42 +1247,6 @@ kbd, .kbd {
 .chart-tip-row i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
 .chart-tip-row b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-/* ═══ панель дежурного ═══
- * Слева то, что требует действия сегодня; справа показатели. Раньше экран был
- * колонкой карточек, и «разобрать случай» стояло рядом со справочной
- * подтверждаемостью тревог, будто это дела одного порядка.
- */
-.duty {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
-  gap: var(--gap);
-  align-items: start;
-  margin-bottom: var(--gap);
-}
-.duty-alarm-text .hint {
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.duty-work .card-head { margin-bottom: 8px; }
-.duty-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--hairline);
-  font-size: var(--fs-small);
-  color: var(--text-2);
-}
-.duty-row:last-child { border-bottom: none; }
-a.duty-row:hover { text-decoration: none; color: var(--text); }
-
-@media (max-width: 1200px) {
-  .duty { grid-template-columns: 1fr; }
-}
-
 /* ═══ центр событий ═══ */
 .events { position: relative; }
 .events-dot {
@@ -1414,108 +1308,11 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
 .views-form { display: flex; align-items: center; gap: 6px; }
 .views-form input { width: 190px; }
 
-/* ═══ маршруты помощи ═══
- * Экран отвечает на вопрос «где стоим», а не «что назначено»: главная
- * колонка — первый незакрытый шаг и его срок, просроченные сверху.
- */
-.pw-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 9px 0;
-  border-bottom: 1px solid var(--hairline);
-  color: var(--text-2);
-  font-size: var(--fs-small);
-}
-.pw-row:last-child { border-bottom: none; }
-.pw-row:hover { text-decoration: none; color: var(--text); background: var(--surface-2); }
-.pw-row.overdue { box-shadow: inset 2px 0 0 var(--accent); padding-left: 8px; }
-.pw-main { display: grid; gap: 1px; min-width: 0; flex: 1.2; }
-.pw-name { font-weight: 600; color: var(--text); }
-.pw-meta { font-size: var(--fs-micro); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pw-step { flex: 1.4; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pw-step-title { color: var(--text); }
-.pw-progress {
-  width: 90px;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--surface-3);
-  overflow: hidden;
-  flex: none;
-}
-.pw-progress i { display: block; height: 100%; background: var(--primary); }
-.pw-count { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); min-width: 34px; text-align: right; }
-
-.pw-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; }
-.pw-step-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--hairline);
-}
-.pw-step-row:last-child { border-bottom: none; }
-.pw-mark {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 2px solid var(--border-strong);
-  margin-top: 6px;
-  flex: none;
-}
-.pw-step-row.s-done .pw-mark { background: var(--sev-none); border-color: var(--sev-none); }
-.pw-step-row.s-skipped .pw-mark { background: var(--muted); border-color: var(--muted); }
-.pw-step-row.overdue .pw-mark { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.pw-step-row.s-skipped { opacity: 0.7; }
-
 /* ═══ план безопасности ═══ */
 .sp-view, .sp-edit { display: grid; gap: 14px; margin-top: 8px; }
 .sp-view section, .sp-edit section { display: grid; gap: 5px; }
 .sp-list { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: var(--fs-small); }
 .sp-edit .row { align-items: center; }
-
-/* ═══ цели лечения ═══ */
-.goal {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--hairline);
-}
-.goal:last-child { border-bottom: none; }
-.goal.closed { opacity: 0.6; }
-.goal-bar {
-  display: block;
-  height: 5px;
-  border-radius: 3px;
-  background: var(--surface-3);
-  overflow: hidden;
-  margin-top: 6px;
-  max-width: 420px;
-}
-.goal-bar i { display: block; height: 100%; background: var(--primary); }
-
-/* ═══ консилиум ═══ */
-.conference {
-  border-top: 1px solid var(--hairline);
-  padding: 12px 0;
-  display: grid;
-  gap: 8px;
-}
-.conference:first-of-type { border-top: none; }
-.opinion {
-  border-left: 2px solid var(--border-strong);
-  padding: 7px 12px;
-  background: var(--surface-2);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  font-size: var(--fs-small);
-}
-/* особое мнение видно сразу: протокол не должен выглядеть единогласным */
-.opinion.dissent {
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
-.conference-actions { display: grid; gap: 8px; }
 
 /* ═══ карта пациента: две колонки ═══
  * Карта выросла до двух экранов прокрутки, и «что измерено» перестало
@@ -1537,26 +1334,6 @@ a.duty-row:hover { text-decoration: none; color: var(--text); }
 @media print {
   /* в печати колонки не нужны: лист один и узкий */
   .patient-card { display: block; }
-}
-
-/* ═══ редактор маршрута ═══ */
-.pwe-step {
-  border-top: 1px solid var(--hairline);
-  padding: 12px 0;
-  display: grid;
-  gap: 10px;
-}
-.pwe-step:first-of-type { border-top: none; }
-.pwe-num {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--surface-3);
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
 }
 
 /* ─────────── пакет заключений ─────────── */
@@ -1992,11 +1769,6 @@ button.preview-option.on {
 }
 
 /* ─────────── поддержка решений ─────────── */
-
-.duty-line {
-  margin: 0 0 4px;
-  font-size: var(--fs-small);
-}
 
 .suggestions {
   display: grid;

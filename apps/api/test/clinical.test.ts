@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { adminA, adminB, api, app, db, eq, makeUser, patient, root, submitSurvey, surveyInA, surveys } from "./fixtures";
-import { textTemplates } from "../src/db/schema";
+import { departments, specialistProfiles, textTemplates } from "../src/db/schema";
 
-/* Клинические документы: заключения, направления, консилиум */
+/* Клинические документы: заключения, направления, библиотека формулировок */
 
 /* ── заключения ── */
 
@@ -711,5 +711,128 @@ describe("черновик заключения из результатов", ()
       adminB.token,
     );
     expect([403, 404]).toContain(res.status);
+  });
+});
+
+/* ── библиотека формулировок ── */
+
+/**
+ * Отделение пишет одни и те же обороты десятками раз, и библиотека — то, чем
+ * это лечится. Она была наполовину: таблица в базе, компонент на экране и
+ * ничего между ними. `TemplatePicker` ходил в `/api/templates`, получал 404,
+ * честно рисовал «библиотека пуста» — и специалист делал вывод, что её не
+ * заполнили. Заполнить тоже было нечем: кнопка «сохранить как формулировку»
+ * уходила в тот же 404.
+ *
+ * Проверяется поэтому не «маршрут отвечает 200», а то, что ломалось: пустая
+ * библиотека отличима от отсутствующей, сохранённое возвращается, и чужое
+ * отделение в подсказке не появляется.
+ */
+describe("библиотека формулировок", () => {
+  let deptId: string;
+  let ourSpecialist: { id: string; token: string };
+  let otherSpecialist: { id: string; token: string };
+
+  beforeAll(async () => {
+    deptId = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: deptId,
+      title: { uk: "Психологічне відділення", ru: "Психологическое отделение" },
+      timezone: "Europe/Kyiv",
+    });
+    const otherDept = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: otherDept,
+      title: { uk: "Наркологія", ru: "Наркология" },
+      timezone: "Europe/Kyiv",
+    });
+
+    ourSpecialist = await makeUser("admin", `tpl-a-${crypto.randomUUID()}@test`);
+    otherSpecialist = await makeUser("admin", `tpl-b-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values([
+      { userId: ourSpecialist.id, departmentId: deptId },
+      { userId: otherSpecialist.id, departmentId: otherDept },
+    ]);
+  });
+
+  test("пустая библиотека — это список, а не отказ", async () => {
+    /*
+     * Тот самый разрыв: на 404 экран показывал «библиотека пуста», и отличить
+     * «никто ничего не добавил» от «маршрута нет» было нельзя ни специалисту,
+     * ни разработчику.
+     */
+    const res = await api("/api/templates", ourSpecialist.token);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+  });
+
+  test("сохранённая формулировка возвращается автору", async () => {
+    const created = await api("/api/templates", ourSpecialist.token, {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "phrase",
+        title: "жалоб не предъявляет",
+        body: "на момент осмотра жалоб не предъявляет",
+      }),
+    });
+    expect(created.status).toBe(201);
+
+    const list = await api("/api/templates", ourSpecialist.token);
+    const mine = list.body.items.find((t: { id: string }) => t.id === created.body.id);
+    expect(mine.kind).toBe("phrase");
+    expect(mine.body).toBe("на момент осмотра жалоб не предъявляет");
+    // отделение проставил сервер по профилю автора, а не клиент телом запроса
+    expect(mine.departmentId).toBe(deptId);
+  });
+
+  test("чужое отделение в подсказке не появляется, общая — появляется", async () => {
+    /*
+     * «Рекомендован повторный замер через месяц» из наркологии в списке
+     * психолога — мусор, а не помощь: формулировки пишут под свой профиль
+     * работы. А вот общие обороты (department_id = null) одинаковы везде, и
+     * заводить их в каждом отделении заново значит получить расходящиеся
+     * копии.
+     */
+    const foreign = await api("/api/templates", otherSpecialist.token, {
+      method: "POST",
+      body: JSON.stringify({ kind: "phrase", title: "чужая", body: "формулировка наркологии" }),
+    });
+    expect(foreign.status).toBe(201);
+
+    const commonId = crypto.randomUUID();
+    await db.insert(textTemplates).values({
+      id: commonId,
+      departmentId: null,
+      kind: "conclusion",
+      title: "общая заготовка",
+      body: "заготовка на всё учреждение",
+    });
+
+    const list = await api("/api/templates", ourSpecialist.token);
+    const ids = list.body.items.map((t: { id: string }) => t.id);
+    expect(ids).not.toContain(foreign.body.id);
+    expect(ids).toContain(commonId);
+  });
+
+  test("архивная запись из подсказки уходит", async () => {
+    // строка остаётся в базе — из списка её убирает только archived_at
+    const archivedId = crypto.randomUUID();
+    await db.insert(textTemplates).values({
+      id: archivedId,
+      departmentId: deptId,
+      kind: "phrase",
+      title: "устаревшая",
+      body: "так больше не пишут",
+      archivedAt: new Date().toISOString(),
+    });
+
+    const list = await api("/api/templates", ourSpecialist.token);
+    expect(list.body.items.map((t: { id: string }) => t.id)).not.toContain(archivedId);
+  });
+
+  test("пациенту библиотека не отдаётся", async () => {
+    // формулировки написаны для специалиста и о специалисте, а не для чтения
+    const res = await api("/api/templates", patient.token);
+    expect(res.status).toBe(403);
   });
 });

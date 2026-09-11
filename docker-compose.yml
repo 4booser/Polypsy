@@ -56,8 +56,11 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       # А вот ключ шифрования нужен по-настоящему: через этот же контейнер
       # заводится первый администратор, и без ключа его ФИО легло бы в базу
-      # открытым — молча и навсегда.
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # открытым — молча и навсегда. Поэтому :? , а не :- — пустое значение
+      # останавливает запуск с внятной строкой, а не проходит насквозь.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?задайте ENCRYPTION_KEY, иначе карты пациентов лягут в базу открытым текстом — как сгенерировать, написано в .env.docker.example}
+      PHONE_INDEX_SECRET: ${PHONE_INDEX_SECRET:?задайте PHONE_INDEX_SECRET (32+ символов, не равный JWT_SECRET)}
+      EXPORT_SECRET: ${EXPORT_SECRET:?задайте EXPORT_SECRET (32+ символов, не равный JWT_SECRET)}
       # Остальное — чтобы отчёт установщика говорил о настоящем окружении.
       # Он проверяет СВОИ переменные, и без них жалуется на ненастроенную
       # расшифровку там, где она настроена у сервера: предупреждение,
@@ -86,7 +89,16 @@ services:
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (32+ символов)}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # Пустой ключ не принимается: установка без него пишет ФИО, телефоны,
+      # свободные ответы, заключения и заметки приёма открытым текстом и
+      # ничем себя не выдаёт. Формат: v1:<32 байта base64>.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?задайте ENCRYPTION_KEY, иначе карты пациентов лягут в базу открытым текстом — как сгенерировать, написано в .env.docker.example}
+      # Слепой индекс телефона и коды субъекта в выгрузках — свои секреты.
+      # На JWT_SECRET они стоять не могут: его меняют при утечке, а смена
+      # молча ломает дедупликацию номеров и склейку лонгитюда; и наоборот —
+      # утечка секрета подписи означала бы перебор телефонов по дампу.
+      PHONE_INDEX_SECRET: ${PHONE_INDEX_SECRET:?задайте PHONE_INDEX_SECRET (32+ символов, не равный JWT_SECRET)}
+      EXPORT_SECRET: ${EXPORT_SECRET:?задайте EXPORT_SECRET (32+ символов, не равный JWT_SECRET)}
       ANSWER_EVENTS_RETENTION_DAYS: ${ANSWER_EVENTS_RETENTION_DAYS:-365}
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Quizzy <noreply@localhost>}
@@ -162,7 +174,11 @@ services:
       DATABASE_URL: postgres://quizzy_app:${APP_DB_PASSWORD}@postgres:5432/quizzy
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # Расшифровщик пишет стенограммы приёмов — без ключа они лягут в базу
+      # открытым текстом ровно так же, как всё остальное.
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?задайте ENCRYPTION_KEY, иначе стенограммы приёмов лягут в базу открытым текстом}
+      PHONE_INDEX_SECRET: ${PHONE_INDEX_SECRET:?задайте PHONE_INDEX_SECRET (32+ символов, не равный JWT_SECRET)}
+      EXPORT_SECRET: ${EXPORT_SECRET:?задайте EXPORT_SECRET (32+ символов, не равный JWT_SECRET)}
       RECORDINGS_DIR: /data/recordings
       WHISPER_BIN: /usr/local/bin/whisper-cli
       WHISPER_MODEL: /models/ggml-${WHISPER_MODEL_NAME:-small}.bin

@@ -180,44 +180,6 @@ export const assignBatterySchema = z.object({
   note: z.string().max(500).nullish(),
 });
 
-export const scheduleInputSchema = z
-  .object({
-    title: z.string().min(2).max(200),
-    batteryId: z.string().min(1),
-    scope: z.enum(["unit", "users"]),
-    unit: z.string().max(200).nullish(),
-    userIds: z.array(z.string()).default([]),
-    intervalDays: z.number().int().min(1).max(3650),
-    dueDays: z.number().int().min(1).max(365).default(14),
-    startsAt: z.string().nullish(),
-    endsAt: z.string().nullish(),
-    active: z.boolean().default(true),
-  })
-  .refine((v) => v.scope !== "unit" || !!v.unit?.trim(), {
-    message: "Для охвата по подразделению нужно указать подразделение",
-    path: ["unit"],
-  })
-  .refine((v) => v.scope !== "users" || v.userIds.length > 0, {
-    message: "Выберите хотя бы одного обследуемого",
-    path: ["userIds"],
-  });
-
-export const createKioskSessionSchema = z.object({
-  title: z.string().min(2).max(200),
-  batteryId: z.string().min(1),
-  /** Срок жизни сеанса в часах: смена, а не недели */
-  ttlHours: z.number().int().min(1).max(72).default(8),
-});
-
-export const kioskJoinSchema = z.object({
-  lastName: z.string().min(1).max(100),
-  firstName: z.string().min(1).max(100),
-  middleName: z.string().max(100).nullish(),
-  sex: z.enum(["male", "female"]).nullish(),
-  birthDate: z.string().nullish(),
-  unit: z.string().max(200).nullish(),
-});
-
 export const createReferralSchema = z.object({
   userId: z.string().min(1),
   responseId: z.string().nullish(),
@@ -609,13 +571,10 @@ export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type GrantAccessInput = z.infer<typeof grantAccessSchema>;
 export type BatteryInput = z.input<typeof batteryInputSchema>;
 export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;
-export type ScheduleInput = z.input<typeof scheduleInputSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type CreateInviteInput = z.input<typeof createInviteSchema>;
 export type CreateReferralInput = z.input<typeof createReferralSchema>;
 export type UpdateReferralInput = z.infer<typeof updateReferralSchema>;
-export type CreateKioskSessionInput = z.input<typeof createKioskSessionSchema>;
-export type KioskJoinInput = z.infer<typeof kioskJoinSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type GroupInput = z.infer<typeof groupInputSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;
@@ -688,12 +647,6 @@ export const queryEnum = <const T extends readonly [string, ...string[]]>(
     .transform((v) => (v === undefined || v === "" ? fallback : v))
     .pipe(z.enum(values as unknown as [T[number], ...T[number][]]));
 
-/** Флаг вида ?all=1 — присутствие со значением 1/true */
-export const queryFlag = z
-  .string()
-  .optional()
-  .transform((v) => v === "1" || v === "true");
-
 export const dateRangeQuery = z.object({
   from: queryDate.optional(),
   to: queryDate.optional(),
@@ -724,10 +677,6 @@ export const facetQuery = z.object({
   facet: queryEnum(["sex", "age", "sexAge", "lang", "unit"], "sexAge"),
 });
 
-export const cohortQuery = z.object({
-  by: queryEnum(["unit", "sex", "ageGroup", "month", "rank"], "unit"),
-});
-
 export const respondentQuery = z.object({
   limit: queryInt(1, 200, 50),
   cursor: z.string().max(200).optional(),
@@ -751,6 +700,19 @@ export const responseListQuery = z.object({
 export const workspacePrefsSchema = z.object({
   startScreen: z.enum(["dashboard", "worklist", "alerts", "patients"]).optional(),
   density: z.enum(["cozy", "compact"]).optional(),
+  /*
+   * Движение: следовать системной настройке или всегда меньше.
+   *
+   * Включить движение вопреки системе нельзя намеренно. Системная настройка
+   * «уменьшить движение» ставится не из вкуса: её включают при вестибулярных
+   * расстройствах и мигрени, и приложение, перебивающее её своим «зато
+   * красиво», делает человеку физически плохо.
+   *
+   * Обратное направление осмысленно: рабочий компьютер в кабинете общий,
+   * менять настройки системы на нём человек не вправе, а убрать движение
+   * себе — вправе.
+   */
+  motion: z.enum(["system", "reduced"]).optional(),
   theme: z.enum(["dark", "light"]).optional(),
   lang: z.enum(["uk", "ru"]).optional(),
   dismissedHints: z.array(z.string().max(60)).max(100).optional(),

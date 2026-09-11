@@ -187,7 +187,35 @@ async function registerHandler(c: Context<AppEnv>) {
   return c.json({ ...pair, user: toPublicUser(row!) }, 201);
 }
 
+/*
+ * Вход идёт системным контекстом — как и регистрация.
+ *
+ * Всё, к чему он прикасается, лежит под политиками строк: учётная запись,
+ * счётчик неудачных попыток, журнал, refresh-токены. Контекста у входа быть
+ * не может — роль мы узнаём как раз из найденной строки, — поэтому он
+ * объявляется системным явно. Без этого вход в бою (роль quizzy_app) не
+ * нашёл бы ни одной учётной записи и отвечал бы «неверные учётные данные»
+ * на верный пароль.
+ *
+ * Отказ бросается СНАРУЖИ транзакции, и это не стилистика.
+ *
+ * Системный контекст — это транзакция, а исключение из транзакции
+ * откатывает её целиком. Брошенный внутри `unauthorized` унёс бы с собой
+ * ровно то, что неудачный вход обязан оставить: отметку в счётчике попыток
+ * и запись журнала. Защита от перебора перестала бы работать совсем, и
+ * незаметно: снаружи ответ тот же самый. Поэтому обработчик возвращает
+ * причину отказа, а бросает её вызывающий — когда транзакция уже
+ * зафиксирована.
+ */
+type LoginRefusal = "err.tooManyAttempts" | "err.invalidCredentials";
+
 authRoutes.post("/login", async (c) => {
+  const outcome = await systemContext(baseDb, () => loginHandler(c));
+  if (typeof outcome === "string") unauthorized(outcome);
+  return outcome;
+});
+
+async function loginHandler(c: Context<AppEnv>): Promise<Response | LoginRefusal> {
   const input = await parseBody(c.req.raw, loginSchema);
   const email = input.email.toLowerCase();
 
@@ -199,7 +227,7 @@ authRoutes.post("/login", async (c) => {
       outcome: "denied",
       details: { email, reason: "locked_out" },
     });
-    unauthorized("err.tooManyAttempts");
+    return "err.tooManyAttempts";
   }
 
   const row = await db.query.users.findFirst({ where: eq(users.email, email) });
@@ -227,7 +255,7 @@ authRoutes.post("/login", async (c) => {
       // пароль в журнал не попадает никогда — только сам факт и email
       details: { email, reason: row ? "wrong_password" : "unknown_email" },
     });
-    unauthorized("err.invalidCredentials");
+    return "err.invalidCredentials";
   }
 
   await clearFailures(email);
@@ -241,7 +269,7 @@ authRoutes.post("/login", async (c) => {
 
   const pair = await issuePair(row);
   return c.json({ ...pair, user: toPublicUser(row) });
-});
+}
 
 /**
  * Кто я и что мне можно назначать.
@@ -331,9 +359,12 @@ authRoutes.patch("/me", requireAuth, async (c) => {
  * Смена собственного пароля.
  *
  * Требует текущий пароль: угнанный токен не должен позволять перехватить
- * учётную запись насовсем. До появления refresh-токенов (этап 0.4 плана)
- * смена пароля не отзывает уже выданные токены — это честно зафиксировано
- * в журнале самим фактом события.
+ * учётную запись насовсем.
+ *
+ * Смена пароля обрывает все сеансы: и refresh-семьи, и уже выданные
+ * access-токены (см. revokeAllFor). Иначе смена пароля — единственное, что
+ * человек делает, заподозрив чужой доступ, — оставляла бы этому доступу ещё
+ * полчаса.
  */
 authRoutes.post("/password", requireAuth, async (c) => {
   const user = c.get("user");
@@ -376,10 +407,25 @@ authRoutes.post("/password", requireAuth, async (c) => {
  * Обмен refresh-токена. Повторное предъявление погашенного токена гасит всю
  * семью — этот случай пишется в журнал как подозрение на кражу.
  */
+/*
+ * Отказ — снаружи транзакции, по той же причине, что и у входа, и здесь она
+ * дороже: повторное предъявление погашенного токена ГАСИТ ВСЮ СЕМЬЮ. Это
+ * запись. Брошенное изнутри транзакции исключение откатило бы её вместе с
+ * ответом — обнаружение кражи срабатывало бы и тут же отменялось само,
+ * оставляя вору живую цепочку.
+ */
 authRoutes.post("/refresh", async (c) => {
+  const outcome = await systemContext(baseDb, () => refreshHandler(c));
+  if (typeof outcome === "string") unauthorized(outcome);
+  return outcome;
+});
+
+async function refreshHandler(
+  c: Context<AppEnv>,
+): Promise<Response | "err.noRefreshToken" | "err.sessionExpired"> {
   const body = await c.req.json().catch(() => ({}));
   const raw = typeof body?.refreshToken === "string" ? body.refreshToken : "";
-  if (!raw) unauthorized("err.noRefreshToken");
+  if (!raw) return "err.noRefreshToken";
 
   const outcome = await rotateRefresh(raw);
   if (!outcome.ok) {
@@ -391,16 +437,29 @@ authRoutes.post("/refresh", async (c) => {
       subjectUserId: outcome.userId ?? null,
       details: { reason: outcome.reason },
     });
-    unauthorized("err.sessionExpired");
+    return "err.sessionExpired";
   }
   return c.json(outcome.pair);
-});
+}
 
-authRoutes.post("/logout", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
-  if (typeof body?.refreshToken === "string") await revokeByToken(body.refreshToken);
-  return c.json({ ok: true });
-});
+/**
+ * Выход.
+ *
+ * Гасит семью refresh-токенов И сдвигает границу действительности
+ * access-токенов (см. revokeByToken): до этого «выйти» означало лишь, что
+ * больше не продлить, — а уже выданный access-токен из localStorage ещё до
+ * получаса открывал карты кому угодно, кто сядет за тот же компьютер.
+ *
+ * Системный контекст: маршрут открыт, аутентификации у него нет, а трогает
+ * он таблицы под политиками строк.
+ */
+authRoutes.post("/logout", async (c) =>
+  systemContext(baseDb, async () => {
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body?.refreshToken === "string") await revokeByToken(body.refreshToken);
+    return c.json({ ok: true });
+  }),
+);
 
 
 /**
@@ -653,7 +712,18 @@ authRoutes.post("/google/unlink", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+/*
+ * Возврат от Google — тоже вход, и тоже до всякого контекста: кто именно
+ * вернулся, выясняется здесь. Системный контекст по той же причине, что и у
+ * входа паролем (см. выше).
+ */
 authRoutes.get("/google/callback", async (c) => {
+  const outcome = await systemContext(baseDb, () => googleCallback(c));
+  if (typeof outcome === "string") unauthorized(outcome);
+  return outcome;
+});
+
+async function googleCallback(c: Context<AppEnv>): Promise<Response | "err.googleNotLinked"> {
   if (!googleEnabled()) notFound("err.googleDisabled");
 
   const code = c.req.query("code");
@@ -716,7 +786,12 @@ authRoutes.get("/google/callback", async (c) => {
       outcome: "denied",
       details: { email: identity.email, reason: "not_linked" },
     });
-    unauthorized("err.googleNotLinked");
+    /*
+     * Отказ возвращается, а не бросается: он идёт ПОСЛЕ записи в журнал, а
+     * исключение из системной транзакции откатило бы её вместе с записью.
+     * Отказы выше бросаются как были — до них ничего не записано.
+     */
+    return "err.googleNotLinked";
   }
   if (row.anonymous) unauthorized("err.googleAnonymous");
 
@@ -747,4 +822,4 @@ authRoutes.get("/google/callback", async (c) => {
   const back = new URL(`${env.consoleUrl || ""}/auth/google`, "http://localhost");
   back.searchParams.set("code", handoffCode);
   return c.redirect(env.consoleUrl ? back.toString() : `${back.pathname}${back.search}`);
-});
+}

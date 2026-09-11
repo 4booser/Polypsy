@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { NavLink } from "react-router-dom";
-import { forwardRef } from "react";
+import { createContext, forwardRef, useContext } from "react";
 import { cx } from "./cx";
 import { useLang } from "../lang";
 
@@ -19,6 +19,84 @@ import { useLang } from "../lang";
 
 const focus =
   "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg)]";
+
+/* ─────────── территория пальца ─────────── */
+
+/**
+ * Наименьшая мишень для пальца, в пикселях.
+ *
+ * 44 — не круглое число из чужой методички, а поперечник подушечки
+ * указательного пальца взрослого человека на экране телефона. Меньше — и
+ * промах перестаёт быть случайностью: нажатие приходится по соседней
+ * кнопке либо не регистрируется вовсе.
+ */
+export const TOUCH_MIN_PX = 44;
+
+/*
+ * Пол мишеней объявлен селектором, а не размером каждой кнопки, — и это
+ * главное решение здесь.
+ *
+ * 44 px — свойство МЕСТА, а не элемента. В консоли специалиста плотные
+ * таблицы и панели действий: там работают мышью, палец в деле не участвует,
+ * и 36 px не только допустимы, а нужны — иначе на экран разбора влезает
+ * вдвое меньше строк. В кабинете пациента наоборот: телефон, одна рука,
+ * человек в тяжёлом состоянии. Одна и та же кнопка обязана быть разной в
+ * двух местах.
+ *
+ * Пока высоту проставляли руками (`min-h-[44px]` по месту), различие
+ * держалось на памяти автора экрана. На Home.tsx и Runner.tsx помнили, на
+ * Profile.tsx и Booking.tsx — нет, и разница между экранами кабинета вышла
+ * случайной, а не осмысленной. Признака у ошибки не было никакого: ни
+ * предупреждения, ни падающей проверки — только рулетка поверх снимка.
+ *
+ * Зона объявляется один раз на оболочку кабинета и накрывает ВСЁ, что
+ * внутри, включая чужие компоненты, до разметки которых отсюда не
+ * дотянуться (переключатель языка живёт в lang.tsx и знать о кабинете не
+ * обязан). Чтобы получить мишень меньше 44 px, экран теперь нужно вынести
+ * из кабинета — то есть забыть нельзя, можно только решить иначе.
+ *
+ * Правило ставит `min-height`, а не `height`: это пол, а не размер.
+ * `min-height` сильнее `height` независимо от специфичности, поэтому h-9
+ * внутри зоны становится 44, а 48 остаётся 48. Слой utilities перебивает
+ * legacy, где у `:where(button)` стоит min-height 34.
+ */
+const touchFloor = cx(
+  "[&_:is(button,a,summary,[role=button])]:min-h-[44px]",
+  "[&_:is(button,a,summary,[role=button])]:min-w-[44px]",
+  /* поле ввода растягивать по ширине незачем: оно и так во всю колонку */
+  "[&_:is(input,select,textarea)]:min-h-[44px]",
+);
+
+/**
+ * Внутри зоны мишени меряются пальцем, а поля обязаны иметь подпись.
+ *
+ * Второе правило здесь же не случайно: зона отмечает экран, который
+ * открывает не сотрудник. Сотрудник, наткнувшись на безымянное поле,
+ * спросит коллегу; человек с диктором в кабинете не спросит никого — он
+ * услышит «поле ввода» и закроет вкладку. Поэтому в зоне безымянное поле
+ * считается поломкой и падает при разработке, а не молча доезжает до
+ * человека (см. useFieldNameGuard).
+ */
+const TouchZone = createContext(false);
+
+export function TouchArea({
+  children,
+  className,
+  as: As = "div",
+}: {
+  children: ReactNode;
+  className?: string;
+  as?: "div" | "main" | "section" | "form";
+}) {
+  return (
+    <TouchZone.Provider value={true}>
+      {/* data-touch — опора для проверок: классы менять можно, признак нет */}
+      <As data-touch className={cx(touchFloor, className)}>
+        {children}
+      </As>
+    </TouchZone.Provider>
+  );
+}
 
 /* ─────────── кнопка ─────────── */
 
@@ -250,20 +328,62 @@ const fieldBase = cx(
   focus,
 );
 
+/**
+ * Лежит ли поле внутри подписи Field.
+ *
+ * Нужен не для вида, а для проверки ниже: сам по себе `<input>` не знает,
+ * назвал его кто-нибудь или нет, и узнать это в разметке неоткуда.
+ */
+const InsideField = createContext(false);
+
+/**
+ * Поле без имени — не придирка, а нарушение WCAG 4.1.2: диктор произносит
+ * «поле ввода», и человек не знает, что туда писать.
+ *
+ * Проверка работает только в зоне пальца (кабинет пациента) и только в
+ * разработке. Почему не везде: в консоли шесть десятков полей чужих
+ * экранов, и падение на них означало бы, что эту защиту снимут в тот же
+ * день. Кабинет — единственное место продукта, куда приходит не сотрудник,
+ * и цена безымянного поля здесь другая.
+ *
+ * Почему исключение, а не предупреждение в консоль: предупреждений в
+ * консоли браузера десятки, их не читают. Поломка, которую видно сразу,
+ * стоит минуту; молчащее поле стоит человеку визита.
+ */
+function useFieldNameGuard(
+  tag: string,
+  props: { "aria-label"?: string; "aria-labelledby"?: string; title?: string; placeholder?: string },
+) {
+  const strict = useContext(TouchZone);
+  const named = useContext(InsideField);
+  const dev = typeof import.meta.env === "undefined" || import.meta.env.PROD !== true;
+  if (!dev || !strict || named) return;
+  if (props["aria-label"] || props["aria-labelledby"] || props.title) return;
+  throw new Error(
+    `<${tag}> в кабинете пациента без подписи: оберните в <Field label=…> ` +
+      `либо свяжите с видимым заголовком через aria-labelledby. ` +
+      `Подсказка внутри поля (placeholder${props.placeholder ? `="${props.placeholder}"` : ""}) подписью не считается: ` +
+      `она исчезает при наборе и не читается диктором как имя поля.`,
+  );
+}
+
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...rest }, ref) {
+    useFieldNameGuard("input", rest);
     return <input ref={ref} className={cx(fieldBase, "h-9", className)} {...rest} />;
   },
 );
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, ...rest }, ref) {
+    useFieldNameGuard("textarea", rest);
     return <textarea ref={ref} className={cx(fieldBase, "py-2 leading-[var(--lh-normal)]", className)} {...rest} />;
   },
 );
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   function Select({ className, children, ...rest }, ref) {
+    useFieldNameGuard("select", rest);
     return (
       <select ref={ref} className={cx(fieldBase, "h-9 pr-7 appearance-none", className)} {...rest}>
         {children}
@@ -320,7 +440,8 @@ export function Field({
       */}
       <label htmlFor={htmlFor} className="flex flex-col gap-1.5">
         <span className="text-caption font-medium text-text-2">{label}</span>
-        {children}
+        {/* поле внутри подписи — уже названо; проверка имени ниже по дереву молчит */}
+        <InsideField.Provider value={true}>{children}</InsideField.Provider>
       </label>
       {error ? (
         <span className="text-caption text-danger">{error}</span>

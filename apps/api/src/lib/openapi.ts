@@ -300,6 +300,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/notes/patients/:userId": { summary: "Заметки приёма по пациенту", access: "staff", permission: "patients.read" },
   "PUT /api/notes/patients/:userId": { summary: "Сохранить заметку приёма", access: "staff", permission: "notes.write" },
   "POST /api/notes/patients/:userId/sign": { summary: "Подписать заметку приёма", access: "staff", permission: "notes.write" },
+  "GET /api/templates": { summary: "Библиотека формулировок: своё отделение и общие", access: "staff", whyNoPermission: "справочник оборотов речи, а не данные о людях; им пользуется каждый, кто пишет заключение или заметку, и отдельное право отсекало бы ровно тех, кому он нужен" },
+  "POST /api/templates": { summary: "Пополнить библиотеку формулировкой", access: "staff", permission: "notes.write" },
   "GET /api/views": { summary: "Сохранённые виды экрана: свои и общие", access: "staff", whyNoPermission: "сохранённый вид — личная настройка экрана; право на неё было бы бюрократией" },
   "POST /api/views": { summary: "Сохранить текущий срез экрана", access: "staff", whyNoPermission: "то же: человек сохраняет свой срез своего экрана" },
   "PATCH /api/views/:id": { summary: "Переименовать вид или открыть его коллегам", access: "staff", whyNoPermission: "правится только свой вид; чужой закрыт проверкой владельца" },

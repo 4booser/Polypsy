@@ -1,5 +1,4 @@
-import { average, median, round } from "./stats";
-import type { NormComparison } from "@quizzy/shared";
+import { round } from "./stats";
 
 /**
  * Перцентиль балла относительно накопленной выборки по той же субшкале.
@@ -16,18 +15,6 @@ export function percentileOf(value: number, sample: number[]): number | null {
   const below = sample.filter((v) => v < value).length;
   const equal = sample.filter((v) => v === value).length;
   return round(((below + equal / 2) / sample.length) * 100, 1);
-}
-
-export function normFor(scaleId: string, value: number, sample: number[]): NormComparison | null {
-  const percentile = percentileOf(value, sample);
-  if (percentile === null) return null;
-  return {
-    scaleId,
-    percentile,
-    sampleSize: sample.length,
-    sampleMean: round(average(sample), 2),
-    sampleMedian: round(median(sample), 2),
-  };
 }
 
 /**

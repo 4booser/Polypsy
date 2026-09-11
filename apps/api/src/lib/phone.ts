@@ -39,7 +39,19 @@ export function normalizePhone(raw: string): string | null {
  * HMAC, а не хеш: без секрета отпечаток нельзя перебрать по словарю — а
  * пространство телефонных номеров перебирается за минуты, и обычный хеш
  * означал бы, что база телефонов лежит открытой.
+ *
+ * Секрет — свой (PHONE_INDEX_SECRET), не JWT_SECRET. Раньше здесь стоял
+ * секрет подписи сессий, и это сводило на нет отделение ENCRYPTION_KEY:
+ * владелец дампа, знающий JWT_SECRET (а он есть в окружении каждого
+ * процесса, в CI и в отладочных выгрузках) и не знающий ключа шифрования,
+ * восстанавливал телефоны перебором — украинских номеров порядка 10^9, это
+ * минуты работы. Плюс ротация JWT_SECRET, штатная реакция на утечку, молча
+ * ломала дедупликацию: отпечатки переставали совпадать со старыми.
+ *
+ * Смена самого PHONE_INDEX_SECRET тоже делает старые отпечатки
+ * несравнимыми — но это чинится: номер лежит рядом шифрованным, и
+ * `bun run --cwd apps/api db:reindex-phones` пересчитывает индекс.
  */
 export function phoneFingerprint(normalized: string): string {
-  return createHmac("sha256", env.jwtSecret).update(`phone:${normalized}`).digest("base64url");
+  return createHmac("sha256", env.phoneIndexSecret).update(`phone:${normalized}`).digest("base64url");
 }

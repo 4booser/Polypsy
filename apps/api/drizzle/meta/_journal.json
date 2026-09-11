@@ -519,6 +519,20 @@
       "when": 1788472742043,
       "tag": "0073_group_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1788472743043,
+      "tag": "0074_token_revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1788472744043,
+      "tag": "0075_rls_identity_tables",
+      "breakpoints": true
     }
   ]
 }

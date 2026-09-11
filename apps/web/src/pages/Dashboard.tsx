@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { SurveyStatus, UiKey } from "@quizzy/shared";
+import type { SurveyStatus, UiKey, Worklist, WorkKind } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart, Donut, LineChart, StackedArea } from "../charts";
 import { duration, day, severityColor, severityKey } from "../format";
@@ -15,6 +15,23 @@ import { Suggestions } from "../components/Suggestions";
  * Статус методики словами, а не кодом. Тот же перебор, что в списке методик:
  * в колонке «Статус» стояло «published» латиницей на обоих языках.
  */
+/*
+ * Названия видов работы для плиток обзора.
+ *
+ * Перебор полный: новый вид работы не соберётся, пока ему не дадут имени —
+ * так же, как в самой очереди. Именно на этом однажды и попались: счётчики
+ * там перечислялись поимённо и отстали от списка видов, а плитки с нулями
+ * висели над строкой, до которой нельзя было отфильтроваться.
+ */
+const WORK_KIND: Record<WorkKind, UiKey> = {
+  noshow: "work.filterNoshows",
+  message: "work.filterMessages",
+  dispensary: "work.filterDispensary",
+  followup: "work.filterFollowups",
+  referral: "work.filterReferrals",
+  assignment: "work.filterAssignments",
+} as const;
+
 const SURVEY_STATUS: Record<SurveyStatus, UiKey> = {
   draft: "st.surveyDraft",
   published: "st.surveyPublished",
@@ -36,7 +53,16 @@ export default function Dashboard() {
       api.alertCases({ limit: "6" }),
       // очередь работы — то, с чего начинается день; её отказ не должен
       // прятать остальную сводку
-      api.worklist().catch(() => ({ items: [], total: 0, truncated: false })),
+      api.worklist().catch(
+        (): Worklist => ({
+          items: [],
+          total: 0,
+          truncated: false,
+          /* отказ очереди не должен прятать сводку — отдаём пустую, но полной формы */
+          byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 },
+          mine: 0,
+        }),
+      ),
       // то же и с рядом по неделям: он объясняет кольцо рядом, а не заменяет
       // сводку, и его отказ не повод прятать всё остальное
       api.severityTrend().catch(() => ({ weeks: [], unbanded: 0 })),
@@ -133,6 +159,35 @@ export default function Dashboard() {
                 </span>
                 <span className="btn primary shrink-0">{ut("dash.review")}</span>
               </Link>
+            ) : null}
+
+            {/*
+              Разбивка очереди по видам работы — прямо на обзоре.
+              Счётчики уже приезжают вместе со списком, но показывался только
+              итог: «71» ничего не говорит о том, что именно ждёт. Шесть
+              чисел отвечают на это сразу, а нажатие ведёт в отфильтрованную
+              очередь, а не в общий список, где потом надо искать.
+
+              Пустые виды не показываются: плитка с нулём — это место, куда
+              нажимают и попадают в пустоту.
+            */}
+            {work.total > 0 ? (
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+                {(Object.keys(WORK_KIND) as WorkKind[])
+                  .filter((k) => (work.byKind?.[k] ?? 0) > 0)
+                  .map((k) => (
+                    <Link
+                      key={k}
+                      to={`/worklist?kind=${k}`}
+                      className="flex flex-col gap-1 rounded-md bg-surface-2 px-3.5 py-3 no-underline shadow-[0_0_0_1px_var(--border)] hover:bg-surface-3"
+                    >
+                      <SectionLabel>{ut(WORK_KIND[k])}</SectionLabel>
+                      <span className="font-mono text-section font-medium leading-none tabular-nums">
+                        {work.byKind[k]}
+                      </span>
+                    </Link>
+                  ))}
+              </div>
             ) : null}
 
             <Grid min={380}>

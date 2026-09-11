@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
 import { api } from "../api";
 import { useLang } from "../lang";
-import { IconSearchGlass } from "../ui";
+import { IconSearchGlass, useFocusTrap } from "../ui";
 import type { UiKey } from "@quizzy/shared";
 
 /**
@@ -96,6 +96,16 @@ export function CommandPalette({
     return [...by.entries()];
   }, []);
 
+  /*
+   * Та же ловушка фокуса, что у модального окна, а не своя копия.
+   *
+   * Палитра открывается по ⌘K с любого экрана и потому самый частый слой в
+   * консоли — и при этом была самым дырявым: одного Tab хватало, чтобы выйти
+   * в страницу под ней. Хук вызывается до раннего возврата ниже: порядок
+   * хуков не может зависеть от того, открыта палитра или нет.
+   */
+  const ref = useFocusTrap<HTMLDivElement>(open);
+
   if (!open) return null;
 
   const go = (to: string) => {
@@ -105,7 +115,22 @@ export function CommandPalette({
 
   return (
     <div className="palette-backdrop" onClick={onClose} role="presentation">
-      <div className="palette" onClick={(e) => e.stopPropagation()}>
+      {/*
+        Палитра объявляет себя диалогом.
+        Роли и aria-modal здесь не было вовсе: для диктора палитра оставалась
+        просто куском страницы, а вся страница под ней — доступной для чтения,
+        хотя работать с ней нельзя. tabIndex нужен ловушке: пока фокус не
+        занят полем ввода, ей есть куда его увести.
+      */}
+      <div
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label={ut("cmd.title")}
+        tabIndex={-1}
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+      >
         <Command label={ut("cmd.title")} shouldFilter>
           {/*
             Строка поиска со значком и подсказкой выхода.

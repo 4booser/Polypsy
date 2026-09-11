@@ -108,7 +108,6 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
   "alert.created": "ev.alert",
   "case.changed": "ev.case",
   "response.submitted": "ev.response",
-  "kiosk.progress": "ev.kiosk",
   "schedule.run": "ev.schedule",
   "presence.changed": "ev.presence",
   action: "ev.action",

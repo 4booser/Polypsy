@@ -1,9 +1,9 @@
 import { createMiddleware } from "hono/factory";
 import { eq } from "drizzle-orm";
 import { baseDb, db } from "../db";
-import { withDbContext } from "../db/context";
+import { systemContext, withDbContext } from "../db/context";
 import { users } from "../db/schema";
-import { readToken, toPublicUser } from "../lib/auth";
+import { issuedAfterRevocation, readToken, toPublicUser } from "../lib/auth";
 import { forbidden, unauthorized } from "../lib/http";
 import { audit } from "../lib/audit";
 import type { Permission, User } from "@quizzy/shared";
@@ -24,8 +24,35 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   const claims = await readToken(header.slice("Bearer ".length).trim());
   if (!claims) unauthorized("err.tokenInvalid");
 
-  const row = await db.query.users.findFirst({ where: eq(users.id, claims.sub) });
+  /*
+   * Учётная запись читается системным контекстом, а не «как получится».
+   *
+   * До этой строки контекста ещё нет — роль мы как раз и узнаём из строки
+   * пользователя. Пока на users не было политик, чтение без контекста
+   * работало само собой; с политиками оно вернуло бы ноль строк, и
+   * аутентификация отказала бы ВСЕМ — при этом только в бою, где
+   * приложение ходит ролью quizzy_app, а не владельцем базы. Именно так
+   * ломается вход от «всего лишь» новой политики.
+   */
+  const row = await systemContext(baseDb, () =>
+    db.query.users.findFirst({ where: eq(users.id, claims.sub) }),
+  );
   if (!row) unauthorized("err.userNotFound");
+
+  /*
+   * Токен, выданный до отзыва, дальше не идёт.
+   *
+   * Раньше проверялись только подпись и существование учётной записи —
+   * то есть после «выйти» и после смены пароля старый access-токен ещё
+   * полчаса открывал карты. На общем компьютере в кабинете это означало,
+   * что следующий за клавиатурой работает от имени ушедшего.
+   *
+   * Ответ — «сессия истекла», а не «токен недействителен»: консоль на этот
+   * случай пробует обменять refresh, и сеанс на другом устройстве, который
+   * никто не закрывал, продолжается сам. Тот, кто вышел или сменил пароль,
+   * обмена не переживёт — его семья refresh-токенов погашена.
+   */
+  if (!issuedAfterRevocation(claims, row.tokensValidFrom)) unauthorized("err.sessionExpired");
 
   c.set("user", toPublicUser(row));
 

@@ -145,6 +145,25 @@ export async function rotateRefresh(raw: string): Promise<RefreshOutcome> {
   };
 }
 
+/**
+ * Сдвиг границы действительности access-токенов.
+ *
+ * Живёт здесь, рядом с отзывом refresh, а не в маршрутах, — и это главное
+ * в этом изменении. Отзыв сессии, забывший погасить access-токены, ничем
+ * себя не выдаёт: человек нажал «выйти», экран очистился, всё выглядит
+ * правильно, и только следующие полчаса чужой токен открывает карты. Пока
+ * обязанность лежала на маршруте, её и забыли — POST /logout гасил семью
+ * refresh и на этом заканчивал.
+ *
+ * Теперь погасить refresh, не сдвинув границу, нельзя: это одна функция.
+ */
+async function invalidateAccessTokens(userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ tokensValidFrom: new Date().toISOString() })
+    .where(eq(users.id, userId));
+}
+
 /** Отзыв по сырому токену (logout) */
 export async function revokeByToken(raw: string): Promise<void> {
   const row = await db.query.refreshTokens.findFirst({
@@ -155,6 +174,13 @@ export async function revokeByToken(raw: string): Promise<void> {
     .update(refreshTokens)
     .set({ revokedAt: new Date().toISOString() })
     .where(and(eq(refreshTokens.familyId, row.familyId), isNull(refreshTokens.revokedAt)));
+  /*
+   * Выход гасит access-токены целиком, а не только те, что выданы этой
+   * семьёй: в самом токене семьи не записано, и выбирать не из чего. Для
+   * сеанса на другом устройстве это одна 401 и незаметный обмен refresh —
+   * его семья не отозвана. Для того, кто вышел, — ровно то, что он просил.
+   */
+  await invalidateAccessTokens(row.userId);
 }
 
 /** Отзыв всех сессий пользователя: смена пароля, смена роли, блокировка */
@@ -164,5 +190,6 @@ export async function revokeAllFor(userId: string): Promise<number> {
     .set({ revokedAt: new Date().toISOString() })
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)))
     .returning({ id: refreshTokens.id });
+  await invalidateAccessTokens(userId);
   return rows.length;
 }

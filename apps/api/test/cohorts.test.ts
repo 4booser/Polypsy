@@ -103,6 +103,58 @@ describe("подавление малых ячеек", () => {
   });
 });
 
+describe("порог действует на обоих маршрутах", () => {
+  /*
+   * Предпросмотр прятал размер когорты из трёх человек, а поимённый список с
+   * тем же самым правилом отбора отдавал этих троих по фамилиям. Подавление
+   * в предпросмотре при этом не защищало ничего — имена брались следующим
+   * запросом с того же экрана, — но создавало впечатление, что порог
+   * действует, и вопрос считался закрытым.
+   */
+  test("малая когорта не отдаёт имён", async () => {
+    const spec = { units: [unit], sex: "female" };
+
+    const small = await preview(spec);
+    expect(small.body.size).toBeNull();
+
+    const named = await api("/api/cohorts/members", adminA.token, {
+      method: "POST",
+      body: JSON.stringify(spec),
+    });
+    expect(named.status).toBe(200);
+    expect(named.body.items).toEqual([]);
+    // пустой список и «ниже порога» — разные ответы, и различать их обязан клиент
+    expect(named.body.suppressed).toBe(true);
+    expect(named.body.smallCellFloor).toBe(FLOOR);
+  });
+
+  test("когорта от порога и выше имена отдаёт", async () => {
+    // обратная проверка: «не отдаёт» ничего не значит, если не отдаёт никогда
+    const named = await api("/api/cohorts/members", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ units: [unit] }),
+    });
+    expect(named.body.suppressed).toBe(false);
+    expect(named.body.items.length).toBeGreaterThanOrEqual(FLOOR);
+  });
+
+  test("отказанная попытка видна в журнале", async () => {
+    /*
+     * Подбор параметров, пока когорта не сожмётся до одного человека, — это
+     * то, что разбирают по журналу. Отказ, которого в журнале нет, разбору
+     * не поддаётся.
+     */
+    const { auditLog } = await import("../src/db/schema");
+    const { sql } = await import("drizzle-orm");
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(sql`${auditLog.action} = 'cohort.members' and ${auditLog.details}->>'reason' = 'small_cell'`)
+      .limit(1);
+    expect(entry?.outcome).toBe("denied");
+  });
+});
+
 describe("зона ответственности", () => {
   test("чужой админ той же когорты не видит", async () => {
     const foreign = await preview({ units: [unit] }, adminB.token);

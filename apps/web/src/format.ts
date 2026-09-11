@@ -12,20 +12,6 @@ export const severityColor: Record<Severity, string> = {
 };
 
 /**
- * Цвет текста той же степени выраженности — другой и зависит от темы.
- *
- * Один цвет на обе задачи не годится: жёлтый #fab219 на белой карточке даёт
- * контраст 1.83 при пороге 4.5. Заливка кружка на графике и слово
- * «умеренная» в таблице — разные вещи.
- */
-export const severityTextColor: Record<Severity, string> = {
-  none: "var(--sev-none-text)",
-  mild: "var(--sev-mild-text)",
-  moderate: "var(--sev-moderate-text)",
-  severe: "var(--sev-severe-text)",
-};
-
-/**
  * Ключи подписей степени выраженности.
  *
  * Сами подписи живут в общем словаре: они видны на каждом экране с

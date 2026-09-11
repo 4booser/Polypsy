@@ -1,9 +1,8 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { UiKey, WorkItem, WorkKind } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Avatar, Badge, Empty, Screen } from "../ui";
+import { Avatar, Badge, Empty, Screen, useUrlState } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -56,7 +55,15 @@ const FILTER_KEY: Record<WorkKind, UiKey> = {
  * Поэтому каждая строка — ссылка туда, где с ней работают.
  */
 export default function WorklistPage() {
-  const [kind, setKind] = useState<WorkItem["kind"] | "">("");
+  /*
+   * Выбранный вид живёт в адресе, а не только в состоянии.
+   *
+   * Со сводки на очередь ведут плитки «просроченных назначений семь» — и
+   * приводить они должны сразу к ним, а не в общий список, где потом надо
+   * искать. Заодно отфильтрованная очередь становится ссылкой: «вот эти
+   * семь» отправляется коллеге как есть.
+   */
+  const [kind, setKind] = useUrlState("kind");
   const { ut } = useLang();
   const res = useResource(() => api.worklist(), []);
   useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], res.reload);

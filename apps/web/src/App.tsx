@@ -130,6 +130,10 @@ export default function App() {
    * вместо 14, а разбор случаев — это чтение списка. Держится в профиле
    * рабочего места, потому что зависит от монитора, а не от человека.
    */
+  /* «system» — следовать настройке системы; «reduced» — всегда меньше движения */
+  const [motion, setMotion] = useState<"system" | "reduced">(
+    () => (localStorage.getItem("quizzy.motion") as "system" | "reduced") ?? "system",
+  );
   const [density, setDensity] = useState<Density>(
     () => (localStorage.getItem("quizzy.density") as Density) ?? "cozy",
   );
@@ -154,6 +158,7 @@ export default function App() {
     applied.current = true;
     if (user.workspace.theme) setTheme(user.workspace.theme);
     if (user.workspace.density) setDensity(user.workspace.density);
+    if (user.workspace.motion) setMotion(user.workspace.motion);
   }, [user]);
 
   /*
@@ -181,6 +186,18 @@ export default function App() {
   }, [density]);
 
   useEffect(() => {
+    /*
+     * Атрибут ставится только для «reduced»: «system» означает «не мешать»,
+     * и признак, который надо было бы перебивать медиазапросом, только
+     * запутал бы правило.
+     */
+    if (motion === "reduced") document.documentElement.dataset.motion = "reduced";
+    else delete document.documentElement.dataset.motion;
+    localStorage.setItem("quizzy.motion", motion);
+    persist({ motion });
+  }, [motion]);
+
+  useEffect(() => {
     localStorage.setItem("quizzy.rail", railOpen ? "1" : "0");
   }, [railOpen]);
 
@@ -191,6 +208,13 @@ export default function App() {
         e.preventDefault();
         setPaletteOpen((v) => !v);
       }
+      /*
+       * Esc гасит палитру. Нижний слой при этом остаётся открытым —
+       * за это отвечает сам слой: он проверяет, верхний ли он (isTopLayer в
+       * ui/index.tsx). Здесь останавливать событие бесполезно: слушатель
+       * окна срабатывает ПОСЛЕ слушателя документа, на котором висят
+       * диалоги, — то есть нижний слой уже успел его увидеть.
+       */
       if (e.key === "Escape") setPaletteOpen(false);
     };
     window.addEventListener("keydown", onKey);
@@ -245,12 +269,15 @@ export default function App() {
     paintFavicon(openAlerts);
   }, [openAlerts]);
 
-  // публичные страницы живут вне auth-гейта: у пациента и киоска нет входа
-  if (
-    location.pathname.startsWith("/join/") ||
-    location.pathname.startsWith("/kiosk/") ||
-    location.pathname.startsWith("/informant/")
-  ) {
+  /*
+   * Публичные страницы живут вне auth-гейта: по приглашению входят без входа.
+   *
+   * Раньше сюда же пускались «/kiosk/» и «/informant/» — от экранов, которых
+   * в приложении нет. Ни один Route их не обслуживал, и пропуск мимо гейта
+   * означал только одно: неизвестный путь показывал пустоту вместо экрана
+   * входа.
+   */
+  if (location.pathname.startsWith("/join/")) {
     return (
       <Suspense fallback={<Loading />}>
         <Routes>

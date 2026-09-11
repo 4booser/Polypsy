@@ -25,6 +25,7 @@ import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { ageAt } from "@quizzy/shared";
+import { SEVERITY_FILL, type Severity } from "@quizzy/shared";
 import { t } from "@quizzy/shared";
 import { getSurveyForResponse } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -171,12 +172,19 @@ function formatValue(
   return decryptField(a.text) ?? "—";
 }
 
-const SEVERITY_COLOR: Record<string, string> = {
-  none: "#0ca30c",
-  mild: "#fab219",
-  moderate: "#ec835a",
-  severe: "#d03b3b",
-};
+/**
+ * Цвет ступени на бумаге — из общей палитры, а не своей копией.
+ *
+ * Здесь лежали те же четыре хекса, переписанные руками. Пока они совпадали с
+ * палитрой, копия выглядела безобидной; разошлись бы они молча — печать
+ * продолжала бы выдавать старый оттенок ещё долго после того, как его
+ * поправили в одном месте. Подложка у листа своя (белая), поэтому берётся
+ * именно SEVERITY_FILL: экранные ступени подобраны под тёмную землю и на
+ * бумаге не читаются.
+ */
+function severityColor(severity: string | null): string {
+  return SEVERITY_FILL[(severity ?? "none") as Severity] ?? "#888";
+}
 
 interface ReportData {
   conclusion: { text: string; version: number; signedAt: string | null; signedBy: string } | null;
@@ -219,7 +227,7 @@ function renderReport(d: ReportData): string {
         <td class="num">${s.percent}%</td>
         <td>${
           s.band
-            ? `<span class="dot" style="background:${SEVERITY_COLOR[s.severity ?? "none"] ?? "#888"}"></span>${esc(s.band)}`
+            ? `<span class="dot" style="background:${severityColor(s.severity)}"></span>${esc(s.band)}`
             : "—"
         }</td>
         <td class="num">${s.percentile === null ? "—" : `${s.percentile}-й`}</td>
