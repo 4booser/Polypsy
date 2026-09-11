@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import type { UiKey } from "@quizzy/shared";
@@ -212,6 +212,31 @@ function readOpen(): string[] | null {
   }
 }
 
+/*
+ * Ниже этой ширины рельса не сжимает содержимое, а ложится поверх него.
+ * Порог тот же, что в классах ниже (max-[900px]), и он здесь ровно потому,
+ * что поведение при выезде поверх — другое: это уже не колонка, а ящик,
+ * который открывают и закрывают.
+ */
+const NARROW = "(max-width: 900px)";
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(NARROW).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW);
+    const sync = () => setNarrow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return narrow;
+}
+
+/* что считается мишенью табуляции внутри рельсы */
+const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 function RailLink({ item, collapsed }: { item: Item; collapsed: boolean }) {
   const { ut } = useLang();
   const label = ut(item.key);
@@ -343,9 +368,87 @@ export function Rail({
   collapsed: boolean;
   children?: ReactNode;
 }) {
+  const { ut } = useLang();
   const { pathname } = useLocation();
   const groups = useMemo(() => railGroups(counts, isSuper, canAssign), [counts, isSuper, canAssign]);
   const active = groupOfPath(groups, pathname);
+
+  /*
+   * На узком экране рельса — ящик, а не колонка, и у неё два состояния,
+   * которых на широком не бывает.
+   *
+   * **Задвинута.** Сдвиг трансформацией уводил её за левый край, но из
+   * разметки не убирал: двенадцать ссылок оставались в порядке табуляции.
+   * Первые двенадцать Tab на телефоне уходили за край экрана — кольца
+   * фокуса не видно нигде, до содержимого не добраться, и человек не
+   * понимает, куда он попал. Автопроверка на это молчит по построению:
+   * элемент не спрятан, он сдвинут, а про смещённые трансформацией она
+   * ничего не знает.
+   *
+   * **Выехала поверх.** Ящик, перекрывающий содержимое, обязан закрываться:
+   * Esc, нажатием мимо и переходом по ссылке внутри. Ничего этого не было —
+   * открыв рельсу и передумав, человек с клавиатуры оставался под ней
+   * навсегда, а перейдя по ссылке, читал новый экран сквозь неё.
+   *
+   * Закрытие держится здесь, а не у владельца состояния, намеренно:
+   * `collapsed` отвечает на вопрос «просили ли рельсу», а ящик закрывается
+   * по своим правилам, которых на широком экране не существует вовсе.
+   * Признак сбрасывается при каждом переключении снаружи — иначе кнопка
+   * панели перестала бы открывать закрытый ящик.
+   */
+  const narrow = useNarrow();
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => setDismissed(false), [collapsed]);
+
+  const overlay = narrow && !collapsed && !dismissed;
+  const offscreen = narrow && (collapsed || dismissed);
+
+  /* переход по ссылке закрывает ящик: иначе новый экран читают сквозь него */
+  const seenPath = useRef(pathname);
+  useEffect(() => {
+    if (seenPath.current === pathname) return;
+    seenPath.current = pathname;
+    if (window.matchMedia(NARROW).matches) setDismissed(true);
+  }, [pathname]);
+
+  /*
+   * Пока ящик открыт, табуляция ходит внутри него, а Esc закрывает.
+   *
+   * Ловушка нужна по той же причине, по которой нужен был inert у
+   * задвинутой рельсы: за краем ящика фокус не виден. Разница лишь в том,
+   * что здесь невидимо содержимое ПОД ящиком, а не сам ящик.
+   */
+  const boxRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!overlay) return;
+    const opener = document.activeElement as HTMLElement | null;
+    const inside = () => [...(boxRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
+    inside()[0]?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setDismissed(true);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = inside();
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      const here = document.activeElement;
+      const out = !boxRef.current?.contains(here);
+      if (e.shiftKey ? here === first || out : here === last || out) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      /* фокус возвращается туда, откуда ящик открыли, а не в начало документа */
+      opener?.focus?.();
+    };
+  }, [overlay]);
 
   /*
    * Первый заход раскрывает только ту группу, в которой находится человек.
@@ -384,13 +487,43 @@ export function Rail({
   }
 
   return (
-    /*
+    <>
+      {/*
+        Подложка под выехавшим ящиком.
+
+        Она не украшение: это единственное, что отвечает на нажатие мимо
+        рельсы. Без неё нажатие приходилось по содержимому под ящиком —
+        человек целился «закрыть», а попадал в ссылку, которую не видел.
+      */}
+      {overlay ? (
+        <div
+          aria-hidden
+          onClick={() => setDismissed(true)}
+          className="fixed inset-0 z-[39] bg-[color-mix(in_srgb,var(--bg)_70%,transparent)]"
+        />
+      ) : null}
+    {/*
       Рельса прибита к окну и прокручивается внутри себя. Иначе подвал —
       имя, роль, стартовый экран и выход — уезжает за нижний край на
       ноутбучном экране, и человек не находит кнопку выхода вовсе.
       Прокручивается только список разделов: подвал остаётся на месте.
-    */
+    */}
     <aside
+      ref={boxRef}
+      /*
+        Задвинутая рельса убрана из табуляции и из дерева доступности.
+
+        inert — для браузера и диктора, visibility:hidden — для самого
+        порядка табуляции и для случая, когда разметка отрисована, а сценарий
+        ещё не выполнялся. Одного aria-hidden было бы мало и даже хуже:
+        скрытый от диктора, но достижимый Tab элемент — отдельное нарушение.
+      */
+      inert={offscreen}
+      aria-hidden={offscreen || undefined}
+      /* выехавший поверх ящик обязан быть назван: он перекрывает экран */
+      role={overlay ? "dialog" : undefined}
+      aria-modal={overlay || undefined}
+      aria-label={overlay ? ut("shell.sections") : undefined}
       className={cx(
         "sidebar sticky top-0 z-40 flex h-screen shrink-0 flex-col overflow-x-hidden",
         "border-r border-hairline bg-rail",
@@ -404,7 +537,9 @@ export function Rail({
           Поэтому здесь она выводится из потока и выезжает по кнопке.
         */
         "max-[900px]:fixed max-[900px]:left-0 max-[900px]:top-0 max-[900px]:w-[var(--rail-w)] max-[900px]:px-3 max-[900px]:shadow-panel",
-        collapsed ? "max-[900px]:-translate-x-full" : "max-[900px]:translate-x-0",
+        offscreen
+          ? "max-[900px]:invisible max-[900px]:-translate-x-full"
+          : "max-[900px]:visible max-[900px]:translate-x-0",
       )}
     >
       <div
@@ -497,5 +632,6 @@ export function Rail({
         </div>
       ) : null}
     </aside>
+    </>
   );
 }

@@ -31,8 +31,29 @@ export default function Cohorts() {
   const [names, setNames] = useState<{ userId: string; fullName: string; unit: string | null }[] | null>(null);
   const [title, setTitle] = useState("");
 
+  /**
+   * Подразделения, из которых можно выбирать.
+   *
+   * Копятся из разбивки предпросмотра, а не запрашиваются справочником.
+   * Справочника подразделений в системе нет: метки брались из отчёта
+   * «состояние подразделения», а его убрали — и запрос отвечал 404 при каждом
+   * открытии экрана. Список молча оставался пустым, и фильтр по
+   * подразделению, который сервер поддерживает, нажать было нечем.
+   *
+   * Разбивка отвечает на тот же вопрос и отвечает лучше. Во-первых, она уже
+   * приезжает. Во-вторых, в ней ровно те подразделения, где есть данные в
+   * зоне ответственности этого специалиста, — то есть предлагается только то,
+   * что даст непустой результат. В-третьих, она подчиняется тому же правилу
+   * малых ячеек: у когорты, которую нельзя разбивать, меток не будет вовсе, и
+   * сузить её до одного человека через фильтр не выйдет.
+   *
+   * Копятся, а не берутся из последнего ответа: выбрав «1 рота», человек
+   * сужает когорту до неё одной — и остальные метки исчезли бы вместе с
+   * возможностью передумать.
+   */
+  const [units, setUnits] = useState<string[]>([]);
+
   const surveys = useResource(() => api.surveys(), []);
-  const units = useResource(() => api.unitReportUnits(), []);
   const saved = useResource(() => api.cohorts(), []);
 
   const survey = useResource(
@@ -54,7 +75,18 @@ export default function Cohorts() {
     setNames(null);
     void api
       .cohortPreview(JSON.parse(key) as CohortSpec)
-      .then((p) => alive && setPreview(p))
+      .then((p) => {
+        if (!alive) return;
+        setPreview(p);
+        setUnits((seen) => {
+          const next = [...new Set([...seen, ...p.byUnit.map((r) => r.key)])]
+            // прочерк вместо названия — это «подразделение не указано», не метка
+            .filter((u) => u !== "—")
+            .sort();
+          // ссылка сохраняется, когда ничего не прибавилось: иначе лишний рендер
+          return next.length === seen.length ? seen : next;
+        });
+      })
       .catch(() => alive && setPreview(null));
     return () => {
       alive = false;
@@ -126,7 +158,7 @@ export default function Cohorts() {
 
           {/* подразделения выбираются метками: их десятки, и список в select не читается */}
           <div className="mt-2 flex flex-wrap gap-2">
-            {(units.data ?? []).map((u) => {
+            {units.map((u) => {
               const on = spec.units?.includes(u) ?? false;
               return (
                 <button

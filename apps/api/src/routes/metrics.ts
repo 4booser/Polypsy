@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import { render, setGauge } from "../lib/metrics";
 import { env } from "../env";
 import { unauthorized } from "../lib/http";
@@ -26,7 +27,13 @@ metricsRoutes.get("/", async (c) => {
    * на каждом запросе. Три оповещения, ради которых это и нужно:
    * планировщик встал, случаи копятся, диск кончается.
    */
-  const [row] = await db.execute<{
+  /*
+   * Системный контекст: у сборщика метрик нет сессии и не может быть, а
+   * считает он по таблицам под политиками строк — журнал, случаи риска.
+   * Без контекста политики честно вернули бы нули, и оповещение «случаи
+   * копятся» замолчало бы навсегда, ничем себя не выдав.
+   */
+  const [row] = await systemContext(baseDb, () => db.execute<{
     open_cases: number;
     stale_minutes: number | null;
     db_bytes: number;
@@ -38,7 +45,7 @@ metricsRoutes.get("/", async (c) => {
          from schedule_runs)                                                           as stale_minutes,
       pg_database_size(current_database())::bigint                                    as db_bytes,
       (select count(*)::int from audit_log)                                           as audit_rows
-  `);
+  `));
 
   setGauge("quizzy_open_alert_cases", Number(row?.open_cases ?? 0));
   setGauge("quizzy_database_bytes", Number(row?.db_bytes ?? 0));

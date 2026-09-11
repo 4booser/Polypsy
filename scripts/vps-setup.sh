@@ -73,6 +73,11 @@ else
   set_var APP_DB_PASSWORD   "$(rnd 24)"
   set_var JWT_SECRET        "$(rnd 32)"
   set_var ENCRYPTION_KEY    "v1:$(head -c 32 /dev/urandom | base64)"
+  # Слепой индекс телефона и коды выгрузок — свои секреты, не JWT_SECRET:
+  # иначе утечка секрета подписи раскрывает телефоны перебором, а его
+  # ротация молча ломает дедупликацию номеров и склейку лонгитюда.
+  set_var PHONE_INDEX_SECRET "$(rnd 32)"
+  set_var EXPORT_SECRET      "$(rnd 32)"
 
   if [ -n "$DOMAIN" ]; then
     set_var SITE_ADDRESS "$DOMAIN"
@@ -118,11 +123,16 @@ else
 Смотрите: docker compose --env-file $ENV_FILE logs api"
 fi
 
+# Спрашиваем файл окружения, а не журнал приложения: без ключа приложение
+# теперь просто не стартует (см. env.ts), и грепать его журнал на строку
+# «шифрование выключено» больше нечего — такой строки не бывает. Проверка
+# осталась ради того, чтобы установка не прошла с пустой переменной и
+# «успешным» выводом.
 say "Проверяю шифрование полей…"
-if docker compose --env-file "$ENV_FILE" logs api | grep -q "crypto.disabled"; then
-  die "ENCRYPTION_KEY не задан: ФИО, заключения и свободные ответы пишутся открыто."
-else
+if grep -q '^ENCRYPTION_KEY=v' "$ENV_FILE"; then
   echo "  ✓ шифрование включено"
+else
+  die "ENCRYPTION_KEY не задан: без него приложение не поднимется, а карты пациентов легли бы открытыми."
 fi
 
 # Первый администратор заводится через контейнер подготовки, а не через api.

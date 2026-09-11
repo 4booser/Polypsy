@@ -1,12 +1,22 @@
 import type { Context } from "hono";
-import { desc, isNotNull, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { auditLog } from "../db/schema";
 import type { User } from "@quizzy/shared";
 import { currentRequestId, log } from "./log";
 import { publish } from "./events";
 
-/** Действия журнала. Строковый союз, чтобы опечатка ловилась типами. */
+/**
+ * Действия журнала. Строковый союз, чтобы опечатка ловилась типами.
+ *
+ * Здесь ровно то, что код умеет записать, и ничего сверх. Тридцать одно имя
+ * пережило свои возможности — киоск, консилиум, цели лечения, маршруты
+ * помощи, отчёт по подразделению, дежурство, сравнение и калибровка, — и
+ * лежало здесь после того, как маршруты, которые их писали, исчезли.
+ * Мёртвое имя в этом союзе хуже, чем просто мусор: по нему ищут в журнале и
+ * делают вывод «такого не случалось», хотя правильный вывод — «такого не
+ * бывает».
+ */
 export type AuditAction =
   /* вход через Google: связывание — это выдача второго ключа от учётной
      записи, и оно обязано быть видно в журнале так же, как смена пароля */
@@ -27,7 +37,6 @@ export type AuditAction =
   | "clinic.cancel"
   | "clinic.status"
   | "clinic.visit_open"
-  | "clinic.report"
   | "clinic.phone_view"
   | "account.reveal"
   | "message.send"
@@ -43,7 +52,6 @@ export type AuditAction =
   | "recording.stop"
   | "recording.discard"
   | "template.create"
-  | "template.archive"
   | "report.visit_certificate"
   | "report.episode_extract"
   | "report.patient_chart"
@@ -58,21 +66,15 @@ export type AuditAction =
   | "conclusion.batch"
   | "quality.read"
   | "search.notes"
-  | "breakglass.open"
-  | "breakglass.close"
   | "cohort.preview"
   | "cohort.members"
   | "cohort.save"
   | "cohort.delete"
   | "device.wipe_requested"
   | "device.wiped"
-  | "informant.invite"
-  | "informant.revoke"
-  | "informant.submit"
   | "rule.hit"
   | "rule.decide"
   | "rule.save"
-  | "duty.assign"
   | "auth.login"
   | "auth.login_failed"
   | "auth.password_change"
@@ -83,9 +85,8 @@ export type AuditAction =
   | "user.list"
   | "profile.update"
   | "survey.create"
-  /* установка общего каталога: заведение отделения и методик по умолчанию */
+  /* установка общего каталога: заводит отделение по умолчанию */
   | "department.create"
-  | "catalog.install"
   /* командная консоль: вызов команды пишется до выполнения */
   | "console.run"
   /* календарь специалиста: подключение права создавать встречи Meet */
@@ -122,7 +123,6 @@ export type AuditAction =
   | "alert.assign"
   | "alert.release"
   | "report.render"
-  | "report.unit"
   | "response.list"
   | "response.read"
   | "analytics.overview"
@@ -130,24 +130,16 @@ export type AuditAction =
   | "analytics.group"
   | "analytics.survey"
   | "analytics.export"
-  | "analytics.compare"
   | "battery.create"
   | "battery.update"
   | "battery.delete"
   | "battery.assign"
   | "battery.cancel"
   | "battery.assignment_list"
-  | "schedule.create"
-  | "schedule.update"
-  | "schedule.delete"
   | "schedule.run"
   | "invite.create"
   | "invite.revoke"
   | "invite.use"
-  | "kiosk.session_create"
-  | "kiosk.session_close"
-  | "kiosk.join"
-  | "kiosk.submit"
   | "alert.notified"
   | "alert.escalated"
   | "conclusion.save"
@@ -156,34 +148,18 @@ export type AuditAction =
   | "consent.text_update"
   | "retention.answer_events"
   | "norms.publish"
-  | "analytics.surveillance"
-  | "analytics.dif"
-  | "analytics.calibration"
   | "analytics.data_quality"
   | "analytics.facets"
   | "referral.list"
-  /* консилиум */
-  | "conference.open"
-  | "conference.opinion"
-  | "conference.decide"
-  /* цели лечения */
-  | "goal.create"
-  | "goal.close"
   /* личный план безопасности */
   | "safety.save"
   /* заметки приёма: запись о человеке вне привязки к прохождению */
   | "note.save"
   | "note.sign"
-  /* маршруты помощи: заведение шаблона и ведение человека по нему */
-  | "pathway.create"
-  | "pathway.start"
-  | "pathway.step"
-  | "pathway.close"
   | "referral.create"
   | "referral.update"
   | "cascade.assign"
   | "cascade.followup"
-  | "analytics.correlations"
   | "audit.read"
   | "access.denied";
 
@@ -239,16 +215,25 @@ export function chainHash(prevHash: string | null, row: Record<string, unknown>)
 async function writeChained(values: Record<string, unknown>): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`);
-    // только цепные строки: у записей до внедрения цепочки seq NULL, а
-    // NULLS FIRST у DESC-сортировки Postgres подсовывал бы их головой цепочки
-    const [head] = await tx
-      .select({ seq: auditLog.seq, entryHash: auditLog.entryHash })
-      .from(auditLog)
-      .where(isNotNull(auditLog.seq))
-      .orderBy(desc(auditLog.seq))
-      .limit(1);
+    /*
+     * Голова цепочки — через audit_chain_head(), а не выборкой из таблицы.
+     *
+     * Журнал лежит под политикой строк, и читать его вправе персонал, а
+     * писать обязаны все: запись пациента, сдавшего методику, — такое же
+     * событие журнала. Обычная выборка из контекста пациента вернула бы
+     * «цепочки нет», seq начался бы с единицы и упёрся в уникальный
+     * индекс — то есть журнал перестал бы принимать записи ровно от тех,
+     * чьи действия в нём важнее всего. Функция объявлена SECURITY DEFINER
+     * и отдаёт только номер и хэш: ни одного поля из содержимого.
+     *
+     * Только цепные строки: у записей до внедрения цепочки seq NULL, а
+     * NULLS FIRST у DESC-сортировки Postgres подсовывал бы их головой.
+     */
+    const [head] = await tx.execute<{ seq: number | null; entry_hash: string | null }>(
+      sql`select seq, entry_hash from audit_chain_head()`,
+    );
     const seq = (head?.seq ?? 0) + 1;
-    const prevHash = head?.entryHash ?? null;
+    const prevHash = head?.entry_hash ?? null;
     const at = new Date().toISOString();
     const row = { ...values, at };
     await tx.insert(auditLog).values({

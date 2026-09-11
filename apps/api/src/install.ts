@@ -45,8 +45,26 @@ function checkEnv(): { url: string; dbName: string } {
     process.exit(1);
   }
   if (!process.env.JWT_SECRET) {
-    console.error("JWT_SECRET не задан. На нём держатся сессии и слепые индексы.");
+    console.error("JWT_SECRET не задан. На нём держатся подписи сессий.");
     process.exit(1);
+  }
+  /*
+   * Слепой индекс телефона и коды выгрузок считаются СВОИМИ секретами, а не
+   * секретом подписи. Общее значение означало бы, что утечка подписи
+   * раскрывает телефоны перебором, а её ротация — штатная реакция на ту же
+   * утечку — молча ломает дедупликацию номеров и склейку лонгитюда.
+   */
+  for (const name of ["PHONE_INDEX_SECRET", "EXPORT_SECRET"]) {
+    if (!process.env[name]) {
+      console.error(
+        `${name} не задан. Сгенерировать: ${name}=${randomBytes(32).toString("base64")}`,
+      );
+      process.exit(1);
+    }
+    if (process.env[name] === process.env.JWT_SECRET) {
+      console.error(`${name} совпадает с JWT_SECRET — разные контуры, разные секреты.`);
+      process.exit(1);
+    }
   }
   if (!process.env.ENCRYPTION_KEY) {
     /*

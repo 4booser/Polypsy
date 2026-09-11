@@ -81,13 +81,65 @@ function ageBand(age: number | null): string {
 }
 
 /**
- * Стабильный необратимый код субъекта: HMAC от id с серверным секретом.
+ * Стабильный необратимый код субъекта: HMAC от id с секретом выгрузок.
  * Стабильность важна для лонгитюда — повторные выгрузки склеиваются по
  * коду, но вернуть из кода личность без секрета нельзя.
+ *
+ * Секрет свой (EXPORT_SECRET), а не JWT_SECRET: код обязан не меняться
+ * годами, а секрет подписи сессий положено менять при любом подозрении на
+ * утечку. Пока значение было одно, ротация подписи молча превращала все
+ * прежние коды в новые — и лонгитюд по выгрузкам, сделанным до неё,
+ * переставал склеиваться, ничем себя не обнаруживая.
  */
 function subjectCode(userId: string): string {
-  const h = new Bun.CryptoHasher("sha256", env.jwtSecret).update(`subject:${userId}`).digest("hex");
+  const h = new Bun.CryptoHasher("sha256", env.exportSecret).update(`subject:${userId}`).digest("hex");
   return `R${h.slice(0, 10).toUpperCase()}`;
+}
+
+/**
+ * Код наблюдения (case_id) — по профилю, а не одинаковый для всех.
+ *
+ * Раньше во всех трёх профилях сюда шёл `response.id` — первичный ключ
+ * прохождения. В обезличенной и анонимной выгрузке это ключ обратной
+ * идентификации в чистом виде: берём case_id из CSV, открываем
+ * GET /api/reports/responses/<case_id> и читаем ФИО. Обобщение возраста,
+ * стирание пола в редких ячейках и отсутствие субъекта при этом ничего не
+ * защищали — достаточно было одной колонки, которая печаталась первой.
+ *
+ * Профили теперь разные, потому что разное обещают:
+ *
+ *  full — настоящий идентификатор: выгрузка с именами и существует ради
+ *    возврата к карте, прятать в ней ключ бессмысленно;
+ *
+ *  deidentified — HMAC от идентификатора: стабилен между выгрузками (иначе
+ *    ломается дозагрузка новой волны к уже собранному датасету) и
+ *    необратим без EXPORT_SECRET;
+ *
+ *  anonymous — случайный код, живущий ровно одну выгрузку. Стабильный
+ *    (хоть бы и HMAC) склеивал бы повторные выгрузки между собой — ровно
+ *    то, что этот профиль обещает исключить: две выгрузки в разные месяцы
+ *    сопоставляются построчно, и «анонимные» наблюдения снова становятся
+ *    цепочкой одного человека. Порядковый номер не годится по той же
+ *    причине: у старых наблюдений он в двух выгрузках совпадает.
+ *    Плата — датасеты разных выгрузок (и wide с long) в этом профиле не
+ *    соединяются по case_id. Это не потеря: оба файла содержат одни и те же
+ *    наблюдения в разных представлениях, а соединять их между собой и
+ *    значит восстанавливать связь, которой в профиле быть не должно.
+ */
+function caseCoder(profile: ExportProfile): (responseId: string) => string {
+  if (profile === "full") return (id) => id;
+  if (profile === "deidentified") {
+    return (id) => {
+      const h = new Bun.CryptoHasher("sha256", env.exportSecret).update(`case:${id}`).digest("hex");
+      return `C${h.slice(0, 10).toUpperCase()}`;
+    };
+  }
+  // соль живёт в замыкании одного запроса и нигде не сохраняется
+  const salt = crypto.randomUUID();
+  return (id) => {
+    const h = new Bun.CryptoHasher("sha256").update(`${salt}:${id}`).digest("hex");
+    return `A${h.slice(0, 10).toUpperCase()}`;
+  };
 }
 
 /**
@@ -139,12 +191,16 @@ async function buildSchema(
     return candidate;
   };
 
+  // код наблюдения общий на всю выгрузку: внутри одного файла он обязан
+  // совпадать сам с собой, а между выгрузками — по правилам профиля
+  const caseOf = caseCoder(profile);
   const vars: Variable[] = [
     {
       name: unique("case_id"),
       spec: "A36",
-      label: "Идентификатор прохождения",
-      value: (c) => c.response.id,
+      label:
+        profile === "full" ? "Идентификатор прохождения" : "Код наблюдения (в карту не ведёт)",
+      value: (c) => caseOf(c.response.id),
     },
   ];
 
@@ -548,6 +604,8 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
     order by submitted_at, response_id, scale_code`);
 
   type Row = Record<string, unknown>;
+  // тот же код наблюдения, что и в широкой выгрузке: см. caseCoder
+  const caseOf = caseCoder(profile);
   const header = [
     "case_id",
     profile === "anonymous" ? null : "subject",
@@ -573,7 +631,7 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
           ? subjectCode(String(r.user_id))
           : "";
     return [
-      String(r.response_id),
+      caseOf(String(r.response_id)),
       profile === "anonymous" ? null : subject,
       profile === "full" ? String(r.submitted_at ?? "") : String(r.submitted_month ?? ""),
       String(r.lang ?? ""),

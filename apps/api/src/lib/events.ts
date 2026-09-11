@@ -67,9 +67,4 @@ export async function subscribe(handler: Handler): Promise<() => void> {
   return () => handlers.delete(handler);
 }
 
-/** Сколько подписчиков сейчас держат поток — для метрик и диагностики */
-export function subscriberCount(): number {
-  return handlers.size;
-}
-
 export { db };

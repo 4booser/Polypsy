@@ -30,13 +30,31 @@ export default function Account() {
   const [middleName, setMiddleName] = useState(user?.middleName ?? "");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
-  const [theme, setTheme] = useState(() => localStorage.getItem("quizzy.theme") ?? "dark");
+  const theme = user?.workspace?.theme ?? (localStorage.getItem("quizzy.theme") || "dark");
+  const density = user?.workspace?.density ?? "cozy";
+  const motion = user?.workspace?.motion ?? "system";
 
-  const applyTheme = (value: string) => {
-    setTheme(value);
-    localStorage.setItem("quizzy.theme", value);
-    document.documentElement.setAttribute("data-theme", value);
-  };
+  /**
+   * Настройка сохраняется НА СЕРВЕР, а не только в этот браузер.
+   *
+   * Тема здесь писалась в localStorage и в атрибут документа — и на этом
+   * всё: до сервера выбор не доезжал, а оболочка, у которой своя копия
+   * настроек, при следующей перерисовке возвращала прежнюю. Человек менял
+   * тему, она менялась на глазах и откатывалась.
+   *
+   * Атрибут ставится сразу, до ответа сервера: иначе экран моргает старым
+   * оформлением, пока летит запрос.
+   */
+  const applyPref = (patch: Parameters<typeof api.saveWorkspace>[0], attr?: [string, string | null]) =>
+    run(async () => {
+      if (attr) {
+        const [name, value] = attr;
+        if (value === null) delete document.documentElement.dataset[name];
+        else document.documentElement.setAttribute(`data-${name}`, value);
+      }
+      await api.saveWorkspace(patch);
+      await refreshUser();
+    }, ut("acct.saved"));
 
   return (
     <Page title={ut("acct.title")} sub={ut("acct.sub")}>
@@ -168,11 +186,75 @@ export default function Account() {
             <div className="flex items-center justify-between gap-4">
               <span className="text-small text-muted">{ut("pt.theme")}</span>
               <div className="flex gap-1">
-                <Button size="sm" variant={theme === "dark" ? "primary" : "quiet"} onClick={() => applyTheme("dark")}>
+                <Button
+                  size="sm"
+                  variant={theme === "dark" ? "primary" : "quiet"}
+                  onClick={() => applyPref({ theme: "dark" }, ["theme", "dark"])}
+                >
                   {ut("nav.themeDark")}
                 </Button>
-                <Button size="sm" variant={theme === "light" ? "primary" : "quiet"} onClick={() => applyTheme("light")}>
+                <Button
+                  size="sm"
+                  variant={theme === "light" ? "primary" : "quiet"}
+                  onClick={() => applyPref({ theme: "light" }, ["theme", "light"])}
+                >
                   {ut("nav.themeLight")}
+                </Button>
+              </div>
+            </div>
+
+            {/*
+              Плотность меняется здесь, а не только в палитре команд.
+              Настройка была, работала и хранилась на сервере — но добраться
+              до неё можно было единственным способом: нажать Cmd+K и знать,
+              что искать. Для человека, который о палитре не слышал, её не
+              существовало.
+            */}
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-small text-muted">{ut("acct.density")}</span>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant={density === "cozy" ? "primary" : "quiet"}
+                  onClick={() => applyPref({ density: "cozy" }, ["density", "cozy"])}
+                >
+                  {ut("acct.densityCozy")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={density === "compact" ? "primary" : "quiet"}
+                  onClick={() => applyPref({ density: "compact" }, ["density", "compact"])}
+                >
+                  {ut("acct.densityCompact")}
+                </Button>
+              </div>
+            </div>
+
+            {/*
+              Движение: следовать системе или всегда меньше.
+              Включить его вопреки системной настройке нельзя — её ставят при
+              вестибулярных расстройствах и мигрени, и перебивать её «зато
+              красиво» значит делать человеку физически плохо. Обратное
+              направление осмысленно: компьютер в кабинете общий, менять
+              настройки системы человек не вправе, а убрать движение себе —
+              вправе.
+            */}
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-small text-muted">{ut("acct.motion")}</span>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant={motion === "system" ? "primary" : "quiet"}
+                  onClick={() => applyPref({ motion: "system" }, ["motion", null])}
+                >
+                  {ut("acct.motionSystem")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant={motion === "reduced" ? "primary" : "quiet"}
+                  onClick={() => applyPref({ motion: "reduced" }, ["motion", "reduced"])}
+                >
+                  {ut("acct.motionReduced")}
                 </Button>
               </div>
             </div>

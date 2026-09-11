@@ -5,7 +5,6 @@
  */
 /** Языки, на которых ведутся методики */
 export type Lang = "uk" | "ru";
-export const LANGS: Lang[] = ["uk", "ru"];
 
 /**
  * Локализованный текст. Хранится как объект языков, а не как строка:
@@ -559,16 +558,6 @@ export interface SurveyFull extends Survey {
   versionNumber: number;
 }
 
-/** Нормативное сравнение: где балл относительно накопленной выборки */
-export interface NormComparison {
-  scaleId: string;
-  /** Доля выборки со строго меньшим баллом, 0–100 */
-  percentile: number;
-  sampleSize: number;
-  sampleMean: number;
-  sampleMedian: number;
-}
-
 /** Точка динамики пациента по одной субшкале */
 export interface DynamicsPoint {
   responseId: string;
@@ -1067,37 +1056,6 @@ export interface BatteryAssignment {
   steps: BatteryStep[];
 }
 
-/** Сеанс киоска: групповое обследование на одном устройстве */
-export interface KioskSession {
-  id: string;
-  title: string;
-  batteryId: string;
-  batteryTitle: string;
-  expiresAt: string;
-  closedAt: string | null;
-  createdAt: string;
-  createdByName: string;
-  participants: KioskParticipantState[];
-}
-
-export interface KioskParticipantState {
-  id: string;
-  displayName: string;
-  startedAt: string;
-  finishedAt: string | null;
-  doneRequired: number;
-  totalRequired: number;
-}
-
-/** Что видит устройство киоска по своему токену */
-export interface KioskState {
-  valid: boolean;
-  reason?: "expired" | "closed" | "unknown";
-  title?: string;
-  batteryTitle?: string;
-  steps?: { surveyId: string; title: string; questionCount: number; required: boolean; administration: Administration }[];
-}
-
 /** Приглашение: вход пациента по ссылке или короткому коду */
 export interface Invite {
   id: string;
@@ -1185,96 +1143,6 @@ export interface MyDynamics {
       points: { submittedAt: string; value: number; bandLabel: string | null; severity: Severity | null }[];
     }[];
   }[];
-}
-
-/** Расписание повторных обследований */
-export type ScheduleScope = "unit" | "users";
-
-export interface ScheduleRun {
-  id: string;
-  ranAt: string;
-  assigned: number;
-  skipped: number;
-  note: string | null;
-}
-
-export interface Schedule {
-  id: string;
-  title: string;
-  batteryId: string;
-  batteryTitle: string;
-  scope: ScheduleScope;
-  unit: string | null;
-  intervalDays: number;
-  dueDays: number;
-  startsAt: string;
-  endsAt: string | null;
-  active: boolean;
-  lastRunAt: string | null;
-  nextRunAt: string;
-  createdAt: string;
-  /** Поимённый список для scope = users */
-  targets: { userId: string; fullName: string }[];
-  /** Сколько человек охватит ближайшее срабатывание */
-  reach: number;
-  runs: ScheduleRun[];
-}
-
-/** Срез сравнения: одна когорта по одной субшкале */
-export interface CohortStat {
-  cohort: string;
-  /** Сырая доля высокого риска (moderate|severe) */
-  rawRiskShare: number;
-  /** Стандартизовано по полу×возрасту всей выборки методики; null — не посчитать */
-  stdRiskShare: number | null;
-  n: number;
-  mean: number;
-  median: number;
-  sd: number;
-  min: number;
-  max: number;
-  /** Распределение по интерпретационным нормам */
-  bands: { label: string; severity: Severity; count: number; percent: number }[];
-}
-
-export interface ScaleComparison {
-  scaleId: string;
-  code: string;
-  title: string;
-  /** Максимум сырого балла — для шкал без нормализации */
-  maxScore: number;
-  /** В каких единицах лежит value: от этого зависит шкала оси */
-  normalization: ScaleNormalization;
-  cohorts: CohortStat[];
-}
-
-export type CohortBy = "unit" | "sex" | "ageGroup" | "month" | "rank";
-
-export interface ComparisonResult {
-  surveyId: string;
-  title: string;
-  by: CohortBy;
-  /** Сколько прохождений не попало ни в одну когорту: поле не заполнено */
-  unclassified: number;
-  scales: ScaleComparison[];
-}
-
-/** Корреляция между двумя субшкалами */
-export interface ScaleCorrelation {
-  a: string;
-  b: string;
-  r: number;
-  n: number;
-}
-
-export interface CorrelationMatrix {
-  surveyId: string;
-  title: string;
-  codes: string[];
-  titles: Record<string, string>;
-  pairs: ScaleCorrelation[];
-  /** Минимальное число наблюдений, ниже которого коэффициент не считается */
-  minSample: number;
 }
 
 /** Сводка по всем опросам — для главного экрана аналитики */
@@ -1560,30 +1428,6 @@ export interface Worklist {
 }
 
 
-/** Состояние подразделения за период */
-export interface UnitReport {
-  unit: string;
-  from: string | null;
-  to: string | null;
-  /** Всего людей в подразделении */
-  people: number;
-  /** Из них обследовано за период */
-  measured: number;
-  coverage: number;
-  responses: number;
-  /** Сколько человек хоть раз попало в тяжёлую полосу; null — ячейка подавлена */
-  atRisk: number | null;
-  smallCellFloor: number;
-  surveys: { surveyId: string; title: string; responses: number; people: number }[];
-  scales: {
-    code: string;
-    title: string;
-    total: number;
-    breakdown: { severity: Severity; count: number | null; percent: number }[];
-  }[];
-}
-
-
 /**
  * Личный план безопасности (Стэнли–Браун).
  *
@@ -1640,15 +1484,6 @@ export interface RuleHit {
   createdAt: string;
 }
 
-export interface DutyShiftRow {
-  id: string;
-  userId: string;
-  name: string;
-  groupId: string | null;
-  startsAt: string;
-  endsAt: string;
-}
-
 /* ═══════════ Рабочее место ═══════════ */
 
 /**
@@ -1663,6 +1498,11 @@ export interface WorkspacePrefs {
   /** Куда попадать после входа */
   startScreen?: "dashboard" | "worklist" | "alerts" | "patients";
   density?: "cozy" | "compact";
+  /*
+   * Движение: следовать системе или всегда меньше. Включить его вопреки
+   * системной настройке нельзя — см. схему в schemas.ts.
+   */
+  motion?: "system" | "reduced";
   theme?: "dark" | "light";
   lang?: "uk" | "ru";
   /**
@@ -1681,38 +1521,6 @@ export interface WorkspacePrefs {
    * должна показать смену, а не «всё с начала времён».
    */
   eventsSeenAt?: string | null;
-}
-
-/* ═══════════ Мульти-информант ═══════════ */
-
-export type InformantRole = "commander" | "peer" | "family" | "clinician";
-
-export interface InformantRequestRow {
-  id: string;
-  role: InformantRole;
-  surveyId: string;
-  surveyTitle: string;
-  note: string | null;
-  expiresAt: string;
-  usedAt: string | null;
-  revokedAt: string | null;
-  responseId: string | null;
-}
-
-/** Одна перспектива: что видит человек со стороны против самоотчёта */
-export interface InformantComparison {
-  requestId: string;
-  role: InformantRole;
-  at: string | null;
-  scales: {
-    code: string;
-    title: string;
-    informant: number;
-    /** null — этой шкалы в самоотчёте нет */
-    self: number | null;
-    /** Расхождение; null там, где сравнивать не с чем */
-    gap: number | null;
-  }[];
 }
 
 /* ═══════════ Когорты ═══════════ */
@@ -1868,7 +1676,6 @@ export type AppEventKind =
   | "alert.created"
   | "case.changed"
   | "response.submitted"
-  | "kiosk.progress"
   | "schedule.run"
   | "presence.changed"
   /**

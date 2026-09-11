@@ -43,8 +43,3 @@ export async function cached<T>(surveyId: string, part: string, build: () => Pro
   cache.set(key, value);
   return value;
 }
-
-/** Для тестов: очистить целиком */
-export function clearAnalyticsCache(): void {
-  cache.clear();
-}

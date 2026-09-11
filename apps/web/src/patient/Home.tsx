@@ -55,7 +55,13 @@ export default function PatientHome() {
               {dateTime(next.startsAt)}
             </div>
             <p className="mt-1 text-small text-muted">{next.specialistName}</p>
-            <p className="mt-0.5 flex items-center gap-1.5 text-small text-muted">
+            {/*
+              Размер значку задаёт строка, а не сам значок: значки кабинета
+              нарисованы без width/height, и svg без размеров разворачивается
+              до ширины колонки. Строчка «каб. 12» превращалась в булавку во
+              весь экран.
+            */}
+            <p className="mt-0.5 flex items-center gap-1.5 text-small text-muted [&>svg]:size-[15px]">
               {next.mode === "remote" ? <IconVideo /> : <IconPin />}
               {next.mode === "remote"
                 ? ut("pt.remote")
@@ -65,24 +71,27 @@ export default function PatientHome() {
             </p>
 
             {/*
-              Кнопки ростом 44 px, а не «мелкие».
-              Это телефон: 44 — нижняя граница, ниже которой палец
-              промахивается. Подтверждение приёма — то действие, ради
-              которого экран открывают по дороге, и промах здесь стоит
-              несостоявшейся встречи.
+              Роста кнопкам здесь не задано, и это не оплошность.
+
+              44 px даёт зона кабинета (TouchArea в PatientApp), а не
+              разметка экрана. Раньше высота стояла тут руками — и
+              держалась на том, что автор этого экрана про неё помнил, а
+              автор «Профиля» забыл. Подтверждение приёма — действие, ради
+              которого экран открывают по дороге, и промах пальцем стоит
+              несостоявшейся встречи; такое не должно зависеть от памяти.
             */}
             <div className="mt-3.5 flex flex-wrap items-stretch gap-2">
               {next.status === "booked" ? (
                 <Button
                   variant="primary"
                   disabled={busy}
-                  className="min-h-[44px] flex-1"
+                  className="flex-1"
                   onClick={() => run(() => api.confirmAppointment(next.id).then(visits.reload), ut("pt.confirmed"))}
                 >
                   {ut("pt.confirm")}
                 </Button>
               ) : (
-                <span className="flex items-center gap-1 text-caption text-primary">
+                <span className="flex items-center gap-1 text-caption text-primary [&>svg]:size-[15px]">
                   <IconCheck /> {ut("pt.confirmed")}
                 </span>
               )}
@@ -94,7 +103,7 @@ export default function PatientHome() {
               <Button
                 variant="quiet"
                 disabled={busy}
-                className="min-h-[44px] px-4"
+                className="px-4"
                 onClick={() => run(() => api.cancelAppointment(next.id).then(visits.reload), ut("pt.cancelled"))}
               >
                 {ut("pt.cancel")}

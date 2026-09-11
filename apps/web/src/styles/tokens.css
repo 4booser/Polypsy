@@ -172,6 +172,22 @@
   --danger: var(--signal-bad);
   --danger-soft: color-mix(in srgb, var(--signal-bad) 14%, transparent);
 
+  /*
+   * Ступени выраженности. Значения повторяют SEVERITY_SCREEN_DARK и
+   * SEVERITY_SCREEN_TEXT_DARK из packages/shared/src/palette.ts.
+   *
+   * Повторяют, а не берут: CSS не умеет импортировать TypeScript, а печатное
+   * заключение собирается на сервере и до этого файла не дотягивается. Пока
+   * источник был у каждого свой, «умеренная» на экране (#e0813f) и в
+   * распечатке (#ec835a) были разными оранжевыми, и заметить это было
+   * некому. Теперь лестница объявлена в одном файле, здесь стоит её зеркало,
+   * а совпадение сверяет apps/web/test/severityPalette.test.ts — разъехаться
+   * молча больше нельзя.
+   *
+   * Хексы экрана НЕ равны печатным и не должны: земля здесь #101120, и
+   * ступени подобраны под неё расчётом контраста. Менять цвет консоли — в
+   * обоих местах сразу.
+   */
   --sev-none: var(--signal-ok);
   --sev-mild: var(--signal-mild);
   --sev-moderate: var(--signal-warn);
@@ -230,6 +246,7 @@
   --danger: #b93030;
   --danger-soft: color-mix(in srgb, #b93030 10%, transparent);
 
+  /* зеркало SEVERITY_SCREEN_LIGHT и SEVERITY_SCREEN_TEXT_LIGHT — см. выше */
   --sev-none: #2f7d52;
   --sev-mild: #7a610f;
   --sev-moderate: #98481a;
@@ -370,6 +387,25 @@
   --shadow-pop: var(--shadow-pop);
 
   --ease-out: var(--ease);
+}
+
+/*
+ * Движение отключается по выбору человека — так же, как по системной
+ * настройке. Правило то же самое, поэтому и написано один раз: `:where()`
+ * держит вес селектора нулевым, и ничего не перебивает.
+ */
+:root[data-motion="reduced"] {
+  --dur-fast: 0ms;
+  --dur: 0ms;
+  --dur-slow: 0ms;
+}
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }
 
 /* движение отключается по системной настройке — это доступность, не вкус */

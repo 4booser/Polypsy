@@ -60,6 +60,7 @@ import { normRoutes } from "./routes/norms";
 import { dataQualityRoutes } from "./routes/dataQuality";
 import { facetRoutes } from "./routes/facets";
 import { referralRoutes } from "./routes/referrals";
+import { templateRoutes } from "./routes/templates";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
@@ -179,6 +180,7 @@ app.route("/api/episodes", episodeRoutes);
 app.route("/api/recordings", recordingRoutes);
 app.route("/api/permissions", permissionRoutes);
 app.route("/api/referrals", referralRoutes);
+app.route("/api/templates", templateRoutes);
 app.route("/api", responseRoutes);
 
 app.onError((err, c) => {

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { isAnswered, isQuestionVisible, type SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { Screen, useAction } from "../ui";
-import { Button } from "../ui/primitives";
+import { Button, Input, Textarea, TouchArea } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { IconCheck, IconClose } from "./icons";
@@ -42,8 +42,42 @@ export default function Runner() {
   const [times] = useState<Map<string, number>>(new Map());
   const [done, setDone] = useState<{ safetyPlan: string | null } | null>(null);
 
+  /*
+   * Фокус переезжает на заголовок нового пункта.
+   *
+   * Было так: нажал «Дальше» с клавиатуры — вопрос сменился, а фокус упал в
+   * body, потому что нажатая кнопка на мгновение пропадает из разметки.
+   * Дальше человек начинает табуляцию с начала документа. На каждом из
+   * сорока пяти пунктов СР-45. У МЛО пунктов двести.
+   *
+   * Диктору при этом не сообщалось ничего: живых областей на экране нет,
+   * страница та же, разметка сменилась молча — человек слышит тишину и не
+   * знает, случилось ли что-нибудь вообще.
+   *
+   * Перевод фокуса решает обе задачи разом: заголовок произносится вслух
+   * (вместе с номером пункта — см. ниже), а табуляция продолжается с него,
+   * то есть следующий Tab попадает на первый вариант ответа.
+   */
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const loaded = res.data !== null;
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [step, loaded]);
+
+  /* id заголовка: им называются поля ввода, у которых своей подписи нет */
+  const titleId = useId();
+  const helpId = useId();
+
   return (
-    <Screen res={res}>
+    /*
+      Прохождение живёт вне оболочки кабинета (свой маршрут, без нижних
+      вкладок), поэтому зону пальца объявляет само. `contents` — чтобы
+      обёртка не вмешивалась в раскладку: она нужна ради правила, а не ради
+      коробки. Внутрь попадает и состояние загрузки Screen — у него своя
+      кнопка «Повторить», и она такая же мишень.
+    */
+    <TouchArea className="contents">
+      <Screen res={res}>
       {(survey: SurveyFull) => {
         const visible = survey.questions.filter((q) => isQuestionVisible(q, survey.questions, answers as never));
         const current = visible[step];
@@ -91,7 +125,7 @@ export default function Runner() {
                 </Button>
                 <Button
                   variant="quiet"
-                  className="min-h-[44px] w-full"
+                  className="w-full"
                   onClick={() => navigate("/me")}
                 >
                   {ut("pt.home")}
@@ -116,6 +150,18 @@ export default function Runner() {
         const set = (next: Answer) => {
           setAnswers((prev) => new Map(prev).set(current.id, { ...prev.get(current.id), ...next }));
         };
+
+        /*
+         * «Вопрос 7 из 20» — словами и только для диктора.
+         *
+         * Информационные пункты не нумеруются вопросами: у них нет ответа, и
+         * назвать такой пункт вопросом значило бы соврать. Так же считает
+         * мобильное приложение — строки те же самые.
+         */
+        const position =
+          current.type === "info"
+            ? ut("runner.info")
+            : `${ut("runner.question")} ${step + 1} ${ut("common.of")} ${visible.length}`;
 
         const submit = () =>
           run(async () => {
@@ -152,11 +198,31 @@ export default function Runner() {
                 type="button"
                 aria-label={ut("pw.leave")}
                 onClick={() => navigate("/me/tests")}
-                className="grid size-8 shrink-0 place-items-center rounded-md text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--focus)] [&>svg]:size-[18px]"
+                /* размер мишени задаёт зона (44×44), здесь только вид значка внутри неё */
+                className="grid shrink-0 place-items-center rounded-md text-muted outline-none hover:text-text focus-visible:ring-2 focus-visible:ring-[var(--focus)] [&>svg]:size-[18px]"
               >
                 <IconClose />
               </button>
-              <div className="h-1 flex-1 overflow-hidden rounded-full bg-primary-soft">
+              {/*
+                Полоса названа ролью и значением.
+
+                Для зрячего это по-прежнему просто полоса без числа — решение
+                выше остаётся в силе. Но диктор полосу не видит вовсе: до
+                этого он не сообщал о продвижении ничего, и человек отвечал
+                на сорок пять пунктов вслепую, не зная, идёт ли он к концу.
+                aria-valuetext даёт ему то самое «пункт 7 из 20», которое на
+                экране показывать не хотим, — числом, не пугающим никого,
+                кроме того, кто его спросил.
+              */}
+              <div
+                role="progressbar"
+                aria-label={ut("pw.progress")}
+                aria-valuemin={0}
+                aria-valuemax={visible.length}
+                aria-valuenow={step + 1}
+                aria-valuetext={position}
+                className="h-1 flex-1 overflow-hidden rounded-full bg-primary-soft"
+              >
                 <div
                   className="h-full rounded-full bg-primary transition-[width] duration-[var(--dur)]"
                   style={{ width: `${((step + 1) / visible.length) * 100}%` }}
@@ -166,10 +232,25 @@ export default function Runner() {
 
             <div className="flex-1">
               <p className="mb-2 text-caption text-muted">{survey.title}</p>
-              <h1 className="mb-6 text-balance font-display text-[21px] font-medium leading-[1.3] tracking-tight">
+              {/*
+                tabIndex={-1} — чтобы сюда можно было увести фокус после смены
+                пункта. Мышью на заголовок не попасть: -1 убирает его из
+                табуляции, оставляя доступным программно.
+              */}
+              <h1
+                ref={headingRef}
+                id={titleId}
+                tabIndex={-1}
+                className="mb-6 text-balance rounded-sm font-display text-[21px] font-medium leading-[1.3] tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+              >
+                <span className="sr-only">{position}. </span>
                 {current.title}
               </h1>
-              {current.help ? <p className="mb-4 text-small text-muted">{current.help}</p> : null}
+              {current.help ? (
+                <p id={helpId} className="mb-4 text-small text-muted">
+                  {current.help}
+                </p>
+              ) : null}
 
               <div className="flex flex-col gap-2">
                 {choices.length ? (
@@ -214,19 +295,32 @@ export default function Runner() {
                     );
                   })
                 ) : ["scale", "slider", "number"].includes(current.type) ? (
-                  <input
+                  /*
+                    Имя поля — сам вопрос, через aria-labelledby.
+
+                    Field здесь не подходит: его подпись видна, а вопрос уже
+                    напечатан заголовком во весь экран — вторая копия того же
+                    текста под ним читалась бы как ошибка. Поэтому поле
+                    ссылается на заголовок. Без этой ссылки диктор произносил
+                    «поле ввода» и человек не знал, что туда писать, — на
+                    экране, который весь состоит из одного вопроса.
+                  */
+                  <Input
                     type="number"
                     inputMode="numeric"
-                    className="h-12 w-full rounded-sm border border-border bg-surface px-3 text-small"
+                    aria-labelledby={titleId}
+                    aria-describedby={current.help ? helpId : undefined}
+                    className="h-12"
                     value={a?.number ?? ""}
                     onChange={(e) =>
                       set({ number: e.target.value === "" ? undefined : Number(e.target.value) })
                     }
                   />
                 ) : current.type === "info" ? null : (
-                  <textarea
+                  <Textarea
                     rows={4}
-                    className="w-full rounded-sm border border-border bg-surface p-3 text-small"
+                    aria-labelledby={titleId}
+                    aria-describedby={current.help ? helpId : undefined}
                     value={a?.text ?? ""}
                     onChange={(e) => set({ text: e.target.value })}
                   />
@@ -273,6 +367,7 @@ export default function Runner() {
           </div>
         );
       }}
-    </Screen>
+      </Screen>
+    </TouchArea>
   );
 }

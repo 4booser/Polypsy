@@ -15,6 +15,7 @@
     "audit:verify": "bun src/auditVerifyCli.ts",
     "db:reset": "bun src/dbReset.ts",
     "db:encrypt": "bun src/encryptBackfill.ts",
+    "db:reindex-phones": "bun src/phoneReindex.ts",
     "db:backfill-strata": "bun src/backfillStrata.ts",
     "survey:purge": "bun src/surveyPurge.ts",
     "db:simulate": "bun src/simulate.ts",

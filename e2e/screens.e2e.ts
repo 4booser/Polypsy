@@ -21,22 +21,27 @@ interface Screen {
   marker?: string;
 }
 
-/** Экраны без параметров — открываются как есть */
+/**
+ * Экраны без параметров — открываются как есть.
+ *
+ * Только то, что в приложении есть. Здесь висели «/schedules», «/compare»,
+ * «/surveillance» и «/unit-report» — пути от удалённых экранов; ни один Route
+ * их не обслуживает, и маршрутизатор отправляет неизвестный путь на сводку.
+ * Проверки на них были вечно зелёными и проверяли сводку по четвёртому разу,
+ * а в отчёте выглядели как покрытие четырёх экранов.
+ */
 const STATIC: Screen[] = [
   { name: "сводка", path: "/" },
   { name: "очередь работы", path: "/worklist" },
   { name: "методики", path: "/surveys" },
   { name: "конструктор", path: "/constructor" },
   { name: "батареи", path: "/batteries" },
-  { name: "расписание", path: "/schedules" },
   { name: "приглашения", path: "/invites" },
   { name: "группы", path: "/groups" },
   { name: "пациенты", path: "/patients" },
-  { name: "сравнение", path: "/compare" },
-  { name: "надзор", path: "/surveillance" },
   { name: "случаи риска", path: "/alerts" },
   { name: "направления", path: "/referrals" },
-  { name: "состояние подразделения", path: "/unit-report" },
+  { name: "когорты", path: "/cohorts" },
   { name: "библиотека", path: "/ui" },
 ];
 
