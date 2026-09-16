@@ -9,6 +9,7 @@ import {
   departments,
   dispensary,
   episodes,
+  invites,
   messages,
   referrals,
   responses,
@@ -24,6 +25,7 @@ import {
   users,
 } from "../db/schema";
 import { hashPassword } from "./auth";
+import { hashInviteToken, newInviteCode, newInviteToken } from "./invites";
 import { encryptField, encryptPersonFields } from "./crypto";
 import { normalizePhone, phoneFingerprint } from "./phone";
 import { log } from "./log";
@@ -56,6 +58,8 @@ import { latentAt, makePeople, rng, type Person } from "./demoPeople";
 
 export const DEMO_DOMAIN = "demo.local";
 const DEMO_PASSWORD = "demo-only-not-a-secret";
+/* Пометка в заметке приглашения: по ней же его и убирают, см. purgeDemoData */
+const DEMO_NOTE = "Демонстраційне запрошення";
 
 export interface FillReport {
   created: number;
@@ -68,6 +72,7 @@ export interface FillReport {
   threads: number;
   dispensary: number;
   ladder: number;
+  invites: number;
 }
 
 /** Сколько недель назад делался замер номер step из steps */
@@ -499,6 +504,7 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     referrals: 0,
     threads: 0,
     dispensary: 0,
+    invites: 0,
     ladder: 0,
   };
 
@@ -631,10 +637,79 @@ export async function fillDemoData(count: number): Promise<FillReport> {
     report.threads = await ensureThreads(touched.slice(9, 14), specialist.id);
     report.dispensary = await ensureDispensary(touched.slice(14, 32), specialist.id);
     report.assignments += await ensureBatteryWork(touched.slice(32, 44), specialist.id, catalog);
+    report.invites = await ensureInvites(specialist.id, catalog);
   }
 
   log.info("demo.filled", { ...report });
   return report;
+}
+
+/**
+ * Выписанные пригласительные ссылки — по одной каждого вида.
+ *
+ * Вкладка «Приглашения» без них открывается пустой, и посмотреть, ради чего
+ * её заводили, не на чем: привязка к методике и врачу видна только на
+ * выписанной ссылке. Трёх достаточно — по одной на каждый вид привязки, а
+ * не по одной на каждого вымышленного человека: список из ста двадцати
+ * ссылок показывал бы не работу, а стену.
+ *
+ * Сам токен нигде не сохраняется, и это не упущение: в базе только его хеш,
+ * и «посмотреть ссылку ещё раз» невозможно намеренно. Войти по этим
+ * приглашениям можно кодом — он в списке и виден.
+ */
+async function ensureInvites(
+  specialistId: string,
+  catalog: { id: string; key: string | null }[],
+): Promise<number> {
+  const [existing] = await db
+    .select({ id: invites.id })
+    .from(invites)
+    .where(like(invites.note, `${DEMO_NOTE}%`))
+    .limit(1);
+  if (existing) return 0;
+
+  const [battery] = await db
+    .select({ id: batteries.id })
+    .from(batteries)
+    .where(eq(batteries.title, "Первинний скринінг"))
+    .limit(1);
+  const survey = catalog.find((c) => c.key === "phq9") ?? catalog[0];
+
+  const kinds: { surveyId: string | null; batteryId: string | null; note: string; unit: string | null }[] = [
+    {
+      surveyId: survey?.id ?? null,
+      batteryId: null,
+      note: `${DEMO_NOTE}: одна методика до першого прийому`,
+      unit: "Терапевтичне відділення",
+    },
+    {
+      surveyId: null,
+      batteryId: battery?.id ?? null,
+      note: `${DEMO_NOTE}: набір методик на реєстрації`,
+      unit: null,
+    },
+    { surveyId: null, batteryId: null, note: `${DEMO_NOTE}: вхід без призначення`, unit: null },
+  ];
+
+  let made = 0;
+  for (const [i, kind] of kinds.entries()) {
+    await db.insert(invites).values({
+      id: crypto.randomUUID(),
+      tokenHash: hashInviteToken(newInviteToken()),
+      code: newInviteCode(),
+      createdBy: specialistId,
+      batteryId: kind.batteryId,
+      surveyId: kind.surveyId,
+      /* врача ставим не всем: «ничей» вход тоже надо видеть на экране */
+      specialistId: i === 2 ? null : specialistId,
+      unit: kind.unit,
+      note: kind.note,
+      maxUses: 5,
+      expiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+    } as never);
+    made += 1;
+  }
+  return made;
 }
 
 /**
@@ -714,6 +789,13 @@ export async function purgeDemoData(): Promise<number> {
       rows.map((x) => x.id),
     ),
   );
+  /*
+   * Ссылки выписаны от настоящего сотрудника, а не от вымышленного человека,
+   * и удаление людей их не задевает. Без этой строки «убрать всех
+   * вымышленных» оставляло бы работающие приглашения в живой картотеке.
+   */
+  await db.delete(invites).where(like(invites.note, `${DEMO_NOTE}%`));
+
   log.info("demo.purged", { removed: rows.length });
   return rows.length;
 }

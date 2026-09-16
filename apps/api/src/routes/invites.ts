@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { desc, eq, inArray } from "drizzle-orm";
-import { createInviteSchema, type Invite, type InvitePreview } from "@quizzy/shared";
+import { createInviteSchema, t, type Invite, type InvitePreview } from "@quizzy/shared";
 import { db } from "../db";
-import { batteries, invites, inviteUses, users } from "../db/schema";
+import { batteries, invites, inviteUses, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { forbidden, notFound, parseBody } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { findUsableInvite, hashInviteToken, newInviteCode, newInviteToken } from "../lib/invites";
-import { assertGroupAccess, isStaff } from "../lib/scope";
+import { assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const inviteRoutes = new Hono<AppEnv>();
@@ -25,9 +25,21 @@ inviteRoutes.get("/preview/:token", async (c) => {
   const battery = lookup.invite.batteryId
     ? await db.query.batteries.findFirst({ where: eq(batteries.id, lookup.invite.batteryId) })
     : null;
+  /*
+   * Название методики — наружу, имя врача — нет.
+   *
+   * Человек до регистрации вправе знать, что его ждёт: «Депрессия по Беку»
+   * на экране до ввода пароля честнее пустой формы. Имя закреплённого врача
+   * к этому вопросу не относится, а ссылка ходит по почте и мессенджерам —
+   * состав психологического отдела из неё узнавать незачем.
+   */
+  const survey = lookup.invite.surveyId
+    ? await db.query.surveys.findFirst({ where: eq(surveys.id, lookup.invite.surveyId) })
+    : null;
   return c.json<InvitePreview>({
     valid: true,
     batteryTitle: battery?.title ?? null,
+    surveyTitle: survey ? t(survey.title as never, langOf(c)) : null,
     unit: lookup.invite.unit,
   });
 });
@@ -73,7 +85,24 @@ inviteRoutes.get("/", async (c) => {
     : [];
   const titleOf = new Map(batteryRows.map((b) => [b.id, b.title]));
 
-  const creatorIds = [...new Set(visible.map((r) => r.createdBy))];
+  const surveyIds = [...new Set(visible.map((r) => r.surveyId).filter((x): x is string => !!x))];
+  const surveyRows = surveyIds.length
+    ? await db.select({ id: surveys.id, title: surveys.title }).from(surveys).where(inArray(surveys.id, surveyIds))
+    : [];
+  const lang = langOf(c);
+  const surveyTitleOf = new Map(surveyRows.map((s) => [s.id, t(s.title as never, lang)]));
+
+  /*
+   * Имена врачей берутся одним запросом вместе с именами выписавших: и те и
+   * другие — строки users, и разделять их значило бы сходить в ту же таблицу
+   * дважды за тем же самым.
+   */
+  const creatorIds = [
+    ...new Set([
+      ...visible.map((r) => r.createdBy),
+      ...visible.map((r) => r.specialistId).filter((x): x is string => !!x),
+    ]),
+  ];
   const creators = creatorIds.length
     ? await db.select().from(users).where(inArray(users.id, creatorIds))
     : [];
@@ -92,6 +121,10 @@ inviteRoutes.get("/", async (c) => {
     code: r.code,
     batteryId: r.batteryId,
     batteryTitle: r.batteryId ? (titleOf.get(r.batteryId) ?? null) : null,
+    surveyId: r.surveyId,
+    surveyTitle: r.surveyId ? (surveyTitleOf.get(r.surveyId) ?? null) : null,
+    specialistId: r.specialistId,
+    specialistName: r.specialistId ? (creatorOf.get(r.specialistId) ?? null) : null,
     unit: r.unit,
     note: r.note,
     maxUses: r.maxUses,
@@ -113,6 +146,30 @@ inviteRoutes.post("/", async (c) => {
   const input = await parseBody(c.req.raw, createInviteSchema);
   await assertInviteBattery(user, input.batteryId ?? null);
 
+  /*
+   * Набор ИЛИ методика, но не оба сразу.
+   *
+   * Набор — это несколько опросников; «набор и ещё одна методика» даёт
+   * назначение, состав которого не виден ни из приглашения, ни из карты.
+   */
+  if (input.batteryId && input.surveyId) badRequest("err.inviteBatteryOrSurvey");
+
+  /* методика выдаётся из своей зоны — как и при обычном назначении */
+  if (input.surveyId) await assertSurveyAccess(user, input.surveyId);
+
+  /*
+   * Врач по умолчанию — тот, кто выписывает: ссылку под случай выписывают
+   * себе. Указанный явно проверяется на то, что он вообще специалист: иначе
+   * приглашение закрепило бы человека за пациентом.
+   */
+  const specialistId = input.specialistId ?? user.id;
+  const [specialist] = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(eq(users.id, specialistId))
+    .limit(1);
+  if (!specialist || !isStaff(specialist as never)) badRequest("err.specialistNotFound");
+
   const rawToken = newInviteToken();
   const id = crypto.randomUUID();
   const code = newInviteCode();
@@ -122,6 +179,8 @@ inviteRoutes.post("/", async (c) => {
     code,
     createdBy: user.id,
     batteryId: input.batteryId ?? null,
+    surveyId: input.surveyId ?? null,
+    specialistId,
     unit: input.unit ?? null,
     note: input.note ?? null,
     maxUses: input.maxUses ?? 1,
@@ -132,7 +191,13 @@ inviteRoutes.post("/", async (c) => {
     action: "invite.create",
     resourceType: "invite",
     resourceId: id,
-    details: { batteryId: input.batteryId ?? null, maxUses: input.maxUses ?? 1, ttlDays: input.ttlDays ?? 14 },
+    details: {
+      batteryId: input.batteryId ?? null,
+      surveyId: input.surveyId ?? null,
+      specialistId,
+      maxUses: input.maxUses ?? 1,
+      ttlDays: input.ttlDays ?? 14,
+    },
   });
   return c.json({ id, token: rawToken, code }, 201);
 });

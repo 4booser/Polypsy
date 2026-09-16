@@ -79,8 +79,30 @@ export default function Permissions() {
      но одна и та же функция ходит по обоим */
   const t = (v: LocalizedText): string => v[lang] ?? v.uk ?? v.ru ?? "";
 
-  if (catalogue.error) return <p className="text-danger">{catalogue.error}</p>;
-  if (!catalogue.data || !rolesRes.data) return <Loading rows={6} />;
+  /*
+   * Отказ и ожидание — внутри страницы, а не вместо неё.
+   *
+   * Было: голый абзац красным на пустом экране. Ни заголовка, ни названия
+   * раздела — человек, которому сервер отказал в справочнике прав, видел
+   * фразу посреди пустоты и не понимал, где он и что делать. Диктору было
+   * ещё хуже: страница без единого заголовка, к которому можно перейти.
+   * Поймано сторожем доступности после того, как его ожидание перестало
+   * засчитывать первую попавшуюся карточку за готовый экран.
+   */
+  if (catalogue.error) {
+    return (
+      <Page title={ut("perm.title")} sub={ut("perm.sub")}>
+        <p className="text-danger">{catalogue.error}</p>
+      </Page>
+    );
+  }
+  if (!catalogue.data || !rolesRes.data) {
+    return (
+      <Page title={ut("perm.title")} sub={ut("perm.sub")}>
+        <Loading rows={6} />
+      </Page>
+    );
+  }
 
   const groups = catalogue.data.groups;
   /* плоский указатель: право по коду — чтобы список не обходился заново на каждую строку */

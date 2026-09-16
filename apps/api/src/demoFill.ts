@@ -34,6 +34,7 @@ if (arg === "purge") {
   console.log(`  ✓ переписок:         ${report.threads}`);
   console.log(`  ✓ на учёте:          ${report.dispensary}`);
   console.log(`  ✓ должностей:        ${report.ladder}`);
+  console.log(`  ✓ приглашений:       ${report.invites}`);
 }
 
 await client.end();

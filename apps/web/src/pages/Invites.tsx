@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
-import type { Battery } from "@quizzy/shared";
+import type { Battery, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Empty, Loading, Screen, useAction } from "../ui";
-import { Page, Panel, Stack } from "../ui/layout";
+import { Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+
+/** Строка справочника специалистов — ровно то, что нужно выпадающему списку */
+type Specialist = { userId: string; fullName: string };
 
 /**
  * Приглашения: вход пациента по ссылке, QR или короткому коду.
@@ -22,103 +25,129 @@ export default function Invites() {
   const [showForm, setShowForm] = useState(false);
   const { run } = useAction();
 
-  // батареи нужны только форме: их отказ не должен прятать сам список ссылок
+  /*
+   * Справочники нужны только форме, и каждый падает молча по отдельности:
+   * список выписанных ссылок важнее любого из них, а отказ в правах на
+   * методики — их видит не всякий, кто выписывает приглашения — не должен
+   * оставлять человека перед пустым экраном вместо его же ссылок.
+   */
   const res = useResource(async () => {
-    const [rows, batteries] = await Promise.all([
+    const [rows, batteries, surveys, specialists] = await Promise.all([
       api.invites(),
       api.batteries().then((b) => b.filter((x) => !x.archived)).catch(() => [] as Battery[]),
+      api.surveys().then((r) => r.filter((x) => !x.archivedAt)).catch(() => [] as SurveyListItem[]),
+      api.specialists().then((r) => r.items).catch(() => [] as Specialist[]),
     ]);
-    return { rows, batteries };
+    return { rows, batteries, surveys, specialists };
   }, []);
   const reload = res.reload;
 
   return (
     <Screen res={res}>
-      {({ rows, batteries }) => (
-        <Page
-          title={ut("inv.title")}
-          sub={ut("inv.sub")}
-          actions={<Button variant="primary" onClick={() => setShowForm(true)}>{ut("inv.create")}</Button>}
-        >
-          <Stack>
-            {showForm ? (
-              <InviteForm
-                batteries={batteries}
-                onClose={() => setShowForm(false)}
-                onCreated={(t) => {
-                  setFresh(t);
-                  setShowForm(false);
-                  reload();
-                }}
-              />
-            ) : null}
+      {({ rows, batteries, surveys, specialists }) => (
+        <Stack>
+          {/*
+            Заголовок и дату экрана рисует «Начало смены»: приглашения теперь
+            его вкладка, а не отдельный раздел. Кнопка «Выписать» переехала из
+            шапки сюда — шапка общая на три вкладки, и действие одной из них в
+            ней стояло бы и над двумя другими.
+          */}
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => setShowForm(true)}>{ut("inv.create")}</Button>
+          </div>
+          {showForm ? (
+            <InviteForm
+              batteries={batteries}
+              surveys={surveys}
+              specialists={specialists}
+              onClose={() => setShowForm(false)}
+              onCreated={(t) => {
+                setFresh(t);
+                setShowForm(false);
+                reload();
+              }}
+            />
+          ) : null}
 
-            {fresh ? <FreshInvite token={fresh.token} code={fresh.code} onClose={() => setFresh(null)} /> : null}
+          {fresh ? <FreshInvite token={fresh.token} code={fresh.code} onClose={() => setFresh(null)} /> : null}
 
-            {!rows ? <Loading /> : null}
-            {rows && !rows.length && !showForm ? (
-              <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
-            ) : null}
+          {!rows ? <Loading /> : null}
+          {rows && !rows.length && !showForm ? (
+            <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
+          ) : null}
 
-            {rows?.length ? (
-              <Panel flush>
-                <div className="overflow-x-auto">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>{ut("inv.code")}</th>
-                        <th>{ut("f.battery")}</th>
-                        <th>{ut("ui.unit")}</th>
-                        <th className="num">{ut("inv.entries")}</th>
-                        <th>{ut("inv.expires")}</th>
-                        <th>{ut("inv.createdBy")}</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((inv) => {
-                        const dead = !!inv.revokedAt || inv.usedCount >= inv.maxUses || inv.expiresAt < new Date().toISOString();
-                        return (
-                          <tr key={inv.id} className={dead ? "muted-row" : undefined}>
-                            <td className="font-mono font-semibold">{inv.code}</td>
-                            <td>{inv.batteryTitle ?? <span className="text-muted">{ut("inv.noBattery")}</span>}</td>
-                            <td className="text-muted">{inv.unit ?? "—"}</td>
-                            <td className="num">
-                              {inv.usedCount}/{inv.maxUses}
-                              {inv.uses.length ? (
-                                <div className="text-caption text-muted">{inv.uses.map((u) => u.fullName).join(", ")}</div>
-                              ) : null}
-                            </td>
-                            <td className={dead ? "text-muted" : undefined}>
-                              {inv.revokedAt ? `${ut("inf.revoked")} ${day(inv.revokedAt)}` : day(inv.expiresAt)}
-                            </td>
-                            <td className="text-muted">{inv.createdByName}</td>
-                            <td>
-                              {!dead ? (
-                                <Button
-                                  variant="danger"
-                                  size="sm"
-                                  onClick={() =>
-                                    run(async () => {
-                                      await api.revokeInvite(inv.id);
-                                      await reload();
-                                    }, ut("inv.revoked"))
-                                  }
-                                >
-                                  {ut("inv.revoke")}
-                                </Button>
-                              ) : null}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Panel>
-            ) : null}
-          </Stack>
-        </Page>
+          {rows?.length ? (
+            <Panel flush>
+              <div className="overflow-x-auto">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{ut("inv.code")}</th>
+                      <th>{ut("inv.bound")}</th>
+                      <th>{ut("ui.unit")}</th>
+                      <th className="num">{ut("inv.entries")}</th>
+                      <th>{ut("inv.expires")}</th>
+                      <th>{ut("inv.createdBy")}</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((inv) => {
+                      const dead = !!inv.revokedAt || inv.usedCount >= inv.maxUses || inv.expiresAt < new Date().toISOString();
+                      return (
+                        <tr key={inv.id} className={dead ? "muted-row" : undefined}>
+                          <td className="font-mono font-semibold">{inv.code}</td>
+                          {/*
+                            Один столбец на обе привязки: набор и методика
+                            взаимоисключающи, и два столбца, из которых всегда
+                            пуст ровно один, читались бы хуже. Врач стоит
+                            второй строкой — он про тот же вопрос «что человек
+                            получит, войдя по ссылке».
+                          */}
+                          <td>
+                            {inv.batteryTitle ?? inv.surveyTitle ?? (
+                              <span className="text-muted">{ut("inv.noBattery")}</span>
+                            )}
+                            {inv.specialistName ? (
+                              <div className="text-caption text-muted">{inv.specialistName}</div>
+                            ) : null}
+                          </td>
+                          <td className="text-muted">{inv.unit ?? "—"}</td>
+                          <td className="num">
+                            {inv.usedCount}/{inv.maxUses}
+                            {inv.uses.length ? (
+                              <div className="text-caption text-muted">{inv.uses.map((u) => u.fullName).join(", ")}</div>
+                            ) : null}
+                          </td>
+                          <td className={dead ? "text-muted" : undefined}>
+                            {inv.revokedAt ? `${ut("inf.revoked")} ${day(inv.revokedAt)}` : day(inv.expiresAt)}
+                          </td>
+                          <td className="text-muted">{inv.createdByName}</td>
+                          <td>
+                            {!dead ? (
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() =>
+                                  run(async () => {
+                                    await api.revokeInvite(inv.id);
+                                    await reload();
+                                  }, ut("inv.revoked"))
+                                }
+                              >
+                                {ut("inv.revoke")}
+                              </Button>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          ) : null}
+        </Stack>
       )}
     </Screen>
   );
@@ -126,15 +155,26 @@ export default function Invites() {
 
 function InviteForm({
   batteries,
+  surveys,
+  specialists,
   onClose,
   onCreated,
 }: {
   batteries: Battery[];
+  surveys: SurveyListItem[];
+  specialists: Specialist[];
   onClose: () => void;
   onCreated: (t: { token: string; code: string }) => void;
 }) {
   const { ut } = useLang();
+  /*
+   * Набор ИЛИ методика, и это видно по форме: выбор одного гасит другой.
+   * «Набор и ещё одна методика» дало бы назначение, состав которого не виден
+   * ни из приглашения, ни из карты, — сервер такое и не примет.
+   */
   const [batteryId, setBatteryId] = useState("");
+  const [surveyId, setSurveyId] = useState("");
+  const [specialistId, setSpecialistId] = useState("");
   const [unit, setUnit] = useState("");
   const [note, setNote] = useState("");
   const [maxUses, setMaxUses] = useState(1);
@@ -145,10 +185,44 @@ function InviteForm({
     <Panel title={ut("inv.new")} actions={<Button variant="quiet" onClick={onClose}>{ut("ui.close")}</Button>}>
       <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
         <Field label={ut("inv.batteryOnRegister")} className="sm:col-span-2">
-          <Select value={batteryId} onChange={(e) => setBatteryId(e.target.value)}>
+          <Select
+            value={batteryId}
+            onChange={(e) => {
+              setBatteryId(e.target.value);
+              if (e.target.value) setSurveyId("");
+            }}
+          >
             <option value="">{ut("inv.noBatteryHint")}</option>
             {batteries.map((b) => (
               <option key={b.id} value={b.id}>{b.title}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={ut("inv.surveyOnRegister")} className="sm:col-span-2">
+          <Select
+            value={surveyId}
+            onChange={(e) => {
+              setSurveyId(e.target.value);
+              if (e.target.value) setBatteryId("");
+            }}
+          >
+            <option value="">{ut("inv.noSurveyHint")}</option>
+            {surveys.map((s) => (
+              <option key={s.id} value={s.id}>{s.title}</option>
+            ))}
+          </Select>
+        </Field>
+        {/*
+          Врач, за которым закрепится пришедший. По умолчанию — тот, кто
+          выписывает: ссылку под случай выписывают себе. Без этого поля
+          человек приходил ничьим, и его надо было потом искать среди
+          остальных и закреплять руками.
+        */}
+        <Field label={ut("inv.specialist")} className="sm:col-span-2">
+          <Select value={specialistId} onChange={(e) => setSpecialistId(e.target.value)}>
+            <option value="">{ut("inv.specialistMe")}</option>
+            {specialists.map((p) => (
+              <option key={p.userId} value={p.userId}>{p.fullName}</option>
             ))}
           </Select>
         </Field>
@@ -175,6 +249,8 @@ function InviteForm({
             run(async () => {
               const res = await api.createInvite({
                 batteryId: batteryId || null,
+                surveyId: surveyId || null,
+                specialistId: specialistId || null,
                 unit: unit || null,
                 note: note || null,
                 maxUses,

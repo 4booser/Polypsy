@@ -112,10 +112,11 @@ export default function Join() {
               <h1 className="m-0">{ut("join.doneTitle")}</h1>
               <p className="m-0">
                 {ut("join.accountCreated")}
-                {preview?.batteryTitle ? (
+                {/* набор или методика — на этом экране это один ответ на один вопрос */}
+                {preview?.batteryTitle ?? preview?.surveyTitle ? (
                   <>
                     {ut("join.batteryAssignedPrefix")}
-                    {preview.batteryTitle}
+                    {preview.batteryTitle ?? preview.surveyTitle}
                     {ut("join.batteryAssignedSuffix")}
                   </>
                 ) : null}
@@ -130,7 +131,9 @@ export default function Join() {
               <h1 className="m-0">{ut("join.registerTitle")}</h1>
               <p className="m-0 text-caption text-muted">
                 {ut("join.invited")}
-                {preview.batteryTitle ? <>: «{preview.batteryTitle}»</> : null}
+                {preview.batteryTitle ?? preview.surveyTitle ? (
+                  <>: «{preview.batteryTitle ?? preview.surveyTitle}»</>
+                ) : null}
                 {preview.unit ? <> · {preview.unit}</> : null}
               </p>
 

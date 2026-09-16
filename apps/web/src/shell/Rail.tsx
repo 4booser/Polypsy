@@ -12,7 +12,6 @@ import {
   IconClock,
   IconDashboard,
   IconGroup,
-  IconInvite,
   IconPatients,
   IconReferral,
   IconStack,
@@ -144,7 +143,6 @@ export function railGroups(counts: RailCounts, isSuper: boolean, canAssign = fal
     adminItems.push(
       { to: "/users", key: "nav.users", icon: <IconUsers /> },
       { to: "/audit", key: "nav.audit", icon: <IconAudit /> },
-      { to: "/invites", key: "nav.invites", icon: <IconInvite /> },
       { to: "/console", key: "nav.console", icon: <IconStack /> },
     );
   }

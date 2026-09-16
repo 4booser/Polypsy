@@ -279,13 +279,21 @@ async function loginHandler(c: Context<AppEnv>): Promise<Response | LoginRefusal
  * пункт стоял бы у всех, включая специалиста, — а специалист не назначает
  * никого, и меню обещало бы ему то, чего сервер не даст.
  *
+ * Тем же порядком отдаётся право выписывать приглашения: вкладка
+ * «Приглашения» стоит на главном экране, и показывать её тому, кому сервер
+ * откажет, значит обещать работу, которой не будет.
+ *
  * Само правило это НЕ ограничивает: оно живёт на маршрутах назначения и
- * проверяется там. Здесь только подсказка меню.
+ * приглашений и проверяется там. Здесь только подсказка меню.
  */
 authRoutes.get("/me", requireAuth, async (c) => {
   const user = c.get("user");
-  const { ladderRankOf } = await import("../lib/permissions");
-  return c.json({ ...user, ladderRank: await ladderRankOf(user) });
+  const { hasPermission, ladderRankOf } = await import("../lib/permissions");
+  return c.json({
+    ...user,
+    ladderRank: await ladderRankOf(user),
+    canInvite: await hasPermission(user, "invites.manage"),
+  });
 });
 
 /**

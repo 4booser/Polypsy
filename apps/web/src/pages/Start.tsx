@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { dayFull } from "../format";
 import { Page } from "../ui/layout";
 import { Tabs } from "../ui/primitives";
+import { useAuth } from "../auth";
 import { useLang } from "../lang";
 
 /**
@@ -20,22 +21,39 @@ import { useLang } from "../lang";
  * било мимо: над вкладками «Сводка» и «Сегодня» висело «чт, 10 сентября», и
  * заголовок экрана не совпадал ни с одной из них. Дата отвечает на свой
  * вопрос и подзаголовком — там она ничего не заслоняет.
+ *
+ * Третьей вкладкой встали приглашения: ссылку выписывают в том же движении,
+ * что смотрят завтрашний приём, и связывают её сразу с методикой и врачом.
+ * Раньше это был пункт рельсы, видимый одному суперадмину, — то есть
+ * недоступный как раз тому, кто приглашает.
  */
 export default function Start() {
   const { ut } = useLang();
-  const onToday = useLocation().pathname.startsWith("/today");
+  const { user } = useAuth();
+  const path = useLocation().pathname;
+  const title = path.startsWith("/today")
+    ? "day.title"
+    : path.startsWith("/invites")
+      ? "inv.title"
+      : "dash.title";
+
+  /*
+   * Вкладка приглашений стоит не у всех: её показывает право с сервера.
+   * Спрятать её от того, кому сервер откажет, честнее, чем дать нажать и
+   * показать отказ, — а сам отказ никуда не девается и проверяется на
+   * маршруте, а не здесь.
+   */
+  const items = [
+    { to: "/", label: ut("dash.title"), end: true },
+    { to: "/today", label: ut("day.title") },
+    ...(user?.canInvite ? [{ to: "/invites", label: ut("inv.title") }] : []),
+  ];
+
   return (
     <Page
-      title={ut(onToday ? "day.title" : "dash.title")}
+      title={ut(title)}
       sub={dayFull(new Date().toISOString().slice(0, 10))}
-      toolbar={
-        <Tabs
-          items={[
-            { to: "/", label: ut("dash.title"), end: true },
-            { to: "/today", label: ut("day.title") },
-          ]}
-        />
-      }
+      toolbar={<Tabs items={items} />}
     >
       <Outlet />
     </Page>
