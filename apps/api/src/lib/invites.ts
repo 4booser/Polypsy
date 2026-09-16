@@ -1,6 +1,17 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { batteries, batteryAssignments, batteryItems, invites, inviteUses, surveyAccess, surveys } from "../db/schema";
+import {
+  batteries,
+  batteryAssignments,
+  batteryItems,
+  departmentPatients,
+  invites,
+  inviteUses,
+  specialistProfiles,
+  surveys,
+  users,
+} from "../db/schema";
+import { grantAccess } from "./grantAccess";
 import { isPast } from "./time";
 
 /**
@@ -72,6 +83,67 @@ export async function consumeInvite(
 
     await tx.insert(inviteUses).values({ inviteId: invite.id, userId });
 
+    /*
+     * Одна методика выдаётся напрямую.
+     *
+     * Через grantAccess, а не вставкой с onConflictDoNothing: приглашение
+     * может быть вторым для того же человека — например взамен
+     * просроченного, — и тогда «ничего не делать при совпадении» означало
+     * бы, что по новой ссылке методика по-прежнему недоступна. Ровно на этом
+     * уже обжигались с плановыми повторами.
+     */
+    if (invite.surveyId) {
+      const [survey] = await tx
+        .select({ id: surveys.id })
+        .from(surveys)
+        .where(and(eq(surveys.id, invite.surveyId), isNull(surveys.archivedAt)))
+        .limit(1);
+      if (survey) {
+        await grantAccess(tx as never, [
+          {
+            surveyId: survey.id,
+            userId,
+            grantedBy: invite.createdBy,
+            expiresAt: null,
+            note: "По приглашению",
+          },
+        ]);
+      }
+    }
+
+    /*
+     * Закрепление за врачом — то самое явное действие, которого плану не
+     * хватало.
+     *
+     * Человек, пришедший по ссылке, оказывался ничьим: его надо было потом
+     * искать среди остальных и закреплять руками. Приглашение, выписанное
+     * врачом, и есть явное «этот человек мой» — вывода из последнего приёма
+     * здесь нет, есть прямое решение того, кто ссылку выписал.
+     *
+     * Ставится только если своего врача ещё нет: приглашение не должно
+     * переназначать человека, которого уже ведут. Смена ведущего — отдельное
+     * действие с записью в журнал, а не побочный эффект перехода по ссылке.
+     */
+    if (invite.specialistId) {
+      await tx
+        .update(users)
+        .set({ leadSpecialistId: invite.specialistId })
+        .where(and(eq(users.id, userId), isNull(users.leadSpecialistId)));
+
+      /* и прикрепление к отделению врача — иначе повторный приём не записать */
+      const [profile] = await tx
+        .select({ departmentId: specialistProfiles.departmentId })
+        .from(specialistProfiles)
+        .where(eq(specialistProfiles.userId, invite.specialistId))
+        .limit(1);
+      if (profile) {
+        await tx
+          .insert(departmentPatients)
+          .values({ departmentId: profile.departmentId, patientId: userId, attachedVia: "staff" })
+          .onConflictDoNothing();
+      }
+    }
+
     if (invite.batteryId) {
       const battery = await tx.query.batteries.findFirst({ where: eq(batteries.id, invite.batteryId) });
       if (battery && !battery.archived) {
@@ -89,17 +161,16 @@ export async function consumeInvite(
             assignedBy: invite.createdBy,
             note: "По приглашению",
           });
-          await tx
-            .insert(surveyAccess)
-            .values(
-              items.map((item) => ({
-                surveyId: item.surveyId,
-                userId,
-                grantedBy: invite.createdBy,
-                note: "По приглашению",
-              })),
-            )
-            .onConflictDoNothing();
+          await grantAccess(
+            tx as never,
+            items.map((item) => ({
+              surveyId: item.surveyId,
+              userId,
+              grantedBy: invite.createdBy,
+              expiresAt: null,
+              note: "По приглашению",
+            })),
+          );
         }
       }
     }

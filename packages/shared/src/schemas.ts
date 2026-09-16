@@ -196,6 +196,19 @@ export const updateReferralSchema = z.object({
 
 export const createInviteSchema = z.object({
   batteryId: z.string().nullish(),
+  /**
+   * Что пройти и к кому попасть.
+   *
+   * Методика — вместо набора, а не вместе с ним: набор это несколько
+   * опросников, и выписать «набор и ещё одну методику» значит получить
+   * назначение, состав которого не виден ни из чего.
+   *
+   * Врач по умолчанию тот, кто выписывает: ссылку под случай выписывают
+   * себе. Указать другого можно — так регистратура выписывает к конкретному
+   * специалисту.
+   */
+  surveyId: z.string().nullish(),
+  specialistId: z.string().nullish(),
   unit: z.string().max(200).nullish(),
   note: z.string().max(500).nullish(),
   maxUses: z.number().int().min(1).max(500).default(1),

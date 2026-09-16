@@ -533,6 +533,13 @@
       "when": 1788472744043,
       "tag": "0075_rls_identity_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1788472745043,
+      "tag": "0076_invite_binding",
+      "breakpoints": true
     }
   ]
 }

@@ -208,6 +208,15 @@ export interface User {
    * правило живёт на маршрутах назначения и проверяется там.
    */
   ladderRank?: number;
+  /**
+   * Можно ли выписывать пригласительные ссылки.
+   *
+   * Такая же подсказка меню, как ступень выше: по ней консоль решает,
+   * показывать ли вкладку «Приглашения» на главном экране. Право живёт на
+   * маршрутах приглашений и проверяется там; здесь оно только для того,
+   * чтобы вкладка не обещала того, чего сервер не даст.
+   */
+  canInvite?: boolean;
 }
 
 export type Sex = "male" | "female";
@@ -1063,6 +1072,12 @@ export interface Invite {
   code: string;
   batteryId: string | null;
   batteryTitle: string | null;
+  /** Одна методика вместо набора: взаимоисключающи, заполнено не больше одного */
+  surveyId: string | null;
+  surveyTitle: string | null;
+  /** Врач, за которым закрепится вошедший по ссылке */
+  specialistId: string | null;
+  specialistName: string | null;
   unit: string | null;
   note: string | null;
   maxUses: number;
@@ -1080,6 +1095,8 @@ export interface InvitePreview {
   valid: boolean;
   reason?: "expired" | "revoked" | "exhausted" | "unknown";
   batteryTitle?: string | null;
+  /** Название одной методики, если ссылка привязана к ней, а не к набору */
+  surveyTitle?: string | null;
   unit?: string | null;
 }
 

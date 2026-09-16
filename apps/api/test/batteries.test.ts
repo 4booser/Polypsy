@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
+import { invites as invitesTable } from "../src/db/schema";
 import { adminA, adminB, and, api, app, json, batteries, batteryAssignments, batteryItems, createSurveySchema, createVersion, db, eq, groupA, isNull, makeUser, patient, runDueSchedules, scheduleRuns, schedules, sr45, submitSurvey, surveyInA, surveys, users } from "./fixtures";
 
 /* Батареи, назначения, расписания и приглашения */
@@ -314,6 +315,7 @@ describe("приглашения", () => {
   let token: string;
   let code: string;
   let inviteBattery: string;
+  let boundSurvey: string;
 
   beforeAll(async () => {
     inviteBattery = crypto.randomUUID();
@@ -325,6 +327,27 @@ describe("приглашения", () => {
       createdBy: adminA.id,
     });
     await db.insert(batteryItems).values([{ batteryId: inviteBattery, surveyId: surveyInA, position: 0, required: true }]);
+
+    /*
+     * Отдельная ЗАКРЫТАЯ методика для проверки привязки.
+     *
+     * Первая попытка делалась на surveyInA — и проверка оказалась пустой:
+     * методика общедоступна, её видно и без всякого доступа. Снятая выдача
+     * доступа теста не роняла. На restricted видно именно выдачу.
+     */
+    boundSurvey = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: boundSurvey,
+      groupId: groupA,
+      title: { uk: "Закрита методика запрошення", ru: "Закрытая методика приглашения" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "restricted",
+      scoringEnabled: false,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(boundSurvey, createSurveySchema.parse(sr45), adminA.id, "Версия привязки");
   });
 
   test("создание: токен и код выдаются один раз", async () => {
@@ -344,7 +367,12 @@ describe("приглашения", () => {
     const body = await json(res);
     expect(body.valid).toBe(true);
     expect(body.batteryTitle).toBe("Батарея приглашения");
-    expect(Object.keys(body).sort()).toEqual(["batteryTitle", "unit", "valid"]);
+    /*
+     * Перечень полей сверяется целиком, а не по одному: смысл проверки в том,
+     * что наружу не уехало лишнее, — а лишнее появляется именно добавлением
+     * поля, о котором никто не вспомнил. Список растёт осознанно.
+     */
+    expect(Object.keys(body).sort()).toEqual(["batteryTitle", "surveyTitle", "unit", "valid"]);
   });
 
   test("регистрация по коду: батарея назначена, подразделение из приглашения", async () => {
@@ -410,6 +438,93 @@ describe("приглашения", () => {
     const body = await json(preview);
     expect(body.valid).toBe(false);
     expect(body.reason).toBe("revoked");
+  });
+
+  /*
+   * Привязка к методике и врачу — то, ради чего приглашение вынесли на
+   * главный экран. Проверяется всё вместе одним проходом, потому что ценность
+   * ровно в связке: ссылка, по которой человек входит уже с назначенной
+   * методикой и уже закреплённый за тем, кто её выписал. Разорви любое из
+   * двух — и остаётся то, что было: пришедший ничей, методику назначают
+   * потом руками.
+   */
+  test("ссылка с методикой и врачом: вошедший получает и назначение, и ведущего", async () => {
+    const created = await api("/api/invites", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ surveyId: boundSurvey, specialistId: adminA.id, maxUses: 1, ttlDays: 7 }),
+    });
+    expect(created.status, "приглашение с методикой не выписалось").toBe(201);
+
+    // до регистрации человек видит, что его ждёт, но не кто его ждёт
+    const preview = await json(await app.request(`/api/invites/preview/${created.body.token}`));
+    expect(preview.surveyTitle, "методика не названа на экране входа по ссылке").toBeTruthy();
+    expect(
+      JSON.stringify(preview),
+      "предпросмотр раскрывает имя врача — а ссылка ходит по мессенджерам",
+    ).not.toContain(adminA.id);
+
+    const reg = await app.request("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "bound@test.dev",
+        password: "longpass123",
+        phone: "+380501112277",
+        anonymous: false,
+        firstName: "Связанный",
+        lastName: "Пациент",
+        inviteCode: created.body.code,
+      }),
+    });
+    expect(reg.status).toBe(201);
+    const body = await json(reg);
+
+    const mine = await api("/api/surveys", body.token);
+    expect(
+      mine.body.items.map((s: { id: string }) => s.id),
+      "закрытая методика из приглашения не видна вошедшему — доступ не выдан",
+    ).toContain(boundSurvey);
+
+    const [who] = await db
+      .select({ lead: users.leadSpecialistId })
+      .from(users)
+      .where(eq(users.id, body.user.id));
+    expect(who!.lead, "вошедший по ссылке врача остался ничьим").toBe(adminA.id);
+  });
+
+  test("приглашение не переназначает того, кого уже ведут", async () => {
+    /*
+     * Вторая ссылка не должна уводить человека у его врача: смена ведущего —
+     * отдельное действие с записью в журнал, а не побочный эффект перехода по
+     * ссылке. Иначе достаточно было бы прислать пациенту своё приглашение.
+     */
+    const led = await makeUser("user", "already-led@test.dev", { leadSpecialistId: adminA.id });
+    const created = await api("/api/invites", adminB.token, {
+      method: "POST",
+      body: JSON.stringify({ specialistId: adminB.id, maxUses: 1, ttlDays: 7 }),
+    });
+    const { consumeInvite } = await import("../src/lib/invites");
+    const [row] = await db.select().from(invitesTable).where(eq(invitesTable.id, created.body.id));
+    await consumeInvite(row!, led.id);
+
+    const [who] = await db.select({ lead: users.leadSpecialistId }).from(users).where(eq(users.id, led.id));
+    expect(who!.lead, "чужое приглашение перевело пациента к другому врачу").toBe(adminA.id);
+  });
+
+  test("набор и методика вместе не выписываются", async () => {
+    const res = await api("/api/invites", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ batteryId: inviteBattery, surveyId: surveyInA, maxUses: 1, ttlDays: 7 }),
+    });
+    expect(res.status, "ссылка с набором И методикой создалась — состав назначения станет невидим").toBe(400);
+  });
+
+  test("закрепить можно только за сотрудником", async () => {
+    const res = await api("/api/invites", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ specialistId: patient.id, maxUses: 1, ttlDays: 7 }),
+    });
+    expect(res.status, "приглашение закрепило пациента за пациентом").toBe(400);
   });
 
   test("чужой админ не видит приглашение группы А в списке", async () => {

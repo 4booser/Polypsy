@@ -479,6 +479,16 @@ export default function App() {
           <Route path="/today" element={<Start />}>
             <Route index element={<TodayPage />} />
           </Route>
+          {/*
+            Приглашения — третья вкладка того же экрана. Ссылку выписывают,
+            глядя на сегодняшний приём («этот придёт завтра, дам ему методику
+            заранее»), а не уходя в администрирование: там она стояла пунктом
+            рельсы, видимым одному суперадмину, — то есть недоступной как раз
+            тому, кто приглашает.
+          */}
+          <Route path="/invites" element={<Start />}>
+            <Route index element={<Invites />} />
+          </Route>
           <Route path="/surveys" element={<SurveyList />} />
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
@@ -514,7 +524,6 @@ export default function App() {
           <Route path="/account" element={<Account />} />
           <Route path="/ui" element={<UiKit />} />
           <Route path="/batteries" element={<Batteries />} />
-          <Route path="/invites" element={<Invites />} />
           <Route path="/alerts" element={<Alerts />} />
             <Route path="/worklist" element={<WorklistPage />} />
             <Route path="/my-schedule" element={<SchedulePage />} />

@@ -1403,6 +1403,16 @@ export const invites = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     /** Батарея, которая назначится при регистрации */
     batteryId: text("battery_id").references(() => batteries.id, { onDelete: "set null" }),
+    /**
+     * Что пройти и к кому попасть — обе привязки необязательны и независимы.
+     *
+     * Набор методик — слишком крупная единица для обычного случая: врач
+     * выписывает ссылку под один опросник. А без указания врача пришедший по
+     * ссылке оказывался ничьим, и закреплять его приходилось руками, отыскав
+     * среди остальных.
+     */
+    surveyId: text("survey_id").references(() => surveys.id, { onDelete: "set null" }),
+    specialistId: text("specialist_id").references(() => users.id, { onDelete: "set null" }),
     /** Подразделение, проставляемое новому аккаунту */
     unit: text("unit"),
     note: text("note"),
