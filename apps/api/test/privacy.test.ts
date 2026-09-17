@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cell } from "../src/lib/privacy";
+import { cell, suppressedKeys } from "../src/lib/privacy";
 
 /**
  * Подавление малых чисел.
@@ -39,5 +39,67 @@ describe("ячейка отчёта", () => {
 
   test("пустой знаменатель не даёт ни доли, ни деления на ноль", () => {
     expect(cell(0, 0).percent).toBeNull();
+  });
+});
+
+/*
+ * Дополняющее подавление.
+ *
+ * Проверяется не «сколько скрыто», а то, ради чего скрывают: можно ли
+ * вычислить человека. Отсюда и форма проверок — из опубликованного и целого
+ * считается остаток, и утверждается, что он НЕ называет одну страту.
+ */
+describe("скрытое не восстанавливается вычитанием", () => {
+  test("единственная малая страта тянет за собой вторую", () => {
+    const cells = [
+      { key: "чоловіча", n: 57 },
+      { key: "жіноча", n: 40 },
+      { key: "—", n: 3 },
+    ];
+    const hidden = suppressedKeys(cells);
+
+    expect(hidden.has("—"), "малая страта показана").toBe(true);
+    expect(
+      hidden.size,
+      "скрыта ровно одна страта: её размер получается вычитанием показанных из общего числа",
+    ).toBeGreaterThan(1);
+
+    // остаток делится между двумя, то есть ни одна не названа
+    const total = cells.reduce((sum, c) => sum + c.n, 0);
+    const shown = cells.filter((c) => !hidden.has(c.key));
+    const rest = total - shown.reduce((sum, c) => sum + c.n, 0);
+    expect(
+      cells.filter((c) => hidden.has(c.key) && c.n === rest).length,
+      "остаток совпал с одной стратой — она названа точно",
+    ).not.toBe(1);
+  });
+
+  test("прячется самая маленькая из показанных, а не первая попавшаяся", () => {
+    const hidden = suppressedKeys([
+      { key: "a", n: 80 },
+      { key: "b", n: 9 },
+      { key: "c", n: 2 },
+    ]);
+    expect(hidden.has("c")).toBe(true);
+    expect(hidden.has("b"), "в дополнение скрыта не самая маленькая из показанных").toBe(true);
+    expect(hidden.has("a"), "из отчёта выбило самую большую группу — ту, ради которой его и открывали").toBe(false);
+  });
+
+  test("где скрывать нечего, отчёт не редеет", () => {
+    expect(suppressedKeys([{ key: "a", n: 40 }, { key: "b", n: 60 }]).size, "скрыто без нужды").toBe(0);
+  });
+
+  test("две скрытые не тянут третью: остаток уже неоднозначен", () => {
+    const hidden = suppressedKeys([
+      { key: "a", n: 40 },
+      { key: "b", n: 3 },
+      { key: "c", n: 2 },
+    ]);
+    expect(hidden.size, "скрыта лишняя страта — защиты это не добавляет, а данных лишает").toBe(2);
+  });
+
+  test("единственная страта не прячет сама себя в пустоту", () => {
+    // скрытая одна и показанных нет: целое равно ей, вычитать не из чего
+    expect(suppressedKeys([{ key: "a", n: 2 }]).size).toBe(1);
   });
 });

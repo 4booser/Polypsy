@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { percentileOf } from "../src/lib/norms";
 import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sql, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
@@ -498,5 +498,78 @@ describe("ряд выраженности по неделям", () => {
     // счётчики обезличены, но это всё равно сводка по чужим обследованиям
     const res = await api("/api/analytics/severity-trend", patient.token);
     expect(res.status).toBe(403);
+  });
+});
+
+/*
+ * Срезы: скрытое не восстанавливается вычитанием.
+ *
+ * Проверка ходит через маршрут, а не через функцию подавления: у функции
+ * свои проверки (privacy.test.ts), а здесь важна проводка. Она уже была
+ * снята однажды — фильтром «n >= порога» прямо в маршруте, — и ни один тест
+ * этого не заметил.
+ */
+describe("срезы не называют человека остатком", () => {
+  let facetSurvey: string;
+
+  beforeAll(async () => {
+    const { surveys: surveysTable } = await import("../src/db/schema");
+    facetSurvey = crypto.randomUUID();
+    await db.insert(surveysTable).values({
+      id: facetSurvey,
+      groupId: groupA,
+      title: { uk: "Методика для зрізів", ru: "Методика для срезов" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(facetSurvey, createSurveySchema.parse(sr45), adminA.id, "Версия срезов");
+
+    /*
+     * Шесть мужчин, шесть женщин и ОДНА женщина без указанного возраста —
+     * то есть страта из одного человека. Ровно тот случай, ради которого
+     * порог и заводился: показать её нельзя, а скрыть одну — значит назвать
+     * её размер вычитанием.
+     */
+    const sexes = [
+      ...Array(6).fill("male"),
+      ...Array(6).fill("female"),
+      null,
+    ] as (string | null)[];
+    for (const [i, sex] of sexes.entries()) {
+      const person = await makeUser("user", `facet${i}-${crypto.randomUUID().slice(0, 8)}@test.dev`, { sex });
+      await submitSurvey(facetSurvey, person.token);
+    }
+  });
+
+  test("единственная малая страта не вычисляется из показанных", async () => {
+    const res = await api(`/api/facets/surveys/${facetSurvey}?facet=sex`, adminA.token);
+    expect(res.status).toBe(200);
+
+    const scale = res.body.scales[0];
+    expect(scale, "срезы пусты — проверять нечего").toBeTruthy();
+
+    /*
+     * Считаем по ОПУБЛИКОВАННЫМ стратам, а не по полю suppressedStrata.
+     *
+     * Первая редакция проверяла именно поле — и оказалась пустой: снятое
+     * подавление меняет список страт, а счётчик остаётся прежним. Тест
+     * сторожил подпись под данными вместо самих данных и не заметил, как
+     * фильтр вернули к «n >= порога».
+     */
+    const shown: number[] = scale.strata.map((s: { n: number }) => s.n);
+    const SEEDED_STRATA = 3; // мужчины, женщины и один без указанного пола
+    expect(
+      SEEDED_STRATA - scale.strata.length,
+      `опубликовано ${scale.strata.length} страты из ${SEEDED_STRATA}: скрыта одна, и её размер — это остаток`,
+    ).toBeGreaterThan(1);
+
+    // и сам остаток не называет никого: он делится минимум между двумя
+    const rest = 13 - shown.reduce((sum, n) => sum + n, 0);
+    expect(rest, "остаток пуст — скрытых страт нет вовсе, посев не сработал").toBeGreaterThan(0);
   });
 });
