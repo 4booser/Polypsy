@@ -136,7 +136,7 @@ export function PatientList() {
             },
             {
               key: "email",
-              header: "Email",
+              header: ut("person.email"),
               hiddenByDefault: true,
               sort: (r) => r.email,
               render: (r) => <span className="muted">{r.email}</span>,

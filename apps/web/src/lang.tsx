@@ -44,8 +44,8 @@ function readSavedLang(): Lang {
 interface LangState {
   lang: Lang;
   setLang: (l: Lang) => void;
-  /** Перевод по ключу */
-  ut: (k: UiKey) => string;
+  /** Перевод по ключу; второй аргумент — чем заменить неизвестный ключ, см. makeUiT */
+  ut: (k: UiKey, fallback?: string) => string;
 }
 
 const Ctx = createContext<LangState | null>(null);

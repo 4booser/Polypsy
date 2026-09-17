@@ -70,9 +70,6 @@ const LOCALIZED: [string, string][] = [
   ["scale_bands", "description"],
   ["scale_bands", "recommendation"],
   ["departments", "title"],
-  ["pathways", "title"],
-  ["pathways", "description"],
-  ["pathway_steps", "title"],
   ["roles", "title"],
   ["consent_texts", "body"],
 ];

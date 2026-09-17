@@ -320,7 +320,7 @@ function GroupCard({
             <thead>
               <tr>
                 <th>{ut("adm.fullName")}</th>
-                <th>Email</th>
+                <th>{ut("person.email")}</th>
                 <th>{ut("adm.assignedAt")}</th>
                 <th />
               </tr>

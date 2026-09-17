@@ -540,6 +540,13 @@
       "when": 1788472745043,
       "tag": "0076_invite_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1788472746043,
+      "tag": "0077_drop_leftovers",
+      "breakpoints": true
     }
   ]
 }

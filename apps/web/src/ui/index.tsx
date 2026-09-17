@@ -973,6 +973,8 @@ export function DataTable<T>({
   /** Какая строка сейчас показана в панели контекста. */
   isRowActive?: (row: T) => boolean;
 }) {
+  const { ut } = useLang();
+
   /*
    * Большинство таблиц показывают сущности с id — берём его, не заставляя
    * каждый вызов передавать rowKey. Номер строки остаётся только там, где
@@ -1107,7 +1109,7 @@ export function DataTable<T>({
             />
           ) : null}
           {csvName && sorted.length ? (
-            <button onClick={exportCsv}>CSV · {sorted.length}</button>
+            <button onClick={exportCsv}>{ut("ui.exportCsv")} · {sorted.length}</button>
           ) : null}
         </div>
       </div>

@@ -96,7 +96,7 @@ export default function Access() {
                   <div className="overflow-x-auto">
                     <table>
                       <thead>
-                        <tr><th>{ut("acc.patient")}</th><th>Email</th><th>{ut("acc.grantedBy")}</th><th>{ut("acc.when")}</th><th>{ut("cs.to")}</th><th>{ut("acc.passed")}</th><th>{ut("acc.comment")}</th><th /></tr>
+                        <tr><th>{ut("acc.patient")}</th><th>{ut("person.email")}</th><th>{ut("acc.grantedBy")}</th><th>{ut("acc.when")}</th><th>{ut("cs.to")}</th><th>{ut("acc.passed")}</th><th>{ut("acc.comment")}</th><th /></tr>
                       </thead>
                       <tbody>
                         {grants.map((g) => (

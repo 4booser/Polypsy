@@ -5,7 +5,7 @@ import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Avatar, Loading } from "../ui";
 import { Num, SectionLabel, Tag } from "../ui/primitives";
-import { day, severityColor} from "../format";
+import { day, severityColor, severityKey } from "../format";
 
 /**
  * Кто этот человек — не уходя со списка.
@@ -102,7 +102,16 @@ export function PatientContext({ person }: { person: ContextPerson }) {
                       className="size-2 shrink-0 rounded-full"
                       style={{ background: severityColor[worst.severity] }}
                     />
-                    {worst.label ?? worst.severity}
+                    {/*
+                      Подпись полосы задаёт методика, и у большинства она есть
+                      («Помірна тривожність»). Когда автор её не заполнил, в
+                      метке оставался код ступени — moderate, severe. Запасной
+                      вариант должен быть не менее читаемым, чем основной:
+                      ступень выраженности названа в словаре теми же словами,
+                      что на сводке и в карте, и человек читает одно и то же
+                      понятие одинаково, где бы оно ни встретилось.
+                    */}
+                    {worst.label ?? ut(severityKey[worst.severity], worst.severity)}
                   </Tag>
                 ) : (
                   <Num className="shrink-0 text-caption text-muted">{sv.responseCount}</Num>

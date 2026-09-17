@@ -1445,62 +1445,6 @@ export const inviteUses = pgTable(
   }),
 );
 
-/**
- * Сеанс киоска: один планшет — поток обследуемых по очереди.
- *
- * Токен сеанса — узкие права: вход участника и сдача прохождений, ничего из
- * полномочий оператора. В базе токен хешем; на устройстве киоска не остаётся
- * ничего, что стоило бы украсть.
- */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const kioskSessions = pgTable(
-  "kiosk_sessions",
-  {
-    id: text("id").primaryKey(),
-    tokenHash: text("token_hash").notNull(),
-    title: text("title").notNull(),
-    batteryId: text("battery_id")
-      .notNull()
-      .references(() => batteries.id, { onDelete: "cascade" }),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    expiresAt: timestampCol("expires_at").notNull(),
-    closedAt: timestampCol("closed_at"),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-  },
-  (t) => ({
-    hashIdx: uniqueIndex("kiosk_sessions_hash_idx").on(t.tokenHash),
-  }),
-);
-
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const kioskParticipants = pgTable(
-  "kiosk_participants",
-  {
-    id: text("id").primaryKey(),
-    sessionId: text("session_id")
-      .notNull()
-      .references(() => kioskSessions.id, { onDelete: "cascade" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
-    finishedAt: timestampCol("finished_at"),
-  },
-  (t) => ({
-    sessionIdx: index("kiosk_participants_session_idx").on(t.sessionId),
-  }),
-);
-
-/**
- * Журнал отправленных уведомлений о тревогах.
- *
- * Идемпотентность рассылки: тревога уведомляется один раз на каждый вид
- * (initial/escalation), сколько бы раз ни прошёл тик. Отдельная таблица, а не
- * колонка в risk_alerts: у одной тревоги несколько событий отправки с разными
- * получателями, и их след нужен целиком.
- */
 export const alertNotifications = pgTable(
   "alert_notifications",
   {
@@ -1520,88 +1464,6 @@ export const alertNotifications = pgTable(
   }),
 );
 
-/**
- * Заключение специалиста по прохождению — поверх автоматической интерпретации.
- *
- * Строки append-only: каждая правка — новая версия. Подписанная версия
- * неизменна юридически и физически: следующая правка создаёт version+1
- * черновиком. Текущее заключение — строка с максимальной версией.
- */
-/**
- * Консилиум по случаю.
- *
- * Сводка для консилиума в системе была, а самого процесса — нет: решение
- * принимали в кабинете и записывали в тетрадь. Через полгода восстановить,
- * кто что предлагал и почему решили именно так, было невозможно.
- *
- * Здесь фиксируются мнения участников и итоговое решение. Особое мнение —
- * отдельный вид записи, а не примечание: в клинике несогласие участника
- * должно быть видно, а не растворяться в общем протоколе.
- */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const caseConferences = pgTable(
-  "case_conferences",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** Повод: что вынесли на обсуждение */
-    reason: text("reason").notNull(),
-    status: text("status", { enum: ["open", "decided", "cancelled"] })
-      .notNull()
-      .default("open"),
-    /** Шифруется: итоговое решение — клинический текст */
-    decision: text("decision"),
-    decidedAt: timestampCol("decided_at"),
-    decidedBy: text("decided_by").references(() => users.id, { onDelete: "restrict" }),
-    pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
-      onDelete: "set null",
-    }),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-  },
-  (t) => ({
-    userIdx: index("case_conferences_user_idx").on(t.userId),
-    openIdx: index("case_conferences_open_idx").on(t.createdAt).where(sql`status = 'open'`),
-  }),
-);
-
-/** Мнение участника: обычное или особое */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const conferenceOpinions = pgTable(
-  "conference_opinions",
-  {
-    id: text("id").primaryKey(),
-    conferenceId: text("conference_id")
-      .notNull()
-      .references(() => caseConferences.id, { onDelete: "cascade" }),
-    authorId: text("author_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    /** Шифруется вместе с текстом решения */
-    text: text("text").notNull(),
-    kind: text("kind", { enum: ["opinion", "dissent"] }).notNull().default("opinion"),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-  },
-  (t) => ({
-    conferenceIdx: index("conference_opinions_conference_idx").on(t.conferenceId, t.createdAt),
-    oncePerAuthor: uniqueIndex("conference_opinions_once").on(t.conferenceId, t.authorId, t.kind),
-  }),
-);
-
-/**
- * Токен устройства для пуш-уведомлений.
- *
- * До этого мобильное приложение молчало: назначили обследование — человек
- * узнавал, когда сам заходил. Для повторных замеров по расписанию это
- * означало, что половина просто не приходит.
- *
- * Токен принадлежит паре «человек + устройство»: у одного бывает телефон и
- * планшет, и выключенный на одном не должен глушить второй.
- */
 export const pushTokens = pgTable(
   "push_tokens",
   {
@@ -1648,66 +1510,6 @@ export const pushDeliveries = pgTable(
   }),
 );
 
-/**
- * Цель лечения.
- *
- * Ядро measurement-based care: цель формулируется измеримо и привязывается к
- * шкале, а не к ощущению. «Стало полегче» нельзя ни проверить, ни передать
- * коллеге; «ЛАП выше 4 к третьему месяцу» — можно.
- *
- * Достоверность изменения (RCI) в системе уже считается; цель встраивает её
- * в контур: видно не только «стало лучше», но и «изменение больше ошибки
- * измерения», а это разные утверждения.
- */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const treatmentGoals = pgTable(
-  "treatment_goals",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    surveyId: text("survey_id")
-      .notNull()
-      .references(() => surveys.id, { onDelete: "cascade" }),
-    /** Код шкалы: он переживает смену версии методики, в отличие от id */
-    scaleCode: text("scale_code").notNull(),
-    /** Куда должно двигаться значение */
-    direction: text("direction", { enum: ["down", "up"] }).notNull(),
-    targetValue: doublePrecision("target_value").notNull(),
-    /** Значение на момент постановки цели — точка отсчёта для RCI */
-    baselineValue: doublePrecision("baseline_value"),
-    dueAt: timestampCol("due_at"),
-    status: text("status", { enum: ["open", "met", "missed", "cancelled"] })
-      .notNull()
-      .default("open"),
-    note: text("note"),
-    pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
-      onDelete: "set null",
-    }),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-    closedAt: timestampCol("closed_at"),
-  },
-  (t) => ({
-    userIdx: index("treatment_goals_user_idx").on(t.userId),
-    openIdx: index("treatment_goals_open_idx").on(t.dueAt).where(sql`status = 'open'`),
-  }),
-);
-
-/**
- * Личный план безопасности (Стэнли–Браун).
- *
- * У методики уже есть `safetyPlan` — текст немедленных действий, одинаковый
- * для всех, кто попал в полосу риска. Это инструкция инструмента. Здесь —
- * другое: план конкретного человека, составленный с ним в кабинете, его
- * словами и с его телефонами.
- *
- * Шифруется целиком: это самый чувствительный документ в системе. Хранится
- * версиями — план пересматривают, и предыдущая редакция должна остаться.
- */
 export const safetyPlans = pgTable(
   "safety_plans",
   {
@@ -1757,10 +1559,6 @@ export const patientNotes = pgTable(
     /** Шифруется: клинический текст о человеке */
     text: text("text").notNull(),
     status: text("status", { enum: ["draft", "signed"] }).notNull().default("draft"),
-    /** Необязательная привязка к маршруту: заметка как шаг пути */
-    pathwayInstanceId: text("pathway_instance_id").references(() => pathwayInstances.id, {
-      onDelete: "set null",
-    }),
     /**
      * Приём, на котором запись сделана: заметка становится протоколом приёма.
      *
@@ -1783,133 +1581,6 @@ export const patientNotes = pgTable(
   }),
 );
 
-/**
- * Маршрут помощи — шаблон пути от скрининга до исхода.
- *
- * Скрининг, углублённое обследование, решение, вмешательство, повторный
- * замер — всё это в системе уже есть по отдельности и связывается в голове
- * специалиста. Маршрут делает связь явной, и тогда видно главное: кто застрял
- * и на каком шаге. Сегодня «отправили к психиатру и забыли» обнаруживается
- * случайно.
- */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const pathways = pgTable(
-  "pathways",
-  {
-    id: text("id").primaryKey(),
-    title: localized("title").notNull(),
-    description: localized("description"),
-    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "set null" }),
-    active: boolean("active").notNull().default(true),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-  },
-  (t) => ({ groupIdx: index("pathways_group_idx").on(t.groupId) }),
-);
-
-/** Шаг шаблона: что должно произойти и в какой срок от начала маршрута */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const pathwaySteps = pgTable(
-  "pathway_steps",
-  {
-    id: text("id").primaryKey(),
-    pathwayId: text("pathway_id")
-      .notNull()
-      .references(() => pathways.id, { onDelete: "cascade" }),
-    position: integer("position").notNull(),
-    title: localized("title").notNull(),
-    /**
-     * Чем шаг закрывается: прохождением методики, батареей, направлением
-     * или действием специалиста с записью. Решение — отдельный вид: оно
-     * требует исхода, а не отметки «сделано».
-     */
-    kind: text("kind", { enum: ["survey", "battery", "referral", "action", "decision"] }).notNull(),
-    surveyId: text("survey_id").references(() => surveys.id, { onDelete: "set null" }),
-    batteryId: text("battery_id").references(() => batteries.id, { onDelete: "set null" }),
-    /** Срок в днях от начала маршрута; null — без срока */
-    dueDays: integer("due_days"),
-    required: boolean("required").notNull().default(true),
-  },
-  (t) => ({ pathwayIdx: index("pathway_steps_pathway_idx").on(t.pathwayId, t.position) }),
-);
-
-/** Человек на маршруте */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const pathwayInstances = pgTable(
-  "pathway_instances",
-  {
-    id: text("id").primaryKey(),
-    pathwayId: text("pathway_id")
-      .notNull()
-      .references(() => pathways.id, { onDelete: "restrict" }),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
-    startedBy: text("started_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    closedAt: timestampCol("closed_at"),
-    closedBy: text("closed_by").references(() => users.id, { onDelete: "restrict" }),
-    /** Чем кончилось: снят с наблюдения, направлен, продолжает наблюдение */
-    outcome: text("outcome", { enum: ["resolved", "referred", "ongoing", "dropped"] }),
-    note: text("note"),
-    /*
-     * Обращение, к которому относится запись; необязательно — см. episodes.
-     *
-     * Колонку добавила миграция 0060 всем четырём таблицам сразу, а в схему
-     * она попала только у трёх. В базе колонка есть, в описании её не было —
-     * и следующий `drizzle-kit generate` выписал бы на неё DROP COLUMN, то
-     * есть тихо отменил бы часть уже применённой миграции.
-     */
-    episodeId: text("episode_id"),
-  },
-  (t) => ({
-    userIdx: index("pathway_instances_user_idx").on(t.userId),
-    openIdx: index("pathway_instances_open_idx")
-      .on(t.startedAt)
-      .where(sql`closed_at is null`),
-  }),
-);
-
-/** Состояние конкретного шага у конкретного человека */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const pathwayProgress = pgTable(
-  "pathway_progress",
-  {
-    id: text("id").primaryKey(),
-    instanceId: text("instance_id")
-      .notNull()
-      .references(() => pathwayInstances.id, { onDelete: "cascade" }),
-    stepId: text("step_id")
-      .notNull()
-      .references(() => pathwaySteps.id, { onDelete: "cascade" }),
-    dueAt: timestampCol("due_at"),
-    state: text("state", { enum: ["pending", "done", "skipped"] }).notNull().default("pending"),
-    doneAt: timestampCol("done_at"),
-    doneBy: text("done_by").references(() => users.id, { onDelete: "restrict" }),
-    /** Чем закрыт шаг: прохождение, направление или запись специалиста */
-    responseId: text("response_id").references(() => responses.id, { onDelete: "set null" }),
-    referralId: text("referral_id").references(() => referrals.id, { onDelete: "set null" }),
-    note: text("note"),
-  },
-  (t) => ({
-    instanceIdx: index("pathway_progress_instance_idx").on(t.instanceId),
-    dueIdx: index("pathway_progress_due_idx").on(t.dueAt).where(sql`state = 'pending'`),
-    uniqueStep: uniqueIndex("pathway_progress_unique").on(t.instanceId, t.stepId),
-  }),
-);
-
-/**
- * Сохранённые виды: именованный срез экрана.
- *
- * Фильтры уже живут в адресе и передаются ссылкой, но каждый раз собирать
- * «мои просроченные по третьей роте» заново — работа, которую можно снять.
- * Хранятся параметры, а не данные: вид, открытый другим сотрудником,
- * покажет ему только то, что он и так вправе видеть.
- */
 export const savedViews = pgTable(
   "saved_views",
   {
@@ -2049,7 +1720,6 @@ export type ReferralRow = typeof referrals.$inferSelect;
 
 export type ConclusionRow = typeof conclusions.$inferSelect;
 
-export type KioskSessionRow = typeof kioskSessions.$inferSelect;
 
 export type InviteRow = typeof invites.$inferSelect;
 
@@ -2168,96 +1838,6 @@ export const ruleHits = pgTable(
   }),
 );
 
-/** Дежурная смена: кто сейчас принимает тревоги */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const dutyShifts = pgTable(
-  "duty_shifts",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "cascade" }),
-    startsAt: timestampCol("starts_at").notNull(),
-    endsAt: timestampCol("ends_at").notNull(),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-  },
-  (t) => ({
-    windowIdx: index("duty_shifts_window_idx").on(t.startsAt, t.endsAt),
-  }),
-);
-
-/**
- * Запрос к информанту.
- *
- * Имя информанта не хранится намеренно: оценка командира не должна
- * превращаться в личное дело того, кто её дал. Хранится роль — именно она и
- * несёт смысл при сравнении перспектив.
- */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const informantRequests = pgTable(
-  "informant_requests",
-  {
-    id: text("id").primaryKey(),
-    patientId: text("patient_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    surveyId: text("survey_id")
-      .notNull()
-      .references(() => surveys.id, { onDelete: "cascade" }),
-    /** commander | peer | family | clinician */
-    role: text("role").notNull(),
-    tokenHash: text("token_hash").notNull(),
-    note: text("note"),
-    createdBy: text("created_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    expiresAt: timestampCol("expires_at").notNull(),
-    responseId: text("response_id").references(() => responses.id, { onDelete: "set null" }),
-    usedAt: timestampCol("used_at"),
-    revokedAt: timestampCol("revoked_at"),
-    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
-  },
-  (t) => ({
-    hashIdx: uniqueIndex("informant_requests_hash_idx").on(t.tokenHash),
-    patientIdx: index("informant_requests_patient_idx").on(t.patientId, t.createdAt),
-  }),
-);
-
-/**
- * Кризисный режим учреждения: массовое поступление.
- *
- * Период, а не флаг: история включений — часть журнала. Открытый период
- * ровно один, это держит частичный уникальный индекс — два одновременных
- * «кризиса» означали бы, что выключение одного не выключает режим.
- */
-/* без кода: см. «Таблицы, пережившие свои возможности» в шапке файла */
-export const crisisPeriods = pgTable("crisis_periods", {
-  id: text("id").primaryKey(),
-  reason: text("reason").notNull(),
-  startedBy: text("started_by")
-    .notNull()
-    .references(() => users.id, { onDelete: "restrict" }),
-  startedAt: timestampCol("started_at").notNull().default(sql`now()`),
-  endedBy: text("ended_by").references(() => users.id, { onDelete: "set null" }),
-  endedAt: timestampCol("ended_at"),
-});
-
-/**
- * Устройство с установленным приложением.
- *
- * Нужно ради удалённого стирания: планшет носят по отделению, и потерять его
- * проще, чем ноутбук, а на нём лежит кэш обхода — имена, баллы, планы
- * безопасности.
- *
- * Ограничение честное и важное: стирание срабатывает, когда устройство в
- * следующий раз выйдет на связь. Устройство, которое больше не включат, этой
- * командой не очистить — от этого защищает шифрование хранилища и блокировка
- * экрана.
- */
 export const devices = pgTable(
   "devices",
   {

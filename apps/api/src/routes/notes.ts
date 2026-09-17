@@ -42,7 +42,6 @@ noteRoutes.use("*", requireAuth, requireStaff);
 const saveSchema = z.object({
   text: z.string().min(1).max(20_000),
   kind: z.enum(["intake", "session", "observation", "consult"]).optional(),
-  pathwayInstanceId: z.string().uuid().nullable().optional(),
   /**
    * Приём, на котором запись сделана: заметка становится протоколом приёма.
    *
@@ -86,7 +85,6 @@ async function history(userId: string) {
     createdAt: row.createdAt,
     authorName: author ? fullNameOf(author) : "—",
     signedAt: row.signedAt,
-    pathwayInstanceId: row.pathwayInstanceId,
   }));
 }
 
@@ -143,7 +141,6 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
       .set({
         text: encryptField(input.text)!,
         kind: input.kind ?? latest.kind,
-        pathwayInstanceId: input.pathwayInstanceId ?? latest.pathwayInstanceId,
         appointmentId: input.appointmentId ?? latest.appointmentId,
         createdBy: staff.id,
         createdAt: new Date().toISOString(),
@@ -158,7 +155,6 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
       version: (latest?.version ?? 0) + 1,
       kind: input.kind ?? "session",
       text: encryptField(input.text)!,
-      pathwayInstanceId: input.pathwayInstanceId ?? null,
       appointmentId: input.appointmentId ?? null,
       createdBy: staff.id,
     });
