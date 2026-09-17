@@ -23,6 +23,7 @@ on:
           - demo-purge
           - rls-check
           - audit-verify
+          - leftovers
           - logs-web
           - logs-api
       count:
@@ -58,6 +59,9 @@ jobs:
             demo-purge)      CMD="bun apps/api/src/demoFill.ts purge" ;;
             rls-check)       CMD="bun apps/api/src/rlsReport.ts" ;;
             audit-verify)    CMD="bun apps/api/src/auditReport.ts" ;;
+            # перепись таблиц от снятых возможностей: только чтение, ничего
+            # не удаляет — решение по ним принимает человек, см. leftovers.ts
+            leftovers)       CMD="bun apps/api/src/leftovers.ts" ;;
             # чтение журналов службы — не запуск кода: отдельная ветка, где
             # выполняется docker compose logs, а не команда внутри контейнера
             logs-web|logs-api)
