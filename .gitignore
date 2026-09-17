@@ -20,3 +20,6 @@ android/
 /test-results/
 /playwright-report/
 /blob-report/
+
+# рабочие копии агентов: временные, живут вне истории
+.claude/worktrees/

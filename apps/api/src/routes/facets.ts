@@ -1,4 +1,4 @@
-import { SMALL_CELL_FLOOR } from "../lib/privacy";
+import { SMALL_CELL_FLOOR, suppressedKeys } from "../lib/privacy";
 import { Hono } from "hono";
 import { sql } from "drizzle-orm";
 import { facetQuery } from "@quizzy/shared";
@@ -91,14 +91,24 @@ facetRoutes.get("/surveys/:id", async (c) => {
     .filter((s) => s.kind === "clinical")
     .map((scale) => {
       const list = byScale.get(scale.code) ?? [];
-      const suppressed = list.filter((r) => Number(r.n) < SMALL_CELL_FLOOR).length;
+      /*
+       * Скрытые страты считает общая функция, а не фильтр по порогу.
+       *
+       * Фильтр «n < порога» отвечал на вопрос «мала ли страта», а вопрос
+       * стоит другой: «называет ли отчёт человека». Когда скрытая страта
+       * одна, он называет — её размер получается вычитанием показанных из
+       * общего числа прохождений, а оно отдаётся открыто и по делу. Поэтому
+       * решение о скрытии принимается по строке целиком, см. suppressedKeys.
+       */
+      const hidden = suppressedKeys(list.map((r) => ({ key: r.stratum, n: Number(r.n) })));
+      const suppressed = hidden.size;
       return {
         code: scale.code,
         title: scale.title,
         normalization: scale.normalization,
         suppressedStrata: suppressed,
         strata: list
-          .filter((r) => Number(r.n) >= SMALL_CELL_FLOOR)
+          .filter((r) => !hidden.has(r.stratum))
           .map((r) => ({
             stratum: r.stratum,
             n: Number(r.n),
