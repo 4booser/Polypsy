@@ -33,7 +33,8 @@ function deviceLocales(): string[] {
 interface LangState {
   lang: Lang;
   setLang: (l: Lang) => void;
-  ut: (k: UiKey) => string;
+  /** Перевод по ключу; второй аргумент — чем заменить неизвестный ключ, см. makeUiT */
+  ut: (k: UiKey, fallback?: string) => string;
 }
 
 const Ctx = createContext<LangState | null>(null);

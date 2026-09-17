@@ -82,7 +82,7 @@ export function Users() {
           <Field label={ut("adm.middleName")} className="min-w-[140px] flex-1">
             <Input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} />
           </Field>
-          <Field label="Email" className="min-w-[200px] flex-1">
+          <Field label={ut("person.email")} className="min-w-[200px] flex-1">
             <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </Field>
           <Field label={ut("adm.password8")} className="min-w-[160px] flex-1">
@@ -132,7 +132,7 @@ export function Users() {
       >
         <div className="overflow-x-auto">
           <table>
-            <thead><tr><th>{ut("adm.fullName")}</th><th>Email</th><th>{ut("adm.role")}</th><th>{ut("dq.sex")}</th><th>{ut("adm.createdAt")}</th></tr></thead>
+            <thead><tr><th>{ut("adm.fullName")}</th><th>{ut("person.email")}</th><th>{ut("adm.role")}</th><th>{ut("dq.sex")}</th><th>{ut("adm.createdAt")}</th></tr></thead>
             <tbody>
               {shown.map((u) => (
                 <Fragment key={u.id}>

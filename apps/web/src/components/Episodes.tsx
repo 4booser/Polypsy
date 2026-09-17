@@ -104,6 +104,19 @@ export function Episodes({ patientId, appointmentId }: { patientId: string; appo
             {e.outcomeKind ? (
               <p className="mt-1 text-caption">
                 {ut(OUTCOME_KEY[e.outcomeKind] ?? "ep.outStable")}
+                {/*
+                  `e.outcome` печатается как есть — и должно. Имя поля сбивает
+                  с толку: рядом стоит `outcomeKind`, разряд исхода, который
+                  действительно перечисление и идёт через OUTCOME_KEY. А
+                  `outcome` — то, что специалист написал словами в поле «Исход
+                  словами» (в базе outcome_enc, шифрованный текст рядом с
+                  reason_enc). Это данные пациента, как и повод обращения, и
+                  переводить их нельзя: врач читает свою запись, а не подпись
+                  интерфейса. Сторож на сырые значения сервера ищет поля по
+                  именам — status, kind, type, outcome, — и на эту строку он
+                  когда-нибудь наведётся; тогда правильный ответ не «завести
+                  ключи», а посмотреть сюда.
+                */}
                 {e.outcome ? ` · ${e.outcome}` : ""}
               </p>
             ) : null}

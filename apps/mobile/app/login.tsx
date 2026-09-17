@@ -53,7 +53,7 @@ export default function LoginScreen() {
         </View>
 
         <Field
-          label="Email"
+          label={ut("person.email")}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"

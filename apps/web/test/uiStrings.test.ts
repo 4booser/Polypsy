@@ -310,73 +310,33 @@ const LATIN_SAME = new Set([
   "ICC", // Intraclass Correlation — то же
   "XXXX-XXXX", // маска кода приглашения, не текст
   "Sr", // код шкалы в примере ввода
+  /*
+   * Образец кода ключа в конструкторе, а не слово.
+   *
+   * Этот код уходит в подсчёт баллов и сравнивается с matchKey методики; во
+   * всех встроенных методиках он записан как "yes"/"no". Подсказка «так / ні»
+   * научила бы автора набирать кириллицу, ключ перестал бы совпадать, и
+   * баллы молча не начислялись бы — цена «перевода» здесь измеряется не
+   * стилем, а неверными результатами. См. Questions.tsx.
+   */
+  "yes / no",
 ]);
 
 /*
- * Долг: латиница на экране, которую чинить не здесь.
+ * Списков долга здесь больше нет — оба закрыты.
  *
- * Каждая строка — известное место, где текст идёт мимо словаря. Список
- * заведён не чтобы закрыть глаза, а чтобы проверка начала работать сегодня:
- * без него она падала бы на девяти старых местах и была бы выключена в тот
- * же день, а новая десятая прошла бы незамеченной. Значение — кто и что
- * должен сделать; строка убирается вместе с починкой.
- */
-const LATIN_DEBT = new Map<string, string>([
-  [
-    "apps/web/src/pages/Login.tsx: Email",
-    "ключ person.email в словаре уже есть — подставить ut(\"person.email\"); владелец экрана входа",
-  ],
-  ["apps/web/src/pages/Admin.tsx: Email", "то же: ut(\"person.email\"); владелец учётных записей"],
-  ["apps/web/src/pages/Groups.tsx: Email", "то же: ut(\"person.email\"); владелец групп методик"],
-  ["apps/web/src/pages/Access.tsx: Email", "то же: ut(\"person.email\"); владелец доступа к методике"],
-  ["apps/mobile/app/login.tsx: Email", "то же: ut(\"person.email\"); мобилка, вход"],
-  ["apps/mobile/app/register.tsx: Email", "то же: ut(\"person.email\"); мобилка, регистрация"],
-  [
-    "apps/web/src/ui/index.tsx: CSV ·",
-    "кнопка выгрузки таблицы подписана одним «CSV · 14»: глагола нет, и диктор читает её как «си-эс-ви четырнадцать». Нужен ключ (например ui.exportCsv) и через него aria-label; владелец таблицы",
-  ],
-  [
-    "apps/web/src/pages/SurveyAnalytics.tsx: Codebook",
-    "кнопка выгрузки: «Кодувальна книга» / «Кодировочная книга» — нужен новый ключ; владелец аналитики методики",
-  ],
-  [
-    "apps/web/src/pages/SurveyAnalytics.tsx: Long-format",
-    "кнопка выгрузки: «Довгий формат» / «Длинный формат» — нужен новый ключ; владелец аналитики методики",
-  ],
-  [
-    "apps/web/src/pages/constructor/Questions.tsx: yes / no",
-    "подсказка в поле вариантов ответа: «так / ні» — нужен новый ключ; владелец конструктора",
-  ],
-]);
-
-/*
- * Долг: сырые значения сервера на экране.
+ * Стояло две карты исключений: девять мест с латиницей в разметке и пять с
+ * сырым значением сервера на экране. Заведены они были не чтобы закрыть
+ * глаза, а чтобы проверка заработала в день написания: иначе она падала бы
+ * на старых местах, её выключили бы в тот же день, и новое десятое место
+ * прошло бы незамеченным. Долг выплачен целиком, и карты убраны вместе с
+ * ним: пустой список исключений с пояснением, почему он пуст, через полгода
+ * начинают пополнять «на время».
  *
- * Здесь нет литерала, который можно было бы перевести, — нужен разбор
- * значения через словарь. Ключи для этого частью уже есть.
+ * Латинице, которая уместна, место в LATIN_SAME выше — с причиной в
+ * комментарии. Это список имён, а не отложенных дел: если для строки нельзя
+ * написать, почему её «перевод» — она сама, значит она туда не годится.
  */
-const RAW_VALUE_DEBT = new Map<string, string>([
-  [
-    "apps/web/src/pages/SurveyAnalytics.tsx: {q.type}",
-    "вид вопроса печатается как single/multi/scale/matrix; нужно семейство ключей qtype.* и разбор через ut(`qtype.${q.type}`); владелец аналитики методики",
-  ],
-  [
-    "apps/web/src/pages/SurveyAnalytics.tsx: {r.status}",
-    "состояние прохождения печатается как completed/abandoned; нужно семейство rstatus.* (слова уже переведены в msv.abandoned); владелец аналитики методики",
-  ],
-  [
-    "apps/mobile/app/analytics/[id]/index.tsx: {q.type}",
-    "то же на мобилке; тот же qtype.*",
-  ],
-  [
-    "apps/mobile/app/analytics/[id]/responses.tsx: {r.status}",
-    "то же на мобилке; тот же rstatus.*",
-  ],
-  [
-    "apps/web/src/components/PatientContext.tsx: {worst.label ?? worst.severity}",
-    "когда у полосы нет подписи, печатается none/mild/moderate/severe; в словаре есть severity.* — нужен разбор через ut(`severity.${worst.severity}`); владелец карточки пациента",
-  ],
-]);
 
 describe("строки интерфейса", () => {
   test("в разметке не остаётся текста мимо словаря", () => {
@@ -504,7 +464,7 @@ describe("строки интерфейса", () => {
       if (ALLOWED.has(rel(file))) continue;
       for (const text of latinStrings(readFileSync(file, "utf8"))) {
         const at = `${rel(file)}: ${text}`;
-        if (LATIN_SAME.has(text) || LATIN_DEBT.has(at)) continue;
+        if (LATIN_SAME.has(text)) continue;
         offenders.push(at);
       }
     }
@@ -532,8 +492,7 @@ describe("строки интерфейса", () => {
     for (const file of files) {
       if (ALLOWED.has(rel(file))) continue;
       for (const expr of rawServerValues(readFileSync(file, "utf8"))) {
-        const at = `${rel(file)}: {${expr}}`;
-        if (!RAW_VALUE_DEBT.has(at)) offenders.push(at);
+        offenders.push(`${rel(file)}: {${expr}}`);
       }
     }
     expect(offenders).toEqual([]);

@@ -1,4 +1,4 @@
-import { SERIES, severityColor } from "../format";
+import { SERIES, severityColor, severityKey } from "../format";
 import type { Severity } from "@quizzy/shared";
 import { NoData } from "../ui/primitives";
 import { AxisBreak, AxisNote, useChartWidth } from "./index";
@@ -375,10 +375,19 @@ export function DivergingBar({ items, domain = 1, goodThreshold }: { items: { la
 
 /** Метка выраженности: цвет + подпись, никогда не цвет в одиночку */
 export function SeverityTag({ severity, label }: { severity: Severity; label?: string }) {
+  const { ut } = useLang();
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600 }}>
       <i className="dot" style={{ background: severityColor[severity] }} />
-      {label ?? severity}
+      {/*
+        Метка без подписи показывала код ступени — «moderate» рядом с баллом
+        в таблице прохождений. Свой близнец в мобилке (src/components/charts)
+        разбирал этот же запасной вариант через словарь с самого начала: два
+        одинаковых компонента разошлись молча, потому что расхождение видно
+        только на методиках без подписей полос, а в демонстрационных данных
+        подписи заполнены все.
+      */}
+      {label ?? ut(severityKey[severity], severity)}
     </span>
   );
 }

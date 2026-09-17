@@ -405,7 +405,8 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
         {q.position + 1}. {q.title}
       </Text>
       <Row gap={spacing.md}>
-        <Text style={{ color: c.muted, fontSize: 12 }}>{q.type}</Text>
+        {/* тот же разбор, что в вебе: single/longtext — код протокола, а не подпись */}
+        <Text style={{ color: c.muted, fontSize: 12 }}>{ut(`qt.${q.type}`, q.type)}</Text>
         <Text style={{ color: c.muted, fontSize: 12 }}>{ut("msa.answersCount").replace("{n}", String(q.answered))}</Text>
         {q.skipped > 0 ? (
           <Text style={{ color: c.muted, fontSize: 12 }}>{ut("msa.skipsCount").replace("{n}", String(q.skipRate))}</Text>

@@ -54,12 +54,13 @@ export default function ResponsesScreen() {
               <Body>{r.userName ?? ut("mrs.anon")}</Body>
               <View style={{ flex: 1 }} />
               <Text style={{ color: c.muted, fontSize: 12 }}>
-                {r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : "не завершено"}
+                {r.submittedAt ? r.submittedAt.slice(0, 16).replace("T", " ") : ut("mrs.notSubmitted")}
               </Text>
             </Row>
             <Row gap={spacing.md}>
               <Text style={{ color: c.muted, fontSize: 12 }}>{formatDuration(r.durationMs)}</Text>
-              <Text style={{ color: c.muted, fontSize: 12 }}>{r.status}</Text>
+              {/* тот же разбор, что в вебе: completed/abandoned — код протокола, а не подпись */}
+              <Text style={{ color: c.muted, fontSize: 12 }}>{ut(`rstatus.${r.status}`, r.status)}</Text>
             </Row>
             {r.scores.map((s) => (
               <Row key={s.scaleId}>

@@ -120,7 +120,7 @@ export default function Login() {
             </>
           ) : null}
 
-          <Field label="Email" htmlFor="login-email">
+          <Field label={ut("person.email")} htmlFor="login-email">
             <Input
               id="login-email"
               value={email}

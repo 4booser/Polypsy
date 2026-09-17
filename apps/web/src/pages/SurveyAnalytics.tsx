@@ -222,9 +222,11 @@ export default function SurveyAnalyticsPage() {
               <button onClick={() => downloadCsv(data.surveyId)}>{ut("an.dataCsv")}</button>
               <button onClick={() => downloadSpssData(data.surveyId)}>{ut("an.spssMatrix")}</button>
               <button onClick={() => downloadSpssSyntax(data.surveyId)}>{ut("an.spssSyntax")}</button>
-              <button onClick={() => downloadCodebook(data.surveyId)}>Codebook</button>
+              <button onClick={() => downloadCodebook(data.surveyId)} title={ut("an.codebookHint")}>
+                {ut("an.codebook")}
+              </button>
               <button onClick={() => downloadLong(data.surveyId)} title={ut("an.longHint")}>
-                Long-format
+                {ut("an.long")}
               </button>
               {/*
                 Манифест и скрипты загрузки — рядом с выгрузкой, а не в
@@ -329,7 +331,15 @@ export default function SurveyAnalyticsPage() {
                     <tr key={q.questionId}>
                       <td className="num">{q.position + 1}</td>
                       <td className="max-w-[320px]">{q.title}</td>
-                      <td className="text-muted">{q.type}</td>
+                      {/*
+                        Вид пункта — перечисление протокола, а не данные: в
+                        колонке «Тип» стояли single, multiple, longtext. Те же
+                        слова конструктор уже подписывает по-человечески
+                        (TYPES → qt.*), и аналитика обязана называть их так же:
+                        иначе методист правит «Декілька», а в отчёте ищет
+                        «multiple» и не находит.
+                      */}
+                      <td className="text-muted">{ut(`qt.${q.type}`, q.type)}</td>
                       <td className="num">{q.shown}</td>
                       <td className="num">{q.answered}</td>
                       <td className="num">{q.skipRate}%</td>
@@ -546,7 +556,15 @@ function Responses({ surveyId }: { surveyId: string }) {
                 <td>{r.userName ?? ut("an.anonCap")}</td>
                 <td className="text-muted">{dateTime(r.submittedAt)}</td>
                 <td className="num">{duration(r.durationMs)}</td>
-                <td className="text-muted">{r.status}</td>
+                {/*
+                  Состояние прохождения печаталось кодом: completed,
+                  abandoned, in_progress. Для разбирающего это не подробность
+                  оформления — по этой колонке решают, считать ли протокол:
+                  «abandoned» рядом с готовыми баллами выглядит как техническая
+                  пометка, а «Покинуто» сразу говорит, что человек не дошёл до
+                  конца и баллы неполные.
+                */}
+                <td className="text-muted">{ut(`rstatus.${r.status}`, r.status)}</td>
                 <td>
                   {r.scores.map((s) => (
                     <div key={s.scaleId} className="flex items-center gap-2">

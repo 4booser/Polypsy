@@ -166,7 +166,7 @@ export default function RegisterScreen() {
         <Body muted>{ut("reg.phoneWhy")}</Body>
 
         <Field
-          label="Email"
+          label={ut("person.email")}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
