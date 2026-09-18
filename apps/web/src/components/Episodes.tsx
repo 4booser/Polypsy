@@ -27,7 +27,11 @@ const OUTCOME_KEY: Record<string, UiKey> = {
  * Счётчики приходят с сервера собранными. Считать их тремя запросами с экрана
  * значило бы вернуть человека к тому же складыванию, только быстрее.
  */
-export function Episodes({ patientId, appointmentId }: { patientId: string; appointmentId?: string }) {
+export function Episodes({
+  patientId,
+  appointmentId,
+  className,
+}: { patientId: string; appointmentId?: string; className?: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const res = useResource(() => api.episodes(patientId), [patientId]);
@@ -42,7 +46,7 @@ export function Episodes({ patientId, appointmentId }: { patientId: string; appo
   const open = items.find((e) => !e.closedAt) ?? null;
 
   return (
-    <Panel title={ut("ep.title")}>
+    <Panel title={ut("ep.title")} className={className}>
       <div className="flex flex-col gap-3 p-4">
         {/*
           Открыть можно только когда открытого нет. Правило написано рядом с
