@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select } from "../ui/primitives";
 import { LangSwitch, useLang } from "../lang";
+import { ALWAYS_VISIBLE_RAIL } from "@quizzy/shared";
+import { railGroups } from "../shell/Rail";
 
 /**
  * Учётная запись сотрудника.
@@ -33,6 +35,27 @@ export default function Account() {
   const theme = user?.workspace?.theme ?? (localStorage.getItem("quizzy.theme") || "dark");
   const density = user?.workspace?.density ?? "cozy";
   const motion = user?.workspace?.motion ?? "system";
+  const hidden = user?.workspace?.railHidden ?? [];
+
+  /*
+   * Список разделов берётся из самой рельсы, а не набирается здесь руками.
+   *
+   * Второй список разошёлся бы с первым: новый раздел появился бы в меню и
+   * не появился бы в настройке, и убрать его было бы нельзя — причём молча.
+   * Считается он от полного набора (суперадмин, назначающий), чтобы человек
+   * видел и те разделы, которых у него сейчас нет: скрытие живёт в профиле и
+   * переживает выдачу права.
+   */
+  const railItems = useMemo(
+    () =>
+      railGroups({ today: 0, worklist: 0, alerts: 0, referrals: 0 }, true, true)
+        .flatMap((g) => g.items)
+        .map((i) => ({
+          key: i.key,
+          pinned: (ALWAYS_VISIBLE_RAIL as readonly string[]).includes(i.key),
+        })),
+    [],
+  );
 
   /**
    * Настройка сохраняется НА СЕРВЕР, а не только в этот браузер.
@@ -258,6 +281,49 @@ export default function Account() {
                 </Button>
               </div>
             </div>
+          </div>
+        </Panel>
+
+        {/*
+          Разделы в меню: убирается лишнее, сигнальное остаётся.
+
+          Рельса выросла до тринадцати разделов, и половиной из них
+          конкретный специалист не пользуется никогда — а внимания они стоят
+          при каждом открытии консоли. Здесь человек убирает своё.
+
+          Порядок разделов НЕ настраивается, и это решение, а не недоделка.
+          Разделы сгруппированы по смыслу — обзор, люди, методики,
+          администрирование, — и перестановка между группами уничтожила бы
+          ровно ту разметку, которая помогает искать. Перестановка внутри
+          группы из двух-трёх пунктов не стоит ни перетаскивания, ни его
+          доступной с клавиатуры замены.
+        */}
+        <Panel title={ut("acct.rail")} hint={ut("acct.railHint")}>
+          <div className="flex flex-col gap-1 px-4 pb-4">
+            {railItems.map(({ key, pinned }) => (
+              <label
+                key={key}
+                className={`flex items-center gap-2 text-small ${pinned ? "text-muted" : ""}`}
+                title={pinned ? ut("acct.railPinned") : undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={pinned || !hidden.includes(key)}
+                  disabled={pinned || busy}
+                  onChange={(e) =>
+                    applyPref({
+                      railHidden: e.target.checked
+                        ? hidden.filter((k) => k !== key)
+                        : [...hidden, key],
+                    })
+                  }
+                />
+                {ut(key)}
+                {pinned ? (
+                  <span className="text-caption text-faint">· {ut("acct.railPinned")}</span>
+                ) : null}
+              </label>
+            ))}
           </div>
         </Panel>
 

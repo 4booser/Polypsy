@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
-import type { UiKey } from "@quizzy/shared";
+import { ALWAYS_VISIBLE_RAIL, type UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import {
@@ -75,7 +75,33 @@ export interface RailCounts {
   referrals?: number;
 }
 
-export function railGroups(counts: RailCounts, isSuper: boolean, canAssign = false): Group[] {
+/**
+ * Убрать с глаз то, что человек убрал, — кроме сигнальных пунктов.
+ *
+ * Правило проверяется и здесь, и на сервере. Двойная проверка не от
+ * недоверия: серверная закрывает запрос мимо экрана настроек, а эта —
+ * настройку, сохранённую до того, как пункт стал сигнальным. Число рядом с
+ * разделом появляется по мере развития системы, и список у человека в
+ * профиле от этого не переписывается сам.
+ *
+ * Группа, оставшаяся без пунктов, исчезает целиком: заголовок раздела, под
+ * которым ничего нет, — это не порядок, а обломок.
+ */
+function applyHidden(groups: Group[], hidden: readonly string[]): Group[] {
+  if (!hidden.length) return groups;
+  const off = new Set(hidden.filter((k) => !(ALWAYS_VISIBLE_RAIL as readonly string[]).includes(k)));
+  if (!off.size) return groups;
+  return groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => !off.has(i.key)) }))
+    .filter((g) => g.items.length > 0);
+}
+
+export function railGroups(
+  counts: RailCounts,
+  isSuper: boolean,
+  canAssign = false,
+  hidden: readonly string[] = [],
+): Group[] {
   const groups: Group[] = [
     {
       key: "nav.group.overview",
@@ -161,7 +187,7 @@ export function railGroups(counts: RailCounts, isSuper: boolean, canAssign = fal
     if (seen.has(g.key)) throw new Error(`рельса: ключ группы «${g.key}» повторяется`);
     seen.add(g.key);
   }
-  return groups;
+  return applyHidden(groups, hidden);
 }
 
 /*
@@ -357,6 +383,7 @@ export function Rail({
   isSuper,
   canAssign,
   collapsed,
+  hidden,
   children,
 }: {
   counts: RailCounts;
@@ -364,11 +391,16 @@ export function Rail({
   /** Есть ли кому назначать роли: от этого зависит пункт «Права» */
   canAssign: boolean;
   collapsed: boolean;
+  /** Что человек убрал с глаз в настройках рабочего места */
+  hidden?: string[];
   children?: ReactNode;
 }) {
   const { ut } = useLang();
   const { pathname } = useLocation();
-  const groups = useMemo(() => railGroups(counts, isSuper, canAssign), [counts, isSuper, canAssign]);
+  const groups = useMemo(
+    () => railGroups(counts, isSuper, canAssign, hidden ?? []),
+    [counts, isSuper, canAssign, hidden],
+  );
   const active = groupOfPath(groups, pathname);
 
   /*

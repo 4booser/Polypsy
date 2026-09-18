@@ -321,7 +321,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen">
-      <Rail counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} canAssign={(user.ladderRank ?? 0) > 1} collapsed={!railOpen}>
+      <Rail counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} canAssign={(user.ladderRank ?? 0) > 1} collapsed={!railOpen} hidden={user.workspace?.railHidden ?? []}>
         <div className="mt-3 flex flex-col gap-2 border-t border-hairline pt-3">
           {railOpen ? (
             <>

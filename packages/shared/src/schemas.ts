@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ALWAYS_VISIBLE_RAIL } from "./permissions";
 
 export const roleSchema = z.enum(["superadmin", "admin", "user"]);
 
@@ -729,6 +730,19 @@ export const workspacePrefsSchema = z.object({
   theme: z.enum(["dark", "light"]).optional(),
   lang: z.enum(["uk", "ru"]).optional(),
   dismissedHints: z.array(z.string().max(60)).max(100).optional(),
+  /*
+   * Скрытые пункты рельсы. Сигнальные сюда не проходят: правило проверяется
+   * на сервере, а не только кнопкой, — иначе спрятать «Случаи риска» можно
+   * было бы одним запросом мимо экрана настроек, и человек остался бы без
+   * единственного места, где видно неразобранное.
+   */
+  railHidden: z
+    .array(z.string().max(60))
+    .max(40)
+    .refine((keys) => !keys.some((k) => (ALWAYS_VISIBLE_RAIL as readonly string[]).includes(k)), {
+      message: "этот раздел нельзя убрать: рядом с ним стоит число неразобранного",
+    })
+    .optional(),
   eventsSeenAt: z.string().nullable().optional(),
 });
 
