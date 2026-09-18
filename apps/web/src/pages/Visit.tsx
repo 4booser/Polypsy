@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import type { UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { day } from "../format";
-import { Empty, Screen, useAction } from "../ui";
+import { Screen, useAction } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Button, Field, Input, SectionLabel, Select, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
@@ -71,10 +71,18 @@ export default function VisitPage() {
             действия наверх при узком экране было бы удобнее пальцу и хуже
             по смыслу — их делают в конце.
           */}
-          <div className="grid gap-3 p-4 max-[1200px]:grid-cols-1 grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,280px)]">
+          {/*
+            Столбцы тянутся до общего низа, а не кончаются каждый на своей
+            высоте. Панели разной длины оставляли под короткой дыру, и экран
+            читался как сломанный: глазу не за что зацепиться, где кончается
+            одна колонка и начинается другая. Тянется ПАНЕЛЬ, а не её
+            содержимое, — внутри всё по-прежнему прижато к верху, и пустота
+            уходит вниз, где ей и место.
+          */}
+          <div className="grid items-stretch gap-3 p-4 max-[1200px]:grid-cols-1 grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,280px)]">
             <History data={data} />
 
-            <Panel title={ut("visit.protocol")}>
+            <Panel title={ut("visit.protocol")} className="h-full">
               <div className="flex flex-col gap-2 p-4">
                 <Textarea
                   ref={areaRef}
@@ -142,7 +150,7 @@ export default function VisitPage() {
               </div>
             </Panel>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex h-full flex-col gap-3">
               {/*
                 Запись — первая в колонке, потому что её включают на первой
                 минуте приёма. Стояла третьей, под действиями и обращениями,
@@ -167,7 +175,11 @@ export default function VisitPage() {
                 Обращение — здесь же: приём относят к нему в тот момент, когда
                 он идёт, а не вспоминают потом, разбирая хронологию.
               */}
-              <Episodes patientId={data.patient.id} appointmentId={data.appointment.id} />
+              <Episodes
+                patientId={data.patient.id}
+                appointmentId={data.appointment.id}
+                className="flex-1"
+              />
             </div>
           </div>
         </Page>
@@ -181,7 +193,7 @@ type Ctx = Awaited<ReturnType<typeof api.visitContext>>;
 function History({ data }: { data: Ctx }) {
   const { ut } = useLang();
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex h-full flex-col gap-3">
       <Panel title={ut("visit.history")}>
         <div className="flex flex-col gap-2 p-4 text-caption">
           {/*
@@ -217,9 +229,20 @@ function History({ data }: { data: Ctx }) {
         </div>
       </Panel>
 
-      <Panel title={ut("visit.changes")}>
+      <Panel title={ut("visit.changes")} className="flex-1">
         {data.changes.length === 0 ? (
-          <Empty compact title={ut("visit.noChanges")} />
+          /*
+            Отсутствие новостей — не заголовок.
+            Стояло <Empty>: крупным полужирным по центру, как важное
+            утверждение. Но «с прошлого приёма ничего не произошло» — это не
+            событие, о котором надо сообщить, а пустая строка списка: у
+            человека между приёмами не случилось ничего, и набирать это
+            крупнее самих событий значит переставить их местами по важности.
+            Ровно та же мысль, по которой <Empty> уместен там, где пустота
+            требует действия («приглашений нет — выпишите»), — здесь она не
+            требует ничего.
+          */
+          <p className="px-4 py-2 text-caption text-muted">{ut("visit.noChanges")}</p>
         ) : (
           <div className="flex flex-col">
             {data.changes.map((ch, i) => (
