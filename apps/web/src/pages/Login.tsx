@@ -59,7 +59,7 @@ export default function Login() {
           lastName: lastName.trim(),
           phone: phone.trim(),
         });
-        adopt(created);
+        await adopt(created);
       } else {
         await login(email.trim(), password);
       }
