@@ -1,45 +1,76 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "../api";
+import { api, type ConclusionState } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
-import { useResource } from "../useResource";
 import { useLang } from "../lang";
 import { Button, Textarea } from "../ui/primitives";
 import { TemplatePicker } from "./TemplatePicker";
 
 /**
- * Заключение специалиста поверх автоматической интерпретации.
+ * Заключение специалиста поверх автоматической интерпретации — блок
+ * «Висновки заключення» экрана «Заключення» (кадры f38/f39).
  *
  * Черновик правится свободно; подпись фиксирует версию навсегда — дальше
  * только новая версия поверх. В печатный отчёт попадает только подписанное:
  * рабочий текст не должен утекать в документ, который подошьют в дело.
+ *
+ * Состояние заключения приходит снаружи, а не грузится здесь: экрану оно
+ * нужно раньше редактора — название документа стоит в самом верху страницы,
+ * а лежит в той же записи. Грузить одну запись дважды ради двух мест на
+ * экране значило бы, что после сохранения два места расходятся.
+ *
+ * Что на макете и как это здесь.
+ *
+ * На макете над текстом стоит панель форматирования (Ariel, Regular, 12, B,
+ * I, U, выравнивание). Её нет намеренно: conclusions.text — простой текст,
+ * он шифруется целиком, а печатный отчёт экранирует его и печатает как есть.
+ * Разметка в этом поле сломала бы печать и подписанные записи в бою. На месте
+ * панели стоят настоящие инструменты этого редактора — сборка черновика из
+ * фактов, библиотека формулировок и история версий. Полоса форматирования
+ * вернётся сюда в тот день, когда сервер объявит формат хранения.
+ *
+ * На макете одна кнопка — «Сформувати заключення». Здесь она подписывает:
+ * сформированное заключение — то, что идёт в отчёт и в подшивку, а туда идёт
+ * только подписанное. Рядом остаётся «Зберегти чернетку» призрачной: стажёр
+ * готовит текст без права подписи, и без черновика ему некуда сохранять
+ * работу. Свести обе к одной значило бы либо отобрать у стажёра сохранение,
+ * либо пускать в отчёт неподписанное.
  */
-export function ConclusionEditor({ responseId }: { responseId: string }) {
+export function ConclusionEditor({
+  responseId,
+  state,
+  error,
+  onState,
+  title,
+}: {
+  responseId: string;
+  state: ConclusionState | null;
+  error: string | null;
+  /** Сохранение и подпись возвращают новое состояние целиком — сюда */
+  onState: (next: ConclusionState) => void;
+  /** Название документа с поля вверху экрана: уходит на сервер вместе с текстом */
+  title: string;
+}) {
   const { ut } = useLang();
   const [text, setText] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const { run } = useAction();
 
-  const res = useResource(() => api.conclusion(responseId), [responseId]);
-  // сохранение и подпись возвращают новое состояние целиком — кладём его в
-  // ресурс, а не рядом: отдельная копия пережила бы смену прохождения
-  const state = res.data;
-
   /*
    * Черновик подставляется в поле один раз на загрузку. Делать это на каждый
    * рендер значило бы затирать то, что специалист печатает прямо сейчас.
    */
   useEffect(() => {
-    const current = res.data?.current;
+    const current = state?.current;
     setText(current?.status === "draft" ? current.text : "");
-  }, [res.data]);
+  }, [state]);
 
   if (!state) {
     // отказ загрузки — не повод прятать редактор: заключение можно написать заново
-    return res.error ? (
+    return error ? (
       <p className="text-muted">
-        {ut("cn.loadFailed")}: {res.error}
+        {ut("cn.loadFailed")}: {error}
       </p>
     ) : (
       <p className="text-muted">{ut("common.loading")}</p>
@@ -48,33 +79,32 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
 
   const signed = state.versions.find((v) => v.status === "signed");
   const draft = state.current?.status === "draft" ? state.current : null;
+  const save = () => api.saveConclusion(responseId, text, state.current?.version ?? 0, title);
 
   return (
-    <div className="nested">
-      <h3>{ut("cn.title")}</h3>
+    <section aria-labelledby="cn-verdicts" className="mt-[50px]">
+      {/* 18/700 фиолетовым — вторая ступень заголовков макета, как у панелей */}
+      <h2 id="cn-verdicts" className="m-0 mb-[10px] text-[18px] font-bold leading-tight text-primary">
+        {ut("cn3.verdicts")}
+      </h2>
 
       {signed && !draft ? (
-        <div className="conclusion-view">
-          <p className="m-0 whitespace-pre-wrap">{state.current!.text}</p>
-          <p className="text-caption text-muted">
+        <div className="mb-[14px] rounded-[5px] bg-primary-soft px-[14px] py-[10px]">
+          <p className="m-0 whitespace-pre-wrap text-[15px] leading-[20px] text-text">{state.current!.text}</p>
+          <p className="m-0 mt-[6px] text-[13px] text-muted">
             {ut("cnc.signedBy")} {state.current!.authorName}, {day(state.current!.signedAt!)} ·{" "}
             {ut("ds.version")} {state.current!.version}. {ut("cnc.editCreatesVersion")}
           </p>
         </div>
       ) : null}
 
-      <Textarea
-        ref={areaRef}
-        rows={5}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={
-          signed
-            ? ut("cn.newOverSigned")
-            : ut("cn.placeholder")
-        }
-      />
-      <div className="row mt-2">
+      {/*
+        Полоса инструментов над текстом: сиреневая, с белыми плашками — как
+        полоса форматирования на макете, только с инструментами, которые у
+        этого редактора есть на самом деле (см. пояснение к компоненту).
+        Скругление только сверху: снизу к ней вплотную стоит поле текста.
+      */}
+      <div className="flex min-h-9 flex-wrap items-center gap-[10px] rounded-t-[5px] bg-primary-soft px-[10px] py-[4px]">
         {/*
           Черновик собирается по нажатию и не сохраняется сам.
           Сохранённый автоматически, он стал бы клиническим документом,
@@ -82,6 +112,7 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
           специалиста и попал бы в историю версий раньше, чем его прочитали.
         */}
         <Button
+          variant="paper"
           onClick={() =>
             run(async () => {
               if (text.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
@@ -91,54 +122,33 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
         >
           {ut("cn.fromResults")}
         </Button>
-        <TemplatePicker kind="conclusion" value={text} onChange={setText} textareaRef={areaRef} />
-        <Button
-          disabled={!text.trim()}
-          onClick={() =>
-            run(async () => {
-              res.patch(await api.saveConclusion(responseId, text, state.current?.version ?? 0));
-            }, ut("cn.draftSaved"))
-          }
-        >
-          {ut("cnc.saveDraft")}
-        </Button>
-        <Button
-          variant="primary"
-          disabled={!draft && !text.trim()}
-          onClick={() =>
-            run(async () => {
-              // подпись всегда фиксирует последний сохранённый текст
-              let latest = state;
-              if (text.trim() && text !== draft?.text) {
-                latest = await api.saveConclusion(responseId, text, state.current?.version ?? 0);
-              }
-              /*
-               * Подписываем именно ту версию, которую вернуло сохранение.
-               * Если между открытием экрана и подписью успел сохранить кто-то
-               * другой, сервер откажет — лучше отказ, чем подпись под чужим
-               * текстом.
-               */
-              const s = await api.signConclusion(responseId, latest.current!.version);
-              res.patch(s);
-              setText("");
-            }, ut("cn.signed"))
-          }
-        >
-          {ut("cnc.sign")}
-        </Button>
+        <TemplatePicker kind="conclusion" value={text} onChange={setText} textareaRef={areaRef} variant="paper" />
         {state.versions.length > 1 ? (
-          <Button onClick={() => setShowHistory((v) => !v)}>
+          <Button variant="paper" onClick={() => setShowHistory((v) => !v)}>
             {showHistory ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
           </Button>
         ) : null}
       </div>
-      <p className="text-caption text-muted">{ut("cnc.onlySignedInReport")}</p>
+      {/*
+        Имя поля — видимый заголовок блока, а не скрытая подпись: заголовок
+        на экране уже есть, и второе имя тем же словом диктор прочёл бы дважды.
+      */}
+      <Textarea
+        ref={areaRef}
+        rows={7}
+        aria-labelledby="cn-verdicts"
+        className="rounded-t-none"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={signed ? ut("cn.newOverSigned") : ut("cn.placeholder")}
+      />
+      <p className="m-0 mt-[6px] text-[13px] text-muted">{ut("cnc.onlySignedInReport")}</p>
 
       {showHistory
         ? state.versions.map((v) => (
-            <div key={v.id} className="conclusion-view mt-2">
-              <p className="m-0 whitespace-pre-wrap text-small">{v.text}</p>
-              <p className="text-caption text-muted">
+            <div key={v.id} className="mt-[10px] rounded-[5px] bg-primary-soft px-[14px] py-[10px]">
+              <p className="m-0 whitespace-pre-wrap text-[13px] leading-[18px] text-text">{v.text}</p>
+              <p className="m-0 mt-[4px] text-[13px] text-muted">
                 {ut("cnc.versionN")} {v.version} ·{" "}
                 {v.status === "signed" ? `${ut("cnc.signedOn")} ${day(v.signedAt!)}` : ut("cnc.draftWord")} ·{" "}
                 {v.authorName}
@@ -146,10 +156,49 @@ export function ConclusionEditor({ responseId }: { responseId: string }) {
             </div>
           ))
         : null}
-    </div>
+
+      {/*
+        Кнопка формы прижата вправо, как на макете (293×45 у правого края
+        колонки). Ширину задаёт текст, а не число: на русском надпись длиннее.
+      */}
+      <div className="mt-[40px] flex flex-wrap items-center justify-end gap-[14px]">
+        <Button
+          variant="ghost"
+          size="md"
+          disabled={!text.trim()}
+          onClick={() =>
+            run(async () => {
+              onState(await save());
+            }, ut("cn.draftSaved"))
+          }
+        >
+          {ut("cnc.saveDraft")}
+        </Button>
+        <Button
+          size="md"
+          disabled={!draft && !text.trim()}
+          onClick={() =>
+            run(async () => {
+              // подпись всегда фиксирует последний сохранённый текст
+              let latest = state;
+              if (text.trim() && text !== draft?.text) latest = await save();
+              /*
+               * Подписываем именно ту версию, которую вернуло сохранение.
+               * Если между открытием экрана и подписью успел сохранить кто-то
+               * другой, сервер откажет — лучше отказ, чем подпись под чужим
+               * текстом.
+               */
+              onState(await api.signConclusion(responseId, latest.current!.version));
+              setText("");
+            }, ut("cn.signed"))
+          }
+        >
+          {ut("cn3.form")}
+        </Button>
+      </div>
+    </section>
   );
 }
-
 
 /**
  * Собрать черновик из фактов.

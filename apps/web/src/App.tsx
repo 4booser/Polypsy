@@ -71,6 +71,15 @@ const SearchPage = lazy(() => import("./pages/Search"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
+/*
+ * Заключение — свой экран, а не строка в таблице прохождений.
+ *
+ * Прежде оно раскрывалось внутри аналитики методики и жило без адреса: его
+ * нельзя было переслать коллеге, положить в закладку или открыть из карты.
+ * Макет рисует заключение самостоятельной страницей сверху вниз, и адрес у
+ * неё — по прохождению: заключение привязано к нему на сервере.
+ */
+const ConclusionPage = lazy(() => import("./pages/Conclusion"));
 
 type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
@@ -520,6 +529,7 @@ export default function App() {
           <Route path="/surveys" element={<SurveyList />} />
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
+          <Route path="/responses/:id/conclusion" element={<ConclusionPage />} />
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
           <Route path="/surveys/:id/norms" element={<Norms />} />
           <Route path="/surveys/:id/blank" element={<BlankForm />} />

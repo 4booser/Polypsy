@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type { SurveyResponse } from "@quizzy/shared";
 import { api, download, openInTab, type VersionDiffResult } from "../api";
 import { BarList, Chart, Donut, LineChart } from "../charts";
@@ -9,7 +9,6 @@ import { dateTime, day, duration, severityColor} from "../format";
 import { Loading, OfflineBar, useAction } from "../ui";
 import { Page, Panel, Grid, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
-import { ConclusionEditor } from "../components/ConclusionEditor";
 import { DataQualityPanel } from "../components/DataQualityPanel";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -516,7 +515,7 @@ export default function SurveyAnalyticsPage() {
 function Responses({ surveyId }: { surveyId: string }) {
   const { ut } = useLang();
   const [rows, setRows] = useState<SurveyResponse[] | null>(null);
-  const [openConclusion, setOpenConclusion] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const { run } = useAction();
@@ -551,8 +550,7 @@ function Responses({ surveyId }: { surveyId: string }) {
           </thead>
           <tbody>
             {rows.map((r) => (
-              <Fragment key={r.id}>
-              <tr>
+              <tr key={r.id}>
                 <td>{r.userName ?? ut("an.anonCap")}</td>
                 <td className="text-muted">{dateTime(r.submittedAt)}</td>
                 <td className="num">{duration(r.durationMs)}</td>
@@ -576,21 +574,20 @@ function Responses({ surveyId }: { surveyId: string }) {
                 </td>
                 <td>
                   <div className="row tight">
-                    <button onClick={() => setOpenConclusion(openConclusion === r.id ? null : r.id)}>
-                      {openConclusion === r.id ? ut("an.collapse") : ut("an.conclusion")}
+                    {/*
+                      Заключение больше не раскрывается строкой здесь — у него
+                      свой экран с протоколом ответов и лестницей результатов
+                      (pages/Conclusion.tsx). Строка таблицы для такого свитка
+                      мала: в ней помещался только текст, и разбирающий всё
+                      равно уходил в печатный отчёт за подробностями.
+                    */}
+                    <button onClick={() => navigate(`/responses/${r.id}/conclusion`)}>
+                      {ut("an.conclusion")}
                     </button>
                     <button onClick={() => openReport(r.id)}>{ut("an.print")}</button>
                   </div>
                 </td>
               </tr>
-              {openConclusion === r.id ? (
-                <tr>
-                  <td colSpan={6} className="bg-surface-2">
-                    <ConclusionEditor responseId={r.id} />
-                  </td>
-                </tr>
-              ) : null}
-              </Fragment>
             ))}
           </tbody>
         </table>

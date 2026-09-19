@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { useAction } from "../ui";
-import { Button } from "../ui/primitives";
+import { Button, type ButtonProps } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -20,11 +20,18 @@ export function TemplatePicker({
   value,
   onChange,
   textareaRef,
+  variant = "ghost",
 }: {
   kind: Kind;
   value: string;
   onChange: (next: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  /**
+   * Вид кнопки-открывашки — по месту, где она стоит. На белом фоне карты
+   * достаточно призрачной; на сиреневой полосе редактора заключения
+   * призрачная невидима, и там просят «paper».
+   */
+  variant?: ButtonProps["variant"];
 }) {
   const { ut } = useLang();
   const { run } = useAction();
@@ -33,7 +40,7 @@ export function TemplatePicker({
 
   if (!open) {
     return (
-      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+      <Button size="sm" variant={variant} onClick={() => setOpen(true)}>
         {ut("tpl.insert")}
       </Button>
     );
@@ -67,7 +74,7 @@ export function TemplatePicker({
   };
 
   return (
-    <div className="flex w-full flex-col gap-2 rounded-md border border-hairline p-2">
+    <div className="flex w-full flex-col gap-2 rounded-md border border-hairline bg-[var(--bg)] p-2">
       {all.length === 0 && !res.loading ? (
         <p className="text-caption text-muted">{ut("tpl.none")}</p>
       ) : null}
