@@ -1,13 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { login } from "./helpers";
+import { login, menuButton, openMenu } from "./helpers";
 
 /**
  * Фокус внутри модальных слоёв.
  *
  * Диалог, из которого Tab выводит наружу, — не диалог, а картинка поверх
  * работающей страницы: человек с клавиатурой продолжает «нажимать кнопки
- * окна», а нажимает разделы рельсы под ним и не видит, где он. Так и было:
+ * окна», а нажимает шапку и экран под ним и не видит, где он. Так и было:
  * два Tab из окна витрины уводили на рельсу, один Tab из палитры — в тело
  * страницы, а после Esc фокус оставался там, куда его занесло.
  *
@@ -66,13 +66,51 @@ async function walk(page: Page, selector: string, steps: number, back = false): 
 }
 
 /**
+ * Открыть палитру так, как это делает человек без ⌘K: бургер → «Поиск и
+ * команды». Возвращает кнопку бургера — ей и должен достаться фокус после
+ * Esc (см. expectTrapped).
+ *
+ * Бургер при этом закрывается сам, ДО открытия палитры: кнопка поиска в нём
+ * зовёт onClose(), потом onSearch() (Topbar.tsx, MoreMenu). Так и должно
+ * быть — меню было дорогой к палитре, а не окном, поверх которого работают;
+ * оставшись открытым, оно легло бы под палитру, и после её закрытия человек
+ * читал бы экран сквозь список. Значит палитра, открытая отсюда, стоит на
+ * странице одна: слоёв не два, и правило «Esc гасит верхний» к ней не
+ * относится — гасить, кроме неё, нечего. Два слоя с бургером возможны
+ * только через ⌘K, и это проверяется отдельно ниже.
+ *
+ * Закрытие бургера проверяется явно, а не подразумевается: перестань он
+ * закрываться — getByRole("dialog") в проверках ниже нашёл бы два диалога,
+ * и падение называло бы строгий режим, а не причину.
+ */
+async function openPalette(page: Page): Promise<Locator> {
+  const menu = await openMenu(page);
+  await menu.getByRole("button", { name: /Поиск и команды/ }).click();
+  await expect(menu, "бургер остался открытым под палитрой").toBeHidden();
+  await page.locator(".palette").waitFor();
+  return menuButton(page);
+}
+
+/**
  * Общая проверка для любого слоя: фокус не выходит, Esc возвращает открывшему.
  *
- * Одна на оба диалога намеренно — ловушка у них тоже одна, и разойтись
+ * Одна на все слои намеренно — ловушка у них тоже одна, и разойтись
  * проверки не должны.
+ *
+ * `open` открывает слой и возвращает того, кому фокус обязан достаться после
+ * Esc. Раньше это был тот же элемент, по которому нажали; у палитры теперь
+ * не так: кнопка «Поиск и команды» лежит в бургере и исчезает вместе с ним
+ * в момент открытия палитры. Возвращать фокус тогда некуда, кроме кнопки
+ * бургера, — это последнее, на чём стояли руки человека, и она на месте.
+ * Ослаблять здесь нечего: человек, нажавший Esc, должен оказаться там,
+ * откуда пришёл, а не в начале документа, — ровно та поломка, ради которой
+ * проверка и написана. Ловушка (useFocusTrap) запоминает «открывшего» по
+ * document.activeElement на первом рендере слоя, то есть для палитры из
+ * бургера — исчезающую кнопку поиска; вернуть фокус на бургер обязана
+ * оболочка, и проверка требует этого от неё.
  */
-async function expectTrapped(page: Page, opener: Locator, selector: string, name: string) {
-  await opener.click();
+async function expectTrapped(page: Page, open: () => Promise<Locator>, selector: string, name: string) {
+  const returnTo = await open();
   const layer = page.locator(selector);
   await layer.waitFor();
 
@@ -101,24 +139,27 @@ async function expectTrapped(page: Page, opener: Locator, selector: string, name
    * того места, куда его случайно занесло обходом, а не оттуда, откуда он
    * открывал слой.
    */
-  await expect(opener, `после Esc фокус не вернулся на кнопку, открывшую «${name}»`).toBeFocused();
+  await expect(returnTo, `после Esc фокус не вернулся тому, кто открыл «${name}»`).toBeFocused();
+}
+
+/** Открыть слой кнопкой витрины: ей же фокус и возвращается */
+function byButton(button: Locator): () => Promise<Locator> {
+  return async () => {
+    await button.click();
+    return button;
+  };
 }
 
 test("диалог держит фокус внутри и возвращает его по Esc", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await expectTrapped(page, page.getByRole("button", { name: "Диалог", exact: true }), ".modal", "Диалог");
+  await expectTrapped(page, byButton(page.getByRole("button", { name: "Диалог", exact: true })), ".modal", "Диалог");
 });
 
 test("палитра команд держит фокус внутри и возвращает его по Esc", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await expectTrapped(
-    page,
-    page.getByRole("button", { name: /Поиск и команды/ }),
-    ".palette",
-    "Палитра команд",
-  );
+  await expectTrapped(page, () => openPalette(page), ".palette", "Палитра команд");
 });
 
 /**
@@ -132,8 +173,13 @@ test("палитра команд держит фокус внутри и воз
 test("палитра открывается с курсором в поиске", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await page.getByRole("button", { name: /Поиск и команды/ }).click();
-  await page.locator(".palette").waitFor();
+  /*
+   * Через бургер, как человек: меню при этом закрывается, и его ловушка
+   * снимается в тот же кадр, в который палитра ставит курсор в поиск. Этот
+   * стык и проверяется: отпускающая ловушка меню не должна утащить фокус
+   * обратно на кнопку бургера.
+   */
+  await openPalette(page);
 
   await expect(
     page.locator(".palette input"),
@@ -158,7 +204,12 @@ test("палитра открывается с курсором в поиске"
  */
 for (const [name, open] of [
   ["Диалог", async (page: Page) => page.getByRole("button", { name: "Диалог", exact: true }).click()],
-  ["Палитра команд", async (page: Page) => page.getByRole("button", { name: /Поиск и команды/ }).click()],
+  [
+    "Палитра команд",
+    async (page: Page) => {
+      await openPalette(page);
+    },
+  ],
 ] as const) {
   test(`слой «${name}» объявлен диктору как диалог`, async ({ page }) => {
     await login(page, "psy");
@@ -266,6 +317,49 @@ test("Esc закрывает палитру поверх диалога, а ди
 });
 
 /**
+ * Бургер — тоже слой с ловушкой, и палитра может лечь поверх него.
+ *
+ * Из самого меню так не выйдет — его кнопка поиска сперва закрывает меню
+ * (см. openPalette), — но ⌘K работает с любого экрана, в том числе при
+ * открытом меню, и тогда слоёв два. Правило «Esc принадлежит верхнему»
+ * касается бургера напрямую: его обработчик висит на документе и
+ * срабатывает раньше оконного обработчика палитры (App.tsx), и закрывайся
+ * он безусловно, одно нажатие гасило бы оба слоя. Topbar проверяет
+ * isTopLayer — здесь это проверяется поведением, как и для окна витрины
+ * выше, и заодно то, что бургер под палитрой не перехватывает фокус.
+ */
+test("⌘K поверх бургера: Esc гасит палитру, а бургер оставляет и потом возвращает фокус", async ({ page }) => {
+  await login(page, "psy");
+  const menu = await openMenu(page);
+
+  await page.keyboard.press("Control+k");
+  await page.locator(".palette").waitFor();
+
+  // считаем, сколько раз фокус заглянул в меню под палитрой
+  await menu.evaluate((el) => {
+    const counter = window as unknown as { __under: number };
+    counter.__under = 0;
+    el.addEventListener("focusin", () => {
+      counter.__under += 1;
+    });
+  });
+  expect(await walk(page, ".palette", 4), "фокус ушёл из палитры, открытой поверх бургера").toEqual([]);
+  expect(
+    await page.evaluate(() => (window as unknown as { __under: number }).__under),
+    "бургер под палитрой перехватывает фокус, пока человек работает в палитре",
+  ).toBe(0);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".palette"), "палитра должна была закрыться").toHaveCount(0);
+  await expect(menu, "бургер под палитрой закрылся тем же нажатием").toBeVisible();
+
+  // второй Esc гасит уже сам бургер и возвращает фокус кнопке, которая его открыла
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(menuButton(page), "после Esc фокус не вернулся на кнопку бургера").toBeFocused();
+});
+
+/**
  * Пустой слой не запирает.
  *
  * Ловушка, которая держит человека в диалоге без единой достижимой кнопки, —
@@ -276,8 +370,7 @@ test("Esc закрывает палитру поверх диалога, а ди
 test("из слоя без единого элемента фокус выпускается", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/ui");
-  await page.getByRole("button", { name: /Поиск и команды/ }).click();
-  await page.locator(".palette").waitFor();
+  await openPalette(page);
 
   await page.evaluate(() => {
     const box = document.querySelector<HTMLElement>(".palette");

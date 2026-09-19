@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, rowTexts, goVia } from "./helpers";
+import { goMenu, goTop, login, logout, rowTexts } from "./helpers";
 
 /**
  * Сквозной клинический сценарий: тревога → пациент → сводка → направление →
@@ -9,12 +9,13 @@ import { login, rowTexts, goVia } from "./helpers";
 test("от тревоги до закрытого направления", async ({ page }) => {
   await login(page, "psy");
 
-  await goVia(page, /Обзор/, /^Случаи риска/);
+  // «Случаи риска» в шесть пунктов полосы не вошли: они в бургере, в «Обзоре»
+  await goMenu(page, /^Случаи риска/);
   // экран разбора: единица работы — человек, а не сработавший пункт
   await expect(page.getByRole("heading", { name: "Разбор случаев" })).toBeVisible();
 
-  // из тревоги — к пациенту
-  await goVia(page, /Люди/, "Пациенты");
+  // из тревоги — к пациенту: полосой, как ходят каждый день
+  await goTop(page, "Пациенты");
   const firstPatient = page.locator("table tbody tr td a").first();
   await firstPatient.click();
 
@@ -50,7 +51,7 @@ test("от тревоги до закрытого направления", async
   await expect(row.getByRole("button")).toHaveCount(0);
 
   // завершённого нет в реестре открытых, но оно находится с фильтром
-  await goVia(page, /Люди/, "Направления");
+  await goMenu(page, "Направления");
   await expect(page.getByText(reason)).toHaveCount(0);
   await page.getByRole("button", { name: "Показать завершённые" }).click();
   await expect(page.getByText(reason)).toBeVisible();
@@ -58,12 +59,12 @@ test("от тревоги до закрытого направления", async
 
 test("групповой админ не видит чужих пациентов", async ({ page }) => {
   await login(page, "psy");
-  await goVia(page, /Люди/, "Пациенты");
+  await goTop(page, "Пациенты");
   const mine = await rowTexts(page);
 
-  await page.getByRole("button", { name: /Выйти/i }).click();
+  await logout(page);
   await login(page, "psy2");
-  await goVia(page, /Люди/, "Пациенты");
+  await goTop(page, "Пациенты");
   const theirs = await rowTexts(page);
 
   expect(mine.length).toBeGreaterThan(0);

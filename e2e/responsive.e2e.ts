@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { goMenu, login, TOP_NAV_MIN_WIDTH, topNav } from "./helpers";
 
 /**
  * Консоль на планшете и телефоне.
@@ -44,34 +44,20 @@ for (const size of SIZES) {
     test("навигация доступна и ведёт куда надо", async ({ page }) => {
       await login(page, "psy");
       /*
-       * На узком экране рельса не сжимает содержимое, а выезжает поверх:
-       * деление на две колонки на 390 px не оставляет места ни одной таблице.
-       * Поэтому сначала её открывают кнопкой, и это часть проверки.
+       * Ниже 1100 px шесть пунктов полосы не помещаются и уходят в бургер
+       * (Topbar.tsx, max-[1100px]); планшет на 1024 — уже ниже порога, и до
+       * пациентов на нём, как и на телефоне, ведёт только бургер. Дверь
+       * выбирается по ширине, а не «какая найдётся»: проверяется, что на
+       * этой ширине открыта та дверь, которую обещает раскладка. Сдвинь
+       * кто-то порог — планшет молча получил бы полосу, которая на нём не
+       * помещается, а запасной ход через бургер это спрятал бы.
        */
-      const toggle = page.getByRole("button", { name: /меню|меню/i }).first();
-      if (await toggle.isVisible()) await toggle.click();
-
-      /*
-       * Раздел сперва раскрывают. Группы в рельсе закрыты, кроме той, в
-       * которой человек сейчас находится, — и пунктов закрытой группы нет
-       * в разметке вовсе, а не просто не видно. На телефоне это тем более
-       * верно: раскрытый список из двадцати пяти строк там не помещается
-       * ни при каком раскладе.
-       */
-      const group = page.locator(".sidebar button[aria-expanded]", { hasText: "Люди" }).first();
-      /*
-       * Свёрнутая до значков рельса групп не раскрывает — там плоский
-       * список, и пункт уже на месте. Поэтому раздел ищется, но его
-       * отсутствие не ошибка: проверяется не устройство рельсы, а то, что
-       * до пациентов можно дойти в обоих её видах.
-       */
-      if (await group.count()) {
-        if ((await group.getAttribute("aria-expanded")) === "false") await group.click();
+      if (size.width >= TOP_NAV_MIN_WIDTH) {
+        await topNav(page).getByRole("link", { name: "Пациенты" }).click();
+      } else {
+        await expect(topNav(page), "ниже порога полоса разделов должна быть спрятана").toBeHidden();
+        await goMenu(page, "Пациенты");
       }
-
-      const link = page.locator(`.sidebar a[href="/patients"]`);
-      await expect(link).toBeVisible();
-      await link.click();
       await expect(page).toHaveURL(/\/patients/);
     });
   });

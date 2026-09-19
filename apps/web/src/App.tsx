@@ -5,7 +5,6 @@ import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
 import { Topbar } from "./shell/Topbar";
-import { Rail } from "./shell/Rail";
 import { Button, Tag } from "./ui/primitives";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
@@ -123,7 +122,13 @@ export default function App() {
    * условия конкретного помещения.
    */
   const [theme, setTheme] = useState<Theme>(
-    () => (localStorage.getItem("quizzy.theme") as Theme) ?? "dark",
+    /*
+     * Умолчание — светлая: макет заказчика нарисован на белом листе, и консоль
+     * обязана открываться так, как нарисована. Тёмная остаётся выбором человека.
+     * То же умолчание стоит в tokens.css (голый :root), в Account.tsx и в
+     * patient/Profile.tsx — иначе первый кадр шёл бы светлым, второй тёмным.
+     */
+    () => (localStorage.getItem("quizzy.theme") as Theme) ?? "light",
   );
   /*
    * Плотность — не косметика: в плотном режиме на экран помещается 24 строки
@@ -137,11 +142,16 @@ export default function App() {
   const [density, setDensity] = useState<Density>(
     () => (localStorage.getItem("quizzy.density") as Density) ?? "cozy",
   );
-  const [railOpen, setRailOpen] = useState(() => {
-    // на узком экране рельса перекрывает содержимое, поэтому стартует закрытой
-    if (window.matchMedia("(max-width: 900px)").matches) return false;
-    return localStorage.getItem("quizzy.rail") !== "0";
-  });
+  /*
+   * Состояния рельсы здесь больше нет.
+   *
+   * Она хранила «открыта ли колонка» и помнила это между заходами — нужное
+   * свойство ровно до тех пор, пока навигация отнимала ширину. Верхняя полоса
+   * не отнимает ничего и не сворачивается, а бургер живёт одним нажатием и
+   * закрывается сам: помнить между заходами нечего. Ключ «quizzy.rail» в
+   * хранилище браузеров остаётся мусором — читать его больше некому, и
+   * подчищать его отдельным кодом дороже, чем оставить.
+   */
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   /*
@@ -173,11 +183,29 @@ export default function App() {
     });
   };
 
+  /*
+   * Применение и сохранение темы — разные действия, и здесь это разведено.
+   *
+   * Эффект раньше и ставил атрибут, и писал в хранилище, и слал на сервер —
+   * на КАЖДОМ монтировании, включая самое первое, когда тема ещё умолчание,
+   * а не выбор. Итог: у каждого, кто хоть раз открывал консоль, в профиле и
+   * в браузере лежит «dark», которого он не выбирал. Стоило умолчанию стать
+   * светлым (макет заказчика — белый лист), как оно перестало работать для
+   * всех, кроме новых: сохранённое умолчание перебивало новое.
+   *
+   * Теперь эффект только применяет. Сохраняет — chooseTheme, и только когда
+   * человек нажал переключатель: выбор — это действие, а не состояние.
+   * Плотность и движение оставлены как были, они не меняли умолчания.
+   */
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    localStorage.setItem("quizzy.theme", theme);
-    persist({ theme });
   }, [theme]);
+
+  const chooseTheme = (next: Theme) => {
+    setTheme(next);
+    localStorage.setItem("quizzy.theme", next);
+    persist({ theme: next });
+  };
 
   useEffect(() => {
     document.documentElement.dataset.density = density;
@@ -196,10 +224,6 @@ export default function App() {
     localStorage.setItem("quizzy.motion", motion);
     persist({ motion });
   }, [motion]);
-
-  useEffect(() => {
-    localStorage.setItem("quizzy.rail", railOpen ? "1" : "0");
-  }, [railOpen]);
 
   // ⌘K — единственный вход в поиск; в поле ввода не перехватываем
   useEffect(() => {
@@ -319,142 +343,146 @@ export default function App() {
 
   const isSuper = user.role === "superadmin";
 
-  return (
-    <div className="flex min-h-screen">
-      <Rail counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }} isSuper={isSuper} canAssign={(user.ladderRank ?? 0) > 1} collapsed={!railOpen} hidden={user.workspace?.railHidden ?? []}>
-        <div className="mt-3 flex flex-col gap-2 border-t border-hairline pt-3">
-          {railOpen ? (
-            <>
-              <div className="px-1">
-                <div className="truncate text-small font-medium text-text">{user.fullName}</div>
-                <div className="text-micro text-faint">
-                  {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
-                </div>
-              </div>
-              {user.readOnly ? (
-                /*
-                  Человек должен понимать, почему кнопки не срабатывают, до
-                  того как решит, что консоль сломана.
-                */
-                <Tag tone="attention" className="self-start">{ut("nav.readOnly")}</Tag>
-              ) : null}
-
-              {/*
-                Связь с Google — второй ключ от учётной записи, поэтому
-                состояние видно всегда, а не прячется в настройках: человек
-                должен знать, каких дверей у его записи две.
-
-                Привязка уходит переходом на сервер, а не запросом из кода:
-                Google показывает свой экран выбора учётной записи, и провести
-                через него можно только браузер целиком.
-              */}
-              {googleReady ? (
-                <div className="flex flex-col gap-1">
-                  <span className="text-micro text-faint">
-                    {user.googleLinked ? ut("lg.googleLinked") : ""}
-                  </span>
-                  {user.googleLinked ? (
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      className="justify-start"
-                      onClick={() => {
-                        // отвязка снимает второй ключ от учётной записи —
-                        // сервер спрашивает пароль, и спросить его надо здесь
-                        const pass = window.prompt(ut("lg.googleUnlinkAsk"));
-                        if (!pass) return;
-                        /*
-                          Отказ показывается, а не глотается.
-                          Здесь стоял пустой catch: на неверный пароль не
-                          происходило ровно ничего — ни сообщения, ни
-                          изменения на экране. Та же кнопка в разделе
-                          «Учётная запись» ошибку показывает; две версии
-                          одной кнопки, одна из них немая.
-                        */
-                        void run(
-                          () => api.googleUnlink(pass).then(refreshUser),
-                          ut("acct.saved"),
-                        );
-                      }}
-                    >
-                      {ut("lg.googleUnlink")}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      className="justify-start"
-                      onClick={() =>
-                        void api
-                          .googleLinkUrl()
-                          .then((r) => {
-                            window.location.href = r.url;
-                          })
-                          .catch(() => {})
-                      }
-                    >
-                      {ut("lg.googleLink")}
-                    </Button>
-                  )}
-                </div>
-              ) : null}
-
-              {/*
-                Стартовый экран переехал в «Учётную запись». Подвал рельсы —
-                место для имени, роли и выхода; выпадающий список настройки
-                стоял там рядом с кнопкой выхода и в свёрнутом виде исчезал
-                вовсе, то есть настройка была доступна не всегда.
-              */}
-            </>
-          ) : null}
-
-          {/*
-            Учётная запись — в подвале рельсы, рядом с именем и выходом, а не
-            разделом работы. Туда ходят раз в месяц: сменить пароль, привязать
-            Google, поменять тему. Пункт в списке разделов стоил бы внимания
-            при каждом открытии консоли.
-          */}
-          {railOpen ? (
-            <Link
-              to="/account"
-              className="rounded-sm px-2 py-1.5 text-caption text-muted transition-colors hover:bg-surface-2 hover:text-text"
-            >
-              {ut("acct.title")}
-            </Link>
-          ) : null}
-
-          <Button variant="quiet" size="sm" onClick={logout} className={railOpen ? "justify-start" : "justify-center px-0"}>
-            {railOpen ? (
-              ut("nav.logout")
-            ) : (
-              /*
-                Значок нарисован, а не набран символом ⏻: шрифты подключены
-                подмножествами, и его там нет — браузер подставил бы запасную
-                гарнитуру, а какую именно, зависит от машины.
-              */
-              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
-                <path d="M12 4v8" />
-                <path d="M7.5 7a7 7 0 1 0 9 0" />
-              </svg>
-            )}
-          </Button>
-          {railOpen ? (
-            <span className="px-1 font-mono text-micro text-faint" title={`${ut("ui.buildFrom")} ${__BUILD_DATE__}`}>
-              {__BUILD_SHA__}
-            </span>
-          ) : null}
+  /*
+   * Подвал рельсы переехал в бургер целиком — вместе с именем, ролью,
+   * пометкой «только чтение», связью с Google, «Учётной записью», выходом и
+   * номером сборки.
+   *
+   * Ничего из этого не потерялось и ничего не переехало на отдельный экран.
+   * Причина простая: всё это отвечает на вопрос «кто я здесь и как отсюда
+   * выйти», а такой вопрос задают редко и из любого места. Место для него —
+   * последняя строка общего меню, а не пункт в ряду разделов работы.
+   *
+   * Собирается здесь, а не в полосе: тут живут и пользователь, и отвязка
+   * Google, и выход. Полосе про авторизацию знать незачем — она про
+   * навигацию.
+   */
+  const account = (
+    <div className="flex flex-col gap-2">
+      <div className="px-1">
+        <div className="truncate text-small font-medium text-text">{user.fullName}</div>
+        <div className="text-micro text-faint">
+          {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
         </div>
-      </Rail>
+      </div>
+      {user.readOnly ? (
+        /*
+          Человек должен понимать, почему кнопки не срабатывают, до того как
+          решит, что консоль сломана.
+        */
+        <Tag tone="attention" className="self-start">{ut("nav.readOnly")}</Tag>
+      ) : null}
 
-      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
-        <Topbar
-          onSearch={() => setPaletteOpen(true)}
-          onToggleRail={() => setRailOpen((v) => !v)}
-          railOpen={railOpen}
-          theme={theme}
-          onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
-        />
-        <main className="main">
+      {/*
+        Связь с Google — второй ключ от учётной записи, поэтому состояние
+        видно всегда, а не прячется в настройках: человек должен знать, каких
+        дверей у его записи две.
+
+        Привязка уходит переходом на сервер, а не запросом из кода: Google
+        показывает свой экран выбора учётной записи, и провести через него
+        можно только браузер целиком.
+      */}
+      {googleReady ? (
+        <div className="flex flex-col gap-1">
+          <span className="text-micro text-faint">
+            {user.googleLinked ? ut("lg.googleLinked") : ""}
+          </span>
+          {user.googleLinked ? (
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() => {
+                // отвязка снимает второй ключ от учётной записи —
+                // сервер спрашивает пароль, и спросить его надо здесь
+                const pass = window.prompt(ut("lg.googleUnlinkAsk"));
+                if (!pass) return;
+                /*
+                  Отказ показывается, а не глотается.
+                  Здесь стоял пустой catch: на неверный пароль не происходило
+                  ровно ничего — ни сообщения, ни изменения на экране. Та же
+                  кнопка в разделе «Учётная запись» ошибку показывает; две
+                  версии одной кнопки, одна из них немая.
+                */
+                void run(
+                  () => api.googleUnlink(pass).then(refreshUser),
+                  ut("acct.saved"),
+                );
+              }}
+            >
+              {ut("lg.googleUnlink")}
+            </Button>
+          ) : (
+            <Button
+              variant="quiet"
+              size="sm"
+              className="justify-start"
+              onClick={() =>
+                void api
+                  .googleLinkUrl()
+                  .then((r) => {
+                    window.location.href = r.url;
+                  })
+                  .catch(() => {})
+              }
+            >
+              {ut("lg.googleLink")}
+            </Button>
+          )}
+        </div>
+      ) : null}
+
+      {/*
+        Учётная запись — рядом с именем и выходом, а не разделом работы. Туда
+        ходят раз в месяц: сменить пароль, привязать Google, поменять тему.
+        Пункт в списке разделов стоил бы внимания при каждом открытии консоли.
+      */}
+      <Link
+        to="/account"
+        className="rounded-sm px-2 py-1.5 text-caption text-muted no-underline transition-colors hover:bg-surface-2 hover:text-text"
+      >
+        {ut("acct.title")}
+      </Link>
+
+      {/*
+        Выход подписан словом, а не значком.
+
+        В свёрнутой рельсе на его месте стоял нарисованный кружок с чертой —
+        единственное, что туда помещалось. Свёрнутого состояния больше нет:
+        меню либо открыто целиком, либо закрыто целиком, — и значок, который
+        надо угадывать, стал платой ни за что.
+      */}
+      <Button variant="quiet" size="sm" onClick={logout} className="justify-start">
+        {ut("nav.logout")}
+      </Button>
+      <span className="px-1 font-mono text-micro text-faint" title={`${ut("ui.buildFrom")} ${__BUILD_DATE__}`}>
+        {__BUILD_SHA__}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden">
+      <Topbar
+        counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
+        isSuper={isSuper}
+        canAssign={(user.ladderRank ?? 0) > 1}
+        hidden={user.workspace?.railHidden ?? []}
+        onSearch={() => setPaletteOpen(true)}
+        theme={theme}
+        onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
+        menu={account}
+      />
+      {/*
+        Содержимое — колонка в 1200 px по центру, как на макете.
+
+        Поля здесь не ставятся: своими полями распоряжается экран (см. Page).
+        Полоса сверху держит ту же колонку и те же 1200, поэтому знак, пункты
+        меню и заголовок страницы стоят на одних вертикалях — расхождение в
+        несколько пикселей между шапкой и содержимым читается как перекос
+        даже у того, кто не умеет его назвать.
+      */}
+      <main className="main mx-auto w-full max-w-[1200px]">
         {/*
           Пока догружается экран, на его месте стоит скелет — то же, что при
           загрузке данных. Пустой прямоугольник или прыжок содержимого
@@ -551,13 +579,12 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
-        </main>
-      </div>
+      </main>
 
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
-        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+        onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
         onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
       />
     </div>

@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { login } from "./helpers";
+import { goMenu, login, menuButton, moreMenu, openMenu, topNav } from "./helpers";
 
 /**
  * Кабинет пациента с телефона: мишени, заголовки, подписи, фокус.
@@ -152,22 +152,22 @@ test("прохождение методики: фокус едет за вопр
   await expect(page.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
 });
 
-test.describe("рельса консоли на телефоне", () => {
+test.describe("меню консоли на телефоне", () => {
   /*
-   * Рельса задвигается трансформацией, то есть остаётся в разметке. Именно
-   * поэтому проверка нажимает Tab, а не смотрит на класс: сдвинутый за край
-   * элемент выглядит скрытым и при этом принимает фокус — автопроверка
-   * доступности об этом молчит по построению.
+   * Ниже 1100 px шесть пунктов полосы спрятаны, а список бургера, пока он
+   * закрыт, не отрисован вовсе. Проверка всё равно нажимает Tab, а не
+   * смотрит на класс: рельса, которую полоса сменила, была задвинута
+   * трансформацией — выглядела скрытой и при этом принимала фокус из-за
+   * края, — и спрятать пункты так же снова можно одной строкой стилей.
+   * Автопроверка доступности об этом молчит по построению.
    */
-  test("задвинутая рельса не забирает первые нажатия Tab", async ({ page }) => {
+  test("спрятанные пункты меню не забирают первые нажатия Tab", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
     await page.getByRole("link", { name: "Сегодня" }).waitFor();
 
-    const rail = page.locator(".sidebar");
-    const box = await rail.boundingBox();
-    expect(box, "рельса не найдена").toBeTruthy();
-    expect(box!.x, "рельса должна быть за левым краем").toBeLessThan(0);
+    // предпосылка: на этой ширине пункты действительно спрятаны — иначе проверять нечего
+    await expect(topNav(page), "на телефоне полоса разделов должна быть спрятана").toBeHidden();
 
     const visited: string[] = [];
     for (let i = 0; i < 12; i += 1) {
@@ -176,49 +176,64 @@ test.describe("рельса консоли на телефоне", () => {
         await page.evaluate(() => {
           const el = document.activeElement as HTMLElement | null;
           if (!el) return "нет";
-          const inRail = !!el.closest(".sidebar");
-          return `${inRail ? "РЕЛЬСА" : "экран"}:${(el.textContent ?? el.getAttribute("aria-label") ?? "").trim().slice(0, 20)}`;
+          /*
+           * Спрятанное — это пункты полосы и список бургера (диалог, которого
+           * при закрытом меню быть не должно). Сама шапка — знак, язык, кнопка
+           * бургера — видна и в порядке табуляции стоит по праву.
+           */
+          const hidden =
+            !!document.querySelector("header nav")?.contains(el) || !!el.closest('[role="dialog"]');
+          return `${hidden ? "СПРЯТАНО" : "экран"}:${(el.textContent ?? el.getAttribute("aria-label") ?? "").trim().slice(0, 20)}`;
         }),
       );
     }
     expect(
-      visited.filter((v) => v.startsWith("РЕЛЬСА")),
+      visited.filter((v) => v.startsWith("СПРЯТАНО")),
       `порядок табуляции: ${visited.join(" → ")}`,
     ).toEqual([]);
   });
 
-  test("выехавшая рельса закрывается Esc и возвращает фокус", async ({ page }) => {
+  test("открытый бургер держит фокус, закрывается Esc и возвращает фокус кнопке", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
     await page.getByRole("link", { name: "Сегодня" }).waitFor();
 
-    const toggle = page.getByRole("button", { name: /меню/i }).first();
-    await toggle.click();
+    const menu = await openMenu(page);
+    /* фокус переехал внутрь: иначе Tab продолжает под слоем, где ничего не видно */
+    expect(await menu.evaluate((el) => el.contains(document.activeElement))).toBe(true);
 
-    const rail = page.locator(".sidebar");
-    await expect(rail).toBeVisible();
-    /* фокус переехал внутрь: иначе Tab продолжает под ящиком, где ничего не видно */
-    expect(await page.evaluate(() => !!document.activeElement?.closest(".sidebar"))).toBe(true);
+    /*
+     * И остаётся внутри: нажатий больше, чем пунктов, — круг обязан
+     * замкнуться. На телефоне список выше экрана и прокручивается, и пункт за
+     * нижним краем — как раз тот случай, когда уход фокуса глазами незаметен.
+     * Полный обход ловушки живёт в focus-trap.e2e.ts; здесь проверяется, что
+     * на этой ширине она вообще стоит.
+     */
+    const steps = (await menu.locator("a[href], button:not([disabled])").count()) + 2;
+    for (let i = 1; i <= steps; i += 1) {
+      await page.keyboard.press("Tab");
+      expect(
+        await menu.evaluate((el) => el.contains(document.activeElement)),
+        `Tab №${i} вывел фокус из меню`,
+      ).toBe(true);
+    }
 
     await page.keyboard.press("Escape");
-    await expect(rail).toBeHidden();
-    expect(
-      await toggle.evaluate((el) => el === document.activeElement),
+    await expect(menu).toBeHidden();
+    await expect(
+      menuButton(page),
       "после закрытия фокус обязан вернуться на кнопку, а не в начало документа",
-    ).toBe(true);
+    ).toBeFocused();
   });
 
-  test("переход по разделу закрывает рельсу, а не оставляет её поверх", async ({ page }) => {
+  test("переход по разделу закрывает бургер, а не оставляет его поверх", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/today");
     await page.getByRole("link", { name: "Сегодня" }).waitFor();
 
-    await page.getByRole("button", { name: /меню/i }).first().click();
-    const group = page.locator(".sidebar button[aria-expanded]", { hasText: "Люди" }).first();
-    if ((await group.getAttribute("aria-expanded")) === "false") await group.click();
-    await page.locator('.sidebar a[href="/patients"]').click();
+    await goMenu(page, "Пациенты");
 
     await expect(page).toHaveURL(/\/patients/);
-    await expect(page.locator(".sidebar"), "новый экран читают сквозь рельсу").toBeHidden();
+    await expect(moreMenu(page), "новый экран читают сквозь меню").toBeHidden();
   });
 });
