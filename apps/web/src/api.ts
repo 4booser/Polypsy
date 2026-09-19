@@ -51,6 +51,8 @@ import type {
   Worklist,
   RuleHit,
   DecisionRule,
+  RuleAction,
+  RuleCondition,
   WorkspacePrefs,
   CohortSpec,
   CohortPreview,
@@ -387,6 +389,20 @@ export interface SurveyPageQuery {
   archived?: boolean;
 }
 
+/**
+ * Тело правила поддержки решений — «аналитической модели» раздела
+ * /analytics. Поля те же, что у ruleSchema в apps/api/src/routes/decisions.ts.
+ * groupId здесь нет намеренно: экран моделей область правила не показывает,
+ * а PATCH без поля оставляет её как была.
+ */
+export interface DecisionRuleInput {
+  title: string;
+  note: string | null;
+  enabled: boolean;
+  conditions: RuleCondition[];
+  actions: RuleAction[];
+}
+
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
 
 export const api = {
@@ -578,6 +594,15 @@ export const api = {
    */
   decisionRules: () =>
     unwrap(request<Items<DecisionRule & { note: string | null }>>("/api/decisions/rules")),
+  /** Завести модель; сервер отвечает идентификатором новой строки */
+  createDecisionRule: (input: DecisionRuleInput) =>
+    request<{ id: string }>("/api/decisions/rules", { method: "POST", body: JSON.stringify(input) }),
+  /** Правка поднимает версию правила — срабатывания помнят, при какой версии сработали */
+  updateDecisionRule: (id: string, input: Partial<DecisionRuleInput>) =>
+    request<{ ok: true; version: number }>(`/api/decisions/rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
   decideHit: (id: string, status: "accepted" | "declined", note?: string) =>
     request<{ ok: true }>(`/api/decisions/hits/${id}`, {
       method: "PATCH",
