@@ -123,6 +123,7 @@ const SCREENS = [
   "/invites",
   "/audit",
   "/groups",
+  "/patient-groups",
   "/cohorts",
   "/search",
   "/constructor",
