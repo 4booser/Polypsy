@@ -227,7 +227,7 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-/* ─────────────── Группы ─────────────── */
+/* ─────────────── Группы МЕТОДИК ─────────────── */
 
 export const groupInputSchema = z.object({
   title: z.string().min(1).max(200),
@@ -237,6 +237,85 @@ export const groupInputSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "Цвет задаётся как #RRGGBB")
     .nullish(),
   position: z.number().int().min(0).optional(),
+});
+
+/* ─────────────── Папки методик ───────────────
+ *
+ * Полка внутри группы методик — не группа и не группа пациентов: ничего не
+ * открывает и не закрывает, только раскладывает. Группа задаётся при
+ * заведении и дальше не правится, см. surveyFolderUpdateSchema.
+ */
+
+/** Дата папки хранится колонкой date: только ГГГГ-ММ-ДД, без времени и пояса */
+const plainDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в виде ГГГГ-ММ-ДД");
+
+export const surveyFolderInputSchema = z.object({
+  groupId: z.string().min(1),
+  title: z.string().min(1).max(200),
+  /** «початок 05.02.2023» с макета; без него — сегодня */
+  startsOn: plainDate.optional(),
+  /** Родительская папка; null или отсутствие — корень каталога группы */
+  parentId: z.string().min(1).nullish(),
+  position: z.number().int().min(0).optional(),
+});
+
+/**
+ * Правка папки — всё то же, кроме группы.
+ *
+ * Группу у папки не сменить намеренно: переезд папки перетащил бы через
+ * границу доступа все её методики разом и молча. Методика переезжает по
+ * одной своим маршрутом и папку при этом теряет — см. PATCH /api/surveys/:id.
+ */
+export const surveyFolderUpdateSchema = surveyFolderInputSchema.omit({ groupId: true }).partial();
+
+/** Перенос методики: в папку или в корень (null) */
+export const moveSurveySchema = z.object({
+  folderId: z.string().min(1).nullable(),
+});
+
+/* ─────────────── Группы ПАЦИЕНТОВ ───────────────
+ *
+ * Отдельная сущность от групп методик выше, и названа так, чтобы их нельзя
+ * было спутать: группа методик разграничивает доступ, группа пациентов —
+ * рабочий список людей, собранный специалистом руками.
+ */
+
+export const patientGroupInputSchema = z.object({
+  title: z.string().min(1).max(200),
+  /**
+   * «Опис групи (питання до групи)» — то, ради чего группа собрана.
+   *
+   * Потолок вдвое выше, чем у групп методик: там описание поясняет
+   * отделение одной строкой, здесь специалист пишет, что он у этой группы
+   * спрашивает, — а это уже абзац, и обрезать его на середине хуже, чем
+   * хранить лишние четыре килобайта.
+   */
+  description: z.string().max(4000).nullish(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Цвет задаётся как #RRGGBB")
+    .nullish(),
+  position: z.number().int().min(0).optional(),
+});
+
+/** Кого добавляем в группу — «додати пацієнта» */
+export const patientGroupMemberSchema = z.object({
+  userId: z.string().min(1),
+});
+
+/**
+ * Назначение методики на всю группу.
+ *
+ * Повторяет `grantAccessSchema` без `userId`: адресата здесь заменяет
+ * группа, а условия выдачи остаются теми же — и умолчание в одну попытку
+ * тоже. Разойтись этим двум схемам нельзя: назначение на группу
+ * разворачивается в те же самые персональные выдачи.
+ */
+export const assignSurveyToPatientGroupSchema = z.object({
+  surveyId: z.string().min(1),
+  expiresAt: z.string().nullish(),
+  note: z.string().max(500).nullish(),
+  attemptsAllowed: z.number().int().min(1).max(10).default(1),
 });
 
 /* ─────────────── Конструктор опроса ─────────────── */
@@ -463,6 +542,13 @@ export const createSurveySchema = z
   .object({
     title: localizedSchema,
     description: localizedSchema.nullish(),
+    /**
+     * Папка, в которой методика заводится, — «+» на экране папки. Только при
+     * заведении: правка папку не меняет, для переноса свой маршрут с своей
+     * записью в журнале (PUT /api/surveys/:id/folder). Папка обязана быть из
+     * той же группы, что и groupId, — это проверяет маршрут и держит база.
+     */
+    folderId: z.string().min(1).nullish(),
     administration: z.enum(["self", "clinician", "informant"]).default("self"),
     sections: z.array(sectionInputSchema).default([]),
     scales: z.array(scaleInputSchema).default([]),
@@ -591,6 +677,12 @@ export type CreateReferralInput = z.input<typeof createReferralSchema>;
 export type UpdateReferralInput = z.infer<typeof updateReferralSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type GroupInput = z.infer<typeof groupInputSchema>;
+export type SurveyFolderInput = z.infer<typeof surveyFolderInputSchema>;
+export type SurveyFolderUpdateInput = z.infer<typeof surveyFolderUpdateSchema>;
+export type MoveSurveyInput = z.infer<typeof moveSurveySchema>;
+export type PatientGroupInput = z.infer<typeof patientGroupInputSchema>;
+export type PatientGroupMemberInput = z.infer<typeof patientGroupMemberSchema>;
+export type AssignSurveyToPatientGroupInput = z.input<typeof assignSurveyToPatientGroupSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;
 export type BandInput = z.infer<typeof bandInputSchema>;
 export type ScaleInput = z.infer<typeof scaleInputSchema>;
@@ -708,6 +800,42 @@ export const responseListQuery = z.object({
    * совпадают до миллисекунды. Клиент курсор не разбирает: получил и вернул.
    */
   before: z.string().max(200).optional(),
+});
+
+/**
+ * Каталог методик: страница, папка, статус, поиск.
+ *
+ * Постраничность здесь offset-ная, как у журнала (auditQuery), а не
+ * курсорная, как у прохождений (responseListQuery), — и это выбор, а не
+ * недосмотр. Курсор решает задачу живого потока: строки прибывают между
+ * страницами, и offset съезжает. Каталог методик меняется несколько раз в
+ * месяц, а макет требует «сторінка 1 з 10 ‹ ›» — номер страницы, их число и
+ * шаг назад. Курсор ничего из этого не даёт: он знает только «дальше», а
+ * «назад» и «из скольких» пришлось бы считать на клиенте, дублируя сервер.
+ * Второй механизм не заводится: offset у нас уже есть.
+ *
+ * limit без значения — весь список. Так каталог зовут все выборы методики в
+ * консоли (назначение, батарея, киоск), и они не должны узнать о страницах.
+ */
+export const surveyListQuery = z.object({
+  groupId: z.string().max(64).optional().transform((v) => v || undefined),
+  /** «1» — показать снятые с использования; действует только для персонала */
+  archived: z.string().max(8).optional(),
+  limit: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : Number(v)))
+    .pipe(z.number().int().min(1).max(500).optional()),
+  offset: queryInt(0, 1_000_000, 0),
+  /** Идентификатор папки или `root` — корень (методики вне папок); без него — все */
+  folder: z.string().max(64).optional().transform((v) => v || undefined),
+  status: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(surveyStatusSchema.optional()),
+  /** Подстрока названия без учёта регистра, на любом из языков */
+  q: z.string().max(200).optional().transform((v) => (v ?? "").trim()),
 });
 
 /** Настройки рабочего места; каждое поле необязательно и правится отдельно */

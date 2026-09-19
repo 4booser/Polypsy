@@ -19,6 +19,8 @@ import { authRoutes } from "./routes/auth";
 import { surveyRoutes } from "./routes/surveys";
 import { responseRoutes } from "./routes/responses";
 import { groupRoutes } from "./routes/groups";
+import { patientGroupRoutes } from "./routes/patientGroups";
+import { surveyFolderRoutes } from "./routes/surveyFolders";
 import { analyticsRoutes } from "./routes/analytics";
 import { userRoutes } from "./routes/users";
 import { auditRoutes } from "./routes/audit";
@@ -126,7 +128,26 @@ app.get("/health/ready", async (c) => {
 
 app.route("/api/auth", authRoutes);
 app.route("/api/groups", groupRoutes);
+/*
+ * Группы ПАЦИЕНТОВ — отдельный путь, а не вложение в /api/groups.
+ *
+ * Вложить их значило бы, что «группа» в адресе означает то одно, то другое
+ * в зависимости от хвоста пути: /api/groups/:id — группа методик,
+ * /api/groups/patients/:id — группа людей. Читающий журнал доступа и
+ * разбирающий отказ обязаны понимать, о чём речь, по самому адресу.
+ */
+app.route("/api/patient-groups", patientGroupRoutes);
 app.route("/api/surveys", surveyRoutes);
+/*
+ * Папки МЕТОДИК — отдельный путь, а не /api/surveys/folders.
+ *
+ * Вложенный путь столкнулся бы с /api/surveys/:id: Hono отдал бы «folders»
+ * обработчику методики как её идентификатор, и спасал бы только порядок
+ * регистрации маршрутов — правило, которого в файле не видно. И, как у
+ * групп пациентов выше, адрес обязан сам говорить, о чём речь: папка — не
+ * методика и не группа.
+ */
+app.route("/api/survey-folders", surveyFolderRoutes);
 app.route("/api/analytics", analyticsRoutes);
 app.route("/api/users", userRoutes);
 app.route("/api/audit", auditRoutes);

@@ -1,15 +1,30 @@
 import { Hono } from "hono";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue, renderError } from "@quizzy/shared";
-import { createSurveySchema, updateSurveySchema, type SurveyFull, type SurveyListItem } from "@quizzy/shared";
+import {
+  createSurveySchema,
+  moveSurveySchema,
+  surveyListQuery,
+  updateSurveySchema,
+  type SurveyFull,
+  type SurveyListItem,
+  type SurveyListPage,
+} from "@quizzy/shared";
 import { db } from "../db";
 import { responses, surveyVersions, surveys } from "../db/schema";
-import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { attachContent, createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { hasPermission } from "../lib/permissions";
-import { assertGroupAccess, assertSurveyAccess, isStaff, surveyInUse, surveyScopeFilter } from "../lib/scope";
+import {
+  assertGroupAccess,
+  assertSurveyAccess,
+  assertSurveyFolderAccess,
+  isStaff,
+  surveyInUse,
+  surveyScopeFilter,
+} from "../lib/scope";
 import { patientVisibilityFilter } from "./access";
 import { hasGrant } from "../lib/scope";
 
@@ -82,9 +97,27 @@ surveyRoutes.patch("/:id/rights", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Каталог методик: весь список или страница.
+ *
+ * Без ?limit= — весь список, как и было: так его зовут все выборы методики в
+ * консоли и мобильное приложение, и они о страницах знать не должны. С
+ * ?limit= и ?offset= — страница, и в ответе `total` по тем же условиям:
+ * макет показывает «сторінка 1 з 10», и число страниц считается из него.
+ *
+ * Почему offset, а не курсор, как у прохождений (см. surveyListQuery в
+ * shared/schemas.ts): курсор знает только «дальше», а макету нужны «назад»
+ * и «из скольких». Съезд offset при вставках между страницами — беда живого
+ * потока, а каталог меняется несколько раз в месяц.
+ *
+ * ?folder=, ?status=, ?q= — фильтры экрана каталога: папка (или `root` —
+ * методики вне папок), вкладки «Опубліковані / Неопубліковані», поиск по
+ * названию. Все действуют поверх зоны видимости, а не вместо неё: чужая
+ * папка в ?folder= даёт пустую страницу, а не чужие методики.
+ */
 surveyRoutes.get("/", async (c) => {
   const user = c.get("user");
-  const groupId = c.req.query("groupId");
+  const query = parseQuery(c, surveyListQuery);
 
   const filters = [];
   if (!isStaff(user)) {
@@ -101,11 +134,29 @@ surveyRoutes.get("/", async (c) => {
     const scope = await surveyScopeFilter(user);
     if (scope) filters.push(scope);
   }
-  if (groupId) filters.push(eq(surveys.groupId, groupId));
+  if (query.groupId) filters.push(eq(surveys.groupId, query.groupId));
   // снятые с использования показываются только по явному запросу сотрудника
-  if (!(isStaff(user) && c.req.query("archived") === "1")) filters.push(surveyInUse);
+  if (!(isStaff(user) && query.archived === "1")) filters.push(surveyInUse);
 
-  const rows = await db
+  if (query.folder) {
+    filters.push(query.folder === "root" ? isNull(surveys.folderId) : eq(surveys.folderId, query.folder));
+  }
+  if (query.status) filters.push(eq(surveys.status, query.status));
+  if (query.q) {
+    /*
+     * Поиск — ILIKE по названию на обоих языках, а не слепой индекс из
+     * lib/searchIndex.ts: тот существует ради шифрованных записей, а
+     * названия методик лежат открыто, и их сотни, не тысячи. Подстановочные
+     * знаки экранируются: «100%» в запросе — это проценты, а не «всё».
+     */
+    const pattern = `%${query.q.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    filters.push(
+      sql`(${surveys.title}->>'uk' ilike ${pattern} escape '\\' or ${surveys.title}->>'ru' ilike ${pattern} escape '\\')`,
+    );
+  }
+  const where = filters.length ? and(...filters) : undefined;
+
+  const listing = db
     .select({
       survey: surveys,
       // подзапросы пишем с алиасами и полной квалификацией внешней колонки:
@@ -135,8 +186,28 @@ surveyRoutes.get("/", async (c) => {
         limit 1)`,
     })
     .from(surveys)
-    .where(filters.length ? and(...filters) : undefined)
-    .orderBy(desc(surveys.createdAt));
+    .where(where)
+    /*
+     * Идентификатор вторым ключом — ради страниц. Postgres не обещает
+     * порядка среди равных created_at, и посев кладёт десятки методик одной
+     * секундой: без второго ключа одна и та же методика могла бы попасть на
+     * две страницы, а другая — ни на одну, и по списку этого не видно.
+     */
+    .orderBy(desc(surveys.createdAt), desc(surveys.id))
+    .$dynamic();
+  const rows = await (query.limit === undefined
+    ? listing
+    : listing.limit(query.limit).offset(query.offset));
+
+  /*
+   * total считается вторым запросом и только когда просили страницу: без
+   * страницы он равен длине списка, и обходить таблицу ещё раз ради того
+   * же числа незачем.
+   */
+  const total =
+    query.limit === undefined
+      ? rows.length
+      : Number((await db.select({ n: sql<number>`count(*)::int` }).from(surveys).where(where))[0]?.n ?? 0);
 
   const list: SurveyListItem[] = rows.map((r) => ({
     ...r.survey,
@@ -153,7 +224,7 @@ surveyRoutes.get("/", async (c) => {
     assigned: r.assignedAt !== null,
     dueAt: r.dueAt,
   }));
-  return c.json({ items: list });
+  return c.json({ items: list, total } satisfies SurveyListPage);
 });
 
 surveyRoutes.get("/:id", async (c) => {
@@ -187,12 +258,24 @@ surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c
   const input = await parseBody(c.req.raw, createSurveySchema);
   // методику нельзя положить в чужую группу
   if (input.groupId) await assertGroupAccess(c.get("user"), input.groupId);
+  /*
+   * «+» на экране папки: методика заводится сразу в ней. Папка обязана быть
+   * из той же группы, иначе её не увидят те, кто увидит методику. Базу это
+   * правило тоже держит (составной ключ, миграция 0080), но отказ отсюда
+   * объясняет, а отказ базы — пятисотка. Методика без группы (null) под
+   * это же условие не проходит: у неё нет каталога, а значит, и полки.
+   */
+  if (input.folderId) {
+    const folder = await assertSurveyFolderAccess(c.get("user"), input.folderId);
+    if (folder.groupId !== (input.groupId ?? null)) badRequest("err.surveyFolderOtherGroup");
+  }
 
   const [row] = await db
     .insert(surveys)
     .values({
       id: crypto.randomUUID(),
       groupId: input.groupId ?? null,
+      folderId: input.folderId ?? null,
       title: normalizeLocalized(input.title)!,
       description: normalizeLocalized(input.description),
       instructions: normalizeLocalized(input.instructions),
@@ -255,6 +338,16 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
   const goingLive = input.status === "published" && existing.status !== "published";
 
   /*
+   * Смена группы снимает методику с полки. Папка живёт в группе, и в новой
+   * группе этой папки нет; оставить указатель значило бы показать
+   * сотрудникам нового отделения папку, которой им не видно, — а база такой
+   * строки и не примет: составной ключ (folder_id, group_id) её отвергнет
+   * пятисоткой. Обнуляется той же строкой UPDATE, чтобы ключ не сработал
+   * раньше. Снятие в личные черновики (groupId: null) — тоже уход из группы.
+   */
+  const leavesGroup = input.groupId !== undefined && (input.groupId ?? null) !== existing.groupId;
+
+  /*
    * Публикация со структурными ошибками запрещена: методика, которая не может
    * быть корректно посчитана, не должна попадать к пациентам. Черновик с
    * ошибками сохранить можно — это нормальное состояние незаконченной работы.
@@ -278,6 +371,7 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
       ...(input.description !== undefined && { description: normalizeLocalized(input.description) }),
       ...(input.instructions !== undefined && { instructions: normalizeLocalized(input.instructions) }),
       ...(input.groupId !== undefined && { groupId: input.groupId ?? null }),
+      ...(leavesGroup && { folderId: null }),
       ...(input.status !== undefined && { status: input.status }),
       ...(input.timeLimitSec !== undefined && { timeLimitSec: input.timeLimitSec ?? null }),
       ...(input.randomizeQuestions !== undefined && { randomizeQuestions: input.randomizeQuestions }),
@@ -338,6 +432,8 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
     .values({
       id: crypto.randomUUID(),
       groupId: source.groupId,
+      // копия ложится рядом с оригиналом: искать её в корне каталога незачем
+      folderId: source.folderId,
       title: { uk: `${source.title} (копія)`, ru: `${source.title} (копия)` } as Record<string, string>,
       description: source.description ? { uk: source.description } : null,
       instructions: source.instructions ? { uk: source.instructions } : null,
@@ -442,6 +538,45 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
 
   const [full] = await attachContent([row!]);
   return c.json(full, 201);
+});
+
+/**
+ * Перенос методики в папку каталога — или в корень (null).
+ *
+ * Свой маршрут, а не поле в общей правке. Перенос — действие каталога, а не
+ * правка методики: у него своя запись в журнале (survey.move), он не создаёт
+ * версию и не трогает updatedAt. Положить folderId в PATCH значило бы, что
+ * конструктор, сохраняя черновик целиком, молча переставлял бы методику по
+ * полкам — и разбирать по журналу, кто её переложил, было бы нечем.
+ *
+ * Папка обязана быть из группы методики. Проверка здесь — ради понятного
+ * отказа; держит правило база (составной ключ, миграция 0080), и обойти его
+ * другим маршрутом или скриптом нельзя. Методика без группы под условие не
+ * проходит: null не равен группе папки, и это правильно — у личного
+ * черновика нет каталога.
+ */
+surveyRoutes.put("/:id/folder", requireStaff, requirePermission("surveys.edit"), async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  await assertSurveyAccess(user, id);
+  const input = await parseBody(c.req.raw, moveSurveySchema);
+
+  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
+  if (!survey) notFound("err.surveyNotFound");
+
+  if (input.folderId) {
+    const folder = await assertSurveyFolderAccess(user, input.folderId);
+    if (folder.groupId !== survey.groupId) badRequest("err.surveyFolderOtherGroup");
+  }
+
+  await db.update(surveys).set({ folderId: input.folderId }).where(eq(surveys.id, id));
+  await audit(c, {
+    action: "survey.move",
+    resourceType: "survey",
+    resourceId: id,
+    details: { from: survey.folderId, to: input.folderId },
+  });
+  return c.json({ id, folderId: input.folderId });
 });
 
 /** История версий методики со счётчиком прохождений на каждой */

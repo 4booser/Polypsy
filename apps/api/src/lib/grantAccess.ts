@@ -12,6 +12,17 @@ export interface Grant {
   note: string | null;
   /** Сколько раз можно пройти; undefined — не менять, null — не ограничивать */
   attemptsAllowed?: number | null;
+  /**
+   * Назначение пришло через группу пациентов. Не задано — адресное.
+   *
+   * Перевыдача переписывает эту пометку так же, как срок и попытки, и по той
+   * же причине: новое назначение — это новое решение, а не воспоминание о
+   * старом. Поэтому адресная выдача поверх групповой СНИМАЕТ пометку, и
+   * снимает намеренно — специалист назначил методику лично, и в карте должно
+   * стоять именно это. Сохранять старую пометку значило бы вечно отвечать на
+   * вопрос «откуда методика» тем, как она появилась в первый раз.
+   */
+  viaPatientGroupId?: string | null;
 }
 
 /**
@@ -52,6 +63,7 @@ export async function grantAccess(tx: typeof Db, grants: Grant[]): Promise<void>
         grantedBy: g.grantedBy,
         expiresAt: g.expiresAt,
         note: g.note,
+        viaPatientGroupId: g.viaPatientGroupId ?? null,
         ...(g.attemptsAllowed === undefined ? {} : { attemptsAllowed: g.attemptsAllowed }),
       })),
     )
@@ -62,6 +74,9 @@ export async function grantAccess(tx: typeof Db, grants: Grant[]): Promise<void>
         expiresAt: sql`excluded.expires_at`,
         note: sql`excluded.note`,
         attemptsAllowed: sql`excluded.attempts_allowed`,
+        /* пометка «через группу» переписывается вместе со всем остальным —
+           см. поле viaPatientGroupId в интерфейсе выше */
+        viaPatientGroupId: sql`excluded.via_patient_group_id`,
         /* обе точки отсчёта попыток сдвигаются вместе — см. докблок выше */
         grantedAt: sql`now()`,
         attemptsUsed: 0,

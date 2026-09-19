@@ -2,11 +2,18 @@ import { Hono } from "hono";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { grantAccessSchema, type SurveyGrant } from "@quizzy/shared";
 import { db } from "../db";
-import { surveyAccess, surveys, users } from "../db/schema";
+import { patientGroupMembers, surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, accessiblePatientIds, assertSurveyAccess, assertSurveysInUse, surveyInUse } from "../lib/scope";
+import {
+  accessibleGroupIds,
+  accessiblePatientIds,
+  assertPatientGroupAccess,
+  assertSurveyAccess,
+  assertSurveysInUse,
+  surveyInUse,
+} from "../lib/scope";
 import { grantAccess } from "../lib/grantAccess";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -182,6 +189,31 @@ accessRoutes.get("/patients", async (c) => {
   const search = (c.req.query("search") ?? "").trim().toLowerCase();
   const unit = c.req.query("unit") ?? "";
 
+  /*
+   * Вкладка группы пациентов — «Моя група», «Група ризику», «Вечірня група».
+   *
+   * Фильтр здесь, а не отдельным маршрутом «состав группы»: на экране это
+   * один и тот же список людей, у которого сверху переключаются вкладки, и
+   * два источника для одного списка разошлись бы первым же поиском или
+   * фильтром по подразделению, работающим на одной вкладке и не работающим
+   * на другой.
+   *
+   * Сужает, а не расширяет: пересечение с зоной ответственности остаётся
+   * ниже нетронутым. Вкладка — способ посмотреть на своих людей под другим
+   * углом, а не способ увидеть чужих; поэтому чужая группа в параметре
+   * ничего не открывает — её состав просто не пересечётся с выдачей.
+   */
+  const patientGroupId = c.req.query("patientGroup") ?? "";
+  let inGroup: Set<string> | null = null;
+  if (patientGroupId) {
+    await assertPatientGroupAccess(user, patientGroupId);
+    const rows = await db
+      .select({ id: patientGroupMembers.patientId })
+      .from(patientGroupMembers)
+      .where(eq(patientGroupMembers.groupId, patientGroupId));
+    inGroup = new Set(rows.map((r) => r.id));
+  }
+
   let rows: (typeof users.$inferSelect)[];
   if (groupIds === null) {
     rows = await db.select().from(users).where(eq(users.role, "user"));
@@ -211,6 +243,7 @@ accessRoutes.get("/patients", async (c) => {
 
   const all = rows
     .map((u) => ({ id: u.id, fullName: fullNameOf(u), email: u.email, unit: u.unit }))
+    .filter((u) => (inGroup ? inGroup.has(u.id) : true))
     .filter((u) => (unit ? u.unit === unit : true))
     .filter((u) =>
       search ? `${u.fullName} ${u.email}`.toLowerCase().includes(search) : true,
@@ -220,7 +253,12 @@ accessRoutes.get("/patients", async (c) => {
   // чтение списка пациентов — доступ к персональным данным, фиксируем
   await audit(c, {
     action: "access.patient_list",
-    details: { matched: all.length, returned: Math.min(all.length, PATIENT_LIMIT), scoped: groupIds !== null },
+    details: {
+      matched: all.length,
+      returned: Math.min(all.length, PATIENT_LIMIT),
+      scoped: groupIds !== null,
+      ...(patientGroupId ? { patientGroupId } : {}),
+    },
   });
 
   return c.json({
