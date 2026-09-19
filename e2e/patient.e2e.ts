@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, menuButton } from "./helpers";
 
 /**
  * Кабинет пациента: вход, прохождение и запись.
@@ -11,8 +11,9 @@ import { login } from "./helpers";
 test("пациент входит в свой кабинет, а не в консоль", async ({ page }) => {
   await login(page, "patient");
   await page.waitForURL(/\/me/);
-  // рельса специалиста не должна появиться ни на мгновение
-  await expect(page.locator(".sidebar")).toHaveCount(0);
+  // оболочка специалиста не должна появиться ни на мгновение: её признак —
+  // бургер, он есть у сотрудника на любой ширине экрана
+  await expect(menuButton(page)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Тесты" })).toBeVisible();
 });
 
@@ -36,7 +37,7 @@ test("человек заводит учётную запись и проход�
   await page.getByRole("button", { name: "Создать аккаунт" }).click();
 
   await page.waitForURL(/\/me/);
-  await expect(page.locator(".sidebar")).toHaveCount(0);
+  await expect(menuButton(page)).toHaveCount(0);
 
   await page.getByRole("link", { name: "Тесты" }).click();
   // короткая методика: МЛО на двести пунктов уронило бы проверку по сроку

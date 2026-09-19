@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { langToggle, login, openMenu, setLang, topNav } from "./helpers";
 
 /**
  * Двуязычная оболочка.
@@ -10,34 +10,51 @@ import { login } from "./helpers";
  */
 test("переключение языка меняет оболочку и запоминается", async ({ page }) => {
   await login(page, "psy");
+  const nav = topNav(page);
+  const toggle = langToggle(page);
 
   /*
-   * Берутся пункты РАСКРЫТОГО раздела и подпись самого раздела: группы в
-   * рельсе закрыты, кроме текущей, и пунктов закрытой группы нет в
-   * разметке вовсе. «Пациенты» лежат в закрытой «Люди» — проверять по ним
-   * значило бы проверять заодно умолчание раскрытия.
+   * Берутся пункты полосы и слово на переключателе. Полоса стоит всегда и
+   * целиком — в отличие от рельсы, где пункты закрытой группы не
+   * существовали в разметке, и проверять по ним значило бы проверять заодно
+   * умолчание раскрытия. Слово на переключателе — не украшение: оно называет
+   * текущий язык, и человек по нему понимает, где он.
    */
   // конфигурация смоука ходит с русской локалью — стартуем с неё
-  await expect(page.locator(".sidebar").getByRole("link", { name: "Сводка" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Люди/ })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Пациенты" })).toBeVisible();
+  await expect(toggle).toHaveText("Рус");
 
-  await page.getByRole("button", { name: "УКР" }).click();
-  await expect(page.locator(".sidebar").getByRole("link", { name: "Зведення" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Випадки ризику" })).toBeVisible();
+  // переключатель нажимается сам, а не через setLang: проверяется именно
+  // то, что одно нажатие уводит на второй язык
+  await toggle.click();
+  await expect(nav.getByRole("link", { name: "Пацієнти" })).toBeVisible();
+  await expect(toggle).toHaveText("Укр");
+
+  /*
+   * Бургер переведён тем же нажатием: разделы в нём берутся из того же
+   * словаря, что и полоса, но рисуются другим кодом — и забытый ut() там
+   * полоса бы не выдала. Закрывается по Esc, чтобы дальше не читать оболочку
+   * сквозь список.
+   */
+  const menu = await openMenu(page);
+  await expect(menu.getByRole("link", { name: "Випадки ризику" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
 
   // язык страницы меняется тоже: от него зависят диктор и переносы слов
   await expect(page.locator("html")).toHaveAttribute("lang", "uk");
 
   await page.reload();
-  await expect(page.locator(".sidebar").getByRole("link", { name: "Зведення" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Пацієнти" })).toBeVisible();
 
-  await page.getByRole("button", { name: "РУС" }).click();
-  await expect(page.locator(".sidebar").getByRole("link", { name: "Сводка" })).toBeVisible();
+  await toggle.click();
+  await expect(nav.getByRole("link", { name: "Пациенты" })).toBeVisible();
+  await expect(toggle).toHaveText("Рус");
 });
 
 test("экраны ежедневного пути переведены целиком", async ({ page }) => {
   await login(page, "psy");
-  await page.getByRole("button", { name: "УКР" }).click();
+  await setLang(page, "uk");
 
   /*
    * У экрана начала смены заголовком стоит дата, а не название: сводка и
@@ -159,13 +176,14 @@ test("в украинском режиме не остаётся русских 
   const found: string[] = [];
   for (const path of SCREENS) {
     /*
-     * Переключатель берётся из шапки поимённо: на «Учётной записи» стоит
-     * второй такой же, и общий поиск по всей странице находит оба.
+     * Язык ставится, а не переключается: в шапке один переключатель на оба
+     * языка, и нажимать его вслепую значило бы через раз получать не тот
+     * (см. setLang). Он же берётся из шапки поимённо — на «Учётной записи»
+     * стоит второй переключатель.
      */
-    const header = page.getByRole("banner");
-    await header.getByRole("button", { name: "РУС" }).click();
+    await setLang(page, "ru");
     const inRussian = await wordsOf(path);
-    await header.getByRole("button", { name: "УКР" }).click();
+    await setLang(page, "uk");
     const inUkrainian = await wordsOf(path);
 
     // осталось в украинском ровно то же, что было в русском, — значит данные;

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fieldByLabel, login, goVia } from "./helpers";
+import { fieldByLabel, goTop, login } from "./helpers";
 
 const ITEMS = [
   "1. Я легко засыпаю после дежурства.",
@@ -9,7 +9,13 @@ const ITEMS = [
 
 test("методика создаётся из вставленного текста и публикуется", async ({ page }) => {
   await login(page, "psy");
-  await goVia(page, /Методики и сбор/, "Методики");
+  /*
+   * В полосе методики подписаны «Тесты» (ключ top.tests): так их называет
+   * заказчик на макете, и так их ищет человек. Пункт «Методики» в бургере
+   * ведёт туда же, но сценарий идёт полосой — той дверью, которой ходят
+   * каждый день, — и заодно проверяет, что подпись на месте.
+   */
+  await goTop(page, "Тесты");
   await page.getByRole("link", { name: "Создать методику" }).click();
   await expect(page.getByRole("heading", { name: "Новая методика" })).toBeVisible();
 
@@ -32,7 +38,7 @@ test("методика создаётся из вставленного текс
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(page.getByText("версия 1")).toBeVisible();
 
-  await goVia(page, /Методики и сбор/, "Методики");
+  await goTop(page, "Тесты");
   await expect(page.getByRole("link", { name: title })).toBeVisible();
 });
 

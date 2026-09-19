@@ -21,7 +21,12 @@ export default function PatientProfile() {
 
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
   const [lastName, setLastName] = useState(user?.lastName ?? "");
-  const [theme, setTheme] = useState(() => localStorage.getItem("quizzy.theme") ?? "dark");
+  /*
+   * Умолчание — светлая: макет заказчика нарисован на белом листе, и консоль
+   * обязана открываться так, как нарисована. Тёмная остаётся выбором человека,
+   * а не первым впечатлением.
+   */
+  const [theme, setTheme] = useState(() => localStorage.getItem("quizzy.theme") ?? "light");
 
   const applyTheme = (next: string) => {
     setTheme(next);

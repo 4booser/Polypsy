@@ -5,7 +5,7 @@
 --text: #e9e9ed
 --muted: #b2b6ca
 --accent: #e0a63c
---primary: #b5abfc
+--primary: #bf9fdf
 --sev-none: #4fa97a
 --sev-mild: #d0a72a
 --sev-moderate: #e0813f

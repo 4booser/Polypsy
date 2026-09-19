@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login, goVia } from "./helpers";
+import { goMenu, login, openMenu } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -15,7 +15,8 @@ const detail = (page: import("@playwright/test").Page) => page.locator(".triage-
 
 test.beforeEach(async ({ page }) => {
   await login(page, "psy");
-  await goVia(page, /Обзор/, /^Случаи риска/);
+  // «Случаи риска» в шесть пунктов полосы не вошли: они в бургере, в «Обзоре»
+  await goMenu(page, /^Случаи риска/);
   await expect(rows(page).first()).toBeVisible();
 });
 
@@ -122,8 +123,16 @@ test("новая тревога догоняет открытый экран б�
     data: { eventsSeenAt: new Date().toISOString() },
   });
   await page.reload();
-  await page.waitForSelector(".sidebar");
-  await expect(page.locator(".events-dot")).toHaveCount(0);
+  /*
+   * Центр событий живёт в бургере, и пока меню закрыто, его нет в разметке —
+   * ни кнопки, ни отметки. Поэтому меню открывается ДО сдачи и остаётся
+   * открытым: «ни одного действия в браузере» ниже относится к самой
+   * тревоге — отметка обязана появиться сама, без обновления страницы и
+   * нажатий, — а не к тому, куда смотреть. Проверка «отметки нет» при
+   * закрытом меню была бы пустой: её там нет и быть не может.
+   */
+  const menu = await openMenu(page);
+  await expect(menu.locator(".events-dot")).toHaveCount(0);
 
   /*
    * Запросы идут через page.request и относительные адреса: у стенда свой
@@ -167,7 +176,7 @@ test("новая тревога догоняет открытый экран б�
   });
 
   // ни одного действия в браузере — отметка появляется сама
-  await expect(page.locator(".events-dot")).toBeVisible({ timeout: 15_000 });
+  await expect(menu.locator(".events-dot")).toBeVisible({ timeout: 15_000 });
 });
 
 test("срез экрана сохраняется под именем и восстанавливается", async ({ page }) => {
