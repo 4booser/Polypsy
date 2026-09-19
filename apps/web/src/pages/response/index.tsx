@@ -44,19 +44,21 @@ import { buildResponseView, type QuestionView, type ScaleLadder } from "./model"
  */
 
 /*
- * Замеры кадра f34 (кадр 1600 px, колонка 1200):
+ * Замеры кадра f34 (кадр 1600 px, колонка 1200), сняты по пикселям:
  *
  *   заголовок «Опис тесту»      18/700 фиолетовым, текст 16/20 серым
- *   колонка пунктов              700 px по центру
+ *   колонка пунктов              700 px по центру (x 451–1150)
  *   пункт                        заголовок 18/22 фиолетовым, до строк 20 px
- *   строка варианта              текст 1fr · вес 79 px · зазор 15 · шаг 51
+ *   строка варианта              текст 1fr · вес 80 px · зазор 15 · высота 36 · шаг 51
  *   между пунктами               50 px, столько же до «Результати»
- *   ступень лестницы             «від» · поле 90 · «до» · поле 90 · текст 1fr
- *   кнопка                       45 px, 22/700, у правого края колонки
+ *   ступень лестницы             «від» · поле 87 · «до» · поле 87 · текст 1fr, шаг 51
+ *   кнопка                       45 px, 22/700, правый край — край колонки
  *
- * Шаг строк 51 (36 + 15) на кадре получается 49: два пикселя отданы ритму
- * формы, который задан в Field, — на одном экране две сетки строк были бы
- * хуже, чем два пикселя расхождения.
+ * Шаг 51 — это 36 высоты Readout плюс 15 зазора: ритм строк здесь тот же,
+ * что у формы (Field), и кадр с ним совпадает ровно, без округлений.
+ * Единственное, что нарисовано на кадре и не набрано, — ширина «від»/«до»:
+ * она задана словом, а не числом (22 px под «від»), чтобы русское «от»/«до»
+ * не ломало сетку.
  */
 
 export default function ResponseView() {
@@ -104,7 +106,7 @@ export default function ResponseView() {
       {survey.description ? (
         <section className="mb-[40px]">
           <h2 className="m-0 mb-[12px] text-[18px] font-bold leading-tight text-primary">
-            {ut("rv.description")}
+            {ut("rsp.description")}
           </h2>
           <p className="m-0 whitespace-pre-wrap text-[16px] leading-[20px] text-muted">{survey.description}</p>
         </section>
@@ -112,7 +114,7 @@ export default function ResponseView() {
 
       <div className="mx-auto w-full max-w-[700px]">
         {view.stale ? (
-          <p className="m-0 mb-[28px] text-[13px] leading-[19px] text-muted">{ut("rv.staleVersion")}</p>
+          <p className="m-0 mb-[28px] text-[13px] leading-[19px] text-muted">{ut("rsp.staleVersion")}</p>
         ) : null}
 
         <ol className="m-0 flex list-none flex-col gap-[50px] p-0">
@@ -122,15 +124,27 @@ export default function ResponseView() {
         </ol>
 
         <section className="mt-[50px]">
-          <h2 className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">{ut("rv.results")}</h2>
+          <h2 className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">{ut("rsp.results")}</h2>
           {view.ladders.length ? (
             <div className="flex flex-col gap-[28px]">
               {view.ladders.map((l) => (
-                <Ladder key={l.scaleId} l={l} />
+                <Ladder key={l.scaleId} l={l} titled={view.ladders.length > 1} />
               ))}
             </div>
           ) : (
-            <p className="m-0 text-[13px] leading-[19px] text-muted">{ut("rv.scoresOff")}</p>
+            /*
+              Пустой список баллов — не всегда «подсчёт выключен». Сервер
+              заполняет response_scores только при сдаче, поэтому у незавершённого
+              или брошенного прохождения при включённом подсчёте баллов тоже
+              нет — но причина другая, и строка должна называть её, а не
+              обещать, что баллов не будет. Сначала проверяется подсчёт, а не
+              состояние: у методики без подсчёта и сданное прохождение пусто.
+            */
+            <p className="m-0 text-[13px] leading-[19px] text-muted">
+              {!detail.survey.scoringEnabled || detail.status === "completed"
+                ? ut("rsp.scoresOff")
+                : ut("rsp.notSubmitted")}
+            </p>
           )}
         </section>
 
@@ -149,7 +163,7 @@ export default function ResponseView() {
         ) : (
           <div className="mt-[45px] flex justify-end">
             <Button size="md" onClick={() => setWriting(true)}>
-              {ut("rv.createConclusion")}
+              {ut("rsp.createConclusion")}
             </Button>
           </div>
         )}
@@ -170,13 +184,13 @@ function QuestionBlock({ q }: { q: QuestionView }) {
         читает «питання номер один», и это лучше, чем номер отдельным узлом.
       */}
       <h2 className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">
-        {ut("rv.questionN").replace("{n}", String(q.number))}
+        {ut("rsp.questionN").replace("{n}", String(q.number))}
         {q.title ? ` ${q.title}` : ""}
       </h2>
       {q.options.length ? (
         <ul className="m-0 flex list-none flex-col gap-[15px] p-0">
           {q.options.map((o) => (
-            <li key={o.id} className="grid grid-cols-[1fr_79px] items-stretch gap-[15px]">
+            <li key={o.id} className="grid grid-cols-[1fr_80px] items-stretch gap-[15px]">
               {/*
                 Заливка — единственный признак выбора на кадре, и глазу его
                 хватает: залитая строка среди контурных читается однозначно и
@@ -185,7 +199,7 @@ function QuestionBlock({ q }: { q: QuestionView }) {
               */}
               <Readout look={o.chosen ? "fill" : "outline"} className={cx(o.chosen && "font-bold")}>
                 <span className="text-primary">{o.text}</span>
-                {o.chosen ? <span className="sr-only"> — {ut("rv.chosen")}</span> : null}
+                {o.chosen ? <span className="sr-only"> — {ut("rsp.chosen")}</span> : null}
                 {/*
                   Критический вариант помечен словом, а не цветом: цвет один
                   не работает, и на протоколе с тревогой это не то место, где
@@ -222,24 +236,27 @@ function QuestionBlock({ q }: { q: QuestionView }) {
 /**
  * Лестница диапазонов одной шкалы: «від N до M — текст», попавшая ступень залита.
  *
- * Кадр рисует одну лестницу: у методики макета одна сумма. У методик с
- * несколькими шкалами лестниц столько же, и над каждой — строка с названием
- * шкалы и значением в её единицах: без неё три одинаковых «від 1 до 10» не
- * отличить друг от друга.
+ * Кадр рисует одну лестницу без подписи над ней: у методики макета одна
+ * сумма, и залитая ступень — весь результат. Строка «шкала · значение ·
+ * единицы» печатается только там, где без неё нельзя: у методик с
+ * несколькими шкалами (titled) — иначе три одинаковых «від 1 до 10» не
+ * отличить друг от друга; и у разошедшейся версии, где лестницы нет и
+ * подпись полосы от сервера — единственное, что известно о результате.
+ * Печатать её всегда было бы проще, но на единственной лестнице она
+ * дублирует залитую ступень и уводит от кадра.
  */
-function Ladder({ l }: { l: ScaleLadder }) {
+function Ladder({ l, titled }: { l: ScaleLadder; titled: boolean }) {
   const { ut } = useLang();
+  const orphanBand = !l.rows.length && l.bandLabel;
   return (
     <div>
-      <p className="m-0 mb-[10px] text-[13px] leading-[19px] text-muted">
-        {l.title} · <span className="tabular-nums">{l.value}</span> {ut(`norm.${l.normalization}`)}
-        {/*
-          Подпись полосы от сервера печатается, только когда лестницы нет:
-          при живой лестнице она и так залита, а при разошедшейся версии это
-          единственное, что известно о результате.
-        */}
-        {!l.rows.length && l.bandLabel ? ` — ${l.bandLabel}` : ""}
-      </p>
+      {titled || orphanBand ? (
+        <p className="m-0 mb-[10px] text-[13px] leading-[19px] text-muted">
+          {l.title} · <span className="tabular-nums">{l.value}</span> {ut(`norm.${l.normalization}`)}
+          {/* при живой лестнице полоса и так залита — подпись только вместо лестницы */}
+          {orphanBand ? ` — ${l.bandLabel}` : ""}
+        </p>
+      ) : null}
       {l.rows.length ? (
         <ol className="m-0 flex list-none flex-col gap-[15px] p-0">
           {l.rows.map((r) => (
@@ -248,11 +265,11 @@ function Ladder({ l }: { l: ScaleLadder }) {
               <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">
                 {ut("cs.from")}
               </span>
-              <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[90px] shrink-0 justify-center", r.hit && "font-bold")}>
+              <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[87px] shrink-0 justify-center", r.hit && "font-bold")}>
                 <span className="text-primary tabular-nums">{r.min}</span>
               </Readout>
               <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">{ut("cs.to")}</span>
-              <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[90px] shrink-0 justify-center", r.hit && "font-bold")}>
+              <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[87px] shrink-0 justify-center", r.hit && "font-bold")}>
                 <span className="text-primary tabular-nums">{r.max}</span>
               </Readout>
               <Readout look={r.hit ? "fill" : "outline"} className={cx("ml-[10px] min-w-0 flex-1", r.hit && "font-bold")}>
@@ -260,7 +277,7 @@ function Ladder({ l }: { l: ScaleLadder }) {
                   {r.label}
                   {r.description ? <span className="font-normal"> — {r.description}</span> : null}
                 </span>
-                {r.hit ? <span className="sr-only"> — {ut("rv.hitBand")}</span> : null}
+                {r.hit ? <span className="sr-only"> — {ut("rsp.hitBand")}</span> : null}
               </Readout>
             </li>
           ))}

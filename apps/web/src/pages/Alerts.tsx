@@ -709,7 +709,7 @@ function ResponseModal({ id, onClose }: { id: string; onClose: () => void }) {
               тем, кому нужен протокол целиком или ссылка для коллеги.
             */}
             <Link to={`/surveys/${data.survey.id}/responses/${id}`} className="text-[13px]">
-              {ut("rv.openPage")}
+              {ut("rsp.openPage")}
             </Link>
           </div>
 
