@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   submitResponseSchema,
   type Answer,
+  type ResponseDetailBand,
   type ScoreResult,
   type SurveyResponse,
 } from "@quizzy/shared";
@@ -500,6 +501,14 @@ responseRoutes.get("/responses/:id", async (c) => {
 
   const answersByQuestion = new Map(answerRows.map((a) => [a.questionId, a]));
   const scaleTitles = new Map(survey.scales.map((s) => [s.id, s]));
+  /*
+   * Вес варианта — только персоналу. Тот же маршрут открывает своё
+   * прохождение сам обследуемый, а вес подсказывает, какой ответ
+   * «правильный», — при повторном замере это уже не измерение. Граница
+   * держится здесь, на сервере, а не на том, что кабинет весов пока не
+   * запрашивает.
+   */
+  const staffView = isStaff(user);
 
   await audit(c, {
     action: "response.read",
@@ -511,26 +520,67 @@ responseRoutes.get("/responses/:id", async (c) => {
 
   return c.json({
     id: response.id,
-    survey: { id: survey.id, title: survey.title, scoringEnabled: survey.scoringEnabled },
+    survey: {
+      id: survey.id,
+      title: survey.title,
+      scoringEnabled: survey.scoringEnabled,
+      // номер той версии, которую человек проходил, — по нему экран просит методику ?version=N
+      versionNumber: survey.versionNumber,
+    },
     status: response.status,
     startedAt: response.startedAt,
     submittedAt: response.submittedAt,
     durationMs: response.durationMs,
-    scores: scoreRows.map((s) => ({
-      scaleId: s.scaleId,
-      scaleCode: scaleTitles.get(s.scaleId)?.code ?? "",
-      scaleTitle: scaleTitles.get(s.scaleId)?.title ?? "",
-      kind: "clinical" as const,
-      correctedScore: s.rawScore,
-      value: s.value,
-      normalization: s.normalization,
-      rawScore: s.rawScore,
-      maxScore: s.maxScore,
-      percent: s.percent,
-      band: s.bandLabel
+    scores: scoreRows.map((s) => {
+      const scale = scaleTitles.get(s.scaleId);
+      const band = s.bandLabel
         ? { label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
-        : null,
-    })),
+        : null;
+      /*
+       * Лестница полос — все ступени шкалы той версии, которую человек
+       * проходил, с пометкой попавшей. Одной попавшей экрану мало: макет
+       * рисует все «від — до», а собирать их из действующей методики нельзя —
+       * границы могли перерисовать после прохождения.
+       *
+       * Попавшая ищется тем же сравнением, что в движке подсчёта
+       * (packages/shared/src/scoring.ts), и только когда полоса при подсчёте
+       * вообще нашлась: без неё балл не нормирован и не в тех единицах, в
+       * которых заданы ступени. Запасной путь — по сохранённой подписи: она
+       * записана в момент подсчёта и надёжнее, чем значение, округлённое
+       * иначе.
+       */
+      const ladder = [...(scale?.bands ?? [])].sort((a, b) => a.minScore - b.minScore || a.position - b.position);
+      const hit = band
+        ? (ladder.find((b) => s.value >= b.minScore && s.value <= b.maxScore) ??
+          ladder.find((b) => b.label === band.label))
+        : undefined;
+      return {
+        scaleId: s.scaleId,
+        scaleCode: scale?.code ?? "",
+        scaleTitle: scale?.title ?? "",
+        kind: "clinical" as const,
+        correctedScore: s.rawScore,
+        value: s.value,
+        normalization: s.normalization,
+        rawScore: s.rawScore,
+        maxScore: s.maxScore,
+        percent: s.percent,
+        band,
+        bands: ladder.map(
+          (b): ResponseDetailBand => ({
+            id: b.id,
+            minScore: b.minScore,
+            maxScore: b.maxScore,
+            label: b.label,
+            severity: b.severity,
+            description: b.description,
+            grade: b.grade,
+            recommendation: b.recommendation,
+            hit: b.id === hit?.id,
+          }),
+        ),
+      };
+    }),
     answers: survey.questions
       .filter((q) => q.type !== "info")
       .map((q) => {
@@ -562,6 +612,7 @@ responseRoutes.get("/responses/:id", async (c) => {
             text: o.text,
             riskFlag: o.riskFlag,
             riskSeverity: o.riskSeverity,
+            score: staffView ? o.score : null,
           })),
           text: decryptField(a?.text ?? null),
           number: a?.number ?? null,

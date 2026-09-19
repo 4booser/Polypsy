@@ -927,13 +927,44 @@ export interface SurveyResponse {
  */
 export interface ResponseDetail {
   id: string;
-  survey: { id: string; title: string; scoringEnabled: boolean };
+  survey: {
+    id: string;
+    title: string;
+    scoringEnabled: boolean;
+    /** Номер версии, которую человек проходил, — её и просят у GET /api/surveys/:id?version=N */
+    versionNumber: number;
+  };
   status: ResponseStatus;
   startedAt: string;
   submittedAt: string | null;
   durationMs: number;
-  scores: ScoreResult[];
+  scores: ResponseDetailScore[];
   answers: ResponseDetailAnswer[];
+}
+
+/**
+ * Балл по шкале вместе с лестницей полос.
+ *
+ * Одной попавшей полосы экрану мало: макет рисует все ступени «від — до» и
+ * подсвечивает ту, куда лёг балл. Раньше лестницу собирали из действующей
+ * методики, а человек мог проходить прежнюю версию с другими границами;
+ * здесь полосы берутся из той же версии, что и ответы.
+ */
+export interface ResponseDetailScore extends ScoreResult {
+  bands: ResponseDetailBand[];
+}
+
+export interface ResponseDetailBand {
+  id: string;
+  minScore: number;
+  maxScore: number;
+  label: string;
+  severity: Severity;
+  description: string | null;
+  grade: number | null;
+  recommendation: string | null;
+  /** В эту полосу лёг балл: не больше одной на шкалу и ни одной, если балл не нормирован */
+  hit: boolean;
 }
 
 export interface ResponseDetailAnswer {
@@ -950,6 +981,12 @@ export interface ResponseDetailAnswer {
     /** Выбор этого варианта поднимает тревогу немедленно */
     riskFlag: boolean;
     riskSeverity: RiskSeverity | null;
+    /**
+     * Вес варианта при подсчёте. Только персоналу: тот же маршрут открывает
+     * своё прохождение сам обследуемый, а вес подсказывает, какой ответ
+     * «правильный», — ему здесь null.
+     */
+    score: number | null;
   }[];
   text: string | null;
   number: number | null;
@@ -961,6 +998,43 @@ export interface ResponseDetailAnswer {
   changeCount: number;
   visitCount: number;
   events: { kind: string; elapsedMs: number; at: string; value: string | null }[];
+}
+
+/**
+ * Печатный лист ключей методики.
+ *
+ * Колонки ключа — по кодам ответов, которые встречаются в вариантах методики
+ * (`keyCodes`), а не «да/нет»: у методики с третьим ответом («не знаю») ключ
+ * на него иначе выпадал бы из печати, а сверка с пособием ради него и
+ * затевалась. Поля `yes`, `no`, `scored` оставлены прежней странице печати.
+ */
+export interface SurveyKeySheet {
+  surveyId: string;
+  title: string;
+  version: number;
+  questionCount: number;
+  questions: { n: number; title: string }[];
+  /** Коды ответов в порядке появления в вариантах; label — текст первого варианта с этим кодом */
+  keyCodes: { code: string; label: string }[];
+  scales: SurveyKeySheetScale[];
+}
+
+export interface SurveyKeySheetScale {
+  code: string;
+  title: string;
+  kind: ScaleKind;
+  normalization: ScaleNormalization;
+  itemCount: number;
+  /** Номера пунктов по каждому коду из `keyCodes`, в том же порядке; пусто — код в этой шкале не ждут */
+  keys: { code: string; label: string; items: string }[];
+  yes: string;
+  no: string;
+  /** Пункты, которые дают балл выбранного варианта, а не совпадение с кодом */
+  scored: string;
+  corrections: string;
+  norms: string;
+  stens: string;
+  bands: string;
 }
 
 /* ─────────────── Аналитика ─────────────── */

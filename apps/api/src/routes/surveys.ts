@@ -1,12 +1,14 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue, renderError } from "@quizzy/shared";
 import {
   createSurveySchema,
   moveSurveySchema,
+  surveyGetQuery,
   surveyListQuery,
   updateSurveySchema,
   type SurveyFull,
+  type SurveyKeySheet,
   type SurveyListItem,
   type SurveyListPage,
 } from "@quizzy/shared";
@@ -111,9 +113,14 @@ surveyRoutes.patch("/:id/rights", async (c) => {
  * потока, а каталог меняется несколько раз в месяц.
  *
  * ?folder=, ?status=, ?q= — фильтры экрана каталога: папка (или `root` —
- * методики вне папок), вкладки «Опубліковані / Неопубліковані», поиск по
- * названию. Все действуют поверх зоны видимости, а не вместо неё: чужая
- * папка в ?folder= даёт пустую страницу, а не чужие методики.
+ * методики вне папок), вкладки «Опубліковані / Неопубліковані» (несколько
+ * статусов — через запятую), поиск по названию. Все действуют поверх зоны
+ * видимости, а не вместо неё: чужая папка в ?folder= даёт пустую страницу,
+ * а не чужие методики.
+ *
+ * ?archived=1 — снятые с использования вместе с остальными, ?archived=only —
+ * только они: вкладка «Зняті» иначе просила бы весь список и отсеивала
+ * сама, и её страница с total считались бы не по тому, что на экране.
  */
 surveyRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -135,13 +142,40 @@ surveyRoutes.get("/", async (c) => {
     if (scope) filters.push(scope);
   }
   if (query.groupId) filters.push(eq(surveys.groupId, query.groupId));
-  // снятые с использования показываются только по явному запросу сотрудника
-  if (!(isStaff(user) && query.archived === "1")) filters.push(surveyInUse);
+  // снятые с использования показываются только по явному запросу сотрудника;
+  // пациенту параметр не даёт ничего — ему и в работе видно не всё
+  const archivedMode = isStaff(user) ? query.archived : undefined;
+  if (archivedMode === "only") filters.push(isNotNull(surveys.archivedAt));
+  else if (archivedMode !== "1") filters.push(surveyInUse);
 
-  if (query.folder) {
-    filters.push(query.folder === "root" ? isNull(surveys.folderId) : eq(surveys.folderId, query.folder));
+  if (query.folder === "root") {
+    filters.push(isNull(surveys.folderId));
+  } else if (query.folder && query.q) {
+    /*
+     * Поиск из папки — по её поддереву, а не по одному уровню. Каталог
+     * разложен по годам и месяцам, и человек, стоя в «Тести за 2023», ищет
+     * методику, которая лежит в «Лютий 2023» внутри; уровень нашёл бы
+     * пустоту. Без ?q= папка по-прежнему показывает только свой уровень:
+     * вложенные папки экран рисует отдельно, и методики из них здесь были
+     * бы дублями.
+     *
+     * Поддерево собирает рекурсивный CTE по parent_id: глубина раскладки
+     * заранее не ограничена, и заготовленное число JOIN однажды промолчало
+     * бы о слишком глубокой папке.
+     */
+    filters.push(
+      sql`${surveys.folderId} in (
+        with recursive subtree as (
+          select id from survey_folders where id = ${query.folder}
+          union all
+          select f.id from survey_folders f join subtree s on f.parent_id = s.id
+        )
+        select id from subtree)`,
+    );
+  } else if (query.folder) {
+    filters.push(eq(surveys.folderId, query.folder));
   }
-  if (query.status) filters.push(eq(surveys.status, query.status));
+  if (query.status) filters.push(inArray(surveys.status, query.status));
   if (query.q) {
     /*
      * Поиск — ILIKE по названию на обоих языках, а не слепой индекс из
@@ -227,10 +261,20 @@ surveyRoutes.get("/", async (c) => {
   return c.json({ items: list, total } satisfies SurveyListPage);
 });
 
+/**
+ * Методика с содержимым. ?version=N — содержимое конкретной версии.
+ *
+ * Просмотр пройденного теста показывает ту версию, которую человек проходил:
+ * правка методики создаёт новую версию с новыми пунктами и границами полос,
+ * и действующая версия рядом со старыми ответами — правдоподобные, но чужие
+ * числа. Права на версию — те же, что на методику: версия не отдельная
+ * сущность, а её прошлое.
+ */
 surveyRoutes.get("/:id", async (c) => {
   const user = c.get("user");
+  const query = parseQuery(c, surveyGetQuery);
   // raw=1 отдаёт локализованные объекты целиком — этим живёт конструктор
-  const raw = c.req.query("raw") === "1" && isStaff(user);
+  const raw = query.raw === "1" && isStaff(user);
   const survey = await getSurvey(c.req.param("id"), null, langOf(c), raw);
   if (!survey) notFound("err.surveyNotFound");
   if (!isStaff(user)) {
@@ -242,7 +286,22 @@ surveyRoutes.get("/:id", async (c) => {
   } else {
     await assertSurveyAccess(user, survey.id);
   }
-  return c.json(survey);
+  if (query.version === undefined || query.version === survey.versionNumber) return c.json(survey);
+
+  /*
+   * Версия ищется только после проверки прав и только среди версий ЭТОЙ
+   * методики. Иначе по ответу «версии нет / версия есть» можно было бы
+   * пересчитать версии методики, которую человеку видеть не положено, а по
+   * id версии — прочитать содержимое чужой.
+   */
+  const [versionRow] = await db
+    .select({ id: surveyVersions.id })
+    .from(surveyVersions)
+    .where(and(eq(surveyVersions.surveyId, survey.id), eq(surveyVersions.version, query.version)));
+  if (!versionRow) notFound("err.surveyVersionNotFound");
+  const versioned = await getSurvey(survey.id, versionRow.id, langOf(c), raw);
+  if (!versioned) notFound("err.surveyVersionNotFound");
+  return c.json(versioned);
 });
 
 /**
@@ -642,19 +701,55 @@ surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), as
   const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
   const compress = (nums: number[]) => nums.sort((a, b) => a - b).join(", ");
 
-  const scales = survey.scales.map((scale) => {
-    const yes = scale.items.filter((i) => i.matchKey === "yes").map((i) => indexById.get(i.questionId)!);
-    const no = scale.items.filter((i) => i.matchKey === "no").map((i) => indexById.get(i.questionId)!);
-    const scored = scale.items.filter((i) => i.matchKey === null).map((i) => indexById.get(i.questionId)!);
+  /*
+   * Колонки ключа — по кодам ответов, которые встречаются в вариантах
+   * методики, а не по списку «да/нет». Ключ хранит код (matchKey), и код
+   * этот — любой: у методики с ответами «так / ні / не знаю» третий код
+   * раньше не попадал ни в одну колонку и выпадал из печати молча — ровно
+   * то, чего распечатка для сверки с пособием допускать не должна.
+   *
+   * Порядок — по первому появлению в вариантах: так колонки стоят, как
+   * ответы в бланке. Код, которого ждёт ключ, но нет ни у одного варианта,
+   * тоже становится колонкой: это ошибка ключа, и на печати её должно быть
+   * видно, а не спрятано.
+   */
+  const keyCodes: SurveyKeySheet["keyCodes"] = [];
+  const seenCode = new Set<string>();
+  for (const q of survey.questions) {
+    for (const o of q.options) {
+      if (o.kind !== "option" || !o.keyCode || seenCode.has(o.keyCode)) continue;
+      seenCode.add(o.keyCode);
+      keyCodes.push({ code: o.keyCode, label: o.text });
+    }
+  }
+  for (const scale of survey.scales) {
+    for (const item of scale.items) {
+      if (!item.matchKey || seenCode.has(item.matchKey)) continue;
+      seenCode.add(item.matchKey);
+      keyCodes.push({ code: item.matchKey, label: item.matchKey });
+    }
+  }
+
+  const scales = survey.scales.map((scale): SurveyKeySheet["scales"][number] => {
+    const itemsFor = (code: string | null) =>
+      compress(
+        scale.items
+          .filter((i) => i.matchKey === code)
+          .flatMap((i) => {
+            const n = indexById.get(i.questionId);
+            return n === undefined ? [] : [n];
+          }),
+      );
     return {
       code: scale.code,
       title: scale.title,
       kind: scale.kind,
       normalization: scale.normalization,
       itemCount: scale.items.length,
-      yes: compress(yes),
-      no: compress(no),
-      scored: compress(scored),
+      keys: keyCodes.map((k) => ({ code: k.code, label: k.label, items: itemsFor(k.code) })),
+      yes: itemsFor("yes"),
+      no: itemsFor("no"),
+      scored: itemsFor(null),
       corrections: scale.corrections.map((x) => `${x.sourceScaleCode} × ${x.coefficient}`).join(", "),
       norms: scale.norms.map((n) => `${n.sex ?? "любой"}: M=${n.mean}, δ=${n.sd}`).join("; "),
       stens: scale.stenTable
@@ -673,8 +768,9 @@ surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), as
     version: survey.versionNumber,
     questionCount: survey.questions.length,
     questions: survey.questions.map((q, i) => ({ n: i + 1, title: q.title })),
+    keyCodes,
     scales,
-  });
+  } satisfies SurveyKeySheet);
 });
 
 /** Выгрузка методики в том виде, в каком её принимает конструктор */

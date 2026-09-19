@@ -22,8 +22,8 @@ const answer = (over: Partial<ResponseDetailAnswer> = {}): ResponseDetailAnswer 
   answered: true,
   optionIds: ["o2"],
   options: [
-    { id: "o1", text: "Ні", riskFlag: false, riskSeverity: null },
-    { id: "o2", text: "Так", riskFlag: false, riskSeverity: null },
+    { id: "o1", text: "Ні", riskFlag: false, riskSeverity: null, score: null },
+    { id: "o2", text: "Так", riskFlag: false, riskSeverity: null, score: null },
   ],
   text: null,
   number: null,
