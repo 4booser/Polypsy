@@ -27,6 +27,7 @@ import type {
   User,
   Issue,
   CreateUserInput,
+  UpdateProfileInput,
   GroupInput,
   SurveyGroup,
   Battery,
@@ -413,7 +414,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ...body, anonymous: false }),
     }),
-  updateMe: (body: { firstName?: string; lastName?: string; middleName?: string | null }) =>
+  /*
+   * Всё, что принимает PATCH /api/auth/me (updateProfileSchema), а не только
+   * ФИО: карточка сотрудника правит пол, дату рождения, специальность и
+   * подразделение — сервер их давно принимает, узким был только этот тип.
+   */
+  updateMe: (body: UpdateProfileInput) =>
     request<{ user: User }>("/api/auth/me", { method: "PATCH", body: JSON.stringify(body) }),
   googleUnlink: (password: string) =>
     request<{ ok: true }>("/api/auth/google/unlink", {
