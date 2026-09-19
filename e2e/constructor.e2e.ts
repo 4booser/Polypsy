@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fieldByLabel, goTop, login } from "./helpers";
+import { fieldByLabel, goTop, login, setEditLang } from "./helpers";
 
 const ITEMS = [
   "1. Я легко засыпаю после дежурства.",
@@ -16,28 +16,90 @@ test("методика создаётся из вставленного текс
    * каждый день, — и заодно проверяет, что подпись на месте.
    */
   await goTop(page, "Тесты");
-  await page.getByRole("link", { name: "Создать методику" }).click();
-  await expect(page.getByRole("heading", { name: "Новая методика" })).toBeVisible();
 
+  /*
+   * Ссылки «Создать методику» в каталоге больше нет. По кадру f11 над списком
+   * стоит один глиф «+» (имя по ключу cat.add), и он раскрывает меню «Новый
+   * тест / Новая папка / Импорт из файла». Сценарий идёт этим путём, а не
+   * прямым переходом на /constructor: прямой переход был бы зелёным и при
+   * пропавшем меню, а человек в каталоге видит только «+».
+   */
+  await page.getByRole("button", { name: "Добавить", exact: true }).click();
+  await page.getByRole("menu", { name: "Добавить" }).getByRole("menuitem", { name: "Новый тест" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Новый тест" })).toBeVisible();
+
+  // вид теста по умолчанию — «Конкретный»: общий набор ответов и шкалы с ключом (кадр f24)
+  await expect(page.getByRole("tab", { name: "Конкретный тест" })).toHaveAttribute("aria-selected", "true");
+
+  /*
+   * Название — на обоих языках, хотя поле одно: язык правки переключается
+   * селектом на весь экран, а хранится текст по-прежнему парой {uk, ru}.
+   * Проверяется именно пара: после переключения поле пустое (русский текст
+   * не утёк в украинский), после возврата — прежнее значение на месте.
+   * Сервер при создании одноязычное название пропустит (localizedSchema
+   * принимает {uk?, ru?}, normalizeLocalized лишь выбрасывает пустые языки),
+   * так что двуязычность здесь держит сценарий, а не сервер: методика для
+   * украинского госпиталя без украинского названия — брак, который иначе
+   * обнаружился бы на украинской консоли пациента.
+   */
   const title = `Смоук ${Date.now()}`;
-  await fieldByLabel(page, "Название", "ru").fill(title);
-  await fieldByLabel(page, "Название", "uk").fill(title);
+  const titleField = () => fieldByLabel(page, "Название теста");
+  await titleField().fill(title);
+  await setEditLang(page, "uk");
+  await expect(titleField()).toHaveValue("");
+  await titleField().fill(title);
+  await setEditLang(page, "ru");
+  await expect(titleField()).toHaveValue(title);
 
-  // главный сценарий переноса методики из пособия — вставка пунктов текстом
-  await page.getByRole("button", { name: /^Вопросы/ }).click();
+  /*
+   * Главный сценарий переноса методики из пособия — вставка пунктов текстом.
+   * Строка «Вставить пункты из текста» стоит под списком вопросов (ключ
+   * co.bulkPaste) и открывает панель с полем; панель ищется по своему
+   * заголовку, а поле в ней — единственное текстовое (два селекта рядом —
+   * не textbox). Пункты в тесте по-русски, а панель по умолчанию кладёт текст
+   * в украинский — язык выставляется явно, иначе пункты легли бы не в тот
+   * ключ и в аккордеоне (он показывает язык правки) стояли бы без текста.
+   */
   await page.getByRole("button", { name: "Вставить пункты из текста" }).click();
-  await page.getByRole("textbox").filter({ hasText: "" }).last().fill(ITEMS);
-  await page.getByRole("button", { name: /Добавить 3 пункт/ }).click();
+  const paste = page
+    .locator("[data-panel]")
+    .filter({ has: page.getByRole("heading", { name: "Вставка пунктов из текста" }) });
+  await paste.getByRole("textbox").fill(ITEMS);
+  await fieldByLabel(page, "Язык вставляемого текста").selectOption("ru");
+  await paste.getByRole("button", { name: "Добавить 3 пунктов" }).click();
 
-  await expect(page.getByRole("button", { name: "Вопросы 3" })).toBeVisible();
+  /*
+   * Вопросы — аккордеон (кадр f12): строка на пункт, свёрнутая, с именем
+   * «N. текст … Развернуть вопрос». Счёт строк и текст первой — то же, что
+   * прежде говорила вкладка «Вопросы 3», только теперь по самим пунктам.
+   */
+  const rows = page.getByRole("button", { name: /Развернуть вопрос$/ });
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toContainText("Я легко засыпаю после дежурства.");
 
+  /*
+   * Проверка структуры — в полосе инструментов, отчёт выводится над формой.
+   * Важен не факт отчёта, а что ошибок в нём нет: сервер отказывает в
+   * публикации при структурных ошибках (err.surveyPublishErrors), и без
+   * этой проверки следующий шаг падал бы с невнятным «не удалось сохранить».
+   */
   await page.getByRole("button", { name: "Проверить структуру" }).click();
-  await page.getByRole("button", { name: "Сохранить и опубликовать" }).click();
+  await expect(
+    page.getByRole("heading", { name: /^(Структурных замечаний нет|Замечаний: 0 ошибок)/ }),
+  ).toBeVisible();
+
+  /*
+   * «Опубликовать» в шапке (ключ cn.publish) заводит методику и публикует её
+   * одним нажатием; «Создать» внизу (cn.create) оставила бы черновик, и в
+   * каталоге на вкладке опубликованных его бы не было.
+   */
+  await page.getByRole("button", { name: "Опубликовать", exact: true }).click();
 
   // публикация уводит на аналитику новой методики: версия 1, прохождений нет
-  await expect(page.getByRole("heading", { name: title })).toBeVisible();
-  await expect(page.getByText("версия 1")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+  await expect(page.getByText(/^Версия 1 ·/)).toBeVisible();
 
+  // каталог открывается на опубликованных, свежая методика — первой строкой
   await goTop(page, "Тесты");
   await expect(page.getByRole("link", { name: title })).toBeVisible();
 });
@@ -71,16 +133,20 @@ test("предпросмотр показывает пункт, который �
   expect(withQuestions).not.toBeNull();
 
   await page.goto(`/constructor/${withQuestions}`);
-  await page.getByRole("button", { name: /^Вопросы/ }).click();
 
   const phone = page.locator(".preview-phone");
   await expect(phone).toBeVisible();
 
   const firstShown = await page.locator(".preview-question").textContent();
 
-  // ставим курсор во второй пункт — предпросмотр обязан перейти к нему
-  await page.locator(".constructor-main [data-panel], .constructor-main .card").nth(2).locator("textarea").first().focus();
-  await expect(page.locator(".preview-nav span")).not.toHaveText("1 / 1");
+  /*
+   * Вопросы — аккордеон, и свёрнутый пункт курсора не принимает: раньше
+   * сценарий ставил курсор в поле второго пункта, теперь второй пункт
+   * раскрывается строкой — конструктор сообщает предпросмотру номер при
+   * раскрытии, а не только по фокусу в поле, и предпросмотр обязан перейти.
+   */
+  await page.getByRole("button", { name: /Развернуть вопрос$/ }).nth(1).click();
+  await expect(page.locator(".preview-nav span")).toHaveText(/^2 \/ /);
   await expect(page.locator(".preview-question")).not.toHaveText(firstShown ?? "");
 
   // ключи и баллы в предпросмотр не попадают: человек их не видит
