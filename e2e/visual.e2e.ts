@@ -427,14 +427,30 @@ const SCREENS: Array<{
   {
     name: "patient",
     open: async (page) => {
-      await page.goto("/patients");
-      await patientLinks(page).first().waitFor();
-      await patientLinks(page).first().click();
-      await page.waitForURL(/\/patients\//);
+      /*
+       * Карта открывается по адресу, а не щелчком по первой строке списка.
+       * Эталон снят с карты, а список пациентов с волны 4 — другой экран
+       * (сетка f05 с вкладками групп): он спрашивает /api/patient-groups и
+       * листает /api/dynamics/respondents с параметрами, которых в записанном
+       * наборе нет, и под воспроизведением не отрисовывается вовсе. Тянуть
+       * его в набор значило бы переснимать эталон карты, которая не менялась.
+       * Первый из /api/dynamics/respondents — тот же человек, что и в наборе:
+       * запрос без параметров в нём есть, и при воспроизведении он отвечает
+       * из записи.
+       */
+      const first = await page.evaluate(async () => {
+        const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+        const list = (await (await fetch("/api/dynamics/respondents", { headers })).json()) as {
+          items: Array<{ userId: string }>;
+        };
+        return list.items[0]?.userId ?? null;
+      });
+      expect(first, "на стенде нет ни одного пациента — карту показать не на ком").not.toBeNull();
+      await page.goto(`/patients/${first}`);
       /*
        * Ждём вкладки карты, а не просто заголовок: заголовок «Пациенты»
-       * есть и на списке, с которого мы уходим, — ожидание проходило
-       * мгновенно, и снимок ловил карту в состоянии загрузки.
+       * есть и на списке, — ожидание проходило мгновенно, и снимок ловил
+       * карту в состоянии загрузки.
        */
       await page.getByRole("link", { name: "Хронология" }).waitFor();
       // карта дозагружает динамику и эпизоды отдельными запросами

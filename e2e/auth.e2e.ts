@@ -35,10 +35,16 @@ test.describe("вход в консоль", () => {
     /*
      * Раздел, в котором человек находится, отмечен: с него начинается смена.
      * Цвет диктору ничего не сообщает — ему текущий пункт называет
-     * aria-current, и проверяется именно он. После входа это сводка, и в
-     * полосе она подписана «Аналитика».
+     * aria-current, и проверяется именно он. Проверяется на «Пациентах», а не
+     * на сводке после входа: у сводки своего пункта в полосе нет («Аналитика»
+     * с волны 4 ведёт в перечень моделей, /analytics), и на ней ни один пункт
+     * текущим быть не должен — это тоже проверяется, иначе полоса, отмечающая
+     * «Аналитику» на любом адресе, прошла бы как исправная.
      */
-    await expect(nav.getByRole("link", { name: "Аналитика" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Аналитика" })).not.toHaveAttribute("aria-current", "page");
+    await nav.getByRole("link", { name: "Пациенты", exact: true }).click();
+    await page.waitForURL(/\/patients$/);
+    await expect(nav.getByRole("link", { name: "Пациенты", exact: true })).toHaveAttribute("aria-current", "page");
   });
 
   test("сессия переживает перезагрузку страницы", async ({ page }) => {
