@@ -40,6 +40,7 @@ import type {
   Respondent,
   Worklist,
   RuleHit,
+  DecisionRule,
   WorkspacePrefs,
   CohortSpec,
   CohortPreview,
@@ -228,6 +229,13 @@ export async function openInTab(path: string): Promise<void> {
 export interface ConclusionVersion {
   id: string;
   version: number;
+  /**
+   * Название документа с экрана «Заключення» (кадр f38, поле «Назва
+   * заключення»). Столбца title в таблице conclusions пока нет, поэтому поле
+   * необязательное: пока сервер его не отдаёт, экран держит набранное
+   * название у себя и не затирает его пустотой из ответа.
+   */
+  title?: string | null;
   text: string;
   status: "draft" | "signed";
   createdAt: string;
@@ -493,8 +501,15 @@ export const api = {
   responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
   worklist: () => request<Worklist>("/api/worklist"),
 
-  ruleHits: (status = "suggested") =>
+  ruleHits: (status: RuleHit["status"] = "suggested") =>
     request<{ items: RuleHit[] }>(`/api/decisions/hits?status=${status}`).then((r) => r.items),
+  /**
+   * Правила поддержки решений — «аналитические модели» экрана заключения.
+   * Сервер отдаёт строки таблицы целиком; здесь объявлено то, что читает
+   * экран: пояснение (note) идёт описанием модели в списке.
+   */
+  decisionRules: () =>
+    unwrap(request<Items<DecisionRule & { note: string | null }>>("/api/decisions/rules")),
   decideHit: (id: string, status: "accepted" | "declined", note?: string) =>
     request<{ ok: true }>(`/api/decisions/hits/${id}`, {
       method: "PATCH",
@@ -845,10 +860,16 @@ export const api = {
       previousAt: string | null;
     }>(`/api/conclusions/responses/${responseId}/conclusion/draft`),
   /** baseVersion — версия, поверх которой правили: сервер не даст затереть чужую работу */
-  saveConclusion: (responseId: string, text: string, baseVersion: number) =>
+  saveConclusion: (responseId: string, text: string, baseVersion: number, title?: string) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
       method: "PUT",
-      body: JSON.stringify({ text, baseVersion }),
+      /*
+       * Название уходит вместе с текстом по описанному договору (столбец
+       * conclusions.title). Сегодняшний сервер лишнее поле отбрасывает при
+       * разборе тела — запрос от этого не ломается, а в день, когда столбец
+       * появится, клиент править не придётся.
+       */
+      body: JSON.stringify({ text, baseVersion, ...(title !== undefined ? { title } : {}) }),
     }),
   /** Подписывается конкретная версия — та, что была на экране */
   signConclusion: (responseId: string, version: number) =>
