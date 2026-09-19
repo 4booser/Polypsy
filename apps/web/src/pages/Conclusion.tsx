@@ -14,6 +14,7 @@ import { ConclusionEditor } from "../components/ConclusionEditor";
 import { useLang } from "../lang";
 import { Loading, OfflineBar, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
+import { GearGlyph } from "../ui/glyphs";
 import { Page } from "../ui/layout";
 import { Button, Field, Input } from "../ui/primitives";
 import { useResource } from "../useResource";
@@ -242,20 +243,6 @@ function MenuItem({ children, onClick, autoFocus }: { children: ReactNode; onCli
     >
       {children}
     </button>
-  );
-}
-
-/**
- * Шестерёнка 27×27 — замер кадра. Нарисована здесь, а не в общем наборе
- * ui/index.tsx: тот набор — контурные значки 24×24 штрихом 1.8 для строк
- * меню, а на кадре шестерёнка залитая и вдвое крупнее; в общий ряд она не
- * встаёт, и место ей — рядом с единственной кнопкой, которая её показывает.
- */
-function GearGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden focusable="false" className="size-[27px]" fill="currentColor">
-      <path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1L15 3.3H9l-.4 2.6a7.5 7.5 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.5 7.5 0 0 0 1.7 1l.4 2.6h6l.4-2.6a7.5 7.5 0 0 0 1.7-1l2.5 1 2-3.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
-    </svg>
   );
 }
 
