@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { t, type PatientGroupSurvey } from "@quizzy/shared";
 import { api } from "../../api";
@@ -95,7 +95,23 @@ export default function PatientGroupCard() {
 
   type Dialog = "edit" | "assign" | "add" | null;
   const [dialog, setDialog] = useState<Dialog>(null);
-  const [addedAny, setAddedAny] = useState(false);
+
+  /*
+   * Окно что-то изменило — после закрытия карточку надо перечитать. Флаг
+   * один на оба окна (назначить тест, добавить людей) и перечитывание
+   * только по нему: GET /api/patient-groups/:id пишет в журнал доступа
+   * запись о чтении поимённого состава, и «Скасувати», за которым ничего
+   * не назначено и никто не добавлен, не должно оставлять след о доступе
+   * к персональным данным. Ref, а не state: флаг ничего не рисует, а
+   * closeDialog уходит в окно свойством и с state мог бы закрыться
+   * устаревшим значением.
+   */
+  const dirty = useRef(false);
+  const closeDialog = () => {
+    setDialog(null);
+    if (dirty.current) card.reload();
+    dirty.current = false;
+  };
 
   const memberIds = useMemo(() => new Set((group?.members ?? []).map((m) => m.userId)), [group]);
 
@@ -166,9 +182,15 @@ export default function PatientGroupCard() {
         Та же строка, что над каждым списком консоли (заголовок → поиск →
         «+» → страницы), только внутри свитка: её заголовок — «Пацієнт», а не
         имя экрана, и рисует её экран сам, не Page.
+
+        Кегль у «Пацієнт» — 24/700, как у имени экрана, а не 18 остальных
+        подзаголовков свитка: на кадре он набран ровно так же, как
+        «Пацієнти» на f05 и «Групи» на f10, — строка над списком перенесена
+        внутрь свитка вместе со своим размером. Ступень разметки при этом
+        h2: h1 у экрана один, это название группы.
       */}
       <div className="flex items-center gap-[24px] max-[900px]:flex-wrap">
-        <h2 className={h2}>{ut("pg.patient")}</h2>
+        <h2 className="m-0 text-[24px] font-bold leading-tight text-primary">{ut("pg.patient")}</h2>
         <div className="relative min-w-0 flex-1">
           <Input
             look="outline"
@@ -235,33 +257,28 @@ export default function PatientGroupCard() {
           title={ut("cn.assignGroup")}
           onAssign={async (surveyId, expiresAt) => {
             const res = await api.assignSurveyToPatientGroup(groupId, { surveyId, expiresAt });
+            dirty.current = true;
             /* число адресатов — после тире: слово не склоняется по числу */
             return `${ut("cn.assignedToGroup")} «${group.title}»: ${ut("cn.recipients")} — ${res.recipients}`;
           }}
-          onClose={() => {
-            setDialog(null);
-            card.reload();
-          }}
+          onClose={closeDialog}
         />
       ) : null}
       {dialog === "add" ? (
         <AddMemberDialog
           groupId={groupId}
           members={memberIds}
-          onAdded={() => setAddedAny(true)}
-          onClose={() => {
-            setDialog(null);
-            /* перечитываем только если что-то добавили: иначе лишняя запись в журнале доступа */
-            if (addedAny) card.reload();
-            setAddedAny(false);
+          onAdded={() => {
+            dirty.current = true;
           }}
+          onClose={closeDialog}
         />
       ) : null}
     </Page>
   );
 }
 
-/* 18/700 фиолетовым — ступень заголовка внутри экрана (см. Panel в layout.tsx) */
+/* 18/700 фиолетовым — ступень заголовка внутри экрана (см. Panel в layout.tsx); «Пацієнт» — исключение, см. выше */
 const h2 = "m-0 text-[18px] font-bold leading-tight text-primary";
 
 /**

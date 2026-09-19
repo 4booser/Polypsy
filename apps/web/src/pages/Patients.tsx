@@ -16,6 +16,7 @@ import { DEFAULT_PER, pageCount, pageFrom, pagesOf, perFrom, slicePage } from ".
 import { Button, Input, Tabs } from "../ui/primitives";
 import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
+import { SavedViews } from "../ui/SavedViews";
 import { usePagedResource, useResource } from "../useResource";
 import { AssignSurveyDialog, PickGroupDialog } from "./patientGroups/dialogs";
 import { keepPresent, matchesQuery, toggleIn, type PersonLike } from "./patientGroups/model";
@@ -56,9 +57,25 @@ import { PersonGrid, SelectionBar } from "./patientGroups/PersonGrid";
  *    молчать об этом значило бы, что нового пациента «нет в системе».
  *
  * Чего на кадре есть, а здесь нет: шестерёнка. Она настраивает колонки, а у
- * сетки карточек колонок нет — набор полей задан макетом. Вместе с таблицей
- * ушла и выгрузка CSV списка; если она понадобится, ей место в меню за
- * шестерёнкой, как на каталоге.
+ * сетки карточек колонок нет — набор полей задан макетом.
+ *
+ * Что ушло вместе с прежней таблицей и почему не вернулось:
+ *
+ * - Выгрузка CSV. Если понадобится, ей место в меню за шестерёнкой, как на
+ *   каталоге.
+ * - Колонки «Замірів» и «Останнє» и сортировка по ним. Строка макета — ПІБ и
+ *   мета (e-mail, підрозділ, стать, рік); ни числа замеров, ни даты
+ *   последнего в ней нет, а сортировать сетку без шапки не за что нажать.
+ *   Порядок — серверный, по ПІБ; «кто давно не проходил» отвечает экран
+ *   аналитики, а не реестр.
+ * - Фасеты по подразделению, полу и активности. Они считались по уже
+ *   приехавшим строкам («по завантажених N») и на большом списке врали;
+ *   на кадре фильтр один — поиск, и он серверный.
+ *
+ * Что НЕ ушло: сохранённые виды (SavedViews). Они лежат на сервере, у людей
+ * уже сохранены, а состояние экрана по-прежнему целиком в адресе — ?group,
+ * ?q, ?per, — так что чипс «вечірня група по прізвищу» работает как раньше.
+ * Где они стоят и почему — см. Frame.
  *
  * Страницы на вкладке «Усі» строятся поверх курсора: страница N — это
  * строки с (N−1)·per по N·per из того, что уже приехало; если их ещё нет и
@@ -112,18 +129,33 @@ export function PatientList() {
   const list = groups.data ?? [];
   /* чужая или удалённая группа в адресе — это «Усі», а не пустой экран */
   const current = groupId && groups.data ? (list.find((g) => g.id === groupId) ?? null) : null;
+  /*
+   * Группа в адресе, а список групп ещё не приехал: ждём его, не рисуя
+   * «Усі». Иначе по ссылке на группу экран сперва мигал бы чужой вкладкой
+   * с её подписью и запрашивал бы список обследованных, который тут же
+   * выбросит.
+   */
+  const pending = groupId !== null && !groups.data && !groups.error;
 
   const frame: FrameState = {
     groups: list,
     groupsError: groups.error,
     reloadGroups: groups.reload,
-    activeId: current?.id ?? null,
+    /* пока ждём — активна не «Усі», а группа из адреса, хоть её вкладки ещё нет */
+    activeId: current?.id ?? (pending ? groupId : null),
     q,
     page,
     per,
     update,
   };
 
+  if (pending) {
+    return (
+      <Frame frame={frame} pages={1} focused={null}>
+        <Loading rows={6} />
+      </Frame>
+    );
+  }
   /* ключ — чтобы выбор и страницы не переезжали с одной группы на другую */
   return current ? <GroupPatients key={current.id} group={current} frame={frame} /> : <AllPatients key="all" frame={frame} />;
 }
@@ -229,7 +261,18 @@ function Frame({
       {/* первый ребёнок — <nav>/<div role=tablist>: Page даёт ему 39px от строки, как на макете */}
       <Tabs label={ut("pg.tabsLabel")} items={tabs} />
       {groupsError ? <p className="m-0 mt-[12px] text-[13px] text-danger">{groupsError}</p> : null}
-      <div id="patients-panel" role="tabpanel" aria-labelledby={activeTab} className="mt-[28px]">
+      {/*
+        Сохранённые виды — под вкладками, а не в строке над списком, где они
+        стояли у прежней таблицы: строку теперь целиком занимает поиск, как
+        на кадре, а в «actions» справа они бы отжимали поле. На кадре чипсов
+        нет; цена — строка между вкладками и сеткой. Убрать их совсем было бы
+        дороже: виды хранятся на сервере (saved_views, scope «patients»),
+        и уже сохранённые стали бы недостижимы при живом адресном состоянии.
+      */}
+      <div className="mt-[16px]">
+        <SavedViews scope="patients" />
+      </div>
+      <div id="patients-panel" role="tabpanel" aria-labelledby={activeTab} className="mt-[20px]">
         {children}
       </div>
     </Page>
