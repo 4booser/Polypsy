@@ -289,7 +289,23 @@ export function dropPicked(d: ModelDraft): ModelDraft {
   return { ...d, params, actions };
 }
 
-/** Идентификаторы методик, шкалы которых нужны редактору (без «любой» и пустых) */
-export function surveysToLoad(d: ModelDraft): string[] {
-  return [...new Set(d.params.filter((p) => p.kind === "scale" && p.surveyId && p.surveyId !== ANY_TEST).map((p) => p.surveyId))];
+/**
+ * Идентификаторы методик, которые редактору нужно дочитать целиком, — без
+ * повторов, без «любой» и пустых:
+ *   · выбранные в параметрах — ради их шкал (в списке методик шкал нет);
+ *   · предложенные в действиях, но отсутствующие в списке api.surveys(), —
+ *     ради названия: снятую с использования или чужую методику список не
+ *     отдаёт, а поле должно показать, что в нём стоит (SurveyOptions в
+ *     Editor.tsx). Те, что в списке есть, названы уже им, и второй запрос
+ *     на каждое действие был бы впустую.
+ */
+export function surveysToLoad(d: ModelDraft, listed: ReadonlySet<string>): string[] {
+  const ids = new Set<string>();
+  for (const p of d.params) {
+    if (p.kind === "scale" && p.surveyId && p.surveyId !== ANY_TEST) ids.add(p.surveyId);
+  }
+  for (const a of d.actions) {
+    if (a.kind === "suggest_survey" && a.surveyId && !listed.has(a.surveyId)) ids.add(a.surveyId);
+  }
+  return [...ids];
 }

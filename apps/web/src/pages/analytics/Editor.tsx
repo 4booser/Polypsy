@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Scale, SurveyListItem } from "@quizzy/shared";
+import type { Scale, SurveyListItem, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
 import { useLang } from "../../lang";
 import { Loading, useAction, useToast } from "../../ui";
@@ -83,6 +83,12 @@ export default function AnalyticsModelPage() {
 /** Плейсхолдер селекта — фиолетовым полужирным, как подпись поля на макете */
 const PLACEHOLDER = { color: "var(--primary)", fontWeight: 700 } as const;
 
+/**
+ * Методика, дочитанная целиком ради шкал и названия; null — сервер её не
+ * отдал: она вне групп сотрудника или её уже нет.
+ */
+type LoadedSurvey = { title: string; archivedAt: string | null; scales: Scale[] } | null;
+
 function ModelEditor({ id }: { id: string | null }) {
   const { ut } = useLang();
   const navigate = useNavigate();
@@ -107,30 +113,39 @@ function ModelEditor({ id }: { id: string | null }) {
   }, [id, rules.data]);
 
   /*
-   * Шкалы каждой выбранной методики — по требованию и один раз.
+   * Методики целиком — по требованию и один раз: выбранные в параметрах
+   * (ради шкал — в SurveyListItem их нет) и стоящие в действиях, но
+   * отсутствующие в коротком списке (ради названия — см. SurveyOptions).
+   * Грузить все методики ради селекта шкал — это сотня запросов при открытии
+   * формы; грузятся только нужные, и только когда понадобились.
    *
-   * В списке методик шкал нет (SurveyListItem), они приходят с методикой
-   * целиком. Грузить все методики ради селекта шкал — это сотня запросов при
-   * открытии формы; грузятся только те, что стоят в параметрах, и только
-   * когда их выбрали.
+   * Отказ запоминается как null, а не пропускается: чужую или удалённую
+   * методику сервер не отдаст и со второго раза, а без записи об отказе она
+   * запрашивалась бы заново на каждой перерисовке.
    */
-  const [scales, setScales] = useState<Record<string, Scale[]>>({});
+  const [loaded, setLoaded] = useState<Record<string, LoadedSurvey>>({});
   const inFlight = useRef(new Set<string>());
-  const wanted = draft ? surveysToLoad(draft).join(",") : "";
+  const wanted = draft && surveys.data ? surveysToLoad(draft, new Set(surveys.data.map((s) => s.id))).join(",") : "";
   useEffect(() => {
     for (const surveyId of wanted.split(",").filter(Boolean)) {
-      if (scales[surveyId] || inFlight.current.has(surveyId)) continue;
+      if (surveyId in loaded || inFlight.current.has(surveyId)) continue;
       inFlight.current.add(surveyId);
       void api
         .survey(surveyId)
-        .then((s) => setScales((prev) => ({ ...prev, [surveyId]: s.scales })))
-        /* отказ — не поломка формы: код шкалы можно вписать руками */
-        .catch(() => setScales((prev) => ({ ...prev, [surveyId]: [] })))
+        .then((s) =>
+          setLoaded((prev) => ({ ...prev, [surveyId]: { title: s.title, archivedAt: s.archivedAt ?? null, scales: s.scales } })),
+        )
+        .catch(() => setLoaded((prev) => ({ ...prev, [surveyId]: null })))
         .finally(() => inFlight.current.delete(surveyId));
     }
-  }, [wanted, scales]);
+  }, [wanted, loaded]);
 
-  const [errors, setErrors] = useState<string[]>([]);
+  /*
+   * Ключи словаря, а не готовые строки: переводятся при печати. Готовые
+   * строки после неудачной попытки сохранить оставались бы на прежнем языке
+   * до следующего нажатия «Зберегти», хотя весь экран уже переключился.
+   */
+  const [errors, setErrors] = useState<UiKey[]>([]);
 
   const patch = (next: Partial<ModelDraft>) => setDraft((d) => (d ? { ...d, ...next } : d));
   const patchParam = (key: string, next: Partial<DraftParam>) =>
@@ -150,7 +165,7 @@ function ModelEditor({ id }: { id: string | null }) {
 
   const save = () => {
     if (!draft) return;
-    const errs = validateDraft(draft).map((k) => ut(k));
+    const errs = validateDraft(draft);
     setErrors(errs);
     if (errs.length) return;
     void run(async () => {
@@ -288,12 +303,7 @@ function ModelEditor({ id }: { id: string | null }) {
                     </span>
                   </div>
                 ) : null}
-                <ParamRow
-                  p={p}
-                  surveys={surveyList}
-                  scales={p.surveyId === ANY_TEST || !p.surveyId ? undefined : scales[p.surveyId]}
-                  onChange={(next) => patchParam(p.key, next)}
-                />
+                <ParamRow p={p} surveys={surveyList} loaded={loaded} onChange={(next) => patchParam(p.key, next)} />
               </Fragment>
             ))}
             <div className="flex justify-end">
@@ -311,7 +321,13 @@ function ModelEditor({ id }: { id: string | null }) {
               <p className="m-0 text-[13px] leading-[19px] text-muted">{ut("am.noActions")}</p>
             ) : null}
             {draft.actions.map((a) => (
-              <ActionRow key={a.key} a={a} surveys={surveyList} onChange={(next) => patchAction(a.key, next)} />
+              <ActionRow
+                key={a.key}
+                a={a}
+                surveys={surveyList}
+                loaded={loaded}
+                onChange={(next) => patchAction(a.key, next)}
+              />
             ))}
             <div className="flex justify-end">
               <Button onClick={() => patch({ actions: [...draft.actions, newAction()] })}>{ut("am.addAction")}</Button>
@@ -321,11 +337,18 @@ function ModelEditor({ id }: { id: string | null }) {
 
         {!draft.enabled ? <p className="m-0 mt-[20px] text-[13px] leading-[19px] text-muted">{ut("am.disabledNote")}</p> : null}
         {errors.length ? (
-          <ul role="alert" className="m-0 mt-[20px] list-none p-0 text-[13px] leading-[19px] text-danger">
-            {errors.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
+          /*
+            role="alert" — на обёртке, а не на самом <ul>: роль alert замещает
+            роль list, и диктор объявил бы текст, но перестал бы сообщать
+            «список из N элементов». Обёртка сохраняет и объявление, и перечень.
+          */
+          <div role="alert">
+            <ul className="m-0 mt-[20px] list-none p-0 text-[13px] leading-[19px] text-danger">
+              {errors.map((k) => (
+                <li key={k}>{ut(k)}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
 
         <div className="mt-[30px] flex justify-end">
@@ -380,27 +403,76 @@ function Pick({ checked, label, onChange }: { checked: boolean; label: string; o
   );
 }
 
+/**
+ * Опции селекта методик: список api.surveys() и — если выбранной в нём нет —
+ * она сама, отдельной опцией впереди.
+ *
+ * Список не отдаёт снятые с использования (GET /api/surveys без ?archived=1)
+ * и методики вне групп сотрудника, а в сохранённом правиле такой
+ * идентификатор — обычное дело: модель пережила методику. Без своей опции
+ * контролируемый <select> не совпадает ни с одной и рисуется пустым, а при
+ * сохранении идентификатор уходит на сервер молча — та же ловушка, что у
+ * шкалы-сироты в ScalePicker. Подпись — название с пометкой «знято з
+ * використання», когда методику удалось дочитать (GET /api/surveys/:id
+ * снятые отдаёт), и «недоступний», когда сервер отказал: чужая группа или
+ * методики уже нет. Показывать голый идентификатор, как у шкалы, нельзя:
+ * код шкалы человек узнаёт, uuid — нет.
+ */
+export function SurveyOptions({
+  surveys,
+  current,
+  loaded,
+}: {
+  surveys: SurveyListItem[];
+  /** Значение селекта: "", ANY_TEST или идентификатор методики */
+  current: string;
+  loaded: Record<string, LoadedSurvey>;
+}) {
+  const { ut } = useLang();
+  const orphan = current && current !== ANY_TEST && !surveys.some((s) => s.id === current) ? current : null;
+  const label = (id: string): string => {
+    const meta = loaded[id];
+    if (meta === undefined) return ut("common.loading");
+    if (meta === null) return ut("am.testUnavailable");
+    return meta.archivedAt ? `${meta.title} (${ut("mark.retired")})` : meta.title;
+  };
+  return (
+    <>
+      {orphan ? <option value={orphan}>{label(orphan)}</option> : null}
+      {surveys.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.title}
+        </option>
+      ))}
+    </>
+  );
+}
+
 function ParamRow({
   p,
   surveys,
-  scales,
+  loaded,
   onChange,
 }: {
   p: DraftParam;
   surveys: SurveyListItem[];
-  /** Шкалы выбранной методики; undefined — ещё грузятся или методика «любая» */
-  scales: Scale[] | undefined;
+  loaded: Record<string, LoadedSurvey>;
   onChange: (next: Partial<DraftParam>) => void;
 }) {
   const { ut } = useLang();
   const isScale = p.kind === "scale";
   const pick = <Pick checked={p.picked} label={ut("am.pickParam")} onChange={(v) => onChange({ picked: v })} />;
+  /* шкалы выбранной методики; undefined — ещё грузятся, не отданы или методика «любая» */
+  const scales = p.surveyId && p.surveyId !== ANY_TEST ? loaded[p.surveyId]?.scales : undefined;
 
   /*
    * Вид параметра стоит на месте «Результат тесту» кадра: для условия по
    * шкале селект так и читается — «Результат тесту», — а два других вида
    * (флаг риска, число прохождений) сервер умеет, и прятать их значило бы,
    * что открытое правило с таким условием нельзя ни прочитать, ни сохранить.
+   * Поле шкалы справа подписано «Шкала», а не теми же словами: два
+   * одинаковых «Результат тесту» подряд в одной строке читались бы как одно
+   * поле, и чем они различаются, было бы не понять.
    */
   const kind = (
     <Field label={ut("am.paramKind")} inline className="w-[190px] shrink-0">
@@ -427,11 +499,7 @@ function ParamRow({
                 {ut("am.testName")}
               </option>
               <option value={ANY_TEST}>{ut("am.anyTest")}</option>
-              {surveys.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title}
-                </option>
-              ))}
+              <SurveyOptions surveys={surveys} current={p.surveyId} loaded={loaded} />
             </Select>
           </Field>
           {pick}
@@ -496,7 +564,9 @@ function ParamRow({
  * Шкала: селект по шкалам выбранной методики; при «будь-який тест» — код
  * шкалы руками, потому что перечислять нечего (правило сверяет код в той
  * методике, которую сдали). Пока методика не выбрана, поле стоит пустым
- * силуэтом с подписью, как «Результат тесту» на кадре.
+ * силуэтом с подписью, как второе поле параметра на кадре; подпись — «Шкала»,
+ * потому что «Результат тесту» кадра уже занято селектом вида параметра слева
+ * (см. ParamRow).
  */
 function ScalePicker({
   p,
@@ -519,7 +589,7 @@ function ScalePicker({
   /* шкала из сохранённого правила, которой у методики уже нет, остаётся видимой — иначе её потеряют молча */
   const orphan = p.scaleCode && !list.some((s) => s.code === p.scaleCode) ? p.scaleCode : null;
   return (
-    <Field label={ut("am.testResult")} inline className="min-w-0 flex-1">
+    <Field label={ut("am.scale")} inline className="min-w-0 flex-1">
       <Select
         value={p.scaleCode}
         disabled={!p.surveyId}
@@ -527,7 +597,7 @@ function ScalePicker({
         onChange={(e) => onChange({ scaleCode: e.target.value })}
       >
         <option value="" disabled>
-          {ut("am.testResult")}
+          {ut("am.scale")}
         </option>
         {orphan ? <option value={orphan}>{orphan}</option> : null}
         {list.map((s) => (
@@ -545,10 +615,12 @@ function ScalePicker({
 function ActionRow({
   a,
   surveys,
+  loaded,
   onChange,
 }: {
   a: DraftAction;
   surveys: SurveyListItem[];
+  loaded: Record<string, LoadedSurvey>;
   onChange: (next: Partial<DraftAction>) => void;
 }) {
   const { ut } = useLang();
@@ -581,11 +653,7 @@ function ActionRow({
             <option value="" disabled>
               {ut("am.suggestTest")}
             </option>
-            {surveys.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
-              </option>
-            ))}
+            <SurveyOptions surveys={surveys} current={a.surveyId} loaded={loaded} />
           </Select>
         </Field>
       ) : a.kind === "suggest_pathway" ? (
