@@ -252,7 +252,7 @@ for (const theme of ["dark", "light"] as const) {
     ["права", "/permissions"],
   ] as const) {
     test(`экран «${name}» доступен, тема ${theme}`, async ({ page }) => {
-      await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+      await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
       await login(page, "psy");
       await page.goto(path);
       /*
@@ -276,7 +276,7 @@ for (const theme of ["dark", "light"] as const) {
   }
 
   test(`экран «сводка» доступен, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "psy");
     await ensureOpenCase(page);
 
@@ -295,7 +295,7 @@ for (const theme of ["dark", "light"] as const) {
   });
 
   test(`экран «случаи риска» доступен, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "psy");
     await ensureOpenCase(page);
 
@@ -344,7 +344,7 @@ for (const theme of ["dark", "light"] as const) {
     ["профиль", "/me/profile"],
   ] as const) {
     test(`кабинет пациента: «${name}» доступен, тема ${theme}`, async ({ page }) => {
-      await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+      await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
       await login(page, "patient");
       await page.goto(path);
       await page.locator("h1").first().waitFor();
@@ -373,7 +373,7 @@ for (const theme of ["dark", "light"] as const) {
   }
 
   test(`кабинет пациента: «методики» доступны, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "patient");
     await page.goto("/me/tests");
     // список методик — содержимое экрана; пустой экран проверять незачем
@@ -385,7 +385,7 @@ for (const theme of ["dark", "light"] as const) {
   });
 
   test(`кабинет пациента: «запись на приём» доступна, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "patient");
     await page.goto("/me/booking");
     await page.locator("h1").first().waitFor();
@@ -402,7 +402,7 @@ for (const theme of ["dark", "light"] as const) {
   });
 
   test(`кабинет пациента: прохождение методики доступно, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "patient");
     await page.goto("/me/tests");
     await page.locator('a[href^="/me/tests/"]').first().click();
@@ -424,7 +424,7 @@ for (const theme of ["dark", "light"] as const) {
  */
 for (const theme of ["dark", "light"] as const) {
   test(`экран приёма доступен, тема ${theme}`, async ({ page }) => {
-    await page.addInitScript((t) => localStorage.setItem("quizzy.theme", t), theme);
+    await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "psy");
     await page.goto("/today");
     await page.locator('a[href^="/visit/"]').first().click();

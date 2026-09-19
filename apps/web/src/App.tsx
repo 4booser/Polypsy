@@ -128,7 +128,17 @@ export default function App() {
      * То же умолчание стоит в tokens.css (голый :root), в Account.tsx и в
      * patient/Profile.tsx — иначе первый кадр шёл бы светлым, второй тёмным.
      */
-    () => (localStorage.getItem("quizzy.theme") as Theme) ?? "light",
+    /*
+     * Ключ с суффиксом .v2 — не косметика. Прежний код писал тему в
+     * хранилище при каждом монтировании, то есть в каждом браузере, где
+     * консоль открывали хоть раз, лежит «dark», которого человек не
+     * выбирал. Миграция 0079 чистит такое в профиле на сервере, но до
+     * браузера серверу не дотянуться. Новый ключ означает: старое
+     * авто-значение больше не читается, а новое пишет только переключатель.
+     * Старый ключ остаётся в браузерах мёртвым грузом — это дешевле кода,
+     * который ходил бы его вычищать.
+     */
+    () => (localStorage.getItem("quizzy.theme.v2") as Theme) ?? "light",
   );
   /*
    * Плотность — не косметика: в плотном режиме на экран помещается 24 строки
@@ -203,7 +213,7 @@ export default function App() {
 
   const chooseTheme = (next: Theme) => {
     setTheme(next);
-    localStorage.setItem("quizzy.theme", next);
+    localStorage.setItem("quizzy.theme.v2", next);
     persist({ theme: next });
   };
 
