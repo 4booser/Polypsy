@@ -140,13 +140,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── методики ── */
   "GET /api/surveys": {
     summary:
-      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root), ?status=, ?q= — папка, вкладка, поиск; ?archived=1 — снятые с использования",
+      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root) — папка, вместе с ?q= — поиск по её поддереву; ?status= — вкладка, несколько через запятую; ?archived=1 — снятые вместе с остальными, ?archived=only — только снятые",
     access: "user",
   },
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
   "POST /api/surveys/validate": { summary: "Структурная проверка черновика без сохранения", access: "staff", permission: "surveys.edit" },
   "POST /api/surveys/import": { summary: "Импорт методики из файла экспорта", access: "staff", permission: "surveys.edit" },
-  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора", access: "user" },
+  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии", access: "user" },
   "PATCH /api/surveys/:id": { summary: "Правка методики — создаёт новую версию", access: "staff", permission: "surveys.edit", body: updateSurveySchema },
   "DELETE /api/surveys/:id": { summary: "Снятие методики с использования (данные сохраняются)", access: "staff", permission: "surveys.publish" },
   "POST /api/surveys/:id/restore": { summary: "Возврат методики в работу", access: "staff", permission: "surveys.publish" },
@@ -154,7 +154,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/surveys/:id/export": { summary: "Выгрузка методики файлом", access: "staff", permission: "surveys.read" },
   "GET /api/surveys/:id/versions": { summary: "Версии методики", access: "staff", permission: "surveys.read" },
   "GET /api/surveys/:id/versions/:a/diff/:b": { summary: "Что изменилось между версиями и сопоставимы ли баллы", access: "staff", permission: "surveys.read" },
-  "GET /api/surveys/:id/key": { summary: "Ключ методики для печати", access: "staff", permission: "surveys.read" },
+  "GET /api/surveys/:id/key": { summary: "Ключ методики для печати: колонка на каждый код ответа из вариантов", access: "staff", permission: "surveys.read" },
   "PUT /api/surveys/:id/folder": { summary: "Перенос методики в папку каталога; null — в корень", access: "staff", permission: "surveys.edit", body: moveSurveySchema },
 
   /* ── папки методик: полки каталога внутри группы, не группы и не группы пациентов ── */
@@ -168,7 +168,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PUT /api/surveys/:id/draft": { summary: "Сохранение черновика", access: "user", body: draftSchema },
   "GET /api/surveys/:id/draft": { summary: "Свой незавершённый черновик", access: "user" },
   "GET /api/surveys/:id/responses": { summary: "Прохождения по методике", access: "staff", permission: "patients.read" },
-  "GET /api/responses/:id": { summary: "Прохождение целиком", access: "staff", whyNoPermission: "своё прохождение открывает сам обследуемый; персоналу доступ ограничен областью ответственности" },
+  "GET /api/responses/:id": { summary: "Прохождение целиком: ответы с весом варианта (персоналу), баллы с лестницей полос той версии, что проходили", access: "staff", whyNoPermission: "своё прохождение открывает сам обследуемый; персоналу доступ ограничен областью ответственности" },
   "GET /api/me/responses": { summary: "Свои прохождения", access: "user" },
   "GET /api/me/dynamics": { summary: "Своя динамика — только по разрешённым методикам", access: "user" },
   "GET /api/reports/responses/:id": { summary: "Отчёт по прохождению для печати", access: "staff", whyNoPermission: "своё прохождение печатает сам обследуемый; персоналу доступ уже ограничен областью ответственности" },

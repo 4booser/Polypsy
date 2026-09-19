@@ -819,8 +819,17 @@ export const responseListQuery = z.object({
  */
 export const surveyListQuery = z.object({
   groupId: z.string().max(64).optional().transform((v) => v || undefined),
-  /** «1» — показать снятые с использования; действует только для персонала */
-  archived: z.string().max(8).optional(),
+  /**
+   * Снятые с использования; действует только для персонала. «1» — вместе с
+   * остальными, «only» — только они. Второй режим нужен вкладке «Зняті»
+   * каталога: без него она просила бы весь список и отсеивала сама, а
+   * страница и total считались бы не по тому, что на экране.
+   */
+  archived: z
+    .string()
+    .optional()
+    .transform((v) => v || undefined)
+    .pipe(z.enum(["1", "only"]).optional()),
   limit: z
     .string()
     .optional()
@@ -829,13 +838,41 @@ export const surveyListQuery = z.object({
   offset: queryInt(0, 1_000_000, 0),
   /** Идентификатор папки или `root` — корень (методики вне папок); без него — все */
   folder: z.string().max(64).optional().transform((v) => v || undefined),
+  /**
+   * Вкладка каталога: один статус или несколько через запятую
+   * («published,closed»). В список разбирается здесь, а не в маршруте, чтобы
+   * неизвестный статус в середине списка был честной четырёхсоткой, а не
+   * молчаливо пустой выдачей.
+   */
   status: z
     .string()
     .optional()
-    .transform((v) => v || undefined)
-    .pipe(surveyStatusSchema.optional()),
+    .transform((v) => {
+      const list = (v ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return list.length ? list : undefined;
+    })
+    .pipe(z.array(surveyStatusSchema).optional()),
   /** Подстрока названия без учёта регистра, на любом из языков */
   q: z.string().max(200).optional().transform((v) => (v ?? "").trim()),
+});
+
+/**
+ * Запрос одной методики. ?version=N — содержимое конкретной версии: просмотр
+ * пройденного теста показывает ту версию, которую человек проходил, а не
+ * действующую. Именно номер, а не id версии: id снаружи позволил бы
+ * подставить версию чужой методики, а номер ищется только среди версий этой.
+ */
+export const surveyGetQuery = z.object({
+  /** «1» — локализованные объекты целиком, для конструктора; только персоналу */
+  raw: z.string().max(8).optional(),
+  version: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : Number(v)))
+    .pipe(z.number().int().min(1).optional()),
 });
 
 /** Настройки рабочего места; каждое поле необязательно и правится отдельно */

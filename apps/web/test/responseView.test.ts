@@ -22,7 +22,7 @@ import { buildResponseView } from "../src/pages/response/model";
 
 const detail: ResponseDetail = {
   id: "r1",
-  survey: { id: "s1", title: "Тест", scoringEnabled: true },
+  survey: { id: "s1", title: "Тест", scoringEnabled: true, versionNumber: 1 },
   status: "completed",
   startedAt: "2026-09-01T10:00:00Z",
   submittedAt: "2026-09-01T10:10:00Z",
@@ -41,6 +41,7 @@ const detail: ResponseDetail = {
       maxScore: 30,
       percent: 50,
       band: { label: "Середній", severity: "mild", description: null, grade: null, recommendation: null },
+      bands: [],
     },
   ],
   answers: [
@@ -52,8 +53,8 @@ const detail: ResponseDetail = {
       answered: true,
       optionIds: ["o2b"],
       options: [
-        { id: "o2a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null },
-        { id: "o2b", text: "Яджамахе", riskFlag: false, riskSeverity: null },
+        { id: "o2a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null, score: null },
+        { id: "o2b", text: "Яджамахе", riskFlag: false, riskSeverity: null, score: null },
       ],
       text: null,
       number: null,
@@ -74,8 +75,8 @@ const detail: ResponseDetail = {
       answered: false,
       optionIds: null,
       options: [
-        { id: "o1a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null },
-        { id: "o1b", text: "Яджамахе", riskFlag: false, riskSeverity: null },
+        { id: "o1a", text: "Омтріамбакам", riskFlag: false, riskSeverity: null, score: null },
+        { id: "o1b", text: "Яджамахе", riskFlag: false, riskSeverity: null, score: null },
       ],
       text: null,
       number: null,
