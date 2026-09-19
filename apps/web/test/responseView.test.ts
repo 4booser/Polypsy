@@ -216,12 +216,22 @@ describe("пройденный тест: адрес", () => {
      * трёх файлах руками, и общего помощника для него нет намеренно — он
      * стал бы четвёртым местом, которое надо помнить.
      */
+    const APP = readFileSync(`${SRC}/App.tsx`, "utf8");
     const offenders: string[] = [];
     for (const file of codeFiles(SRC)) {
       const src = readFileSync(file, "utf8");
       for (const m of src.matchAll(/`([^`\n]*\/responses\/\$\{[^`\n]*)`/g)) {
         // адреса сервера («/api/reports/responses/…») — другой мир, к маршрутам консоли не относятся
         if (m[1]!.startsWith("/api/")) continue;
+        /*
+         * Заключение — свой экран со своим объявленным маршрутом
+         * «/responses/:id/conclusion» (App.tsx). Он не проваливается в «*»,
+         * и держать его нарушителем значило бы ловить не дыру, а форму.
+         * Пропуск разрешён только пока маршрут объявлен: пропадёт из App.tsx —
+         * ссылка снова станет зовом в пустоту, и сторож это увидит.
+         */
+        const conclusionDeclared = /path="\/responses\/:id\/conclusion"/.test(APP);
+        if (conclusionDeclared && /^\/responses\/\$\{[^}]+\}\/conclusion$/.test(m[1]!)) continue;
         if (!/^\/surveys\/\$\{[^}]+\}\/responses\/\$\{[^}]+\}$/.test(m[1]!)) {
           offenders.push(`${file.slice(SRC.length + 1)}: \`${m[1]}\``);
         }

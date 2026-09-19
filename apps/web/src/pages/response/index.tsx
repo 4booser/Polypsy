@@ -1,12 +1,10 @@
-import { useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { api } from "../../api";
-import { ConclusionEditor } from "../../components/ConclusionEditor";
 import { dateTime } from "../../format";
 import { useLang } from "../../lang";
 import { Loading } from "../../ui";
 import { Page } from "../../ui/layout";
-import { Button, Readout } from "../../ui/primitives";
+import { Readout } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useResource } from "../../useResource";
 import { buildResponseView, type QuestionView, type ScaleLadder } from "./model";
@@ -64,7 +62,6 @@ import { buildResponseView, type QuestionView, type ScaleLadder } from "./model"
 export default function ResponseView() {
   const { ut } = useLang();
   const { id: surveyId, rid } = useParams<{ id: string; rid: string }>();
-  const [writing, setWriting] = useState(false);
 
   /*
    * Две загрузки одной парой: прохождение и действующая методика. Методика
@@ -149,24 +146,20 @@ export default function ResponseView() {
         </section>
 
         {/*
-          Кнопка стоит под результатами, как на кадре, и раскрывает редактор
-          заключения здесь же, а не уводит на другой экран: специалист пишет
-          вывод, глядя на ответы, и убирать их с глаз в этот момент — значит
-          заставить держать двести пунктов в голове. После раскрытия кнопка
-          уходит: у редактора свои действия («зберегти», «підписати»), и
-          вторая «створити» рядом с ними спрашивала бы, чем отличается.
+          Кнопка стоит под результатами, как на кадре, и ведёт на страницу
+          заключения. Первая редакция раскрывала редактор здесь же — «чтобы
+          ответы оставались перед глазами». Соседняя ветка сделала заключение
+          самостоятельной страницей с протоколом ответов и лестницей
+          результатов (кадры f38/f39): ответы там видны так же, а у заключения
+          появился адрес — его можно переслать, положить в закладку, открыть
+          из карты. Две редакции одного редактора с разными договорами —
+          дороже одной ссылки.
         */}
-        {writing ? (
-          <div className="mt-[28px]">
-            <ConclusionEditor responseId={detail.id} />
-          </div>
-        ) : (
-          <div className="mt-[45px] flex justify-end">
-            <Button size="md" onClick={() => setWriting(true)}>
-              {ut("rsp.createConclusion")}
-            </Button>
-          </div>
-        )}
+        <div className="mt-[45px] flex justify-end">
+          <Link to={`/responses/${detail.id}/conclusion`} className="btn">
+            {ut("rsp.createConclusion")}
+          </Link>
+        </div>
       </div>
     </Page>
   );
