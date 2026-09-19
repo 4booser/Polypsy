@@ -143,6 +143,33 @@ export type AuditAction =
    * тоже пишутся: у каждого человека должна остаться своя строка.
    */
   | "patient_group.assign"
+  /* закладка «обрана» — правка личной раскладки, но правка: журналу видно */
+  | "patient_group.favourite"
+  | "patient_group.unfavourite"
+  /*
+   * Карточка пациента (кадр f19): персональные данные, все результаты,
+   * группы и заключения одним чтением. Своё имя, а не response.read с
+   * пометкой в details: «кто открывал карточку человека» — вопрос, который
+   * задают журналу чаще всего, и искать его подстрокой в details нельзя.
+   */
+  | "patient.card_read"
+  /*
+   * Рассылки — сообщение «одному многим». Отправка пишется дважды: сводкой
+   * (mailing.send, с числом адресатов) и поимённо (mailing.deliver, с
+   * subjectUserId) — тот же приём, что у patient_group.assign: сводка не даёт
+   * массовому действию раствориться среди обычных, поимённые строки отвечают
+   * на вопрос «что присылали этому человеку».
+   */
+  | "mailing.create"
+  | "mailing.update"
+  | "mailing.send"
+  | "mailing.deliver"
+  | "mailing.delete"
+  | "mailing.hide"
+  | "mailing.unhide"
+  /* чтение карточки с ответами — поимённый список людей, как patient_group.read */
+  | "mailing.read"
+  | "mailing.answer"
   | "access.grant"
   | "access.revoke"
   | "access.grant_list"

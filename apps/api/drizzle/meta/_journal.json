@@ -568,6 +568,20 @@
       "when": 1788472749043,
       "tag": "0080_survey_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1788472929043,
+      "tag": "0083_mailings",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1788472989043,
+      "tag": "0084_patient_card",
+      "breakpoints": true
     }
   ]
 }
