@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { User } from "@quizzy/shared";
+import { type DirectorySource, loadDirectory, loadMember } from "../src/pages/people/data";
 import {
   type StaffRow,
   birthYear,
@@ -161,5 +163,87 @@ describe("адреса разделов людей", () => {
     const links = [...menu.matchAll(/\bto[:=]\s*"(\/(?:staff|admins)[^"]*)"/g)].map((m) => m[1]!);
     expect(links.length).toBeGreaterThan(1);
     expect(links.filter((to) => !declared.has(to))).toEqual([]);
+  });
+});
+
+/**
+ * Откуда берётся справочник — и когда за ним не ходят вовсе.
+ *
+ * Два решения, которые глазами не проверяются: оба маршрута отвечают
+ * одинаковым списком. Первое — маршрут выбирается по праву ДО запроса:
+ * проба реестра с откатом по отказу писала бы access.denied в журнал
+ * доступа на каждом заходе заведующего, и экран «Журнал» считал бы его
+ * работу в красный счётчик «Відмов». Второе — карточка коллеги берётся из
+ * ответа списка, а не качает реестр заново: реестр — это вся таблица users
+ * с расшифрованными ФИО пациентов и запись user.list в журнале.
+ */
+describe("справочник сотрудников", () => {
+  const person = (id: string, role: User["role"], fullName: string): User =>
+    ({ id, role, fullName, firstName: "", lastName: "", middleName: null, email: `${id}@x.y`, sex: null, birthDate: null, specialty: null, unit: null }) as User;
+
+  const fake = () => {
+    const calls = { users: 0, staff: 0, me: 0 };
+    const src: DirectorySource & { me: () => Promise<User> } = {
+      users: async () => {
+        calls.users++;
+        return [person("u1", "admin", "Іванов"), person("u2", "admin", "Петренко"), person("p1", "user", "Пацієнт")];
+      },
+      assignableStaff: async () => {
+        calls.staff++;
+        return [{ id: "u2", email: "u2@x.y", role: "admin", fullName: "Петренко" }];
+      },
+      me: async () => {
+        calls.me++;
+        return person("u1", "admin", "Іванов");
+      },
+    };
+    return { calls, src };
+  };
+
+  test("без права на реестр — только «кого я вправе назначать», реестр не пробуется", async () => {
+    const { calls, src } = fake();
+    const dir = await loadDirectory({ id: "head-1", canManageUsers: false }, src);
+    expect(calls).toEqual({ users: 0, staff: 1, me: 0 });
+    expect(dir.partial).toBe(true);
+  });
+
+  test("с правом — реестр, без пациентов, и второй маршрут не трогается", async () => {
+    const { calls, src } = fake();
+    const dir = await loadDirectory({ id: "super-1", canManageUsers: true }, src);
+    expect(calls).toEqual({ users: 1, staff: 0, me: 0 });
+    expect(dir.partial).toBe(false);
+    expect(dir.rows.map((r) => r.id)).toEqual(["u1", "u2"]);
+  });
+
+  test("карточка коллеги после списка — из его ответа, реестр не качается второй раз", async () => {
+    const { calls, src } = fake();
+    const viewer = { id: "super-2", canManageUsers: true };
+    await loadDirectory(viewer, src);
+    const { row } = await loadMember("u2", viewer, src);
+    expect(row?.fullName).toBe("Петренко");
+    expect(calls.users).toBe(1);
+  });
+
+  test("кого в списке не было — справочник читается ещё раз, но один", async () => {
+    const { calls, src } = fake();
+    const viewer = { id: "super-3", canManageUsers: true };
+    await loadDirectory(viewer, src);
+    expect((await loadMember("nobody", viewer, src)).row).toBeNull();
+    expect(calls.users).toBe(2);
+  });
+
+  test("чужой кеш не достаётся другому смотрящему: вошёл заведующий — свой ответ", async () => {
+    const { calls, src } = fake();
+    await loadDirectory({ id: "super-4", canManageUsers: true }, src);
+    const { row } = await loadMember("u2", { id: "head-4", canManageUsers: false }, src);
+    expect(row?.fullName).toBe("Петренко");
+    expect(calls).toEqual({ users: 1, staff: 1, me: 0 });
+  });
+
+  test("своя карточка — из профиля, справочник не нужен", async () => {
+    const { calls, src } = fake();
+    const { row } = await loadMember("u1", { id: "u1", canManageUsers: false }, src);
+    expect(row?.fullName).toBe("Іванов");
+    expect(calls).toEqual({ users: 0, staff: 0, me: 1 });
   });
 });

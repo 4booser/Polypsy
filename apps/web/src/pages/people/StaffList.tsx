@@ -57,9 +57,15 @@ export const gridClass = "grid grid-cols-3 gap-x-[45px] max-[900px]:grid-cols-1"
 
 export default function StaffList({ kind }: { kind: StaffKind }) {
   const { ut } = useLang();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const navigate = useNavigate();
-  const isSuper = user?.role === "superadmin";
+  /*
+   * Право вести учётные записи — не класс: заведующий с таким правом заводит
+   * людей наравне с суперадмином, а суперадмину сервер отвечает «да» без
+   * справочника. По нему же выбирается маршрут за справочником (см. data.ts).
+   */
+  const canManage = can("users.manage");
+  const viewerId = user?.id ?? "";
   /* поиск в адресе: «вот эти люди» пересылаются ссылкой, как и в списке пациентов */
   const [q, setQ] = useUrlState("q");
 
@@ -68,10 +74,14 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
    * поштучно (withLadder). Реестру лікарів — нет: класс учётной записи
    * приходит со списком, и лишние запросы там ни к чему.
    */
-  const res = useResource(async () => {
-    const dir = await loadDirectory();
-    return kind === "admins" ? { ...dir, rows: await withLadder(dir.rows) } : dir;
-  }, [kind]);
+  const res = useResource(
+    async () => {
+      const dir = await loadDirectory({ id: viewerId, canManageUsers: canManage });
+      return kind === "admins" ? { ...dir, rows: await withLadder(dir.rows) } : dir;
+    },
+    [kind, viewerId, canManage],
+    { enabled: !!user },
+  );
 
   const shown = useMemo(() => {
     const rows = res.data?.rows ?? [];
@@ -109,11 +119,12 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
         /*
          * «+» — переход на отдельный экран заведения (кадры f42/f49), а не
          * раскрывающаяся форма: на кадрах форма занимает экран целиком.
-         * Только суперадмину: заведение закрыто правом users.manage, а
-         * подсказки «есть ли оно у меня» профиль не несёт (см. api_gaps) —
-         * глиф, ведущий к отказу после заполнения формы, хуже отсутствующего.
+         * Только тому, у кого есть право users.manage — им закрыт POST
+         * /api/users, — а глиф, ведущий к отказу после заполнения формы,
+         * хуже отсутствующего. Маршрут «/new» открывается тем же правилом
+         * (App.tsx).
          */
-        isSuper ? (
+        canManage ? (
           <Button size="glyph" variant="ghost" aria-label={isAdmins ? ut("adm.addAdmin") : ut("ppl.addDoctor")} onClick={() => navigate(isAdmins ? "/admins/new" : "/staff/new")}>
             <IconPlusThick />
           </Button>

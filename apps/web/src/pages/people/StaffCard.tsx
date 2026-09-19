@@ -42,6 +42,14 @@ import { gridClass, metaClass, nameClass, rowClass } from "./StaffList";
  *                    в верхнем меню; вкладки f36 их заменяют.
  *   список «Лікарі» под карточкой администратора (f51) — не взят: связи
  *                    «администратор → его врачи» в модели нет (см. api_gaps).
+ *   шапка          — имя слева, вкладки в той же строке (f33, f04), а не
+ *                    имя по центру с линией на всю ширину и вкладками по
+ *                    центру под ней (f35/f36). Кадры вкладок рисуют шапку
+ *                    иначе, чем кадры профиля той же карточки; взят рисунок
+ *                    профиля — он же у соседней карты пациента (PatientCard),
+ *                    и две карточки людей с разными шапками читались бы как
+ *                    два разных экрана. Строка над списком вкладки (Групи)
+ *                    при этом с f35/f36 взята как есть.
  *
  * Поля показываются залитыми (Readout look="fill"), как на кадрах: карточка —
  * просмотр, правка — режим по «Редагувати». Пустое поле показывает свою
@@ -68,14 +76,26 @@ interface CardCtx {
 
 export default function StaffCard() {
   const { id } = useParams<{ id: string }>();
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, can } = useAuth();
   const { ut } = useLang();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const me = !!user && user.id === id;
   const isSuper = user?.role === "superadmin";
+  const canManage = can("users.manage");
+  /*
+   * Есть ли у смотрящего раздел «Лікарі» — то же правило, что у маршрута
+   * /staff в App.tsx: суперадмин либо ступень выше специалиста. Свою карточку
+   * открывает каждый сотрудник, а крошка на несуществующий раздел увела бы
+   * рядового специалиста через общий перехват на сводку.
+   */
+  const hasSection = isSuper || (user?.ladderRank ?? 0) > 1;
+  const crumbs = hasSection ? <Link to="/staff">{ut("ppl.staff")}</Link> : undefined;
 
-  const res = useResource(() => loadMember(id!, user ? { id: user.id } : null), [id, user?.id], { enabled: !!id });
+  const viewerId = user?.id ?? "";
+  const res = useResource(() => loadMember(id!, { id: viewerId, canManageUsers: canManage }), [id, viewerId, canManage], {
+    enabled: !!id && !!user,
+  });
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
@@ -106,7 +126,7 @@ export default function StaffCard() {
   const row = res.data.row;
   if (!row) {
     return (
-      <Page title={ut("ppl.notFound")} crumbs={<Link to="/staff">{ut("ppl.staff")}</Link>}>
+      <Page title={ut("ppl.notFound")} crumbs={crumbs}>
         <p className="m-0 text-[13px] text-muted">{ut("ppl.notFound")}</p>
       </Page>
     );
@@ -117,7 +137,7 @@ export default function StaffCard() {
   return (
     <Page
       title={row.fullName || row.email}
-      crumbs={<Link to="/staff">{ut("ppl.staff")}</Link>}
+      crumbs={crumbs}
       toolbar={
         <Tabs
           label={ut("ppl.tabsLabel")}
@@ -185,7 +205,11 @@ export function StaffProfile() {
   /*
    * Роли-шаблоны — с карточки прав: класс учётной записи (admin) про
    * должность не говорит ничего, а «Роль» на кадре — именно должность.
-   * Отказ (ступень выше моей) — не ошибка экрана: поле покажет класс.
+   * Отказ (ступень выше моей) — не ошибка экрана: должность неизвестна, и
+   * поле стоит пустым, как любое другое незаполненное. Карточка есть, а
+   * ролей в ней нет — так и пишется: «без роли-шаблона», а не ярлык
+   * раздела «Адміністратор групи», который в поле «должность» читался бы
+   * как должность.
    */
   const perms = useResource(() => api.userPermissions(row.id).catch(() => null), [row.id]);
 
@@ -194,7 +218,7 @@ export function StaffProfile() {
     if (row.role === "superadmin") parts.push(ut("nav.roleSuper"));
     const titles = perms.data?.roles.map((r) => r.title[lang] ?? r.title.uk ?? r.code) ?? [];
     if (titles.length) parts.push(...titles);
-    else if (row.role === "admin") parts.push(ut("nav.roleAdmin"));
+    else if (perms.data && row.role === "admin") parts.push(ut("ppl.roleNone"));
     return parts.join(" · ");
   }, [row.role, perms.data, lang, ut]);
 
