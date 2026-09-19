@@ -15,8 +15,12 @@ import type {
   SurveyFull,
   SurveyGrant,
   SurveyGroupWithCounts,
+  SurveyFolder,
+  SurveyFolderWithCounts,
   SurveyListItem,
+  SurveyListPage,
   SurveyResponse,
+  SurveyStatus,
   SurveyVersion,
   User,
   Issue,
@@ -355,6 +359,28 @@ export interface Items<T> {
   items: T[];
 }
 
+/*
+ * ── Каталог тестов: страницы и папки ──
+ *
+ * Договор — apps/api/src/routes/surveys.ts (GET /api/surveys с
+ * ?limit&offset&folder&status&q, PUT /api/surveys/:id/folder) и
+ * apps/api/src/routes/surveyFolders.ts (/api/survey-folders); типы ответа
+ * (SurveyFolder, SurveyFolderWithCounts, SurveyListPage) — из @quizzy/shared,
+ * как и у остальных маршрутов.
+ */
+export interface SurveyPageQuery {
+  /** Без limit — весь список: так его зовут выборы методики на других экранах */
+  limit?: number;
+  offset?: number;
+  /** Идентификатор папки или `root` — методики вне папок; без него — все */
+  folder?: string;
+  status?: SurveyStatus;
+  /** Подстрока названия на любом из языков */
+  q?: string;
+  /** Показать и снятые с использования (сервер добавляет их к остальным) */
+  archived?: boolean;
+}
+
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
 
 export const api = {
@@ -404,6 +430,37 @@ export const api = {
   groupAnalytics: (id: string) => request<GroupAnalytics>(`/api/analytics/groups/${id}`),
   surveys: (archived = false) =>
     unwrap(request<Items<SurveyListItem>>(`/api/surveys${archived ? "?archived=1" : ""}`)),
+  /**
+   * Страница каталога — для экрана каталога; остальные зовут surveys()
+   * выше и про страницы не знают. Пустые параметры в адрес не попадают:
+   * сервер читает «?q=» как «искать пустую строку», а не как «без поиска».
+   */
+  surveyPage: (query: SurveyPageQuery) => {
+    const qs = new URLSearchParams();
+    if (query.limit !== undefined) qs.set("limit", String(query.limit));
+    if (query.offset) qs.set("offset", String(query.offset));
+    if (query.folder) qs.set("folder", query.folder);
+    if (query.status) qs.set("status", query.status);
+    if (query.q) qs.set("q", query.q);
+    if (query.archived) qs.set("archived", "1");
+    const tail = qs.toString();
+    return request<SurveyListPage>(`/api/surveys${tail ? `?${tail}` : ""}`);
+  },
+  /** Все видимые папки плоским списком: дерево и крошки клиент собирает сам */
+  surveyFolders: () => unwrap(request<Items<SurveyFolderWithCounts>>("/api/survey-folders")),
+  createSurveyFolder: (input: { groupId: string; title: string; startsOn?: string; parentId?: string | null }) =>
+    request<SurveyFolder>("/api/survey-folders", { method: "POST", body: JSON.stringify(input) }),
+  updateSurveyFolder: (
+    id: string,
+    patch: { title?: string; startsOn?: string; parentId?: string | null; position?: number },
+  ) => request<SurveyFolder>(`/api/survey-folders/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteSurveyFolder: (id: string) => request<void>(`/api/survey-folders/${id}`, { method: "DELETE" }),
+  /** Перенос методики в папку; null — в корень каталога её группы */
+  moveSurvey: (id: string, folderId: string | null) =>
+    request<{ id: string; folderId: string | null }>(`/api/surveys/${id}/folder`, {
+      method: "PUT",
+      body: JSON.stringify({ folderId }),
+    }),
   survey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
   /** Методика в редактируемом виде: локализованные объекты вместо строк */
   keySheet: (id: string) => request<KeySheet>(`/api/surveys/${id}/key?lang=ru`),

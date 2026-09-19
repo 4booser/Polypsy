@@ -178,7 +178,8 @@ test("бланк вводится с клавиатуры и строкой це
   await page.locator("h1").first().waitFor();
 
   // берём короткую методику: сценарий про способ ввода, а не про длину
-  await page.locator('a[href^="/surveys/"]').first().click();
+  // ссылка из строки списка, а не первая на экране: вкладки каталога («/surveys/drafts») стоят выше
+  await page.locator('table tbody a[href^="/surveys/"]').first().click();
   await page.waitForTimeout(800);
   const url = page.url();
   const surveyId = url.split("/surveys/")[1]!.split(/[/?#]/)[0]!;
