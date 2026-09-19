@@ -304,7 +304,7 @@ export function applyAnswers(draft: Draft, answers: DraftOption[]): Draft {
 /** Сколько вопросов держат свой набор ответов, отличный от общего */
 export function questionsWithOwnAnswers(draft: Draft): number {
   const shared = draft.answers ?? [];
-  const sig = (o: DraftOption) => `${o.keyCode ?? ""} ${o.text.uk ?? ""} ${o.text.ru ?? ""}`;
+  const sig = (o: DraftOption) => `${o.keyCode ?? ""}\0${o.text.uk ?? ""}\0${o.text.ru ?? ""}`;
   const sharedSig = shared.map(sig).join("\n");
   return draft.questions.filter((q) => q.type !== "info" && q.options.map(sig).join("\n") !== sharedSig).length;
 }
