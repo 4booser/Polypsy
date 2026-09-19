@@ -6,7 +6,7 @@ import { useResource } from "../../useResource";
 import { ConfirmByName, IconChevron, IconSearchGlass, Loading, isTopLayer, useAction, useFocusTrap, useToast } from "../../ui";
 import { IconPlusThick } from "../../ui/glyphs";
 import { Page, Panel } from "../../ui/layout";
-import { Pager } from "../../ui/Pager";
+import { Pager } from "../../ui/pager";
 import { Button, Input, Tabs, Tag } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";

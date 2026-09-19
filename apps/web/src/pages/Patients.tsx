@@ -11,7 +11,7 @@ import { IconSearchGlass, Loading, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
 import { IconPlusThick } from "../ui/glyphs";
 import { Page } from "../ui/layout";
-import { Pager } from "../ui/Pager";
+import { Pager } from "../ui/pager";
 import { DEFAULT_PER, pageCount, pageFrom, pagesOf, perFrom, slicePage } from "../ui/paging";
 import { Button, Input, Tabs } from "../ui/primitives";
 import { PatientContext } from "../components/PatientContext";

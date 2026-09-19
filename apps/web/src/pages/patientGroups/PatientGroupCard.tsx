@@ -7,7 +7,7 @@ import { useLang } from "../../lang";
 import { IconEdit, IconSearchGlass, Loading, useAction } from "../../ui";
 import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
-import { Pager } from "../../ui/Pager";
+import { Pager } from "../../ui/pager";
 import { DEFAULT_PER, pageCount, pageFrom, perFrom, slicePage } from "../../ui/paging";
 import { Button, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
