@@ -578,7 +578,7 @@ function Responses({ surveyId }: { surveyId: string }) {
                   <div className="row tight">
                     {/* прохождение целиком — своей страницей с адресом, который можно переслать */}
                     <Link to={`/surveys/${surveyId}/responses/${r.id}`} className="btn">
-                      {ut("rv.view")}
+                      {ut("rsp.view")}
                     </Link>
                     <button onClick={() => setOpenConclusion(openConclusion === r.id ? null : r.id)}>
                       {openConclusion === r.id ? ut("an.collapse") : ut("an.conclusion")}
