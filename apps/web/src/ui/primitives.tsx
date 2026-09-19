@@ -1,4 +1,11 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+  HTMLAttributes,
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 import { NavLink } from "react-router-dom";
 import { createContext, forwardRef, useContext } from "react";
 import { cx } from "./cx";
@@ -648,6 +655,53 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     />
   );
 });
+
+/**
+ * Показ значения в силуэте поля — без самого поля.
+ *
+ * На кадрах просмотра пройденного теста (f34) вариант ответа и его балл
+ * нарисованы полями: выбранный — залитым, остальные — контурными. Это не
+ * ввод: человек смотрит, что ответил пациент, и править здесь нечего.
+ *
+ * Почему не <Input readOnly>. Поле остаётся полем: диктор объявляет «поле
+ * ввода, только чтение», Tab останавливается на каждом — на методике в две
+ * сотни пунктов с тремя вариантами это шестьсот остановок по дороге к кнопке
+ * заключения. Обычный элемент с теми же классами рисуется так же и не
+ * притворяется тем, чем не является. Силуэт при этом общий с Input — те же
+ * `looks`, тот же радиус и кегль, — чтобы «поле» и «показ в поле» не разошлись
+ * на пиксель при следующей правке замеров.
+ *
+ * Цвет текста не задаётся: показ данных красится тем, что вокруг (на кадре —
+ * фиолетовым, как подпись), и утилита цвета здесь только спорила бы с
+ * классом снаружи, а спор утилит Tailwind решает не порядком в строке.
+ * Высота — минимум 36, а не ровно 36: текст варианта бывает в две строки, и
+ * резать его ради замера нельзя.
+ */
+export function Readout({
+  look = "outline",
+  as: As = "div",
+  className,
+  children,
+  ...rest
+}: {
+  look?: FieldLook;
+  as?: "div" | "span" | "li" | "dd";
+  className?: string;
+  children: ReactNode;
+} & Omit<HTMLAttributes<HTMLElement>, "children" | "className">) {
+  return (
+    <As
+      className={cx(
+        "flex min-h-9 items-center rounded-[5px] py-[6px] text-[17px] leading-[20px]",
+        looks[look],
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </As>
+  );
+}
 
 /*
  * Каретка селекта: треугольник 9×5 цветом --primary, в 10px от правого края.
