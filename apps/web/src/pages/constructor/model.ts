@@ -315,8 +315,12 @@ export function questionsWithOwnAnswers(draft: Draft): number {
  * В базе балл лежит на паре «шкала + вопрос» (scale_items.weight), а на
  * кадре — один на ряд. Ряд показывает вес первого своего пункта и при правке
  * проставляет его всем: это интерфейс к существующей модели, а не новая.
- * Ряд с matchKey null («бал відповіді») появляется только если такие пункты
- * есть — их нельзя ни спрятать, ни выдумать.
+ * Ряд с matchKey null («бал відповіді») стоит, когда такие пункты уже есть —
+ * и когда ответы теста не несут кодов вовсе: у методик с баллом варианта
+ * (PHQ-9, «большая пятёрка») ключ шкалы только такой, и без этого ряда новой
+ * шкале негде было бы набрать номера — «+» живёт внутри ряда, а рядов по
+ * кодам нет. Ряд без кодов не выдуман, он единственный возможный; при кодах
+ * же лишнего ряда нет, как и на кадре f24_2.
  */
 export interface KeyRow {
   matchKey: string | null;
@@ -330,7 +334,8 @@ export function keyRows(scale: DraftScale, answers: DraftOption[]): KeyRow[] {
     (c): c is string => !!c && !codes.includes(c),
   );
   const rows: KeyRow[] = [...codes, ...extra].map((matchKey) => rowFor(scale, matchKey));
-  if (scale.key.some((k) => k.matchKey === null || k.matchKey === undefined)) rows.push(rowFor(scale, null));
+  const scored = scale.key.some((k) => k.matchKey === null || k.matchKey === undefined);
+  if (scored || !codes.length) rows.push(rowFor(scale, null));
   return rows;
 }
 

@@ -37,8 +37,19 @@ export function Settings({
       />
 
       <Grid min={200}>
-        <Field label={ut("cb.group")}>
-          <Select value={draft.groupId ?? ""} onChange={(e) => patch({ groupId: e.target.value || null })}>
+        {/*
+          Смена группы выводит тест из папки, унаследованной из адреса
+          («+ → Новий тест» в папке каталога): папка принадлежит группе, и
+          пару «папка группы A — группа B» сервер отверг бы только по кнопке
+          «Створити» (err.surveyFolderOtherGroup). Лучше завести тест в корне
+          каталога новой группы, чем не завести вовсе; пока папка есть, об
+          этом сказано под полем.
+        */}
+        <Field label={ut("cb.group")} hint={draft.folderId ? ut("cn.folderFollowsGroup") : undefined}>
+          <Select
+            value={draft.groupId ?? ""}
+            onChange={(e) => patch({ groupId: e.target.value || null, folderId: null })}
+          >
             <option value="">{ut("sel.noGroup")}</option>
             {/*
               Снятые с использования группы не предлагаются — кроме той, в
