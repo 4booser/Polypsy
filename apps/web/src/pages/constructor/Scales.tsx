@@ -160,7 +160,10 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
             {ut("cs.jsonOnlyHint")}
           </p>
 
-          <h3 className="mb-2 mt-4 font-display text-small font-medium">{ut("cs.bands")}</h3>
+          {/* прописные, разрядка и цвет — явно: h3 с классом из наследия ничего не получает (legacy.css) */}
+          <h3 className="mb-2 mt-4 font-display text-small font-medium uppercase tracking-[var(--tracking-label)] text-faint">
+            {ut("cs.bands")}
+          </h3>
           <div className="overflow-x-auto">
             <table>
               <thead>
