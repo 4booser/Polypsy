@@ -132,7 +132,7 @@ export function TouchArea({
 
 /* ─────────── кнопка ─────────── */
 
-type Variant = "primary" | "ghost" | "quiet" | "danger";
+type Variant = "primary" | "ghost" | "quiet" | "danger" | "paper";
 type Size = "sm" | "md" | "glyph";
 
 /*
@@ -155,6 +155,17 @@ const variants: Record<Variant, string> = {
   ghost: "bg-transparent text-primary hover:bg-primary-soft",
   quiet: "bg-transparent text-muted hover:bg-primary-soft hover:text-primary",
   danger: "bg-danger-soft text-danger hover:brightness-95 active:brightness-90",
+  /*
+   * Белая плашка на сиреневой полосе.
+   *
+   * Единственное место, где она нужна, — панель инструментов над текстом
+   * заключения (кадры f38/f39): полоса залита #f0ecff, а кнопки в ней
+   * нарисованы белыми. Залитая кнопка на залитой полосе исчезает, призрачная —
+   * тем более, и подсветка наведения у обеих совпадает с цветом полосы.
+   * Наведение здесь — затемнение, а не заливка: заливка сиреневым слила бы
+   * плашку с полосой ровно в момент, когда на неё смотрят.
+   */
+  paper: "bg-[var(--bg)] text-primary hover:brightness-95 active:brightness-90",
 };
 
 /*
