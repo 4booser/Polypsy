@@ -265,11 +265,110 @@ async function withRecordedApi(
   };
 }
 
+/**
+ * Опубликованные методики стенда — через API, но ИЗ СТРАНИЦЫ, короткие
+ * первыми.
+ *
+ * Соседние экраны берут идентификатор со ссылки в ЗАПИСАННОМ списке: приём
+ * — из «Сегодня», карта — из «Пациентов». При воспроизведении id тогда
+ * приходит из того же набора, что и всё остальное, и экран находит свои
+ * ответы. Здесь список спрашивается fetch-ом из страницы, а не через
+ * page.request: запрос из страницы проходит тот же перехват, записывается
+ * вместе с ответами экрана и при воспроизведении отдаёт тот же id.
+ *
+ * Через page.request было бы короче и неверно. Идентификаторы посева —
+ * случайные UUID, и каждый прогон пересоздаёт базу: живой запрос вернул бы
+ * свежий id, под которым записанного ответа нет, и экран получил бы
+ * выдуманный 404 на собственные данные.
+ *
+ * Короткие первыми — потому что свиток снимается целиком (см. fit). Первой
+ * в каталоге стоит МЛО на двести пунктов: её прохождение — тридцать экранов
+ * высоты, а записанный набор ответов — полмегабайта на каждый экран. Вёрстку
+ * пункта пять пунктов сторожат не хуже двухсот.
+ */
+async function recordedSurveys(
+  page: import("@playwright/test").Page,
+): Promise<Array<{ id: string; questionCount: number; responseCount: number }>> {
+  return page.evaluate(async () => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+    const list = (await (await fetch("/api/surveys?status=published", { headers })).json()) as {
+      items: Array<{ id: string; questionCount: number; responseCount: number }>;
+    };
+    return list.items
+      .map(({ id, questionCount, responseCount }) => ({ id, questionCount, responseCount }))
+      .sort((a, b) => a.questionCount - b.questionCount);
+  });
+}
+
+/**
+ * Сданное прохождение с баллами — из самой короткой методики, где оно есть.
+ *
+ * Именно сданное и с баллами: у брошенного лестница результатов пуста, и
+ * снимок сторожил бы половину экрана. Список методик несёт число сданных
+ * прохождений, так что за списком прохождений запрос идёт только к тем, у
+ * кого они есть, — и в записи не оседает по запросу на каждую методику.
+ */
+async function recordedScoredResponse(
+  page: import("@playwright/test").Page,
+): Promise<{ surveyId: string; responseId: string }> {
+  const candidates = (await recordedSurveys(page)).filter((s) => s.responseCount > 0).map((s) => s.id);
+  const found = await page.evaluate(async (ids) => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+    for (const id of ids) {
+      const list = (await (await fetch(`/api/surveys/${id}/responses?limit=5`, { headers })).json()) as {
+        rows: Array<{ id: string; status: string; scores: unknown[] }>;
+      };
+      const hit = list.rows.find((r) => r.status === "completed" && r.scores.length > 0);
+      if (hit) return { surveyId: id, responseId: hit.id };
+    }
+    return null;
+  }, candidates);
+  expect(found, "на стенде нет ни одного сданного прохождения с баллами — экран показать не на чем").not.toBeNull();
+  return found!;
+}
+
+/**
+ * Вытянуть окно по высоте содержимого — см. поле fit у экрана.
+ *
+ * Меряется именно прокручиваемая область (overflow-y: auto), а не любой
+ * элемент подряд: у подписей для диктора (sr-only) scrollHeight тоже больше
+ * clientHeight, и наибольшая разница по всем элементам ловила бы их. Ширина
+ * не меняется, значит, высоты строк после растяжения те же, и одного замера
+ * хватает; проверка после — что прокручивать больше нечего.
+ */
+async function fitToContent(page: import("@playwright/test").Page) {
+  const hidden = () =>
+    page.evaluate(() => {
+      let most = 0;
+      for (const el of document.querySelectorAll<HTMLElement>("main.main *")) {
+        const { overflowY } = getComputedStyle(el);
+        if (overflowY !== "auto" && overflowY !== "scroll") continue;
+        most = Math.max(most, el.scrollHeight - el.clientHeight);
+      }
+      return most;
+    });
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: size.width, height: size.height + (await hidden()) });
+  await expect.poll(hidden).toBe(0);
+}
+
 const SCREENS: Array<{
   name: string;
   open: (page: import("@playwright/test").Page) => Promise<void>;
   /** Заголовок экрана — сегодняшняя дата, и в снимке его надо закрыть */
   maskTitle?: true;
+  /**
+   * Снимается весь свиток, а не одна верхняя треть.
+   *
+   * Содержимое экрана прокручивается внутри своей области, а не вместе со
+   * страницей, и full-page снимок Playwright её не разворачивает: в кадр
+   * попадало бы то, что влезло в 720 px, — заголовок и два первых пункта, —
+   * а лестница результатов и редактор заключения, ради которых экран
+   * нарисован, оставались за краем. Окно вытягивается по высоте содержимого
+   * ровно, без запаса: область растёт вместе с окном (flex-1), и лишняя
+   * высота стала бы пустой полосой внизу снимка.
+   */
+  fit?: true;
 }> = [
   {
     name: "today",
@@ -342,6 +441,91 @@ const SCREENS: Array<{
       await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
     },
   },
+  /*
+   * Экраны раздела «Тести» волны 3 — каталог, конструктор в двух состояниях,
+   * просмотр прохождения и заключение. Это первые экраны, переделанные по
+   * макету один в один, и расхождение с макетом на них видно только глазом:
+   * колонка 700, шаг строки 51, «від — до — текст» — ничего из этого не
+   * ловит ни смоук экранов, ни проверка доступности.
+   */
+  {
+    name: "catalogue",
+    open: async (page) => {
+      await page.goto("/surveys");
+      /*
+       * Заголовок каталога печатается скрыто (titleHidden): строка над
+       * списком отдана вкладкам, и ждать видимого h1 здесь нечего. Признак
+       * готовности — строка списка: она рисуется последней, после папок и
+       * постраничности, которым нужны свои ответы.
+       */
+      await page.locator("table tbody tr").first().waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // страница каталога конечна (десять строк) — в кадре она вся, с последней строкой
+    fit: true,
+  },
+  {
+    name: "constructor-new",
+    open: async (page) => {
+      await page.goto("/constructor");
+      await page.getByRole("heading", { level: 1, name: "Новый тест" }).waitFor();
+      // вкладки вида есть только при создании; снимается вид по умолчанию — «Конкретный»
+      await expect(page.getByRole("tab", { name: "Конкретный тест" })).toHaveAttribute("aria-selected", "true");
+      // предпросмотр справа — панель контекста, и она в снимке
+      await page.locator(".preview-phone").waitFor();
+    },
+    // до «Ответов», шкал и кнопки «Создать» внизу — они и есть форма
+    fit: true,
+  },
+  {
+    name: "constructor-edit",
+    open: async (page) => {
+      /*
+       * Самая короткая из опубликованных методик с пунктами — из записанного
+       * списка, а не прямым goto с живым id: см. recordedSurveys о случайных
+       * id посева. Без пунктов нельзя: ждать нечего, и аккордеон пуст.
+       */
+      const survey = (await recordedSurveys(page)).find((s) => s.questionCount > 0);
+      expect(survey, "на стенде нет опубликованной методики с пунктами").toBeDefined();
+      await page.goto(`/constructor/${survey!.id}`);
+      /*
+       * Ждём строку аккордеона, а не заголовок: заголовком стоит название
+       * методики, и оно есть в разметке ещё до того, как приехали пункты.
+       */
+      await page.getByRole("button", { name: /Развернуть вопрос$/ }).first().waitFor();
+      await page.locator(".preview-phone").waitFor();
+    },
+    fit: true,
+  },
+  {
+    name: "response",
+    open: async (page) => {
+      const { surveyId, responseId } = await recordedScoredResponse(page);
+      await page.goto(`/surveys/${surveyId}/responses/${responseId}`);
+      // «Результаты» и кнопка стоят в самом низу свитка — если они есть, есть и всё выше
+      await page.getByRole("heading", { name: "Результаты" }).waitFor();
+      await page.getByRole("link", { name: "Создать заключение" }).waitFor();
+    },
+    // ради лестницы результатов и кнопки внизу экран и нарисован
+    fit: true,
+  },
+  {
+    name: "conclusion",
+    open: async (page) => {
+      const { responseId } = await recordedScoredResponse(page);
+      await page.goto(`/responses/${responseId}/conclusion`);
+      await page.getByRole("heading", { name: "Выводы заключения" }).waitFor();
+      /*
+       * Модели и само заключение приезжают своими запросами и до того
+       * стоят строкой «Загрузка…». Ждём, пока её не останется: снимок с ней
+       * — снимок ожидания, а не экрана.
+       */
+      await expect(page.locator("main.main").getByText("Загрузка…")).toHaveCount(0);
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // редактор с полосой инструментов стоит последним в свитке
+    fit: true,
+  },
 ];
 
 for (const screen of SCREENS) {
@@ -379,6 +563,8 @@ for (const screen of SCREENS) {
     const save = await withRecordedApi(page, screen.name, recording);
     await screen.open(page);
     await page.evaluate(() => document.fonts.ready);
+    // после ожиданий экрана, а не до: пока данные не приехали, мерить нечего
+    if (screen.fit) await fitToContent(page);
     /*
      * Снимок раньше сохранения набора ответов.
      *
