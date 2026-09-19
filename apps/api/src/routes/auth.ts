@@ -146,6 +146,7 @@ async function registerHandler(c: Context<AppEnv>) {
       position: input.position ?? null,
       specialty: input.specialty ?? null,
       rank: input.rank ?? null,
+      locality: input.locality || null,
       passwordHash: await hashPassword(input.password),
       role: isBootstrap ? "admin" : "user",
     })
@@ -335,6 +336,8 @@ authRoutes.patch("/me", requireAuth, async (c) => {
       ...(input.position !== undefined && { position: input.position ?? null }),
       ...(input.specialty !== undefined && { specialty: input.specialty ?? null }),
       ...(input.rank !== undefined && { rank: input.rank ?? null }),
+      // пустая строка — «убрал», а не населённый пункт с пустым названием
+      ...(input.locality !== undefined && { locality: input.locality || null }),
   });
 
   // после фильтрации могло не остаться ничего — например, псевдонимизированный

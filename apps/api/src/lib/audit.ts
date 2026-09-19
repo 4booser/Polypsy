@@ -70,6 +70,21 @@ export type AuditAction =
   | "cohort.members"
   | "cohort.save"
   | "cohort.delete"
+  /*
+   * Раздел «Статистика»: пресеты фильтров и модели. Имена с filter_preset
+   * и stat_model, чтобы в журнале не смешивались с cohort.* — контур
+   * другой: когорта отдаёт людей поимённо, статистика — только доли.
+   * Расчёт (stat_model.run) пишется как cohort.preview: это доступ к
+   * агрегатам по людям с размером каждой выборки в подробностях, и подбор
+   * фильтров, пока выборка не сожмётся до одного, должен быть виден.
+   */
+  | "filter_preset.create"
+  | "filter_preset.update"
+  | "filter_preset.delete"
+  | "stat_model.create"
+  | "stat_model.update"
+  | "stat_model.delete"
+  | "stat_model.run"
   | "device.wipe_requested"
   | "device.wiped"
   | "rule.hit"
