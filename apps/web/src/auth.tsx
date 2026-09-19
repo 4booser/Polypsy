@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import type { User } from "@quizzy/shared";
+import type { Permission, User } from "@quizzy/shared";
 import { api, tokenStore } from "./api";
 
 interface AuthState {
@@ -11,13 +11,70 @@ interface AuthState {
   refreshUser: () => void;
   /** Принять готовую пару токенов: регистрация входит без второго запроса */
   adopt: (res: { token: string; refreshToken: string; user: User }) => Promise<void>;
+  /**
+   * Есть ли у меня право — подсказка меню, как ladderRank и canInvite.
+   *
+   * Ограничением не является: право проверяется на маршрутах. Здесь оно
+   * нужно, чтобы консоль не обещала того, чего сервер не даст, и — что
+   * важнее — не ходила в закрытый маршрут «на пробу»: отказ в праве сервер
+   * пишет в журнал доступа, и штатная работа выглядела бы там как попытки
+   * взлома (см. permissionsFor).
+   */
+  can: (permission: Permission) => boolean;
 }
 
 const Ctx = createContext<AuthState | null>(null);
 
+/**
+ * Мои действующие права — с карточки прав, вместе с профилем.
+ *
+ * /me несёт две подсказки меню — ступень лестницы и «можно ли выписывать
+ * приглашения», — но не право вести учётные записи, и без него разделы
+ * «Лікарі» / «Адміністратори» решали бы «по какому маршруту идти за
+ * справочником» наугад: бить в реестр и откатываться по отказу. Отказ —
+ * это запись access.denied в журнале доступа, которую экран «Журнал»
+ * считает в красный счётчик «Відмов»; заведующий, открывающий список коллег,
+ * попадал бы туда на каждом заходе.
+ *
+ * GET /api/permissions/users/:id для своего id открыт каждому сотруднику, не
+ * журналируется и отдаёт `effective` — тот самый набор, который проверяют
+ * маршруты. Берётся он целиком, а не одно право: следующей подсказке меню
+ * не понадобится ни новое поле в /me, ни второй запрос.
+ *
+ * Досылать право в /me было бы на один запрос дешевле, но /me — про учётную
+ * запись, а карточка прав — про права, и она уже есть; второй источник того
+ * же набора на сервере разошёлся бы с первым молча.
+ *
+ * Суперадмина не спрашиваем: сервер обходит для него справочник целиком
+ * (permissionsOf), и `can` отвечает ему «да» без запроса. Пациента — тоже:
+ * маршрут закрыт для него классом, а не правом, и ответ был бы отказом.
+ * Не ответил сервер — прав «нет»: консоль спрячет лишнее, но работать
+ * будет; отказать во входе из-за подсказки меню нельзя.
+ */
+async function permissionsFor(user: User): Promise<ReadonlySet<string>> {
+  if (user.role !== "admin") return new Set();
+  return api
+    .userPermissions(user.id)
+    .then((card) => new Set(card.effective))
+    .catch(() => new Set<string>());
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [perms, setPerms] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
+
+  /*
+   * Профиль и права принимаются парой и в этом порядке: сперва права, потом
+   * профиль. Консоль рисует маршруты по профилю, и появись он раньше прав,
+   * заведующий на мгновение увидел бы консоль без своих разделов, а прямая
+   * ссылка на «/staff/new» успела бы упереться в общий перехват и увести
+   * на сводку.
+   */
+  async function accept(next: User) {
+    setPerms(await permissionsFor(next));
+    setUser(next);
+  }
 
   useEffect(() => {
     if (!tokenStore.get()) {
@@ -26,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     api
       .me()
-      .then(setUser)
+      .then(accept)
       .catch(() => tokenStore.clear())
       .finally(() => setLoading(false));
   }, []);
@@ -61,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function adopt(res: { token: string; refreshToken: string; user: User }) {
     tokenStore.set(res.token);
     tokenStore.setRefresh(res.refreshToken);
-    setUser(await api.me().catch(() => res.user));
+    await accept(await api.me().catch(() => res.user));
   }
 
   async function login(email: string, password: string) {
@@ -84,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (raw) void api.logout(raw).catch(() => {});
     tokenStore.clear();
     setUser(null);
+    setPerms(new Set());
   }
 
   /*
@@ -91,12 +149,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * приходят вместе с профилем, и без обновления консоль показывала бы старое
    * значение до следующего входа.
    */
+  /*
+   * Права перечитываются вместе с профилем, а не живут с момента входа:
+   * роль, выданную посреди смены, человек должен увидеть без выхода.
+   */
   function refreshUser() {
-    void api.me().then(setUser).catch(() => {});
+    void api.me().then(accept).catch(() => {});
   }
 
+  /*
+   * Суперадмин — «да» без справочника, как и на сервере (permissionsOf):
+   * иначе суперадмин, случайно отнявший у себя право, не смог бы вернуть
+   * его обратно — консоль спрятала бы от него экран, на котором это делается.
+   */
+  const can = (permission: Permission) => user?.role === "superadmin" || perms.has(permission);
+
   return (
-    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, adopt }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, adopt, can }}>{children}</Ctx.Provider>
   );
 }
 
