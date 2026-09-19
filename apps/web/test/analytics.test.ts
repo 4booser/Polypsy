@@ -196,6 +196,20 @@ describe("какие методики нужны редактору", () => {
       newParam({ kind: "risk", surveyId: "sv9" }),
       newParam({ surveyId: "sv2", scaleCode: "A" }),
     ];
-    expect(surveysToLoad(d)).toEqual(["sv1", "sv2"]);
+    expect(surveysToLoad(d, new Set())).toEqual(["sv1", "sv2"]);
+  });
+
+  test("методики из действий — только те, которых нет в списке: остальные уже названы списком", () => {
+    const d = emptyDraft();
+    d.params = [newParam({ surveyId: "sv1", scaleCode: "D" })];
+    d.actions = [
+      newAction({ kind: "suggest_survey", surveyId: "sv1" }),
+      newAction({ kind: "suggest_survey", surveyId: "sv7" }),
+      newAction({ kind: "suggest_survey", surveyId: "sv8" }),
+      newAction({ kind: "suggest_survey", surveyId: "" }),
+      newAction({ kind: "advise", surveyId: "sv9" }),
+    ];
+    /* sv1 нужна ради шкал и без того; sv8 есть в списке; sv7 — сирота, её дочитывают ради названия */
+    expect(surveysToLoad(d, new Set(["sv1", "sv8"]))).toEqual(["sv1", "sv7"]);
   });
 });
