@@ -175,6 +175,29 @@ describe("пройденный тест: модель экрана", () => {
     expect(view.ladders[0]!.bandLabel).toBe("Середній");
   });
 
+  /**
+   * Мутация: рисовать список вариантов у всякого пункта, где они есть, — у
+   * порядка выходит список с нулями вместо цепочки, проверка называет пункт.
+   */
+  test("пункт «порядок» — цепочка, а не список вариантов с весами", () => {
+    const order: (typeof detail.answers)[number] = {
+      ...detail.answers[0]!,
+      questionId: "q3",
+      title: "Порядок",
+      type: "ranking",
+      position: 3,
+      optionIds: null,
+      ranking: ["o2b", "o2a"],
+    };
+    const ids = { o1a: "o1a", o1b: "o1b", o2a: "o2a", o2b: "o2b", sc1: "sc1" };
+    const view = buildResponseView({ ...detail, answers: [order] }, survey(ids));
+    const q = view.questions[0]!;
+    expect(q.options, "у пункта «порядок» нарисован список вариантов").toEqual([]);
+    expect(q.free).toBe("Яджамахе → Омтріамбакам");
+    // чужая версия по-прежнему ловится по вариантам порядка, хотя их не показывают
+    expect(buildResponseView({ ...detail, answers: [order] }, survey({ ...ids, o2a: "n2a", o2b: "n2b" })).stale).toBe(true);
+  });
+
   test("половина совпавших идентификаторов — тоже чужая версия", () => {
     /*
      * Так в базе не бывает: версия меняет идентификаторы целиком. Но модель

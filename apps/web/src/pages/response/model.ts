@@ -128,7 +128,16 @@ export function buildResponseView(detail: ResponseDetail, survey: SurveyFull): R
       const rowIds = new Set(Object.keys(a.matrix ?? {}));
       const textById = new Map(a.options.map((o) => [o.id, o.text] as const));
 
-      const options: OptionRow[] = a.options
+      /*
+       * Пункт «порядок» — не выбор из вариантов, а их перестановка: ответ —
+       * цепочка, и список тех же вариантов под ней показывал бы нуль
+       * напротив каждого (вес у порядка позиционный, у варианта его нет).
+       * Заключение рисует цепочку; просмотр — тоже, иначе один ответ
+       * выглядит на двух экранах двумя разными. Варианты всё же
+       * перебираются: по ним ловится чужая версия.
+       */
+      const chain = a.type === "ranking";
+      const rows: OptionRow[] = a.options
         .filter((o) => !rowIds.has(o.id) && optionById.get(o.id)?.kind !== "row")
         .map((o) => {
           const current = optionById.get(o.id);
@@ -141,6 +150,7 @@ export function buildResponseView(detail: ResponseDetail, survey: SurveyFull): R
             riskFlag: o.riskFlag,
           };
         });
+      const options = chain ? [] : rows;
 
       return {
         questionId: a.questionId,
