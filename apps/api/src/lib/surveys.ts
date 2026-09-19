@@ -265,10 +265,19 @@ export async function getSurvey(
 }
 
 /** Методика в том виде, в каком её видел конкретный респондент */
-export async function getSurveyForResponse(responseId: string): Promise<SurveyFull | null> {
+/**
+ * Методика той версии, которую проходили, — на языке того, кто читает.
+ *
+ * Язык берётся у читателя, а не у прохождения: просмотр и печать открывает
+ * персонал со своей консолью, и украинский заголовок над русским описанием
+ * (описание шло другим запросом, с языком) выглядел как недоперевод. Язык
+ * прохождения — ответ на другой вопрос («что видел респондент»), и его
+ * экран пока не задаёт.
+ */
+export async function getSurveyForResponse(responseId: string, lang: Lang = "uk"): Promise<SurveyFull | null> {
   const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
   if (!response) return null;
-  return getSurvey(response.surveyId, response.versionId);
+  return getSurvey(response.surveyId, response.versionId, lang);
 }
 
 type Content = Pick<CreateSurveyInput, "sections" | "scales" | "questions">;

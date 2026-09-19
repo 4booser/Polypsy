@@ -483,7 +483,7 @@ responseRoutes.get("/responses/:id", async (c) => {
   }
 
   // читаем методику той версии, которую респондент реально видел
-  const survey = await getSurveyForResponse(response.id);
+  const survey = await getSurveyForResponse(response.id, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
 
   const [answerRows, scoreRows, eventRows] = await Promise.all([
