@@ -528,6 +528,18 @@ export default function App() {
             <Route index element={<Invites />} />
           </Route>
           <Route path="/surveys" element={<SurveyList />} />
+          {/*
+            Вкладки каталога «Опубліковані / Неопубліковані / Зняті» стоят в
+            адресе, а не в состоянии: ссылку на неопубликованные пересылают
+            коллеге, и открыться она обязана на них же (см. Tabs в
+            primitives.tsx). Статичные сегменты `drafts` и `retired` не
+            спорят с `/surveys/:id` ниже: маршрутизатор ранжирует точный
+            сегмент выше параметра независимо от порядка объявления, а
+            идентификаторы методик — UUID, и слово «drafts» среди них не
+            встретится.
+          */}
+          <Route path="/surveys/drafts" element={<SurveyList />} />
+          <Route path="/surveys/retired" element={<SurveyList />} />
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
