@@ -43,6 +43,12 @@ export function PersonGrid({
    * Нажатие по строке мимо ссылки и галочки — «а это кто?» для панели
    * контекста справа. Ссылка ведёт в карту, галочка выбирает; сама строка
    * отвечает на вопрос, не уводя с экрана (см. layout.tsx, п. 5).
+   *
+   * С клавиатуры строку не нажать — у <li> нет фокуса, и давать его ему
+   * нельзя: внутри уже два элемента с фокусом (ссылка и галочка), а
+   * вложенные остановки табуляции диктор читает как одну. Поэтому панель
+   * идёт за фокусом: Tab на ссылку или галочку строки — и панель отвечает
+   * про эту строку, без третьей остановки на каждого человека.
    */
   onFocus?: (person: PersonLike) => void;
   focusedId?: string | null;
@@ -65,6 +71,8 @@ export function PersonGrid({
           <li
             key={p.userId}
             onClick={onFocus ? () => onFocus(p) : undefined}
+            /* focus всплывает (React слушает focusin): одно свойство на оба элемента строки */
+            onFocus={onFocus ? () => onFocus(p) : undefined}
             className={cx(
               /* 58px — шаг строк макета: 13/18 имя + 13/18 мета + воздух */
               "flex min-h-[58px] items-center gap-[10px] rounded-[4px] pl-[4px] -ml-[4px]",
@@ -141,8 +149,11 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: ()
  * выбрано: кнопка «Додати до групи» при нуле выбранных обещала бы действие,
  * которому не с кем случиться.
  *
- * `aria-live`: диктор слышит «3 вибрано» после каждой галочки, не уходя со
- * списка, — иначе счётчик внизу экрана он нашёл бы только Tab-ом до конца.
+ * `aria-live` — на счётчике, а не на всём рядке: диктор слышит «3 вибрано»
+ * после каждой галочки, не уходя со списка, — иначе счётчик внизу экрана он
+ * нашёл бы только Tab-ом до конца. На всём рядке живая область при переходе
+ * 0→1 зачитывала бы вслед за счётчиком и появившиеся кнопки. `aria-atomic`:
+ * меняется одно число, а прочесть надо всю фразу, не «три».
  */
 export function SelectionBar({
   count,
@@ -155,8 +166,8 @@ export function SelectionBar({
 }) {
   const { ut } = useLang();
   return (
-    <div className="mt-[40px] flex flex-wrap items-center gap-[14px] text-[16px] text-muted" aria-live="polite">
-      <span>
+    <div className="mt-[40px] flex flex-wrap items-center gap-[14px] text-[16px] text-muted">
+      <span aria-live="polite" aria-atomic="true">
         <strong className="font-bold text-text">{count}</strong> {ut("pg.selected")}
       </span>
       {count > 0 ? (
