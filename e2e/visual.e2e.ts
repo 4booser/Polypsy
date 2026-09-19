@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, patientLinks } from "./helpers";
 
 /**
  * Скриншотные эталоны витрины.
@@ -139,8 +139,8 @@ test("подсказка закрывается один раз и не возв
    */
   await login(page, "psy");
   await page.goto("/patients");
-  await page.waitForSelector("table tbody tr");
-  const href = await page.locator("table tbody tr td a").first().getAttribute("href");
+  await patientLinks(page).first().waitFor();
+  const href = await patientLinks(page).first().getAttribute("href");
   await page.goto(href!);
 
   const hint = page.locator(".hint-box").first();
@@ -428,8 +428,8 @@ const SCREENS: Array<{
     name: "patient",
     open: async (page) => {
       await page.goto("/patients");
-      await page.locator("table tbody tr").first().waitFor();
-      await page.locator("table tbody tr td a").first().click();
+      await patientLinks(page).first().waitFor();
+      await patientLinks(page).first().click();
       await page.waitForURL(/\/patients\//);
       /*
        * Ждём вкладки карты, а не просто заголовок: заголовок «Пациенты»

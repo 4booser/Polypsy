@@ -1,5 +1,6 @@
 import type { SurveyFolder, SurveyListItem } from "@quizzy/shared";
 import type { SurveyPageQuery } from "../../api";
+import { DEFAULT_PER } from "../../ui/paging";
 
 /**
  * Чистая часть каталога тестов: адрес ↔ состояние, запрос к серверу, дерево
@@ -38,32 +39,13 @@ export function tabFromPath(pathname: string): CatalogueTab {
 
 /* ─────────── страницы ─────────── */
 
-/** Ступени селекта «елементів на сторінці»; 10 — значение с макета */
-export const PER_PAGE = [10, 20, 50, 100] as const;
-export const DEFAULT_PER = 10;
-
-/**
- * Чужое число в адресе — не ошибка, а умолчание.
- *
- * «?per=7» из старой закладки или руки не должен ронять экран и не должен
- * просить у сервера семь строк: список селекта — единственный источник
- * допустимых ступеней, и адрес ему подчиняется, а не наоборот.
+/*
+ * Ступени селекта и разбор адреса переехали в ui/paging.ts: тот же блок
+ * страниц стоит теперь над группами пациентов и над списком пациентов.
+ * Имена отдаются отсюда по-прежнему — проверки каталога и его экран зовут
+ * их как звали, а второго места, где живёт «10 — значение с макета», нет.
  */
-export function perFrom(raw: string | null): number {
-  const n = Number(raw);
-  return (PER_PAGE as readonly number[]).includes(n) ? n : DEFAULT_PER;
-}
-
-/** Номер страницы с единицы; всё, что не разбирается или меньше, — первая */
-export function pageFrom(raw: string | null): number {
-  const n = Number.parseInt(raw ?? "", 10);
-  return Number.isFinite(n) && n >= 1 ? n : 1;
-}
-
-/** «сторінка 1 з N»: пустой список — это одна пустая страница, а не ноль страниц */
-export function pageCount(total: number, per: number): number {
-  return Math.max(1, Math.ceil(total / per));
-}
+export { DEFAULT_PER, PER_PAGE, pageCount, pageFrom, perFrom } from "../../ui/paging";
 
 /* ─────────── запрос ─────────── */
 
