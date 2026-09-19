@@ -57,7 +57,7 @@ const TOKENS = [
 for (const theme of ["dark", "light"] as const) {
   test(`витрина не разъехалась: тема ${theme}`, async ({ page }) => {
     await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme", value);
+      localStorage.setItem("quizzy.theme.v2", value);
     }, theme);
 
     await login(page, "psy");
@@ -76,7 +76,7 @@ for (const theme of ["dark", "light"] as const) {
 for (const theme of ["dark", "light"] as const) {
   test(`токены темы не менялись незаметно: ${theme}`, async ({ page }) => {
     await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme", value);
+      localStorage.setItem("quizzy.theme.v2", value);
     }, theme);
 
     await login(page, "psy");
@@ -104,7 +104,7 @@ for (const theme of ["dark", "light"] as const) {
      * правильно белого листа не отличить.
      */
     await page.addInitScript((value) => {
-      localStorage.setItem("quizzy.theme", value);
+      localStorage.setItem("quizzy.theme.v2", value);
     }, theme);
 
     await login(page, "psy");
@@ -371,7 +371,7 @@ for (const screen of SCREENS) {
      * светлом. Тёмную тему держат эталоны витрины и дампы токенов.
      */
     await page.addInitScript(() => {
-      localStorage.setItem("quizzy.theme", "light");
+      localStorage.setItem("quizzy.theme.v2", "light");
     });
 
     // вход идёт в настоящий стенд: перехват ставится после него

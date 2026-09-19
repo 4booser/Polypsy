@@ -26,11 +26,11 @@ export default function PatientProfile() {
    * обязана открываться так, как нарисована. Тёмная остаётся выбором человека,
    * а не первым впечатлением.
    */
-  const [theme, setTheme] = useState(() => localStorage.getItem("quizzy.theme") ?? "light");
+  const [theme, setTheme] = useState(() => localStorage.getItem("quizzy.theme.v2") ?? "light");
 
   const applyTheme = (next: string) => {
     setTheme(next);
-    localStorage.setItem("quizzy.theme", next);
+    localStorage.setItem("quizzy.theme.v2", next);
     document.documentElement.setAttribute("data-theme", next);
   };
 

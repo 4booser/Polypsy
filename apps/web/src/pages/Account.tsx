@@ -33,7 +33,7 @@ export default function Account() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   // умолчание светлое — как макет; см. пояснение в patient/Profile.tsx
-  const theme = user?.workspace?.theme ?? (localStorage.getItem("quizzy.theme") || "light");
+  const theme = user?.workspace?.theme ?? (localStorage.getItem("quizzy.theme.v2") || "light");
   const density = user?.workspace?.density ?? "cozy";
   const motion = user?.workspace?.motion ?? "system";
   const hidden = user?.workspace?.railHidden ?? [];
