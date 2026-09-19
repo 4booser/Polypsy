@@ -11,6 +11,7 @@ import {
   text,
   time,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { LocalizedText } from "@quizzy/shared";
@@ -272,11 +273,207 @@ export const groupAdmins = pgTable(
   }),
 );
 
+/* ═══════════ Папки МЕТОДИК ═══════════
+ *
+ * Полка внутри группы методик: «Тести за 2023 › Тести за лютий 2023».
+ *
+ * Не путать ни с survey_groups выше, ни с patient_groups ниже. Группа
+ * методик — единица разграничения доступа; папка ничего не открывает и не
+ * закрывает, она лишь раскладывает методики, которые читателю и так видны,
+ * по годам, месяцам и программам. Кто видит папку, решает её группа; кто
+ * правит — право surveys.edit, то же, что на сами методики.
+ *
+ * Имя с префиксом survey_ — в одном ряду с survey_versions и survey_access:
+ * всё, что принадлежит методике. Голое folders через год стояло бы рядом с
+ * папками документов или записей приёма и ничего не значило бы; любое имя
+ * со словом group смешалось бы с группами методик. Полное обоснование — в
+ * заголовке миграции 0080_survey_folders.sql.
+ */
+
+/**
+ * Папка методик: название, дата с макета, родитель и группа.
+ *
+ * Папка принадлежит ГРУППЕ, а не человеку. Методика одна на отделение, и
+ * раскладка по годам тоже одна: личные папки (как у patient_groups с
+ * владельцем) означали бы, что коллеги видят разные каталоги и ищут одну и
+ * ту же методику в разных местах. `createdBy` здесь — авторство для журнала,
+ * а не право, потому SET NULL, а не RESTRICT, как у survey_groups: держать
+ * учётную запись уволенного из-за заведённой им полки нельзя.
+ *
+ * Группа у папки не меняется: переезд папки между отделениями перетащил бы
+ * через границу доступа всё её содержимое разом. Методика переезжает по
+ * одной (PATCH /api/surveys/:id, groupId) и папку при этом теряет.
+ */
+export const surveyFolders = pgTable(
+  "survey_folders",
+  {
+    id: text("id").primaryKey(),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => surveyGroups.id, { onDelete: "cascade" }),
+    /**
+     * Родитель; null — корень каталога группы. RESTRICT: папку с вложенными
+     * не удалить, иначе одно нажатие стирало бы годовую раскладку.
+     * Самоссылке нужен явный тип, иначе TypeScript уходит в цикл вывода.
+     */
+    parentId: text("parent_id").references((): AnyPgColumn => surveyFolders.id, {
+      onDelete: "restrict",
+    }),
+    title: text("title").notNull(),
+    /**
+     * Дата папки с макета — «Лютий 2023 початок 05.02.2023». Видимое и
+     * правимое поле, а не createdAt: папку за февраль заводят в марте, и
+     * дата создания говорила бы неправду. По умолчанию — сегодня.
+     */
+    startsOn: date("starts_on").notNull().default(sql`current_date`),
+    position: integer("position").notNull().default(0),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    // экран каталога читает папки группы уровнем: «что лежит в этой папке»
+    groupParentIdx: index("survey_folders_group_parent_idx").on(t.groupId, t.parentId, t.position),
+  }),
+);
+
+/* ═══════════ Группы ПАЦИЕНТОВ ═══════════
+ *
+ * Имя выбрано так, чтобы их нельзя было спутать с survey_groups выше.
+ *
+ * survey_groups — группа МЕТОДИК, единица разграничения доступа: на неё
+ * назначают администраторов, от неё считается зона ответственности
+ * сотрудника (lib/scope.ts), ею закрыты прохождения и тревоги. В коде её
+ * зовут просто «группой», и так же её зовут в разговоре.
+ *
+ * patient_groups — рабочий список людей, который специалист собрал руками:
+ * «Моя група», «Група ризику», «Вечірня група». Он ничего не открывает и
+ * ничего не закрывает — кого сотрудник вправе видеть, решает всё та же зона
+ * ответственности, а группа пациентов лишь раскладывает уже видимых людей по
+ * вкладкам и позволяет назначить методику сразу всем.
+ *
+ * Назвать вторую сущность `groups` было бы дешевле на три символа и дороже
+ * на всю оставшуюся жизнь кода: слово «группа» перестало бы что-либо
+ * означать, а запрос «по группе» молча возвращал бы не тех людей. Слово
+ * «пациент» в имени стоит первым именно для беглого чтения.
+ */
+
+/**
+ * Группа пациентов: название, собственное описание и состав.
+ *
+ * Владелец, а не состав администраторов — и это главное отличие от
+ * survey_groups. Список собран одним человеком и выражает его клиническое
+ * суждение, а не структуру учреждения; общий на отделение перечень людей в
+ * системе уже есть (прикрепление к отделению), и путать одно с другим
+ * нельзя: чужую личную раскладку второй специалист прочитал бы как
+ * официальную.
+ *
+ * `restrict` на владельце — по той же причине, что и у survey_groups:
+ * уволенный специалист не уносит с собой ни списки, ни историю прошедших
+ * через них назначений. Сначала явная передача, потом закрытие учётной
+ * записи.
+ */
+export const patientGroups = pgTable(
+  "patient_groups",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    /**
+     * «Опис групи (питання до групи)»: зачем группа собрана и что у неё
+     * спрашивают. Отдельное поле, а не приписка к названию — название стоит
+     * вкладкой и обязано оставаться коротким.
+     */
+    description: text("description"),
+    /** Цвет вкладки: группы на экране различают взглядом, а не чтением */
+    color: text("color"),
+    position: integer("position").notNull().default(0),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    ownerIdx: index("patient_groups_owner_idx").on(t.ownerId, t.position),
+  }),
+);
+
+/**
+ * Кто в группе. Пациентов добавляет врач руками — «додати пацієнта».
+ *
+ * Пара ключом: повторное добавление того же человека не заводит вторую
+ * строку и не считается ошибкой. Специалист жмёт кнопку второй раз не от
+ * невнимательности, а потому что не помнит, добавил ли он его в прошлый
+ * вторник, — и отказ здесь был бы ответом не на тот вопрос.
+ */
+export const patientGroupMembers = pgTable(
+  "patient_group_members",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => patientGroups.id, { onDelete: "cascade" }),
+    patientId: text("patient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addedBy: text("added_by").references(() => users.id, { onDelete: "set null" }),
+    addedAt: timestampCol("added_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.groupId, t.patientId] }),
+    /* «в каких группах этот человек» — вопрос карты пациента и фильтра
+       вкладок; первичный ключ на него не отвечает, там группа стоит первой */
+    patientIdx: index("patient_group_members_patient_idx").on(t.patientId),
+  }),
+);
+
+/**
+ * «Тести Групи»: методики, назначенные на группу целиком.
+ *
+ * Отдельная таблица, хотя назначение и разворачивается в поимённые строки
+ * survey_access. Выводить список методик группы из пересечения назначений её
+ * участников нельзя — он врал бы в обе стороны: методика, выданная всем
+ * троим адресно, показалась бы групповой, а групповая исчезла бы из списка,
+ * стоило одному участнику выбыть. Здесь лежит решение специалиста, в
+ * survey_access — его последствия у каждого человека.
+ */
+export const patientGroupSurveys = pgTable(
+  "patient_group_surveys",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => patientGroups.id, { onDelete: "cascade" }),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    assignedBy: text("assigned_by").references(() => users.id, { onDelete: "set null" }),
+    assignedAt: timestampCol("assigned_at").notNull().default(sql`now()`),
+    /**
+     * Условия, на которых методика назначена группе. Хранятся и здесь, и в
+     * каждом поимённом назначении: здесь — чтобы выдать их тому, кто войдёт
+     * в группу позже, там — потому что дальше срок и попытки каждого живут
+     * своей жизнью (кому-то продлили, кто-то израсходовал).
+     */
+    expiresAt: timestampCol("expires_at"),
+    attemptsAllowed: integer("attempts_allowed"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.groupId, t.surveyId] }),
+  }),
+);
+
 export const surveys = pgTable(
   "surveys",
   {
     id: text("id").primaryKey(),
     groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "set null" }),
+    /**
+     * Папка каталога, в которой лежит методика; null — корень каталога группы.
+     *
+     * В базе ключ составной: (folder_id, group_id) → survey_folders (id,
+     * group_id), см. миграцию 0080. Здесь он записан простой ссылкой только
+     * потому, что drizzle нужна колонка, а не правило: миграции пишутся
+     * руками, и схема ORM ограничений не порождает. Правило «методика лежит
+     * в папке своей группы» держит база, а не этот файл.
+     */
+    folderId: text("folder_id").references(() => surveyFolders.id, { onDelete: "set null" }),
     title: localized("title").notNull(),
     description: localized("description"),
     instructions: localized("instructions"),
@@ -412,6 +609,7 @@ export const surveys = pgTable(
   (t) => ({
     statusIdx: index("surveys_status_idx").on(t.status),
     groupIdx: index("surveys_group_idx").on(t.groupId),
+    folderIdx: index("surveys_folder_idx").on(t.folderId),
   }),
 );
 
@@ -462,6 +660,23 @@ export const surveyAccess = pgTable(
      * самого UPDATE, и второй отправке просто не достаётся строки.
      */
     attemptsUsed: integer("attempts_used").notNull().default(0),
+    /**
+     * Назначение пришло через группу пациентов, а не адресно.
+     *
+     * В карте человека должно быть видно, откуда взялась методика, которую
+     * ему лично никто не назначал: это условие, на котором вообще снят
+     * запрет массового назначения (см. докблок в routes/patientGroups.ts).
+     * Разбирающий через полгода обязан получить ответ из данных, а не из
+     * догадки.
+     *
+     * `set null` при удалении группы: назначение было настоящим — срок идёт,
+     * попытки посчитаны, человек мог начать проходить, — и каскад отобрал бы
+     * у него доступ посреди прохождения. Пропадает только пометка «через
+     * какую группу», и это честно: группы больше нет.
+     */
+    viaPatientGroupId: text("via_patient_group_id").references(() => patientGroups.id, {
+      onDelete: "set null",
+    }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.surveyId, t.userId] }),
@@ -1739,6 +1954,10 @@ export type GroupAdminRow = typeof groupAdmins.$inferSelect;
 export type AnswerEventRow = typeof answerEvents.$inferSelect;
 export type UserRow = typeof users.$inferSelect;
 export type SurveyGroupRow = typeof surveyGroups.$inferSelect;
+export type PatientGroupRow = typeof patientGroups.$inferSelect;
+export type SurveyFolderRow = typeof surveyFolders.$inferSelect;
+export type PatientGroupMemberRow = typeof patientGroupMembers.$inferSelect;
+export type PatientGroupSurveyRow = typeof patientGroupSurveys.$inferSelect;
 export type SurveyRow = typeof surveys.$inferSelect;
 export type SectionRow = typeof sections.$inferSelect;
 export type ScaleRow = typeof scales.$inferSelect;

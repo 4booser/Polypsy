@@ -298,6 +298,121 @@ export interface SurveyGroupWithCounts extends SurveyGroup {
   manageable: boolean;
 }
 
+/* ─────────── Папки МЕТОДИК ───────────
+ *
+ * Полка внутри группы методик: «Мої тести › Тести за 2023 › Тести за лютий
+ * 2023». Не `SurveyGroup` и не `PatientGroup`: группа методик разграничивает
+ * доступ, папка — только раскладывает уже видимое. Кому видна папка,
+ * решает её группа; правит её тот, кто правит методики (surveys.edit).
+ */
+
+/** Папка каталога методик */
+export interface SurveyFolder {
+  id: string;
+  /** Группа методик, в которой папка живёт. Между группами папка не переезжает */
+  groupId: string;
+  /** Родительская папка; null — корень каталога группы */
+  parentId: string | null;
+  title: string;
+  /**
+   * Дата папки с макета («Лютий 2023 початок 05.02.2023»), ГГГГ-ММ-ДД.
+   * Правится руками, это не дата создания.
+   */
+  startsOn: string;
+  position: number;
+  /** Кто завёл. Авторство для журнала, а не право: права даёт группа */
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface SurveyFolderWithCounts extends SurveyFolder {
+  /** Методик в работе прямо в папке, без вложенных: то, что увидят, открыв её */
+  surveyCount: number;
+  /** Вложенных папок */
+  childCount: number;
+}
+
+/**
+ * Страница каталога методик.
+ *
+ * `total` считается по тем же условиям, что и страница, и приходит всегда,
+ * даже когда страниц не просили: тогда он равен длине списка, и клиенту не
+ * нужно различать два вида ответа.
+ */
+export interface SurveyListPage {
+  items: SurveyListItem[];
+  total: number;
+}
+
+/* ─────────── Группы ПАЦИЕНТОВ ───────────
+ *
+ * Не то же, что `SurveyGroup` выше, и названы так, чтобы их нельзя было
+ * спутать. `SurveyGroup` — группа МЕТОДИК: единица разграничения доступа, на
+ * неё назначают администраторов, от неё считается зона ответственности
+ * сотрудника. `PatientGroup` — рабочий список людей, собранный специалистом
+ * руками: «Моя група», «Група ризику», «Вечірня група». Он ничего не
+ * открывает и ничего не закрывает — только раскладывает уже видимых людей по
+ * вкладкам и позволяет назначить методику сразу всем.
+ */
+
+/** Группа пациентов: название, описание, владелец */
+export interface PatientGroup {
+  id: string;
+  title: string;
+  /** «Опис групи (питання до групи)»: зачем группа собрана и что у неё спрашивают */
+  description: string | null;
+  /** Цвет вкладки на экране пациентов */
+  color: string | null;
+  position: number;
+  /** Кто собрал список. Чужие группы в выдаче не появляются вовсе */
+  ownerId: string;
+  createdAt: string;
+}
+
+/** Человек в составе группы — «Пацієнти Групи» */
+export interface PatientGroupMember {
+  userId: string;
+  fullName: string;
+  email: string;
+  /** Подразделение: в списке из тридцати однофамильцев это единственный ориентир */
+  unit: string | null;
+  addedAt: string;
+  addedBy: string | null;
+}
+
+/** Методика, назначенная на группу целиком — «Тести Групи» */
+export interface PatientGroupSurvey {
+  surveyId: string;
+  title: LocalizedText;
+  assignedAt: string;
+  assignedBy: string | null;
+  /** Срок и число попыток, с которыми методика выдаётся участникам группы */
+  expiresAt: string | null;
+  attemptsAllowed: number | null;
+  /** Сколько участников группы уже прошли её хотя бы раз */
+  completedCount: number;
+}
+
+export interface PatientGroupWithCounts extends PatientGroup {
+  /**
+   * Сколько участников видно ЧИТАТЕЛЮ.
+   *
+   * Не «сколько в группе»: человек, выбывший из зоны ответственности, из
+   * состава пропадает, и считать его значило бы сообщать, что в группе есть
+   * кто-то, кого показать нельзя. Число и список обязаны говорить одно и то
+   * же, иначе экран выглядит сломанным.
+   */
+  memberCount: number;
+  /** Сколько методик назначено на группу целиком */
+  surveyCount: number;
+}
+
+/** Карточка группы: описание, состав и назначенные методики на одном экране */
+export interface PatientGroupCard extends PatientGroup {
+  members: PatientGroupMember[];
+  surveys: PatientGroupSurvey[];
+}
+
 /**
  * Аналитика группы: сколько людей, сколько прохождений, как распределены
  * степени выраженности.
@@ -507,6 +622,13 @@ export interface Scale {
 export interface Survey {
   id: string;
   groupId: string | null;
+  /**
+   * Папка каталога; null — корень каталога группы.
+   *
+   * Папка всегда из той же группы, что и методика: это держит составной
+   * ключ в базе, а не договорённость. Методика без группы папки не имеет.
+   */
+  folderId: string | null;
   title: string;
   description: string | null;
   /** Инструкция, показывается перед первым вопросом */

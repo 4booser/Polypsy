@@ -3,6 +3,7 @@ import type { ZodTypeAny } from "zod";
 import type { Permission } from "@quizzy/shared";
 import {
   assignBatterySchema,
+  assignSurveyToPatientGroupSchema,
   batteryInputSchema,
   changePasswordSchema,
   createInviteSchema,
@@ -16,11 +17,16 @@ import {
   grantAccessSchema,
   groupInputSchema,
   loginSchema,
+  moveSurveySchema,
+  patientGroupInputSchema,
+  patientGroupMemberSchema,
   registerSchema,
   rescheduleAppointmentSchema,
   scheduleExceptionSchema,
   specialistProfileSchema,
   submitResponseSchema,
+  surveyFolderInputSchema,
+  surveyFolderUpdateSchema,
   updateProfileSchema,
   updateReferralSchema,
   updateSurveySchema,
@@ -132,7 +138,11 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/permissions/exceptions": { summary: "Действующие исключения по тем, кого можно назначать", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
 
   /* ── методики ── */
-  "GET /api/surveys": { summary: "Список методик; ?archived=1 — снятые с использования", access: "user" },
+  "GET /api/surveys": {
+    summary:
+      "Каталог методик. ?limit=&offset= — страница с total; ?folder= (id или root), ?status=, ?q= — папка, вкладка, поиск; ?archived=1 — снятые с использования",
+    access: "user",
+  },
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
   "POST /api/surveys/validate": { summary: "Структурная проверка черновика без сохранения", access: "staff", permission: "surveys.edit" },
   "POST /api/surveys/import": { summary: "Импорт методики из файла экспорта", access: "staff", permission: "surveys.edit" },
@@ -145,6 +155,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/surveys/:id/versions": { summary: "Версии методики", access: "staff", permission: "surveys.read" },
   "GET /api/surveys/:id/versions/:a/diff/:b": { summary: "Что изменилось между версиями и сопоставимы ли баллы", access: "staff", permission: "surveys.read" },
   "GET /api/surveys/:id/key": { summary: "Ключ методики для печати", access: "staff", permission: "surveys.read" },
+  "PUT /api/surveys/:id/folder": { summary: "Перенос методики в папку каталога; null — в корень", access: "staff", permission: "surveys.edit", body: moveSurveySchema },
+
+  /* ── папки методик: полки каталога внутри группы, не группы и не группы пациентов ── */
+  "GET /api/survey-folders": { summary: "Папки каталога плоским списком с parentId и счётчиками; ?groupId= — одной группы", access: "staff", permission: "surveys.read" },
+  "POST /api/survey-folders": { summary: "Завести папку в группе методик", access: "staff", permission: "surveys.edit", body: surveyFolderInputSchema },
+  "PATCH /api/survey-folders/:id": { summary: "Правка названия, даты, места и родителя папки", access: "staff", permission: "surveys.edit", body: surveyFolderUpdateSchema },
+  "DELETE /api/survey-folders/:id": { summary: "Удалить пустую папку; непустой — отказ с перечнем содержимого", access: "staff", permission: "surveys.edit" },
 
   /* ── прохождения ── */
   "POST /api/surveys/:id/responses": { summary: "Сдача прохождения", access: "user", body: submitResponseSchema },
@@ -160,7 +177,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/access/surveys/:id/grants": { summary: "Кому назначена методика", access: "staff", permission: "assignments.manage" },
   "POST /api/access/surveys/:id/grants": { summary: "Назначить методику", access: "staff", permission: "assignments.manage", body: grantAccessSchema },
   "DELETE /api/access/surveys/:id/grants/:userId": { summary: "Снять назначение", access: "staff", permission: "assignments.manage" },
-  "GET /api/access/patients": { summary: "Обследуемые в зоне ответственности", access: "staff", permission: "assignments.manage" },
+  "GET /api/access/patients": { summary: "Обследуемые в зоне ответственности; ?patientGroup=… — вкладка группы пациентов", access: "staff", permission: "assignments.manage" },
 
   /* ── группы ── */
   "GET /api/groups": { summary: "Группы методик", access: "staff", whyNoPermission: "список групп — это область ответственности, а не действие: его читает каждый, кто вообще видит методики, и ограничивает его assertGroupAccess" },
@@ -175,6 +192,28 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/groups/:id/admins": { summary: "Администраторы группы", access: "staff", whyNoPermission: "состав администраторов группы виден тем, кто с этой группой работает; кого именно видно — решает область ответственности" },
   "POST /api/groups/:id/admins": { summary: "Назначить администратора группы", access: "superadmin", permission: "groups.manage" },
   "DELETE /api/groups/:id/admins/:userId": { summary: "Снять администратора группы", access: "superadmin", permission: "groups.manage" },
+
+  /* ── группы ПАЦИЕНТОВ ──
+   *
+   * Не то же, что группы методик выше: там единица разграничения доступа,
+   * здесь рабочий список людей, собранный специалистом руками. Всё, что тут
+   * показывается, — пациенты, их имена и подразделения, поэтому весь набор
+   * закрыт `patients.read`. Исключение одно — назначение методики на группу:
+   * оно раздаёт доступ и закрыто `assignments.manage`, тем же правом, что и
+   * поимённая выдача.
+   */
+  "GET /api/patient-groups": { summary: "Группы пациентов: вкладки «Моя група», «Група ризику» с числом участников", access: "staff", permission: "patients.read" },
+  "POST /api/patient-groups": { summary: "Завести группу пациентов", access: "staff", permission: "patients.read", body: patientGroupInputSchema },
+  "GET /api/patient-groups/:id": { summary: "Карточка группы: описание, «Пацієнти Групи» и «Тести Групи»", access: "staff", permission: "patients.read" },
+  "PATCH /api/patient-groups/:id": { summary: "Правка названия, описания, цвета и места вкладки", access: "staff", permission: "patients.read", body: patientGroupInputSchema },
+  "POST /api/patient-groups/:id/members": { summary: "«Додати пацієнта» в группу", access: "staff", permission: "patients.read", body: patientGroupMemberSchema },
+  "DELETE /api/patient-groups/:id/members/:userId": { summary: "Убрать пациента из группы; выданные ему назначения остаются", access: "staff", permission: "patients.read" },
+  "POST /api/patient-groups/:id/surveys": {
+    summary: "Назначить методику на всю группу; разворачивается в поимённые назначения со своим сроком у каждого",
+    access: "staff",
+    permission: "assignments.manage",
+    body: assignSurveyToPatientGroupSchema,
+  },
 
   /* ── батареи ── */
   "GET /api/batteries": { summary: "Батареи методик", access: "staff", permission: "batteries.manage" },

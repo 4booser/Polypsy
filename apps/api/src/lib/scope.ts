@@ -7,10 +7,13 @@ import {
   breakGlass,
   departmentPatients,
   groupAdmins,
+  patientGroups,
   specialistProfiles,
   surveyAccess,
+  surveyFolders,
   surveys,
   users,
+  type SurveyFolderRow,
 } from "../db/schema";
 import { badRequest, forbidden, notFound } from "./http";
 import { t } from "@quizzy/shared";
@@ -154,6 +157,71 @@ export async function assertGroupAccess(user: User, groupId: string): Promise<vo
   if (!(await canAccessGroup(user, groupId))) {
     forbidden("err.groupNotManaged");
   }
+}
+
+/* ─────────── Папки МЕТОДИК ───────────
+ *
+ * Папка видна тем, кому видна её группа, и ровно так же правится. Правило
+ * не своё, а группы: папка ничего не открывает и не закрывает, она полка
+ * внутри уже открытой области. Поэтому здесь нет второй функции видимости,
+ * которая могла бы разойтись с первой: вопрос «моя ли папка» сводится к
+ * вопросу «моя ли группа», и отвечает на него assertGroupAccess.
+ */
+
+/**
+ * Папка по идентификатору — или отказ.
+ *
+ * «Не найдено», если папки нет; «не управляете группой», если она чужая.
+ * Ответы разные намеренно, в отличие от групп пациентов: там 403 выдал бы
+ * существование чужого личного списка, а папка методик не личная и о людях
+ * ничего не говорит. Порядок тот же, что у самой методики
+ * (assertSurveyAccess): сначала 404, затем 403 по группе.
+ */
+export async function assertSurveyFolderAccess(user: User, folderId: string): Promise<SurveyFolderRow> {
+  const folder = await db.query.surveyFolders.findFirst({ where: eq(surveyFolders.id, folderId) });
+  if (!folder) notFound("err.surveyFolderNotFound");
+  await assertGroupAccess(user, folder.groupId);
+  return folder;
+}
+
+/* ─────────── Группы ПАЦИЕНТОВ ───────────
+ *
+ * Правило видимости живёт здесь, рядом с остальными, а не в маршрутах — по
+ * той же причине, по которой сюда снесены все прочие: два механизма ответа
+ * на вопрос «кому что видно» неизбежно разъезжаются, и разъезд виден не
+ * сразу, а на маршруте, который забыли поправить.
+ *
+ * Правило простое и намеренно НЕ повторяет правило групп методик. Группу
+ * методик ведут несколько администраторов, и видит её каждый из них —
+ * потому что группа методик выражает структуру учреждения. Группа пациентов
+ * выражает решение одного человека: он собрал список руками, назвал его
+ * «Група ризику» и задал ему свой вопрос. Отдать такой список всему
+ * отделению значило бы выдать личную рабочую раскладку за официальную — и
+ * второй специалист, увидев чужую «группу риска», прочитал бы её как
+ * заключение учреждения о людях.
+ *
+ * Если общий список понадобится, его заводят явным признаком «общая», как
+ * это сделано у saved_views: осознанным действием владельца, а не тем, что
+ * правило однажды написали шире, чем думали.
+ */
+
+/** Своя ли это группа пациентов. Суперадмин видит все: ему разбирать чужие */
+export async function canAccessPatientGroup(user: User, groupId: string): Promise<boolean> {
+  if (isSuperadmin(user)) return true;
+  const row = await db.query.patientGroups.findFirst({ where: eq(patientGroups.id, groupId) });
+  return row?.ownerId === user.id;
+}
+
+/**
+ * Отказать, если группа пациентов чужая или её нет.
+ *
+ * Отвечает «не найдено», а не «нельзя» — ровно как assertPatientAccess ниже:
+ * 403 подтвердил бы, что группа с таким идентификатором в системе есть, а
+ * вместе с ней и то, что коллега такую завёл. По коду отказа этого узнавать
+ * не следует.
+ */
+export async function assertPatientGroupAccess(user: User, groupId: string): Promise<void> {
+  if (!(await canAccessPatientGroup(user, groupId))) notFound("err.patientGroupNotFound");
 }
 
 
