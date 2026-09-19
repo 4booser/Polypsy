@@ -17,6 +17,9 @@ import type {
   SurveyGroupWithCounts,
   SurveyFolder,
   SurveyFolderWithCounts,
+  PatientGroup,
+  PatientGroupCard,
+  PatientGroupInput,
   PatientGroupWithCounts,
   AssignSurveyToPatientGroupInput,
   SurveyListItem,
@@ -971,11 +974,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Карточка группы: описание, «Пацієнти Групи» и «Тести Групи» одним ответом */
+  patientGroup: (id: string) => request<PatientGroupCard>(`/api/patient-groups/${id}`),
+  createPatientGroup: (input: PatientGroupInput) =>
+    request<PatientGroup>("/api/patient-groups", { method: "POST", body: JSON.stringify(input) }),
+  updatePatientGroup: (id: string, patch: Partial<PatientGroupInput>) =>
+    request<PatientGroup>(`/api/patient-groups/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  /* повторное добавление сервер читает как «уже там», а не как ошибку */
+  addPatientGroupMember: (groupId: string, userId: string) =>
+    request<{ groupId: string; userId: string }>(`/api/patient-groups/${groupId}/members`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
+  /** Выданные человеку назначения при этом остаются — см. routes/patientGroups.ts */
+  removePatientGroupMember: (groupId: string, userId: string) =>
+    request<void>(`/api/patient-groups/${groupId}/members/${userId}`, { method: "DELETE" }),
   /**
    * Пациенты. Отдаётся не всё: список упорядочен по ФИО, а оно зашифровано —
    * упорядочить его в SQL нечем, поэтому сервер ищет и обрезает выдачу.
+   * `patientGroup` сужает выдачу до состава группы пациентов.
    */
-  patients: (params: { search?: string; unit?: string } = {}) => {
+  patients: (params: { search?: string; unit?: string; patientGroup?: string } = {}) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<{ items: Patient[]; total: number; truncated: boolean }>(

@@ -107,6 +107,23 @@ export async function goTop(page: Page, link: RegExp | string): Promise<void> {
  * переводится. Видимое слово — не имя, а состояние: оно называет ТЕКУЩИЙ
  * язык («Рус»/«Укр») и переключает на второй.
  */
+/**
+ * Ссылки на людей в списке пациентов.
+ *
+ * Список больше не таблица: по макету (кадр f05) это сетка карточек в три
+ * колонки, и «table tbody tr td a» на нём ничего не находит. Признак
+ * `data-patients` стоит на самой сетке (pages/patientGroups/PersonGrid.tsx)
+ * ровно ради этой проверки: классы там менять можно, признак — нет.
+ */
+export function patientLinks(page: Page): Locator {
+  return page.locator("[data-patients] a");
+}
+
+/** Поле поиска над списком пациентов: на макете без подписи внутри, имя даёт aria-label */
+export function patientSearch(page: Page): Locator {
+  return page.getByRole("textbox", { name: /^(Поиск|Пошук)$/ });
+}
+
 export function langToggle(page: Page): Locator {
   return page.getByRole("banner").getByRole("button", { name: "Мова / Язык" });
 }

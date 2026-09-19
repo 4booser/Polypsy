@@ -1046,7 +1046,8 @@ export function Tabs({ items, label }: { items: TabItem[]; label?: string }) {
       <div role="tablist" aria-label={label} className={bar} onKeyDown={moveTabFocus}>
         {items.map((t) => (
           <button
-            key={t.label}
+            /* по id, когда он есть: подписи вкладок — названия групп, а они повторяются */
+            key={t.id ?? t.label}
             type="button"
             role="tab"
             id={t.id}

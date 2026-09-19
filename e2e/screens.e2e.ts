@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { login } from "./helpers";
+import { login, patientLinks, patientSearch } from "./helpers";
 
 /**
  * Каждый экран консоли открывается и не падает.
@@ -37,7 +37,8 @@ const STATIC: Screen[] = [
   { name: "конструктор", path: "/constructor" },
   { name: "батареи", path: "/batteries" },
   { name: "приглашения", path: "/invites" },
-  { name: "группы", path: "/groups" },
+  { name: "группы методик", path: "/groups" },
+  { name: "группы пациентов", path: "/patient-groups" },
   { name: "пациенты", path: "/patients" },
   { name: "случаи риска", path: "/alerts" },
   { name: "направления", path: "/referrals" },
@@ -135,8 +136,8 @@ const SEEDED_PATIENT = "Петров";
 
 async function openSeededPatient(page: Page) {
   await page.goto("/patients");
-  await page.getByPlaceholder("Поиск").fill(SEEDED_PATIENT);
-  const row = page.locator("table tbody tr td a").first();
+  await patientSearch(page).fill(SEEDED_PATIENT);
+  const row = patientLinks(page).first();
   await expect(row).toContainText(SEEDED_PATIENT);
   return row;
 }

@@ -34,6 +34,9 @@ const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) 
 const Administer = lazy(() => import("./pages/Administer"));
 const ConsentText = lazy(() => import("./pages/Admin").then((m) => ({ default: m.ConsentText })));
 const Groups = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Groups })));
+/* группы ПАЦИЕНТОВ — раздел «Групи» верхней полосы; /groups выше — группы методик */
+const PatientGroups = lazy(() => import("./pages/patientGroups/PatientGroups"));
+const PatientGroupCard = lazy(() => import("./pages/patientGroups/PatientGroupCard"));
 const Users = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Users })));
 const Batteries = lazy(() => import("./pages/Batteries"));
 const BlankForm = lazy(() => import("./pages/BlankForm"));
@@ -600,6 +603,14 @@ export default function App() {
             <Route path="/messages/:id" element={<MessagesPage />} />
             <Route path="/cohorts" element={<Cohorts />} />
             <Route path="/search" element={<SearchPage />} />
+          {/*
+            «Групи» верхней полосы — группы ПАЦИЕНТОВ (кадры f10/f20). Адрес
+            /groups остаётся за группами методик: на него ссылаются бургер,
+            палитра команд и закладки, а ставить две разные сущности на один
+            адрес значило бы, что старая ссылка молча открывает не то.
+          */}
+          <Route path="/patient-groups" element={<PatientGroups />} />
+          <Route path="/patient-groups/:id" element={<PatientGroupCard />} />
           <Route path="/groups" element={<Groups />} />
           {/*
             Учётки и текст согласия — два отдельных маршрута, а не два экрана
