@@ -161,7 +161,18 @@ export function railGroups(
    */
   const adminItems: Item[] = [];
   if (canAssign || isSuper) {
-    adminItems.push({ to: "/permissions", key: "perm.title", icon: <IconGroup /> });
+    /*
+     * «Лікарі» и «Адміністратори» — разделы макета (кадры f43, f50) рядом с
+     * «Правами»: список людей, которых назначают, и сама раздача — одно
+     * дело, и открыты они одним и тем же — тем, кому есть кого назначать.
+     * «Облікові записи» ниже остаются: там устройства и пациентские записи,
+     * которых в разделах макета нет.
+     */
+    adminItems.push(
+      { to: "/staff", key: "ppl.staff", icon: <IconUsers /> },
+      { to: "/admins", key: "adm.admins", icon: <IconUserGear /> },
+      { to: "/permissions", key: "perm.title", icon: <IconGroup /> },
+    );
   }
   if (isSuper) {
     /* текст согласия стал вкладкой учётных записей: это настройка

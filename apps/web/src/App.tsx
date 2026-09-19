@@ -81,6 +81,20 @@ const ResponseView = lazy(() => import("./pages/response"));
  * неё — по прохождению: заключение привязано к нему на сервере.
  */
 const ConclusionPage = lazy(() => import("./pages/Conclusion"));
+/*
+ * Люди: «Лікарі» и «Адміністратори» — списки, карточка с вкладками,
+ * заведение. Карточка одна на оба раздела: администратор в системе — тот же
+ * сотрудник, только ступенью выше на лестнице должностей, и второй карточки
+ * ему не полагается. Вкладки карточки лежат отдельными именованными
+ * экспортами того же файла: они делят с ней контекст (Outlet), и разносить
+ * их по файлам значило бы тянуть один тип контекста через три модуля.
+ */
+const StaffList = lazy(() => import("./pages/people/StaffList"));
+const StaffNew = lazy(() => import("./pages/people/StaffNew"));
+const StaffCard = lazy(() => import("./pages/people/StaffCard"));
+const StaffProfile = lazy(() => import("./pages/people/StaffCard").then((m) => ({ default: m.StaffProfile })));
+const StaffPatients = lazy(() => import("./pages/people/StaffCard").then((m) => ({ default: m.StaffPatients })));
+const StaffGroups = lazy(() => import("./pages/people/StaffCard").then((m) => ({ default: m.StaffGroups })));
 
 type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
@@ -362,6 +376,12 @@ export default function App() {
   }
 
   const isSuper = user.role === "superadmin";
+  /*
+   * Кому есть кого назначать: ступень лестницы выше первой. То же число
+   * решает и пункт «Права», и разделы «Лікарі» / «Адміністратори»: списки
+   * коллег — это часть назначения, а не отдельная привилегия.
+   */
+  const canAssign = (user.ladderRank ?? 0) > 1;
 
   /*
    * Подвал рельсы переехал в бургер целиком — вместе с именем, ролью,
@@ -486,7 +506,7 @@ export default function App() {
       <Topbar
         counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
         isSuper={isSuper}
-        canAssign={(user.ladderRank ?? 0) > 1}
+        canAssign={canAssign}
         hidden={user.workspace?.railHidden ?? []}
         onSearch={() => setPaletteOpen(true)}
         theme={theme}
@@ -613,6 +633,26 @@ export default function App() {
             недостижима.
           */}
           {isSuper ? <Route path="/users" element={<Users />} /> : null}
+          {/*
+            Разделы «Лікарі» и «Адміністратори» — тем, кому есть кого назначать,
+            и суперадмину. Заведение («/new») — только суперадмину: на сервере
+            оно закрыто правом users.manage, которого у заведующего нет.
+            Статичный сегмент `new` не спорит с `:id` ниже — маршрутизатор
+            ранжирует его выше параметра, а идентификаторы — UUID.
+
+            Своя карточка открыта каждому сотруднику: по схеме заказчика
+            (кадр f03) это первый экран лікаря после входа. Чужая — тем же,
+            кому открыты списки; остальным сервер откажет в справочнике.
+          */}
+          {isSuper || canAssign ? <Route path="/staff" element={<StaffList kind="doctors" />} /> : null}
+          {isSuper || canAssign ? <Route path="/admins" element={<StaffList kind="admins" />} /> : null}
+          {isSuper ? <Route path="/staff/new" element={<StaffNew kind="doctor" />} /> : null}
+          {isSuper ? <Route path="/admins/new" element={<StaffNew kind="admin" />} /> : null}
+          <Route path="/staff/:id" element={<StaffCard />}>
+            <Route index element={<StaffProfile />} />
+            <Route path="patients" element={<StaffPatients />} />
+            <Route path="groups" element={<StaffGroups />} />
+          </Route>
           <Route path="/permissions" element={<Permissions />} />
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}

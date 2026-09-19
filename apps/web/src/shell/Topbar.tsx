@@ -83,6 +83,21 @@ const TOP: TopItem[] = [
   { key: "top.messages", to: "/messages" },
 ];
 
+/*
+ * Седьмой пункт — «Лікарі» — только у тех, кому есть кого назначать.
+ *
+ * Кадры карточки лікаря (f33, f35, f36) рисуют полосу из семи пунктов, со
+ * вторым «Лікарі»; кадры остальных экранов (f04, f11 и другие) — из шести,
+ * без него. Это не две редакции полосы, а две роли: у рядового специалиста
+ * раздела нет, у заведующего и суперадмина — есть. Пункт встаёт на место с
+ * кадра, вторым после «Пацієнти».
+ */
+const STAFF: TopItem = { key: "ppl.staff", to: "/staff" };
+
+function topItems(showStaff: boolean): TopItem[] {
+  return showStaff ? [TOP[0]!, STAFF, ...TOP.slice(1)] : TOP;
+}
+
 /**
  * Верхняя полоса консоли.
  *
@@ -122,6 +137,7 @@ export function Topbar({
   const { ut } = useLang();
   const [open, setOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement | null>(null);
+  const items = topItems(isSuper || canAssign);
 
   return (
     /*
@@ -165,9 +181,15 @@ export function Topbar({
         */}
         <nav
           aria-label={ut("shell.sections")}
-          className="flex flex-1 items-center justify-center gap-[46px] max-[1100px]:hidden"
+          /*
+            Зазор 46 — замер полосы из шести пунктов. Семь пунктов при 46 не
+            помещаются в колонку 1200 (на кадре f33 они стоят теснее), поэтому
+            до 1250px зазор ужат до 30: это ширина, на которой седьмой пункт
+            иначе наехал бы на правую группу.
+          */
+          className="flex flex-1 items-center justify-center gap-[46px] max-[1250px]:gap-[30px] max-[1100px]:hidden"
         >
-          {TOP.map((it) => (
+          {items.map((it) => (
             <NavLink
               key={it.to}
               to={it.to}
@@ -230,6 +252,7 @@ export function Topbar({
               theme={theme}
               onToggleTheme={onToggleTheme}
               onClose={() => setOpen(false)}
+              items={items}
             >
               {menu}
             </MoreMenu>
@@ -362,12 +385,15 @@ function MoreMenu({
   theme,
   onToggleTheme,
   onClose,
+  items,
   children,
 }: {
   counts: RailCounts;
   isSuper: boolean;
   canAssign: boolean;
   hidden?: string[];
+  /** Пункты полосы — те же, что показаны вверху: на узком экране они повторяются здесь */
+  items: TopItem[];
   /**
    * Кнопка бургера — единственное, что остаётся на экране, когда меню
    * закрывается по команде. Палитра команд открывается ИЗ меню, а меню при
@@ -504,7 +530,7 @@ function MoreMenu({
           второй их список заставлял бы гадать, разные ли это экраны.
         */}
         <div className="hidden shrink-0 flex-col gap-0.5 border-b border-hairline p-2 max-[1100px]:flex">
-          {TOP.map((it) => (
+          {items.map((it) => (
             <NavLink key={it.to} to={it.to} end={it.end} className={rowClass}>
               <span className="truncate">{ut(it.key)}</span>
             </NavLink>
