@@ -256,12 +256,12 @@ function Ladder({ l, titled }: { l: ScaleLadder; titled: boolean }) {
             <li key={r.id} className="flex items-stretch gap-[10px]">
               {/* «від» и «до» на кадре строчные; словарь держит их прописными для конструктора */}
               <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">
-                {ut("cs.from")}
+                {ut("cn.from")}
               </span>
               <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[87px] shrink-0 justify-center", r.hit && "font-bold")}>
                 <span className="text-primary tabular-nums">{r.min}</span>
               </Readout>
-              <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">{ut("cs.to")}</span>
+              <span className="flex w-[22px] shrink-0 items-center text-[16px] lowercase text-muted">{ut("cn.to")}</span>
               <Readout look={r.hit ? "fill" : "outline"} className={cx("w-[87px] shrink-0 justify-center", r.hit && "font-bold")}>
                 <span className="text-primary tabular-nums">{r.max}</span>
               </Readout>

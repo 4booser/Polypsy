@@ -1,18 +1,53 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import type { Issue } from "@quizzy/shared";
-import type { SurveyGroupWithCounts } from "@quizzy/shared";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { LANG_NAMES, type Issue, type Lang, type SurveyGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
-import { Basics } from "./Basics";
-import { Questions } from "./Questions";
-import { Scales } from "./Scales";
-import { EMPTY, toDraft, toPayload, withUids, type Draft, type Tab } from "./model";
+import { useResource } from "../../useResource";
+import { AssignGroup } from "./AssignGroup";
+import { Settings } from "./Basics";
+import { EditLangProvider, Loc, Toggle } from "./fields";
+import { Questions, SectionHead } from "./Questions";
+import { Answers, Bands, Scales } from "./Scales";
+import {
+  EMPTY,
+  createTarget,
+  defaultAnswers,
+  normalizeDraft,
+  switchMode,
+  toDraft,
+  toPayload,
+  totalScale,
+  type Draft,
+  type Mode,
+} from "./model";
 import { Preview } from "./Preview";
-import { Loading } from "../../ui";
-import { Page, Panel } from "../../ui/layout";
-import { Button, Textarea } from "../../ui/primitives";
+import { IconGroup, IconPatients, Loading } from "../../ui";
+import { Page } from "../../ui/layout";
+import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
+
+/*
+ * Конструктор теста — один свиток по кадрам заказчика.
+ *
+ * Порядок сверху вниз повторяет f24/f23: вкладки «Конкретний / Комплексний
+ * тест» (только при создании — на кадрах правки f18/f29 их нет), «Назва
+ * тесту», «Опис тесту», «Питання» аккордеоном (f12), затем либо «Відповіді»
+ * и шкалы с таблицей баллов (f24_2/f30/f37), либо «Результати» (f23/f18),
+ * внизу «Створити». Прежняя редакция делила ту же работу на четыре вкладки;
+ * макет их не знает, и разбивка ушла вместе с ними.
+ *
+ * Что осталось от прежней редакции и почему: автосейв черновика, отмена и
+ * возврат, проверка структуры до сохранения, предпросмотр пункта справа
+ * (панель контекста, которую макет не запрещает), настройки прохождения и
+ * психометрика — свёрнутыми блоками. Это возможности, а не украшения;
+ * убрать их ради буквы кадра значило бы снять то, чем встроенные методики
+ * (МЛО, Мини-мульт, СР-45) считаются.
+ *
+ * Границу прав макет тоже не видит, а она есть: «Опублікувати» требует
+ * surveys.publish, «Створити»/«Зберегти» — только surveys.edit. Поэтому
+ * кнопок две, как на f18 (публикация в шапке) и f23 (создание внизу).
+ */
 
 /**
  * Черновик живёт в localStorage: правка методики на 200 пунктов не должна
@@ -22,8 +57,9 @@ import { useLang } from "../../lang";
 const draftKey = (id: string | undefined) => `quizzy.constructor.${id ?? "new"}`;
 
 export default function Constructor() {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const [draft, setDraftRaw] = useState<Draft>(EMPTY);
   const [restored, setRestored] = useState(false);
@@ -68,13 +104,23 @@ export default function Constructor() {
     });
   }, []);
   const [groups, setGroups] = useState<SurveyGroupWithCounts[]>([]);
-  const [tab, setTab] = useState<Tab>("basics");
   const [focused, setFocused] = useState(0);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(!id);
   const [issues, setIssues] = useState<Issue[] | null>(null);
+  /*
+   * Язык, на котором правится текст теста, — не язык консоли. Начинается с
+   * него, потому что чаще всего они совпадают, но переключается отдельно:
+   * специалист с русской консолью вписывает украинский текст методики.
+   */
+  const [editLang, setEditLang] = useState<Lang>(lang);
+  /* окно «призначити групі» — второй значок кадра f17 */
+  const [assignGroup, setAssignGroup] = useState(false);
+
+  /* куда заводить тест: «+ → Новий тест» из папки каталога */
+  const target = useMemo(() => createTarget(location.search), [location.search]);
 
   useEffect(() => {
     api.groups().then(setGroups).catch(() => setGroups([]));
@@ -83,7 +129,12 @@ export default function Constructor() {
     const saved = localStorage.getItem(draftKey(id));
     if (saved) {
       try {
-        setDraftRaw(withUids({ ...EMPTY, ...(JSON.parse(saved) as Draft) }));
+        const kept = normalizeDraft({ ...EMPTY, ...(JSON.parse(saved) as Draft) });
+        /*
+         * Папка и группа — из адреса, если он их несёт: человек только что
+         * пришёл из этой папки, и его намерение новее сохранённого черновика.
+         */
+        setDraftRaw(!id && target.groupId ? { ...kept, groupId: target.groupId, folderId: target.folderId } : kept);
         setRestored(true);
         setLoaded(true);
         return;
@@ -92,7 +143,10 @@ export default function Constructor() {
       }
     }
 
-    if (!id) return;
+    if (!id) {
+      setDraftRaw({ ...EMPTY, answers: defaultAnswers(), groupId: target.groupId, folderId: target.folderId });
+      return;
+    }
     api
       .surveyRaw(id)
       .then((s) => {
@@ -103,6 +157,7 @@ export default function Constructor() {
         setError(e.message);
         setLoaded(true);
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   // автосейв с дебаунсом: каждое нажатие клавиши не должно дёргать диск
@@ -150,13 +205,9 @@ export default function Constructor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft, undo, redo]);
 
-  useEffect(() => {
-    setJson(JSON.stringify(draft, null, 2));
-  }, [tab === "json"]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
-
-  const asked = useMemo(() => draft.questions.filter((q) => q.type !== "info").length, [draft.questions]);
+  const mode: Mode = draft.mode ?? "specific";
+  const text = (v: Record<string, string> | null | undefined) => v?.[editLang] || v?.uk || v?.ru || "";
 
   async function check() {
     setBusy(true);
@@ -175,9 +226,15 @@ export default function Constructor() {
     setBusy(true);
     setError(null);
     try {
+      const payload = toPayload(draft);
+      /*
+       * Папка уходит только при заведении: правка методики папку не меняет,
+       * для переноса есть свой маршрут со своей записью в журнале
+       * (PUT /api/surveys/:id/folder).
+       */
       const survey = id
-        ? await api.updateSurvey(id, { ...toPayload(draft), versionNote: ut("co.versionNote") })
-        : await api.createSurvey(toPayload(draft));
+        ? await api.updateSurvey(id, { ...payload, versionNote: ut("co.versionNote") })
+        : await api.createSurvey({ ...payload, folderId: draft.folderId ?? undefined });
       if (publish) await api.updateSurvey(survey.id, { status: "published" });
       localStorage.removeItem(draftKey(id));
       setDirty(false);
@@ -194,8 +251,7 @@ export default function Constructor() {
     try {
       const parsed = JSON.parse(json) as Draft;
       if (!parsed.title) throw new Error(ut("co.noTitleField"));
-      setDraft(withUids({ ...EMPTY, ...parsed }));
-      setTab("basics");
+      setDraft(normalizeDraft({ ...EMPTY, ...parsed }));
     } catch (e) {
       setError(e instanceof Error ? `${ut("co.jsonParseError")}: ${e.message}` : ut("co.jsonParseError"));
     }
@@ -203,71 +259,107 @@ export default function Constructor() {
 
   if (!loaded) return <Loading rows={5} />;
 
-  const tabs: [Tab, string][] = [
-    ["basics", ut("co.basics")],
-    ["questions", `${ut("co.questions")} ${asked}`],
-    ["scales", `${ut("co.scales")} ${draft.scales.length}`],
-    ["json", "JSON"],
-  ];
+  const backTo = draft.folderId ? `/surveys?folder=${encodeURIComponent(draft.folderId)}` : "/surveys";
+
+  const modePanel =
+    mode === "specific" ? (
+      <>
+        <Answers draft={draft} setDraft={setDraft} />
+        <Scales draft={draft} setDraft={setDraft} />
+      </>
+    ) : (
+      <Results draft={draft} setDraft={setDraft} />
+    );
 
   return (
     <Page
-      title={id ? ut("co.editTitle") : ut("co.newTitle")}
-      crumbs={id ? <Link to={`/surveys/${id}`}>{ut("back.toAnalytics")}</Link> : <Link to="/surveys">{ut("back.toSurveys")}</Link>}
-      sub={id ? ut("co.editSub") : ut("co.newSub")}
+      /* на кадрах правки (f18, f29) заголовок экрана — название самого теста */
+      title={id ? text(draft.title) || ut("cn.testTitle") : ut("cn.newTest")}
+      crumbs={id ? <Link to={`/surveys/${id}`}>{ut("back.toAnalytics")}</Link> : <Link to={backTo}>{ut("back.toSurveys")}</Link>}
       actions={
         <>
-          <Button onClick={check} disabled={busy}>{ut("co.checkStructure")}</Button>
-          <Button onClick={() => save(false)} disabled={busy}>{ut("co.saveDraft")}</Button>
-          <Button variant="primary" onClick={() => save(true)} disabled={busy}>
-            {busy ? ut("co.saving") : ut("co.savePublish")}
+          {/*
+            Два значка кадра f17: «призначити пацієнту» и «призначити групі».
+            Первый ведёт на экран назначений — он есть. Второй открывает окно
+            здесь же: групповое назначение на сервере есть
+            (POST /api/patient-groups/:id/surveys, разворачивается в
+            поимённые), а экран группы пациентов делает другая волна — вести
+            некуда, да и одно действие перехода не стоит. Кнопка, а не ссылка:
+            адрес не меняется.
+          */}
+          {id ? (
+            <>
+              <Link
+                to={`/surveys/${id}/access`}
+                aria-label={ut("cn.assignPatient")}
+                title={ut("cn.assignPatient")}
+                className="inline-flex size-[44px] items-center justify-center rounded-[5px] text-primary hover:bg-primary-soft [&>svg]:size-6"
+              >
+                <IconPatients />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setAssignGroup(true)}
+                aria-label={ut("cn.assignGroup")}
+                title={ut("cn.assignGroup")}
+                className="inline-flex size-[44px] items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-primary hover:bg-primary-soft [&>svg]:size-6"
+              >
+                <IconGroup />
+              </button>
+            </>
+          ) : null}
+          <Button onClick={() => save(true)} disabled={busy}>
+            {busy ? ut("co.saving") : ut("cn.publish")}
           </Button>
         </>
       }
       toolbar={
-        <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          {/* .tabs — тот же язык, что у остальных экранов: активная вкладка
-              держится подчёркиванием бирюзой, а не янтарём */}
-          <div className="tabs mb-0 border-b-0">
-            {tabs.map(([v, label]) => (
-              <button key={v} className={tab === v ? "active" : ""} onClick={() => setTab(v)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {/*
-              Отмена и возврат — обычные кнопки с рамкой, а не тихие.
-              Тихий вариант оставлял на светлой полосе вкладок две едва
-              заметные закорючки: в конструкторе отмена нужна чаще всего
-              именно тогда, когда что-то пошло не так, и искать её в этот
-              момент — последнее, чем стоит заниматься.
-            */}
-            {/*
-              Значки нарисованы, а не набраны символами ↶ и ↷.
+        <div className="flex flex-1 items-center justify-end gap-[8px]">
+          {/*
+            Отмена и возврат — обычные кнопки с рамкой, а не тихие.
+            Тихий вариант оставлял на светлой полосе вкладок две едва
+            заметные закорючки: в конструкторе отмена нужна чаще всего
+            именно тогда, когда что-то пошло не так, и искать её в этот
+            момент — последнее, чем стоит заниматься.
+          */}
+          {/*
+            Значки нарисованы, а не набраны символами ↶ и ↷.
 
-              Шрифты подключены подмножествами — только те диапазоны, что
-              реально нужны, — и стрелок отмены в них нет. Браузер подставлял
-              запасную гарнитуру, и на кнопке оказывалась не стрелка, а то,
-              что нашлось. Заметно это стало ровно тогда, когда кнопки
-              перестали быть бледными.
-            */}
-            <Button size="sm" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>
-              <IconUndo />
-            </Button>
-            <Button size="sm" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>
-              <IconUndo flip />
-            </Button>
-            {dirty ? <span className="text-caption text-muted">{ut("co.draftAutosaves")}</span> : null}
-          </div>
+            Шрифты подключены подмножествами — только те диапазоны, что
+            реально нужны, — и стрелок отмены в них нет. Браузер подставлял
+            запасную гарнитуру, и на кнопке оказывалась не стрелка, а то,
+            что нашлось. Заметно это стало ровно тогда, когда кнопки
+            перестали быть бледными.
+          */}
+          {dirty ? <span className="text-[13px] text-muted">{ut("co.draftAutosaves")}</span> : null}
+          {/*
+            «Перевірити структуру» — здесь, а не внизу рядом со «Створити»: на
+            кадре f23 внизу одна кнопка, а полоса инструментов — уже место
+            того, чего на кадре нет (отмена, возврат). Проверка — инструмент
+            редактора и стоит с ними; её отчёт по-прежнему выводится над формой.
+          */}
+          <Button variant="ghost" onClick={check} disabled={busy}>{ut("co.checkStructure")}</Button>
+          <Button variant="ghost" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>
+            <IconUndo />
+          </Button>
+          <Button variant="ghost" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>
+            <IconUndo flip />
+          </Button>
         </div>
       }
+      /*
+       * Предпросмотр — в панели контекста справа. На кадрах справа пусто, и
+       * панель это место занимает, а не спорит с ним; убрать предпросмотр —
+       * значит снова собирать методику вслепую.
+       */
+      context={<Preview draft={draft} at={focused} />}
+      contextTitle={ut("co.preview")}
     >
+      {assignGroup && id ? <AssignGroup surveyId={id} onClose={() => setAssignGroup(false)} /> : null}
+
       {restored ? (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3">
-          <p className="m-0 text-small text-text">
-            {ut("co.draftRestored")}
-          </p>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[5px] border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3">
+          <p className="m-0 text-small text-text">{ut("co.draftRestored")}</p>
           <Button
             variant="quiet"
             size="sm"
@@ -279,7 +371,7 @@ export default function Constructor() {
               if (id) {
                 api.surveyRaw(id).then((s) => setDraftRaw(toDraft(s, [])));
               } else {
-                setDraftRaw(EMPTY);
+                setDraftRaw({ ...EMPTY, answers: defaultAnswers(), groupId: target.groupId, folderId: target.folderId });
               }
             }}
           >
@@ -293,7 +385,7 @@ export default function Constructor() {
       {issues ? (
         <div
           className={cx(
-            "mb-4 rounded-md border p-4",
+            "mb-4 rounded-[5px] border p-4",
             issues.some((i) => i.level === "error")
               ? "border-[color-mix(in_srgb,var(--danger)_45%,transparent)] bg-danger-soft"
               : issues.length
@@ -301,14 +393,12 @@ export default function Constructor() {
                 : "border-[color-mix(in_srgb,var(--sev-none)_45%,transparent)]",
           )}
         >
-          <h2 className="m-0 font-display text-section font-medium leading-tight">
+          <h2 className="m-0 text-[18px] font-bold leading-tight text-primary">
             {issues.length === 0
               ? ut("co.noIssues")
               : `${ut("co.issuesSummary")}: ${issues.filter((i) => i.level === "error").length} ${ut("co.errorsCount")}, ${issues.filter((i) => i.level === "warning").length} ${ut("co.warningsCount")}`}
           </h2>
-          <p className="mt-1 text-caption text-muted">
-            {ut("co.checkHint")}
-          </p>
+          <p className="mt-1 text-[13px] text-muted">{ut("co.checkHint")}</p>
           {issues.map((i, k) => (
             <p key={k} className="my-1 text-small">
               <span className={i.level === "error" ? "text-danger" : "text-accent"}>
@@ -320,52 +410,160 @@ export default function Constructor() {
         </div>
       ) : null}
 
-      {tab === "basics" ? <Basics draft={draft} groups={groups} patch={patch} /> : null}
-      {/*
-        Пункты правятся рядом с тем, как они выглядят. Раньше вид пункта был
-        виден только после публикации и прохождения: длинная формулировка,
-        не влезающая в экран телефона, обнаруживалась на пациенте.
-      */}
-      {tab === "questions" ? (
-        <div className="constructor-split">
+      {/* колонка формы по кадру: ~700px по центру, справа — язык текста */}
+      <div className="mx-auto w-full max-w-[700px]">
+        <div className="mb-[24px] flex items-start justify-between gap-[24px]">
+          {!id ? (
+            /* вкладки состояния: role="tab" и панель ниже (cn-mode-panel), см. Tabs */
+            <Tabs
+              label={ut("cn.testKind")}
+              items={[
+                {
+                  id: "cn-mode-specific",
+                  controls: "cn-mode-panel",
+                  label: ut("cn.specific"),
+                  active: mode === "specific",
+                  onSelect: () => setDraft((d) => switchMode(d, "specific")),
+                },
+                {
+                  id: "cn-mode-complex",
+                  controls: "cn-mode-panel",
+                  label: ut("cn.complex"),
+                  active: mode === "complex",
+                  onSelect: () => setDraft((d) => switchMode(d, "complex")),
+                },
+              ]}
+            />
+          ) : (
+            <span />
+          )}
           {/*
-            Обёртка обязательна не только как контейнер: в CSS grid дочерний
-            элемент по умолчанию не сжимается уже своего содержимого
-            (min-width: auto), а таблица вариантов внутри Questions шире
-            колонки. Без явного min-width: 0 на .constructor-main левая
-            колонка раздвигала бы сетку и уводила страницу в горизонтальную
-            прокрутку — что на этом экране запрещено отдельным правилом.
+            Пояснение о двух языках — всплывающей подписью переключателя, а не
+            строкой под ним: на кадре f24_1 под «Укр ▾» ничего нет. Хранение
+            текста обоими языками от этого не меняется, а тот, кто не понял,
+            зачем переключатель, наведёт на него и прочтёт.
           */}
-          <div className="constructor-main">
-            <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
-          </div>
-          <Preview draft={draft} at={focused} />
+          <Field label={ut("cn.editLang")} inline className="w-[150px] shrink-0">
+            <Select value={editLang} onChange={(e) => setEditLang(e.target.value as Lang)} title={ut("cn.editLangHint")}>
+              {(["uk", "ru"] as const).map((l) => (
+                <option key={l} value={l}>{LANG_NAMES[l].full}</option>
+              ))}
+            </Select>
+          </Field>
         </div>
-      ) : null}
-      {tab === "scales" ? <Scales draft={draft} setDraft={setDraft} /> : null}
-      {tab === "json" ? (
-        <Panel
-          title={ut("co.wholeJson")}
-          hint={ut("co.jsonHint")}
-        >
-          <Textarea
-            value={json}
-            onChange={(e) => setJson(e.target.value)}
-            rows={22}
-            spellCheck={false}
-            className="font-mono text-caption"
-          />
-          <div className="mt-3 flex gap-2">
-            <Button variant="primary" onClick={applyJson}>{ut("co.apply")}</Button>
-            <Button onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
-          </div>
-        </Panel>
-      ) : null}
+
+        <EditLangProvider value={editLang}>
+          <Loc label={ut("cn.testTitle")} value={draft.title} onChange={(v) => patch({ title: v })} />
+          {/* четыре строки: поле описания на кадре f24_1 — 125px при 17/1.55 */}
+          <Loc label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={4} />
+
+          <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
+
+          {/*
+            Панель вкладок «Вид тесту» — то, что вкладка переключает целиком:
+            общий набор ответов и шкалы против результатов (питання выше
+            общие для обоих видов). При правке вкладок нет (f18/f29), и панель
+            без списка вкладок диктору ни к чему — тогда это просто разметка.
+          */}
+          {id ? (
+            modePanel
+          ) : (
+            <div
+              id="cn-mode-panel"
+              role="tabpanel"
+              aria-labelledby={mode === "specific" ? "cn-mode-specific" : "cn-mode-complex"}
+            >
+              {modePanel}
+            </div>
+          )}
+
+          <Disclosure title={ut("cn.settings")}>
+            <Settings draft={draft} groups={groups} patch={patch} />
+          </Disclosure>
+
+          <Disclosure title={ut("cn.jsonSection")} onOpen={() => setJson(JSON.stringify(draft, null, 2))}>
+            <p className="m-0 mb-[8px] pt-[12px] text-[13px] text-muted">{ut("co.jsonHint")}</p>
+            <Textarea
+              aria-label={ut("co.wholeJson")}
+              value={json}
+              onChange={(e) => setJson(e.target.value)}
+              rows={22}
+              spellCheck={false}
+              className="font-mono text-caption"
+            />
+            <div className="mt-3 flex gap-2">
+              <Button onClick={applyJson}>{ut("co.apply")}</Button>
+              <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
+            </div>
+          </Disclosure>
+        </EditLangProvider>
+
+        {/* «Створити» 215×45 из f23/f24 — одна кнопка, как на кадре; проверка структуры — в полосе инструментов */}
+        <div className="mt-[28px] flex justify-end">
+          <Button size="md" className="min-w-[215px]" onClick={() => save(false)} disabled={busy}>
+            {busy ? ut("co.saving") : id ? ut("common.save") : ut("cn.create")}
+          </Button>
+        </div>
+      </div>
     </Page>
   );
 }
 
-/* ─────────── вкладки ─────────── */
+/**
+ * «Результати» комплексного теста (f23/f18/f29): диапазоны суммы баллов.
+ *
+ * Полосы в модели принадлежат шкале, а не тесту, поэтому здесь они лежат на
+ * единственной итоговой шкале — она заводится при первом диапазоне, а её
+ * ключ на все вопросы проставляется при отправке (withTotalKey). Для автора
+ * это «результаты теста», для движка — та же полоса той же шкалы.
+ */
+function Results({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
+  const { ut } = useLang();
+  const batteries = (useResource(() => api.batteries(), []).data ?? []).filter((b) => !b.archived);
+  const [details, setDetails] = useState(false);
+  const bands = draft.scales[0]?.bands ?? [];
+  return (
+    <section aria-labelledby="cn-results">
+      <SectionHead id="cn-results" title={ut("cn.results")} />
+      <Bands
+        bands={bands}
+        details={details}
+        batteries={batteries}
+        onChange={(next) =>
+          setDraft((d) => {
+            const first = d.scales[0] ?? totalScale();
+            return { ...d, scales: [{ ...first, bands: next }, ...d.scales.slice(1)] };
+          })
+        }
+      />
+      <div className="mt-[8px]">
+        <Toggle label={ut("cn.bandDetails")} value={details} onChange={setDetails} />
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Свёрнутый блок под формой: то, чего нет на кадре, но есть у методики.
+ * Нативный <details>: сворачивание не требует ни состояния, ни ARIA — браузер
+ * сам сообщает диктору «свёрнуто/развёрнуто».
+ */
+function Disclosure({ title, onOpen, children }: { title: string; onOpen?: () => void; children: ReactNode }) {
+  return (
+    <details
+      className="group mt-[28px] rounded-[5px] border border-hairline bg-[var(--bg)] px-[20px] py-[12px]"
+      onToggle={(e) => {
+        if ((e.currentTarget as HTMLDetailsElement).open) onOpen?.();
+      }}
+    >
+      <summary className="cursor-pointer list-none text-[17px] font-bold text-primary [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="mr-1 inline-block transition-transform group-open:rotate-90">▸</span>
+        {title}
+      </summary>
+      {children}
+    </details>
+  );
+}
 
 /** Стрелка отмены; `flip` разворачивает её в «вернуть». */
 function IconUndo({ flip }: { flip?: boolean }) {
