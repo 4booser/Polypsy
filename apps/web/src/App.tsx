@@ -98,6 +98,15 @@ const StaffCard = lazy(() => import("./pages/people/StaffCard"));
 const StaffProfile = lazy(() => import("./pages/people/StaffCard").then((m) => ({ default: m.StaffProfile })));
 const StaffPatients = lazy(() => import("./pages/people/StaffCard").then((m) => ({ default: m.StaffPatients })));
 const StaffGroups = lazy(() => import("./pages/people/StaffCard").then((m) => ({ default: m.StaffGroups })));
+/*
+ * Раздел «Аналітика» — перечень аналитических моделей и их конструктор.
+ *
+ * Модель здесь — правило поддержки решений (decision_rules): до этого раздела
+ * правила заводились только запросом к API, а в консоли были видны одними
+ * срабатываниями. Свой экран у них появился по кадрам f08/f15/f27.
+ */
+const AnalyticsList = lazy(() => import("./pages/analytics/List"));
+const AnalyticsModel = lazy(() => import("./pages/analytics/Editor"));
 
 type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
@@ -596,6 +605,14 @@ export default function App() {
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/constructor/:id" element={<Constructor />} />
           <Route path="/surveys/:id/access" element={<Access />} />
+          {/*
+            Модели аналитики: перечень, новая, правка. `new` объявлен раньше
+            `:id` для читающего, а не для маршрутизатора: тот и так ставит
+            точный сегмент выше параметра, а идентификаторы правил — UUID.
+          */}
+          <Route path="/analytics" element={<AnalyticsList />} />
+          <Route path="/analytics/new" element={<AnalyticsModel />} />
+          <Route path="/analytics/:id" element={<AnalyticsModel />} />
           <Route path="/patients" element={<PatientList />} />
           {/*
             Карта пациента — один экран с вкладками. Вкладка стоит в адресе:
