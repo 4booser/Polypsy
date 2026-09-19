@@ -2,6 +2,7 @@ import type {
   ButtonHTMLAttributes,
   HTMLAttributes,
   InputHTMLAttributes,
+  KeyboardEvent,
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
@@ -804,6 +805,7 @@ export function Field({
   hint,
   error,
   htmlFor,
+  inline,
   children,
   className,
 }: {
@@ -815,6 +817,16 @@ export function Field({
    * оборачивает поле, и связь получается сама.
    */
   htmlFor?: string;
+  /**
+   * Поле в строке, а не в колонке формы: без отступа снизу.
+   *
+   * В конструкторе поля стоят в ряд с глифами — «від [0] до [10] [текст] −».
+   * Шаг строк формы 15px, приложенный к такому полю, сдвигает его вверх
+   * относительно соседей. Погасить его классом `mb-0` снаружи нельзя: спор
+   * `mb-0` и `mb-[15px]` Tailwind решает порядком в собранном файле, а не в
+   * строке классов (см. пояснение к высоте полей выше).
+   */
+  inline?: boolean;
   children: ReactNode;
   className?: string;
 }) {
@@ -834,7 +846,7 @@ export function Field({
      * Родители, у которых уже задан свой `gap`, сложат его с этими 15 — такие
      * места переписываются вместе со своим экраном, по волнам плана.
      */
-    <div data-field className={cx("mb-[15px] last:mb-0", className)}>
+    <div data-field className={cx(inline ? "" : "mb-[15px] last:mb-0", className)}>
       {/*
         Подпись оборачивает поле, а не ссылается на него через htmlFor.
 
@@ -934,46 +946,129 @@ export function Spacer() {
  * «назад». Вкладка на состоянии всё это ломает молча — человек присылает
  * ссылку на карту, а открывается она не на том, что он смотрел.
  */
-export function Tabs({ items, label }: { items: { to: string; label: string; end?: boolean }[]; label?: string }) {
-  /*
-   * Это НЕ role="tablist". Здесь ссылки, меняющие адрес, а вкладка в смысле
-   * ARIA — переключатель панелей внутри одной страницы, и от него диктор
-   * ждёт role="tab" у детей и связанных панелей. Проверка доступности это
-   * поймала сразу: tablist со ссылками внутри — нарушение, а не придирка.
-   * Раздел навигации <nav> описывает происходящее верно.
+export interface TabItem {
+  to?: string;
+  label: string;
+  end?: boolean;
+  /**
+   * Вкладка состояния, а не адреса: `onSelect` вместо `to`.
+   *
+   * Нужна ровно одному месту — виду теста в конструкторе («Конкретний /
+   * Комплексний»). Там вкладка — свойство ЧЕРНОВИКА, который сам сохраняется
+   * в localStorage и переживает F5; адрес с `?mode=complex` при восстановленном
+   * «конкретном» черновике врал бы. Вид при этом тот же: те же 18/700, тот же
+   * зазор 53, та же полутоновая неактивная — а «вы здесь» несёт
+   * aria-selected, чтобы оно не держалось на одном цвете.
    */
+  onSelect?: () => void;
+  active?: boolean;
+  /**
+   * Для вкладки состояния: свой id и id панели, которой она управляет, —
+   * по aria-controls диктор связывает вкладку с тем, что она показывает.
+   */
+  id?: string;
+  controls?: string;
+}
+
+const tabClass = (isActive: boolean) =>
+  cx(
+    "shrink-0 whitespace-nowrap py-[6px] text-[18px] font-bold",
+    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
+    "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+    /*
+     * Неактивная — ровно #b299cc, но записана вычислением из токена,
+     * а не шестнадцатеричным числом. Это не красивость: #b299cc есть
+     * ТОЧНО половина пути от #663399 к белому (102→178, 51→153,
+     * 153→204 — все три канала дают ровно 0.5), то есть в макете это
+     * не отдельный цвет, а тот же фиолетовый вполсилы. Записанный
+     * вычислением, он поедет вслед за палитрой, если фиолетовый
+     * когда-нибудь поправят; записанный числом — останется от старой.
+     */
+    /*
+      Неактивная вкладка — тот же фиолетовый, но бледнее. Макет
+      бледнит вполсилы (#b299cc), и на белом это 2,52:1 — ниже нормы
+      вдвое; проверка доступности упала на первом же прогоне.
+      --primary-dim держит ту же мысль «вполсилы» читаемой: 6,06:1
+      на листе. Глазом разница между двумя оттенками «бледного»
+      не ловится, а активная от неактивной отличается по-прежнему
+      светлотой, а не тоном — то есть переживает дальтонизм и ч/б.
+    */
+    isActive ? "text-primary" : "text-primary-dim",
+  );
+
+export function Tabs({ items, label }: { items: TabItem[]; label?: string }) {
+  const bar = cx(
+    /*
+     * Ни подчёркивания, ни пилюли, ни рамки — чистый текст с зазором 53px.
+     * Подчёркивание активной вкладки было прежним признаком «вы здесь»; в
+     * макете его нет, и оно убрано.
+     */
+    "flex items-center gap-[53px] overflow-x-scroll",
+    /*
+     * Полоса прокрутки под вкладками нарисована в макете и потому видна
+     * всегда: `overflow-x-scroll`, а не `auto`. При `auto` дорожки не было
+     * бы, пока вкладки помещаются, — а в макете она есть и на кадрах, где
+     * вкладок три. Высота 4px, дорожка #cccccc, ползунок #999999.
+     *
+     * Оба набора правил, и это не дублирование: `scrollbar-*` понимает
+     * Firefox, `::-webkit-scrollbar` — Chrome и Safari, и ни один не
+     * понимает оба. Заодно явный `::-webkit-scrollbar` заставляет macOS
+     * показать обычную полосу вместо всплывающей, которая пропадает через
+     * секунду после прокрутки.
+     */
+    "[scrollbar-width:thin] [scrollbar-color:var(--border-strong)_var(--hairline)]",
+    "[&::-webkit-scrollbar]:h-[4px]",
+    "[&::-webkit-scrollbar-track]:bg-hairline",
+    "[&::-webkit-scrollbar-thumb]:bg-[var(--border-strong)]",
+  );
+
+  /*
+   * Два разных элемента под одной картинкой — и это не прихоть.
+   *
+   * Ссылки — <nav>: они меняют адрес, и «навигация» описывает происходящее
+   * верно. Это НЕ role="tablist": вкладка в смысле ARIA — переключатель
+   * панелей внутри одной страницы, от неё диктор ждёт role="tab" у детей
+   * и связанных панелей; tablist со ссылками внутри — нарушение, проверка
+   * доступности ловит его сразу.
+   *
+   * Кнопки — наоборот, ровно этот переключатель: адрес не меняется,
+   * меняется содержимое формы ниже. Ориентир «навигация» с двумя кнопками,
+   * которые никуда не ведут, обещал бы диктору переход, которого нет.
+   * Поэтому здесь role="tablist", у кнопок role="tab" + aria-selected и
+   * aria-controls на панель. Стрелки ← → ходят по вкладкам, выбирает Enter
+   * или пробел (ручная активация): переключение перестраивает черновик,
+   * и делать это одним движением фокуса было бы слишком легко. Tab с
+   * полосы уходит дальше — в списке вкладок фокус принимает только
+   * выбранная (roving tabindex).
+   */
+  if (items.some((t) => t.onSelect)) {
+    return (
+      <div role="tablist" aria-label={label} className={bar} onKeyDown={moveTabFocus}>
+        {items.map((t) => (
+          <button
+            key={t.label}
+            type="button"
+            role="tab"
+            id={t.id}
+            aria-selected={!!t.active}
+            aria-controls={t.controls}
+            tabIndex={t.active ? 0 : -1}
+            onClick={t.onSelect}
+            className={cx("border-0 bg-transparent p-0 px-0", tabClass(!!t.active))}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <nav
-      aria-label={label}
-      className={cx(
-        /*
-         * Ни подчёркивания, ни пилюли, ни рамки — чистый текст с зазором 53px.
-         * Подчёркивание активной вкладки было прежним признаком «вы здесь»; в
-         * макете его нет, и оно убрано.
-         */
-        "flex items-center gap-[53px] overflow-x-scroll",
-        /*
-         * Полоса прокрутки под вкладками нарисована в макете и потому видна
-         * всегда: `overflow-x-scroll`, а не `auto`. При `auto` дорожки не было
-         * бы, пока вкладки помещаются, — а в макете она есть и на кадрах, где
-         * вкладок три. Высота 4px, дорожка #cccccc, ползунок #999999.
-         *
-         * Оба набора правил, и это не дублирование: `scrollbar-*` понимает
-         * Firefox, `::-webkit-scrollbar` — Chrome и Safari, и ни один не
-         * понимает оба. Заодно явный `::-webkit-scrollbar` заставляет macOS
-         * показать обычную полосу вместо всплывающей, которая пропадает через
-         * секунду после прокрутки.
-         */
-        "[scrollbar-width:thin] [scrollbar-color:var(--border-strong)_var(--hairline)]",
-        "[&::-webkit-scrollbar]:h-[4px]",
-        "[&::-webkit-scrollbar-track]:bg-hairline",
-        "[&::-webkit-scrollbar-thumb]:bg-[var(--border-strong)]",
-      )}
-    >
+    <nav aria-label={label} className={bar}>
       {items.map((t) => (
         <NavLink
           key={t.to}
-          to={t.to}
+          to={t.to ?? "."}
           end={t.end}
           /*
            * ОПАСНОЕ МЕСТО № 3 ИЗ ТРЁХ. В макете активную вкладку отличает
@@ -1001,36 +1096,24 @@ export function Tabs({ items, label }: { items: { to: string; label: string; end
            * различии по светлоте платить за это видом не за что.
            */
           aria-current="page"
-          className={({ isActive }) =>
-            cx(
-              "shrink-0 whitespace-nowrap py-[6px] text-[18px] font-bold",
-              "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
-              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-              /*
-               * Неактивная — ровно #b299cc, но записана вычислением из токена,
-               * а не шестнадцатеричным числом. Это не красивость: #b299cc есть
-               * ТОЧНО половина пути от #663399 к белому (102→178, 51→153,
-               * 153→204 — все три канала дают ровно 0.5), то есть в макете это
-               * не отдельный цвет, а тот же фиолетовый вполсилы. Записанный
-               * вычислением, он поедет вслед за палитрой, если фиолетовый
-               * когда-нибудь поправят; записанный числом — останется от старой.
-               */
-              /*
-                Неактивная вкладка — тот же фиолетовый, но бледнее. Макет
-                бледнит вполсилы (#b299cc), и на белом это 2,52:1 — ниже нормы
-                вдвое; проверка доступности упала на первом же прогоне.
-                --primary-dim держит ту же мысль «вполсилы» читаемой: 6,06:1
-                на листе. Глазом разница между двумя оттенками «бледного»
-                не ловится, а активная от неактивной отличается по-прежнему
-                светлотой, а не тоном — то есть переживает дальтонизм и ч/б.
-              */
-              isActive ? "text-primary" : "text-primary-dim",
-            )
-          }
+          /* цвета и кегль — в tabClass: у кнопки состояния они те же самые */
+          className={({ isActive }) => tabClass(isActive)}
         >
           {t.label}
         </NavLink>
       ))}
     </nav>
   );
+}
+
+/** ← → Home End внутри tablist: фокус ходит по вкладкам, не выбирая их */
+function moveTabFocus(e: KeyboardEvent<HTMLDivElement>) {
+  const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (!step && e.key !== "Home" && e.key !== "End") return;
+  const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'));
+  const at = tabs.indexOf(document.activeElement as HTMLElement);
+  if (at < 0) return;
+  e.preventDefault();
+  const next = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (at + step + tabs.length) % tabs.length;
+  tabs[next]?.focus();
 }
