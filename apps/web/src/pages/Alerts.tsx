@@ -697,9 +697,20 @@ function ResponseModal({ id, onClose }: { id: string; onClose: () => void }) {
         <Loading rows={5} error={res.error} />
       ) : (
         <div className="flex flex-col gap-4">
-          <div>
-            <strong>{data.survey.title}</strong>
-            <span className="text-muted"> · {dateTime(data.submittedAt ?? data.startedAt)}</span>
+          <div className="flex flex-wrap items-baseline gap-x-3">
+            <span>
+              <strong>{data.survey.title}</strong>
+              <span className="text-muted"> · {dateTime(data.submittedAt ?? data.startedAt)}</span>
+            </span>
+            {/*
+              Окно остаётся окном (см. выше, почему не переход), но у
+              прохождения теперь есть и адрес — с весами вариантов и
+              лестницей диапазонов, которых в окне нет. Ссылка ведёт туда
+              тем, кому нужен протокол целиком или ссылка для коллеги.
+            */}
+            <Link to={`/surveys/${data.survey.id}/responses/${id}`} className="text-[13px]">
+              {ut("rv.openPage")}
+            </Link>
           </div>
 
           {data.scores.length ? (

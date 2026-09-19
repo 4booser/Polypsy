@@ -71,6 +71,7 @@ const SearchPage = lazy(() => import("./pages/Search"));
 const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
+const ResponseView = lazy(() => import("./pages/response"));
 
 type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
@@ -523,6 +524,13 @@ export default function App() {
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
           <Route path="/surveys/:id/norms" element={<Norms />} />
           <Route path="/surveys/:id/blank" element={<BlankForm />} />
+          {/*
+            Прохождение — под методикой, а не отдельным корнем /responses:
+            ключ, бланк, доступ уже лежат здесь, и «Тести» в верхней полосе
+            остаётся подсвеченным, как на кадре. Ссылки на этот адрес собирают
+            три экрана; их форму сторожит apps/web/test/responseView.test.ts.
+          */}
+          <Route path="/surveys/:id/responses/:rid" element={<ResponseView />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/constructor/:id" element={<Constructor />} />
           <Route path="/surveys/:id/access" element={<Access />} />
