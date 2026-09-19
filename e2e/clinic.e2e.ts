@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goMenu, goTop, login, logout, rowTexts } from "./helpers";
+import { goMenu, goTop, login, logout, rowTexts, patientLinks } from "./helpers";
 
 /**
  * Сквозной клинический сценарий: тревога → пациент → сводка → направление →
@@ -16,7 +16,7 @@ test("от тревоги до закрытого направления", async
 
   // из тревоги — к пациенту: полосой, как ходят каждый день
   await goTop(page, "Пациенты");
-  const firstPatient = page.locator("table tbody tr td a").first();
+  const firstPatient = patientLinks(page).first();
   await firstPatient.click();
 
   /*
@@ -81,7 +81,7 @@ test("запись приёма сохраняется, подписываетс
    */
   await login(page, "psy");
   await page.goto("/patients");
-  await page.locator("table tbody tr td a").first().click();
+  await patientLinks(page).first().click();
 
   const notes = page.locator("[data-panel], .card").filter({ hasText: "Записи приёма" }).first();
   await expect(notes).toBeVisible();
@@ -112,7 +112,7 @@ test("план безопасности составляется и сохран
    */
   await login(page, "psy");
   await page.goto("/patients");
-  await page.locator("table tbody tr td a").first().click();
+  await patientLinks(page).first().click();
 
   const card = page.locator("[data-panel], .card").filter({ hasText: "План безопасности" }).first();
   await expect(card).toBeVisible();

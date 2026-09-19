@@ -131,7 +131,12 @@ export function railGroups(
         { to: "/referrals", key: "nav.referrals", icon: <IconReferral />, badge: counts.referrals },
         { to: "/search", key: "srch.title", icon: <IconStack /> },
         { to: "/cohorts", key: "coh.title", icon: <IconGroup /> },
-        { to: "/groups", key: "nav.groups", icon: <IconGroup /> },
+        /*
+         * «Групи» здесь — группы ПАЦИЕНТОВ, как и в верхней полосе: одно
+         * слово, одна дверь. Группы методик — ниже, в «Методиках», под своим
+         * полным именем.
+         */
+        { to: "/patient-groups", key: "nav.groups", icon: <IconGroup /> },
         { to: "/my-schedule", key: "nav.reception", icon: <IconClock /> },
       ],
     },
@@ -141,6 +146,14 @@ export function railGroups(
       items: [
         { to: "/surveys", key: "nav.surveys", icon: <IconSurvey /> },
         { to: "/batteries", key: "nav.batteries", icon: <IconBattery /> },
+        /*
+         * Группы методик переехали из «Людей» сюда: это единица доступа к
+         * методикам, а не список людей, и рядом с пациентами они читались как
+         * ещё один способ собрать людей. Ключ — заголовок самого экрана
+         * («Групи методик»), как у поиска и подбора: второго перевода тому же
+         * названию не заводится.
+         */
+        { to: "/groups", key: "adm.groupsTitle", icon: <IconGroup /> },
       ],
     },
   ];
