@@ -240,3 +240,53 @@ describe("версия методики по запросу", () => {
     }
   });
 });
+
+describe("язык текстов методики в прохождении", () => {
+  let responseId: string;
+
+  beforeAll(async () => {
+    const id = await makeSurveyRow({ title: { uk: "Двомовна методика", ru: "Двуязычная методика" } });
+    const draft = createSurveySchema.parse({
+      title: { uk: "Двомовна методика", ru: "Двуязычная методика" },
+      administration: "self",
+      scoringEnabled: false,
+      questions: [
+        {
+          type: "yesno",
+          title: { uk: "Чи спите ви вночі?", ru: "Спите ли вы ночью?" },
+          required: true,
+          options: [
+            { text: { uk: "Ні" }, score: 0, keyCode: "no" },
+            { text: { uk: "Так" }, score: 1, keyCode: "yes" },
+          ],
+        },
+      ],
+    });
+    await createVersion(id, draft, adminA.id, "Двомовна");
+    const res = await submitSurvey(id, patient.token);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    responseId = res.body.id;
+  });
+
+  /**
+   * Мутация: читать методику прохождения без языка читателя — под русской
+   * консолью приходит украинский заголовок и украинский текст пункта,
+   * проверка называет оба. Описание при этом шло отдельным запросом и
+   * переводилось, так что на экране стоял украинский заголовок над русским
+   * описанием — как недоперевод, а не как выбор.
+   */
+  test("заголовок и пункты приходят на языке того, кто читает", async () => {
+    const ru = await api<ResponseDetail>(`/api/responses/${responseId}`, adminA.token, {
+      headers: { "Accept-Language": "ru" },
+    });
+    expect(ru.status, JSON.stringify(ru.body)).toBe(200);
+    expect(ru.body.survey.title, "заголовок под русской консолью").toBe("Двуязычная методика");
+    expect(ru.body.answers[0]!.title, "пункт под русской консолью").toBe("Спите ли вы ночью?");
+
+    const uk = await api<ResponseDetail>(`/api/responses/${responseId}`, adminA.token, {
+      headers: { "Accept-Language": "uk" },
+    });
+    expect(uk.body.survey.title, "заголовок под украинской консолью").toBe("Двомовна методика");
+    expect(uk.body.answers[0]!.title, "пункт под украинской консолью").toBe("Чи спите ви вночі?");
+  });
+});

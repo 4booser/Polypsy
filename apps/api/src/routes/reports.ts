@@ -50,7 +50,7 @@ reportRoutes.get("/responses/:id", async (c) => {
   if (!own && !isStaff(user)) forbidden("err.conclusionAccessDenied");
   if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
 
-  const survey = await getSurveyForResponse(response.id);
+  const survey = await getSurveyForResponse(response.id, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
