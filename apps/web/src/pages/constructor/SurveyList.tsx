@@ -145,9 +145,41 @@ function MenuButton({
 
   useEffect(() => {
     if (!open) return;
-    /* Esc закрывает верхний слой: окно поверх меню не должно гасить оба */
+    /*
+     * Открытое меню стоит на первом пункте, а не на пустом контейнере:
+     * ловушка фокуса переносит фокус на контейнер, и диктор объявлял бы
+     * «меню» без пункта под курсором. Ловушка сама пункт не выбирает — она
+     * общая на все слои и не знает, что внутри меню.
+     */
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isTopLayer(ref)) close();
+      /* только верхний слой: окно поверх меню не должно гасить оба и не должно листать меню под собой */
+      if (!isTopLayer(ref)) return;
+      if (e.key === "Escape") {
+        close();
+        return;
+      }
+      /*
+       * Стрелки, Home и End — то, что role="menu" обещает клавиатуре. Ловушка
+       * заворачивает Tab по кругу, но человек, услышавший «меню», жмёт стрелку
+       * вниз — и до этого обработчика на стрелку не отвечал никто.
+       */
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+      if (!items.length) return;
+      e.preventDefault();
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      const next =
+        e.key === "Home"
+          ? 0
+          : e.key === "End"
+            ? items.length - 1
+            : e.key === "ArrowDown"
+              ? (at + 1) % items.length
+              : at <= 0
+                ? items.length - 1
+                : at - 1;
+      items[next]?.focus();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -365,6 +397,13 @@ function Crumbs({
  * ровно как на макете. Строки нет вовсе, когда папок на уровне нет: пустая
  * полка с подписью «Папки» была бы вопросом без ответа.
  *
+ * Папки стоят по колонкам списка под ними, а не в ряд через зазор: на
+ * кадре «Папки» занимает первую колонку (ту же ширину 172, что и название
+ * теста), первая папка начинается там же, где «Результат тесту», вторая —
+ * где «Статистика». Третья и дальше идут следующим рядом в те же две
+ * колонки — кадр с тремя папками не нарисован, и это единственное
+ * продолжение, при котором колонки не разъезжаются.
+ *
  * В корне папки разных групп стоят вперемешку — так и должно быть, корень
  * «Мої тести» общий. Чтобы «Тести за 2023» двух отделений не слились, при
  * нескольких группах под названием печатается имя группы.
@@ -384,16 +423,16 @@ function FolderRow({
   const { ut } = useLang();
   if (!folders.length) return null;
   return (
-    <div className="flex items-start gap-[40px] border-b border-hairline py-[24px] text-[15px] leading-[20px]">
-      <div className="flex shrink-0 items-center gap-[12px] font-bold text-primary">
+    <div className="flex items-start border-b border-hairline py-[24px] text-[15px] leading-[20px]">
+      <div className="flex w-[172px] shrink-0 items-center gap-[12px] pr-[24px] font-bold text-primary">
         <span aria-hidden className="[&>svg]:size-[30px]">
           <IconFolder />
         </span>
         {ut("cat.folders")}
       </div>
-      <ul className="m-0 flex list-none flex-wrap gap-x-[48px] gap-y-[10px] p-0">
+      <ul className="m-0 grid min-w-0 flex-1 list-none grid-cols-2 gap-x-[36px] gap-y-[10px] p-0">
         {folders.map((f) => (
-          <li key={f.id} className="flex flex-col">
+          <li key={f.id} className="flex min-w-0 flex-col">
             <span className="flex items-baseline gap-[14px]">
               <Link to={catalogueHref(tab, { folder: f.id, per })} className="font-bold text-primary no-underline hover:underline">
                 {f.title}
@@ -719,6 +758,8 @@ export function SurveyList() {
             onChange={(e) => update({ q: e.target.value, page: null })}
             className="pr-[44px]"
             autoComplete="off"
+            /* предел сервера (surveyListQuery, q ≤ 200): длиннее — не «нет результатов», а 400 */
+            maxLength={200}
           />
           <span aria-hidden className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-text-2 [&>svg]:size-[22px]">
             <IconSearchGlass />
