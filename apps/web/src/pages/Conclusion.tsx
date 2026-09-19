@@ -134,7 +134,7 @@ export default function ConclusionPage() {
  * молчит и не делает вид. Убрать пункт значило бы спрятать от заказчика, что
  * вопрос об отправке заключения за контур учреждения ещё не решён.
  */
-function DocumentMenu({ responseId }: { responseId: string }) {
+export function DocumentMenu({ responseId }: { responseId: string }) {
   const { ut } = useLang();
   const { run } = useAction();
   const toast = useToast();
@@ -185,7 +185,8 @@ function DocumentMenu({ responseId }: { responseId: string }) {
         aria-label={ut("cn3.actions")}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls="conclusion-menu"
+        /* ссылка на меню — только пока оно есть: закрытое не в разметке, а idref в пустоту — ошибка ARIA */
+        aria-controls={open ? "conclusion-menu" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         <GearGlyph />
@@ -324,7 +325,26 @@ async function loadModels(responseId: string, surveyId: string): Promise<Applied
   return applicableModels(rules, [...suggested, ...accepted, ...declined], responseId, surveyId);
 }
 
-const sectionHead = "m-0 flex items-center gap-[14px] text-[18px] font-bold leading-tight text-primary";
+/**
+ * Заголовок раздела свитка — 18/700 фиолетовым, вторая ступень макета, — и
+ * при нём действие («+»).
+ *
+ * Действие стоит РЯДОМ с h2, а не внутри него. Имя заголовка для диктора
+ * собирается из его содержимого, и ссылка внутри h2 приклеивала бы свою
+ * подпись к имени раздела: «Список тестів Додати тест: призначити батарею» —
+ * так назывались бы и заголовок, и секция, которая ссылается на него через
+ * aria-labelledby. Картинка при этом та же: ряд из заголовка и глифа.
+ */
+export function SectionHead({ id, action, children }: { id: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-[14px]">
+      <h2 id={id} className="m-0 text-[18px] font-bold leading-tight text-primary">
+        {children}
+      </h2>
+      {action}
+    </div>
+  );
+}
 
 function ModelList({ models, error }: { models: AppliedModel[] | null; error: string | null }) {
   const { ut } = useLang();
@@ -336,21 +356,28 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
         есть, страницы под них нет) — кнопка вела бы в никуда. Глиф без
         действия хуже отсутствия глифа: его нажмут.
       */}
-      <h2 id="cn-models" className={sectionHead}>
-        {ut("cn3.models")}
-      </h2>
+      <SectionHead id="cn-models">{ut("cn3.models")}</SectionHead>
       {/*
         Отказ показывается словами, а не пустотой: у специалиста без права
         alerts.review список правил закрыт, и «моделей нет» было бы неправдой.
+        Сначала человеческая подпись, за ней — текст сервера с номером
+        запроса: подпись говорит, что случилось, номер даёт найти запись в
+        логе (см. api.ts).
       */}
       {error ? (
-        <p className="m-0 mt-[20px] text-[13px] text-muted">{error}</p>
+        <p className="m-0 mt-[20px] text-[13px] text-muted">
+          {ut("cn3.modelsUnavailable")}: {error}
+        </p>
       ) : models === null ? (
         <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("common.loading")}</p>
       ) : models.length === 0 ? (
         <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("cn3.modelsNone")}</p>
       ) : (
-        <ul className="m-0 mt-[30px] flex list-none flex-col gap-[22px] p-0">
+        /*
+          Шаг строк с кадра: 60 у моделей (имя в две строки — 40) и 54 у
+          тестов (описание в две строки — 34), то есть высота строки плюс 20.
+        */
+        <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
           {models.map((m) => (
             <li
               key={m.id}
@@ -387,32 +414,35 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
  */
 function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFull }) {
   const { ut } = useLang();
+  /*
+   * «+» ведёт к батареям: состав обследования в системе задаётся
+   * назначением батареи, а не набирается внутри документа. Это ссылка,
+   * а не кнопка, — переход на другой экран, который можно открыть в
+   * новой вкладке. Видимый квадрат 27, нажимается 44: тот же приём, что у
+   * Button size="glyph" (см. пояснение там), повторён здесь потому, что
+   * ссылка кнопкой быть не может.
+   */
+  const addTest = (
+    <Link
+      to="/batteries"
+      aria-label={ut("cn3.addTest")}
+      className={cx(
+        "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
+        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
+        "after:-translate-x-1/2 after:-translate-y-1/2",
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+      )}
+    >
+      <PlusGlyph />
+    </Link>
+  );
   return (
     <section aria-labelledby="cn-tests" className="mt-[50px]">
-      <h2 id="cn-tests" className={sectionHead}>
+      <SectionHead id="cn-tests" action={addTest}>
         {ut("cn3.tests")}
-        {/*
-          «+» ведёт к батареям: состав обследования в системе задаётся
-          назначением батареи, а не набирается внутри документа. Это ссылка,
-          а не кнопка, — переход на другой экран, который можно открыть в
-          новой вкладке. Видимый квадрат 27, нажимается 44: тот же приём, что у
-          Button size="glyph" (см. пояснение там), повторён здесь потому, что
-          ссылка кнопкой быть не может.
-        */}
-        <Link
-          to="/batteries"
-          aria-label={ut("cn3.addTest")}
-          className={cx(
-            "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
-            "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
-            "after:-translate-x-1/2 after:-translate-y-1/2",
-            "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-          )}
-        >
-          <PlusGlyph />
-        </Link>
-      </h2>
-      <ul className="m-0 mt-[30px] flex list-none flex-col gap-[22px] p-0">
+      </SectionHead>
+      {/* тот же шаг 20, что у списка моделей */}
+      <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
         <li className="grid grid-cols-[200px_1fr_205px] items-start gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]">
           <span className="text-[15px] font-bold leading-[20px] text-primary">{survey.title}</span>
           <span className="text-[13px] leading-[17px] text-muted">{survey.description ?? ""}</span>
@@ -461,8 +491,9 @@ function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
    * действующей версии. У совпадающих версий идентификаторы те же, и балл
    * находится у каждого варианта. У прохождения на старой версии — не
    * найдётся ни одного: тогда балл известен только у выбранного (он записан
-   * в самом ответе), а у остальных печатается прочерк. Прочерк, а не ноль:
-   * ноль — это балл, прочерк — его отсутствие.
+   * в самом ответе — см. QuestionSheet, когда это так), а у остальных
+   * печатается прочерк. Прочерк, а не ноль: ноль — это балл, прочерк — его
+   * отсутствие.
    */
   const scoreByOption = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o.score] as const)));
   const scoreOf = (optionId: string) => scoreByOption.get(optionId) ?? null;
@@ -544,6 +575,12 @@ export function QuestionSheet({
 }) {
   const { ut } = useLang();
   const chosen = new Set(answer.optionIds ?? []);
+  /*
+   * Балл в самом ответе — балл пункта целиком, а не варианта. Вариантом он
+   * становится только когда выбран один: у вопроса с несколькими ответами
+   * сумма, напечатанная у каждого выбранного, читалась бы как балл каждого.
+   */
+  const ownScore = chosen.size === 1 ? answer.score : null;
   const withOptions = WITH_OPTIONS.has(answer.type) && answer.options.length > 0;
   const headId = `cn-q-${answer.questionId}`;
 
@@ -557,7 +594,7 @@ export function QuestionSheet({
         <ul className="m-0 list-none p-0">
           {answer.options.map((o) => {
             const on = chosen.has(o.id);
-            const score = scoreOf(o.id) ?? (on ? answer.score : null);
+            const score = scoreOf(o.id) ?? (on ? ownScore : null);
             return (
               <li
                 key={o.id}

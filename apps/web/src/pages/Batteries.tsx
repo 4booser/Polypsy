@@ -388,7 +388,13 @@ function BatteryEditor({
         {ut("bt.strictOrderHint")}
       </p>
 
-      <h3 className="mt-[18px]">{ut("bt.composition")}</h3>
+      {/*
+        Подпись участка набрана явно: правило наследия для h3 действует только
+        на бесклассовый тег (legacy.css), а этому тегу нужен отступ сверху.
+      */}
+      <h3 className="mb-2 mt-[18px] text-micro font-semibold uppercase tracking-[var(--tracking-label)] text-faint">
+        {ut("bt.composition")}
+      </h3>
       {items.length ? (
         <ol className="battery-steps editable">
           {items.map((item, i) => (

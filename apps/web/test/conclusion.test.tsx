@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { DecisionRule, ResponseDetailAnswer, RuleHit, Scale, ScoreResult } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
-import { QuestionSheet, ResultLadder, applicableModels } from "../src/pages/Conclusion";
+import { DocumentMenu, QuestionSheet, ResultLadder, SectionHead, applicableModels } from "../src/pages/Conclusion";
 
 /**
  * Протокол заключения не различает выбранное одним цветом.
@@ -74,6 +74,27 @@ describe("протокол заключения", () => {
     expect(lines[0]!.html).toContain("—");
     expect(lines[0]!.html).not.toMatch(/>0</);
     expect(lines[1]!.html).toMatch(/>2</);
+  });
+
+  test("балл пункта не приписывается каждому из нескольких выбранных вариантов", () => {
+    /*
+     * У ответа один балл на весь пункт. На старой версии методики, где
+     * баллов вариантов не найти, он подставляется выбранному варианту — но
+     * только когда выбран один. Два выбранных с одной и той же суммой у
+     * каждого выглядели бы как два балла по 5, которых не было.
+     */
+    const two = answer({ type: "multiple", optionIds: ["o1", "o2"], score: 5 });
+    const both = rows(render(<QuestionSheet n={2} answer={two} scoreOf={() => null} />), "data-chosen");
+    expect(both.map((l) => l.on)).toEqual([true, true]);
+    for (const line of both) {
+      expect(line.html).toContain("—");
+      expect(line.html).not.toMatch(/>5</);
+    }
+
+    const one = answer({ type: "multiple", optionIds: ["o2"], score: 5 });
+    const lines = rows(render(<QuestionSheet n={2} answer={one} scoreOf={() => null} />), "data-chosen");
+    expect(lines[1]!.html).toMatch(/>5</);
+    expect(lines[0]!.html).toContain("—");
   });
 
   test("вопрос без вариантов печатает ответ одной строкой, пропущенный — «без відповіді»", () => {
@@ -167,6 +188,32 @@ describe("лестница результатов", () => {
 
   test("шкала без полос лестницы не рисует", () => {
     expect(render(<ResultLadder scores={[score(15, null)]} scales={[scale([])]} />)).toBe("");
+  });
+});
+
+describe("заголовки и меню документа", () => {
+  test("действие при заголовке раздела стоит рядом с h2, а не внутри него", () => {
+    /*
+     * Имя заголовка для диктора собирается из содержимого h2. Ссылка внутри
+     * приклеила бы свою подпись к имени раздела — и секции, которая через
+     * aria-labelledby на него ссылается. Глазом не видно: ряд тот же.
+     */
+    const html = render(
+      <SectionHead id="cn-tests" action={<a href="/batteries" aria-label="Додати тест">+</a>}>
+        Список тестів
+      </SectionHead>,
+    );
+    const heading = /<h2 id="cn-tests"[^>]*>([\s\S]*?)<\/h2>/.exec(html);
+    expect(heading?.[1]).toBe("Список тестів");
+    expect(html, "ссылка пропала вместе с выносом из заголовка").toContain('aria-label="Додати тест"');
+  });
+
+  test("закрытое меню не ссылается на несуществующий элемент", () => {
+    /* aria-controls обязан указывать на существующий id; закрытое меню в разметке отсутствует */
+    const html = render(<DocumentMenu responseId="r1" />);
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("aria-controls");
+    expect(html).not.toContain('id="conclusion-menu"');
   });
 });
 
