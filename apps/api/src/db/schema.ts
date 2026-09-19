@@ -14,7 +14,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { LocalizedText } from "@quizzy/shared";
+import type { LocalizedText, SampleFilters, StatModelColumn } from "@quizzy/shared";
 
 /**
  * Временные метки храним как timestamptz: в отличие от SQLite, где всё было
@@ -133,6 +133,15 @@ export const users = pgTable(
     position: text("position"),
     specialty: text("specialty"),
     rank: text("rank"),
+    /**
+     * Населённый пункт — фильтр выборок раздела «Статистика».
+     *
+     * Открытым текстом, в отличие от даты рождения: шифрованное поле нельзя
+     * сравнить в SQL, а фильтровать по нему — весь смысл поля. Квази-
+     * идентификатор закрывает порог малых ячеек (lib/privacy.ts), а не
+     * шифрование; подробнее — в миграции 0082.
+     */
+    locality: text("locality"),
     role: text("role", { enum: ["superadmin", "admin", "user"] }).notNull().default("user"),
     /**
      * Настройки рабочего места: стартовый экран, плотность, тема, язык.
@@ -2102,6 +2111,70 @@ export const cohorts = pgTable(
     authorIdx: index("cohorts_author_idx").on(t.createdBy, t.createdAt),
   }),
 );
+
+/* ═══════════ Раздел «Статистика» ═══════════
+ *
+ * Пресеты фильтров и статистические модели — личные инструменты аналитика,
+ * как cohorts выше, но с другим контуром: когорта отдаёт состав поимённо,
+ * статистика — только доли с подавлением малых ячеек. Поэтому не поле в
+ * cohorts, а свои таблицы, см. миграцию 0081.
+ */
+
+/**
+ * Пресет фильтров выборки — «Пресети фільтрів» с кадра f25.
+ *
+ * `criteria` — строки-критерии (дата от/до, возраст от–до, пол, населённый
+ * пункт, группа пациентов, конкретный человек); форма — SampleFilters из
+ * @quizzy/shared, проверяется schemas.ts на входе. Отсутствующий ключ —
+ * отсутствующая строка формы.
+ */
+export const filterPresets = pgTable(
+  "filter_presets",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    criteria: jsonb("criteria").notNull().$type<SampleFilters>().default({}),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    ownerIdx: index("filter_presets_owner_idx").on(t.ownerId, t.createdAt),
+  }),
+);
+
+/**
+ * Статистическая модель — колонки-выборки с показателями (кадры f07/f14/f28).
+ *
+ * Колонки лежат одним jsonb: модель читается и пишется только целиком, а
+ * три таблицы под колонки, полосы и вопросы дали бы три набора политик и
+ * семь запросов на одно открытие экрана. Форма — StatModelColumn[] из
+ * @quizzy/shared; версия методики в каждой колонке хранится всегда, потому
+ * что идентификаторы полос и вариантов принадлежат версии.
+ */
+export const statModels = pgTable(
+  "stat_models",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    /** «Короткий опис статистичної моделі» — стоит в списке рядом с названием */
+    description: text("description"),
+    columns: jsonb("columns").notNull().$type<StatModelColumn[]>().default([]),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    ownerIdx: index("stat_models_owner_idx").on(t.ownerId, t.createdAt),
+  }),
+);
+
+export type FilterPresetRow = typeof filterPresets.$inferSelect;
+export type StatModelRow = typeof statModels.$inferSelect;
 
 /**
  * Слепой индекс записей.

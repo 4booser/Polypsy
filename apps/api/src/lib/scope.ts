@@ -6,13 +6,17 @@ import {
   batteryItems,
   breakGlass,
   departmentPatients,
+  filterPresets,
   groupAdmins,
   patientGroups,
   specialistProfiles,
+  statModels,
   surveyAccess,
   surveyFolders,
   surveys,
   users,
+  type FilterPresetRow,
+  type StatModelRow,
   type SurveyFolderRow,
 } from "../db/schema";
 import { badRequest, forbidden, notFound } from "./http";
@@ -222,6 +226,33 @@ export async function canAccessPatientGroup(user: User, groupId: string): Promis
  */
 export async function assertPatientGroupAccess(user: User, groupId: string): Promise<void> {
   if (!(await canAccessPatientGroup(user, groupId))) notFound("err.patientGroupNotFound");
+}
+
+/* ─────────── Раздел «Статистика»: пресеты фильтров и модели ───────────
+ *
+ * Правило то же, что у групп пациентов, и по той же причине: пресет и
+ * модель выражают вопрос одного аналитика, а не структуру учреждения, и
+ * коллега прочитал бы чужой срез как принятый в отделении. Видит и правит
+ * владелец; суперадмин — всё, ему разбирать.
+ *
+ * Отвечает «не найдено», а не «нельзя», как assertPatientGroupAccess: 403
+ * подтвердил бы, что коллега такое завёл.
+ *
+ * Возвращают строку, а не только проверяют: маршруту она нужна следующей же
+ * строкой, и второй запрос за тем, что уже прочитано, был бы платой за
+ * симметрию с проверками, у которых строка не нужна.
+ */
+
+export async function assertFilterPresetAccess(user: User, presetId: string): Promise<FilterPresetRow> {
+  const row = await db.query.filterPresets.findFirst({ where: eq(filterPresets.id, presetId) });
+  if (!row || (!isSuperadmin(user) && row.ownerId !== user.id)) notFound("err.filterPresetNotFound");
+  return row;
+}
+
+export async function assertStatModelAccess(user: User, modelId: string): Promise<StatModelRow> {
+  const row = await db.query.statModels.findFirst({ where: eq(statModels.id, modelId) });
+  if (!row || (!isSuperadmin(user) && row.ownerId !== user.id)) notFound("err.statModelNotFound");
+  return row;
 }
 
 

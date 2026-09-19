@@ -568,6 +568,20 @@
       "when": 1788472749043,
       "tag": "0080_survey_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1788472809043,
+      "tag": "0081_stat_models",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1788472869043,
+      "tag": "0082_user_locality",
+      "breakpoints": true
     }
   ]
 }
