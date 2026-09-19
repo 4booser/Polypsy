@@ -120,7 +120,7 @@ function StartScreen({ prefs }: { prefs: WorkspacePrefs | null }) {
 }
 
 export default function App() {
-  const { user, loading, logout, refreshUser } = useAuth();
+  const { user, loading, logout, refreshUser, can } = useAuth();
   /* отказ отвязки должен быть виден: см. кнопку ниже */
   const { run } = useAction();
   /*
@@ -382,6 +382,13 @@ export default function App() {
    * коллег — это часть назначения, а не отдельная привилегия.
    */
   const canAssign = (user.ladderRank ?? 0) > 1;
+  /*
+   * Кому заводить сотрудников: по праву users.manage, а не по классу.
+   * Право приходит с карточкой прав вместе с профилем (auth.tsx, can):
+   * заведующий, которому его выдали ролью или исключением, заводит людей
+   * наравне с суперадмином — POST /api/users открыт ему точно так же.
+   */
+  const canManageUsers = can("users.manage");
 
   /*
    * Подвал рельсы переехал в бургер целиком — вместе с именем, ролью,
@@ -635,10 +642,12 @@ export default function App() {
           {isSuper ? <Route path="/users" element={<Users />} /> : null}
           {/*
             Разделы «Лікарі» и «Адміністратори» — тем, кому есть кого назначать,
-            и суперадмину. Заведение («/new») — только суперадмину: на сервере
-            оно закрыто правом users.manage, которого у заведующего нет.
-            Статичный сегмент `new` не спорит с `:id` ниже — маршрутизатор
-            ранжирует его выше параметра, а идентификаторы — UUID.
+            и суперадмину: как и пункт меню. Заведение («/new») — по праву
+            users.manage, которым оно закрыто на сервере; у заведующего его
+            по умолчанию нет, но выданное ролью или исключением оно должно
+            открывать и «+», и адрес. Статичный сегмент `new` не спорит с
+            `:id` ниже — маршрутизатор ранжирует его выше параметра, а
+            идентификаторы — UUID.
 
             Своя карточка открыта каждому сотруднику: по схеме заказчика
             (кадр f03) это первый экран лікаря после входа. Чужая — тем же,
@@ -646,8 +655,8 @@ export default function App() {
           */}
           {isSuper || canAssign ? <Route path="/staff" element={<StaffList kind="doctors" />} /> : null}
           {isSuper || canAssign ? <Route path="/admins" element={<StaffList kind="admins" />} /> : null}
-          {isSuper ? <Route path="/staff/new" element={<StaffNew kind="doctor" />} /> : null}
-          {isSuper ? <Route path="/admins/new" element={<StaffNew kind="admin" />} /> : null}
+          {canManageUsers ? <Route path="/staff/new" element={<StaffNew kind="doctor" />} /> : null}
+          {canManageUsers ? <Route path="/admins/new" element={<StaffNew kind="admin" />} /> : null}
           <Route path="/staff/:id" element={<StaffCard />}>
             <Route index element={<StaffProfile />} />
             <Route path="patients" element={<StaffPatients />} />

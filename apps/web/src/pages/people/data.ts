@@ -1,4 +1,5 @@
-import { ApiError, api } from "../../api";
+import type { User } from "@quizzy/shared";
+import { api } from "../../api";
 import { type StaffRow, fromAssignable, fromUser, isStaff, sortByName } from "./model";
 
 /**
@@ -8,9 +9,14 @@ import { type StaffRow, fromAssignable, fromUser, isStaff, sortByName } from "./
  * соседних: GET /api/users — весь реестр, закрытый правом users.manage, и
  * GET /api/permissions/staff — «кого я вправе назначать», открытый
  * заведующему. Первый полнее (пол, дата рождения, специальность), второй
- * доступнее. Берётся первый, а на отказ в праве — второй: экран «Лікарі»
- * по схеме заказчика (кадр f40) открывает именно администратор, и остаться
- * ему с пустым экраном нельзя.
+ * доступнее.
+ *
+ * По какому идти, решается ДО запроса — по праву из карточки прав (useAuth
+ * → can), а не пробой реестра с откатом по отказу. Проба стоила дорого не
+ * консоли, а журналу: отказ в праве сервер пишет как access.denied, экран
+ * «Журнал доступу» считает такие записи в красный счётчик «Відмов», и
+ * заведующий, открывший список коллег, выглядел бы там как попытка взлома —
+ * на каждом заходе, потому что для него это основной путь, а не исключение.
  *
  * `partial` говорит экрану, что перед ним усечённый ответ: он печатает
  * подсказку, а не притворяется полным реестром.
@@ -20,15 +26,53 @@ export interface Directory {
   partial: boolean;
 }
 
-export async function loadDirectory(): Promise<Directory> {
-  try {
-    const users = await api.users();
+/** Кто смотрит: свой id и право на реестр — оба решают, по какому маршруту идти */
+export interface Viewer {
+  id: string;
+  canManageUsers: boolean;
+}
+
+/**
+ * Откуда берётся справочник. Подменяется в проверке (apps/web/test/people.test.ts):
+ * решения «какой маршрут» и «когда не ходить вовсе» — это правила доступа и
+ * цены, и проверять их живым сервером значило бы проверять случайно.
+ */
+export interface DirectorySource {
+  users: () => Promise<User[]>;
+  assignableStaff: () => Promise<{ id: string; email: string; role: string; fullName: string }[]>;
+}
+
+async function fetchDirectory(viewer: Viewer, src: DirectorySource): Promise<Directory> {
+  if (viewer.canManageUsers) {
+    const users = await src.users();
     return { rows: sortByName(users.filter(isStaff).map(fromUser)), partial: false };
-  } catch (e) {
-    if (!(e instanceof ApiError) || e.status !== 403) throw e;
-    const staff = await api.assignableStaff();
-    return { rows: sortByName(staff.map(fromAssignable)), partial: true };
   }
+  const staff = await src.assignableStaff();
+  return { rows: sortByName(staff.map(fromAssignable)), partial: true };
+}
+
+/*
+ * Последний загруженный справочник — на время сеанса, для карточки.
+ *
+ * Полный реестр — дорогой ответ не по байтам, а по существу: сервер выбирает
+ * всю таблицу users вместе с пациентами, расшифровывает ФИО и даты рождения
+ * каждого и пишет user.list в журнал. Качать его ради одной строки при
+ * каждом открытии карточки значило бы возить персональные данные всех
+ * пациентов в браузер за каждым щелчком по фамилии коллеги. Список этот
+ * ответ и так получает — карточка берёт строку из него.
+ *
+ * Кеш привязан к тому, кто смотрит: вышел суперадмин, вошёл заведующий —
+ * ему достаётся не чужой реестр, а свой ответ. Срока годности нет: список
+ * перечитывает справочник при каждом открытии и обновляет кеш, а карточка
+ * коллеги, отставшая на минуту, не стоит второй выгрузки реестра.
+ */
+let cached: { viewerId: string; dir: Directory } | null = null;
+
+/** Список: всегда свежий ответ, он же становится кешем для карточек */
+export async function loadDirectory(viewer: Viewer, src: DirectorySource = api): Promise<Directory> {
+  const dir = await fetchDirectory(viewer, src);
+  cached = { viewerId: viewer.id, dir };
+  return dir;
 }
 
 /**
@@ -54,6 +98,10 @@ export async function withLadder(rows: StaffRow[]): Promise<StaffRow[]> {
  * Один сотрудник — из того же справочника: маршрута GET /api/users/:id нет.
  * Своя запись берётся из профиля напрямую: она полнее и не требует права
  * на реестр — свою карточку открывает и рядовой специалист (кадр f03).
+ *
+ * Чужая — из кеша списка; нет там человека (карточка открыта по ссылке или
+ * сразу после заведения) — справочник читается один раз и остаётся для
+ * следующих карточек.
  */
 /*
  * Ответ обёрнут, а не отдан голым `StaffRow | null`: у useResource «ещё не
@@ -61,11 +109,17 @@ export async function withLadder(rows: StaffRow[]): Promise<StaffRow[]> {
  * сотрудника нет» вместо скелета. Обёртка делает «загружено, но не найден»
  * отличимым от «не загружено».
  */
-export async function loadMember(id: string, me: { id: string } | null): Promise<{ row: StaffRow | null }> {
-  if (me && me.id === id) {
-    const user = await api.me();
+export async function loadMember(
+  id: string,
+  viewer: Viewer,
+  src: DirectorySource & { me: () => Promise<User> } = api,
+): Promise<{ row: StaffRow | null }> {
+  if (viewer.id === id) {
+    const user = await src.me();
     return { row: fromUser(user) };
   }
-  const dir = await loadDirectory();
+  const hit = cached?.viewerId === viewer.id ? cached.dir.rows.find((r) => r.id === id) : undefined;
+  if (hit) return { row: hit };
+  const dir = await loadDirectory(viewer, src);
   return { row: dir.rows.find((r) => r.id === id) ?? null };
 }

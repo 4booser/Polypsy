@@ -4,7 +4,7 @@ import { roleRank } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
-import { useToast } from "../../ui";
+import { Loading, useToast } from "../../ui";
 import { Page } from "../../ui/layout";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 import { useResource } from "../../useResource";
@@ -67,9 +67,19 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
     const list = (roles.data ?? []).filter((r) => r.assignable && !r.isBuiltin);
     return kind === "admin" ? list.filter((r) => roleRank(r.code) > 1) : list;
   }, [roles.data, kind]);
-  const chosen = role ?? (kind === "doctor" ? (options.find((r) => r.code === "specialist")?.id ?? "") : (options[0]?.id ?? (isSuper ? SUPER : "")));
+  /*
+   * Выбор по умолчанию — из загруженного справочника, и до его загрузки
+   * выбора нет: поле погашено, «Створити» заперта. Иначе у администратора
+   * поле на первом кадре показывало бы «Суперадміністратор», а секундой
+   * позже молча переключалось на заведующего — и быстро заполненная форма
+   * заводила бы суперадмина там, где та же форма чуть позже завела бы
+   * заведующего. Класс superadmin — крайний случай, а не умолчание.
+   */
+  const ready = !!roles.data;
+  const fallback = kind === "doctor" ? (options.find((r) => r.code === "specialist")?.id ?? "") : (options[0]?.id ?? (isSuper ? SUPER : ""));
+  const chosen = ready ? (role ?? fallback) : "";
 
-  const canSubmit = !busy && firstName.trim() && lastName.trim() && email.trim() && password.length >= 8;
+  const canSubmit = !busy && ready && firstName.trim() && lastName.trim() && email.trim() && password.length >= 8;
   const locked = ut("ppl.notStoredYet");
   const title = kind === "admin" ? ut("adm.addAdmin") : ut("ppl.addDoctor");
 
@@ -99,6 +109,15 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
     }
   }
 
+  /*
+   * Две колонки кадра — два столбца разметки, а не одна сетка с построчным
+   * порядком: на узком окне столбцы встают друг под друга целиком (анкета,
+   * затем служебное), а построчная сетка перемежала бы их — Ім’я,
+   * Спеціалізація, Прізвище, Організація… Строки выравниваются и так: поля
+   * одной высоты (36) с одним зазором (15), кнопка — последняя в столбце.
+   */
+  const column = "grid content-start gap-y-[15px]";
+
   return (
     <Page title={title} crumbs={<Link to={kind === "admin" ? "/admins" : "/staff"}>{kind === "admin" ? ut("adm.admins") : ut("ppl.staff")}</Link>}>
       <form
@@ -112,55 +131,67 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
          */
         className="mx-auto grid max-w-[820px] grid-cols-2 gap-x-[78px] gap-y-[15px] max-[900px]:grid-cols-1"
       >
-        <Field inline label={ut("person.firstName")}>
-          <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={80} required autoComplete="off" />
-        </Field>
-        <Field inline label={ut("ppl.specialty")}>
-          <Input value="" disabled title={locked} />
-        </Field>
-        <Field inline label={ut("person.lastName")}>
-          <Input value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={80} required autoComplete="off" />
-        </Field>
-        <Field inline label={ut("ppl.organization")}>
-          <Input value="" disabled title={locked} />
-        </Field>
-        <Field inline label={ut("ppl.middleName")}>
-          <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)} maxLength={80} autoComplete="off" />
-        </Field>
-        <Field inline label={ut("ppl.phone")}>
-          <Input value="" disabled title={locked} />
-        </Field>
-        <Field inline label={ut("person.sex")}>
-          <Input value="" disabled title={locked} />
-        </Field>
-        <Field inline label={ut("person.email")}>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" />
-        </Field>
-        <Field inline label={ut("person.birthDate")}>
-          <Input value="" disabled title={locked} />
-        </Field>
-        <Field inline label={ut("adm.role")}>
-          <Select value={chosen} onChange={(e) => setRole(e.target.value)}>
-            {kind === "admin" && isSuper ? <option value={SUPER}>{ut("nav.roleSuper")}</option> : null}
-            {options.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.title[lang] ?? r.title.uk ?? r.code}
-              </option>
-            ))}
-            {kind === "doctor" ? <option value="">{ut("ppl.roleNone")}</option> : null}
-          </Select>
-        </Field>
-        <Field inline label={ut("ppl.city")}>
-          <Input value="" disabled title={locked} />
-        </Field>
-        <Field inline label={ut("adm.password8")}>
-          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} maxLength={128} required autoComplete="new-password" />
-        </Field>
-        {/* пустая клетка слева держит кнопку в правой колонке, как на кадре */}
-        <span aria-hidden className="max-[900px]:hidden" />
-        <Button type="submit" size="md" className="w-full" disabled={!canSubmit}>
-          {ut("adm.create")}
-        </Button>
+        <div className={column}>
+          <Field inline label={ut("person.firstName")}>
+            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} maxLength={80} required autoComplete="off" />
+          </Field>
+          <Field inline label={ut("person.lastName")}>
+            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} maxLength={80} required autoComplete="off" />
+          </Field>
+          <Field inline label={ut("ppl.middleName")}>
+            <Input value={middleName} onChange={(e) => setMiddleName(e.target.value)} maxLength={80} autoComplete="off" />
+          </Field>
+          <Field inline label={ut("person.sex")}>
+            <Input value="" disabled title={locked} />
+          </Field>
+          <Field inline label={ut("person.birthDate")}>
+            <Input value="" disabled title={locked} />
+          </Field>
+          <Field inline label={ut("ppl.city")}>
+            <Input value="" disabled title={locked} />
+          </Field>
+        </div>
+        <div className={column}>
+          <Field inline label={ut("ppl.specialty")}>
+            <Input value="" disabled title={locked} />
+          </Field>
+          <Field inline label={ut("ppl.organization")}>
+            <Input value="" disabled title={locked} />
+          </Field>
+          <Field inline label={ut("ppl.phone")}>
+            <Input value="" disabled title={locked} />
+          </Field>
+          <Field inline label={ut("person.email")}>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" />
+          </Field>
+          <Field inline label={ut("adm.role")}>
+            {/* до загрузки справочника — одна погашенная строка «завантажую», а не пустой список: поле обязано объяснять, почему заперто */}
+            <Select value={chosen} disabled={!ready} onChange={(e) => setRole(e.target.value)}>
+              {!ready ? <option value="">{ut("ui.loading")}</option> : null}
+              {ready && kind === "admin" && isSuper ? <option value={SUPER}>{ut("nav.roleSuper")}</option> : null}
+              {ready
+                ? options.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title[lang] ?? r.title.uk ?? r.code}
+                    </option>
+                  ))
+                : null}
+              {ready && kind === "doctor" ? <option value="">{ut("ppl.roleNone")}</option> : null}
+            </Select>
+          </Field>
+          <Field inline label={ut("adm.password8")}>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} maxLength={128} required autoComplete="new-password" />
+          </Field>
+          <Button type="submit" size="md" className="w-full" disabled={!canSubmit}>
+            {ut("adm.create")}
+          </Button>
+        </div>
+        {/* справочник ролей не загрузился — форма заперта, и у отказа есть выход: повторить */}
+        {roles.error ? (
+          <div className="col-span-full">
+            <Loading error={roles.error} onRetry={roles.reload} />
+          </div>
+        ) : null}
         <p className="col-span-full m-0 text-[13px] leading-[19px] text-muted">{ut("ppl.disabledFieldsHint")}</p>
         {error ? (
           <p role="alert" className="col-span-full m-0 text-[13px] text-danger">
