@@ -7,12 +7,14 @@ import {
   breakGlass,
   departmentPatients,
   groupAdmins,
+  mailings,
   patientGroups,
   specialistProfiles,
   surveyAccess,
   surveyFolders,
   surveys,
   users,
+  type MailingRow,
   type SurveyFolderRow,
 } from "../db/schema";
 import { badRequest, forbidden, notFound } from "./http";
@@ -224,6 +226,26 @@ export async function assertPatientGroupAccess(user: User, groupId: string): Pro
   if (!(await canAccessPatientGroup(user, groupId))) notFound("err.patientGroupNotFound");
 }
 
+/* ─────────── Рассылки ───────────
+ *
+ * То же правило, что у групп пациентов, и по той же причине: рассылка —
+ * вопрос одного специалиста своим людям, а не документ отделения. Видит и
+ * правит автор; суперадмин — все, ему разбирать чужие экраны. Получатель
+ * ходит другими маршрутами (inbox, ответ) и здесь не проверяется: его право
+ * — строка в mailing_recipients, а не авторство.
+ */
+
+/**
+ * Рассылка по идентификатору — или «не найдено».
+ *
+ * «Не найдено», а не «нельзя»: 403 подтвердил бы, что коллега такую
+ * рассылку завёл, — а по коду отказа этого узнавать не следует.
+ */
+export async function assertMailingAccess(user: User, mailingId: string): Promise<MailingRow> {
+  const row = await db.query.mailings.findFirst({ where: eq(mailings.id, mailingId) });
+  if (!row || (!isSuperadmin(user) && row.authorId !== user.id)) notFound("err.mailingNotFound");
+  return row;
+}
 
 /**
  * Отказывает, если среди методик есть снятые с использования.

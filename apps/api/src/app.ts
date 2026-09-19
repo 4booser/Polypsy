@@ -30,6 +30,8 @@ import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
 import { clinicRoutes } from "./routes/clinic";
 import { messageRoutes } from "./routes/messages";
+import { mailingRoutes } from "./routes/mailings";
+import { patientRoutes } from "./routes/patients";
 import { episodeRoutes } from "./routes/episodes";
 import { recordingRoutes } from "./routes/recordings";
 import { permissionRoutes } from "./routes/permissions";
@@ -197,6 +199,24 @@ app.route("/api/data-quality", dataQualityRoutes);
 app.route("/api/facets", facetRoutes);
 app.route("/api/clinic", clinicRoutes);
 app.route("/api/messages", messageRoutes);
+/*
+ * Рассылки — отдельный путь, а не /api/messages/mailings.
+ *
+ * Переписка и рассылка — разные вещи под одним словом «Повідомлення» на
+ * макете: разговор двоих и объявление списку. Вложенный путь столкнулся бы
+ * с /api/messages/:id (Hono отдал бы «mailings» обработчику разговора как
+ * его идентификатор), а читающий журнал обязан понимать по адресу, о чём
+ * речь.
+ */
+app.route("/api/mailings", mailingRoutes);
+/*
+ * Пациенты зоны видимости и карточка пациента. До сих пор список людей жил
+ * под /api/access/patients (закрыт assignments.manage — правом назначать, а
+ * не видеть) и /api/dynamics/respondents (только обследованные). Раздел
+ * «Пацієнти» макета — про всех, кого сотрудник вправе видеть, и адрес
+ * называет это прямо.
+ */
+app.route("/api/patients", patientRoutes);
 app.route("/api/episodes", episodeRoutes);
 app.route("/api/recordings", recordingRoutes);
 app.route("/api/permissions", permissionRoutes);

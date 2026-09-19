@@ -16,6 +16,7 @@ import { parseTs } from "./time";
 import { log } from "./log";
 import { pushToUsers } from "./push";
 import { remindAppointments } from "./remind";
+import { pushMailings } from "./mailingPush";
 
 /**
  * Уведомления о тревогах риска.
@@ -287,6 +288,13 @@ export function startNotifier(intervalMs = 60_000): () => void {
     void remindAppointments().catch((error) =>
       log.warn("clinic.remind_failed", { error: String(error) }),
     );
+    /*
+     * Пуши о рассылках — тем же тактом и по тем же причинам: своего таймера
+     * не заводим, повторов проход не боится (ключ события — рассылка и
+     * человек), а сетевые вызовы идут вне транзакции запроса, который
+     * рассылку отправил.
+     */
+    void pushMailings().catch((error) => log.warn("mailings.push_failed", { error: String(error) }));
   };
   tick();
   const timer = setInterval(tick, intervalMs);
