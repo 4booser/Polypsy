@@ -1,42 +1,60 @@
+import { createContext, useContext, type ReactNode } from "react";
+import type { Lang } from "@quizzy/shared";
 import { Field, Input, Textarea } from "../../ui/primitives";
 
-/** Общие поля конструктора: двуязычный ввод и переключатель */
+/*
+ * Язык, на котором сейчас правится текст теста.
+ *
+ * Прежде каждое поле было сдвоенным: слева украинский, справа русский. Макет
+ * рисует одно поле и переключатель «Укр ▾» справа от вкладок — язык выбирают
+ * один раз, а не в каждом поле. Хранение не изменилось: jsonb {uk, ru}, и
+ * переключатель лишь решает, какой из двух ключей показывает поле. Второй
+ * язык при этом не теряется — он ждёт своей очереди за переключателем, о чём
+ * под ним написано.
+ *
+ * Контекст, а не проп через десять уровней: переключатель один на экран, а
+ * полей — десятки, и пропс забыли бы на первом же новом поле.
+ */
+const EditLang = createContext<Lang>("uk");
+export const EditLangProvider = EditLang.Provider;
+export const useEditLang = () => useContext(EditLang);
+
+/**
+ * Текстовое поле теста на языке правки.
+ *
+ * Подпись видна плейсхолдером и остаётся именем поля для диктора — это делает
+ * Field сам (см. пояснение к нему в primitives.tsx). Своего плейсхолдера здесь
+ * нет намеренно: два разных текста — подпись и подсказка — на одном поле были
+ * бы двумя именами.
+ */
 export function Loc({
   label,
   value,
   onChange,
   multiline,
+  rows,
   hint,
+  className,
 }: {
   label: string;
   value: Record<string, string> | null | undefined;
   onChange: (v: Record<string, string>) => void;
   multiline?: boolean;
-  hint?: string;
+  rows?: number;
+  hint?: ReactNode;
+  className?: string;
 }) {
+  const lang = useEditLang();
   const v = value ?? {};
+  const current = v[lang] ?? "";
+  const set = (text: string) => onChange({ ...v, [lang]: text });
   return (
-    <Field label={label} hint={hint}>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {(["uk", "ru"] as const).map((lang) =>
-          multiline ? (
-            <Textarea
-              key={lang}
-              value={v[lang] ?? ""}
-              rows={3}
-              placeholder={lang === "uk" ? "українською" : "по-русски"}
-              onChange={(e) => onChange({ ...v, [lang]: e.target.value })}
-            />
-          ) : (
-            <Input
-              key={lang}
-              value={v[lang] ?? ""}
-              placeholder={lang === "uk" ? "українською" : "по-русски"}
-              onChange={(e) => onChange({ ...v, [lang]: e.target.value })}
-            />
-          ),
-        )}
-      </div>
+    <Field label={label} hint={hint} className={className}>
+      {multiline ? (
+        <Textarea value={current} rows={rows ?? 4} onChange={(e) => set(e.target.value)} />
+      ) : (
+        <Input value={current} onChange={(e) => set(e.target.value)} />
+      )}
     </Field>
   );
 }
