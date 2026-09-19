@@ -91,10 +91,8 @@ export function Questions({
 
   return (
     <section aria-labelledby="cn-questions">
+      {/* в строке заголовка — один «+», как на кадре f24_1 */}
       <SectionHead id="cn-questions" title={ut("co.questions")}>
-        <Button variant="ghost" size="sm" onClick={() => setBulk(true)}>
-          {ut("co.bulkPaste")}
-        </Button>
         <Button size="glyph" variant="ghost" onClick={add} aria-label={ut("cq.addQuestion")} title={ut("cq.addQuestion")}>
           +
         </Button>
@@ -207,6 +205,25 @@ export function Questions({
         </ol>
       ) : null}
       {/*
+        «Вставити пункти з тексту» — не в строке заголовка, где на кадре один
+        «+», а строкой под списком, 13-м кеглем подсказок. Убрать совсем
+        нельзя: перенос из пособия — главный путь заведения методики на
+        двести пунктов, по одному их не набирает никто. Пока окно вставки
+        открыто, строка не нужна. Мишень нажатия дорисована накладкой до 44,
+        как у глифов: строка от этого не растёт.
+      */}
+      {!bulk ? (
+        <p className="m-0 mt-[8px] text-[13px] text-muted">
+          <button
+            type="button"
+            onClick={() => setBulk(true)}
+            className="relative border-0 bg-transparent p-0 text-[13px] text-primary underline-offset-2 after:absolute after:inset-x-0 after:-inset-y-[12px] after:content-[''] hover:underline focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+          >
+            {ut("co.bulkPaste")}
+          </button>
+        </p>
+      ) : null}
+      {/*
         Ключ шкал ссылается на номера, а не на вопросы: ↑/↓ после того, как
         таблица баллов заполнена, молча сдвигают ключ. Подсказка стоит только
         когда ключ уже есть — до того сдвигать нечего.
@@ -233,7 +250,8 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
   const add = () => onChange([...options, { text: { uk: "", ru: "" }, score: 0 }]);
   return (
     <div className="mt-[15px]">
-      <h4 className="m-0 mb-[8px] text-[17px] font-bold text-primary">{ut("cn.answers")}</h4>
+      {/* h3 под h2 раздела «Питання»: уровень не пропускается, как и в карточке шкалы */}
+      <h3 className="m-0 mb-[8px] text-[17px] font-bold text-primary">{ut("cn.answers")}</h3>
       <div className="flex flex-col gap-[8px]">
         {options.map((o, k) => (
           <div key={k} className="flex items-center gap-[10px]">

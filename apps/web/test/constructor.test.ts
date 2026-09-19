@@ -264,6 +264,21 @@ describe("конструктор по макету", () => {
     expect(rows[3]!.items).toEqual([5]);
   });
 
+  test("ответы без кодов: у новой шкалы есть ряд «бал відповіді», иначе ключ не собрать", () => {
+    /*
+     * Методики с баллом варианта (PHQ-9, «большая пятёрка») кодов ответов не
+     * несут, их шкалы — только такие ряды. Без ряда «+» для номеров стоять
+     * негде, и ключ пришлось бы набирать через «Тест як JSON».
+     */
+    const scored = [
+      { text: { uk: "Часто" }, keyCode: null },
+      { text: { uk: "Рідко" }, keyCode: null },
+    ];
+    expect(keyRows(scale(), scored)).toEqual([{ matchKey: null, items: [], weight: 1 }]);
+    // а при кодах ряды — по кодам, и лишнего ряда нет
+    expect(keyRows(scale(), base().answers!).map((r) => r.matchKey)).toEqual(["yes", "no"]);
+  });
+
   test("правка ряда: номер без дублей, вес ряда — всем его пунктам и только им", () => {
     let s = scale({ key: [{ item: 1, matchKey: "yes", weight: 10 }, { item: 4, matchKey: "no", weight: 6 }] });
     s = addRowItem(s, "yes", 3);

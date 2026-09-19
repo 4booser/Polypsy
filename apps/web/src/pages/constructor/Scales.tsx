@@ -353,7 +353,8 @@ function ScaleCard({
                   aria-label={`${ut("cn.removeTerm")}: ${scaleName(c.from)}`}
                   title={ut("cn.removeTerm")}
                   onClick={() => onChange((cur) => ({ ...cur, corrections: cur.corrections.filter((_, k) => k !== ci) }))}
-                  className="relative size-[27px] border-0 bg-transparent p-0 text-[20px] leading-none text-primary after:absolute after:-inset-2 after:content-[''] focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+                  /* видимый квадрат 27, нажимается 44 — та же накладка, что у размера glyph кнопки */
+                  className="relative size-[27px] border-0 bg-transparent p-0 text-[20px] leading-none text-primary after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:-translate-x-1/2 after:-translate-y-1/2 after:content-[''] focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
                 >
                   ×
                 </button>
@@ -406,7 +407,8 @@ function ScaleCard({
           </summary>
           <div className="grid gap-[10px] pt-[12px] sm:grid-cols-2">
             <Field label={ut("cs.code")} hint={ut("cn.codeHint")}>
-              <Input value={s.code} onChange={(e) => onChange({ code: e.target.value })} placeholder="Sr" />
+              {/* без плейсхолдера: код выдаётся сам (newScale), пустым поле не бывает */}
+              <Input value={s.code} onChange={(e) => onChange({ code: e.target.value })} />
             </Field>
             <Field label={ut("cs.role")}>
               <Select value={s.kind} onChange={(e) => onChange({ kind: e.target.value as DraftScale["kind"] })}>
@@ -560,7 +562,7 @@ export function Bands({
                   </Select>
                 </Field>
                 <Field label={`${ut("cs.repeatDays")} ${range}`} hint={ut("cs.repeatHint")} inline>
-                  <Input placeholder="7,30" value={b.followUpDays ?? ""} onChange={(e) => set(k, { followUpDays: e.target.value || null })} />
+                  <Input placeholder={ut("cn.repeatDaysExample")} value={b.followUpDays ?? ""} onChange={(e) => set(k, { followUpDays: e.target.value || null })} />
                 </Field>
                 <Field label={`${ut("cn.recommendation")} ${range}`} inline className="sm:col-span-4">
                   <Input

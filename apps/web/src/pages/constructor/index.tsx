@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { LANG_NAMES, type Issue, type Lang, type SurveyGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
+import { AssignGroup } from "./AssignGroup";
 import { Settings } from "./Basics";
 import { EditLangProvider, Loc, Toggle } from "./fields";
 import { Questions, SectionHead } from "./Questions";
@@ -20,7 +21,7 @@ import {
   type Mode,
 } from "./model";
 import { Preview } from "./Preview";
-import { IconPatients, Loading } from "../../ui";
+import { IconGroup, IconPatients, Loading } from "../../ui";
 import { Page } from "../../ui/layout";
 import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
@@ -115,6 +116,8 @@ export default function Constructor() {
    * специалист с русской консолью вписывает украинский текст методики.
    */
   const [editLang, setEditLang] = useState<Lang>(lang);
+  /* окно «призначити групі» — второй значок кадра f17 */
+  const [assignGroup, setAssignGroup] = useState(false);
 
   /* куда заводить тест: «+ → Новий тест» из папки каталога */
   const target = useMemo(() => createTarget(location.search), [location.search]);
@@ -258,6 +261,16 @@ export default function Constructor() {
 
   const backTo = draft.folderId ? `/surveys?folder=${encodeURIComponent(draft.folderId)}` : "/surveys";
 
+  const modePanel =
+    mode === "specific" ? (
+      <>
+        <Answers draft={draft} setDraft={setDraft} />
+        <Scales draft={draft} setDraft={setDraft} />
+      </>
+    ) : (
+      <Results draft={draft} setDraft={setDraft} />
+    );
+
   return (
     <Page
       /* на кадрах правки (f18, f29) заголовок экрана — название самого теста */
@@ -266,20 +279,34 @@ export default function Constructor() {
       actions={
         <>
           {/*
-            Значок «призначити пацієнту» из f17 ведёт на экран назначений —
-            он уже есть. Второго значка кадра, «призначити групі», нет: групповой
-            выдачи методики на сервере не существует, и рисовать кнопку без
-            действия за ней нельзя (см. api_gaps в отчёте).
+            Два значка кадра f17: «призначити пацієнту» и «призначити групі».
+            Первый ведёт на экран назначений — он есть. Второй открывает окно
+            здесь же: групповое назначение на сервере есть
+            (POST /api/patient-groups/:id/surveys, разворачивается в
+            поимённые), а экран группы пациентов делает другая волна — вести
+            некуда, да и одно действие перехода не стоит. Кнопка, а не ссылка:
+            адрес не меняется.
           */}
           {id ? (
-            <Link
-              to={`/surveys/${id}/access`}
-              aria-label={ut("cn.assignPatient")}
-              title={ut("cn.assignPatient")}
-              className="inline-flex size-[44px] items-center justify-center rounded-[5px] text-primary hover:bg-primary-soft [&>svg]:size-6"
-            >
-              <IconPatients />
-            </Link>
+            <>
+              <Link
+                to={`/surveys/${id}/access`}
+                aria-label={ut("cn.assignPatient")}
+                title={ut("cn.assignPatient")}
+                className="inline-flex size-[44px] items-center justify-center rounded-[5px] text-primary hover:bg-primary-soft [&>svg]:size-6"
+              >
+                <IconPatients />
+              </Link>
+              <button
+                type="button"
+                onClick={() => setAssignGroup(true)}
+                aria-label={ut("cn.assignGroup")}
+                title={ut("cn.assignGroup")}
+                className="inline-flex size-[44px] items-center justify-center rounded-[5px] border-0 bg-transparent p-0 text-primary hover:bg-primary-soft [&>svg]:size-6"
+              >
+                <IconGroup />
+              </button>
+            </>
           ) : null}
           <Button onClick={() => save(true)} disabled={busy}>
             {busy ? ut("co.saving") : ut("cn.publish")}
@@ -305,6 +332,13 @@ export default function Constructor() {
             перестали быть бледными.
           */}
           {dirty ? <span className="text-[13px] text-muted">{ut("co.draftAutosaves")}</span> : null}
+          {/*
+            «Перевірити структуру» — здесь, а не внизу рядом со «Створити»: на
+            кадре f23 внизу одна кнопка, а полоса инструментов — уже место
+            того, чего на кадре нет (отмена, возврат). Проверка — инструмент
+            редактора и стоит с ними; её отчёт по-прежнему выводится над формой.
+          */}
+          <Button variant="ghost" onClick={check} disabled={busy}>{ut("co.checkStructure")}</Button>
           <Button variant="ghost" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>
             <IconUndo />
           </Button>
@@ -321,6 +355,8 @@ export default function Constructor() {
       context={<Preview draft={draft} at={focused} />}
       contextTitle={ut("co.preview")}
     >
+      {assignGroup && id ? <AssignGroup surveyId={id} onClose={() => setAssignGroup(false)} /> : null}
+
       {restored ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[5px] border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-accent-soft px-4 py-3">
           <p className="m-0 text-small text-text">{ut("co.draftRestored")}</p>
@@ -376,41 +412,69 @@ export default function Constructor() {
 
       {/* колонка формы по кадру: ~700px по центру, справа — язык текста */}
       <div className="mx-auto w-full max-w-[700px]">
-        <div className="flex items-start justify-between gap-[24px]">
+        <div className="mb-[24px] flex items-start justify-between gap-[24px]">
           {!id ? (
+            /* вкладки состояния: role="tab" и панель ниже (cn-mode-panel), см. Tabs */
             <Tabs
               label={ut("cn.testKind")}
               items={[
-                { label: ut("cn.specific"), active: mode === "specific", onSelect: () => setDraft((d) => switchMode(d, "specific")) },
-                { label: ut("cn.complex"), active: mode === "complex", onSelect: () => setDraft((d) => switchMode(d, "complex")) },
+                {
+                  id: "cn-mode-specific",
+                  controls: "cn-mode-panel",
+                  label: ut("cn.specific"),
+                  active: mode === "specific",
+                  onSelect: () => setDraft((d) => switchMode(d, "specific")),
+                },
+                {
+                  id: "cn-mode-complex",
+                  controls: "cn-mode-panel",
+                  label: ut("cn.complex"),
+                  active: mode === "complex",
+                  onSelect: () => setDraft((d) => switchMode(d, "complex")),
+                },
               ]}
             />
           ) : (
             <span />
           )}
+          {/*
+            Пояснение о двух языках — всплывающей подписью переключателя, а не
+            строкой под ним: на кадре f24_1 под «Укр ▾» ничего нет. Хранение
+            текста обоими языками от этого не меняется, а тот, кто не понял,
+            зачем переключатель, наведёт на него и прочтёт.
+          */}
           <Field label={ut("cn.editLang")} inline className="w-[150px] shrink-0">
-            <Select value={editLang} onChange={(e) => setEditLang(e.target.value as Lang)}>
+            <Select value={editLang} onChange={(e) => setEditLang(e.target.value as Lang)} title={ut("cn.editLangHint")}>
               {(["uk", "ru"] as const).map((l) => (
                 <option key={l} value={l}>{LANG_NAMES[l].full}</option>
               ))}
             </Select>
           </Field>
         </div>
-        <p className="m-0 mb-[24px] mt-[6px] text-right text-[13px] text-muted">{ut("cn.editLangHint")}</p>
 
         <EditLangProvider value={editLang}>
           <Loc label={ut("cn.testTitle")} value={draft.title} onChange={(v) => patch({ title: v })} />
-          <Loc label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={6} />
+          {/* четыре строки: поле описания на кадре f24_1 — 125px при 17/1.55 */}
+          <Loc label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={4} />
 
           <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
 
-          {mode === "specific" ? (
-            <>
-              <Answers draft={draft} setDraft={setDraft} />
-              <Scales draft={draft} setDraft={setDraft} />
-            </>
+          {/*
+            Панель вкладок «Вид тесту» — то, что вкладка переключает целиком:
+            общий набор ответов и шкалы против результатов (питання выше
+            общие для обоих видов). При правке вкладок нет (f18/f29), и панель
+            без списка вкладок диктору ни к чему — тогда это просто разметка.
+          */}
+          {id ? (
+            modePanel
           ) : (
-            <Results draft={draft} setDraft={setDraft} />
+            <div
+              id="cn-mode-panel"
+              role="tabpanel"
+              aria-labelledby={mode === "specific" ? "cn-mode-specific" : "cn-mode-complex"}
+            >
+              {modePanel}
+            </div>
           )}
 
           <Disclosure title={ut("cn.settings")}>
@@ -434,9 +498,8 @@ export default function Constructor() {
           </Disclosure>
         </EditLangProvider>
 
-        {/* «Створити» 215×45 из f23/f24 — ширина по месту, размер формы */}
-        <div className="mt-[28px] flex flex-wrap items-center justify-end gap-[14px]">
-          <Button variant="ghost" onClick={check} disabled={busy}>{ut("co.checkStructure")}</Button>
+        {/* «Створити» 215×45 из f23/f24 — одна кнопка, как на кадре; проверка структуры — в полосе инструментов */}
+        <div className="mt-[28px] flex justify-end">
           <Button size="md" className="min-w-[215px]" onClick={() => save(false)} disabled={busy}>
             {busy ? ut("co.saving") : id ? ut("common.save") : ut("cn.create")}
           </Button>

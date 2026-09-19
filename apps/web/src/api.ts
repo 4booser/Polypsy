@@ -15,6 +15,8 @@ import type {
   SurveyFull,
   SurveyGrant,
   SurveyGroupWithCounts,
+  PatientGroupWithCounts,
+  AssignSurveyToPatientGroupInput,
   SurveyListItem,
   SurveyResponse,
   SurveyVersion,
@@ -880,6 +882,17 @@ export const api = {
     }),
   revoke: (surveyId: string, userId: string) =>
     request<void>(`/api/access/surveys/${surveyId}/grants/${userId}`, { method: "DELETE" }),
+  /*
+   * Группы ПАЦИЕНТОВ — рабочие списки специалиста, не группы методик
+   * (`groups` выше). Назначение на группу сервер разворачивает в поимённые
+   * назначения и отвечает числом адресатов.
+   */
+  patientGroups: () => unwrap(request<Items<PatientGroupWithCounts>>("/api/patient-groups")),
+  assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>
+    request<{ groupId: string; surveyId: string; recipients: number }>(`/api/patient-groups/${groupId}/surveys`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   /**
    * Пациенты. Отдаётся не всё: список упорядочен по ФИО, а оно зашифровано —
    * упорядочить его в SQL нечем, поэтому сервер ищет и обрезает выдачу.
