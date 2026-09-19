@@ -81,7 +81,15 @@ export function ItemHeatmap({ surveyId }: { surveyId: string }) {
             {rows.map((r) => (
               <tr key={r.responseId}>
                 <th scope="row">
-                  <Link to={`/responses/${r.responseId}`}>{day(r.submittedAt ?? "")}</Link>
+                  {/*
+                    Адрес прохождения — под методикой. Прежний `/responses/:id`
+                    не существовал ни в одной таблице маршрутов: ссылка молча
+                    уводила на сводку через запасной маршрут «*», и с тепловой
+                    карты нельзя было открыть ни один протокол. Форму адреса
+                    теперь сторожит apps/web/test/responseView.test.ts — он
+                    эту ссылку и нашёл.
+                  */}
+                  <Link to={`/surveys/${surveyId}/responses/${r.responseId}`}>{day(r.submittedAt ?? "")}</Link>
                 </th>
                 <td className="qh-cells">
                   {r.cells.map((cell, i) => (
