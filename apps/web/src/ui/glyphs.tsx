@@ -74,3 +74,18 @@ export function IconDots() {
     </svg>
   );
 }
+
+/**
+ * «▸» раскрывающегося раздела конструктора: треугольник вправо, повёрнутый
+ * на 90° у открытого. Символа U+25B8 в Onest нет, а системный запасной шрифт
+ * рисует его по-разному на macOS и Linux — эталоны краснели от смены образа
+ * раннера. Свой контур одинаков везде.
+ */
+export function IconDisclosure() {
+  return (
+    <svg viewBox="0 0 5 8" width={5} height={8} aria-hidden focusable="false">
+      <path d="M0 0l5 4-5 4Z" fill="currentColor" />
+    </svg>
+  );
+}
+

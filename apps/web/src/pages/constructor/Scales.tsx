@@ -19,6 +19,7 @@ import {
 import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
 import { Button, Field, Input, Select } from "../../ui/primitives";
+import { IconDisclosure } from "../../ui/glyphs";
 
 type SetDraft = (f: (d: Draft) => Draft) => void;
 
@@ -402,7 +403,7 @@ function ScaleCard({
         {/* ── психометрика: чего на кадре нет, а у встроенных методик есть ── */}
         <details className="group mt-[15px]">
           <summary className="cursor-pointer list-none text-[13px] font-bold text-primary [&::-webkit-details-marker]:hidden">
-            <span aria-hidden className="mr-1 inline-block transition-transform group-open:rotate-90">▸</span>
+            <span aria-hidden className="mr-1 inline-flex transition-transform group-open:rotate-90"><IconDisclosure /></span>
             {ut("cn.psychometrics")}
           </summary>
           <div className="grid gap-[10px] pt-[12px] sm:grid-cols-2">
