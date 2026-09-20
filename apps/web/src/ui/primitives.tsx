@@ -7,7 +7,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink, type LinkProps } from "react-router-dom";
 import { createContext, forwardRef, useContext } from "react";
 import { cx } from "./cx";
 import { useLang } from "../lang";
@@ -295,6 +295,35 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     </button>
   );
 });
+
+/**
+ * Ссылка в виде голого глифа: «+» над перечнем, ведущий на форму новой записи.
+ *
+ * Тот же силуэт, что у Button size="glyph" — 27 видимых, 44 нажимаемых, — но
+ * элемент <a>: переход на другой экран — это ссылка, и открыть его средней
+ * кнопкой в новой вкладке или увидеть адрес в строке состояния человек должен
+ * уметь. Кнопка с navigate() внутри всё это отнимает и диктору представляется
+ * «кнопкой», после которой почему-то сменился адрес.
+ *
+ * Классы берутся из тех же таблиц, что у Button: два силуэта в двух местах
+ * разъехались бы на первом же пересчёте области нажатия.
+ */
+export function GlyphLink({ className, children, ...rest }: LinkProps) {
+  return (
+    <Link
+      className={cx(
+        "inline-flex items-center justify-center rounded-[5px] no-underline hover:no-underline",
+        sizes.glyph,
+        variants.ghost,
+        focus,
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </Link>
+  );
+}
 
 /* ─────────── поверхность ─────────── */
 

@@ -1,71 +1,111 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { isTopLayer, useFocusTrap } from "./index";
 import { cx } from "./cx";
 import { Button } from "./primitives";
 
 /*
- * Меню за глифом: шестерёнка у заголовка карточки, «+» над списком.
+ * Всплывающее меню за глифом: «+» над списком, «⋯» в строке, «▾» у крошки,
+ * шестерёнка у заголовка карточки и над структурой модели.
  *
- * Тот же приём, что у MenuButton в каталоге тестов (SurveyList.tsx) и у
- * DocumentMenu в заключении (Conclusion.tsx): глиф с областью нажатия 44,
- * подложка на нажатие мимо, ловушка фокуса, стрелки и Esc. Здесь он
- * вынесен в общий модуль, потому что карточки людей — третье место с той
- * же шестерёнкой, а третья копия одного меню — это три места, где однажды
- * разойдётся поведение клавиатуры. Два прежних меню остаются на месте: их
- * экраны проверены и сданы, и переводить их сюда стоит вместе с их
- * следующей правкой, а не поверх чужой готовой работы.
+ * Написано в каталоге тестов (SurveyList.tsx, волна 3), и три экрана волны 4
+ * — карточки людей, аналитика, группы — принесли по своей копии той же
+ * ловушки фокуса с обходом стрелками. Так и появляются два меню, из которых
+ * одно закрывается по Esc, а другое нет; поэтому здесь одно на всех, а
+ * экраны отличаются только тем, что кладут внутрь.
  *
- * Пункт бывает ссылкой (переход) или действием (кнопка) — и то и другое с
- * role="menuitem", чтобы диктор видел одно меню, а не ссылки вперемешку с
- * кнопками. Недоступный пункт остаётся в меню с aria-disabled, а не
- * пропадает: на кадре все три пункта нарисованы всегда, и человек, не
- * нашедший «Редагувати» в чужой карточке, решил бы, что меню сломано.
- * Почему aria-disabled, а не атрибут disabled: отключённая кнопка не
- * принимает фокус, и стрелки, дойдя до неё, застревали бы на соседе.
+ * Меню на кадрах двух видов, и это не два компонента, а один параметр
+ * `align`:
+ *  - «left» — меню списка (f11: «+», «⋯», «▾» у крошки): плашка с рамкой
+ *    шириной от 220, пункты 13/400 у левого края, как в бургере шапки;
+ *  - «right» — меню карточки (f15, f33, f38: шестерёнка справа от
+ *    заголовка): белая плашка с тенью от 165, пункты 15/400 прижаты к
+ *    правому краю, к самой шестерёнке.
+ * Выравнивание — параметром, а не вторым классом снаружи: `text-left` и
+ * `text-right` в одной строке классов спорят, и кто из них победит, решает
+ * порядок в собранном CSS, а не в разметке. По той же причине цвет пункта —
+ * тоном (`tone`), а не наложением «опасного» класса поверх обычного: два
+ * `text-*` в одной строке — тот же спор.
+ *
+ * Что обещает клавиатуре и диктору: role="menu" с aria-expanded и
+ * aria-controls на глифе (ссылка на меню — только пока оно есть: idref в
+ * пустоту — ошибка ARIA), фокус на первом пункте, стрелки, Home, End, Esc,
+ * Tab по кругу (общая ловушка useFocusTrap), возврат фокуса на глиф при
+ * закрытии, область нажатия 44 (Button size="glyph"). Подложка отвечает на
+ * нажатие мимо меню — без неё щелчок «закрыть» попадал бы в ссылку строки
+ * под меню.
  */
 
-export interface MenuEntry {
-  label: string;
-  /** Ссылка — переход; без неё пункт — действие */
-  to?: string;
-  onSelect?: () => void;
-  /** Пункт есть, но сейчас недоступен; подсказка объясняет почему */
-  disabled?: boolean;
-  hint?: string;
-  danger?: boolean;
-}
+export type MenuAlign = "left" | "right";
+export type MenuTone = "normal" | "danger" | "disabled";
 
 /*
- * Пункт меню — строка 15/400 у правого края, как нарисовано на кадрах
- * карточек (шестерёнка стоит справа, и список пунктов прижат к ней).
- * `border-0 bg-transparent min-h-0` гасят правила наследия для <button>.
+ * Пункт меню — обычная строка, а не Button: кнопка макета полужирная и
+ * залитая, и шесть таких подряд в столбик читались бы как шесть главных
+ * действий. `border-0 bg-transparent min-h-0` гасят правила наследия для
+ * <button>. Недоступный пункт остаётся в меню и принимает фокус (см.
+ * ActionMenu): атрибут disabled вынул бы его из обхода стрелками, и стрелки,
+ * дойдя до него, застревали бы на соседе.
  */
-const itemClass = (disabled: boolean, danger: boolean) =>
-  cx(
-    "flex w-full items-center justify-end rounded-[4px] border-0 bg-transparent px-[16px] py-[6px]",
-    "h-auto min-h-0 text-right text-[15px] leading-[20px] font-normal no-underline",
-    "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
+export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "normal"): string {
+  return cx(
+    "flex w-full items-center rounded-[4px] border-0 bg-transparent font-normal no-underline",
+    "h-auto min-h-0 transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-    disabled
+    align === "right"
+      ? "justify-end px-[16px] py-[6px] text-right text-[15px] leading-[20px]"
+      : "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]",
+    tone === "disabled"
       ? "cursor-not-allowed text-faint"
-      : danger
-        ? "text-danger hover:bg-danger-soft hover:text-danger"
-        : "text-text-2 hover:bg-primary-soft hover:text-primary hover:no-underline",
+      : tone === "danger"
+        ? "text-danger hover:bg-danger-soft hover:text-danger hover:no-underline"
+        : cx(
+            align === "right" ? "text-text-2" : "text-text",
+            "hover:bg-primary-soft hover:text-primary hover:no-underline",
+          ),
   );
+}
 
-export function ActionMenu({
+/** Пункт меню списка — самый частый случай, чтобы не писать вызов в каждой строке */
+export const menuItem = menuItemClass("left");
+
+/*
+ * Плашка. У меню карточки тень — токен, а не число: в тёмной теме плашка
+ * белой не будет. `items-stretch` растягивает пункты на всю ширину, чтобы
+ * область нажатия не кончалась на тексте.
+ */
+function plateClass(align: MenuAlign): string {
+  return cx(
+    "absolute right-0 z-50 flex flex-col items-stretch outline-none",
+    align === "right"
+      ? "top-[calc(100%+8px)] min-w-[165px] rounded-[5px] bg-[var(--bg)] py-[8px] shadow-pop"
+      : "top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel",
+  );
+}
+
+/**
+ * Глиф, раскрывающий меню; содержимое — через функцию, чтобы пункт мог
+ * закрыть меню сам, а между пунктами могла стоять черта (<hr>).
+ *
+ * Ловушка фокуса — общая (useFocusTrap): она же уводит фокус внутрь и
+ * возвращает его на глиф при закрытии, поэтому окно, открытое из пункта
+ * меню, запоминает «открывшим» именно глиф, а не исчезнувший пункт.
+ */
+export function MenuButton({
   label,
   glyph,
-  entries,
+  align = "left",
   className,
+  children,
 }: {
   /** Имя меню для диктора: у глифа подписи нет */
   label: string;
   glyph: ReactNode;
-  entries: MenuEntry[];
+  align?: MenuAlign;
   className?: string;
+  children: (close: () => void) => ReactNode;
 }) {
+  const id = useId();
   const [open, setOpen] = useState(false);
   const ref = useFocusTrap<HTMLDivElement>(open);
   const close = useCallback(() => setOpen(false), []);
@@ -75,16 +115,22 @@ export function ActionMenu({
     /*
      * Открытое меню стоит на первом пункте, а не на пустом контейнере:
      * ловушка фокуса переносит фокус на контейнер, и диктор объявлял бы
-     * «меню» без пункта под курсором.
+     * «меню» без пункта под курсором. Ловушка сама пункт не выбирает — она
+     * общая на все слои и не знает, что внутри меню.
      */
     ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const onKey = (e: KeyboardEvent) => {
-      /* только верхний слой: окно поверх меню не должно гасить оба */
+      /* только верхний слой: окно поверх меню не должно гасить оба и не должно листать меню под собой */
       if (!isTopLayer(ref)) return;
       if (e.key === "Escape") {
         close();
         return;
       }
+      /*
+       * Стрелки, Home и End — то, что role="menu" обещает клавиатуре. Ловушка
+       * заворачивает Tab по кругу, но человек, услышавший «меню», жмёт стрелку
+       * вниз — и до этого обработчика на стрелку не отвечал никто.
+       */
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
       const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
       if (!items.length) return;
@@ -114,6 +160,7 @@ export function ActionMenu({
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? id : undefined}
         onClick={() => setOpen((v) => !v)}
       >
         {glyph}
@@ -121,51 +168,81 @@ export function ActionMenu({
       {open ? (
         <>
           <div aria-hidden onClick={close} className="fixed inset-0 z-40" />
-          <div
-            ref={ref}
-            role="menu"
-            aria-label={label}
-            tabIndex={-1}
-            /*
-              Белая плашка с тенью, как на кадре; тень — токен, а не число:
-              в тёмной теме плашка белой не будет.
-            */
-            className={cx(
-              "absolute right-0 top-[calc(100%+8px)] z-50 flex min-w-[165px] flex-col items-stretch",
-              "rounded-[5px] bg-[var(--bg)] py-[8px] shadow-pop outline-none",
-            )}
-          >
-            {entries.map((it) => {
-              const disabled = !!it.disabled;
-              const cls = itemClass(disabled, !!it.danger);
-              if (it.to && !disabled) {
-                return (
-                  <Link key={it.label} role="menuitem" to={it.to} className={cls} onClick={close}>
-                    {it.label}
-                  </Link>
-                );
-              }
-              return (
-                <button
-                  key={it.label}
-                  type="button"
-                  role="menuitem"
-                  aria-disabled={disabled || undefined}
-                  title={disabled ? it.hint : undefined}
-                  className={cls}
-                  onClick={() => {
-                    if (disabled) return;
-                    close();
-                    it.onSelect?.();
-                  }}
-                >
-                  {it.label}
-                </button>
-              );
-            })}
+          <div ref={ref} id={id} role="menu" aria-label={label} tabIndex={-1} className={plateClass(align)}>
+            {children(close)}
           </div>
         </>
       ) : null}
     </div>
+  );
+}
+
+/*
+ * Меню карточки, заданное списком, а не разметкой: у шестерёнки карточки
+ * пункты — всегда переход или действие, без черт и вложенных списков, и
+ * описать их данными короче и однороднее, чем повторять <button
+ * role="menuitem"> в каждой карточке.
+ *
+ * Пункт бывает ссылкой (переход) или действием (кнопка) — и то и другое с
+ * role="menuitem", чтобы диктор видел одно меню, а не ссылки вперемешку с
+ * кнопками. Недоступный пункт остаётся в меню с aria-disabled, а не
+ * пропадает: на кадре все пункты нарисованы всегда, и человек, не нашедший
+ * «Редагувати» в чужой карточке, решил бы, что меню сломано.
+ */
+export interface MenuEntry {
+  label: string;
+  /** Ссылка — переход; без неё пункт — действие */
+  to?: string;
+  onSelect?: () => void;
+  /** Пункт есть, но сейчас недоступен; подсказка объясняет почему */
+  disabled?: boolean;
+  hint?: string;
+  danger?: boolean;
+}
+
+export function ActionMenu({
+  label,
+  glyph,
+  entries,
+  className,
+}: {
+  label: string;
+  glyph: ReactNode;
+  entries: MenuEntry[];
+  className?: string;
+}) {
+  return (
+    <MenuButton label={label} glyph={glyph} align="right" className={className}>
+      {(close) =>
+        entries.map((it) => {
+          const disabled = !!it.disabled;
+          const cls = menuItemClass("right", disabled ? "disabled" : it.danger ? "danger" : "normal");
+          if (it.to && !disabled) {
+            return (
+              <Link key={it.label} role="menuitem" to={it.to} className={cls} onClick={close}>
+                {it.label}
+              </Link>
+            );
+          }
+          return (
+            <button
+              key={it.label}
+              type="button"
+              role="menuitem"
+              aria-disabled={disabled || undefined}
+              title={disabled ? it.hint : undefined}
+              className={cls}
+              onClick={() => {
+                if (disabled) return;
+                close();
+                it.onSelect?.();
+              }}
+            >
+              {it.label}
+            </button>
+          );
+        })
+      }
+    </MenuButton>
   );
 }
