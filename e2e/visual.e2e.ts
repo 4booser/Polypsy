@@ -328,6 +328,33 @@ async function recordedScoredResponse(
 }
 
 /**
+ * Первый лікар реестра — из ЗАПИСАННОГО GET /api/users, тем же fetch-ом из
+ * страницы, что и recordedSurveys: id посева случайные, и живой page.request
+ * дал бы чужой. Порядок — как в реестре (sortByName в pages/people/model.ts):
+ * карточка снимается с той же строки, что стоит первой на экране списка.
+ *
+ * Реестр закрыт правом users.manage, поэтому экраны людей снимаются от
+ * root, а не от psy: psy без ступени лестницы не видит ни /staff, ни /admins
+ * (isSuper || canAssign в App.tsx), а по /api/permissions/staff получил бы
+ * усечённый справочник без пола и года рождения — не тот экран, что на
+ * кадре f43.
+ */
+async function recordedDoctor(page: import("@playwright/test").Page): Promise<{ id: string; fullName: string }> {
+  const doctor = await page.evaluate(async () => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+    const list = (await (await fetch("/api/users", { headers })).json()) as {
+      items: Array<{ id: string; role: string; fullName: string }>;
+    };
+    return list.items
+      .filter((u) => u.role === "admin")
+      .map(({ id, fullName }) => ({ id, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "uk"))[0] ?? null;
+  });
+  expect(doctor, "на стенде нет ни одного лікаря — карточку показать не на ком").not.toBeNull();
+  return doctor!;
+}
+
+/**
  * Вытянуть окно по высоте содержимого — см. поле fit у экрана.
  *
  * Меряется именно прокручиваемая область (overflow-y: auto), а не любой
@@ -352,9 +379,17 @@ async function fitToContent(page: import("@playwright/test").Page) {
   await expect.poll(hidden).toBe(0);
 }
 
+type Account = Parameters<typeof login>[1];
+
 const SCREENS: Array<{
   name: string;
   open: (page: import("@playwright/test").Page) => Promise<void>;
+  /**
+   * От кого снимается. По умолчанию psy — рядовой специалист, чей экран и
+   * есть основной; реестры людей открыты только суперадмину и заведующему
+   * (isSuper || canAssign), и их снимает root.
+   */
+  as?: Account;
   /** Заголовок экрана — сегодняшняя дата, и в снимке его надо закрыть */
   maskTitle?: true;
   /**
@@ -542,6 +577,86 @@ const SCREENS: Array<{
     // редактор с полосой инструментов стоит последним в свитке
     fit: true,
   },
+  /*
+   * Экраны волны 4 — люди: сетка пациентов с вкладками групп (f05), реестры
+   * лікарів и администраторов (f43, f50), карточка сотрудника (f33) и
+   * конструктор аналитической модели (f27).
+   *
+   * Списка групп, карточки группы, перечня аналитики и правки модели здесь
+   * нет: посев (apps/api/src/seed.ts) не заводит ни одной группы пациентов и
+   * ни одного правила, а эталон пустого экрана сторожит пустоту, не вёрстку.
+   * Появятся в посеве — добавить по этому же образцу: id из записанных
+   * GET /api/patient-groups и GET /api/decisions/rules.
+   */
+  {
+    name: "patients",
+    open: async (page) => {
+      await page.goto("/patients");
+      /*
+       * Сетка карточек рисуется после списка людей и вкладок групп, которым
+       * нужны свои ответы; data-patients — опора сквозных проверок
+       * (PersonGrid), а не класс, который сменят на первой же правке.
+       */
+      await patientLinks(page).first().waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // сетка 3×N со строкой над списком и панелью контекста — снимается вся
+    fit: true,
+  },
+  {
+    name: "staff",
+    as: "superadmin",
+    open: async (page) => {
+      await page.goto("/staff");
+      // строка реестра — ссылка на карточку; появилась — справочник приехал
+      await page.locator('a[href^="/staff/"]').first().waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+  },
+  {
+    name: "staff-card",
+    as: "superadmin",
+    open: async (page) => {
+      const doctor = await recordedDoctor(page);
+      await page.goto(`/staff/${doctor.id}`);
+      /*
+       * Ждём заголовок с именем, а не любой h1: у карточки «не найдено» и у
+       * состояния загрузки заголовок тоже есть, и ожидание проходило бы до
+       * того, как приехал справочник.
+       */
+      await page.getByRole("heading", { level: 1, name: doctor.fullName }).waitFor();
+      // права сотрудника и его пациенты догружаются отдельными запросами
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // профиль с полями, сменой пароля и разделами ниже — свиток
+    fit: true,
+  },
+  {
+    name: "admins",
+    as: "superadmin",
+    open: async (page) => {
+      await page.goto("/admins");
+      await page.locator('a[href^="/staff/"]').first().waitFor();
+      // ступени лестницы догружаются поштучно (withLadder) — без них строки неполные
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+  },
+  {
+    name: "analytics-new",
+    open: async (page) => {
+      await page.goto("/analytics/new");
+      /*
+       * Форма рисуется, когда приехал список методик (селект параметра);
+       * до того экран — «Загрузка». Кнопка сохранения стоит последней в
+       * форме: есть она — есть и всё выше.
+       */
+      await page.getByText("Название аналитической модели").waitFor();
+      await page.getByRole("button", { name: "Сохранить" }).waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // название, примечание, структура и действия — до кнопки внизу
+    fit: true,
+  },
 ];
 
 for (const screen of SCREENS) {
@@ -575,7 +690,7 @@ for (const screen of SCREENS) {
     });
 
     // вход идёт в настоящий стенд: перехват ставится после него
-    await login(page, "psy");
+    await login(page, screen.as ?? "psy");
     const save = await withRecordedApi(page, screen.name, recording);
     await screen.open(page);
     await page.evaluate(() => document.fonts.ready);
