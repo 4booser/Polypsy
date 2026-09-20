@@ -40,6 +40,8 @@ import { meetRoutes } from "./routes/meet";
 import { eventRoutes } from "./routes/events";
 import { decisionRoutes } from "./routes/decisions";
 import { cohortRoutes } from "./routes/cohorts";
+import { filterPresetRoutes } from "./routes/filterPresets";
+import { statModelRoutes } from "./routes/statModels";
 import { missedRoutes } from "./routes/missed";
 import { searchRoutes } from "./routes/search";
 import { deviceRoutes } from "./routes/devices";
@@ -167,6 +169,13 @@ app.route("/api/presence", presenceRoutes);
 app.route("/api/decisions", decisionRoutes);
 app.route("/api/devices", deviceRoutes);
 app.route("/api/cohorts", cohortRoutes);
+/*
+ * Раздел «Статистика» — два адреса, а не один с хвостами: пресет фильтров
+ * живёт отдельно от модели (на него ссылаются несколько), и читающий журнал
+ * обязан по адресу понимать, что правили — срез или модель.
+ */
+app.route("/api/filter-presets", filterPresetRoutes);
+app.route("/api/stat-models", statModelRoutes);
 app.route("/api/search", searchRoutes);
 app.route("/api/missed", missedRoutes);
 app.route("/api/views", viewRoutes);
