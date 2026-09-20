@@ -26,6 +26,7 @@ import { Page } from "../../ui/layout";
 import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
+import { IconDisclosure } from "../../ui/glyphs";
 
 /*
  * Конструктор теста — один свиток по кадрам заказчика.
@@ -557,7 +558,7 @@ function Disclosure({ title, onOpen, children }: { title: string; onOpen?: () =>
       }}
     >
       <summary className="cursor-pointer list-none text-[17px] font-bold text-primary [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="mr-1 inline-block transition-transform group-open:rotate-90">▸</span>
+        <span aria-hidden className="mr-1 inline-flex transition-transform group-open:rotate-90"><IconDisclosure /></span>
         {title}
       </summary>
       {children}
