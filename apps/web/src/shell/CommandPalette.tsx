@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import { api } from "../api";
 import { useLang } from "../lang";
 import { IconSearchGlass, useFocusTrap } from "../ui";
+import { IconEnter } from "../ui/glyphs";
 import type { UiKey } from "@quizzy/shared";
 
 /**
@@ -203,7 +204,7 @@ export function CommandPalette({
         </Command>
         <div className="palette-foot">
           <span><kbd>↑↓</kbd> {ut("cmd.move")}</span>
-          <span><kbd>↵</kbd> {ut("cmd.open")}</span>
+          <span><kbd><IconEnter /></kbd> {ut("cmd.open")}</span>
           <span><kbd>esc</kbd> {ut("cmd.close")}</span>
         </div>
       </div>

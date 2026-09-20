@@ -4,7 +4,7 @@ import type { Issue, SurveyFolder, SurveyFolderWithCounts, SurveyGroupWithCounts
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { ConfirmByName, IconChevron, IconSearchGlass, Loading, useAction, useToast } from "../../ui";
-import { IconCaret, IconDots, IconPlusThick } from "../../ui/glyphs";
+import { IconCaret, IconCaution, IconCross, IconDots, IconPlusThick } from "../../ui/glyphs";
 import { MenuButton, menuItem, menuItemClass } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { Page, Panel } from "../../ui/layout";
@@ -624,7 +624,7 @@ export function SurveyList() {
           {importIssues.map((i, k) => (
             <p key={k} className="my-1 text-small">
               <span className={i.level === "error" ? "text-danger" : "text-accent"}>
-                {i.level === "error" ? "✖" : "⚠"}
+                {i.level === "error" ? <IconCross /> : <IconCaution />}
               </span>{" "}
               <strong>{i.where}:</strong> <span className="text-muted">{i.message}</span>
             </p>

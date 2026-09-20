@@ -26,7 +26,7 @@ import { Page } from "../../ui/layout";
 import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
-import { IconDisclosure } from "../../ui/glyphs";
+import { IconCaution, IconCross, IconDisclosure } from "../../ui/glyphs";
 
 /*
  * Конструктор теста — один свиток по кадрам заказчика.
@@ -403,7 +403,7 @@ export default function Constructor() {
           {issues.map((i, k) => (
             <p key={k} className="my-1 text-small">
               <span className={i.level === "error" ? "text-danger" : "text-accent"}>
-                {i.level === "error" ? "✖" : "⚠"}
+                {i.level === "error" ? <IconCross /> : <IconCaution />}
               </span>{" "}
               <strong>{i.where}:</strong> <span className="text-muted">{i.message}</span>
             </p>

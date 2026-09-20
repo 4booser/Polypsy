@@ -14,6 +14,7 @@ import {
 } from "../ui";
 import { Chart, LineChart, BarList, Donut } from "../charts";
 import { severityColor } from "../format";
+import { IconCommand } from "../ui/glyphs";
 import { Page, Panel, Grid, Stack } from "../ui/layout";
 import { Button, Field, Input, Num, SectionLabel, SeverityTag, Stat, Tag } from "../ui/primitives";
 
@@ -148,7 +149,7 @@ export default function UiKit() {
           <Button variant="danger">Опасное</Button>
           <Button disabled>Недоступно</Button>
           <Button size="sm">Мелкая</Button>
-          <kbd>⌘K</kbd>
+          <kbd><IconCommand />K</kbd>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge>обычная</Badge>

@@ -7,6 +7,7 @@ import { Button, Field, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { cx } from "../ui/cx";
+import { IconStar } from "../ui/glyphs";
 import { IconClock, IconPerson } from "./icons";
 
 /**
@@ -67,7 +68,7 @@ export default function PatientBooking() {
               }}
             >
               {/* свой специалист помечен: преемственность важнее, чем ближайшее время */}
-              {p.isLead ? "★ " : ""}
+              {p.isLead ? <><IconStar />{" "}</> : null}
               {p.fullName}
             </Choice>
           ))}
