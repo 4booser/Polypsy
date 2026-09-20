@@ -3,6 +3,7 @@ import type { SafetyPlanContent } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
+import { IconClose } from "../ui/glyphs";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Panel } from "../ui/layout";
@@ -136,7 +137,7 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
                     placeholder={ut("sp.ownWords")}
                   />
                   <button className="chip-x" onClick={() => dropList(key, i)} aria-label={ut("ui.remove")}>
-                    ✕
+                    <IconClose />
                   </button>
                 </div>
               ))}
@@ -167,7 +168,7 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
                     placeholder={ut("sp.contact")}
                   />
                   <button className="chip-x" onClick={() => dropPerson(key, i)} aria-label={ut("ui.remove")}>
-                    ✕
+                    <IconClose />
                   </button>
                 </div>
               ))}

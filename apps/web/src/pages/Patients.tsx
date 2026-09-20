@@ -652,5 +652,5 @@ function rciHint(
   const rc = sc.reliableChange;
   if (!rc) return `${base} · ${ut("pt.rciUnknown")}`;
   const verdict = rc.significant ? ut("pt.rciAbove") : ut("pt.rciWithin");
-  return `${base} · ${verdict} (RCI ${rc.rci}, α ${rc.basis.alpha})`;
+  return `${base} · ${verdict} (RCI ${rc.rci}, ${ut("pt.alpha")} ${rc.basis.alpha})`;
 }

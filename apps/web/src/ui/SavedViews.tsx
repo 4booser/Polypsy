@@ -4,6 +4,7 @@ import { api, type SavedView } from "../api";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useAction } from "./index";
+import { IconClose } from "./glyphs";
 
 /**
  * Сохранённые виды экрана.
@@ -102,7 +103,7 @@ export function SavedViews({ scope }: { scope: string }) {
               }, ut("views.removed"))
             }
           >
-            ✕
+            <IconClose />
           </button>
         </>
       ) : null}

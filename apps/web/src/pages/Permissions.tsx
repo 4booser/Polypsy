@@ -339,9 +339,17 @@ function Chain({ roles }: { roles: RoleItem[] }) {
       <ol className="m-0 flex list-none flex-col gap-1 p-0">
         {steps.map((title, at) => (
           <li key={`${at}-${title}`} className="flex items-baseline gap-2 text-small">
-            <span aria-hidden className="text-caption text-muted" style={{ paddingLeft: at * 14 }}>
-              {at === 0 ? "" : "└"}
-            </span>
+            {/*
+              Уголок дерева — рамкой, а не символом «└»: его нет в подмножествах
+              наших шрифтов, и запасная гарнитура рисовала его на каждой системе
+              по-своему. Пустой квадрат 9×9 с левой и нижней сторонами — тот же
+              уголок, той же линией, что и у всех рамок.
+            */}
+            <span
+              aria-hidden
+              className={at === 0 ? "hidden" : "h-[9px] w-[9px] shrink-0 self-center border-b border-l border-muted"}
+              style={{ marginLeft: at * 14 }}
+            />
             <span>{title}</span>
           </li>
         ))}

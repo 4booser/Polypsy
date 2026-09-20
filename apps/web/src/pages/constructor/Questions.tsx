@@ -4,6 +4,7 @@ import { Loc, Toggle, useEditLang } from "./fields";
 import { TYPES, newUid, type Draft, type DraftOption, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
+import { IconCopy } from "../../ui/glyphs";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 
 /**
@@ -185,7 +186,7 @@ export function Questions({
                       <span className="flex-1" />
                       <Button variant="quiet" size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={ut("cq.moveUp")} title={ut("cq.moveUp")}>↑</Button>
                       <Button variant="quiet" size="sm" onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1} aria-label={ut("cq.moveDown")} title={ut("cq.moveDown")}>↓</Button>
-                      <Button variant="quiet" size="sm" onClick={() => duplicate(i)} aria-label={ut("cq.duplicate")} title={ut("cq.duplicate")}>⧉</Button>
+                      <Button variant="quiet" size="sm" onClick={() => duplicate(i)} aria-label={ut("cq.duplicate")} title={ut("cq.duplicate")}><IconCopy /></Button>
                       <Button
                         variant="danger"
                         size="sm"

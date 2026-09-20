@@ -6,6 +6,7 @@ import { api, type Patient } from "../api";
 import { useResource } from "../useResource";
 import { SeverityTag } from "../charts/advanced";
 import { Loading } from "../ui";
+import { IconCaution } from "../ui/glyphs";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
 import { FastEntry } from "../components/FastEntry";
@@ -206,7 +207,8 @@ export default function Administer() {
                           }
                         >
                           {o.text}
-                          {o.riskFlag ? " ⚠" : ""}
+                          {/* значок нем для диктора, а «⚠» он читал как «warning sign» — подпись остаётся, но скрытой */}
+                          {o.riskFlag ? <>{" "}<IconCaution /><span className="sr-only">{ut("mark.critical")}</span></> : null}
                         </button>
                       ))
                     ) : ["scale", "slider", "number"].includes(q.type) ? (
