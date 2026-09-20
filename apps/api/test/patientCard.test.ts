@@ -9,6 +9,7 @@ import {
   root,
   submitSurvey,
   surveyInA,
+  surveyInB,
   type Person,
 } from "./fixtures";
 import { auditLog, patientGroupFavourites, patientGroupMembers, surveyAccess } from "../src/db/schema";
@@ -68,7 +69,15 @@ describe("GET /api/patients — пациенты зоны видимости", (
     expect(Object.keys(row)).not.toContain("phone");
     expect(Object.keys(row)).not.toContain("birthDate");
 
+    /*
+     * У adminB своя непустая зона — иначе проверка держалась бы на том, что
+     * пустая зона отвечает пустым списком раньше запроса, и снятие условия
+     * по зоне из самого запроса прошло бы незамеченным.
+     */
+    const theirs = await makeUser("user", `pc-zone-b-${crypto.randomUUID()}@test`);
+    await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: theirs.id, grantedBy: adminB.id });
     const foreign = await api("/api/patients?limit=200", adminB.token);
+    expect(idsOf(foreign.body)).toContain(theirs.id);
     expect(idsOf(foreign.body), `GET /api/patients отдал чужому специалисту ${person.id}`).not.toContain(person.id);
 
     const all = await api(`/api/patients?q=${encodeURIComponent("pc-zone")}`, root.token);
@@ -420,6 +429,14 @@ describe("пакетные состав и «обрана»", () => {
     const card = await api(`/api/patient-groups/${groupId}`, adminA.token);
     expect((card.body.members as { userId: string }[]).map((m) => m.userId).sort()).toEqual([one.id, two.id].sort());
 
+    // чужую группу списком не тронуть — пока состав на месте, иначе 404 пришёл бы и без проверки
+    const foreign = await api(`/api/patient-groups/${groupId}/members`, adminB.token, {
+      method: "DELETE",
+      body: JSON.stringify({ userIds: [one.id] }),
+    });
+    expect(foreign.status, `посторонний убрал ${one.id} из чужой группы ${groupId}`).toBe(404);
+    expect(await db.select().from(patientGroupMembers).where(eq(patientGroupMembers.groupId, groupId))).toHaveLength(2);
+
     const removed = await api(`/api/patient-groups/${groupId}/members`, adminA.token, {
       method: "DELETE",
       body: JSON.stringify({ userIds: [one.id, two.id, stranger.id] }),
@@ -433,13 +450,6 @@ describe("пакетные состав и «обрана»", () => {
       body: JSON.stringify({ userIds: [one.id] }),
     });
     expect(nobody.status).toBe(404);
-
-    // чужую группу списком тоже не тронуть
-    const foreign = await api(`/api/patient-groups/${groupId}/members`, adminB.token, {
-      method: "DELETE",
-      body: JSON.stringify({ userIds: [one.id] }),
-    });
-    expect(foreign.status).toBe(404);
   });
 
   /**
