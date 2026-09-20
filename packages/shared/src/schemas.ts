@@ -410,6 +410,14 @@ export const statModelInputSchema = z.object({
 
 export const statModelUpdateSchema = statModelInputSchema.partial();
 
+/**
+ * Превью без сохранения — «Порівняти» до «Створити»: те же колонки, а
+ * название необязательно, его ещё могли не придумать.
+ */
+export const statModelRunSchema = statModelInputSchema.extend({
+  title: z.string().max(200).nullish(),
+});
+
 /* ─────────────── Конструктор опроса ─────────────── */
 
 export const riskSeveritySchema = z.enum(["moderate", "severe"]);
@@ -780,6 +788,7 @@ export type FilterPresetUpdateInput = z.input<typeof filterPresetUpdateSchema>;
 export type StatModelColumnInput = z.input<typeof statModelColumnSchema>;
 export type StatModelInput = z.input<typeof statModelInputSchema>;
 export type StatModelUpdateInput = z.input<typeof statModelUpdateSchema>;
+export type StatModelRunInput = z.input<typeof statModelRunSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;
 export type BandInput = z.infer<typeof bandInputSchema>;
 export type ScaleInput = z.infer<typeof scaleInputSchema>;

@@ -156,3 +156,18 @@ CREATE POLICY stat_models_access ON stat_models FOR ALL USING (
   app_role() IN ('system', 'superadmin')
   OR (app_role() = 'admin' AND owner_id = app_uid())
 );
+--> statement-breakpoint
+
+/* ═══════════ Право statistics.read в ролях-шаблонах ═══════════
+
+   Новое право заводится в справочнике (packages/shared/src/permissions.ts),
+   а в роли лестницы — здесь, как в 0071_staff_roles.sql: набор ролей живёт
+   в базе, и код его не переписывает. Встроенная роль «психолог» получает
+   право сама при старте (syncBuiltinRole), её здесь трогать не надо.
+
+   Заведующему и главному врачу — да, специалисту — нет: ровно как
+   analytics.read и cohorts.read в 0071. Статистика режет людей по полу,
+   возрасту и населённому пункту, и это уровень отделения, а не приёма. */
+insert into role_permissions (role_id, permission)
+select r.id, 'statistics.read' from roles r where r.code in ('head', 'chief')
+on conflict do nothing;
