@@ -28,9 +28,12 @@ import { MAX_OPTIONS, type MailingDraft, draftFromMailing, draftToInput, isFille
  *    «+»), потому что в его меню есть «Зберегти» — сохранять нечего, если
  *    править нельзя. Отправленное открывается как f22 буквально: текст
  *    заморожен (сервер отвечает 409 на правку), варианты — залитые плашки.
- * 2. Подписи полей на f16 набраны серым обычным, на f22 — фиолетовым
+ * 2. Подписи ПОЛЕЙ на f16 набраны серым обычным, на f22 — фиолетовым
  *    полужирным. Взят f22: так набраны подписи-плейсхолдеры на всех прочих
- *    кадрах, и так их печатает Field/Input каркаса.
+ *    кадрах, и так их печатает Field/Input каркаса. На подпись «Відповідь»
+ *    это послабление не распространяется: там пустая и заполненная формы —
+ *    два состояния одного экрана, и каждое набрано со своего кадра
+ *    (см. answerHeadingDraft / answerHeadingSent).
  * 3. В меню стоит «Надіслати», а не «Відправити» с кадра: словарь держит одну
  *    форму слова (см. uiStrings.ts у якоря wave6:messages).
  *
@@ -69,15 +72,39 @@ export default function MailingPage() {
 const PLACEHOLDER = { color: "var(--primary)", fontWeight: 700 } as const;
 
 /*
- * Рамка «Відповідь»: линия #666666 (как у полей), радиус 5. Поля замерены по
- * обоим кадрам: рамка 455…1154, подпись и варианты начинаются на 476…477 —
- * слева 21; нижняя линия 526 при низе вариантов 507 — снизу 18.
+ * Рамка «Відповідь»: линия #666666 (как у полей), радиус 5. Все поля —
+ * от рамок, а не от внутренней белизны: во всём проекте box-sizing: border-box
+ * (legacy.css), и число в классе — это border-box.
+ *
+ * f16: рамка 455…1154 (сама линия на 455, нутро с 456), border-box первого
+ * варианта начинается на 475 → слева 19, а не 21: 476 — это уже чернила буквы
+ * «В», у неё свой отступ внутри знака. Низ варианта 507, нижняя линия 526 →
+ * снизу 18. Верх: 418 + 19 = 437, подпись ростом 17, зазор 18 — вариант встаёт
+ * на 472, как на кадре; та же арифметика сходится и на f22 (416 + 19 + 17 + 18
+ * = 470 при плашке 470…505 и нижней линии 524).
  */
-const answerBox = "rounded-[5px] border border-border px-[21px] pb-[18px] pt-[19px]";
-const answerHeading = "m-0 text-[17px] font-bold leading-[20px] text-primary";
+const answerBox = "rounded-[5px] border border-border px-[19px] pb-[18px] pt-[19px]";
+/*
+ * Рост строки подписи 17 — не вкус, а условие: высота рамки на обоих кадрах
+ * ровно 110, и 1+19+17+18+36+18+1 = 110. При 20 рамка выросла бы на 3.
+ *
+ * Начертание у подписи разное, и это два разных состояния, а не разнобой
+ * макета: пустая форма (f16) печатает «Відповідь» серым обычным 13 — чернила
+ * 476…548 (73px) цветом #666666; отправленное (f22) — фиолетовым полужирным 17,
+ * чернила 476…568 (93px). Отношение ширин 0,78 при одном и том же слове и есть
+ * замер кегля. Раньше здесь для обоих стоял набор с f22 — на кадре создания это
+ * лишний акцент на слове, которого автор письма не писал.
+ */
+const answerHeadingBase = "m-0 leading-[17px]";
+const answerHeadingDraft = `${answerHeadingBase} text-[13px] text-muted`;
+const answerHeadingSent = `${answerHeadingBase} text-[17px] font-bold text-primary`;
 
-/** Ширина варианта — 137 (f22: плашка 659…795; f16: поле 477…611 в рамке) */
-const optionWidth = "w-[137px]";
+/**
+ * Ширина варианта — 139, замер по рамкам: f16 первый вариант 475…613, второй
+ * 631…769; f22 заливка #f0ecff 658…796 и 814…952. Белое нутро у́же на 2 — это
+ * рамки, и в border-box они входят в ширину.
+ */
+const optionWidth = "w-[139px]";
 
 function MailingEditor({ id }: { id: string | null }) {
   const { ut } = useLang();
@@ -198,14 +225,15 @@ function MailingEditor({ id }: { id: string | null }) {
       title={ut("top.messages")}
       titleHidden
       /*
-       * У нового повідомлення шестерёнки нет (f16) — на её месте распорка той
-       * же высоты, чтобы форма стояла на одном уровне на обоих маршрутах:
-       * иначе после «Створити» она прыгала бы вниз на высоту глифа.
+       * tight: от нижнего края верхней панели до первого поля ровно 50 (f16:
+       * 106→156, f22: 104→154). Обычная шапка добавляет строку и 28 снизу —
+       * форма уезжала на 55 ниже кадра. Распорки у нового повідомлення больше
+       * нет и не нужно: при tight строка действий высоты не занимает, и форма
+       * стоит одинаково на обоих маршрутах — прыжка после «Створити» нет.
        */
+      tight
       actions={
-        id === null ? (
-          <span aria-hidden className="block h-[27px]" />
-        ) : (
+        id === null ? undefined : (
           <ActionMenu label={ut("mail.menu")} glyph={<IconGear />} entries={entries} />
         )
       }
@@ -235,7 +263,7 @@ function MailingEditor({ id }: { id: string | null }) {
               />
             </Field>
             <div role="group" aria-labelledby={answerId} className={answerBox}>
-              <p id={answerId} className={answerHeading}>
+              <p id={answerId} className={answerHeadingDraft}>
                 {ut("mail.answer")}
               </p>
               {/*
@@ -245,13 +273,15 @@ function MailingEditor({ id }: { id: string | null }) {
                 стоит w-full, и второй класс ширины с ним спорил бы порядком в
                 собранном CSS.
 
-                Два зазора, а не один, и это замер: между полями 21 (правая
-                линия первого 611, левая второго 633), а до «+» 18 (поле
-                кончается на 767, квадрат глифа 27 начинается на 785). Один
-                общий зазор пришлось бы выбрать неверным в одном из двух мест.
+                Два зазора, а не один, и это замер по рамкам: между вариантами
+                17 (правая рамка первого на 613, левая второго на 631 — белого
+                614…630), а до «+» 15 (второй вариант кончается рамкой на 769,
+                чернила креста идут с 787, а у глифа 27 крест начинается на
+                2,5 от края — значит квадрат стоит с 784). Один общий зазор
+                пришлось бы выбрать неверным в одном из двух мест.
               */}
-              <div className="mt-[18px] flex items-start gap-[18px]">
-                <div className="flex flex-wrap items-center gap-[21px]">
+              <div className="mt-[18px] flex items-start gap-[15px]">
+                <div className="flex flex-wrap items-center gap-[17px]">
                   {draft.options.map((o, i) => (
                     <div key={i} className={optionWidth}>
                       <Input
@@ -311,8 +341,9 @@ function MailingEditor({ id }: { id: string | null }) {
 /**
  * Отправленное — кадр f22 буквально: название в силуэте поля фиолетовым
  * полужирным, текст серым в рамке, варианты — залитые плашки 139×36 по
- * центру рамки «Відповідь». Не поля, а показ (Readout): править нечего, и
- * диктору незачем объявлять «поле ввода, только чтение» трижды.
+ * центру рамки «Відповідь» (658…796 и 814…952 при середине рамки 804,5).
+ * Не поля, а показ (Readout): править нечего, и диктору незачем объявлять
+ * «поле ввода, только чтение» трижды.
  */
 function SentView({ m, answerId }: { m: MailingCard; answerId: string }) {
   const { ut } = useLang();
@@ -325,12 +356,12 @@ function SentView({ m, answerId }: { m: MailingCard; answerId: string }) {
         {m.body}
       </div>
       <div role="group" aria-labelledby={answerId} className={`mt-[15px] ${answerBox}`}>
-        <p id={answerId} className={answerHeading}>
+        <p id={answerId} className={answerHeadingSent}>
           {ut("mail.answer")}
         </p>
         {m.options.length ? (
-          /* зазор 19: плашки на f22 стоят 659…795 и 815…951, по центру рамки */
-          <ul className="m-0 mt-[18px] flex list-none flex-wrap justify-center gap-[19px] p-0">
+          /* зазор 17: заливка на f22 идёт 658…796 и 814…952, белого между ними 797…813 */
+          <ul className="m-0 mt-[18px] flex list-none flex-wrap justify-center gap-[17px] p-0">
             {m.options.map((o, i) => (
               <Readout key={i} as="li" look="fill" className={`${optionWidth} justify-center font-bold text-primary`}>
                 {o}
