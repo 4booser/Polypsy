@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goMenu, goTop, login, logout, rowTexts, patientLinks } from "./helpers";
+import { goCaseCard, goMenu, goTop, login, logout, rowTexts, patientLinks } from "./helpers";
 
 /**
  * Сквозной клинический сценарий: тревога → пациент → сводка → направление →
@@ -20,10 +20,11 @@ test("от тревоги до закрытого направления", async
   await firstPatient.click();
 
   /*
-   * Отдельного перехода на сводку больше нет: карта открывается сразу на
-   * вкладке «Обзор». Дожидаемся, что вкладки отрисовались, — это и есть
-   * признак, что карта на месте, а не список.
+   * По щелчку открывается карточка пациента (кадр f19), а направления живут
+   * в клинической карте за шестерёнкой — см. goCaseCard. Дожидаемся, что
+   * вкладки карты отрисовались: это и есть признак, что карта на месте.
    */
+  await goCaseCard(page);
   await page.getByRole("link", { name: "Хронология" }).waitFor();
 
   // имя берём с самой страницы: в ссылке рядом с ним стоят инициалы-аватарка,
@@ -82,6 +83,8 @@ test("запись приёма сохраняется, подписываетс
   await login(page, "psy");
   await page.goto("/patients");
   await patientLinks(page).first().click();
+  // записи приёма остались в клинической карте, а не на карточке f19
+  await goCaseCard(page);
 
   const notes = page.locator("[data-panel], .card").filter({ hasText: "Записи приёма" }).first();
   await expect(notes).toBeVisible();
@@ -113,6 +116,8 @@ test("план безопасности составляется и сохран
   await login(page, "psy");
   await page.goto("/patients");
   await patientLinks(page).first().click();
+  // план безопасности остался в клинической карте, а не на карточке f19
+  await goCaseCard(page);
 
   const card = page.locator("[data-panel], .card").filter({ hasText: "План безопасности" }).first();
   await expect(card).toBeVisible();

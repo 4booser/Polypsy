@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { login, patientLinks, patientSearch } from "./helpers";
+import { goCaseCard, login, patientLinks, patientSearch } from "./helpers";
 
 /**
  * Каждый экран консоли открывается и не падает.
@@ -155,13 +155,23 @@ async function openSeededPatient(page: Page) {
     const first = await openSeededPatient(page);
     const id = (await first.getAttribute("href"))!.split("/").pop()!;
 
-    await open(page, { name: "динамика", path: `/patients/${id}` });
+    /*
+     * Два разных экрана, а не один с вкладками: «/patients/:id» с волны 6 —
+     * карточка по кадру f19, а сводка консилиума с динамикой переехала в
+     * клиническую карту «/patients/:id/case». Прежний адрес «/summary»
+     * оставлен в проверке намеренно: он теперь перенаправление (App.tsx), и
+     * ссылки на него ходят по переписке и в чужих закладках.
+     */
+    await open(page, { name: "карточка пациента", path: `/patients/${id}` });
+    await open(page, { name: "клиническая карта", path: `/patients/${id}/case` });
     await open(page, { name: "сводка", path: `/patients/${id}/summary` });
   });
 
   test("хронология пациента открывается и упорядочена", async ({ page }) => {
     await login(page, "psy");
     await (await openSeededPatient(page)).click();
+    // хронология осталась в клинической карте, за шестерёнкой — см. goCaseCard
+    await goCaseCard(page);
     /*
      * Дожидаемся карты, ПОТОМ читаем имя. Без ожидания заголовок читается
      * ещё со списка — «Пациенты», — и проверка сравнивает вкладку со
