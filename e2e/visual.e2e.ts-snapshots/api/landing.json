@@ -1,0 +1,6 @@
+{
+  "/api/auth/google/status": {
+    "status": 200,
+    "body": "{\"enabled\":false,\"openRegistration\":true}"
+  }
+}
