@@ -45,7 +45,8 @@ const Join = lazy(() => import("./pages/Join"));
 const GoogleReturn = lazy(() => import("./pages/GoogleReturn"));
 const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
-const PatientCard = lazy(() => import("./pages/PatientCard"));
+const CaseCard = lazy(() => import("./pages/CaseCard"));
+const PatientCard = lazy(() => import("./pages/patientCard/PatientCard"));
 const Start = lazy(() => import("./pages/Start"));
 const Account = lazy(() => import("./pages/Account"));
 /* кабинет пациента: отдельная оболочка, а не консоль с урезанным меню */
@@ -56,10 +57,14 @@ const PatientBooking = lazy(() => import("./patient/Booking"));
 const PatientProfile = lazy(() => import("./patient/Profile"));
 const Runner = lazy(() => import("./patient/Runner"));
 
-/** Прежний адрес сводки — теперь вкладка «Обзор» карты */
-function RedirectToCard() {
+/**
+ * Прежние адреса клинической карты — /summary, /dynamics, /timeline — ведут
+ * на неё же по новому адресу /patients/:id/case…: на /summary ссылается
+ * очередь работы с сервера (routes/worklist.ts), на два других — закладки.
+ */
+function RedirectToCase({ tab = "" }: { tab?: string }) {
   const { userId } = useParams<{ userId: string }>();
-  return <Navigate to={`/patients/${userId}`} replace />;
+  return <Navigate to={`/patients/${userId}/case${tab}`} replace />;
 }
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
@@ -615,24 +620,32 @@ export default function App() {
           <Route path="/analytics/:id" element={<AnalyticsModel />} />
           <Route path="/patients" element={<PatientList />} />
           {/*
-            Карта пациента — один экран с вкладками. Вкладка стоит в адресе:
-            карту пересылают коллеге и кладут в закладку, и открываться она
-            должна на том, что человек смотрел.
+            Карточка пациента по кадру f19 заказчика: персональные данные,
+            «Тести», «Групи», «Заключення». На неё ведут все ссылки на
+            человека — из списка, групп, поиска, дня приёма.
           */}
-          <Route path="/patients/:userId" element={<PatientCard />}>
+          <Route path="/patients/:userId" element={<PatientCard />} />
+          {/*
+            Клиническая карта — один экран с вкладками, под своим сегментом
+            /case: адрес человека занят карточкой кадра, а сводка, динамика и
+            хронология с него не убраны (дверь — шестерёнка в шапке карточки).
+            Вкладка стоит в адресе: карту пересылают коллеге и кладут в
+            закладку, и открываться она должна на том, что человек смотрел.
+          */}
+          <Route path="/patients/:userId/case" element={<CaseCard />}>
             <Route index element={<CaseSummaryPage />} />
             <Route path="dynamics" element={<PatientDynamics />} />
             <Route path="timeline" element={<Timeline />} />
           </Route>
           {/*
-            Прежний адрес сводки остаётся рабочим: на него ссылается очередь
-            работы с сервера (routes/worklist.ts) и чьи-то закладки. Ломать
-            их ради чистоты адресов незачем — перенаправление стоит строку.
+            Прежние адреса остаются рабочими: на /summary ссылается очередь
+            работы с сервера (routes/worklist.ts), на /dynamics и /timeline —
+            чьи-то закладки. Ломать их ради чистоты адресов незачем —
+            перенаправление стоит строку.
           */}
-          <Route
-            path="/patients/:userId/summary"
-            element={<RedirectToCard />}
-          />
+          <Route path="/patients/:userId/summary" element={<RedirectToCase />} />
+          <Route path="/patients/:userId/dynamics" element={<RedirectToCase tab="/dynamics" />} />
+          <Route path="/patients/:userId/timeline" element={<RedirectToCase tab="/timeline" />} />
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/console" element={<Console />} />
