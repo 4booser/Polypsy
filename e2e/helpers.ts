@@ -124,8 +124,15 @@ export function patientSearch(page: Page): Locator {
   return page.getByRole("textbox", { name: /^(Поиск|Пошук)$/ });
 }
 
+/*
+ * Ищется по хвосту имени, а не по имени целиком: имя переключателя теперь
+ * начинается с видимого слова («Укр — Мова / Язык»), чтобы управляющий
+ * голосом попадал по тому, что читает глазами (WCAG 2.5.3). Точное
+ * совпадение перестало бы находить кнопку, а искать по «Укр» нельзя — оно
+ * меняется вместе с языком, ради которого сценарий и написан.
+ */
 export function langToggle(page: Page): Locator {
-  return page.getByRole("banner").getByRole("button", { name: "Мова / Язык" });
+  return page.getByRole("banner").getByRole("button", { name: /Мова \/ Язык/ });
 }
 
 /**
