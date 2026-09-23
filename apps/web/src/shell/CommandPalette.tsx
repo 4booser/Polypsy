@@ -47,6 +47,7 @@ const ITEMS: Item[] = [
   { key: "nav.batteries", to: "/batteries", group: "cmd.navigate" },
   { key: "nav.reception", to: "/my-schedule", group: "cmd.navigate" },
   { key: "ms.title", to: "/messages", group: "cmd.navigate" },
+  { key: "top.messages", to: "/mailings", group: "cmd.navigate" },
   { key: "nav.invites", to: "/invites", group: "cmd.navigate" },
   { key: "nav.groups", to: "/patient-groups", group: "cmd.navigate" },
   { key: "adm.groupsTitle", to: "/groups", group: "cmd.navigate" },

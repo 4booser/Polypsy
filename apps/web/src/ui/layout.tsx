@@ -63,6 +63,7 @@ export function Page({
   context,
   contextTitle,
   bleed,
+  tight,
   titleHidden,
   children,
   className,
@@ -89,6 +90,25 @@ export function Page({
    * начинал вылезать за окно или не доставать до низа, причём молча.
    */
   bleed?: boolean;
+  /**
+   * Строка над содержимым пустая: просвет до содержимого ровно 50px.
+   *
+   * Нужно форме повідомлення (кадры f16/f22): там над полями нет ни
+   * заголовка, ни вкладок, ни поиска — только просвет в 50px от нижнего края
+   * верхней панели до первого поля, а шестерня меню висит В ЭТОМ просвете у
+   * правого края колонки. Обычная шапка даёт 50 + высота строки + 28 и
+   * опускает форму на полсотни пикселей ниже кадра; невидимая распорка в
+   * строке (как было) этот лишний просвет только закрепляла.
+   *
+   * Отвергнуто: отрицательный отступ у содержимого — область содержимого
+   * прокручивается (`overflow-y-auto`) и срезала бы всё, что уехало выше её
+   * верхнего края, вместе с шестернёй.
+   *
+   * `actions` при `tight` высоты не занимают: их ряд свёрнут в ноль и поднят
+   * на 10px, чтобы глиф встал туда же, где он нарисован на f22 (чернила
+   * шестерни 133…146 при нижнем крае панели 103 и верхе поля 154).
+   */
+  tight?: boolean;
   /**
    * Заголовок остаётся в разметке, но уходит с экрана.
    *
@@ -134,7 +154,7 @@ export function Page({
           прежней редакции `sticky` был двойной страховкой и заодно причиной
           размытой подложки, которой в макете нет.
         */}
-        <header className={cx("shrink-0", bleed ? "pb-[14px] pt-[20px]" : "pb-[28px] pt-[50px]")}>
+        <header className={cx("shrink-0", bleed ? "pb-[14px] pt-[20px]" : tight ? "pt-[50px]" : "pb-[28px] pt-[50px]")}>
           <div className={COLUMN}>
             {crumbs ? <div className="mb-1.5 flex items-center gap-1.5 text-[13px] text-muted">{crumbs}</div> : null}
             <div className="flex items-center gap-[24px] max-[900px]:flex-wrap">
@@ -187,7 +207,18 @@ export function Page({
               ) : (
                 <span className="flex-1" />
               )}
-              {actions ? <div className="flex shrink-0 items-center gap-[14px]">{actions}</div> : null}
+              {actions ? (
+                <div
+                  className={cx(
+                    "flex shrink-0 items-center gap-[14px]",
+                    /* z-10: свёрнутый ряд свисает в область содержимого, и без него нажатие
+                       ловила бы колонка содержимого, лежащая ниже по разметке */
+                    tight && "relative z-10 h-0 -translate-y-[10px]",
+                  )}
+                >
+                  {actions}
+                </div>
+              ) : null}
             </div>
             {/* мета-строка макета: 13/400 серым */}
             {sub ? <p className="m-0 mt-[6px] max-w-[70ch] text-[13px] leading-[19px] text-muted">{sub}</p> : null}

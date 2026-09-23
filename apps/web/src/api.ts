@@ -58,6 +58,11 @@ import type {
   CohortSpec,
   CohortPreview,
   CohortRow,
+  Mailing,
+  MailingCard,
+  MailingListPage,
+  MailingInput,
+  MailingUpdateInput,
 } from "@quizzy/shared";
 import { UI } from "@quizzy/shared";
 import { currentLang } from "./lang";
@@ -1111,6 +1116,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify(input),
     }),
+  /*
+   * Рассылки «Повідомлення» (кадры f09/f16/f22) — не переписка выше: один
+   * автор, много получателей, у получателя кнопки «Так / Ні». Страницы и
+   * поиск — на сервере (limit/offset, q): тема и текст шифруются, и список
+   * всё равно расшифровывается там; тянуть его целиком ради страницы 3
+   * значило бы расшифровывать всё на каждую букву поиска.
+   */
+  mailings: (params: { q?: string; hidden?: boolean; limit: number; offset: number }) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    /* «скрытые» — отдельный список, а не вперемешку: так устроен сервер (?hidden=1) */
+    if (params.hidden) qs.set("hidden", "1");
+    qs.set("limit", String(params.limit));
+    qs.set("offset", String(params.offset));
+    return request<MailingListPage>(`/api/mailings?${qs}`);
+  },
+  mailing: (id: string) => request<MailingCard>(`/api/mailings/${id}`),
+  /** «Створити» — черновик; отправка отдельным действием из меню-шестерни */
+  createMailing: (input: MailingInput) =>
+    request<Mailing>("/api/mailings", { method: "POST", body: JSON.stringify(input) }),
+  /** «Зберегти»: только черновик, отправленная отвечает 409 */
+  updateMailing: (id: string, patch: MailingUpdateInput) =>
+    request<Mailing>(`/api/mailings/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  sendMailing: (id: string) =>
+    request<{ id: string; status: "sent"; sentAt: string; recipients: number }>(`/api/mailings/${id}/send`, {
+      method: "POST",
+    }),
+  /** «Видалити» — черновик; отправленную сервер не удаляет (409), её скрывают */
+  deleteMailing: (id: string) => request<void>(`/api/mailings/${id}`, { method: "DELETE" }),
+  hideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/hide`, { method: "POST" }),
   episodes: (userId: string) =>
     request<{
       items: {
