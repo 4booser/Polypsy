@@ -339,6 +339,8 @@ async function computeColumn(
 
   const riskHits = new Set<string>();
   let riskMarked = false;
+  /* хоть одна помеченная «ВШР» ячейка скрыта — «ВШР» скрывается вместе с ней, см. сборку колонки внизу */
+  let riskHidden = false;
 
   const scales: StatRunScale[] = [];
   for (const [scaleId, indicators] of groupBands(column.bands)) {
@@ -354,8 +356,10 @@ async function computeColumn(
       bands: indicators.map((ind) => {
         const band = scale.bands.find((b) => b.id === ind.bandId);
         if (!band) badRequest("err.statModelIndicatorUnknown", { what: `${scale.title} → ${ind.bandId}` });
+        const cell = cells?.get(ind.bandId) ?? HIDDEN;
         if (ind.highRisk) {
           riskMarked = true;
+          if (cell.suppressed) riskHidden = true;
           for (const id of bandHits.get(ind.bandId) ?? []) riskHits.add(id);
         }
         return {
@@ -366,7 +370,7 @@ async function computeColumn(
           label: band.label,
           severity: band.severity,
           highRisk: ind.highRisk,
-          cell: cells?.get(ind.bandId) ?? HIDDEN,
+          cell,
         };
       }),
       rest: cells?.get("__rest") ?? HIDDEN,
@@ -408,16 +412,13 @@ async function computeColumn(
       options: q.options.map((o) => {
         const option = question.options.find((x) => x.id === o.optionId);
         if (!option) badRequest("err.statModelIndicatorUnknown", { what: `${question.title} → ${o.optionId}` });
+        const cell = cellOf(o.optionId, counts.get(o.optionId) ?? 0);
         if (o.highRisk) {
           riskMarked = true;
+          if (cell.suppressed) riskHidden = true;
           for (const [id, picked] of byResponse) if (picked.includes(o.optionId)) riskHits.add(id);
         }
-        return {
-          optionId: option.id,
-          text: option.text,
-          highRisk: o.highRisk,
-          cell: cellOf(o.optionId, counts.get(o.optionId) ?? 0),
-        };
+        return { optionId: option.id, text: option.text, highRisk: o.highRisk, cell };
       }),
       rest: cellOf("__rest", rest),
     });
@@ -437,7 +438,37 @@ async function computeColumn(
       respondents: open ? shown(total, total) : HIDDEN,
       scales,
       questions: questionsOut,
-      highRisk: riskMarked ? (open ? twoSidedCell(riskHits.size, total) : HIDDEN) : null,
+      /*
+       * «ВШР» — объединение помеченных ячеек, а полосы одной шкалы и варианты
+       * одного выбора не пересекаются, так что внутри разбиения это их сумма.
+       * Показанная сумма поверх скрытого слагаемого называет его: двенадцать
+       * человек 5/2/5, помечены «Низький» и «Середній» — «Середній» спрятан
+       * вместе с остатком, а «ВШР: 7» отдаёт его как 7 − 5. Дополняющее
+       * подавление этого не видит: оно живёт внутри разбиения, а «ВШР» стоит
+       * поверх всех разбиений колонки.
+       *
+       * Поэтому «ВШР» показывается, только когда показана КАЖДАЯ помеченная
+       * ячейка: тогда все его слагаемые уже напечатаны, и он сообщает лишь,
+       * насколько помеченные множества пересекаются, — ни одна скрытая ячейка,
+       * помеченная или нет, остаток включая, в него не входит. То же для
+       * ответов с несколькими вариантами: разбиения у них нет, но «ВШР» над
+       * скрытым помеченным вариантом и показанным соседним отдаёт число
+       * выбравших первый без второго. Сам факт «ВШР скрыт» ничего не выдаёт:
+       * какие помеченные ячейки спрятаны, видно в той же колонке, а от
+       * подавления с обоих краёв порога этот случай неотличим.
+       *
+       * Отвергнуто: подать «ВШР» в suppressedKeys вместе с ячейками разбиения.
+       * Он не слагаемое разбиения, а сумма поверх него — при пометках в разных
+       * шкалах и вопросах и вовсе объединение, — так что suppressedKeys,
+       * получив «7» как ещё одну ячейку, спрятал бы, как и прежде, «Середній»
+       * с остатком и оставил бы «7» на виду. Честная версия того же — прятать
+       * ДОПОЛНИТЕЛЬНЫЕ ячейки таблицы ради сводного числа — жертвует главным
+       * ради производного. Не спасает и случай «помечены все полосы шкалы,
+       * «ВШР» равен основанию без остатка»: при скрытом остатке он его
+       * восстанавливает, при показанном — читатель вычисляет его и без нас,
+       * и спрятать его ничего не стоит.
+       */
+      highRisk: riskMarked ? (open && !riskHidden ? twoSidedCell(riskHits.size, total) : HIDDEN) : null,
     },
   };
 }
