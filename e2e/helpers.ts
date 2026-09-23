@@ -124,8 +124,15 @@ export function patientSearch(page: Page): Locator {
   return page.getByRole("textbox", { name: /^(Поиск|Пошук)$/ });
 }
 
+/*
+ * Ищется по хвосту имени, а не по имени целиком: имя переключателя теперь
+ * начинается с видимого слова («Укр — Мова / Язык»), чтобы управляющий
+ * голосом попадал по тому, что читает глазами (WCAG 2.5.3). Точное
+ * совпадение перестало бы находить кнопку, а искать по «Укр» нельзя — оно
+ * меняется вместе с языком, ради которого сценарий и написан.
+ */
 export function langToggle(page: Page): Locator {
-  return page.getByRole("banner").getByRole("button", { name: "Мова / Язык" });
+  return page.getByRole("banner").getByRole("button", { name: /Мова \/ Язык/ });
 }
 
 /**
@@ -145,12 +152,18 @@ export async function setLang(page: Page, lang: "uk" | "ru"): Promise<void> {
   await expect(page.locator("html")).toHaveAttribute("lang", lang);
 }
 
+/*
+ * Форма входа живёт на «/login»: корень для гостя — лендинг «Про кампанію»
+ * (кадр f00), и с него до формы ещё одно нажатие. Поле почты подписано
+ * «Логін», как на кадре f01, — на обоих языках, потому что язык стенда
+ * заранее не известен.
+ */
 export async function login(page: Page, who: keyof typeof ACCOUNTS) {
   const acc = ACCOUNTS[who];
-  await page.goto("/");
-  await page.getByLabel("Email").fill(acc.email);
+  await page.goto("/login");
+  await page.getByLabel(/^(Логин|Логін)$/).fill(acc.email);
   await page.getByLabel("Пароль").fill(acc.password);
-  await page.getByRole("button", { name: "Войти" }).click();
+  await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).click();
   /*
    * Признак входа — оболочка, а не конкретный раздел. У сотрудника это
    * бургер: полоса с шестью пунктами на телефоне спрятана, и ждать её значило

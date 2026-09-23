@@ -1,46 +1,61 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { api } from "../api";
+import { useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { useAuth } from "../auth";
-import { LangSwitch, useLang } from "../lang";
-import { Button, Field, Input } from "../ui/primitives";
+import { useLang } from "../lang";
+import { Button, Field } from "../ui/primitives";
+import { PublicFrame } from "./public/PublicFrame";
 
 /**
- * Вход в консоль.
+ * Вход — кадр f01: под знаком POLSY заголовок «Введіть логін та пароль щоб
+ * продовжити» в две строки и два белых поля «Логін» и «Пароль». Больше на
+ * кадре ничего нет — и здесь ничего больше нет.
  *
- * Единственный экран, который видят до всего остального, — и до переделки он
- * был самым небрежным: поля стояли впритык, кнопка была зашита по-русски
- * мимо словаря, а переключателя языка не было вовсе. Украиноязычный
- * сотрудник встречал подпись на украинском и единственную кнопку на русском,
- * и переключить язык мог только войдя — то есть уже пройдя этот экран.
+ * Что ушло с экрана вместе с этим и почему.
+ *
+ * Карточка на пустом фоне, знак «Q» и подпись «консоль аналитики для
+ * сотрудников» — это был экран другого продукта; макет рисует вход тем же
+ * листом, что и лендинг, с той же иллюстрацией и подвалом.
+ *
+ * Вход через Google и самостоятельная регистрация с полями фамилия / имя /
+ * телефон. На кадре их нет, а заказчик просил экран один в один и логику под
+ * него. Маршруты на сервере (/api/auth/google/*, /api/auth/register) при
+ * этом остались как были — их снимать здесь не место, и связь с Google у
+ * вошедшего по-прежнему живёт в бургере (App.tsx). Регистрация пациента
+ * идёт по приглашению (/join/:token), как и шла.
+ *
+ * Чего это стоило, названо прямо, потому что экрана под это нет ни одного.
+ *
+ * 1. Учреждение, поднятое с OPEN_REGISTRATION, из веба учётную запись больше
+ *    не заводит: формы нет, а приглашение выписывает сотрудник изнутри.
+ *    Признак `openRegistration` из GET /api/auth/google/status с тех пор не
+ *    читает никто (клиент берёт из ответа одно поле `enabled`). Взаперти при
+ *    этом никто не остаётся, но способность осталась без экрана — нужен
+ *    кадр, и это вопрос к заказчику, а не к сборщику.
+ * 2. Вход через Google начинается кнопкой, которой на кадре нет. Возврат от
+ *    Google при этом починен (App.tsx: «/auth/google» пускается мимо гейта —
+ *    раньше не пускался, и код из адреса не разменивался на токены вовсе).
+ *    Никто не заперт и здесь: googleCallback учётных записей не заводит и
+ *    без привязки отвечает googleNotLinked — значит пароль есть у каждого,
+ *    кому Google был доступен.
+ *
+ * Возвращать снятое «на всякий случай» нельзя: кадр — это и есть задание, а
+ * лишняя кнопка на нём — такой же брак, как недостающая.
+ *
+ * Что осталось сверх кадра, и это названо: кнопка «Увійти» под полями —
+ * форма без кнопки не отправляется мышью, а Enter знают не все; и строка
+ * отказа под полями с role="alert" — без неё человек перед не сработавшей
+ * формой не узнает, почему. Кнопка — та же белая плашка 215 × 45, что и
+ * «Увійти» на лендинге: экран входа продолжает лендинг, а не спорит с ним.
+ *
+ * Поле подписано «Логін», как на кадре, но принимает почту: отдельного
+ * логина у учётной записи нет (users.email — единственный ключ входа, по
+ * нему же считается защита от перебора), и заводить его — миграция, а не
+ * экран. type="email" оставлен ради автозаполнения и клавиатуры телефона;
+ * проверку формы браузер не делает (noValidate) — отказ приходит с сервера
+ * одной и той же строкой.
  */
 export default function Login() {
   const { ut } = useLang();
-  const { login, adopt } = useAuth();
-  /*
-   * Спрашиваем сервер, настроен ли вход через Google. Не переменной сборки:
-   * образ консоли один на все учреждения, а настроен способ в одном из них.
-   */
-  const [googleReady, setGoogleReady] = useState(false);
-  /*
-   * Можно ли завести учётную запись самому. Спрашивается у сервера вместе
-   * со способами входа: ссылка «создать аккаунт» там, где регистрация
-   * закрыта, ведёт в отказ — а человек у экрана входа не должен выяснять
-   * опытным путём, что ему доступно.
-   */
-  const [openReg, setOpenReg] = useState(false);
-  const [mode, setMode] = useState<"login" | "register">("login");
-  useEffect(() => {
-    fetch("/api/auth/google/status")
-      .then((r) => r.json())
-      .then((j: { enabled?: boolean; openRegistration?: boolean }) => {
-        setGoogleReady(Boolean(j.enabled));
-        setOpenReg(Boolean(j.openRegistration));
-      })
-      .catch(() => {});
-  }, []);
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -51,18 +66,7 @@ export default function Login() {
     setBusy(true);
     setError(null);
     try {
-      if (mode === "register") {
-        const created = await api.register({
-          email: email.trim(),
-          password,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          phone: phone.trim(),
-        });
-        await adopt(created);
-      } else {
-        await login(email.trim(), password);
-      }
+      await login(email.trim(), password);
     } catch (err) {
       setError(err instanceof Error ? err.message : ut("lg.failed"));
     } finally {
@@ -71,141 +75,107 @@ export default function Login() {
   }
 
   return (
-    <div className="login relative">
-      <div className="w-full max-w-[380px]">
-        <form
-          className="card flex w-full flex-col gap-4 !mb-0 !p-7 shadow-panel"
-          onSubmit={submit}
-          noValidate
-        >
-          <div className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className="grid size-9 shrink-0 place-items-center rounded-[9px] border border-primary font-display text-section font-semibold text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_40%,transparent)]"
-            >
-              Q
-            </span>
-            <div className="min-w-0">
-              <h1 className="!m-0 font-display text-section font-semibold leading-tight">Quizzy</h1>
-              {/*
-                Подпись следует за экраном, а не стоит одна на оба.
-                «Консоль аналитики для сотрудников» висела и над формой
-                регистрации — той самой, где просят телефон, «чтобы связаться,
-                если ответы вызовут беспокойство». Человек, которого прислали
-                пройти методику, читал на ней, что попал не туда.
-              */}
-              <p className="m-0 text-caption text-muted">
-                {ut(mode === "register" ? "lg.registerSub" : "lg.consoleSub")}
-              </p>
-            </div>
-          </div>
-
-          {mode === "register" ? (
-            <>
-              <Field label={ut("adm.lastName")} htmlFor="reg-last">
-                <Input id="reg-last" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-              </Field>
-              <Field label={ut("adm.firstName")} htmlFor="reg-first">
-                <Input id="reg-first" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              </Field>
-              <Field label={ut("rg.phone")} htmlFor="reg-phone" hint={ut("rg.phoneHint")}>
-                <Input
-                  id="reg-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  type="tel"
-                  autoComplete="tel"
-                />
-              </Field>
-            </>
-          ) : null}
-
-          <Field label={ut("person.email")} htmlFor="login-email">
-            <Input
-              id="login-email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              autoComplete="username"
-              autoFocus
-            />
-          </Field>
-
-          <Field label={ut("lg.password")} htmlFor="login-password">
-            <Input
-              id="login-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              autoComplete="current-password"
-            />
-          </Field>
-
-          {/*
-            Ошибка живёт рядом с кнопкой, а не под заголовком: смотрят туда,
-            куда только что нажали. Роль alert нужна, чтобы диктор прочитал
-            причину отказа, а не оставил человека перед не сработавшей кнопкой.
-          */}
-          {error ? (
-            <p role="alert" className="m-0 text-caption text-danger">
-              {error}
-            </p>
-          ) : null}
-
-          <Button type="submit" variant="primary" disabled={busy} className="w-full">
-            {busy ? ut("lg.signingIn") : mode === "register" ? ut("rg.create") : ut("lg.signIn")}
-          </Button>
-
-          {openReg ? (
-            <button
-              type="button"
-              className="text-caption text-muted underline-offset-2 hover:underline"
-              onClick={() => {
-                setMode(mode === "login" ? "register" : "login");
-                setError(null);
-              }}
-            >
-              {mode === "login" ? ut("rg.create") : ut("rg.haveAccount")}
-            </button>
-          ) : null}
-
-          {/*
-            Кнопка Google появляется, только если способ настроен на сервере.
-            Нарисованная всегда, она вела бы в отказ — а человек у экрана
-            входа не должен разбираться, какой из двух способов сегодня
-            работает.
-
-            Вход паролем остаётся первым и главным: это учреждение, где
-            работают по записи, и потеря доступа из-за сбоя у внешнего
-            поставщика — несостоявшийся приём.
-          */}
-          {googleReady ? (
-            <>
-              <div className="flex items-center gap-3 text-caption text-faint">
-                <span className="h-px flex-1 bg-[linear-gradient(to_right,transparent,var(--hairline))]" />
-                {ut("lg.or")}
-                <span className="h-px flex-1 bg-[linear-gradient(to_left,transparent,var(--hairline))]" />
-              </div>
-              <a className="btn w-full justify-center" href="/api/auth/google/start">
-                {ut("lg.google")}
-              </a>
-            </>
-          ) : null}
-        </form>
-
-      </div>
-
+    <PublicFrame>
       {/*
-        Переключатель языка — до входа, а не после. Иначе выбрать язык можно
-        только пройдя экран, который сам показан не на том языке.
-
-        Стоит в углу экрана, а не под карточкой: он относится ко всей
-        странице, а не к форме, и под карточкой читался как ещё один её шаг —
-        после «создать аккаунт», хотя выбирают язык до всего остального.
+        В две строки — не переносом руками, а шириной: 400 вмещает «Введіть
+        логін та пароль» (374 на кадре) и не вмещает следующее слово. Перенос
+        <br> сломался бы на русском, где строки делятся иначе.
       */}
-      <div className="absolute right-4 top-4">
-        <LangSwitch />
-      </div>
-    </div>
+      <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[43px] text-primary">
+        {ut("pub.loginTitle")}
+      </h1>
+      {/*
+        50 от коробки заголовка до первого поля, 22 между полями — с кадра.
+
+        `[&>label]:mb-0` — снятие чужого отступа, а не украшение: в слое
+        наследия у каждой `label` стоит `margin-bottom: 5px`, а поле у Field
+        лежит внутри подписи. Коробка поля выходила на 5 выше самого поля, и
+        шаг «Логін» → «Пароль» получался 72 вместо 67 с кадра. Снято здесь, на
+        двух полях этого экрана, а не в Field: те же 5 заложены в шаг строк
+        формы (51 = поле 36 + 15) на остальных экранах консоли, и правка в
+        каркасе сдвинула бы их все.
+      */}
+      <form className="mt-[50px] flex flex-col items-start gap-[22px]" onSubmit={submit} noValidate>
+        <Field inline label={ut("pub.login")} className="w-[215px] [&>label]:mb-0">
+          <PlateInput
+            label={ut("pub.login")}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="username"
+            autoFocus
+          />
+        </Field>
+        <Field inline label={ut("lg.password")} className="w-[215px] [&>label]:mb-0">
+          <PlateInput
+            label={ut("lg.password")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+          />
+        </Field>
+
+        {/*
+          Ошибка стоит между полями и кнопкой: смотрят туда, куда только что
+          нажали. Роль alert — чтобы диктор прочитал причину отказа, а не
+          оставил человека перед не сработавшей кнопкой.
+        */}
+        {error ? (
+          <p role="alert" className="m-0 max-w-[510px] text-[14px] leading-[22px] text-danger">
+            {error}
+          </p>
+        ) : null}
+
+        <Button type="submit" size="md" variant="paper" disabled={busy} className="w-[215px]">
+          {busy ? ut("lg.signingIn") : ut("lg.signIn")}
+        </Button>
+      </form>
+    </PublicFrame>
+  );
+}
+
+/**
+ * Белое поле 215 × 45 на сиреневом листе — так нарисованы «Логін» и
+ * «Пароль» на кадре f01: без рамки, радиус 5, подпись внутри 20/400 серым.
+ *
+ * Это не Input из примитивов, и не потому, что тот плох. У Input два
+ * начертания консоли — контурное 36 с рамкой #666666 и залитое сиреневым, —
+ * и оба с подписью 17/700 фиолетовым. Здесь другая подпись, другая высота и
+ * нет рамки: три спорящих класса поверх Input решались бы порядком утилит в
+ * собранном CSS, а не тем, что написано в разметке (см. пояснение к высоте
+ * полей в primitives.tsx). Поле лежит в Field: подпись остаётся именем для
+ * диктора, плейсхолдер — тем, что видно глазу.
+ *
+ * Набранный текст — фиолетовым, как всё на этом листе; серым набран только
+ * плейсхолдер, иначе пустое поле не отличить от заполненного.
+ *
+ * Подпись приходит пропсом от того, кто поле ставит, а не угадывается по
+ * `type`. Угадывание («type === password» → «Пароль», иначе «Логін») делало
+ * из одной строки экрана две правды в семи строках друг от друга: подпись
+ * стояла и у Field, и здесь, а связывало их совпадение типа. Третье поле с
+ * type="text" молча подписалось бы «Логін».
+ */
+function PlateInput({
+  label,
+  className,
+  ...rest
+}: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      placeholder={label}
+      /*
+       * `block`: строчное поле оставляет под собой место под выносные буквы
+       * строки, и подпись-обёртка становится выше своих 45.
+       */
+      className={
+        "block h-[45px] w-[215px] rounded-[5px] border-0 bg-[var(--bg)] px-[14px] text-[20px] text-primary " +
+        "placeholder:text-[20px] placeholder:font-normal placeholder:text-muted " +
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 " +
+        "focus-visible:ring-offset-[var(--surface-2)] " +
+        (className ?? "")
+      }
+      {...rest}
+    />
   );
 }
