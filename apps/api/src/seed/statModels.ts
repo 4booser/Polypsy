@@ -287,7 +287,9 @@ export async function seedStatModels(): Promise<void> {
     await upsertModel(
       psy.id,
       "Сон: Київ проти Львова",
-      "Якість сну (демо): полоси шкали «Порушення сну» і відповіді «Що заважає вам засинати?». У Львові менше п'яти респондентів — колонка показує поріг малих чисел.",
+      "Якість сну (демо): полоси шкали «Порушення сну» і відповіді «Що заважає вам засинати?». " +
+        "У Львові менше п'яти респондентів — колонка підпадає під поріг малих чисел цілком; " +
+        "у київській ховаються ті групи показників, де хоч одна клітинка менша за п'ять.",
       [
         { title: "Київ", presetId: kyiv.id, filters: null, surveyId: slp.id, versionId: slp.versionId!, ...indicators },
         { title: "Львів", presetId: null, filters: { locality: "Львів" }, surveyId: slp.id, versionId: slp.versionId!, ...indicators },
