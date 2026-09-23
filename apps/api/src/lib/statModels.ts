@@ -10,6 +10,7 @@ import {
   type StatRunColumn,
   type StatRunQuestion,
   type StatRunScale,
+  type StatSuppressReason,
   type SurveyFull,
   type User,
 } from "@quizzy/shared";
@@ -17,7 +18,7 @@ import { db } from "../db";
 import { answers, responseScores, responses, surveyVersions, surveys, users } from "../db/schema";
 import { decryptField } from "./crypto";
 import { badRequest, notFound } from "./http";
-import { canBreakDown, suppress, suppressedKeys } from "./privacy";
+import { canBreakDown, suppress } from "./privacy";
 import {
   assertFilterPresetAccess,
   assertPatientAccess,
@@ -48,6 +49,24 @@ import { getSurvey } from "./surveys";
  *    одного человека, и без второй половины правила первая ничего не
  *    защищает: «показано 7 и 5 из 14» называет скрытые две так же точно,
  *    как если бы их напечатали.
+ *
+ * ═══ Три уровня подавления ═══
+ *
+ * Ячейки отчёта — не отдельные числа, а система уравнений, и защита стоит
+ * на каждом её этаже:
+ *
+ * — группа (groupCells): полосы шкалы с остатком, варианты вопроса с
+ *   остатком. Под порогом хоть одна ячейка — скрыта вся группа, иначе
+ *   единственное неизвестное системы называется вычитанием;
+ * — колонка (riskCell): «ВШР» стоит поверх групп, объединяя помеченные
+ *   множества, и прячется, если скрыта группа с помеченной ячейкой или
+ *   если помеченные множества пересекаются горсткой людей;
+ * — модель (closedByOverlap): две колонки, различающиеся горсткой людей,
+ *   описывают эту горстку разностью своих чисел — колонка с малой
+ *   разностью закрывается целиком.
+ *
+ * Каждый этаж разбирался на живом расчёте POST /api/stat-models/run, и
+ * каждый закрывает найденную там утечку, а не предполагаемую.
  */
 
 /**
@@ -240,26 +259,138 @@ function shown(n: number, total: number): StatCell {
   return { suppressed: false, count: n, percent: total > 0 ? Math.round((n / total) * 100) : 0 };
 }
 
+/** Ключ остатка группы — не идентификатор полосы и не идентификатор варианта */
+const REST = "__rest";
+
 /**
- * Ячейки разбиения, которое в сумме даёт основание: полосы одной шкалы и
- * остаток, варианты одного ответа и остаток. Остаток — честная ячейка, а
- * не то, что читатель вычислит сам: иначе порог его не защитил бы. Что
- * скрывать, решает suppressedKeys — единственная скрытая ячейка тянет за
- * собой соседнюю, и скрытое перестаёт восстанавливаться вычитанием.
+ * Ячейка ниже порога.
+ *
+ * У разбиения (полосы шкалы, варианты одного выбора и их остаток) хватает
+ * одного края: дополнение ячейки — это остальные ячейки той же группы, и
+ * если их сумма меньше порога, то какая-то из них сама под ним, а если она
+ * ноль, то ячейка равна основанию и никого по отдельности не называет.
+ *
+ * У множеств (варианты вопроса с несколькими ответами, «ВШР») дополнения
+ * внутри группы нет: каждый вариант — своё «выбрал / не выбрал». Поэтому
+ * оба края: «десять из двенадцати» называет двоих так же точно, как «двое
+ * из двенадцати».
  */
-function partitionCells<K>(parts: { key: K; n: number }[], total: number): Map<K, StatCell> {
-  const hidden = suppressedKeys(parts);
-  return new Map(parts.map((p) => [p.key, hidden.has(p.key) ? HIDDEN : shown(p.n, total)]));
+function underFloor(n: number, total: number, sets: boolean): boolean {
+  return suppress(n) === null || (sets && suppress(total - n) === null);
 }
 
 /**
- * Ячейка, у которой ровно одно дополнение — «все остальные». Прячется с
- * обоих краёв: «четверо из пяти» называет пятого так же точно, как «один
- * из пяти». Так считаются ответы с несколькими вариантами (каждый вариант
- * — своё «выбрал / не выбрал») и попадания в «ВШР».
+ * Группа ячеек одного показателя — полосы шкалы с остатком, варианты
+ * вопроса с остатком — показывается целиком или прячется целиком.
+ *
+ * Почему целиком, а не по ячейке. Ячейки группы связаны уравнениями,
+ * которые читатель видит рядом с ними: у разбиения сумма ячеек и остатка
+ * равна основанию; у вопроса с несколькими ответами остаток — дополнение
+ * объединения вариантов, а «ВШР» — объединение помеченных. Пока в группе
+ * показана хоть одна ячейка и скрыта хоть одна, у системы остаётся ровно
+ * одно неизвестное — и скрытая названа вычитанием. Так и вышло на разборе:
+ * 21 респондент, «Шум» 10, «Біль» 5, «решта» 5 и «ВШР» 12 над «Шум ∪ Біль»
+ * дают скрытые «Думки» = 21 − 5 − 12 = 4. Скрытая группа целиком оставляет
+ * уравнениям столько же неизвестных, сколько ячеек: каждая скрытая ячейка
+ * принимает любое значение от 0 до основания, и ни одна не определена.
+ *
+ * Отвергнуто: дополняющее подавление (suppressedKeys, lib/privacy.ts) —
+ * прятать в пару к малой ячейке вторую, самую маленькую из показанных. Для
+ * настоящего разбиения оно доказуемо и там остаётся, здесь — нет: у вопроса
+ * с несколькими ответами уравнений больше, чем ячеек (остаток и «ВШР» стоят
+ * поверх объединений), и пара скрытых читается из них, как в примере выше.
+ * К тому же пара выбирается по опубликованному правилу, и читатель сужает
+ * её тем же правилом; доказательство пары занимает не пять строк, а
+ * страницу — значит, пары здесь нет.
  */
-function twoSidedCell(n: number, total: number): StatCell {
-  return suppress(n) === null || suppress(total - n) === null ? HIDDEN : shown(n, total);
+function groupCells(
+  parts: { key: string; n: number }[],
+  rest: number,
+  total: number,
+  sets: boolean,
+): Map<string, StatCell> {
+  const cells = [...parts, { key: REST, n: rest }];
+  /*
+   * Пересчёт: насколько сумма ячеек больше объединения. У разбиения он
+   * тождественно ноль (ячейки не пересекаются), у множеств — в точности
+   * число тех, кто выбрал больше одного варианта. Горстка здесь — тоже
+   * названные люди: при ДВУХ показанных вариантах пересчёт и есть их
+   * пересечение, «Шум» 10 и «Біль» 8 при объединении 16 отдают двоих.
+   */
+  const overcount = parts.reduce((sum, p) => sum + p.n, 0) - (total - rest);
+  const open = suppress(overcount) !== null && cells.every((c) => !underFloor(c.n, total, sets));
+  return new Map(cells.map((c) => [c.key, open ? shown(c.n, total) : HIDDEN]));
+}
+
+/**
+ * «ВШР» колонки — объединение помеченных множеств из РАЗНЫХ групп, поэтому
+ * и правила у него свои, поверх групповых.
+ *
+ * Прячется в трёх случаях. Первый: скрыта группа, где стоит помеченная
+ * ячейка, — объединение поверх скрытого слагаемого называет его вычитанием
+ * (двенадцать человек 5/2/5, помечены «Низький» и «Середній»: группа
+ * скрыта, а «ВШР: 7» отдавал бы «Середній» как 7 − 5). Второй: сам под
+ * порогом с обоих краёв — «пятеро из семи» называет двоих. Третий: все
+ * помеченные ячейки показаны, но их сумма больше объединения — разность
+ * `marked − hits` есть в точности число тех, кто попал больше чем в один
+ * помеченный показатель, и если их горстка, отчёт описывает эту горстку.
+ * Иначе разность равна нулю (помеченные множества не пересекаются вовсе)
+ * или не меньше порога, и назвать по ней некого.
+ *
+ * Отвергнуто: подать «ВШР» в подавление вместе с ячейками группы. Он не
+ * слагаемое группы, а объединение поверх нескольких групп; подавление,
+ * получив его как ещё одну ячейку, спрятало бы ячейки таблицы ради
+ * сводного числа — то есть пожертвовало бы главным ради производного.
+ */
+function riskCell(hits: number, marked: number, hiddenGroup: boolean, total: number): StatCell {
+  if (hiddenGroup || suppress(marked - hits) === null) return HIDDEN;
+  return underFloor(hits, total, true) ? HIDDEN : shown(hits, total);
+}
+
+/**
+ * Разность составов двух колонок: |A∖B| под порогом — колонки описывают
+ * эту горстку людей вычитанием.
+ *
+ * Доказательство. Колонки печатают по каждому показателю X числа |A∩X| и
+ * |B∩X|; их разность равна |(A∖B)∩X| − |(B∖A)∩X|. Когда вторая разность
+ * пуста (B ⊆ A), вычитание колонок даёт распределение тех, кто есть в A и
+ * нет в B, начисто и сразу по всем показателям: пол, возраст, город и
+ * полосы результата горстки людей. Когда не пуста, начисто горстка не
+ * называется, но каждый её показатель оказывается зажат между разностями —
+ * и отделять одно от другого пришлось бы доказательством на каждую пару
+ * колонок. Дешевле закрыть: колонка, чья разность под порогом, отдаёт
+ * числа — без них вычитать нечего. Равные составы (обе разности пусты) —
+ * не утечка, а дубль: разность по каждому показателю нулевая.
+ *
+ * Отвергнуто: закрывать вместо неё соседку. Вычитать после этого тоже
+ * нечем, но горстку приносит в отчёт именно колонка с малой разностью —
+ * это её люди, которых у соседки нет. Закрыв соседку, мы убрали бы ту, что
+ * не принесла ни одного лишнего человека: «Усі» рядом с «Чоловіки 25–45»
+ * закрываются сами, а срез, ради которого модель и собрали, остаётся.
+ *
+ * Чего правило не закрывает: разность между РАЗНЫМИ расчётами. Чтобы
+ * закрыть и её, пришлось бы помнить каждый выданный сотруднику отчёт и
+ * сверять с ним новые — хранилище прошлых выдач ради защиты, которую
+ * сотрудник и так обходит карандашом. Здесь закрыто то, что модель ставит
+ * рядом на одном экране; остальное видно в журнале: каждый расчёт пишется
+ * с размерами выборок, и подбор фильтров до горстки в нём читается.
+ */
+function diffUnderFloor(a: Set<string>, b: Set<string>): boolean {
+  let n = 0;
+  for (const id of a) if (!b.has(id)) n += 1;
+  return suppress(n) === null;
+}
+
+/** Колонки, закрытые разностью составов: обе, если под порогом обе разности */
+function closedByOverlap(samples: Set<string>[]): boolean[] {
+  const closed = samples.map(() => false);
+  for (let i = 0; i < samples.length; i += 1) {
+    for (let j = i + 1; j < samples.length; j += 1) {
+      if (diffUnderFloor(samples[i]!, samples[j]!)) closed[i] = true;
+      if (diffUnderFloor(samples[j]!, samples[i]!)) closed[j] = true;
+    }
+  }
+  return closed;
 }
 
 /** Показатели колонки по группам шкал — в порядке, в котором их расставили в модели */
@@ -273,21 +404,29 @@ function groupBands(bands: StatModelBandIndicator[]): Map<string, StatModelBandI
   return byScale;
 }
 
-async function computeColumn(
-  column: StatModelColumn,
-  filters: SampleFilters,
-  survey: SurveyFull,
-  presetTitle: string | null,
-): Promise<{ column: StatRunColumn; size: number }> {
-  const sample = await sampleOf(column, filters);
+/** Колонка с уже набранной выборкой: состав нужен до расчёта — по нему считаются разности */
+interface Prepared {
+  column: StatModelColumn;
+  filters: SampleFilters;
+  survey: SurveyFull;
+  presetTitle: string | null;
+  sample: Respondent[];
+}
+
+async function computeColumn(prep: Prepared, overlapped: boolean): Promise<StatRunColumn> {
+  const { column, filters, survey, presetTitle, sample } = prep;
   const total = sample.length;
   const ids = sample.map((s) => s.responseId);
   /*
    * Колонка меньше порога подавляется целиком: и основание, и всё под ним.
    * Ноль показывается — «никого нет» не выдаёт никого, а спрятанный ноль
-   * заставляет думать, что там кто-то есть.
+   * заставляет думать, что там кто-то есть. Закрытая разностью составов
+   * подавляется так же: показанное основание с нулями под ним отдало бы
+   * ровно то, ради чего её закрыли.
    */
-  const open = total === 0 || canBreakDown(total);
+  const reason: StatSuppressReason | null =
+    total > 0 && !canBreakDown(total) ? "small" : overlapped ? "overlap" : null;
+  const open = reason === null;
 
   const scaleById = new Map(survey.scales.map((s) => [s.id, s]));
   const questionById = new Map(survey.questions.map((q) => [q.id, q]));
@@ -339,8 +478,10 @@ async function computeColumn(
 
   const riskHits = new Set<string>();
   let riskMarked = false;
-  /* хоть одна помеченная «ВШР» ячейка скрыта — «ВШР» скрывается вместе с ней, см. сборку колонки внизу */
+  /* скрыта группа с помеченной ячейкой — «ВШР» скрывается вместе с ней, см. riskCell */
   let riskHidden = false;
+  /* сумма помеченных ячеек: больше объединения ровно на число попавших в несколько */
+  let riskMarkedSum = 0;
 
   const scales: StatRunScale[] = [];
   for (const [scaleId, indicators] of groupBands(column.bands)) {
@@ -348,7 +489,8 @@ async function computeColumn(
     if (!scale) badRequest("err.statModelIndicatorUnknown", { what: scaleId });
     const parts = indicators.map((ind) => ({ key: ind.bandId, n: bandHits.get(ind.bandId)?.size ?? 0 }));
     const rest = total - parts.reduce((sum, p) => sum + p.n, 0);
-    const cells = open ? partitionCells([...parts, { key: "__rest", n: rest }], total) : null;
+    /* полосы одной шкалы не пересекаются: они с остатком — разбиение, порог с одного края */
+    const cells = open ? groupCells(parts, rest, total, false) : null;
     scales.push({
       scaleId,
       scaleCode: scale.code,
@@ -360,7 +502,9 @@ async function computeColumn(
         if (ind.highRisk) {
           riskMarked = true;
           if (cell.suppressed) riskHidden = true;
-          for (const id of bandHits.get(ind.bandId) ?? []) riskHits.add(id);
+          const hits = bandHits.get(ind.bandId) ?? new Set<string>();
+          riskMarkedSum += hits.size;
+          for (const id of hits) riskHits.add(id);
         }
         return {
           scaleId,
@@ -398,13 +542,14 @@ async function computeColumn(
       for (const o of hits) counts.set(o, (counts.get(o) ?? 0) + 1);
     }
     const parts = q.options.map((o) => ({ key: o.optionId, n: counts.get(o.optionId) ?? 0 }));
-    let cellOf: (key: string, n: number) => StatCell;
-    if (!open) cellOf = () => HIDDEN;
-    else if (question.type === "multiple") cellOf = (_key, n) => twoSidedCell(n, total);
-    else {
-      const cells = partitionCells([...parts, { key: "__rest", n: rest }], total);
-      cellOf = (key) => cells.get(key) ?? HIDDEN;
-    }
+    /*
+     * У multiple варианты — множества, а остаток — дополнение их объединения:
+     * порог с обоих краёв у каждой ячейки. У single/yesno это разбиение, и
+     * края второй ячейке дают соседи по группе.
+     */
+    const sets = question.type === "multiple";
+    const cells = open ? groupCells(parts, rest, total, sets) : null;
+    const cellOf = (key: string) => cells?.get(key) ?? HIDDEN;
     questionsOut.push({
       questionId: question.id,
       title: question.title,
@@ -412,64 +557,38 @@ async function computeColumn(
       options: q.options.map((o) => {
         const option = question.options.find((x) => x.id === o.optionId);
         if (!option) badRequest("err.statModelIndicatorUnknown", { what: `${question.title} → ${o.optionId}` });
-        const cell = cellOf(o.optionId, counts.get(o.optionId) ?? 0);
+        const cell = cellOf(o.optionId);
         if (o.highRisk) {
           riskMarked = true;
           if (cell.suppressed) riskHidden = true;
+          riskMarkedSum += counts.get(o.optionId) ?? 0;
           for (const [id, picked] of byResponse) if (picked.includes(o.optionId)) riskHits.add(id);
         }
         return { optionId: option.id, text: option.text, highRisk: o.highRisk, cell };
       }),
-      rest: cellOf("__rest", rest),
+      rest: cellOf(REST),
     });
   }
 
   return {
-    size: total,
-    column: {
-      title: column.title,
-      presetId: column.presetId,
-      presetTitle,
-      filters,
-      surveyId: survey.id,
-      surveyTitle: survey.title,
-      versionId: column.versionId,
-      versionNumber: survey.versionNumber,
-      respondents: open ? shown(total, total) : HIDDEN,
-      scales,
-      questions: questionsOut,
-      /*
-       * «ВШР» — объединение помеченных ячеек, а полосы одной шкалы и варианты
-       * одного выбора не пересекаются, так что внутри разбиения это их сумма.
-       * Показанная сумма поверх скрытого слагаемого называет его: двенадцать
-       * человек 5/2/5, помечены «Низький» и «Середній» — «Середній» спрятан
-       * вместе с остатком, а «ВШР: 7» отдаёт его как 7 − 5. Дополняющее
-       * подавление этого не видит: оно живёт внутри разбиения, а «ВШР» стоит
-       * поверх всех разбиений колонки.
-       *
-       * Поэтому «ВШР» показывается, только когда показана КАЖДАЯ помеченная
-       * ячейка: тогда все его слагаемые уже напечатаны, и он сообщает лишь,
-       * насколько помеченные множества пересекаются, — ни одна скрытая ячейка,
-       * помеченная или нет, остаток включая, в него не входит. То же для
-       * ответов с несколькими вариантами: разбиения у них нет, но «ВШР» над
-       * скрытым помеченным вариантом и показанным соседним отдаёт число
-       * выбравших первый без второго. Сам факт «ВШР скрыт» ничего не выдаёт:
-       * какие помеченные ячейки спрятаны, видно в той же колонке, а от
-       * подавления с обоих краёв порога этот случай неотличим.
-       *
-       * Отвергнуто: подать «ВШР» в suppressedKeys вместе с ячейками разбиения.
-       * Он не слагаемое разбиения, а сумма поверх него — при пометках в разных
-       * шкалах и вопросах и вовсе объединение, — так что suppressedKeys,
-       * получив «7» как ещё одну ячейку, спрятал бы, как и прежде, «Середній»
-       * с остатком и оставил бы «7» на виду. Честная версия того же — прятать
-       * ДОПОЛНИТЕЛЬНЫЕ ячейки таблицы ради сводного числа — жертвует главным
-       * ради производного. Не спасает и случай «помечены все полосы шкалы,
-       * «ВШР» равен основанию без остатка»: при скрытом остатке он его
-       * восстанавливает, при показанном — читатель вычисляет его и без нас,
-       * и спрятать его ничего не стоит.
-       */
-      highRisk: riskMarked ? (open && !riskHidden ? twoSidedCell(riskHits.size, total) : HIDDEN) : null,
-    },
+    title: column.title,
+    presetId: column.presetId,
+    presetTitle,
+    filters,
+    surveyId: survey.id,
+    surveyTitle: survey.title,
+    versionId: column.versionId,
+    versionNumber: survey.versionNumber,
+    respondents: open ? shown(total, total) : HIDDEN,
+    suppressedReason: reason,
+    scales,
+    questions: questionsOut,
+    /*
+     * Сам факт «ВШР скрыт» ничего не выдаёт: какие помеченные ячейки и группы
+     * спрятаны, видно в той же колонке, а от подавления с обоих краёв порога
+     * этот случай неотличим. Правила — в riskCell.
+     */
+    highRisk: riskMarked ? (open ? riskCell(riskHits.size, riskMarkedSum, riskHidden, total) : HIDDEN) : null,
   };
 }
 
@@ -484,14 +603,19 @@ async function computeColumn(
  * Размеры выборок возвращаются отдельно и без подавления — для журнала:
  * подбор фильтров, пока выборка не сожмётся до одного, должен быть виден
  * при разборе, как у cohort.preview.
+ *
+ * Выборки набираются ВСЕ до расчёта хоть одной: подавление колонки зависит
+ * не только от неё самой, но и от соседних — колонка, отличающаяся от
+ * соседней горсткой людей, закрывается целиком (closedByOverlap). Считать
+ * колонку сразу, как прежде, значило бы отдать её числа до того, как стало
+ * известно, с чем их сравнят.
  */
 export async function runColumns(
   user: User,
   columns: StatModelColumn[],
   lang: Lang,
 ): Promise<{ columns: StatRunColumn[]; sizes: number[] }> {
-  const out: StatRunColumn[] = [];
-  const sizes: number[] = [];
+  const prepared: Prepared[] = [];
   for (const column of columns) {
     await assertSurveyAccess(user, column.surveyId);
     let filters: SampleFilters = column.filters ?? {};
@@ -506,9 +630,15 @@ export async function runColumns(
     const survey = await getSurvey(column.surveyId, column.versionId, lang);
     if (!survey) notFound("err.surveyNotFound");
 
-    const { column: result, size } = await computeColumn(column, filters, survey, presetTitle);
-    out.push(result);
-    sizes.push(size);
+    prepared.push({ column, filters, survey, presetTitle, sample: await sampleOf(column, filters) });
   }
-  return { columns: out, sizes };
+
+  /*
+   * Состав — по людям, а не по прохождениям: колонки могут стоять на разных
+   * методиках и версиях, а разностью читатель описывает людей.
+   */
+  const closed = closedByOverlap(prepared.map((p) => new Set(p.sample.map((s) => s.userId))));
+  const out: StatRunColumn[] = [];
+  for (const [i, prep] of prepared.entries()) out.push(await computeColumn(prep, closed[i] ?? false));
+  return { columns: out, sizes: prepared.map((p) => p.sample.length) };
 }
