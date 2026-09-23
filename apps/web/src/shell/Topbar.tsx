@@ -83,13 +83,20 @@ interface TopItem {
  * Список отдан наружу ради проверки (apps/web/test/patientGroups.test.ts):
  * подмена адреса у этого пункта — тихая ошибка, глазами её не отличить.
  */
+/*
+ * «Повідомлення» ведут на розсилки (/mailings, кадры f09/f16/f22), а не на
+ * переписку. На кадре под этим словом — список «тема · начало текста · дата»
+ * с «+» и страницами, то есть письма автора многим; переписка с пациентом —
+ * разговор двоих, и она осталась на /messages под именем «Листування» в
+ * бургере (railGroups) и в палитре команд. Сторож — apps/web/test/mailings.test.ts.
+ */
 export const TOP: TopItem[] = [
   { key: "top.patients", to: "/patients" },
   { key: "top.groups", to: "/patient-groups" },
   { key: "top.tests", to: "/surveys" },
   { key: "top.analytics", to: "/analytics" },
   { key: "top.statistics", to: "/cohorts" },
-  { key: "top.messages", to: "/messages" },
+  { key: "top.messages", to: "/mailings" },
 ];
 
 /*
