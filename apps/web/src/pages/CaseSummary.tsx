@@ -8,7 +8,7 @@ import { useLang } from "../lang";
 import { NotesEditor } from "../components/NotesEditor";
 import { Hint } from "../components/Hint";
 import { SafetyPlanEditor } from "../components/SafetyPlanEditor";
-import { usePatientCard } from "./PatientCard";
+import { useCaseCard } from "./CaseCard";
 /*
  * Подписи направлений берутся из экрана направлений: держать вторую копию
  * тех же словарей — верный способ однажды показать «принято» в одном месте
@@ -33,7 +33,7 @@ import { DESTINATION_KEY, NEXT_STATUS, STATUS_KEY, URGENCY_KEY } from "./Referra
 export default function CaseSummaryTab() {
   const { ut } = useLang();
   const { run } = useAction();
-  const { data, reload } = usePatientCard();
+  const { data, reload } = useCaseCard();
 
   return (
     <>
