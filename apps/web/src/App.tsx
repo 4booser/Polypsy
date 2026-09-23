@@ -69,6 +69,14 @@ const TodayPage = lazy(() => import("./pages/Today"));
 const SchedulePage = lazy(() => import("./pages/Schedule"));
 const VisitPage = lazy(() => import("./pages/Visit"));
 const MessagesPage = lazy(() => import("./pages/Messages"));
+/*
+ * «Повідомлення» верхней полосы — розсилки (кадры f09/f16/f22): список,
+ * форма нового, форма существующего с меню-шестерни. Переписка пациент ↔
+ * специалист (MessagesPage выше) осталась на /messages и в бургере под
+ * именем «Листування»: это разные вещи — разговор двоих и письмо многим.
+ */
+const MailingList = lazy(() => import("./pages/messages/MailingList"));
+const MailingEditor = lazy(() => import("./pages/messages/MailingEditor"));
 const Cohorts = lazy(() => import("./pages/Cohorts"));
 const SearchPage = lazy(() => import("./pages/Search"));
 const UiKit = lazy(() => import("./pages/UiKit"));
@@ -645,6 +653,10 @@ export default function App() {
             <Route path="/visit/:id" element={<VisitPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/messages/:id" element={<MessagesPage />} />
+            {/* `new` объявлен раньше `:id` для читающего: маршрутизатор и так ставит точный сегмент выше */}
+            <Route path="/mailings" element={<MailingList />} />
+            <Route path="/mailings/new" element={<MailingEditor />} />
+            <Route path="/mailings/:id" element={<MailingEditor />} />
             <Route path="/cohorts" element={<Cohorts />} />
             <Route path="/search" element={<SearchPage />} />
           {/*
