@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import type { SurveyListItem } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
-import { SurveyOptions } from "../src/pages/analytics/Editor";
+import { SurveyOptions, TestPicker } from "../src/pages/analytics/Editor";
 import { ANY_TEST } from "../src/pages/analytics/model";
 
 /**
@@ -55,5 +55,37 @@ describe("опции селекта методик", () => {
     const html = render(<SurveyOptions surveys={listed} current="sv9" loaded={{ sv9: null }} />);
     expect(options(html)[0]![0]).toBe("sv9");
     expect(options(html)[0]![1]).toContain("Недоступний тест");
+  });
+});
+
+/**
+ * Список выбора теста — собственный (кадр f25), и обещания доступности у
+ * него тоже собственные: штатный <select> давал их сам, здесь их даёт
+ * разметка. Проверяется закрытое состояние — то, в котором поле живёт почти
+ * всё время: роль, свёрнутость, имя и подпись внутри поля.
+ */
+describe("поле выбора теста", () => {
+  const pick = (value: string) =>
+    renderToStaticMarkup(
+      <LangProvider>
+        <TestPicker value={value} surveys={listed} loaded={{}} onChange={() => {}} />
+      </LangProvider>,
+    );
+
+  test("закрытое поле: role=combobox, aria-expanded=false и ни списка, ни ссылки на него", () => {
+    const html = pick("");
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('role="listbox"');
+    expect(html).not.toContain("aria-controls");
+  });
+
+  test("пустое поле подписано изнутри, выбранное показывает название теста", () => {
+    expect(pick("")).toContain("Назва тесту");
+    expect(pick("sv1")).toContain("Шкала Бека");
+  });
+
+  test("«будь-який тест» остаётся видимым значением, хотя в списке его нет", () => {
+    expect(pick(ANY_TEST)).toContain("Будь-який тест");
   });
 });
