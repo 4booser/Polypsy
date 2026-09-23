@@ -154,8 +154,14 @@ export function Questions({
                   aria-controls={bodyId}
                   onClick={() => toggle(q, i)}
                   className={cx(
-                    /* кадр f12: бейдж 36, зазор 15, поля 15/17 — шаг строки 73 */
-                    "flex w-full items-center gap-[15px] border-0 bg-transparent px-[15px] py-[17px] text-left",
+                    /*
+                      Кадр f12: бейдж 36, зазор 15, шаг строки 73 (волосяные
+                      линии на 92, 165, 238, 312, 385, 459 — по 73). Поля по
+                      вертикали 15/14, а не 17/17: описание набрано тем же
+                      кеглем, что и заголовок (см. ниже), обе строки идут
+                      межстрочником 22, и 15 + 22 + 22 + 14 как раз дают 73.
+                    */
+                    "flex w-full items-center gap-[15px] border-0 bg-transparent px-[15px] pb-[14px] pt-[15px] text-left",
                     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
                   )}
                 >
@@ -166,12 +172,20 @@ export function Questions({
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    {/* шаг строки кадра f12 — 73: 17 сверху + 22 + 17 текста + 17 снизу */}
+                    {/* шаг строки кадра f12 — 73: 15 сверху + 22 + 22 текста + 14 снизу */}
                     <span className={cx("block truncate text-[17px] font-bold leading-[22px]", isOpen ? "text-muted" : "text-primary")}>
                       <span className="sr-only">{i + 1}. </span>
                       {text(q.title) || ut("co.questions")}
                     </span>
-                    <span className={cx("block truncate text-[13px] leading-[17px]", isOpen ? "text-faint" : "text-muted")}>
+                    {/*
+                      Описание набрано 17, а не 13. На кадре f12 рост строчных
+                      у «короткий опис питання» — 9 px (строки 64–72 вырезки),
+                      ровно как у имени теста 17/700 в каталоге; заголовок
+                      «Питання» даёт cap 12 — тот же кегль 17. Отличаются они
+                      начертанием и цветом, а не размером. Базовые линии двух
+                      строк стоят на 48 и 72 — межстрочник 22 у обеих.
+                    */}
+                    <span className={cx("block truncate text-[17px] leading-[22px]", isOpen ? "text-faint" : "text-muted")}>
                       {text(q.help) || ut("cn.shortDescription")}
                     </span>
                   </span>
