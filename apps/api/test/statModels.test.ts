@@ -275,6 +275,26 @@ function column(extra: Partial<{ title: string; presetId: string; filters: objec
   };
 }
 
+/**
+ * Та же колонка, но пометки «ВШР» только на названных полосах и вариантах:
+ * утечка через «ВШР» зависит от того, какие именно ячейки помечены.
+ */
+function markedColumn(
+  extra: Parameters<typeof column>[0],
+  marks: Partial<{ band: (keyof Content["band"])[]; sleep: (keyof Content["sleep"])[]; why: (keyof Content["why"])[] }>,
+) {
+  const flag = <K extends string>(ids: Record<K, string>, keys: K[] = []) =>
+    (Object.keys(ids) as K[]).map((k) => ({ id: ids[k], highRisk: keys.includes(k) }));
+  return {
+    ...column(extra),
+    bands: flag(content.band, marks.band).map((b) => ({ scaleId: content.scaleId, bandId: b.id, highRisk: b.highRisk })),
+    questions: [
+      { questionId: content.sleepQ, options: flag(content.sleep, marks.sleep).map((o) => ({ optionId: o.id, highRisk: o.highRisk })) },
+      { questionId: content.whyQ, options: flag(content.why, marks.why).map((o) => ({ optionId: o.id, highRisk: o.highRisk })) },
+    ],
+  };
+}
+
 const preview = (columns: object[], actor: Person = adminA) =>
   api<StatRunResult>("/api/stat-models/run", actor.token, { method: "POST", body: JSON.stringify({ columns }) });
 
@@ -700,16 +720,33 @@ describe("порог малых чисел", () => {
    * Проверяется не «сколько скрыто», а то, можно ли вычислить скрытое: из
    * показанного основания и показанных ячеек разбиения считается остаток,
    * и если скрыта ровно одна ячейка, она названа — просто не своими руками.
+   * «ВШР» — ещё одно показанное число поверх тех же ячеек: сумма помеченных
+   * (у ответов с несколькими вариантами — объединение), и над скрытой
+   * помеченной ячейкой он называет её так же: 7 − 5. Поэтому вторая часть
+   * проверки: показанный «ВШР» не стоит ни над одной скрытой помеченной
+   * ячейкой — ни в полосах, ни в вариантах одного выбора, ни в нескольких.
    *
    * Мутация: заменить suppressedKeys в partitionCells на простое
    * подавление по порогу — в «Чоловіки 25–45» скрытой остаётся одна
    * «Середній», остаток 0 показан, и проверка называет её: 12 − 5 − 5 − 0.
+   * Мутация: считать «ВШР» без riskHidden, одним twoSidedCell от
+   * riskHits.size, как прежде, — в «низький+середній» «ВШР: 7» показан
+   * поверх скрытой «Середній», и проверка называет колонку, шкалу и ячейку;
+   * следом то же по «Так собі» в вопросе и по «Думки» среди нескольких.
    */
   test("скрытую ячейку нельзя восстановить вычитанием из показанного основания", async () => {
+    const men25 = { title: "Чоловіки 25–45", filters: { sex: "male", ageMin: 25, ageMax: 45 } };
     const res = await preview([
-      column({ title: "Чоловіки 25–45", filters: { sex: "male", ageMin: 25, ageMax: 45 } }),
+      column(men25),
       column({ title: "Усі" }),
       column({ title: "Група", filters: { patientGroupId: groupId } }),
+      // сценарий ревью: помечены показанная и скрытая ячейки одного разбиения — в полосах и в вариантах одного выбора
+      markedColumn({ ...men25, title: "низький+середній" }, { band: ["low", "mid"] }),
+      markedColumn({ ...men25, title: "добре+так собі" }, { sleep: ["good", "soso"] }),
+      // несколько вариантов: «Шум» 10 из 16 показан, «Думки» 3 скрыты, и все думающие слышат шум
+      markedColumn({ title: "шум+думки" }, { why: ["noise", "thoughts"] }),
+      // скрытая ячейка БЕЗ пометки «ВШР» не прячет: он равен показанному «Низький» и ничего не добавляет
+      markedColumn({ ...men25, title: "лише низький" }, { band: ["low"] }),
     ]);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
 
@@ -735,13 +772,44 @@ describe("порог малых чисел", () => {
         const shownSum = p.cells.reduce((sum, c) => sum + (c.cell.suppressed ? 0 : c.cell.count), 0);
         leaks.push(`«${col.title}», ${p.name}: «${hidden[0]!.label}» восстанавливается вычитанием: ${total} − ${shownSum} = ${total - shownSum}`);
       }
+
+      // «ВШР» — сумма помеченных ячеек; показанный поверх скрытой помеченной он называет её тем же вычитанием
+      const risk = col.highRisk;
+      if (!risk || risk.suppressed) continue;
+      const marked = [
+        ...col.scales.flatMap((s) =>
+          s.bands.filter((b) => b.highRisk).map((b) => ({ where: `шкала «${s.scaleTitle}»`, label: b.label, cell: b.cell })),
+        ),
+        ...col.questions.flatMap((q) =>
+          q.options.filter((o) => o.highRisk).map((o) => ({ where: `питання «${q.title}»`, label: o.text, cell: o.cell })),
+        ),
+      ];
+      const shownMarked = marked.reduce((sum, c) => sum + (c.cell.suppressed ? 0 : c.cell.count), 0);
+      for (const c of marked) {
+        if (!c.cell.suppressed) continue;
+        leaks.push(`«${col.title}», ${c.where}: «${c.label}» скрыта, а «ВШР» показан поверх неё: ${risk.count} при показанных помеченных ${shownMarked}`);
+      }
     }
     expect(leaks).toEqual([]);
 
     // и в конкретных числах: «Середній: 2» спрятан вместе с остатком, а не один
-    const men25 = res.body.columns[0]!;
-    expect(men25.scales[0]!.bands.map((b) => `${b.label}: ${cellOf(b.cell)}`)).toEqual(["Низький: 5/42%", "Середній: ×", "Високий: 5/42%"]);
-    expect(men25.scales[0]!.rest).toEqual({ suppressed: true });
+    const [plain, , , lowMid, goodSoso, noiseThoughts, lowOnly] = res.body.columns as StatRunColumn[];
+    const bands = (col: StatRunColumn) => col.scales[0]!.bands.map((b) => `${b.label}: ${cellOf(b.cell)}`);
+    const options = (col: StatRunColumn, i: number) => col.questions[i]!.options.map((o) => `${o.text}: ${cellOf(o.cell)}`);
+    expect(bands(plain!)).toEqual(["Низький: 5/42%", "Середній: ×", "Високий: 5/42%"]);
+    expect(plain!.scales[0]!.rest).toEqual({ suppressed: true });
+
+    // сценарий ревью: те же 12 человек 5/2/5, помечены «Низький» и «Середній» — «ВШР: 7» назвал бы «Середній» как 7 − 5
+    expect(bands(lowMid!)).toEqual(["Низький: 5/42%", "Середній: ×", "Високий: 5/42%"]);
+    expect(lowMid!.highRisk, "«ВШР» показан поверх скрытой «Середній»: 7 − 5 = 2").toEqual({ suppressed: true });
+    // то же по вопросу с одним выбором
+    expect(options(goodSoso!, 0)).toEqual(["Добре: 5/42%", "Так собі: ×", "Погано: 5/42%"]);
+    expect(goodSoso!.highRisk, "«ВШР» показан поверх скрытой «Так собі»: 7 − 5 = 2").toEqual({ suppressed: true });
+    // несколько вариантов: «ВШР: 10» при «Шум: 10» сообщил бы, что думающих без шума нет
+    expect(options(noiseThoughts!, 1)).toEqual(["Шум: 10/63%", "Думки: ×", "Біль: 0/0%"]);
+    expect(noiseThoughts!.highRisk, "«ВШР» показан поверх скрытой «Думки»").toEqual({ suppressed: true });
+    // а скрытая непомеченная «Середній» «ВШР» не прячет: он равен показанному «Низький» — прятать нечего
+    expect(lowOnly!.highRisk, "«ВШР» спрятан, хотя все помеченные ячейки показаны").toEqual({ suppressed: false, count: 5, percent: 42 });
   });
 
   /**
