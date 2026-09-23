@@ -434,6 +434,10 @@ export const ERRORS = {
   "err.recordingInProgress": { uk: "Запис зараз іде", ru: "Запись сейчас идёт" },
   "err.recordingNotRunning": { uk: "Запис не йде", ru: "Запись не идёт" },
   "err.recordingAlready": { uk: "Прийом вже записано", ru: "Приём уже записан" },
+  "err.recordingGone": {
+    uk: "Запис уже не йде: його зупинили або видалили",
+    ru: "Запись уже не идёт: её остановили или удалили",
+  },
   "err.recordingTooLarge": { uk: "Файл завеликий", ru: "Файл слишком большой" },
   "err.recordingTranscribed": {
     uk: "Розшифровку вже зроблено: видаляти запис пізно, текст у картці",
