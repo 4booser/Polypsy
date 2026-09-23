@@ -12,6 +12,7 @@ import {
   IconClock,
   IconDashboard,
   IconGroup,
+  IconMessage,
   IconPatients,
   IconReferral,
   IconStack,
@@ -138,6 +139,14 @@ export function railGroups(
          */
         { to: "/patient-groups", key: "nav.groups", icon: <IconGroup /> },
         { to: "/my-schedule", key: "nav.reception", icon: <IconClock /> },
+        /*
+         * Переписка с пациентом. Пункт полосы «Повідомлення» ушёл на
+         * розсилки (кадр f09), и без этой строки у переписки осталась бы
+         * одна дверь — палитра команд. Ключ — заголовок самого экрана
+         * («Листування»), чтобы два «Повідомлення» не вели на два разных
+         * экрана.
+         */
+        { to: "/messages", key: "ms.title", icon: <IconMessage /> },
       ],
     },
     {
