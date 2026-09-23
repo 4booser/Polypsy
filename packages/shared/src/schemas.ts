@@ -321,7 +321,6 @@ export const patientGroupMembersRemoveSchema = z.object({
   userIds: z.array(z.string().min(1)).min(1).max(200),
 });
 
-
 /**
  * Назначение методики на всю группу.
  *

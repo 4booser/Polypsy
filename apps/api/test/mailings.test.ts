@@ -14,6 +14,7 @@ import { auditLog, mailingRecipients, mailings, pushTokens, surveyAccess } from 
 import { pushMailings } from "../src/lib/mailingPush";
 import { setPushSenderForTests } from "../src/lib/push";
 import { ROUTE_DOCS } from "../src/lib/openapi";
+import { underAppRole } from "./appRole";
 
 /**
  * Рассылки — сообщение «одному многим» с вариантами ответа (кадры f09/f16/f22).
@@ -656,3 +657,46 @@ describe("описание маршрутов", () => {
     expect((entry!.details as { recipients: number }).recipients).toBe(1);
   });
 });
+
+describe("ящик получателя под боевой ролью", () => {
+  /**
+   * Имя автора — под политиками строк, а не владельцем базы.
+   *
+   * Владелец политики обходит, и тест выше проходит на любом имени: у него
+   * users читаются целиком. В бою пациент видит в users только свою строку
+   * (0075), и соединение с автором пусто — «—» у каждой рассылки. Ловится
+   * только отдельным процессом под ролью без прав владельца (см. appRole.ts).
+   *
+   * Мутация: вернуть leftJoin(users) в запрос ящика вместо authorNames —
+   * тест падает, называя «—».
+   */
+  test("имя автора приходит пациенту, хотя users ему закрыта", async () => {
+    // почта нужна для входа из дочернего процесса — Person её не хранит; с доменом: вход проверяет форму адреса
+    const email = `ml-rls-inbox-${crypto.randomUUID()}@test.dev`;
+    const me = await makeUser("user", email);
+    await db.insert(surveyAccess).values({ surveyId: surveyInA, userId: me.id, grantedBy: adminA.id });
+    const m = await draft(adminA, { patientIds: [me.id] });
+    expect((await send(adminA, m.id)).status).toBe(200);
+
+    const out = await underAppRole<{ login: number; inbox: number; authorName: string }>(`
+      const login = await app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: ${JSON.stringify(email)}, password: "secret12345" }),
+      });
+      out.login = login.status;
+      const auth = { Authorization: "Bearer " + (await login.json()).token };
+      const inbox = await app.request("/api/mailings/inbox", { headers: auth });
+      out.inbox = inbox.status;
+      const items = (await inbox.json()).items ?? [];
+      out.authorName = (items.find((i) => i.id === ${JSON.stringify(m.id)}) ?? {}).authorName;
+    `);
+    expect(out.error, out.error).toBeUndefined();
+    expect(out.rlsActive, "роль обходит политики — проверка ничего не доказывает").toBe(true);
+    expect(out.login).toBe(200);
+    expect(out.inbox).toBe(200);
+    // имя из фикстуры: «Тест» + фамилия из почты; сравнивать с «—» мало — пустая строка тоже не «—»
+    expect(out.authorName, "имя автора под боевой ролью").toContain("Тест");
+  });
+});
+
