@@ -251,13 +251,35 @@ describe("язык содержимого следует за читателем
      * язык нечего.
      */
     const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
-    await db.insert(surveyAccess).values({
-      surveyId: surveyInA,
-      userId: patient.id,
-      grantedBy: adminA.id,
-      expiresAt: past,
-      note: "Протокол наблюдения · проверка языка",
-    } as never);
+    /*
+     * Выдача ставится upsert-ом, а не простой вставкой.
+     *
+     * Ключ survey_access — пара «методика и человек», и эта пара в общей базе
+     * не только наша: любой файл, назначивший surveyInA пациенту (через
+     * группу, набор или маршрут выдачи), занимает её раньше. Порядок файлов
+     * задаёт файловая система — на macOS он алфавитный, на Linux нет, — и
+     * простая вставка роняла проверку языка отказом ключа на CI, оставаясь
+     * зелёной у всех локально. Падало при этом не там, где сломано: сообщение
+     * говорило про survey_access, а речь шла про порядок файлов.
+     *
+     * Отвергнуто onConflictDoNothing: ему нечего сказать, если строка уже
+     * есть, а проверке нужен ПРОСРОЧЕННЫЙ повтор — с чужим сроком в будущем
+     * очередь работы этой строки не покажет, и тест молча проверял бы пустой
+     * список. Здесь важно не «строка есть», а «строка такая, как нужно».
+     */
+    await db
+      .insert(surveyAccess)
+      .values({
+        surveyId: surveyInA,
+        userId: patient.id,
+        grantedBy: adminA.id,
+        expiresAt: past,
+        note: "Протокол наблюдения · проверка языка",
+      } as never)
+      .onConflictDoUpdate({
+        target: [surveyAccess.surveyId, surveyAccess.userId],
+        set: { grantedBy: adminA.id, expiresAt: past, note: "Протокол наблюдения · проверка языка" },
+      });
   });
 
   test("очередь работы отдаёт названия на языке запроса", async () => {
