@@ -1,6 +1,8 @@
 
+import { useId, type ReactNode } from "react";
 import type { UiKey } from "@quizzy/shared";
 import { api, type ConclusionState } from "../api";
+import { cx } from "../ui/cx";
 import { day } from "../format";
 import { useAction } from "../ui";
 import { useLang } from "../lang";
@@ -110,13 +112,15 @@ export function ConclusionEditor({
       ) : null}
 
       {/*
-        Полоса форматирования кадра f39_2: сиреневая, 34 высотой, с белыми
-        плашками. Набрана по замеру — ¶ · гарнитура · начертание · кегль ·
-        образец цвета · «A» · B · I · U · четыре выравнивания — и выключена
-        целиком: см. пояснение к компоненту. Каждая плашка подписана для
-        диктора и несёт причину наведением; глифы кадра («B», «I», «U»,
-        полоски выравнивания) нарисованы, а не набраны символами — в
-        подключённых подмножествах шрифтов их нет.
+        Полоса форматирования кадра f39_2/f38_3: сиреневая, 40 высотой, с
+        белыми плашками 30. Набрана по замеру — ¶ · гарнитура · начертание ·
+        кегль · образец цвета · «A» · B · I · U · четыре выравнивания — и
+        выключена целиком: см. пояснение к компоненту. Каждая плашка подписана
+        для диктора; причину недоступности человек видит подсказкой над любой
+        плашкой (подпись на обёртке, а не на выключенной кнопке), диктор —
+        через aria-describedby панели. Глифы кадра («B», «I», «U», полоски
+        выравнивания) нарисованы, а не набраны символами — в подключённых
+        подмножествах шрифтов их нет.
       */}
       <FormatBar />
       {/*
@@ -152,13 +156,16 @@ export function ConclusionEditor({
         : null}
 
       {/*
-        Внизу кадра f39_2 одна кнопка — «Сформувати заключення», 294×45 у
-        правого края колонки, от поля до неё 64 px. Ширину задаёт текст, а не
+        Внизу кадра f38_3 одна кнопка — «Сформувати заключення», 294×45 у
+        правого края колонки, от поля до неё 78 px. Ширину задаёт текст, а не
         число: на русском надпись длиннее. «Зберегти чернетку» ушла в меню
         шестерёнки экрана, пояснение «у звіт іде лише підписане» — в подпись
         наведения этой кнопки.
+
+        78, а не 64: нижняя рамка поля текста на кадре стоит на 680, верх
+        плашки кнопки — на 758 (вырезка хвоста экрана, 1500×320 от 10600).
       */}
-      <div className="mt-[64px] flex justify-end">
+      <div className="mt-[78px] flex justify-end">
         <Button
           size="md"
           title={ut("cnc.onlySignedInReport")}
@@ -187,7 +194,7 @@ export function ConclusionEditor({
 }
 
 /**
- * Полоса форматирования кадра f39_2 — нарисованная и выключенная целиком.
+ * Полоса форматирования кадра f39_2/f38_3 — нарисованная и выключенная целиком.
  *
  * Почему выключенная, а не отсутствующая: кадр — истина, и полосы на экране
  * не может не быть. Почему не работающая: conclusions.text хранится простым
@@ -195,60 +202,80 @@ export function ConclusionEditor({
  * есть), формат разметки сервер не объявлял, и включённые кнопки писали бы в
  * подписанный клинический документ теги, которых никто не прочтёт.
  *
- * Плашки набраны по замеру кадра при колонке 1200: ¶ 27 · гарнитура 214 ·
- * начертание 201 · кегль 41 · образец цвета 41 · «A» 42 · B/I/U по 40 ·
- * четыре выравнивания по 35. Все — `disabled`, у каждой своё имя для диктора
- * и общая причина наведением.
+ * Плашки пересобраны по вырезке кадра при колонке 1200 (полоса ровно 1200 в
+ * ширину, поля по 16, высота 40, плашка 30): ¶ 30 · 61 · гарнитура 213 · 18 ·
+ * начертание 195 · 15 · кегль 45 · 61 · образец цвета 45 · 15 · «A» 45 · 55 ·
+ * B 45 · 2 · I 44 · 2 · U 45 · 50 · четыре выравнивания 45/44/44/43 через 2.
+ * Числа в сумме с полями дают ровно 1200, и колонка страницы ровно 1200
+ * (max-w-1248 минус поля 24) — поэтому ширины заданы пикселями, а не долями.
+ * Прежняя редакция держала один зазор 10 на все плашки и размеры 27/214/201/
+ * 41/41/42/40/35: полоса собиралась в ту же ширину, но ни одна группа не
+ * стояла там, где нарисована.
+ *
+ * ПРИЧИНА НЕДОСТУПНОСТИ. Прежде она висела `title` на самой `disabled`-кнопке
+ * — и не показывалась никогда: выключенной кнопке браузер не доставляет
+ * события мыши, а всплывающую подпись рисует по ним. Теперь подпись стоит на
+ * ОБЁРТКЕ плашки — обёртка не выключена, наведение до неё доходит, и причина
+ * всплывает над любой плашкой полосы. Диктору та же причина дана иначе:
+ * `aria-describedby` с панели на скрытый абзац под ней — `title` на
+ * выключенной кнопке многие дикторы не читают вовсе.
  */
 function FormatBar() {
   const { ut } = useLang();
   const why = ut("fmt.unavailable");
-  /* плашка полосы: белая, радиус 4, высота 26 — замер кадра */
+  const whyId = useId();
+  /* плашка полосы: белая, радиус 4, высота 30 — замер кадра */
   const chip = (extra: string) =>
-    "flex h-[26px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-[var(--bg)] px-[6px] text-[13px] text-text-2 opacity-100 disabled:opacity-60 " +
+    "flex h-[30px] w-full items-center justify-center rounded-[4px] border-0 bg-[var(--bg)] px-[6px] text-[13px] text-text-2 opacity-100 disabled:opacity-60 " +
     extra;
-  const boxes: [UiKey, string, string][] = [
-    ["fmt.paragraph", "¶", "w-[27px]"],
-    ["fmt.font", "Ariel", "w-[214px]"],
-    ["fmt.weight", "Regular", "w-[201px]"],
-    ["fmt.size", "12", "w-[41px]"],
+  /*
+   * [ключ, рисунок, класс места (левый отступ и ширина), класс начертания].
+   * Отступ слева, а не общий `gap`: зазоры на кадре разные (61 между группами,
+   * 2 внутри группы), и один `gap` их не выражает.
+   */
+  const plates: [UiKey, ReactNode, string, string][] = [
+    ["fmt.paragraph", "¶", "w-[30px]", ""],
+    ["fmt.font", "Ariel", "ml-[61px] w-[213px]", ""],
+    ["fmt.weight", "Regular", "ml-[18px] w-[195px]", ""],
+    ["fmt.size", "12", "ml-[15px] w-[45px]", ""],
+    /* образец цвета — не буква, а заливка: на кадре это прямоугольник */
+    [
+      "fmt.highlight",
+      <span aria-hidden className="block h-[14px] w-[24px] rounded-[3px] bg-primary-dim" />,
+      "ml-[61px] w-[45px]",
+      "",
+    ],
+    ["fmt.color", "A", "ml-[15px] w-[45px]", "font-bold text-primary"],
+    ["fmt.bold", "B", "ml-[55px] w-[45px]", "font-bold"],
+    ["fmt.italic", "I", "ml-[2px] w-[44px]", "italic"],
+    ["fmt.underline", "U", "ml-[2px] w-[45px]", "underline"],
+    ["fmt.alignLeft", <AlignGlyph at={0} />, "ml-[50px] w-[45px]", ""],
+    ["fmt.alignCenter", <AlignGlyph at={1} />, "ml-[2px] w-[44px]", ""],
+    ["fmt.alignRight", <AlignGlyph at={2} />, "ml-[2px] w-[44px]", ""],
+    ["fmt.alignJustify", <AlignGlyph at={3} />, "ml-[2px] w-[43px]", ""],
   ];
-  const marks: [UiKey, string, string][] = [
-    ["fmt.bold", "B", "font-bold"],
-    ["fmt.italic", "I", "italic"],
-    ["fmt.underline", "U", "underline"],
-  ];
-  const aligns: UiKey[] = ["fmt.alignLeft", "fmt.alignCenter", "fmt.alignRight", "fmt.alignJustify"];
   return (
-    <div
-      role="toolbar"
-      aria-label={ut("cn3.verdicts")}
-      aria-disabled
-      className="flex min-h-[34px] flex-wrap items-center gap-[10px] rounded-t-[5px] bg-primary-soft px-[10px] py-[4px]"
-    >
-      {boxes.map(([key, glyph, w]) => (
-        <button key={key} type="button" disabled title={why} aria-label={ut(key)} className={chip(w)}>
-          {glyph}
-        </button>
-      ))}
-      {/* образец цвета — не буква, а заливка: на кадре это прямоугольник */}
-      <button type="button" disabled title={why} aria-label={ut("fmt.highlight")} className={chip("w-[41px]")}>
-        <span aria-hidden className="block h-[14px] w-[24px] rounded-[3px] bg-primary-dim" />
-      </button>
-      <button type="button" disabled title={why} aria-label={ut("fmt.color")} className={chip("w-[42px] font-bold text-primary")}>
-        A
-      </button>
-      {marks.map(([key, glyph, look]) => (
-        <button key={key} type="button" disabled title={why} aria-label={ut(key)} className={chip(`w-[40px] ${look}`)}>
-          {glyph}
-        </button>
-      ))}
-      {aligns.map((key, i) => (
-        <button key={key} type="button" disabled title={why} aria-label={ut(key)} className={chip("w-[35px]")}>
-          <AlignGlyph at={i} />
-        </button>
-      ))}
-    </div>
+    <>
+      <div
+        role="toolbar"
+        aria-label={ut("cn3.verdicts")}
+        aria-disabled
+        aria-describedby={whyId}
+        className="flex min-h-[40px] flex-wrap items-center gap-y-[5px] rounded-t-[5px] bg-primary-soft px-[16px] py-[5px]"
+      >
+        {plates.map(([key, glyph, box, look]) => (
+          <span key={key} title={why} className={cx("flex shrink-0", box)}>
+            <button type="button" disabled aria-label={ut(key)} className={chip(look)}>
+              {glyph}
+            </button>
+          </span>
+        ))}
+      </div>
+      {/* причина — словами, а не только подсказкой наведения: см. пояснение выше */}
+      <p id={whyId} className="sr-only">
+        {why}
+      </p>
+    </>
   );
 }
 
