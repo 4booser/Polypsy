@@ -5,6 +5,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { visitRecordings } from "../db/schema";
 import { env } from "../env";
+import { activeKey, keyById } from "./crypto";
 import { log } from "./log";
 
 /**
@@ -16,16 +17,41 @@ import { log } from "./log";
  * узнает.
  */
 
-/** Ключ шифрования файлов — тот же, что у полей: одна вещь, которую нельзя потерять */
-function fileKey(): Buffer | null {
-  const spec = env.encryptionKeys;
-  if (!spec) return null;
-  // формат тот же, что в lib/crypto: "id:base64key" через запятую, первый — активный
-  const first = spec.split(",")[0]?.trim();
-  const raw = first?.includes(":") ? first.split(":")[1] : first;
-  if (!raw) return null;
-  const key = Buffer.from(raw, "base64");
-  return key.length === 32 ? key : null;
+/**
+ * Каким ключом зашифрован файл — написано в самом файле.
+ *
+ * Заголовок «enc1:<id ключа>:» повторяет разметку шифрованных полей (см.
+ * lib/crypto), дальше идут iv, тег и тело. Без него запись читалась первым
+ * ключом из списка — то есть ротация ключей делала все прежние записи
+ * приёмов нечитаемыми. Заметно это стало бы не в день ротации, а когда
+ * специалист откроет прошлогодний приём: файл на диске есть, расшифровать
+ * нечем, и понять, каким ключом он писался, уже неоткуда.
+ *
+ * Файлы без заголовка — записанные до этой правки — читаются первым ключом,
+ * как и раньше: другого способа их прочесть нет.
+ */
+const FILE_PREFIX = "enc1";
+/** Идентификатор ключа короткий («v1»); с запасом хватит на любое имя */
+const MAX_HEADER = 80;
+
+function fileHeader(keyId: string): Buffer {
+  return Buffer.from(`${FILE_PREFIX}:${keyId}:`, "utf8");
+}
+
+/** Разобрать заголовок: ключ файла и то, что после заголовка */
+function openFile(blob: Buffer): { key: Buffer; body: Buffer } {
+  const head = blob.subarray(0, MAX_HEADER).toString("latin1");
+  if (head.startsWith(`${FILE_PREFIX}:`)) {
+    const end = head.indexOf(":", FILE_PREFIX.length + 1);
+    const keyId = end > 0 ? head.slice(FILE_PREFIX.length + 1, end) : "";
+    const key = keyId ? keyById(keyId) : undefined;
+    if (!key) throw new Error(`ключ ${keyId || "?"} не найден: запись приёма не расшифровать`);
+    return { key, body: blob.subarray(end + 1) };
+  }
+  // легаси: заголовка нет, писалось активным ключом
+  const active = activeKey();
+  if (!active) throw new Error("шифрование не настроено");
+  return { key: active.key, body: blob };
 }
 
 /**
@@ -36,26 +62,25 @@ function fileKey(): Buffer | null {
  * следующем разборе бэкапов.
  */
 export async function storeAudio(id: string, bytes: Uint8Array): Promise<string> {
-  const key = fileKey();
-  if (!key) throw new Error("шифрование не настроено: запись приёма не сохраняется открытой");
+  const active = activeKey();
+  if (!active) throw new Error("шифрование не настроено: запись приёма не сохраняется открытой");
 
   const path = resolve(join(env.recordingsDir, `${id}.enc`));
   await mkdir(dirname(path), { recursive: true });
 
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const cipher = createCipheriv("aes-256-gcm", active.key, iv);
   const body = Buffer.concat([cipher.update(bytes), cipher.final()]);
-  await writeFile(path, Buffer.concat([iv, cipher.getAuthTag(), body]));
+  await writeFile(path, Buffer.concat([fileHeader(active.id), iv, cipher.getAuthTag(), body]));
   return path;
 }
 
 export async function readAudio(path: string): Promise<Buffer> {
-  const key = fileKey();
-  if (!key) throw new Error("шифрование не настроено");
   const blob = await readFile(path);
-  const iv = blob.subarray(0, 12);
-  const tag = blob.subarray(12, 28);
-  const body = blob.subarray(28);
+  const { key, body: payload } = openFile(blob);
+  const iv = payload.subarray(0, 12);
+  const tag = payload.subarray(12, 28);
+  const body = payload.subarray(28);
   const decipher = createDecipheriv("aes-256-gcm", key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(body), decipher.final()]);
