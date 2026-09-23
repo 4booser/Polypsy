@@ -366,7 +366,7 @@ function Row({
      * всю колонку содержимого. Это 5 % фиолетового на листе; --primary-soft
      * (10 %) дал бы заметно темнее. `relative` держит «⋯»: см. ниже.
      */
-    <tr className="group relative hover:bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]">
+    <tr className="group hover:bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]">
       <td className={cx(cell, "pr-[24px]")}>
         {/* метки ушли в title и в меню «⋯»: на кадре под названием пусто */}
         <Link

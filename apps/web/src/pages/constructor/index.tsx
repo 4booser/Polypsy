@@ -23,7 +23,7 @@ import {
 import { Preview } from "./Preview";
 import { IconGroup, IconPatients, Loading } from "../../ui";
 import { Page } from "../../ui/layout";
-import { Button, Select, Tabs, Textarea } from "../../ui/primitives";
+import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
 import { IconCaution, IconCross, IconGear } from "../../ui/glyphs";
@@ -428,19 +428,18 @@ export default function Constructor() {
             содержит только uk и ru, и пустая строка в списке обещала бы язык,
             которого нет ни в одном поле теста.
           */}
-          <label className="flex items-center gap-[8px]">
-            <span className="sr-only">{ut("cn.editLang")}</span>
+          <Field label={ut("cn.editLang")} inline className="w-[110px] shrink-0">
             <Select
               value={editLang}
               onChange={(e) => setEditLang(e.target.value as Lang)}
               title={ut("cn.editLangHint")}
-              className="w-[110px] text-[17px] font-bold text-primary"
+              className="text-[17px] font-bold text-primary"
             >
               {(["uk", "ru"] as const).map((l) => (
                 <option key={l} value={l}>{makeUiT(l)("top.lang")}</option>
               ))}
             </Select>
-          </label>
+          </Field>
           {tools}
         </>
       }
@@ -524,13 +523,27 @@ export default function Constructor() {
         </div>
       ) : null}
 
-      {/* колонка формы по кадру: ~700px по центру; переключатель языка ушёл в шапку */}
-      <div className="mx-auto w-full max-w-[700px]">
-        <EditLangProvider value={editLang}>
-          {/* «Назва тесту» и «Опис тесту» — видимые подписи НАД пустыми полями (f23_1, f24_1) */}
+      <EditLangProvider value={editLang}>
+        {/*
+          Название и описание.
+
+          При заведении (кадры f23_1, f24_1) они стоят в колонке формы 700 —
+          видимыми подписями 18/700 НАД пустыми полями. При правке (f18, f29)
+          описание идёт во всю колонку содержимого 1200: там оно уже текст, а
+          не поле для набора, и читают его целиком. Название на кадрах правки
+          печатается заголовком экрана, но поле под ним остаётся — иначе
+          методику нельзя переименовать.
+        */}
+        <div className={id ? "" : "mx-auto w-full max-w-[700px]"}>
           <Loc above label={ut("cn.testTitle")} value={draft.title} onChange={(v) => patch({ title: v })} />
           {/* четыре строки: поле описания на кадре f24_1 — 125px при 17/1.55 */}
           <Loc above label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={4} />
+        </div>
+      </EditLangProvider>
+
+      {/* остальная форма — колонка 700 по центру, как на кадрах */}
+      <div className="mx-auto w-full max-w-[700px]">
+        <EditLangProvider value={editLang}>
 
           <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
 
