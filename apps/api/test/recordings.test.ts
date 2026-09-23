@@ -180,10 +180,33 @@ describe("расшифровка", () => {
 
     const { storeAudio } = await import("../src/lib/recordings");
     const path = await storeAudio(`test-${crypto.randomUUID()}`, new Uint8Array([1, 2, 3, 4]));
+    /*
+     * Дата заведения отодвинута в прошлое: transcribeNext забирает САМУЮ
+     * СТАРУЮ запись со статусом «uploaded» по всей таблице, а база у тестовых
+     * файлов одна на процесс. Соседний файл, оставивший свою запись в
+     * очереди, уводил расшифровку себе — и проверка падала на Linux, где
+     * порядок файлов задаёт файловая система, а на macOS проходила.
+     * Ставить заглушку в очередь и вычищать чужие строки нельзя: их ждут
+     * те, кто их положил.
+     */
     await db
       .update(visitRecordings)
-      .set({ status: "uploaded", audioPath: path })
+      .set({ status: "uploaded", audioPath: path, createdAt: "2000-01-01T00:00:00.000Z" })
       .where(eq(visitRecordings.appointmentId, id));
+
+    /*
+     * Чужая запись в очереди — прямо здесь, а не «вдруг оставит сосед»:
+     * иначе проверка держится на удаче порядка файлов и на машине автора
+     * всегда зелёная. Её дата новее нашей и старше «сейчас», то есть без
+     * строки выше расшифровщик взял бы именно её.
+     */
+    const rival = await visit("i-rival");
+    await api(`/api/recordings/${rival.id}/consent`, rival.patient.token, { method: "POST" });
+    const rivalPath = await storeAudio(`test-${crypto.randomUUID()}`, new Uint8Array([9]));
+    await db
+      .update(visitRecordings)
+      .set({ status: "uploaded", audioPath: rivalPath, createdAt: "2010-01-01T00:00:00.000Z" })
+      .where(eq(visitRecordings.appointmentId, rival.id));
 
     let reached = false;
     setTranscriberForTests({
@@ -197,8 +220,10 @@ describe("расшифровка", () => {
     expect(reached).toBe(true);
 
     const state = await api(`/api/recordings/${id}`, specialist.token);
-    expect(state.body.status).toBe("failed");
+    expect(state.body.status, "расшифровали не нашу запись — очередь общая").toBe("failed");
     expect(String(state.body.failure)).toContain("модель не загружена");
+    const rivalState = await api(`/api/recordings/${rival.id}`, rival.specialist.token);
+    expect(rivalState.body.status, "чужая запись очереди тронута").toBe("uploaded");
   });
 
   test("успешная расшифровка кладёт текст и называет движок", async () => {
@@ -211,9 +236,10 @@ describe("расшифровка", () => {
 
     const { storeAudio } = await import("../src/lib/recordings");
     const path = await storeAudio(`test-${crypto.randomUUID()}`, new Uint8Array([5, 6, 7, 8]));
+    // та же причина, что выше: очередь общая, своя запись должна быть первой
     await db
       .update(visitRecordings)
-      .set({ status: "uploaded", audioPath: path })
+      .set({ status: "uploaded", audioPath: path, createdAt: "2000-01-02T00:00:00.000Z" })
       .where(eq(visitRecordings.appointmentId, id));
 
     setTranscriberForTests({
