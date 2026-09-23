@@ -66,9 +66,19 @@ export default function Login() {
       <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[43px] text-primary">
         {ut("pub.loginTitle")}
       </h1>
-      {/* 50 от коробки заголовка до первого поля, 22 между полями — с кадра */}
+      {/*
+        50 от коробки заголовка до первого поля, 22 между полями — с кадра.
+
+        `[&>label]:mb-0` — снятие чужого отступа, а не украшение: в слое
+        наследия у каждой `label` стоит `margin-bottom: 5px`, а поле у Field
+        лежит внутри подписи. Коробка поля выходила на 5 выше самого поля, и
+        шаг «Логін» → «Пароль» получался 72 вместо 67 с кадра. Снято здесь, на
+        двух полях этого экрана, а не в Field: те же 5 заложены в шаг строк
+        формы (51 = поле 36 + 15) на остальных экранах консоли, и правка в
+        каркасе сдвинула бы их все.
+      */}
       <form className="mt-[50px] flex flex-col items-start gap-[22px]" onSubmit={submit} noValidate>
-        <Field inline label={ut("pub.login")} className="w-[215px]">
+        <Field inline label={ut("pub.login")} className="w-[215px] [&>label]:mb-0">
           <PlateInput
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -77,7 +87,7 @@ export default function Login() {
             autoFocus
           />
         </Field>
-        <Field inline label={ut("lg.password")} className="w-[215px]">
+        <Field inline label={ut("lg.password")} className="w-[215px] [&>label]:mb-0">
           <PlateInput
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -126,8 +136,12 @@ function PlateInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement
   return (
     <input
       placeholder={label}
+      /*
+       * `block`: строчное поле оставляет под собой место под выносные буквы
+       * строки, и подпись-обёртка становится выше своих 45.
+       */
       className={
-        "h-[45px] w-[215px] rounded-[5px] border-0 bg-[var(--bg)] px-[14px] text-[20px] text-primary " +
+        "block h-[45px] w-[215px] rounded-[5px] border-0 bg-[var(--bg)] px-[14px] text-[20px] text-primary " +
         "placeholder:text-[20px] placeholder:font-normal placeholder:text-muted " +
         "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 " +
         "focus-visible:ring-offset-[var(--surface-2)] " +

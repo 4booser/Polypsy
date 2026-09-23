@@ -26,15 +26,37 @@ test("человек заводит учётную запись и проход�
    */
   test.setTimeout(120_000);
   const email = `new-${crypto.randomUUID().slice(0, 8)}@example.org`;
+  const password = "secret12345";
 
-  await page.goto("/");
-  await page.getByRole("button", { name: "Создать аккаунт" }).click();
-  await page.getByLabel("Фамилия").fill("Тестовый");
-  await page.getByLabel("Имя").fill("Пациент");
-  await page.getByLabel("Телефон").fill(`+38050${Math.floor(1000000 + Math.random() * 8999999)}`);
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Пароль").fill("secret12345");
-  await page.getByRole("button", { name: "Создать аккаунт" }).click();
+  /*
+   * Учётная запись заводится запросом, а не формой на экране входа: формы
+   * регистрации там больше нет. Кадр f01 рисует вход двумя полями и ничем
+   * больше, и вместе с кадром с экрана ушли и «Создать аккаунт», и поля
+   * фамилии с телефоном. Путь настоящего человека остался один — приглашение
+   * (/join/:token), но токен выдаёт сотрудник изнутри, и ради него проверка
+   * тянула бы за собой второй вход и экран приглашений.
+   *
+   * Маршрут тот же самый, которым пользуется экран приглашения, так что
+   * проверяется по-прежнему живой путь, а не выдуманный. Проверка от этого не
+   * теряет смысла: доказывает она не форму регистрации (её проверяет
+   * auth.e2e), а то, что человек с нуля проходит методику и не видит баллов.
+   */
+  const created = await page.request.post("/api/auth/register", {
+    data: {
+      email,
+      password,
+      phone: `+38050${Math.floor(1000000 + Math.random() * 8999999)}`,
+      anonymous: false,
+      firstName: "Пациент",
+      lastName: "Тестовый",
+    },
+  });
+  expect(created.ok(), `регистрация не прошла: ${created.status()}`).toBeTruthy();
+
+  await page.goto("/login");
+  await page.getByLabel(/^(Логин|Логін)$/).fill(email);
+  await page.getByLabel("Пароль").fill(password);
+  await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).click();
 
   await page.waitForURL(/\/me/);
   await expect(menuButton(page)).toHaveCount(0);

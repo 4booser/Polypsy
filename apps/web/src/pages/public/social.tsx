@@ -13,14 +13,21 @@
  * всегда светлый, потому что тёмной темы у публичных страниц нет.
  */
 
-const size = { width: 28, height: 28, viewBox: "0 0 28 28", "aria-hidden": true, focusable: "false" } as const;
+const size = {
+  width: 28,
+  height: 28,
+  viewBox: "0 0 28 28",
+  "aria-hidden": true,
+  focusable: "false",
+} as const;
 
 export function IconFacebook() {
   return (
     <svg {...size}>
       <circle cx="14" cy="14" r="14" fill="currentColor" />
       <path
-        d="M15.6 22.5v-7.1h2.4l.4-2.8h-2.8v-1.8c0-.8.2-1.4 1.4-1.4h1.5V6.9c-.3 0-1.2-.1-2.2-.1-2.2 0-3.6 1.3-3.6 3.8v2h-2.4v2.8h2.4v7.1z"
+        d="M15.6 22.5v-7.1h2.4l.4-2.8h-2.8v-1.8c0-.8.2-1.4 1.4-1.4h1.5V6.9c-.3 0-1.2-.1-2.2-.1
+           -2.2 0-3.6 1.3-3.6 3.8v2h-2.4v2.8h2.4v7.1z"
         fill="#fff"
       />
     </svg>
@@ -42,7 +49,9 @@ export function IconTelegram() {
     <svg {...size}>
       <circle cx="14" cy="14" r="14" fill="currentColor" />
       <path
-        d="M20.7 8.4 6.9 13.7c-.9.4-.9.9-.2 1.1l3.5 1.1 1.4 4.2c.2.5.1.6.6.6.4 0 .5-.2.7-.4l1.7-1.7 3.6 2.6c.7.4 1.1.2 1.3-.6l2.4-11.2c.2-1-.4-1.4-1.2-1zm-9.4 7.2 7.4-4.7c.4-.2.7-.1.4.2l-6.3 5.7-.3 2.6z"
+        d="M20.7 8.4 6.9 13.7c-.9.4-.9.9-.2 1.1l3.5 1.1 1.4 4.2c.2.5.1.6.6.6.4 0 .5-.2.7-.4
+           l1.7-1.7 3.6 2.6c.7.4 1.1.2 1.3-.6l2.4-11.2c.2-1-.4-1.4-1.2-1z
+           m-9.4 7.2 7.4-4.7c.4-.2.7-.1.4.2l-6.3 5.7-.3 2.6z"
         fill="#fff"
       />
     </svg>

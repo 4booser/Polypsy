@@ -79,7 +79,10 @@ export function PublicFrame({ children }: { children: ReactNode }) {
             <Link
               to="/"
               aria-label={ut("pub.home")}
-              className="mt-[97px] block w-fit rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+              className={
+                "mt-[97px] block w-fit rounded-full outline-none " +
+                "focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+              }
             >
               <Logo size={136} />
             </Link>
@@ -117,12 +120,29 @@ function Footer() {
   const tel = `tel:${phone.split("—")[0]!.replace(/\s+/g, "")}`;
   const mail = `mailto:${ut("pub.email")}`;
   const link =
-    "text-primary no-underline outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[var(--focus)]";
+    "text-primary no-underline outline-none hover:underline " +
+    "focus-visible:ring-2 focus-visible:ring-[var(--focus)]";
   return (
     <footer className="bg-surface-2">
-      <div className={cx(COLUMN, "flex min-h-[130px] flex-col pb-[10px] pt-[20px] text-[14px] leading-[22px]")}>
-        <div className="flex flex-wrap gap-y-4">
-          <nav aria-label={ut("pub.sections")} className="w-[254px] shrink-0">
+      <div
+        className={cx(
+          COLUMN,
+          "flex min-h-[130px] flex-col pb-[12px] pt-[20px] text-[14px] leading-[22px]",
+        )}
+      >
+        {/*
+          Высота ряда задана (66 = три строки по 22), и знак 80 её не
+          раздвигает: на кадре он свисает ниже последней строки и заходит в
+          полосу, где по центру стоит «©год», — по горизонтали они не
+          встречаются. Оставить ряду расти по содержимому значило бы получить
+          подвал 139 вместо 130 с кадра: знак утолкал бы «©» вниз, а с ним
+          уехала бы вверх кромка сиреневой заливки.
+
+          На узком окне высота снимается: там колонки переносятся, и обрезать
+          их ради числа с кадра нельзя.
+        */}
+        <div className="flex h-[66px] flex-wrap gap-y-4 max-[900px]:h-auto">
+          <nav aria-label={ut("pub.sections")} className="w-[254px] shrink-0 max-[900px]:w-full">
             <ul className="m-0 flex list-none flex-col p-0">
               <li>
                 <Link to="/#about" className={link}>
@@ -141,7 +161,7 @@ function Footer() {
               </li>
             </ul>
           </nav>
-          <address className="w-[403px] shrink-0 not-italic max-[900px]:w-auto">
+          <address className="w-[403px] shrink-0 not-italic max-[900px]:w-full">
             <div>{ut("pub.contacts")}</div>
             <div>
               <a href={tel} className={link}>
@@ -154,7 +174,7 @@ function Footer() {
               </a>
             </div>
           </address>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-[900px]:w-full max-[900px]:flex-none">
             <div>{ut("pub.social")}</div>
             {/*
               Значки 28 × 28 с зазором 8, как на кадре, а нажимается 44: ссылка
@@ -182,7 +202,10 @@ function Footer() {
           <Link
             to="/"
             aria-label={ut("pub.home")}
-            className="mt-[7px] block shrink-0 self-start rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+            className={
+              "mt-[7px] block shrink-0 self-start rounded-full outline-none " +
+              "focus-visible:ring-2 focus-visible:ring-[var(--focus)] max-[900px]:ml-auto"
+            }
           >
             <Logo size={80} />
           </Link>
@@ -200,7 +223,10 @@ function SocialLink({ href, label, children }: { href: string; label: string; ch
       aria-label={label}
       target="_blank"
       rel="noreferrer"
-      className="-m-[8px] flex size-[44px] items-center justify-center rounded-full text-primary outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+      className={
+        "-m-[8px] flex size-[44px] items-center justify-center rounded-full text-primary " +
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+      }
     >
       {children}
     </a>
