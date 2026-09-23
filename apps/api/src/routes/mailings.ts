@@ -15,7 +15,8 @@ import {
   type MailingRecipient,
   type User,
 } from "@quizzy/shared";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import { mailingRecipients, mailings, patientGroupMembers, users, type MailingRow } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
@@ -253,6 +254,44 @@ mailingRoutes.post("/", ...staffOnly, async (c) => {
 /* ═══════════ получатель: «Повідомлення» в приложении пациента ═══════════ */
 
 /**
+ * Имена авторов для ящика получателя — системным контекстом, по авторам уже
+ * отобранных рассылок.
+ *
+ * Под политикой users (0075) пациент видит только свою строку. Левое
+ * соединение с users в запросе ящика у него всегда пусто, и «—» стояло бы у
+ * каждой рассылки на экране — а тесты этого не показывают: они ходят в базу
+ * владельцем, для которого политик нет. Внутреннее соединение выбросило бы
+ * рассылки целиком. SECURITY DEFINER-функция в базе, как
+ * rls_owns_patient_group, тоже не подходит: ФИО шифрованы, расшифровка
+ * живёт в приложении, и функция отдавала бы шифртекст — второй путь к
+ * колонкам имени ради того же decryptField. Копия имени в самой рассылке
+ * при отправке — ещё одна шифрованная колонка с персональным полем, которая
+ * расходится с users при смене фамилии.
+ *
+ * Системный контекст здесь — на одну выборку ровно тех колонок, из которых
+ * складывается имя, и только по авторам рассылок, которые получателю уже
+ * отданы политикой: больше, чем имя автора собственного письма, он не
+ * узнаёт. Тот же приём, что у чтения учётной записи в requireAuth.
+ */
+async function authorNames(ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  const rows = await systemContext(baseDb, () =>
+    db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        middleName: users.middleName,
+        anonymous: users.anonymous,
+        pseudonym: users.pseudonym,
+      })
+      .from(users)
+      .where(inArray(users.id, ids)),
+  );
+  return new Map(rows.map((r) => [r.id, fullNameOf(r)]));
+}
+
+/**
  * Свои рассылки — с непрочитанными и счётчиком для меню.
  *
  * Объявлен раньше `/:id`: Hono сопоставляет по порядку регистрации, и иначе
@@ -263,10 +302,9 @@ mailingRoutes.post("/", ...staffOnly, async (c) => {
  * стоит и здесь, а не только в политике строк: тесты и обслуживание ходят в
  * базу владельцем, который политики обходит.
  *
- * Имя автора — левым соединением с запасным «—», а не внутренним: под
- * политикой users пациент видит только свою строку, и внутреннее соединение
- * молча выбросило бы из выдачи все рассылки разом. Пустое имя хуже, чем
- * ничего, но пустой ящик хуже пустого имени.
+ * Имя автора — отдельной выборкой системным контекстом (authorNames выше),
+ * а не соединением с users в этом же запросе: под политикой users пациент
+ * видит только свою строку, и соединение у него было бы пусто.
  */
 mailingRoutes.get("/inbox", async (c) => {
   const me = c.get("user");
@@ -274,14 +312,14 @@ mailingRoutes.get("/inbox", async (c) => {
   const mine = and(eq(mailingRecipients.userId, me.id), eq(mailings.status, "sent"));
 
   const rows = await db
-    .select({ r: mailingRecipients, m: mailings, author: users })
+    .select({ r: mailingRecipients, m: mailings })
     .from(mailingRecipients)
     .innerJoin(mailings, eq(mailings.id, mailingRecipients.mailingId))
-    .leftJoin(users, eq(users.id, mailings.authorId))
     .where(mine)
     .orderBy(desc(mailings.sentAt), desc(mailingRecipients.deliveredAt))
     .limit(limit)
     .offset(offset);
+  const names = await authorNames([...new Set(rows.map((r) => r.m.authorId))]);
 
   const [counts] = await db
     .select({
@@ -299,7 +337,7 @@ mailingRoutes.get("/inbox", async (c) => {
       title: m.title,
       body: m.body,
       options: m.options,
-      authorName: r.author ? fullNameOf(r.author) : "—",
+      authorName: names.get(r.m.authorId) ?? "—",
       sentAt: m.sentAt ?? r.r.deliveredAt,
       readAt: r.r.readAt,
       answer: r.r.answer,

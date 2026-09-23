@@ -318,7 +318,11 @@ patientRoutes.get("/:id/card", async (c) => {
   }
   const bySubmitted = new Map(responseRows.map((r) => [r.id, r]));
   const cardConclusions: PatientCardConclusion[] = [...latestSigned.values(), ...ownDraft.values()]
-    .filter((r) => r.row.status === "signed" || r.row.version > (latestSigned.get(r.row.responseId)?.row.version ?? 0))
+    .filter(
+      (r) =>
+        r.row.status === "signed" ||
+        r.row.version > (latestSigned.get(r.row.responseId)?.row.version ?? 0),
+    )
     .map((r) => {
       const response = bySubmitted.get(r.row.responseId);
       return {

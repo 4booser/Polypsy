@@ -77,8 +77,9 @@ describe("GET /api/patients — пациенты зоны видимости", (
     const theirs = await makeUser("user", `pc-zone-b-${crypto.randomUUID()}@test`);
     await db.insert(surveyAccess).values({ surveyId: surveyInB, userId: theirs.id, grantedBy: adminB.id });
     const foreign = await api("/api/patients?limit=200", adminB.token);
-    expect(idsOf(foreign.body)).toContain(theirs.id);
-    expect(idsOf(foreign.body), `GET /api/patients отдал чужому специалисту ${person.id}`).not.toContain(person.id);
+    const foreignIds = idsOf(foreign.body);
+    expect(foreignIds).toContain(theirs.id);
+    expect(foreignIds, `GET /api/patients отдал чужому специалисту ${person.id}`).not.toContain(person.id);
 
     const all = await api(`/api/patients?q=${encodeURIComponent("pc-zone")}`, root.token);
     expect(idsOf(all.body)).toContain(person.id);
@@ -94,7 +95,9 @@ describe("GET /api/patients — пациенты зоны видимости", (
     const doctor = await makeUser("admin", `pc-doc-${crypto.randomUUID()}@test`);
     const person = await makeUser("user", `pc-booked-${crypto.randomUUID()}@test`);
     const departmentId = crypto.randomUUID();
-    await db.insert(departments).values({ id: departmentId, title: { uk: "Прийом" }, timezone: "Europe/Kyiv" });
+    await db
+      .insert(departments)
+      .values({ id: departmentId, title: { uk: "Прийом" }, timezone: "Europe/Kyiv" });
     await db.insert(specialistProfiles).values({ userId: doctor.id, departmentId });
     const slotId = crypto.randomUUID();
     await db.insert(slots).values({
@@ -250,7 +253,7 @@ describe("GET /api/patients/:id/card — карточка пациента", () 
     expect(entry?.actorId).toBe(adminA.id);
   });
 
-  test("«Тести» — сданные прохождения с баллами и полосой; «Заключення» — подписанные и свои черновики", async () => {
+  test("«Тести» — прохождения с баллами и полосой; «Заключення» — подписанные и свои черновики", async () => {
     const person = await patientOfA("tests");
     const done = await submitSurvey(surveyInA, person.token);
     expect(done.status).toBe(201);
@@ -326,7 +329,12 @@ describe("GET /api/patients/:id/card — карточка пациента", () 
     });
 
     const card = await api(`/api/patients/${person.id}/card`, adminA.token);
-    const groups = card.body.groups as { id: string; title: string; description: string; memberCount: number }[];
+    const groups = card.body.groups as {
+      id: string;
+      title: string;
+      description: string;
+      memberCount: number;
+    }[];
     expect(groups.map((g) => g.id)).toEqual([mine]);
     expect(groups.map((g) => g.id), `на карточке чужая группа ${theirs}`).not.toContain(theirs);
     expect(groups[0]!.description).toBe("Опис Моя вкладка");
@@ -418,7 +426,9 @@ describe("пакетные состав и «обрана»", () => {
       body: JSON.stringify({ userIds: [one.id, stranger.id] }),
     });
     expect(refused.status, `в группу попал пациент вне зоны: ${stranger.id}`).toBe(404);
-    expect(await db.select().from(patientGroupMembers).where(eq(patientGroupMembers.groupId, groupId))).toEqual([]);
+    expect(
+      await db.select().from(patientGroupMembers).where(eq(patientGroupMembers.groupId, groupId)),
+    ).toEqual([]);
 
     const added = await api(`/api/patient-groups/${groupId}/members`, adminA.token, {
       method: "POST",
@@ -427,7 +437,8 @@ describe("пакетные состав и «обрана»", () => {
     expect(added.status).toBe(201);
     expect((added.body.userIds as string[]).sort()).toEqual([one.id, two.id].sort());
     const card = await api(`/api/patient-groups/${groupId}`, adminA.token);
-    expect((card.body.members as { userId: string }[]).map((m) => m.userId).sort()).toEqual([one.id, two.id].sort());
+    const members = (card.body.members as { userId: string }[]).map((m) => m.userId);
+    expect(members.sort()).toEqual([one.id, two.id].sort());
 
     // чужую группу списком не тронуть — пока состав на месте, иначе 404 пришёл бы и без проверки
     const foreign = await api(`/api/patient-groups/${groupId}/members`, adminB.token, {
@@ -435,7 +446,9 @@ describe("пакетные состав и «обрана»", () => {
       body: JSON.stringify({ userIds: [one.id] }),
     });
     expect(foreign.status, `посторонний убрал ${one.id} из чужой группы ${groupId}`).toBe(404);
-    expect(await db.select().from(patientGroupMembers).where(eq(patientGroupMembers.groupId, groupId))).toHaveLength(2);
+    expect(
+      await db.select().from(patientGroupMembers).where(eq(patientGroupMembers.groupId, groupId)),
+    ).toHaveLength(2);
 
     const removed = await api(`/api/patient-groups/${groupId}/members`, adminA.token, {
       method: "DELETE",
@@ -460,6 +473,8 @@ describe("пакетные состав и «обрана»", () => {
    */
   test("«обрана» ставится, встаёт первой, снимается; чужая группа — не найдено; личная", async () => {
     const owner = await makeUser("admin", `pc-fav-${crypto.randomUUID()}@test`);
+    const favourite = (id: string, who: Person) =>
+      api(`/api/patient-groups/${id}/favourite`, who.token, { method: "PUT", body: "{}" });
     const first = await makeGroup(owner, "Перша");
     const second = await makeGroup(owner, "Друга");
     await api(`/api/patient-groups/${second}`, owner.token, {
@@ -467,12 +482,14 @@ describe("пакетные состав и «обрана»", () => {
       body: JSON.stringify({ position: 1 }),
     });
 
-    const put = await api(`/api/patient-groups/${second}/favourite`, owner.token, { method: "PUT", body: "{}" });
+    const put = await favourite(second, owner);
     expect(put.status).toBe(200);
     expect(put.body).toEqual({ groupId: second, favourite: true });
     // повторно — не ошибка и не вторая строка
-    expect((await api(`/api/patient-groups/${second}/favourite`, owner.token, { method: "PUT", body: "{}" })).status).toBe(200);
-    expect(await db.select().from(patientGroupFavourites).where(eq(patientGroupFavourites.groupId, second))).toHaveLength(1);
+    expect((await favourite(second, owner)).status).toBe(200);
+    expect(
+      await db.select().from(patientGroupFavourites).where(eq(patientGroupFavourites.groupId, second)),
+    ).toHaveLength(1);
 
     const list = await api("/api/patient-groups", owner.token);
     const rows = list.body.items as { id: string; favourite: boolean }[];
@@ -481,22 +498,24 @@ describe("пакетные состав и «обрана»", () => {
     expect(rows[1]!.favourite).toBe(false);
 
     // закладка суперадмина на ту же группу владельцу не видна — и наоборот
-    await api(`/api/patient-groups/${first}/favourite`, root.token, { method: "PUT", body: "{}" });
+    await favourite(first, root);
     const ownerAgain = await api("/api/patient-groups", owner.token);
-    const firstRow = (ownerAgain.body.items as { id: string; favourite: boolean }[]).find((g) => g.id === first);
+    const ownerRows = ownerAgain.body.items as { id: string; favourite: boolean }[];
+    const firstRow = ownerRows.find((g) => g.id === first);
     expect(firstRow?.favourite, "закладка суперадмина переставила вкладку у владельца").toBe(false);
     const rootList = await api("/api/patient-groups", root.token);
     const rootRows = rootList.body.items as { id: string; favourite: boolean }[];
     expect(rootRows.find((g) => g.id === first)?.favourite).toBe(true);
     expect(rootRows.find((g) => g.id === second)?.favourite).toBe(false);
 
-    const foreign = await api(`/api/patient-groups/${first}/favourite`, adminB.token, { method: "PUT", body: "{}" });
+    const foreign = await favourite(first, adminB);
     expect(foreign.status, `закладка поставлена на чужую группу ${first}`).toBe(404);
 
     const del = await api(`/api/patient-groups/${second}/favourite`, owner.token, { method: "DELETE" });
     expect(del.status).toBe(204);
     const after = await api("/api/patient-groups", owner.token);
-    expect((after.body.items as { id: string; favourite: boolean }[]).map((g) => [g.id, g.favourite])).toEqual([
+    const afterRows = after.body.items as { id: string; favourite: boolean }[];
+    expect(afterRows.map((g) => [g.id, g.favourite])).toEqual([
       [first, false],
       [second, false],
     ]);
@@ -532,7 +551,7 @@ describe("страховочная сетка под закладками", () =
 });
 
 describe("описание маршрутов", () => {
-  test("новые маршрути людей объявлены под patients.read", () => {
+  test("новые маршруты людей объявлены под patients.read", () => {
     const expected = [
       "GET /api/patients",
       "GET /api/patients/:id/card",
