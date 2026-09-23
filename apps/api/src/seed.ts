@@ -1320,5 +1320,7 @@ console.log("  роли персонала: встроенная роль выд
 console.log("\nГотово. Учётные записи:");
 for (const a of ACCOUNTS) console.log(`  ${a.role.padEnd(5)} ${a.email} / ${a.password}`);
 
+await (await import("./seed/demoGroupsRules")).seedDemoGroupsRules();
+
 // закрываем пул: без этого процесс сида не завершится
 await client.end();

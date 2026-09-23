@@ -11,6 +11,7 @@
 import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
 import { fillDemoData, purgeDemoData } from "./lib/demoFill";
+import { seedDemoGroupsRules } from "./seed/demoGroupsRules";
 
 const arg = process.argv[2] ?? "60";
 
@@ -35,6 +36,15 @@ if (arg === "purge") {
   console.log(`  ✓ на учёте:          ${report.dispensary}`);
   console.log(`  ✓ должностей:        ${report.ladder}`);
   console.log(`  ✓ приглашений:       ${report.invites}`);
+  /*
+   * Группы пациентов и правила поддержки решений — из посева, а не из
+   * наполнения: они собраны на людях посева и demo-purge не задевают. Здесь
+   * они потому, что посев прода не пересоздаётся, и demo-fill — единственное
+   * действие, которое дополняет живую базу демонстрационными данными. Тот же
+   * системный контекст: под боевой ролью БД политики строк без него не
+   * пустят ни в patient_groups, ни в decision_rules.
+   */
+  await systemContext(baseDb, () => seedDemoGroupsRules());
 }
 
 await client.end();
