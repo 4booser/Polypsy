@@ -385,7 +385,14 @@ function Row({
            * 52 и 72 от верха вырезки — ровно 20. 22 брались от заголовков
            * экрана и в двухстрочном имени расталкивали строки заметно.
            */
-          className="text-[17px] font-bold leading-[20px] text-primary no-underline hover:underline"
+          /*
+           * Длинное слово переносится внутри своей колонки, а не лезет в
+           * соседнюю: колонка имени на кадре 169, а «Адаптивность-200»
+           * одним куском шире — без переноса название накрывало столбец
+           * «Результат теста». Расширять колонку нельзя: на кадре все три
+           * стоят на своих местах.
+           */
+          className="text-[17px] font-bold leading-[20px] text-primary no-underline [overflow-wrap:anywhere] hover:underline"
         >
           {s.title}
         </Link>
