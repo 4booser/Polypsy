@@ -29,15 +29,21 @@ import { conclusionName, groupStatsText, leadAction, personFields, resultText, s
  * Всё приходит одним ответом GET /api/patients/:id/card — сервер отдаёт
  * четыре блока вместе именно потому, что экран открывает их вместе.
  *
- * Замеры кадра (1600 px; колонка содержимого на кадре 1203 px, то есть та же
- * 1200, что у консоли, — числа берутся как есть, без коэффициента):
+ * Замеры кадра. Кадр рисован на 1600px, но колонка содержимого на нём — от
+ * 203 до 1403, то есть ровно 1200, как в консоли: числа взяты замером, без
+ * коэффициента 0,75.
  *
  *   заголовок 24/700 · заголовки разделов 20/700 · кнопка в шапке 34px, 18/700,
  *   рамка #666666, радиус 5 · плашки 36px с шагом 51 (15 между), колонки по
- *   370 при зазоре 45 · разделитель 2px #b299cc с отступами 29 сверху и 34
- *   снизу · строка списка: имя 17/700 фиолетовым в колонке 136, зазор колонок
- *   36, подпись колонки 13/700 серым, текст 13/400 серым, шаг строк 83 ·
- *   чип 20px высотой и не уже 139, текст 17/700, зазор 7, радиус 4.
+ *   370 при зазоре 45 · разделитель 2px #b299cc: 30 от плашек, 32 до заголовка
+ *   раздела, 16 после последней строки · строка списка: имя 17/700 фиолетовым
+ *   в колонке 136, зазор колонок 36, подпись колонки 13/700 серым, текст
+ *   13/400 серым, обе с межстрочным 14, шаг строк 82 (четыре строки текста
+ *   плюс по 13 сверху и снизу) · чип 20px высотой и не уже 139, текст 15/700,
+ *   зазор 7, радиус 4, отступ от подписи 11.
+ *
+ * Где кадры спорят, взят повторяющийся замер: от разделителя до верха
+ * прописной в заголовке «Тести» и «Групи» — 38, у «Заключення» — 45; взято 38.
  *
  * Чего на кадре нет, а здесь есть, и почему:
  *
@@ -71,6 +77,10 @@ import { conclusionName, groupStatsText, leadAction, personFields, resultText, s
  * - «+» в «Заключення» — меню по сданным тестам, а не сразу форма: заключение
  *   пишется по прохождению (/responses/:id/conclusion), и без выбора, по
  *   какому, знак вёл бы в никуда.
+ * - Подсвеченная первая строка «Групи» на кадре f19_2 прочитана как наведение,
+ *   а не как зебра: зебра красила бы и первую с третьей строкой «Тестів», а
+ *   там из четырёх строк не подсвечена ни одна. Подсветка ложится при наведении
+ *   на имя строки — единственное, на что здесь можно нажать.
  *
  * Прежняя карта (сводка, динамика, хронология) не удалена — она переехала на
  * /patients/:id/case (pages/CaseCard.tsx); старые адреса перенаправляются.
@@ -146,7 +156,7 @@ export default function PatientCard() {
       }
     >
       {/* сетка плашек — замер кадра: колонки по 370 при зазоре 45, шаг строк 51 (плашка 36 + 15) */}
-      <dl className="m-0 mb-[29px] grid grid-cols-3 gap-x-[45px] gap-y-[15px] max-[900px]:grid-cols-1">
+      <dl className="m-0 mb-[30px] grid grid-cols-3 gap-x-[45px] gap-y-[15px] max-[900px]:grid-cols-1">
         {fields.map((f) => (
           <div key={f.key} className="min-w-0">
             {/* sr-only, а не hidden: подпись нужна диктору, с экрана её убирает кадр */}
@@ -272,8 +282,8 @@ function OutlineButton({ className, ...rest }: ButtonHTMLAttributes<HTMLButtonEl
  */
 function Section({ title, glyph, children }: { title: string; glyph?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border-t-2 border-primary-dim pb-[24px] pt-[34px]">
-      <div className="mb-[14px] flex min-h-[27px] items-center justify-between gap-[24px]">
+    <section className="border-t-2 border-primary-dim pb-[16px] pt-[32px]">
+      <div className="mb-[9px] flex min-h-[27px] items-center justify-between gap-[24px]">
         <h2 className="m-0 text-[20px] font-bold leading-[24px] text-primary">{title}</h2>
         {glyph}
       </div>
@@ -295,7 +305,7 @@ function Row({ name, to, children }: { name: string; to: string; children: React
   return (
     <li
       className={cx(
-        "grid grid-cols-[136px_1fr_1fr] gap-x-[36px] py-[10px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[8px]",
+        "grid grid-cols-[136px_1fr_1fr] gap-x-[36px] py-[13px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[8px]",
         "transition-colors duration-[var(--dur-fast)] has-[a:hover]:bg-surface-2 has-[a:focus-visible]:bg-surface-2",
       )}
     >
@@ -313,13 +323,21 @@ function Row({ name, to, children }: { name: string; to: string; children: React
   );
 }
 
-/** Колонка строки: подпись 13/700 серым и под ней текст 13/400, не длиннее четырёх строк */
+/**
+ * Колонка строки: подпись 13/700 серым и под ней текст 13/400, межстрочный у
+ * обеих 14 — на кадре подпись и абзац идут одним потоком, без ступеньки.
+ *
+ * Три строки, а не «сколько придёт»: на кадре в каждой колонке ровно три
+ * строки рыбы, и это единственное, что держит одинаковый шаг строк раздела
+ * (82). Обрезанное не пропадает — имя строки ведёт на само прохождение,
+ * группу или заключение, где тот же текст напечатан целиком.
+ */
 function Column({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="min-w-0">
-      <span className="block text-[13px] font-bold leading-[16px] text-muted">{label}</span>
+      <span className="block text-[13px] font-bold leading-[14px] text-muted">{label}</span>
       {typeof children === "string" ? (
-        <p className="m-0 line-clamp-4 whitespace-pre-line text-[13px] leading-[17px] text-muted">{children}</p>
+        <p className="m-0 line-clamp-3 whitespace-pre-line text-[13px] leading-[14px] text-muted">{children}</p>
       ) : (
         children
       )}
@@ -328,18 +346,27 @@ function Column({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Чипы состава заключения: плашка 20px, не уже 139, текст 17/700 фиолетовым
+ * Чипы состава заключения: плашка 20px, не уже 139, текст 15/700 фиолетовым
  * на заливке --primary-soft, зазор 7, перенос строкой. Ширина растёт с
  * названием, а не режет его: на кадре чипы одной ширины, потому что и
  * названия в них одной длины.
+ *
+ * Чип один, и он светлый. На кадре их два вида: светлый «Назва тесту» и
+ * залитый сиреневым «Назва Аналітики». Второго здесь нет не по забывчивости —
+ * аналитики как именованного объекта, который можно положить в заключение, на
+ * сервере не существует (см. api_gaps); рисовать пустой второй вид значило бы
+ * обещать сущность, которой нет.
  */
 function Chips({ items }: { items: string[] }) {
   return (
-    <ul className="m-0 mt-[9px] flex list-none flex-wrap gap-[7px] p-0">
+    <ul className="m-0 mt-[11px] flex list-none flex-wrap gap-[7px] p-0">
       {items.map((it) => (
         <li
           key={it}
-          className="inline-flex h-[20px] min-w-[139px] items-center justify-center rounded-[4px] bg-primary-soft px-[10px] text-[17px] font-bold leading-none text-primary"
+          className={cx(
+            "inline-flex h-[20px] min-w-[139px] items-center justify-center rounded-[4px]",
+            "bg-primary-soft px-[10px] text-[15px] font-bold leading-none text-primary",
+          )}
         >
           {it}
         </li>
@@ -349,5 +376,5 @@ function Chips({ items }: { items: string[] }) {
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  return <p className="m-0 py-[10px] text-[13px] leading-[17px] text-muted">{children}</p>;
+  return <p className="m-0 py-[13px] text-[13px] leading-[14px] text-muted">{children}</p>;
 }
