@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
-import { api } from "./api";
+import { api, tokenStore } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
@@ -259,10 +259,36 @@ export default function App() {
    * того, кто сидел последним. Осветлённый фиолетовый тёмной земли поверх
    * сиреневой картинки читался бы плохо и не был бы тем кадром. Выбор
    * человека при этом не трогается: после входа возвращается его тема.
+   *
+   * Условие — «гость ли это», а не «есть ли профиль». Пока летит GET /me,
+   * профиля ещё нет, и признак `user` держал светлую тему всю длительность
+   * запроса: сотрудник, работающий в тёмной, получал при каждой перезагрузке
+   * любого экрана белую вспышку во весь экран (включая заглушку `loading`
+   * ниже по файлу) и возврат в тёмную после ответа.
+   *
+   * «Гость» читается по токену, а не по `loading`. С `loading` вспышка
+   * меняла бы сторону: у посетителя без токена первый проход эффектов
+   * застаёт `loading === true` (эффект App выполняется раньше эффекта
+   * AuthProvider — дети раньше родителей), и лендинг успел бы мигнуть
+   * тёмной, если она выбрана на этой машине. Токен известен синхронно и до
+   * первого кадра, и обе стороны вспышки закрываются одним признаком.
+   * `loading` остаётся в зависимостях: протухший токен чистится молча, и
+   * `user` при этом не меняется — пересчитать тему больше не с чего.
+   *
+   * Приглашение (/join/:token) и возврат от Google — не кадры f00/f01, а
+   * обычные экраны консоли, и они остаются в выбранной теме. Путь читается
+   * из window.location, а не из useLocation: тем же способом читает его
+   * гейт публичных страниц ниже по файлу, и два решения об одном и том же
+   * должны опираться на один источник — иначе они разойдутся.
    */
   useEffect(() => {
-    document.documentElement.dataset.theme = user ? theme : "light";
-  }, [theme, user]);
+    const publicFrame =
+      !user &&
+      !tokenStore.get() &&
+      !location.pathname.startsWith("/join/") &&
+      !location.pathname.startsWith("/auth/google");
+    document.documentElement.dataset.theme = publicFrame ? "light" : theme;
+  }, [theme, user, loading]);
 
   const chooseTheme = (next: Theme) => {
     setTheme(next);
@@ -363,8 +389,15 @@ export default function App() {
    * в приложении нет. Ни один Route их не обслуживал, и пропуск мимо гейта
    * означал только одно: неизвестный путь показывал пустоту вместо экрана
    * входа.
+   *
+   * «/auth/google» назван в условии, а не только в Route ниже. Сервер после
+   * согласия Google приводит браузер сюда (routes/auth.ts: redirect на
+   * `${consoleUrl}/auth/google`), но в гейт пускался один «/join/», и до
+   * Route дело не доходило: гость с кодом в адресе попадал в общий перехват
+   * «*» и видел форму входа, а код так и оставался неразменянным на токены.
+   * Вход через Google был мёртв ещё до снятия его кнопки с кадра f01.
    */
-  if (location.pathname.startsWith("/join/")) {
+  if (location.pathname.startsWith("/join/") || location.pathname === "/auth/google") {
     return (
       <Suspense fallback={<Loading />}>
         <Routes>

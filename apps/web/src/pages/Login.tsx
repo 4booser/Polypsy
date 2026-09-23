@@ -22,6 +22,24 @@ import { PublicFrame } from "./public/PublicFrame";
  * вошедшего по-прежнему живёт в бургере (App.tsx). Регистрация пациента
  * идёт по приглашению (/join/:token), как и шла.
  *
+ * Чего это стоило, названо прямо, потому что экрана под это нет ни одного.
+ *
+ * 1. Учреждение, поднятое с OPEN_REGISTRATION, из веба учётную запись больше
+ *    не заводит: формы нет, а приглашение выписывает сотрудник изнутри.
+ *    Признак `openRegistration` из GET /api/auth/google/status с тех пор не
+ *    читает никто (клиент берёт из ответа одно поле `enabled`). Взаперти при
+ *    этом никто не остаётся, но способность осталась без экрана — нужен
+ *    кадр, и это вопрос к заказчику, а не к сборщику.
+ * 2. Вход через Google начинается кнопкой, которой на кадре нет. Возврат от
+ *    Google при этом починен (App.tsx: «/auth/google» пускается мимо гейта —
+ *    раньше не пускался, и код из адреса не разменивался на токены вовсе).
+ *    Никто не заперт и здесь: googleCallback учётных записей не заводит и
+ *    без привязки отвечает googleNotLinked — значит пароль есть у каждого,
+ *    кому Google был доступен.
+ *
+ * Возвращать снятое «на всякий случай» нельзя: кадр — это и есть задание, а
+ * лишняя кнопка на нём — такой же брак, как недостающая.
+ *
  * Что осталось сверх кадра, и это названо: кнопка «Увійти» под полями —
  * форма без кнопки не отправляется мышью, а Enter знают не все; и строка
  * отказа под полями с role="alert" — без неё человек перед не сработавшей
@@ -80,6 +98,7 @@ export default function Login() {
       <form className="mt-[50px] flex flex-col items-start gap-[22px]" onSubmit={submit} noValidate>
         <Field inline label={ut("pub.login")} className="w-[215px] [&>label]:mb-0">
           <PlateInput
+            label={ut("pub.login")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
@@ -89,6 +108,7 @@ export default function Login() {
         </Field>
         <Field inline label={ut("lg.password")} className="w-[215px] [&>label]:mb-0">
           <PlateInput
+            label={ut("lg.password")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
@@ -129,10 +149,18 @@ export default function Login() {
  *
  * Набранный текст — фиолетовым, как всё на этом листе; серым набран только
  * плейсхолдер, иначе пустое поле не отличить от заполненного.
+ *
+ * Подпись приходит пропсом от того, кто поле ставит, а не угадывается по
+ * `type`. Угадывание («type === password» → «Пароль», иначе «Логін») делало
+ * из одной строки экрана две правды в семи строках друг от друга: подпись
+ * стояла и у Field, и здесь, а связывало их совпадение типа. Третье поле с
+ * type="text" молча подписалось бы «Логін».
  */
-function PlateInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  const { ut } = useLang();
-  const label = rest.type === "password" ? ut("lg.password") : ut("pub.login");
+function PlateInput({
+  label,
+  className,
+  ...rest
+}: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       placeholder={label}
