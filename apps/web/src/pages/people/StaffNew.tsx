@@ -1,18 +1,21 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { roleRank } from "@quizzy/shared";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
 import { Loading, useToast } from "../../ui";
 import { Page } from "../../ui/layout";
+import { IconGear } from "../../ui/glyphs";
+import { ActionMenu } from "../../ui/menu";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 
 /*
- * «Додати лікаря» (кадр f42) и «Додати адміністратора» (кадр f49) — одна
- * форма в двух прочтениях: две колонки по центру, слева анкета, справа
- * служебное и кнопка «Створити» на 45px.
+ * «Додати лікаря» (кадр f41) и «Додати адміністратора» (кадр f48) — одна
+ * форма в двух прочтениях: две колонки по 372 с зазором 76 по центру, слева
+ * анкета, справа служебное и кнопка «Створити» на 36px — ровно в шаг формы
+ * 51, то есть вровень с полями (f41: поле «Роль» 426…461, кнопка 477…512).
  *
  * Чего на кадре нет, а здесь есть: поле «Пароль». Сервер заводит учётную
  * запись только с паролем (createUserSchema, от 8 знаков) — без него кнопка
@@ -25,9 +28,19 @@ import { useResource } from "../../useResource";
  * потерять — хуже, чем не принять. Убрать их с формы значило бы нарисовать
  * не тот кадр; сохранить «потом» человек сможет сам в своей карточке
  * (PATCH /api/auth/me) — кроме телефона и города, которых у сервера нет.
+ * Абзац об этом ушёл с глаз в строку для диктора: на кадре под кнопкой
+ * чернил нет до самого низа.
  *
- * Шестерёнки с «Редагувати · Змінити пароль · Вийти» на этих кадрах нет:
- * у ещё не заведённой записи нечего редактировать, а «Вийти» есть в бургере.
+ * Шестерёнка с «Редагувати · Змінити пароль · Вийти» на этих кадрах ЕСТЬ —
+ * f41 рисует её у правого края колонки (чернила 1385…1409) с раскрытой
+ * плашкой 1262…1407, f48 то же. Прежняя запись «шестерёнки здесь нет» была
+ * неверна. «Вийти» работает; «Редагувати» и «Змінити пароль» у ещё не
+ * заведённой записи смысла не имеют и стоят погашенными с подсказкой — так
+ * же, как в чужой карточке.
+ *
+ * Крошки над заголовком нет: ни на одном из четырнадцати кадров раздела её
+ * не рисуют (f41 — 47px чистого белого между полосой и чернилами заголовка).
+ * Возврат в список остаётся в верхней полосе и в бургере.
  *
  * «Роль» — в два слоя, как устроена система: класс учётной записи (лікар —
  * всегда admin; администратор — superadmin либо admin с ролью ступенью выше
@@ -43,7 +56,7 @@ const SUPER = "superadmin";
 
 export default function StaffNew({ kind }: { kind: NewKind }) {
   const { ut, lang } = useLang();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const isSuper = user?.role === "superadmin";
@@ -119,17 +132,34 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
   const column = "grid content-start gap-y-[15px]";
 
   return (
-    <Page title={title} crumbs={<Link to={kind === "admin" ? "/admins" : "/staff"}>{kind === "admin" ? ut("adm.admins") : ut("ppl.staff")}</Link>}>
+    <Page
+      title={title}
+      actions={
+        <ActionMenu
+          label={ut("ppl.actions")}
+          glyph={<IconGear />}
+          entries={[
+            /* править и менять пароль нечему: записи ещё нет */
+            { label: ut("ppl.edit"), disabled: true, hint: ut("ppl.notCreatedYet") },
+            { label: ut("acct.changePassword"), disabled: true, hint: ut("ppl.notCreatedYet") },
+            { label: ut("nav.logout"), onSelect: logout },
+          ]}
+        />
+      }
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (canSubmit) void submit();
         }}
         /*
-         * 820 — ширина двух колонок кадра (370 + 78 + 370), по центру
-         * колонки содержимого; шаг строк 51 = поле 36 + зазор 15.
+         * 820 — ширина двух колонок кадра (372 + 76 + 372), по центру
+         * колонки содержимого; шаг строк 51 = поле 36 + зазор 15. Зазор от
+         * заголовка до первой плашки здесь 37 (f41: чернила заголовка
+         * кончаются на 185, плашка начинается на 222), то есть на 9 больше
+         * штатных 28 от Page.
          */
-        className="mx-auto grid max-w-[820px] grid-cols-2 gap-x-[78px] gap-y-[15px] max-[900px]:grid-cols-1"
+        className="mx-auto mt-[9px] grid max-w-[820px] grid-cols-2 gap-x-[76px] gap-y-[15px] max-[900px]:grid-cols-1"
       >
         <div className={column}>
           <Field inline label={ut("person.firstName")}>
@@ -161,12 +191,13 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
           <Field inline label={ut("ppl.phone")}>
             <Input value="" disabled title={locked} />
           </Field>
-          <Field inline label={ut("person.email")}>
+          <Field inline label={ut("ppl.email")}>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" />
           </Field>
           <Field inline label={ut("adm.role")}>
             {/* до загрузки справочника — одна погашенная строка «завантажую», а не пустой список: поле обязано объяснять, почему заперто */}
-            <Select value={chosen} disabled={!ready} onChange={(e) => setRole(e.target.value)}>
+            {/* look="bare": на кадре «Роль» — обычное поле, без каретки и без второй рамки */}
+            <Select look="bare" value={chosen} disabled={!ready} onChange={(e) => setRole(e.target.value)}>
               {!ready ? <option value="">{ut("ui.loading")}</option> : null}
               {ready && kind === "admin" && isSuper ? <option value={SUPER}>{ut("nav.roleSuper")}</option> : null}
               {ready
@@ -182,7 +213,7 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
           <Field inline label={ut("adm.password8")}>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} maxLength={128} required autoComplete="new-password" />
           </Field>
-          <Button type="submit" size="md" className="w-full" disabled={!canSubmit}>
+          <Button type="submit" size="form" className="w-full" disabled={!canSubmit}>
             {ut("adm.create")}
           </Button>
         </div>
@@ -192,7 +223,8 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
             <Loading error={roles.error} onRetry={roles.reload} />
           </div>
         ) : null}
-        <p className="col-span-full m-0 text-[13px] leading-[19px] text-muted">{ut("ppl.disabledFieldsHint")}</p>
+        {/* на кадре под кнопкой чернил нет — пояснение остаётся только диктору */}
+        <p className="sr-only">{ut("ppl.disabledFieldsHint")}</p>
         {error ? (
           <p role="alert" className="col-span-full m-0 text-[13px] text-danger">
             {error}

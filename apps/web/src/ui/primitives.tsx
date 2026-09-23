@@ -141,7 +141,7 @@ export function TouchArea({
 /* ─────────── кнопка ─────────── */
 
 type Variant = "primary" | "ghost" | "quiet" | "danger" | "paper";
-type Size = "sm" | "md" | "glyph";
+type Size = "sm" | "md" | "form" | "glyph";
 
 /*
  * Кнопка в макете одна: заливка #f0ecff, без рамки, текст #663399 полужирным,
@@ -186,8 +186,11 @@ const variants: Record<Variant, string> = {
  * `wide`/`narrow` с зашитыми 215 и 371 — выглядела короче ровно до третьего
  * кадра с третьей шириной.
  *
- * Высот две, обе с макета: 45 для действия формы и 36 для кнопки в строке
- * фильтров. Кегль 22/700 у обеих — он тоже с макета и не зависит от высоты.
+ * Высот три, все с макета: 45 для действия формы (215×45 на кадрах волны 3),
+ * 36 для кнопки формы людей (371×36 на f41/f48 — ровно в шаг формы 51, то
+ * есть вровень с полями) и 36 для строчной кнопки в строке фильтров. Кегль
+ * 22/700 у первых двух — он тоже с макета и не зависит от высоты; у строчной
+ * свой, 15/700 (см. ниже).
  */
 const sizes: Record<Size, string> = {
   /*
@@ -205,6 +208,15 @@ const sizes: Record<Size, string> = {
    */
   sm: "h-9 px-[14px] text-[15px] gap-2",
   md: "h-[45px] px-[22px] text-[22px] gap-2",
+  /*
+   * Кнопка формы вровень с полями.
+   *
+   * На кадрах заведения (f41 «Створити» 848…1218 и 477…512, f48 то же)
+   * кнопка ровно 36 высотой при шаге формы 51 = поле 36 + зазор 15. Ступень
+   * `md` (45) в этот ритм не встаёт и выбивает кнопку на 9px; ширина, как и
+   * у остальных ступеней, задаётся местом (`w-full` в колонке формы).
+   */
+  form: "h-9 px-[22px] text-[22px] gap-2",
   /*
    * Голый глиф: «плюс», стрелки страниц, шестерёнка.
    *
@@ -512,7 +524,13 @@ export type FieldLook = "outline" | "fill";
  *
  * Кегль 17/700 стоит на плейсхолдере, а не на самом поле: полужирным
  * фиолетовым в макете набрана ПОДПИСЬ поля (она же плейсхолдер), а не то, что
- * человек в него наберёт. Набранное — данные, и красить их в цвет подписи
+ * человек в него наберёт.
+ *
+ * Фиолетовый, а не серый, — по кадрам f41/f48: там подпись в контурном поле
+ * набрана (102,51,153) полужирным. Вырезанный фрагмент f02 рисует её серым
+ * (102,102,102), и это единственный кадр против двух; f02 помечен в
+ * index.json как «вирізаний фрагмент верхньої частини», то есть заготовка
+ * без шапки и кнопки, а f41/f48 — целые экраны. Взяты они. Набранное — данные, и красить их в цвет подписи
  * значило бы, что заполненное поле неотличимо от пустого. Кегль у введённого
  * текста тот же 17, чтобы строка не прыгала при первом нажатии клавиши.
  */
@@ -525,7 +543,18 @@ const fieldShape = cx(
 );
 
 const looks: Record<FieldLook, string> = {
-  outline: "border border-border bg-[var(--bg)] px-[12px]",
+  /*
+   * Рамка контурного поля — #666666 (--field-border), а не #cccccc общей
+   * линии: замер поля ввода и поля поиска на f02, f34, f41, f42, f48, f50
+   * даёт (102,102,102) на всём протяжении рамки. Токен под это заведён
+   * давно (--field-border) и до сих пор не звался ни разу, а `border-border`
+   * рисовал каждое поле раздела вдвое бледнее кадра.
+   *
+   * Отступ 10, а не 12: чернила подписи начинаются в 8-9 от рамки (f41 —
+   * рамка 849, «Роль» с 858; левый столбец — 401 и 409), то есть ровно то
+   * же число, что у залитого вида, и та же вертикаль у обоих начертаний.
+   */
+  outline: "border border-field-border bg-[var(--bg)] px-[10px]",
   /* `border-0`, а не отсутствие рамки: у `:where(input)` в наследии своя */
   fill: "border-0 bg-primary-soft px-[10px]",
 };
@@ -773,10 +802,24 @@ const caret = {
   backgroundRepeat: "no-repeat, no-repeat",
 } as const;
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  function Select({ className, children, style, ...rest }, ref) {
+/**
+ * Вид селекта: «list» — штатный (рамка #cccccc и каретка 9×5), «bare» — тот
+ * же выбор в силуэте контурного поля.
+ *
+ * `bare` нужен там, где кадр рисует выбор обычным полем: «Роль» на форме
+ * заведения (f41/f48) и «Стать» при правке карточки (f02). Замер прямо это
+ * и говорит: в правой трети поля «Стать» чернил ноль, в поле «Роль» — четыре
+ * пикселя правой рамки, то есть ни каретки, ни второго цвета рамки там нет.
+ * Выбор при этом остаётся выбором: список раскрывается штатно, и это и есть
+ * поведение экрана — спрятана только каретка.
+ */
+export type SelectLook = "list" | "bare";
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement> & { look?: SelectLook }>(
+  function Select({ className, children, style, look = "list", ...rest }, ref) {
     useFieldNameGuard("select", rest);
     const named = useContext(InsideField);
+    const bare = look === "bare";
     return (
       <select
         ref={ref}
@@ -792,10 +835,12 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
          */
         className={cx(
           fieldShape,
-          "h-9 appearance-none border border-hairline bg-[var(--bg)] pl-[10px] pr-[26px]",
+          "h-9 appearance-none bg-[var(--bg)]",
+          bare ? "border border-field-border px-[10px]" : "border border-hairline pl-[10px] pr-[26px]",
           className,
         )}
-        style={{ ...caret, ...style }}
+        /* каретка — рисунок штатного вида; у `bare` фон не подставляется вовсе */
+        style={bare ? style : { ...caret, ...style }}
         {...nameFromPlaceholder(named, rest)}
         {...rest}
       >
