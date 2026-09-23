@@ -1,0 +1,46 @@
+# Разовая диагностика сквозного прогона на раннере GitHub.
+#
+# Локально и в докер-стенде тот же набор зелёный, в CI — семьдесят одно
+# падение с одинаковым составом дважды. Значит различие в самом раннере, и
+# добывать его надо там: этот прогон выполняет ОДИН сценарий и печатает то,
+# что видит браузер — разметку страницы и журнал консоли.
+#
+# Файл временный: удаляется вместе с причиной.
+name: Диагностика смоука
+on:
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: "Какой файл сценариев прогнать"
+        default: "e2e/auth.e2e.ts"
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bunx playwright install --with-deps chromium
+      - name: Что за машина
+        run: |
+          nproc; free -m | head -2; bun --version; node --version
+      - name: Сценарий с рассказом о странице
+        run: bunx playwright test "${{ inputs.spec }}" --reporter=line
+        env:
+          E2E_DATABASE_URL: postgres://postgres@localhost:5432/quizzy_e2e
+          E2E_DIAG: "1"
