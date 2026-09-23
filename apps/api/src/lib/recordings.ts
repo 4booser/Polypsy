@@ -197,10 +197,23 @@ export async function transcribeNext(): Promise<boolean> {
      * означал бы запись, которая «обрабатывается» третью неделю, и человека,
      * который ждёт стенограммы, не подозревая, что её не будет.
      */
-    await db
+    const marked = await db
       .update(visitRecordings)
       .set({ status: "failed", failure: String(error).slice(0, 500) })
-      .where(eq(visitRecordings.id, row.id));
+      /*
+       * Условие то же, что у успешной ветки, и по той же причине.
+       * Расшифровка идёт минутами, за это время запись могли удалить — и
+       * безусловный UPDATE поднимал удалённую строку обратно в «не
+       * получилось». На экране приёма она снова числилась записью: с
+       * текстом ошибки, кнопкой «повторить» и без всякого следа того, что
+       * человек попросил её убрать.
+       */
+      .where(and(eq(visitRecordings.id, row.id), eq(visitRecordings.status, "transcribing")))
+      .returning({ id: visitRecordings.id });
+    if (!marked.length) {
+      log.info("recording.transcribe_failed_discarded", { id: row.id });
+      return true;
+    }
     log.error("recording.transcribe_failed", { id: row.id, error: String(error) });
     return true;
   }
