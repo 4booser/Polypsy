@@ -4,7 +4,7 @@ import { api, tokenStore } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
-import { Topbar } from "./shell/Topbar";
+import { Topbar, barKind } from "./shell/Topbar";
 import { Button, Tag } from "./ui/primitives";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
@@ -605,6 +605,8 @@ export default function App() {
         counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
         isSuper={isSuper}
         canAssign={canAssign}
+        /* состав полосы — по рабочему месту вошедшего, см. barKind в Topbar.tsx */
+        bar={barKind(user)}
         hidden={user.workspace?.railHidden ?? []}
         onSearch={() => setPaletteOpen(true)}
         theme={theme}

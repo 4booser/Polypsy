@@ -18,8 +18,9 @@ import { Button, type ButtonProps } from "./primitives";
  * `align`:
  *  - «left» — меню списка (f11: «+», «⋯», «▾» у крошки): плашка с рамкой
  *    шириной от 220, пункты 13/400 у левого края, как в бургере шапки;
- *  - «right» — меню карточки (f15, f33, f38: шестерёнка справа от
- *    заголовка): белая плашка с тенью от 165, пункты 15/400 прижаты к
+ *  - «right» — меню карточки (f15, f38 и весь раздел людей — f04, f30, f31,
+ *    f40, f41, f43, f47, f48, f50: шестерёнка справа от заголовка): белая
+ *    плашка 146 с рамкой #999999 и тенью, пункты 15/400 серым прижаты к
  *    правому краю, к самой шестерёнке.
  * Выравнивание — параметром, а не вторым классом снаружи: `text-left` и
  * `text-right` в одной строке классов спорят, и кто из них победит, решает
@@ -52,15 +53,26 @@ export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "norma
     "flex w-full items-center rounded-[4px] border-0 bg-transparent font-normal no-underline",
     "h-auto min-h-0 transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+    /*
+     * Пункт меню карточки: отступ 12 и шаг 29-30 — замер кадра f47 (чернила
+     * «Редагувати» кончаются на 1393 при правом крае плашки 1406, шаг строк
+     * 29-30 при плашке 97 на три пункта). Было 16 и 32.
+     */
     align === "right"
-      ? "justify-end px-[16px] py-[6px] text-right text-[15px] leading-[20px]"
+      ? "justify-end px-[12px] py-[5px] text-right text-[15px] leading-[20px]"
       : "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]",
     tone === "disabled"
       ? "cursor-not-allowed text-faint"
       : tone === "danger"
         ? "text-danger hover:bg-danger-soft hover:text-danger hover:no-underline"
         : cx(
-            align === "right" ? "text-text-2" : "text-text",
+            /*
+       * Серый пункта карточки — --muted (#595959), а не --text-2 (#333333):
+       * на кадре f47 чернила пункта (102,102,102). Чистый #666666 кадра тоже
+       * проходит по контрасту (5,74:1), но ступень словаря к нему ближе, чем
+       * прежняя, и не заводит второго серого.
+       */
+      align === "right" ? "text-muted" : "text-text",
             "hover:bg-primary-soft hover:text-primary hover:no-underline",
           ),
   );
@@ -78,7 +90,13 @@ function plateClass(align: MenuAlign): string {
   return cx(
     "absolute right-0 z-50 flex flex-col items-stretch outline-none",
     align === "right"
-      ? "top-[calc(100%+8px)] min-w-[165px] rounded-[5px] bg-[var(--bg)] py-[8px] shadow-pop"
+      /*
+       * Плашка карточки — 146×97 с рамкой #999999 в пиксель: замер кадра f47
+       * (x 1261…1408, y 200…299, нижняя рамка (153,153,153)). Рамки прежде не
+       * было вовсе — плашка держалась одной тенью и на светлой странице
+       * растворялась краями. Зазор от глифа 8 (на кадре 9) оставлен.
+       */
+      ? "top-[calc(100%+8px)] min-w-[146px] rounded-[5px] border border-border-strong bg-[var(--bg)] py-[8px] shadow-pop"
       : "top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel",
   );
 }
