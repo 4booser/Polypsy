@@ -32,7 +32,7 @@ const HOUR_AHEAD_MS = 3600_000;
  * раз проходил методику: это его собственный выбор, сделанный в этой же
  * системе. Не проходил ничего — украинский, государственный язык учреждения.
  */
-async function langsOfPatients(userIds: string[]): Promise<Map<string, Lang>> {
+export async function langsOfPatients(userIds: string[]): Promise<Map<string, Lang>> {
   const out = new Map<string, Lang>();
   if (!userIds.length) return out;
   /*
