@@ -9,8 +9,8 @@ import type {
   ScoreResult,
   SurveyFull,
 } from "@quizzy/shared";
-import { api, openInTab } from "../api";
-import { ConclusionEditor } from "../components/ConclusionEditor";
+import { api, openInTab, type ConclusionState } from "../api";
+import { ConclusionEditor, buildDraft } from "../components/ConclusionEditor";
 import { useLang } from "../lang";
 import { Loading, OfflineBar, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
@@ -38,12 +38,12 @@ import { useResource } from "../useResource";
  * осталась печатью — за шестерёнкой.
  *
  * Чего на экране нет и почему (подробно — у каждого места ниже):
- *   · «+» у списка моделей: экрана моделей в консоли нет, вести некуда;
- *   · «Опитувальник спостереження» вторым блоком: заключение привязано к
- *     одному прохождению (conclusions.responseId), второго источника у него
- *     нет — это правка модели данных, а не экрана;
- *   · панель форматирования и «Надіслати поштою»: см. ConclusionEditor и
- *     DocumentMenu.
+ *   · «Опитувальник спостереження за пацієнтом» вторым протоколом нарисован,
+ *     но пуст: заключение привязано к ОДНОМУ прохождению
+ *     (conclusions.responseId), второго источника у него нет. Блок стоит на
+ *     своём месте с кадра и честно говорит, чего ждёт от сервера, — иначе
+ *     половина кадра f38_2/f39_1 просто исчезла бы без следа;
+ *   · «Надіслати поштою»: см. DocumentMenu.
  */
 
 export default function ConclusionPage() {
@@ -83,13 +83,48 @@ export default function ConclusionPage() {
     if (typeof t === "string") setTitle(t);
   }, [conclusion.data]);
 
+  /*
+   * Текст заключения, поле ввода и то, что открыто из меню шестерёнки, живут
+   * здесь, а не в редакторе: на кадре f39_2 полоса над текстом занята
+   * форматированием, и инструменты редактора (сборка из фактов, библиотека
+   * формулировок, история версий, «Зберегти чернетку») ушли в меню документа.
+   * Меню стоит в шапке экрана — значит, и текст должен лежать там, откуда его
+   * видят оба.
+   */
+  const [text, setText] = useState("");
+  const [tool, setTool] = useState<null | "templates" | "history">(null);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /*
+   * Черновик подставляется в поле один раз на загрузку. Делать это на каждый
+   * рендер значило бы затирать то, что специалист печатает прямо сейчас.
+   */
+  useEffect(() => {
+    const current = conclusion.data?.current;
+    setText(current?.status === "draft" ? current.text : "");
+  }, [conclusion.data]);
+
   const surveyId = res.data?.detail.survey.id;
   const models = useResource(() => loadModels(responseId, surveyId!), [responseId, surveyId], {
     enabled: !!surveyId,
   });
 
   return (
-    <Page title={ut("cn3.title")} actions={<DocumentMenu responseId={responseId} />}>
+    <Page
+      title={ut("cn3.title")}
+      actions={
+        <DocumentMenu
+          responseId={responseId}
+          text={text}
+          setText={setText}
+          tool={tool}
+          setTool={setTool}
+          state={conclusion.data}
+          title={title}
+          onState={conclusion.patch}
+        />
+      }
+    >
       {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
       {!res.data ? (
         <Loading rows={8} error={res.error} onRetry={res.reload} />
@@ -106,12 +141,19 @@ export default function ConclusionPage() {
 
           <TestBody detail={res.data.detail} survey={res.data.survey} />
 
+          <Observation />
+
           <ConclusionEditor
             responseId={responseId}
             state={conclusion.data}
             error={conclusion.error}
             onState={conclusion.patch}
             title={title}
+            text={text}
+            setText={setText}
+            areaRef={areaRef}
+            tool={tool}
+            setTool={setTool}
           />
         </>
       )}
@@ -135,7 +177,26 @@ export default function ConclusionPage() {
  * молчит и не делает вид. Убрать пункт значило бы спрятать от заказчика, что
  * вопрос об отправке заключения за контур учреждения ещё не решён.
  */
-export function DocumentMenu({ responseId }: { responseId: string }) {
+export function DocumentMenu({
+  responseId,
+  text,
+  setText,
+  tool,
+  setTool,
+  state,
+  title,
+  onState,
+}: {
+  responseId: string;
+  /** Текст черновика: инструменты редактора живут в этом меню, см. ConclusionEditor */
+  text?: string;
+  setText?: (next: string) => void;
+  tool?: null | "templates" | "history";
+  setTool?: (next: null | "templates" | "history") => void;
+  state?: ConclusionState | null;
+  title?: string;
+  onState?: (next: ConclusionState) => void;
+}) {
   const { ut } = useLang();
   const { run } = useAction();
   const toast = useToast();
@@ -221,6 +282,57 @@ export function DocumentMenu({ responseId }: { responseId: string }) {
           >
             {ut("cn3.sendMail")}
           </MenuItem>
+          {/*
+            Инструменты редактора заключения: на кадре f39_2 полоса над
+            текстом занята форматированием, и они ушли сюда — «Зібрати з
+            результатів», библиотека формулировок, история версий и
+            «Зберегти чернетку». Меню принимает их пунктами, а открывают они
+            блоки под полем текста (см. ConclusionEditor).
+          */}
+          {setText && setTool && state ? (
+            <>
+              <hr className="my-1 border-0 border-t border-hairline" />
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  void run(async () => {
+                    if (text?.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
+                    setText(await buildDraft(responseId, ut as unknown as (k: never) => string));
+                  });
+                }}
+              >
+                {ut("cn.fromResults")}
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  setTool(tool === "templates" ? null : "templates");
+                }}
+              >
+                {ut("tpl.insert")}
+              </MenuItem>
+              {state.versions.length > 1 ? (
+                <MenuItem
+                  onClick={() => {
+                    setOpen(false);
+                    setTool(tool === "history" ? null : "history");
+                  }}
+                >
+                  {tool === "history" ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  void run(async () => {
+                    onState?.(await api.saveConclusion(responseId, text ?? "", state.current?.version ?? 0, title ?? ""));
+                  }, ut("cn.draftSaved"));
+                }}
+              >
+                {ut("cnc.saveDraft")}
+              </MenuItem>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -338,12 +450,14 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
   return (
     <section aria-labelledby="cn-models" className="mt-[50px]">
       {/*
-        «+» у заголовка на кадре есть, здесь его нет. Он означал бы «завести
-        модель», а экрана моделей в консоли нет (маршруты /api/decisions/rules
-        есть, страницы под них нет) — кнопка вела бы в никуда. Глиф без
-        действия хуже отсутствия глифа: его нажмут.
+        «+» у заголовка — как на кадре f38_1, тем же глифом, что у «Списку
+        тестів». В первой редакции его здесь не было: считалось, что экрана
+        моделей в консоли нет и вести некуда. Экран есть — /analytics/new
+        (App.tsx), — и «+» ведёт туда: завести аналитическую модель.
       */}
-      <SectionHead id="cn-models">{ut("cn3.models")}</SectionHead>
+      <SectionHead id="cn-models" action={<AddGlyph to="/analytics/new" label={ut("cn3.models")} />}>
+        {ut("cn3.models")}
+      </SectionHead>
       {/*
         Отказ показывается словами, а не пустотой: у специалиста без права
         alerts.review список правил закрыт, и «моделей нет» было бы неправдой.
@@ -371,16 +485,17 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
               /* три колонки кадра: имя 200, описание по остатку, вердикт 196 */
               className="grid grid-cols-[200px_1fr_196px] items-center gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]"
             >
-              <span className="text-[15px] font-bold leading-[20px] text-primary">{m.title}</span>
+              {/* кадр f38_1: cap имени и вердикта 12 px → 17/700, описание 9 px → 13/400 */}
+              <span className="text-[17px] font-bold leading-[22px] text-primary">{m.title}</span>
               <span className="text-[13px] leading-[17px] text-muted">{m.description}</span>
               {/*
-                Вердикт — пилюля 196×27 с заливкой, текст 15/700. Оба вердикта
+                Вердикт — пилюля 195×30 с заливкой, текст 17/700. Оба вердикта
                 выглядят одинаково и отличаются словами, не цветом: на кадре
                 так, и для дальтоника так лучше.
               */}
               <span
                 data-verdict={m.matched ? "matched" : "not-matched"}
-                className="flex h-[27px] items-center justify-center rounded-[5px] bg-primary-soft px-[10px] text-[15px] font-bold leading-none text-primary"
+                className="flex h-[30px] items-center justify-center rounded-[5px] bg-primary-soft px-[10px] text-[17px] font-bold leading-none text-primary"
               >
                 {m.matched ? ut("cn3.matched") : ut("cn3.notMatched")}
               </span>
@@ -409,40 +524,27 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
    * Button size="glyph" (см. пояснение там), повторён здесь потому, что
    * ссылка кнопкой быть не может.
    */
-  const addTest = (
-    <Link
-      to="/batteries"
-      aria-label={ut("cn3.addTest")}
-      className={cx(
-        "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
-        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
-        "after:-translate-x-1/2 after:-translate-y-1/2",
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-      )}
-    >
-      <PlusGlyph />
-    </Link>
-  );
   return (
     <section aria-labelledby="cn-tests" className="mt-[50px]">
-      <SectionHead id="cn-tests" action={addTest}>
+      <SectionHead id="cn-tests" action={<AddGlyph to="/batteries" label={ut("cn3.addTest")} />}>
         {ut("cn3.tests")}
       </SectionHead>
       {/* тот же шаг 20, что у списка моделей */}
       <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
         <li className="grid grid-cols-[200px_1fr_205px] items-start gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]">
-          <span className="text-[15px] font-bold leading-[20px] text-primary">{survey.title}</span>
+          <span className="text-[17px] font-bold leading-[22px] text-primary">{survey.title}</span>
           <span className="text-[13px] leading-[17px] text-muted">{survey.description ?? ""}</span>
           <span className="flex flex-col gap-[6px]">
             {detail.scores.map((s) => (
               <span key={s.scaleId} className="flex flex-col">
-                <span className="text-[13px] leading-[17px] text-muted">
+                {/* кадр f38_1: «набраний бал 72» 11/400 серым, подпись диапазона 13/700 фиолетовым */}
+                <span className="text-[11px] leading-[15px] text-muted">
                   {/* у многошкальной методики балл без имени шкалы ничего не значит */}
                   {detail.scores.length > 1 ? `${s.scaleTitle}: ` : ""}
                   {ut("cn3.scored")} <span className="tabular-nums">{s.rawScore}</span>
                 </span>
                 {s.band ? (
-                  <span className="text-[11px] font-bold leading-[15px] text-primary">{s.band.label}</span>
+                  <span className="text-[13px] font-bold leading-[17px] text-primary">{s.band.label}</span>
                 ) : null}
               </span>
             ))}
@@ -453,12 +555,56 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
   );
 }
 
+/**
+ * «+» у заголовка раздела: ссылка-глиф, одна на «Список примінених
+ * аналітичних моделей» и «Список тестів» — на кадре f38_1 они нарисованы
+ * одинаково. Видимый квадрат 27, нажимается 44 (тот же приём, что у Button
+ * size="glyph"), повторён здесь потому, что ссылка кнопкой быть не может.
+ */
+function AddGlyph({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      aria-label={label}
+      className={cx(
+        "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
+        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
+        "after:-translate-x-1/2 after:-translate-y-1/2",
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+      )}
+    >
+      <PlusGlyph />
+    </Link>
+  );
+}
+
 /** «+» штрихом 5 в квадрате 27 — как нарисован на кадре */
 function PlusGlyph() {
   return (
     <svg viewBox="0 0 27 27" aria-hidden focusable="false" className="size-[27px]" stroke="currentColor" strokeWidth={5} strokeLinecap="butt">
       <path d="M13.5 2v23M2 13.5h23" />
     </svg>
+  );
+}
+
+/**
+ * «Опитувальник спостереження за пацієнтом» — второй протокол кадров f38_2 и
+ * f39_1: тот же каркас «Питання №N — варианты с баллами — Результати», только
+ * заполненный наблюдением специалиста, а не ответами пациента.
+ *
+ * Источника у него нет. Заключение на сервере держится на одном прохождении
+ * (conclusions.responseId), связи «заключення → кілька проходжень» в модели
+ * нет, и собрать второй протокол не из чего. Блок нарисован на своём месте с
+ * кадра и говорит об этом одной строкой: пустое место под заголовком честнее,
+ * чем исчезнувший раздел, — по нему видно, чего экран ждёт от сервера.
+ */
+function Observation() {
+  const { ut } = useLang();
+  return (
+    <section aria-labelledby="cn-observation" className="mt-[50px]">
+      <SectionHead id="cn-observation">{ut("cn3.observation")}</SectionHead>
+      <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("cn3.observationNone")}</p>
+    </section>
   );
 }
 
@@ -487,11 +633,12 @@ function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
 
   return (
     <article aria-labelledby="cn-test" className="mt-[50px]">
-      <h2 id="cn-test" className="m-0 text-[15px] font-bold leading-[20px] text-primary">
+      {/* кадр f38_1: «Тест номер 1» cap 12 px → 17/700, описание под ним 13/400 */}
+      <h2 id="cn-test" className="m-0 text-[17px] font-bold leading-[22px] text-primary">
         {survey.title}
       </h2>
       {survey.description ? (
-        <p className="m-0 mt-[10px] text-[15px] leading-[20px] text-text-2">{survey.description}</p>
+        <p className="m-0 mt-[10px] text-[13px] leading-[17px] text-text-2">{survey.description}</p>
       ) : null}
       <div className="mx-auto mt-[40px] w-full max-w-[700px]">
         {detail.answers.map((a, i) => (
@@ -573,7 +720,8 @@ export function QuestionSheet({
 
   return (
     <section aria-labelledby={headId} className="mb-[40px]">
-      <h3 id={headId} className="m-0 mb-[14px] text-[18px] font-bold leading-[22px] text-primary">
+      {/* кадр f38_2: от заголовка питання до первой строки варианта 20 px */}
+      <h3 id={headId} className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">
         {ut("cn3.question")}
         {n} {answer.title}
       </h3>
@@ -658,8 +806,8 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
                   <li
                     key={b.id}
                     data-hit={hit ? "yes" : "no"}
-                    /* «від [85] до [85] [подпись]» — замер кадра; шаг строк 51 */
-                    className="mb-[15px] grid grid-cols-[auto_85px_auto_85px_1fr] items-center gap-x-[12px] last:mb-0"
+                    /* «від [87] до [87] [подпись]» — замер кадра f38_3; шаг строк 51 */
+                    className="mb-[15px] grid grid-cols-[auto_87px_auto_87px_1fr] items-center gap-x-[12px] last:mb-0"
                   >
                     <span className="text-[13px] text-muted">{ut("cn3.from")}</span>
                     <Cell on={hit} num>

@@ -26,9 +26,16 @@ export const useEditLang = () => useContext(EditLang);
  * Field сам (см. пояснение к нему в primitives.tsx). Своего плейсхолдера здесь
  * нет намеренно: два разных текста — подпись и подсказка — на одном поле были
  * бы двумя именами.
+ *
+ * `above` — второй случай, и он с кадра: «Назва тесту» и «Опис тесту» на
+ * f23_1/f24_1 набраны ВИДИМОЙ подписью 18/700 фиолетовым НАД пустым полем, а
+ * поле под ней пустое. Тогда подпись перестаёт быть скрытой, а плейсхолдера
+ * внутри поля нет: тот же текст дважды — один раз глазу над полем, другой раз
+ * внутри — читался бы как два разных поля.
  */
 export function Loc({
   label,
+  above,
   value,
   onChange,
   multiline,
@@ -37,6 +44,8 @@ export function Loc({
   className,
 }: {
   label: string;
+  /** Печатать подпись видимой строкой над полем (кадры f23_1, f24_1) */
+  above?: boolean;
   value: Record<string, string> | null | undefined;
   onChange: (v: Record<string, string>) => void;
   multiline?: boolean;
@@ -48,13 +57,27 @@ export function Loc({
   const v = value ?? {};
   const current = v[lang] ?? "";
   const set = (text: string) => onChange({ ...v, [lang]: text });
+  const field = multiline ? (
+    <Textarea value={current} rows={rows ?? 4} onChange={(e) => set(e.target.value)} />
+  ) : (
+    <Input value={current} onChange={(e) => set(e.target.value)} />
+  );
+  if (!above) {
+    return (
+      <Field label={label} hint={hint} className={className}>
+        {field}
+      </Field>
+    );
+  }
+  /*
+   * Видимая подпись — та же подпись Field, только не скрытая: она по-прежнему
+   * оборачивает поле и по-прежнему его называет. Заводить рядом отдельный
+   * заголовок и связывать его с полем через aria-labelledby значило бы
+   * назвать поле дважды тем же словом.
+   */
   return (
-    <Field label={label} hint={hint} className={className}>
-      {multiline ? (
-        <Textarea value={current} rows={rows ?? 4} onChange={(e) => set(e.target.value)} />
-      ) : (
-        <Input value={current} onChange={(e) => set(e.target.value)} />
-      )}
+    <Field label={label} hint={hint} className={className} labelClassName="mb-[14px] block text-[18px] font-bold leading-tight text-primary">
+      {field}
     </Field>
   );
 }

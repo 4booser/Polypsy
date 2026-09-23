@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+
 import { api, type ConclusionState } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
@@ -19,22 +19,28 @@ import { TemplatePicker } from "./TemplatePicker";
  * а лежит в той же записи. Грузить одну запись дважды ради двух мест на
  * экране значило бы, что после сохранения два места расходятся.
  *
- * Что на макете и как это здесь.
+ * Что на кадре f39_2 и как это здесь.
  *
- * На макете над текстом стоит панель форматирования (Ariel, Regular, 12, B,
- * I, U, выравнивание). Её нет намеренно: conclusions.text — простой текст,
- * он шифруется целиком, а печатный отчёт экранирует его и печатает как есть.
- * Разметка в этом поле сломала бы печать и подписанные записи в бою. На месте
- * панели стоят настоящие инструменты этого редактора — сборка черновика из
- * фактов, библиотека формулировок и история версий. Полоса форматирования
- * вернётся сюда в тот день, когда сервер объявит формат хранения.
+ * Над текстом стоит полоса форматирования: ¶, гарнитура, начертание, кегль,
+ * образец цвета, «A», B / I / U и четыре выравнивания. Она нарисована ровно
+ * так — и выключена целиком. conclusions.text хранится простым текстом: он
+ * шифруется целиком, а печатный отчёт экранирует его и печатает как есть;
+ * разметка в этом поле сломала бы обе дороги. Формат хранения объявляет
+ * сервер, и до тех пор кнопки стоят на кадре, но не работают — это честнее,
+ * чем полоса, которой на экране нет, и честнее, чем кнопки, которые молча
+ * ничего не делают.
  *
- * На макете одна кнопка — «Сформувати заключення». Здесь она подписывает:
- * сформированное заключение — то, что идёт в отчёт и в подшивку, а туда идёт
- * только подписанное. Рядом остаётся «Зберегти чернетку» призрачной: стажёр
- * готовит текст без права подписи, и без черновика ему некуда сохранять
- * работу. Свести обе к одной значило бы либо отобрать у стажёра сохранение,
- * либо пускать в отчёт неподписанное.
+ * Настоящие инструменты этого редактора — сборка черновика из фактов,
+ * библиотека формулировок и история версий — ушли с полосы в меню шестерёнки
+ * экрана (Conclusion.tsx, DocumentMenu): на кадре их там нет, а полоса занята
+ * форматированием. Туда же ушла кнопка «Зберегти чернетку»: внизу кадра одна
+ * кнопка — «Сформувати заключення». Черновик при этом никуда не делся —
+ * стажёр готовит текст без права подписи, и без сохранения ему некуда деть
+ * работу.
+ *
+ * Строка «у звіт іде лише підписане» под полем тоже убрана с глаз: на кадре
+ * между полем и кнопкой пусто. Она стала подписью наведения самой кнопки —
+ * там, где о ней и вспоминают.
  */
 export function ConclusionEditor({
   responseId,
@@ -42,6 +48,11 @@ export function ConclusionEditor({
   error,
   onState,
   title,
+  text,
+  setText,
+  areaRef,
+  tool,
+  setTool,
 }: {
   responseId: string;
   state: ConclusionState | null;
@@ -50,21 +61,20 @@ export function ConclusionEditor({
   onState: (next: ConclusionState) => void;
   /** Название документа с поля вверху экрана: уходит на сервер вместе с текстом */
   title: string;
+  /**
+   * Текст черновика живёт на экране, а не здесь: его правят в этом поле, но
+   * зовут из меню шестерёнки экрана (сборка из фактов, библиотека, черновик).
+   * Держать его в двух местах значило бы расходиться после каждой вставки.
+   */
+  text: string;
+  setText: (next: string) => void;
+  areaRef: React.RefObject<HTMLTextAreaElement | null>;
+  /** Что открыто из меню шестерёнки: библиотека формулировок или история версий */
+  tool: null | "templates" | "history";
+  setTool: (next: null | "templates" | "history") => void;
 }) {
   const { ut } = useLang();
-  const [text, setText] = useState("");
-  const [showHistory, setShowHistory] = useState(false);
-  const areaRef = useRef<HTMLTextAreaElement | null>(null);
   const { run } = useAction();
-
-  /*
-   * Черновик подставляется в поле один раз на загрузку. Делать это на каждый
-   * рендер значило бы затирать то, что специалист печатает прямо сейчас.
-   */
-  useEffect(() => {
-    const current = state?.current;
-    setText(current?.status === "draft" ? current.text : "");
-  }, [state]);
 
   if (!state) {
     // отказ загрузки — не повод прятать редактор: заключение можно написать заново
@@ -99,36 +109,15 @@ export function ConclusionEditor({
       ) : null}
 
       {/*
-        Полоса инструментов над текстом: сиреневая, с белыми плашками — как
-        полоса форматирования на макете, только с инструментами, которые у
-        этого редактора есть на самом деле (см. пояснение к компоненту).
-        Скругление только сверху: снизу к ней вплотную стоит поле текста.
+        Полоса форматирования кадра f39_2: сиреневая, 34 высотой, с белыми
+        плашками. Набрана по замеру — ¶ · гарнитура · начертание · кегль ·
+        образец цвета · «A» · B · I · U · четыре выравнивания — и выключена
+        целиком: см. пояснение к компоненту. Каждая плашка подписана для
+        диктора и несёт причину наведением; глифы кадра («B», «I», «U»,
+        полоски выравнивания) нарисованы, а не набраны символами — в
+        подключённых подмножествах шрифтов их нет.
       */}
-      <div className="flex min-h-9 flex-wrap items-center gap-[10px] rounded-t-[5px] bg-primary-soft px-[10px] py-[4px]">
-        {/*
-          Черновик собирается по нажатию и не сохраняется сам.
-          Сохранённый автоматически, он стал бы клиническим документом,
-          которого никто не писал: лежал бы в карте, выглядел бы как работа
-          специалиста и попал бы в историю версий раньше, чем его прочитали.
-        */}
-        <Button
-          variant="paper"
-          onClick={() =>
-            run(async () => {
-              if (text.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
-              setText(await buildDraft(responseId, ut));
-            })
-          }
-        >
-          {ut("cn.fromResults")}
-        </Button>
-        <TemplatePicker kind="conclusion" value={text} onChange={setText} textareaRef={areaRef} variant="paper" />
-        {state.versions.length > 1 ? (
-          <Button variant="paper" onClick={() => setShowHistory((v) => !v)}>
-            {showHistory ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
-          </Button>
-        ) : null}
-      </div>
+      <FormatBar />
       {/*
         Имя поля — видимый заголовок блока, а не скрытая подпись: заголовок
         на экране уже есть, и второе имя тем же словом диктор прочёл бы дважды.
@@ -142,9 +131,13 @@ export function ConclusionEditor({
         onChange={(e) => setText(e.target.value)}
         placeholder={signed ? ut("cn.newOverSigned") : ut("cn.placeholder")}
       />
-      <p className="m-0 mt-[6px] text-[13px] text-muted">{ut("cnc.onlySignedInReport")}</p>
+      {tool === "templates" ? (
+        <div className="mt-[10px]">
+          <TemplatePicker kind="conclusion" value={text} onChange={setText} textareaRef={areaRef} />
+        </div>
+      ) : null}
 
-      {showHistory
+      {tool === "history"
         ? state.versions.map((v) => (
             <div key={v.id} className="mt-[10px] rounded-[5px] bg-primary-soft px-[14px] py-[10px]">
               <p className="m-0 whitespace-pre-wrap text-[13px] leading-[18px] text-text">{v.text}</p>
@@ -158,24 +151,16 @@ export function ConclusionEditor({
         : null}
 
       {/*
-        Кнопка формы прижата вправо, как на макете (293×45 у правого края
-        колонки). Ширину задаёт текст, а не число: на русском надпись длиннее.
+        Внизу кадра f39_2 одна кнопка — «Сформувати заключення», 294×45 у
+        правого края колонки, от поля до неё 64 px. Ширину задаёт текст, а не
+        число: на русском надпись длиннее. «Зберегти чернетку» ушла в меню
+        шестерёнки экрана, пояснение «у звіт іде лише підписане» — в подпись
+        наведения этой кнопки.
       */}
-      <div className="mt-[40px] flex flex-wrap items-center justify-end gap-[14px]">
-        <Button
-          variant="ghost"
-          size="md"
-          disabled={!text.trim()}
-          onClick={() =>
-            run(async () => {
-              onState(await save());
-            }, ut("cn.draftSaved"))
-          }
-        >
-          {ut("cnc.saveDraft")}
-        </Button>
+      <div className="mt-[64px] flex justify-end">
         <Button
           size="md"
+          title={ut("cnc.onlySignedInReport")}
           disabled={!draft && !text.trim()}
           onClick={() =>
             run(async () => {
@@ -201,6 +186,90 @@ export function ConclusionEditor({
 }
 
 /**
+ * Полоса форматирования кадра f39_2 — нарисованная и выключенная целиком.
+ *
+ * Почему выключенная, а не отсутствующая: кадр — истина, и полосы на экране
+ * не может не быть. Почему не работающая: conclusions.text хранится простым
+ * текстом (шифруется целиком, печатный отчёт экранирует его и печатает как
+ * есть), формат разметки сервер не объявлял, и включённые кнопки писали бы в
+ * подписанный клинический документ теги, которых никто не прочтёт.
+ *
+ * Плашки набраны по замеру кадра при колонке 1200: ¶ 27 · гарнитура 214 ·
+ * начертание 201 · кегль 41 · образец цвета 41 · «A» 42 · B/I/U по 40 ·
+ * четыре выравнивания по 35. Все — `disabled`, у каждой своё имя для диктора
+ * и общая причина наведением.
+ */
+function FormatBar() {
+  const { ut } = useLang();
+  const why = ut("fmt.unavailable");
+  /* плашка полосы: белая, радиус 4, высота 26 — замер кадра */
+  const chip = (extra: string) =>
+    "flex h-[26px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-[var(--bg)] px-[6px] text-[13px] text-text-2 opacity-100 disabled:opacity-60 " +
+    extra;
+  const boxes: [import("@quizzy/shared").UiKey, string, string][] = [
+    ["fmt.paragraph", "¶", "w-[27px]"],
+    ["fmt.font", "Ariel", "w-[214px]"],
+    ["fmt.weight", "Regular", "w-[201px]"],
+    ["fmt.size", "12", "w-[41px]"],
+  ];
+  const marks: [import("@quizzy/shared").UiKey, string, string][] = [
+    ["fmt.bold", "B", "font-bold"],
+    ["fmt.italic", "I", "italic"],
+    ["fmt.underline", "U", "underline"],
+  ];
+  const aligns: import("@quizzy/shared").UiKey[] = ["fmt.alignLeft", "fmt.alignCenter", "fmt.alignRight", "fmt.alignJustify"];
+  return (
+    <div
+      role="toolbar"
+      aria-label={ut("cn3.verdicts")}
+      aria-disabled
+      className="flex min-h-[34px] flex-wrap items-center gap-[10px] rounded-t-[5px] bg-primary-soft px-[10px] py-[4px]"
+    >
+      {boxes.map(([key, glyph, w]) => (
+        <button key={key} type="button" disabled title={why} aria-label={ut(key)} className={chip(w)}>
+          {glyph}
+        </button>
+      ))}
+      {/* образец цвета — не буква, а заливка: на кадре это прямоугольник */}
+      <button type="button" disabled title={why} aria-label={ut("fmt.highlight")} className={chip("w-[41px]")}>
+        <span aria-hidden className="block h-[14px] w-[24px] rounded-[3px] bg-primary-dim" />
+      </button>
+      <button type="button" disabled title={why} aria-label={ut("fmt.color")} className={chip("w-[42px] font-bold text-primary")}>
+        A
+      </button>
+      {marks.map(([key, glyph, look]) => (
+        <button key={key} type="button" disabled title={why} aria-label={ut(key)} className={chip(`w-[40px] ${look}`)}>
+          {glyph}
+        </button>
+      ))}
+      {aligns.map((key, i) => (
+        <button key={key} type="button" disabled title={why} aria-label={ut(key)} className={chip("w-[35px]")}>
+          <AlignGlyph at={i} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Четыре полоски выравнивания: последняя строка короче у всех, кроме «по ширине» */
+function AlignGlyph({ at }: { at: number }) {
+  const widths = [
+    [14, 10, 14, 8],
+    [14, 10, 14, 10],
+    [14, 10, 14, 8],
+    [14, 14, 14, 14],
+  ][at]!;
+  const shift = (w: number) => (at === 1 ? (14 - w) / 2 : at === 2 ? 14 - w : 0);
+  return (
+    <svg viewBox="0 0 14 12" aria-hidden focusable="false" className="size-[14px]" fill="currentColor">
+      {widths.map((w, i) => (
+        <rect key={i} x={shift(w)} y={i * 3} width={w} height={1.5} rx={0.7} />
+      ))}
+    </svg>
+  );
+}
+
+/**
  * Собрать черновик из фактов.
  *
  * Фразу собирает клиент, а не сервер: у сервера нет языка интерфейса, и
@@ -212,7 +281,7 @@ export function ConclusionEditor({
  * Вывод не подставляется вовсе — его пишет человек, и место под него
  * оставлено пустым намеренно: заготовка вывода читалась бы как вывод.
  */
-async function buildDraft(responseId: string, ut: (k: never) => string): Promise<string> {
+export async function buildDraft(responseId: string, ut: (k: never) => string): Promise<string> {
   const t = (k: string) => ut(k as never);
   const d = await api.conclusionDraft(responseId);
   const lines: string[] = [];
