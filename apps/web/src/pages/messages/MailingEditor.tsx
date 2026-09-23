@@ -68,9 +68,16 @@ export default function MailingPage() {
 /** Плейсхолдер селекта — фиолетовым полужирным, как подпись поля на макете */
 const PLACEHOLDER = { color: "var(--primary)", fontWeight: 700 } as const;
 
-/** Рамка «Відповідь»: линия #666666 (как у полей), радиус 5, поля 20 — замер f16/f22 */
-const answerBox = "rounded-[5px] border border-border px-[20px] pb-[16px] pt-[19px]";
+/*
+ * Рамка «Відповідь»: линия #666666 (как у полей), радиус 5. Поля замерены по
+ * обоим кадрам: рамка 455…1154, подпись и варианты начинаются на 476…477 —
+ * слева 21; нижняя линия 526 при низе вариантов 507 — снизу 18.
+ */
+const answerBox = "rounded-[5px] border border-border px-[21px] pb-[18px] pt-[19px]";
 const answerHeading = "m-0 text-[17px] font-bold leading-[20px] text-primary";
+
+/** Ширина варианта — 137 (f22: плашка 659…795; f16: поле 477…611 в рамке) */
+const optionWidth = "w-[137px]";
 
 function MailingEditor({ id }: { id: string | null }) {
   const { ut } = useLang();
@@ -232,28 +239,37 @@ function MailingEditor({ id }: { id: string | null }) {
                 {ut("mail.answer")}
               </p>
               {/*
-                Варианты — контурные поля 139×36 с зазором 18 и «+» следом, как на
-                f16. Имя каждому даёт aria-label с номером: подписи у них нет, а
-                два безымянных поля подряд диктор различить не может. Ширина —
-                обёрткой: у Input стоит w-full, и второй класс ширины с ним
-                спорил бы порядком в собранном CSS.
+                Варианты — контурные поля 137×36, как на f16. Имя каждому даёт
+                aria-label с номером: подписи у них нет, а два безымянных поля
+                подряд диктор различить не может. Ширина — обёрткой: у Input
+                стоит w-full, и второй класс ширины с ним спорил бы порядком в
+                собранном CSS.
+
+                Два зазора, а не один, и это замер: между полями 21 (правая
+                линия первого 611, левая второго 633), а до «+» 18 (поле
+                кончается на 767, квадрат глифа 27 начинается на 785). Один
+                общий зазор пришлось бы выбрать неверным в одном из двух мест.
               */}
-              <div className="mt-[18px] flex flex-wrap items-center gap-[18px]">
-                {draft.options.map((o, i) => (
-                  <div key={i} className="w-[139px]">
-                    <Input
-                      aria-label={`${ut("mail.option")} ${i + 1}`}
-                      value={o}
-                      onChange={(e) => setOption(i, e.target.value)}
-                      maxLength={100}
-                      autoComplete="off"
-                      className="text-center"
-                    />
-                  </div>
-                ))}
+              <div className="mt-[18px] flex items-start gap-[18px]">
+                <div className="flex flex-wrap items-center gap-[21px]">
+                  {draft.options.map((o, i) => (
+                    <div key={i} className={optionWidth}>
+                      <Input
+                        aria-label={`${ut("mail.option")} ${i + 1}`}
+                        value={o}
+                        onChange={(e) => setOption(i, e.target.value)}
+                        maxLength={100}
+                        autoComplete="off"
+                        className="text-center"
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* глиф встаёт по верху ряда: при переносе вариантов он остаётся у первой строки */}
                 <Button
                   size="glyph"
                   variant="ghost"
+                  className="mt-[4px] shrink-0"
                   aria-label={ut("mail.addOption")}
                   disabled={draft.options.length >= MAX_OPTIONS}
                   onClick={addOption}
@@ -313,9 +329,10 @@ function SentView({ m, answerId }: { m: MailingCard; answerId: string }) {
           {ut("mail.answer")}
         </p>
         {m.options.length ? (
-          <ul className="m-0 mt-[18px] flex list-none flex-wrap justify-center gap-[17px] p-0">
+          /* зазор 19: плашки на f22 стоят 659…795 и 815…951, по центру рамки */
+          <ul className="m-0 mt-[18px] flex list-none flex-wrap justify-center gap-[19px] p-0">
             {m.options.map((o, i) => (
-              <Readout key={i} as="li" look="fill" className="w-[139px] justify-center font-bold text-primary">
+              <Readout key={i} as="li" look="fill" className={`${optionWidth} justify-center font-bold text-primary`}>
                 {o}
               </Readout>
             ))}
