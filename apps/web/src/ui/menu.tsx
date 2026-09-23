@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { isTopLayer, useFocusTrap } from "./index";
 import { cx } from "./cx";
-import { Button } from "./primitives";
+import { Button, type ButtonProps } from "./primitives";
 
 /*
  * Всплывающее меню за глифом: «+» над списком, «⋯» в строке, «▾» у крошки,
@@ -96,6 +96,8 @@ export function MenuButton({
   glyph,
   align = "left",
   className,
+  triggerClassName,
+  triggerSize = "glyph",
   children,
 }: {
   /** Имя меню для диктора: у глифа подписи нет */
@@ -103,6 +105,16 @@ export function MenuButton({
   glyph: ReactNode;
   align?: MenuAlign;
   className?: string;
+  /*
+   * Раскрывающий элемент — не всегда глиф в квадрате 27. На кадрах
+   * f23_1/f24_1 меню языка раскрывает короткая надпись «Укр» без рамки, и
+   * втиснуть её в `size="glyph"` нельзя: квадрат 27 обрежет слово. Поэтому
+   * размер и классы кнопки — параметры с макетным умолчанием, а не зашитые
+   * значения. Альтернатива — второй компонент рядом — принесла бы вторую
+   * копию ловушки фокуса и обхода стрелками, ради чего этот файл и написан.
+   */
+  triggerClassName?: string;
+  triggerSize?: ButtonProps["size"];
   children: (close: () => void) => ReactNode;
 }) {
   const id = useId();
@@ -155,8 +167,9 @@ export function MenuButton({
   return (
     <div className={cx("relative inline-flex", className)}>
       <Button
-        size="glyph"
+        size={triggerSize}
         variant="ghost"
+        className={triggerClassName}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}

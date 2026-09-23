@@ -1,6 +1,7 @@
 import { Link, Navigate, useParams } from "react-router-dom";
 import { api } from "../../api";
 import { dateTime } from "../../format";
+import { makeUiT } from "@quizzy/shared";
 import { useLang } from "../../lang";
 import { Loading } from "../../ui";
 import { Page } from "../../ui/layout";
@@ -60,7 +61,7 @@ import { buildResponseView, type QuestionView, type ScaleLadder } from "./model"
  */
 
 export default function ResponseView() {
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const { id: surveyId, rid } = useParams<{ id: string; rid: string }>();
 
   /*
@@ -86,20 +87,26 @@ export default function ResponseView() {
   }
 
   const view = buildResponseView(detail, survey);
+  /* состояние и дата — не строкой под заголовком (её на кадре нет), а подписью наведения */
+  const meta = `${ut(`rstatus.${detail.status}`, detail.status)} · ${dateTime(detail.submittedAt ?? detail.startedAt)}`;
 
   return (
     <Page
       title={detail.survey.title}
       /*
-        Кадр знает только «Назва тесту». Строка под заголовком — отступление
-        от буквы: прохождение без даты и состояния на экране, на который
-        ведёт пересылаемая ссылка, — это протокол без даты. Набрана она
-        мета-строкой макета (13/400 серым), то есть тем, что у макета есть.
-        Кто проходил — не печатается: GET /api/responses/:id имени не отдаёт
-        (см. api_gaps в отчёте волны).
+        Справа от заголовка — короткая подпись языка текста теста «Укр»: так
+        на кадрах f31_1 и f37_1 (f34 по этой строке обрезан, и противоречия
+        нет). Переключать здесь нечего — протокол показывает то, что человек
+        видел, — поэтому это подпись, а не выпадающий список.
+
+        Состояние и дата прохождения строкой под заголовком НЕ печатаются: на
+        кадре f34 под «Назва тесту» сразу идёт «Опис тесту». Они ушли с глаз
+        скрытой строкой сразу под заголовком — диктор читает их первыми, как
+        и раньше, а на экране их нет, как и на кадре.
       */
-      sub={`${ut(`rstatus.${detail.status}`, detail.status)} · ${dateTime(detail.submittedAt ?? detail.startedAt)}`}
+      actions={<span className="text-[17px] font-bold text-primary">{makeUiT(lang)("top.lang")}</span>}
     >
+      <p className="sr-only">{meta}</p>
       {survey.description ? (
         <section className="mb-[40px]">
           <h2 className="m-0 mb-[12px] text-[18px] font-bold leading-tight text-primary">
@@ -114,7 +121,16 @@ export default function ResponseView() {
           <p className="m-0 mb-[28px] text-[13px] leading-[19px] text-muted">{ut("rsp.staleVersion")}</p>
         ) : null}
 
-        <ol className="m-0 flex list-none flex-col gap-[50px] p-0">
+        {/*
+          Между пунктами на кадре 41–51 от низа последнего варианта до верха
+          следующего «Питання №N» (f34: 562 → 603, то есть 41; f31_2: шаг
+          пунктов 172 при подложке 166, то есть 51–52). В коде выходило 70:
+          зазор 50 плюс по 10 отступа сверху и снизу у самого пункта. Отступы
+          пункта теперь макетные (20 сверху, 25 снизу — см. QuestionBlock), и
+          собственного зазора у списка не остаётся вовсе: 20 + 25 = 45 и есть
+          то расстояние, которое кадры показывают.
+        */}
+        <ol className="m-0 flex list-none flex-col gap-0 p-0">
           {view.questions.map((q) => (
             <QuestionBlock key={q.questionId} q={q} />
           ))}
@@ -156,7 +172,16 @@ export default function ResponseView() {
           дороже одной ссылки.
         */}
         <div className="mt-[45px] flex justify-end">
-          <Link to={`/responses/${detail.id}/conclusion`} className="btn">
+          {/*
+            Силуэт кнопки формы с кадра f34: 45 высотой, 22/700 фиолетовым по
+            мягкой заливке, правый край — край колонки. Прежде здесь стоял
+            класс .btn из styles/legacy.css: своя высота, свой кегль, своя
+            заливка — ничего из этого с макетом не совпадало.
+          */}
+          <Link
+            to={`/responses/${detail.id}/conclusion`}
+            className="inline-flex h-[45px] items-center rounded-[5px] bg-primary-soft px-[22px] text-[22px] font-bold text-primary no-underline"
+          >
             {ut("rsp.createConclusion")}
           </Link>
         </div>
@@ -169,7 +194,19 @@ export default function ResponseView() {
 function QuestionBlock({ q }: { q: QuestionView }) {
   const { ut } = useLang();
   return (
-    <li>
+    /*
+      Наведение подкладывает под пункт целиком светлую плашку — кадр f31_2
+      (#f7f5fa на заголовок и ряд вариантов разом).
+
+      Плашка на кадре шириной РОВНО в колонку 700 (столбцы 83–782 вырезки при
+      колонке, начинающейся с 83) и влево не выносится. Прежние `-mx-[12px]
+      px-[12px]` растягивали её до 724 и на 12 вылезали за колонку слева и
+      справа — на кадре такого выноса нет. Отступы по вертикали замерены там
+      же: 20 сверху (первая строка заголовка на 476+22) и 25 снизу (низ ряда
+      вариантов 617, низ плашки 641). Без горизонтальных отступов плашка
+      кончается ровно по букве — на кадре так и нарисовано.
+    */
+    <li className="rounded-[5px] pb-[25px] pt-[20px] hover:bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]">
       {/*
         h2, а не h3: «Опис тесту», каждый пункт и «Результати» — соседи одного
         уровня под заголовком экрана, и на кадре набраны одним кеглем. Номер

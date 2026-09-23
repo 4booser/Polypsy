@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { LANG_NAMES, type Issue, type Lang, type SurveyGroupWithCounts } from "@quizzy/shared";
+import { makeUiT, type Issue, type Lang, type SurveyGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { AssignGroup } from "./AssignGroup";
@@ -23,10 +23,11 @@ import {
 import { Preview } from "./Preview";
 import { IconGroup, IconPatients, Loading } from "../../ui";
 import { Page } from "../../ui/layout";
-import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
+import { Button, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
-import { IconCaution, IconCross, IconDisclosure } from "../../ui/glyphs";
+import { IconCaution, IconCross, IconGear } from "../../ui/glyphs";
+import { MenuButton, menuItemClass } from "../../ui/menu";
 
 /*
  * Конструктор теста — один свиток по кадрам заказчика.
@@ -38,16 +39,50 @@ import { IconCaution, IconCross, IconDisclosure } from "../../ui/glyphs";
  * внизу «Створити». Прежняя редакция делила ту же работу на четыре вкладки;
  * макет их не знает, и разбивка ушла вместе с ними.
  *
- * Что осталось от прежней редакции и почему: автосейв черновика, отмена и
- * возврат, проверка структуры до сохранения, предпросмотр пункта справа
- * (панель контекста, которую макет не запрещает), настройки прохождения и
- * психометрика — свёрнутыми блоками. Это возможности, а не украшения;
- * убрать их ради буквы кадра значило бы снять то, чем встроенные методики
- * (МЛО, Мини-мульт, СР-45) считаются.
+ * Чего на кадрах нет — и куда оно убрано с глаз (функции при этом живы,
+ * см. меню шестерёнки рядом с «Створити»):
+ *
+ *   заголовок «Новий тест» и крошка над вкладками (f24_1: над вкладками пусто)
+ *     → заголовок скрыт (titleHidden), крошки нет; возврат к каталогу и к
+ *       карточке методики — пунктами того же меню;
+ *   «чернетка зберігається сама», «Перевірити структуру», отмена и возврат
+ *     → в меню шестерёнки; строка про автосейв — подписью самого меню;
+ *   предпросмотр пункта (панель контекста справа; на всех кадрах справа пусто)
+ *     → пунктом меню, раскрывается блоком под формой;
+ *   «Налаштування проходження» и «Тест як JSON» (f23_2: между «Результати» и
+ *   «Створити» пусто)
+ *     → пунктами того же меню, раскрываются блоками под формой.
+ *
+ * Убрать их совсем было нельзя: это возможности, а не украшения, и без них
+ * встроенные методики (МЛО, Мини-мульт, СР-45) перестают быть методиками.
  *
  * Границу прав макет тоже не видит, а она есть: «Опублікувати» требует
  * surveys.publish, «Створити»/«Зберегти» — только surveys.edit. Поэтому
  * кнопок две, как на f18 (публикация в шапке) и f23 (создание внизу).
+ *
+ * Чего кадры f17/f18/f29/f37 сюда НЕ приносят и почему.
+ *
+ * Эти четыре кадра рисуют один и тот же свиток: «Назва тесту» заголовком,
+ * «Опис тесту» подписью и текстом во всю колонку 1200, «Питання №N» с рядами
+ * «текст | бал» и «Результати». Различаются они только состоянием в шапке:
+ * f17 — два значка назначения (опубликована), f18 — «Опублікувати»
+ * (не опубликована), f29 и f37 — ни того ни другого.
+ *
+ * Свиток этот — ПОКАЗ, а не правка, и это видно по пикселям: ряды на f17,
+ * f18 и f29 залиты #f0ecff, то есть набраны силуэтом «поля с данными»
+ * (Readout look="fill"), а на кадре конструктора f23_2 те же ряды —
+ * контурные поля ввода на белом (#ffffff) с серым плейсхолдером. Поля для
+ * набора текста питання на f17/f18 нет вовсе: заголовок «Питання №2» стоит
+ * над рядами вариантов, и вписать туда формулировку негде. Конструктор —
+ * это f23 и f24: их и опознают собственные вкладки «Конкретний /
+ * Комплексний тест», которых на f17/f18/f29/f37 нет.
+ *
+ * Поэтому свиток f17/f18 принадлежит карточке методики (/surveys/:id), и
+ * переносить его сюда — значит заменить редактор просмотром. Отсюда взято
+ * только то, что относится к состоянию шапки самого конструктора: значки
+ * назначения показываются у опубликованной методики, «Опублікувати» — у
+ * неопубликованной, крошки над заголовком нет, описание при правке идёт во
+ * всю колонку 1200. Остальное — работа волны карточки методики.
  */
 
 /**
@@ -117,6 +152,18 @@ export default function Constructor() {
    * специалист с русской консолью вписывает украинский текст методики.
    */
   const [editLang, setEditLang] = useState<Lang>(lang);
+  /*
+   * Что развёрнуто из меню шестерёнки. Одно за раз: это блоки под формой, и
+   * два открытых сразу увели бы «Створити» на два экрана вниз.
+   */
+  const [tool, setTool] = useState<null | "preview" | "settings" | "json">(null);
+  /*
+   * Опубликована ли методика. Кадр f17 — опубликованная: два значка
+   * назначения и никакой кнопки. Кадр f18 — неопубликованная: «Опублікувати»
+   * и никаких значков. Печатать и то и другое разом — значит показывать
+   * «опубликовать» у того, что уже опубликовано.
+   */
+  const [published, setPublished] = useState(false);
   /* окно «призначити групі» — второй значок кадра f17 */
   const [assignGroup, setAssignGroup] = useState(false);
 
@@ -152,6 +199,7 @@ export default function Constructor() {
       .surveyRaw(id)
       .then((s) => {
         setDraftRaw(toDraft(s, []));
+        setPublished(s.status === "published");
         setLoaded(true);
       })
       .catch((e) => {
@@ -272,23 +320,103 @@ export default function Constructor() {
       <Results draft={draft} setDraft={setDraft} />
     );
 
+  /*
+   * Меню инструментов — приёмник всего, чего на кадрах нет: проверки
+   * структуры, отмены и возврата, предпросмотра, настроек прохождения и
+   * JSON. Подпись меню несёт строку «чернетка зберігається сама» — на кадре
+   * её нет, а сказать о самосохранении надо.
+   */
+  const tools = (
+    <MenuButton
+      label={dirty ? `${ut("cn.tools")} — ${ut("co.draftAutosaves")}` : ut("cn.tools")}
+      glyph={<IconGear />}
+      align="right"
+    >
+      {(close) => (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className={menuItemClass("right")}
+            disabled={busy}
+            onClick={() => {
+              close();
+              void check();
+            }}
+          >
+            {ut("co.checkStructure")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={menuItemClass("right")}
+            disabled={!undoStack.current.length}
+            onClick={() => {
+              close();
+              undo();
+            }}
+          >
+            {ut("co.undo")}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className={menuItemClass("right")}
+            disabled={!redoStack.current.length}
+            onClick={() => {
+              close();
+              redo();
+            }}
+          >
+            {ut("co.redo")}
+          </button>
+          <hr className="my-1 border-0 border-t border-hairline" />
+          {(["preview", "settings", "json"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="menuitem"
+              aria-pressed={tool === t}
+              className={menuItemClass("right")}
+              onClick={() => {
+                close();
+                setTool((cur) => (cur === t ? null : t));
+                if (t === "json") setJson(JSON.stringify(draft, null, 2));
+              }}
+            >
+              {ut(t === "preview" ? "co.preview" : t === "settings" ? "cn.settings" : "cn.jsonSection")}
+            </button>
+          ))}
+          <hr className="my-1 border-0 border-t border-hairline" />
+          {/* крошка кадра «До тестів» / «До аналітики» — сюда же: над вкладками на кадре пусто */}
+          <Link role="menuitem" to={id ? `/surveys/${id}` : backTo} className={menuItemClass("right")} onClick={close}>
+            {id ? ut("back.toAnalytics") : ut("cn.backToCatalogue")}
+          </Link>
+        </>
+      )}
+    </MenuButton>
+  );
+
   return (
     <Page
       /* на кадрах правки (f18, f29) заголовок экрана — название самого теста */
       title={id ? text(draft.title) || ut("cn.testTitle") : ut("cn.newTest")}
-      crumbs={id ? <Link to={`/surveys/${id}`}>{ut("back.toAnalytics")}</Link> : <Link to={backTo}>{ut("back.toSurveys")}</Link>}
+      /*
+       * При заведении заголовка на экране нет: кадр f24_1 начинается прямо
+       * вкладками «Конкретний / Комплексний тест». При правке заголовок — имя
+       * самого теста (f18/f29). Крошки нет ни там, ни там: обратные дороги
+       * ушли в меню шестерёнки.
+       */
+      titleHidden={!id}
       actions={
         <>
           {/*
-            Два значка кадра f17: «призначити пацієнту» и «призначити групі».
-            Первый ведёт на экран назначений — он есть. Второй открывает окно
-            здесь же: групповое назначение на сервере есть
-            (POST /api/patient-groups/:id/surveys, разворачивается в
-            поимённые), а экран группы пациентов делает другая волна — вести
-            некуда, да и одно действие перехода не стоит. Кнопка, а не ссылка:
-            адрес не меняется.
+            Кадр f17 — опубликованная методика: два значка назначения,
+            «Опублікувати» нет. Кадр f18 — неопубликованная: кнопка есть,
+            значков нет. Показывать оба состояния разом значило бы предлагать
+            опубликовать то, что опубликовано.
           */}
-          {id ? (
+          {id && published ? (
             <>
               <Link
                 to={`/surveys/${id}/access`}
@@ -309,52 +437,89 @@ export default function Constructor() {
               </button>
             </>
           ) : null}
-          <Button onClick={() => save(true)} disabled={busy}>
-            {busy ? ut("co.saving") : ut("cn.publish")}
-          </Button>
+          {!published ? (
+            <Button onClick={() => save(true)} disabled={busy}>
+              {busy ? ut("co.saving") : ut("cn.publish")}
+            </Button>
+          ) : null}
+          {/*
+            Переключатель языка текста — у правого края колонки, короткой
+            подписью «Укр», как на кадрах f23_1/f24_1, f31 и f37.
+
+            На кадре это НЕ поле в рамке: «Укр» набрано 17/700 фиолетовым без
+            рамки и без заливки, а раскрытый список — белая плашка с рамкой,
+            где языки печатаются полными именами («Українська», «Русский»),
+            прижатыми к правому краю. Обычный <select> так не умеет: у него
+            надпись на кнопке и надпись в списке — одна и та же строка, и
+            выбирать приходилось между коротким «Укр» на кнопке и полным
+            именем в списке. Поэтому здесь меню (align="right" — та же плашка,
+            что у меню карточек f15/f33/f38), а не поле.
+
+            Третий пункт кадра — «English» — не заведён: Lang в модели
+            содержит только uk и ru, и пустая строка в списке обещала бы язык,
+            которого нет ни в одном поле теста.
+          */}
+          {/*
+            Пояснение «текст хранится обоими языками» — подписью наведения на
+            обёртке, а не на самой кнопке меню: кнопка уже несёт имя меню для
+            диктора (aria-label), и второй `title` на ней диктор прочёл бы
+            поверх имени. На кадре этого пояснения нет — оно и не видно, пока
+            на переключатель не навели.
+          */}
+          <span title={ut("cn.editLangHint")} className="inline-flex shrink-0">
+            <MenuButton
+              label={ut("cn.editLang")}
+              align="right"
+              triggerSize="sm"
+              triggerClassName="h-auto px-0 text-[17px] font-bold text-primary"
+              glyph={makeUiT(editLang)("top.lang")}
+            >
+              {(close) =>
+                (["uk", "ru"] as const).map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    role="menuitem"
+                    aria-current={l === editLang}
+                    className={menuItemClass("right")}
+                    onClick={() => {
+                      setEditLang(l);
+                      close();
+                    }}
+                  >
+                    {ut(l === "uk" ? "lang.uk" : "lang.ru")}
+                  </button>
+                ))
+              }
+            </MenuButton>
+          </span>
+          {tools}
         </>
       }
       toolbar={
-        <div className="flex flex-1 items-center justify-end gap-[8px]">
-          {/*
-            Отмена и возврат — обычные кнопки с рамкой, а не тихие.
-            Тихий вариант оставлял на светлой полосе вкладок две едва
-            заметные закорючки: в конструкторе отмена нужна чаще всего
-            именно тогда, когда что-то пошло не так, и искать её в этот
-            момент — последнее, чем стоит заниматься.
-          */}
-          {/*
-            Значки нарисованы, а не набраны символами ↶ и ↷.
-
-            Шрифты подключены подмножествами — только те диапазоны, что
-            реально нужны, — и стрелок отмены в них нет. Браузер подставлял
-            запасную гарнитуру, и на кнопке оказывалась не стрелка, а то,
-            что нашлось. Заметно это стало ровно тогда, когда кнопки
-            перестали быть бледными.
-          */}
-          {dirty ? <span className="text-[13px] text-muted">{ut("co.draftAutosaves")}</span> : null}
-          {/*
-            «Перевірити структуру» — здесь, а не внизу рядом со «Створити»: на
-            кадре f23 внизу одна кнопка, а полоса инструментов — уже место
-            того, чего на кадре нет (отмена, возврат). Проверка — инструмент
-            редактора и стоит с ними; её отчёт по-прежнему выводится над формой.
-          */}
-          <Button variant="ghost" onClick={check} disabled={busy}>{ut("co.checkStructure")}</Button>
-          <Button variant="ghost" onClick={undo} disabled={!undoStack.current.length} title={ut("co.undo")} aria-label={ut("co.undo")}>
-            <IconUndo />
-          </Button>
-          <Button variant="ghost" onClick={redo} disabled={!redoStack.current.length} title={ut("co.redo")} aria-label={ut("co.redo")}>
-            <IconUndo flip />
-          </Button>
-        </div>
+        !id ? (
+          /* вкладки состояния: role="tab" и панель ниже (cn-mode-panel), см. Tabs */
+          <Tabs
+            label={ut("cn.testKind")}
+            items={[
+              {
+                id: "cn-mode-specific",
+                controls: "cn-mode-panel",
+                label: ut("cn.specific"),
+                active: mode === "specific",
+                onSelect: () => setDraft((d) => switchMode(d, "specific")),
+              },
+              {
+                id: "cn-mode-complex",
+                controls: "cn-mode-panel",
+                label: ut("cn.complex"),
+                active: mode === "complex",
+                onSelect: () => setDraft((d) => switchMode(d, "complex")),
+              },
+            ]}
+          />
+        ) : undefined
       }
-      /*
-       * Предпросмотр — в панели контекста справа. На кадрах справа пусто, и
-       * панель это место занимает, а не спорит с ним; убрать предпросмотр —
-       * значит снова собирать методику вслепую.
-       */
-      context={<Preview draft={draft} at={focused} />}
-      contextTitle={ut("co.preview")}
     >
       {assignGroup && id ? <AssignGroup surveyId={id} onClose={() => setAssignGroup(false)} /> : null}
 
@@ -411,52 +576,27 @@ export default function Constructor() {
         </div>
       ) : null}
 
-      {/* колонка формы по кадру: ~700px по центру, справа — язык текста */}
-      <div className="mx-auto w-full max-w-[700px]">
-        <div className="mb-[24px] flex items-start justify-between gap-[24px]">
-          {!id ? (
-            /* вкладки состояния: role="tab" и панель ниже (cn-mode-panel), см. Tabs */
-            <Tabs
-              label={ut("cn.testKind")}
-              items={[
-                {
-                  id: "cn-mode-specific",
-                  controls: "cn-mode-panel",
-                  label: ut("cn.specific"),
-                  active: mode === "specific",
-                  onSelect: () => setDraft((d) => switchMode(d, "specific")),
-                },
-                {
-                  id: "cn-mode-complex",
-                  controls: "cn-mode-panel",
-                  label: ut("cn.complex"),
-                  active: mode === "complex",
-                  onSelect: () => setDraft((d) => switchMode(d, "complex")),
-                },
-              ]}
-            />
-          ) : (
-            <span />
-          )}
-          {/*
-            Пояснение о двух языках — всплывающей подписью переключателя, а не
-            строкой под ним: на кадре f24_1 под «Укр ▾» ничего нет. Хранение
-            текста обоими языками от этого не меняется, а тот, кто не понял,
-            зачем переключатель, наведёт на него и прочтёт.
-          */}
-          <Field label={ut("cn.editLang")} inline className="w-[150px] shrink-0">
-            <Select value={editLang} onChange={(e) => setEditLang(e.target.value as Lang)} title={ut("cn.editLangHint")}>
-              {(["uk", "ru"] as const).map((l) => (
-                <option key={l} value={l}>{LANG_NAMES[l].full}</option>
-              ))}
-            </Select>
-          </Field>
-        </div>
+      <EditLangProvider value={editLang}>
+        {/*
+          Название и описание.
 
-        <EditLangProvider value={editLang}>
-          <Loc label={ut("cn.testTitle")} value={draft.title} onChange={(v) => patch({ title: v })} />
+          При заведении (кадры f23_1, f24_1) они стоят в колонке формы 700 —
+          видимыми подписями 18/700 НАД пустыми полями. При правке (f18, f29)
+          описание идёт во всю колонку содержимого 1200: там оно уже текст, а
+          не поле для набора, и читают его целиком. Название на кадрах правки
+          печатается заголовком экрана, но поле под ним остаётся — иначе
+          методику нельзя переименовать.
+        */}
+        <div className={id ? "" : "mx-auto w-full max-w-[700px]"}>
+          <Loc above label={ut("cn.testTitle")} value={draft.title} onChange={(v) => patch({ title: v })} />
           {/* четыре строки: поле описания на кадре f24_1 — 125px при 17/1.55 */}
-          <Loc label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={4} />
+          <Loc above label={ut("cn.testDescription")} value={draft.description} onChange={(v) => patch({ description: v })} multiline rows={4} />
+        </div>
+      </EditLangProvider>
+
+      {/* остальная форма — колонка 700 по центру, как на кадрах */}
+      <div className="mx-auto w-full max-w-[700px]">
+        <EditLangProvider value={editLang}>
 
           <Questions draft={draft} setDraft={setDraft} onFocusQuestion={setFocused} />
 
@@ -478,29 +618,43 @@ export default function Constructor() {
             </div>
           )}
 
-          <Disclosure title={ut("cn.settings")}>
-            <Settings draft={draft} groups={groups} patch={patch} />
-          </Disclosure>
-
-          <Disclosure title={ut("cn.jsonSection")} onOpen={() => setJson(JSON.stringify(draft, null, 2))}>
-            <p className="m-0 mb-[8px] pt-[12px] text-[13px] text-muted">{ut("co.jsonHint")}</p>
-            <Textarea
-              aria-label={ut("co.wholeJson")}
-              value={json}
-              onChange={(e) => setJson(e.target.value)}
-              rows={22}
-              spellCheck={false}
-              className="font-mono text-caption"
-            />
-            <div className="mt-3 flex gap-2">
-              <Button onClick={applyJson}>{ut("co.apply")}</Button>
-              <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
-            </div>
-          </Disclosure>
+          {/*
+            Блоки, открытые из меню шестерёнки. На кадре f23_2 между
+            «Результати» и «Створити» пусто, поэтому в потоке их нет: они
+            появляются ровно тогда, когда их позвали, и закрываются тем же
+            пунктом меню.
+          */}
+          {tool === "preview" ? (
+            <ToolBlock title={ut("co.preview")} onClose={() => setTool(null)}>
+              <Preview draft={draft} at={focused} />
+            </ToolBlock>
+          ) : null}
+          {tool === "settings" ? (
+            <ToolBlock title={ut("cn.settings")} onClose={() => setTool(null)}>
+              <Settings draft={draft} groups={groups} patch={patch} />
+            </ToolBlock>
+          ) : null}
+          {tool === "json" ? (
+            <ToolBlock title={ut("cn.jsonSection")} onClose={() => setTool(null)}>
+              <p className="m-0 mb-[8px] text-[13px] text-muted">{ut("co.jsonHint")}</p>
+              <Textarea
+                aria-label={ut("co.wholeJson")}
+                value={json}
+                onChange={(e) => setJson(e.target.value)}
+                rows={22}
+                spellCheck={false}
+                className="font-mono text-caption"
+              />
+              <div className="mt-3 flex gap-2">
+                <Button onClick={applyJson}>{ut("co.apply")}</Button>
+                <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(json)}>{ut("co.copy")}</Button>
+              </div>
+            </ToolBlock>
+          ) : null}
         </EditLangProvider>
 
-        {/* «Створити» 215×45 из f23/f24 — одна кнопка, как на кадре; проверка структуры — в полосе инструментов */}
-        <div className="mt-[28px] flex justify-end">
+        {/* «Створити» 215×45 из f23/f24, отступ сверху 45 — замер кадра f23_2 */}
+        <div className="mt-[45px] flex justify-end">
           <Button size="md" className="min-w-[215px]" onClick={() => save(false)} disabled={busy}>
             {busy ? ut("co.saving") : id ? ut("common.save") : ut("cn.create")}
           </Button>
@@ -545,42 +699,19 @@ function Results({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) =
 }
 
 /**
- * Свёрнутый блок под формой: то, чего нет на кадре, но есть у методики.
- * Нативный <details>: сворачивание не требует ни состояния, ни ARIA — браузер
- * сам сообщает диктору «свёрнуто/развёрнуто».
+ * Блок, открытый из меню шестерёнки: то, чего нет на кадре, но есть у
+ * методики. Заголовок и «закрити» — чтобы блок нельзя было принять за часть
+ * формы и чтобы закрывался он не только тем же пунктом меню.
  */
-function Disclosure({ title, onOpen, children }: { title: string; onOpen?: () => void; children: ReactNode }) {
+function ToolBlock({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const { ut } = useLang();
   return (
-    <details
-      className="group mt-[28px] rounded-[5px] border border-hairline bg-[var(--bg)] px-[20px] py-[12px]"
-      onToggle={(e) => {
-        if ((e.currentTarget as HTMLDetailsElement).open) onOpen?.();
-      }}
-    >
-      <summary className="cursor-pointer list-none text-[17px] font-bold text-primary [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="mr-1 inline-flex transition-transform group-open:rotate-90"><IconDisclosure /></span>
-        {title}
-      </summary>
+    <section className="mt-[28px] rounded-[5px] border border-hairline bg-[var(--bg)] px-[20px] py-[12px]">
+      <div className="mb-[12px] flex items-center justify-between gap-[14px]">
+        <h2 className="m-0 text-[17px] font-bold text-primary">{title}</h2>
+        <Button variant="quiet" size="sm" onClick={onClose}>{ut("ui.close")}</Button>
+      </div>
       {children}
-    </details>
-  );
-}
-
-/** Стрелка отмены; `flip` разворачивает её в «вернуть». */
-function IconUndo({ flip }: { flip?: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={flip ? { transform: "scaleX(-1)" } : undefined}
-    >
-      <path d="M9 14 4 9l5-5" />
-      <path d="M4 9h9a7 7 0 0 1 0 14h-3" />
-    </svg>
+    </section>
   );
 }

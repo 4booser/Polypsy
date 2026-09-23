@@ -587,11 +587,12 @@ const SCREENS: Array<{
     name: "constructor-new",
     open: async (page) => {
       await page.goto("/constructor");
-      await page.getByRole("heading", { level: 1, name: "Новый тест" }).waitFor();
-      // вкладки вида есть только при создании; снимается вид по умолчанию — «Конкретный»
+      /*
+       * Заголовка «Новый тест» на экране нет: по кадру f24_1 над вкладками
+       * пусто, и заголовок оставлен скрытым для диктора. Признак готовности —
+       * сами вкладки; снимается вид по умолчанию — «Конкретный».
+       */
       await expect(page.getByRole("tab", { name: "Конкретный тест" })).toHaveAttribute("aria-selected", "true");
-      // предпросмотр справа — панель контекста, и она в снимке
-      await page.locator(".preview-phone").waitFor();
     },
     // до «Ответов», шкал и кнопки «Создать» внизу — они и есть форма
     fit: true,
@@ -612,7 +613,6 @@ const SCREENS: Array<{
        * методики, и оно есть в разметке ещё до того, как приехали пункты.
        */
       await page.getByRole("button", { name: /Развернуть вопрос$/ }).first().waitFor();
-      await page.locator(".preview-phone").waitFor();
     },
     fit: true,
   },
