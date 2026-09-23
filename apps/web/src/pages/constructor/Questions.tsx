@@ -166,11 +166,12 @@ export function Questions({
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cx("block truncate text-[17px] font-bold", isOpen ? "text-muted" : "text-primary")}>
+                    {/* шаг строки кадра f12 — 73: 17 сверху + 22 + 17 текста + 17 снизу */}
+                    <span className={cx("block truncate text-[17px] font-bold leading-[22px]", isOpen ? "text-muted" : "text-primary")}>
                       <span className="sr-only">{i + 1}. </span>
                       {text(q.title) || ut("co.questions")}
                     </span>
-                    <span className={cx("block truncate text-[13px]", isOpen ? "text-faint" : "text-muted")}>
+                    <span className={cx("block truncate text-[13px] leading-[17px]", isOpen ? "text-faint" : "text-muted")}>
                       {text(q.help) || ut("cn.shortDescription")}
                     </span>
                   </span>

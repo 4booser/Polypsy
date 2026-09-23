@@ -1,4 +1,5 @@
 
+import type { UiKey } from "@quizzy/shared";
 import { api, type ConclusionState } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
@@ -206,18 +207,18 @@ function FormatBar() {
   const chip = (extra: string) =>
     "flex h-[26px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-[var(--bg)] px-[6px] text-[13px] text-text-2 opacity-100 disabled:opacity-60 " +
     extra;
-  const boxes: [import("@quizzy/shared").UiKey, string, string][] = [
+  const boxes: [UiKey, string, string][] = [
     ["fmt.paragraph", "¶", "w-[27px]"],
     ["fmt.font", "Ariel", "w-[214px]"],
     ["fmt.weight", "Regular", "w-[201px]"],
     ["fmt.size", "12", "w-[41px]"],
   ];
-  const marks: [import("@quizzy/shared").UiKey, string, string][] = [
+  const marks: [UiKey, string, string][] = [
     ["fmt.bold", "B", "font-bold"],
     ["fmt.italic", "I", "italic"],
     ["fmt.underline", "U", "underline"],
   ];
-  const aligns: import("@quizzy/shared").UiKey[] = ["fmt.alignLeft", "fmt.alignCenter", "fmt.alignRight", "fmt.alignJustify"];
+  const aligns: UiKey[] = ["fmt.alignLeft", "fmt.alignCenter", "fmt.alignRight", "fmt.alignJustify"];
   return (
     <div
       role="toolbar"
