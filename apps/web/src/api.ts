@@ -17,6 +17,7 @@ import type {
   SurveyGroupWithCounts,
   SurveyFolder,
   SurveyFolderWithCounts,
+  PatientCard,
   PatientGroup,
   PatientGroupCard,
   PatientGroupInput,
@@ -1000,6 +1001,13 @@ export const api = {
    * назначения и отвечает числом адресатов.
    */
   patientGroups: () => unwrap(request<Items<PatientGroupWithCounts>>("/api/patient-groups")),
+  /*
+   * Карточка пациента (кадр f19) — персональные данные, «Тести», «Групи»,
+   * «Заключення» и ведущий одним ответом. Не caseSummary: тот отвечает на
+   * вопрос «что с человеком сейчас» (тревоги, направления) для прежней
+   * карты /patients/:id/case, а этот — на вопрос кадра.
+   */
+  patientCard: (userId: string) => request<PatientCard>(`/api/patients/${userId}/card`),
   assignSurveyToPatientGroup: (groupId: string, body: AssignSurveyToPatientGroupInput) =>
     request<{ groupId: string; surveyId: string; recipients: number }>(`/api/patient-groups/${groupId}/surveys`, {
       method: "POST",
