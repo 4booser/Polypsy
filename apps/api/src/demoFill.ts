@@ -11,13 +11,26 @@
 import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
 import { fillDemoData, purgeDemoData } from "./lib/demoFill";
-import { seedDemoGroupsRules } from "./seed/demoGroupsRules";
+import { purgeDemoGroupsRules, seedDemoGroupsRules } from "./seed/demoGroupsRules";
 
 const arg = process.argv[2] ?? "60";
 
 if (arg === "purge") {
   const removed = await systemContext(baseDb, () => purgeDemoData());
+  /*
+   * Группы и правила посева — такие же вымышленные данные, как люди, и
+   * убираются той же командой. Собранные из вымышленных, после их удаления
+   * они остались бы строками с пустым составом: «убрать всех вымышленных»
+   * обязано убирать и их, а demo-fill заводит их заново.
+   *
+   * Строго ПОСЛЕ людей, а не до: этот порядок ежедневно проверяет, что
+   * владелец групп — настоящий сотрудник. Владей ими вымышленный
+   * demo-specialist, RESTRICT на patient_groups.owner_id уронил бы уборку
+   * людей выше, и отказ пришёл бы из базы, а не из догадки.
+   */
+  const cleared = await systemContext(baseDb, () => purgeDemoGroupsRules());
   console.log(`  ✓ убрано вымышленных: ${removed}`);
+  console.log(`  ✓ групп и правил:     ${cleared.groups} и ${cleared.rules}`);
 } else {
   const count = Number(arg);
   if (!Number.isFinite(count) || count < 1 || count > 500) {
