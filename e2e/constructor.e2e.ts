@@ -1,6 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { fieldByLabel, goTop, login, setEditLang } from "./helpers";
 
+/**
+ * Раскрыть меню шестерёнки конструктора.
+ *
+ * Имя меню несёт строку об автосохранении, когда черновик тронут
+ * («Инструменты конструктора — черновик сохраняется сам»), поэтому имя
+ * ищется по началу, а не целиком.
+ */
+async function openTools(page: import("@playwright/test").Page): Promise<void> {
+  await page.getByRole("button", { name: /^Инструменты конструктора/ }).click();
+}
+
 const ITEMS = [
   "1. Я легко засыпаю после дежурства.",
   "2. Резкие звуки заставляют меня вздрагивать.",
@@ -26,7 +37,13 @@ test("методика создаётся из вставленного текс
    */
   await page.getByRole("button", { name: "Добавить", exact: true }).click();
   await page.getByRole("menu", { name: "Добавить" }).getByRole("menuitem", { name: "Новый тест" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Новый тест" })).toBeVisible();
+  /*
+   * Заголовка «Новый тест» на экране больше нет: по кадру f24_1 над вкладками
+   * пусто, и заголовок оставлен только диктору (titleHidden). Поэтому
+   * toBeAttached, а не toBeVisible: экран узнаётся по заголовку в дереве
+   * доступности и по вкладкам ниже.
+   */
+  await expect(page.getByRole("heading", { level: 1, name: "Новый тест" })).toBeAttached();
 
   // вид теста по умолчанию — «Конкретный»: общий набор ответов и шкалы с ключом (кадр f24)
   await expect(page.getByRole("tab", { name: "Конкретный тест" })).toHaveAttribute("aria-selected", "true");
@@ -78,12 +95,16 @@ test("методика создаётся из вставленного текс
   await expect(rows.first()).toContainText("Я легко засыпаю после дежурства.");
 
   /*
-   * Проверка структуры — в полосе инструментов, отчёт выводится над формой.
+   * Проверка структуры — пункт меню шестерёнки: на кадрах конструктора её нет
+   * ни в полосе инструментов, ни рядом с «Створити», и она убрана с глаз
+   * вместе с отменой, возвратом и предпросмотром. Отчёт по-прежнему выводится
+   * над формой.
    * Важен не факт отчёта, а что ошибок в нём нет: сервер отказывает в
    * публикации при структурных ошибках (err.surveyPublishErrors), и без
    * этой проверки следующий шаг падал бы с невнятным «не удалось сохранить».
    */
-  await page.getByRole("button", { name: "Проверить структуру" }).click();
+  await openTools(page);
+  await page.getByRole("menuitem", { name: "Проверить структуру" }).click();
   await expect(
     page.getByRole("heading", { name: /^(Структурных замечаний нет|Замечаний: 0 ошибок)/ }),
   ).toBeVisible();
@@ -133,6 +154,14 @@ test("предпросмотр показывает пункт, который �
   expect(withQuestions).not.toBeNull();
 
   await page.goto(`/constructor/${withQuestions}`);
+
+  /*
+   * Предпросмотр больше не стоит панелью справа: на всех кадрах конструктора
+   * справа пусто, и он открывается пунктом меню шестерёнки — блоком под
+   * формой.
+   */
+  await openTools(page);
+  await page.getByRole("menuitem", { name: "Предпросмотр" }).click();
 
   const phone = page.locator(".preview-phone");
   await expect(phone).toBeVisible();
