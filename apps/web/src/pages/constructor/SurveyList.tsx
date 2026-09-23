@@ -379,7 +379,13 @@ function Row({
         <Link
           to={`/surveys/${s.id}`}
           title={marks.length ? marks.join(" · ") : undefined}
-          className="text-[17px] font-bold leading-[22px] text-primary no-underline hover:underline"
+          /*
+           * Межстрочник имени — 20, а не 22. Замер кадра f11, столбец имени:
+           * базовые линии двух строк «Назва тесту / можливо велика» стоят на
+           * 52 и 72 от верха вырезки — ровно 20. 22 брались от заголовков
+           * экрана и в двухстрочном имени расталкивали строки заметно.
+           */
+          className="text-[17px] font-bold leading-[20px] text-primary no-underline hover:underline"
         >
           {s.title}
         </Link>
@@ -388,16 +394,42 @@ function Row({
         <div className={cellLabel}>{ut("cat.resultCol")}</div>
         <p className={cellText}>{s.description ? s.description : <span className="text-faint">{ut("cat.noDescription")}</span>}</p>
       </td>
-      <td className={cx(cell, "relative pr-[12px]")}>
+      {/*
+        На устройстве без наведения «⋯» виден всегда, и «Статистика» не должна
+        уходить под него: правый отступ колонки там 44 (размер цели нажатия),
+        а на кадре — 12, как нарисовано.
+      */}
+      <td className={cx(cell, "relative pr-[12px] [@media(hover:none)]:pr-[44px]")}>
         <div className={cellLabel}>{ut("cat.statsCol")}</div>
         <p className={cellText}>{stats}</p>
         {/*
           «⋯» вынесен из потока: на кадре четвёртой колонки нет, и «Статистика»
-          идёт до правого края содержимого. Глиф проявляется наведением на
-          строку и фокусом — не `hidden` и не `display:none`, иначе он выпал бы
-          из порядка обхода клавиатурой вместе с меню.
+          идёт до правого края содержимого. Глиф всегда в разметке — не
+          `hidden` и не `display:none`, иначе он выпал бы из порядка обхода
+          клавиатурой вместе с меню.
+
+          Прятать его насовсем нельзя было и раньше, но пряталось: `opacity-0`
+          стоял безусловно, а возвращали глиф только `group-hover` и
+          `group-focus-within`. На планшете и телефоне наведения нет, фокус
+          мышью тоже не приходит — и действия строки становились недостижимы
+          с пальца вовсе. Поэтому невидимость убрана внутрь
+          `@media (hover: hover)`: где наведение есть — вид кадра сохранён
+          (глиф проявляется наведением и фокусом), где его нет — глиф просто
+          нарисован.
+
+          Все три класса стоят ПОД одним медиазапросом намеренно. Оставь
+          `group-hover:opacity-100` снаружи — и порядок в собранном CSS решал
+          бы спор двух правил равной специфичности: у Tailwind медиа-варианты
+          идут после псевдоклассовых, и безусловная невидимость перебила бы
+          проявление наведением.
         */}
-        <span className="absolute right-0 top-[10px] opacity-0 transition-opacity duration-[var(--dur-fast)] group-hover:opacity-100 group-focus-within:opacity-100">
+        <span
+          className={cx(
+            "absolute right-0 top-[10px] transition-opacity duration-[var(--dur-fast)]",
+            "[@media(hover:hover)]:opacity-0",
+            "[@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100",
+          )}
+        >
           {menu}
         </span>
       </td>
