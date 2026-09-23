@@ -1,5 +1,7 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import postgres from "postgres";
 import { adminA, api, db, patient, surveyInA } from "./fixtures";
+import { ADMIN_DATABASE_URL, TEST_DATABASE_NAME } from "./preload";
 import { sql } from "drizzle-orm";
 
 /**
@@ -15,18 +17,45 @@ import { sql } from "drizzle-orm";
  * молча и обнаруживается через полгода на экране у пациента.
  */
 
+/*
+ * Проверка идёт на СВОЕЙ базе с посевом, а не на общей тестовой.
+ *
+ * Общая база наполняется фикстурами всех файлов, и половина из них заводит
+ * методики одним языком — им незачем второй, они проверяют не перевод.
+ * Порядок файлов задаёт файловая система: на macOS он алфавитный, на Linux
+ * — произвольный, и проверка то видела чужие фикстуры, то нет. Зелёный
+ * результат зависел от машины, а красный назывался «одноязычная методика» и
+ * указывал на тест соседа.
+ *
+ * Здесь поднимается своя база, накатываются миграции и выполняется посев —
+ * ровно то содержимое, которое едет в живой экземпляр и которое проверка и
+ * должна сторожить. Шесть секунд на прогон: посев и так гоняется в сквозных
+ * тестах. Альтернатива — заставить каждую фикстуру быть двуязычной —
+ * отвергнута: она чинит следствие и ломается на каждом новом тесте, который
+ * про язык ничего не знает.
+ */
+const CONTENT_DB = `${TEST_DATABASE_NAME}_content`;
+let seeded: postgres.Sql;
+
+async function admin<T>(fn: (client: postgres.Sql) => Promise<T>): Promise<T> {
+  const client = postgres(ADMIN_DATABASE_URL, { max: 1 });
+  try {
+    return await fn(client);
+  } finally {
+    await client.end();
+  }
+}
+
 /** Сколько строк локализованного поля заполнены не на обоих языках */
 async function monolingual(table: string, column: string): Promise<string[]> {
-  const rows = await db.execute<{ sample: string }>(
-    sql.raw(`
+  const rows = await seeded.unsafe(`
       select left(coalesce(${column}->>'ru', ${column}->>'uk', '?'), 60) as sample
       from ${table}
       where ${column} is not null
         and not (${column} ? 'uk' and ${column} ? 'ru')
       limit 20
-    `),
-  );
-  return rows.map((r) => r.sample);
+    `);
+  return rows.map((r) => r.sample as string);
 }
 
 /*
@@ -105,6 +134,39 @@ const NOT_TEXT: [string, string][] = [
 describe("двуязычность содержимого", () => {
   const fields = LOCALIZED;
 
+  beforeAll(async () => {
+    await admin(async (client) => {
+      await client.unsafe(`DROP DATABASE IF EXISTS ${CONTENT_DB}`);
+      await client.unsafe(`CREATE DATABASE ${CONTENT_DB}`);
+    });
+    const url = new URL(ADMIN_DATABASE_URL);
+    url.pathname = `/${CONTENT_DB}`;
+    const env = {
+      PATH: process.env.PATH ?? "",
+      HOME: process.env.HOME ?? "",
+      DATABASE_URL: url.toString(),
+      JWT_SECRET: process.env.JWT_SECRET ?? "",
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? "",
+      SCHEDULER_ENABLED: "0",
+    };
+    const api = new URL("..", import.meta.url).pathname;
+    for (const script of ["src/migrate.ts", "src/seed.ts"]) {
+      const proc = Bun.spawn(["bun", script], { cwd: api, env, stdout: "pipe", stderr: "pipe" });
+      const [out, err] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      await proc.exited;
+      expect(proc.exitCode, `${script}: ${out}${err}`.slice(0, 2000)).toBe(0);
+    }
+    seeded = postgres(url.toString(), { max: 1 });
+  }, 120_000);
+
+  afterAll(async () => {
+    await seeded?.end();
+    await admin((client) => client.unsafe(`DROP DATABASE IF EXISTS ${CONTENT_DB}`));
+  });
+
   for (const [table, column] of fields) {
     test(`${table}.${column} заполнено на обоих языках`, async () => {
       expect(await monolingual(table, column)).toEqual([]);
@@ -117,11 +179,11 @@ describe("двуязычность содержимого", () => {
      * тридцати пяти, и узнать об этом можно было только пересчитав их
      * вручную — то есть никогда.
      */
-    const rows = await db.execute<{ table_name: string; column_name: string }>(sql`
+    const rows = (await seeded.unsafe(`
       select table_name, column_name
       from information_schema.columns
       where table_schema = 'public' and data_type = 'jsonb'
-    `);
+    `)) as unknown as { table_name: string; column_name: string }[];
     const known = new Set(
       [...LOCALIZED, ...NOT_TEXT].map(([t, c]) => `${t}.${c}`),
     );
@@ -138,14 +200,12 @@ describe("двуязычность содержимого", () => {
 
   test("проверка не проходит вхолостую", async () => {
     /*
-     * Пустая база дала бы зелёный результат, ничего не проверив. Тестовая
-     * база засеяна фикстурами, но не демо-данными, поэтому счёт берём с
-     * методик, которые заводят сами фикстуры.
+     * Пустая база дала бы зелёный результат, ничего не проверив. Считаем на
+     * своей базе то, ради чего она и поднята: методики посева — их в нём
+     * шесть, и меньше четырёх означает, что посев отработал наполовину.
      */
-    const [row] = await db.execute<{ n: number }>(
-      sql`select count(*)::int as n from surveys where title is not null`,
-    );
-    expect(Number(row?.n ?? 0)).toBeGreaterThan(0);
+    const [row] = await seeded.unsafe("select count(*)::int as n from surveys where title is not null");
+    expect(Number(row?.n ?? 0)).toBeGreaterThan(3);
   });
 });
 
