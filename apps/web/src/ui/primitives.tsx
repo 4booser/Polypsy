@@ -831,6 +831,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
  */
 export function Field({
   label,
+  labelClassName,
   hint,
   error,
   htmlFor,
@@ -839,6 +840,15 @@ export function Field({
   className,
 }: {
   label: ReactNode;
+  /**
+   * Подпись видима и набрана этим набором классов вместо `sr-only`.
+   *
+   * Умолчание — прежнее поведение: подпись скрыта, а глазу её показывает
+   * плейсхолдер поля. Кадры f23_1/f24_1 — единственное исключение: «Назва
+   * тесту» и «Опис тесту» набраны там ВИДИМОЙ подписью 18/700 фиолетовым НАД
+   * пустым полем, и плейсхолдера внутри поля нет.
+   */
+  labelClassName?: string;
   hint?: ReactNode;
   error?: string | null;
   /**
@@ -898,9 +908,14 @@ export function Field({
           которого она здесь и оставлена. `sr-only` убирает надпись с экрана,
           сохраняя её в дереве.
         */}
-        <span className="sr-only">{label}</span>
-        {/* поле внутри подписи — уже названо; проверка имени ниже по дереву молчит */}
-        <InsideField.Provider value={typeof label === "string" ? label : ""}>
+        <span className={labelClassName ?? "sr-only"}>{label}</span>
+        {/*
+          Поле внутри подписи — уже названо; проверка имени ниже по дереву
+          молчит. Пустая строка означает «плейсхолдер не подставлять»: у видимой
+          подписи он был бы вторым отпечатком того же слова — на экране под
+          подписью и внутри поля одновременно.
+        */}
+        <InsideField.Provider value={typeof label === "string" && !labelClassName ? label : ""}>
           {children}
         </InsideField.Provider>
       </label>
