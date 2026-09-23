@@ -140,7 +140,17 @@ async function registerHandler(c: Context<AppEnv>) {
       // подтверждать нечем: внешнего шлюза нет и не будет
       phoneVerified: false,
       sex: input.sex ?? null,
-      birthDate: input.birthDate ?? null,
+      /*
+       * Дата рождения НЕ повторяется здесь, и это не пропуск поля.
+       *
+       * Она уже ушла выше через encryptPersonFields — шифртекстом. Строка
+       * `birthDate: input.birthDate ?? null` стояла ровно тут, ниже по тому
+       * же объектному литералу, и перезаписывала шифртекст открытой датой:
+       * последнее вхождение ключа выигрывает. То есть шифрование даты
+       * рождения работало везде, кроме единственного места, где эта дата
+       * появляется, — при регистрации. Дублировать поле рядом с вызовом,
+       * который его шифрует, нельзя в принципе; проверено тестом.
+       */
       // подразделение из приглашения главнее введённого: его задал специалист
       unit: (invite?.ok ? invite.invite.unit : null) ?? input.unit ?? null,
       position: input.position ?? null,
@@ -509,14 +519,20 @@ authRoutes.post("/me/reveal", requireAuth, async (c) => {
     .update(users)
     .set({
       anonymous: false,
+      /*
+       * Дата рождения не упоминается вовсе: она хранилась и под кодом, и
+       * трогать её раскрытие не должно. Раньше она передавалась в
+       * encryptPersonFields как null, а затем возвращалась на место строкой
+       * ниже — то есть тем самым «перезаписать после шифрования», из-за
+       * которого дата уходила в базу открытой при регистрации.
+       * encryptPersonFields пропускает ключи со значением undefined, поэтому
+       * достаточно о поле не говорить.
+       */
       ...encryptPersonFields({
         firstName: input.firstName,
         lastName: input.lastName,
         middleName: input.middleName ?? null,
-        birthDate: null,
       }),
-      // дату рождения не трогаем: она хранилась и под кодом
-      birthDate: row.birthDate,
     })
     .where(eq(users.id, user.id));
 
