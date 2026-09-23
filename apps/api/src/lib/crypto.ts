@@ -78,6 +78,24 @@ if (env.isProduction && !keys.active) {
 export function isEncryptionEnabled(): boolean {
   return keys.active !== null;
 }
+
+/*
+ * Ключи наружу отдаются здесь, а не разбираются по второму разу.
+ *
+ * Записи приёма шифруются файлами, и lib/recordings разбирал ENCRYPTION_KEY
+ * сам. Две реализации одного формата разошлись бы молча, а заодно вторая не
+ * видела бы reloadKeysForTests и не знала бы ничего о ключах, кроме первого.
+ */
+
+/** Активный ключ: им шифруется всё новое */
+export function activeKey(): { id: string; key: Buffer } | null {
+  return keys.active;
+}
+
+/** Ключ по идентификатору из заголовка значения или файла */
+export function keyById(id: string): Buffer | undefined {
+  return keys.byId.get(id);
+}
 /** @deprecated снимок на момент импорта; используйте isEncryptionEnabled() */
 export const encryptionEnabled = keys.active !== null;
 
