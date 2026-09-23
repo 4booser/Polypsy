@@ -4,20 +4,29 @@ import {
   assignSurveyToPatientGroupSchema,
   patientGroupInputSchema,
   patientGroupMemberSchema,
+  patientGroupMembersRemoveSchema,
   type PatientGroupCard,
   type PatientGroupMember,
   type PatientGroupSurvey,
   type PatientGroupWithCounts,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { patientGroupMembers, patientGroups, patientGroupSurveys, surveys, users } from "../db/schema";
+import {
+  patientGroupFavourites,
+  patientGroupMembers,
+  patientGroups,
+  patientGroupSurveys,
+  surveys,
+  users,
+} from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { grantAccess } from "../lib/grantAccess";
+import { birthYearOf } from "../lib/privacy";
 import {
   accessiblePatientIds,
-  assertPatientAccess,
   assertPatientGroupAccess,
   assertSurveyAccess,
   assertSurveysInUse,
@@ -89,16 +98,29 @@ patientGroupRoutes.get("/", async (c) => {
       createdAt: patientGroups.createdAt,
       surveyCount: sql<number>`(select count(*)::int from patient_group_surveys pgs
         where pgs.group_id = "patient_groups"."id")`,
+      /*
+       * «Обрана» — закладка ЧИТАТЕЛЯ, поэтому условие по нему стоит здесь, в
+       * подвыборке, а не берётся из строки группы: суперадмин, разбирающий
+       * чужие вкладки, видит свои закладки, а не закладки владельца.
+       */
+      favourite: sql<boolean>`exists (select 1 from patient_group_favourites f
+        where f.group_id = "patient_groups"."id" and f.user_id = ${user.id})`,
     })
     .from(patientGroups)
     .where(user.role === "superadmin" ? undefined : eq(patientGroups.ownerId, user.id))
     /*
      * Порядок задан в базе, а не сортировкой на экране: вкладки читает и
      * консоль, и мобильное приложение, и договориться о порядке в одном
-     * месте дешевле, чем в двух. Равные позиции разводятся датой — иначе
-     * порядок вкладок менялся бы от запроса к запросу.
+     * месте дешевле, чем в двух. «Обрана» — первой, ради этого закладка и
+     * ставится; затем как расставили руками; равные позиции разводятся
+     * датой — иначе порядок вкладок менялся бы от запроса к запросу.
      */
-    .orderBy(asc(patientGroups.position), asc(patientGroups.createdAt));
+    .orderBy(
+      sql`exists (select 1 from patient_group_favourites f
+        where f.group_id = "patient_groups"."id" and f.user_id = ${user.id}) desc`,
+      asc(patientGroups.position),
+      asc(patientGroups.createdAt),
+    );
 
   /*
    * Состав всех групп одним запросом, а не по запросу на группу: восемь
@@ -120,6 +142,7 @@ patientGroupRoutes.get("/", async (c) => {
     ...r,
     memberCount: counts.get(r.id) ?? 0,
     surveyCount: Number(r.surveyCount ?? 0),
+    favourite: Boolean(r.favourite),
   }));
   return c.json({ items });
 });
@@ -177,6 +200,8 @@ patientGroupRoutes.get("/:id", async (c) => {
       middleName: users.middleName,
       email: users.email,
       unit: users.unit,
+      sex: users.sex,
+      birthDate: users.birthDate,
     })
     .from(patientGroupMembers)
     .innerJoin(users, eq(users.id, patientGroupMembers.patientId))
@@ -189,6 +214,9 @@ patientGroupRoutes.get("/:id", async (c) => {
       fullName: fullNameOf(r),
       email: r.email,
       unit: r.unit,
+      sex: r.sex,
+      /* только год — различить тёзок; полная дата рождения в составе лишняя */
+      birthYear: birthYearOf(decryptField(r.birthDate)),
       addedAt: r.addedAt,
       addedBy: r.addedBy,
     }))
@@ -198,6 +226,7 @@ patientGroupRoutes.get("/:id", async (c) => {
     .select({
       surveyId: patientGroupSurveys.surveyId,
       title: surveys.title,
+      description: surveys.description,
       assignedAt: patientGroupSurveys.assignedAt,
       assignedBy: patientGroupSurveys.assignedBy,
       expiresAt: patientGroupSurveys.expiresAt,
@@ -231,6 +260,7 @@ patientGroupRoutes.get("/:id", async (c) => {
   const groupSurveys: PatientGroupSurvey[] = surveyRows.map((r) => ({
     surveyId: r.surveyId,
     title: r.title,
+    description: r.description ?? null,
     assignedAt: r.assignedAt,
     assignedBy: r.assignedBy,
     expiresAt: r.expiresAt,
@@ -298,14 +328,20 @@ patientGroupRoutes.patch("/:id", async (c) => {
 /* ─────────── Пацієнти Групи ─────────── */
 
 /**
- * «Додати пацієнта».
+ * «Додати пацієнта» — одного или списком (`userIds`; старая форма `userId`
+ * принимается по-прежнему, см. схему).
  *
  * Две проверки, и ни одна не лишняя. `assertPatientGroupAccess` — группа
- * моя; `assertPatientAccess` — человек в моей зоне ответственности. Без
+ * моя; зона видимости — каждый человек в моей зоне ответственности. Без
  * второй собственная группа стала бы способом узнать ФИО и почту кого
  * угодно по идентификатору: добавил — и получил его в составе. Ту же пару
  * условий повторяет политика строк (миграция 0078), потому что здесь правило
  * выражается в SQL без потерь.
+ *
+ * Список проверяется ЦЕЛИКОМ до первой записи: пять галочек и одна кнопка —
+ * одно решение, и «троих добавил, на четвёртом отказал» оставило бы экран в
+ * состоянии, которого человек не выбирал. Зона при этом считается один раз
+ * на запрос, а не на каждого из списка.
  *
  * Повторное добавление — не ошибка, а «уже там». Специалист жмёт кнопку
  * второй раз не по невнимательности, а потому что не помнит, добавлял ли он
@@ -317,29 +353,75 @@ patientGroupRoutes.post("/:id/members", async (c) => {
   await assertPatientGroupAccess(user, groupId);
 
   const input = await parseBody(c.req.raw, patientGroupMemberSchema);
-  await assertPatientAccess(user, input.userId);
+  const userIds = [...new Set([...(input.userIds ?? []), ...(input.userId ? [input.userId] : [])])];
 
-  const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
-  if (!target) notFound("err.userNotFound");
-  /*
-   * В группу пациентов кладут пациентов. Сотрудник здесь означал бы, что
-   * следующее назначение «на всю группу» выдаст методику ему — а методики
-   * назначаются обследуемым, и поимённая выдача это уже проверяет.
-   */
-  if (target.role !== "user") badRequest("err.assignOnlyToPatient");
+  const visible = await accessiblePatientIds(user);
+  for (const id of userIds) if (visible !== null && !visible.has(id)) notFound("err.userNotFound");
+
+  const targets = await db
+    .select({ id: users.id, role: users.role })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  const roleOf = new Map(targets.map((u) => [u.id, u.role]));
+  for (const id of userIds) {
+    const role = roleOf.get(id);
+    if (!role) notFound("err.userNotFound");
+    /*
+     * В группу пациентов кладут пациентов. Сотрудник здесь означал бы, что
+     * следующее назначение «на всю группу» выдаст методику ему — а методики
+     * назначаются обследуемым, и поимённая выдача это уже проверяет.
+     */
+    if (role !== "user") badRequest("err.assignOnlyToPatient");
+  }
 
   await db
     .insert(patientGroupMembers)
-    .values({ groupId, patientId: input.userId, addedBy: user.id })
+    .values(userIds.map((patientId) => ({ groupId, patientId, addedBy: user.id })))
     .onConflictDoNothing();
 
-  await audit(c, {
-    action: "patient_group.member_add",
-    resourceType: "patient_group",
-    resourceId: groupId,
-    subjectUserId: input.userId,
-  });
-  return c.json({ groupId, userId: input.userId }, 201);
+  // поимённо: у каждого человека должна остаться своя строка в журнале
+  for (const userId of userIds) {
+    await audit(c, {
+      action: "patient_group.member_add",
+      resourceType: "patient_group",
+      resourceId: groupId,
+      subjectUserId: userId,
+    });
+  }
+  return c.json({ groupId, userIds }, 201);
+});
+
+/**
+ * Убрать из группы списком — те же галочки, что и при добавлении.
+ *
+ * Выданные назначения остаются — см. поимённый DELETE ниже, правило одно.
+ * Убираются те из списка, кто в группе есть; если не нашёлся никто —
+ * «не найдено», как и у поимённого: пустой успех означал бы, что экран
+ * показывал состав, которого в базе не было.
+ */
+patientGroupRoutes.delete("/:id/members", async (c) => {
+  const user = c.get("user");
+  const groupId = c.req.param("id");
+  await assertPatientGroupAccess(user, groupId);
+
+  const input = await parseBody(c.req.raw, patientGroupMembersRemoveSchema);
+  const deleted = await db
+    .delete(patientGroupMembers)
+    .where(
+      and(eq(patientGroupMembers.groupId, groupId), inArray(patientGroupMembers.patientId, input.userIds)),
+    )
+    .returning({ userId: patientGroupMembers.patientId });
+  if (deleted.length === 0) notFound("err.patientGroupMemberNotFound");
+
+  for (const { userId } of deleted) {
+    await audit(c, {
+      action: "patient_group.member_remove",
+      resourceType: "patient_group",
+      resourceId: groupId,
+      subjectUserId: userId,
+    });
+  }
+  return c.json({ groupId, removed: deleted.length });
 });
 
 /**
@@ -371,6 +453,40 @@ patientGroupRoutes.delete("/:id/members/:userId", async (c) => {
     resourceId: groupId,
     subjectUserId: userId,
   });
+  return c.body(null, 204);
+});
+
+/* ─────────── «Обрана» ─────────── */
+
+/**
+ * Закладка читателя на группу — вкладка, которую он держит первой.
+ *
+ * Закладка — свойство пары «читатель — группа», а не самой группы: почему
+ * так — в миграции 0084. Ставится только на свою группу (у суперадмина —
+ * на любую видимую): чужая отвечает «не найдено», иначе закладка по
+ * идентификатору выдавала бы существование чужого личного списка.
+ * Повторное «обрати» — не ошибка и не вторая строка, как и повторное
+ * «додати пацієнта».
+ */
+patientGroupRoutes.put("/:id/favourite", async (c) => {
+  const user = c.get("user");
+  const groupId = c.req.param("id");
+  await assertPatientGroupAccess(user, groupId);
+
+  await db.insert(patientGroupFavourites).values({ userId: user.id, groupId }).onConflictDoNothing();
+  await audit(c, { action: "patient_group.favourite", resourceType: "patient_group", resourceId: groupId });
+  return c.json({ groupId, favourite: true });
+});
+
+patientGroupRoutes.delete("/:id/favourite", async (c) => {
+  const user = c.get("user");
+  const groupId = c.req.param("id");
+  await assertPatientGroupAccess(user, groupId);
+
+  await db
+    .delete(patientGroupFavourites)
+    .where(and(eq(patientGroupFavourites.userId, user.id), eq(patientGroupFavourites.groupId, groupId)));
+  await audit(c, { action: "patient_group.unfavourite", resourceType: "patient_group", resourceId: groupId });
   return c.body(null, 204);
 });
 

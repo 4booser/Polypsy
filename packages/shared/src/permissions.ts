@@ -30,7 +30,21 @@ export const PERMISSION_GROUPS = [
   {
     code: "reception",
     title: { uk: "Прийом і розклад", ru: "Приём и расписание" },
-    permissions: ["schedule.own", "appointments.manage", "departments.manage", "messages.write"],
+    permissions: [
+      "schedule.own",
+      "appointments.manage",
+      "departments.manage",
+      "messages.write",
+      /*
+       * Рассылка — отдельное право, а не часть messages.write. Переписка
+       * адресована одному человеку и проверяется поимённо; рассылка — первое
+       * действие «одному многим», и специалист, которому доверили писать
+       * своему пациенту, не обязательно вправе писать всему списку разом.
+       * Одно право на оба означало бы, что стажёр с перепиской получает и
+       * рассылку — а отнять её у него было бы нечем.
+       */
+      "mailings.manage",
+    ],
   },
   {
     code: "risk",
@@ -117,6 +131,7 @@ export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> =
   "appointments.manage": { uk: "Записувати, переносити й скасовувати прийоми", ru: "Записывать, переносить и отменять приёмы" },
   "departments.manage": { uk: "Вести відділення та профілі фахівців", ru: "Вести отделения и профили специалистов" },
   "messages.write": { uk: "Листуватися з пацієнтами", ru: "Переписываться с пациентами" },
+  "mailings.manage": { uk: "Надсилати розсилки пацієнтам", ru: "Рассылать сообщения пациентам" },
 
   "alerts.review": { uk: "Розбирати випадки ризику", ru: "Разбирать случаи риска" },
 
@@ -235,6 +250,13 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
   "messages.write": {
     kind: "action",
     opens: { uk: "Листування з пацієнтами", ru: "Переписка с пациентами" },
+  },
+  "mailings.manage": {
+    kind: "screen",
+    opens: {
+      uk: "Розділ «Повідомлення»: розсилки групам і спискам пацієнтів, відповіді отримувачів",
+      ru: "Раздел «Сообщения»: рассылки группам и спискам пациентов, ответы получателей",
+    },
   },
 
   "alerts.review": {

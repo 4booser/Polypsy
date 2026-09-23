@@ -343,6 +343,14 @@ describe("RLS покрывает все клинические таблицы", 
        * не увело новую таблицу с именами людей из-под проверки молча.
        */
       "patient_group_members",
+      /*
+       * Волна 5: рассылки (author_id и user_id) и закладки групп (user_id).
+       * Названы по той же причине: определитель находит их по колонкам, и
+       * сужение списка колонок увело бы их из-под проверки молча.
+       */
+      "mailings",
+      "mailing_recipients",
+      "patient_group_favourites",
     ];
     expect(mustSee.filter((t) => !seen.has(t))).toEqual([]);
 
