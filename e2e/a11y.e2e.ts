@@ -227,8 +227,13 @@ async function ensureOpenCase(page: Page): Promise<void> {
 }
 
 test("экран входа доступен", async ({ page }) => {
-  await page.goto("/");
+  await page.goto("/login");
   expect(await violationsOf(page, "/login")).toEqual([]);
+});
+
+test("лендинг доступен", async ({ page }) => {
+  await page.goto("/");
+  expect(await violationsOf(page, "/")).toEqual([]);
 });
 
 // обе темы: тёмная по умолчанию, светлая — та, в которой работают при дневном

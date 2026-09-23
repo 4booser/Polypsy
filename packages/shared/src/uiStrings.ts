@@ -218,6 +218,45 @@ export const UI = {
   /* ── wave6:statistics ── */
   /* ── wave6:messages ── */
   /* ── wave6:public ── */
+  /*
+   * Публичная часть — кадры f00 (лендинг «Про кампанію») и f01 (вход).
+   *
+   * Текст «Про кампанію» на кадре — рыба (Lorem ipsum): настоящий текст
+   * заказчик не дал, и здесь стоит ровно то, что нарисовано. Когда текст
+   * появится, менять его — в этой строке, а не в экране. Контакты и почта
+   * тоже с кадра: на сервере места под реквизиты учреждения нет, и адрес
+   * «belivnik@ukr.net» с телефоном живут здесь до появления настроек.
+   */
+  "pub.about": { uk: "Про кампанію", ru: "О кампании" },
+  "pub.aboutText": {
+    uk:
+      "Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt " +
+      "ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci " +
+      "tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel",
+    ru:
+      "Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy nibh euismod tincidunt " +
+      "ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci " +
+      "tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel",
+  },
+  /* на кадре «Введить» — опечатка макета, исправлена на «Введіть» */
+  "pub.loginTitle": { uk: "Введіть логін та пароль щоб продовжити", ru: "Введите логин и пароль, чтобы продолжить" },
+  /* поле подписано «Логін», как на кадре; сервер принимает в него почту (см. Login.tsx) */
+  "pub.login": { uk: "Логін", ru: "Логин" },
+  "pub.faq": { uk: "FAQ", ru: "FAQ" },
+  "pub.press": { uk: "Для преси", ru: "Для прессы" },
+  "pub.contacts": { uk: "Контакти:", ru: "Контакты:" },
+  "pub.phone": { uk: "+38 044 123 45 67 — Київ, Україна", ru: "+38 044 123 45 67 — Киев, Украина" },
+  "pub.email": { uk: "belivnik@ukr.net", ru: "belivnik@ukr.net" },
+  "pub.social": { uk: "Ми в соцмережах:", ru: "Мы в соцсетях:" },
+  /* имена сетей — подписи круглых значков для диктора; не переводятся */
+  "pub.facebook": { uk: "Facebook", ru: "Facebook" },
+  "pub.youtube": { uk: "YouTube", ru: "YouTube" },
+  "pub.telegram": { uk: "Telegram", ru: "Telegram" },
+  /* подпись знака POLSY как ссылки и ориентира навигации подвала */
+  "pub.home": { uk: "На головну", ru: "На главную" },
+  "pub.sections": { uk: "Розділи сайту", ru: "Разделы сайта" },
+  /* год с кадра, а не текущий: заказчик просил экраны один в один (см. PublicFrame.tsx) */
+  "pub.copyright": { uk: "©2023", ru: "©2023" },
   /* ── wave4:groups ── */
   /*
    * Группы ПАЦИЕНТОВ (кадры f05, f10, f20) — раздел «Групи» верхней полосы.
@@ -735,14 +774,6 @@ export const UI = {
   "pt.anySpecialist": { uk: "будь-хто вільний", ru: "любой свободный" },
 
   /* прохождение методики */
-  /* регистрация пациента прямо на экране входа */
-  "rg.create": { uk: "Створити обліковий запис", ru: "Создать аккаунт" },
-  "rg.haveAccount": { uk: "Вже маю обліковий запис", ru: "Уже есть аккаунт" },
-  "rg.phone": { uk: "Телефон", ru: "Телефон" },
-  "rg.phoneHint": {
-    uk: "Потрібен, щоб зв’язатися з вами, якщо відповіді викличуть занепокоєння",
-    ru: "Нужен, чтобы связаться с вами, если ответы вызовут беспокойство",
-  },
   /* ─────────── учётная запись сотрудника ─────────── */
   "acct.title": { uk: "Обліковий запис", ru: "Учётная запись" },
   "acct.sub": { uk: "Ваші дані, спосіб входу та вигляд застосунку", ru: "Ваши данные, способ входа и вид приложения" },
@@ -2446,9 +2477,7 @@ export const UI = {
   "inv.code": { uk: "Код", ru: "Код" },
   "inv.days": { uk: "Строк, днів", ru: "Срок, дней" },
   "bf.title": { uk: "Бланк для заповнення", ru: "Бланк для заполнения" },
-  "lg.registerSub": { uk: "Реєстрація: пройти методику та записатися на прийом", ru: "Регистрация: пройти методику и записаться на приём" },
   "app.title": { uk: "Quizzy — консоль аналітики", ru: "Quizzy — консоль аналитики" },
-  "lg.consoleSub": { uk: "Консоль аналітики для співробітників", ru: "Консоль аналитики для сотрудников" },
   "lg.password": { uk: "Пароль", ru: "Пароль" },
   "ad.unreliable": { uk: "Профіль визнано ненадійним", ru: "Профиль признан ненадёжным" },
   "ad.scale": { uk: "Шкала", ru: "Шкала" },
@@ -2468,12 +2497,10 @@ export const UI = {
    * подпись под заголовком шла по-украински, а единственная кнопка по-русски.
    */
   "lg.signIn": { uk: "Увійти", ru: "Войти" },
-  "lg.google": { uk: "Увійти через Google", ru: "Войти через Google" },
   "lg.googleLink": { uk: "Прив’язати Google", ru: "Привязать Google" },
   "lg.googleUnlink": { uk: "Відв’язати Google", ru: "Отвязать Google" },
   "lg.googleUnlinkAsk": { uk: "Введіть пароль, щоб відв’язати Google", ru: "Введите пароль, чтобы отвязать Google" },
   "lg.googleLinked": { uk: "Google прив’язано", ru: "Google привязан" },
-  "lg.or": { uk: "або", ru: "или" },
   "lg.googleFailed": {
     uk: "Не вдалося увійти через Google. Спробуйте пароль.",
     ru: "Не удалось войти через Google. Попробуйте пароль.",
