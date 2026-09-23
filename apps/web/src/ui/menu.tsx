@@ -14,13 +14,23 @@ import { Button, type ButtonProps } from "./primitives";
  * одно закрывается по Esc, а другое нет; поэтому здесь одно на всех, а
  * экраны отличаются только тем, что кладут внутрь.
  *
- * Меню на кадрах двух видов, и это не два компонента, а один параметр
+ * Меню на кадрах трёх видов, и это не три компонента, а один параметр
  * `align`:
- *  - «left» — меню списка (f11: «+», «⋯», «▾» у крошки): плашка с рамкой
+ *  - «left» — меню списка (f07: «+», «⋯», «▾» у крошки): плашка с рамкой
  *    шириной от 220, пункты 13/400 у левого края, как в бургере шапки;
- *  - «right» — меню карточки (f15, f33, f38: шестерёнка справа от
- *    заголовка): белая плашка с тенью от 165, пункты 15/400 прижаты к
- *    правому краю, к самой шестерёнке.
+ *  - «right» — меню карточки (f26: шестерёнка над формой повідомлення):
+ *    белая плашка с тенью от 165, пункты 15/400 прижаты к правому краю, к
+ *    самой шестерёнке;
+ *  - «right-out» — та же плашка, но раскрытая ВПРАВО от глифа: её левый
+ *    край совпадает с правым краем шестерни. Так нарисовано меню структуры
+ *    аналитической модели (f19: шестерня 1125…1149, плашка 1150…1282), и
+ *    иначе плашка легла бы поверх полей карточки, которые в этот момент
+ *    читают.
+ *
+ * Шаг пунктов 30 и отступ 10 до правого края — замеры f19 (чернила пунктов
+ * 316, 346, 376, 406, 436 при плашке 306…469) и f26 («Відправити /
+ * Видалити / Зберегти», тот же шаг 30). Цвет пунктов #666666 замерен на
+ * обоих кадрах: самый тёмный пиксель текста — ровно (102,102,102).
  * Выравнивание — параметром, а не вторым классом снаружи: `text-left` и
  * `text-right` в одной строке классов спорят, и кто из них победит, решает
  * порядок в собранном CSS, а не в разметке. По той же причине цвет пункта —
@@ -36,7 +46,7 @@ import { Button, type ButtonProps } from "./primitives";
  * под меню.
  */
 
-export type MenuAlign = "left" | "right";
+export type MenuAlign = "left" | "right" | "right-out";
 export type MenuTone = "normal" | "danger" | "disabled";
 
 /*
@@ -52,15 +62,17 @@ export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "norma
     "flex w-full items-center rounded-[4px] border-0 bg-transparent font-normal no-underline",
     "h-auto min-h-0 transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-    align === "right"
-      ? "justify-end px-[16px] py-[6px] text-right text-[15px] leading-[20px]"
-      : "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]",
+    align === "left"
+      ? "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]"
+      /* 5 + 20 + 5 = 30 — шаг пунктов кадра; высотой `h-[30px]` спорить с `h-auto` выше нельзя */
+      : "justify-end px-[10px] py-[5px] text-right text-[15px] leading-[20px]",
     tone === "disabled"
       ? "cursor-not-allowed text-faint"
       : tone === "danger"
         ? "text-danger hover:bg-danger-soft hover:text-danger hover:no-underline"
         : cx(
-            align === "right" ? "text-text-2" : "text-text",
+            /* #666666 кадра — токеном --muted: тот же тон ступенью темнее ради порога контраста */
+            align === "left" ? "text-text" : "text-muted",
             "hover:bg-primary-soft hover:text-primary hover:no-underline",
           ),
   );
@@ -76,10 +88,17 @@ export const menuItem = menuItemClass("left");
  */
 function plateClass(align: MenuAlign): string {
   return cx(
-    "absolute right-0 z-50 flex flex-col items-stretch outline-none",
-    align === "right"
-      ? "top-[calc(100%+8px)] min-w-[165px] rounded-[5px] bg-[var(--bg)] py-[8px] shadow-pop"
-      : "top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel",
+    "absolute z-50 flex flex-col items-stretch outline-none",
+    align === "left"
+      ? "right-0 top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel"
+      : "rounded-[5px] bg-[var(--bg)] shadow-pop",
+    align === "right" ? "right-0 top-[calc(100%+8px)] min-w-[165px] py-[8px]" : "",
+    /*
+     * Плашка вправо от глифа: левый край к правому краю шестерни, 10px под
+     * ней, ширина от 132 — замер f19 (плашка 1150…1282 × 306…469 при
+     * шестерне 1125…1149 × 270…294).
+     */
+    align === "right-out" ? "left-full top-[calc(100%+10px)] min-w-[132px] py-[4px]" : "",
   );
 }
 
