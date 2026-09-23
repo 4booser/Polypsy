@@ -140,6 +140,38 @@ describe("удаление во время загрузки аудио", () => {
   });
 });
 
+describe("отзыв согласия", () => {
+  test("отозванное согласие уносит записанное аудио с диска", async () => {
+    /*
+     * Отзыв менял только отметку согласия. При состояниях uploaded и
+     * transcribing файл оставался лежать: согласия нет, а разговор хранится
+     * и вот-вот станет стенограммой. Основание хранить запись — согласие.
+     */
+    const { id, patient, specialist } = await visit("revoke");
+    await api(`/api/recordings/${id}/consent`, patient.token, { method: "POST" });
+    const rec = await rowOf(id);
+    const path = await storeAudio(rec!.id, new Uint8Array([9, 9, 9, 9]));
+    await db
+      .update(visitRecordings)
+      .set({ status: "uploaded", audioPath: path, audioBytes: 4 })
+      .where(eq(visitRecordings.id, rec!.id));
+    expect(existsSync(path)).toBe(true);
+
+    const res = await api(`/api/recordings/${id}/consent/revoke`, patient.token, { method: "POST" });
+    expect(res.status).toBe(200);
+
+    expect(existsSync(path), "разговор остался на диске без согласия").toBe(false);
+    const after = await rowOf(id);
+    expect(after!.audioPath).toBeNull();
+    expect(after!.audioBytes).toBeNull();
+    expect(after!.status).toBe("consent_pending");
+
+    // и расшифровке взять уже нечего: очередь её не подхватит
+    const state = await api(`/api/recordings/${id}`, specialist.token);
+    expect(state.body.status).toBe("consent_pending");
+  });
+});
+
 describe("удаление во время расшифровки", () => {
   afterAll(() => setTranscriberForTests(null));
 

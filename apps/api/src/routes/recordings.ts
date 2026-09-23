@@ -140,15 +140,30 @@ recordingRoutes.post("/:appointmentId/consent", async (c) => {
  *
  * До начала записи — просто снимает разрешение. Право передумать до того, как
  * что-то сказано, не должно требовать объяснений.
+ *
+ * Если записать уже успели — аудио стирается тем же движением, что и при
+ * удалении. Раньше отзыв менял только отметку согласия, и при состояниях
+ * uploaded или transcribing файл оставался лежать на диске: согласия нет, а
+ * разговор хранится и вот-вот станет стенограммой. Основание хранить запись —
+ * согласие; снято согласие — хранить нечего.
  */
 recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
   const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
   if (rec.status === "recording") badRequest("err.recordingInProgress");
 
+  await eraseAudio(rec.audioPath);
   await db
     .update(visitRecordings)
-    .set({ consentAt: null, consentBy: null, status: "consent_pending" })
+    .set({
+      consentAt: null,
+      consentBy: null,
+      status: "consent_pending",
+      // путь обнуляется вместе с файлом: строка, ведущая в никуда, на экране
+      // выглядит как «запись есть», а по ней потом пойдёт расшифровка
+      audioPath: null,
+      audioBytes: null,
+    })
     .where(eq(visitRecordings.id, rec.id));
 
   await audit(c, {
@@ -156,6 +171,9 @@ recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
     resourceType: "appointment",
     resourceId: visit.id,
     subjectUserId: visit.patientId,
+    // было ли что стирать — важно при разборе: «отозвал до записи» и
+    // «отозвал, когда разговор уже лежал на диске» — разные события
+    details: { hadAudio: !!rec.audioPath, from: rec.status },
   });
   return c.json({ ok: true });
 });
