@@ -23,7 +23,7 @@ import {
 import { Preview } from "./Preview";
 import { IconGroup, IconPatients, Loading } from "../../ui";
 import { Page } from "../../ui/layout";
-import { Button, Field, Select, Tabs, Textarea } from "../../ui/primitives";
+import { Button, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
 import { IconCaution, IconCross, IconGear } from "../../ui/glyphs";
@@ -444,26 +444,55 @@ export default function Constructor() {
           ) : null}
           {/*
             Переключатель языка текста — у правого края колонки, короткой
-            подписью «Укр», как на кадрах f24_1, f31 и f37. Прежде он стоял
-            полем «Мова тексту тесту» шириной 150 внутри колонки 700 и
-            печатал на кнопке полное название языка.
+            подписью «Укр», как на кадрах f23_1/f24_1, f31 и f37.
+
+            На кадре это НЕ поле в рамке: «Укр» набрано 17/700 фиолетовым без
+            рамки и без заливки, а раскрытый список — белая плашка с рамкой,
+            где языки печатаются полными именами («Українська», «Русский»),
+            прижатыми к правому краю. Обычный <select> так не умеет: у него
+            надпись на кнопке и надпись в списке — одна и та же строка, и
+            выбирать приходилось между коротким «Укр» на кнопке и полным
+            именем в списке. Поэтому здесь меню (align="right" — та же плашка,
+            что у меню карточек f15/f33/f38), а не поле.
 
             Третий пункт кадра — «English» — не заведён: Lang в модели
             содержит только uk и ru, и пустая строка в списке обещала бы язык,
             которого нет ни в одном поле теста.
           */}
-          <Field label={ut("cn.editLang")} inline className="w-[110px] shrink-0">
-            <Select
-              value={editLang}
-              onChange={(e) => setEditLang(e.target.value as Lang)}
-              title={ut("cn.editLangHint")}
-              className="text-[17px] font-bold text-primary"
+          {/*
+            Пояснение «текст хранится обоими языками» — подписью наведения на
+            обёртке, а не на самой кнопке меню: кнопка уже несёт имя меню для
+            диктора (aria-label), и второй `title` на ней диктор прочёл бы
+            поверх имени. На кадре этого пояснения нет — оно и не видно, пока
+            на переключатель не навели.
+          */}
+          <span title={ut("cn.editLangHint")} className="inline-flex shrink-0">
+            <MenuButton
+              label={ut("cn.editLang")}
+              align="right"
+              triggerSize="sm"
+              triggerClassName="h-auto px-0 text-[17px] font-bold text-primary"
+              glyph={makeUiT(editLang)("top.lang")}
             >
-              {(["uk", "ru"] as const).map((l) => (
-                <option key={l} value={l}>{makeUiT(l)("top.lang")}</option>
-              ))}
-            </Select>
-          </Field>
+              {(close) =>
+                (["uk", "ru"] as const).map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    role="menuitem"
+                    aria-current={l === editLang}
+                    className={menuItemClass("right")}
+                    onClick={() => {
+                      setEditLang(l);
+                      close();
+                    }}
+                  >
+                    {ut(l === "uk" ? "lang.uk" : "lang.ru")}
+                  </button>
+                ))
+              }
+            </MenuButton>
+          </span>
           {tools}
         </>
       }

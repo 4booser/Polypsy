@@ -485,8 +485,14 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
               /* три колонки кадра: имя 200, описание по остатку, вердикт 196 */
               className="grid grid-cols-[200px_1fr_196px] items-center gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]"
             >
-              {/* кадр f38_1: cap имени и вердикта 12 px → 17/700, описание 9 px → 13/400 */}
-              <span className="text-[17px] font-bold leading-[22px] text-primary">{m.title}</span>
+              {/*
+                Кадр f38_1: cap имени и вердикта 12 px → 17/700, описание 9 px
+                → 13/400. Межстрочник имени — 20: имя модели на кадре занимает
+                две строки («Аналітична модель , / стресостійкість 1»), и их
+                базовые линии отстоят на 20 (замер столбца имён: 64 и 84, затем
+                244 и 264). 22 было взято от заголовков экрана.
+              */}
+              <span className="text-[17px] font-bold leading-[20px] text-primary">{m.title}</span>
               <span className="text-[13px] leading-[17px] text-muted">{m.description}</span>
               {/*
                 Вердикт — пилюля 195×30 с заливкой, текст 17/700. Оба вердикта
@@ -532,13 +538,21 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
       {/* тот же шаг 20, что у списка моделей */}
       <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
         <li className="grid grid-cols-[200px_1fr_205px] items-start gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]">
-          <span className="text-[17px] font-bold leading-[22px] text-primary">{survey.title}</span>
+          {/* тот же двухстрочный межстрочник 20, что у имён моделей выше */}
+          <span className="text-[17px] font-bold leading-[20px] text-primary">{survey.title}</span>
           <span className="text-[13px] leading-[17px] text-muted">{survey.description ?? ""}</span>
           <span className="flex flex-col gap-[6px]">
             {detail.scores.map((s) => (
               <span key={s.scaleId} className="flex flex-col">
-                {/* кадр f38_1: «набраний бал 72» 11/400 серым, подпись диапазона 13/700 фиолетовым */}
-                <span className="text-[11px] leading-[15px] text-muted">
+                {/*
+                  Кадр f38_1: «набраний бал 72» 13/400 серым, подпись диапазона
+                  13/700 фиолетовым. Было 11 — замер не сходился: цифры «72» на
+                  кадре 10 px в высоту, а высота цифры у этой гарнитуры ≈ 0,72
+                  кегля, то есть кегль 13–14; 11 дал бы цифру 8. Межстрочник 19
+                  — базовая линия «72» на 77, базовая линия подписи диапазона
+                  на 95–96.
+                */}
+                <span className="text-[13px] leading-[19px] text-muted">
                   {/* у многошкальной методики балл без имени шкалы ничего не значит */}
                   {detail.scores.length > 1 ? `${s.scaleTitle}: ` : ""}
                   {ut("cn3.scored")} <span className="tabular-nums">{s.rawScore}</span>

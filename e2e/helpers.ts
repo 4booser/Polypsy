@@ -199,16 +199,24 @@ export function fieldByLabel(page: Page, label: string): Locator {
  * Поставить язык, на котором правится текст теста.
  *
  * Это не язык консоли (см. setLang): специалист с русской консолью вписывает
- * украинский текст методики. Переключатель — селект «Язык текста теста»
- * (ключ cn.editLang) над формой конструктора; хранение осталось двуязычным
- * ({uk, ru}), и селект решает лишь, какой из двух ключей показывает каждое
- * поле. Ожидание по значению селекта — признак, что выбор дошёл до формы, а
- * не только до элемента: следующий fill обязан попасть в поле нового языка.
+ * украинский текст методики. Хранение осталось двуязычным ({uk, ru}), и
+ * переключатель решает лишь, какой из двух ключей показывает каждое поле.
+ *
+ * С правки по кадрам f23_1/f24_1 это не селект в рамке, а меню: кнопка без
+ * рамки с короткой надписью «Укр»/«Рус» (имя для диктора — «Язык текста
+ * теста», ключ cn.editLang), а в раскрытом списке языки названы полностью.
+ * Поэтому здесь два шага вместо selectOption. Ожидание по надписи кнопки —
+ * признак, что выбор дошёл до формы, а не только до пункта меню: следующий
+ * fill обязан попасть в поле нового языка.
  */
+const EDIT_LANG_FULL = { uk: "Українська", ru: "Русский" } as const;
+const EDIT_LANG_SHORT = { uk: "Укр", ru: "Рус" } as const;
+
 export async function setEditLang(page: Page, lang: "uk" | "ru"): Promise<void> {
-  const select = fieldByLabel(page, "Язык текста теста");
-  await select.selectOption(lang);
-  await expect(select).toHaveValue(lang);
+  const trigger = page.getByRole("button", { name: "Язык текста теста" });
+  await trigger.click();
+  await page.getByRole("menuitem", { name: EDIT_LANG_FULL[lang], exact: true }).click();
+  await expect(trigger).toHaveText(EDIT_LANG_SHORT[lang]);
 }
 
 /**
