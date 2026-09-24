@@ -9,9 +9,9 @@ import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { IconSearchGlass, Loading, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
-import { IconDots, IconGear, IconPlusThick } from "../ui/glyphs";
+import { IconGear, IconPlusThick } from "../ui/glyphs";
 import { Page } from "../ui/layout";
-import { ActionMenu, type MenuEntry } from "../ui/menu";
+import { ActionMenu } from "../ui/menu";
 import { Pager } from "../ui/pager";
 import { DEFAULT_PER, pageCount, pageFrom, pagesOf, perFrom, slicePage } from "../ui/paging";
 import { Input, Tabs } from "../ui/primitives";
@@ -225,7 +225,8 @@ function Frame({
       /* блок страниц отодвинут от «+» на 74, как на кадре: см. wideActions */
       wideActions
       toolbar={
-        /* зазор «поле → +» 14: на кадре поле кончается на 1022, «+» стоит 1036…1062 */
+        /* зазор «поле → +» 14: на f05 поле кончается на 1022, «+» стоит 1036…1062 (13);
+           f06 даёт 21 — тот же разнобой макета, что и с блоком страниц, см. wideActions */
         <div className="flex min-w-0 flex-1 items-center gap-[14px]">
           <div className="relative min-w-0 flex-1">
             {/* имя полю даёт aria-label: на макете поле пустое, без подписи внутри */}
@@ -446,15 +447,14 @@ function AllPatients({ frame }: { frame: FrameState }) {
           focusedId={focused?.userId ?? null}
         />
       )}
-      <SelectionBar count={chosen.size}>
-        <SelectionMenu
-          entries={[
-            { label: ut("pg.addToGroup"), onSelect: () => actions.open("group") },
-            { label: ut("pg.assignTest"), onSelect: () => actions.open("assign") },
-            { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
-          ]}
-        />
-      </SelectionBar>
+      <SelectionBar
+        count={chosen.size}
+        entries={[
+          { label: ut("pg.addToGroup"), onSelect: () => actions.open("group") },
+          { label: ut("pg.assignTest"), onSelect: () => actions.open("assign") },
+          { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
+        ]}
+      />
       {actions.dialogs}
     </Frame>
   );
@@ -512,34 +512,18 @@ function GroupPatients({ group, frame }: { group: PatientGroupWithCounts; frame:
           focusedId={focused?.userId ?? null}
         />
       )}
-      <SelectionBar count={chosen.size}>
-        <SelectionMenu
-          entries={[
-            { label: ut("pg.addToGroup"), onSelect: () => actions.open("group") },
-            { label: ut("pg.assignTest"), onSelect: () => actions.open("assign") },
-            { label: ut("pg.removeFromGroup"), onSelect: () => void removeChosen() },
-            { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
-          ]}
-        />
-      </SelectionBar>
+      <SelectionBar
+        count={chosen.size}
+        entries={[
+          { label: ut("pg.addToGroup"), onSelect: () => actions.open("group") },
+          { label: ut("pg.assignTest"), onSelect: () => actions.open("assign") },
+          { label: ut("pg.removeFromGroup"), onSelect: () => void removeChosen() },
+          { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
+        ]}
+      />
       {actions.dialogs}
     </Frame>
   );
-}
-
-/* ─────────── действия под счётчиком ─────────── */
-
-/**
- * Меню «⋯» рядом с «18 вибрано».
- *
- * На кадре под сеткой стоит один счётчик и больше ничего: ни трёх кнопок,
- * ни ссылки «Зняти вибір». Действия при этом никуда не делись — они за
- * глифом, который появляется вместе с выборкой. Тот же ActionMenu, что у
- * шестерёнки: одно меню на консоль, одна ловушка фокуса, одни стрелки.
- */
-function SelectionMenu({ entries }: { entries: MenuEntry[] }) {
-  const { ut } = useLang();
-  return <ActionMenu label={ut("pt.selectionActions")} glyph={<IconDots />} entries={entries} />;
 }
 
 /**

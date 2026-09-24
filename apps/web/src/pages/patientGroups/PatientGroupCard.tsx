@@ -5,9 +5,8 @@ import { api } from "../../api";
 import { numericDate } from "../constructor/catalogue";
 import { useLang } from "../../lang";
 import { IconSearchGlass, Loading, useAction } from "../../ui";
-import { IconDots, IconPlusThick } from "../../ui/glyphs";
+import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
-import { ActionMenu } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { DEFAULT_PER, pageCount, pageFrom, perFrom, slicePage } from "../../ui/paging";
 import { Button, Input } from "../../ui/primitives";
@@ -17,7 +16,7 @@ import { keepPresent, matchesQuery, toggleIn } from "./model";
 import { PersonGrid, SelectionBar } from "./PersonGrid";
 
 /*
- * Карточка группы пациентов — кадр f20 макета, один свиток сверху вниз:
+ * Карточка группы пациентов — кадр f14 макета, один свиток сверху вниз:
  *
  *   «Назва Групи»                     → заголовок экрана (h1), справа глиф правки
  *   «Опис Групи» + абзац              → description группы
@@ -175,7 +174,8 @@ export default function PatientGroupCard() {
         {group.surveys.length === 0 ? (
           <p className="m-0 mt-[14px] text-[13px] text-muted">{ut("pg.noTests")}</p>
         ) : (
-          <ul className="m-0 mt-[14px] grid list-none grid-cols-2 gap-x-[48px] gap-y-[24px] p-0 max-[900px]:grid-cols-1">
+          /* зазор 62 — то же число, что у каталога групп: левые края колонок на f14 — 200 и 830-831 */
+          <ul className="m-0 mt-[14px] grid list-none grid-cols-2 gap-x-[62px] gap-y-[24px] p-0 max-[900px]:grid-cols-1">
             {group.surveys.map((s) => (
               <SurveyRow key={s.surveyId} survey={s} total={group.members.length} />
             ))}
@@ -204,7 +204,7 @@ export default function PatientGroupCard() {
 
         Кегль у «Пацієнт» — 24/700, как у имени экрана, а не 18 остальных
         подзаголовков свитка: на кадре он набран ровно так же, как
-        «Пацієнти» на f05 и «Групи» на f10, — строка над списком перенесена
+        «Пацієнти» на f05 и «Групи» на f06, — строка над списком перенесена
         внутрь свитка вместе со своим размером. Ступень разметки при этом
         h2: h1 у экрана один, это название группы.
       */}
@@ -255,17 +255,14 @@ export default function PatientGroupCard() {
             onToggle={(userId) => setSelected((prev) => toggleIn(prev, userId))}
           />
         )}
-        {/* под сеткой на кадре только счётчик; действия — за «⋯», как на f05 */}
-        <SelectionBar count={chosen.size}>
-          <ActionMenu
-            label={ut("pt.selectionActions")}
-            glyph={<IconDots />}
-            entries={[
-              { label: ut("pg.removeFromGroup"), onSelect: () => void removeChosen() },
-              { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
-            ]}
-          />
-        </SelectionBar>
+        {/* под сеткой на кадре только счётчик; меню раскрывает он сам, как на f05 */}
+        <SelectionBar
+          count={chosen.size}
+          entries={[
+            { label: ut("pg.removeFromGroup"), onSelect: () => void removeChosen() },
+            { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
+          ]}
+        />
       </section>
 
       {dialog === "edit" ? (
