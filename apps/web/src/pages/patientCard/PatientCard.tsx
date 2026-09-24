@@ -112,7 +112,13 @@ export default function PatientCard() {
       birthDate: ut("person.birthDate"),
       phone: ut("ppl.phone"),
       city: ut("ppl.city"),
-      email: ut("person.email"),
+      /*
+       * «email» строчными — кадр f13 карточки пациента рисует его рядом с
+       * «телефон» так же, как кадры раздела людей. Общий person.email
+       * («Email») остаётся заголовком столбца в таблицах администрирования:
+       * там заглавная на месте и кадра против неё нет.
+       */
+      email: ut("ppl.email"),
       male: ut("person.sex.male"),
       female: ut("person.sex.female"),
     },
