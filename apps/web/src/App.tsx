@@ -126,6 +126,17 @@ const StaffGroups = lazy(() => import("./pages/people/StaffCard").then((m) => ({
  */
 const AnalyticsList = lazy(() => import("./pages/analytics/List"));
 const AnalyticsModel = lazy(() => import("./pages/analytics/Editor"));
+/*
+ * Раздел «Статистика» — кадры f08, f09, f17, f18, f23, f24, f29: перечень
+ * моделей, модель (одна выборка или несколько рядом), форма модели,
+ * диаграмма и пресеты фильтров. До этого пункт «Статистика» верхней полосы
+ * вёл на подбор людей (/cohorts); подбор остался в бургере под своим именем.
+ */
+const StatList = lazy(() => import("./pages/statistics/List"));
+const StatModel = lazy(() => import("./pages/statistics/ModelView"));
+const StatEditor = lazy(() => import("./pages/statistics/Editor"));
+const StatChart = lazy(() => import("./pages/statistics/Chart"));
+const StatFilters = lazy(() => import("./pages/statistics/Filters"));
 
 type Theme = "dark" | "light";
 type Density = "cozy" | "compact";
@@ -715,6 +726,19 @@ export default function App() {
           <Route path="/analytics" element={<AnalyticsList />} />
           <Route path="/analytics/new" element={<AnalyticsModel />} />
           <Route path="/analytics/:id" element={<AnalyticsModel />} />
+          {/*
+            Статистика: статичные сегменты `new`, `chart`, `filters` не спорят
+            с `:id` — маршрутизатор ставит точный сегмент выше параметра, а
+            идентификаторы моделей — UUID. Правка модели — та же форма f17
+            (Editor) на `/:id/edit`.
+          */}
+          <Route path="/statistics" element={<StatList />} />
+          <Route path="/statistics/new" element={<StatEditor />} />
+          <Route path="/statistics/chart" element={<StatChart />} />
+          <Route path="/statistics/filters" element={<StatFilters />} />
+          <Route path="/statistics/filters/:id" element={<StatFilters />} />
+          <Route path="/statistics/:id" element={<StatModel />} />
+          <Route path="/statistics/:id/edit" element={<StatEditor />} />
           <Route path="/patients" element={<PatientList />} />
           {/*
             Карточка пациента по кадру f19 заказчика: персональные данные,
