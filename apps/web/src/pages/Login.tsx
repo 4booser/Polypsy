@@ -170,7 +170,13 @@ function PlateInput({
        */
       className={
         "block h-[45px] w-[215px] rounded-[5px] border-0 bg-[var(--bg)] px-[14px] text-[20px] text-primary " +
-        "placeholder:text-[20px] placeholder:font-normal placeholder:text-muted " +
+        /*
+         * Подпись в пустом поле — #666666 с кадра f01 (роль --placeholder,
+         * см. tokens.css). Стоял --muted, приглушённый консоли: он на
+         * тринадцать единиц темнее, потому что поднят ради сиреневых
+         * поверхностей, которых у этого поля нет.
+         */
+        "placeholder:text-[20px] placeholder:font-normal placeholder:text-[var(--placeholder)] " +
         "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2 " +
         "focus-visible:ring-offset-[var(--surface-2)] " +
         (className ?? "")

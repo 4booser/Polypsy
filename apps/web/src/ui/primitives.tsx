@@ -353,6 +353,53 @@ export function GlyphLink({ className, children, ...rest }: LinkProps) {
   );
 }
 
+/**
+ * Кнопка, которая на самом деле ссылка: «Увійти» на лендинге (кадр f00).
+ *
+ * Тот же силуэт, что у Button, и ровно из тех же таблиц `sizes`/`variants` —
+ * как у GlyphLink выше. До сверки публичных страниц белая плашка 215 × 45 с
+ * «Увійти» 22/700 была набрана на лендинге строкой классов вручную, то есть
+ * те же четыре числа лежали в двух местах: здесь (sizes.md, variants.paper) и
+ * там. Видимого изменения эта правка не даёт вовсе — она страховка от того,
+ * что правка примитива однажды разойдётся с копией.
+ *
+ * Элемент <a>, а не <button> с navigate(): переход на другой экран — это
+ * ссылка, её открывают средней кнопкой и видят адрес в строке состояния.
+ *
+ * Ширина, как и у Button, свойство места: `w-[215px]` приходит className от
+ * того, кто кнопку ставит (см. пояснение к `sizes`).
+ *
+ * Кольцо наводки — общее `focus`, а не своё. На лендинге стояло своё, с
+ * подложкой под цвет сиреневого листа; общее кладёт подложку белым, то есть
+ * цветом самой плашки, и кольцо обнимает её вплотную. Двух колец в одной
+ * строке классов при этом нет — кто из них победит, решал бы порядок правил
+ * в собранном CSS, а не разметка.
+ */
+export function ButtonLink({
+  size = "md",
+  variant = "paper",
+  className,
+  children,
+  ...rest
+}: LinkProps & { size?: Size; variant?: Variant }) {
+  return (
+    <Link
+      className={cx(
+        "inline-flex items-center justify-center whitespace-nowrap rounded-[5px] border-0 font-bold leading-none",
+        "no-underline hover:no-underline",
+        "transition-[background-color,filter] duration-[var(--dur-fast)] ease-[var(--ease)]",
+        sizes[size],
+        variants[variant],
+        focus,
+        className,
+      )}
+      {...rest}
+    >
+      {children}
+    </Link>
+  );
+}
+
 /* ─────────── поверхность ─────────── */
 
 /**
