@@ -1,0 +1,637 @@
+[
+ {
+  "key": "whodas12",
+  "title_en": "WHO Disability Assessment Schedule 2.0 (WHODAS 2.0), 12-item version",
+  "title_uk": "Таблиця оцінювання обмеження життєдіяльності ВООЗ (WHODAS 2.0)",
+  "title_ru": null,
+  "authors": "T.B. Üstün, N. Kostanjsek, S. Chatterji, J. Rehm (eds.), World Health Organization",
+  "year": 2010,
+  "citation": "Üstün TB, Kostanjsek N, Chatterji S, Rehm J (eds). Measuring Health and Disability: Manual for WHO Disability Assessment Schedule (WHODAS 2.0). Geneva: World Health Organization; 2010. ISBN 978 92 4 154759 8. Первоисточник (PDF WHO IRIS): https://iris.who.int/handle/10665/43974",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "© World Health Organization 2010. All rights reserved. Publications of the World Health Organization can be obtained from WHO Press, World Health Organization, 20 Avenue Appia, 1211 Geneva 27, Switzerland (tel.: +41 22 791 3264; fax: +41 22 791 4857; e-mail: bookorders@who.int). Requests for permission to reproduce or translate WHO publications – whether for sale or for noncommercial distribution – should be addressed to WHO Press, at the above address (fax: +41 22 791 4806; e-mail: permissions@who.int). // Со страницы ВОЗ о WHODAS: \"To license WHODAS 2.0, such as for including WHODAS 2.0 in an electronic records or data capture system or reproducing it in any way, please go to Licensing WHO Classifications.\" // Из самого бланка опросника: \"Permission to translate this instrument into any language should be obtained from WHO, and all translations should be prepared according to the WHO translation guidelines, as detailed in the accompanying manual.\"",
+   "url": "https://www.who.int/standards/classifications/international-classification-of-functioning-disability-and-health/who-disability-assessment-schedule",
+   "conditions": "Требуется лицензия ВОЗ на любое воспроизведение, в том числе на включение в электронную медицинскую систему. Для некоммерческих пользователей лицензия бесплатна, но выдаётся по заявке и требует принятия пользовательского соглашения. Перевод — только с разрешения ВОЗ и по методике ВОЗ (WHODAS 2.0 Translation guidelines, https://terrance.who.int/mediacentre/data/WHODAS/Guidelines/WHODAS%202.0%20Translation%20guidelines.pdf). Своего перевода делать нельзя."
+  },
+  "items": null,
+  "items_note": "Текст 12 пунктов (S1–S12) опубликован в приложении к манулу ВОЗ 2010 и мною сверен по первоисточнику, но НЕ воспроизводится здесь: ВОЗ явно требует лицензию на воспроизведение WHODAS 2.0 в любом виде (см. license.quote). Текст пунктов надо получить вместе с лицензией от WHO Press / ВОЗ. Для сведения: домены — cognition, mobility, self-care, getting along, life activities, participation; период — последние 30 дней.",
+  "anchors": [
+   {
+    "label": "None",
+    "value": 1
+   },
+   {
+    "label": "Mild",
+    "value": 2
+   },
+   {
+    "label": "Moderate",
+    "value": 3
+   },
+   {
+    "label": "Severe",
+    "value": 4
+   },
+   {
+    "label": "Extreme or cannot do",
+    "value": 5
+   }
+  ],
+  "reverse": [],
+  "scoring": "Простой (simple) подсчёт по манулу ВОЗ 2010, гл. 6.1, дословно: \"In 'simple scoring', the scores assigned to each of the items – 'none' (1), 'mild' (2) 'moderate' (3), 'severe' (4) and 'extreme' (5) – are summed. This method is referred to as simple scoring because the scores from each of the items are simply added up without recoding or collapsing of response categories; thus, there is no weighting of individual items.\" Для 12 пунктов сумма лежит в диапазоне 12–60. Манул отдельно предупреждает: \"Simple scoring of WHODAS is specific to the sample at hand and should not be assumed to be comparable across populations.\" Второй вариант — сложный (IRT) подсчёт: суммирование по доменам, затем перевод в метрику 0–100 (0 = no disability, 100 = full disability) по синтаксису ВОЗ; домены считаются только для 36-пунктной версии (\"Users who would like to obtain WHODAS 2.0 domain scores need to use the full version (i.e. 36 items)\"). Обработка пропусков: манул разрешает подставлять среднее остальных пунктов, если пропущен не более чем один пункт из 12.",
+  "bands": null,
+  "bands_note": "Клинических полос (норма/лёгкое/умеренное/тяжёлое) в манyле ВОЗ 2010 НЕТ. Есть только популяционные нормы-процентили для IRT-баллов короткой версии (Table 6.2: балл 0.0 = 50-й процентиль; 2.8 = 63.2; 5.6 = 73.3; 8.3 = 78.1; 11.1 = 82.0; 13.9 = 86.5; 16.7 = 89.6; 19.4 = 92.4; 22.2 = 93.0; 25.0 = 93.8; 27.8 = 94.7; 30.6 = 94.9; 41.7 = 97.2; 58.3 = 99.7; 100.0 = 100.0; источник — WHO Multi-Country Survey Study on Health and Responsiveness 2000–2001). Заводить свои пороги нельзя — их не установил правообладатель.",
+  "risk_items": null,
+  "risk_items_note": "Пунктов о суицидальных мыслях, самоповреждении или насилии в WHODAS 2.0 нет — инструмент измеряет функционирование, а не риск. Поднимать тревогу не по чему; для риска нужен отдельный инструмент.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Tymruk-Skoropad K, Muzyka O, Pavlova I — перевод и кросс-культурная адаптация 36-пунктной версии, выполненные по протоколу ВОЗ (Physiotherapy Quarterly, 2023;31(4):49–56)",
+    "free": false,
+    "url": "https://physioquart.awf.wroc.pl/Measuring-health-and-disability-of-Ukrainian-cadets-translation-and-cross-cultural,149960,0,2.html",
+    "note": "Это адаптация 36-пунктной версии, не 12-пунктной (12 пунктов — подмножество 36, но сверять формулировки надо отдельно). Права на украинский текст остаются у ВОЗ; распространять его без лицензии ВОЗ нельзя. Отдельно: WHODAS 2.0 (36 пунктов) уже применяется в Украине в системе реабилитации и в ЕСОЗ — это следует подтвердить приказом МОЗ перед внедрением, я такого приказа по первоисточнику не проверил."
+   },
+   "ru": null
+  },
+  "example": {
+   "answers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+   ],
+   "total": 12,
+   "band": "полос нет; 12 — минимум шкалы (все ответы \"None\"), максимум 60 (все ответы \"Extreme or cannot do\")",
+   "note": "Арифметически однозначный пример по правилу simple scoring из манула ВОЗ. Второй: все ответы \"Moderate\" (3) → 12 × 3 = 36."
+  },
+  "verdict": "завести без текста (лицензия) — ВОЗ требует лицензию на любое воспроизведение WHODAS 2.0, включая включение в электронную систему; лицензия бесплатна для некоммерческого использования, но её надо получить до заведения текста пунктов и перевода."
+ },
+ {
+  "key": "mspss",
+  "title_en": "Multidimensional Scale of Perceived Social Support (MSPSS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Gregory D. Zimet, Nancy W. Dahlem, Sara G. Zimet, Gordon K. Farley",
+  "year": 1988,
+  "citation": "Zimet GD, Dahlem NW, Zimet SG, Farley GK. The Multidimensional Scale of Perceived Social Support. Journal of Personality Assessment. 1988;52(1):30–41.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The MSPSS is free to use. Please simply credit the following paper (and any others that are relevant), if you use the scale: Zimet GD, Dahlem NW, Zimet SG, Farley GK. The Multidimensional Scale of Perceived Social Support. Journal of Personality Assessment 1988;52:30-41.",
+   "url": "https://gzimet.wixsite.com/mspss",
+   "conditions": "Единственное условие — ссылка на первоисточник (Zimet et al., 1988). Заявление сделано самим разработчиком (Gregory D. Zimet) на его официальной странице шкалы; там же лежит официальный PDF с пунктами и ключом: https://12fab08f-d2d3-ce70-6d1a-9d3fa0d8a67b.filesusr.com/ugd/5119f9_2f88fadcd382463daf5821e8af94a865.pdf"
+  },
+  "items": [
+   "There is a special person who is around when I am in need.",
+   "There is a special person with whom I can share joys and sorrows.",
+   "My family really tries to help me.",
+   "I get the emotional help & support I need from my family.",
+   "I have a special person who is a real source of comfort to me.",
+   "My friends really try to help me.",
+   "I can count on my friends when things go wrong.",
+   "I can talk about my problems with my family.",
+   "I have friends with whom I can share my joys and sorrows.",
+   "There is a special person in my life who cares about my feelings.",
+   "My family is willing to help me make decisions.",
+   "I can talk about my problems with my friends."
+  ],
+  "items_note": "Дословно из официального PDF на сайте разработчика. Инструкция дословно: \"We are interested in how you feel about the following statements. Read each statement carefully. Indicate how you feel about each statement.\"",
+  "anchors": [
+   {
+    "label": "Very Strongly Disagree",
+    "value": 1
+   },
+   {
+    "label": "Strongly Disagree",
+    "value": 2
+   },
+   {
+    "label": "Mildly Disagree",
+    "value": 3
+   },
+   {
+    "label": "Neutral",
+    "value": 4
+   },
+   {
+    "label": "Mildly Agree",
+    "value": 5
+   },
+   {
+    "label": "Strongly Agree",
+    "value": 6
+   },
+   {
+    "label": "Very Strongly Agree",
+    "value": 7
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно из официального PDF разработчика: \"Significant Other Subscale: Sum across items 1, 2, 5, & 10, then divide by 4. Family Subscale: Sum across items 3, 4, 8, & 11, then divide by 4. Friends Subscale: Sum across items 6, 7, 9, & 12, then divide by 4. Total Scale: Sum across all 12 items, then divide by 12.\" Обратных пунктов нет. Итог — средний балл 1.00–7.00 (не сумма).",
+  "bands": [
+   {
+    "from": 1.0,
+    "to": 2.9,
+    "label": "low support"
+   },
+   {
+    "from": 3.0,
+    "to": 5.0,
+    "label": "moderate support"
+   },
+   {
+    "from": 5.1,
+    "to": 7.0,
+    "label": "high support"
+   }
+  ],
+  "bands_note": "Полосы установлены самим разработчиком в разделе \"Other MSPSS Scoring Options\" того же официального PDF, дословно: \"any mean scale score ranging from 1 to 2.9 could be considered low support; a score of 3 to 5 could be considered moderate support; a score from 5.1 to 7 could be considered high support.\" ВАЖНО, дословно оттуда же: \"There are no established population norms on the MSPSS. Also, norms would likely vary on the basis of culture and nationality, as well as age and gender.\" То есть это ориентир автора, а не валидированные клинические пороги. Формальная дыра: значения строго между 5.0 и 5.1 автор не покрыл — в коде надо решить явно (например, > 5.0 → high) и записать это решение как наше, а не как авторское.",
+  "risk_items": null,
+  "risk_items_note": "Пунктов риска нет — шкала про восприятие поддержки. Низкий общий балл (< 3) — повод усилить работу с окружением, но это не тревога о безопасности.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Мельник Ю. Б., Стаднік А. В. Багатомірна шкала сприйняття соціальної підтримки: метод. посіб. (укр. версія). Харків: ХОГОКЗ, 2023. 12 с. DOI 10.26697/melnyk.stadnik.6.2023",
+    "free": true,
+    "url": "https://culturehealth.org/hogokz_knigi/Programs/Melnyk.Stadnik.6.2023.MSPSS.pdf",
+    "official": false,
+    "note": "НЕ перевод правообладателя: это украинский методический посібник двух украинских авторов (НДІ ХОГОКЗ, Харьков), рекомендованный учёным советом института; копирайт на посібник — © Мельник Ю. Б., Стаднік А. В., 2023, © ХОГОКЗ. PDF свободно лежит на сайте издателя, полный украинский текст всех 12 пунктов и инструкция напечатаны в нём. Разрешение Зимета на свободное использование при ссылке на Zimet et al., 1988 покрывает такую адаптацию, ссылка на первоисточник в посібнику есть. ТРИ ВЕЩИ, КОТОРЫЕ ЛОМАЮТ ПОДСЧЁТ, ЕСЛИ ИХ НЕ УВИДЕТЬ: (1) украинская версия кодирует ответы 0–6 (дословно: \"0 - ви дуже не згодні, 1 - ви не згодні, 2 - ви трохи не згодні, 3 - якщо ви нейтральні, 4 - ви злегка згодні, 5 - ви згодні, 6 - ви дуже згодні\"), а оригинал Зимета — 1–7; средний балл смещается ровно на 1.0, и авторские полосы Зимета (1–2.9 / 3–5 / 5.1–7) к сырым украинским баллам НЕ применимы без пересчёта +1 к каждому пункту; (2) в посібнику нет ключа: не сказано, какие пункты в какую субшкалу идут и что итог — среднее, а не сумма; (3) психометрика украинской версии (надёжность, факторная структура на украинской выборке) в посібнику не приводится. Вывод для системы: украинский текст пунктов брать можно со ссылкой на Мельника і Стадніка (2023), но кодировку ответов вести 1–7 по Зимету (то есть либо печатать украинские якоря с номерами 1–7, либо прибавлять 1 к каждому ответу) и это решение записать как наше."
+   },
+   "ru": null
+  },
+  "translation_note": "Официального украинского перевода от правообладателя (Gregory D. Zimet) нет; есть свободный украинский методический посібник Мельника і Стадніка (2023) с полным текстом пунктов — см. translation.uk, включая расхождение кодировки 0–6 против 1–7. Русского официального перевода не найдено; ходящие по психотестовым сайтам русские варианты не имеют проверяемого первоисточника, заводить их нельзя.",
+  "example": {
+   "answers": [
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4,
+    4
+   ],
+   "total": 4.0,
+   "band": "moderate support",
+   "note": "Все 12 ответов \"Neutral\" (4). Сумма 48, делённая на 12 → средний балл 4.00, попадает в авторскую полосу 3–5 = moderate support. Подшкалы: значимый другой (1,2,5,10) = 16/4 = 4.00; семья (3,4,8,11) = 16/4 = 4.00; друзья (6,7,9,12) = 16/4 = 4.00."
+  },
+  "verdict": "завести — разработчик прямо разрешил свободное использование при ссылке на Zimet et al. 1988; пункты, ключ и полосы взяты из его официального PDF. Заводить только английский оригинал: официального украинского/русского варианта нет."
+ },
+ {
+  "key": "rses",
+  "title_en": "Rosenberg Self-Esteem Scale (RSES / SES)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Morris Rosenberg",
+  "year": 1965,
+  "citation": "Rosenberg, Morris. 1965. Society and the Adolescent Self-Image. Princeton, New Jersey: Princeton University Press. Рекомендуемая правообладателем форма цитирования (дословно со страницы UMD): \"Rosenberg, Morris. 1989. Society and the Adolescent Self-Image. Revised edition. Middletown, CT: Wesleyan University Press.\"",
+  "license": {
+   "verdict": "свободна",
+   "quote": "PLEASE NOTE: The Rosenberg Self-Esteem Scale is now in the public domain, meaning you may use it without charge and without notifying the Sociology Department. This permission extends to making translations or adaptations as you see fit, consistent with traditional scholarly attribution practices. The department does not maintain any information on the scale beyond what is linked below, and cannot advise on its use. // Из FAQ той же кафедры: \"Dr. Florence Rosenberg, Manny's wife, has given permission to use the Self-Esteem Scale for educational and professional research. There is no charge associated with the use of this scale in your professional research. However, please be sure to give credit to Dr. Rosenberg when you use the scale by citing his work in publications, papers and reports.\"",
+   "url": "https://socy.umd.edu/about-us/using-rosenberg-self-esteem-scale",
+   "conditions": "Public domain по заявлению распорядителя (Department of Sociology, University of Maryland, где размещён Morris Rosenberg Foundation). Плата не взимается, уведомлять никого не нужно. Просят указывать авторство по обычаям научного цитирования. Переводы и адаптации разрешены прямо. ВАЖНО: цитата взята из alt-текста официального изображения-плашки на странице UMD (файл /sites/socy.umd.edu/files/rosenberg.jpg), страница обновлена 15.09.2025."
+  },
+  "items": [
+   "I feel that I'm a person of worth, at least on an equal plane with others.",
+   "I feel that I have a number of good qualities.",
+   "All in all, I am inclined to feel that I am a failure.**",
+   "I am able to do things as well as most other people.",
+   "I feel I do not have much to be proud of.**",
+   "I take a positive attitude toward myself.",
+   "On the whole, I am satisfied with myself.",
+   "I wish I could have more respect for myself.**",
+   "I certainly feel useless at times.**",
+   "At times I think I am no good at all.**"
+  ],
+  "items_note": "Дословно с официального бланка на странице University of Maryland (изображение /sites/socy.umd.edu/files/Rosenberg SE Scale.jpg). Двумя звёздочками помечены обратные пункты — так они помечены на самом бланке. Инструкция дословно: \"BELOW IS A LIST OF STATEMENTS DEALING WITH YOUR GENERAL FEELINGS ABOUT YOURSELF. IF YOU STRONGLY AGREE, CIRCLE SA. IF YOU AGREE WITH THE STATEMENT, CIRCLE A. IF YOU DISAGREE, CIRCLE D. IF YOU STRONGLY DISAGREE, CIRCLE SD.\" Правообладатель отдельно требует: \"Do not print the asterisks on the sheet you provide to respondents.\"",
+  "anchors": [
+   {
+    "label": "Strongly Agree (SA)",
+    "value_direct": 3,
+    "value_reversed": 0
+   },
+   {
+    "label": "Agree (A)",
+    "value_direct": 2,
+    "value_reversed": 1
+   },
+   {
+    "label": "Disagree (D)",
+    "value_direct": 1,
+    "value_reversed": 2
+   },
+   {
+    "label": "Strongly Disagree (SD)",
+    "value_direct": 0,
+    "value_reversed": 3
+   }
+  ],
+  "reverse": [
+   3,
+   5,
+   8,
+   9,
+   10
+  ],
+  "scoring": "Дословно со страницы правообладателя: \"For items 1,2,4,6,7: Strongly Agree=3, Agree=2, Disagree=1, and Strongly Disagree=0. For items 3,5,8,9,10 (which are reversed in valence...): Strongly Agree=0, Agree=1, Disagree=2, and Strongly Disagree=3. The scale ranges from 0-30, with 30 indicating the highest score possible.\" Там же сказано, что возможны иные варианты кодировки (1–4 вместо 0–3 → диапазон 10–40); в системе надо зафиксировать ОДИН вариант (рекомендую 0–3 / 0–30, как основной у правообладателя) и не смешивать.",
+  "bands": null,
+  "bands_note": "Полос НЕТ, и это позиция правообладателя дословно: \"Can you tell me what the scale cut-offs are for high and low self-esteem? There are no discrete cut-off points to delineate high and low self-esteem. It is recommended that you consult the literature relevant to the population you are interested in studying.\" (https://socy.umd.edu/rosenberg-scale-faq). Ходовой порог \"< 15 = низкая самооценка\" в первоисточнике НЕ установлен — заводить его нельзя. Выдавать только балл 0–30 и динамику.",
+  "risk_items": null,
+  "risk_items_note": "Прямых пунктов о суициде нет. Пункты 9 (\"I certainly feel useless at times\") и 10 (\"At times I think I am no good at all\") тематически близки к безнадёжности/никчёмности, но правообладатель не устанавливал по ним никакого правила тревоги — вводить его как \"признанное\" нельзя. Если отделение решит поднимать по ним флаг, это должно быть записано как локальное клиническое правило, а не как свойство методики.",
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Официального украинского и русского вариантов, выпущенных правообладателем, нет. Дословно из FAQ UMD: \"The scale has been translated into many languages; unfortunately, the University of Maryland is not a repository for such scales. Please refer to the scholarly literature in the language which you are using.\" Лицензия (public domain) переводы разрешает, но конкретного проверяемого украинского текста с нормами я не нашёл — значит, заводим только английский оригинал.",
+  "example": {
+   "answers": [
+    "A",
+    "A",
+    "D",
+    "A",
+    "D",
+    "A",
+    "A",
+    "D",
+    "D",
+    "D"
+   ],
+   "total": 20,
+   "band": "полос нет — правообладатель прямо пишет, что дискретных порогов не существует",
+   "note": "Ответ \"Agree\" на прямых пунктах 1,2,4,6,7 даёт 2 балла каждый = 10; ответ \"Disagree\" на обратных пунктах 3,5,8,9,10 даёт 2 балла каждый = 10; сумма 20 из 30. Контроль краёв: все \"Strongly Disagree\" на прямых и все \"Strongly Agree\" на обратных → 0; зеркально → 30."
+  },
+  "verdict": "завести — правообладатель прямо объявил шкалу public domain, текст пунктов и ключ есть на его официальной странице; полосы НЕ заводить, их не существует."
+ },
+ {
+  "key": "brief_cope",
+  "title_en": "Brief COPE (abbreviated COPE Inventory, 28 items, 14 two-item scales)",
+  "title_uk": "Опитувальник Brief-COPE (українська адаптація Т. Яблонської, О. Верніка, Г. Гайворонського, 2023)",
+  "title_ru": null,
+  "authors": "Charles S. Carver",
+  "year": 1997,
+  "citation": "Carver CS. You want to measure coping but your protocol's too long: Consider the Brief COPE. International Journal of Behavioral Medicine. 1997;4(1):92–100.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "You are welcome to use all scales of the Brief COPE, or to choose selected scales for use.  Feel free as well to adapt the language for whatever time scale you are interested in.",
+   "url": "https://www.psy.miami.edu/faculty/ccarver/brief-cope.html",
+   "conditions": "Разрешение дано самим автором (Charles S. Carver) на его официальной странице в University of Miami — там же лежат инструкция, все 28 пунктов, варианты ответа и ключ. Плата и запрет на коммерческое использование не упоминаются вовсе. Автор отдельно разрешает менять инструкцию и временную рамку: \"Please feel free to adapt the instructions as needed for your application.\" Ссылаться положено на Carver, 1997 (цитата приведена самим автором на странице). ВАЖНО: там же автор прямо запрещает то, чего от него часто хотят: \"Please do NOT write to me asking for instructions to for “adaptive” and “maladaptive” composites, because I do not have any such instructions.\""
+  },
+  "items": [
+   "I've been turning to work or other activities to take my mind off things.",
+   "I've been concentrating my efforts on doing something about the situation I'm in.",
+   "I've been saying to myself \"this isn't real.\"",
+   "I've been using alcohol or other drugs to make myself feel better.",
+   "I've been getting emotional support from others.",
+   "I've been giving up trying to deal with it.",
+   "I've been taking action to try to make the situation better.",
+   "I've been refusing to believe that it has happened.",
+   "I've been saying things to let my unpleasant feelings escape.",
+   "I've been getting help and advice from other people.",
+   "I've been using alcohol or other drugs to help me get through it.",
+   "I've been trying to see it in a different light, to make it seem more positive.",
+   "I've been criticizing myself.",
+   "I've been trying to come up with a strategy about what to do.",
+   "I've been getting comfort and understanding from someone.",
+   "I've been giving up the attempt to cope.",
+   "I've been looking for something good in what is happening.",
+   "I've been making jokes about it.",
+   "I've been doing something to think about it less, such as going to movies, watching TV, reading, daydreaming, sleeping, or shopping.",
+   "I've been accepting the reality of the fact that it has happened.",
+   "I've been expressing my negative feelings.",
+   "I've been trying to find comfort in my religion or spiritual beliefs.",
+   "I've been trying to get advice or help from other people about what to do.",
+   "I've been learning to live with it.",
+   "I've been thinking hard about what steps to take.",
+   "I've been blaming myself for things that happened.",
+   "I've been praying or meditating.",
+   "I've been making fun of the situation."
+  ],
+  "items_note": "Дословно с официальной страницы автора (psy.miami.edu/faculty/ccarver/brief-cope.html). Инструкция там приведена в предоперационной версии и дословно звучит так: \"These items deal with ways you've been coping with the stress in your life since you found out you were going to have to have this operation. There are many ways to try to deal with problems. These items ask what you've been doing to cope with this one. Obviously, different people deal with things in different ways, but I'm interested in how you've tried to deal with it. Each item says something about a particular way of coping. I want to know to what extent you've been doing what the item says. How much or how frequently. Don't answer on the basis of whether it seems to be working or not—just whether or not you're doing it. Use these response choices. Try to rate each item separately in your mind from the others. Make your answers as true FOR YOU as you can.\" Автор прямо разрешает подставить свою рамку события вместо операции — в украинской адаптации подставлено полномасштабное вторжение.",
+  "anchors": [
+   {
+    "label": "I haven't been doing this at all",
+    "value": 1
+   },
+   {
+    "label": "I've been doing this a little bit",
+    "value": 2
+   },
+   {
+    "label": "I've been doing this a medium amount",
+    "value": 3
+   },
+   {
+    "label": "I've been doing this a lot",
+    "value": 4
+   }
+  ],
+  "anchors_note": "Именно 1–4, как на странице автора. В литературе часто встречается кодировка 0–3 (из некоторых перепечаток) — это МЕНЯЕТ диапазон подшкалы (0–6 вместо 2–8) и делает баллы несравнимыми. Заводить надо 1–4, как у Карвера, и это решение зафиксировать.",
+  "reverse": [],
+  "scoring": "Дословно со страницы автора: \"Scales are computed as follows (with no reversals of coding)\". Каждая подшкала — сумма двух своих пунктов, диапазон 2–8 (при кодировке 1–4). Ключ дословно: Self-distraction 1,19; Active coping 2,7; Denial 3,8; Substance use 4,11; Use of emotional support 5,15; Use of instrumental support 10,23; Behavioral disengagement 6,16; Venting 9,21; Positive reframing 12,17; Planning 14,25; Humor 18,28; Acceptance 20,24; Religion 22,27; Self-blame 13,26. ОБЩЕЙ СУММЫ НЕТ.",
+  "bands": null,
+  "bands_note": "Полос нет и общего балла нет — это позиция автора дословно: \"There is no such thing as an “overall” score on this measure, and I recommend no particular way of generating a dominant coping style for a give person.\" и \"Please do NOT write to me asking for instructions to for “adaptive” and “maladaptive” composites, because I do not have any such instructions.\" Значит: в системе выдавать 14 подшкал по 2–8 баллов, БЕЗ итогового индекса, без деления на \"адаптивный/дезадаптивный\" и без порогов. Украинская адаптация (Яблонська та ін., 2023) в своём приложении всё же группирует подшкалы в три стиля (проблемно-фокусований 2,7,10,12,14,17,23,25; емоційно-фокусований 5,9,13,15,18,20,21,22,24,26,27,28; уникаючий 1,3,4,6,8,11,16,19) — это решение украинских адаптаторов, оно прямо противоречит запрету автора на сводные композиты; если отделение захочет эти три стиля, их надо подписывать как украинскую группировку 2023 года, а не как свойство Brief COPE.",
+  "risk_items": [
+   4,
+   11
+  ],
+  "risk_items_note": "Автор НЕ устанавливал никаких правил тревоги — у методики нет ни порогов, ни флагов. Пункты 4 и 11 (подшкала Substance use) — единственные, где респондент прямо сообщает об употреблении алкоголя/веществ для совладания; для контингента военнослужащих это клинически значимый сигнал и повод для отдельного разговора и скрининга (AUDIT-C и т.п.). Пункты 6 и 16 (Behavioral disengagement — отказ от попыток справляться) близки к капитуляции/безнадёжности. Оба правила — ЛОКАЛЬНЫЕ клинические, вводить их в систему можно только с подписью \"правило отделения\", а не \"правило методики\". Пунктов о суициде в Brief COPE нет вообще.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Яблонська Т., Вернік О., Гайворонський Г. Українська адаптація опитувальника Brief-COPE. Insight: the psychological dimensions of society. 2023;(10):66–89. DOI 10.32999/2663-970X/2023-10-4",
+    "free": true,
+    "url": "https://insight.journal.kspu.edu/index.php/insight/en/article/view/149",
+    "note": "Статья открытого доступа под лицензией Creative Commons Attribution 4.0 International (CC BY 4.0) — маркировка \"International (CC BY 4.0)\" стоит в колонтитуле каждой страницы PDF. Полный украинский текст всех 28 пунктов, инструкция и ключ напечатаны в Додатку статьи, то есть воспроизводимы при указании авторства. Версия ситуативная, рамка события — полномасштабное вторжение: \"Наступні пункти стосуються того, як Ви справлялися зі стресом у своєму житті відтоді, як дізналися, що почалося повномасштабне вторгнення.\" Варианты ответа украинской ситуативной версии дословно: 1 \"Я зазвичай цього не робив/не робила\", 2 \"Я рідко це робив/робила\", 3 \"Я робив/робила це час від часу\", 4 \"Це саме те, що я зазвичай робив/робила\"; для диспозиционной версии авторы дают от 1 \"я взагалі цього не роблю\" до 4 \"саме це я роблю\". ЭТО НЕ перевод правообладателя, а украинская адаптация украинских авторов — но Карвер прямо разрешает адаптацию языка, а лицензия CC BY статьи разрешает воспроизведение её текста. Отдельно: ГО \"Українське психометричне товариство\" перечисляет украинский Brief-COPE в реестре инструментов (ситуативная версия 2023 и версия 2024), но с оговоркой, что общество \"не несе відповідальності повноту і достовірність психометричних показників\"."
+   },
+   "ru": null
+  },
+  "translation_note": "Официального русского Brief COPE от правообладателя или в рецензируемой публикации найти не удалось (русскоязычные адаптации известны для полного COPE Карвера, а не для Brief COPE). Русский вариант НЕ заводить.",
+  "example": {
+   "answers": [
+    {
+     "item": 4,
+     "value": 3
+    },
+    {
+     "item": 11,
+     "value": 4
+    }
+   ],
+   "total": 7,
+   "band": null,
+   "note": "Подшкала Substance use = сумма пунктов 4 и 11 = 3 + 4 = 7 из 8 при кодировке 1–4. Контроль краёв: все ответы \"1\" → каждая из 14 подшкал = 2 (минимум); все ответы \"4\" → каждая подшкала = 8 (максимум); общего балла не существует ни в каком случае. Опубликованного клинического примера \"ответы → сумма → полоса\" у методики быть не может, потому что полос нет — пример арифметически однозначен и этого достаточно как золотой тест подсчёта."
+  },
+  "verdict": "завести — автор на своей официальной странице прямо разрешает использование и адаптацию, текст пунктов и ключ у него же; заводить 14 подшкал 2–8 БЕЗ общего балла и БЕЗ порогов, украинский текст брать из CC BY статьи Яблонської та ін. (2023) со ссылкой."
+ },
+ {
+  "key": "brs",
+  "title_en": "Brief Resilience Scale (BRS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Bruce W. Smith, Jeanne Dalen, Kathryn Wiggins, Erin Tooley, Paulette Christopher, Jennifer Bernard",
+  "year": 2008,
+  "citation": "Smith BW, Dalen J, Wiggins K, Tooley E, Christopher P, Bernard J. The Brief Resilience Scale: Assessing the ability to bounce back. International Journal of Behavioral Medicine. 2008;15(3):194–200. DOI 10.1080/10705500802222972",
+  "license": {
+   "verdict": "неясно",
+   "quote": "Copyright © Taylor & Francis Group, LLC",
+   "url": "https://doi.org/10.1080/10705500802222972",
+   "conditions": "Заявления правообладателя о свободном использовании НЕ НАЙДЕНО. Проверены: сама статья 2008 года (в ней только копирайт издателя, никакого разрешения), официальная страница автора в University of New Mexico (https://psych.unm.edu/people/faculty/profile/bruce-w.-smith.html — только ссылка на публикацию, ни слова о лицензии), реестр ePROVIDE/Mapi (карточка BRS существует, но условия без входа не читаются). Единственное найденное утверждение о свободе — из реестра PhenX Toolkit (финансируется NIH, ведётся RTI International), дословно: \"This protocol is freely available; permission not required for use.\" (https://www.phenxtoolkit.org/protocols/view/251401). Это НЕ слова правообладателя, а третья сторона, и доверять ей полностью нельзя: на той же странице PhenX печатает интерпретацию \"4.31-6.00 High resilience\", хотя максимум шкалы 5.00 — то есть у регистра есть фактическая ошибка. Разрешение стоит запросить письмом у Bruce W. Smith, Ph.D., Department of Psychology, University of New Mexico (bwsmith@unm.edu — адрес указан в самой статье как адрес для переписки); до письменного ответа текст пунктов в систему не заводить."
+  },
+  "items": null,
+  "items_note": "Завести нельзя: текст шести пунктов опубликован в Table 1 статьи Smith et al., 2008, которая целиком под копирайтом Taylor & Francis; заявления правообладателя, разрешающего воспроизведение, найти не удалось. Копии бланка на сайтах университетов и консалтинговых компаний (ogg.osu.edu, sofia.com.sg, optumhealtheducation.com) — перепечатки третьих лиц, они по правилам не годятся. После письменного разрешения от B. W. Smith текст берётся из Table 1 оригинальной статьи, и только оттуда.",
+  "anchors": [
+   {
+    "label": "strongly disagree",
+    "value": 1
+   },
+   {
+    "label": "disagree",
+    "value": 2
+   },
+   {
+    "label": "neutral",
+    "value": 3
+   },
+   {
+    "label": "agree",
+    "value": 4
+   },
+   {
+    "label": "strongly agree",
+    "value": 5
+   }
+  ],
+  "anchors_note": "Дословно из инструкции, приведённой в самой статье (Smith et al., 2008, с. 195): \"Please indicate the extent to which you agree with each of the following statements by using the following scale: 1 = strongly disagree, 2 = disagree, 3 = neutral, 4 = agree, 5 = strongly agree.\" Это шапка администрирования, а не текст пунктов; её приводим как цитату из первоисточника.",
+  "reverse": [
+   2,
+   4,
+   6
+  ],
+  "scoring": "Дословно из первоисточника (Smith et al., 2008): \"Items 1, 3, and 5 are positively worded, and items 2, 4, and 6 are negatively worded. The BRS is scored by reverse coding items 2, 4, and 6 and finding the mean of the six items.\" То есть: обратный пересчёт пунктов 2, 4, 6 (1↔5, 2↔4, 3=3), затем СРЕДНЕЕ шести пунктов, диапазон 1.00–5.00. Не сумма 6–30, а среднее.",
+  "bands": null,
+  "bands_note": "Завести нельзя: в первоисточнике 2008 года полос нет вообще. Широко ходящий набор \"1.00–2.99 low / 3.00–4.30 normal / 4.31–5.00 high\" приписывают главе Smith BW et al. (2013) в книге Prince-Embury & Saklofske \"Resilience in Children, Adolescents, and Adults\" (Springer), но саму эту главу проверить не удалось — она платная, и во всех доступных пересказах цифры приходят из вторых рук. Более того, регистр PhenX печатает верхнюю полосу как \"4.31-6.00\", что при максимуме 5.00 невозможно — расхождения в пересказах реальны. Пока глава 2013 года не прочитана в оригинале, выдавать только средний балл 1.00–5.00 и динамику, без подписей \"низкая/нормальная/высокая резильентность\".",
+  "risk_items": null,
+  "risk_items_note": "Пунктов риска нет: шкала измеряет только способность восстанавливаться после стресса, вопросов о суициде, веществах или симптомах в ней нет. Низкий средний балл — повод усилить сопровождение, но не тревога.",
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Официального украинского перевода BRS не найдено: в реестре ГО \"Українське психометричне товариство\" BRS отсутствует; найденные украинские работы по резильентности используют другие инструменты (CD-RISC-10, R@WS, PRIFOR). Официального русского перевода также не найдено. Своих переводов не делать.",
+  "example": {
+   "answers": [
+    4,
+    2,
+    4,
+    2,
+    4,
+    2
+   ],
+   "total": 4.0,
+   "band": null,
+   "note": "Ответы по пунктам 1–6: 4, 2, 4, 2, 4, 2. Обратные пункты 2, 4, 6: ответ 2 → 4 балла каждый. Итого баллы 4, 4, 4, 4, 4, 4; среднее = 24 / 6 = 4.00. Полосу не подписываем — её в первоисточнике нет. Контроль краёв: все прямые \"5\" и все обратные \"1\" → среднее 5.00; зеркально → 1.00. Пример арифметический, опубликованного примера с ответами у методики нет."
+  },
+  "verdict": "завести без текста (лицензия) — методика не платная, но заявления правообладателя о разрешении нет ни в статье, ни на его университетской странице; до письменного ответа Bruce W. Smith держим только название, ключ (среднее шести пунктов, обратные 2,4,6) и якоря, без текста пунктов и без полос."
+ },
+ {
+  "key": "ucla3",
+  "title_en": "Three-Item Loneliness Scale (short form of the Revised UCLA Loneliness Scale)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Mary Elizabeth Hughes, Linda J. Waite, Louise C. Hawkley, John T. Cacioppo (короткая форма шкалы D. Russell, L. A. Peplau, C. E. Cutrona, 1980)",
+  "year": 2004,
+  "citation": "Hughes ME, Waite LJ, Hawkley LC, Cacioppo JT. A Short Scale for Measuring Loneliness in Large Surveys: Results From Two Population-Based Studies. Research on Aging. 2004;26(6):655–672. DOI 10.1177/0164027504268574",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "Students and researchers do not need permission to use use the UCLA Loneliness Scale for non-profit research purposes may do so without permission.",
+   "url": "https://peplau.psych.ucla.edu/loneliness",
+   "conditions": "Цитата приведена дословно, вместе с опечаткой оригинала (\"to use use\" и сбитая вторая половина фразы) — так она напечатана на официальной странице соавтора шкалы Anne Peplau в UCLA, где перечислены все версии, включая \"3-item scale designed for use in telephone surveys\" (Hughes et al., 2004). ОГРАНИЧЕНИЕ, которое надо видеть честно: разрешение сформулировано для НЕКОММЕРЧЕСКИХ ИССЛЕДОВАТЕЛЬСКИХ целей; клиническое применение в отделении этой фразой прямо не покрыто. Копирайт 20-пунктовой версии 3 принадлежит Daniel W. Russell (Iowa State University), и подтверждение для клинического (не исследовательского) использования стоит запросить у него. Утверждения \"шкала в public domain\" встречаются в Википедии и на сторонних сайтах — это не первоисточник, опираться на них нельзя."
+  },
+  "items": [
+   "How often do you feel that you lack companionship?",
+   "How often do you feel left out?",
+   "How often do you feel isolated from others?"
+  ],
+  "items_note": "Текст пунктов сверен по бланку федерального исследования NIH: форма \"Three Item Loneliness Scale, Version 1\" исследования Look AHEAD в репозитории NIDDK/NIH (https://repository.niddk.nih.gov/media/studies/look-ahead/Forms/Post_Intervention/PI_Three%20Item%20Loneliness%20Scale.pdf). Там же дословная преамбула интервьюера: \"The next questions are about how you feel about different aspects of your life. For each one, tell me how often you feel that way.\" Сама статья Hughes et al. (2004) — платная (Sage), поэтому формулировки сверялись по государственному бланку, где они напечатаны буквально.",
+  "anchors": [
+   {
+    "label": "Hardly ever",
+    "value": 1
+   },
+   {
+    "label": "Some of the time",
+    "value": 2
+   },
+   {
+    "label": "Often",
+    "value": 3
+   }
+  ],
+  "anchors_note": "1 = Hardly Ever, 2 = Some of the Time, 3 = Often — дословно по бланку NIH Look AHEAD. В телефонной версии Hughes варианты зачитываются прямо в вопросе (\"Hardly ever, some of the time, or often?\").",
+  "reverse": [],
+  "scoring": "Сумма трёх пунктов, диапазон 3–9; выше — сильнее чувство одиночества. Обратных пунктов нет, подшкал нет.",
+  "bands": null,
+  "bands_note": "Завести нельзя. В первоисточнике Hughes et al. (2004) полос нет — там вводится только суммарный балл 3–9. Широко ходящее деление \"3–5 не одинок / 6–9 одинок\" встречается в методичках и руководствах (например Campaign to End Loneliness, каргиверский справочник RGPS Ontario, где прямо сказано \"Anything over a score of six (6) should be discussed with a health care professional\"), но публикацию, где этот порог УСТАНОВЛЕН автором и провалидирован, найти не удалось: разные работы режут шкалу по-разному. Выдавать только балл 3–9 и динамику; если отделение хочет флаг при ≥6, подписывать его как локальное правило, а не как порог методики.",
+  "risk_items": null,
+  "risk_items_note": "Пунктов риска нет: вопросов о суициде, вреде себе или веществах в шкале нет. При этом сам конструкт — фактор риска: у военнослужащих высокий балл одиночества клинически значим в паре со скринингом депрессии и суицидальности (PHQ-9 п.9, C-SSRS), но правило тревоги должно жить в тех методиках, а не здесь.",
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Официального украинского перевода трёхпунктовой версии не найдено: в реестре ГО \"Українське психометричне товариство\" её нет, публикации украинской валидизации найти не удалось. Русского официального перевода трёхпунктовой версии тоже нет (на психотестовых сайтах ходят русские варианты 20-пунктовой UCLA — это другая методика и не первоисточник). Своих переводов не делать: пункты короткие, но нормы и сравнимость установлены для английского оригинала.",
+  "example": {
+   "answers": [
+    3,
+    3,
+    2
+   ],
+   "total": 8,
+   "band": null,
+   "note": "\"Often\" (3) + \"Often\" (3) + \"Some of the time\" (2) = 8 из 9. Контроль краёв: все \"Hardly ever\" → 3 (минимум), все \"Often\" → 9 (максимум). Полосу не подписываем — валидированных полос у методики нет. Пример арифметический; опубликованного примера \"ответы → сумма → полоса\" у методики нет."
+  },
+  "verdict": "завести — разрешение есть на официальной университетской странице соавтора, текст трёх пунктов сверен по государственному бланку NIH; НО заводить только балл 3–9 без полос, и для клинического (не исследовательского) применения запросить подтверждение у D. W. Russell."
+ },
+ {
+  "key": "osss3",
+  "title_en": "Oslo Social Support Scale (OSSS-3)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Инструмент происходит из работ Odd Steffen Dalgard и соавт. (Осло, проект ODIN); нормативы и стандартизация — Rüya-Daniela Kocalevent, Lina Berg, Manfred E. Beutel, Andreas Hinz, Markus Zenger, Hendrik Härter, Ulrike Nater, Elmar Brähler",
+  "year": 2018,
+  "citation": "Kocalevent R-D, Berg L, Beutel ME, Hinz A, Zenger M, Härter H, Nater U, Brähler E. Social support in the general population: standardization of the Oslo social support scale (OSSS-3). BMC Psychology. 2018;6:31. DOI 10.1186/s40359-018-0249-9",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "© The Author(s). 2018 Open Access This article is distributed under the terms of the Creative Commons Attribution 4.0 International License (http://creativecommons.org/licenses/by/4.0/), which permits unrestricted use, distribution, and reproduction in any medium, provided you give appropriate credit to the original author(s) and the source, provide a link to the Creative Commons license, and indicate if changes were made.",
+   "url": "https://bmcpsychology.biomedcentral.com/articles/10.1186/s40359-018-0249-9",
+   "conditions": "Условие CC BY 4.0: указание авторства (Kocalevent et al., 2018), ссылка на лицензию, пометка об изменениях. Текст всех трёх пунктов, варианты ответа, диапазон суммы и полосы напечатаны в самой статье открытого доступа — воспроизведение разрешено этой лицензией. Отдельная оговорка, которую надо держать в уме: лицензия CC BY покрывает текст статьи; сама шкала старше и восходит к норвежским работам Dalgard (ODIN), отдельного заявления норвежских авторов о свободном использовании найти не удалось — но эти же три вопроса воспроизводятся без ограничений в статьях открытого доступа и в межведомственном наборе показателей IASC MHPSS M&E."
+  },
+  "items": [
+   "How many people are so close to you that you can count on them if you have great personal problems?",
+   "How much interest and concern do people show in what you do?",
+   "How easy is it to get practical help from neighbors if you should need it?"
+  ],
+  "items_note": "Дословно из статьи Kocalevent et al., 2018 (раздел Instrument, пункты подписаны там как Oslo 1, Oslo 2, Oslo 3).",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "label": "none",
+      "value": 1
+     },
+     {
+      "label": "1–2",
+      "value": 2
+     },
+     {
+      "label": "3–5",
+      "value": 3
+     },
+     {
+      "label": "5+",
+      "value": 4
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "label": "none",
+      "value": 1
+     },
+     {
+      "label": "little",
+      "value": 2
+     },
+     {
+      "label": "uncertain",
+      "value": 3
+     },
+     {
+      "label": "some",
+      "value": 4
+     },
+     {
+      "label": "a lot",
+      "value": 5
+     }
+    ]
+   },
+   {
+    "item": 3,
+    "options": [
+     {
+      "label": "very difficult",
+      "value": 1
+     },
+     {
+      "label": "difficult",
+      "value": 2
+     },
+     {
+      "label": "possible",
+      "value": 3
+     },
+     {
+      "label": "easy",
+      "value": 4
+     },
+     {
+      "label": "very easy",
+      "value": 5
+     }
+    ]
+   }
+  ],
+  "anchors_note": "ВНИМАНИЕ, частая ошибка в реализациях: у пункта 1 всего ЧЕТЫРЕ варианта (1–4), у пунктов 2 и 3 — по ПЯТЬ (1–5). Именно поэтому сумма идёт от 3 до 14, а не до 15. Варианты приведены дословно, включая странную середину второго пункта (\"uncertain\").",
+  "reverse": [],
+  "scoring": "Дословно из статьи: \"The sum score ranges from 3 to 14, with high values representing strong levels and low values representing poor levels of social support.\" Обратных пунктов нет, подшкал нет — один фактор (в статье EFA дала однофакторное решение).",
+  "bands": [
+   {
+    "from": 3,
+    "to": 8,
+    "label": "poor social support"
+   },
+   {
+    "from": 9,
+    "to": 11,
+    "label": "moderate social support"
+   },
+   {
+    "from": 12,
+    "to": 14,
+    "label": "strong social support"
+   }
+  ],
+  "bands_note": "Полосы напечатаны в статье Kocalevent et al. (2018) дословно как \"3–8 poor social support / 9–11 moderate social support / 12–14 strong social support\" с прямой атрибуцией: \"Referring to Bøen and colleagues [18], the OSSS-3 sum score can be operationalized into three broad categories of social support.\" Ссылка [18] = Bøen H, Dalgard OS, Bjertness E. The importance of social support in the associations between psychological distress and somatic health problems and socio-economic factors among older adults living at home: a cross sectional study. BMC Geriatrics. 2012;12:27. Границы целочисленные и покрывают весь диапазон без дыр. Нормативы (перцентили по полу и возрасту) даны в той же статье на немецкой популяции n=2524; среднее 10.16 (SD 2.25), медиана 10 — это НЕМЕЦКАЯ норма, не украинская, и подписывать её как украинскую нельзя.",
+  "risk_items": null,
+  "risk_items_note": "Пунктов риска нет. Клинически осмысленный сигнал — ответ \"none\" на пункт 1 (нет ни одного человека, на кого можно положиться при серьёзных личных проблемах): для военнослужащих это прямой дефицит защитного фактора и повод к работе с окружением. Но это ЛОКАЛЬНОЕ правило отделения: ни Kocalevent, ни Bøen флагов по отдельным пунктам не устанавливали.",
+  "translation": {
+   "uk": null,
+   "ru": null
+  },
+  "translation_note": "Официального украинского перевода OSSS-3 не найдено: в реестре ГО \"Українське психометричне товариство\" шкалы нет, украинских валидизационных публикаций найти не удалось; на странице OSSS-3 в наборе IASC MHPSS M&E (mhpss.net) переводы не перечислены. Официального русского перевода также не найдено. Своих переводов не делать.",
+  "example": {
+   "answers": [
+    4,
+    4,
+    4
+   ],
+   "total": 12,
+   "band": "strong social support",
+   "note": "Ответы: пункт 1 = \"5+\" (4), пункт 2 = \"some\" (4), пункт 3 = \"easy\" (4); сумма 4+4+4 = 12 → полоса 12–14 \"strong social support\". Этот балл проверяется и по опубликованному примеру самой статьи: \"an OSSS-3 score of 12 in a 20-year-old man indicates a percentile rank of 79.7% in his reference group (males in the age between 14 and 24) and a percentile rank of 84.0% in the total population\". Контроль краёв: все минимальные ответы → 3 (poor), максимальные (4, 5, 5) → 14 (strong)."
+  },
+  "verdict": "завести — пункты, ключ и полосы напечатаны в статье открытого доступа под CC BY 4.0 с явной атрибуцией порогов к Bøen et al. (2012); заводить английский оригинал, нормы помечать как немецкие."
+ }
+]
