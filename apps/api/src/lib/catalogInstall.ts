@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { createSurveySchema, normalizeLocalized, t, type LocalizedText } from "@quizzy/shared";
 import { db } from "../db";
-import { departments, surveys, users } from "../db/schema";
+import { departments, surveyVersions, surveys, users } from "../db/schema";
 import { CATALOG, type CatalogEntry } from "../instruments/catalog";
 import { auditSystem } from "./audit";
 import { log } from "./log";
@@ -35,7 +35,11 @@ export interface InstallReport {
   departmentId: string | null;
   departmentCreated: boolean;
   installed: string[];
+  /** Стояли и обновлены до текущей редакции каталога новой версией */
+  updated: string[];
   skipped: string[];
+  /** Правлены в учреждении после установки — каталог их не трогает */
+  keptLocal: string[];
   /**
    * Почему установка не состоялась вовсе.
    *
@@ -86,25 +90,37 @@ async function ensureDepartment(): Promise<{ id: string; created: boolean }> {
   return { id, created: true };
 }
 
-async function installOne(entry: CatalogEntry, createdBy: string): Promise<boolean> {
-  const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
-  if (existing) return false;
+/*
+ * Отпечаток редакции каталога — в заметке версии: «Каталог · <отпечаток>».
+ *
+ * Раньше установщик узнавал методику по ключу и больше её не трогал. Правка
+ * каталога тогда доходила только до новых установок: на проде оставались,
+ * например, полосы PSS-10, которых у автора нет, и они открывали случаи в
+ * очереди разбора. Теперь редакция сравнивается по отпечатку, и отличие
+ * выкатывается новой версией — старые прохождения остаются при своей.
+ *
+ * Правки учреждения важнее каталога: если последнюю версию выпустил человек
+ * в конструкторе (заметка не начинается с «Каталог»), методика не трогается и
+ * попадает в отчёт. Отвергнуто: сравнивать содержимое версии с черновиком —
+ * это второй конвертер из базы в черновик, который однажды разойдётся с
+ * createVersion и начнёт «обновлять» каждую методику на каждом выкате.
+ */
+const NOTE = "Каталог";
 
-  // через ту же схему, что и API: методика каталога обязана быть валидной
-  const input = createSurveySchema.parse(entry.draft);
-  const id = crypto.randomUUID();
+async function fingerprint(entry: CatalogEntry): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(entry.draft));
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return [...hash.slice(0, 6)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
-  await db.insert(surveys).values({
-    id,
-    catalogKey: entry.key,
-    groupId: null,
+/** Поля строки методики, которые берутся из черновика каталога */
+function surveyFields(input: ReturnType<typeof createSurveySchema.parse>) {
+  return {
     title: normalizeLocalized(input.title)!,
     description: normalizeLocalized(input.description),
     instructions: normalizeLocalized(input.instructions),
     administration: input.administration,
     safetyPlan: normalizeLocalized(input.safetyPlan),
-    status: "published",
-    publishedAt: new Date().toISOString(),
     timeLimitSec: input.timeLimitSec ?? null,
     randomizeQuestions: input.randomizeQuestions ?? false,
     allowBack: input.allowBack ?? true,
@@ -116,10 +132,54 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<boole
     showResultsToPatient: input.showResultsToPatient ?? false,
     alertEscalateMinutes: input.alertEscalateMinutes ?? null,
     tooFastMs: input.tooFastMs ?? null,
+  };
+}
+
+type Outcome = "installed" | "updated" | "skipped" | "keptLocal";
+
+async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outcome> {
+  const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
+  const note = `${NOTE} · ${await fingerprint(entry)}`;
+  if (existing) {
+    const [head] = await db
+      .select({ note: surveyVersions.note })
+      .from(surveyVersions)
+      .where(eq(surveyVersions.surveyId, existing.id))
+      .orderBy(desc(surveyVersions.version))
+      .limit(1);
+    if (!head?.note?.startsWith(NOTE)) return "keptLocal";
+    if (head.note === note) return "skipped";
+
+    const input = createSurveySchema.parse(entry.draft);
+    await db
+      .update(surveys)
+      .set({ ...surveyFields(input), updatedAt: new Date().toISOString() } as never)
+      .where(eq(surveys.id, existing.id));
+    await createVersion(existing.id, input, createdBy, note);
+    await auditSystem({
+      action: "survey.catalog_update",
+      resourceType: "survey",
+      resourceId: existing.id,
+      details: { catalogKey: entry.key, from: head.note, to: note, source: entry.source },
+    });
+    return "updated";
+  }
+
+  // через ту же схему, что и API: методика каталога обязана быть валидной
+  const input = createSurveySchema.parse(entry.draft);
+  const id = crypto.randomUUID();
+
+  await db.insert(surveys).values({
+    id,
+    catalogKey: entry.key,
+    groupId: null,
+    ...surveyFields(input),
+    status: "published",
+    publishedAt: new Date().toISOString(),
     createdBy,
   } as never);
 
-  await createVersion(id, input, createdBy, "Каталог");
+  await createVersion(id, input, createdBy, note);
 
   /*
    * В журнал — с источником. Через год вопрос «откуда взялись пороги этой
@@ -132,7 +192,7 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<boole
     resourceId: id,
     details: { catalogKey: entry.key, title: t(input.title as never, "uk"), source: entry.source },
   });
-  return true;
+  return "installed";
 }
 
 export async function installCatalog(): Promise<InstallReport> {
@@ -142,31 +202,34 @@ export async function installCatalog(): Promise<InstallReport> {
       departmentId: null,
       departmentCreated: false,
       installed: [],
+      updated: [],
       skipped: [],
+      keptLocal: [],
       notReady: "в базе нет ни одного сотрудника — методику не на кого записать",
     };
   }
 
   const department = await ensureDepartment();
 
-  const installed: string[] = [];
-  const skipped: string[] = [];
-  for (const entry of CATALOG) {
-    if (await installOne(entry, createdBy)) installed.push(entry.key);
-    else skipped.push(entry.key);
-  }
+  const out: Record<Outcome, string[]> = { installed: [], updated: [], skipped: [], keptLocal: [] };
+  for (const entry of CATALOG) out[await installOne(entry, createdBy)].push(entry.key);
+  const { installed, updated, skipped, keptLocal } = out;
 
   log.info("catalog.installed", {
     department: department.id,
     installed: installed.length,
+    updated: updated.length,
     skipped: skipped.length,
+    keptLocal: keptLocal.length,
   });
 
   return {
     departmentId: department.id,
     departmentCreated: department.created,
     installed,
+    updated,
     skipped,
+    keptLocal,
     notReady: null,
   };
 }

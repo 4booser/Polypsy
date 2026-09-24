@@ -126,7 +126,7 @@ export const CATALOG: CatalogEntry[] = [
    * пункты, ключ, полосы и пункты риска — оттуда, а не из памяти. Из досье
    * НЕ заведены: STAI, CES-D, HSCL-25, BDI-II, BAI, HADS, GHQ-12, MADRS —
    * у одних нет текста (лицензия), у других нет разрешения на онлайн-
-   * публикацию; CES-D заменяет CESD-R с доказанным public domain.
+   * публикацию; CESD-R с доказанным public domain заменяет CES-D.
    */
   {
     key: "phq4",

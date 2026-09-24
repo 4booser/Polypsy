@@ -331,7 +331,8 @@ describe("золотой протокол: CBI", () => {
     const s = scoreOf(survey, picks, "PB");
     expect(s.rawScore).toBe(50);
     expect(s.band?.grade).toBe(3);
-    expect(s.band?.severity).toBe("moderate");
+    // mild: полоса 50–74 не открывает случай в очереди риска (см. cbi.ts)
+    expect(s.band?.severity).toBe("mild");
   });
 
   test("пример досье: обратный пункт 7 шкалы работы — «Всегда» даёт 0, а не 100", () => {

@@ -426,7 +426,7 @@ describe("целостность группы «mood»", () => {
       expect(errors.map((e) => `${e.where}: ${e.message}`)).toEqual([]);
     });
 
-    test(`${key}: пункты риска — ровно по досье`, () => {
+    test(`${key}: пункты риска — по досье (DASS-42 п. 38 — по обоснованию досье к п. 21)`, () => {
       expect(riskItems(draft)).toEqual(RISK_ITEMS[key]!);
       // каждый критический вариант подписан: иначе персонал увидит голый текст пункта
       for (const q of qs(draft)) {

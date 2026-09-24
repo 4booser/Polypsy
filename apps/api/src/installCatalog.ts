@@ -37,5 +37,9 @@ console.log(
 );
 if (report.installed.length) console.log(`  ✓ поставлено методик: ${report.installed.join(", ")}`);
 if (report.skipped.length) console.log(`  · уже стояли: ${report.skipped.join(", ")}`);
+if (report.updated.length) console.log(`  ✓ обновлено до редакции каталога: ${report.updated.join(", ")}`);
+if (report.keptLocal.length) {
+  console.log(`  · правлены в учреждении, каталог их не трогал: ${report.keptLocal.join(", ")}`);
+}
 
 await client.end();
