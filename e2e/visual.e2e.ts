@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { login, patientLinks } from "./helpers";
+import { goCaseCard, login, patientLinks } from "./helpers";
 
 /**
  * Скриншотные эталоны витрины.
@@ -142,6 +142,12 @@ test("подсказка закрывается один раз и не возв
   await patientLinks(page).first().waitFor();
   const href = await patientLinks(page).first().getAttribute("href");
   await page.goto(href!);
+  /*
+   * Подсказка про RCI живёт на сводке клинической карты (pages/CaseSummary),
+   * а «/patients/:id» с волны 6 — карточка по кадру f19, где подсказок нет
+   * вовсе. Идём туда шестерёнкой, как человек.
+   */
+  await goCaseCard(page);
 
   const hint = page.locator(".hint-box").first();
   await expect(hint).toBeVisible();
@@ -328,6 +334,79 @@ async function recordedScoredResponse(
 }
 
 /**
+ * Первый лікар реестра — из ЗАПИСАННОГО GET /api/users, тем же fetch-ом из
+ * страницы, что и recordedSurveys: id посева случайные, и живой page.request
+ * дал бы чужой. Порядок — как в реестре (sortByName в pages/people/model.ts):
+ * карточка снимается с той же строки, что стоит первой на экране списка.
+ *
+ * Реестр закрыт правом users.manage, поэтому экраны людей снимаются от
+ * root, а не от psy: psy без ступени лестницы не видит ни /staff, ни /admins
+ * (isSuper || canAssign в App.tsx), а по /api/permissions/staff получил бы
+ * усечённый справочник без пола и года рождения — не тот экран, что на
+ * кадре f43.
+ */
+async function recordedDoctor(page: import("@playwright/test").Page): Promise<{ id: string; fullName: string }> {
+  const doctor = await page.evaluate(async () => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+    const list = (await (await fetch("/api/users", { headers })).json()) as {
+      items: Array<{ id: string; role: string; fullName: string }>;
+    };
+    return list.items
+      .filter((u) => u.role === "admin")
+      .map(({ id, fullName }) => ({ id, fullName }))
+      .sort((a, b) => a.fullName.localeCompare(b.fullName, "uk"))[0] ?? null;
+  });
+  expect(doctor, "на стенде нет ни одного лікаря — карточку показать не на ком").not.toBeNull();
+  return doctor!;
+}
+
+/**
+ * Первый в ЗАПИСАННОМ списке пациент — тем же fetch-ом из страницы, что и
+ * recordedSurveys: id посева случайные, живой page.request дал бы чужой.
+ *
+ * Список зоны видимости спрашивается без параметров: ровно такой запрос
+ * лежит в наборе и у карты, и у карточки, и при воспроизведении оба экрана
+ * получают одного и того же человека.
+ */
+async function recordedPatientId(page: import("@playwright/test").Page): Promise<string> {
+  const first = await page.evaluate(async () => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+    const list = (await (await fetch("/api/dynamics/respondents", { headers })).json()) as {
+      items: Array<{ userId: string }>;
+    };
+    return list.items[0]?.userId ?? null;
+  });
+  expect(first, "на стенде нет ни одного пациента — карту показать не на ком").not.toBeNull();
+  return first!;
+}
+
+/**
+ * Отправленная рассылка с ответами — из ЗАПИСАННОГО перечня, тем же путём.
+ *
+ * Именно отправленная и именно с ответами: карточка черновика — это форма
+ * (кадр f20), а кадр f26 рисует показ с вариантами, и счётчики по вариантам
+ * сервер отдаёт только у отправленной. Посев такую заводит (apps/api/src/
+ * seed/mailings.ts: «Повторний замір настрою» с тремя вариантами), но брать
+ * её id оттуда нельзя — он случайный и пересоздаётся с базой.
+ *
+ * Перечень спрашивается с запасом (limit 20): черновик и уведомление без
+ * вариантов стоят в том же списке, и страница по умолчанию могла бы
+ * кончиться раньше нужной строки.
+ */
+async function recordedSentMailing(page: import("@playwright/test").Page): Promise<string> {
+  const id = await page.evaluate(async () => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
+    const list = (await (await fetch("/api/mailings?limit=20&offset=0", { headers })).json()) as {
+      items: Array<{ id: string; status: string; answeredCount: number }>;
+    };
+    const sent = list.items.filter((m) => m.status === "sent");
+    return (sent.find((m) => m.answeredCount > 0) ?? sent[0])?.id ?? null;
+  });
+  expect(id, "на стенде нет ни одной отправленной рассылки — карточку показать не на чем").not.toBeNull();
+  return id!;
+}
+
+/**
  * Вытянуть окно по высоте содержимого — см. поле fit у экрана.
  *
  * Меряется именно прокручиваемая область (overflow-y: auto), а не любой
@@ -352,9 +431,34 @@ async function fitToContent(page: import("@playwright/test").Page) {
   await expect.poll(hidden).toBe(0);
 }
 
+type Account = Parameters<typeof login>[1];
+
 const SCREENS: Array<{
   name: string;
   open: (page: import("@playwright/test").Page) => Promise<void>;
+  /**
+   * От кого снимается. По умолчанию psy — рядовой специалист, чей экран и
+   * есть основной; реестры людей открыты только суперадмину и заведующему
+   * (isSuper || canAssign), и их снимает root.
+   */
+  as?: Account;
+  /**
+   * Снимается гостем — без входа вовсе.
+   *
+   * Лендинг и форма входа существуют только для того, кто не вошёл: войдя,
+   * по «/» получаешь сводку, по «/login» — её же. Учётки у такого экрана
+   * поэтому нет, а перехват ответов ставится сразу, а не после входа.
+   */
+  guest?: true;
+  /**
+   * Что попадает в кадр. По умолчанию рабочая область консоли (main.main).
+   *
+   * У публичных страниц её нет: лист рисует PublicFrame, и кадры f00/f01 —
+   * это лист целиком, от «Укр» в шапке до подвала с контактами. Снимать у
+   * них один <main> значило бы выбросить из эталона половину того, что
+   * заказчик нарисовал.
+   */
+  root?: string;
   /** Заголовок экрана — сегодняшняя дата, и в снимке его надо закрыть */
   maskTitle?: true;
   /**
@@ -438,15 +542,14 @@ const SCREENS: Array<{
        * запрос без параметров в нём есть, и при воспроизведении он отвечает
        * из записи.
        */
-      const first = await page.evaluate(async () => {
-        const headers = { Authorization: `Bearer ${localStorage.getItem("quizzy.web.token")}` };
-        const list = (await (await fetch("/api/dynamics/respondents", { headers })).json()) as {
-          items: Array<{ userId: string }>;
-        };
-        return list.items[0]?.userId ?? null;
-      });
-      expect(first, "на стенде нет ни одного пациента — карту показать не на ком").not.toBeNull();
-      await page.goto(`/patients/${first}`);
+      const first = await recordedPatientId(page);
+      /*
+       * Адрес с волны 6 — «/case»: сам «/patients/:id» занят карточкой по
+       * кадру f19 (см. экран patient-card ниже), а эта карта переехала
+       * (pages/CaseCard.tsx). Экран тот же самый и эталон тот же: переезд
+       * сменил только маршрут и адреса вкладок, ни одного пикселя.
+       */
+      await page.goto(`/patients/${first}/case`);
       /*
        * Ждём вкладки карты, а не просто заголовок: заголовок «Пациенты»
        * есть и на списке, — ожидание проходило мгновенно, и снимок ловил
@@ -484,11 +587,12 @@ const SCREENS: Array<{
     name: "constructor-new",
     open: async (page) => {
       await page.goto("/constructor");
-      await page.getByRole("heading", { level: 1, name: "Новый тест" }).waitFor();
-      // вкладки вида есть только при создании; снимается вид по умолчанию — «Конкретный»
+      /*
+       * Заголовка «Новый тест» на экране нет: по кадру f24_1 над вкладками
+       * пусто, и заголовок оставлен скрытым для диктора. Признак готовности —
+       * сами вкладки; снимается вид по умолчанию — «Конкретный».
+       */
       await expect(page.getByRole("tab", { name: "Конкретный тест" })).toHaveAttribute("aria-selected", "true");
-      // предпросмотр справа — панель контекста, и она в снимке
-      await page.locator(".preview-phone").waitFor();
     },
     // до «Ответов», шкал и кнопки «Создать» внизу — они и есть форма
     fit: true,
@@ -509,7 +613,6 @@ const SCREENS: Array<{
        * методики, и оно есть в разметке ещё до того, как приехали пункты.
        */
       await page.getByRole("button", { name: /Развернуть вопрос$/ }).first().waitFor();
-      await page.locator(".preview-phone").waitFor();
     },
     fit: true,
   },
@@ -540,6 +643,203 @@ const SCREENS: Array<{
       await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
     },
     // редактор с полосой инструментов стоит последним в свитке
+    fit: true,
+  },
+  /*
+   * Экраны волны 4 — люди: сетка пациентов с вкладками групп (f05), реестры
+   * лікарів и администраторов (f43, f50), карточка сотрудника (f33) и
+   * конструктор аналитической модели (f27).
+   *
+   * Списка групп, карточки группы, перечня аналитики и правки модели здесь
+   * нет: посев (apps/api/src/seed.ts) не заводит ни одной группы пациентов и
+   * ни одного правила, а эталон пустого экрана сторожит пустоту, не вёрстку.
+   * Появятся в посеве — добавить по этому же образцу: id из записанных
+   * GET /api/patient-groups и GET /api/decisions/rules.
+   */
+  {
+    name: "patients",
+    open: async (page) => {
+      await page.goto("/patients");
+      /*
+       * Сетка карточек рисуется после списка людей и вкладок групп, которым
+       * нужны свои ответы; data-patients — опора сквозных проверок
+       * (PersonGrid), а не класс, который сменят на первой же правке.
+       */
+      await patientLinks(page).first().waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // сетка 3×N со строкой над списком и панелью контекста — снимается вся
+    fit: true,
+  },
+  {
+    name: "staff",
+    as: "superadmin",
+    open: async (page) => {
+      await page.goto("/staff");
+      // строка реестра — ссылка на карточку; появилась — справочник приехал
+      await page.locator('a[href^="/staff/"]').first().waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+  },
+  {
+    name: "staff-card",
+    as: "superadmin",
+    open: async (page) => {
+      const doctor = await recordedDoctor(page);
+      await page.goto(`/staff/${doctor.id}`);
+      /*
+       * Ждём фамилию в поле карточки, а не заголовок и не имя целиком.
+       *
+       * Со сверкой раздела людей заголовком стало слово роли («Лікар»,
+       * «Адміністратор»), как на кадрах f43/f50, а ФИО разложилось по трём
+       * полям — целой строки «Иванова Анна Петровна» на экране больше нет.
+       * Ждать любой h1 нельзя: он есть и у «не найдено», и у состояния
+       * загрузки, и снимок делался бы до приезда справочника.
+       */
+      await page.getByText(doctor.fullName.split(" ")[0]!, { exact: true }).first().waitFor();
+      // права сотрудника и его пациенты догружаются отдельными запросами
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // профиль с полями, сменой пароля и разделами ниже — свиток
+    fit: true,
+  },
+  {
+    name: "admins",
+    as: "superadmin",
+    open: async (page) => {
+      await page.goto("/admins");
+      await page.locator('a[href^="/staff/"]').first().waitFor();
+      // ступени лестницы догружаются поштучно (withLadder) — без них строки неполные
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+  },
+  {
+    name: "analytics-new",
+    open: async (page) => {
+      await page.goto("/analytics/new");
+      /*
+       * Форма рисуется, когда приехал список методик (селект параметра);
+       * до того экран — «Загрузка». Кнопка сохранения стоит последней в
+       * форме: есть она — есть и всё выше.
+       */
+      await page.getByText("Название аналитической модели").waitFor();
+      await page.getByRole("button", { name: "Сохранить" }).waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // название, структура, карточка действий — до кнопки внизу
+    fit: true,
+  },
+  /*
+   * Экраны волны 6 — публичная часть, карточка пациента и рассылки.
+   *
+   * Лендинг и вход снимаются целиком листом (root: "body"): у них нет
+   * main.main консоли, а кадры f00 и f01 — это весь лист, вместе с подвалом.
+   * Снимаются гостем: войдя, ни того ни другого уже не увидеть.
+   */
+  {
+    name: "landing",
+    guest: true,
+    root: "body",
+    open: async (page) => {
+      await page.goto("/");
+      await page.getByRole("heading", { level: 1, name: /^(О кампании|Про кампанію)$/ }).waitFor();
+      /*
+       * Ждём кнопку входа, а не один заголовок: она стоит последней в
+       * содержимом листа, и пока её нет, снимок поймал бы лист без неё.
+       * Фоновая картинка — отдельная забота: её ждём загрузкой, иначе в
+       * кадр попадает сиреневая заливка без волн и силуэта.
+       */
+      await page.getByRole("link", { name: /^(Войти|Увійти)$/ }).waitFor();
+      await page.evaluate(
+        () =>
+          new Promise<void>((done) => {
+            const img = new Image();
+            img.onload = () => done();
+            img.onerror = () => done();
+            img.src = "/landing.webp";
+          }),
+      );
+    },
+  },
+  {
+    name: "login",
+    guest: true,
+    root: "body",
+    open: async (page) => {
+      await page.goto("/login");
+      await page.getByRole("heading", { level: 1 }).waitFor();
+      await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).waitFor();
+      await page.evaluate(
+        () =>
+          new Promise<void>((done) => {
+            const img = new Image();
+            img.onload = () => done();
+            img.onerror = () => done();
+            img.src = "/landing.webp";
+          }),
+      );
+    },
+  },
+  {
+    name: "patient-card",
+    open: async (page) => {
+      const first = await recordedPatientId(page);
+      await page.goto(`/patients/${first}`);
+      /*
+       * Ждём заголовок раздела «Тесты» — второй уровень, а не первый:
+       * первым стоит слово «Пациент», и оно есть в разметке ещё до того,
+       * как приехала карточка. Разделы рисуются по одному ответу
+       * (/api/patients/:id/card), так что появился первый — есть и все.
+       */
+      await page.getByRole("heading", { level: 2, name: /^(Тесты|Тести)$/ }).waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // личные данные, «Тесты», «Группы» и «Заключения» — кадры f19_1 и f19_2 подряд
+    fit: true,
+  },
+  {
+    name: "mailings",
+    open: async (page) => {
+      await page.goto("/mailings");
+      /*
+       * Строка перечня, а не заголовок: заголовок «Сообщения» и поле поиска
+       * стоят и над пустым списком, и над списком в загрузке.
+       */
+      await page.locator('main.main a[href^="/mailings/"]').first().waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    // страница перечня конечна (десять строк) — в кадре она вся
+    fit: true,
+  },
+  {
+    name: "mailing-new",
+    open: async (page) => {
+      await page.goto("/mailings/new");
+      /*
+       * Кнопка «Создать» стоит последней в форме (кадр f20): есть она —
+       * есть и название, и текст, и рамка «Ответ» с вариантами. Поля
+       * адресатов в форме больше нет (группа спрашивается в окне шага
+       * «Отправить»), но скелетов всё равно дожидаемся: список групп тянется
+       * тем же экраном.
+       */
+      await page.getByRole("button", { name: /^(Создать|Створити)$/ }).waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
+    fit: true,
+  },
+  {
+    name: "mailing-card",
+    open: async (page) => {
+      const id = await recordedSentMailing(page);
+      await page.goto(`/mailings/${id}`);
+      /*
+       * Ждём рамку «Ответ» с вариантами — то, чем отправленная рассылка
+       * отличается от формы: пока карточка едет, на экране строка загрузки,
+       * и заголовка у экрана нет вовсе (titleHidden).
+       */
+      await page.getByRole("group", { name: /^(Ответ|Відповідь)$/ }).waitFor();
+      await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
+    },
     fit: true,
   },
 ];
@@ -575,7 +875,7 @@ for (const screen of SCREENS) {
     });
 
     // вход идёт в настоящий стенд: перехват ставится после него
-    await login(page, "psy");
+    if (!screen.guest) await login(page, screen.as ?? "psy");
     const save = await withRecordedApi(page, screen.name, recording);
     await screen.open(page);
     await page.evaluate(() => document.fonts.ready);
@@ -600,7 +900,7 @@ for (const screen of SCREENS) {
      * попадает вовсе. Маска по границам поля оставляет вёрстку под
      * наблюдением: съехавшее поле сдвинет соседей, и это будет видно.
      */
-    await expect(page.locator("main.main")).toHaveScreenshot(`screen-${screen.name}.png`, {
+    await expect(page.locator(screen.root ?? "main.main")).toHaveScreenshot(`screen-${screen.name}.png`, {
       ...TOLERANCE,
       mask: [
         page.locator('input[type="date"]'),

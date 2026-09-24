@@ -301,9 +301,27 @@ export const patientGroupInputSchema = z.object({
   position: z.number().int().min(0).optional(),
 });
 
-/** Кого добавляем в группу — «додати пацієнта» */
-export const patientGroupMemberSchema = z.object({
-  userId: z.string().min(1),
+/**
+ * Кого добавляем в группу — «додати пацієнта».
+ *
+ * Список, а не один человек: экран отмечает галочками пятерых и жмёт одну
+ * кнопку, и пять запросов вместо одного означали бы пять записей в журнале и
+ * четыре шанса оборваться на середине. Старая форма `{ userId }` принимается
+ * по-прежнему — консоль, собранная до этого шага, зовёт её и не должна
+ * упасть на выкате сервера; в маршруте обе сводятся к одному списку.
+ */
+export const patientGroupMemberSchema = z
+  .object({
+    userId: z.string().min(1).optional(),
+    userIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+  })
+  .refine((v) => Boolean(v.userId) || Boolean(v.userIds?.length), {
+    message: "Нужен userId или непустой userIds",
+  });
+
+/** Кого убираем из группы — пакетом, по тем же причинам, что и добавление */
+export const patientGroupMembersRemoveSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1).max(200),
 });
 
 /**
@@ -416,6 +434,39 @@ export const statModelUpdateSchema = statModelInputSchema.partial();
  */
 export const statModelRunSchema = statModelInputSchema.extend({
   title: z.string().max(200).nullish(),
+});
+
+/* ─────────────── Рассылки ───────────────
+ *
+ * Сообщение-объявление «одному многим». Варианты ответа — просто подписи:
+ * без баллов, без ключей, без шкал. То, что они похожи на варианты вопроса
+ * методики, — сходство формы, а не смысла: рассылку не считают.
+ */
+
+/** Вариант ответа получателя — короткая подпись кнопки: «Так», «Ні», «Пізніше» */
+const mailingOption = z.string().trim().min(1).max(100);
+
+export const mailingInputSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(4000),
+  /**
+   * Пустой список допустим: это просто уведомление, отвечать нечем.
+   * Потолок в десять — кнопок на экране больше не помещается, а опрос с
+   * двадцатью вариантами — это уже методика, и заводить его надо там.
+   */
+  options: z.array(mailingOption).max(10).default([]),
+  /** Группа пациентов — только своя; проверяется в маршруте */
+  patientGroupId: z.string().min(1).nullish(),
+  /** Поимённый список — только из зоны видимости; проверяется в маршруте */
+  patientIds: z.array(z.string().min(1)).max(500).default([]),
+});
+
+/** Правка черновика: любое поле по отдельности */
+export const mailingUpdateSchema = mailingInputSchema.partial();
+
+/** Ответ получателя — номер варианта в `options` */
+export const mailingAnswerSchema = z.object({
+  answer: z.number().int().min(0).max(9),
 });
 
 /* ─────────────── Конструктор опроса ─────────────── */
@@ -782,6 +833,10 @@ export type SurveyFolderUpdateInput = z.infer<typeof surveyFolderUpdateSchema>;
 export type MoveSurveyInput = z.infer<typeof moveSurveySchema>;
 export type PatientGroupInput = z.infer<typeof patientGroupInputSchema>;
 export type PatientGroupMemberInput = z.infer<typeof patientGroupMemberSchema>;
+export type PatientGroupMembersRemoveInput = z.infer<typeof patientGroupMembersRemoveSchema>;
+export type MailingInput = z.input<typeof mailingInputSchema>;
+export type MailingUpdateInput = z.input<typeof mailingUpdateSchema>;
+export type MailingAnswerInput = z.infer<typeof mailingAnswerSchema>;
 export type AssignSurveyToPatientGroupInput = z.input<typeof assignSurveyToPatientGroupSchema>;
 export type FilterPresetInput = z.input<typeof filterPresetInputSchema>;
 export type FilterPresetUpdateInput = z.input<typeof filterPresetUpdateSchema>;
@@ -894,6 +949,37 @@ export const respondentQuery = z.object({
   cursor: z.string().max(200).optional(),
   /** Поиск идёт по расшифрованным ФИО уже в приложении — здесь только длина */
   search: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
+});
+
+/**
+ * Список пациентов зоны видимости: поиск, вкладка группы, страница.
+ *
+ * Постраничность offset-ная, как у каталога методик: макет требует
+ * «сторінка 1 з 10» и шаг назад, а курсор знает только «дальше».
+ */
+export const patientListQuery = z.object({
+  /** Поиск идёт по расшифрованным ФИО и почте уже в приложении — здесь только длина */
+  q: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
+  patientGroup: z.string().max(64).optional().transform((v) => v || undefined),
+  limit: queryInt(1, 200, 50),
+  offset: queryInt(0, 1_000_000, 0),
+});
+
+export const mailingListQuery = z.object({
+  /** Поиск по расшифрованным теме и тексту — в приложении, здесь только длина */
+  q: z.string().max(120).optional().transform((v) => (v ?? "").trim().toLowerCase()),
+  /** Скрытые автором — по запросу; умолчание их не показывает */
+  hidden: z
+    .string()
+    .optional()
+    .transform((v) => v === "1"),
+  limit: queryInt(1, 200, 10),
+  offset: queryInt(0, 1_000_000, 0),
+});
+
+export const mailingInboxQuery = z.object({
+  limit: queryInt(1, 200, 50),
+  offset: queryInt(0, 1_000_000, 0),
 });
 
 export const responseListQuery = z.object({

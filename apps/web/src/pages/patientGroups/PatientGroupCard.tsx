@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useMatch, useParams, useSearchParams } from "react-router-dom";
 import { t, type PatientGroupSurvey } from "@quizzy/shared";
 import { api } from "../../api";
 import { numericDate } from "../constructor/catalogue";
 import { useLang } from "../../lang";
-import { IconEdit, IconSearchGlass, Loading, useAction } from "../../ui";
+import { IconSearchGlass, Loading, useAction } from "../../ui";
 import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { Pager } from "../../ui/pager";
@@ -16,7 +16,7 @@ import { keepPresent, matchesQuery, toggleIn } from "./model";
 import { PersonGrid, SelectionBar } from "./PersonGrid";
 
 /*
- * Карточка группы пациентов — кадр f20 макета, один свиток сверху вниз:
+ * Карточка группы пациентов — кадр f14 макета, один свиток сверху вниз:
  *
  *   «Назва Групи»                     → заголовок экрана (h1), справа глиф правки
  *   «Опис Групи» + абзац              → description группы
@@ -28,14 +28,21 @@ import { PersonGrid, SelectionBar } from "./PersonGrid";
  * описание, состав и методики вместе именно потому, что экран открывает их
  * вместе (см. докблок маршрута).
  *
+ * Замеры f14, по которым собрана эта страница: имя экрана 20/700 (прописная
+ * «Н» 152…165 — ступень ниже, чем 24/700 списков), подзаголовки свитка тоже
+ * 20/700, абзац описания 15/20 во всю колонку 1200, разделители 2px #b299cc
+ * (линии y 344-345 и 569-570), от абзаца до линии 31 и от линии до
+ * подзаголовка 18, от второй линии до верхней рамки поиска 40.
+ *
  * Чего на кадре нет, а здесь есть:
  *
- * 1. Глиф правки у заголовка. Сервер умеет PATCH названия и описания, а на
- *    кадре ни карандаша, ни формы нет; без глифа опечатка в названии жила бы
- *    вечно. Стоит там же, где на других экранах стоит шестерёнка, — справа в
- *    строке заголовка.
- * 2. Кнопка «Прибрати з групи» под сеткой. Галочки на кадре нарисованы, а
- *    действие над ними — нет; убрать человека из группы иначе нечем.
+ * 1. Правка названия и описания. Сервер умеет PATCH, а на кадре ни
+ *    карандаша, ни формы нет — в строке заголовка справа чисто. Глиф с глаз
+ *    убран, окно осталось и открывается адресом /patient-groups/:id/edit:
+ *    без него опечатка в названии жила бы вечно.
+ * 2. Пункт «Прибрати з групи» в меню «⋯» под сеткой. Галочки на кадре
+ *    нарисованы, а действие над ними — нет; убрать человека из группы иначе
+ *    нечем.
  *
  * Чего на кадре есть, а здесь иначе: у карточки теста вместо описания —
  * «призначено 05.02.2023 · до 01.03.2023 · пройшли 5 з 12». Описания
@@ -94,7 +101,15 @@ export default function PatientGroupCard() {
   const chosen = useMemo(() => keepPresent(selected, group?.members ?? []), [selected, group]);
 
   type Dialog = "edit" | "assign" | "add" | null;
-  const [dialog, setDialog] = useState<Dialog>(null);
+  /*
+   * Окно правки названия и описания открывается адресом
+   * /patient-groups/:id/edit — на кадре f14 в строке заголовка справа чисто,
+   * и глифа-карандаша там быть не может. Начальное состояние, а не эффект:
+   * закрыв окно, человек остаётся на карточке, и открывать его снова на
+   * каждую отрисовку было бы западнёй.
+   */
+  const editing = useMatch("/patient-groups/:id/edit") !== null;
+  const [dialog, setDialog] = useState<Dialog>(editing ? "edit" : null);
 
   /*
    * Окно что-то изменило — после закрытия карточку надо перечитать. Флаг
@@ -132,22 +147,14 @@ export default function PatientGroupCard() {
   if (!group) return <Loading rows={6} />;
 
   return (
-    <Page
-      title={group.title}
-      actions={
-        <Button size="glyph" variant="ghost" aria-label={ut("pg.edit")} onClick={() => setDialog("edit")}>
-          <span className="[&>svg]:size-[22px]">
-            <IconEdit />
-          </span>
-        </Button>
-      }
-    >
+    <Page title={group.title} titleSize={20}>
       {/* ── Опис Групи ── */}
       <section aria-labelledby="pg-description">
         <h2 id="pg-description" className={h2}>
           {ut("pg.description")}
         </h2>
-        <p className="m-0 mt-[14px] max-w-[110ch] text-[15px] leading-[22px] text-muted">
+        {/* межстрочный 20 и во всю колонку: на кадре четыре строки с верхами 237/257/277/297 */}
+        <p className="m-0 mt-[14px] text-[15px] leading-[20px] text-muted">
           {group.description ? group.description : <span className="text-faint">{ut("pg.noDescription")}</span>}
         </p>
       </section>
@@ -167,7 +174,8 @@ export default function PatientGroupCard() {
         {group.surveys.length === 0 ? (
           <p className="m-0 mt-[14px] text-[13px] text-muted">{ut("pg.noTests")}</p>
         ) : (
-          <ul className="m-0 mt-[14px] grid list-none grid-cols-2 gap-x-[48px] gap-y-[24px] p-0 max-[900px]:grid-cols-1">
+          /* зазор 62 — то же число, что у каталога групп: левые края колонок на f14 — 200 и 830-831 */
+          <ul className="m-0 mt-[14px] grid list-none grid-cols-2 gap-x-[62px] gap-y-[24px] p-0 max-[900px]:grid-cols-1">
             {group.surveys.map((s) => (
               <SurveyRow key={s.surveyId} survey={s} total={group.members.length} />
             ))}
@@ -183,31 +191,44 @@ export default function PatientGroupCard() {
         «+» → страницы), только внутри свитка: её заголовок — «Пацієнт», а не
         имя экрана, и рисует её экран сам, не Page.
 
+        Зазоры на кадре разные, и одним числом их не выразить: «Пацієнт»
+        кончается на 284, поле начинается на 300 (16), поле кончается на 983,
+        «+» стоит 997…1023 (14), а блок страниц отжат вправо (подпись с
+        1185). Поэтому поле и «+» собраны в свой ряд с зазором 14, а внешний
+        зазор — 16. Верхний отступ строки — 40: на кадре от нижней кромки
+        линии (570) до верхней рамки поля (610) ровно столько, а поле в
+        строке самое высокое (36 против 30 у заголовка), то есть верх строки
+        и есть верх поля. Число стоит здесь целиком, а не складывается с
+        нижним просветом линии: соседние отступы в потоке схлопываются в
+        больший, и 18 + 22 дали бы 22, а не 40.
+
         Кегль у «Пацієнт» — 24/700, как у имени экрана, а не 18 остальных
         подзаголовков свитка: на кадре он набран ровно так же, как
-        «Пацієнти» на f05 и «Групи» на f10, — строка над списком перенесена
+        «Пацієнти» на f05 и «Групи» на f06, — строка над списком перенесена
         внутрь свитка вместе со своим размером. Ступень разметки при этом
         h2: h1 у экрана один, это название группы.
       */}
-      <div className="flex items-center gap-[24px] max-[900px]:flex-wrap">
+      <div className="mt-[40px] flex items-center gap-[16px] max-[900px]:flex-wrap">
         <h2 className="m-0 text-[24px] font-bold leading-tight text-primary">{ut("pg.patient")}</h2>
-        <div className="relative min-w-0 flex-1">
-          <Input
-            look="outline"
-            aria-label={ut("pg.patientSearch")}
-            value={q}
-            onChange={(e) => update({ q: e.target.value, page: null })}
-            className="pr-[44px]"
-            autoComplete="off"
-            maxLength={120}
-          />
-          <span aria-hidden className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-text-2 [&>svg]:size-[22px]">
-            <IconSearchGlass />
-          </span>
+        <div className="flex min-w-0 flex-1 items-center gap-[14px]">
+          <div className="relative min-w-0 flex-1">
+            <Input
+              look="outline"
+              aria-label={ut("pg.patientSearch")}
+              value={q}
+              onChange={(e) => update({ q: e.target.value, page: null })}
+              className="pr-[44px]"
+              autoComplete="off"
+              maxLength={120}
+            />
+            <span aria-hidden className="pointer-events-none absolute right-[12px] top-1/2 -translate-y-1/2 text-text-2 [&>svg]:size-[22px]">
+              <IconSearchGlass />
+            </span>
+          </div>
+          <Button size="glyph" variant="ghost" aria-label={ut("pg.addPatient")} onClick={() => setDialog("add")}>
+            <IconPlusThick />
+          </Button>
         </div>
-        <Button size="glyph" variant="ghost" aria-label={ut("pg.addPatient")} onClick={() => setDialog("add")}>
-          <IconPlusThick />
-        </Button>
         <div className="ml-auto shrink-0">
           <Pager
             page={page}
@@ -234,11 +255,14 @@ export default function PatientGroupCard() {
             onToggle={(userId) => setSelected((prev) => toggleIn(prev, userId))}
           />
         )}
-        <SelectionBar count={chosen.size} onClear={() => setSelected(new Set())}>
-          <Button variant="ghost" onClick={() => void removeChosen()}>
-            {ut("pg.removeFromGroup")}
-          </Button>
-        </SelectionBar>
+        {/* под сеткой на кадре только счётчик; меню раскрывает он сам, как на f05 */}
+        <SelectionBar
+          count={chosen.size}
+          entries={[
+            { label: ut("pg.removeFromGroup"), onSelect: () => void removeChosen() },
+            { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
+          ]}
+        />
       </section>
 
       {dialog === "edit" ? (
@@ -278,15 +302,26 @@ export default function PatientGroupCard() {
   );
 }
 
-/* 18/700 фиолетовым — ступень заголовка внутри экрана (см. Panel в layout.tsx); «Пацієнт» — исключение, см. выше */
-const h2 = "m-0 text-[18px] font-bold leading-tight text-primary";
+/*
+ * 20/700 фиолетовым — та же ступень, что у разделов карточки пациента
+ * (Section в PatientCard.tsx). Замер f14: прописные «О», «Т», «П» в «Опис
+ * Групи», «Тести Групи» и «Пацієнти Групи» — 14 px, то есть кегль 20, а не
+ * 18. «Пацієнт» — исключение, см. ниже.
+ */
+const h2 = "m-0 text-[20px] font-bold leading-[24px] text-primary";
 
 /**
- * Фиолетовая линия между блоками — на кадре она нарисована, и она не
- * серая: --primary-dim, тот же фиолетовый вполсилы, что у неактивной вкладки.
+ * Фиолетовая линия между блоками — на кадре она 2px и цвета #b299cc
+ * (--primary-rule), тот же знак, что делит разделы карточки пациента. Не
+ * --primary-dim: приглушённая ступень словаря осветлена до порога контраста
+ * ТЕКСТА (#7a4ea6), а линия — не текст, и разница на ней видна глазом.
+ *
+ * Просветы несимметричны: сверху 31 (низ последней строки абзаца 313, линия
+ * 344), снизу 18 до верха строчного блока подзаголовка (линия 345,
+ * прописная «Тести Групи» 367).
  */
 function Rule() {
-  return <hr className="my-[30px] border-0 border-t border-primary-dim" />;
+  return <hr className="mb-[18px] mt-[30px] border-0 border-t-2 border-primary-rule" />;
 }
 
 /**

@@ -30,6 +30,8 @@ import { reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
 import { clinicRoutes } from "./routes/clinic";
 import { messageRoutes } from "./routes/messages";
+import { mailingRoutes } from "./routes/mailings";
+import { patientRoutes } from "./routes/patients";
 import { episodeRoutes } from "./routes/episodes";
 import { recordingRoutes } from "./routes/recordings";
 import { permissionRoutes } from "./routes/permissions";
@@ -82,14 +84,33 @@ app.use("*", requestId);
 app.use("*", secureHeaders());
 // аналитика отдаёт сотни КБ JSON — gzip сокращает их на порядок
 app.use("*", compress());
-// самый большой легальный запрос — сдача МЛО-200 с потоком событий, ~300 КБ;
-// мегабайта хватает всем с запасом, а бомбу в теле он останавливает
-app.use(
-  "*",
-  bodyLimit({
-    maxSize: 1024 * 1024,
-    onError: (c) => c.json({ error: renderError("err.tooLarge", langOf(c)) }, 413),
-  }),
+/*
+ * Потолок на тело запроса — общий мегабайт и отдельный для аудио приёма.
+ *
+ * Самый большой легальный JSON — сдача МЛО-200 с потоком событий, ~300 КБ;
+ * мегабайта хватает всем с запасом, а бомбу в теле он останавливает. Но под
+ * тот же мегабайт попадала и загрузка записи приёма, у которой свой потолок
+ * в 200 МБ (см. routes/recordings): общий лимит стоит на «*» и срабатывает
+ * РАНЬШЕ маршрута, поэтому проверка размера в маршруте не выполнялась
+ * никогда, а часовой разговор упирался в 413. Запись приёма было не
+ * загрузить вовсе — молча, без единой строки в логе о причине.
+ *
+ * Развилка стоит здесь, а не вторым app.use на путь записи: hono выполняет
+ * промежуточные слои по порядку регистрации, и общий лимит всё равно
+ * сработал бы первым.
+ */
+const RECORDING_UPLOAD = /^\/api\/recordings\/[^/]+\/stop$/;
+const generalLimit = bodyLimit({
+  maxSize: 1024 * 1024,
+  onError: (c) => c.json({ error: renderError("err.tooLarge", langOf(c)) }, 413),
+});
+const recordingLimit = bodyLimit({
+  // тот же потолок, что проверяет сам маршрут: три часа приёма в сжатом виде
+  maxSize: 200 * 1024 * 1024,
+  onError: (c) => c.json({ error: renderError("err.tooLarge", langOf(c)) }, 413),
+});
+app.use("*", (c, next) =>
+  (c.req.method === "POST" && RECORDING_UPLOAD.test(c.req.path) ? recordingLimit : generalLimit)(c, next),
 );
 // consola токенов живёт в localStorage, поэтому открытый CORS означал бы, что
 // любой сайт может ходить в API от имени залогиненного сотрудника
@@ -206,6 +227,24 @@ app.route("/api/data-quality", dataQualityRoutes);
 app.route("/api/facets", facetRoutes);
 app.route("/api/clinic", clinicRoutes);
 app.route("/api/messages", messageRoutes);
+/*
+ * Рассылки — отдельный путь, а не /api/messages/mailings.
+ *
+ * Переписка и рассылка — разные вещи под одним словом «Повідомлення» на
+ * макете: разговор двоих и объявление списку. Вложенный путь столкнулся бы
+ * с /api/messages/:id (Hono отдал бы «mailings» обработчику разговора как
+ * его идентификатор), а читающий журнал обязан понимать по адресу, о чём
+ * речь.
+ */
+app.route("/api/mailings", mailingRoutes);
+/*
+ * Пациенты зоны видимости и карточка пациента. До сих пор список людей жил
+ * под /api/access/patients (закрыт assignments.manage — правом назначать, а
+ * не видеть) и /api/dynamics/respondents (только обследованные). Раздел
+ * «Пацієнти» макета — про всех, кого сотрудник вправе видеть, и адрес
+ * называет это прямо.
+ */
+app.route("/api/patients", patientRoutes);
 app.route("/api/episodes", episodeRoutes);
 app.route("/api/recordings", recordingRoutes);
 app.route("/api/permissions", permissionRoutes);

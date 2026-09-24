@@ -48,3 +48,46 @@ export async function withDbContext<T>(
 export function systemContext<T>(base: typeof DbType, fn: () => Promise<T>): Promise<T> {
   return withDbContext(base, { userId: null, role: "system" }, fn);
 }
+
+/**
+ * Выполнить fn под системной ролью, НЕ выходя из текущей транзакции.
+ *
+ * Для автоматики поверх действия человека: случай для дежурного
+ * (alert_cases), срабатывание правила (rule_hits), каскад назначений,
+ * закрытие батарей. Их таблицы закрыты пациенту политиками намеренно — ему
+ * нечего видеть в очереди разбора, — но рождает эти строки именно его
+ * отправка. До этого случай писался под ролью пациента, PostgreSQL отвечал
+ * «new row violates row-level security policy for table "alert_cases"»,
+ * транзакция запроса откатывалась целиком — и прохождение с критическим
+ * пунктом, то самое, ради которого тревоги существуют, не сохранялось
+ * вовсе (лог прода 2026-09-24: 500 на POST /surveys/:id/responses). Сюита
+ * этого не видела: тесты ходят владельцем базы, а владелец политики обходит;
+ * теперь путь прогоняется под боевой ролью (submissionRls.test.ts).
+ *
+ * Отвергнуто: политика «пациент вставляет случай о себе». Вставки мало —
+ * открытый случай ищется и обновляется, а для этого пациент должен ВИДЕТЬ
+ * свои случаи, то есть узнать, что его разбирают как риск. Отвергнут и
+ * отдельный systemContext(): это другая транзакция на другом соединении —
+ * случай мог закоммититься при откате прохождения, а незакоммиченная
+ * строка прохождения ему не видна.
+ *
+ * Роль подменяется только на время fn и возвращается в finally:
+ * set_config(..., true) живёт до конца транзакции, а не блока, и без
+ * возврата остаток запроса шёл бы под системной ролью. Вне контекста
+ * (тесты владельцем базы) и уже под системной ролью — просто fn.
+ */
+export async function asSystem<T>(fn: () => Promise<T>): Promise<T> {
+  const tx = dbContext.getStore();
+  if (!tx) return fn();
+  const [row] = (await tx.execute(sql`select current_setting('app.role', true) as role`)) as unknown as {
+    role: string | null;
+  }[];
+  const previous = row?.role ?? "";
+  if (previous === "system") return fn();
+  await tx.execute(sql`select set_config('app.role', 'system', true)`);
+  try {
+    return await fn();
+  } finally {
+    await tx.execute(sql`select set_config('app.role', ${previous}, true)`);
+  }
+}

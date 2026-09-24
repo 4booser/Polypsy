@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import { api } from "../api";
 import { useLang } from "../lang";
 import { IconSearchGlass, useFocusTrap } from "../ui";
+import { IconEnter } from "../ui/glyphs";
 import type { UiKey } from "@quizzy/shared";
 
 /**
@@ -46,6 +47,7 @@ const ITEMS: Item[] = [
   { key: "nav.batteries", to: "/batteries", group: "cmd.navigate" },
   { key: "nav.reception", to: "/my-schedule", group: "cmd.navigate" },
   { key: "ms.title", to: "/messages", group: "cmd.navigate" },
+  { key: "top.messages", to: "/mailings", group: "cmd.navigate" },
   { key: "nav.invites", to: "/invites", group: "cmd.navigate" },
   { key: "nav.groups", to: "/patient-groups", group: "cmd.navigate" },
   { key: "adm.groupsTitle", to: "/groups", group: "cmd.navigate" },
@@ -203,7 +205,7 @@ export function CommandPalette({
         </Command>
         <div className="palette-foot">
           <span><kbd>↑↓</kbd> {ut("cmd.move")}</span>
-          <span><kbd>↵</kbd> {ut("cmd.open")}</span>
+          <span><kbd><IconEnter /></kbd> {ut("cmd.open")}</span>
           <span><kbd>esc</kbd> {ut("cmd.close")}</span>
         </div>
       </div>

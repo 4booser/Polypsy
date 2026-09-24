@@ -19,9 +19,13 @@ import {
   grantAccessSchema,
   groupInputSchema,
   loginSchema,
+  mailingAnswerSchema,
+  mailingInputSchema,
+  mailingUpdateSchema,
   moveSurveySchema,
   patientGroupInputSchema,
   patientGroupMemberSchema,
+  patientGroupMembersRemoveSchema,
   registerSchema,
   rescheduleAppointmentSchema,
   scheduleExceptionSchema,
@@ -211,14 +215,46 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/patient-groups": { summary: "Завести группу пациентов", access: "staff", permission: "patients.read", body: patientGroupInputSchema },
   "GET /api/patient-groups/:id": { summary: "Карточка группы: описание, «Пацієнти Групи» и «Тести Групи»", access: "staff", permission: "patients.read" },
   "PATCH /api/patient-groups/:id": { summary: "Правка названия, описания, цвета и места вкладки", access: "staff", permission: "patients.read", body: patientGroupInputSchema },
-  "POST /api/patient-groups/:id/members": { summary: "«Додати пацієнта» в группу", access: "staff", permission: "patients.read", body: patientGroupMemberSchema },
+  "POST /api/patient-groups/:id/members": { summary: "«Додати пацієнта» в группу — одного (userId) или списком (userIds)", access: "staff", permission: "patients.read", body: patientGroupMemberSchema },
+  "DELETE /api/patient-groups/:id/members": { summary: "Убрать из группы списком {userIds}; выданные назначения остаются", access: "staff", permission: "patients.read", body: patientGroupMembersRemoveSchema },
   "DELETE /api/patient-groups/:id/members/:userId": { summary: "Убрать пациента из группы; выданные ему назначения остаются", access: "staff", permission: "patients.read" },
+  "PUT /api/patient-groups/:id/favourite": { summary: "«Обрана»: закладка читателя на группу, вкладка встаёт первой", access: "staff", permission: "patients.read" },
+  "DELETE /api/patient-groups/:id/favourite": { summary: "Снять закладку «обрана»; сама группа не меняется", access: "staff", permission: "patients.read" },
   "POST /api/patient-groups/:id/surveys": {
     summary: "Назначить методику на всю группу; разворачивается в поимённые назначения со своим сроком у каждого",
     access: "staff",
     permission: "assignments.manage",
     body: assignSurveyToPatientGroupSchema,
   },
+
+  /* ── пациенты зоны видимости и карточка (кадр f19) ──
+   *
+   * Всё, что здесь отдаётся, — люди, их имена и результаты, поэтому набор
+   * закрыт `patients.read`, как и группы пациентов. Телефон ни в списке, ни
+   * в карточке не отдаётся: он открывается отдельным журналируемым действием
+   * GET /api/clinic/patients/:userId/phone.
+   */
+  "GET /api/patients": { summary: "Пациенты зоны видимости: поиск, вкладка группы, страницы {items,total}", access: "staff", permission: "patients.read" },
+  "GET /api/patients/:id/card": { summary: "Карточка пациента: персональные данные, «Тести», «Групи», «Заключення», ведущий", access: "staff", permission: "patients.read" },
+
+  /* ── рассылки (кадры f09, f16, f22) ──
+   *
+   * Сообщение «одному многим» с вариантами ответа; не переписка (та — ниже,
+   * /api/messages). Авторские маршруты закрыты `mailings.manage`; у
+   * получателя своё право — строка доставки в mailing_recipients, и его
+   * маршруты закрыты ею, а не справочником прав персонала.
+   */
+  "GET /api/mailings": { summary: "Рассылки автора: тема, начало текста, дата; поиск, страницы; ?hidden=1 — скрытые", access: "staff", permission: "mailings.manage" },
+  "POST /api/mailings": { summary: "Завести черновик рассылки: название, текст, варианты ответа, адресаты", access: "staff", permission: "mailings.manage", body: mailingInputSchema },
+  "GET /api/mailings/inbox": { summary: "Свои рассылки получателя: непрочитанные, ответы, счётчик для меню", access: "user", whyNoPermission: "свои рассылки получатель видит сам: его право — строка доставки на его имя, а не запись в справочнике прав персонала" },
+  "POST /api/mailings/:id/read": { summary: "Отметить рассылку прочитанной; повтор ничего не меняет", access: "user", whyNoPermission: "отметку прочтения ставит сам получатель на своей строке доставки; чужая рассылка для него не существует" },
+  "POST /api/mailings/:id/answer": { summary: "Ответить на рассылку номером варианта — один раз", access: "user", whyNoPermission: "отвечает сам получатель и только за себя; чужая рассылка для него не существует, второй ответ отклоняется", body: mailingAnswerSchema },
+  "GET /api/mailings/:id": { summary: "Карточка рассылки; у отправленной — счётчики по вариантам и получатели зоны", access: "staff", permission: "mailings.manage" },
+  "PATCH /api/mailings/:id": { summary: "«Зберегти»: правка черновика; отправленная не правится", access: "staff", permission: "mailings.manage", body: mailingUpdateSchema },
+  "POST /api/mailings/:id/send": { summary: "«Відправити»: адресаты по нынешнему составу и зоне, текст замораживается", access: "staff", permission: "mailings.manage" },
+  "DELETE /api/mailings/:id": { summary: "«Видалити» черновик; отправленную можно только скрыть", access: "staff", permission: "mailings.manage" },
+  "POST /api/mailings/:id/hide": { summary: "Скрыть рассылку у автора — замена удалению для отправленной", access: "staff", permission: "mailings.manage" },
+  "POST /api/mailings/:id/unhide": { summary: "Вернуть скрытую рассылку в список", access: "staff", permission: "mailings.manage" },
 
   /* ── батареи ── */
   "GET /api/batteries": { summary: "Батареи методик", access: "staff", permission: "batteries.manage" },

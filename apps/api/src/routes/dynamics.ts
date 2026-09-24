@@ -11,6 +11,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
 import { percentileOf } from "../lib/norms";
+import { birthYearOf } from "../lib/privacy";
 import { getSurvey } from "../lib/surveys";
 import { reliabilityOf } from "../lib/psychometrics";
 import { round, variance } from "../lib/stats";
@@ -18,19 +19,6 @@ import { answers as answersTable } from "../db/schema";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { log } from "../lib/log";
-
-/**
- * Год рождения из зашифрованной даты.
- *
- * Год, а не возраст: возраст меняется каждый год, а различают тёзок по
- * неизменному. И год, а не полная дата: списка это не касается, а полная
- * дата рождения — та самая мелочь, из которой складывается опознание.
- */
-function yearOf(birthDate: string | null): number | null {
-  if (!birthDate) return null;
-  const year = Number(birthDate.slice(0, 4));
-  return Number.isFinite(year) && year > 1900 ? year : null;
-}
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
@@ -149,7 +137,7 @@ dynamicsRoutes.get("/respondents", async (c) => {
     unit: r.unit,
     sex: r.sex as "male" | "female" | null,
     /* только год: полная дата рождения в списке — лишнее раскрытие */
-    birthYear: yearOf(decryptField(r.birthDate)),
+    birthYear: birthYearOf(decryptField(r.birthDate)),
   }));
   const matched = search
     ? named.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(search))

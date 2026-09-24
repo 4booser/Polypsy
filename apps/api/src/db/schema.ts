@@ -468,6 +468,29 @@ export const patientGroupSurveys = pgTable(
   }),
 );
 
+/**
+ * «Обрана» группа — закладка читателя, не свойство группы.
+ *
+ * Пара ключом: закладка либо есть, либо нет, и второй раз «обрать» ту же
+ * группу — не ошибка и не вторая строка. Каскад по обеим ссылкам: закладка не
+ * переживает ни группу, ни учётную запись — в ней нет ничего, кроме факта.
+ */
+export const patientGroupFavourites = pgTable(
+  "patient_group_favourites",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => patientGroups.id, { onDelete: "cascade" }),
+    addedAt: timestampCol("added_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.groupId] }),
+  }),
+);
+
 export const surveys = pgTable(
   "surveys",
   {
@@ -1967,6 +1990,8 @@ export type PatientGroupRow = typeof patientGroups.$inferSelect;
 export type SurveyFolderRow = typeof surveyFolders.$inferSelect;
 export type PatientGroupMemberRow = typeof patientGroupMembers.$inferSelect;
 export type PatientGroupSurveyRow = typeof patientGroupSurveys.$inferSelect;
+export type MailingRow = typeof mailings.$inferSelect;
+export type MailingRecipientRow = typeof mailingRecipients.$inferSelect;
 export type SurveyRow = typeof surveys.$inferSelect;
 export type SectionRow = typeof sections.$inferSelect;
 export type ScaleRow = typeof scales.$inferSelect;
@@ -2697,6 +2722,80 @@ export const messages = pgTable(
   },
   (t) => ({
     threadIdx: index("messages_thread_idx").on(t.threadId, t.sentAt),
+  }),
+);
+
+/**
+ * Рассылка: сообщение-объявление «одному многим» с вариантами ответа.
+ *
+ * Отдельно от threads/messages, а не столбцами в них: переписка — разговор
+ * двоих с уникальной парой (пациент, специалист), и класть в неё
+ * «одному многим» значило бы либо снять эту уникальность, либо заводить по
+ * разговору на каждого получателя — и в обоих случаях терять то, ради чего
+ * переписка устроена так, как устроена.
+ *
+ * Название и текст шифруются, как текст переписки: «Група ризику: анкета
+ * настрою» в теме говорит о получателях не меньше, чем письмо. Плата —
+ * поиск по списку идёт в приложении после расшифровки, а не LIKE в базе;
+ * список одного автора мал, и это дешевле открытой копии темы в базе.
+ */
+export const mailings = pgTable(
+  "mailings",
+  {
+    id: text("id").primaryKey(),
+    /** restrict — за автором рассылки тянутся ответы людей, см. миграцию 0083 */
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    titleEnc: text("title_enc").notNull(),
+    bodyEnc: text("body_enc").notNull(),
+    /** Варианты ответа получателя — подписи кнопок; пусто — просто уведомление */
+    options: jsonb("options").$type<string[]>().notNull().default([]),
+    status: text("status", { enum: ["draft", "sent"] }).notNull().default("draft"),
+    /**
+     * Адресаты черновика. Разворачиваются в mailing_recipients при отправке —
+     * по нынешнему составу группы и нынешней зоне видимости автора, а не по
+     * тому, что было в момент сохранения черновика.
+     */
+    patientGroupId: text("patient_group_id").references(() => patientGroups.id, {
+      onDelete: "set null",
+    }),
+    patientIds: jsonb("patient_ids").$type<string[]>().notNull().default([]),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+    sentAt: timestampCol("sent_at"),
+    /** Скрыта у автора. Отправленную не удалить — см. DELETE в routes/mailings.ts */
+    hiddenAt: timestampCol("hidden_at"),
+  },
+  (t) => ({
+    authorIdx: index("mailings_author_idx").on(t.authorId, t.sentAt),
+  }),
+);
+
+/**
+ * Кому доставлено и что ответил. Строка заводится при отправке — у черновика
+ * получателей нет: список адресатов лежит в самой рассылке и до отправки
+ * может меняться.
+ */
+export const mailingRecipients = pgTable(
+  "mailing_recipients",
+  {
+    mailingId: text("mailing_id")
+      .notNull()
+      .references(() => mailings.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deliveredAt: timestampCol("delivered_at").notNull().default(sql`now()`),
+    readAt: timestampCol("read_at"),
+    /** Номер выбранного варианта в mailings.options; null — не отвечал */
+    answer: integer("answer"),
+    answeredAt: timestampCol("answered_at"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.mailingId, t.userId] }),
+    /* «мои повідомлення» в приложении пациента — по человеку, а ключ начинается с рассылки */
+    userIdx: index("mailing_recipients_user_idx").on(t.userId, t.deliveredAt),
   }),
 );
 

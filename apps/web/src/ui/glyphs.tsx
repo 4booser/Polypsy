@@ -14,6 +14,8 @@
  * (aria-label у Button size="glyph"), а не сама картинка.
  */
 
+import type { SVGProps } from "react";
+
 /** «+» над списком — штрих 5 в квадрате 27, как на макете */
 export function IconPlusThick() {
   return (
@@ -42,14 +44,31 @@ export function IconHeart({ filled }: { filled: boolean }) {
 }
 
 /**
- * Шестерёнка 27×27, залитая — замер кадров f15, f33, f38; открывает меню
- * действий карточки, структуры модели и документа заключения. Общий набор
- * ui/index.tsx рисует контурные значки 24×24 штрихом 1.8 — в ряд с ними
- * она не встаёт.
+ * Шестерёнка 24×24, залитая — открывает меню действий карточки, структуры
+ * модели и документа заключения. Общий набор ui/index.tsx рисует контурные
+ * значки 24×24 штрихом 1.8 — в ряд с ними она не встаёт.
+ *
+ * Было 27 (как «+» той же строки), стало 24: замер чернил глифа на кадрах
+ * раздела людей даёт 25×25 с антиалиасом, то есть ровно 24 (f04 1395…1419 и
+ * 166…190, f47 1382…1406 и 165…189). «+» при этом остаётся 27 — это разные
+ * знаки и разные замеры, а не один размер на все глифы. Область нажатия 44
+ * держит Button size="glyph" псевдоэлементом, и от видимого квадрата она не
+ * зависит.
+ */
+/**
+ * Шестерёнка 24, хотя кадры просят и 25, и 30.
+ *
+ * Замер по фиолетовым чернилам: f04, f30, f40 дают квадрат 25×25 (x
+ * 1375…1399), а f05, f13 и f36 — 30×30 (x 1370…1399). Один и тот же знак в
+ * одном и том же углу нарисован в макете двумя размерами, и одно число
+ * обязано проиграть. Оставлено 24 — оно в пиксель от меньшей тройки, а
+ * тянуть его к 30 значило бы разъехаться с четырьмя экранами раздела людей,
+ * сведёнными по своим кадрам раньше. Записано здесь, чтобы следующая сверка
+ * не «чинила» размер по f36 и не ломала f04/f30/f40.
  */
 export function IconGear() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden focusable="false" className="size-[27px]" fill="currentColor">
+    <svg viewBox="0 0 24 24" aria-hidden focusable="false" className="size-[24px]" fill="currentColor">
       <path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1L15 3.3H9l-.4 2.6a7.5 7.5 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.5 7.5 0 0 0 1.7 1l.4 2.6h6l.4-2.6a7.5 7.5 0 0 0 1.7-1l2.5 1 2-3.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" />
     </svg>
   );
@@ -89,3 +108,91 @@ export function IconDisclosure() {
   );
 }
 
+/*
+ * Знаки, стоящие в строке текста вместо символа.
+ *
+ * «✕», «⚠», «★», «↵», «⌘», «⧉» и подобные лежат вне подмножеств наших
+ * шрифтов, и браузер рисовал их запасной гарнитурой — у macOS, Linux и
+ * раннера CI она своя, и эталоны экранов краснели без правки кода (см.
+ * test/fontCoverage.test.ts). Расширять подмножество Onest здесь нельзя: в
+ * самом Onest этих знаков нет. Значок вместо символа — один контур везде.
+ *
+ * Размер — 1em, а не пиксели, как у знаков макета выше: символ занимал
+ * кегль окружающего текста (14 px у чипа, микро-кегль у <kbd>, text-small у
+ * списка замечаний), и значок встаёт на его место без замера под каждое.
+ * Опущен на 0.15em — как строчный знак, а не как заглавная над базовой
+ * линией; во flex-контейнерах это смещение не действует и не мешает.
+ */
+function TextGlyph({ children, ...attrs }: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden focusable="false" className="inline-block align-[-0.15em]" {...attrs}>
+      {children}
+    </svg>
+  );
+}
+
+/** «✕» закрытия — диалога, чипа, строки плана безопасности */
+export function IconClose() {
+  return (
+    <TextGlyph fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </TextGlyph>
+  );
+}
+
+/** «✖» ошибки в списке замечаний: тот же крест, но жирный — не спутать с закрытием */
+export function IconCross() {
+  return (
+    <TextGlyph fill="none" stroke="currentColor" strokeWidth={4} strokeLinecap="round">
+      <path d="M5 5l14 14M19 5L5 19" />
+    </TextGlyph>
+  );
+}
+
+/** «⚠» предупреждения: треугольник с восклицательным знаком */
+export function IconCaution() {
+  return (
+    <TextGlyph fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v5M12 17.5h.01" />
+    </TextGlyph>
+  );
+}
+
+/** «★» своего специалиста в записи на приём: залитая пятиконечная */
+export function IconStar() {
+  return (
+    <TextGlyph fill="currentColor">
+      <path d="M12 2.5l2.9 6.2 6.8.8-5 4.7 1.3 6.8L12 17.6 6 21l1.3-6.8-5-4.7 6.8-.8Z" />
+    </TextGlyph>
+  );
+}
+
+/** «↵» — Enter в подвале палитры команд */
+export function IconEnter() {
+  return (
+    <TextGlyph fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 5v6a3 3 0 0 1-3 3H5" />
+      <path d="M9 10l-4 4 4 4" />
+    </TextGlyph>
+  );
+}
+
+/** «⌘» — подпись клавиши в <kbd>; значок, а не буквы: так её печатает и сама клавиатура */
+export function IconCommand() {
+  return (
+    <TextGlyph fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+    </TextGlyph>
+  );
+}
+
+/** «⧉» дублирования пункта: два листа внахлёст */
+export function IconCopy() {
+  return (
+    <TextGlyph fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </TextGlyph>
+  );
+}

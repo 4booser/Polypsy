@@ -3,10 +3,10 @@ import { ACCOUNTS, login, logout, menuButton, openMenu, topNav } from "./helpers
 
 test.describe("вход в консоль", () => {
   test("неверный пароль не пускает и не роняет страницу", async ({ page }) => {
-    await page.goto("/");
-    await page.getByLabel("Email").fill(ACCOUNTS.psy.email);
+    await page.goto("/login");
+    await page.getByLabel(/^(Логин|Логін)$/).fill(ACCOUNTS.psy.email);
     await page.getByLabel("Пароль").fill("не-тот-пароль");
-    await page.getByRole("button", { name: "Войти" }).click();
+    await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).click();
 
     // по роли, а не по классу: отказ должен быть объявлен диктору, и
     // проверять надо именно это, а не то, каким классом он покрашен

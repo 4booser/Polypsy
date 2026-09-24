@@ -209,7 +209,19 @@ export function AppointmentRow({
   const acts = rowActions(a.status);
 
   return (
-    <div className="flex items-start gap-3 border-t border-hairline px-4 py-3 first:border-t-0">
+    /*
+      Признак с идентификатором приёма — точка опоры для смоука.
+
+      День общий, и проверка, ищущая «первую строку с кнопкой «Пришёл»»,
+      проверяет не экран, а то, что до неё туда не дотянулся соседний
+      сценарий. Со своим приёмом ей нужна СВОЯ строка, а искать её по имени
+      нельзя: тёзки в списке — обычное дело. Классы здесь менять можно,
+      признак — нет (тот же уговор, что у data-patients в сетке пациентов).
+    */
+    <div
+      data-appointment={a.id}
+      className="flex items-start gap-3 border-t border-hairline px-4 py-3 first:border-t-0"
+    >
       {/*
         Время — первое и моноширинным: колонка времени читается сверху вниз,
         а не по строкам, и глаз ищет в ней ближайший приём.

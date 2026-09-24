@@ -161,3 +161,27 @@ export function pageSlice<T>(items: T[], page: number, per: number): T[] {
   const from = (page - 1) * per;
   return from >= items.length ? [] : items.slice(from, from + per);
 }
+
+/**
+ * Чем подписана карточка человека — словом роли или его именем.
+ *
+ * Правило сводит все восемь кадров карточки (f04, f30, f31, f34, f35, f40,
+ * f43, f47, f50) и разбирается здесь, а не в разметке: «имя или роль» — это
+ * то, что видит и человек, и история браузера, и заголовок окна, а глазами
+ * такое ловится только случайно.
+ *
+ *   общая консоль: своя — «Лікар» (f04 у специалиста, f30 у заведующего),
+ *                  чужая — ПІБ (f31, f34, f35), то есть null;
+ *   раздел людей:  своя и чужая — слово роли, и какое, говорит справочник,
+ *                  из которого карточка открыта: суперадмін ведёт
+ *                  администраторов (f47 своя, f50 чужая), администратор —
+ *                  лікарів (f40 своя, f43 чужая).
+ */
+export function cardTitleRole(
+  kind: "specialist" | "admin" | "peopleStaff" | "peopleAdmins",
+  me: boolean,
+): "ppl.roleDoctor" | "ppl.roleAdmin" | "ppl.roleSuperTitle" | null {
+  if (kind === "peopleAdmins") return me ? "ppl.roleSuperTitle" : "ppl.roleAdmin";
+  if (kind === "peopleStaff") return me ? "ppl.roleAdmin" : "ppl.roleDoctor";
+  return me ? "ppl.roleDoctor" : null;
+}
