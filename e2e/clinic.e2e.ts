@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { goCaseCard, goMenu, goTop, login, logout, rowTexts, patientLinks } from "./helpers";
+import {
+  goCaseCard,
+  goMenu,
+  goTop,
+  login,
+  logout,
+  openSeededPatient,
+  rowTexts,
+} from "./helpers";
 
 /**
  * Сквозной клинический сценарий: тревога → пациент → сводка → направление →
@@ -14,10 +22,17 @@ test("от тревоги до закрытого направления", async
   // экран разбора: единица работы — человек, а не сработавший пункт
   await expect(page.getByRole("heading", { name: "Разбор случаев" })).toBeVisible();
 
-  // из тревоги — к пациенту: полосой, как ходят каждый день
+  /*
+   * Из тревоги — к пациенту: полосой, как ходят каждый день. Человек из
+   * посева, найденный по фамилии, а не первый в списке.
+   *
+   * Список упорядочен по свежести последнего замера (см. /api/dynamics/
+   * respondents), и наверх поднимается тот, кого только что завёл соседний
+   * сценарий: у него нет ни хронологии, ни карты, доступной этому
+   * специалисту. Та же беда уже ловилась в screens.e2e.ts.
+   */
   await goTop(page, "Пациенты");
-  const firstPatient = patientLinks(page).first();
-  await firstPatient.click();
+  await (await openSeededPatient(page)).click();
 
   /*
    * По щелчку открывается карточка пациента (кадр f19), а направления живут
@@ -32,10 +47,21 @@ test("от тревоги до закрытого направления", async
   const patientName = (await page.locator("h1").textContent())!.trim();
   expect(patientName.length).toBeGreaterThan(0);
   await expect(page.getByRole("heading", { name: "Направления" })).toBeVisible();
-  await expect(page.getByText("Направлений нет")).toBeVisible();
+
+  /*
+   * Проверяется СВОЁ направление, а не пустота реестра.
+   *
+   * Стояло «Направлений нет» — то есть утверждение обо всех направлениях
+   * этого человека сразу. Оно ломается дважды: от повтора проверки (в CI
+   * прогон повторяет упавший тест, и на втором заходе направление от первого
+   * уже выписано) и от любого соседа, который выпишет направление тому же
+   * человеку. Ни то ни другое к смыслу проверки отношения не имеет: она про
+   * путь «выписал → принял → завершил».
+   */
+  const reason = `Смоук ${Date.now()}`;
+  await expect(page.getByText(reason)).toHaveCount(0);
 
   await page.getByRole("button", { name: "Выписать направление" }).click();
-  const reason = `Смоук ${Date.now()}`;
   await page.getByPlaceholder("что послужило поводом").fill(reason);
   await page.getByRole("button", { name: "Выписать", exact: true }).click();
 
@@ -81,8 +107,9 @@ test("запись приёма сохраняется, подписываетс
    * подпись фиксирует, правка поверх создаёт новую версию.
    */
   await login(page, "psy");
-  await page.goto("/patients");
-  await patientLinks(page).first().click();
+  // человек из посева, а не первый в списке: список стоит по свежести замера,
+  // и наверх поднимается тот, кого завёл соседний сценарий
+  await (await openSeededPatient(page)).click();
   // записи приёма остались в клинической карте, а не на карточке f19
   await goCaseCard(page);
 
@@ -114,8 +141,8 @@ test("план безопасности составляется и сохран
    * рядом никого нет.
    */
   await login(page, "psy");
-  await page.goto("/patients");
-  await patientLinks(page).first().click();
+  // человек из посева, а не первый в списке — по той же причине, что выше
+  await (await openSeededPatient(page)).click();
   // план безопасности остался в клинической карте, а не на карточке f19
   await goCaseCard(page);
 
