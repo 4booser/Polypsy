@@ -81,11 +81,17 @@ export default function Login() {
         логін та пароль» (374 на кадре) и не вмещает следующее слово. Перенос
         <br> сломался бы на русском, где строки делятся иначе.
       */}
-      <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[43px] text-primary">
+      <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[44px] text-primary">
         {ut("pub.loginTitle")}
       </h1>
       {/*
-        50 от коробки заголовка до первого поля, 22 между полями — с кадра.
+        48 от коробки заголовка до первого поля, 22 между полями — с кадра.
+
+        Было 50 при интерлиньяже 43; интерлиньяж выправлен на 44 (см. h1
+        выше), заголовок здесь в две строки, и его коробка выросла на 2 —
+        отсюда 48. Первое поле как стояло на 503, так и стоит: на кадре его
+        белая плашка идёт 503…547 (215 × 45). Отвергнуто: оставить 50 —
+        поле уехало бы на два пикселя ниже кадра.
 
         `[&>label]:mb-0` — снятие чужого отступа, а не украшение: в слое
         наследия у каждой `label` стоит `margin-bottom: 5px`, а поле у Field
@@ -95,7 +101,7 @@ export default function Login() {
         формы (51 = поле 36 + 15) на остальных экранах консоли, и правка в
         каркасе сдвинула бы их все.
       */}
-      <form className="mt-[50px] flex flex-col items-start gap-[22px]" onSubmit={submit} noValidate>
+      <form className="mt-[48px] flex flex-col items-start gap-[22px]" onSubmit={submit} noValidate>
         <Field inline label={ut("pub.login")} className="w-[215px] [&>label]:mb-0">
           <PlateInput
             label={ut("pub.login")}
