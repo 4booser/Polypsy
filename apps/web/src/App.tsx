@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { api, tokenStore } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
@@ -152,6 +152,8 @@ function StartScreen({ prefs }: { prefs: WorkspacePrefs | null }) {
 
 export default function App() {
   const { user, loading, logout, refreshUser, can } = useAuth();
+  /* раздел экрана нужен полосе: её состав кадры различают и по нему, не только по должности */
+  const { pathname } = useLocation();
   /* отказ отвязки должен быть виден: см. кнопку ниже */
   const { run } = useAction();
   /*
@@ -605,8 +607,17 @@ export default function App() {
         counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
         isSuper={isSuper}
         canAssign={canAssign}
-        /* состав полосы — по рабочему месту вошедшего, см. barKind в Topbar.tsx */
-        bar={barKind(user)}
+        /*
+         * Состав полосы — по рабочему месту вошедшего И по разделу экрана:
+         * кадры f44/f45/f51/f52 рисуют у суперадміна «Лікарі» там, где
+         * f47–f50 рисуют «Адміністратори» (см. barKind в Topbar.tsx).
+         *
+         * «Лечит ли» — право видеть пациентов. Специалист лечит по классу
+         * записи: справочника прав у него нет вовсе (auth.tsx), и can ему
+         * всегда отвечает «нет» — спрашивать его о patients.read значило бы
+         * отобрать у него полосу целиком.
+         */
+        bar={barKind(user, user.role !== "admin" || can("patients.read"), pathname)}
         hidden={user.workspace?.railHidden ?? []}
         onSearch={() => setPaletteOpen(true)}
         theme={theme}

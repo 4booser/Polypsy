@@ -134,6 +134,8 @@ export default function StaffNew({ kind }: { kind: NewKind }) {
   return (
     <Page
       title={title}
+      /* 40 от низа полосы: чернила заголовка на f41 (полоса 17…116, чернила 165) и f48 (15…114 и 162) */
+      topGap={40}
       actions={
         <ActionMenu
           label={ut("ppl.actions")}
