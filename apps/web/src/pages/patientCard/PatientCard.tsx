@@ -5,7 +5,7 @@ import { dateTime, day } from "../../format";
 import { useLang } from "../../lang";
 import { Loading, useAction } from "../../ui";
 import { cx } from "../../ui/cx";
-import { IconGear, IconPlusThick } from "../../ui/glyphs";
+import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { ActionMenu } from "../../ui/menu";
 import { Button, Readout } from "../../ui/primitives";
@@ -49,18 +49,20 @@ import { conclusionName, groupStatsText, leadAction, personFields, resultText, s
  *
  * Чего на кадре нет, а здесь есть, и почему:
  *
- * 1. Шестерёнка слева от «Відписатись» — меню «Огляд · Динаміка ·
- *    Хронологія», дверь к прежней карте (/patients/:id/case): план
- *    безопасности, записи приёма, направления и графики живут там, и
- *    карточка, с которой к ним не попасть, в кризис не работает как карта
- *    пациента. Шестерёнка — тот же знак, что у карточек людей на кадрах
- *    f04/f33, и стоит там же, где стоит у них. Ссылки в списке (см. п. 3)
- *    двери не заменяют: они ведут к одному прохождению, а не к человеку.
- * 2. Строка «…ще немає» в пустом разделе. Заголовок без единой строки под
+ * 1. Строка «…ще немає» в пустом разделе. Заголовок без единой строки под
  *    ним читается как «не загрузилось»; так же поступают соседние экраны
  *    (pg.empty, ppl.noPatients).
- * 3. Что скрыто от глаз: подписи плашек для диктора (<dt> sr-only), имя у
- *    глифов «+» и у шестерёнки, область нажатия 44 у глифов.
+ * 2. Что скрыто от глаз: подписи плашек для диктора (<dt> sr-only), имя у
+ *    глифа «+», область нажатия 44 у глифов.
+ *
+ * Чего на кадре нет и здесь больше нет: шестерёнки «Клінічна карта» слева
+ * от «Відписатись». В строке заголовка на кадре f13 стоит одна контурная
+ * кнопка (1270…1397) и ничего больше. Дверь к прежней карте
+ * (/patients/:id/case — план безопасности, записи приёма, направления,
+ * графики) не закрыта: три входа переехали разделом «Клінічна карта» в
+ * бургер верхней полосы (shell/Topbar.tsx), где они появляются, пока
+ * открыт человек. Карточка, с которой к карте не попасть, в кризис не
+ * работает как карта пациента.
  *
  * Чего на кадре есть, а здесь иначе:
  *
@@ -99,7 +101,6 @@ export default function PatientCard() {
   if (res.error) return <Loading error={res.error} onRetry={res.reload} />;
   if (!res.data) return <Loading rows={6} />;
   const card = res.data;
-  const base = `/patients/${card.id}`;
   const action = leadAction(card);
 
   const fields = personFields(
@@ -146,21 +147,12 @@ export default function PatientCard() {
   return (
     <Page
       title={ut("pg.patient")}
+      /* 40, а не 50: на кадре f13 чернила «Пацієнт» стоят в 47 от низа верхней полосы */
+      topGap={40}
       actions={
-        <>
-          <ActionMenu
-            label={ut("pcard.clinical")}
-            glyph={<IconGear />}
-            entries={[
-              { label: ut("pc.overview"), to: `${base}/case` },
-              { label: ut("pc.dynamics"), to: `${base}/case/dynamics` },
-              { label: ut("tl.title"), to: `${base}/case/timeline` },
-            ]}
-          />
-          <OutlineButton onClick={toggleLead} disabled={busy}>
-            {ut(action === "subscribe" ? "pcard.subscribe" : "pcard.unsubscribe")}
-          </OutlineButton>
-        </>
+        <OutlineButton onClick={toggleLead} disabled={busy}>
+          {ut(action === "subscribe" ? "pcard.subscribe" : "pcard.unsubscribe")}
+        </OutlineButton>
       }
     >
       {/* сетка плашек — замер кадра: колонки по 370 при зазоре 45, шаг строк 51 (плашка 36 + 15) */}
@@ -379,18 +371,22 @@ function Column({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * Чипы состава заключения: плашка 20px, не уже 139, текст 15/700 фиолетовым
- * на заливке --primary-soft, зазор 7, перенос строкой. Ширина растёт с
- * названием, а не режет его: на кадре чипы одной ширины, потому что и
- * названия в них одной длины.
+ * Чипы состава заключения: плашка 20px, не уже 139, текст 15/700, зазор 7,
+ * перенос строкой. Ширина растёт с названием, а не режет его: на кадре чипы
+ * одной ширины, потому что и названия в них одной длины.
  *
- * Чип один, и он светлый. На кадре их два вида: светлый «Назва тесту» и
- * залитый сиреневым «Назва Аналітики». Второго здесь нет не по забывчивости —
- * аналитики как именованного объекта, который можно положить в заключение, на
- * сервере не существует (см. api_gaps); рисовать пустой второй вид значило бы
- * обещать сущность, которой нет.
+ * Видов два, как на кадре f13: тест — светлый (заливка #f0ecff,
+ * --primary-soft), аналитика — залитый сиреневым (#b299cc,
+ * --primary-rule). Разница не только в цвете: у залитого чернила белые, и
+ * пара читается и в чёрно-белой печати.
+ *
+ * Сейчас рисуется только первый вид: аналитики как именованного объекта,
+ * который можно положить в заключение, на сервере не существует (в ответе
+ * карточки у заключения одно поле surveyTitle) — см. отчёт, строка
+ * «сервер». Вид «analytics» написан и ждёт данных; рисовать его пустым
+ * значило бы обещать сущность, которой нет.
  */
-function Chips({ items }: { items: string[] }) {
+function Chips({ items, tone = "test" }: { items: string[]; tone?: "test" | "analytics" }) {
   return (
     <ul className="m-0 mt-[11px] flex list-none flex-wrap gap-[7px] p-0">
       {items.map((it) => (
@@ -398,7 +394,8 @@ function Chips({ items }: { items: string[] }) {
           key={it}
           className={cx(
             "inline-flex h-[20px] min-w-[139px] items-center justify-center rounded-[4px]",
-            "bg-primary-soft px-[10px] text-[15px] font-bold leading-none text-primary",
+            "px-[10px] text-[15px] font-bold leading-none",
+            tone === "analytics" ? "bg-primary-rule text-[var(--bg)]" : "bg-primary-soft text-primary",
           )}
         >
           {it}

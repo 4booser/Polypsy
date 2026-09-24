@@ -9,11 +9,12 @@ import { Radar, SeverityTag } from "../charts/advanced";
 import { day, severityColor } from "../format";
 import { IconSearchGlass, Loading, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
-import { IconPlusThick } from "../ui/glyphs";
+import { IconDots, IconGear, IconPlusThick } from "../ui/glyphs";
 import { Page } from "../ui/layout";
+import { ActionMenu, type MenuEntry } from "../ui/menu";
 import { Pager } from "../ui/pager";
 import { DEFAULT_PER, pageCount, pageFrom, pagesOf, perFrom, slicePage } from "../ui/paging";
-import { Button, Input, Tabs } from "../ui/primitives";
+import { Input, Tabs } from "../ui/primitives";
 import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
 import { SavedViews } from "../ui/SavedViews";
@@ -42,27 +43,43 @@ import { PersonGrid, SelectionBar } from "./patientGroups/PersonGrid";
  * человек — экран, который открывают каждый день, на такое опирать нельзя
  * (см. api_gaps отчёта).
  *
- * Чего на кадре нет, а здесь есть, и почему:
+ * Что было на глазах мимо кадра и куда ушло (сверка по f05):
  *
- * 1. Вкладка «Усі» первой. На кадре первая — «Моя група», но признака «моя»
- *    на сервере нет: все группы в выдаче и так свои. А людей вне всяких
- *    групп показать нужно где-то, и «Усі» — это тот список, который здесь
- *    стоял всегда.
- * 2. Действия под счётчиком «вибрано»: «Додати до групи», «Призначити тест»,
- *    на вкладке группы — «Прибрати з групи». На кадре галочки и счётчик
- *    есть, а действия — нет; выборка без действия — нарисованная кнопка.
- * 3. Панель контекста справа (нажатие по строке): см. layout.tsx, п. 5.
- * 4. Подпись под строкой на вкладке «Усі» — «Ті, хто проходив методики
- *    ваших груп»: список показывает обследованных, а не всех заведённых, и
- *    молчать об этом значило бы, что нового пациента «нет в системе».
+ * 1. Вкладка «Усі» первой. На кадре ряд начинается с группы, и признака
+ *    «моя» на сервере нет: все группы в выдаче и так свои. Список без
+ *    ?group никуда не делся — он открывается адресом и пунктом «Усі» в меню
+ *    шестерёнки, где ключ pg.allTab и подписывает состояние «фильтр снят».
+ * 2. Действия над выборкой («Додати до групи», «Призначити тест», на
+ *    вкладке группы — «Прибрати з групи») и ссылка «Зняти вибір». На кадре
+ *    под сеткой напечатано только «18 вибрано»; действия собраны в меню «⋯»
+ *    рядом со счётчиком — выборка без действия была бы нарисованной
+ *    кнопкой, а четыре кнопки в строке счётчика — не кадром.
+ * 3. Панель контекста справа. На кадре колонка ровно 1200 и справа от неё
+ *    чисто, а панель отъедала 336. Открывается пунктом меню шестерёнки
+ *    («А це хто?»), и только тогда; нажатие по строке её больше не зовёт —
+ *    у строки на кадре два действия, имя-ссылка и галочка, третьего там
+ *    не нарисовано. Пока панель открыта, она следует за фокусом строки.
+ * 4. Сохранённые виды (SavedViews). Строка чипсов стояла между вкладками и
+ *    сеткой, а на кадре там 38 px чистого поля; вызывается пунктом меню
+ *    шестерёнки. Виды лежат на сервере, у людей уже сохранены, а состояние
+ *    экрана по-прежнему целиком в адресе — ?group, ?q, ?per.
+ * 5. Подпись под заголовком «Ті, хто проходив методики ваших груп». На
+ *    кадре под «Пацієнти» сразу вкладки. Текст остался ключом patients.sub
+ *    и печатается в панели контекста: список показывает обследованных, а не
+ *    всех заведённых, и молчать об этом нельзя.
  *
- * Чего на кадре есть, а здесь нет: шестерёнка. Она настраивает колонки, а у
- * сетки карточек колонок нет — набор полей задан макетом.
+ * Шестерёнка в правом конце строки заголовка — с кадра (глиф 1370…1399,
+ * y 153…182, прижат к правому краю колонки); всё перечисленное лежит в ней.
+ *
+ * Расхождение поведения, вынесенное заказчику: знак «+» рядом с поиском на
+ * всех списках макета открывает создание, а здесь ведёт на приглашения
+ * (/invites) — пациент попадает в систему по ссылке-приглашению, формы
+ * «завести пациента» на сервере нет. Подпись глифа это и говорит
+ * («Запросити пацієнта»), картинка кадра при этом сохранена.
  *
  * Что ушло вместе с прежней таблицей и почему не вернулось:
  *
- * - Выгрузка CSV. Если понадобится, ей место в меню за шестерёнкой, как на
- *   каталоге.
+ * - Выгрузка CSV. Если понадобится, ей место в том же меню шестерёнки.
  * - Колонки «Замірів» и «Останнє» и сортировка по ним. Строка макета — ПІБ и
  *   мета (e-mail, підрозділ, стать, рік); ни числа замеров, ни даты
  *   последнего в ней нет, а сортировать сетку без шапки не за что нажать.
@@ -71,11 +88,6 @@ import { PersonGrid, SelectionBar } from "./patientGroups/PersonGrid";
  * - Фасеты по подразделению, полу и активности. Они считались по уже
  *   приехавшим строкам («по завантажених N») и на большом списке врали;
  *   на кадре фильтр один — поиск, и он серверный.
- *
- * Что НЕ ушло: сохранённые виды (SavedViews). Они лежат на сервере, у людей
- * уже сохранены, а состояние экрана по-прежнему целиком в адресе — ?group,
- * ?q, ?per, — так что чипс «вечірня група по прізвищу» работает как раньше.
- * Где они стоят и почему — см. Frame.
  *
  * Страницы на вкладке «Усі» строятся поверх курсора: страница N — это
  * строки с (N−1)·per по N·per из того, что уже приехало; если их ещё нет и
@@ -165,18 +177,24 @@ export function PatientList() {
 function Frame({
   frame,
   pages,
-  sub,
   focused,
   children,
 }: {
   frame: FrameState;
   pages: number;
-  sub?: string;
   focused: PersonLike | null;
   children: ReactNode;
 }) {
   const { ut } = useLang();
   const { groups, groupsError, activeId, q, page, per, update } = frame;
+  /*
+   * Что открыто из шестерёнки. Оба — состояние экрана, а не адреса: строка
+   * сохранённых видов и панель контекста ничего не меняют в том, ЧТО
+   * показано, и ссылка на список с открытой панелью сбивала бы с толку
+   * того, кому её прислали.
+   */
+  const [views, setViews] = useState(false);
+  const [panel, setPanel] = useState(false);
 
   /*
    * Вкладки — кнопочный вид Tabs, а не ссылки. Вкладка живёт в параметре
@@ -186,30 +204,29 @@ function Frame({
    * вид даёт role="tablist" и aria-selected — и это точнее по смыслу:
    * вкладка переключает содержимое под собой, а не уводит на другой экран.
    */
-  const tabs = [
-    {
-      label: ut("pg.allTab"),
-      active: activeId === null,
-      onSelect: () => update({ group: null, page: null }),
-      id: "pg-tab-all",
-      controls: "patients-panel",
-    },
-    ...groups.map((g) => ({
-      label: g.title,
-      active: g.id === activeId,
-      onSelect: () => update({ group: g.id, page: null }),
-      id: `pg-tab-${g.id}`,
-      controls: "patients-panel",
-    })),
-  ];
-  const activeTab = tabs.find((t) => t.active)?.id ?? "pg-tab-all";
+  const tabs = groups.map((g) => ({
+    label: g.title,
+    active: g.id === activeId,
+    onSelect: () => update({ group: g.id, page: null }),
+    id: `pg-tab-${g.id}`,
+    controls: "patients-panel",
+  }));
+  /*
+   * Когда фильтр снят, выбранной вкладки нет вовсе: «Усі» на кадре не
+   * нарисована, а подписывать панель вкладкой, которой нет, нельзя — idref
+   * в пустоту диктор читает как ошибку разметки. Тогда панель называет
+   * себя сама, именем экрана.
+   */
+  const activeTab = tabs.find((t) => t.active)?.id;
 
   return (
     <Page
       title={ut("patients.title")}
-      sub={sub}
+      /* блок страниц отодвинут от «+» на 74, как на кадре: см. wideActions */
+      wideActions
       toolbar={
-        <div className="flex min-w-0 flex-1 items-center gap-[19px]">
+        /* зазор «поле → +» 14: на кадре поле кончается на 1022, «+» стоит 1036…1062 */
+        <div className="flex min-w-0 flex-1 items-center gap-[14px]">
           <div className="relative min-w-0 flex-1">
             {/* имя полю даёт aria-label: на макете поле пустое, без подписи внутри */}
             <Input
@@ -247,32 +264,84 @@ function Frame({
         </div>
       }
       actions={
-        <Pager
-          page={page}
-          pages={pages}
-          per={per}
-          onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
-          onPage={(n) => update({ page: n > 1 ? String(n) : null })}
-        />
+        <>
+          <Pager
+            page={page}
+            pages={pages}
+            per={per}
+            onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
+            onPage={(n) => update({ page: n > 1 ? String(n) : null })}
+          />
+          {/*
+            Шестерёнка кадра: глиф 1370…1399 у правого края колонки, правее
+            блока страниц. В ней — всё, чего на кадре нет на виду: список без
+            фильтра, сохранённые виды, панель «А це хто?». Тот же ActionMenu,
+            что у карточки пациента и у заключения, — меню в консоли одно.
+          */}
+          <ActionMenu
+            label={ut("pt.listActions")}
+            glyph={<IconGear />}
+            entries={[
+              {
+                label: ut("pg.allTab"),
+                onSelect: () => update({ group: null, page: null }),
+                /* фильтр уже снят — пункт остаётся на месте, но вести ему некуда */
+                disabled: activeId === null,
+              },
+              { label: ut("views.show"), onSelect: () => setViews((v) => !v) },
+              { label: ut("pt.whoIsThis"), onSelect: () => setPanel((v) => !v) },
+            ]}
+          />
+        </>
       }
       contextTitle={ut("pt.whoIsThis")}
-      context={focused ? <PatientContext person={focused} /> : <p className="m-0 text-caption text-muted">{ut("pt.pickRow")}</p>}
+      /*
+        Панель — только когда её позвали: на кадре справа от колонки 1200
+        чисто. Подпись под заголовком («Ті, хто проходив методики ваших
+        груп») печатается здесь же: на кадре её нет, а сказать, что список
+        показывает обследованных, а не всех заведённых, надо там, где об
+        этом спрашивают.
+      */
+      context={
+        panel ? (
+          focused ? (
+            <PatientContext person={focused} />
+          ) : (
+            <>
+              <p className="m-0 text-caption text-muted">{ut("pt.pickRow")}</p>
+              <p className="m-0 mt-[8px] text-caption text-muted">{ut("patients.sub")}</p>
+            </>
+          )
+        ) : undefined
+      }
     >
       {/* первый ребёнок — <nav>/<div role=tablist>: Page даёт ему 39px от строки, как на макете */}
       <Tabs label={ut("pg.tabsLabel")} items={tabs} />
       {groupsError ? <p className="m-0 mt-[12px] text-[13px] text-danger">{groupsError}</p> : null}
       {/*
-        Сохранённые виды — под вкладками, а не в строке над списком, где они
-        стояли у прежней таблицы: строку теперь целиком занимает поиск, как
-        на кадре, а в «actions» справа они бы отжимали поле. На кадре чипсов
-        нет; цена — строка между вкладками и сеткой. Убрать их совсем было бы
-        дороже: виды хранятся на сервере (saved_views, scope «patients»),
-        и уже сохранённые стали бы недостижимы при живом адресном состоянии.
+        Сохранённые виды — не в потоке, а по вызову из шестерёнки: на кадре
+        между полосой прокрутки вкладок и первой строкой сетки чистое поле.
+        Убрать их совсем было бы дороже — виды хранятся на сервере
+        (saved_views, scope «patients»), и уже сохранённые стали бы
+        недостижимы при живом адресном состоянии.
       */}
-      <div className="mt-[16px]">
-        <SavedViews scope="patients" />
-      </div>
-      <div id="patients-panel" role="tabpanel" aria-labelledby={activeTab} className="mt-[20px]">
+      {views ? (
+        <div className="mt-[16px]">
+          <SavedViews scope="patients" />
+        </div>
+      ) : null}
+      {/*
+        24, а не 20: на кадре от низа полосы прокрутки (261) до верха литер
+        первого имени (299) — 38, из которых 11 съедает воздух строки сетки
+        (58 при содержимом 36) и ещё 3 — полусвинец строки имени.
+      */}
+      <div
+        id="patients-panel"
+        role="tabpanel"
+        aria-labelledby={activeTab}
+        aria-label={activeTab ? undefined : ut("patients.title")}
+        className={views ? "mt-[20px]" : "mt-[24px]"}
+      >
         {children}
       </div>
     </Page>
@@ -361,7 +430,7 @@ function AllPatients({ frame }: { frame: FrameState }) {
   const actions = useSelectionActions(chosen, frame);
 
   return (
-    <Frame frame={frame} pages={pages} sub={ut("patients.sub")} focused={focused}>
+    <Frame frame={frame} pages={pages} focused={focused}>
       {list.error ? (
         <Loading error={list.error} onRetry={list.reload} />
       ) : !list.items || (rows.length === 0 && list.loadingMore) ? (
@@ -377,8 +446,14 @@ function AllPatients({ frame }: { frame: FrameState }) {
           focusedId={focused?.userId ?? null}
         />
       )}
-      <SelectionBar count={chosen.size} onClear={() => setSelected(new Set())}>
-        <SelectionButtons onGroup={() => actions.open("group")} onAssign={() => actions.open("assign")} />
+      <SelectionBar count={chosen.size}>
+        <SelectionMenu
+          entries={[
+            { label: ut("pg.addToGroup"), onSelect: () => actions.open("group") },
+            { label: ut("pg.assignTest"), onSelect: () => actions.open("assign") },
+            { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
+          ]}
+        />
       </SelectionBar>
       {actions.dialogs}
     </Frame>
@@ -437,30 +512,34 @@ function GroupPatients({ group, frame }: { group: PatientGroupWithCounts; frame:
           focusedId={focused?.userId ?? null}
         />
       )}
-      <SelectionBar count={chosen.size} onClear={() => setSelected(new Set())}>
-        <SelectionButtons onGroup={() => actions.open("group")} onAssign={() => actions.open("assign")} />
-        <Button onClick={() => void removeChosen()}>{ut("pg.removeFromGroup")}</Button>
+      <SelectionBar count={chosen.size}>
+        <SelectionMenu
+          entries={[
+            { label: ut("pg.addToGroup"), onSelect: () => actions.open("group") },
+            { label: ut("pg.assignTest"), onSelect: () => actions.open("assign") },
+            { label: ut("pg.removeFromGroup"), onSelect: () => void removeChosen() },
+            { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
+          ]}
+        />
       </SelectionBar>
       {actions.dialogs}
     </Frame>
   );
 }
 
-/* ─────────── кнопки под счётчиком ─────────── */
+/* ─────────── действия под счётчиком ─────────── */
 
-/*
- * Компактная кнопка макета (умолчание Button): рядом с «18 вибрано» три
- * крупных 45-пиксельных кнопки формы читались бы как три главных действия
- * экрана, а это действия над выборкой — строчные.
+/**
+ * Меню «⋯» рядом с «18 вибрано».
+ *
+ * На кадре под сеткой стоит один счётчик и больше ничего: ни трёх кнопок,
+ * ни ссылки «Зняти вибір». Действия при этом никуда не делись — они за
+ * глифом, который появляется вместе с выборкой. Тот же ActionMenu, что у
+ * шестерёнки: одно меню на консоль, одна ловушка фокуса, одни стрелки.
  */
-function SelectionButtons({ onGroup, onAssign }: { onGroup: () => void; onAssign: () => void }) {
+function SelectionMenu({ entries }: { entries: MenuEntry[] }) {
   const { ut } = useLang();
-  return (
-    <>
-      <Button onClick={onGroup}>{ut("pg.addToGroup")}</Button>
-      <Button onClick={onAssign}>{ut("pg.assignTest")}</Button>
-    </>
-  );
+  return <ActionMenu label={ut("pt.selectionActions")} glyph={<IconDots />} entries={entries} />;
 }
 
 /**
