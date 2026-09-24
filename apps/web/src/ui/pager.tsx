@@ -6,7 +6,8 @@ import { Button, Select } from "./primitives";
 /**
  * «елементів на сторінці [10 ▾] сторінка 1 з 10 ‹ ›» — правый край строки над
  * списком, замеры макета: подпись 10/400 в два рядка, селект 52×27, стрелки
- * глифами с областью нажатия 44 (Button size="glyph").
+ * глифами 16 вплотную друг к другу с областью нажатия 44
+ * (Button size="glyph-sm").
  *
  * Переехал сюда из каталога тестов: тот же блок стоит над списком групп,
  * над пациентами, в карточке группы, на вкладке «Групи» карточки лікаря
@@ -57,23 +58,39 @@ export function Pager({
       <span className="ml-[9px] whitespace-nowrap text-[10px] text-muted">
         {ut("cat.page")} {page} {ut("common.of")} {pages}
       </span>
-      <Button
-        size="glyph"
-        variant="ghost"
-        className="ml-[5px]"
-        aria-label={ut("cat.prevPage")}
-        disabled={page <= 1}
-        onClick={() => onPage(page - 1)}
-      >
-        <span className="rotate-180 [&>svg]:size-[14px]">
-          <IconChevron />
-        </span>
-      </Button>
-      <Button size="glyph" variant="ghost" aria-label={ut("cat.nextPage")} disabled={page >= pages} onClick={() => onPage(page + 1)}>
-        <span className="[&>svg]:size-[14px]">
-          <IconChevron />
-        </span>
-      </Button>
+      {/*
+        Стрелки стоят вплотную: на кадрах их чернила разнесены ровно на 16
+        центр-к-центру (f07 1378…1381 и 1394…1397, f10 1380…1383 и 1396…1399,
+        f11 1379…1382 и 1395…1398). Три кадра из трёх, где эта строка
+        нарисована, согласны — значит это общий замер, а не особенность
+        раздела. Отсюда ступень `glyph-sm` (видимый квадрат 16, нажимаемый
+        по-прежнему 44) и своя коробка без зазора: общий `gap-[8px]` строки
+        сюда не пускается.
+      */}
+      <div className="ml-[8px] flex items-center">
+        <Button
+          size="glyph-sm"
+          variant="ghost"
+          aria-label={ut("cat.prevPage")}
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+        >
+          <span className="rotate-180 [&>svg]:size-[14px]">
+            <IconChevron />
+          </span>
+        </Button>
+        <Button
+          size="glyph-sm"
+          variant="ghost"
+          aria-label={ut("cat.nextPage")}
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+        >
+          <span className="[&>svg]:size-[14px]">
+            <IconChevron />
+          </span>
+        </Button>
+      </div>
     </div>
   );
 }

@@ -21,7 +21,9 @@ import { Button, type ButtonProps } from "./primitives";
  *  - «right» — меню карточки (f15, f38 и весь раздел людей — f04, f30, f31,
  *    f40, f41, f43, f47, f48, f50: шестерёнка справа от заголовка): плашка
  *    142×94 с рамкой #999999 и тенью, пункты 15/400 серым прижаты к правому
- *    краю, к самой шестерёнке;
+ *    краю, к самой шестерёнке. Ширина плашки и кегль пункта — умолчания этой
+ *    ветки: форма повідомлення (f26) просит 209 и 17 своими параметрами
+ *    (`plateClassName`, `itemSize`), не трогая кадры людей;
  *  - «right-out» — плашка с рамкой #999999, раскрытая ВНИЗ от глифа и
  *    выровненная по его ЛЕВОМУ краю, то есть уходящая вправо от колонки
  *    формы. Так нарисовано меню структуры аналитической модели (f19:
@@ -52,6 +54,16 @@ import { Button, type ButtonProps } from "./primitives";
 export type MenuAlign = "left" | "right" | "right-out";
 export type MenuTone = "normal" | "danger" | "disabled";
 
+/**
+ * Кегль пункта правого меню.
+ *
+ * 15 — замер кадров раздела людей (f47 и др.), он же умолчание. 17 просит
+ * форма повідомлення: на f26 чернила «Відправити» идут 1293…1376 при
+ * кап-высоте «В» 150…161 = 12, то есть 17 при отношении кап/кегль 0,70. Шаг
+ * пунктов 30 сохраняется в обоих случаях: 5 + 20 + 5.
+ */
+export type MenuItemSize = 15 | 17;
+
 /*
  * Пункт меню — обычная строка, а не Button: кнопка макета полужирная и
  * залитая, и шесть таких подряд в столбик читались бы как шесть главных
@@ -60,7 +72,7 @@ export type MenuTone = "normal" | "danger" | "disabled";
  * ActionMenu): атрибут disabled вынул бы его из обхода стрелками, и стрелки,
  * дойдя до него, застревали бы на соседе.
  */
-export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "normal"): string {
+export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "normal", size: MenuItemSize = 15): string {
   return cx(
     "flex w-full items-center rounded-[4px] border-0 bg-transparent font-normal no-underline",
     "h-auto min-h-0 transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
@@ -73,7 +85,11 @@ export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "norma
     align === "left"
       ? "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]"
       : align === "right"
-        ? "justify-end px-[12px] py-[5px] text-right text-[15px] leading-[20px]"
+        ? cx(
+            "justify-end px-[12px] py-[5px] text-right leading-[20px]",
+            /* литералами, а не подстановкой: Tailwind собирает классы, читая исходник */
+            size === 17 ? "text-[17px]" : "text-[15px]",
+          )
         /* 5 + 20 + 5 = 30 — шаг пунктов f19; высотой `h-[30px]` спорить с `h-auto` выше нельзя */
         : "justify-end px-[10px] py-[5px] text-right text-[17px] leading-[20px]",
     tone === "disabled"
@@ -101,7 +117,7 @@ export const menuItem = menuItemClass("left");
  * белой не будет. `items-stretch` растягивает пункты на всю ширину, чтобы
  * область нажатия не кончалась на тексте.
  */
-function plateClass(align: MenuAlign): string {
+function plateClass(align: MenuAlign, plateClassName?: string): string {
   return cx(
     "absolute z-50 flex flex-col items-stretch outline-none",
     align === "left"
@@ -117,8 +133,16 @@ function plateClass(align: MenuAlign): string {
      * 30 + 1, отсюда py-[1px]; зазор от глифа 8 (на кадре 9).
      */
     align === "right"
-      ? "right-0 top-[calc(100%+8px)] min-w-[142px] border border-border-strong py-[1px]"
+      ? "right-0 top-[calc(100%+8px)] border border-border-strong py-[1px]"
       : "",
+    /*
+     * Ширина — отдельным слагаемым, потому что экран может попросить свою:
+     * форма повідомлення на f26 рисует плашку 209 шириной (рамка #999999 идёт
+     * 1179…1387 × 139…233) против 142 на кадрах людей. Умолчание ставится
+     * ТОЛЬКО когда экран молчит: два `min-w-[…]` в одной строке классов
+     * спорят, и кто победит, решал бы порядок в собранном CSS.
+     */
+    align === "right" && !plateClassName ? "min-w-[142px]" : "",
     /*
      * Плашка структуры модели — замер f19. Левый край плашки (1125) совпадает
      * с ЛЕВЫМ краем шестерни (ink 1125…1149), а не с правым: вертикальная
@@ -132,6 +156,7 @@ function plateClass(align: MenuAlign): string {
     align === "right-out"
       ? "left-0 top-[calc(100%+10px)] min-w-[159px] border border-border-strong py-[3px]"
       : "",
+    plateClassName,
   );
 }
 
@@ -148,6 +173,7 @@ export function MenuButton({
   glyph,
   align = "left",
   className,
+  plateClassName,
   triggerClassName,
   triggerSize = "glyph",
   children,
@@ -157,6 +183,8 @@ export function MenuButton({
   glyph: ReactNode;
   align?: MenuAlign;
   className?: string;
+  /** Размеры плашки, если кадр экрана даёт свои: см. plateClass */
+  plateClassName?: string;
   /*
    * Раскрывающий элемент — не всегда глиф в квадрате 27. На кадрах
    * f23_1/f24_1 меню языка раскрывает короткая надпись «Укр» без рамки, и
@@ -233,7 +261,7 @@ export function MenuButton({
       {open ? (
         <>
           <div aria-hidden onClick={close} className="fixed inset-0 z-40" />
-          <div ref={ref} id={id} role="menu" aria-label={label} tabIndex={-1} className={plateClass(align)}>
+          <div ref={ref} id={id} role="menu" aria-label={label} tabIndex={-1} className={plateClass(align, plateClassName)}>
             {children(close)}
           </div>
         </>
@@ -270,18 +298,24 @@ export function ActionMenu({
   glyph,
   entries,
   className,
+  plateClassName,
+  itemSize,
 }: {
   label: string;
   glyph: ReactNode;
   entries: MenuEntry[];
   className?: string;
+  /** Размеры плашки, если кадр экрана даёт свои (см. plateClass); молчание — кадры людей */
+  plateClassName?: string;
+  /** Кегль пункта, если кадр экрана даёт свой; молчание — 15 с кадров людей */
+  itemSize?: MenuItemSize;
 }) {
   return (
-    <MenuButton label={label} glyph={glyph} align="right" className={className}>
+    <MenuButton label={label} glyph={glyph} align="right" className={className} plateClassName={plateClassName}>
       {(close) =>
         entries.map((it) => {
           const disabled = !!it.disabled;
-          const cls = menuItemClass("right", disabled ? "disabled" : it.danger ? "danger" : "normal");
+          const cls = menuItemClass("right", disabled ? "disabled" : it.danger ? "danger" : "normal", itemSize);
           if (it.to && !disabled) {
             return (
               <Link key={it.label} role="menuitem" to={it.to} className={cls} onClick={close}>
