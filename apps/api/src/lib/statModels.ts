@@ -21,7 +21,7 @@ import { db } from "../db";
 import { answers, responseScores, responses, surveyVersions, surveys, users } from "../db/schema";
 import { decryptField } from "./crypto";
 import { badRequest, notFound } from "./http";
-import { canBreakDown, pinnedAreas, suppress, type Published } from "./privacy";
+import { canBreakDown, pinnedAreas, suppress, type Reported } from "./privacy";
 import {
   assertFilterPresetAccess,
   assertPatientAccess,
@@ -258,8 +258,8 @@ function shown(n: number, total: number): StatCell {
 }
 
 /**
- * Сколько чисел колонка печатает самое большее — основание, ячейки и «ВШР»
- * вместе.
+ * Сколько чисел С ЛЮДЬМИ колонка печатает самое большее — основание,
+ * ячейки и «ВШР» вместе.
  *
  * Потолок не украшение: проверка восстановимости решает систему на каждый
  * расчёт, а её цена растёт с числом уравнений. Шестнадцать — это основание,
@@ -267,6 +267,12 @@ function shown(n: number, total: number): StatCell {
  * «ВШР»: колонка кадра f29 целиком. Что сверх — считается (без этого не
  * узнать, безопасно ли остальное), но не печатается, и колонка честно
  * говорит, сколько строк убрано.
+ *
+ * Нули в потолок не считаются и печатаются всегда: число без людей не
+ * добавляет системе ни одного уравнения, то есть занимало бы место
+ * бесплатно для читателя и дорого для отчёта. И это же условие держит всю
+ * проверку: «прочерк — значит хотя бы один» верно ровно пока ноль не
+ * умеет превращаться в прочерк.
  *
  * Отвергнуто: отказывать в расчёте при семнадцатом показателе. Модель
  * собирают мышью, и отказ на семнадцатом клике — это потерянная работа
@@ -287,8 +293,14 @@ const MAX_FIGURES_PER_COLUMN = 16;
  * бессильны там, где освобождает СОСЕДНЕЕ число: |Біль ∖ Шум| лежит внутри
  * «Біль», а отпускает его сокрытие «решти». Поэтому не сужение набора, а
  * порядок: накрывающие пробуются первыми, потолок отсекает хвост.
+ *
+ * Шестнадцать — это все числа ОДНОЙ колонки (MAX_FIGURES_PER_COLUMN).
+ * Прежде было тридцать два, «две колонки сразу», и на восьми колонках по
+ * двенадцати показателей расчёт вставал в секунду: потолок множится на
+ * число шагов, а каждый шаг решает систему заново. Ни один разбор не
+ * показал случая, где выигрывает число из третьей десятки.
  */
-const MAX_TRIALS_PER_STEP = 32;
+const MAX_TRIALS_PER_STEP = 16;
 
 /**
  * Печатаемое число отчёта: где стоит и КТО в него попал.
@@ -336,12 +348,26 @@ interface Sheet {
  * системы перестали находить хоть что-нибудь сверх общей: мутация «убрать
  * их» не роняла ни одной проверки. Лишний этаж защиты, который ничего не
  * защищает, — это лишний этаж, который однажды соврут.
+ *
+ * Скрытые числа едут в систему НАРАВНЕ с показанными, только с пометкой
+ * shown: false. Прочерк — сведение, а не пустота: он делит область (пять
+ * прочерков делят класс из пятерых на пятерых) и говорит «тут хотя бы
+ * один» (ноль отчёт печатает). Отвергнуто прежнее «фильтровать по kept»:
+ * именно из-за него проверка считала пятерых под прочерками одним классом
+ * и молчала, пока читатель называл каждого.
+ *
+ * Закрытая колонка не едет вовсе: у неё не печатается ни одного числа, и
+ * причина закрытия сказана прямо — прочерк в ней не значит «хотя бы один».
  */
-function systemOf(sheets: Sheet[], kept: ReadonlySet<string>): Published[] {
+function systemOf(
+  sheets: Sheet[],
+  kept: ReadonlySet<string>,
+  closed: ReadonlyMap<number, StatSuppressReason>,
+): Reported[] {
   return sheets
+    .filter((s) => !closed.has(s.index))
     .flatMap((s) => s.figures)
-    .filter((f) => kept.has(f.key))
-    .map((f) => ({ key: f.key, members: f.members }));
+    .map((f) => ({ key: f.key, members: f.members, shown: kept.has(f.key) }));
 }
 
 /**
@@ -358,6 +384,13 @@ function systemOf(sheets: Sheet[], kept: ReadonlySet<string>): Published[] {
  * сумма меньше чем порог областей, и проверка находит его сама. Мутация
  * «снять второй край» не роняла ни одной проверки — значит, это была не
  * защита, а её повторение.
+ *
+ * Ноль печатается ВСЕГДА и в потолок не считается. Это не поблажка, а
+ * условие, на котором стоит вся проверка: «прочерк — значит хотя бы один»
+ * верно ровно до тех пор, пока нулю не дают превратиться в прочерк.
+ * Платить за это нечем — число без людей не добавляет системе ни одного
+ * уравнения (lib/privacy.ts пропускает пустые), то есть потолок оно бы
+ * тратило впустую.
  */
 function draft(sheets: Sheet[], closed: ReadonlyMap<number, StatSuppressReason>): Set<string> {
   const kept = new Set<string>();
@@ -365,8 +398,12 @@ function draft(sheets: Sheet[], closed: ReadonlyMap<number, StatSuppressReason>)
     if (closed.has(sheet.index)) continue;
     let printed = 0;
     for (const f of sheet.figures) {
-      if (f.members.size > 0 && suppress(f.members.size) === null) continue;
-      if (printed >= MAX_FIGURES_PER_COLUMN) break;
+      if (!f.members.size) {
+        kept.add(f.key);
+        continue;
+      }
+      if (suppress(f.members.size) === null) continue;
+      if (printed >= MAX_FIGURES_PER_COLUMN) continue;
       kept.add(f.key);
       printed += 1;
     }
@@ -407,8 +444,9 @@ function keepSafe(sheets: Sheet[], closed: Map<number, StatSuppressReason>): Set
   const steps = sheets.reduce((n, s) => n + s.figures.length, 0) * (sheets.length + 1) + sheets.length;
   let kept = draft(sheets, closed);
 
-  /* какие области называет отчёт, если печатать ровно эти числа */
-  const solve = (set: ReadonlySet<string>) => pinnedAreas(systemOf(sheets, set));
+  /* какие области называет отчёт, если печатать ровно эти числа при этих закрытых колонках */
+  const solve = (set: ReadonlySet<string>, shut: ReadonlyMap<number, StatSuppressReason> = closed) =>
+    pinnedAreas(systemOf(sheets, set, shut));
 
   for (let step = 0; step <= steps; step += 1) {
     const found = solve(kept);
@@ -443,6 +481,8 @@ function keepSafe(sheets: Sheet[], closed: Map<number, StatSuppressReason>): Set
         best = f;
         bestLeft = left;
       }
+      /* чище уже не будет: остальные попытки решали бы систему ради того же ответа */
+      if (bestLeft === 0) break;
     }
     if (best) {
       kept.delete(best.key);
@@ -456,14 +496,21 @@ function keepSafe(sheets: Sheet[], closed: Map<number, StatSuppressReason>): Set
      * названы: в «Усі» рядом с «Велике» и «Мале» названы люди «Малої», но
      * закрыть по этому правилу пришлось бы и «Усі» — единственную колонку,
      * которая в одиночку безопасна и ради которой отчёт открывали.
+     *
+     * Сравниваются свежие наброски, а не нынешний отчёт: после закрытия
+     * набросок и собирается заново, и оценивать надо ровно то, что
+     * получится. Отвергнуто сравнивать нынешние отчёты без каждой колонки:
+     * там уже спрятано всё, что пряталось РЯДОМ с закрываемой, и колонка,
+     * которая одна бы расцвела, выглядела бы такой же бедной.
      */
     let victim: Sheet | null = null;
     let score: number[] = [];
     for (const sheet of sheets) {
       if (closed.has(sheet.index)) continue;
-      const trial = draft(sheets, new Map([...closed, [sheet.index, "recoverable" as const]]));
+      const shut = new Map([...closed, [sheet.index, "recoverable" as const]]);
+      const trial = draft(sheets, shut);
       /* чем меньше по порядку, тем лучше: названных областей, потом −числа строк, потом размер выборки */
-      const mark = [solve(trial).length, -trial.size, sheet.total];
+      const mark = [solve(trial, shut).length, -trial.size, sheet.total];
       const at = mark.findIndex((v, i) => v !== score[i]);
       if (victim && (at < 0 || mark[at]! > score[at]!)) continue;
       victim = sheet;
