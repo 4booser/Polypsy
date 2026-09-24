@@ -7,6 +7,13 @@ import { phq9 } from "./phq9";
 import { pq16 } from "./pq16";
 import { pss10 } from "./pss10";
 import { who5 } from "./who5";
+// группа «mood» — отдельным блоком, как и её записи в конце CATALOG
+import { cesdr } from "./cesdr";
+import { dass42 } from "./dass42";
+import { gds15 } from "./gds15";
+import { phq4 } from "./phq4";
+import { phq8 } from "./phq8";
+import { srq20 } from "./srq20";
 
 /**
  * Общий каталог общедоступных методик.
@@ -54,12 +61,13 @@ export const CATALOG: CatalogEntry[] = [
   {
     key: "phq9",
     draft: phq9,
-    source: "PHQ-9, Kroenke, Spitzer, Williams, 2001",
+    source:
+      "PHQ-9, Kroenke, Spitzer, Williams, 2001; український текст — додаток 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014",
   },
   {
     key: "pss10",
     draft: pss10,
-    source: "PSS-10, Cohen, Kamarck, Mermelstein, 1983/1988",
+    source: "PSS-10, Cohen, Kamarck, Mermelstein, 1983/1988 (без смуг: у розробника порогів немає)",
   },
   {
     key: "pcl5",
@@ -80,5 +88,47 @@ export const CATALOG: CatalogEntry[] = [
     key: "big-five",
     draft: bigFive,
     source: "IPIP Big-Five Factor Markers, Goldberg, 1992 (public domain)",
+  },
+
+  /*
+   * ── Группа «mood»: настроение, тревога, дистресс ──
+   *
+   * Каждая запись сверена с досье docs/instruments/dossiers/mood.json:
+   * пункты, ключ, полосы и пункты риска — оттуда, а не из памяти. Из досье
+   * НЕ заведены: STAI, CES-D, HSCL-25, BDI-II, BAI, HADS, GHQ-12, MADRS —
+   * у одних нет текста (лицензия), у других нет разрешения на онлайн-
+   * публикацию; CES-D заменяет CESD-R с доказанным public domain.
+   */
+  {
+    key: "phq4",
+    draft: phq4,
+    source:
+      "PHQ-4, Kroenke, Spitzer, Williams, Löwe, 2009 (public domain); PHQ-2 — текст з наказу МОЗ України №1003 від 25.12.2014",
+  },
+  {
+    key: "phq8",
+    draft: phq8,
+    source:
+      "PHQ-8, Kroenke, Strine та ін., 2009 (public domain); текст — пункти 1–8 PHQ-9 з наказу МОЗ України №1003 від 25.12.2014",
+  },
+  {
+    key: "cesdr",
+    draft: cesdr,
+    source: "CESD-R, Eaton, Smith, Ybarra, Muntaner, Tien, 2004 (public domain)",
+  },
+  {
+    key: "srq20",
+    draft: srq20,
+    source: "SRQ-20, ВООЗ, Beusenberg, Orley, 1994 (WHO/MNH/PSF/94.8; лише некомерційне використання)",
+  },
+  {
+    key: "gds15",
+    draft: gds15,
+    source: "GDS-15, Sheikh, Yesavage, 1986 (public domain)",
+  },
+  {
+    key: "dass42",
+    draft: dass42,
+    source: "DASS-42, Lovibond, Lovibond, 1995 (public domain; без смуг — пороги лише в платному посібнику)",
   },
 ];
