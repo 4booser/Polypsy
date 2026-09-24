@@ -63,6 +63,16 @@ import type {
   MailingListPage,
   MailingInput,
   MailingUpdateInput,
+  FilterPreset,
+  FilterPresetInput,
+  FilterPresetListItem,
+  FilterPresetUpdateInput,
+  StatModel,
+  StatModelColumnInput,
+  StatModelInput,
+  StatModelListPage,
+  StatModelUpdateInput,
+  StatRunResult,
 } from "@quizzy/shared";
 import { UI } from "@quizzy/shared";
 import { currentLang } from "./lang";
@@ -1146,6 +1156,48 @@ export const api = {
   /** «Видалити» — черновик; отправленную сервер не удаляет (409), её скрывают */
   deleteMailing: (id: string) => request<void>(`/api/mailings/${id}`, { method: "DELETE" }),
   hideMailing: (id: string) => request<Mailing>(`/api/mailings/${id}/hide`, { method: "POST" }),
+  /*
+   * Раздел «Статистика» (кадры f08, f09, f17, f18, f23, f24, f29): модели и
+   * пресеты фильтров. Имён сервер здесь не отдаёт никогда — только доли с
+   * прочерками там, где число вместе с соседними называло бы людей.
+   *
+   * Страницы перечня — на сервере (limit/offset, q), как у рассылок: без
+   * ?limit= маршрут отдаёт весь список, и диаграмма f24 берёт его так.
+   */
+  statModels: (params: { q?: string; limit?: number; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params.offset !== undefined) qs.set("offset", String(params.offset));
+    return request<StatModelListPage>(`/api/stat-models?${qs}`);
+  },
+  statModel: (id: string) => request<StatModel>(`/api/stat-models/${id}`),
+  createStatModel: (input: StatModelInput) =>
+    request<StatModel>("/api/stat-models", { method: "POST", body: JSON.stringify(input) }),
+  updateStatModel: (id: string, patch: StatModelUpdateInput) =>
+    request<StatModel>(`/api/stat-models/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteStatModel: (id: string) => request<void>(`/api/stat-models/${id}`, { method: "DELETE" }),
+  /** «Порівняти» / «Оновити» по сохранённой модели — без правок на экране */
+  runStatModel: (id: string) => request<StatRunResult>(`/api/stat-models/${id}/run`, { method: "POST" }),
+  /**
+   * Тот же расчёт по колонкам с экрана, без сохранения: выборку поправили,
+   * а сохранять не просили. Каждый расчёт — строка журнала с фильтрами.
+   */
+  previewStatModel: (columns: StatModelColumnInput[], title?: string) =>
+    request<StatRunResult>("/api/stat-models/run", {
+      method: "POST",
+      body: JSON.stringify({ columns, title: title ?? null }),
+    }),
+  filterPresets: (q?: string) =>
+    unwrap(request<Items<FilterPresetListItem>>(`/api/filter-presets${q ? `?q=${encodeURIComponent(q)}` : ""}`)),
+  filterPreset: (id: string) => request<FilterPresetListItem>(`/api/filter-presets/${id}`),
+  createFilterPreset: (input: FilterPresetInput) =>
+    request<FilterPreset>("/api/filter-presets", { method: "POST", body: JSON.stringify(input) }),
+  updateFilterPreset: (id: string, patch: FilterPresetUpdateInput) =>
+    request<FilterPreset>(`/api/filter-presets/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteFilterPreset: (id: string) => request<void>(`/api/filter-presets/${id}`, { method: "DELETE" }),
+  /** Содержимое методики в конкретной версии: подписи строк модели до первого расчёта */
+  surveyAtVersion: (id: string, version: number) => request<SurveyFull>(`/api/surveys/${id}?version=${version}`),
   episodes: (userId: string) =>
     request<{
       items: {
