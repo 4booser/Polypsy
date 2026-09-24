@@ -1,4 +1,5 @@
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { asSystem } from "../db/context";
 import { alertCases, surveys } from "../db/schema";
 
 /**
@@ -42,6 +43,23 @@ export async function attachToCase(
 ): Promise<string | null> {
   // анонимное прохождение случая не заводит: разбирать некого
   if (!params.userId) return null;
+  /*
+   * Под системной ролью, а не под ролью того, кто сдал: случай — строка
+   * очереди дежурного, пациенту она закрыта политикой, а рождает её именно
+   * его отправка. Подробно — у asSystem (db/context.ts).
+   */
+  return asSystem(() => attachCaseRow(tx, params as typeof params & { userId: string }));
+}
+
+async function attachCaseRow(
+  tx: Tx,
+  params: {
+    userId: string;
+    surveyId: string;
+    severity: "moderate" | "severe";
+    at: string;
+  },
+): Promise<string> {
 
   const survey = await tx.query.surveys.findFirst({
     where: eq(surveys.id, params.surveyId),
