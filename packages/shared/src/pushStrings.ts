@@ -29,6 +29,16 @@ export const PUSH: Record<string, { uk: string; ru: string }> = {
   "push.appointmentSoonTitle": { uk: "Прийом за годину", ru: "Приём через час" },
   "push.appointmentSoonBody": { uk: "{time}{room}", ru: "{time}{room}" },
   "push.room": { uk: ", каб. {room}", ru: ", каб. {room}" },
+  /*
+   * Рассылка: ни названия, ни текста. Название пишет специалист, и «Група
+   * ризику: анкета настрою» на экране блокировки сообщает соседу ровно то,
+   * чего сообщать нельзя. Уведомление лишь зовёт открыть приложение.
+   */
+  "push.mailingTitle": { uk: "Нове повідомлення", ru: "Новое сообщение" },
+  "push.mailingBody": {
+    uk: "Відкрийте застосунок, щоб прочитати",
+    ru: "Откройте приложение, чтобы прочитать",
+  },
 } as const;
 
 export type PushKey = keyof typeof PUSH;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useMatch, useParams } from "react-router-dom";
 import type {
   DecisionRule,
   ResponseDetail,
@@ -9,8 +9,8 @@ import type {
   ScoreResult,
   SurveyFull,
 } from "@quizzy/shared";
-import { api, openInTab } from "../api";
-import { ConclusionEditor } from "../components/ConclusionEditor";
+import { api, openInTab, type ConclusionState } from "../api";
+import { ConclusionEditor, buildDraft } from "../components/ConclusionEditor";
 import { useLang } from "../lang";
 import { Loading, OfflineBar, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
@@ -20,15 +20,22 @@ import { Button, Field, Input } from "../ui/primitives";
 import { useResource } from "../useResource";
 
 /*
- * Экран «Заключення» — кадры макета f38 (три части) и f39 (две части).
+ * Экран «Заключення» — кадры макета f36 и f37.
  *
- * Два кадра — один экран. f39 рисует его для одного теста: название, описание,
- * вопросы с баллами, лестница результатов, «опитувальник спостереження»,
- * выводы. f38 — тот же экран, но полнее: сверху добавлены название документа,
- * список применённых аналитических моделей с вердиктами и список тестов с
- * набранными баллами. Взят f38 как более полный; из f39 не пропало ничего —
- * его блоки входят в f38 целиком. Где кадры расходятся мелочью (в f39 над
- * описанием стоит подпись «Опис тесту», в f38 — нет), выбран f38.
+ * Номера — по действующей описи кадров (index.json). Старые числа из
+ * docs/REWRITE-PLAN.md к ней не относятся вовсе и здесь не повторяются даже
+ * справкой: повторённые, они и есть то, по чему следующая сверка уходит не
+ * на тот кадр. Что номер из своего раздела, сторожит
+ * apps/web/test/frameRefs.test.ts.
+ *
+ * Два кадра — один экран. f37 рисует его для одного теста: название,
+ * описание, вопросы с баллами, лестница результатов, «опитувальник
+ * спостереження», выводы. f36 — тот же экран, но полнее: сверху добавлены
+ * название документа, список применённых аналитических моделей с вердиктами
+ * и список тестов с набранными баллами. Взят f36 как более полный; из f37 не
+ * пропало ничего — его блоки входят в f36 целиком. Где кадры расходятся
+ * мелочью (в f37 над описанием стоит подпись «Опис тесту», в f36 — нет),
+ * выбран f36: экран уже назвал тест заголовком.
  *
  * Прежде заключение жило раскрывающейся строкой в таблице прохождений на
  * экране аналитики методики (SurveyAnalytics.tsx): текст без протокола
@@ -38,12 +45,12 @@ import { useResource } from "../useResource";
  * осталась печатью — за шестерёнкой.
  *
  * Чего на экране нет и почему (подробно — у каждого места ниже):
- *   · «+» у списка моделей: экрана моделей в консоли нет, вести некуда;
- *   · «Опитувальник спостереження» вторым блоком: заключение привязано к
- *     одному прохождению (conclusions.responseId), второго источника у него
- *     нет — это правка модели данных, а не экрана;
- *   · панель форматирования и «Надіслати поштою»: см. ConclusionEditor и
- *     DocumentMenu.
+ *   · «Опитувальник спостереження за пацієнтом» вторым протоколом нарисован,
+ *     но пуст: заключение привязано к ОДНОМУ прохождению
+ *     (conclusions.responseId), второго источника у него нет. Блок стоит на
+ *     своём месте с кадра и честно говорит, чего ждёт от сервера, — иначе
+ *     половина кадра f36_2/f37_1 просто исчезла бы без следа;
+ *   · «Надіслати поштою»: см. DocumentMenu.
  */
 
 export default function ConclusionPage() {
@@ -69,7 +76,7 @@ export default function ConclusionPage() {
   const conclusion = useResource(() => api.conclusion(responseId), [responseId]);
 
   /*
-   * Название документа — поле «Назва заключення» с кадра f38.
+   * Название документа — поле «Назва заключення» с кадра f36.
    *
    * Живёт здесь, а не в редакторе: поле стоит первым на экране, редактор —
    * последним, а сохраняются они одной записью. Из ответа сервера название
@@ -83,13 +90,59 @@ export default function ConclusionPage() {
     if (typeof t === "string") setTitle(t);
   }, [conclusion.data]);
 
+  /*
+   * Текст заключения, поле ввода и то, что открыто из меню шестерёнки, живут
+   * здесь, а не в редакторе: на кадре f37_2 полоса над текстом занята
+   * форматированием, и инструменты редактора (сборка из фактов, библиотека
+   * формулировок, история версий, «Зберегти чернетку») ушли в меню документа.
+   * Меню стоит в шапке экрана — значит, и текст должен лежать там, откуда его
+   * видят оба.
+   */
+  const [text, setText] = useState("");
+  const [tool, setTool] = useState<null | "templates" | "history">(null);
+  const areaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /*
+   * Черновик подставляется в поле один раз на загрузку. Делать это на каждый
+   * рендер значило бы затирать то, что специалист печатает прямо сейчас.
+   */
+  useEffect(() => {
+    const current = conclusion.data?.current;
+    setText(current?.status === "draft" ? current.text : "");
+  }, [conclusion.data]);
+
   const surveyId = res.data?.detail.survey.id;
   const models = useResource(() => loadModels(responseId, surveyId!), [responseId, surveyId], {
     enabled: !!surveyId,
   });
 
+  /*
+   * Инструменты черновика (сборка из фактов, библиотека формулировок,
+   * история версий, «Зберегти чернетку») живут в меню шестерёнки только на
+   * отдельном адресе /responses/:id/conclusion/draft: на кадре f36 в
+   * раскрытом меню ровно два пункта, и четыре инструмента рядом с ними —
+   * не кадр. Экран при этом один и тот же, состояние — одно.
+   */
+  const draftTools = useMatch("/responses/:id/conclusion/draft") !== null;
+
   return (
-    <Page title={ut("cn3.title")} actions={<DocumentMenu responseId={responseId} />}>
+    <Page
+      title={ut("cn3.title")}
+      /* 40, а не 50: на кадрах f36 и f37 чернила «Заключення» стоят в 47 от низа полосы */
+      topGap={40}
+      actions={
+        <DocumentMenu
+          responseId={responseId}
+          text={draftTools ? text : undefined}
+          setText={draftTools ? setText : undefined}
+          tool={tool}
+          setTool={draftTools ? setTool : undefined}
+          state={draftTools ? conclusion.data : undefined}
+          title={title}
+          onState={conclusion.patch}
+        />
+      }
+    >
       {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
       {!res.data ? (
         <Loading rows={8} error={res.error} onRetry={res.reload} />
@@ -106,12 +159,19 @@ export default function ConclusionPage() {
 
           <TestBody detail={res.data.detail} survey={res.data.survey} />
 
+          <Observation />
+
           <ConclusionEditor
             responseId={responseId}
             state={conclusion.data}
             error={conclusion.error}
             onState={conclusion.patch}
             title={title}
+            text={text}
+            setText={setText}
+            areaRef={areaRef}
+            tool={tool}
+            setTool={setTool}
           />
         </>
       )}
@@ -122,7 +182,13 @@ export default function ConclusionPage() {
 /* ─────────── шестерёнка ─────────── */
 
 /**
- * Меню документа: «Зберегти як PDF» и «Надіслати поштою», как на макете.
+ * Меню документа: «Зберегти як PDF» и «Надіслати поштою» — ровно два пункта,
+ * как на кадре f36 (плашка 174×70 у правого края, без рамки, мягкая тень).
+ *
+ * Инструменты редактора черновика меню принимает потомками свойств
+ * (`setText`, `setTool`, `state`), и экран передаёт их ТОЛЬКО на адресе
+ * /responses/:id/conclusion/draft. На самом заключении их нет: кадр рисует
+ * два пункта, и третий — хоть «Чернетка ▸» — был бы уже не кадром.
  *
  * PDF — это печатный отчёт GET /api/reports/responses/:id, открытый в новой
  * вкладке: сервер отдаёт разметку, а PDF делает печать браузера. Так решено
@@ -135,7 +201,26 @@ export default function ConclusionPage() {
  * молчит и не делает вид. Убрать пункт значило бы спрятать от заказчика, что
  * вопрос об отправке заключения за контур учреждения ещё не решён.
  */
-export function DocumentMenu({ responseId }: { responseId: string }) {
+export function DocumentMenu({
+  responseId,
+  text,
+  setText,
+  tool,
+  setTool,
+  state,
+  title,
+  onState,
+}: {
+  responseId: string;
+  /** Текст черновика: инструменты редактора живут в этом меню, см. ConclusionEditor */
+  text?: string;
+  setText?: (next: string) => void;
+  tool?: null | "templates" | "history";
+  setTool?: (next: null | "templates" | "history") => void;
+  state?: ConclusionState | null;
+  title?: string;
+  onState?: (next: ConclusionState) => void;
+}) {
   const { ut } = useLang();
   const { run } = useAction();
   const toast = useToast();
@@ -221,6 +306,58 @@ export function DocumentMenu({ responseId }: { responseId: string }) {
           >
             {ut("cn3.sendMail")}
           </MenuItem>
+          {/*
+            Инструменты редактора заключения — «Зібрати з результатів»,
+            библиотека формулировок, история версий и «Зберегти чернетку».
+            На кадре f37_2 полоса над текстом занята форматированием, а в
+            раскрытом меню кадра f36 стоят только два пункта выше, — поэтому
+            сюда они приходят лишь на адресе .../conclusion/draft, где
+            экрана в макете нет вовсе.
+          */}
+          {setText && setTool && state ? (
+            <>
+              <hr className="my-1 border-0 border-t border-hairline" />
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  void run(async () => {
+                    if (text?.trim() && !window.confirm(ut("cn.draftReplaced"))) return false;
+                    setText(await buildDraft(responseId, ut as unknown as (k: never) => string));
+                  });
+                }}
+              >
+                {ut("cn.fromResults")}
+              </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  setTool(tool === "templates" ? null : "templates");
+                }}
+              >
+                {ut("tpl.insert")}
+              </MenuItem>
+              {state.versions.length > 1 ? (
+                <MenuItem
+                  onClick={() => {
+                    setOpen(false);
+                    setTool(tool === "history" ? null : "history");
+                  }}
+                >
+                  {tool === "history" ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
+                </MenuItem>
+              ) : null}
+              <MenuItem
+                onClick={() => {
+                  setOpen(false);
+                  void run(async () => {
+                    onState?.(await api.saveConclusion(responseId, text ?? "", state.current?.version ?? 0, title ?? ""));
+                  }, ut("cn.draftSaved"));
+                }}
+              >
+                {ut("cnc.saveDraft")}
+              </MenuItem>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -275,6 +412,16 @@ export interface AppliedModel {
  *
  * Правила, чьи условия смотрят на шкалу другой методики, к этому прохождению
  * не относятся и в список не попадают; выключенные — тоже.
+ *
+ * ПОДПИСЬ ВЕРДИКТА. На кадре f36 напечатано «Не Відповідає умовам» — с
+ * прописной в середине фразы. Прежняя редакция сочла это опечаткой и
+ * оставила строчную; вырезка кадра (x 1150…1420, y 350…640) говорит
+ * другое: отрицательных пилюль на нём ДВЕ, и обе с прописной, а
+ * положительные набраны «Відповідає умовам». То есть макет не меняет
+ * написание слова, приставляя «Не», — и это тот же приём, что в «Опис
+ * Групи», «Назва Заключення», «Тести Групи»: прописная стоит у смыслового
+ * слова, а не только в начале фразы. Дважды повторённое — не описка.
+ * Словарь набран по кадру: cn3.notMatched «Не Відповідає умовам».
  */
 export function applicableModels(
   rules: (DecisionRule & { note: string | null })[],
@@ -313,8 +460,13 @@ async function loadModels(responseId: string, surveyId: string): Promise<Applied
 }
 
 /**
- * Заголовок раздела свитка — 18/700 фиолетовым, вторая ступень макета, — и
- * при нём действие («+»).
+ * Заголовок раздела свитка — 20/700 фиолетовым, та же ступень, что у
+ * разделов карточки пациента, — и при нём действие («+»).
+ *
+ * Замер f36: прописная «С» в «Список примінених аналітичних моделей» и в
+ * «Список тестів» — 15 px, «О» в «Опитувальник…» — 16, «В» в «Висновки
+ * заключення» — 14; всё это кегль 20, а не 18. Зазор до «+» — 22 (чернила
+ * заголовка кончаются на 597, глиф стоит 619…642).
  *
  * Действие стоит РЯДОМ с h2, а не внутри него. Имя заголовка для диктора
  * собирается из его содержимого, и ссылка внутри h2 приклеивала бы свою
@@ -324,8 +476,8 @@ async function loadModels(responseId: string, surveyId: string): Promise<Applied
  */
 export function SectionHead({ id, action, children }: { id: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-[14px]">
-      <h2 id={id} className="m-0 text-[18px] font-bold leading-tight text-primary">
+    <div className="flex items-center gap-[22px]">
+      <h2 id={id} className="m-0 text-[20px] font-bold leading-[24px] text-primary">
         {children}
       </h2>
       {action}
@@ -338,12 +490,14 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
   return (
     <section aria-labelledby="cn-models" className="mt-[50px]">
       {/*
-        «+» у заголовка на кадре есть, здесь его нет. Он означал бы «завести
-        модель», а экрана моделей в консоли нет (маршруты /api/decisions/rules
-        есть, страницы под них нет) — кнопка вела бы в никуда. Глиф без
-        действия хуже отсутствия глифа: его нажмут.
+        «+» у заголовка — как на кадре f36_1, тем же глифом, что у «Списку
+        тестів». В первой редакции его здесь не было: считалось, что экрана
+        моделей в консоли нет и вести некуда. Экран есть — /analytics/new
+        (App.tsx), — и «+» ведёт туда: завести аналитическую модель.
       */}
-      <SectionHead id="cn-models">{ut("cn3.models")}</SectionHead>
+      <SectionHead id="cn-models" action={<AddGlyph to="/analytics/new" label={ut("cn3.models")} />}>
+        {ut("cn3.models")}
+      </SectionHead>
       {/*
         Отказ показывается словами, а не пустотой: у специалиста без права
         alerts.review список правил закрыт, и «моделей нет» было бы неправдой.
@@ -371,16 +525,23 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
               /* три колонки кадра: имя 200, описание по остатку, вердикт 196 */
               className="grid grid-cols-[200px_1fr_196px] items-center gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]"
             >
-              <span className="text-[15px] font-bold leading-[20px] text-primary">{m.title}</span>
+              {/*
+                Кадр f36_1: cap имени и вердикта 12 px → 17/700, описание 9 px
+                → 13/400. Межстрочник имени — 20: имя модели на кадре занимает
+                две строки («Аналітична модель , / стресостійкість 1»), и их
+                базовые линии отстоят на 20 (замер столбца имён: 64 и 84, затем
+                244 и 264). 22 было взято от заголовков экрана.
+              */}
+              <span className="text-[17px] font-bold leading-[20px] text-primary">{m.title}</span>
               <span className="text-[13px] leading-[17px] text-muted">{m.description}</span>
               {/*
-                Вердикт — пилюля 196×27 с заливкой, текст 15/700. Оба вердикта
+                Вердикт — пилюля 195×30 с заливкой, текст 17/700. Оба вердикта
                 выглядят одинаково и отличаются словами, не цветом: на кадре
                 так, и для дальтоника так лучше.
               */}
               <span
                 data-verdict={m.matched ? "matched" : "not-matched"}
-                className="flex h-[27px] items-center justify-center rounded-[5px] bg-primary-soft px-[10px] text-[15px] font-bold leading-none text-primary"
+                className="flex h-[30px] items-center justify-center rounded-[5px] bg-primary-soft px-[10px] text-[17px] font-bold leading-none text-primary"
               >
                 {m.matched ? ut("cn3.matched") : ut("cn3.notMatched")}
               </span>
@@ -396,8 +557,10 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
 
 /**
  * Список тестов заключения. Строка одна: заключение привязано к одному
- * прохождению. Когда связь «заключение → несколько прохождений» появится на
- * сервере, здесь будет map по ним — разметка строки уже на это рассчитана.
+ * прохождению (conclusions.responseId). На кадре f36 строк две, и это не
+ * разница разметки, а нехватка сервера: маршрута «заключення → кілька
+ * проходжень» нет — см. отчёт сверки, строка «сервер». Когда он появится,
+ * здесь будет map по прохождениям: разметка строки уже на это рассчитана.
  */
 function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFull }) {
   const { ut } = useLang();
@@ -409,40 +572,35 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
    * Button size="glyph" (см. пояснение там), повторён здесь потому, что
    * ссылка кнопкой быть не может.
    */
-  const addTest = (
-    <Link
-      to="/batteries"
-      aria-label={ut("cn3.addTest")}
-      className={cx(
-        "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
-        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
-        "after:-translate-x-1/2 after:-translate-y-1/2",
-        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-      )}
-    >
-      <PlusGlyph />
-    </Link>
-  );
   return (
     <section aria-labelledby="cn-tests" className="mt-[50px]">
-      <SectionHead id="cn-tests" action={addTest}>
+      <SectionHead id="cn-tests" action={<AddGlyph to="/batteries" label={ut("cn3.addTest")} />}>
         {ut("cn3.tests")}
       </SectionHead>
       {/* тот же шаг 20, что у списка моделей */}
       <ul className="m-0 mt-[30px] flex list-none flex-col gap-[20px] p-0">
         <li className="grid grid-cols-[200px_1fr_205px] items-start gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]">
-          <span className="text-[15px] font-bold leading-[20px] text-primary">{survey.title}</span>
+          {/* тот же двухстрочный межстрочник 20, что у имён моделей выше */}
+          <span className="text-[17px] font-bold leading-[20px] text-primary">{survey.title}</span>
           <span className="text-[13px] leading-[17px] text-muted">{survey.description ?? ""}</span>
           <span className="flex flex-col gap-[6px]">
             {detail.scores.map((s) => (
               <span key={s.scaleId} className="flex flex-col">
-                <span className="text-[13px] leading-[17px] text-muted">
+                {/*
+                  Кадр f36_1: «набраний бал 72» 13/400 серым, подпись диапазона
+                  13/700 фиолетовым. Было 11 — замер не сходился: цифры «72» на
+                  кадре 10 px в высоту, а высота цифры у этой гарнитуры ≈ 0,72
+                  кегля, то есть кегль 13–14; 11 дал бы цифру 8. Межстрочник 19
+                  — базовая линия «72» на 77, базовая линия подписи диапазона
+                  на 95–96.
+                */}
+                <span className="text-[13px] leading-[19px] text-muted">
                   {/* у многошкальной методики балл без имени шкалы ничего не значит */}
                   {detail.scores.length > 1 ? `${s.scaleTitle}: ` : ""}
                   {ut("cn3.scored")} <span className="tabular-nums">{s.rawScore}</span>
                 </span>
                 {s.band ? (
-                  <span className="text-[11px] font-bold leading-[15px] text-primary">{s.band.label}</span>
+                  <span className="text-[13px] font-bold leading-[17px] text-primary">{s.band.label}</span>
                 ) : null}
               </span>
             ))}
@@ -453,12 +611,56 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
   );
 }
 
+/**
+ * «+» у заголовка раздела: ссылка-глиф, одна на «Список примінених
+ * аналітичних моделей» и «Список тестів» — на кадре f36_1 они нарисованы
+ * одинаково. Видимый квадрат 27, нажимается 44 (тот же приём, что у Button
+ * size="glyph"), повторён здесь потому, что ссылка кнопкой быть не может.
+ */
+function AddGlyph({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      aria-label={label}
+      className={cx(
+        "relative inline-flex size-[27px] items-center justify-center rounded-[5px] no-underline",
+        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
+        "after:-translate-x-1/2 after:-translate-y-1/2",
+        "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
+      )}
+    >
+      <PlusGlyph />
+    </Link>
+  );
+}
+
 /** «+» штрихом 5 в квадрате 27 — как нарисован на кадре */
 function PlusGlyph() {
   return (
     <svg viewBox="0 0 27 27" aria-hidden focusable="false" className="size-[27px]" stroke="currentColor" strokeWidth={5} strokeLinecap="butt">
       <path d="M13.5 2v23M2 13.5h23" />
     </svg>
+  );
+}
+
+/**
+ * «Опитувальник спостереження за пацієнтом» — второй протокол кадров f36_2 и
+ * f37_1: тот же каркас «Питання №N — варианты с баллами — Результати», только
+ * заполненный наблюдением специалиста, а не ответами пациента.
+ *
+ * Источника у него нет. Заключение на сервере держится на одном прохождении
+ * (conclusions.responseId), связи «заключення → кілька проходжень» в модели
+ * нет, и собрать второй протокол не из чего. Блок нарисован на своём месте с
+ * кадра и говорит об этом одной строкой: пустое место под заголовком честнее,
+ * чем исчезнувший раздел, — по нему видно, чего экран ждёт от сервера.
+ */
+function Observation() {
+  const { ut } = useLang();
+  return (
+    <section aria-labelledby="cn-observation" className="mt-[50px]">
+      <SectionHead id="cn-observation">{ut("cn3.observation")}</SectionHead>
+      <p className="m-0 mt-[20px] text-[13px] text-muted">{ut("cn3.observationNone")}</p>
+    </section>
   );
 }
 
@@ -487,11 +689,12 @@ function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
 
   return (
     <article aria-labelledby="cn-test" className="mt-[50px]">
-      <h2 id="cn-test" className="m-0 text-[15px] font-bold leading-[20px] text-primary">
+      {/* кадр f36_1: «Тест номер 1» cap 12 px → 17/700, описание под ним 13/400 */}
+      <h2 id="cn-test" className="m-0 text-[17px] font-bold leading-[22px] text-primary">
         {survey.title}
       </h2>
       {survey.description ? (
-        <p className="m-0 mt-[10px] text-[15px] leading-[20px] text-text-2">{survey.description}</p>
+        <p className="m-0 mt-[10px] text-[13px] leading-[17px] text-text-2">{survey.description}</p>
       ) : null}
       <div className="mx-auto mt-[40px] w-full max-w-[700px]">
         {detail.answers.map((a, i) => (
@@ -517,13 +720,26 @@ function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
  * кадре) и для диктора рядом стоит скрытая пометка. Заливка одна не прошла
  * бы правило «не только цветом».
  */
-function Cell({ on, num, children }: { on: boolean; num?: boolean; children: ReactNode }) {
+function Cell({
+  on,
+  num,
+  className,
+  children,
+}: {
+  on: boolean;
+  num?: boolean;
+  /** Место ячейки в строке: зазоры кадра внутри строки разные, см. ResultLadder */
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <span
       className={cx(
         "flex min-h-9 items-center rounded-[5px] text-[17px] leading-[20px] text-primary",
         num ? "justify-center px-[6px] tabular-nums" : "px-[12px] py-[6px]",
-        on ? "bg-primary-soft font-bold" : "border border-border bg-[var(--bg)]",
+        /* рамка невыбранной — рамка ПОЛЯ (#666666), как на кадре, а не общая линия #cccccc */
+        on ? "bg-primary-soft font-bold" : "border border-field-border bg-[var(--bg)]",
+        className,
       )}
     >
       {children}
@@ -573,7 +789,9 @@ export function QuestionSheet({
 
   return (
     <section aria-labelledby={headId} className="mb-[40px]">
-      <h3 id={headId} className="m-0 mb-[14px] text-[18px] font-bold leading-[22px] text-primary">
+      {/* кадр f36_2: от заголовка питання до первой строки варианта 20 px */}
+      {/* 17/700: прописная «П» в «Питання №1» на кадре — 12 px (1040…1051) */}
+      <h3 id={headId} className="m-0 mb-[20px] text-[17px] font-bold leading-[22px] text-primary">
         {ut("cn3.question")}
         {n} {answer.title}
       </h3>
@@ -643,7 +861,8 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
 
   return (
     <section aria-labelledby="cn-results">
-      <h3 id="cn-results" className="m-0 mb-[14px] text-[18px] font-bold leading-[22px] text-primary">
+      {/* 20/700: прописная «Р» в «Результати» на кадре — 14 px (1410…1423) */}
+      <h3 id="cn-results" className="m-0 mb-[14px] text-[20px] font-bold leading-[24px] text-primary">
         {ut("cn3.results")}
       </h3>
       {rows.map(({ score, scale }) => (
@@ -658,8 +877,12 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
                   <li
                     key={b.id}
                     data-hit={hit ? "yes" : "no"}
-                    /* «від [85] до [85] [подпись]» — замер кадра; шаг строк 51 */
-                    className="mb-[15px] grid grid-cols-[auto_85px_auto_85px_1fr] items-center gap-x-[12px] last:mb-0"
+                    /*
+                     * «від [87] до [87] [подпись]» — замер кадра f36_3; шаг строк 51.
+                     * Зазоры не равны: 10 между первыми четырьмя ячейками и 21 перед
+                     * подписью полосы (бокс кончается на 691, текст начинается на 712).
+                     */
+                    className="mb-[15px] grid grid-cols-[auto_87px_auto_87px_1fr] items-center gap-x-[10px] last:mb-0"
                   >
                     <span className="text-[13px] text-muted">{ut("cn3.from")}</span>
                     <Cell on={hit} num>
@@ -669,7 +892,7 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
                     <Cell on={hit} num>
                       {num(b.maxScore)}
                     </Cell>
-                    <Cell on={hit}>
+                    <Cell on={hit} className="ml-[11px]">
                       {b.label}
                       {hit ? <span className="sr-only">, {ut("cn3.hit")}</span> : null}
                     </Cell>

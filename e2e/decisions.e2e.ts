@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { createOwnPatient, login } from "./helpers";
 
 /**
  * Поддержка решений.
@@ -45,9 +45,15 @@ test("правило предлагает, человек решает", async (
   });
   expect(rule.ok()).toBe(true);
 
-  const patients = await (await page.request.get("/api/access/patients", { headers: auth })).json();
-  const person = patients.items[0];
-  test.skip(!person, "в зоне ответственности нет пациентов");
+  /*
+   * Прохождение записывается СВОЕМУ человеку, а не первому в зоне видимости.
+   *
+   * Первый в списке — общий посевной пациент, и замер за него поднимает его
+   * наверх во всех списках, упорядоченных по свежести: дальше по прогону это
+   * ломало проверки, которые берут «первого в списке». Своему человеку
+   * записать некому и нечего испортить.
+   */
+  const person = await createOwnPatient(page, "decisions");
 
   const questions = full!.questions.filter(
     (q: { type: string; options: unknown[] }) => q.type !== "info" && q.options.length,
@@ -55,7 +61,7 @@ test("правило предлагает, человек решает", async (
   await page.request.post(`/api/surveys/${target!.id}/responses`, {
     headers: auth,
     data: {
-      onBehalfOf: person!.id,
+      onBehalfOf: person.id,
       startedAt: new Date(Date.now() - 60_000).toISOString(),
       durationMs: 60_000,
       events: [],

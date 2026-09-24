@@ -1,10 +1,10 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
-import { api } from "./api";
+import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { api, tokenStore } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
-import { Topbar } from "./shell/Topbar";
+import { Topbar, barKind } from "./shell/Topbar";
 import { Button, Tag } from "./ui/primitives";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
@@ -45,7 +45,8 @@ const Join = lazy(() => import("./pages/Join"));
 const GoogleReturn = lazy(() => import("./pages/GoogleReturn"));
 const Norms = lazy(() => import("./pages/Norms"));
 const CaseSummaryPage = lazy(() => import("./pages/CaseSummary"));
-const PatientCard = lazy(() => import("./pages/PatientCard"));
+const CaseCard = lazy(() => import("./pages/CaseCard"));
+const PatientCard = lazy(() => import("./pages/patientCard/PatientCard"));
 const Start = lazy(() => import("./pages/Start"));
 const Account = lazy(() => import("./pages/Account"));
 /* кабинет пациента: отдельная оболочка, а не консоль с урезанным меню */
@@ -55,11 +56,21 @@ const PatientTests = lazy(() => import("./patient/Tests"));
 const PatientBooking = lazy(() => import("./patient/Booking"));
 const PatientProfile = lazy(() => import("./patient/Profile"));
 const Runner = lazy(() => import("./patient/Runner"));
+/*
+ * Лендинг «Про кампанію» (кадр f00) — то, что видит гость на корне до входа.
+ * Догружается: сотрудник, у которого есть сессия, его не увидит никогда, а
+ * вход остаётся в общей сборке — через него проходят каждый день.
+ */
+const Landing = lazy(() => import("./pages/public/Landing"));
 
-/** Прежний адрес сводки — теперь вкладка «Обзор» карты */
-function RedirectToCard() {
+/**
+ * Прежние адреса клинической карты — /summary, /dynamics, /timeline — ведут
+ * на неё же по новому адресу /patients/:id/case…: на /summary ссылается
+ * очередь работы с сервера (routes/worklist.ts), на два других — закладки.
+ */
+function RedirectToCase({ tab = "" }: { tab?: string }) {
   const { userId } = useParams<{ userId: string }>();
-  return <Navigate to={`/patients/${userId}`} replace />;
+  return <Navigate to={`/patients/${userId}/case${tab}`} replace />;
 }
 const ReferralsPage = lazy(() => import("./pages/Referrals"));
 const ApiDocs = lazy(() => import("./pages/ApiDocs"));
@@ -69,6 +80,14 @@ const TodayPage = lazy(() => import("./pages/Today"));
 const SchedulePage = lazy(() => import("./pages/Schedule"));
 const VisitPage = lazy(() => import("./pages/Visit"));
 const MessagesPage = lazy(() => import("./pages/Messages"));
+/*
+ * «Повідомлення» верхней полосы — розсилки (кадры f09/f16/f22): список,
+ * форма нового, форма существующего с меню-шестерни. Переписка пациент ↔
+ * специалист (MessagesPage выше) осталась на /messages и в бургере под
+ * именем «Листування»: это разные вещи — разговор двоих и письмо многим.
+ */
+const MailingList = lazy(() => import("./pages/messages/MailingList"));
+const MailingEditor = lazy(() => import("./pages/messages/MailingEditor"));
 const Cohorts = lazy(() => import("./pages/Cohorts"));
 const SearchPage = lazy(() => import("./pages/Search"));
 const UiKit = lazy(() => import("./pages/UiKit"));
@@ -133,6 +152,8 @@ function StartScreen({ prefs }: { prefs: WorkspacePrefs | null }) {
 
 export default function App() {
   const { user, loading, logout, refreshUser, can } = useAuth();
+  /* раздел экрана нужен полосе: её состав кадры различают и по нему, не только по должности */
+  const { pathname } = useLocation();
   /* отказ отвязки должен быть виден: см. кнопку ниже */
   const { run } = useAction();
   /*
@@ -243,9 +264,46 @@ export default function App() {
    * человек нажал переключатель: выбор — это действие, а не состояние.
    * Плотность и движение оставлены как были, они не меняли умолчания.
    */
+  /*
+   * Пока никто не вошёл — светлая, и не по выбору.
+   *
+   * Лендинг и вход (кадры f00/f01) нарисованы заказчиком одним листом:
+   * сиреневые волны, силуэт с галактикой, фиолетовый текст. Тёмная тема —
+   * настройка рабочего места сотрудника, а до входа неизвестно, чьё это
+   * рабочее место: у общего компьютера в кабинете в хранилище лежит выбор
+   * того, кто сидел последним. Осветлённый фиолетовый тёмной земли поверх
+   * сиреневой картинки читался бы плохо и не был бы тем кадром. Выбор
+   * человека при этом не трогается: после входа возвращается его тема.
+   *
+   * Условие — «гость ли это», а не «есть ли профиль». Пока летит GET /me,
+   * профиля ещё нет, и признак `user` держал светлую тему всю длительность
+   * запроса: сотрудник, работающий в тёмной, получал при каждой перезагрузке
+   * любого экрана белую вспышку во весь экран (включая заглушку `loading`
+   * ниже по файлу) и возврат в тёмную после ответа.
+   *
+   * «Гость» читается по токену, а не по `loading`. С `loading` вспышка
+   * меняла бы сторону: у посетителя без токена первый проход эффектов
+   * застаёт `loading === true` (эффект App выполняется раньше эффекта
+   * AuthProvider — дети раньше родителей), и лендинг успел бы мигнуть
+   * тёмной, если она выбрана на этой машине. Токен известен синхронно и до
+   * первого кадра, и обе стороны вспышки закрываются одним признаком.
+   * `loading` остаётся в зависимостях: протухший токен чистится молча, и
+   * `user` при этом не меняется — пересчитать тему больше не с чего.
+   *
+   * Приглашение (/join/:token) и возврат от Google — не кадры f00/f01, а
+   * обычные экраны консоли, и они остаются в выбранной теме. Путь читается
+   * из window.location, а не из useLocation: тем же способом читает его
+   * гейт публичных страниц ниже по файлу, и два решения об одном и том же
+   * должны опираться на один источник — иначе они разойдутся.
+   */
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const publicFrame =
+      !user &&
+      !tokenStore.get() &&
+      !location.pathname.startsWith("/join/") &&
+      !location.pathname.startsWith("/auth/google");
+    document.documentElement.dataset.theme = publicFrame ? "light" : theme;
+  }, [theme, user, loading]);
 
   const chooseTheme = (next: Theme) => {
     setTheme(next);
@@ -346,8 +404,15 @@ export default function App() {
    * в приложении нет. Ни один Route их не обслуживал, и пропуск мимо гейта
    * означал только одно: неизвестный путь показывал пустоту вместо экрана
    * входа.
+   *
+   * «/auth/google» назван в условии, а не только в Route ниже. Сервер после
+   * согласия Google приводит браузер сюда (routes/auth.ts: redirect на
+   * `${consoleUrl}/auth/google`), но в гейт пускался один «/join/», и до
+   * Route дело не доходило: гость с кодом в адресе попадал в общий перехват
+   * «*» и видел форму входа, а код так и оставался неразменянным на токены.
+   * Вход через Google был мёртв ещё до снятия его кнопки с кадра f01.
    */
-  if (location.pathname.startsWith("/join/")) {
+  if (location.pathname.startsWith("/join/") || location.pathname === "/auth/google") {
     return (
       <Suspense fallback={<Loading />}>
         <Routes>
@@ -360,7 +425,23 @@ export default function App() {
   }
 
   if (loading) return <div style={{ padding: 40 }}><Loading rows={3} /></div>;
-  if (!user) return <Login />;
+  /*
+   * Гость: корень — лендинг, «/login» — вход, любой другой адрес — тоже вход,
+   * с сохранением адреса: после входа консоль откроется на том, что человек
+   * набрал или получил ссылкой, — так было и до лендинга. Отдельного
+   * перенаправления на «/login» нет намеренно: оно добавляло бы шаг в историю,
+   * и «назад» после входа возвращало бы на форму.
+   */
+  if (!user) {
+    return (
+      <Suspense fallback={<Loading rows={3} />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </Suspense>
+    );
+  }
 
   /*
    * Пациент попадает в свой кабинет, а не в консоль специалиста.
@@ -526,6 +607,17 @@ export default function App() {
         counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
         isSuper={isSuper}
         canAssign={canAssign}
+        /*
+         * Состав полосы — по рабочему месту вошедшего И по разделу экрана:
+         * кадры f44/f45/f51/f52 рисуют у суперадміна «Лікарі» там, где
+         * f47–f50 рисуют «Адміністратори» (см. barKind в Topbar.tsx).
+         *
+         * «Лечит ли» — право видеть пациентов. Специалист лечит по классу
+         * записи: справочника прав у него нет вовсе (auth.tsx), и can ему
+         * всегда отвечает «нет» — спрашивать его о patients.read значило бы
+         * отобрать у него полосу целиком.
+         */
+        bar={barKind(user, user.role !== "admin" || can("patients.read"), pathname)}
         hidden={user.workspace?.railHidden ?? []}
         onSearch={() => setPaletteOpen(true)}
         theme={theme}
@@ -592,6 +684,16 @@ export default function App() {
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
           <Route path="/responses/:id/conclusion" element={<ConclusionPage />} />
+          {/*
+            Тот же экран заключения, но с инструментами черновика в меню
+            шестерёнки: «Зібрати з результатів», библиотека формулировок,
+            история версий, «Зберегти чернетку». На кадре f36 в раскрытом
+            меню ровно два пункта — «Зберегти як PDF» и «Надіслати поштою»,
+            — и четырём инструментам редактора там места нет. Отдельный
+            адрес, а не вложенный пункт: пункт «Чернетка ▸» был бы третьим
+            на кадре, которого кадр не рисует.
+          */}
+          <Route path="/responses/:id/conclusion/draft" element={<ConclusionPage />} />
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
           <Route path="/surveys/:id/norms" element={<Norms />} />
           <Route path="/surveys/:id/blank" element={<BlankForm />} />
@@ -615,24 +717,32 @@ export default function App() {
           <Route path="/analytics/:id" element={<AnalyticsModel />} />
           <Route path="/patients" element={<PatientList />} />
           {/*
-            Карта пациента — один экран с вкладками. Вкладка стоит в адресе:
-            карту пересылают коллеге и кладут в закладку, и открываться она
-            должна на том, что человек смотрел.
+            Карточка пациента по кадру f19 заказчика: персональные данные,
+            «Тести», «Групи», «Заключення». На неё ведут все ссылки на
+            человека — из списка, групп, поиска, дня приёма.
           */}
-          <Route path="/patients/:userId" element={<PatientCard />}>
+          <Route path="/patients/:userId" element={<PatientCard />} />
+          {/*
+            Клиническая карта — один экран с вкладками, под своим сегментом
+            /case: адрес человека занят карточкой кадра, а сводка, динамика и
+            хронология с него не убраны (дверь — шестерёнка в шапке карточки).
+            Вкладка стоит в адресе: карту пересылают коллеге и кладут в
+            закладку, и открываться она должна на том, что человек смотрел.
+          */}
+          <Route path="/patients/:userId/case" element={<CaseCard />}>
             <Route index element={<CaseSummaryPage />} />
             <Route path="dynamics" element={<PatientDynamics />} />
             <Route path="timeline" element={<Timeline />} />
           </Route>
           {/*
-            Прежний адрес сводки остаётся рабочим: на него ссылается очередь
-            работы с сервера (routes/worklist.ts) и чьи-то закладки. Ломать
-            их ради чистоты адресов незачем — перенаправление стоит строку.
+            Прежние адреса остаются рабочими: на /summary ссылается очередь
+            работы с сервера (routes/worklist.ts), на /dynamics и /timeline —
+            чьи-то закладки. Ломать их ради чистоты адресов незачем —
+            перенаправление стоит строку.
           */}
-          <Route
-            path="/patients/:userId/summary"
-            element={<RedirectToCard />}
-          />
+          <Route path="/patients/:userId/summary" element={<RedirectToCase />} />
+          <Route path="/patients/:userId/dynamics" element={<RedirectToCase tab="/dynamics" />} />
+          <Route path="/patients/:userId/timeline" element={<RedirectToCase tab="/timeline" />} />
           <Route path="/referrals" element={<ReferralsPage />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/console" element={<Console />} />
@@ -645,6 +755,10 @@ export default function App() {
             <Route path="/visit/:id" element={<VisitPage />} />
             <Route path="/messages" element={<MessagesPage />} />
             <Route path="/messages/:id" element={<MessagesPage />} />
+            {/* `new` объявлен раньше `:id` для читающего: маршрутизатор и так ставит точный сегмент выше */}
+            <Route path="/mailings" element={<MailingList />} />
+            <Route path="/mailings/new" element={<MailingEditor />} />
+            <Route path="/mailings/:id" element={<MailingEditor />} />
             <Route path="/cohorts" element={<Cohorts />} />
             <Route path="/search" element={<SearchPage />} />
           {/*
@@ -655,6 +769,13 @@ export default function App() {
           */}
           <Route path="/patient-groups" element={<PatientGroups />} />
           <Route path="/patient-groups/:id" element={<PatientGroupCard />} />
+          {/*
+            Карточка группы с открытым окном правки названия и описания: на
+            кадре f14 в строке заголовка справа чисто, глифу-карандашу там
+            места нет, а PATCH на сервере есть. Тот же экран, отдельный
+            адрес — окно открывается сразу.
+          */}
+          <Route path="/patient-groups/:id/edit" element={<PatientGroupCard />} />
           <Route path="/groups" element={<Groups />} />
           {/*
             Учётки и текст согласия — два отдельных маршрута, а не два экрана

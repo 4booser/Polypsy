@@ -104,17 +104,19 @@ async function ensurePerson(p: Person): Promise<{ id: string; created: boolean }
   await db.insert(users).values({
     id,
     email,
+    // дата рождения шифруется вместе с ФИО, а не отдельным полем ниже:
+    // наполнение заводит обычные учётные записи, и хранятся они как боевые
     ...encryptPersonFields({
       firstName: p.firstName,
       lastName: p.lastName,
       middleName: p.middleName,
+      birthDate: `${p.birthYear}-0${1 + Math.floor(r() * 9)}-1${Math.floor(r() * 9)}`,
     }),
     phoneEnc: encryptField(phone),
     phoneIndex: phoneFingerprint(normalizePhone(phone)!),
     passwordHash: await hashPassword(DEMO_PASSWORD),
     role: "user",
     sex: p.sex,
-    birthDate: `${p.birthYear}-0${1 + Math.floor(r() * 9)}-1${Math.floor(r() * 9)}`,
     unit: p.unit,
   } as never);
   return { id, created: true };

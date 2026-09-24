@@ -4,6 +4,7 @@ import { Loc, Toggle, useEditLang } from "./fields";
 import { TYPES, newUid, type Draft, type DraftOption, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
+import { IconCopy, IconDisclosure } from "../../ui/glyphs";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 
 /**
@@ -107,8 +108,30 @@ export function Questions({
         </div>
       ) : null}
 
+      {/*
+        Пустой список на кадре f24_1 — это НЕ строка «питань поки немає»,
+        а одно пустое поле 36px во всю ширину колонки: первый пункт начинают
+        набирать прямо в нём. Пункт заводится по выходу из поля (blur/Enter),
+        а не на каждую букву: иначе первая же буква пересобрала бы список и
+        отобрала фокус у того, кто печатает.
+      */}
       {draft.questions.length === 0 && !bulk ? (
-        <p className="m-0 text-[13px] text-muted">{ut("cq.noQuestions")}</p>
+        <FirstQuestion
+          onSeed={(title) =>
+            setDraft((d) => ({
+              ...d,
+              questions: [
+                {
+                  uid: newUid(),
+                  type: (d.mode ?? "specific") === "specific" ? "yesno" : "single",
+                  title,
+                  required: true,
+                  options: (d.mode ?? "specific") === "specific" ? structuredClone(d.answers ?? []) : [],
+                },
+              ],
+            }))
+          }
+        />
       ) : null}
 
       {draft.questions.length ? (
@@ -131,22 +154,38 @@ export function Questions({
                   aria-controls={bodyId}
                   onClick={() => toggle(q, i)}
                   className={cx(
-                    "flex w-full items-center gap-[14px] border-0 bg-transparent px-[20px] py-[12px] text-left",
+                    /*
+                      Кадр f12: бейдж 36, зазор 15, шаг строки 73 (волосяные
+                      линии на 92, 165, 238, 312, 385, 459 — по 73). Поля по
+                      вертикали 15/14, а не 17/17: описание набрано тем же
+                      кеглем, что и заголовок (см. ниже), обе строки идут
+                      межстрочником 22, и 15 + 22 + 22 + 14 как раз дают 73.
+                    */
+                    "flex w-full items-center gap-[15px] border-0 bg-transparent px-[15px] pb-[14px] pt-[15px] text-left",
                     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
                   )}
                 >
                   <span
                     aria-hidden
-                    className="flex size-[38px] shrink-0 items-center justify-center rounded-[5px] border border-border text-[17px] font-bold text-text"
+                    className="flex size-9 shrink-0 items-center justify-center rounded-[5px] border border-border text-[17px] font-bold text-text"
                   >
                     {i + 1}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cx("block truncate text-[17px] font-bold", isOpen ? "text-muted" : "text-primary")}>
+                    {/* шаг строки кадра f12 — 73: 15 сверху + 22 + 22 текста + 14 снизу */}
+                    <span className={cx("block truncate text-[17px] font-bold leading-[22px]", isOpen ? "text-muted" : "text-primary")}>
                       <span className="sr-only">{i + 1}. </span>
                       {text(q.title) || ut("co.questions")}
                     </span>
-                    <span className={cx("block truncate text-[13px]", isOpen ? "text-faint" : "text-muted")}>
+                    {/*
+                      Описание набрано 17, а не 13. На кадре f12 рост строчных
+                      у «короткий опис питання» — 9 px (строки 64–72 вырезки),
+                      ровно как у имени теста 17/700 в каталоге; заголовок
+                      «Питання» даёт cap 12 — тот же кегль 17. Отличаются они
+                      начертанием и цветом, а не размером. Базовые линии двух
+                      строк стоят на 48 и 72 — межстрочник 22 у обеих.
+                    */}
+                    <span className={cx("block truncate text-[17px] leading-[22px]", isOpen ? "text-faint" : "text-muted")}>
                       {text(q.help) || ut("cn.shortDescription")}
                     </span>
                   </span>
@@ -185,7 +224,7 @@ export function Questions({
                       <span className="flex-1" />
                       <Button variant="quiet" size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={ut("cq.moveUp")} title={ut("cq.moveUp")}>↑</Button>
                       <Button variant="quiet" size="sm" onClick={() => move(i, 1)} disabled={i === draft.questions.length - 1} aria-label={ut("cq.moveDown")} title={ut("cq.moveDown")}>↓</Button>
-                      <Button variant="quiet" size="sm" onClick={() => duplicate(i)} aria-label={ut("cq.duplicate")} title={ut("cq.duplicate")}>⧉</Button>
+                      <Button variant="quiet" size="sm" onClick={() => duplicate(i)} aria-label={ut("cq.duplicate")} title={ut("cq.duplicate")}><IconCopy /></Button>
                       <Button
                         variant="danger"
                         size="sm"
@@ -236,18 +275,57 @@ export function Questions({
 }
 
 /**
- * Ответы одного вопроса с баллом — комплексный тест (f23): широкое поле
- * текста, узкое поле балла, «−» у строки и «+» после последней.
+ * Первый пункт пустого теста — одно поле 36px во всю колонку (кадр f24_1).
  *
- * «Критичний» — отметка варианта, поднимающего тревогу немедленно. На кадре
- * её нет, но это не украшение, а защита пациента (options.risk_flag), и
- * снять её с формы значило бы завести тесты, где такой ответ проходит молча.
+ * Текст держится здесь, а не в черновике: пункт заводится один раз, по выходу
+ * из поля. Пустое поле пункта не заводит — иначе случайное нажатие мимо
+ * оставляло бы в тесте безымянный пункт.
+ */
+function FirstQuestion({ onSeed }: { onSeed: (title: Record<string, string>) => void }) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const [text, setText] = useState("");
+  const seed = () => {
+    if (text.trim()) onSeed({ uk: "", ru: "", [lang]: text });
+  };
+  return (
+    <Field label={ut("cn.questionText")}>
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={seed}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            seed();
+          }
+        }}
+      />
+    </Field>
+  );
+}
+
+/**
+ * Ответы одного вопроса с баллом — комплексный тест (кадр f23_2): широкое поле
+ * текста, узкое поле балла, «+» справа от ПОСЛЕДНЕЙ строки. Больше в строке
+ * на кадре нет ничего.
+ *
+ * Что убрано с глаз и куда. «Критичний» (options.risk_flag — вариант,
+ * поднимающий тревогу немедленно) и удаление варианта на кадре не нарисованы,
+ * но это не украшения: без первого заводятся тесты, где такой ответ проходит
+ * молча, без второго не убрать лишний вариант. Оба ушли в свёрнутый блок
+ * «Налаштування варіантів» под списком — на том же экране, одним нажатием.
  */
 function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (o: DraftOption[]) => void }) {
   const { ut } = useLang();
   const lang = useEditLang();
   const set = (k: number, patch: Partial<DraftOption>) => onChange(options.map((o, i) => (i === k ? { ...o, ...patch } : o)));
   const add = () => onChange([...options, { text: { uk: "", ru: "" }, score: 0 }]);
+  const addButton = (
+    <Button size="glyph" variant="ghost" aria-label={ut("cn.addAnswer")} title={ut("cn.addAnswer")} onClick={add}>
+      +
+    </Button>
+  );
   return (
     <div className="mt-[15px]">
       {/* h3 под h2 раздела «Питання»: уровень не пропускается, как и в карточке шкалы */}
@@ -261,21 +339,41 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
             <Field label={ut("cq.score")} inline className="w-[84px] shrink-0">
               <Input type="number" className="text-center" value={o.score ?? 0} onChange={(e) => set(k, { score: Number(e.target.value) })} />
             </Field>
-            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-muted">
-              <input type="checkbox" className="size-4" checked={!!o.riskFlag} onChange={(e) => set(k, { riskFlag: e.target.checked })} />
-              {ut("mark.critical")}
-            </label>
-            <Button size="glyph" variant="ghost" aria-label={`${ut("cn.removeOption")}: ${o.text[lang] ?? k + 1}`} onClick={() => onChange(options.filter((_, i) => i !== k))}>
-              −
-            </Button>
+            {/* место под «+» держится и у непоследних строк: иначе поле балла последней строки было бы у́же соседних */}
+            {k === options.length - 1 ? addButton : <span aria-hidden className="size-[27px] shrink-0" />}
           </div>
         ))}
-        <div>
-          <Button size="glyph" variant="ghost" aria-label={ut("cn.addAnswer")} title={ut("cn.addAnswer")} onClick={add}>
-            +
-          </Button>
-        </div>
+        {options.length === 0 ? <div>{addButton}</div> : null}
       </div>
+      {options.length ? (
+        <details className="group mt-[8px]">
+          <summary className="cursor-pointer list-none text-[13px] font-bold text-primary [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="mr-1 inline-flex transition-transform group-open:rotate-90">
+              <IconDisclosure />
+            </span>
+            {ut("cn.optionSettings")}
+          </summary>
+          <div className="flex flex-col gap-[8px] pt-[12px]">
+            {options.map((o, k) => (
+              <div key={k} className="flex items-center gap-[10px]">
+                <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{o.text[lang] || `${ut("cn.answerText")} ${k + 1}`}</span>
+                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-muted">
+                  <input type="checkbox" className="size-4" checked={!!o.riskFlag} onChange={(e) => set(k, { riskFlag: e.target.checked })} />
+                  {ut("mark.critical")}
+                </label>
+                <Button
+                  size="glyph"
+                  variant="ghost"
+                  aria-label={`${ut("cn.removeOption")}: ${o.text[lang] ?? k + 1}`}
+                  onClick={() => onChange(options.filter((_, i) => i !== k))}
+                >
+                  −
+                </Button>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { IconClose } from "./glyphs";
 import type { Resource } from "../useResource";
 import {
   applyFacets,
@@ -477,7 +478,7 @@ export function Modal({
       >
         <div className="card-head">
           <h2>{title}</h2>
-          <button className="ghost" onClick={onClose} aria-label={ut("bp.close")}>✕</button>
+          <button className="ghost" onClick={onClose} aria-label={ut("bp.close")}><IconClose /></button>
         </div>
         {children}
       </div>

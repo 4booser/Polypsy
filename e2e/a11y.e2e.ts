@@ -1,6 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { ACCOUNTS, login } from "./helpers";
+import {
+  apiToken,
+  auth,
+  createOwnAppointment,
+  createVisiblePatient,
+  dayRow,
+  login,
+} from "./helpers";
 
 /**
  * Доступность проверяется автоматически там, где это возможно: контраст,
@@ -103,132 +110,72 @@ async function violationsOf(page: Page, screen: string) {
  * «у нас же есть демо-случаи» — это надежда, а не утверждение.
  */
 
+/**
+ * Свой открытый случай риска — на стенде он есть всегда, потому что его
+ * заводит сама проверка.
+ *
+ * Прежняя редакция заводила случай, ТОЛЬКО если открытых не осталось ни
+ * одного. Это и есть зависимость от соседей: разбор случаев (triage.e2e.ts)
+ * закрывает по случаю за прогон, а сколько их останется в зоне ИМЕННО
+ * психолога Ивановой — вопрос к посеву и к тому, кто прошёл раньше. Счёт при
+ * этом вёлся от суперадмина, который видит все; сводка же рисует полосу по
+ * своей зоне, и «случаи есть» у одного не означало «полоса есть» у другого.
+ *
+ * Теперь случай заводится один раз на файл и заведомо свой: человек
+ * регистрируется и сдаёт методику приёмного отделения, отметив критический
+ * пункт. Случай открывает код разбора, как в бою; вставлять строку в таблицу
+ * значило бы проверять вёрстку экрана, которого в реальности не бывает.
+ */
+let ownCase: Promise<void> | null = null;
+
+async function seedOwnCase(page: Page): Promise<void> {
+  const patient = await createVisiblePatient(page, "a11y-case", { risky: true });
+  const staff = auth(await apiToken(page, "psy"));
+  const open = await page.request.get("/api/alert-cases?status=open", { headers: staff });
+  const body = (await open.json()) as { total?: number; items?: unknown[] };
+  expect(
+    Number(body.total ?? body.items?.length ?? 0),
+    `«${patient.lastName}» сдал методику с критическим пунктом, а случай у психолога не открылся`,
+  ).toBeGreaterThan(0);
+}
+
+/**
+ * Один посев на файл: случай открывается на человека, и повторная сдача той
+ * же методики тем же человеком нового случая не даёт. Обещание запоминается
+ * целиком, а не флагом: восемь проверок идут подряд, и вторая не должна
+ * начинать сканировать, пока первая ещё заводит данные.
+ */
+function ensureOpenCase(page: Page): Promise<void> {
+  ownCase ??= seedOwnCase(page);
+  return ownCase;
+}
+
 /*
- * Токены переиспользуются между тестами файла.
+ * Заголовок дожидается КАЖДЫЙ гостевой экран, и это не перестраховка.
  *
- * Пароли хешируются argon2 — это сотни миллисекунд на вход по замыслу, и
- * лишний вход на каждую проверку складывался в заметное время на прогоне из
- * тридцати двух. Смоук идёт в один поток, так что кэш на модуль безопасен.
+ * Оба экрана грузятся отдельным куском (lazy в App.tsx), и до его приезда в
+ * разметке стоит заглушка ожидания — без единого заголовка. Проверка,
+ * сканирующая сразу после goto, объявляла нарушением «на странице нет h1»
+ * ровно то место, где заголовок есть, — и объявляла не всегда, а когда
+ * сервер отвечал чуть медленнее, то есть в зависимости от того, сколько
+ * работы сделали соседние файлы до неё. Такое падение учит перезапускать, не
+ * читая.
  */
-const tokens = new Map<string, string>();
-
-async function apiToken(page: Page, who: keyof typeof ACCOUNTS): Promise<string> {
-  const cached = tokens.get(who);
-  if (cached) return cached;
-  const res = await page.request.post("/api/auth/login", { data: ACCOUNTS[who] });
-  expect(res.ok(), `не удалось войти по API как ${who}`).toBe(true);
-  const token = (await res.json()).token as string;
-  tokens.set(who, token);
-  return token;
-}
-
-/**
- * На стенде есть хотя бы один открытый случай риска.
- *
- * Если нет — заводится тем же путём, каким он появляется в бою: пациент сдаёт
- * методику, отметив критический вариант ответа. Вставлять строку в таблицу
- * напрямую было бы проще и неправильно: случай открывает код разбора, и
- * запись мимо него проверяла бы вёрстку экрана, которого в реальности не
- * бывает.
- */
-type Option = { id: string; riskFlag?: boolean };
-type Question = { id: string; type: string; required: boolean; options?: Option[] };
-
-/**
- * Человек, заведённый ради посева случая.
- *
- * Свой на каждый прогон: общий посевной пациент участвует в чужих проверках,
- * и любая запись за него сдвигает их. Заводится настоящей регистрацией, а не
- * записью в базу: случай открывает код разбора, и обойти его значило бы
- * проверять экран, которого в жизни не бывает.
- */
-let seededPatient: string | null = null;
-
-async function seedPatientToken(page: Page): Promise<string> {
-  if (seededPatient) return seededPatient;
-  const email = `a11y-seed-${Date.now()}@test.local`;
-  const res = await page.request.post("/api/auth/register", {
-    data: { email, password: "a11y-seed-12345", firstName: "Посев", lastName: "Доступности" },
-  });
-  if (!res.ok()) throw new Error(`посев: не удалось завести пациента — ${res.status()} ${await res.text()}`);
-  seededPatient = (await res.json()).token as string;
-  return seededPatient;
-}
-
-async function ensureOpenCase(page: Page): Promise<void> {
-  const staff = { Authorization: `Bearer ${await apiToken(page, "superadmin")}` };
-  const countOpen = async () => {
-    const r = await (await page.request.get("/api/alert-cases?status=open", { headers: staff })).json();
-    return Number(r.total ?? r.items?.length ?? 0);
-  };
-  if ((await countOpen()) > 0) return;
-
-  const surveys = await (await page.request.get("/api/surveys", { headers: staff })).json();
-  const refusals: string[] = [];
-  for (const s of surveys.items as { id: string; status: string; title: string }[]) {
-    if (s.status !== "published") continue;
-    const full = await (await page.request.get(`/api/surveys/${s.id}`, { headers: staff })).json();
-    const questions: Question[] = full.questions ?? [];
-
-    /*
-     * Методика должна быть такой, которую пациент сдаёт целиком сам.
-     *
-     * Первая редакция посева отправляла ОДИН ответ — тот, что открывает
-     * случай, — и сервер отвечал «Не дано відповідь на обов’язкове питання»,
-     * а на шкале SAD PERSONS ещё и «методику заповнює фахівець». Посев молча
-     * не срабатывал, и проверка шла дальше по пустому экрану — то есть
-     * ровно то, ради чего он и заводился.
-     */
-    if (full.administration !== "self") continue;
-    const risky = questions.find((q) => q.options?.some((o) => o.riskFlag));
-    if (!risky) continue;
-    if (questions.some((q) => q.required && !q.options?.length)) continue;
-
-    const answers = questions
-      .filter((q) => q.options?.length)
-      .map((q) => {
-        const pick = q === risky ? q.options!.find((o) => o.riskFlag)! : q.options![0]!;
-        return { questionId: q.id, optionIds: [pick.id] };
-      });
-
-    /*
-     * Сдаёт ОТДЕЛЬНЫЙ человек, заведённый для посева, а не общий посевной
-     * пациент.
-     *
-     * Первая редакция сдавала за patient1 — и тот всплывал наверх во всех
-     * списках, упорядоченных по свежести замера. Дальше по прогону это
-     * ломало проверки, которые берут «первого в списке»: в двух прогонах
-     * подряд падали разные тесты, оба проходили в одиночку, и выглядело это
-     * регрессией, которой не было.
-     *
-     * Проверка доступности не имеет права менять то, что видят остальные.
-     */
-    const patient = { Authorization: `Bearer ${await seedPatientToken(page)}` };
-    const res = await page.request.post(`/api/surveys/${s.id}/responses`, {
-      headers: patient,
-      data: {
-        answers,
-        startedAt: new Date(Date.now() - 60_000).toISOString(),
-        durationMs: 60_000,
-        status: "completed",
-        events: [],
-      },
-    });
-    if (res.ok()) {
-      // случай открывает код разбора, а не этот запрос: убеждаемся, что открылся
-      expect(await countOpen(), `«${s.title}» сдана, но случай не открылся`).toBeGreaterThan(0);
-      return;
-    }
-    refusals.push(`«${s.title}» → ${res.status()} ${(await res.text()).slice(0, 120)}`);
-  }
-  throw new Error(
-    `на стенде нет открытых случаев и не удалось завести ни одного: ${refusals.join("; ") || "нет подходящей методики с критическим пунктом"}`,
-  );
+async function guestScreen(page: Page, path: string): Promise<string[]> {
+  await page.goto(path);
+  await expect(
+    page.locator("h1").first(),
+    `на экране ${path} так и не появился заголовок — проверять доступность нечего`,
+  ).toBeVisible();
+  return violationsOf(page, path);
 }
 
 test("экран входа доступен", async ({ page }) => {
-  await page.goto("/");
-  expect(await violationsOf(page, "/login")).toEqual([]);
+  expect(await guestScreen(page, "/login")).toEqual([]);
+});
+
+test("лендинг доступен", async ({ page }) => {
+  expect(await guestScreen(page, "/")).toEqual([]);
 });
 
 // обе темы: тёмная по умолчанию, светлая — та, в которой работают при дневном
@@ -424,10 +371,13 @@ for (const theme of ["dark", "light"] as const) {
  */
 for (const theme of ["dark", "light"] as const) {
   test(`экран приёма доступен, тема ${theme}`, async ({ page }) => {
+    // приём свой: посевные к этому моменту могли быть уже приняты соседями, и
+    // тогда «первая ссылка на приём» вела бы на экран другого состояния
+    const own = await createOwnAppointment(page, "a11y-visit");
     await page.addInitScript((t) => localStorage.setItem("quizzy.theme.v2", t), theme);
     await login(page, "psy");
     await page.goto("/today");
-    await page.locator('a[href^="/visit/"]').first().click();
+    await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
     await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
     await page.waitForTimeout(600);
     expect(await violationsOf(page, "/visit/:id")).toEqual([]);
@@ -443,6 +393,17 @@ test("день отмечается с клавиатуры, без мыши", a
    * Проверяется путь целиком: дойти до кнопки табуляцией и нажать её
    * пробелом. Клик мышью по той же кнопке этого бы не доказал.
    */
+  /*
+   * Приём свой, и проверка идёт по СВОЕЙ строке.
+   *
+   * Ждущих приёмов в посеве два, и на них же рассчитывают сценарии приёма
+   * (reception.e2e.ts). Кто останется без кнопки «Пришёл», решал порядок
+   * файлов. Хуже того, «Начать» проверялось по всему экрану — а такая кнопка
+   * стоит и у соседней строки, принятой посевом: проверка зеленела бы, даже
+   * если бы пробел до кнопки не дошёл.
+   */
+  const own = await createOwnAppointment(page, "a11y-keyboard");
+
   await login(page, "psy");
   await page.goto("/today");
   /*
@@ -451,18 +412,20 @@ test("день отмечается с клавиатуры, без мыши", a
    */
   await page.getByRole("link", { name: "Сегодня" }).waitFor();
 
-  const came = page.getByRole("button", { name: "Пришёл" }).first();
+  const row = dayRow(page, own.id);
+  const came = row.getByRole("button", { name: "Пришёл", exact: true });
   await expect(came).toBeVisible();
 
   // до кнопки добираемся табуляцией, а не фокусируем её напрямую:
   // focus() доказал бы, что кнопка принимает фокус, но не что до неё дойти
   let reached = false;
-  for (let i = 0; i < 60 && !reached; i += 1) {
+  // шагов с запасом: своя строка стоит в конце дня, и до неё дальше, чем до первой
+  for (let i = 0; i < 200 && !reached; i += 1) {
     await page.keyboard.press("Tab");
     reached = await came.evaluate((el) => el === document.activeElement);
   }
   expect(reached, "до кнопки «Пришёл» нельзя добраться табуляцией").toBe(true);
 
   await page.keyboard.press("Space");
-  await expect(page.getByRole("button", { name: "Начать" }).first()).toBeVisible();
+  await expect(row.getByRole("button", { name: "Начать" })).toBeVisible();
 });

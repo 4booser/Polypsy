@@ -13,7 +13,15 @@ import { ReferralForm } from "./CaseSummary";
 import { useResource } from "../useResource";
 
 /**
- * Карта пациента.
+ * Клиническая карта пациента: сводка, динамика, хронология.
+ *
+ * Адрес — /patients/:id/case. Сам /patients/:id занят карточкой по кадру
+ * f19 заказчика (pages/patientCard/PatientCard.tsx): персональные данные,
+ * «Тести», «Групи», «Заключення». Эта карта с кадра не убрана намеренно —
+ * план безопасности, записи приёма, направления и графики с RCI живут
+ * только здесь, и терять их ради буквы макета нельзя; дверь сюда — меню за
+ * шестерёнкой в шапке карточки, прежние адреса (/summary, /dynamics,
+ * /timeline) перенаправляются (App.tsx).
  *
  * До этого один человек жил на трёх экранах: `/patients/:id` — динамика,
  * `/patients/:id/summary` — сводка, `/patients/:id/timeline` — хронология.
@@ -45,11 +53,11 @@ export interface CardContext {
   reload: () => void;
 }
 
-export function usePatientCard(): CardContext {
+export function useCaseCard(): CardContext {
   return useOutletContext<CardContext>();
 }
 
-export default function PatientCard() {
+export default function CaseCard() {
   const { userId } = useParams<{ userId: string }>();
   const { user } = useAuth();
   const { ut } = useLang();
@@ -92,9 +100,9 @@ export default function PatientCard() {
                */
               <Tabs
                 items={[
-                  { to: `/patients/${data.userId}`, label: ut("pc.overview"), end: true },
-                  { to: `/patients/${data.userId}/dynamics`, label: ut("pc.dynamics") },
-                  { to: `/patients/${data.userId}/timeline`, label: ut("tl.title") },
+                  { to: `/patients/${data.userId}/case`, label: ut("pc.overview"), end: true },
+                  { to: `/patients/${data.userId}/case/dynamics`, label: ut("pc.dynamics") },
+                  { to: `/patients/${data.userId}/case/timeline`, label: ut("tl.title") },
                 ]}
               />
             }

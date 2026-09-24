@@ -3,9 +3,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { User } from "@quizzy/shared";
 import { type DirectorySource, loadDirectory, loadMember } from "../src/pages/people/data";
+import { barKind, barSection } from "../src/shell/Topbar";
 import {
   type StaffRow,
   birthYear,
+  cardTitleRole,
   fromAssignable,
   isAdministrator,
   isDoctor,
@@ -245,5 +247,111 @@ describe("справочник сотрудников", () => {
     const { row } = await loadMember("u1", { id: "u1", canManageUsers: false }, src);
     expect(row?.fullName).toBe("Іванов");
     expect(calls).toEqual({ users: 0, staff: 0, me: 1 });
+  });
+});
+
+/**
+ * Состав верхней полосы: четыре рабочих места, и выбирает их раздел экрана
+ * вместе с тем, лечит ли вошедший.
+ *
+ * Проверяется здесь, потому что оба прежних правила были догадками, которые
+ * на экране видны только тому, кто открыл нужный раздел нужной учётной
+ * записью: «ступень 3 и выше — чистый администратор» уносила у главного
+ * лікаря шесть клинических разделов, а «суперадмін — всегда
+ * «Адміністратори»» подписывала его полосу так же и в разделе организаций,
+ * где кадры f44/f45/f51/f52 рисуют «Лікарі».
+ */
+describe("состав полосы", () => {
+  const superadmin = { role: "superadmin" };
+  const head = { role: "admin", ladderRank: 2 };
+  const chief = { role: "admin", ladderRank: 3 };
+  const specialist = { role: "admin", ladderRank: 1 };
+
+  test("суперадмін: раздел людей — «Адміністратори», организации — «Лікарі» (f47–f50 против f44/f45/f51/f52)", () => {
+    expect(barKind(superadmin, true, "/admins")).toBe("peopleAdmins");
+    expect(barKind(superadmin, true, "/staff/u1")).toBe("peopleAdmins");
+    expect(barKind(superadmin, true, "/organisations")).toBe("peopleStaff");
+    expect(barKind(superadmin, true, "/organisations/o1")).toBe("peopleStaff");
+  });
+
+  test("суперадмін вне этих разделов кадра не имеет — полоса не урезается", () => {
+    expect(barKind(superadmin, true, "/patients")).toBe("admin");
+  });
+
+  test("ступень лестницы сама по себе полосу не режет: главный лікар лечит (f30–f35)", () => {
+    expect(barKind(chief, true, "/staff/u1")).toBe("admin");
+    expect(barKind(head, true, "/staff")).toBe("admin");
+  });
+
+  test("узкая полоса — у того, кто ведёт людей и не лечит, и только в разделе людей (f40–f43)", () => {
+    expect(barKind(chief, false, "/staff")).toBe("peopleStaff");
+    expect(barKind(chief, false, "/patients")).toBe("admin");
+  });
+
+  test("рядовой лікар — шесть пунктов везде (f04)", () => {
+    expect(barKind(specialist, true, "/staff/u1")).toBe("specialist");
+    expect(barKind(specialist, true, "/patients")).toBe("specialist");
+  });
+
+  test("раздел считается по корню адреса, а не по вхождению строки", () => {
+    expect(barSection("/staff")).toBe("people");
+    expect(barSection("/staff/u1/groups")).toBe("people");
+    expect(barSection("/admins/new")).toBe("people");
+    expect(barSection("/patients/staff")).toBe("other");
+  });
+});
+
+/**
+ * Чем подписана карточка. Восемь кадров одной карточки, и подмена имени
+ * ролью (или наоборот) глазами ловится только случайно — отсюда проверка.
+ */
+describe("заголовок карточки", () => {
+  test("общая консоль: своя — «Лікар», чужая — имя (f04, f30 против f31, f34, f35)", () => {
+    expect(cardTitleRole("specialist", true)).toBe("ppl.roleDoctor");
+    expect(cardTitleRole("admin", true)).toBe("ppl.roleDoctor");
+    expect(cardTitleRole("admin", false)).toBeNull();
+  });
+
+  test("раздел людей: слово роли и в своей, и в чужой (f40, f43, f47, f50)", () => {
+    expect(cardTitleRole("peopleStaff", true)).toBe("ppl.roleAdmin");
+    expect(cardTitleRole("peopleStaff", false)).toBe("ppl.roleDoctor");
+    expect(cardTitleRole("peopleAdmins", true)).toBe("ppl.roleSuperTitle");
+    expect(cardTitleRole("peopleAdmins", false)).toBe("ppl.roleAdmin");
+  });
+});
+
+/**
+ * То, что живёт в разметке и проверяется по исходнику: числа замеров и
+ * ссылки, которые легко потерять при следующей правке, а на экране заметить
+ * можно только открыв нужный кадр нужной учётной записью.
+ */
+describe("разметка раздела по кадрам", () => {
+  const src = (f: string) => readFileSync(resolve(import.meta.dir, "../src", f), "utf8");
+
+  test("дверь в разделы своей карточки не потеряна: заголовок секции ведёт в раздел (f04)", () => {
+    expect(src("pages/people/StaffCard.tsx")).toContain("`/staff/${row.id}/patients`");
+  });
+
+  test("линии списка на f50 — внутренней тенью: рамка сбивала шаг строк 58 на 60", () => {
+    const card = src("pages/people/StaffCard.tsx");
+    expect(card).toContain("shadow-[inset_0_-2px_0_var(--hairline)]");
+    expect(card).not.toContain("border-b-2");
+  });
+
+  test("текущий пункт полосы не подсвечен ничем, кроме aria-current (восемь кадров из десяти)", () => {
+    const bar = src("shell/Topbar.tsx");
+    /* только сама полоса: в списке бургера подсветка текущего пункта своя и со своих кадров */
+    const nav = bar.slice(bar.indexOf('aria-label={ut("shell.sections")}'), bar.indexOf("</nav>"));
+    expect(nav.length).toBeGreaterThan(200);
+    expect(nav).not.toContain("isActive");
+    /* сам бледный тон кадра назван в пояснении — ищем его как класс, а не как слово */
+    expect(nav).not.toContain("text-[#ab8fcc]");
+  });
+
+  test("верхний просвет: общий 50 (f05/f06), 40 просит раздел людей (f42/f49)", () => {
+    expect(src("ui/layout.tsx")).toContain("topGap = 50");
+    for (const f of ["pages/people/StaffList.tsx", "pages/people/StaffCard.tsx", "pages/people/StaffNew.tsx"]) {
+      expect(src(f), `нет topGap={40} в ${f}`).toContain("topGap={40}");
+    }
   });
 });

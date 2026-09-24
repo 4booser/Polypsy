@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { appointments, visitRecordings } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -140,15 +140,30 @@ recordingRoutes.post("/:appointmentId/consent", async (c) => {
  *
  * До начала записи — просто снимает разрешение. Право передумать до того, как
  * что-то сказано, не должно требовать объяснений.
+ *
+ * Если записать уже успели — аудио стирается тем же движением, что и при
+ * удалении. Раньше отзыв менял только отметку согласия, и при состояниях
+ * uploaded или transcribing файл оставался лежать на диске: согласия нет, а
+ * разговор хранится и вот-вот станет стенограммой. Основание хранить запись —
+ * согласие; снято согласие — хранить нечего.
  */
 recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
   const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
   if (rec.status === "recording") badRequest("err.recordingInProgress");
 
+  await eraseAudio(rec.audioPath);
   await db
     .update(visitRecordings)
-    .set({ consentAt: null, consentBy: null, status: "consent_pending" })
+    .set({
+      consentAt: null,
+      consentBy: null,
+      status: "consent_pending",
+      // путь обнуляется вместе с файлом: строка, ведущая в никуда, на экране
+      // выглядит как «запись есть», а по ней потом пойдёт расшифровка
+      audioPath: null,
+      audioBytes: null,
+    })
     .where(eq(visitRecordings.id, rec.id));
 
   await audit(c, {
@@ -156,6 +171,9 @@ recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
     resourceType: "appointment",
     resourceId: visit.id,
     subjectUserId: visit.patientId,
+    // было ли что стирать — важно при разборе: «отозвал до записи» и
+    // «отозвал, когда разговор уже лежал на диске» — разные события
+    details: { hadAudio: !!rec.audioPath, from: rec.status },
   });
   return c.json({ ok: true });
 });
@@ -238,7 +256,19 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
     if (file.size > 200 * 1024 * 1024) badRequest("err.recordingTooLarge");
     const bytes = new Uint8Array(await file.arrayBuffer());
     const path = await storeAudio(rec.id, bytes);
-    await db
+    /*
+     * Состояние проверяется ещё раз — в самом UPDATE.
+     *
+     * Строка `rec` прочитана в начале обработчика, а между чтением и записью
+     * лежит приём файла: часовой разговор — это десятки мегабайт и заметное
+     * время. За это время пациент успевает нажать «удалить», и его удаление
+     * отрабатывает полностью — файл стёрт, статус discarded. Безусловный
+     * UPDATE возвращал запись к жизни: статус uploaded, путь к только что
+     * залитому файлу, дальше расшифровка и стенограмма в карте. То есть
+     * разговор, который человек попросил удалить, оказывался в карте
+     * текстом, и на экране не было ни следа отказа.
+     */
+    const written = await db
       .update(visitRecordings)
       .set({
         status: "uploaded",
@@ -247,17 +277,28 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
         audioBytes: bytes.byteLength,
         durationMs: rec.startedAt ? Date.now() - new Date(rec.startedAt).getTime() : null,
       })
-      .where(eq(visitRecordings.id, rec.id));
+      .where(and(eq(visitRecordings.id, rec.id), eq(visitRecordings.status, "recording")))
+      .returning({ id: visitRecordings.id });
+    if (!written.length) {
+      // файл уже на диске: без этого от «удалённой» записи оставалось бы
+      // на диске всё её содержимое — ровно то, что просили стереть
+      await eraseAudio(path);
+      badRequest("err.recordingGone");
+    }
   } else {
     /*
      * Остановили, но аудио не прислали — так бывает, когда останавливает
      * вторая сторона. Запись возвращается в «готово», а не пропадает: у
      * того, кто писал, файл ещё на устройстве, и он его дошлёт.
      */
-    await db
+    const written = await db
       .update(visitRecordings)
       .set({ status: "ready", endedAt: new Date().toISOString() })
-      .where(eq(visitRecordings.id, rec.id));
+      .where(and(eq(visitRecordings.id, rec.id), eq(visitRecordings.status, "recording")))
+      .returning({ id: visitRecordings.id });
+    // та же причина, что и у ветки с файлом: разбор тела занимает время,
+    // и «готово» вернуло бы к жизни запись, удалённую за это время
+    if (!written.length) badRequest("err.recordingGone");
   }
 
   await audit(c, {

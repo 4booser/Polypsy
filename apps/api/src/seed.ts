@@ -1321,8 +1321,13 @@ await seedStatModels();
 await syncBuiltinRole();
 console.log("  роли персонала: встроенная роль выдана администраторам");
 
+// посев волны 5 — отдельным модулем, чтобы параллельные пакеты не сходились на этом файле
+await (await import("./seed/mailings")).seedMailings();
+
 console.log("\nГотово. Учётные записи:");
 for (const a of ACCOUNTS) console.log(`  ${a.role.padEnd(5)} ${a.email} / ${a.password}`);
+
+await (await import("./seed/demoGroupsRules")).seedDemoGroupsRules();
 
 // закрываем пул: без этого процесс сида не завершится
 await client.end();

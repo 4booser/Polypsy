@@ -4,11 +4,11 @@ import type { Issue, SurveyFolder, SurveyFolderWithCounts, SurveyGroupWithCounts
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { ConfirmByName, IconChevron, IconSearchGlass, Loading, useAction, useToast } from "../../ui";
-import { IconCaret, IconDots, IconPlusThick } from "../../ui/glyphs";
+import { IconCaret, IconCaution, IconCross, IconDots, IconPlusThick } from "../../ui/glyphs";
 import { MenuButton, menuItem, menuItemClass } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { Page, Panel } from "../../ui/layout";
-import { Input, Tabs, Tag } from "../../ui/primitives";
+import { Input, Tabs } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
 import { FolderForm, MoveForm } from "./CatalogueDialogs";
@@ -41,19 +41,25 @@ import {
  *   список: название | Результат тесту | Статистика → таблица без видимой
  *                                                      шапки
  *
- * Чего на кадре нет, а здесь есть, и почему это не самодеятельность:
+ * Чего на кадре нет — и куда оно убрано с глаз (функция при этом жива):
  *
- * 1. Третья вкладка «Зняті з використання». Прежний экран умел показывать
- *    снятые методики и возвращать их в работу; на макете этого состояния нет,
- *    потому что там нет и самого снятия. Убрать вкладку — значит оставить
- *    снятую методику без дороги назад. Вкладка стоит третьей и не мешает
- *    двум нарисованным.
- * 2. Глиф «⋯» в конце строки. Действия строки (правка, ключи, доступ, копия,
+ * 1. Третья вкладка «Зняті з використання». На кадре вкладок ровно две, и
+ *    третья ушла пунктом в меню «+» — туда же, где «Новий тест», «Нова
+ *    папка» и «Імпорт з файлу». Маршрут /surveys/retired и tabFromPath
+ *    остались: пункт ведёт на прежний адрес, и пересланная ссылка на снятые
+ *    работает как работала.
+ * 2. Метки «демо · права незрозумілі · знято» под названием теста. На кадре
+ *    под названием пусто; метки ушли в меню «⋯» строки — первой строкой,
+ *    как заголовок меню, — и в title ссылки, чтобы их было видно наведением
+ *    без открытия меню.
+ * 3. Глиф «⋯» в конце строки. Действия строки (правка, ключи, доступ, копия,
  *    перенос, снятие) на макете не нарисованы, а в системе живут: ключи и
- *    доступ — единственное место, где решают, выдавать ли методику. Они
- *    убраны с глаз в меню, но не убраны.
- * 3. Импорт из файла — третий пункт меню «+»: макет читает «+» как «новый
- *    тест или новая папка», а импорт — тот же новый тест, только из файла.
+ *    доступ — единственное место, где решают, выдавать ли методику. Глиф
+ *    выведен из потока колонок (absolute у правого края строки) и проявлен
+ *    только на наведении и на фокусе: колонка «Статистика» идёт до правого
+ *    края содержимого, как на кадре, а клавиатура глиф не теряет.
+ * 4. Импорт из файла — пункт меню «+»: макет читает «+» как «новый тест или
+ *    новая папка», а импорт — тот же новый тест, только из файла.
  *
  * Чего здесь НЕТ и не будет: «Результат тесту» абзацем в каждой строке.
  * Результат в системе — полосы интерпретации, нормы и стены на самой методике
@@ -79,7 +85,8 @@ function IconFolder() {
 
 /* ─────────── крошки и папки ─────────── */
 
-const crumbClass = "text-[15px] font-bold leading-[20px] text-primary no-underline hover:underline";
+/* кадр f11: cap «М» крошки 12 px → 17/700, шаг строки 22 */
+const crumbClass = "text-[17px] font-bold leading-[22px] text-primary no-underline hover:underline";
 
 /**
  * «Мої тести › Тести за 2023 › Тести за лютий 2023 ▾».
@@ -214,14 +221,15 @@ function FolderRow({
   const { ut } = useLang();
   if (!folders.length) return null;
   return (
-    <div className="flex items-start border-b border-hairline py-[24px] text-[15px] leading-[20px]">
-      <div className="flex w-[172px] shrink-0 items-center gap-[12px] pr-[24px] font-bold text-primary">
+    /* колонки те же, что у списка: 169 · 534 · 496 — замер кадра f11 */
+    <div className="flex items-start border-b border-hairline py-[24px] text-[17px] leading-[22px]">
+      <div className="flex w-[169px] shrink-0 items-center gap-[12px] pr-[24px] font-bold text-primary">
         <span aria-hidden className="[&>svg]:size-[30px]">
           <IconFolder />
         </span>
         {ut("cat.folders")}
       </div>
-      <ul className="m-0 grid min-w-0 flex-1 list-none grid-cols-2 gap-x-[36px] gap-y-[10px] p-0">
+      <ul className="m-0 grid min-w-0 flex-1 list-none grid-cols-[534px_minmax(0,1fr)] gap-y-[10px] p-0">
         {folders.map((f) => (
           <li key={f.id} className="flex min-w-0 flex-col">
             <span className="flex items-baseline gap-[14px]">
@@ -240,26 +248,48 @@ function FolderRow({
 
 /* ─────────── строки списка ─────────── */
 
-const cellLabel = "text-[10px] font-bold leading-[14px] text-text-2";
-const cellText = "m-0 text-[10px] leading-[14px] text-muted";
+/*
+ * Кадр f11: cap «Р» подписи колонки 9 px → 13/700, тело абзаца 13/400. Шаг
+ * строк 14 у обеих — подпись и абзац идут одной лесенкой, замер по строкам
+ * второй колонки: 432 → 446 → 460 → 474.
+ *
+ * Цвет подписи на кадре — #666666, то есть тот же серый, что у даты папки и
+ * у тела абзаца; --text-2 (#333333) стоял здесь на ступень темнее
+ * назначенного макетом и без основания (про --muted вместо #666666 см.
+ * tokens.css: там отступление объяснено контрастом).
+ */
+const cellLabel = "text-[13px] font-bold leading-[14px] text-muted";
+const cellText = "m-0 text-[13px] leading-[14px] text-muted";
 /*
  * Ячейка переопределяет правила наследия для td: там высота строки задана
  * токеном плотности, отступы 0 12, линия снизу. На макете строка высотой
  * по содержимому, без линий между строками и без левого отступа у названия.
  */
-const cell = "h-auto border-0 py-[14px] pl-0 align-top";
+/*
+ * Шаг строк кадра — 82: верх подписи первой строки 432, второй 514. Высоту
+ * задаёт вторая колонка: подпись и три строки абзаца по 14 = 56, и на отступы
+ * сверху и снизу остаётся по 13.
+ */
+const cell = "h-auto border-0 py-[13px] pl-0 align-top";
 
 /**
- * Действия строки за глифом «⋯» — см. пункт 2 в заголовке файла.
+ * Действия строки за глифом «⋯» — см. пункты 2 и 3 в заголовке файла.
+ *
+ * Первой строкой меню — метки теста («демо», «права незрозумілі», «знято»),
+ * которые на кадре под названием не напечатаны. Это подпись, а не пункт:
+ * нажимать в ней нечего, и role="menuitem" на ней был бы обещанием действия.
  */
 function RowMenu({
   survey,
+  marks,
   onDuplicate,
   onMove,
   onArchive,
   onRestore,
 }: {
   survey: SurveyListItem;
+  /** Метки теста строкой — то, что ушло с глаз из-под названия */
+  marks: string[];
   onDuplicate: (s: SurveyListItem) => void;
   onMove: (s: SurveyListItem) => void;
   onArchive: (s: SurveyListItem) => void;
@@ -274,6 +304,15 @@ function RowMenu({
     <MenuButton label={ut("cat.rowActions")} glyph={<IconDots />}>
       {(close) => (
         <>
+          {marks.length ? (
+            <>
+              <p className="m-0 px-[16px] py-[6px] text-[13px] text-muted">
+                <span className="sr-only">{ut("cat.marks")}: </span>
+                {marks.join(" · ")}
+              </p>
+              <hr className="my-1 border-0 border-t border-hairline" />
+            </>
+          ) : null}
           <Link role="menuitem" to={`/constructor/${survey.id}`} className={menuItem} onClick={close}>
             {ut("cl.editAction")}
           </Link>
@@ -307,9 +346,12 @@ function RowMenu({
 
 function Row({
   survey,
+  marks,
   menu,
 }: {
   survey: SurveyListItem;
+  /** Метки теста: на экране их нет, они живут в title ссылки и в меню «⋯» */
+  marks: string[];
   menu: ReactNode;
 }) {
   const { ut } = useLang();
@@ -324,40 +366,80 @@ function Row({
       ? `${ut("cat.keysVerified")} ${numericDate(s.keysVerifiedAt)}`
       : ut("cat.keysUnverified");
   const stats = [`${ut("cl.questions")} ${s.questionCount}`, `${ut("cl.responses")} ${s.responseCount}`, keys].join(" · ");
-  const rightsUnclear = !s.rightsStatus || s.rightsStatus === "unclear";
 
   return (
-    <tr>
-      <td className={cx(cell, "w-[172px] pr-[24px]")}>
-        <Link to={`/surveys/${s.id}`} className="text-[15px] font-bold leading-[20px] text-primary no-underline hover:underline">
+    /*
+     * Наведение заливает строку целиком — кадр f11, третья строка: #f7f5fa на
+     * всю колонку содержимого. Это 5 % фиолетового на листе; --primary-soft
+     * (10 %) дал бы заметно темнее. `relative` держит «⋯»: см. ниже.
+     */
+    <tr className="group hover:bg-[color-mix(in_srgb,var(--primary)_5%,transparent)]">
+      <td className={cx(cell, "pr-[24px]")}>
+        {/* метки ушли в title и в меню «⋯»: на кадре под названием пусто */}
+        <Link
+          to={`/surveys/${s.id}`}
+          title={marks.length ? marks.join(" · ") : undefined}
+          /*
+           * Межстрочник имени — 20, а не 22. Замер кадра f11, столбец имени:
+           * базовые линии двух строк «Назва тесту / можливо велика» стоят на
+           * 52 и 72 от верха вырезки — ровно 20. 22 брались от заголовков
+           * экрана и в двухстрочном имени расталкивали строки заметно.
+           */
+          /*
+           * Длинное слово переносится внутри своей колонки, а не лезет в
+           * соседнюю: колонка имени на кадре 169, а «Адаптивность-200»
+           * одним куском шире — без переноса название накрывало столбец
+           * «Результат теста». Расширять колонку нельзя: на кадре все три
+           * стоят на своих местах.
+           */
+          className="text-[17px] font-bold leading-[20px] text-primary no-underline [overflow-wrap:anywhere] hover:underline"
+        >
           {s.title}
         </Link>
-        {s.isDemo || rightsUnclear || s.archivedAt ? (
-          <div className="mt-[6px] flex flex-wrap gap-1">
-            {s.isDemo ? <Tag>{ut("mark.demo")}</Tag> : null}
-            {/* правовой статус стоит у названия: это место, где решают, выдавать ли методику */}
-            {rightsUnclear ? (
-              <span title={ut("cl.rightsHint")}>
-                <Tag tone="attention">{ut("cl.rightsUnclear")}</Tag>
-              </span>
-            ) : null}
-            {s.archivedAt ? (
-              <span title={`${ut("cl.retiredOn")} ${numericDate(s.archivedAt)}`}>
-                <Tag>{ut("mark.retired")}</Tag>
-              </span>
-            ) : null}
-          </div>
-        ) : null}
       </td>
       <td className={cx(cell, "pr-[36px]")}>
         <div className={cellLabel}>{ut("cat.resultCol")}</div>
         <p className={cellText}>{s.description ? s.description : <span className="text-faint">{ut("cat.noDescription")}</span>}</p>
       </td>
-      <td className={cx(cell, "pr-[12px]")}>
+      {/*
+        На устройстве без наведения «⋯» виден всегда, и «Статистика» не должна
+        уходить под него: правый отступ колонки там 44 (размер цели нажатия),
+        а на кадре — 12, как нарисовано.
+      */}
+      <td className={cx(cell, "relative pr-[12px] [@media(hover:none)]:pr-[44px]")}>
         <div className={cellLabel}>{ut("cat.statsCol")}</div>
         <p className={cellText}>{stats}</p>
+        {/*
+          «⋯» вынесен из потока: на кадре четвёртой колонки нет, и «Статистика»
+          идёт до правого края содержимого. Глиф всегда в разметке — не
+          `hidden` и не `display:none`, иначе он выпал бы из порядка обхода
+          клавиатурой вместе с меню.
+
+          Прятать его насовсем нельзя было и раньше, но пряталось: `opacity-0`
+          стоял безусловно, а возвращали глиф только `group-hover` и
+          `group-focus-within`. На планшете и телефоне наведения нет, фокус
+          мышью тоже не приходит — и действия строки становились недостижимы
+          с пальца вовсе. Поэтому невидимость убрана внутрь
+          `@media (hover: hover)`: где наведение есть — вид кадра сохранён
+          (глиф проявляется наведением и фокусом), где его нет — глиф просто
+          нарисован.
+
+          Все три класса стоят ПОД одним медиазапросом намеренно. Оставь
+          `group-hover:opacity-100` снаружи — и порядок в собранном CSS решал
+          бы спор двух правил равной специфичности: у Tailwind медиа-варианты
+          идут после псевдоклассовых, и безусловная невидимость перебила бы
+          проявление наведением.
+        */}
+        <span
+          className={cx(
+            "absolute right-0 top-[10px] transition-opacity duration-[var(--dur-fast)]",
+            "[@media(hover:hover)]:opacity-0",
+            "[@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100",
+          )}
+        >
+          {menu}
+        </span>
       </td>
-      <td className={cx(cell, "w-[44px] py-[10px] text-right")}>{menu}</td>
     </tr>
   );
 }
@@ -513,9 +595,28 @@ export function SurveyList() {
     }
   };
 
-  const tabs = (["published", "drafts", "retired"] as const).map((t) => ({
+  /*
+   * Вкладок ровно две — как на кадре f11. Снятые с использования никуда не
+   * делись: вход к ним стоит пунктом в меню «+», адрес /surveys/retired
+   * прежний, и tabFromPath его по-прежнему узнаёт (вкладка тогда не
+   * подсвечена ни одна — снятых на кадре нет вовсе).
+   */
+  /*
+   * Метки теста одной строкой. На кадре под названием их нет, поэтому здесь
+   * они только собираются: строка уходит в title ссылки и первым пунктом в
+   * меню «⋯». Дата снятия входит в саму метку — в меню ей место есть.
+   */
+  const marksOf = (s: SurveyListItem) => {
+    const out: string[] = [];
+    if (s.isDemo) out.push(ut("mark.demo"));
+    if (!s.rightsStatus || s.rightsStatus === "unclear") out.push(`${ut("cl.rightsUnclear")} — ${ut("cl.rightsHint")}`);
+    if (s.archivedAt) out.push(`${ut("mark.retired")}: ${ut("cl.retiredOn")} ${numericDate(s.archivedAt)}`);
+    return out;
+  };
+
+  const tabs = (["published", "drafts"] as const).map((t) => ({
     to: catalogueHref(t, { folder: folderId, q, per }),
-    label: ut(t === "published" ? "cat.tabPublished" : t === "drafts" ? "cat.tabDrafts" : "cat.tabRetired"),
+    label: ut(t === "published" ? "cat.tabPublished" : "cat.tabDrafts"),
     end: t === "published",
   }));
 
@@ -594,6 +695,11 @@ export function SurveyList() {
               >
                 {ut("cl.importFile")}
               </button>
+              <hr className="my-1 border-0 border-t border-hairline" />
+              {/* третья вкладка кадра, убранная с глаз: см. пункт 1 в заголовке файла */}
+              <Link role="menuitem" to={catalogueHref("retired", { folder: folderId, q, per })} className={menuItem} onClick={close}>
+                {ut("cat.tabRetired")}
+              </Link>
             </>
           )}
         </MenuButton>
@@ -624,7 +730,7 @@ export function SurveyList() {
           {importIssues.map((i, k) => (
             <p key={k} className="my-1 text-small">
               <span className={i.level === "error" ? "text-danger" : "text-accent"}>
-                {i.level === "error" ? "✖" : "⚠"}
+                {i.level === "error" ? <IconCross /> : <IconCaution />}
               </span>{" "}
               <strong>{i.where}:</strong> <span className="text-muted">{i.message}</span>
             </p>
@@ -683,7 +789,13 @@ export function SurveyList() {
       ) : shown.items.length === 0 ? (
         <p className="m-0 py-[24px] text-[13px] text-muted">{dq.trim() ? ut("cat.emptySearch") : ut("cat.empty")}</p>
       ) : (
-        <table className="w-full table-auto border-collapse">
+        /* колонки кадра f11: 169 · 534 · 496 при содержимом 1199 */
+        <table className="w-full table-fixed border-collapse">
+          <colgroup>
+            <col className="w-[169px]" />
+            <col className="w-[534px]" />
+            <col />
+          </colgroup>
           {/*
             Шапки на макете нет — колонки подписаны внутри каждой строки. Для
             диктора шапка всё же есть, скрытая: без неё таблица из трёх
@@ -693,8 +805,10 @@ export function SurveyList() {
             <tr>
               <th scope="col">{ut("cl.name")}</th>
               <th scope="col">{ut("cat.resultCol")}</th>
-              <th scope="col">{ut("cat.statsCol")}</th>
-              <th scope="col">{ut("cat.actionsCol")}</th>
+              {/* действия лежат в третьей колонке: своей у них на кадре нет */}
+              <th scope="col">
+                {ut("cat.statsCol")} · {ut("cat.actionsCol")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -702,9 +816,11 @@ export function SurveyList() {
               <Row
                 key={s.id}
                 survey={s}
+                marks={marksOf(s)}
                 menu={
                   <RowMenu
                     survey={s}
+                    marks={marksOf(s)}
                     onDuplicate={(x) => void duplicate(x)}
                     onMove={(x) => setDialog({ kind: "move", survey: x })}
                     onArchive={setConfirming}

@@ -31,6 +31,21 @@ export const LANG_NAMES: Record<Lang, { full: string; short: string }> = {
 };
 
 /**
+ * Как называется сам орган выбора языка — на обоих языках сразу.
+ *
+ * Имя для диктора у сегментированного переключателя (lang.tsx) и хвост имени
+ * у подписи-переключателя в полосе (Topbar.tsx). Причина двуязычия та же, что
+ * у LANG_NAMES выше: тот, кто уже переключился на непонятный язык, ищет
+ * обратную дорогу по слову, которое читает.
+ *
+ * Здесь, а не в uiStrings: словарь отдаёт одну строку на выбранном языке, а
+ * тут нужны обе разом, и русское слово в украинском поле словаря — ровно то,
+ * что ловит проверка «украинский не сползает в русский». Одной записью, а не
+ * литералом в двух разметках: до сверки публичных кадров их и было два.
+ */
+export const LANG_SELF_LABEL = "Мова / Язык";
+
+/**
  * В базе контент хранится локализованно, а API отдаёт его уже разрешённым
  * на запрошенном языке. Так потребители — мобилка, консоль, заключения —
  * работают с обычными строками и ничего не знают о языках,
@@ -378,6 +393,12 @@ export interface PatientGroupMember {
   email: string;
   /** Подразделение: в списке из тридцати однофамильцев это единственный ориентир */
   unit: string | null;
+  sex: Sex | null;
+  /**
+   * Только год, не дата: различить тёзок в составе — год, а полная дата
+   * рождения в списке — та мелочь, из которой складывается опознание.
+   */
+  birthYear: number | null;
   addedAt: string;
   addedBy: string | null;
 }
@@ -386,6 +407,8 @@ export interface PatientGroupMember {
 export interface PatientGroupSurvey {
   surveyId: string;
   title: LocalizedText;
+  /** Описание методики — «Тести Групи» на карточке показывают его рядом с названием */
+  description: LocalizedText | null;
   assignedAt: string;
   assignedBy: string | null;
   /** Срок и число попыток, с которыми методика выдаётся участникам группы */
@@ -407,12 +430,222 @@ export interface PatientGroupWithCounts extends PatientGroup {
   memberCount: number;
   /** Сколько методик назначено на группу целиком */
   surveyCount: number;
+  /**
+   * «Обрана» ЧИТАТЕЛЕМ. Признак личный, а не свойство группы: суперадмин,
+   * разбирающий чужие вкладки, видит свои закладки, а не закладки владельца.
+   */
+  favourite: boolean;
 }
 
 /** Карточка группы: описание, состав и назначенные методики на одном экране */
 export interface PatientGroupCard extends PatientGroup {
   members: PatientGroupMember[];
   surveys: PatientGroupSurvey[];
+}
+
+/* ─────────── Пациенты зоны видимости и карточка пациента ─────────── */
+
+/**
+ * Строка списка «Пацієнти»: те, кого сотрудник вправе видеть, — все, а не
+ * только обследованные (то отдаёт /api/dynamics/respondents). Телефона нет
+ * намеренно: он открывается отдельным журналируемым действием.
+ */
+export interface PatientListItem {
+  id: string;
+  name: string;
+  email: string;
+  unit: string | null;
+  sex: Sex | null;
+  /** Только год — различить тёзок; полная дата в списке лишняя */
+  birthYear: number | null;
+  /**
+   * Населённый пункт. Поля в учётной записи нет — на карточке макета ячейка
+   * есть, и признак объявлен, чтобы экрану было куда его положить, когда
+   * поле появится; до тех пор его просто нет в ответе.
+   */
+  locality?: string | null;
+  leadSpecialistId: string | null;
+  /** Когда сдавал методику в последний раз; null — ещё ни разу */
+  lastResponseAt: string | null;
+}
+
+export interface PatientListPage {
+  items: PatientListItem[];
+  total: number;
+}
+
+/** Одна сданная методика на карточке: баллы по шкалам и полоса каждой */
+export interface PatientCardResponse {
+  responseId: string;
+  surveyId: string;
+  surveyTitle: string;
+  submittedAt: string | null;
+  /** Достоверен ли протокол по шкалам достоверности */
+  reliable: boolean;
+  scales: {
+    code: string;
+    title: string;
+    value: number;
+    normalization: ScaleNormalization;
+    percent: number;
+    bandLabel: string | null;
+    severity: Severity | null;
+  }[];
+}
+
+/** Заключение на карточке: подписанное — любого автора, черновик — только свой */
+export interface PatientCardConclusion {
+  id: string;
+  responseId: string;
+  surveyId: string;
+  surveyTitle: string;
+  version: number;
+  status: "draft" | "signed";
+  text: string;
+  createdAt: string;
+  signedAt: string | null;
+  authorName: string;
+}
+
+/** Группа, в которой человек состоит, — из групп читателя */
+export interface PatientCardGroup {
+  id: string;
+  title: string;
+  description: string | null;
+  color: string | null;
+  /** Сколько участников видно читателю — то же число, что на вкладке */
+  memberCount: number;
+  surveyCount: number;
+}
+
+/**
+ * Карточка пациента (кадр f19): персональные данные, «Тести», «Групи»,
+ * «Заключення» и ведущий специалист одним ответом.
+ *
+ * Телефона здесь нет: он шифруется и открывается отдельным действием с
+ * записью в журнал (GET /api/clinic/patients/:userId/phone). Плашка на
+ * карточке обошла бы эту запись.
+ */
+export interface PatientCard {
+  id: string;
+  firstName: string;
+  lastName: string;
+  middleName: string | null;
+  fullName: string;
+  anonymous: boolean;
+  pseudonym: string | null;
+  email: string;
+  sex: Sex | null;
+  birthDate: string | null;
+  unit: string | null;
+  position: string | null;
+  specialty: string | null;
+  rank: string | null;
+  createdAt: string;
+  /**
+   * Ведущий специалист. `mine` — закреплён за читателем: по нему экран
+   * решает, показывать «Підписатись» или «Відписатись». Меняется тем же
+   * маршрутом, что и на экране приёма: POST /api/clinic/patients/:userId/lead.
+   */
+  lead: { specialistId: string; name: string; mine: boolean } | null;
+  responses: PatientCardResponse[];
+  groups: PatientCardGroup[];
+  conclusions: PatientCardConclusion[];
+}
+
+/* ─────────── Рассылки ───────────
+ *
+ * Сообщение-объявление «одному многим»: название, текст и варианты ответа
+ * получателя. Не переписка (`/api/messages` — разговор двоих) и не методика:
+ * у вариантов нет баллов, они не считаются, а фиксируются.
+ */
+
+export type MailingStatus = "draft" | "sent";
+
+export interface Mailing {
+  id: string;
+  authorId: string;
+  title: string;
+  body: string;
+  /** Варианты ответа получателя; пусто — просто уведомление, отвечать нечем */
+  options: string[];
+  status: MailingStatus;
+  /** Адресаты черновика: группа пациентов и/или поимённый список */
+  patientGroupId: string | null;
+  patientIds: string[];
+  createdAt: string;
+  updatedAt: string;
+  sentAt: string | null;
+  /** Скрыта у автора: отправленную не удалить, но с глаз убрать можно */
+  hiddenAt: string | null;
+}
+
+/** Строка списка: тема, начало текста, дата — как на кадре f09 */
+export interface MailingListItem {
+  id: string;
+  title: string;
+  /** Первые строки текста, без хвоста: список — не место для всего письма */
+  preview: string;
+  status: MailingStatus;
+  /** Дата строки: отправки — у отправленных, последней правки — у черновиков */
+  at: string;
+  sentAt: string | null;
+  recipientCount: number;
+  answeredCount: number;
+}
+
+export interface MailingListPage {
+  items: MailingListItem[];
+  total: number;
+}
+
+/** Получатель на карточке отправленной рассылки — из зоны видимости читателя */
+export interface MailingRecipient {
+  userId: string;
+  fullName: string;
+  deliveredAt: string;
+  readAt: string | null;
+  /** Номер выбранного варианта в `options`; null — ещё не ответил */
+  answer: number | null;
+  answeredAt: string | null;
+}
+
+/**
+ * Карточка рассылки: у отправленной — счётчики по вариантам и получатели.
+ *
+ * Счётчики — по ВСЕМ получателям: «сколько ответили „Так“» — факт о
+ * рассылке, и он не меняется оттого, что одного из ответивших перевели в
+ * другое отделение. Имена — только те, кто сейчас в зоне видимости читателя:
+ * на них действует та же зона, что на составе группы пациентов. Поэтому
+ * `recipients.length` может быть меньше `counts.recipients`.
+ */
+export interface MailingCard extends Mailing {
+  /** Получили, открыли, ответили — по всем, кому доставлено */
+  counts: { recipients: number; read: number; answered: number } | null;
+  /** По каждому варианту — сколько выбрали; в порядке `options` */
+  answers: { index: number; text: string; count: number }[] | null;
+  /** Получатели из зоны видимости читателя; у черновика — null */
+  recipients: MailingRecipient[] | null;
+}
+
+/** Рассылка глазами получателя — «Повідомлення» в приложении пациента */
+export interface MailingInboxItem {
+  id: string;
+  title: string;
+  body: string;
+  options: string[];
+  authorName: string;
+  sentAt: string;
+  readAt: string | null;
+  answer: number | null;
+  answeredAt: string | null;
+}
+
+export interface MailingInbox {
+  items: MailingInboxItem[];
+  total: number;
+  /** Непрочитанных — для счётчика в меню */
+  unread: number;
 }
 
 /**

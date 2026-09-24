@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { Loc, Toggle, useEditLang } from "./fields";
@@ -29,9 +29,10 @@ type SetDraft = (f: (d: Draft) => Draft) => void;
  * выдаётся сам и на экран не выводится: его нет на кадре, а набранный
  * руками код разошёлся бы с ключом (см. nextKeyCode).
  *
- * «−» после «+» убирает последний ответ, а не стоит у каждого чипа: набор
- * ответов меняют редко, а три лишних глифа в строке из трёх чипов читались
- * бы как шесть кнопок вместо трёх ответов.
+ * Чип на кадре — ровно 139×36, зазор между чипами 36, и ширина у всех трёх
+ * одинаковая: раньше она считалась по длине текста, и «Так» был вдвое у́же
+ * «Нінаю». «−» на кадре нет вовсе — удаление последнего ответа ушло с глаз в
+ * свёрнутый блок «Налаштування варіантів» под строкой чипов.
  */
 export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft }) {
   const { ut } = useLang();
@@ -43,11 +44,11 @@ export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft 
   return (
     <section aria-labelledby="cn-answers">
       <SectionHead id="cn-answers" title={ut("cn.answers")} />
-      <div className="flex flex-wrap items-center gap-[14px]">
+      <div className="flex flex-wrap items-center gap-[36px]">
         {answers.map((a, i) => {
           const value = a.text[lang] ?? "";
           return (
-            <div key={i} className="flex h-9 items-center gap-[10px] rounded-[5px] border border-border bg-[var(--bg)] px-[10px]">
+            <div key={i} className="flex h-9 w-[139px] items-center gap-[10px] rounded-[5px] border border-border bg-[var(--bg)] px-[10px]">
               <span aria-hidden className="text-[17px] font-bold text-text">{i + 1}</span>
               <Field label={`${ut("cn.answerText")} ${i + 1}`} inline>
                 {/*
@@ -59,8 +60,8 @@ export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft 
                 <Input
                   value={value}
                   onChange={(e) => update(answers.map((x, k) => (k === i ? { ...x, text: { ...x.text, [lang]: e.target.value } } : x)))}
-                  className="h-7 px-0 text-[17px] font-bold"
-                  style={{ background: "transparent", border: 0, color: "var(--primary)", width: `${Math.max(4, value.length + 1)}ch` }}
+                  className="h-7 min-w-0 px-0 text-[17px] font-bold"
+                  style={{ background: "transparent", border: 0, color: "var(--primary)" }}
                 />
               </Field>
             </div>
@@ -75,18 +76,22 @@ export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft 
         >
           +
         </Button>
-        {answers.length > 1 ? (
-          <Button
-            size="glyph"
-            variant="ghost"
-            aria-label={ut("cn.removeLastAnswer")}
-            title={ut("cn.removeLastAnswer")}
-            onClick={() => update(answers.slice(0, -1))}
-          >
-            −
-          </Button>
-        ) : null}
       </div>
+      {answers.length > 1 ? (
+        <details className="group mt-[8px]">
+          <summary className="cursor-pointer list-none text-[13px] font-bold text-primary [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="mr-1 inline-flex transition-transform group-open:rotate-90">
+              <IconDisclosure />
+            </span>
+            {ut("cn.optionSettings")}
+          </summary>
+          <div className="pt-[12px]">
+            <Button variant="quiet" size="sm" onClick={() => update(answers.slice(0, -1))}>
+              {ut("cn.removeLastAnswer")}
+            </Button>
+          </div>
+        </details>
+      ) : null}
       <p className="m-0 mt-[8px] text-[13px] text-muted">
         {ut("cn.answersHint")}
         {differ ? ` · ${differ} ${ut("cn.answersDiffer")}` : ""}
@@ -158,7 +163,139 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: SetDraft }
           onDelete={() => setDraft((d) => ({ ...d, scales: d.scales.filter((x) => x.uid !== s.uid) }))}
         />
       ))}
+      <ScoreTable draft={draft} setDraft={setDraft} />
+      <ResultTable draft={draft} />
     </>
+  );
+}
+
+/**
+ * «Таблиця балів» — кадр f37_1.
+ *
+ * Все шкалы теста одним каркасом: колонки «Шкала · Відповідність · №Питання ·
+ * Бали», имя шкалы слева на всю высоту её рядов, номера питань чипами, балл
+ * ряда справа. В карточке самой шкалы (кадр f24_2) ни шапки, ни колонки баллов
+ * нет — балл живёт здесь, где видны все шкалы разом и где его, собственно, и
+ * сверяют с пособием.
+ */
+function ScoreTable({ draft, setDraft }: { draft: Draft; setDraft: SetDraft }) {
+  const { ut } = useLang();
+  const lang = useEditLang();
+  const answers = draft.answers ?? [];
+  if (!draft.scales.length) return null;
+
+  const answerLabel = (matchKey: string | null) => {
+    if (matchKey === null) return ut("cn.scoreByOption");
+    const a = answers.find((x) => x.keyCode === matchKey);
+    return a ? a.text[lang] || a.text.uk || a.text.ru || matchKey : matchKey;
+  };
+  const scaleTitle = (s: DraftScale, i: number) => s.title[lang] || s.title.uk || s.title.ru || `${ut("cn.scale")} ${i + 1}`;
+
+  return (
+    <section aria-labelledby="cn-score-table">
+      <SectionHead id="cn-score-table" title={ut("cn.scoreTable")} />
+      {/* колонки кадра: имя шкалы 115 · ответ 140 · номера по остатку · балл 72 */}
+      <div className="mb-[4px] grid grid-cols-[115px_140px_minmax(0,1fr)_72px] gap-[10px] text-[13px] text-muted">
+        <span>{ut("cn.scale")}</span>
+        <span>{ut("cn.matching")}</span>
+        <span>{ut("cn.itemNumbers")}</span>
+        <span className="text-center">{ut("cn.points")}</span>
+      </div>
+      <div className="flex flex-col gap-[15px]">
+        {draft.scales.map((s, i) => {
+          const rows = keyRows(s, answers);
+          const headId = `cn-score-${s.uid}`;
+          return (
+            <div
+              key={s.uid}
+              role="group"
+              aria-labelledby={headId}
+              className="grid grid-cols-[115px_140px_minmax(0,1fr)_72px] items-center gap-x-[10px] gap-y-[6px] rounded-[5px] border border-hairline bg-[var(--bg)] p-[10px]"
+            >
+              {/*
+                Имя шкалы стоит слева на все её ряды — как на кадре. Ряд-спан
+                считается числом рядов, а не классом Tailwind: число приходит из
+                данных, и класса под него в наборе нет.
+              */}
+              <span id={headId} style={{ gridRow: `span ${Math.max(1, rows.length)}` }} className="text-[17px] font-bold text-primary">
+                {scaleTitle(s, i)}
+              </span>
+              {rows.map((row) => {
+                const rowKey = row.matchKey ?? "";
+                return (
+                  <Fragment key={rowKey}>
+                    <span className="text-[17px] font-bold text-primary">{answerLabel(row.matchKey)}</span>
+                    <span className="flex flex-wrap items-center gap-[6px]">
+                      {row.items.map((n) => (
+                        <span
+                          key={n}
+                          className="flex h-[18px] min-w-[20px] items-center justify-center rounded-[3px] border border-border px-[4px] text-[13px] text-primary"
+                        >
+                          {n}
+                        </span>
+                      ))}
+                    </span>
+                    <Field label={`${ut("cn.points")}: ${scaleTitle(s, i)} · ${answerLabel(row.matchKey)}`} inline>
+                      <Input
+                        type="number"
+                        step="any"
+                        className="text-center font-bold"
+                        value={row.weight}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            scales: d.scales.map((x) => (x.uid === s.uid ? setRowWeight(x, row.matchKey, Number(e.target.value)) : x)),
+                          }))
+                        }
+                      />
+                    </Field>
+                  </Fragment>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * «Таблиця результатів» — кадр f37_2: «Назва результату · Розрахунок балу ·
+ * Бал · Результат».
+ *
+ * Строка результата на кадре складывается из поправки ОДНОГО ряда чужой шкалы
+ * («Шкала 2 · Ні · * 0.5»). В модели такой ссылки нет: scale_corrections несут
+ * код шкалы и коэффициент, ряд в них не выражается (см. пояснение к нижней
+ * строке формулы выше). Поэтому блок нарисован ровно как на кадре — четыре
+ * поля с подписями — и честно пуст: подписи 10/400 серым над полями, сами поля
+ * выключены, под ними одной строкой сказано, чего ждёт сервер. Подменять
+ * колонку чем-нибудь похожим здесь нельзя: «Бал» и «Результат» — числа, под
+ * которыми подписываются.
+ */
+function ResultTable({ draft }: { draft: Draft }) {
+  const { ut } = useLang();
+  if (!draft.scales.length) return null;
+  const cols: [string, string][] = [
+    ["cn.resultName", ut("cn.resultName")],
+    ["cn.scoreFormula", ut("cn.scoreFormula")],
+    ["cn.score", ut("cn.score")],
+    ["cn.result", ut("cn.result")],
+  ];
+  return (
+    <section aria-labelledby="cn-result-table">
+      <SectionHead id="cn-result-table" title={ut("cn.resultTable")} />
+      {/* четыре поля кадра: 170 · 170 · 167 · 170 при колонке 700 */}
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-[8px]">
+        {cols.map(([key, label]) => (
+          <span key={key} className="flex flex-col">
+            <span className="mb-[2px] text-[10px] leading-[14px] text-muted">{label}</span>
+            <Input disabled value="" onChange={() => {}} aria-label={label} />
+          </span>
+        ))}
+      </div>
+      <p className="m-0 mt-[8px] text-[13px] text-muted">{ut("cn.resultTableEmpty")}</p>
+    </section>
   );
 }
 
@@ -191,6 +328,8 @@ function ScaleCard({
     return a ? a.text[lang] || a.text.uk || a.text.ru || matchKey : matchKey;
   };
   const [adding, setAdding] = useState<string | null>(null);
+  /* какая поправка сейчас правится: коэффициент на кадре f30 стоит текстом, не полем */
+  const [editing, setEditing] = useState<number | null>(null);
   const [builder, setBuilder] = useState<{ from: string; coefficient: string }>({ from: "", coefficient: "0.5" });
   const [bandDetails, setBandDetails] = useState(false);
   const others = draft.scales.filter((x) => x.uid !== s.uid && x.code);
@@ -217,16 +356,27 @@ function ScaleCard({
       </SectionHead>
 
       <div className="rounded-[5px] border border-hairline bg-[var(--bg)] p-[20px]">
+        {/*
+          Кадры расходятся: фрагмент f30 держит имя шкалы полем 360, а целые
+          экраны f24_1/f24_2 — заголовком «Шкала N» над карточкой и полем
+          «Назва шкали» ВО ВСЮ ширину карточки. Взят целый экран: замер
+          карточки «Шкала 1» даёт рамку карточки 700 (столбцы 49 и 748
+          вырезки) и рамку поля 660 (столбцы 69 и 728) — то есть ширина
+          карточки минус её поля 20, а не 360. Прежняя редакция брала целый
+          экран, но ширину — с фрагмента, и поле обрывалось на середине
+          карточки, чего нет ни на одном кадре.
+        */}
         <Loc label={ut("cs.scaleTitle")} value={s.title} onChange={(v) => onChange({ title: v })} />
         <Loc label={ut("cn.scaleDescription")} value={s.description} onChange={(v) => onChange({ description: v })} />
 
-        {/* ── Відповідність: таблица баллов (f37) ── */}
+        {/*
+          ── Відповідність (кадр f24_2) ──
+          Шапки колонок здесь нет: она нарисована на кадре ПРОСМОТРА f37_1, и
+          там же, ниже, стоит целая «Таблиця балів». В конструкторе строка —
+          это чип ответа и номера питань; колонка «Бали» ушла туда же, в
+          таблицу баллов: на кадре f24_2 справа от номеров пусто.
+        */}
         <h3 className="m-0 mb-[8px] mt-[20px] text-[17px] font-bold text-primary">{ut("cn.matching")}</h3>
-        <div className="mb-[4px] hidden text-[13px] text-muted sm:grid sm:grid-cols-[140px_1fr_72px] sm:gap-[10px]">
-          <span>{ut("cn.matching")}</span>
-          <span>{ut("cn.itemNumbers")}</span>
-          <span className="text-center">{ut("cn.points")}</span>
-        </div>
         <div className="flex flex-col gap-[6px]">
           {rows.map((row) => {
             const rowKey = row.matchKey ?? "";
@@ -293,15 +443,6 @@ function ScaleCard({
                     +
                   </Button>
                 </div>
-                <Field label={`${ut("cn.points")}: ${answerLabel(row.matchKey)}`} inline className="w-[72px] shrink-0">
-                  <Input
-                    type="number"
-                    step="any"
-                    className="text-center font-bold"
-                    value={row.weight}
-                    onChange={(e) => onChange((cur) => setRowWeight(cur, row.matchKey, Number(e.target.value)))}
-                  />
-                </Field>
               </div>
             );
           })}
@@ -332,23 +473,43 @@ function ScaleCard({
                 className="inline-flex items-center gap-[6px] rounded-[5px] bg-primary-soft py-[2px] pl-[10px] pr-[2px] text-[17px] font-bold text-primary"
               >
                 {scaleName(c.from)}
-                <span aria-hidden>×</span>
-                {/* ширина — на обёртке: у поля своё `w-full`, и спорить с ним классом нельзя */}
-                <span className="inline-block w-[64px]">
-                  <Input
-                    type="number"
-                    step="any"
+                {/*
+                  Кадр f30 набирает поправку как «Шкала 2 · Ні · * 0.5»: знак
+                  умножения — звёздочка, а коэффициент стоит текстом, не полем.
+                  Правится он там же, по нажатию: поле разворачивается на месте
+                  текста и сворачивается обратно по Enter или уходу фокуса.
+                */}
+                {editing === ci ? (
+                  <span className="inline-block w-[64px]">
+                    <Input
+                      type="number"
+                      step="any"
+                      autoFocus
+                      aria-label={`${ut("cn.coefficient")}: ${scaleName(c.from)}`}
+                      className="h-7 text-center"
+                      value={c.coefficient}
+                      onChange={(e) =>
+                        onChange((cur) => ({
+                          ...cur,
+                          corrections: cur.corrections.map((x, k) => (k === ci ? { ...x, coefficient: Number(e.target.value) } : x)),
+                        }))
+                      }
+                      onBlur={() => setEditing(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === "Escape") setEditing(null);
+                      }}
+                    />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
                     aria-label={`${ut("cn.coefficient")}: ${scaleName(c.from)}`}
-                    className="h-7 text-center"
-                    value={c.coefficient}
-                    onChange={(e) =>
-                      onChange((cur) => ({
-                        ...cur,
-                        corrections: cur.corrections.map((x, k) => (k === ci ? { ...x, coefficient: Number(e.target.value) } : x)),
-                      }))
-                    }
-                  />
-                </span>
+                    onClick={() => setEditing(ci)}
+                    className="min-h-0 border-0 bg-transparent p-0 text-[17px] font-bold text-primary focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+                  >
+                    * {c.coefficient}
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-label={`${ut("cn.removeTerm")}: ${scaleName(c.from)}`}
@@ -373,8 +534,25 @@ function ScaleCard({
             +
           </Button>
         </div>
-        {/* нижняя строка кадра f30: откуда брать слагаемое и с каким коэффициентом */}
-        <div className="mt-[8px] grid grid-cols-[minmax(0,1fr)_140px] gap-[10px]">
+        {/*
+          Нижняя строка кадра f30 — два поля: «Шкала» и «Відповідність». Второе
+          выбирает РЯД чужой шкалы («Ні»), а не коэффициент: коэффициент на
+          кадре набирается в самой формуле («* 0.5»). Модель поправки
+          (scale_corrections { sourceScaleCode, coefficient }) ссылки на ряд не
+          несёт, поэтому поле нарисовано и выключено, а не подменено
+          коэффициентом: подменить значило бы объявить сделанным то, чего
+          сервер не умеет. Коэффициент набирается там, где нарисован, — в
+          формуле; здесь он остался скрытой подписью поля.
+        */}
+        {/*
+          Колонки на кадре f30 делят строку почти пополам: замер нижней строки
+          даёт «Шкала» 342 (столбцы 41–382) и «Відповідність» 354 (396–749)
+          при зазоре 13. 140 на второе поле было взято на глаз под короткое
+          слово и делало строку непохожей на кадр. Доли, а не пиксели: строка
+          стоит в карточке, которая сама тянется, — 342fr/354fr держат
+          пропорцию кадра на любой ширине.
+        */}
+        <div className="mt-[8px] grid grid-cols-[minmax(0,342fr)_minmax(0,354fr)] gap-[13px]">
           <Field label={ut("cn.scale")} inline>
             <Select value={builder.from} onChange={(e) => setBuilder((b) => ({ ...b, from: e.target.value }))}>
               <option value="">{ut("cn.scale")}</option>
@@ -383,13 +561,10 @@ function ScaleCard({
               ))}
             </Select>
           </Field>
-          <Field label={ut("cn.coefficient")} inline>
-            <Input
-              type="number"
-              step="any"
-              value={builder.coefficient}
-              onChange={(e) => setBuilder((b) => ({ ...b, coefficient: e.target.value }))}
-            />
+          <Field label={ut("cn.matching")} inline hint={ut("cn.resultTableEmpty")}>
+            <Select value="" disabled onChange={() => {}}>
+              <option value="">{ut("cn.matching")}</option>
+            </Select>
           </Field>
         </div>
 
@@ -517,13 +692,14 @@ export function Bands({
         const range = `${b.minScore}–${b.maxScore}`;
         return (
           <div key={k} className="flex flex-col gap-[6px]">
-            <div className="flex items-center gap-[8px]">
-              <span aria-hidden className="w-[26px] text-[13px] text-muted">{ut("cn.from")}</span>
-              <Field label={`${ut("cn.from")} ${k + 1}`} inline className="w-[84px] shrink-0">
+            {/* кадр f30: «від» 22 · поле 87 · «до» 22 · поле 87, зазоры по 10 */}
+            <div className="flex items-center gap-[10px]">
+              <span aria-hidden className="w-[22px] text-[13px] text-muted">{ut("cn.from")}</span>
+              <Field label={`${ut("cn.from")} ${k + 1}`} inline className="w-[87px] shrink-0">
                 <Input type="number" step="any" className="text-center font-bold" value={b.minScore} onChange={(e) => set(k, { minScore: Number(e.target.value) })} />
               </Field>
-              <span aria-hidden className="text-[13px] text-muted">{ut("cn.to")}</span>
-              <Field label={`${ut("cn.to")} ${k + 1}`} inline className="w-[84px] shrink-0">
+              <span aria-hidden className="w-[22px] text-[13px] text-muted">{ut("cn.to")}</span>
+              <Field label={`${ut("cn.to")} ${k + 1}`} inline className="w-[87px] shrink-0">
                 <Input type="number" step="any" className="text-center font-bold" value={b.maxScore} onChange={(e) => set(k, { maxScore: Number(e.target.value) })} />
               </Field>
               <Field label={`${ut("cn.resultText")} ${range}`} inline className="min-w-0 flex-1">
