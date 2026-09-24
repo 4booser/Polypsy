@@ -8,6 +8,7 @@ import {
   type StatModel,
   type StatModelListItem,
   type StatModelListPage,
+  type StatRunColumn,
   type StatRunResult,
 } from "@quizzy/shared";
 import { db } from "../db";
@@ -54,6 +55,32 @@ function toModel(row: typeof statModels.$inferSelect): StatModel {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/**
+ * След расчёта в журнале: по каждой колонке — методика, версия, пресет,
+ * ФАКТИЧЕСКИЕ фильтры и размер выборки без подавления.
+ *
+ * Фильтры обязательны, и именно применённые, а не ссылка на пресет.
+ * Проверка восстановимости закрывает утечки внутри ОДНОГО ответа;
+ * композицию РАЗНЫХ запросов («сегодня Київ, завтра Київ без групи») она
+ * не видит по построению, и закрывается она журналом: разбор должен
+ * увидеть, как фильтры сжимали выборку от запроса к запросу. Пресет правят
+ * задним числом, поэтому ссылка на него в журнале показала бы сегодняшний
+ * срез вместо того, что был посчитан.
+ *
+ * Отвергнуто: маскировать шумом. Шум в долях портит клинический отчёт
+ * каждому читателю ради одного злоумышленника, а против усреднения
+ * повторных запросов всё равно нужен счётчик — то есть тот же журнал.
+ */
+function runTrail(columns: StatRunColumn[], sizes: number[]) {
+  return columns.map((col, i) => ({
+    surveyId: col.surveyId,
+    versionId: col.versionId,
+    presetId: col.presetId,
+    filters: col.filters,
+    size: sizes[i],
+  }));
 }
 
 /**
@@ -150,10 +177,7 @@ statModelRoutes.post("/run", async (c) => {
   const columns = await resolveColumns(user, input.columns);
   const { columns: result, sizes } = await runColumns(user, columns, langOf(c));
 
-  await audit(c, {
-    action: "stat_model.run",
-    details: { preview: true, columns: columns.map((x, i) => ({ surveyId: x.surveyId, size: sizes[i] })) },
-  });
+  await audit(c, { action: "stat_model.run", details: { preview: true, columns: runTrail(result, sizes) } });
   return c.json({
     modelId: null,
     title: input.title ?? "",
@@ -236,7 +260,7 @@ statModelRoutes.post("/:id/run", async (c) => {
     action: "stat_model.run",
     resourceType: "stat_model",
     resourceId: model.id,
-    details: { columns: model.columns.map((x, i) => ({ surveyId: x.surveyId, size: sizes[i] })) },
+    details: { columns: runTrail(columns, sizes) },
   });
   return c.json({
     modelId: model.id,

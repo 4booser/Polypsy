@@ -1024,7 +1024,14 @@ describe("расчёт: числа сходятся с посевом", () => {
       column({ title: "місто", filters: { locality: "тестове" } }),
       column({ title: "група", filters: { patientGroupId: groupId } }),
       column({ title: "один", filters: { patientId: men[0]!.id } }),
-      column({ title: "завтра", filters: { from: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) } }),
+      /*
+       * «Завтра» — через двое суток по UTC, а не через одни: дата берётся в
+       * UTC, а граница периода считается в поясе базы, и с полуночи до трёх
+       * по Киеву «завтра по UTC» — это сегодня, со всеми прохождениями
+       * посева. Тест краснел ровно в эти три часа; двое суток — запас на
+       * любой пояс в пределах суток.
+       */
+      column({ title: "завтра", filters: { from: new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10) } }),
       column({ title: "тиждень тому", filters: { to: new Date(Date.now() - 5 * 86_400_000).toISOString().slice(0, 10) } }),
     ]);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -1071,6 +1078,49 @@ describe("расчёт: числа сходятся с посевом", () => {
     expect(col.filters, "фильтры колонки взяты не из пресета").toEqual({ sex: "male", ageMin: 25, ageMax: 45 });
     expect(col.respondents).toEqual(menCol.respondents);
     expect(col.scales[0]!.bands.map((b) => cellOf(b.cell))).toEqual(menCol.scales[0]!.bands.map((b) => cellOf(b.cell)));
+  });
+
+  /**
+   * Композицию РАЗНЫХ запросов решатель не видит по построению — её
+   * закрывает журнал. Поэтому каждый расчёт пишет применённые фильтры, а не
+   * ссылку на пресет: пресет правят задним числом, и журнал показал бы
+   * сегодняшний срез вместо посчитанного.
+   *
+   * Мутация: писать в журнал только методику и размер (как было) — падает
+   * на обоих расчётах, называя, чего не хватает.
+   */
+  test("каждый расчёт — строка журнала с применёнными фильтрами", async () => {
+    const { auditLog } = await import("../src/db/schema");
+    const { and: andOp, desc: descOp } = await import("drizzle-orm");
+    const lastRun = async () => {
+      const [row] = await db
+        .select()
+        .from(auditLog)
+        .where(andOp(eq(auditLog.action, "stat_model.run"), eq(auditLog.actorId, adminA.id)))
+        .orderBy(descOp(auditLog.at))
+        .limit(1);
+      return row!.details as { preview?: boolean; columns: { filters?: object; presetId?: string | null; size: number }[] };
+    };
+
+    const men = { sex: "male", ageMin: 25, ageMax: 45 };
+    await preview([column({ title: "Журнал", filters: men })]);
+    const previewed = await lastRun();
+    expect(previewed.preview).toBe(true);
+    expect(previewed.columns[0]!.filters, "превью: фильтры не записаны").toEqual(men);
+    expect(previewed.columns[0]!.size).toBe(12);
+
+    const preset = await api("/api/filter-presets", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Журнальний", criteria: { locality: "Тестове" } }),
+    });
+    const model = await api("/api/stat-models", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Журнал", columns: [column({ title: "Пресет", presetId: preset.body.id })] }),
+    });
+    await api(`/api/stat-models/${model.body.id}/run`, adminA.token, { method: "POST" });
+    const saved = await lastRun();
+    expect(saved.columns[0]!.presetId).toBe(preset.body.id);
+    expect(saved.columns[0]!.filters, "«Оновити»: записан не применённый срез пресета").toEqual({ locality: "Тестове" });
   });
 });
 
@@ -1499,6 +1549,39 @@ describe("порог малых чисел", () => {
       else if (col.hiddenFigures) expect(col.note, `«${col.title}» прячет молча`).toContain("Приховано");
       else expect(col.note).toBeNull();
     }
+  });
+
+  /**
+   * «Дыра 2» второго круга: три колонки ОДНОГО ответа с ОДИНАКОВЫМИ
+   * фильтрами, но разными показателями одной шкалы. Прежняя защита мерила
+   * разность составов, а составы равны — «дубль, не утечка», — и первая
+   * колонка прятала свою «решту» (двое «Середній»), пока соседки печатали
+   * её слагаемые порознь: 12 − 5 − 5 = 2.
+   *
+   * Закрыто решателем: система строится по людям, а не по колонкам, и
+   * «Низький» второй колонки с «Високий» третьей накрывают тех же людей,
+   * что и полосы первой. Отдельного правила о равных составах нет и не
+   * нужно.
+   *
+   * Мутация: решать систему по колонке (в keepSafe — pinnedAreas на
+   * числах одной колонки) — каждая колонка в одиночку чиста, все три
+   * печатаются, и проверка называет двоих «Середній».
+   */
+  test("равные составы, разные разрезы одной шкалы — соседки не складывают скрытую решту", async () => {
+    const men25 = { sex: "male", ageMin: 25, ageMax: 45 };
+    const cut = (title: string, keys: (keyof Content["band"])[]) => ({
+      ...column({ title, filters: men25 }),
+      bands: keys.map((k) => ({ scaleId: content.scaleId, bandId: content.band[k], highRisk: false })),
+      questions: [],
+    });
+    const res = await preview([cut("Н+В", ["low", "high"]), cut("лише Н", ["low"]), cut("лише В", ["high"])]);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const cols = res.body.columns as StatRunColumn[];
+    /* жители посева: у мужчин 25–45 все три колонки — одна и та же выборка */
+    const people = baseSeed().map((p) =>
+      p.columns.includes("Чоловіки 25–45") ? { ...p, columns: [...p.columns, "Н+В", "лише Н", "лише В"] } : p);
+    expect(named(cols, people), "соседки печатают слагаемые скрытой решты").toEqual([]);
+    expect(cols.some((c) => !c.respondents.suppressed), "закрылись все три колонки").toBe(true);
   });
 
   /**
