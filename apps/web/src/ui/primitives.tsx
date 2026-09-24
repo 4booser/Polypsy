@@ -141,7 +141,7 @@ export function TouchArea({
 /* ─────────── кнопка ─────────── */
 
 type Variant = "primary" | "ghost" | "quiet" | "danger" | "paper";
-type Size = "sm" | "md" | "card" | "form" | "glyph";
+type Size = "sm" | "md" | "card" | "form" | "glyph" | "glyph-sm";
 
 /*
  * Кнопка в макете одна: заливка #f0ecff, без рамки, текст #663399 полужирным,
@@ -262,6 +262,24 @@ const sizes: Record<Size, string> = {
    */
   glyph:
     "relative size-[27px] p-0 text-[27px] leading-none " +
+    "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-[''] " +
+    "after:-translate-x-1/2 after:-translate-y-1/2",
+  /*
+   * Тот же глиф в тесном квадрате 16 — стрелки страниц.
+   *
+   * Замер один и тот же на трёх кадрах со строкой страниц: чернила «‹» и «›»
+   * стоят в 16px центр-к-центру (f07 — 1378…1381 и 1394…1397, f10 — 1380…1383
+   * и 1396…1399, f11 — 1379…1382 и 1395…1398). Квадрат 27 с зазором 8 разносил
+   * их на 35 и делал весь блок страниц на 45px шире кадра.
+   *
+   * Уменьшается ТОЛЬКО видимый квадрат: область нажатия — тот же
+   * псевдоэлемент 44×44, места он не занимает, и обещание WCAG 2.5.5
+   * остаётся. Цена та же, что у `glyph`, и здесь она больше: накладки двух
+   * соседних стрелок перекрываются на 28px, и нажатие в этой полосе достаётся
+   * ближайшей — это по-прежнему лучше, чем промах мимо обеих.
+   */
+  "glyph-sm":
+    "relative size-[16px] p-0 text-[16px] leading-none " +
     "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-[''] " +
     "after:-translate-x-1/2 after:-translate-y-1/2",
 };
@@ -805,23 +823,34 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
  * классом снаружи, а спор утилит Tailwind решает не порядком в строке.
  * Высота — минимум 36, а не ровно 36: текст варианта бывает в две строки, и
  * резать его ради замера нельзя.
+ *
+ * Кегль — свойством, а не классом снаружи, по той же причине, что и цвет: два
+ * `text-[…]` в одной строке классов спорят, и кто победит, решает порядок в
+ * собранном CSS. Умолчание 17 — прежнее поведение и замер большинства кадров;
+ * 20 просит заполненное повідомлення (f26: «Назва повідомлення» 460…655 при
+ * кап-высоте 156…169 = 14, то есть 20 при отношении кап/кегль 0,70). Высота
+ * 36 держится в обоих случаях: 20 + 2·6 при 17-м и 24 + 2·6 при 20-м.
  */
 export function Readout({
   look = "outline",
   as: As = "div",
+  size = 17,
   className,
   children,
   ...rest
 }: {
   look?: FieldLook;
   as?: "div" | "span" | "li" | "dd";
+  size?: 17 | 20;
   className?: string;
   children: ReactNode;
 } & Omit<HTMLAttributes<HTMLElement>, "children" | "className">) {
   return (
     <As
       className={cx(
-        "flex min-h-9 items-center rounded-[5px] py-[6px] text-[17px] leading-[20px]",
+        "flex min-h-9 items-center rounded-[5px] py-[6px]",
+        /* литералами: Tailwind собирает классы, читая исходник */
+        size === 20 ? "text-[20px] leading-[24px]" : "text-[17px] leading-[20px]",
         looks[look],
         className,
       )}
