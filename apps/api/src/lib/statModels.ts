@@ -1,13 +1,16 @@
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   ageAt,
+  renderError,
   type Lang,
   type SampleFilters,
   type StatCell,
   type StatModelBandIndicator,
   type StatModelColumn,
   type StatModelColumnInput,
+  type StatRunBand,
   type StatRunColumn,
+  type StatRunOption,
   type StatRunQuestion,
   type StatRunScale,
   type StatSuppressReason,
@@ -18,7 +21,7 @@ import { db } from "../db";
 import { answers, responseScores, responses, surveyVersions, surveys, users } from "../db/schema";
 import { decryptField } from "./crypto";
 import { badRequest, notFound } from "./http";
-import { canBreakDown, suppress } from "./privacy";
+import { canBreakDown, pinnedAreas, suppress, type Published } from "./privacy";
 import {
   assertFilterPresetAccess,
   assertPatientAccess,
@@ -50,23 +53,19 @@ import { getSurvey } from "./surveys";
  *    защищает: «показано 7 и 5 из 14» называет скрытые две так же точно,
  *    как если бы их напечатали.
  *
- * ═══ Три уровня подавления ═══
+ * ═══ Проверка вместо правил ═══
  *
- * Ячейки отчёта — не отдельные числа, а система уравнений, и защита стоит
- * на каждом её этаже:
+ * Ячейки отчёта — не отдельные числа, а система уравнений, и три этажа
+ * правил («прячь группу целиком», «прячь ВШР поверх скрытой группы»,
+ * «закрывай колонку при малой разности составов») эту систему проигрывали:
+ * каждое правило закрывало свой случай и открывало следующий. Разбор обеих
+ * пробитых защит — в самой проверке (lib/privacy.ts, pinnedAreas).
  *
- * — группа (groupCells): полосы шкалы с остатком, варианты вопроса с
- *   остатком. Под порогом хоть одна ячейка — скрыта вся группа, иначе
- *   единственное неизвестное системы называется вычитанием;
- * — колонка (riskCell): «ВШР» стоит поверх групп, объединяя помеченные
- *   множества, и прячется, если скрыта группа с помеченной ячейкой или
- *   если помеченные множества пересекаются горсткой людей;
- * — модель (closedByOverlap): две колонки, различающиеся горсткой людей,
- *   описывают эту горстку разностью своих чисел — колонка с малой
- *   разностью закрывается целиком.
- *
- * Каждый этаж разбирался на живом расчёте POST /api/stat-models/run, и
- * каждый закрывает найденную там утечку, а не предполагаемую.
+ * Теперь здесь не правила, а цикл: посчитать всё → решить систему всего
+ * ответа → если хоть одна область людей восстановима, спрятать ещё одно
+ * число → решить заново. В пределе печатаются одни основания; если и они
+ * называют людей, колонка закрывается целиком с причиной, и причина едет
+ * на экран готовой фразой, а не молчанием.
  */
 
 /**
@@ -251,7 +250,6 @@ async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promis
   }
   return sample;
 }
-
 const HIDDEN: StatCell = { suppressed: true };
 
 /** Доля — от показанного основания; у пустой колонки доли нет, но и прятать нечего */
@@ -259,138 +257,225 @@ function shown(n: number, total: number): StatCell {
   return { suppressed: false, count: n, percent: total > 0 ? Math.round((n / total) * 100) : 0 };
 }
 
-/** Ключ остатка группы — не идентификатор полосы и не идентификатор варианта */
-const REST = "__rest";
+/**
+ * Сколько чисел колонка печатает самое большее — основание, ячейки и «ВШР»
+ * вместе.
+ *
+ * Потолок не украшение: проверка восстановимости решает систему на каждый
+ * расчёт, а её цена растёт с числом уравнений. Шестнадцать — это основание,
+ * шкала из пяти полос с остатком, два вопроса по три варианта с остатком и
+ * «ВШР»: колонка кадра f29 целиком. Что сверх — считается (без этого не
+ * узнать, безопасно ли остальное), но не печатается, и колонка честно
+ * говорит, сколько строк убрано.
+ *
+ * Отвергнуто: отказывать в расчёте при семнадцатом показателе. Модель
+ * собирают мышью, и отказ на семнадцатом клике — это потерянная работа
+ * там, где достаточно не напечатать лишнюю строку.
+ */
+const MAX_FIGURES_PER_COLUMN = 16;
 
 /**
- * Ячейка ниже порога.
+ * Сколько чисел цикл пробует спрятать на одном шаге.
  *
- * У разбиения (полосы шкалы, варианты одного выбора и их остаток) хватает
- * одного края: дополнение ячейки — это остальные ячейки той же группы, и
- * если их сумма меньше порога, то какая-то из них сама под ним, а если она
- * ноль, то ячейка равна основанию и никого по отдельности не называет.
+ * Шаг ищет лучшее сокрытие перебором: каждое «а если убрать вот это»
+ * решает систему заново, и без потолка восемь колонок по шестнадцать чисел
+ * дают сто двадцать восемь решений на шаг. Тридцать два — это все числа
+ * двух колонок сразу, а больше двух колонок в одной названной области не
+ * встречалось ни в одном разборе.
  *
- * У множеств (варианты вопроса с несколькими ответами, «ВШР») дополнения
- * внутри группы нет: каждый вариант — своё «выбрал / не выбрал». Поэтому
- * оба края: «десять из двенадцати» называет двоих так же точно, как «двое
- * из двенадцати».
+ * Отвергнуто: перебирать только числа, накрывающие названную область. Они
+ * бессильны там, где освобождает СОСЕДНЕЕ число: |Біль ∖ Шум| лежит внутри
+ * «Біль», а отпускает его сокрытие «решти». Поэтому не сужение набора, а
+ * порядок: накрывающие пробуются первыми, потолок отсекает хвост.
  */
-function underFloor(n: number, total: number, sets: boolean): boolean {
-  return suppress(n) === null || (sets && suppress(total - n) === null);
+const MAX_TRIALS_PER_STEP = 32;
+
+/**
+ * Печатаемое число отчёта: где стоит и КТО в него попал.
+ *
+ * Состав по людям, а не по прохождениям: колонки бывают на разных
+ * методиках и версиях, а восстанавливает читатель людей. Состав нужен
+ * целиком, потому что проверка строит области сама — по тому, какие числа
+ * накрывают одного и того же человека (lib/privacy.ts, pinnedAreas).
+ */
+interface Figure {
+  key: string;
+  column: number;
+  /** Основание колонки: его сокрытие закрывает колонку целиком */
+  base: boolean;
+  members: Set<string>;
+}
+
+/** Колонка, посчитанная до подавления: числа и способ собрать по ним отчёт */
+interface Sheet {
+  index: number;
+  total: number;
+  figures: Figure[];
+  render(kept: ReadonlySet<string>, reason: StatSuppressReason | null, lang: Lang): StatRunColumn;
 }
 
 /**
- * Группа ячеек одного показателя — полосы шкалы с остатком, варианты
- * вопроса с остатком — показывается целиком или прячется целиком.
+ * Система одного расчёта: ВСЕ показанные числа ответа разом.
  *
- * Почему целиком, а не по ячейке. Ячейки группы связаны уравнениями,
- * которые читатель видит рядом с ними: у разбиения сумма ячеек и остатка
- * равна основанию; у вопроса с несколькими ответами остаток — дополнение
- * объединения вариантов, а «ВШР» — объединение помеченных. Пока в группе
- * показана хоть одна ячейка и скрыта хоть одна, у системы остаётся ровно
- * одно неизвестное — и скрытая названа вычитанием. Так и вышло на разборе:
- * 21 респондент, «Шум» 10, «Біль» 5, «решта» 5 и «ВШР» 12 над «Шум ∪ Біль»
- * дают скрытые «Думки» = 21 − 5 − 12 = 4. Скрытая группа целиком оставляет
- * уравнениям столько же неизвестных, сколько ячеек: каждая скрытая ячейка
- * принимает любое значение от 0 до основания, и ни одна не определена.
+ * Не по колонке. Утечка «Усі» = «Велике» ⊎ «Мале» собирается из ТРЁХ
+ * колонок одного ответа: малая колонка показывает своё основание, прячет
+ * ячейку — и та читается вычитанием двух показанных соседок. Проверка по
+ * колонке не видит этого в принципе, сколько правил в неё ни добавляй.
+ * Основания соседок и связывают составы выборок: пересечения колонок
+ * становятся областями сами, без отдельного правила о разности составов.
  *
- * Отвергнуто: дополняющее подавление (suppressedKeys, lib/privacy.ts) —
- * прятать в пару к малой ячейке вторую, самую маленькую из показанных. Для
- * настоящего разбиения оно доказуемо и там остаётся, здесь — нет: у вопроса
- * с несколькими ответами уравнений больше, чем ячеек (остаток и «ВШР» стоят
- * поверх объединений), и пара скрытых читается из них, как в примере выше.
- * К тому же пара выбирается по опубликованному правилу, и читатель сужает
- * её тем же правилом; доказательство пары занимает не пять строк, а
- * страницу — значит, пары здесь нет.
+ * Не по показателю. «Високий: 6» и «Шум: 8» при «ВШР: 13» называют того
+ * единственного, кто попал в оба, — а это разные разрезы одной колонки, и
+ * порознь ни один из них ничего не называет.
+ *
+ * Отвергнуто: держать рядом с общей системой ещё и системы помельче — по
+ * показателю и по «ВШР». В них области КРУПНЕЕ (числа не различают людей,
+ * которых различают другие разрезы), и когда-то это ловило горстку,
+ * размазанную по нескольким мелким областям. С тех пор перебор объединений
+ * в pinnedAreas стал полным — глубже порога заходить незачем, — и мелкие
+ * системы перестали находить хоть что-нибудь сверх общей: мутация «убрать
+ * их» не роняла ни одной проверки. Лишний этаж защиты, который ничего не
+ * защищает, — это лишний этаж, который однажды соврут.
  */
-function groupCells(
-  parts: { key: string; n: number }[],
-  rest: number,
-  total: number,
-  sets: boolean,
-): Map<string, StatCell> {
-  const cells = [...parts, { key: REST, n: rest }];
-  /*
-   * Пересчёт: насколько сумма ячеек больше объединения. У разбиения он
-   * тождественно ноль (ячейки не пересекаются), у множеств — в точности
-   * число тех, кто выбрал больше одного варианта. Горстка здесь — тоже
-   * названные люди: при ДВУХ показанных вариантах пересчёт и есть их
-   * пересечение, «Шум» 10 и «Біль» 8 при объединении 16 отдают двоих.
-   */
-  const overcount = parts.reduce((sum, p) => sum + p.n, 0) - (total - rest);
-  const open = suppress(overcount) !== null && cells.every((c) => !underFloor(c.n, total, sets));
-  return new Map(cells.map((c) => [c.key, open ? shown(c.n, total) : HIDDEN]));
+function systemOf(sheets: Sheet[], kept: ReadonlySet<string>): Published[] {
+  return sheets
+    .flatMap((s) => s.figures)
+    .filter((f) => kept.has(f.key))
+    .map((f) => ({ key: f.key, members: f.members }));
 }
 
 /**
- * «ВШР» колонки — объединение помеченных множеств из РАЗНЫХ групп, поэтому
- * и правила у него свои, поверх групповых.
+ * Первый набросок: что колонка напечатала бы, будь она одна.
  *
- * Прячется в трёх случаях. Первый: скрыта группа, где стоит помеченная
- * ячейка, — объединение поверх скрытого слагаемого называет его вычитанием
- * (двенадцать человек 5/2/5, помечены «Низький» и «Середній»: группа
- * скрыта, а «ВШР: 7» отдавал бы «Середній» как 7 − 5). Второй: сам под
- * порогом с обоих краёв — «пятеро из семи» называет двоих. Третий: все
- * помеченные ячейки показаны, но их сумма больше объединения — разность
- * `marked − hits` есть в точности число тех, кто попал больше чем в один
- * помеченный показатель, и если их горстка, отчёт описывает эту горстку.
- * Иначе разность равна нулю (помеченные множества не пересекаются вовсе)
- * или не меньше порога, и назвать по ней некого.
+ * Одно правило и один потолок, оба — про отдельное число, а не про систему:
+ * число от единицы до порога называет людей прямо, без всякого вычитания, а
+ * больше MAX_FIGURES_PER_COLUMN чисел колонка не печатает. Всё остальное
+ * решает проверка ниже.
  *
- * Отвергнуто: подать «ВШР» в подавление вместе с ячейками группы. Он не
- * слагаемое группы, а объединение поверх нескольких групп; подавление,
- * получив его как ещё одну ячейку, спрятало бы ячейки таблицы ради
- * сводного числа — то есть пожертвовало бы главным ради производного.
+ * Отвергнуто: держать здесь и второй край порога («10 з 12» называет двоих
+ * не хуже, чем «2 з 12»). Он был нужен, пока проверка смотрела на ячейки; с
+ * полным перебором объединений дополнение любого числа — либо область, либо
+ * сумма меньше чем порог областей, и проверка находит его сама. Мутация
+ * «снять второй край» не роняла ни одной проверки — значит, это была не
+ * защита, а её повторение.
  */
-function riskCell(hits: number, marked: number, hiddenGroup: boolean, total: number): StatCell {
-  if (hiddenGroup || suppress(marked - hits) === null) return HIDDEN;
-  return underFloor(hits, total, true) ? HIDDEN : shown(hits, total);
-}
-
-/**
- * Разность составов двух колонок: |A∖B| под порогом — колонки описывают
- * эту горстку людей вычитанием.
- *
- * Доказательство. Колонки печатают по каждому показателю X числа |A∩X| и
- * |B∩X|; их разность равна |(A∖B)∩X| − |(B∖A)∩X|. Когда вторая разность
- * пуста (B ⊆ A), вычитание колонок даёт распределение тех, кто есть в A и
- * нет в B, начисто и сразу по всем показателям: пол, возраст, город и
- * полосы результата горстки людей. Когда не пуста, начисто горстка не
- * называется, но каждый её показатель оказывается зажат между разностями —
- * и отделять одно от другого пришлось бы доказательством на каждую пару
- * колонок. Дешевле закрыть: колонка, чья разность под порогом, отдаёт
- * числа — без них вычитать нечего. Равные составы (обе разности пусты) —
- * не утечка, а дубль: разность по каждому показателю нулевая.
- *
- * Отвергнуто: закрывать вместо неё соседку. Вычитать после этого тоже
- * нечем, но горстку приносит в отчёт именно колонка с малой разностью —
- * это её люди, которых у соседки нет. Закрыв соседку, мы убрали бы ту, что
- * не принесла ни одного лишнего человека: «Усі» рядом с «Чоловіки 25–45»
- * закрываются сами, а срез, ради которого модель и собрали, остаётся.
- *
- * Чего правило не закрывает: разность между РАЗНЫМИ расчётами. Чтобы
- * закрыть и её, пришлось бы помнить каждый выданный сотруднику отчёт и
- * сверять с ним новые — хранилище прошлых выдач ради защиты, которую
- * сотрудник и так обходит карандашом. Здесь закрыто то, что модель ставит
- * рядом на одном экране; остальное видно в журнале: каждый расчёт пишется
- * с размерами выборок, и подбор фильтров до горстки в нём читается.
- */
-function diffUnderFloor(a: Set<string>, b: Set<string>): boolean {
-  let n = 0;
-  for (const id of a) if (!b.has(id)) n += 1;
-  return suppress(n) === null;
-}
-
-/** Колонки, закрытые разностью составов: обе, если под порогом обе разности */
-function closedByOverlap(samples: Set<string>[]): boolean[] {
-  const closed = samples.map(() => false);
-  for (let i = 0; i < samples.length; i += 1) {
-    for (let j = i + 1; j < samples.length; j += 1) {
-      if (diffUnderFloor(samples[i]!, samples[j]!)) closed[i] = true;
-      if (diffUnderFloor(samples[j]!, samples[i]!)) closed[j] = true;
+function draft(sheets: Sheet[], closed: ReadonlyMap<number, StatSuppressReason>): Set<string> {
+  const kept = new Set<string>();
+  for (const sheet of sheets) {
+    if (closed.has(sheet.index)) continue;
+    let printed = 0;
+    for (const f of sheet.figures) {
+      if (f.members.size > 0 && suppress(f.members.size) === null) continue;
+      if (printed >= MAX_FIGURES_PER_COLUMN) break;
+      kept.add(f.key);
+      printed += 1;
     }
   }
-  return closed;
+  return kept;
+}
+
+/**
+ * Подавление как цикл: посчитал — проверил — спрятал ещё одно — проверил
+ * заново.
+ *
+ * Что прячем первым: число, чьё сокрытие снимает больше всего названных
+ * областей; при равенстве — наименьшее показанное. Наименьшее, потому что
+ * теряется меньше всего: у маленькой ячейки и доверительный интервал шире,
+ * и выводов по ней меньше. Важнее другое: выбор идёт по тому, сколько
+ * однозначностей снимается, то есть по всей системе, а не по величине
+ * числа, — поэтому читатель, знающий правило, не сужает им скрытое так, как
+ * сужал бы пару из suppressedKeys (lib/privacy.ts). И «скрыто» больше не
+ * значит «меньше порога»: цикл прячет и большие числа тоже.
+ *
+ * Когда прятать больше нечего, а области всё ещё называются, — закрывается
+ * колонка целиком, и это единственное место, где колонка закрывается не
+ * из-за собственного размера.
+ *
+ * Цикл сходится: каждый шаг либо убирает число, либо закрывает колонку, и
+ * ни то ни другое не возвращается. В пределе печатаются одни основания, а
+ * если и они восстанавливают людей — не печатается ничего.
+ */
+function keepSafe(sheets: Sheet[], closed: Map<number, StatSuppressReason>): Set<string> {
+  const byKey = new Map(sheets.flatMap((s) => s.figures).map((f) => [f.key, f] as const));
+  /*
+   * Потолок шагов. Шаг либо убирает число, либо закрывает колонку; после
+   * закрытия набросок собирается заново, и прятать приходится сызнова —
+   * отсюда произведение, а не сумма. До потолка цикл не доходит никогда, но
+   * «никогда» в защите приватности пишется кодом, а не комментарием: за ним
+   * закрываются все колонки, и печатать становится нечего.
+   */
+  const steps = sheets.reduce((n, s) => n + s.figures.length, 0) * (sheets.length + 1) + sheets.length;
+  let kept = draft(sheets, closed);
+
+  /* какие области называет отчёт, если печатать ровно эти числа */
+  const solve = (set: ReadonlySet<string>) => pinnedAreas(systemOf(sheets, set));
+
+  for (let step = 0; step <= steps; step += 1) {
+    const found = solve(kept);
+    if (!found.length) return kept;
+    const covers = new Set(found.flatMap((a) => a.inside));
+
+    /*
+     * Прячется число, снимающее больше всего названных областей; при
+     * равенстве — наименьшее показанное. Ноль в кандидаты не идёт: под ним
+     * нет ни одного человека, и его сокрытие не уносит с собой ничего.
+     *
+     * Шаг, не снимающий НИ ОДНОЙ области, тоже делается — и это не
+     * придирка. Колонка «Усі» рядом со своей группой из шести называет
+     * четверых «що чують шум і не в групі», и снять это одним числом
+     * нельзя: нужно убрать и «Шум», и остаток. Требуй мы улучшения на
+     * каждом шаге — закрывалась бы вся колонка там, где хватает трёх
+     * строк. Цикл всё равно конечен: кандидаты каждый раз убывают.
+     */
+    let best: Figure | null = null;
+    let bestLeft = Number.POSITIVE_INFINITY;
+    const candidates = [...kept]
+      .map((key) => byKey.get(key))
+      .filter((f): f is Figure => !!f && !f.base && f.members.size > 0)
+      /* сперва накрывающие названную область, потом по возрастанию — на них потолок и тратится */
+      .sort((a, b) => Number(covers.has(b.key)) - Number(covers.has(a.key)) || a.members.size - b.members.size)
+      .slice(0, MAX_TRIALS_PER_STEP);
+    for (const f of candidates) {
+      const trial = new Set(kept);
+      trial.delete(f.key);
+      const left = solve(trial).length;
+      if (!best || left < bestLeft || (left === bestLeft && f.members.size < best.members.size)) {
+        best = f;
+        bestLeft = left;
+      }
+    }
+    if (best) {
+      kept.delete(best.key);
+      continue;
+    }
+
+    /*
+     * Закрывается та колонка, после которой отчёт остаётся самым полным:
+     * меньше всего названных областей, потом — больше всего напечатанных
+     * чисел, потом — меньшая выборка. Отвергнуто закрывать ту, чьи люди
+     * названы: в «Усі» рядом с «Велике» и «Мале» названы люди «Малої», но
+     * закрыть по этому правилу пришлось бы и «Усі» — единственную колонку,
+     * которая в одиночку безопасна и ради которой отчёт открывали.
+     */
+    let victim: Sheet | null = null;
+    let score: number[] = [];
+    for (const sheet of sheets) {
+      if (closed.has(sheet.index)) continue;
+      const trial = draft(sheets, new Map([...closed, [sheet.index, "recoverable" as const]]));
+      /* чем меньше по порядку, тем лучше: названных областей, потом −числа строк, потом размер выборки */
+      const mark = [solve(trial).length, -trial.size, sheet.total];
+      const at = mark.findIndex((v, i) => v !== score[i]);
+      if (victim && (at < 0 || mark[at]! > score[at]!)) continue;
+      victim = sheet;
+      score = mark;
+    }
+    if (!victim) break;
+    closed.set(victim.index, "recoverable");
+    kept = draft(sheets, closed);
+  }
+
+  for (const sheet of sheets) if (!closed.has(sheet.index)) closed.set(sheet.index, "recoverable");
+  return new Set();
 }
 
 /** Показатели колонки по группам шкал — в порядке, в котором их расставили в модели */
@@ -404,7 +489,7 @@ function groupBands(bands: StatModelBandIndicator[]): Map<string, StatModelBandI
   return byScale;
 }
 
-/** Колонка с уже набранной выборкой: состав нужен до расчёта — по нему считаются разности */
+/** Колонка с уже набранной выборкой: состав нужен до расчёта — по нему считаются области */
 interface Prepared {
   column: StatModelColumn;
   filters: SampleFilters;
@@ -413,20 +498,25 @@ interface Prepared {
   sample: Respondent[];
 }
 
-async function computeColumn(prep: Prepared, overlapped: boolean): Promise<StatRunColumn> {
+/**
+ * Счёт колонки до всякого подавления.
+ *
+ * Считается ВСЁ и всегда, даже у колонки, которую закроют: подавление
+ * зависит от соседок, и решить, что печатать, можно только когда посчитаны
+ * все. Прежде расчёт пропускался при `open === false` — и это была не
+ * экономия, а причина, по которой колонку нельзя было переоценить, узнав о
+ * соседках.
+ *
+ * Состав каждой ячейки хранится людьми, а не числом: проверка строит
+ * области по пересечениям составов, и «пятеро» в двух колонках — это либо
+ * одни и те же пятеро, либо разные, и системы получаются разные.
+ */
+async function measureColumn(prep: Prepared, index: number): Promise<Sheet> {
   const { column, filters, survey, presetTitle, sample } = prep;
   const total = sample.length;
   const ids = sample.map((s) => s.responseId);
-  /*
-   * Колонка меньше порога подавляется целиком: и основание, и всё под ним.
-   * Ноль показывается — «никого нет» не выдаёт никого, а спрятанный ноль
-   * заставляет думать, что там кто-то есть. Закрытая разностью составов
-   * подавляется так же: показанное основание с нулями под ним отдало бы
-   * ровно то, ради чего её закрыли.
-   */
-  const reason: StatSuppressReason | null =
-    total > 0 && !canBreakDown(total) ? "small" : overlapped ? "overlap" : null;
-  const open = reason === null;
+  const userOf = new Map(sample.map((s) => [s.responseId, s.userId]));
+  const everyone = new Set(sample.map((s) => s.userId));
 
   const scaleById = new Map(survey.scales.map((s) => [s.id, s]));
   const questionById = new Map(survey.questions.map((q) => [q.id, q]));
@@ -434,7 +524,7 @@ async function computeColumn(prep: Prepared, overlapped: boolean): Promise<StatR
   /* полоса каждого прохождения по каждой шкале — по итоговому значению,
      как в scoring.ts: ненормированный результат ни в одну полосу не ложится */
   const bandHits = new Map<string, Set<string>>();
-  if (open && ids.length && column.bands.length) {
+  if (ids.length && column.bands.length) {
     const scoreRows = await db
       .select({
         responseId: responseScores.responseId,
@@ -448,15 +538,16 @@ async function computeColumn(prep: Prepared, overlapped: boolean): Promise<StatR
       if (!s.normalized) continue;
       const scale = scaleById.get(s.scaleId);
       const band = scale?.bands.find((b) => s.value >= b.minScore && s.value <= b.maxScore);
-      if (!band) continue;
+      const userId = userOf.get(s.responseId);
+      if (!band || !userId) continue;
       const hits = bandHits.get(band.id) ?? new Set<string>();
-      hits.add(s.responseId);
+      hits.add(userId);
       bandHits.set(band.id, hits);
     }
   }
 
   const chosen = new Map<string, Map<string, string[]>>();
-  if (open && ids.length && column.questions.length) {
+  if (ids.length && column.questions.length) {
     const answerRows = await db
       .select({ responseId: answers.responseId, questionId: answers.questionId, optionIds: answers.optionIds })
       .from(answers)
@@ -470,127 +561,159 @@ async function computeColumn(prep: Prepared, overlapped: boolean): Promise<StatR
         ),
       );
     for (const a of answerRows) {
-      const byResponse = chosen.get(a.questionId) ?? new Map<string, string[]>();
-      byResponse.set(a.responseId, a.optionIds ?? []);
-      chosen.set(a.questionId, byResponse);
+      const userId = userOf.get(a.responseId);
+      if (!userId) continue;
+      const byUser = chosen.get(a.questionId) ?? new Map<string, string[]>();
+      byUser.set(userId, a.optionIds ?? []);
+      chosen.set(a.questionId, byUser);
     }
   }
+
+  const figures: Figure[] = [];
+  const baseKey = `k${index}:base`;
+  figures.push({ key: baseKey, column: index, base: true, members: everyone });
 
   const riskHits = new Set<string>();
   let riskMarked = false;
-  /* скрыта группа с помеченной ячейкой — «ВШР» скрывается вместе с ней, см. riskCell */
-  let riskHidden = false;
-  /* сумма помеченных ячеек: больше объединения ровно на число попавших в несколько */
-  let riskMarkedSum = 0;
+  let seq = 0;
+  const addFigure = (members: Set<string>): string => {
+    seq += 1;
+    const key = `k${index}:n${seq}`;
+    figures.push({ key, column: index, base: false, members });
+    return key;
+  };
 
-  const scales: StatRunScale[] = [];
+  type ScalePart = {
+    head: Omit<StatRunScale, "bands" | "rest">;
+    bands: { head: Omit<StatRunBand, "cell">; key: string }[];
+    restKey: string;
+  };
+  const scaleParts: ScalePart[] = [];
   for (const [scaleId, indicators] of groupBands(column.bands)) {
     const scale = scaleById.get(scaleId);
     if (!scale) badRequest("err.statModelIndicatorUnknown", { what: scaleId });
-    const parts = indicators.map((ind) => ({ key: ind.bandId, n: bandHits.get(ind.bandId)?.size ?? 0 }));
-    const rest = total - parts.reduce((sum, p) => sum + p.n, 0);
-    /* полосы одной шкалы не пересекаются: они с остатком — разбиение, порог с одного края */
-    const cells = open ? groupCells(parts, rest, total, false) : null;
-    scales.push({
-      scaleId,
-      scaleCode: scale.code,
-      scaleTitle: scale.title,
-      bands: indicators.map((ind) => {
-        const band = scale.bands.find((b) => b.id === ind.bandId);
-        if (!band) badRequest("err.statModelIndicatorUnknown", { what: `${scale.title} → ${ind.bandId}` });
-        const cell = cells?.get(ind.bandId) ?? HIDDEN;
-        if (ind.highRisk) {
-          riskMarked = true;
-          if (cell.suppressed) riskHidden = true;
-          const hits = bandHits.get(ind.bandId) ?? new Set<string>();
-          riskMarkedSum += hits.size;
-          for (const id of hits) riskHits.add(id);
-        }
-        return {
-          scaleId,
-          scaleCode: scale.code,
-          scaleTitle: scale.title,
-          bandId: band.id,
-          label: band.label,
-          severity: band.severity,
-          highRisk: ind.highRisk,
-          cell,
-        };
-      }),
-      rest: cells?.get("__rest") ?? HIDDEN,
+    const head = { scaleId, scaleCode: scale.code, scaleTitle: scale.title };
+    const covered = new Set<string>();
+    const bands = indicators.map((ind) => {
+      const band = scale.bands.find((b) => b.id === ind.bandId);
+      if (!band) badRequest("err.statModelIndicatorUnknown", { what: `${scale.title} → ${ind.bandId}` });
+      const hits = bandHits.get(ind.bandId) ?? new Set<string>();
+      for (const id of hits) covered.add(id);
+      if (ind.highRisk) {
+        riskMarked = true;
+        for (const id of hits) riskHits.add(id);
+      }
+      return {
+        head: { ...head, bandId: band.id, label: band.label, severity: band.severity, highRisk: ind.highRisk },
+        key: addFigure(hits),
+      };
     });
+    const rest = new Set([...everyone].filter((id) => !covered.has(id)));
+    scaleParts.push({ head, bands, restKey: addFigure(rest) });
   }
 
-  const questionsOut: StatRunQuestion[] = [];
+  type QuestionPart = {
+    head: Omit<StatRunQuestion, "options" | "rest">;
+    options: { head: Omit<StatRunOption, "cell">; key: string }[];
+    restKey: string;
+  };
+  const questionParts: QuestionPart[] = [];
   for (const q of column.questions) {
     const question = questionById.get(q.questionId);
     if (!question) badRequest("err.statModelIndicatorUnknown", { what: q.questionId });
-    const byResponse = chosen.get(q.questionId) ?? new Map<string, string[]>();
+    const byUser = chosen.get(q.questionId) ?? new Map<string, string[]>();
     const shownIds = new Set(q.options.map((o) => o.optionId));
-    const counts = new Map<string, number>();
-    let rest = 0;
-    for (const id of ids) {
-      const picked = byResponse.get(id) ?? [];
+    const hitsOf = new Map<string, Set<string>>(q.options.map((o) => [o.optionId, new Set<string>()]));
+    const covered = new Set<string>();
+    for (const id of everyone) {
+      const picked = byUser.get(id) ?? [];
       /*
        * Один ответ — один выбор: у single/yesno берётся первый вариант, и
        * человек ложится ровно в одну ячейку разбиения. У multiple каждый
-       * выбранный вариант считается отдельно, и разбиения нет — отсюда
-       * разные правила подавления ниже.
+       * выбранный вариант считается отдельно, и разбиения нет — отсюда и
+       * области Венна в проверке, а не одно разбиение с остатком.
        */
-      const hits = question.type === "multiple" ? picked.filter((o) => shownIds.has(o)) : picked.slice(0, 1).filter((o) => shownIds.has(o));
-      if (!hits.length) rest += 1;
-      for (const o of hits) counts.set(o, (counts.get(o) ?? 0) + 1);
+      const hits =
+        question.type === "multiple"
+          ? picked.filter((o) => shownIds.has(o))
+          : picked.slice(0, 1).filter((o) => shownIds.has(o));
+      for (const o of hits) {
+        hitsOf.get(o)!.add(id);
+        covered.add(id);
+      }
     }
-    const parts = q.options.map((o) => ({ key: o.optionId, n: counts.get(o.optionId) ?? 0 }));
-    /*
-     * У multiple варианты — множества, а остаток — дополнение их объединения:
-     * порог с обоих краёв у каждой ячейки. У single/yesno это разбиение, и
-     * края второй ячейке дают соседи по группе.
-     */
-    const sets = question.type === "multiple";
-    const cells = open ? groupCells(parts, rest, total, sets) : null;
-    const cellOf = (key: string) => cells?.get(key) ?? HIDDEN;
-    questionsOut.push({
-      questionId: question.id,
-      title: question.title,
-      type: question.type,
-      options: q.options.map((o) => {
-        const option = question.options.find((x) => x.id === o.optionId);
-        if (!option) badRequest("err.statModelIndicatorUnknown", { what: `${question.title} → ${o.optionId}` });
-        const cell = cellOf(o.optionId);
-        if (o.highRisk) {
-          riskMarked = true;
-          if (cell.suppressed) riskHidden = true;
-          riskMarkedSum += counts.get(o.optionId) ?? 0;
-          for (const [id, picked] of byResponse) if (picked.includes(o.optionId)) riskHits.add(id);
-        }
-        return { optionId: option.id, text: option.text, highRisk: o.highRisk, cell };
-      }),
-      rest: cellOf(REST),
+    const options = q.options.map((o) => {
+      const option = question.options.find((x) => x.id === o.optionId);
+      if (!option) badRequest("err.statModelIndicatorUnknown", { what: `${question.title} → ${o.optionId}` });
+      const hits = hitsOf.get(o.optionId)!;
+      if (o.highRisk) {
+        riskMarked = true;
+        for (const id of hits) riskHits.add(id);
+      }
+      return {
+        head: { optionId: option.id, text: option.text, highRisk: o.highRisk },
+        key: addFigure(hits),
+      };
+    });
+    const rest = new Set([...everyone].filter((id) => !covered.has(id)));
+    questionParts.push({
+      head: { questionId: question.id, title: question.title, type: question.type },
+      options,
+      restKey: addFigure(rest),
     });
   }
 
-  return {
-    title: column.title,
-    presetId: column.presetId,
-    presetTitle,
-    filters,
-    surveyId: survey.id,
-    surveyTitle: survey.title,
-    versionId: column.versionId,
-    versionNumber: survey.versionNumber,
-    respondents: open ? shown(total, total) : HIDDEN,
-    suppressedReason: reason,
-    scales,
-    questions: questionsOut,
-    /*
-     * Сам факт «ВШР скрыт» ничего не выдаёт: какие помеченные ячейки и группы
-     * спрятаны, видно в той же колонке, а от подавления с обоих краёв порога
-     * этот случай неотличим. Правила — в riskCell.
-     */
-    highRisk: riskMarked ? (open ? riskCell(riskHits.size, riskMarkedSum, riskHidden, total) : HIDDEN) : null,
+  const riskKey = `k${index}:risk`;
+  if (riskMarked) figures.push({ key: riskKey, column: index, base: false, members: riskHits });
+
+  const size = new Map(figures.map((f) => [f.key, f.members.size] as const));
+  const render = (kept: ReadonlySet<string>, reason: StatSuppressReason | null, lang: Lang): StatRunColumn => {
+    const cellOf = (key: string): StatCell => (kept.has(key) ? shown(size.get(key) ?? 0, total) : HIDDEN);
+    const hiddenFigures = figures.filter((f) => !kept.has(f.key)).length;
+    const note =
+      reason === "small"
+        ? renderError("err.statColumnSmall", lang)
+        : reason === "recoverable"
+          ? renderError("err.statColumnClosed", lang)
+          : hiddenFigures
+            ? renderError("err.statFiguresHidden", lang, { count: hiddenFigures })
+            : null;
+    return {
+      title: column.title,
+      presetId: column.presetId,
+      presetTitle,
+      filters,
+      surveyId: survey.id,
+      surveyTitle: survey.title,
+      versionId: column.versionId,
+      versionNumber: survey.versionNumber,
+      respondents: cellOf(baseKey),
+      suppressedReason: reason,
+      note,
+      hiddenFigures,
+      scales: scaleParts.map((s) => ({
+        ...s.head,
+        bands: s.bands.map((b) => ({ ...b.head, cell: cellOf(b.key) })),
+        rest: cellOf(s.restKey),
+      })),
+      questions: questionParts.map((q) => ({
+        ...q.head,
+        options: q.options.map((o) => ({ ...o.head, cell: cellOf(o.key) })),
+        rest: cellOf(q.restKey),
+      })),
+      /*
+       * Сам факт «ВШР скрыт» ничего не выдаёт: какие помеченные ячейки и
+       * группы спрятаны, видно в той же колонке. Правило у «ВШР» теперь не
+       * своё: он такое же число системы, как ячейки, и проверяется вместе
+       * с ними — своей системой на колонку и системой из «ВШР» соседок.
+       */
+      highRisk: riskMarked ? cellOf(riskKey) : null,
+    };
   };
+
+  return { index, total, figures, render };
 }
+
 
 /**
  * Расчёт по колонкам — сохранённым или только что собранным.
@@ -604,11 +727,10 @@ async function computeColumn(prep: Prepared, overlapped: boolean): Promise<StatR
  * подбор фильтров, пока выборка не сожмётся до одного, должен быть виден
  * при разборе, как у cohort.preview.
  *
- * Выборки набираются ВСЕ до расчёта хоть одной: подавление колонки зависит
- * не только от неё самой, но и от соседних — колонка, отличающаяся от
- * соседней горсткой людей, закрывается целиком (closedByOverlap). Считать
- * колонку сразу, как прежде, значило бы отдать её числа до того, как стало
- * известно, с чем их сравнят.
+ * Считается сначала всё, печатается потом: что колонка может напечатать,
+ * решает проверка по ВСЕМУ ответу разом (keepSafe). Считать и отдавать
+ * колонку по одной, как было прежде, значило бы отдать её числа до того,
+ * как стало известно, с чем их сложат.
  */
 export async function runColumns(
   user: User,
@@ -633,12 +755,21 @@ export async function runColumns(
     prepared.push({ column, filters, survey, presetTitle, sample: await sampleOf(column, filters) });
   }
 
+  const sheets: Sheet[] = [];
+  for (const [index, prep] of prepared.entries()) sheets.push(await measureColumn(prep, index));
+
   /*
-   * Состав — по людям, а не по прохождениям: колонки могут стоять на разных
-   * методиках и версиях, а разностью читатель описывает людей.
+   * Колонка меньше порога закрывается до всякой проверки: у неё нет ни
+   * одного числа, которое можно напечатать, — и основание тоже. Ноль
+   * показывается: «никого нет» не выдаёт никого, а спрятанный ноль
+   * заставляет думать, что там кто-то есть.
    */
-  const closed = closedByOverlap(prepared.map((p) => new Set(p.sample.map((s) => s.userId))));
-  const out: StatRunColumn[] = [];
-  for (const [i, prep] of prepared.entries()) out.push(await computeColumn(prep, closed[i] ?? false));
-  return { columns: out, sizes: prepared.map((p) => p.sample.length) };
+  const closed = new Map<number, StatSuppressReason>();
+  for (const sheet of sheets) if (sheet.total > 0 && !canBreakDown(sheet.total)) closed.set(sheet.index, "small");
+
+  const kept = keepSafe(sheets, closed);
+  return {
+    columns: sheets.map((sheet) => sheet.render(kept, closed.get(sheet.index) ?? null, lang)),
+    sizes: prepared.map((p) => p.sample.length),
+  };
 }

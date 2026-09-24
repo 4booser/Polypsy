@@ -7,6 +7,7 @@ import {
   type StatRunColumn,
   type StatRunResult,
 } from "@quizzy/shared";
+import { pinnedAreas, type PinnedArea, type Published } from "../src/lib/privacy";
 import {
   adminA,
   adminB,
@@ -54,6 +55,9 @@ interface Content {
   versionId: string;
   scaleId: string;
   band: Record<"low" | "mid" | "high", string>;
+  /** Вторая шкала — только ради потолка печатаемых чисел: с ней колонка перерастает шестнадцать */
+  loadId: string;
+  load: Record<"low" | "mid" | "high", string>;
   sleepQ: string;
   sleep: Record<"good" | "soso" | "bad", string>;
   whyQ: string;
@@ -87,6 +91,16 @@ async function makeSurvey(groupId: string, owner: Person): Promise<Content> {
           { minScore: 2, maxScore: 3, label: { uk: "Високий" }, severity: "severe" },
         ],
       },
+      {
+        code: "load",
+        title: { uk: "Навантаження" },
+        aggregation: "sum",
+        bands: [
+          { minScore: 0, maxScore: 0, label: { uk: "Немає" }, severity: "none" },
+          { minScore: 1, maxScore: 1, label: { uk: "Помірне" }, severity: "mild" },
+          { minScore: 2, maxScore: 9, label: { uk: "Сильне" }, severity: "severe" },
+        ],
+      },
     ],
     questions: [
       {
@@ -103,6 +117,7 @@ async function makeSurvey(groupId: string, owner: Person): Promise<Content> {
       {
         type: "multiple",
         title: { uk: "Що заважає?" },
+        scaleCode: "load",
         options: [
           { text: { uk: "Шум" }, score: 0 },
           { text: { uk: "Думки" }, score: 0 },
@@ -128,8 +143,11 @@ async function makeSurvey(groupId: string, owner: Person): Promise<Content> {
 
   const full = (await api(`/api/surveys/${id}`, owner.token)).body;
   const scale = full.scales[0];
+  const load = full.scales[1];
   const byLabel = (labels: string[]) => labels.map((l) => scale.bands.find((b: { label: string }) => b.label === l).id);
+  const loadBy = (labels: string[]) => labels.map((l) => load.bands.find((b: { label: string }) => b.label === l).id);
   const [low, mid, high] = byLabel(["Низький", "Середній", "Високий"]);
+  const [none, some, much] = loadBy(["Немає", "Помірне", "Сильне"]);
   const q = (title: string) => full.questions.find((x: { title: string }) => x.title === title);
   const opt = (question: { options: { id: string; text: string }[] }, text: string) =>
     question.options.find((o) => o.text === text)!.id;
@@ -140,6 +158,8 @@ async function makeSurvey(groupId: string, owner: Person): Promise<Content> {
     versionId: full.versionId,
     scaleId: scale.id,
     band: { low, mid, high },
+    loadId: load.id,
+    load: { low: none, mid: some, high: much },
     sleepQ: sleepQ.id,
     sleep: { good: opt(sleepQ, "Добре"), soso: opt(sleepQ, "Так собі"), bad: opt(sleepQ, "Погано") },
     whyQ: whyQ.id,
@@ -189,11 +209,22 @@ let groupId: string;
 let riskGroupId: string;
 /** Методика сценариев разбора: своя, чтобы её респонденты не сдвинули числа посева выше */
 let skeptic: Content;
+/**
+ * Методика третьей колонки: в ней живут ТОЛЬКО два непересекающихся города,
+ * поэтому колонка без фильтров — в точности их объединение. Это и есть
+ * посевная «Київ проти Львова» с добавленной колонкой «Усі»: разбиение
+ * выборки надвое стоит в собственном посеве автора (src/seed/statModels.ts),
+ * и достаточно поставить рядом колонку без фильтра.
+ */
+let split: Content;
 /** Населённые пункты сценариев: колонка набирается фильтром по городу */
 const CITY21 = "Скепсис-21";
 const CITY14 = "Скепсис-14";
 const CITY20 = "Скепсис-20";
 const CITY12 = "Скепсис-12";
+const CITY16 = "Скепсис-16";
+const BIG = "Скепсис-Велике";
+const SMALL = "Скепсис-Мале";
 
 beforeAll(async () => {
   content = await makeSurvey(groupA, adminA);
@@ -301,6 +332,32 @@ beforeAll(async () => {
     const why = [...(i < 10 ? [skeptic.why.noise] : []), ...(i >= 5 ? [skeptic.why.pain] : [])];
     await submit(skeptic, p, { sleep: skeptic.sleep.good, why });
   }
+  for (let i = 0; i < 16; i++) {
+    const p = await person(`s16-${i}`, { sex: "male", birthDate: "1990-01-01", locality: CITY16 });
+    /*
+     * Второй сценарий доклада, число в число: «Шум» 10, «Біль» 6, «решта» 5.
+     * Все проверки прежнего правила проходили, группа печаталась целиком —
+     * и |Біль ∖ Шум| = 6 − 5 читалось как один названный человек.
+     */
+    const why = [...(i < 10 ? [skeptic.why.noise] : []), ...(i >= 5 && i < 11 ? [skeptic.why.pain] : [])];
+    await submit(skeptic, p, { sleep: skeptic.sleep.good, why });
+  }
+
+  /*
+   * Первый сценарий доклада: «Усі» = «Велике» ⊎ «Мале». Двадцать в большом
+   * городе (Добре 5, Так собі 5, Погано 10) и шестеро в малом (Добре 5,
+   * Погано 1) — все шесть попарных разностей велики или пусты, а скрытая
+   * ячейка малой колонки читается вычитанием двух показанных соседок.
+   */
+  split = await makeSurvey(groupA, adminA);
+  for (let i = 0; i < 20; i++) {
+    const p = await person(`big-${i}`, { sex: "male", birthDate: "1990-01-01", locality: BIG });
+    await submit(split, p, { sleep: i < 5 ? split.sleep.good : i < 10 ? split.sleep.soso : split.sleep.bad });
+  }
+  for (let i = 0; i < 6; i++) {
+    const p = await person(`small-${i}`, { sex: "male", birthDate: "1990-01-01", locality: SMALL });
+    await submit(split, p, { sleep: i < 5 ? split.sleep.good : split.sleep.bad });
+  }
 });
 
 /** Колонка со всеми показателями методики; фильтры — свои или пресет */
@@ -385,10 +442,10 @@ function skepticColumn(
 /**
  * Каждая колонка — своим запросом.
  *
- * Колонки одной модели защищают друг друга разностью составов (своя
- * проверка ниже), и посчитанные вместе они закрывали бы одна другую. Здесь
- * проверяется другое: колонка не должна называть человека САМА ПО СЕБЕ,
- * даже когда рядом нет ни одной соседней.
+ * Колонки одного ответа проверяются вместе (своя проверка ниже), и
+ * посчитанные рядом они прячут числа друг за друга. Здесь проверяется
+ * другое: колонка не должна называть человека САМА ПО СЕБЕ, даже когда
+ * рядом нет ни одной соседней.
  */
 async function columnsApart(specs: object[]): Promise<StatRunColumn[]> {
   const out: StatRunColumn[] = [];
@@ -659,9 +716,9 @@ describe("расчёт: числа сходятся с посевом", () => {
 
   /*
    * Колонки считаются порознь, хотя на экране их ставят рядом: «Усі» и
-   * «Чоловіки 25–45» различаются четырьмя людьми, и в одном расчёте вторая
-   * закрывает первую разностью составов — этому своя проверка ниже. Здесь
-   * сверяются числа, а не защита, поэтому каждая колонка едет отдельно.
+   * «Чоловіки 25–45» различаются четырьмя людьми, и в одном расчёте одна
+   * из них закрывается — этому своя проверка ниже. Здесь сверяются числа, а
+   * не защита, поэтому каждая колонка едет отдельно.
    */
   beforeAll(async () => {
     [all, menCol] = (await columnsApart([
@@ -691,49 +748,55 @@ describe("расчёт: числа сходятся с посевом", () => {
   });
 
   /**
-   * Мутация: снять правило группы у вопроса с несколькими вариантами
-   * (считать ячейки порознь двусторонним порогом) — «Шум: 10», «Біль: 0» и
-   * «решта: 6» показываются поверх скрытых «Думки», и проверка называет
-   * вопрос: думающих без шума ровно трое, 16 − 6 − 10.
+   * Мутация: снять и порог из draft, и проверку из keepSafe — «Думки: 3»
+   * печатается, и трое названы прямо. Порога одного для этого мало:
+   * проверка прячет тройку и без него, просто на несколько шагов позже.
    */
-  test("ответы: один выбор — разбиение с остатком, несколько — группой целиком", async () => {
+  test("ответы: один выбор — разбиение с остатком, несколько — областями Венна", async () => {
     expect(option(all, "Як ви спите?", "Добре")).toEqual({ suppressed: false, count: 5, percent: 31 });
     expect(option(all, "Як ви спите?", "Погано")).toEqual({ suppressed: false, count: 6, percent: 38 });
     expect(all.questions[0]!.rest).toEqual({ suppressed: false, count: 0, percent: 0 });
 
     /*
      * «Що заважає?»: шум слышат десять из 16, думают трое, боли нет ни у
-     * кого, никого из показанных не выбрали шестеро. Трое под порогом — и
-     * группа уходит целиком, вместе с честным нулём и остатком: показанный
-     * ноль назвал бы думающих без шума остатком объединения.
+     * кого, никого из показанных не выбрали шестеро. Скрыты «Думки» — и
+     * только они: соседние числа их не называют. Область «думають без
+     * шуму» при этом равна нулю (все думающие слышат шум), а ноль никого
+     * не выдаёт — прежнее правило прятало здесь всю группу зря.
      */
-    for (const text of ["Шум", "Думки", "Біль"]) {
-      expect(option(all, "Що заважає?", text), `«${text}» показан рядом со скрытыми «Думки»`).toEqual({ suppressed: true });
-    }
-    expect(all.questions[1]!.rest).toEqual({ suppressed: true });
+    expect(option(all, "Що заважає?", "Шум")).toEqual({ suppressed: false, count: 10, percent: 63 });
+    expect(option(all, "Що заважає?", "Думки"), "трое напечатаны").toEqual({ suppressed: true });
+    expect(option(all, "Що заважає?", "Біль")).toEqual({ suppressed: false, count: 0, percent: 0 });
+    expect(all.questions[1]!.rest).toEqual({ suppressed: false, count: 6, percent: 38 });
+    expect(named([all], baseSeed()), "показанного хватает, чтобы назвать троих").toEqual([]);
   });
 
   /**
    * Мутация: убрать возрастной фильтр из sampleOf — юноша и женщины
    * попадают в «Чоловіки 25–45»… женщин держит пол, а юноша делает 13,
-   * проверка называет число.
+   * проверка называет число. Мутация: снять проверку из keepSafe —
+   * «Низький: 5» печатается рядом со скрытой двойкой, и та названа
+   * вычитанием, 12 − 5 − 5.
    */
   test("фильтры по полу и возрасту на момент прохождения", async () => {
     expect(menCol.respondents).toEqual({ suppressed: false, count: 12, percent: 100 });
     expect(menCol.filters).toEqual({ sex: "male", ageMin: 25, ageMax: 45 });
     /*
-     * 5 «Добре», 2 «Так собі», 5 «Погано»: двое под порогом — и шкала уходит
-     * целиком. Показанные «5 и 5» из 12 назвали бы двоих остатком, а
-     * дополняющее подавление («спрятать ещё одну, самую маленькую») выбирало
-     * бы пару по опубликованному правилу — читатель сузил бы её тем же
-     * правилом до одного значения.
+     * 5 «Добре», 2 «Так собі», 5 «Погано». Двое под порогом — и прячется не
+     * только они: печатать «Низький: 5» рядом означало бы назвать двоих
+     * вычитанием, 12 − 5 − 5. Остаются «Високий: 5» и честный ноль
+     * остатка, а «Низький» с «Середній» уходят парой: 7 на двоих, и ни одно
+     * из двух чисел система не называет.
      */
-    for (const label of ["Низький", "Середній", "Високий"]) {
-      expect(band(menCol, label), `полоса «${label}» показана рядом со скрытой «Середній»`).toEqual({ suppressed: true });
-    }
-    expect(menCol.scales[0]!.rest).toEqual({ suppressed: true });
-    // основание при этом на месте: закрыта группа, а не колонка
+    expect(band(menCol, "Низький"), "«5» рядом со скрытой двойкой").toEqual({ suppressed: true });
+    expect(band(menCol, "Середній")).toEqual({ suppressed: true });
+    expect(band(menCol, "Високий")).toEqual({ suppressed: false, count: 5, percent: 42 });
+    expect(menCol.scales[0]!.rest).toEqual({ suppressed: false, count: 0, percent: 0 });
+    // второй край порога: шум слышат десять из двенадцати, и «10 з 12» назвало бы двоих
+    expect(option(menCol, "Що заважає?", "Шум"), "«Шум: 10 з 12» называет двоих").toEqual({ suppressed: true });
+    // основание при этом на месте: закрыта не колонка, а отдельные показатели
     expect(menCol.suppressedReason).toBeNull();
+    expect(named([menCol], baseSeed())).toEqual([]);
   });
 
   /**
@@ -744,8 +807,8 @@ describe("расчёт: числа сходятся с посевом", () => {
   test("«ВШР» — люди хотя бы с одним попаданием в помеченный показатель, с обоих краёв порога", async () => {
     // помечены «Високий» и «Погано» — одни и те же шестеро из 16, обе ячейки показаны
     expect(all.highRisk).toEqual({ suppressed: false, count: 6, percent: 38 });
-    // у «Чоловіки 25–45» помеченная «Високий» ушла вместе со своей шкалой — «ВШР» с ней
-    expect(menCol.highRisk, "«ВШР: 5» показан поверх скрытой шкалы").toEqual({ suppressed: true });
+    // у «Чоловіки 25–45» помеченные «Високий» и «Погано» — одни и те же пятеро, и «ВШР» их же
+    expect(menCol.highRisk).toEqual({ suppressed: false, count: 5, percent: 42 });
     expect(menCol.scales[0]!.bands.find((b) => b.label === "Високий")!.highRisk).toBe(true);
 
     const seven = await preview([column({ filters: { patientGroupId: riskGroupId } })]);
@@ -771,13 +834,13 @@ describe("расчёт: числа сходятся с посевом", () => {
 
     /*
      * Шестеро в группе: трое «Добре», трое «Погано», «Так собі» — честный
-     * ноль. Уходит вся шкала, ноль вместе с ней: показанный ноль ничего не
-     * размазывает, и по нему обе тройки читались бы как 6 − 0 пополам.
+     * ноль. Обе тройки под порогом и уходят; ноль остаётся — он никого не
+     * называет, а по нему обе тройки читаются только вместе: 6 на двоих.
      */
     expect(group!.respondents).toEqual({ suppressed: false, count: 6, percent: 100 });
-    for (const label of ["Низький", "Середній", "Високий"]) {
-      expect(band(group!, label), `полоса «${label}» показана в шкале со скрытой тройкой`).toEqual({ suppressed: true });
-    }
+    expect(band(group!, "Низький")).toEqual({ suppressed: true });
+    expect(band(group!, "Високий")).toEqual({ suppressed: true });
+    expect(band(group!, "Середній"), "честный ноль спрятан без нужды").toEqual({ suppressed: false, count: 0, percent: 0 });
 
     // выборка из одного всегда под порогом — и основание тоже
     expect(one!.respondents).toEqual({ suppressed: true });
@@ -817,217 +880,149 @@ describe("расчёт: числа сходятся с посевом", () => {
 /**
  * Читатель отчёта не сверяет ячейки — он решает систему.
  *
- * Ячейки колонки связаны уравнениями, напечатанными рядом с ними: полосы
- * шкалы и остаток складываются в основание; у вопроса с несколькими
- * вариантами остаток — это не выбравшие ничего из показанного, то есть
- * дополнение объединения; «ВШР» — объединение помеченных множеств. Проверка
- * собирает эти уравнения и перебирает ВСЕ допустимые значения скрытых
- * величин: скрытое считается восстановленным, если допустимое значение
- * ровно одно.
+ * Проверка здесь — ТОТ ЖЕ решатель, что стоит на сервере (pinnedAreas из
+ * src/lib/privacy.ts), и в этом вся её ценность: если сервер что-то
+ * пропустит, тест пропустит ровно то же. Поэтому тест даёт решателю
+ * БОЛЬШЕ, чем сервер: сервер режет ответ на системы по показателям, а тест
+ * подаёт все показанные числа ответа одной системой — области в ней самые
+ * мелкие, и восстановимость видна там, где разрезанные системы её теряют.
  *
- * Прежняя редакция сверяла ячейки — «скрыта ровно одна в разбиении, значит
- * утечка» — и пропустила три дыры разом. У вопроса с несколькими вариантами
- * утечка живёт не в ячейке, а в области диаграммы: при показанных «Шум» 10,
- * «решта» 5 и «ВШР» 12 из 21 сама ячейка «Думки» не определена (её носители
- * могли сидеть внутри «Шум»), а вот думающих без шума ровно четверо — и это
- * уже названная горстка людей. Поэтому перебираются и ячейки, и области.
+ * Состав каждого числа тест берёт не из ответа (в ответе чисел и нет, там
+ * подавление), а из посева: он и так знает, кто в каком городе, в какой
+ * полосе и что выбрал. Сходится ли это с тем, что посчитал сервер,
+ * проверяют числовые проверки выше.
+ *
+ * Прежняя редакция перебирала значения скрытых ячеек своим кодом и
+ * пропустила обе утечки, найденные проверяющими: и ту, что собирается из
+ * трёх колонок одного ответа, и |Біль ∖ Шум| = 1 внутри показанной группы.
+ * Свой перебор в тесте — вторая реализация той же мысли, и ошибается она
+ * не там же, где первая, а где придётся.
  */
 
-const valueOf = (c: StatCell): number | null => (c.suppressed ? null : c.count);
-
-interface SolvedCell {
-  label: string;
-  value: number | null;
-  marked: boolean;
-}
-
-interface SolvedGroup {
-  where: string;
-  /** варианты — множества (multiple): пересекаются, и остаток дополняет объединение */
-  sets: boolean;
-  /** ячейки показателя; последняя — «решта» */
-  cells: SolvedCell[];
-  /** «ВШР», если он напечатан и все помеченные ячейки колонки лежат в этой группе */
-  highRisk: number | null;
-}
-
-/** Ячейка под порогом так, как её видит правило: у множеств — с обоих краёв */
-const belowFloor = (n: number, total: number, sets: boolean) =>
-  (n > 0 && n < FLOOR) || (sets && total - n > 0 && total - n < FLOOR);
-
-function groupsOf(col: StatRunColumn): SolvedGroup[] {
-  const groups: SolvedGroup[] = [
-    ...col.scales.map((s) => ({
-      where: `шкала «${s.scaleTitle}»`,
-      sets: false,
-      cells: [
-        ...s.bands.map((b) => ({ label: b.label, value: valueOf(b.cell), marked: b.highRisk })),
-        { label: "решта", value: valueOf(s.rest), marked: false },
-      ],
-      highRisk: null as number | null,
-    })),
-    ...col.questions.map((q) => ({
-      where: `питання «${q.title}»`,
-      sets: q.type === "multiple",
-      cells: [
-        ...q.options.map((o) => ({ label: o.text, value: valueOf(o.cell), marked: o.highRisk })),
-        { label: "решта", value: valueOf(q.rest), marked: false },
-      ],
-      highRisk: null as number | null,
-    })),
-  ];
-  /*
-   * «ВШР» становится уравнением группы, только когда все помеченные ячейки
-   * колонки лежат в ней. Иначе он связывает несколько групп сразу, и
-   * перебор по одной группе был бы неверен — а пропуск уравнения делает
-   * проверку мягче, но не лживее.
-   */
-  const marked = groups.filter((g) => g.cells.some((c) => c.marked));
-  const hr = col.highRisk && !col.highRisk.suppressed ? col.highRisk.count : null;
-  if (hr !== null && marked.length === 1) marked[0]!.highRisk = hr;
-  return groups;
+/** Житель посева глазами отчёта: в каких он колонках и куда в них попадает */
+interface Dweller {
+  id: string;
+  /** Заголовки колонок, в выборку которых он попал */
+  columns: string[];
+  band: string;
+  sleep: string;
+  why: string[];
 }
 
 /**
- * Разбиение: неизвестные — скрытые ячейки, уравнение одно — сумма ячеек и
- * остатка равна основанию. Читателю известно и правило, по которому группу
- * скрыли: хоть одна скрытая ячейка под порогом.
+ * Все показанные числа ответа одной системой — и области, которые она
+ * называет точно.
  */
-function solvePartition(group: SolvedGroup, total: number): Map<string, Set<number>> {
-  const out = new Map<string, Set<number>>(group.cells.map((c) => [c.label, new Set<number>()]));
-  const hidden = group.cells.filter((c) => c.value === null);
-  if (!hidden.length) return out;
-
-  const budget = total - group.cells.reduce((sum, c) => sum + (c.value ?? 0), 0);
-  const take: number[] = [];
-  const walk = (k: number, left: number) => {
-    if (k === hidden.length) {
-      if (left !== 0 || !take.some((v) => belowFloor(v, total, false))) return;
-      take.forEach((v, i) => out.get(hidden[i]!.label)!.add(v));
-      return;
-    }
-    for (let v = 0; v <= left; v += 1) {
-      take[k] = v;
-      walk(k + 1, left - v);
-    }
+function namedAreas(cols: StatRunColumn[], people: Dweller[]): PinnedArea[] {
+  const system: Published[] = [];
+  const add = (key: string, cell: StatCell, members: Dweller[]) => {
+    if (!cell.suppressed) system.push({ key, members: new Set(members.map((p) => p.id)) });
   };
-  walk(0, budget);
+  for (const col of cols) {
+    const at = `«${col.title}»`;
+    const inside = people.filter((p) => p.columns.includes(col.title!));
+    add(`${at} основа`, col.respondents, inside);
+    const marks: ((p: Dweller) => boolean)[] = [];
+    for (const s of col.scales) {
+      const labels = s.bands.map((b) => b.label);
+      for (const b of s.bands) {
+        add(`${at} ${b.label}`, b.cell, inside.filter((p) => p.band === b.label));
+        if (b.highRisk) marks.push((p) => p.band === b.label);
+      }
+      add(`${at} решта «${s.scaleTitle}»`, s.rest, inside.filter((p) => !labels.includes(p.band)));
+    }
+    for (const q of col.questions) {
+      const hit = (o: string) => (p: Dweller) => (q.type === "multiple" ? p.why.includes(o) : p.sleep === o);
+      const texts = q.options.map((o) => o.text);
+      for (const o of q.options) {
+        add(`${at} ${q.title}: ${o.text}`, o.cell, inside.filter(hit(o.text)));
+        if (o.highRisk) marks.push(hit(o.text));
+      }
+      add(`${at} ${q.title}: решта`, q.rest, inside.filter((p) => !texts.some((t) => hit(t)(p))));
+    }
+    if (col.highRisk) add(`${at} ВШР`, col.highRisk, inside.filter((p) => marks.some((m) => m(p))));
+  }
+  return pinnedAreas(system);
+}
+
+/** Названные области — строками, чтобы падение теста сразу говорило, кого назвали */
+const named = (cols: StatRunColumn[], people: Dweller[]): string[] =>
+  namedAreas(cols, people).map((a) => `${a.n} чол.: ${a.inside.join(" ∧ ")}`);
+
+/** Житель: полоса и ответ про сон идут парой — полосы посева ровно по ответу */
+function dweller(id: string, columns: string[], sleep: "good" | "soso" | "bad", why: string[] = []): Dweller {
+  const band = sleep === "good" ? "Низький" : sleep === "soso" ? "Середній" : "Високий";
+  const label = sleep === "good" ? "Добре" : sleep === "soso" ? "Так собі" : "Погано";
+  return { id, columns, band, sleep: label, why };
+}
+
+/**
+ * Посев основной методики глазами отчёта: двенадцать мужчин, три женщины и
+ * юноша, с теми же полосами и вариантами, что засеяны выше.
+ */
+function baseSeed(): Dweller[] {
+  const out: Dweller[] = [];
+  for (let i = 0; i < 12; i++) {
+    const columns = ["Усі", "Чоловіки 25–45", "місто", "Перша", "Друга"];
+    if ([0, 1, 2, 7, 8, 9].includes(i)) columns.push("Група", "група");
+    if ([0, 1, 7, 8, 9, 10, 11].includes(i)) columns.push("ВШР-група");
+    const why = [...(i < 10 ? ["Шум"] : []), ...(i < 3 ? ["Думки"] : [])];
+    out.push(dweller(`m${i}`, columns, i < 5 ? "good" : i < 7 ? "soso" : "bad", why));
+  }
+  for (let i = 0; i < 3; i++) out.push(dweller(`f${i}`, ["Усі", "Перша", "Друга"], "soso"));
+  out.push(dweller("y", ["Усі", "місто", "Перша", "Друга"], "bad"));
   return out;
 }
 
-interface SetsSolution {
-  cells: Map<string, Set<number>>;
-  regions: { label: string; values: Set<number> }[];
+/** Жители города доклада: «Шум» у десяти, «Біль» у шести, пятеро — ни того ни другого */
+const seed16 = (columns: string[]): Dweller[] =>
+  Array.from({ length: 16 }, (_, i) =>
+    dweller(`c16-${i}`, columns, "good", [...(i < 10 ? ["Шум"] : []), ...(i >= 5 && i < 11 ? ["Біль"] : [])]));
+
+/** Двадцать один: «Шум» №0–9, «Біль» №7–11, «Думки» №12–15, пятеро — никого */
+const seed21 = (columns: string[]): Dweller[] =>
+  Array.from({ length: 21 }, (_, i) =>
+    dweller(`c21-${i}`, columns, "good", [
+      ...(i < 10 ? ["Шум"] : []),
+      ...(i >= 12 && i < 16 ? ["Думки"] : []),
+      ...(i >= 7 && i < 12 ? ["Біль"] : []),
+    ]));
+
+/** Четырнадцать: «Шум» и «Думки» — одни и те же пятеро, «Біль» — четверо */
+const seed14 = (columns: string[]): Dweller[] =>
+  Array.from({ length: 14 }, (_, i) => dweller(`c14-${i}`, columns, "good", i < 5 ? ["Шум", "Думки"] : i < 9 ? ["Біль"] : []));
+
+/** Двенадцать: «Шум» у десяти, «Біль» у семерых — шума не слышат двое */
+const seed12 = (columns: string[]): Dweller[] =>
+  Array.from({ length: 12 }, (_, i) =>
+    dweller(`c12-${i}`, columns, "good", [...(i < 10 ? ["Шум"] : []), ...(i >= 5 ? ["Біль"] : [])]));
+
+/** Двадцать: шестеро спят плохо, «Шум» у семерых спящих хорошо и одного из шести */
+const seed20 = (columns: string[]): Dweller[] =>
+  Array.from({ length: 20 }, (_, i) => dweller(`c20-${i}`, columns, i < 14 ? "good" : "bad", i < 7 || i === 14 ? ["Шум"] : []));
+
+/** Двадцать шесть методики разбиения: «Усі» — в точности «Велике» ⊎ «Мале» */
+function splitSeed(): Dweller[] {
+  const out: Dweller[] = [];
+  for (let i = 0; i < 20; i++) out.push(dweller(`big-${i}`, ["Усі", "Велике"], i < 5 ? "good" : i < 10 ? "soso" : "bad"));
+  for (let i = 0; i < 6; i++) out.push(dweller(`small-${i}`, ["Усі", "Мале"], i < 5 ? "good" : "bad"));
+  return out;
 }
 
-/**
- * Множества: неизвестные — области диаграммы (кто какие варианты выбрал), их
- * 2^m при m показанных вариантах. Уравнения: сумма областей равна основанию,
- * сумма областей с вариантом — его ячейка, область без вариантов — остаток,
- * сумма областей, задевающих помеченные, — «ВШР».
- *
- * Перебор по областям, а не по ячейкам: утечка у multiple живёт в области.
- * Размеры ограничены (три варианта, основание до тридцати) — это разборные
- * колонки посева, а не боевые: полный перебор боевой колонки не нужен, там
- * действует то же правило, проверенное здесь.
- */
-function solveSets(group: SolvedGroup, total: number): SetsSolution | null {
-  const opts = group.cells.slice(0, -1);
-  const rest = group.cells[group.cells.length - 1]!;
-  const m = opts.length;
-  if (m > 3 || total > 30) return null;
-  /*
-   * Ни одного показанного числа: уравнений нет вовсе, каждая скрытая ячейка
-   * принимает любое значение от нуля до основания и каждая область — тоже.
-   * Перебирать нечего, и ровно этого правило группы и добивается.
-   */
-  if (group.cells.every((c) => c.value === null) && group.highRisk === null) return null;
-
-  const cells = new Map<string, Set<number>>(group.cells.map((c) => [c.label, new Set<number>()]));
-  const regions = new Array<number>(1 << m).fill(0);
-  const seen = regions.map(() => new Set<number>());
-  const markedMask = opts.reduce((mask, c, i) => (c.marked ? mask | (1 << i) : mask), 0);
-  const partial = new Array<number>(m).fill(0);
-
-  const record = (left: number) => {
-    if (rest.value !== null && rest.value !== left) return;
-    for (const [i, o] of opts.entries()) if (o.value !== null && o.value !== partial[i]) return;
-    regions[0] = left;
-    if (group.highRisk !== null) {
-      let hr = 0;
-      for (let mask = 1; mask < regions.length; mask += 1) if (mask & markedMask) hr += regions[mask]!;
-      if (hr !== group.highRisk) return;
-    }
-    /* правило, по которому группу скрыли: ячейка под порогом либо пересчёт горсткой */
-    if (group.cells.some((c) => c.value === null)) {
-      const over = partial.reduce((sum, n) => sum + n, 0) - (total - left);
-      const byCell = opts.some((o, i) => o.value === null && belowFloor(partial[i]!, total, true));
-      const byRest = rest.value === null && belowFloor(left, total, true);
-      if (!byCell && !byRest && !(over > 0 && over < FLOOR)) return;
-    }
-    for (const [i, o] of opts.entries()) cells.get(o.label)!.add(partial[i]!);
-    cells.get(rest.label)!.add(left);
-    for (let mask = 0; mask < regions.length; mask += 1) seen[mask]!.add(regions[mask]!);
+/** Колонка методики разбиения: полосы шкалы, «Високий» помечен «ВШР» */
+function splitColumn(title: string, locality?: string) {
+  return {
+    title,
+    presetId: null,
+    filters: locality ? { locality } : {},
+    surveyId: split.id,
+    bands: [
+      { scaleId: split.scaleId, bandId: split.band.low },
+      { scaleId: split.scaleId, bandId: split.band.mid },
+      { scaleId: split.scaleId, bandId: split.band.high, highRisk: true },
+    ],
+    questions: [],
   };
-
-  const walk = (mask: number, left: number) => {
-    if (mask === regions.length) {
-      record(left);
-      return;
-    }
-    // область не может быть больше того, что осталось показанному варианту
-    let cap = left;
-    for (let i = 0; i < m; i += 1) {
-      const known = opts[i]!.value;
-      if ((mask >> i) & 1 && known !== null) cap = Math.min(cap, known - partial[i]!);
-    }
-    for (let r = 0; r <= cap; r += 1) {
-      regions[mask] = r;
-      for (let i = 0; i < m; i += 1) if ((mask >> i) & 1) partial[i] = partial[i]! + r;
-      walk(mask + 1, left - r);
-      for (let i = 0; i < m; i += 1) if ((mask >> i) & 1) partial[i] = partial[i]! - r;
-    }
-    regions[mask] = 0;
-  };
-  walk(1, total);
-
-  const nameOf = (mask: number) => {
-    if (mask === 0) return rest.label;
-    const inside = opts.filter((_, i) => (mask >> i) & 1).map((o) => o.label);
-    const outside = opts.filter((_, i) => !((mask >> i) & 1)).map((o) => o.label);
-    return outside.length ? `${inside.join(" і ")} без ${outside.join(", ")}` : inside.join(" і ");
-  };
-  return { cells, regions: seen.map((values, mask) => ({ label: nameOf(mask), values })) };
-}
-
-/** Всё, что отчёт называет точно: скрытые ячейки с единственным значением и области-горстки */
-function leaksOf(col: StatRunColumn): string[] {
-  const leaks: string[] = [];
-  // у закрытой колонки нет ни одного числа: решать нечего, и это и есть защита
-  if (col.respondents.suppressed) return leaks;
-  const total = col.respondents.count;
-  const at = `«${col.title}»`;
-  for (const group of groupsOf(col)) {
-    const solved = group.sets
-      ? solveSets(group, total)
-      : { cells: solvePartition(group, total), regions: [] as SetsSolution["regions"] };
-    if (!solved) continue;
-    for (const c of group.cells) {
-      if (c.value !== null) continue;
-      const values = solved.cells.get(c.label);
-      if (!values?.size) leaks.push(`${at}, ${group.where}: «${c.label}» — уравнения не сошлись, проверка сломана`);
-      else if (values.size === 1) {
-        leaks.push(`${at}, ${group.where}: «${c.label}» восстанавливается, допустимое значение одно: ${[...values][0]}`);
-      }
-    }
-    for (const r of solved.regions) {
-      const only = r.values.size === 1 ? [...r.values][0]! : null;
-      if (only !== null && only > 0 && only < FLOOR) {
-        leaks.push(`${at}, ${group.where}: «${r.label}» — названная горстка, ровно ${only} человек`);
-      }
-    }
-  }
-  return leaks;
 }
 
 /* ═══════════ порог малых чисел ═══════════ */
@@ -1041,9 +1036,9 @@ describe("порог малых чисел", () => {
   });
 
   /**
-   * Мутация: отдать колонке под порогом основание и нули вместо
-   * подавления (`open = true`) — «жінки» показывает 3, проверка называет
-   * число и полосу «Середній: 3».
+   * Мутация: отдать колонке под порогом основание и нули вместо подавления
+   * (не заводить причину «small») — «жінки» показывает 3, и проверка
+   * называет число и полосу «Середній: 3».
    */
   test("колонка меньше порога подавляется целиком — основание, полосы, ответы, «ВШР»", async () => {
     const res = await preview([column({ title: "жінки", filters: { sex: "female" } })]);
@@ -1058,147 +1053,151 @@ describe("порог малых чисел", () => {
     }
     expect(col.highRisk).toEqual({ suppressed: true });
     expect(col.suppressedReason, "причина закрытия колонки не названа — по ней разбирают отчёт").toBe("small");
+    // цена подавления названа словами, а не прочерками: экран обязан её показать
+    expect(col.note, "колонка молча пуста").toContain("Замало респондентів");
     // структура на месте: экран рисует те же строки с подписью «менше 5»
     expect(col.scales[0]!.bands.map((b) => b.label)).toEqual(["Низький", "Середній", "Високий"]);
   });
 
   /**
-   * Скрытое не восстанавливается — проверяется решением системы.
+   * Сторож самой проверки: решатель обязан называть обе утечки доклада.
    *
-   * Собираются ВСЕ напечатанные числа колонки (основание, ячейки, остатки,
-   * «ВШР») и перебираются все допустимые значения скрытых: у каждой скрытой
-   * ячейки должно остаться хотя бы два, а ни одна область диаграммы не
-   * должна оказаться горсткой людей с единственным допустимым значением.
-   * Разбор проверки — у leaksOf выше; сама она сторожится отдельно, на
-   * выводе API до правки.
-   *
-   * Мутация: снять правило группы у вопроса с несколькими вариантами
-   * (считать ячейки порознь двусторонним порогом) — проверка называет
-   * вопрос «Що заважає?» и области трижды: «Думки без Шум — ровно четверо»
-   * у 21 респондента на двух вариантах, «Шум і Біль — ровно троє» у 21 с
-   * пересечением и «Біль» у 14 сразу ячейкой и областью.
-   * Мутация: снять правило группы у разбиения (прятать ячейки порознь) —
-   * проверка называет «Середній» и «Так собі»: допустимое значение одно, 2.
-   * Мутация: считать «ВШР» без riskHidden, одним двусторонним порогом от
-   * числа попаданий — «ВШР: 7» встаёт поверх скрытой шкалы; это ловит
-   * проверка «ВШР» выше, называя колонку.
+   * Числа ниже — вывод API ДО правки, слово в слово из разбора: три
+   * колонки одного ответа с «Усі» = «Велике» ⊎ «Мале» и показанная группа
+   * множественного выбора на шестнадцати. Молчание проверок ниже стоит
+   * ровно столько, сколько стоит эта.
    */
-  test("система уравнений колонки не называет ни одной скрытой величины", async () => {
+  test("решатель называет обе утечки доклада", () => {
+    /* (1) три колонки: «Мале».«Високий» = 11 − 10 = 1 */
+    const big = Array.from({ length: 20 }, (_, i) => `b${i}`);
+    const small = Array.from({ length: 6 }, (_, i) => `s${i}`);
+    const bandOf = (id: string, i: number) =>
+      id.startsWith("b") ? (i < 5 ? "Низький" : i < 10 ? "Середній" : "Високий") : i < 5 ? "Низький" : "Високий";
+    const all = [...big, ...small];
+    const pick = (ids: string[], label: string) =>
+      new Set(ids.filter((id) => bandOf(id, Number(id.slice(1))) === label));
+    const three: Published[] = [
+      { key: "Усі основа", members: new Set(all) },
+      { key: "Усі Низький", members: pick(all, "Низький") },
+      { key: "Усі Середній", members: pick(all, "Середній") },
+      { key: "Усі Високий", members: pick(all, "Високий") },
+      { key: "Велике основа", members: new Set(big) },
+      { key: "Велике Низький", members: pick(big, "Низький") },
+      { key: "Велике Середній", members: pick(big, "Середній") },
+      { key: "Велике Високий", members: pick(big, "Високий") },
+      { key: "Мале основа", members: new Set(small) },
+    ];
+    const first = pinnedAreas(three);
+    expect(first.map((a) => a.n).sort(), "вычитание соседок не названо: «Мале».«Високий» = 11 − 10").toContain(1);
+
+    /* (2) множественный выбор: |Біль ∖ Шум| = 6 − 5 = 1 */
+    const people = Array.from({ length: 16 }, (_, i) => `p${i}`);
+    const many: Published[] = [
+      { key: "основа", members: new Set(people) },
+      { key: "Шум", members: new Set(people.slice(0, 10)) },
+      { key: "Біль", members: new Set(people.slice(5, 11)) },
+      { key: "решта", members: new Set(people.slice(11)) },
+    ];
+    expect(pinnedAreas(many).map((a) => a.n), "|Біль ∖ Шум| = 1 не названо").toContain(1);
+  });
+
+  /**
+   * Весь ответ решается одной системой, и она не называет никого.
+   *
+   * Проверка строже серверной: сервер режет ответ на системы по
+   * показателям, а здесь все показанные числа подаются разом — области
+   * мельче, восстановимость виднее. Колонки едут порознь, потому что
+   * каждая из них — свой ответ; ответы из нескольких колонок проверяются
+   * ниже, своими сценариями.
+   *
+   * Мутация: снять проверку из keepSafe (печатать первый набросок) —
+   * проверка называет двоих «з болем без шуму» у 21 респондента, четверых
+   * «з думками» там же и двоих, что не слышат шума, у двенадцати.
+   */
+  test("весь ответ решается одной системой — и не называет ни одной горстки", async () => {
     const men25 = { filters: { sex: "male", ageMin: 25, ageMax: 45 } };
-    const cols = await columnsApart([
+    const base = await columnsApart([
       column({ title: "Чоловіки 25–45", ...men25 }),
       column({ title: "Усі" }),
       column({ title: "Група", filters: { patientGroupId: groupId } }),
-      // помечены показанная и скрытая ячейки одного разбиения — в полосах и в вариантах одного выбора
-      markedColumn({ ...men25, title: "низький+середній" }, { band: ["low", "mid"] }),
-      markedColumn({ ...men25, title: "добре+так собі" }, { sleep: ["good", "soso"] }),
-      markedColumn({ title: "шум+думки" }, { why: ["noise", "thoughts"] }),
-      markedColumn({ ...men25, title: "лише низький" }, { band: ["low"] }),
-      // доклад проверяющих, слово в слово
-      skepticColumn("21: «ВШР» над «Шум» і «Біль»", CITY21, ["noise", "pain"]),
-      skepticColumn("21: без «ВШР», два варіанти", CITY21, [], ["noise", "thoughts"]),
-      skepticColumn("21: перетин двох варіантів", CITY21, [], ["noise", "pain"]),
-      skepticColumn("14: «Шум» і «Думки» — одні й ті самі", CITY14, ["noise", "thoughts"]),
+      markedColumn({ ...men25, title: "Чоловіки 25–45" }, { band: ["low", "mid"] }),
+      markedColumn({ ...men25, title: "Чоловіки 25–45" }, { sleep: ["good", "soso"] }),
+      markedColumn({ title: "Усі" }, { why: ["noise", "thoughts"] }),
+      markedColumn({ ...men25, title: "Чоловіки 25–45" }, { band: ["low"] }),
     ]);
-    expect(cols.flatMap((col) => leaksOf(col))).toEqual([]);
-  });
+    for (const col of base) expect(named([col], baseSeed()), `«${col.title}»`).toEqual([]);
 
-  /**
-   * Сторож самой проверки: перебор обязан называть утечку, ради которой
-   * правило и завели. Колонка ниже — вывод API до правки, число в число с
-   * доклада; молчание проверки выше стоит ровно столько, сколько стоит эта.
-   */
-  test("перебор находит утечку доклада: 21 респондент, «Шум», «решта» и «ВШР»", () => {
-    const at = (n: number | null): StatCell =>
-      n === null ? { suppressed: true } : { suppressed: false, count: n, percent: Math.round((n / 21) * 100) };
-    const before: StatRunColumn = {
-      title: "21 респондент до правки",
-      presetId: null,
-      presetTitle: null,
-      filters: {},
-      surveyId: "s",
-      surveyTitle: "Розбір",
-      versionId: "v",
-      versionNumber: 1,
-      respondents: at(21),
-      suppressedReason: null,
-      scales: [],
-      questions: [
-        {
-          questionId: "q",
-          title: "Що заважає?",
-          type: "multiple",
-          options: [
-            { optionId: "n", text: "Шум", highRisk: true, cell: at(10) },
-            { optionId: "t", text: "Думки", highRisk: false, cell: at(null) },
-            { optionId: "p", text: "Біль", highRisk: true, cell: at(5) },
-          ],
-          rest: at(5),
-        },
-      ],
-      highRisk: at(12),
-    };
-    const found = leaksOf(before).join("; ");
-    expect(found, "перебор не увидел утечку доклада — молчание проверок выше ничего не значит").toContain("Думки");
-  });
-
-  /**
-   * Сценарии доклада в числах: у вопроса с несколькими вариантами прячется
-   * вся группа, вместе с остатком, честным нулём и «ВШР».
-   *
-   * Мутация: снять правило группы у multiple — первая же проверка называет
-   * колонку и вопрос, показав «Шум: 10/48%» рядом со скрытыми «Думки».
-   * Мутация: убрать пересчёт из groupCells — падает последняя проверка:
-   * «Шум: 10» и «Біль: 5» при остатке 9 называют троих, выбравших оба.
-   */
-  test("сценарии разбора: вопрос с несколькими вариантами прячется группой", async () => {
-    const [withRisk, twoOptions, fourteen, crossing] = await columnsApart([
-      skepticColumn("21 з «ВШР»", CITY21, ["noise", "pain"]),
-      skepticColumn("21 без «ВШР»", CITY21, [], ["noise", "thoughts"]),
-      skepticColumn("14 однакових", CITY14, ["noise", "thoughts"]),
-      skepticColumn("21 з перетином", CITY21, [], ["noise", "pain"]),
-    ]);
-    const cells = (col: StatRunColumn) => [
-      ...col.questions[0]!.options.map((o) => `${o.text}: ${cellOf(o.cell)}`),
-      `решта: ${cellOf(col.questions[0]!.rest)}`,
+    /* сценарии доклада: у каждого свой посев, и все — на одном городе */
+    const cases: [object, Dweller[]][] = [
+      [skepticColumn("21", CITY21, ["noise", "pain"]), seed21(["21"])],
+      [skepticColumn("21", CITY21, [], ["noise", "thoughts"]), seed21(["21"])],
+      [skepticColumn("21", CITY21, [], ["noise", "pain"]), seed21(["21"])],
+      [skepticColumn("14", CITY14, ["noise", "thoughts"]), seed14(["14"])],
+      [skepticColumn("12", CITY12, [], ["noise", "pain"]), seed12(["12"])],
+      [skepticColumn("16", CITY16, [], ["noise", "pain"]), seed16(["16"])],
     ];
+    for (const [spec, people] of cases) {
+      const [col] = await columnsApart([spec]);
+      expect(named([col!], people), `«${col!.title}» ${JSON.stringify(col!.questions[0]!.options)}`).toEqual([]);
+    }
+  });
 
-    // 10 «Шум», 5 «Біль» (|Ш∪Б| = 12), 4 «Думки», 5 нікого: «ВШР: 12» назвал бы четвёрку как 21 − 5 − 12
-    expect(withRisk!.respondents).toEqual({ suppressed: false, count: 21, percent: 100 });
-    expect(cells(withRisk!)).toEqual(["Шум: ×", "Думки: ×", "Біль: ×", "решта: ×"]);
-    expect(withRisk!.highRisk, "«ВШР» показан поверх скрытой группы").toEqual({ suppressed: true });
+  /**
+   * Сценарий (1) доклада на живом расчёте: три колонки одного ответа, где
+   * «Усі» = «Велике» ⊎ «Мале». Прежняя защита мерила РАЗМЕР разности
+   * составов, все шесть разностей были велики или пусты, ни одна колонка не
+   * закрывалась — и «Мале».«Високий» = 1 читалось вычитанием.
+   *
+   * Мутация: решать систему по колонке, а не по всему ответу — проверка
+   * называет единственного жителя малого города в полосе «Високий».
+   * Мутация: снять проверку целиком — то же самое.
+   */
+  test("сценарий доклада: «Усі» = «Велике» ⊎ «Мале» — три колонки одного ответа", async () => {
+    const res = await preview([splitColumn("Усі"), splitColumn("Велике", BIG), splitColumn("Мале", SMALL)]);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const cols = res.body.columns as StatRunColumn[];
+    expect(cols.map((c) => c.title)).toEqual(["Усі", "Велике", "Мале"]);
+    expect(named(cols, splitSeed()), "разность двух показанных соседок называет скрытую ячейку третьей").toEqual([]);
 
-    // та же дыра без «ВШР»: два варианта, и остаток сам называет думающих без шума — 21 − 7 − 10
-    expect(twoOptions!.respondents).toEqual({ suppressed: false, count: 21, percent: 100 });
-    expect(cells(twoOptions!)).toEqual(["Шум: ×", "Думки: ×", "решта: ×"]);
-    expect(twoOptions!.highRisk, "без пометок «ВШР» — null, а не ноль").toBeNull();
+    /* что-то отчёт всё же печатает: защита не сводится к пустому экрану */
+    expect(cols.some((c) => !c.respondents.suppressed), "закрылись все три колонки").toBe(true);
+    /* и о каждой потере сказано словами */
+    for (const col of cols) {
+      if (col.suppressedReason) expect(col.note, `«${col.title}» закрыта молча`).toContain("відновлюють");
+      else if (col.hiddenFigures) expect(col.note, `«${col.title}» прячет молча`).toContain("Приховано");
+      else expect(col.note).toBeNull();
+    }
+  });
 
-    // 14 человек: «Шум» и «Думки» — одни и те же пятеро, «Біль» четверо, пятеро — никого
-    expect(fourteen!.respondents).toEqual({ suppressed: false, count: 14, percent: 100 });
-    expect(cells(fourteen!)).toEqual(["Шум: ×", "Думки: ×", "Біль: ×", "решта: ×"]);
-    expect(fourteen!.highRisk).toEqual({ suppressed: true });
-
-    /*
-     * Два варианта и ни одной ячейки под порогом: «Шум» 10, «Біль» 5,
-     * остаток 9 — но объединение 12, и пересчёт 10 + 5 − 12 = 3 есть в
-     * точности число выбравших оба. У двух вариантов пересечение читается
-     * начисто, поэтому группа уходит и здесь.
-     */
-    expect(crossing!.respondents).toEqual({ suppressed: false, count: 21, percent: 100 });
-    expect(cells(crossing!), "«Шум» и «Біль» показаны — трое, выбравшие оба, названы").toEqual([
-      "Шум: ×",
-      "Біль: ×",
-      "решта: ×",
+  /**
+   * Сценарий (2) доклада на живом расчёте: 16 человек, «Шум» 10, «Біль» 6,
+   * «решта» 5. Прежнее правило проверяло каждую ячейку, её дополнение и
+   * пересчёт — всё проходило, группа печаталась целиком, а читатель решал
+   * систему из четырёх областей и получал |Біль ∖ Шум| = 1.
+   *
+   * Мутация: снять проверку из keepSafe — группа печатается целиком, и
+   * проверка называет того самого человека: |Біль ∖ Шум| = 6 − 5.
+   */
+  test("сценарий доклада: множественный выбор на шестнадцати не называет одного", async () => {
+    const [col] = await columnsApart([skepticColumn("16 осіб", CITY16, [], ["noise", "pain"])]);
+    expect(col!.respondents).toEqual({ suppressed: false, count: 16, percent: 100 });
+    const cells = col!.questions[0]!.options.map((o) => `${o.text}: ${cellOf(o.cell)}`);
+    expect([...cells, `решта: ${cellOf(col!.questions[0]!.rest)}`], "группа напечатана целиком").not.toEqual([
+      "Шум: 10/63%",
+      "Біль: 6/38%",
+      "решта: 5/31%",
     ]);
+    expect(named([col!], seed16(["16 осіб"]))).toEqual([]);
+    expect(col!.hiddenFigures, "из группы ничего не убрано").toBeGreaterThan(0);
   });
 
   /**
    * «ВШР» — объединение помеченных множеств из разных групп, и поверх
    * показанных ячеек он сообщает, насколько они пересекаются.
    *
-   * Мутация: убрать проверку пересчёта помеченных из riskCell — «ВШР: 13»
-   * показывается при «Високий: 6» и «Шум: 8», и проверка называет того
-   * единственного, кто попал в оба показателя: 6 + 8 − 13 = 1.
+   * Мутация: снять проверку из keepSafe — «ВШР: 13» печатается при
+   * «Високий: 6» и «Шум: 8», и проверка называет того единственного, кто
+   * попал в оба показателя: 6 + 8 − 13 = 1.
    */
   test("«ВШР» не называет тех, кто попал сразу в два помеченных показателя", async () => {
     const res = await preview([
@@ -1228,20 +1227,21 @@ describe("порог малых чисел", () => {
     const col = res.body.columns[0]!;
     expect(col.respondents).toEqual({ suppressed: false, count: 20, percent: 100 });
     // обе помеченные ячейки над порогом и показаны — прятать их не за что
-    const high = col.scales[0]!.bands.find((b) => b.label === "Високий")!;
-    expect(high.cell).toEqual({ suppressed: false, count: 6, percent: 30 });
+    expect(col.scales[0]!.bands.find((b) => b.label === "Високий")!.cell).toEqual({ suppressed: false, count: 6, percent: 30 });
     expect(col.questions[0]!.options[0]!.cell).toEqual({ suppressed: false, count: 8, percent: 40 });
     expect(col.highRisk, "«ВШР: 13» поверх 6 и 8 называет единственного, кто попал в оба").toEqual({ suppressed: true });
+    expect(named([col], seed20(["перетин помічених"]))).toEqual([]);
   });
 
   /**
-   * Разность составов колонок.
+   * Колонки одного ответа проверяются вместе: разность их составов — такая
+   * же область отчёта, как ячейка.
    *
-   * Мутация: убрать closedByOverlap из runColumns — «Усі» рядом с
-   * «Чоловіки 25–45» отдаёт свои числа, и первая проверка называет колонку:
-   * четверо (три женщины и юноша) читаются разностью по каждому показателю.
-   * Мутация: закрывать колонку и при нулевой разности — падает проверка
-   * одинаковых колонок: дубль не выдаёт никого.
+   * Мутация: решать систему по колонке (выбросить чужие числа из systemOf) —
+   * «Усі» и «Чоловіки 25–45» печатаются обе, и четверо (три женщины и
+   * юноша) читаются разностью. Мутация: перебирать в pinnedAreas только
+   * одиночные области без объединений — падает та же проверка: горстка
+   * разности размазана по нескольким областям и поодиночке не видна.
    */
   test("колонки, различающиеся горсткой людей, не считаются рядом", async () => {
     const pair = await preview([
@@ -1249,16 +1249,12 @@ describe("порог малых чисел", () => {
       column({ title: "Чоловіки 25–45", filters: { sex: "male", ageMin: 25, ageMax: 45 } }),
     ]);
     expect(pair.status, JSON.stringify(pair.body)).toBe(200);
-    const [wide, narrow] = pair.body.columns as StatRunColumn[];
-    expect(wide!.respondents, "«Усі» показана рядом со своим подмножеством: 16 − 12 = четверо").toEqual({ suppressed: true });
-    expect(wide!.suppressedReason).toBe("overlap");
-    for (const b of wide!.scales[0]!.bands) {
-      expect(b.cell, `полоса «${b.label}» закрытой колонки показана`).toEqual({ suppressed: true });
-    }
-    expect(wide!.highRisk).toEqual({ suppressed: true });
-    // закрывается надмножество; сам срез ни в чём не виноват и остаётся
-    expect(narrow!.respondents).toEqual({ suppressed: false, count: 12, percent: 100 });
-    expect(narrow!.suppressedReason).toBeNull();
+    const both = pair.body.columns as StatRunColumn[];
+    expect(named(both, baseSeed()), "разность составов называет четверых").toEqual([]);
+    /* закрылась ровно одна: отчёт не опустел целиком */
+    expect(both.filter((c) => c.suppressedReason === "recoverable")).toHaveLength(1);
+    const alive = both.find((c) => !c.suppressedReason)!;
+    expect(alive.respondents.suppressed, `«${alive.title}» закрыта вместе с соседкой`).toBe(false);
 
     // равные составы — дубль, а не утечка: разность пуста с обеих сторон
     const twins = await preview([column({ title: "Перша" }), column({ title: "Друга" })]);
@@ -1266,20 +1262,12 @@ describe("порог малых чисел", () => {
       const same = { suppressed: false, count: 16, percent: 100 };
       expect(col.respondents, `«${col.title}»: одинаковые колонки закрыли друг друга`).toEqual(same);
     }
+    expect(named(twins.body.columns, baseSeed())).toEqual([]);
 
-    // разность в десять человек — не горстка: обе колонки открыты
+    // разность в десять человек — не горстка: обе колонки остаются открытыми
     const far = await preview([column({ title: "Усі" }), column({ title: "Група", filters: { patientGroupId: groupId } })]);
     for (const col of far.body.columns) expect(col.respondents.suppressed, `«${col.title}» закрыта без нужды`).toBe(false);
-
-    // обе разности под порогом — закрыты обе: 19 мужчин и 18 моложе 45 различаются тремя и двумя
-    const mutual = await preview([
-      { ...skepticColumn("чоловіки міста", CITY21, []), filters: { locality: CITY21, sex: "male" } },
-      { ...skepticColumn("молодші 45", CITY21, []), filters: { locality: CITY21, ageMax: 45 } },
-    ]);
-    for (const col of mutual.body.columns) {
-      expect(col.respondents, `«${col.title}» показана, хотя разность составов — горстка`).toEqual({ suppressed: true });
-      expect(col.suppressedReason).toBe("overlap");
-    }
+    expect(named(far.body.columns, baseSeed())).toEqual([]);
   });
 
   /**
@@ -1345,32 +1333,57 @@ describe("порог малых чисел", () => {
   });
 
   /**
-   * Мутация: снять второй край у ячеек-множеств (оставить `suppress(n)`) —
-   * «Шум: 10/83%» показывается в колонке из двенадцати, и проверка называет
-   * двоих, которые шума не слышат.
+   * Цена проверки названа вслух: экран обязан сказать, чего не хватает.
+   *
+   * Мутация: не заполнять note при частичном подавлении — проверка падает:
+   * колонка молча рисует прочерки там, где данные есть, и читатель решает,
+   * что методику никто не проходил.
    */
-  test("ответ с несколькими вариантами прячется с обоих краёв — и группой", async () => {
-    const res = await preview([column({ title: "Чоловіки 25–45", filters: { sex: "male", ageMin: 25, ageMax: 45 } })]);
-    const why = res.body.columns[0]!.questions.find((q) => q.title === "Що заважає?")!;
-    const cell = (text: string) => why.options.find((o) => o.text === text)!.cell;
-    // шум — 10 из 12: не выбрали двое, и «10 из 12» назвало бы их так же точно
-    expect(cell("Шум")).toEqual({ suppressed: true });
-    expect(cell("Думки")).toEqual({ suppressed: true });
-    // ноль уходит вместе с группой: показанный, он отдавал бы остаток объединения
-    expect(cell("Біль")).toEqual({ suppressed: true });
-    expect(why.rest).toEqual({ suppressed: true });
+  test("каждая потерянная строка объяснена фразой, а не прочерком", async () => {
+    const [col] = await columnsApart([column({ title: "Чоловіки 25–45", filters: { sex: "male", ageMin: 25, ageMax: 45 } })]);
+    expect(col!.respondents).toEqual({ suppressed: false, count: 12, percent: 100 });
+    expect(col!.suppressedReason, "основание показано — колонка не закрыта").toBeNull();
+    expect(col!.hiddenFigures, "у колонки из двенадцати показано всё").toBeGreaterThan(0);
+    expect(col!.note).toContain(String(col!.hiddenFigures));
+    expect(named([col!], baseSeed())).toEqual([]);
 
-    /*
-     * Второй край — не то же, что остаток: у двенадцати «Шум» 10 и «Біль» 7
-     * покрывают всех, остаток ноль и пересчёт пять — по первому краю группа
-     * открыта. А шума не слышат двое, и «10 из 12» называет их.
-     */
-    const dozen = await columnsApart([skepticColumn("двоє без шуму", CITY12, [], ["noise", "pain"])]);
-    expect(dozen[0]!.respondents).toEqual({ suppressed: false, count: 12, percent: 100 });
-    for (const o of dozen[0]!.questions[0]!.options) {
-      expect(o.cell, `«${o.text}» показан: не слышат шума двое`).toEqual({ suppressed: true });
-    }
-    expect(leaksOf(dozen[0]!)).toEqual([]);
+    // а там, где прятать нечего, фразы нет вовсе: она не украшение
+    const [full] = await columnsApart([{ ...column({ title: "Усі" }), questions: [] }]);
+    expect(full!.hiddenFigures).toBe(0);
+    expect(full!.note).toBeNull();
+  });
+
+  /**
+   * Потолок печатаемых чисел на колонку: шестнадцать. Он не про приватность,
+   * а про время: проверка решает систему на каждый расчёт, и её цена растёт
+   * с числом уравнений. Колонка с двумя шкалами и двумя вопросами просит
+   * восемнадцать чисел — печатается шестнадцать, и о недостающих сказано
+   * той же фразой, что и обо всём скрытом.
+   *
+   * Мутация: снять потолок — проверка падает: чисел становится восемнадцать.
+   */
+  test("на колонку печатается не больше шестнадцати чисел", async () => {
+    const wide = {
+      ...column({ title: "Дві шкали" }),
+      bands: [
+        { scaleId: content.scaleId, bandId: content.band.low },
+        { scaleId: content.scaleId, bandId: content.band.mid },
+        { scaleId: content.scaleId, bandId: content.band.high, highRisk: true },
+        { scaleId: content.loadId, bandId: content.load.low },
+        { scaleId: content.loadId, bandId: content.load.mid },
+        { scaleId: content.loadId, bandId: content.load.high },
+      ],
+    };
+    const [col] = await columnsApart([wide]);
+    const cells: StatCell[] = [
+      col!.respondents,
+      ...col!.scales.flatMap((s) => [...s.bands.map((b) => b.cell), s.rest]),
+      ...col!.questions.flatMap((q) => [...q.options.map((o) => o.cell), q.rest]),
+      ...(col!.highRisk ? [col!.highRisk] : []),
+    ];
+    expect(cells.length, "колонка просит меньше восемнадцати чисел — потолок не проверяется").toBe(18);
+    expect(cells.filter((c) => !c.suppressed).length, "колонка печатает больше шестнадцати чисел").toBeLessThanOrEqual(16);
+    expect(col!.note, "о недостающих строках не сказано").toContain("Приховано");
   });
 });
 
@@ -1481,3 +1494,5 @@ describe("страховочная сетка под пресетами и мо�
     expect(row?.ownerId).toBe(adminA.id);
   });
 });
+
+
