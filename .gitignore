@@ -23,3 +23,7 @@ android/
 
 # рабочие копии агентов: временные, живут вне истории
 .claude/worktrees/
+
+# Superdesign: сгенерированные дампы и временные шаблоны
+.superdesign/init/
+.superdesign/tmp/
