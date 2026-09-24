@@ -71,9 +71,11 @@ patientRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.re
  * пустой список: пустой список подтверждал бы, что группа с таким
  * идентификатором есть.
  *
- * Телефона в строке нет намеренно: он открывается отдельным журналируемым
- * действием (GET /api/clinic/patients/:userId/phone), и колонка в списке
- * обошла бы эту запись.
+ * Телефон в строке есть — как на кадре f05, по решению заказчика
+ * (2026-09-25). Прежде он открывался только отдельным действием
+ * (GET /api/clinic/patients/:userId/phone); теперь чтение списка само
+ * журналируется с пометкой `phones`, и вопрос «кто видел номера» по-прежнему
+ * отвечается журналом.
  */
 patientRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -106,6 +108,7 @@ patientRoutes.get("/", async (c) => {
             unit: users.unit,
             sex: users.sex,
             birthDate: users.birthDate,
+            phoneEnc: users.phoneEnc,
             leadSpecialistId: users.leadSpecialistId,
             /*
              * Последняя сдача — одной подвыборкой, а не вторым запросом за
@@ -127,6 +130,7 @@ patientRoutes.get("/", async (c) => {
       sex: (r.sex as Sex | null) ?? null,
       /* только год: полная дата рождения в списке — лишнее раскрытие */
       birthYear: birthYearOf(decryptField(r.birthDate)),
+      phone: decryptField(r.phoneEnc),
       leadSpecialistId: r.leadSpecialistId ?? null,
       lastResponseAt: r.lastResponseAt ? new Date(r.lastResponseAt).toISOString() : null,
     }),
@@ -144,6 +148,7 @@ patientRoutes.get("/", async (c) => {
       matched: matched.length,
       returned: Math.min(limit, Math.max(0, matched.length - offset)),
       scoped: visible !== null,
+      phones: true,
       ...(patientGroup ? { patientGroupId: patientGroup } : {}),
     },
   });
@@ -351,7 +356,12 @@ patientRoutes.get("/:id/card", async (c) => {
     resourceType: "user",
     resourceId: patientId,
     subjectUserId: patientId,
-    details: { responses: cardResponses.length, groups: groups.length, conclusions: cardConclusions.length },
+    details: {
+      responses: cardResponses.length,
+      groups: groups.length,
+      conclusions: cardConclusions.length,
+      phone: person.phoneEnc !== null,
+    },
   });
 
   const card: PatientCard = {
@@ -365,6 +375,7 @@ patientRoutes.get("/:id/card", async (c) => {
     email: person.email,
     sex: (person.sex as Sex | null) ?? null,
     birthDate: decryptField(person.birthDate),
+    phone: decryptField(person.phoneEnc),
     unit: person.unit,
     position: person.position,
     specialty: person.specialty,

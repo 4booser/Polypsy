@@ -65,8 +65,8 @@ describe("GET /api/patients — пациенты зоны видимости", (
     expect(row.sex).toBe("female");
     expect(row.birthYear).toBe(1991);
     expect(row.lastResponseAt).toBeNull();
-    // телефона в строке нет — он открывается отдельным журналируемым действием
-    expect(Object.keys(row)).not.toContain("phone");
+    // телефон в строке есть (кадр f05, решение заказчика), но только номер: шифротекст наружу не идёт
+    expect(Object.keys(row)).not.toContain("phoneEnc");
     expect(Object.keys(row)).not.toContain("birthDate");
 
     /*
@@ -220,7 +220,7 @@ describe("GET /api/patients/:id/card — карточка пациента", () 
    * Мутация: снять проверку `visible.has(patientId)` из карточки — первая
    * проверка падает и называет пациента, чью карточку открыл посторонний.
    */
-  test("чужая зона — не найдено; своя — карточка без телефона", async () => {
+  test("чужая зона — не найдено; своя — карточка без шифротекста телефона", async () => {
     const person = await patientOfA("card", { unit: "Штаб", sex: "male", birthDate: "1988-02-02" });
 
     const foreign = await api(`/api/patients/${person.id}/card`, adminB.token);
@@ -236,7 +236,7 @@ describe("GET /api/patients/:id/card — карточка пациента", () 
     expect(own.body.birthDate).toBe("1988-02-02");
     expect(own.body.unit).toBe("Штаб");
     expect(own.body.email).toContain("pc-card");
-    expect(Object.keys(own.body)).not.toContain("phone");
+    // телефон — как на кадре f13; шифротекст наружу не идёт
     expect(Object.keys(own.body)).not.toContain("phoneEnc");
     expect(own.body.responses).toEqual([]);
     expect(own.body.groups).toEqual([]);
@@ -563,5 +563,50 @@ describe("описание маршрутов", () => {
       expect(ROUTE_DOCS[key], `${key} не описан`).toBeTruthy();
       expect(ROUTE_DOCS[key]!.permission, key).toBe("patients.read");
     }
+  });
+});
+
+describe("телефон пациента — как на макете (f05, f13, f14)", () => {
+  /*
+   * Решение заказчика 2026-09-25: телефон стоит в списке и в карточке, как на
+   * кадрах. В базе он по-прежнему шифрован; чтение журналируется с пометкой,
+   * что номера в ответе были, — вопрос «кто видел телефоны» отвечается
+   * журналом, как и прежде отдельным действием «показать телефон».
+   *
+   * Мутация: убрать `phone: decryptField(...)` в любом из четырёх маршрутов —
+   * падает проверка этого маршрута; убрать `phones: true` из журнала —
+   * падает последняя.
+   */
+  test("номер приходит в списке, в составе группы, в списке обследованных и в карточке", async () => {
+    const { encryptField } = await import("../src/lib/crypto");
+    const phone = "+380671112233";
+    const person = await patientOfA("phone", { phoneEnc: encryptField(phone) });
+
+    const list = await api("/api/patients?limit=200", adminA.token);
+    expect(list.body.items.find((p: { id: string }) => p.id === person.id)?.phone, "список пациентов").toBe(phone);
+
+    const card = await api(`/api/patients/${person.id}/card`, adminA.token);
+    expect(card.body.phone, "карточка").toBe(phone);
+
+    const group = await makeGroup(adminA, `Телефони ${crypto.randomUUID().slice(0, 6)}`);
+    await db.insert(patientGroupMembers).values({ groupId: group, patientId: person.id, addedBy: adminA.id });
+    const members = await api(`/api/patient-groups/${group}`, adminA.token);
+    expect(
+      members.body.members.find((m: { userId: string }) => m.userId === person.id)?.phone,
+      "состав группы",
+    ).toBe(phone);
+
+    await submitSurvey(surveyInA, person.token);
+    const resp = await api("/api/dynamics/respondents?limit=100", adminA.token);
+    expect(
+      resp.body.items.find((r: { userId: string }) => r.userId === person.id)?.phone,
+      "список обследованных",
+    ).toBe(phone);
+
+    const rows = await db.select().from(auditLog).where(eq(auditLog.action, "access.patient_list"));
+    expect(
+      rows.some((r) => (r.details as { phones?: boolean } | null)?.phones === true),
+      "чтение списка с телефонами не попало в журнал",
+    ).toBe(true);
   });
 });

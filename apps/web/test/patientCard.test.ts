@@ -51,6 +51,7 @@ const person = (over: Partial<PatientCard> = {}): PatientCard => ({
   email: "olena@example.org",
   sex: "female",
   birthDate: "1990-04-12",
+  phone: "+380671234567",
   unit: null,
   position: null,
   specialty: null,
@@ -73,12 +74,14 @@ describe("карточка пациента: плашки", () => {
       null,
       "жіноча",
       "d:1990-04-12",
-      null,
+      "+380671234567",
       null,
       "olena@example.org",
     ]);
-    // телефон и населённый пункт сервер не отдаёт — плашка на месте, значения нет
-    expect(fields.find((f) => f.key === "phone")!.label).toBe("Телефон");
+    // населённого пункта в учётной записи нет — плашка на месте, значения нет
+    expect(fields.find((f) => f.key === "city")!.value).toBeNull();
+    // номера нет — плашка показывает подпись, как пустые поля кадра
+    expect(personFields(person({ phone: null }), labels, iso).find((f) => f.key === "phone")!.value).toBeNull();
   });
 
   test("анонимный пациент: вместо имени псевдоним, фамилии и отчества нет", () => {

@@ -25,13 +25,21 @@ import { TOP } from "../src/shell/Topbar";
 const WORDS = { male: "чол.", female: "жін.", year: "р." };
 
 describe("мета-строка карточки", () => {
-  test("собирается в порядке макета: e-mail, подразделение, пол, год", () => {
+  test("собирается в порядке макета: e-mail, телефон, подразделение, пол, год", () => {
     expect(
       personMeta(
-        { userId: "u", fullName: "Х", email: "noga@gmail.com", unit: "м.Київ", sex: "male", birthYear: 1986 },
+        {
+          userId: "u",
+          fullName: "Х",
+          email: "noga@gmail.com",
+          phone: "+380671234567",
+          unit: "м.Київ",
+          sex: "male",
+          birthYear: 1986,
+        },
         WORDS,
       ),
-    ).toEqual(["noga@gmail.com", "м.Київ", "чол.", "1986р."]);
+    ).toEqual(["noga@gmail.com", "+380671234567", "м.Київ", "чол.", "1986р."]);
   });
 
   test("пустые поля пропускаются, а не печатаются прочерком", () => {

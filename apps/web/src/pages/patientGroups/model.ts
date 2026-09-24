@@ -22,6 +22,7 @@ export interface PersonLike {
   userId: string;
   fullName: string;
   email: string;
+  phone?: string | null;
   unit?: string | null;
   sex?: "male" | "female" | null;
   birthYear?: number | null;
@@ -30,10 +31,11 @@ export interface PersonLike {
 /**
  * Мета-строка карточки: «noga@gmail.com · м.Київ · чол. · 1986р.» с макета.
  *
- * Из шести полей макета в системе есть четыре: e-mail, подразделение (на
- * месте города — города у пациента нет вовсе), пол, год рождения. Телефон в
- * список намеренно не отдаётся: он показывается отдельным действием с
- * записью в журнал. Пустые поля пропускаются, а не печатаются прочерком:
+ * Из шести полей макета в системе есть пять: e-mail, телефон, подразделение
+ * (на месте города — города у пациента нет вовсе), пол, год рождения.
+ * Телефон стоит вторым, как на кадре f05: заказчик решил показывать его в
+ * списке «как на макете» (2026-09-25); чтение списка журналируется с
+ * пометкой, что телефоны в нём были. Пустые поля пропускаются, а не печатаются прочерком:
  * строка «— · — · 1986р.» читалась бы как поломка, а не как отсутствие.
  */
 export function personMeta(
@@ -42,6 +44,7 @@ export function personMeta(
 ): string[] {
   const out: string[] = [];
   if (p.email) out.push(p.email);
+  if (p.phone) out.push(p.phone);
   if (p.unit) out.push(p.unit);
   if (p.sex === "male") out.push(words.male);
   else if (p.sex === "female") out.push(words.female);
