@@ -70,7 +70,8 @@ export function PublicFrame({ children }: { children: ReactNode }) {
             считается отступ до знака.
           */}
           <div className={cx(INDENT, "flex pt-[57px]")}>
-            <LangToggle />
+            {/* токенами, а не числами полосы: лист публичных страниц темы не меняет */}
+            <LangToggle tone="token" />
           </div>
         </header>
         <main className={cx(COLUMN, "flex-1")}>
@@ -118,12 +119,15 @@ export function PublicFrame({ children }: { children: ReactNode }) {
 function Footer() {
   const { ut } = useLang();
   /*
-   * Адреса ссылок — из тех же строк словаря, что и подписи: телефон до тире,
-   * без пробелов. Второй записи номера в коде нет — иначе подпись и ссылка
+   * Адрес ссылки — из той же строки словаря, что и подпись: номер без
+   * пробелов. Второй записи номера в коде нет — иначе подпись и ссылка
    * разошлись бы при первой же правке реквизитов.
+   *
+   * Разрезания по тире здесь больше нет: город выехал в отдельный ключ
+   * «pub.city» (см. uiStrings.ts), и адрес строится из целой записи, а не из
+   * её куска до знака препинания.
    */
-  const phone = ut("pub.phone");
-  const tel = `tel:${phone.split("—")[0]!.replace(/\s+/g, "")}`;
+  const tel = `tel:${ut("pub.phone").replace(/\s+/g, "")}`;
   const mail = `mailto:${ut("pub.email")}`;
   const link =
     "text-primary no-underline outline-none hover:underline " +
@@ -162,10 +166,22 @@ function Footer() {
           </nav>
           <address className="w-[403px] shrink-0 not-italic max-[900px]:w-full">
             <div>{ut("pub.contacts")}</div>
+            {/*
+              Ссылкой становится ТОЛЬКО номер. Прежде <a> оборачивал всю
+              строку вместе с городом: наведение подчёркивало «— Київ,
+              Україна», а диктор читал город как часть телефона. На кадре f00
+              строка набрана целиком одним начертанием 14/400 и признаков
+              ссылки не имеет вовсе, так что глазу правка ничего не меняет —
+              меняется то, что нажимается и что произносится.
+
+              Тире — разметкой, а не в словаре: оно разделяет две записи и
+              принадлежит месту, а не ни одной из них.
+            */}
             <div>
               <a href={tel} className={link}>
                 {ut("pub.phone")}
-              </a>
+              </a>{" — "}
+              {ut("pub.city")}
             </div>
             <div>
               <a href={mail} className={link}>
@@ -197,17 +213,19 @@ function Footer() {
               </SocialLink>
             </div>
           </div>
-          {/* верх знака на 27 ниже кромки подвала: 20 отступа плюс 7 */}
-          <Link
-            to="/"
-            aria-label={ut("pub.home")}
-            className={
-              "mt-[7px] block shrink-0 self-start rounded-full outline-none " +
-              "focus-visible:ring-2 focus-visible:ring-[var(--focus)] max-[900px]:ml-auto"
-            }
-          >
+          {/*
+            Верх знака на 27 ниже кромки подвала: 20 отступа плюс 7.
+
+            Рисунок, а не ссылка. На кадре f00 знак подвала — просто знак: ни
+            подчёркивания, ни каретки, ни иного признака перехода. Ссылкой он
+            был, и дверь за ним не пропала — на «/» из подвала ведёт строка
+            «Про кампанію» в соседней колонке, а из-под знака в шапке (там он
+            остаётся ссылкой) туда же ведёт весь лист. Лишняя остановка при
+            обходе с клавиатуры — та, которую кадр не рисует, — снята.
+          */}
+          <div className="mt-[7px] shrink-0 self-start max-[900px]:ml-auto">
             <Logo size={80} />
-          </Link>
+          </div>
         </div>
         <div className="mt-auto text-center">{ut("pub.copyright")}</div>
       </div>
