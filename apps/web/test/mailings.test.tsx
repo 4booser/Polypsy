@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
+import type { MailingListItem } from "@quizzy/shared";
+import { LangProvider } from "../src/lang";
 import { cleanOptions, draftToInput, isFilled, MAX_OPTIONS } from "../src/pages/messages/model";
+import { Row } from "../src/pages/messages/MailingList";
 import { railGroups } from "../src/shell/Rail";
 import { TOP } from "../src/shell/Topbar";
 
@@ -74,5 +79,57 @@ describe("черновик повідомлення", () => {
     expect(isFilled({ title: " ", body: "Текст", options: [], patientGroupId: "" })).toBe(false);
     expect(isFilled({ title: "Тема", body: "", options: [], patientGroupId: "" })).toBe(false);
     expect(isFilled({ title: "Тема", body: "Текст", options: [], patientGroupId: "" })).toBe(true);
+  });
+});
+
+/**
+ * Строка списка розсилок: видимое на экране обязано быть в дереве доступности.
+ *
+ * Однажды это уже сломали: чтобы имя ссылки не разрасталось до трёх строк
+ * текста, начало текста и дату пометили `aria-hidden` — и они пропали у
+ * диктора начисто. Дата в этом списке единственная отличает черновик от
+ * отправленной, и глазами такая потеря не видна: экран остаётся прежним.
+ * Проверяется не вид, а состав разметки строки.
+ */
+
+const ROW: MailingListItem = {
+  id: "m1",
+  title: "Тема повідомлення",
+  preview: "Початок тексту розсилки",
+  status: "draft",
+  at: "2025-05-14T17:15:00.000Z",
+  sentAt: null,
+  recipientCount: 0,
+  answeredCount: 0,
+};
+
+const drawRow = (m: MailingListItem) =>
+  renderToStaticMarkup(
+    <LangProvider>
+      <MemoryRouter>
+        <ul>
+          <Row m={m} />
+        </ul>
+      </MemoryRouter>
+    </LangProvider>,
+  );
+
+describe("строка списка розсилок", () => {
+  test("начало текста и дата видны диктору: aria-hidden в строке нет вовсе", () => {
+    const html = drawRow(ROW);
+    expect(html).toContain(ROW.preview);
+    /* формат даты меряет format.test; здесь важно одно — что она вообще в разметке */
+    expect(html).toMatch(/>[^<]*\b14\b[^<]*17:15[^<]*</);
+    expect(html, "видимое в строке спрятано от дерева доступности").not.toContain("aria-hidden");
+  });
+
+  test("имя ссылки — по-прежнему одна тема, а не вся строка", () => {
+    /*
+     * Ссылка накрывает строку накладкой, а не содержимым: перечень ссылок
+     * должен читаться темами, иначе диктор зачитывает абзацы.
+     */
+    const inner = drawRow(ROW).match(/<a\b[^>]*>([\s\S]*?)<\/a>/);
+    expect(inner, "ссылки в строке не стало").not.toBeNull();
+    expect(inner![1]).toBe(ROW.title);
   });
 });
