@@ -88,6 +88,8 @@ dynamicsRoutes.get("/respondents", async (c) => {
        * В регистратуре различают годом рождения; здесь тоже.
        */
       birthDate: users.birthDate,
+      /* телефон — в мета-строке списка, как на кадре f05 (решение заказчика 2026-09-25) */
+      phoneEnc: users.phoneEnc,
     })
     .from(responses)
     .innerJoin(users, eq(users.id, responses.userId))
@@ -103,6 +105,7 @@ dynamicsRoutes.get("/respondents", async (c) => {
       users.unit,
       users.sex,
       users.birthDate,
+      users.phoneEnc,
     )
     /*
      * Курсор проверяется на агрегате, а не на строках прохождений.
@@ -138,6 +141,7 @@ dynamicsRoutes.get("/respondents", async (c) => {
     sex: r.sex as "male" | "female" | null,
     /* только год: полная дата рождения в списке — лишнее раскрытие */
     birthYear: birthYearOf(decryptField(r.birthDate)),
+    phone: decryptField(r.phoneEnc),
   }));
   const matched = search
     ? named.filter((r) => `${r.fullName} ${r.email}`.toLowerCase().includes(search))
@@ -154,6 +158,16 @@ dynamicsRoutes.get("/respondents", async (c) => {
       .where(base);
     total = row?.n ?? 0;
   }
+
+  /*
+   * С телефонами список стал чтением контактов людей, и журнал обязан это
+   * знать: то же имя действия, что у /api/patients, — «кто листал пациентов»
+   * отвечается одной выборкой, каким бы маршрутом ни листали.
+   */
+  await audit(c, {
+    action: "access.patient_list",
+    details: { returned: items.length, phones: true, via: "respondents" },
+  });
 
   const last = items[items.length - 1];
   return c.json({

@@ -37,9 +37,9 @@ export interface FieldLabels {
  * стать · дата народження · телефон / населений пункт · email. Девятая
  * ячейка сетки на кадре пуста — так и остаётся.
  *
- * Телефон и населённый пункт всегда пусты: телефон открывается отдельным
- * журналируемым действием и в карточке не отдаётся, поля «населённый пункт»
- * в учётной записи нет (см. api_gaps). Плашки при этом на месте — иначе
+ * Телефон — как на кадре f13 (решение заказчика 2026-09-25: «как на
+ * макете»); чтение карточки журналируется с пометкой, что номер в ней был.
+ * Населённый пункт пуст: такого поля в учётной записи нет (см. api_gaps). Плашки при этом на месте — иначе
  * сетка карточки отличалась бы от кадра.
  *
  * Анонимному пациенту вместо имени ставится псевдоним: имя у него пустое,
@@ -47,7 +47,7 @@ export interface FieldLabels {
  */
 export function personFields(
   /* locality объявлен у строки списка (PatientListItem), у карточки его пока нет — сюда он ляжет, когда появится */
-  card: Pick<PatientCard, "firstName" | "lastName" | "middleName" | "anonymous" | "pseudonym" | "fullName" | "sex" | "birthDate" | "email"> & {
+  card: Pick<PatientCard, "firstName" | "lastName" | "middleName" | "anonymous" | "pseudonym" | "fullName" | "sex" | "birthDate" | "email" | "phone"> & {
     locality?: string | null;
   },
   t: FieldLabels,
@@ -61,7 +61,7 @@ export function personFields(
     { key: "middleName", label: t.middleName, value: card.anonymous ? null : card.middleName || null },
     { key: "sex", label: t.sex, value: sex },
     { key: "birthDate", label: t.birthDate, value: card.birthDate ? formatDay(card.birthDate) : null },
-    { key: "phone", label: t.phone, value: null },
+    { key: "phone", label: t.phone, value: card.phone || null },
     { key: "city", label: t.city, value: card.locality || null },
     { key: "email", label: t.email, value: card.email || null },
   ];

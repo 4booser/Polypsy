@@ -202,6 +202,8 @@ patientGroupRoutes.get("/:id", async (c) => {
       unit: users.unit,
       sex: users.sex,
       birthDate: users.birthDate,
+      /* телефон — как на кадре f14 (решение заказчика 2026-09-25); чтение состава журналируется */
+      phoneEnc: users.phoneEnc,
     })
     .from(patientGroupMembers)
     .innerJoin(users, eq(users.id, patientGroupMembers.patientId))
@@ -217,6 +219,7 @@ patientGroupRoutes.get("/:id", async (c) => {
       sex: r.sex,
       /* только год — различить тёзок; полная дата рождения в составе лишняя */
       birthYear: birthYearOf(decryptField(r.birthDate)),
+      phone: decryptField(r.phoneEnc),
       addedAt: r.addedAt,
       addedBy: r.addedBy,
     }))
@@ -273,7 +276,7 @@ patientGroupRoutes.get("/:id", async (c) => {
     action: "patient_group.read",
     resourceType: "patient_group",
     resourceId: groupId,
-    details: { members: members.length, surveys: groupSurveys.length },
+    details: { members: members.length, surveys: groupSurveys.length, phones: true },
   });
 
   const card: PatientGroupCard = {
