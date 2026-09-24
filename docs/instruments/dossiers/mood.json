@@ -1,0 +1,1517 @@
+[
+ {
+  "key": "phq9",
+  "title_en": "Patient Health Questionnaire-9 (PHQ-9)",
+  "title_uk": "PHQ-9 — Анкета (опитувальник) пацієнта про стан здоров'я",
+  "title_ru": null,
+  "authors": "Robert L. Spitzer, Janet B. W. Williams, Kurt Kroenke et al. (educational grant from Pfizer Inc.)",
+  "year": 2001,
+  "citation": "Kroenke K, Spitzer RL, Williams JBW. The PHQ-9: Validity of a brief depression severity measure. J Gen Intern Med. 2001;16(9):606-613.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "All PHQ, GAD-7 screeners and translations are downloadable from this website and no permission is required to reproduce, translate, display or distribute them.",
+   "quote_2": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+   "url": "https://www.phqscreeners.com/select-screener",
+   "url_2": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf (официальный INSTRUCTION MANUAL, стр. 8)",
+   "conditions": null
+  },
+  "items": [
+   "Little interest or pleasure in doing things?",
+   "Feeling down, depressed, or hopeless?",
+   "Trouble falling or staying asleep, or sleeping too much?",
+   "Feeling tired or having little energy?",
+   "Poor appetite or overeating?",
+   "Feeling bad about yourself—or that you are a failure or have let yourself or your family down?",
+   "Trouble concentrating on things, such as reading the newspaper or watching television?",
+   "Moving or speaking so slowly that other people could have noticed? Or the opposite—being so fidgety or restless that you have been moving around a lot more than usual?",
+   "Thoughts that you would be better off dead or of hurting yourself in some way?"
+  ],
+  "items_note": "Текст пунктов дословно из официального INSTRUCTION MANUAL (Table 3, стр. 5) — документ издателя опросника. Шапка: «Over the last 2 weeks, how often have you been bothered by any of the following:».",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "Several days",
+    "score": 1
+   },
+   {
+    "label": "More than half the days",
+    "score": 2
+   },
+   {
+    "label": "Nearly every day",
+    "score": 3
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно из INSTRUCTION MANUAL, стр. 6: «This is calculated by assigning scores of 0, 1, 2, and 3, to the response categories of \"not at all,\" \"several days,\" \"more than half the days,\" and \"nearly every day,\" respectively. PHQ-9 total score for the nine items ranges from 0 to 27.» Обратных пунктов нет. Десятый вопрос (о степени затруднений) НЕ входит в сумму: «This single patient-rated difficulty item is not used in calculating any PHQ score or diagnosis».",
+  "bands": [
+   {
+    "min": 0,
+    "max": 4,
+    "label_en": "None-minimal",
+    "label_uk": "Депресія відсутня"
+   },
+   {
+    "min": 5,
+    "max": 9,
+    "label_en": "Mild",
+    "label_uk": "Легка («субклінічна») депресія"
+   },
+   {
+    "min": 10,
+    "max": 14,
+    "label_en": "Moderate",
+    "label_uk": "Помірної тяжкості депресія"
+   },
+   {
+    "min": 15,
+    "max": 19,
+    "label_en": "Moderately severe",
+    "label_uk": "Середньої тяжкості депресія"
+   },
+   {
+    "min": 20,
+    "max": 27,
+    "label_en": "Severe",
+    "label_uk": "Тяжка депресія"
+   }
+  ],
+  "bands_source": "Kroenke K, Spitzer RL. The PHQ-9: a new depression diagnostic and severity measure. Psychiatric Annals. 2002;32:509-521 — воспроизведено в Table 4 официального INSTRUCTION MANUAL (стр. 7). Украинские подписи полос — дословно из додатка 1 до УКПМД «Депресія», наказ МОЗ України №1003 від 25.12.2014.",
+  "risk_items": [
+   {
+    "n": 9,
+    "why": "Пункт о мыслях о смерти/самоповреждении. INSTRUCTION MANUAL, стр. 2: «A particularly important question is how to assess suicide risk in individuals who answer positively to the 9th question of the PHQ-9... a final decision about the actual risk of self-harm requires a clinical interview.» Любой ответ >0 — повод для клинической оценки риска."
+   }
+  ],
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "МОЗ України — Уніфікований клінічний протокол «Депресія», затверджений наказом МОЗ України від 25.12.2014 № 1003, Додаток 1",
+    "free": true,
+    "url": "https://www.dec.gov.ua/wp-content/uploads/2019/11/2014_1003_ykpmd_depresiya.pdf",
+    "note": "Украинский текст всех 9 пунктов и полос приведён в приложении к приказу МОЗ. Это государственный нормативный документ, свободен. Отдельно: правообладатель (Pfizer/phqscreeners) разрешает переводы без разрешения."
+   },
+   "ru": {
+    "exists": true,
+    "by": "MAPI Research Institute по заказу Pfizer — версия «PHQ-9 Russian for Russia», размещена на phqscreeners.com в разделе переводов",
+    "free": true,
+    "url": "https://www.phqscreeners.com/select-screener",
+    "note": "Наличие русской версии на сайте правообладателя подтверждается разделом переводов; прямая ссылка на PDF выдаётся через JS-селектор, статический URL получить не удалось. Перед заведением русского текста скачать PDF вручную с сайта — свой перевод не сочинять."
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    2,
+    1,
+    1,
+    0,
+    2,
+    1,
+    3,
+    3
+   ],
+   "total": 16,
+   "band": "Moderately severe (15–19) / Середньої тяжкості депресія",
+   "note": "Опубликованный пример из INSTRUCTION MANUAL, Table 3 (стр. 5): «the PHQ-9 depression severity score is 16 (3 items scored 1, 2 items scored 2, and 3 items scored 3)». Состав баллов взят дословно; распределение по конкретным пунктам в тексте не указано (в таблице отмечено галочками), поэтому раскладка выше — арифметически эквивалентная, сумма и полоса совпадают с опубликованными."
+  },
+  "verdict": "завести — public domain по заявлению правообладателя, есть официальный украинский текст в приказе МОЗ"
+ },
+ {
+  "key": "gad7",
+  "title_en": "Generalized Anxiety Disorder 7-item scale (GAD-7)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Robert L. Spitzer, Kurt Kroenke, Janet B. W. Williams, Bernd Löwe",
+  "year": 2006,
+  "citation": "Spitzer RL, Kroenke K, Williams JBW, Löwe B. A brief measure for assessing generalized anxiety disorder: the GAD-7. Arch Intern Med. 2006;166(10):1092-1097.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "All PHQ, GAD-7 screeners and translations are downloadable from this website and no permission is required to reproduce, translate, display or distribute them.",
+   "quote_2": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+   "url": "https://www.phqscreeners.com/select-screener",
+   "url_2": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf (INSTRUCTION MANUAL, стр. 8; GAD-7 включён в Table 1)",
+   "conditions": null
+  },
+  "items": [
+   "Feeling nervous, anxious or on edge",
+   "Not being able to stop or control worrying",
+   "Worrying too much about different things",
+   "Trouble relaxing",
+   "Being so restless that it is hard to sit still",
+   "Becoming easily annoyed or irritable",
+   "Feeling afraid as if something awful might happen"
+  ],
+  "items_note": "Текст пунктов дословно из Figure 1 первоисточника (Spitzer et al., Arch Intern Med 2006;166:1093). Шапка: «Over the last 2 weeks, how often have you been bothered by the following problems?».",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "Several days",
+    "score": 1
+   },
+   {
+    "label": "More than half the days",
+    "score": 2
+   },
+   {
+    "label": "Nearly every day",
+    "score": 3
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно из INSTRUCTION MANUAL, стр. 6: «This is calculated by assigning scores of 0, 1, 2, and 3, to the response categories of \"not at all,\" \"several days,\" \"more than half the days,\" and \"nearly every day,\" respectively. GAD-7 total score for the seven items ranges from 0 to 21.» Обратных пунктов нет. Финальный вопрос о степени затруднений в сумму не входит.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 4,
+    "label_en": "Minimal anxiety"
+   },
+   {
+    "min": 5,
+    "max": 9,
+    "label_en": "Mild anxiety"
+   },
+   {
+    "min": 10,
+    "max": 14,
+    "label_en": "Moderate anxiety"
+   },
+   {
+    "min": 15,
+    "max": 21,
+    "label_en": "Severe anxiety"
+   }
+  ],
+  "bands_source": "INSTRUCTION MANUAL, стр. 6: «Scores of 5, 10, and 15 represent cutpoints for mild, moderate, and severe anxiety, respectively. ... When screening for anxiety disorders, a recommended cutpoint for further evaluation is a score of 10 or greater.» Порог ≥10: Spitzer et al. 2006, Table 1 — чувствительность 89%, специфичность 82%.",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Украинская адаптация опубликована украинскими авторами (2024, «Українська адаптація шкали для оцінки генералізованого тривожного розладу GAD-7: досвід діагностики в умовах воєнного стану»); официального перевода от правообладателя или МОЗ України в нормативном документе найти не удалось",
+    "free": null,
+    "url": "https://www.researchgate.net/publication/380274979",
+    "note": "НЕ проверен по первоисточнику: доступ к полному тексту статьи не получен, дословный украинский текст 7 пунктов не подтверждён. До проверки украинский вариант НЕ заводить — правообладатель разрешает переводы, но свой перевод сочинять нельзя."
+   },
+   "ru": {
+    "exists": true,
+    "by": "MAPI Research Institute по заказу Pfizer — раздел переводов на phqscreeners.com",
+    "free": true,
+    "url": "https://www.phqscreeners.com/select-screener",
+    "note": "Статический URL PDF получить не удалось (JS-селектор). Скачать вручную перед заведением."
+   }
+  },
+  "example": {
+   "answers": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "total": 14,
+   "band": "Moderate anxiety (10–14)",
+   "note": "Арифметически однозначный пример: все семь пунктов по 2 балла, 7×2=14, полоса 10–14 «Moderate». Опубликованного пошагового примера подсчёта в первоисточнике нет."
+  },
+  "verdict": "завести — public domain по заявлению правообладателя; украинский текст пока не заводить, официальный перевод не подтверждён"
+ },
+ {
+  "key": "phq4",
+  "title_en": "Patient Health Questionnaire-4 (PHQ-4)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Kurt Kroenke, Robert L. Spitzer, Janet B. W. Williams, Bernd Löwe",
+  "year": 2009,
+  "citation": "Kroenke K, Spitzer RL, Williams JBW, Löwe B. An ultra-brief screening scale for anxiety and depression: the PHQ-4. Psychosomatics. 2009;50(6):613-621.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+   "url": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf",
+   "conditions": null,
+   "note": "PHQ-4 прямо назван в Table 1 официального INSTRUCTION MANUAL («PHQ-4 — PHQ-2 and GAD-2»)."
+  },
+  "items": [
+   "Feeling nervous, anxious or on edge",
+   "Not being able to stop or control worrying",
+   "Little interest or pleasure in doing things?",
+   "Feeling down, depressed, or hopeless?"
+  ],
+  "items_note": "PHQ-4 составлен из готовых пунктов: пункты 1-2 — это GAD-2 (первые 2 пункта GAD-7, Spitzer 2006 Figure 1), пункты 3-4 — это PHQ-2 (первые 2 пункта PHQ-9, INSTRUCTION MANUAL Table 3). Собственного нового текста у PHQ-4 нет. INSTRUCTION MANUAL, стр. 3: «PHQ-4 — PHQ-2 and GAD-2». В опубликованной форме PHQ-4 блок тревоги идёт первым.",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "Several days",
+    "score": 1
+   },
+   {
+    "label": "More than half the days",
+    "score": 2
+   },
+   {
+    "label": "Nearly every day",
+    "score": 3
+   }
+  ],
+  "reverse": [],
+  "scoring": "INSTRUCTION MANUAL, стр. 6: «When used together, they are referred to as the PHQ-4 a 4-item screening measure which ranges from a score of 0 to 12... In particular, the PHQ-2 and GAD-2 subscores of the PHQ-4 provide separate depressive and anxiety scores.» Подшкалы: тревога = сумма пунктов 1-2 (0-6), депрессия = сумма пунктов 3-4 (0-6). Порог подшкалы: «the recommended cutpoints for each when used as screeners is a score of 3 or greater». Обратных пунктов нет.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 2,
+    "label_en": "Normal"
+   },
+   {
+    "min": 3,
+    "max": 5,
+    "label_en": "Mild"
+   },
+   {
+    "min": 6,
+    "max": 8,
+    "label_en": "Moderate"
+   },
+   {
+    "min": 9,
+    "max": 12,
+    "label_en": "Severe"
+   }
+  ],
+  "bands_source": "Kroenke K, Spitzer RL, Williams JBW, Löwe B. Psychosomatics. 2009;50(6):613-621 — нормативные полосы общего балла PHQ-4: 0-2 normal, 3-5 mild, 6-8 moderate, 9-12 severe. ВНИМАНИЕ: полосы взяты из вторичных описаний статьи, дословную цитату из самой статьи получить не удалось (платный доступ ScienceDirect). Перед заведением — сверить по PDF статьи.",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Отдельного официального украинского PHQ-4 не искали как самостоятельный документ: он выводится из украинских PHQ-9 (МОЗ, наказ №1003) и украинского GAD-7 (не подтверждён). Заводить украинскую версию только после подтверждения украинского GAD-7."
+   },
+   "ru": {
+    "exists": true,
+    "by": "выводится из русских переводов PHQ-9 и GAD-7 на phqscreeners.com (INSTRUCTION MANUAL, стр. 7: «The abbreviated versions of these measures — PHQ-8, PHQ-2, GAD-2, and PHQ-4 — can simply be derived from the translations by selecting the relevant items»)",
+    "free": true,
+    "url": "https://www.phqscreeners.com/select-screener"
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    3,
+    2,
+    1
+   ],
+   "total": 9,
+   "band": "Severe (9–12); подшкала тревоги 6, подшкала депрессии 3 — обе ≥3, обе положительны",
+   "note": "Арифметически однозначный пример. Опубликованного пошагового примера в первоисточнике нет."
+  },
+  "verdict": "завести — public domain, но сверить полосы общего балла по PDF Kroenke 2009 перед запуском"
+ },
+ {
+  "key": "cesdr",
+  "title_en": "Center for Epidemiologic Studies Depression Scale — Revised (CESD-R)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "William W. Eaton, Corey Smith, Michal Ybarra, Carles Muntaner, Alan Tien (пересмотр шкалы CES-D, Lenore S. Radloff, 1977)",
+  "year": 2004,
+  "citation": "Eaton WW, Smith C, Ybarra M, Muntaner C, Tien A. Center for Epidemiologic Studies Depression Scale: Review and Revision (CESD and CESD-R). In: Maruish ME, ed. The Use of Psychological Testing for Treatment Planning and Outcomes Assessment. 3rd ed. Lawrence Erlbaum; 2004:363-377. Оригинал CES-D: Radloff LS. The CES-D Scale: A Self-Report Depression Scale for Research in the General Population. Applied Psychological Measurement. 1977;1(3):385-401.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "The CESD-R is in the public domain so it is free to use in your research.",
+   "url": "https://cesd-r.com/cesdr/",
+   "conditions": null,
+   "note": "Официальный сайт шкалы, поддерживаемый авторами пересмотра. ВНИМАНИЕ: формулировка говорит «in your research» — для клинического (не исследовательского) применения это прямо не оговорено, но public domain не ограничивает вид использования."
+  },
+  "items": [
+   "My appetite was poor.",
+   "I could not shake off the blues.",
+   "I had trouble keeping my mind on what I was doing.",
+   "I felt depressed.",
+   "My sleep was restless.",
+   "I felt sad.",
+   "I could not get going.",
+   "Nothing made me happy.",
+   "I felt like a bad person.",
+   "I lost interest in my usual activities.",
+   "I slept much more than usual.",
+   "I felt like I was moving too slowly.",
+   "I felt fidgety.",
+   "I wished I were dead.",
+   "I wanted to hurt myself.",
+   "I was tired all the time.",
+   "I did not like myself.",
+   "I lost a lot of weight without trying to.",
+   "I had a lot of trouble getting to sleep.",
+   "I could not focus on the important things."
+  ],
+  "items_note": "Дословно из официального PDF на сайте авторов: http://cesd-r.com/wp-content/uploads/2018/04/cesdrscale.pdf. Инструкция дословно: «Below is a list of the ways you might have felt or behaved. Please check the boxes to tell me how often you have felt this way in the past week or so.» Период — LAST WEEK.",
+  "anchors": [
+   {
+    "label": "Not at all or Less than 1 day",
+    "score": 0
+   },
+   {
+    "label": "1-2 days",
+    "score": 1
+   },
+   {
+    "label": "3-4 days",
+    "score": 2
+   },
+   {
+    "label": "5-7 days",
+    "score": 3
+   },
+   {
+    "label": "Nearly every day for 2 weeks",
+    "score": 4,
+    "score_cesd_style": 3
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с сайта авторов: «The Total CESD-R Score is calculated as a sum of responses to all 20 questions. In order to make the revised CESD-R have the same range as the original version i.e., the 'CESD style score'), the values for the top two responses are given the same value: ... Nearly every day for 2 weeks = 3. As in the original CESD the range of possible scores is between 0 ... and 60.» То есть ДВА балла: сырой (0-80, верхняя категория = 4) и CESD-style (0-60, верхняя категория = 3). Полосы привязаны к CESD-style. Обратных пунктов нет. Симптомные группы DSM (нужны для алгоритма): Sadness 2,4,6; Anhedonia 8,10; Appetite 1,18; Sleep 5,11,19; Thinking/concentration 3,20; Guilt 9,17; Fatigue 7,16; Agitation 12,13; Suicidal ideation 14,15.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 15,
+    "label_en": "No clinical significance",
+    "rule": "Total CESD-style score less than 16 across all 20 questions"
+   },
+   {
+    "min": 16,
+    "max": 60,
+    "label_en": "Subthreshold depression symptoms",
+    "rule": "CESD-style score of at least 16 but does not meet the algorithm criteria below"
+   },
+   {
+    "label_en": "Possible major depressive episode",
+    "rule": "Anhedonia or dysphoria nearly every day for the past two weeks, plus symptoms in an additional 2 other DSM symptom groups reported as occurring either nearly every day for the past two weeks, or 5-7 days in the past week"
+   },
+   {
+    "label_en": "Probable major depressive episode",
+    "rule": "Anhedonia or dysphoria nearly every day for the past two weeks, plus symptoms in an additional 3 DSM symptom groups reported as occurring either nearly every day for the past two weeks, or 5-7 days in the past week"
+   },
+   {
+    "label_en": "Meets criteria for Major depressive episode",
+    "rule": "Anhedonia or dysphoria nearly every day for the past two weeks, plus symptoms in an additional 4 DSM symptom groups noted as occurring nearly every day for the past two weeks"
+   }
+  ],
+  "bands_source": "Официальная страница алгоритма авторов шкалы: https://cesd-r.com/cesdr/ (раздел «Determining categories»). Порог 16 унаследован от оригинальной CES-D (Radloff, 1977). ВАЖНО: категории — не диапазоны суммы, а алгоритм по симптомным группам; сумма даёт только разделение <16 / ≥16.",
+  "risk_items": [
+   {
+    "n": 14,
+    "why": "«I wished I were dead.» — группа Suicidal ideation по классификации авторов."
+   },
+   {
+    "n": 15,
+    "why": "«I wanted to hurt myself.» — группа Suicidal ideation по классификации авторов."
+   }
+  ],
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "На официальной странице переводов (https://cesd-r.com/download/) украинской версии НЕТ. Список: Arabic, Bhutanese, Chinese, Croatian, French, German, Hindi, Japanese, Korean, Latvian, Lithuanian, Polish, Portuguese (Brazil), Spanish, Turkish. Свой перевод не сочинять."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Русской версии на официальной странице переводов также НЕТ."
+   }
+  },
+  "example": {
+   "answers": [
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2,
+    2
+   ],
+   "total": 40,
+   "band": "Subthreshold depression symptoms",
+   "note": "Арифметически однозначный пример: все 20 пунктов — «3-4 days» (2 балла). CESD-style сумма 20×2=40 (≥16). Ни один пункт не отмечен как «5-7 days» или «nearly every day for 2 weeks», поэтому алгоритм депрессивного эпизода не срабатывает → категория Subthreshold. Хороший золотой тест: проверяет и сумму, и то, что алгоритм не ложно-положительный."
+  },
+  "verdict": "завести — public domain по заявлению авторов, полный текст и алгоритм есть; украинского и русского официального перевода нет, только английский"
+ },
+ {
+  "key": "srq20",
+  "title_en": "Self-Reporting Questionnaire — 20 items (SRQ-20)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "World Health Organization, Division of Mental Health; руководство составили M. Beusenberg, J. Orley",
+  "year": 1994,
+  "citation": "Beusenberg M, Orley J. A User's Guide to the Self Reporting Questionnaire (SRQ). Geneva: World Health Organization, Division of Mental Health; 1994. WHO/MNH/PSF/94.8.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "This document is not a formal publication of the World Health Organization (WHO), and all rights are reserved by the Organization. The document may, however, be freely reviewed, abstracted, reproduced or translated, in part or in whole, but not for sale or for use in conjunction with commercial purposes.",
+   "url": "https://iris.who.int/handle/10665/61113",
+   "url_pdf": "https://iris.who.int/server/api/core/bitstreams/3f890c49-b056-4112-bd0e-2e386ff08a39/content",
+   "conditions": "только некоммерческое использование; нельзя продавать и использовать в коммерческих целях"
+  },
+  "items": [
+   "Do you often have headaches?",
+   "Is your appetite poor?",
+   "Do you sleep badly?",
+   "Are you easily frightened?",
+   "Do your hands shake?",
+   "Do you feel nervous, tense or worried?",
+   "Is your digestion poor?",
+   "Do you have trouble thinking clearly?",
+   "Do you feel unhappy?",
+   "Do you cry more than usual?",
+   "Do you find it difficult to enjoy your daily activities?",
+   "Do you find it difficult to make decisions?",
+   "Is your daily work suffering?",
+   "Are you unable to play a useful part in life?",
+   "Have you lost interest in things?",
+   "Do you feel that you are a worthless person?",
+   "Has the thought of ending your life been on your mind?",
+   "Do you feel tired all the time?",
+   "Do you have uncomfortable feelings in your stomach?",
+   "Are you easily tired?"
+  ],
+  "items_note": "Из раздела «SRQ-20 — A copy of the English version of the Self Reporting Questionnaire-20 is shown below» руководства ВОЗ (стр. 5). ВНИМАНИЕ: PDF в архиве ВОЗ отсканирован и распознан с ошибками OCR; текст каждого пункта сверен со вторым независимым вхождением в том же документе (таблицы факторного анализа, стр. 25 и 27-28), где распознавание чистое. Перед заведением желательно сверить по печатной копии — но расхождений между двумя вхождениями не найдено.",
+  "anchors": [
+   {
+    "label": "yes",
+    "score": 1
+   },
+   {
+    "label": "no",
+    "score": 0
+   }
+  ],
+  "reverse": [],
+  "scoring": "20 вопросов, ответ только «yes/no». Каждое «yes» = 1 балл, «no» = 0. Сумма 0-20. Обратных пунктов нет. Руководство ВОЗ: «The SRQ-20 is an instrument with 20 items»; может применяться как самоопросник или в форме интервью («may be used either as a self-administered or as an interviewer administered questionnaire»).",
+  "bands": [
+   {
+    "min": 0,
+    "max": 7,
+    "label_en": "below cut-off (probable non-case)"
+   },
+   {
+    "min": 8,
+    "max": 20,
+    "label_en": "above cut-off (probable case of common mental disorder)"
+   }
+  ],
+  "bands_source": "Порог 7/8 — из исследования Mari JJ, Williams P (валидация SRQ-20 против Clinical Interview Schedule в первичной помощи, Бразилия; чувствительность 83%, специфичность 80%), приведён в руководстве ВОЗ (стр. 23, 29). КРИТИЧНО: ВОЗ прямо предупреждает, что универсального порога НЕТ и его надо определять локально — «the sensitivity and specificity will vary with the cut-off value used in a study to distinguish a probable case from a probable non-case» и «Normally the cut-off score is calculated in a small preliminary study. If however the translation (version) of the instrument has been used in previous studies on similar populations using the same method of administration, then a cut-off score obtained from that study can be used.» Для украинской популяции порог не установлен.",
+  "risk_items": [
+   {
+    "n": 17,
+    "why": "«Has the thought of ending your life been on your mind?» — прямой вопрос о суицидальных мыслях. Ответ «yes» — повод для клинической оценки риска."
+   }
+  ],
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода SRQ-20 найти не удалось. ВОЗ разрешает перевод («may be freely ... translated»), но свой перевод в проекте запрещён, и порог для украинской версии всё равно не установлен."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от ВОЗ найти не удалось."
+   }
+  },
+  "example": {
+   "answers": [
+    "yes",
+    "yes",
+    "yes",
+    "no",
+    "no",
+    "yes",
+    "no",
+    "yes",
+    "yes",
+    "no",
+    "yes",
+    "yes",
+    "no",
+    "no",
+    "no",
+    "no",
+    "no",
+    "yes",
+    "no",
+    "no"
+   ],
+   "total": 9,
+   "band": "above cut-off (probable case) — при пороге 7/8",
+   "note": "Арифметически однозначный пример: девять «yes» → 9 баллов, что выше порога 7/8. Опубликованного пошагового примера в руководстве ВОЗ нет."
+  },
+  "verdict": "завести — текст и лицензия ВОЗ проверяемы; но порог обязательно помечать как неместный (валидация в Бразилии), а не как норму для Украины"
+ },
+ {
+  "key": "gds15",
+  "title_en": "Geriatric Depression Scale — Short Form (GDS-15)",
+  "title_uk": null,
+  "title_ru": "Гериатрическая шкала для оценки депрессии",
+  "authors": "Jerome A. Yesavage, T. L. Brink и соавт. (короткая форма — Sheikh & Yesavage, 1986)",
+  "year": 1986,
+  "citation": "Sheikh JI, Yesavage JA. Geriatric Depression Scale (GDS): Recent evidence and development of a shorter version. Clinical Gerontologist. 1986;5(1-2):165-173. Оригинальная длинная форма: Yesavage JA, Brink TL, Rose TL, et al. J Psychiatr Res. 1982-1983;17(1):37-49.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "The original scale is in the public domain due to it being partly the result of Federal support.",
+   "url": "https://web.stanford.edu/~yesavage/GDS.html",
+   "conditions": null,
+   "note": "Официальная страница разработчика (J. A. Yesavage, Stanford / VA Palo Alto Health Care System)."
+  },
+  "items": [
+   "Are you basically satisfied with your life?",
+   "Have you dropped many of your activities and interests?",
+   "Do you feel that your life is empty?",
+   "Do you often get bored?",
+   "Are you in good spirits most of the time?",
+   "Are you afraid that something bad is going to happen to you?",
+   "Do you feel happy most of the time?",
+   "Do you often feel helpless?",
+   "Do you prefer to stay at home, rather than going out and doing new things?",
+   "Do you feel you have more problems with memory than most?",
+   "Do you think it is wonderful to be alive now?",
+   "Do you feel pretty worthless the way you are now?",
+   "Do you feel full of energy?",
+   "Do you feel that your situation is hopeless?",
+   "Do you think that most people are better off than you are?"
+  ],
+  "items_note": "Дословно со страницы разработчика https://web.stanford.edu/~yesavage/GDS.english.short.score.html. Инструкция дословно: «Choose the best answer for how you have felt over the past week».",
+  "anchors": [
+   {
+    "label": "YES",
+    "score": "1 если YES — депрессивное направление для данного пункта, иначе 0"
+   },
+   {
+    "label": "NO",
+    "score": "1 если NO — депрессивное направление для данного пункта, иначе 0"
+   }
+  ],
+  "reverse": [
+   1,
+   5,
+   7,
+   11,
+   13
+  ],
+  "scoring": "Ответ только «да/нет». 1 балл начисляется за ответ в депрессивном направлении, сумма 0-15. Депрессивное направление, дословно по ключу разработчика (жирным на странице «Answers in bold indicate depression»): пункты 2,3,4,6,8,9,10,12,14,15 — YES; пункты 1,5,7,11,13 — NO. Пункты 1,5,7,11,13 и есть «обратные» (поле reverse).",
+  "bands": [
+   {
+    "min": 0,
+    "max": 5,
+    "label_en": "not suggestive of depression"
+   },
+   {
+    "min": 6,
+    "max": 10,
+    "label_en": "suggestive of depression — should warrant a follow-up interview"
+   },
+   {
+    "min": 11,
+    "max": 15,
+    "label_en": "almost always depression"
+   }
+  ],
+  "bands_source": "Дословно со страницы разработчика: «Although differing sensitivities and specificities have been obtained across studies, for clinical purposes a score > 5 points is suggestive of depression and should warrent a follow-up interview. Scores > 10 are almost always depression.» ВНИМАНИЕ: ходовая четырёхполосная схема (0-4 норма / 5-8 лёгкая / 9-11 умеренная / 12-15 тяжёлая) на официальной странице ОТСУТСТВУЕТ — её источник вторичный, поэтому в полосы выше она НЕ внесена. Не выдумывать её.",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "КРИТИЧНО: на странице разработчика есть ссылка, подписанная «Russian Ukrainian Version» (https://web.stanford.edu/~yesavage/Ukrain.htm), но по факту это РУССКОЯЗЫЧНЫЙ текст («Гериатрическая шкала для оценки депрессии»), а не украинский. Украинской версии на сайте разработчика НЕТ."
+   },
+   "ru": {
+    "exists": true,
+    "by": "Litvinov V.B. и соавт., Український НДІ соціальної, судової психіатрії та наркології — размещено на официальном сайте разработчика шкалы",
+    "free": true,
+    "url": "https://web.stanford.edu/~yesavage/Ukrain.htm",
+    "note": "ДВЕ ЛОВУШКИ. (1) Порядок пунктов в этой русской версии НЕ совпадает с английским: русский п.3 «В основном, считаете ли Вы себя счастливым?» = английский п.7, русский п.4 «предпочтительнее оставаться дома» = английский п.9, русский п.5 «жизнь стала опустошённой» = английский п.3, русский п.6 «испытываете скуку» = английский п.4. Ключ обратных пунктов НЕЛЬЗЯ переносить по номерам — только по смыслу пункта. (2) В тексте есть опечатка («опустащенной»). Есть и вторая русская версия в .gif: https://web.stanford.edu/~yesavage/Russian.html."
+   }
+  },
+  "example": {
+   "answers": [
+    "No",
+    "Yes",
+    "Yes",
+    "Yes",
+    "Yes",
+    "Yes",
+    "Yes",
+    "Yes",
+    "No",
+    "Yes",
+    "Yes",
+    "No",
+    "Yes",
+    "No",
+    "No"
+   ],
+   "total": 7,
+   "band": "suggestive of depression (>5) — should warrant a follow-up interview",
+   "note": "Арифметически однозначный пример по ключу разработчика. Начисление: п.1 No=1, п.2 Yes=1, п.3 Yes=1, п.4 Yes=1, п.5 Yes=0, п.6 Yes=1, п.7 Yes=0, п.8 Yes=1, п.9 No=0, п.10 Yes=1, п.11 Yes=0, п.12 No=0, п.13 Yes=0, п.14 No=0, п.15 No=0. Сумма = 7. Отдельно проверяет корректность обработки обратных пунктов 1,5,7,11,13."
+  },
+  "verdict": "завести — public domain, ключ и порог с сайта разработчика; украинского перевода нет, русский заводить только с пересобранным по смыслу ключом"
+ },
+ {
+  "key": "pss10",
+  "title_en": "Perceived Stress Scale (PSS-10)",
+  "title_uk": "Шкала сприйнятого стресу (PSS-10)",
+  "title_ru": null,
+  "authors": "Sheldon Cohen, Tom Kamarck, Robin Mermelstein (оригинал PSS-14, 1983); 10-пунктовая версия — Cohen S., Williamson G. (1988)",
+  "year": 1983,
+  "citation": "Cohen S, Kamarck T, Mermelstein R. A global measure of perceived stress. Journal of Health and Social Behavior. 1983;24(4):385-396. Версия из 10 пунктов: Cohen S, Williamson G. Perceived stress in a probability sample of the United States. In: Spacapan S, Oskamp S (eds.) The Social Psychology of Health. Newbury Park, CA: Sage, 1988.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "PERMISSION FOR USE OF THE PERCEIVED STRESS SCALE. Please submit permission requests to use the Perceived Stress Scale (PSS) through the ePROVIDE™ platform of MAPI RESEARCH TRUST: https://eprovide.mapi-trust.org ... Submitting a request for permission to use the PSS is completely free of charge and will ensure an optimized service. It does not commit you to purchasing a questionnaire.",
+   "url": "https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/index.html",
+   "conditions": "Разрешение запрашивается через ePROVIDE (Mapi Research Trust) — бесплатно, но запрос обязателен. Английский текст сам разработчик выкладывает открыто на своей странице (https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pss.html). На PDF-раздатках встречается строка «Copyright © 1994 by Sheldon Cohen. All rights reserved.» — то есть это НЕ public domain, а разрешаемое бесплатно использование.",
+   "note": "Отдельное условие для переводов, дословно с той же страницы разработчика: «Non-English translations are the sole intellectual property of the translator, and permissions requests should be sent to them, not Dr. Cohen. If you are unsuccessful at contacting a translator, please cite their name and this website's URL in your publications.»"
+  },
+  "items": [
+   "In the last month, how often have you been upset because of something that happened unexpectedly?",
+   "In the last month, how often have you felt that you were unable to control the important things in your life?",
+   "In the last month, how often have you felt nervous and \"stressed\"?",
+   "In the last month, how often have you felt confident about your ability to handle your personal problems?",
+   "In the last month, how often have you felt that things were going your way?",
+   "In the last month, how often have you found that you could not cope with all the things that you had to do?",
+   "In the last month, how often have you been able to control irritations in your life?",
+   "In the last month, how often have you felt that you were on top of things?",
+   "In the last month, how often have you been angered because of things that were outside of your control?",
+   "In the last month, how often have you felt difficulties were piling up so high that you could not overcome them?"
+  ],
+  "items_note": "Текст снят дословно со страницы самого разработчика (лаборатория С. Cohen, Carnegie Mellon University): https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pss.html. Инструкция дословно: «The questions in this scale ask you about your feelings and thoughts during the last month. In each case, please indicate with a check how often you felt or thought a certain way.»",
+  "anchors": [
+   {
+    "label": "never",
+    "score": 0
+   },
+   {
+    "label": "almost never",
+    "score": 1
+   },
+   {
+    "label": "sometimes",
+    "score": 2
+   },
+   {
+    "label": "fairly often",
+    "score": 3
+   },
+   {
+    "label": "very often",
+    "score": 4
+   }
+  ],
+  "reverse": [
+   4,
+   5,
+   7,
+   8
+  ],
+  "scoring": "Дословно со страницы подсчёта разработчика (https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/html/pssscoring.html): «PSS-10 scores are obtained by reversing the scores on the four positive items, e.g., 0=4, 1=3, 2=2, etc. and then summing across all 10 items. Items 4, 5, 7, and 8 are the positively stated items.» Диапазон суммы 0-40. Подшкал у PSS-10 разработчиком не выделено.",
+  "bands": null,
+  "bands_source": "ПОЛОС НЕТ — и это позиция разработчика, дословно: «PLEASE NOTE: The Perceived Stress Scale is not a diagnostic instrument; there are no score cut-offs. There are only comparisons within your own sample. For normative data from large US samples, see articles at right.» (https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/index.html). Ходовая разбивка «0-13 низкий / 14-26 умеренный / 27-40 высокий» гуляет по калькуляторам и блогам, но у разработчика её НЕТ и в первоисточниках она не установлена — в систему её не вносить. Показывать только сырую сумму и, при желании, сравнение с опубликованными нормативами US-выборки (Cohen & Williamson, 1988; Cohen & Janicki-Deverts, 2012, J Appl Soc Psychol 42:1320-1334).",
+  "risk_items": [],
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "О. О. Вельдбрехт, Н. І. Тавровецька (Херсонський державний університет) — научная адаптация, НЕ официальный перевод правообладателя",
+    "free": false,
+    "url": "https://doi.org/10.26661/2310-4368/2022-2-2",
+    "note": "Вельдбрехт О.О., Тавровецька Н.І. Шкала сприйнятого стресу (PSS-10): адаптація та апробація в умовах війни // Problems of Modern Psychology (Запорізький національний університет). 2022, № 2, с. 16-27. Выборка 318 цивильных, 10-11-й тиждень повномасштабної війни. ВАЖНО: на сайте разработчика украинской версии НЕТ (есть только чужой русский PSS-14). По правилу самого разработчика перевод — собственность переводчика, поэтому украинский текст можно заводить ТОЛЬКО получив письменное разрешение авторов адаптации. Вторая украиноязычная работа: Mazhak I, Maltseva K, Sudyn D. Assessing psychometrics of the perceived stress scale ... Ukrainian female refugees in the Czech Republic. SSM - Mental Health, 2024."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": "https://www.cmu.edu/dietrich/psychology/stress-immunity-disease-lab/scales/index.html",
+    "note": "На сайте разработчика есть «Russian PSS (14 Item)» (перевод Dr. Martin Egan, O.A.T.H. Research), с пометкой разработчика дословно: «Translation has not been pre-tested by our laboratory; nor are we aware of its psychometric properties.» Русской 10-пунктовой версии на сайте разработчика НЕТ. Своими руками резать 14-пунктовый русский текст до 10 пунктов — нельзя."
+   }
+  },
+  "example": {
+   "answers": [
+    2,
+    3,
+    3,
+    1,
+    1,
+    2,
+    2,
+    1,
+    3,
+    2
+   ],
+   "total": 26,
+   "band": null,
+   "note": "Арифметически однозначный пример (не опубликованный кейс, а проверка ключа). Прямые пункты 1,2,3,6,9,10: 2+3+3+2+3+2 = 15. Обратные 4,5,7,8 (0=4,1=3,2=2,3=1,4=0): 1→3, 1→3, 2→2, 1→3 = 11. Итого 15+11 = 26 из 40. Полосу НЕ присваивать: у методики официальных порогов нет."
+  },
+  "verdict": "завести без полос — текст и ключ проверяемы у разработчика, но в системе показывать только сумму: порогов у PSS не существует, и рисовать их нельзя; украинский текст — только после разрешения авторов адаптации"
+ },
+ {
+  "key": "phq8",
+  "title_en": "Patient Health Questionnaire-8 (PHQ-8)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Robert L. Spitzer, Janet B. W. Williams, Kurt Kroenke и соавт. (семейство PHQ); отдельная публикация PHQ-8 — Kroenke K., Strine T.W. и соавт.",
+  "year": 2009,
+  "citation": "Kroenke K, Strine TW, Spitzer RL, Williams JBW, Berry JT, Mokdad AH. The PHQ-8 as a measure of current depression in the general population. Journal of Affective Disorders. 2009;114(1-3):163-173.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "All of the measures included in Table 1 are in the public domain. No permission is required to reproduce, translate, display or distribute.",
+   "url": "https://archive.thepcc.org/sites/default/files/resources/instructions.pdf",
+   "conditions": null,
+   "note": "PHQ-8 прямо назван в Table 1 официального INSTRUCTION MANUAL (стр. 3), описание дословно: «PHQ-8 — All items of PHQ-9 except the 9th item on self-harm. Mainly used in non-depression research studies. Eight items, each of which is scored 0 to 3, providing a 0 to 24 severity score.»"
+  },
+  "items": [
+   "Little interest or pleasure in doing things?",
+   "Feeling down, depressed, or hopeless?",
+   "Trouble falling or staying asleep, or sleeping too much?",
+   "Feeling tired or having little energy?",
+   "Poor appetite or overeating?",
+   "Feeling bad about yourself—or that you are a failure or have let yourself or your family down?",
+   "Trouble concentrating on things, such as reading the newspaper or watching television?",
+   "Moving or speaking so slowly that other people could have noticed? Or the opposite—being so fidgety or restless that you have been moving around a lot more than usual?"
+  ],
+  "items_note": "Это пункты 1-8 PHQ-9 дословно, ничего не переписано: сам INSTRUCTION MANUAL определяет PHQ-8 как «All items of PHQ-9 except the 9th item on self-harm». Текст взят из того же официального руководства (Table 3, стр. 5). Шапка: «Over the last 2 weeks, how often have you been bothered by any of the following:».",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "Several days",
+    "score": 1
+   },
+   {
+    "label": "More than half the days",
+    "score": 2
+   },
+   {
+    "label": "Nearly every day",
+    "score": 3
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно из INSTRUCTION MANUAL (стр. 6): «The PHQ-8 is scored just like the PHQ-9 and its total score ranges from 0 to 24. Cutpoints on the PHQ-8 are identical to the PHQ-9.» То есть баллы 0/1/2/3 за «not at all / several days / more than half the days / nearly every day», сумма 8 пунктов, 0-24. Обратных пунктов нет, подшкал нет.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 4,
+    "label_en": "None-minimal"
+   },
+   {
+    "min": 5,
+    "max": 9,
+    "label_en": "Mild"
+   },
+   {
+    "min": 10,
+    "max": 14,
+    "label_en": "Moderate"
+   },
+   {
+    "min": 15,
+    "max": 19,
+    "label_en": "Moderately severe"
+   },
+   {
+    "min": 20,
+    "max": 24,
+    "label_en": "Severe"
+   }
+  ],
+  "bands_source": "INSTRUCTION MANUAL (издатель опросника), стр. 6: «Scores of 5, 10, 15, and 20 represent cutpoints for mild, moderate, moderately severe and severe depression» + «Cutpoints on the PHQ-8 are identical to the PHQ-9». Верхняя граница последней полосы у PHQ-8 — 24 (а не 27, как у PHQ-9), потому что пунктов восемь. Отдельный порог скрининга текущей депрессии — PHQ-8 ≥ 10, установлен в Kroenke et al., J Affect Disord 2009;114:163-173 (там же дословно: PHQ-8 ≥10 использован как критерий «current depression»).",
+  "risk_items": [],
+  "risk_items_note": "У PHQ-8 НЕТ пункта о суицидальных мыслях — в этом и смысл версии. Если инструмент применяется как единственный скрининг депрессии в клинике, поднимать риск нечем: для клинического отделения по умолчанию брать PHQ-9, а PHQ-8 — только там, где вопрос о самоповреждении сознательно исключён (например самозаполнение без немедленной возможности реагировать).",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "производная от украинского PHQ-9 из Уніфікованого клінічного протоколу «Депресія» (наказ МОЗ України від 25.12.2014 № 1003, Додаток 1)",
+    "free": true,
+    "url": "https://www.dec.gov.ua/wp-content/uploads/2019/11/2014_1003_ykpmd_depresiya.pdf",
+    "note": "Отдельного украинского PHQ-8 не издавал никто. Допустимо ровно одно действие: взять пункты 1-8 украинского PHQ-9 из приказа МОЗ без единой правки — это то же самое, что делает сам издатель, определяя PHQ-8 как PHQ-9 минус девятый пункт. Переписывать или «улучшать» формулировки нельзя."
+   },
+   "ru": {
+    "exists": true,
+    "by": "производная от русской версии PHQ-9 с phqscreeners.com (перевод по заказу Pfizer)",
+    "free": true,
+    "url": "https://www.phqscreeners.com/select-screener",
+    "note": "Так же: только пункты 1-8 официального русского PHQ-9, скачанного с сайта правообладателя. Свой перевод не сочинять."
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    2,
+    1,
+    1,
+    0,
+    2,
+    1,
+    3
+   ],
+   "total": 13,
+   "band": "Moderate (10-14)",
+   "note": "Взято из опубликованного примера INSTRUCTION MANUAL (Table 3, стр. 5), где сумма PHQ-9 = 16 при раскладе «3 items scored 1, 2 items scored 2, and 3 items scored 3». Здесь убран девятый пункт со значением 3: 16 − 3 = 13, что по ключу PHQ-8 попадает в полосу Moderate (10-14). Арифметика однозначна."
+  },
+  "verdict": "завести — public domain по заявлению издателя, ключ и пороги дословно в официальном руководстве; но помнить, что в PHQ-8 нет вопроса о суициде"
+ },
+ {
+  "key": "bdi2",
+  "title_en": "Beck Depression Inventory-II (BDI-II)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Aaron T. Beck, Robert A. Steer, Gregory K. Brown",
+  "year": 1996,
+  "citation": "Beck AT, Steer RA, Brown GK. Manual for the Beck Depression Inventory-II. San Antonio, TX: Psychological Corporation, 1996. (Первая редакция: Beck AT, Ward CH, Mendelson M, Mock J, Erbaugh J. An inventory for measuring depression. Arch Gen Psychiatry. 1961;4:561-571.)",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "© 1996–2026 Pearson. All rights reserved, including those for text and data mining and training of artificial intelligence and similar technologies.",
+   "url": "https://www.pearsonassessments.com/store/en/usd/p/100000159.html",
+   "conditions": "Продажа поштучно/комплектами (Qualification Level B — покупать может только специалист соответствующей квалификации); цифровые материалы выдаются через Q-global как view-only. Онлайн-администрирование — отдельная лицензия. Переводы издаёт и лицензирует сам правообладатель.",
+   "owner": "NCS Pearson, Inc. / Pearson Education, Inc.",
+   "note": "На официальной странице издателя (Pearson Assessments US) указаны: авторы, год 1996, Qualification Level B, цены от $3.90 за отчёт до $195.70 за полный комплект. Свободного текста BDI-II не существует; PDF, гуляющие по сети (в том числе на сайтах университетов), выложены без прав."
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: методика платная/лицензируемая, воспроизведение опросника запрещено без договора с правообладателем. В систему заводится только карточка (название, правообладатель, порядок лицензирования) — без содержимого.",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Ключ подсчёта входит в лицензируемые материалы правообладателя и здесь не воспроизводится.",
+  "bands": null,
+  "bands_source": "Пороги и нормы опубликованы в руководстве/статье правообладателя и без лицензии не воспроизводятся. Брать их можно только из купленного руководства — не из вторичных пересказов и не «по памяти».",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": "лицензируется правообладателем (Pearson), наличие официальной украинской версии проверять в Pearson/Mapi",
+    "free": false,
+    "url": "https://www.pearsonassessments.com/store/en/usd/p/100000159.html",
+    "note": "Любой найденный в сети украинский или русский BDI-II — почти наверняка нелицензированный. Заводить нельзя ни на одном языке."
+   },
+   "ru": {
+    "exists": null,
+    "by": "лицензируется правообладателем (Pearson)",
+    "free": false,
+    "url": "https://www.pearsonassessments.com/store/en/usd/p/100000159.html",
+    "note": "То же."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочный пример невозможен без ключа и текста; заводить расчёт нельзя.",
+  "verdict": "завести без текста (лицензия) — только карточка: платная методика Pearson, Qualification Level B"
+ },
+ {
+  "key": "hads",
+  "title_en": "Hospital Anxiety and Depression Scale (HADS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "A. S. Zigmond, R. P. Snaith",
+  "year": 1983,
+  "citation": "Zigmond AS, Snaith RP. The Hospital Anxiety and Depression Scale. Acta Psychiatrica Scandinavica. 1983;67(6):361-370.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "HADS copyright © R.P. Snaith and A.S. Zigmond, 1983, 1992, 1994. Record form items originally published in Acta Psychiatrica Scandinavica 67, 361–70, copyright © Munksgaard International Publishers Ltd, Copenhagen, 1983. Published by GL Assessment Limited, 1st Floor Vantage London, Great West Road, London TW8 9AG, UK. All rights reserved.",
+   "url": "https://www.spiromics.org/spiromics/sites/default/files/forms/HDS_Hospital_Anxiety_and_Depression_Scale_SPIROMICS_III_v1.0_20250110_CLEAN.pdf",
+   "conditions": "Лицензия обязательна для всех пользователей; для коммерческих и финансируемых академических — платно. Для лицензиатов из Великобритании, Ирландии и Нормандских островов — permissions@gl-assessment.co.uk; для остальных стран — Mapi Research Trust / ePROVIDE (https://eprovide.mapi-trust.org/instruments/hospital-anxiety-and-depression-scale). Права на переводы также у правообладателя.",
+   "owner": "GL Assessment Limited (UK), права авторов R. P. Snaith и A. S. Zigmond",
+   "note": "Цитата снята с официального бланка HADS, распечатанного по лицензии в исследовании SPIROMICS (копирайт-футер печатается на каждой странице бланка — это заявление самого правообладателя). Издатель — GL Assessment (входит в GL Education Group / Renaissance)."
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: методика платная/лицензируемая, воспроизведение опросника запрещено без договора с правообладателем. В систему заводится только карточка (название, правообладатель, порядок лицензирования) — без содержимого.",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Ключ подсчёта входит в лицензируемые материалы правообладателя и здесь не воспроизводится.",
+  "bands": null,
+  "bands_source": "Пороги и нормы опубликованы в руководстве/статье правообладателя и без лицензии не воспроизводятся. Брать их можно только из купленного руководства — не из вторичных пересказов и не «по памяти».",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": "права на переводы у GL Assessment / Mapi",
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org/instruments/hospital-anxiety-and-depression-scale",
+    "note": "Украинские версии HADS в публикациях встречаются, но правами на них распоряжается правообладатель; без лицензии ни украинский, ни русский текст заводить нельзя."
+   },
+   "ru": {
+    "exists": null,
+    "by": "права на переводы у GL Assessment / Mapi",
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org/instruments/hospital-anxiety-and-depression-scale",
+    "note": "То же."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочный пример невозможен без ключа и текста; заводить расчёт нельзя.",
+  "verdict": "завести без текста (лицензия) — карточка-заглушка: HADS платная, распространяется GL Assessment через Mapi; при желании использовать — сначала договор"
+ },
+ {
+  "key": "stai",
+  "title_en": "State-Trait Anxiety Inventory for Adults (STAI-AD, Form Y)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Charles D. Spielberger (совм. с R. L. Gorsuch, R. E. Lushene, P. R. Vagg, G. A. Jacobs)",
+  "year": 1983,
+  "citation": "Spielberger CD, Gorsuch RL, Lushene R, Vagg PR, Jacobs GA. Manual for the State-Trait Anxiety Inventory (Form Y). Palo Alto, CA: Consulting Psychologists Press, 1983. Копирайт на сам инструмент: © 1968, 1977 by Charles D. Spielberger.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "Copyright © 1968, 1977 by Charles D. Spielberger. ... Research purposes only. This research license is for data collection only and not for providing individual feedback. ... The instrument may not be made available via the open web. ... Distributing an entire instrument in either the text of an email or as an email attachment is strictly prohibited.",
+   "url": "https://www.mindgarden.com/145-state-trait-anxiety-inventory-for-adults",
+   "conditions": "Поштучная оплата администраций: License to Administer — $2.75 за администрацию при минимуме 50 (скидки до $0.39 при 50 000+). Обязательное условие — печатать копирайт правообладателя на каждой странице с пунктами. Публиковать инструмент в открытом вебе прямо запрещено — то есть встроить STAI в веб-систему без отдельного договора с Mind Garden нельзя.",
+   "owner": "Mind Garden, Inc. (права C. D. Spielberger)",
+   "note": "Правообладатель — Mind Garden, Inc.; «State-Trait Anxiety Inventory for Adults™ is a trademark of Mind Garden, Inc.». Переводы (40+ языков) выдаёт тоже Mind Garden, с оговоркой правообладателя дословно: «We cannot assure translation quality — many are made by individual researchers»."
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: методика платная/лицензируемая, воспроизведение опросника запрещено без договора с правообладателем. В систему заводится только карточка (название, правообладатель, порядок лицензирования) — без содержимого.",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Ключ подсчёта входит в лицензируемые материалы правообладателя и здесь не воспроизводится.",
+  "bands": null,
+  "bands_source": "Пороги и нормы опубликованы в руководстве/статье правообладателя и без лицензии не воспроизводятся. Брать их можно только из купленного руководства — не из вторичных пересказов и не «по памяти».",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": "Mind Garden (каталог переводов)",
+    "free": false,
+    "url": "https://www.mindgarden.com/145-state-trait-anxiety-inventory-for-adults",
+    "note": "Проверять наличие украинской версии в каталоге Mind Garden; сам правообладатель предупреждает, что качество переводов не гарантирует. Без лицензии не заводить."
+   },
+   "ru": {
+    "exists": null,
+    "by": "Mind Garden (каталог переводов)",
+    "free": false,
+    "url": "https://www.mindgarden.com/145-state-trait-anxiety-inventory-for-adults",
+    "note": "То же. Ходовая русская «шкала Спилбергера–Ханина» — отдельная адаптация Ю. Л. Ханина; её правовой статус тоже не свободен и от лицензии Mind Garden не освобождает."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочный пример невозможен без ключа и текста; заводить расчёт нельзя.",
+  "verdict": "не заводить — Mind Garden прямо запрещает размещение инструмента в открытом вебе; для клинической веб-системы это блокирующее условие, карточку оставить только как справку"
+ },
+ {
+  "key": "bai",
+  "title_en": "Beck Anxiety Inventory (BAI)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Aaron T. Beck, Robert A. Steer",
+  "year": 1990,
+  "citation": "Beck AT, Epstein N, Brown G, Steer RA. An inventory for measuring clinical anxiety: psychometric properties. J Consult Clin Psychol. 1988;56(6):893-897. Руководство: Beck AT, Steer RA. Beck Anxiety Inventory Manual. San Antonio, TX: Psychological Corporation, 1990, 1993.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "© 1996–2026 Pearson. All rights reserved. ... \"Beck Anxiety Inventory,\" and \"BAI\" are registered trademark(s) in the U.S. and/or other countries, of Pearson Education, Inc., or its affiliate(s).",
+   "url": "https://www.pearsonassessments.com/en-us/Store/Professional-Assessments/Personality-&-Biopsychosocial/Beck-Anxiety-Inventory/p/100000251",
+   "conditions": "Qualification Level B: покупка только квалифицированным специалистом. Бланки и руководство продаются; отдельная лицензия на цифровое администрирование через Q-global.",
+   "owner": "NCS Pearson, Inc. / Pearson Education, Inc.",
+   "note": "На официальной странице издателя указаны автор (Aaron T. Beck), годы 1990, 1993 и Qualification Level B."
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: методика платная/лицензируемая, воспроизведение опросника запрещено без договора с правообладателем. В систему заводится только карточка (название, правообладатель, порядок лицензирования) — без содержимого.",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Ключ подсчёта входит в лицензируемые материалы правообладателя и здесь не воспроизводится.",
+  "bands": null,
+  "bands_source": "Пороги и нормы опубликованы в руководстве/статье правообладателя и без лицензии не воспроизводятся. Брать их можно только из купленного руководства — не из вторичных пересказов и не «по памяти».",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": "лицензируется правообладателем (Pearson)",
+    "free": false,
+    "url": "https://www.pearsonassessments.com/en-us/Store/Professional-Assessments/Personality-&-Biopsychosocial/Beck-Anxiety-Inventory/p/100000251",
+    "note": "Без лицензии не заводить ни на одном языке."
+   },
+   "ru": {
+    "exists": null,
+    "by": "лицензируется правообладателем (Pearson)",
+    "free": false,
+    "url": "https://www.pearsonassessments.com/en-us/Store/Professional-Assessments/Personality-&-Biopsychosocial/Beck-Anxiety-Inventory/p/100000251",
+    "note": "То же."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочный пример невозможен без ключа и текста; заводить расчёт нельзя.",
+  "verdict": "завести без текста (лицензия) — только карточка: платная методика Pearson, Qualification Level B"
+ },
+ {
+  "key": "cesd",
+  "title_en": "Center for Epidemiologic Studies Depression Scale (CES-D, 20 items)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Lenore Sawyer Radloff (Center for Epidemiologic Studies, National Institute of Mental Health, США)",
+  "year": 1977,
+  "citation": "Radloff LS. The CES-D Scale: A Self-Report Depression Scale for Research in the General Population. Applied Psychological Measurement. 1977;1(3):385-401.",
+  "license": {
+   "verdict": "неясно",
+   "quote": null,
+   "url": "https://integrationacademy.ahrq.gov/sites/default/files/2020-07/CES-D.pdf",
+   "conditions": null,
+   "note": "ДОСЛОВНОГО заявления правообладателя найти не удалось — поэтому verdict «неясно», а не «свободна». Что есть фактически: (1) шкала разработана в NIMH (федеральное агентство США) сотрудницей NIMH; (2) полный текст со ключом и порогом официально опубликован федеральными структурами США — AHRQ Academy for Integrating Behavioral Health and Primary Care (ссылка выше) и NIDA (https://nida.nih.gov/sites/default/files/Mental_HealthV.pdf); (3) при этом Mapi Research Trust держит у себя запись «Official CES-D ... distributed by Mapi Research Trust» (https://eprovide.mapi-trust.org/instruments/center-for-epidemiologic-studies-depression-scale), что намекает на управляемое распространение. Перед клиническим запуском — письменный запрос в Mapi/ePROVIDE. Заметим: у пересмотренной версии CESD-R (уже заведена в этом файле) прямое заявление о public domain ЕСТЬ."
+  },
+  "items": [
+   "I was bothered by things that usually don't bother me.",
+   "I did not feel like eating; my appetite was poor.",
+   "I felt that I could not shake off the blues even with help from my family or friends.",
+   "I felt I was just as good as other people.",
+   "I had trouble keeping my mind on what I was doing.",
+   "I felt depressed.",
+   "I felt that everything I did was an effort.",
+   "I felt hopeful about the future.",
+   "I thought my life had been a failure.",
+   "I felt fearful.",
+   "My sleep was restless.",
+   "I was happy.",
+   "I talked less than usual.",
+   "I felt lonely.",
+   "People were unfriendly.",
+   "I enjoyed life.",
+   "I had crying spells.",
+   "I felt sad.",
+   "I felt that people disliked me.",
+   "I could not get going."
+  ],
+  "items_note": "Текст снят дословно из официальной публикации федерального агентства США (AHRQ, Academy for Integrating Behavioral Health and Primary Care): https://integrationacademy.ahrq.gov/sites/default/files/2020-07/CES-D.pdf. Инструкция дословно: «Below is a list of some ways you may have felt or behaved. Please indicate how often you have felt this way during the last week by checking the appropriate space. Please only provide one answer to each question. During the past week:». Порядок пунктов — как в этом документе (он совпадает с классическим порядком Radloff 1977).",
+  "anchors": [
+   {
+    "label": "Rarely or none of the time (less than 1 day)",
+    "score": 0
+   },
+   {
+    "label": "Some or a little of the time (1-2 days)",
+    "score": 1
+   },
+   {
+    "label": "Occasionally or a moderate amount of time (3-4 days)",
+    "score": 2
+   },
+   {
+    "label": "Most or all of the time (5-7 days)",
+    "score": 3
+   }
+  ],
+  "reverse": [
+   4,
+   8,
+   12,
+   16
+  ],
+  "scoring": "Дословно из документа AHRQ: «Questions 4, 8, 12, and 16» получают 3/2/1/0 за Rarely/Some/Occasionally/Most, «All other questions» — 0/1/2/3. «The score is the sum of the 20 questions. Possible range is 0-60. If more than four questions are missing answers, do not score the CES-D questionnaire.» Подшкал в этом варианте подсчёта нет (факторная структура Radloff 1977 из 4 факторов существует, но для клинического балла не используется).",
+  "bands": [
+   {
+    "min": 0,
+    "max": 15,
+    "label_en": "below cut-off"
+   },
+   {
+    "min": 16,
+    "max": 60,
+    "label_en": "considered depressed (screening positive)"
+   }
+  ],
+  "bands_source": "Единственный порог, дословно из того же документа AHRQ: «A score of 16 points or more is considered depressed.» Порог восходит к Radloff 1977 (Applied Psychological Measurement 1:385-401). Дробных «лёгкая/умеренная/тяжёлая» полос у CES-D НЕТ — не выдумывать.",
+  "risk_items": [],
+  "risk_items_note": "В CES-D нет пункта о суицидальных мыслях. При использовании как единственного скрининга риск отслеживать нечем.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода CES-D не найдено ни у федеральных распространителей (AHRQ, NIDA), ни на сайте пересмотренной версии. Свой перевод не делать."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от правообладателя не найдено. В документе AHRQ упомянута только испанская версия: «A Spanish version of this scale is also available.»"
+   }
+  },
+  "example": {
+   "answers": [
+    1,
+    2,
+    2,
+    1,
+    2,
+    3,
+    2,
+    1,
+    1,
+    1,
+    2,
+    1,
+    1,
+    2,
+    0,
+    1,
+    0,
+    2,
+    0,
+    2
+   ],
+   "total": 31,
+   "band": "considered depressed (16+)",
+   "note": "Арифметическая проверка ключа (не опубликованный кейс). Ответы даны как СЫРЫЕ выборы респондента (0=Rarely ... 3=Most). Пункты 4,8,12,16 обратные: сырые 1,1,1,1 дают 2,2,2,2 (сумма 8). Сумма прямых пунктов (все, кроме 4,8,12,16): 1+2+2+2+3+2+1+1+2+1+2+0+0+2+0+2 = 23. Итого 23+8 = 31 из 60 — выше порога 16. Пересчитано скриптом."
+  },
+  "verdict": "не заводить до письменного подтверждения лицензии — текст, ключ и порог проверяемы по документу AHRQ, но дословного разрешения правообладателя нет; пока вместо неё работает уже заведённая CESD-R с доказанным public domain"
+ },
+ {
+  "key": "hscl25",
+  "title_en": "Hopkins Symptom Checklist-25 (HSCL-25)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Происходит от Hopkins Symptom Checklist (Derogatis LR и соавт., 1974); версия из 25 пунктов для беженцев распространяется Harvard Program in Refugee Trauma (R. F. Mollica и соавт.)",
+  "year": 1974,
+  "citation": "Derogatis LR, Lipman RS, Rickels K, Uhlenhuth EH, Covi L. The Hopkins Symptom Checklist (HSCL): a self-report symptom inventory. Behavioral Science. 1974;19(1):1-15. Порог и применение у беженцев: Mollica RF, Wyshak G, de Marneffe D, Khuon F, Lavelle J. Indochinese versions of the Hopkins Symptom Checklist-25: a screening instrument for the psychiatric care of refugees. American Journal of Psychiatry. 1987;144(4):497-500.",
+  "license": {
+   "verdict": "неясно",
+   "quote": "All versions of the HSCL-25, as well as the Indochinese Manual, are available to order, contact us at hprt.gmh@gmail.com",
+   "url": "https://hprt-cambridge.org/screening/hopkins-symptom-checklist/",
+   "conditions": "Распространитель (HPRT, Harvard) выдаёт версии по запросу — то есть по факту это распространение «по обращению», а не открытая лицензия. Явного разрешения воспроизводить текст на сайте НЕТ. Дополнительный риск: родительское семейство HSCL/SCL-90-R принадлежит L. R. Derogatis и лицензируется Pearson, так что происхождение прав у 25-пунктовой версии само по себе не очевидно.",
+   "note": "Ещё одна дословная оговорка распространителя, важная для клиники: «Screening instruments should be administered by health care workers under the supervision and support of a psychiatrist, medical doctor, and/or psychiatric nurse. They were not designed to be used as a self-report.»"
+  },
+  "items": null,
+  "items_note": "Текст НЕ приводится: разрешения на воспроизведение из первоисточника не нашлось, распространитель выдаёт бланки только по запросу. Тексты, встречающиеся в приложениях к статьям, не являются разрешением правообладателя.",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 1
+   },
+   {
+    "label": "A little",
+    "score": 2
+   },
+   {
+    "label": "Quite a bit",
+    "score": 3
+   },
+   {
+    "label": "Extremely",
+    "score": 4
+   }
+  ],
+  "anchors_note": "Шкала ответов приведена дословно со страницы распространителя (это не текст пунктов, а формат ответа).",
+  "reverse": [],
+  "scoring": "Дословно со страницы HPRT: «Two scores are calculated: the total score is the average of all 25 items, while the depression score is the average of the 15 depression items.» То есть считается СРЕДНЕЕ (диапазон 1,00-4,00), а не сумма. Части: пункты 1-10 — тревога, пункты 11-25 — депрессия («Part I of the HSCL-25 has 10 items for anxiety symptoms; Part II has 15 items for depression symptoms»).",
+  "bands": [
+   {
+    "min": 1.75,
+    "max": 4.0,
+    "label_en": "symptomatic / clinically significant emotional distress (cut-off ≥ 1.75)"
+   }
+  ],
+  "bands_source": "Порог ≥1,75 по среднему баллу установлен в Mollica RF и соавт., Am J Psychiatry 1987;144(4):497-500 (индокитайские версии, выборка беженцев). ВАЖНО: это не украинская норма и не норма для военнослужащих — при использовании помечать происхождение порога.",
+  "risk_items": null,
+  "risk_items_note": "Состав пунктов не воспроизводится, поэтому номера рисковых пунктов не указываются. Известно, что в HSCL-25 нет отдельного пункта о суицидальном намерении в форме вопроса-скрининга риска.",
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": false,
+    "url": "https://hprt-cambridge.org/screening/hopkins-symptom-checklist/",
+    "note": "На сайте распространителя перечислены переводы: Bosnian, Cambodian, Croatian, Japanese, Laotian, Vietnamese — украинского в списке НЕТ. HSCL-25 применялся в исследованиях украинских беженцев (опросы 2022-2024), но какой именно украинский текст там использован и кем он авторизован — из публикаций не следует. Свой перевод не делать."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": false,
+    "url": "https://hprt-cambridge.org/screening/hopkins-symptom-checklist/",
+    "note": "Русского перевода в списке распространителя тоже нет."
+   }
+  },
+  "example": null,
+  "example_note": "Пример не приводится: без текста пунктов и без авторизованного бланка проверять нечего. Механику подсчёта (среднее по 25 пунктам, порог 1,75) можно протестировать только после получения лицензионного бланка от HPRT.",
+  "verdict": "не заводить — разрешения воспроизводить текст нет, бланки HPRT выдаёт по запросу; вернуться к вопросу, если придёт письменный ответ от hprt.gmh@gmail.com"
+ },
+ {
+  "key": "madrs",
+  "title_en": "Montgomery-Åsberg Depression Rating Scale (MADRS)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Stuart A. Montgomery, Marie Åsberg",
+  "year": 1979,
+  "citation": "Montgomery SA, Åsberg M. A new depression scale designed to be sensitive to change. British Journal of Psychiatry. 1979;134:382-389.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "© 1979 The Royal College of Psychiatrists. The Montgomery Åsberg Depression Rating Scale may be photocopied by individual researchers or clinicians for their own use without seeking permission from the publishers. The scale must be copied in full and all copies must acknowledge the following source: Montgomery, S.A. & Åsberg, M. (1979). A new depression scale designed to be sensitive to change. British Journal of Psychiatry, 134, 382-389. Written permission must be obtained from the Royal College of Psychiatrists for copying and distribution to others or for republication (in print, online or by any other medium).",
+   "url": "https://media.mycme.com/documents/13/mdd-madrs_3068.pdf",
+   "conditions": "РЕШАЮЩЕЕ УСЛОВИЕ для нашего случая: последняя фраза правообладателя прямо требует письменного разрешения Royal College of Psychiatrists «for republication (in print, ONLINE or by any other medium)». Встроить MADRS в клиническую информационную систему — это и есть онлайн-републикация, а не «photocopy for their own use». Без письма RCPsych текст заводить нельзя.",
+   "owner": "The Royal College of Psychiatrists (© 1979); на бланке, который выкладывает APA, стоит ещё и авторская строка «©Stuart Montgomery 1978, Measures of Depression, Fulcrum Press, London»",
+   "note": "Две копирайт-строки на разных официальных бланках (RCPsych и Fulcrum Press/Montgomery) — ещё одна причина запрашивать разрешение письменно, а не полагаться на «в интернете лежит открыто». Официальный бланк APA: https://www.apa.org/depression-guideline/montgomery-asberg-scale.pdf"
+  },
+  "items": null,
+  "items_note": "Текст НЕ приводится: правообладатель требует письменного разрешения на любую онлайн-републикацию. Известно только формальное устройство (это не текст пунктов): 10 пунктов, каждый оценивается интервьюером от 0 до 6, определены опорные ступени 0, 2, 4, 6, промежуточные 1, 3, 5 — дословно с бланка: «The rating is based on a clinical interview. The rater must decide whether the rating lies on the defined scale steps (0, 2, 4, 6) or between them (1, 3, 5).»",
+  "anchors": null,
+  "anchors_note": "Формально: 0-6 на каждый пункт, но словесные привязки к баллам — часть охраняемого текста и здесь не воспроизводятся.",
+  "reverse": [],
+  "scoring": "Сумма 10 пунктов, диапазон 0-60. Обратных пунктов нет. Заполняет клиницист по итогам интервью, а не пациент сам — в системе это НЕ самоопросник.",
+  "bands": null,
+  "bands_source": "Общепринятые градации MADRS (норма / лёгкая / умеренная / тяжёлая) установлены в Snaith RP, Harrop FM, Newby DA, Teale C. Grade scores of the Montgomery-Asberg Depression and the Clinical Anxiety Scales. British Journal of Psychiatry. 1986;148:599-601. Числовые границы здесь сознательно НЕ выписаны: они не проверены по первоисточнику в ходе этой работы, а по памяти их приводить нельзя. Брать их только из самой статьи Snaith 1986 (или из письма RCPsych вместе с лицензией).",
+  "risk_items": [
+   {
+    "n": 10,
+    "why": "Десятый пункт MADRS — «Suicidal Thoughts» (оценивается интервьюером; верхняя ступень 6 описывает явные планы и приготовления к самоубийству). Любая оценка выше 0 по этому пункту — повод для немедленной клинической оценки риска. Текст привязок не воспроизводится, но само наличие и назначение пункта — факт, который система обязана учитывать."
+   }
+  ],
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": "права на переводы у Royal College of Psychiatrists / правообладателя",
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org/instruments/montgomery-asberg-depression-rating-scale",
+    "note": "Украинские версии MADRS встречаются в клинических испытаниях (их готовят лицензированные бюро переводов для спонсоров), но свободного украинского текста от правообладателя нет. Самодельный перевод запрещён вдвойне: и лицензией, и правилом проекта."
+   },
+   "ru": {
+    "exists": null,
+    "by": "то же",
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org/instruments/montgomery-asberg-depression-rating-scale",
+    "note": "То же."
+   }
+  },
+  "example": null,
+  "example_note": "Пример не приводится: без привязок к баллам расчёт не проверить. Механика тривиальна (сумма 10 пунктов по 0-6, максимум 60) и её можно протестировать после получения лицензионного бланка.",
+  "verdict": "завести без текста (лицензия) — карточка и требование письма в Royal College of Psychiatrists; онлайн-републикация без разрешения прямо запрещена правообладателем"
+ },
+ {
+  "key": "ghq12",
+  "title_en": "General Health Questionnaire-12 (GHQ-12)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "David P. Goldberg (и Paul Williams — руководство)",
+  "year": 1972,
+  "citation": "Goldberg DP. The Detection of Psychiatric Illness by Questionnaire. Maudsley Monograph No. 21. London: Oxford University Press, 1972. Руководство: Goldberg DP, Williams P. A User's Guide to the General Health Questionnaire. Windsor: NFER-Nelson, 1988.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "Photocopying a record form without abiding by the conditions outlined above is regarded as theft and is a criminal offence.",
+   "url": "https://support.gl-assessment.co.uk/knowledge-base/assessments/general-health-questionnaire-support/about-the-general-health-questionnaire/faqs",
+   "conditions": "Разрешение обязательно до применения: для лицензиатов из Великобритании, Ирландии и Нормандских островов — permissions@gl-assessment.co.uk; для остальных стран — Mapi Research Trust / ePROVIDE. Требуется покупка User Guide и согласование числа администраций. Дословно оттуда же: «We will consider requests for the GHQ to be used in an alternative format (eg: included within a test booklet for research purposes)» — то есть любое нестандартное размещение (включая экран в информационной системе) согласуется отдельно. Часть платы идёт роялти в Institute of Psychiatry: «Part of the payment received from permissions is paid as a royalty to the Institute of Psychiatry to fund research.»",
+   "owner": "GL Assessment (GL Education Group), UK",
+   "note": "Версии: GHQ-12, GHQ-28, GHQ-30, GHQ-60. Переводы распространяет Mapi Research Trust по поручению GL Assessment, с оговоркой самого правообладателя: «A number of translations are available. However, these have not been validated by GL Assessment.»"
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: методика платная и лицензируемая, правообладатель прямо называет несанкционированное копирование бланка кражей.",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Ключ (в том числе выбор между «GHQ-подсчётом» 0-0-1-1 и лайкертовским 0-1-2-3) описан в лицензируемом User Guide и здесь не воспроизводится. Это важно: по одной и той же анкете существуют два разных способа счёта и разные пороги — брать их надо из руководства, а не из статей.",
+  "bands": null,
+  "bands_source": "Пороги зависят от способа подсчёта и от популяции; устанавливаются по User Guide (Goldberg & Williams, 1988). Без лицензии не воспроизводятся.",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": "Mapi Research Trust по поручению GL Assessment",
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org",
+    "note": "Правообладатель заявляет 38 языков перевода, но прямо предупреждает, что сам их не валидировал. Украинский уточнять запросом в Mapi. Без лицензии не заводить."
+   },
+   "ru": {
+    "exists": null,
+    "by": "Mapi Research Trust по поручению GL Assessment",
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org",
+    "note": "То же."
+   }
+  },
+  "example": null,
+  "example_note": "Невозможен без ключа.",
+  "verdict": "завести без текста (лицензия) — только карточка: GHQ платный, права у GL Assessment, самовольное копирование бланка правообладатель называет уголовно наказуемым"
+ },
+ {
+  "key": "dass42",
+  "title_en": "Depression Anxiety Stress Scales (DASS, 42 items)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Peter F. Lovibond, Sydney H. Lovibond (University of New South Wales)",
+  "year": 1995,
+  "citation": "Lovibond SH, Lovibond PF. Manual for the Depression Anxiety Stress Scales. 2nd ed. Sydney: Psychology Foundation of Australia, 1995. Также: Lovibond PF, Lovibond SH. The structure of negative emotional states: comparison of the Depression Anxiety Stress Scales (DASS) with the Beck Depression and Anxiety Inventories. Behaviour Research and Therapy. 1995;33(3):335-343.",
+  "license": {
+   "verdict": "свободна",
+   "quote": "The DASS questionnaire is public domain, and so permission is not needed to use it. The DASS questionnaires and scoring key may be downloaded from the DASS website and copied without restriction.",
+   "url": "https://www2.psy.unsw.edu.au/dass/DASSFAQ.htm",
+   "conditions": null,
+   "note": "Официальный сайт разработчиков (UNSW). Отдельное условие для переводов, дословно оттуда же: «The only restriction on carrying out a translation is that the translated version, like the original English DASS, must be public domain. This means that you will not be able to copyright or sell the translation, and that you agree to make it available for download from the DASS website.»"
+  },
+  "items": [
+   "I found myself getting upset by quite trivial things",
+   "I was aware of dryness of my mouth",
+   "I couldn't seem to experience any positive feeling at all",
+   "I experienced breathing difficulty (eg, excessively rapid breathing, breathlessness in the absence of physical exertion)",
+   "I just couldn't seem to get going",
+   "I tended to over-react to situations",
+   "I had a feeling of shakiness (eg, legs going to give way)",
+   "I found it difficult to relax",
+   "I found myself in situations that made me so anxious I was most relieved when they ended",
+   "I felt that I had nothing to look forward to",
+   "I found myself getting upset rather easily",
+   "I felt that I was using a lot of nervous energy",
+   "I felt sad and depressed",
+   "I found myself getting impatient when I was delayed in any way (eg, elevators, traffic lights, being kept waiting)",
+   "I had a feeling of faintness",
+   "I felt that I had lost interest in just about everything",
+   "I felt I wasn't worth much as a person",
+   "I felt that I was rather touchy",
+   "I perspired noticeably (eg, hands sweaty) in the absence of high temperatures or physical exertion",
+   "I felt scared without any good reason",
+   "I felt that life wasn't worthwhile",
+   "I found it hard to wind down",
+   "I had difficulty in swallowing",
+   "I couldn't seem to get any enjoyment out of the things I did",
+   "I was aware of the action of my heart in the absence of physical exertion (eg, sense of heart rate increase, heart missing a beat)",
+   "I felt down-hearted and blue",
+   "I found that I was very irritable",
+   "I felt I was close to panic",
+   "I found it hard to calm down after something upset me",
+   "I feared that I would be \"thrown\" by some trivial but unfamiliar task",
+   "I was unable to become enthusiastic about anything",
+   "I found it difficult to tolerate interruptions to what I was doing",
+   "I was in a state of nervous tension",
+   "I felt I was pretty worthless",
+   "I was intolerant of anything that kept me from getting on with what I was doing",
+   "I felt terrified",
+   "I could see nothing in the future to be hopeful about",
+   "I felt that life was meaningless",
+   "I found myself getting agitated",
+   "I was worried about situations in which I might panic and make a fool of myself",
+   "I experienced trembling (eg, in the hands)",
+   "I found it difficult to work up the initiative to do things"
+  ],
+  "items_note": "Текст снят дословно с официального бланка разработчиков http://www2.psy.unsw.edu.au/dass/Download%20files/Dass42.pdf. Инструкция дословно: «Please read each statement and circle a number 0, 1, 2 or 3 which indicates how much the statement applied to you over the past week. There are no right or wrong answers. Do not spend too much time on any statement.» Переносы строк внутри длинных пунктов (4, 9, 14, 19, 25, 30, 35, 40) склеены в одну строку без изменения слов.",
+  "anchors": [
+   {
+    "label": "Did not apply to me at all",
+    "score": 0
+   },
+   {
+    "label": "Applied to me to some degree, or some of the time",
+    "score": 1
+   },
+   {
+    "label": "Applied to me to a considerable degree, or a good part of time",
+    "score": 2
+   },
+   {
+    "label": "Applied to me very much, or most of the time",
+    "score": 3
+   }
+  ],
+  "reverse": [],
+  "scoring": "Три подшкалы по 14 пунктов, сумма баллов по каждой (0-42). Обратных пунктов нет, общий балл разработчиками как основной не используется. Принадлежность пунктов взята с официального Scoring Template (http://www2.psy.unsw.edu.au/dass/Download%20files/Dass_template.pdf; на нём дословно: «For the full (42-item) DASS, apply template to both sides of the sheet and sum the scores for each scale»; шаблон одностраничный и прикладывается к обеим сторонам, поэтому буквенная схема повторяется для пунктов 22-42). Депрессия (D): 3, 5, 10, 13, 16, 17, 21, 24, 26, 31, 34, 37, 38, 42. Тревога (A): 2, 4, 7, 9, 15, 19, 20, 23, 25, 28, 30, 36, 40, 41. Стресс (S): 1, 6, 8, 11, 12, 14, 18, 22, 27, 29, 32, 33, 35, 39. ВАЖНО: умножение на 2 применяется ТОЛЬКО к DASS-21, к полной 42-пунктовой версии — нет.",
+  "bands": null,
+  "bands_source": "ОСТОРОЖНО, это главная ловушка DASS. Разработчики дословно: «Therefore we have developed a set of cut-off scores for defining mild/moderate/severe/extremely severe scores for each DASS scale. To avoid misinterpretation and reification of these (arbitrary) labels, they are only provided in the DASS manual» (FAQ5, https://www2.psy.unsw.edu.au/dass/DASSFAQ.htm). То есть сам опросник public domain, а таблица полос — только в платном руководстве (AUS$55, FAQ6). Значит: полосы брать ИЗ КУПЛЕННОГО РУКОВОДСТВА, а не из статей и калькуляторов. Там же предупреждение разработчиков о смысле ярлыков: «\"mild\" for example means that the person is above the population mean but still well below the typical severity of people seeking help ie it does not mean a mild level of a disorder.»",
+  "risk_items": [
+   {
+    "n": 21,
+    "why": "«I felt that life wasn't worthwhile» — пункт шкалы Депрессии о обесценивании жизни. Прямого вопроса о суицидальном намерении в DASS нет, но ненулевой ответ здесь (и на близкий пункт 38 «I felt that life was meaningless») традиционно считается поводом для отдельной оценки риска клиницистом. Это соображение клинической практики, а не правило разработчика — помечать как таковое."
+   }
+  ],
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": "http://www2.psy.unsw.edu.au/dass/Ukranian/Ukrainian.htm",
+    "note": "Украинского перевода ПОЛНОЙ 42-пунктовой версии на сайте разработчиков НЕТ. Есть официальная украинская DASS-21 (см. поле note ниже и общий отчёт): «This translation of the DASS21 was carried out by Inna Haletska and her colleagues Marina Klimanska and Mariia Perun», Ivan Franko National University of Lviv, размещена на сайте разработчиков, файлы DASS-21_ua.pdf и DASS-21_ua_about.pdf, дата документа 2023-10-26. По правилу сайта такой перевод обязан быть public domain. Резать украинскую DASS-21 до 42 пунктов невозможно — там их 21."
+   },
+   "ru": {
+    "exists": true,
+    "by": "переводчик указан на странице русского перевода сайта разработчиков",
+    "free": true,
+    "url": "http://www2.psy.unsw.edu.au/dass/Russian/Russian.htm",
+    "note": "На официальной странице переводов DASS русский язык присутствует. Перед использованием скачать файл с сайта разработчиков и сверить, какая версия переведена (42 или 21) — на момент проверки состав файлов не снимался."
+   }
+  },
+  "example": {
+   "answers": [
+    1,
+    0,
+    2,
+    0,
+    2,
+    1,
+    0,
+    2,
+    1,
+    2,
+    1,
+    1,
+    3,
+    1,
+    0,
+    2,
+    2,
+    1,
+    0,
+    1,
+    2,
+    2,
+    0,
+    3,
+    0,
+    3,
+    1,
+    1,
+    2,
+    0,
+    2,
+    1,
+    2,
+    2,
+    1,
+    0,
+    2,
+    2,
+    1,
+    0,
+    0,
+    3
+   ],
+   "total": {
+    "depression": 32,
+    "anxiety": 3,
+    "stress": 18
+   },
+   "band": null,
+   "note": "Арифметическая проверка ключа (не опубликованный кейс). Ответы даны по порядку пунктов 1-42. Депрессия = пункты 3,5,10,13,16,17,21,24,26,31,34,37,38,42 = 2+2+2+3+2+2+2+3+3+2+2+2+2+3 = 32 из 42. Тревога = пункты 2,4,7,9,15,19,20,23,25,28,30,36,40,41 = 0+0+0+1+0+0+1+0+0+1+0+0+0+0 = 3 из 42. Стресс = пункты 1,6,8,11,12,14,18,22,27,29,32,33,35,39 = 1+1+2+1+1+1+1+2+1+2+1+2+1+1 = 18 из 42. Суммы пересчитаны скриптом по ключу, а не вручную. Полосы НЕ присвоены: таблица порогов есть только в платном руководстве."
+  },
+  "verdict": "завести — текст, ключ и лицензия проверяемы у разработчиков; но полосы без покупки руководства не подписывать, и если DASS-21 уже стоит в системе, вторую версию той же методики ставить незачем"
+ }
+]

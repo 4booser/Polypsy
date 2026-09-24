@@ -1,0 +1,888 @@
+[
+ {
+  "key": "pcptsd5",
+  "title_en": "Primary Care PTSD Screen for DSM-5 (PC-PTSD-5)",
+  "title_uk": "PC-PTSD-5 — шкала первинної діагностики посттравматичного стресового розладу",
+  "title_ru": null,
+  "authors": "Prins, A.; Bovin, M. J.; Kimerling, R.; Kaloupek, D. G.; Marx, B. P.; Pless Kaiser, A.; Schnurr, P. P. (National Center for PTSD, U.S. Department of Veterans Affairs)",
+  "year": 2015,
+  "citation": "Prins, A., Bovin, M. J., Kimerling, R., Kaloupek, D. G., Marx, B. P., Pless Kaiser, A., & Schnurr, P. P. (2015). Primary Care PTSD Screen for DSM-5 (PC-PTSD-5) [Measurement instrument]. Available from https://www.ptsd.va.gov — пороги: Prins A. et al. The Primary Care PTSD Screen for DSM-5 (PC-PTSD-5): Development and Evaluation Within a Veteran Primary Care Sample. J Gen Intern Med. 2016 Oct;31(10):1206-11. doi:10.1007/s11606-016-3703-5. Использованный бланк: версия 2022, официальный PDF National Center for PTSD.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "This measure was developed by staff at VA's National Center for PTSD and is in the public domain and not copyrighted. / This instrument is intended for use by qualified health professionals and researchers.",
+   "url": "https://www.ptsd.va.gov/professional/assessment/screens/pc-ptsd.asp",
+   "conditions": "Public domain, копирайта нет, плата не требуется. Единственное условие с сайта правообладателя — применение квалифицированными специалистами и исследователями. Официальный бланк (PDF, версия 2022): https://www.ptsd.va.gov/professional/assessment/documents/pc-ptsd5-screen.pdf"
+  },
+  "items": [
+   "Sometimes things happen to people that are unusually or especially frightening, horrible, or traumatic. For example: a serious accident or fire; a physical or sexual assault or abuse; an earthquake or flood; a war; seeing someone be killed or seriously injured; having a loved one die through homicide or suicide. Have you ever experienced this kind of event? [GATE — YES / NO. If no, screen total = 0. Please stop here. If yes, please answer the questions below.]",
+   "In the past month, have you… had nightmares about the event(s) or thought about the event(s) when you did not want to?",
+   "In the past month, have you… tried hard not to think about the event(s) or went out of your way to avoid situations that reminded you of the event(s)?",
+   "In the past month, have you… been constantly on guard, watchful, or easily startled?",
+   "In the past month, have you… felt numb or detached from people, activities, or your surroundings?",
+   "In the past month, have you… felt guilty or unable to stop blaming yourself or others for the event(s) or any problems the event(s) may have caused?"
+  ],
+  "items_note": "Первый элемент массива — отсеивающий (gate) вопрос о наличии травматического события, он НЕ входит в сумму. Пункты 1–5 идут после него. Текст дословно с официального PDF National Center for PTSD, версия 2022.",
+  "anchors": [
+   {
+    "label": "NO",
+    "score": 0
+   },
+   {
+    "label": "YES",
+    "score": 1
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с официального бланка: «The measure begins with an item designed to assess whether the respondent has had any exposure to traumatic events. If a respondent denies exposure, the PC-PTSD-5 is complete with a score of 0. If a respondent indicates a trauma history … the respondent is instructed to answer five additional yes/no questions … about how that trauma has affected them over the past month. Respondents can score a 0-5, which is a count of \"yes\" responses to the 5 questions below.» Итог = количество ответов YES по пунктам 1–5, диапазон 0–5. Подшкал нет.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 3,
+    "label": "Negative screen (below cut-point of 4)",
+    "source": "Prins et al., 2016, J Gen Intern Med 31(10):1206-11; воспроизведено на официальном бланке PC-PTSD-5 (2022)"
+   },
+   {
+    "min": 4,
+    "max": 5,
+    "label": "Positive screen — probable PTSD, требует дальнейшего обследования, предпочтительно структурированным интервью",
+    "source": "Prins et al., 2016, J Gen Intern Med 31(10):1206-11; официальный бланк PC-PTSD-5 (2022)"
+   }
+  ],
+  "bands_note": "Дословно с бланка: «Research in a large sample of VA primary care patients found that a cut-point of 4 ideally balanced false negatives and false positives for the overall sample and for men. However, for women, a cut-point of 4 resulted in high numbers of false negatives. Practitioners may consider a lower cut-point for women in some settings if evaluation resources are available.» То есть 4 — базовый порог; порог 3 для женщин допускается разработчиком, но как решение клинициста, а не как фиксированная полоса. Скрининг, не диагноз.",
+  "risk_items": [],
+  "risk_items_note": "Пункта о суицидальных мыслях в PC-PTSD-5 нет. Тревогу поднимает сам факт положительного скрининга (≥4), а не отдельный пункт.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Павленко Н. О. (магістерське дослідження, Київський інститут сучасної психології та психотерапії; наук. кер. Максимчук М. О., ментор Виноградов О. Г.), випущена ТОВ «ЮЕЙ-ТЕСТ» на платформі Start; керівництво версія 1.0 від 19.06.2024",
+    "free": false,
+    "url": "https://start.ua-test.com/pub/files/pc-ptsd-5-manual.pdf",
+    "note": "Это НЕ официальный перевод правообладателя: National Center for PTSD официально выпускает только испанскую версию. Украинская версия — независимая адаптация, в её собственном руководстве стоит «Всі права застережено», то есть текст пунктов украинской версии не свободен и воспроизводить его нельзя без разрешения ТОВ «ЮЕЙ-ТЕСТ». Психометрика адаптации: α=0.78, ретест 21–28 дней r=0.712 (N=101), CFA однофакторной модели RMSEA 0.024/0.032, CFI 0.99, TLI 0.98–0.99 (выборки 215 неклин. + 18 клин.); порог подтверждён как 4 для мужчин, 3 допускается для женщин."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от National Center for PTSD не существует; официально выпускается только испанский («Email ncptsd@va.gov to request a Spanish translation»). Своего перевода не делаем."
+   }
+  },
+  "example": {
+   "answers": [
+    "gate: YES",
+    "1: YES",
+    "2: YES",
+    "3: YES",
+    "4: YES",
+    "5: NO"
+   ],
+   "total": 4,
+   "band": "Positive screen — probable PTSD (≥4)",
+   "note": "Пример арифметически однозначен: сумма — прямой подсчёт ответов YES по пунктам 1–5 (4 из 5). Второй контрольный случай: gate = NO → total = 0 (бланк: «If no, screen total = 0. Please stop here.»)."
+  },
+  "verdict": "завести — public domain по заявлению правообладателя, текст пунктов и порог проверяемы по официальному PDF; вводить ТОЛЬКО английский оригинал, украинскую версию — лишь по договорённости с ТОВ «ЮЕЙ-ТЕСТ»."
+ },
+ {
+  "key": "ces",
+  "title_en": "Combat Exposure Scale (CES)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Keane, T. M.; Fairbank, J. A.; Caddell, J. M.; Zimering, R. T.; Taylor, K. L.; Mora, C. A. (National Center for PTSD, U.S. Department of Veterans Affairs)",
+  "year": 1989,
+  "citation": "Keane, T. M., Fairbank, J. A., Caddell, J. M., Zimering, R. T., Taylor, K. L., & Mora, C. A. (1989). Clinical evaluation of a measure to assess combat exposure. Psychological Assessment, 1(1), 53-55. Бланк и ключ: официальный PDF National Center for PTSD «Combat Exposure Scale», version date 1989.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "Measures authored by National Center staff are available as direct downloads or by request. … These measures are intended for use by qualified mental health professionals and researchers.",
+   "url": "https://www.ptsd.va.gov/professional/assessment/te-measures/ces.asp",
+   "conditions": "Методика создана штатом National Center for PTSD и выложена правообладателем как прямой PDF-download без платы и без регистрации. ВАЖНО: на странице CES формулировки «is in the public domain and not copyrighted» (которая есть на странице PCL-5) я НЕ нашёл — она стоит только на страницах некоторых других мер Центра. Поэтому verdict — «свободна с условиями», а не «свободна»: свободное распространение подтверждено самим фактом публикации правообладателем и общей политикой раздела, но дословного заявления о public domain именно для CES нет. Официальный PDF: https://www.ptsd.va.gov/professional/assessment/documents/CES.pdf"
+  },
+  "items": [
+   "Did you ever go on combat patrols or have other dangerous duty?",
+   "Were you ever under enemy fire?",
+   "Were you ever surrounded by the enemy?",
+   "What percentage of the soldiers in your unit were killed (KIA), wounded or missing in action (MIA)?",
+   "How often did you fire rounds at the enemy?",
+   "How often did you see someone hit by incoming or outgoing rounds?",
+   "How often were you in danger of being injured or killed (i.e., being pinned down, overrun, ambushed, near miss, etc.)?"
+  ],
+  "items_note": "Инструкция бланка дословно: «Please circle the number above the answer that best describes your experience.» Текст с официального PDF National Center for PTSD (version date 1989).",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "label": "No",
+      "raw": 1
+     },
+     {
+      "label": "1-3 times",
+      "raw": 2
+     },
+     {
+      "label": "4-12 times",
+      "raw": 3
+     },
+     {
+      "label": "13-50 times",
+      "raw": 4
+     },
+     {
+      "label": "51+ times",
+      "raw": 5
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "label": "Never",
+      "raw": 1
+     },
+     {
+      "label": "<1 month",
+      "raw": 2
+     },
+     {
+      "label": "1-3 months",
+      "raw": 3
+     },
+     {
+      "label": "4-6 months",
+      "raw": 4
+     },
+     {
+      "label": "7+ months",
+      "raw": 5
+     }
+    ]
+   },
+   {
+    "item": 3,
+    "options": [
+     {
+      "label": "No",
+      "raw": 1
+     },
+     {
+      "label": "1-2 times",
+      "raw": 2
+     },
+     {
+      "label": "3-12 times",
+      "raw": 3
+     },
+     {
+      "label": "13-25 times",
+      "raw": 4
+     },
+     {
+      "label": "26+ times",
+      "raw": 5
+     }
+    ]
+   },
+   {
+    "item": 4,
+    "options": [
+     {
+      "label": "None",
+      "raw": 1
+     },
+     {
+      "label": "1-25%",
+      "raw": 2
+     },
+     {
+      "label": "26-50%",
+      "raw": 3
+     },
+     {
+      "label": "51-75%",
+      "raw": 4
+     },
+     {
+      "label": "76% or more",
+      "raw": 5
+     }
+    ]
+   },
+   {
+    "item": 5,
+    "options": [
+     {
+      "label": "Never",
+      "raw": 1
+     },
+     {
+      "label": "1-2 times",
+      "raw": 2
+     },
+     {
+      "label": "3-12 times",
+      "raw": 3
+     },
+     {
+      "label": "13-50 times",
+      "raw": 4
+     },
+     {
+      "label": "51+ times",
+      "raw": 5
+     }
+    ]
+   },
+   {
+    "item": 6,
+    "options": [
+     {
+      "label": "Never",
+      "raw": 1
+     },
+     {
+      "label": "1-2 times",
+      "raw": 2
+     },
+     {
+      "label": "3-12 times",
+      "raw": 3
+     },
+     {
+      "label": "13-50 times",
+      "raw": 4
+     },
+     {
+      "label": "51+ times",
+      "raw": 5
+     }
+    ]
+   },
+   {
+    "item": 7,
+    "options": [
+     {
+      "label": "Never",
+      "raw": 1
+     },
+     {
+      "label": "1-2 times",
+      "raw": 2
+     },
+     {
+      "label": "3-12 times",
+      "raw": 3
+     },
+     {
+      "label": "13-50 times",
+      "raw": 4
+     },
+     {
+      "label": "51+ times",
+      "raw": 5
+     }
+    ]
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с официального Scoring Sheet: «Answers (raw scores) on the Combat Exposure Scale can range from 1 to 5. However, the scoring of the items requires the conversions described below: (1) SUBTRACT 1 FROM THE RAW SCORE AND MULTIPLY BY 2. (2) SUBTRACT 1 FROM THE RAW SCORE. (3) IF THE RAW SCORE IS BETWEEN 1 AND 4: SUBTRACT 1 FROM THE RAW SCORE AND MULTIPLY BY 2. IF THE RAW SCORE IS 5: SUBTRACT 2 FROM THE RAW SCORE AND MULTIPLY BY 2. (4) IF THE RAW SCORE IS BETWEEN 1 AND 4: SUBTRACT 1 FROM THE RAW SCORE. IF THE RAW SCORE IS 5: SUBTRACT 2 FROM THE RAW SCORE. (5) SUBTRACT 1 FROM THE RAW SCORE. (6) SUBTRACT 1 FROM THE RAW SCORE AND MULTIPLY BY 2. (7) SUBTRACT 1 FROM THE RAW SCORE AND MULTIPLY BY 2. ADD ALL CONVERTED SCORES TO OBTAIN A TOTAL SCORE.» Формулы: i1=(r-1)*2; i2=r-1; i3= r<=4 ? (r-1)*2 : (r-2)*2; i4= r<=4 ? r-1 : r-2; i5=r-1; i6=(r-1)*2; i7=(r-1)*2. Диапазон суммы 0–41. Подшкал нет.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 8,
+    "label": "1 = light",
+    "source": "Официальный Scoring Sheet National Center for PTSD (CES, 1989); Keane et al., 1989, Psychological Assessment 1(1):53-55"
+   },
+   {
+    "min": 9,
+    "max": 16,
+    "label": "2 = light - moderate",
+    "source": "там же"
+   },
+   {
+    "min": 17,
+    "max": 24,
+    "label": "3 = moderate",
+    "source": "там же"
+   },
+   {
+    "min": 25,
+    "max": 32,
+    "label": "4 = moderate - heavy",
+    "source": "там же"
+   },
+   {
+    "min": 33,
+    "max": 41,
+    "label": "5 = heavy",
+    "source": "там же"
+   }
+  ],
+  "bands_note": "Дословно с бланка: «The total exposure to combat score can be categorized according to the following scale: 1 = 0-8 light; 2 = 9-16 light - moderate; 3 = 17-24 moderate; 4 = 25-32 moderate - heavy; 5 = 33-41 heavy». Это шкала ЭКСПОЗИЦИИ, а не симптомов: высокий балл не означает расстройства и не является клиническим порогом.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде или актуальном риске нет — методика измеряет прошлую боевую экспозицию.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода, выпущенного National Center for PTSD, нет. Официально задокументирован только испанский перевод CES-S (Rosario-Hernández et al., Military Medicine, 2022) — он не украинский. Своего перевода не делаем."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от правообладателя не найдено."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "item": 1,
+     "raw": 5
+    },
+    {
+     "item": 2,
+     "raw": 5
+    },
+    {
+     "item": 3,
+     "raw": 5
+    },
+    {
+     "item": 4,
+     "raw": 5
+    },
+    {
+     "item": 5,
+     "raw": 5
+    },
+    {
+     "item": 6,
+     "raw": 5
+    },
+    {
+     "item": 7,
+     "raw": 5
+    }
+   ],
+   "converted": [
+    8,
+    4,
+    6,
+    3,
+    4,
+    8,
+    8
+   ],
+   "total": 41,
+   "band": "5 = heavy (33-41)",
+   "note": "Арифметически однозначен и заодно проверяет два исключения ключа (пункты 3 и 4 при raw=5) и потолок шкалы: 8+4+6+3+4+8+8 = 41, что совпадает с заявленным максимумом 41. Второй контрольный случай: все raw=1 → все converted=0 → total 0 → «1 = light». Третий: raw [3,2,2,1,3,2,2] → converted [4,1,2,0,2,2,2] → total 13 → «2 = light - moderate»."
+  },
+  "verdict": "завести — бланк, ключ и полосы полностью проверяемы по официальному PDF правообладателя; вводить только английский оригинал."
+ },
+ {
+  "key": "ies6",
+  "title_en": "Impact of Event Scale-6 (IES-6) — brief version of the Impact of Event Scale-Revised (IES-R)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Thoresen, S.; Tambs, K.; Hussain, A.; Heir, T.; Johansen, V. A.; Bisson, J. I. (сокращённая версия). Пункты взяты дословно из Impact of Event Scale-Revised, правообладатели текста пунктов — Weiss, D. S. & Marmar, C. R. (1997).",
+  "year": 2010,
+  "citation": "Thoresen S, Tambs K, Hussain A, Heir T, Johansen VA, Bisson JI. Brief measure of posttraumatic stress reactions: Impact of Event Scale-6. Soc Psychiatry Psychiatr Epidemiol. 2010 Mar;45(3):405-12. doi:10.1007/s00127-009-0073-x. — Порог: Hosey MM, Leoutsakos J-MS, Li X, et al. Screening for posttraumatic stress disorder in ARDS survivors: validation of the Impact of Event Scale-6 (IES-6). Crit Care. 2019;23:276. doi:10.1186/s13054-019-2553-z. — Родительский инструмент: Weiss DS, Marmar CR. The Impact of Event Scale-Revised. In: Wilson JP, Keane TM (eds). Assessing Psychological Trauma and PTSD. New York: Guilford Press; 1997:399-411.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "Permission sought from Daniel S. Weiss, who declined 2015-07-28. / Reproduction of this task/scale is not permitted (or such permission is not clear). — CamCOPS, документация по IES-R. Подтверждающее свидетельство из рецензируемой публикации: «the IES-R scale has been retired by the developer due to revisions in PTSD criteria, limiting its use to investigators with ongoing research or prior permission (personal communication with Dr. Weiss, August 12, 2019)».",
+   "url": "https://camcops.readthedocs.io/en/latest/tasks/iesr.html ; https://pmc.ncbi.nlm.nih.gov/articles/PMC6744634/",
+   "conditions": "IES-6 не имеет собственного бланка: все шесть пунктов дословно взяты из IES-R (пункты 3, 6, 11, 12, 18, 21). Права на текст пунктов у Weiss & Marmar / Guilford Press. Официальной страницы правообладателя с разрешением на воспроизведение найти не удалось; зафиксирован отказ в разрешении (2015) и заявление разработчика о «выводе шкалы из обращения» с доступом только по предварительному разрешению (2019). Поэтому текст пунктов НЕ приводится. Использование в клинической системе возможно только после письменного разрешения Д. Вайса (daniel.weiss@ucsf.edu, UCSF) или правопреемника."
+  },
+  "items": null,
+  "items_note": "Не приводим по лицензии (правило 3). Пункты IES-6 — это дословно пункты IES-R № 3, 6, 11, 12, 18, 21 (перечень номеров опубликован в Hosey et al., 2019, Crit Care 23:276, Table 1). Номера пунктов — проверяемая метаданная; сам текст — объект авторского права Weiss & Marmar (1997), разрешение на воспроизведение не получено (отказ 2015).",
+  "anchors": [
+   {
+    "label": "Not at all",
+    "score": 0
+   },
+   {
+    "label": "A little bit",
+    "score": 1
+   },
+   {
+    "label": "Moderately",
+    "score": 2
+   },
+   {
+    "label": "Quite a bit",
+    "score": 3
+   },
+   {
+    "label": "Extremely",
+    "score": 4
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно по Hosey et al., 2019: «The IES-6 ... with its score calculated as the mean of the six items». Итог = СРЕДНЕЕ арифметическое шести пунктов (не сумма), диапазон 0.00–4.00. Инструкция IES-R для обработки пропусков: «To obtain a total score: calculate the mean of all non-missing items in the instrument». Подшкал в IES-6 нет (по два пункта на каждый из трёх доменов DSM-IV — вторжение, избегание, гипервозбуждение, — но отдельные подшкальные нормы для IES-6 не опубликованы). ВНИМАНИЕ: многие публикации по IES-R используют СУММУ (0–88); для IES-6 порог установлен именно для СРЕДНЕГО — путать нельзя.",
+  "bands": [
+   {
+    "min": 0,
+    "max": 1.749,
+    "label": "Negative screen (below cut-point 1.75)",
+    "source": "Hosey MM et al., Crit Care 2019;23:276, doi:10.1186/s13054-019-2553-z — выборка выживших после ОРДС, эталон CAPS"
+   },
+   {
+    "min": 1.75,
+    "max": 4.0,
+    "label": "Positive screen — probable PTSD (cut-off >= 1.75; sensitivity 0.88, specificity 0.85, AUC 0.93)",
+    "source": "Hosey MM et al., Crit Care 2019;23:276"
+   }
+  ],
+  "bands_note": "Порог 1.75 установлен на выживших после ОРДС (реанимация), НЕ на военнослужащих. Для военной выборки порог IES-6 в первоисточниках не найден — переносить его на военнослужащих без оговорки нельзя. Thoresen et al. (2010) собственного клинического порога для IES-6 не предлагали (работа посвящена соответствию IES-6 и IES-R, r = 0.95).",
+  "risk_items": [],
+  "risk_items_note": "В IES-6 нет пункта о суициде или самоповреждении — поднимать тревогу не по чему.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Krupelnytska L., Yatsenko N., Keller V., Morozova-Larina O. — валидизация украинской версии IES-R (22 пункта), не IES-6",
+    "free": false,
+    "url": "https://doi.org/10.1016/j.comppsych.2025.152593",
+    "note": "Krupelnytska L, Yatsenko N, Keller V, Morozova-Larina O. The impact of events scale-revised (IES-R): Validation of the Ukrainian version. Compr Psychiatry. 2025;139:152593. Это перевод полной IES-R, выпущенный украинскими исследователями, а НЕ правообладателем; статья за платным доступом (Elsevier), текст украинских пунктов в свободном доступе не найден, разрешение правообладателя на распространение не задокументировано. Отдельной украинской IES-6 не существует."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода IES-R/IES-6, выпущенного правообладателем, не найдено. Циркулирующие русские варианты ШОВТС не имеют документированного разрешения Weiss & Marmar."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "item": 1,
+     "raw": 4
+    },
+    {
+     "item": 2,
+     "raw": 3
+    },
+    {
+     "item": 3,
+     "raw": 3
+    },
+    {
+     "item": 4,
+     "raw": 2
+    },
+    {
+     "item": 5,
+     "raw": 1
+    },
+    {
+     "item": 6,
+     "raw": 0
+    }
+   ],
+   "total": 2.1667,
+   "band": "Positive screen — probable PTSD (>= 1.75)",
+   "note": "Арифметически однозначен: (4+3+3+2+1+0)/6 = 13/6 = 2.1667 >= 1.75 → положительный скрининг. Контрольные случаи: все 0 → среднее 0.00 → отрицательный; все 4 → среднее 4.00 → положительный (потолок шкалы); [2,2,2,2,1,1] → 10/6 = 1.6667 < 1.75 → отрицательный (проверка границы снизу); [2,2,2,2,2,1] → 11/6 = 1.8333 → положительный. Пример проверяет именно СРЕДНЕЕ, а не сумму."
+  },
+  "verdict": "завести без текста (лицензия) — правообладатель IES-R (Weiss) в разрешении на воспроизведение отказал и вывел шкалу из свободного обращения, поэтому в системе можно держать только название, правообладателя и способ лицензирования; без письменного разрешения предъявлять пункты нельзя, а значит практически методика неприменима."
+ },
+ {
+  "key": "mies",
+  "title_en": "Moral Injury Events Scale (MIES)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Nash, W. P.; Marino Carper, T. L.; Mills, M. A.; Au, T.; Goldsmith, A.; Litz, B. T.",
+  "year": 2013,
+  "citation": "Nash WP, Marino Carper TL, Mills MA, Au T, Goldsmith A, Litz BT. Psychometric Evaluation of the Moral Injury Events Scale. Mil Med. 2013 Jun;178(6):646-52. doi:10.7205/MILMED-D-13-00017. Полный текст пунктов — в Appendix этой статьи (с. 650).",
+  "license": {
+   "verdict": "неясно",
+   "quote": "В первоисточнике (Mil Med 178(6):646-52) НЕТ ни одной фразы о разрешении на воспроизведение, о public domain или об условиях использования: в PDF нет ни строки копирайта на саму шкалу, ни контакта для получения разрешения. Ближайшее найденное утверждение о свободе — на стороннем профессиональном сайте Global Collaboration on Traumatic Stress: «9-items, freely available in English, Dutch» — но это НЕ правообладатель, и по правилу 2 такое свидетельство не годится.",
+   "url": "https://sites.bu.edu/litzlab/files/2023/05/Psychometric-Evaluation-of-the-Moral-Injury-Events-Scale.pdf (копия статьи на сайте лаборатории Б. Литца, одного из авторов); https://doi.org/10.7205/MILMED-D-13-00017",
+   "conditions": "Журнал Military Medicine (AMSUS / Oxford University Press) — журнал с копирайтом; отметки «work of the U.S. Government / public domain» в статье нет. Прямого разрешения правообладателя на воспроизведение бланка не найдено. Требуется письменный запрос к B. T. Litz (Boston University / VA Boston) или к AMSUS."
+  },
+  "items": null,
+  "items_note": "Не приводим: лицензия НЕ подтверждена первоисточником (правило 2 — годится только заявление правообладателя, найденного заявления нет). Текст всех девяти пунктов напечатан дословно в Appendix статьи Nash et al. 2013 (Mil Med 178(6):650) — он проверяем по первоисточнику, но разрешения на его воспроизведение в нашей системе нет. Заводить текст можно только после письменного разрешения авторов.",
+  "anchors": [
+   {
+    "label": "Strongly Agree",
+    "score": 1
+   },
+   {
+    "label": "Moderately Agree",
+    "score": 2
+   },
+   {
+    "label": "Slightly Agree",
+    "score": 3
+   },
+   {
+    "label": "Slightly Disagree",
+    "score": 4
+   },
+   {
+    "label": "Moderately Disagree",
+    "score": 5
+   },
+   {
+    "label": "Strongly Disagree",
+    "score": 6
+   }
+  ],
+  "reverse": [],
+  "scoring": "ПЕРВОИСТОЧНИК ПРОТИВОРЕЧИТ САМ СЕБЕ, и это блокирующая проблема. В разделе Methods сказано дословно: «Response options were Likert-type, ranging from 1 (strongly disagree) to 6 (strongly agree). ... Two items were reverse-keyed; scale scores are generated by reverse coding these two items and then summing across items, with a higher score being indicative of having experienced a greater intensity of events.» А в Appendix той же статьи шапка таблицы напечатана в ОБРАТНОМ порядке: 1 = Strongly Agree, 2 = Moderately Agree, 3 = Slightly Agree, 4 = Slightly Disagree, 5 = Moderately Disagree, 6 = Strongly Disagree. Две версии дают взаимно перевёрнутый итог. Кроме того, обратные пункты 10 и 11 из финальную версию НЕ вошли («Two items were eliminated because of low item-total correlations»), поэтому в девятипунктовой MIES обратных пунктов нет и правило «reverse code these two items» к ней неприменимо. Формально: итог = сумма девяти пунктов, диапазон 9–54; подшкалы по EFA/CFA — Factor 1 «Perceived transgressions by self or others» = пункты 1–6 (диапазон 6–36), Factor 2 «Perceived betrayal by others» = пункты 7–9 (диапазон 3–18). Но НАПРАВЛЕНИЕ суммы (больше = сильнее моральная травма или наоборот) по первоисточнику однозначно не устанавливается.",
+  "bands": null,
+  "bands_note": "Полос НЕТ: клинический порог для MIES в первоисточнике не устанавливался и в последующих публикациях не найден — MIES задумана как непрерывная мера выраженности пережитого, а не как скрининг с точкой отсечения. Завести полосы нельзя: любая граница была бы выдумана.",
+  "risk_items": [],
+  "risk_items_note": "Пунктов о суициде или самоповреждении в MIES нет. Клинически насторажливающими считаются высокие значения по пунктам 3–6 (собственные нарушения морального кодекса действием и бездействием) — но это соображение, а не опубликованное правило тревоги, поэтому формально risk_items пуст.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода MIES не найдено. Украинская адаптация есть у ДРУГОГО инструмента — Moral Injury Symptoms Scale – Military Version – Short Form (MISS-M-SF); это не MIES, подменять нельзя."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода MIES не найдено."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "item": 1,
+     "raw": 1
+    },
+    {
+     "item": 2,
+     "raw": 1
+    },
+    {
+     "item": 3,
+     "raw": 1
+    },
+    {
+     "item": 4,
+     "raw": 1
+    },
+    {
+     "item": 5,
+     "raw": 1
+    },
+    {
+     "item": 6,
+     "raw": 1
+    },
+    {
+     "item": 7,
+     "raw": 1
+    },
+    {
+     "item": 8,
+     "raw": 1
+    },
+    {
+     "item": 9,
+     "raw": 1
+    }
+   ],
+   "total": 9,
+   "band": null,
+   "note": "Арифметически однозначен только сам подсчёт, не его толкование: 9 пунктов по 1 баллу = 9 (нижняя граница диапазона 9–54); все по 6 = 54 (верхняя). Подшкалы для набора [1,2,3,4,5,6,6,5,4]: Factor 1 (п.1-6) = 1+2+3+4+5+6 = 21, Factor 2 (п.7-9) = 6+5+4 = 15, итог 36. Полосу подставить НЕЛЬЗЯ — порогов не существует, и по первоисточнику неясно даже, означает ли 9 максимум или минимум моральной травмы (см. scoring)."
+  },
+  "verdict": "не заводить — клинических порогов у MIES нет вовсе, а первоисточник противоречит сам себе в направлении шкалы ответов (Methods против Appendix), так что и подпись полосы, и знак итога пришлось бы выдумать; вдобавок разрешение правообладателя на воспроизведение пунктов не подтверждено."
+ },
+ {
+  "key": "sbqr",
+  "title_en": "Suicidal Behaviors Questionnaire-Revised (SBQ-R)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Osman, A.; Bagge, C. L.; Gutierrez, P. M.; Konick, L. C.; Kopper, B. A.; Barrios, F. X.",
+  "year": 2001,
+  "citation": "Osman A, Bagge CL, Gutierrez PM, Konick LC, Kopper BA, Barrios FX. The Suicidal Behaviors Questionnaire-Revised (SBQ-R): validation with clinical and nonclinical samples. Assessment. 2001 Dec;8(4):443-54. doi:10.1177/107319110100800409. Использованный бланк и ключ: стандартная форма SBQ-R из STABLE Resource Toolkit, несущая копирайт и разрешение правообладателя.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "© Osman et al (1999) Revised. Permission for use granted by A.Osman, MD",
+   "url": "https://youthsuicideprevention.nebraska.edu/wp-content/uploads/2019/09/SBQ-R.pdf",
+   "conditions": "Разрешение напечатано на самом бланке SBQ-R (нижний колонтитул страницы с пунктами) и на странице ключа стоит «©Osman et al (1999)». Условия: сохранять строку копирайта и разрешения, не изменять формулировки и баллы. ОГОВОРКА ЧЕСТНОСТИ: страницы, которую вёл бы сам А. Осман или издатель Sage, с текстом разрешения найти не удалось — цитата взята с официального бланка, распространяемого в составе STABLE Resource Toolkit (национальный клинический набор инструментов), то есть это ПЕРЕПЕЧАТКА заявления правообладателя, а не его собственный сайт. Перед выпуском в продакшн стоит получить письменное подтверждение у A. Osman (University of Texas at San Antonio) или у правопреемника. Сама статья в журнале Assessment (SAGE) — под копирайтом издателя; бланк распространяется отдельно."
+  },
+  "items": [
+   "1. Have you ever thought about or attempted to kill yourself? (check one only)",
+   "2. How often have you thought about killing yourself in the past year? (check one only)",
+   "3. Have you ever told someone that you were going to commit suicide, or that you might do it? (check one only)",
+   "4. How likely is it that you will attempt suicide someday? (check one only)"
+  ],
+  "items_note": "Инструкция на бланке дословно: «Please check the number beside the statement or phrase that best applies to you.» У каждого пункта свой набор вариантов ответа — они перечислены в поле anchors по пунктам, потому что это не единая шкала Ликерта, а четыре разные шкалы.",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "code": "1",
+      "label": "Never",
+      "score": 1,
+      "subgroup": "Non-Suicidal subgroup"
+     },
+     {
+      "code": "2",
+      "label": "It was just a brief passing thought",
+      "score": 2,
+      "subgroup": "Suicide Risk Ideation subgroup"
+     },
+     {
+      "code": "3a",
+      "label": "I have had a plan at least once to kill myself but did not try to do it",
+      "score": 3,
+      "subgroup": "Suicide Plan subgroup"
+     },
+     {
+      "code": "3b",
+      "label": "I have had a plan at least once to kill myself and really wanted to die",
+      "score": 3,
+      "subgroup": "Suicide Plan subgroup"
+     },
+     {
+      "code": "4a",
+      "label": "I have attempted to kill myself, but did not want to die",
+      "score": 4,
+      "subgroup": "Suicide Attempt subgroup"
+     },
+     {
+      "code": "4b",
+      "label": "I have attempted to kill myself, and really hoped to die",
+      "score": 4,
+      "subgroup": "Suicide Attempt subgroup"
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "code": "1",
+      "label": "Never",
+      "score": 1
+     },
+     {
+      "code": "2",
+      "label": "Rarely (1 time)",
+      "score": 2
+     },
+     {
+      "code": "3",
+      "label": "Sometimes (2 times)",
+      "score": 3
+     },
+     {
+      "code": "4",
+      "label": "Often (3-4 times)",
+      "score": 4
+     },
+     {
+      "code": "5",
+      "label": "Very Often (5 or more times)",
+      "score": 5
+     }
+    ]
+   },
+   {
+    "item": 3,
+    "options": [
+     {
+      "code": "1",
+      "label": "No",
+      "score": 1
+     },
+     {
+      "code": "2a",
+      "label": "Yes, at one time, but did not really want to die",
+      "score": 2
+     },
+     {
+      "code": "2b",
+      "label": "Yes, at one time, and really wanted to die",
+      "score": 2
+     },
+     {
+      "code": "3a",
+      "label": "Yes, more than once, but did not want to do it",
+      "score": 3
+     },
+     {
+      "code": "3b",
+      "label": "Yes, more than once, and really wanted to do it",
+      "score": 3
+     }
+    ]
+   },
+   {
+    "item": 4,
+    "options": [
+     {
+      "code": "0",
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "code": "1",
+      "label": "No chance at all",
+      "score": 1
+     },
+     {
+      "code": "2",
+      "label": "Rather unlikely",
+      "score": 2
+     },
+     {
+      "code": "3",
+      "label": "Unlikely",
+      "score": 3
+     },
+     {
+      "code": "4",
+      "label": "Likely",
+      "score": 4
+     },
+     {
+      "code": "5",
+      "label": "Rather likely",
+      "score": 5
+     },
+     {
+      "code": "6",
+      "label": "Very likely",
+      "score": 6
+     }
+    ]
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с официального бланка: «Sum all the scores circled/checked by the respondents. The total score should range from 3-18.» Баллы по пунктам: п.1 — 1/2/3/4 (варианты 3a и 3b дают по 3, варианты 4a и 4b дают по 4); п.2 — 1..5; п.3 — 1/2/3 (варианты 2a и 2b дают по 2, 3a и 3b — по 3); п.4 — 0..6, причём «Never» = 0, а «No chance at all» = 1 (это единственный пункт, где минимум равен нулю, — частая ошибка реализации). Минимум суммы 1+1+1+0 = 3, максимум 4+5+3+6 = 18, что сходится с заявленным диапазоном 3–18. Обратных пунктов нет. Подшкал нет; п.1 при этом даёт номинальную классификацию (Non-Suicidal / Suicide Risk Ideation / Suicide Plan / Suicide Attempt subgroup).",
+  "bands": [
+   {
+    "min": 3,
+    "max": 6,
+    "label": "Below cut-off for the general (non-clinical) population",
+    "source": "Osman A et al., Assessment 2001;8(4):443-54; ключ и таблица чувствительности воспроизведены на официальном бланке SBQ-R (STABLE Resource Toolkit)"
+   },
+   {
+    "min": 7,
+    "max": 18,
+    "label": "Positive screen in the adult general population (cut-off >= 7; sensitivity 93%, specificity 95%, PPV 0.70, AUC 0.96 — undergraduate college sample)",
+    "source": "Osman A et al., Assessment 2001;8(4):443-54"
+   },
+   {
+    "min": 8,
+    "max": 18,
+    "label": "Positive screen in adult psychiatric inpatients (cut-off >= 8; sensitivity 80%, specificity 91%, PPV 0.87, AUC 0.89)",
+    "source": "Osman A et al., Assessment 2001;8(4):443-54"
+   }
+  ],
+  "bands_note": "Полосы ПЕРЕСЕКАЮТСЯ намеренно: у SBQ-R два разных порога для двух разных контингентов, и выбирать порог должна система, а не сумма. 7 — для общей популяции, 8 — для психиатрических стационарных пациентов. Отдельный порог для военнослужащих в первоисточнике не установлен. Валидационных данных по украинской выборке нет.",
+  "risk_items": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "risk_items_note": "Весь опросник — про суицид, поэтому тревогу поднимает любой из четырёх пунктов, но опубликованное правило есть только для пункта 1: «Item 1: a cutoff score of >= 2» — чувствительность 0.80 и специфичность 0.97 у взрослых стационарных пациентов, 1.00/1.00 у студентов (источник тот же — бланк SBQ-R с таблицей из Osman et al., 2001). То есть ответ на п.1 выше варианта «Never» уже означает пожизненную суицидальную идеацию и требует реакции независимо от суммы. Ответы 4a/4b на п.1 — зафиксированная попытка самоубийства в анамнезе.",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода SBQ-R не найдено: ни у правообладателя, ни у МОЗ України, ни в рецензируемых публикациях украинских авторов с валидизацией. В каталоге CEBC у SBQ-R указано «Languages Available: English». Свой перевод не делаем."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода SBQ-R, выпущенного правообладателем, не найдено."
+   }
+  },
+  "example": {
+   "answers": [
+    {
+     "item": 1,
+     "code": "2",
+     "score": 2
+    },
+    {
+     "item": 2,
+     "code": "3",
+     "score": 3
+    },
+    {
+     "item": 3,
+     "code": "1",
+     "score": 1
+    },
+    {
+     "item": 4,
+     "code": "2",
+     "score": 2
+    }
+   ],
+   "total": 8,
+   "band": "Positive screen — выше обоих порогов: >= 7 (общая популяция) и >= 8 (психиатрический стационар)",
+   "note": "Арифметически однозначен: 2+3+1+2 = 8. Контрольные случаи для золотого теста: минимум — п.1 «Never» (1) + п.2 «Never» (1) + п.3 «No» (1) + п.4 «Never» (0) = 3; максимум — 4b (4) + «Very Often» (5) + 3b (3) + «Very likely» (6) = 18. Ловушка, которую пример обязан ловить: в п.4 «Never» = 0, а не 1; если реализовать п.4 как 1..7 или 1..6, минимум станет 4 и весь диапазон уедет. Проверка тревоги по пункту: в примере п.1 = 2 (>= 2) → флаг суицидальной идеации поднимается даже при сумме ниже порога."
+  },
+  "verdict": "завести — бланк, ключ, оба порога и правило тревоги по пункту 1 проверяемы по официальной форме с разрешением правообладателя; вводить ТОЛЬКО английский оригинал (украинского и русского официальных переводов нет), и обязательно с порогом, выбираемым по контингенту."
+ },
+ {
+  "key": "cssrs_screener",
+  "title_en": "Columbia-Suicide Severity Rating Scale (C-SSRS) — Screen Version",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Posner, K.; Brent, D.; Lucas, C.; Gould, M.; Stanley, B.; Brown, G.; Fisher, P.; Zelazny, J.; Burke, A.; Oquendo, M.; Mann, J.",
+  "year": 2008,
+  "citation": "Posner K, Brent D, Lucas C, Gould M, Stanley B, Brown G, Fisher P, Zelazny J, Burke A, Oquendo M, Mann J. Columbia-Suicide Severity Rating Scale (C-SSRS). New York State Psychiatric Institute / Research Foundation for Mental Hygiene, Inc., 2008. — Валидизация: Posner K, Brown GK, Stanley B, et al. The Columbia-Suicide Severity Rating Scale: initial validity and internal consistency findings from three multisite studies with adolescents and adults. Am J Psychiatry. 2011;168(12):1266-77. doi:10.1176/appi.ajp.2011.10111704.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "© 2008 The Research Foundation for Mental Hygiene, Inc. / For reprints of the C-SSRS contact Kelly Posner, Ph.D., New York State Psychiatric Institute, 1051 Riverside Drive, New York, New York, 10032; inquiries and training requirements contact posnerk@nyspi.columbia.edu / This scale is intended to be used by individuals who have received training in its administration. — Для ЭЛЕКТРОННОЙ реализации (наш случай): «eResearch Technology, Inc., a Clario company has entered into an exclusive license agreement for the electronic implementations of this scale with the Research Foundation for Mental Hygiene, Inc. (RFMH) who controls the copyright for the scale.» / «Requests to use the eC-SSRS should be submitted to CLARIO.»",
+   "url": "https://cssrs.columbia.edu/wp-content/uploads/C-SSRS_Pediatric-SLC_11.14.16.pdf (копирайт и контакт на официальном бланке правообладателя); https://cssrs.columbia.edu/pharmaceutical-funded-research/ ; https://clario.com/about/legal-and-privacy/c-ssrs-licensing-application/",
+   "conditions": "Правообладатель — Research Foundation for Mental Hygiene, Inc. (RFMH), материнская организация The Columbia Lighthouse Project. Бумажная форма для общинных и медицинских учреждений и некоммерческих исследований объявлена бесплатной: «The protocol and the training on how to use it are available free of charge for use in community and healthcare settings, as well as in federally funded or nonprofit research» (https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/about-the-scale/). НО эксклюзивная лицензия на ЭЛЕКТРОННЫЕ реализации передана Clario (ERT); организация, разворачивающая C-SSRS в своём ПО, обязана взять сублицензию у Clario — по опубликованному прейскуранту: единовременный старт 40 000 USD, ежегодная поддержка 7 500 USD, сертификация 5 000 USD за англоязычную версию, 4 USD за одно проведение. Отдельное условие с бланка — администрировать шкалу должен обученный человек."
+  },
+  "items": null,
+  "items_note": "Не приводим по лицензии (правило 3). Текст вопросов есть на официальных бланках The Columbia Lighthouse Project, но их воспроизведение в электронной системе подпадает под эксклюзивную лицензию Clario/RFMH; без сублицензии выводить вопросы в приложении нельзя.",
+  "anchors": null,
+  "reverse": [],
+  "scoring": "Суммы баллов у C-SSRS Screen Version нет — это не шкала с итогом, а алгоритм ветвления. Вопросы 1 и 2 задаются всегда; при «да» на вопрос 2 задаются вопросы 3, 4, 5; при «нет» — переход к вопросу 6; вопрос 6 (суицидальное поведение) задаётся всегда, с уточнением «в течение последних 3 месяцев». Категории результата качественные (идеация уровней 1–5, поведение: попытка, прерванная попытка, остановленная попытка, подготовительные действия). Никакого сложения баллов первоисточник не предусматривает — любой «суммарный балл C-SSRS» был бы выдумкой.",
+  "bands": null,
+  "bands_note": "Числовых полос нет и быть не может: результат категориальный. Опубликованное правило маршрутизации с официальной бесплатной формы Columbia Protocol дословно: «If YES to 2 or 3, seek behavioral healthcare for further evaluation. If the answer to 4, 5 or 6 is YES, get immediate help... STAY WITH THEM until they can be evaluated.» На клинических бланках вопросы 4, 5 и 6 помечены как «High Risk».",
+  "risk_items": [
+   2,
+   3,
+   4,
+   5,
+   6
+  ],
+  "risk_items_note": "Дословно по официальному бланку Columbia Protocol: «да» на вопросы 2 (активные мысли о самоубийстве) или 3 (мысли о способе) — направление к специалисту по психическому здоровью; «да» на вопросы 4 (намерение), 5 (проработанный план с намерением) или 6 (действия, подготовка или попытка) — немедленная помощь, вопросы 4, 5 и 6 помечены «High Risk». Вопрос 1 (пассивное желание смерти) сам по себе тревогу высшего уровня не поднимает.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "ICON Language Services по заказу The Columbia Lighthouse Project / RFMH",
+    "free": false,
+    "url": "https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/translations/",
+    "note": "На официальной странице переводов правообладателя перечислены позиции «Ukraine/Ukrainian» и «Ukraine/Russian». Переводы выполняет ICON Language Services («the worldwide leader in medical translation and linguistic validation»); получают их обращением в The Columbia Lighthouse Project. Свободная выдача файлов не заявлена — переводы охватываются той же лицензией, что и оригинал."
+   },
+   "ru": {
+    "exists": true,
+    "by": "ICON Language Services по заказу The Columbia Lighthouse Project / RFMH",
+    "free": false,
+    "url": "https://cssrs.columbia.edu/the-columbia-scale-c-ssrs/translations/",
+    "note": "Позиция «Ukraine/Russian» — русскоязычная версия, адаптированная для Украины. Условия те же, что и у украинской."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочного примера «ответы → сумма → полоса» не существует и выдумывать его нельзя: C-SSRS Screen Version не даёт числового итога. Единственный проверяемый золотой тест — маршрутизация, дословно с официального бланка: набор «нет, нет» на вопросы 1-2 и «нет» на вопрос 6 → никаких действий; «да» на вопрос 2 при «нет» на 4-6 → «seek behavioral healthcare for further evaluation»; «да» на любой из вопросов 4, 5, 6 → «get immediate help... STAY WITH THEM until they can be evaluated» (High Risk).",
+  "verdict": "завести без текста (лицензия) — правообладатель RFMH передал эксклюзивную лицензию на электронные реализации компании Clario, и развернуть C-SSRS в нашем ПО без сублицензии (старт 40 000 USD плюс 4 USD за проведение) нельзя; до заключения договора храним только название, правообладателя и способ лицензирования."
+ }
+]
