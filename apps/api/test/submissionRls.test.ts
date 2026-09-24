@@ -6,14 +6,14 @@ import {
   createVersion,
   db,
   eq,
-  groupA,
   groupAdmins,
   makeUser,
   root,
   sql,
+  surveyGroups,
   surveys,
 } from "./fixtures";
-import { alertCases, decisionRules, responses, riskAlerts, ruleHits } from "../src/db/schema";
+import { alertCases, decisionRules, responses, riskAlerts, ruleHits, surveyAccess } from "../src/db/schema";
 import { baseDb } from "../src/db";
 import { asSystem, withDbContext } from "../src/db/context";
 import { underAppRole } from "./appRole";
@@ -35,6 +35,18 @@ import { underAppRole } from "./appRole";
  * срабатывания правила нет (rule_hits закрыта пациенту, а движок правил
  * ошибку глотает).
  */
+
+/*
+ * Своя группа, закрытая методика и правило только этой группы.
+ *
+ * Файлы сюиты грузятся в один процесс, и на Linux — в произвольном порядке:
+ * общедоступная методика с критическим первым вариантом попала бы в чужие
+ * прогоны «сдать первую попавшуюся», а общее правило «тревога → дежурному»
+ * оставляло бы срабатывания в чужих проверках, пока не дошло до afterAll.
+ */
+const groupId = crypto.randomUUID();
+await db.insert(surveyGroups).values({ id: groupId, title: "Група RLS", createdBy: root.id });
+await db.insert(groupAdmins).values({ groupId, userId: adminA.id, addedBy: root.id });
 
 /* методика с критическим пунктом и тяжёлой полосой — оба пути к случаю */
 const surveyId = crypto.randomUUID();
@@ -77,31 +89,32 @@ const draft = createSurveySchema.parse({
 });
 await db.insert(surveys).values({
   id: surveyId,
-  groupId: groupA,
+  groupId,
   title: draft.title,
   safetyPlan: { uk: "Якщо важко просто зараз — зателефонуйте 7333", ru: "Если тяжело прямо сейчас — позвоните 7333" },
   administration: "self",
   status: "published",
   publishedAt: new Date().toISOString(),
-  visibility: "public",
+  visibility: "private",
   scoringEnabled: true,
   allowRetake: true,
   createdBy: adminA.id,
 } as never);
 await createVersion(surveyId, draft, adminA.id, "v1");
 
-/* общее правило «тревога → дежурному»: срабатывание пишется в rule_hits, закрытую пациенту */
+/* правило «тревога → дежурному» своей группы: срабатывание пишется в rule_hits, закрытую пациенту */
 const rule = await api("/api/decisions/rules", root.token, {
   method: "POST",
   body: JSON.stringify({
     title: "Тревога — дежурному",
+    groupId,
     conditions: [{ kind: "risk", severity: "moderate" }],
     actions: [{ kind: "notify_duty" }],
   }),
 });
 if (rule.status !== 201) throw new Error(`правило не заведено: ${rule.status} ${JSON.stringify(rule.body)}`);
 
-/* правило общее и действовало бы на прохождения в других файлах */
+/* группа своя, но выключить всё равно: чужой файл может завести методику в любой группе */
 afterAll(async () => {
   await db.update(decisionRules).set({ enabled: false }).where(eq(decisionRules.id, rule.body.id));
 });
@@ -142,17 +155,19 @@ function submitScript(email: string, extra = "") {
   `;
 }
 
-interface Submitted {
+type Submitted = {
   login: number;
   loaded: number;
   status: number;
   body: { id?: string; safetyPlan?: unknown; scores?: unknown[]; message?: string };
-}
+};
 
 describe("отправка прохождения под боевой ролью", () => {
   test("критический пункт пациента: прохождение сохранено, случай открыт, правило сработало", async () => {
     const email = `rls-run-${crypto.randomUUID()}@test.dev`;
     const me = await makeUser("user", email, { sex: "male", birthDate: "1990-01-01" });
+    // методика закрытая: пациент видит её только по назначению
+    await db.insert(surveyAccess).values({ surveyId, userId: me.id, grantedBy: adminA.id });
 
     const out = await underAppRole<Submitted>(submitScript(email));
     expect(out.error, out.error).toBeUndefined();
@@ -187,7 +202,7 @@ describe("отправка прохождения под боевой ролью
     const tail = crypto.randomUUID();
     const staffEmail = `rls-staff-${tail}@test.dev`;
     const staff = await makeUser("admin", staffEmail);
-    await db.insert(groupAdmins).values({ groupId: groupA, userId: staff.id, addedBy: root.id });
+    await db.insert(groupAdmins).values({ groupId, userId: staff.id, addedBy: root.id });
     const subject = await makeUser("user", `rls-subject-${tail}@test.dev`, { sex: "female", birthDate: "1985-05-05" });
 
     const out = await underAppRole<Submitted>(
