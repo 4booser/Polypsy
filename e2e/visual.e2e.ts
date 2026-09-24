@@ -722,7 +722,7 @@ const SCREENS: Array<{
       await page.getByRole("button", { name: "Сохранить" }).waitFor();
       await expect.poll(async () => page.locator(".skeleton").count(), { timeout: 10_000 }).toBe(0);
     },
-    // название, примечание, структура и действия — до кнопки внизу
+    // название, структура, карточка действий — до кнопки внизу
     fit: true,
   },
   /*

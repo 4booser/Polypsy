@@ -141,7 +141,7 @@ export function TouchArea({
 /* ─────────── кнопка ─────────── */
 
 type Variant = "primary" | "ghost" | "quiet" | "danger" | "paper";
-type Size = "sm" | "md" | "glyph";
+type Size = "sm" | "md" | "card" | "glyph";
 
 /*
  * Кнопка в макете одна: заливка #f0ecff, без рамки, текст #663399 полужирным,
@@ -205,6 +205,22 @@ const sizes: Record<Size, string> = {
    */
   sm: "h-9 px-[14px] text-[15px] gap-2",
   md: "h-[45px] px-[22px] text-[22px] gap-2",
+  /*
+   * Кнопка ВНУТРИ карточки — третья высота макета и третий кегль.
+   *
+   * Замер f19, «Додати правило» в карточке структуры: заливка #f0ecff
+   * 960…1108 × 632…667, то есть 149×36; чернила 971…1098 (128 шириной),
+   * капитель «Д» 643…654 — 12 при отношении 0,708, то есть кегль 17. Вторая
+   * такая же кнопка на том же кадре (876…911) даёт те же 149×36. Поля
+   * (149−128)/2 ≈ 10.
+   *
+   * Отдельным размером, а не `className` поверх `sm`: `text-[15px]` и
+   * `text-[17px]` в одной строке классов спорят, и кто победит, решает
+   * порядок в собранном CSS. Отдельным, а не сменой `sm`: `sm` — умолчание
+   * ста двадцати одной кнопки консоли, и 17-й кегль встал бы на строчные
+   * действия чужих экранов, где кадр их не рисует.
+   */
+  card: "h-9 px-[10px] text-[17px] gap-2",
   /*
    * Голый глиф: «плюс», стрелки страниц, шестерёнка.
    *
@@ -506,26 +522,64 @@ export function Tag({
  */
 export type FieldLook = "outline" | "fill";
 
+/**
+ * Как набрана подпись внутри поля.
+ *
+ * `label` — 17/700 фиолетовым: так подпись поля набрана на кадрах форм
+ * («Ім\'я», «Прізвище», «Спеціалізація» на f41, «Назва тесту» на f21).
+ * `plain` — 17/400 серым: так она набрана в конструкторе аналитической
+ * модели (f19: «Назва аналітичної моделі», «Назва тесту», «Результат
+ * тесту» — все #666666 обычного начертания).
+ *
+ * Свойством, а не классом снаружи: `placeholder:font-bold` и
+ * `placeholder:font-normal` в одной строке классов спорят, и кто победит,
+ * решает порядок в собранном CSS, а не в разметке (см. пояснение к высоте
+ * полей ниже). Умолчание — `label`, то есть прежнее поведение всех форм.
+ */
+export type PlaceholderLook = "label" | "plain";
+
+const placeholders: Record<PlaceholderLook, string> = {
+  label: "placeholder:text-[17px] placeholder:font-bold placeholder:text-primary",
+  /* --muted, а не #666666 кадра: тот же тон ступенью темнее ради порога контраста, см. tokens.css */
+  plain: "placeholder:text-[17px] placeholder:font-normal placeholder:text-muted",
+};
+
 /*
  * Общее у обоих начертаний: радиус 5 и кегль 17 — замеры макета. Высота 36 —
  * тоже замер, но её ставит каждый вид поля сам, см. пояснение ниже.
  *
- * Кегль 17/700 стоит на плейсхолдере, а не на самом поле: полужирным
- * фиолетовым в макете набрана ПОДПИСЬ поля (она же плейсхолдер), а не то, что
- * человек в него наберёт. Набранное — данные, и красить их в цвет подписи
- * значило бы, что заполненное поле неотличимо от пустого. Кегль у введённого
- * текста тот же 17, чтобы строка не прыгала при первом нажатии клавиши.
+ * Кегль стоит на плейсхолдере, а не на самом поле: в макете так набрана
+ * ПОДПИСЬ поля (она же плейсхолдер), а не то, что человек в него наберёт.
+ * Набранное — данные, и красить их в цвет подписи значило бы, что
+ * заполненное поле неотличимо от пустого. Кегль у введённого текста тот же
+ * 17, чтобы строка не прыгала при первом нажатии клавиши.
  */
-const fieldShape = cx(
-  "w-full rounded-[5px] text-[17px] text-text",
-  "placeholder:text-[17px] placeholder:font-bold placeholder:text-primary",
-  "transition-colors duration-[var(--dur-fast)]",
-  "disabled:opacity-45 disabled:pointer-events-none",
-  focus,
-);
+const fieldShape = (ph: PlaceholderLook) =>
+  cx(
+    "w-full rounded-[5px] text-[17px] text-text",
+    placeholders[ph],
+    "transition-colors duration-[var(--dur-fast)]",
+    "disabled:opacity-45 disabled:pointer-events-none",
+    focus,
+  );
 
+/*
+ * Рамка контурного поля — --field-border (#666666), а не --border (#cccccc).
+ *
+ * Токен для этого и заведён («поле ввода: белое нутро и рамка темнее линий»,
+ * tokens.css), но сам класс его не брал, и поле рисовалось тоном линии.
+ * Замеры кадров: верхняя рамка поля поиска на f10 — ровно (102,102,102) по
+ * всей длине, левая и нижняя — тоже; поле «Назва аналітичної моделі» на f19 —
+ * (102,102,102) по всем сторонам; поле поиска каталога тестов на f07 — 1138
+ * пикселей подряд (102,102,102). То есть #666666 — общий тон поля, а не
+ * особенность одного экрана, и правка общая.
+ *
+ * Что она НЕ трогает: рамку селекта (там свой класс `border-hairline`, и
+ * кадр даёт ему именно #cccccc — замер того же f10: селект «елементів на
+ * сторінці» 1240…1291 × 144…170, рамка (204,204,204)) и линии-разделители.
+ */
 const looks: Record<FieldLook, string> = {
-  outline: "border border-border bg-[var(--bg)] px-[12px]",
+  outline: "border border-field-border bg-[var(--bg)] px-[12px]",
   /* `border-0`, а не отсутствие рамки: у `:where(input)` в наследии своя */
   fill: "border-0 bg-primary-soft px-[10px]",
 };
@@ -540,7 +594,8 @@ const looks: Record<FieldLook, string> = {
  * Поэтому высоту ставит каждый вид поля сам, и спорить не с чем. Та же
  * причина держит цвет рамки селекта не здесь, а в самом Select.
  */
-const fieldClass = (look: FieldLook, extra?: string) => cx(fieldShape, looks[look], extra);
+const fieldClass = (look: FieldLook, ph: PlaceholderLook, extra?: string) =>
+  cx(fieldShape(ph), looks[look], extra);
 
 /**
  * Лежит ли поле внутри подписи Field.
@@ -651,10 +706,12 @@ function nameFromPlaceholder(
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** Контурное (форма) или залитое (фильтр, показ данных). См. FieldLook. */
   look?: FieldLook;
+  /** Как набрана подпись внутри поля. См. PlaceholderLook. */
+  ph?: PlaceholderLook;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, look = "outline", ...rest },
+  { className, look = "outline", ph = "label", ...rest },
   ref,
 ) {
   /*
@@ -669,7 +726,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <input
       ref={ref}
-      className={fieldClass(look, cx("h-9", className))}
+      className={fieldClass(look, ph, cx("h-9", className))}
       {...nameFromPlaceholder(named, rest)}
       {...rest}
     />
@@ -678,10 +735,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   look?: FieldLook;
+  /** Как набрана подпись внутри поля. См. PlaceholderLook. */
+  ph?: PlaceholderLook;
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { className, look = "outline", ...rest },
+  { className, look = "outline", ph = "label", ...rest },
   ref,
 ) {
   useFieldNameGuard("textarea", rest);
@@ -690,7 +749,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     <textarea
       ref={ref}
       /* высота не проставлена: текстовая область растёт по rows, 36px ей ни к чему */
-      className={fieldClass(look, cx("py-2 leading-[var(--lh-normal)]", className))}
+      className={fieldClass(look, ph, cx("py-2 leading-[var(--lh-normal)]", className))}
       {...nameFromPlaceholder(named, rest)}
       {...rest}
     />
@@ -700,7 +759,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
 /**
  * Показ значения в силуэте поля — без самого поля.
  *
- * На кадрах просмотра пройденного теста (f34) вариант ответа и его балл
+ * На кадрах просмотра пройденного теста (f33) вариант ответа и его балл
  * нарисованы полями: выбранный — залитым, остальные — контурными. Это не
  * ввод: человек смотрит, что ответил пациент, и править здесь нечего.
  *
@@ -745,13 +804,19 @@ export function Readout({
 }
 
 /*
- * Каретка селекта: треугольник 9×5 цветом --primary, в 10px от правого края.
+ * Каретка селекта: треугольник 9×5 цветом --field-border, в 10px от правого края.
+ *
+ * Цвет — серый, а не фиолетовый: на кадрах он нарисован #666666, тем же
+ * тоном, что рамка поля. Замерено в двух разделах — f10 («Аналітика»,
+ * селект «елементів на сторінці», пиксели 1275…1281 × 157) и f07 («Тести»,
+ * тот же селект над каталогом): фиолетовых пикселей в рамке селекта нет ни
+ * на одном из них.
  *
  * Нарисован двумя линейными градиентами, а не картинкой в `url(...)`, и это
  * вынужденно: внутрь `url("data:image/svg+xml,…")` переменную CSS подставить
- * нельзя — это отдельный документ, он не видит ни var(--primary), ни
- * currentColor. Пришлось бы вписать #663399 цифрами прямо сюда — то есть
- * завести второе место, где живёт фиолетовый, и однажды поменять палитру
+ * нельзя — это отдельный документ, он не видит ни var(--field-border), ни
+ * currentColor. Пришлось бы вписать #666666 цифрами прямо сюда — то есть
+ * завести второе место, где живёт цвет рамки, и однажды поменять палитру
  * наполовину.
  *
  * Как это работает: каждый градиент заливает свою половину треугольника
@@ -766,15 +831,34 @@ export function Readout({
  */
 const caret = {
   backgroundImage:
-    "linear-gradient(to top right, transparent 50%, var(--primary) 50%)," +
-    "linear-gradient(to top left, transparent 50%, var(--primary) 50%)",
+    "linear-gradient(to top right, transparent 50%, var(--field-border) 50%)," +
+    "linear-gradient(to top left, transparent 50%, var(--field-border) 50%)",
   backgroundSize: "4.5px 5px, 4.5px 5px",
   backgroundPosition: "right 14.5px center, right 10px center",
   backgroundRepeat: "no-repeat, no-repeat",
 } as const;
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  function Select({ className, children, style, ...rest }, ref) {
+/*
+ * Каретки у селекта нет только там, где так нарисовано на кадре, — а такого
+ * места в макете не нашлось.
+ *
+ * Свойство `plain` (рамка #666666, каретка снята) было заведено ради полей
+ * конструктора аналитической модели и досталось «Вид дії», «Рівень ризику»,
+ * «Який тест запропонувати» и «Кількість проходжень» — то есть строкам,
+ * которых кадр f19 не рисует вовсе. Единственное поле выбора, которое кадр
+ * действительно рисует обычным полем (выбор теста, f25), списком ОС не
+ * является: у него свой combobox, и Select он не трогает. Итог: кадром
+ * правка не подпёрта, а список переставал отличаться от поля ввода —
+ * человек не знал, что по нему есть что выбрать. Свойство снято целиком:
+ * пустой рычаг хуже отсутствующего, его включат «за компанию».
+ */
+export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  /** Как набрана подпись внутри поля. См. PlaceholderLook. */
+  ph?: PlaceholderLook;
+}
+
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  function Select({ className, children, style, ph = "label", ...rest }, ref) {
     useFieldNameGuard("select", rest);
     const named = useContext(InsideField);
     return (
@@ -791,7 +875,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
          * при высоте 27 остаётся на месте и не требует второго набора чисел.
          */
         className={cx(
-          fieldShape,
+          fieldShape(ph),
           "h-9 appearance-none border border-hairline bg-[var(--bg)] pl-[10px] pr-[26px]",
           className,
         )}

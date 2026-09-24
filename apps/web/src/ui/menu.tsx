@@ -14,13 +14,31 @@ import { Button, type ButtonProps } from "./primitives";
  * одно закрывается по Esc, а другое нет; поэтому здесь одно на всех, а
  * экраны отличаются только тем, что кладут внутрь.
  *
- * Меню на кадрах двух видов, и это не два компонента, а один параметр
+ * Меню на кадрах трёх видов, и это не три компонента, а один параметр
  * `align`:
- *  - «left» — меню списка (f11: «+», «⋯», «▾» у крошки): плашка с рамкой
+ *  - «left» — меню списка (f07: «+», «⋯», «▾» у крошки): плашка с рамкой
  *    шириной от 220, пункты 13/400 у левого края, как в бургере шапки;
- *  - «right» — меню карточки (f15, f33, f38: шестерёнка справа от
- *    заголовка): белая плашка с тенью от 165, пункты 15/400 прижаты к
- *    правому краю, к самой шестерёнке.
+ *  - «right» — меню карточки (f26: шестерёнка над формой повідомлення):
+ *    белая плашка с тенью от 165, пункты 15/400 прижаты к правому краю, к
+ *    самой шестерёнке;
+ *  - «right-out» — плашка с рамкой #999999, раскрытая ВНИЗ от глифа и
+ *    выровненная по его ЛЕВОМУ краю, то есть уходящая вправо от колонки
+ *    формы. Так нарисовано меню структуры аналитической модели (f19:
+ *    шестерня 1125…1149, плашка 1125…1283) — и иначе плашка легла бы
+ *    поверх полей карточки, которые в этот момент читают.
+ *
+ * Числа «right-out» — замеры f19 и ТОЛЬКО его: плашка 1125…1283 × 306…463,
+ * рамка 1px #999999, пункты 17/400 #666666 шагом 30 (чернила 316, 346, 376,
+ * 406, 436), отступ 10 до правого края, поле 3 сверху и снизу
+ * (1 + 3 + 5·30 + 3 + 1 = 158 — ровно высота плашки).
+ *
+ * Почему «right» осталось прежним. Первая редакция переписала числа
+ * «right-out» поверх «right», то есть поверх меню инструментов конструктора,
+ * переключателя языка «Укр» и ActionMenu карточек людей и розсилок — экранов
+ * чужих разделов, кадры которых в этой сверке не открывались. Свои кадры у
+ * них есть (f26 и далее), и сводить их надо в их собственную сверку, а не
+ * попутно: замер одного кадра не распространяется на меню, которое на нём не
+ * нарисовано.
  * Выравнивание — параметром, а не вторым классом снаружи: `text-left` и
  * `text-right` в одной строке классов спорят, и кто из них победит, решает
  * порядок в собранном CSS, а не в разметке. По той же причине цвет пункта —
@@ -36,7 +54,7 @@ import { Button, type ButtonProps } from "./primitives";
  * под меню.
  */
 
-export type MenuAlign = "left" | "right";
+export type MenuAlign = "left" | "right" | "right-out";
 export type MenuTone = "normal" | "danger" | "disabled";
 
 /*
@@ -52,15 +70,19 @@ export function menuItemClass(align: MenuAlign = "left", tone: MenuTone = "norma
     "flex w-full items-center rounded-[4px] border-0 bg-transparent font-normal no-underline",
     "h-auto min-h-0 transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-    align === "right"
-      ? "justify-end px-[16px] py-[6px] text-right text-[15px] leading-[20px]"
-      : "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]",
+    align === "left"
+      ? "gap-2 px-3 py-2 text-left text-[13px] leading-[19px]"
+      : align === "right"
+        ? "justify-end px-[16px] py-[6px] text-right text-[15px] leading-[20px]"
+        /* 5 + 20 + 5 = 30 — шаг пунктов f19; высотой `h-[30px]` спорить с `h-auto` выше нельзя */
+        : "justify-end px-[10px] py-[5px] text-right text-[17px] leading-[20px]",
     tone === "disabled"
       ? "cursor-not-allowed text-faint"
       : tone === "danger"
         ? "text-danger hover:bg-danger-soft hover:text-danger hover:no-underline"
         : cx(
-            align === "right" ? "text-text-2" : "text-text",
+            /* #666666 кадра — токеном --muted: тот же тон ступенью темнее ради порога контраста */
+            align === "right-out" ? "text-muted" : align === "left" ? "text-text" : "text-text-2",
             "hover:bg-primary-soft hover:text-primary hover:no-underline",
           ),
   );
@@ -76,10 +98,27 @@ export const menuItem = menuItemClass("left");
  */
 function plateClass(align: MenuAlign): string {
   return cx(
-    "absolute right-0 z-50 flex flex-col items-stretch outline-none",
-    align === "right"
-      ? "top-[calc(100%+8px)] min-w-[165px] rounded-[5px] bg-[var(--bg)] py-[8px] shadow-pop"
-      : "top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel",
+    "absolute z-50 flex flex-col items-stretch outline-none",
+    align === "left"
+      ? "right-0 top-[calc(100%+6px)] min-w-[220px] gap-0.5 rounded-md border border-border bg-surface p-1 shadow-panel"
+      : "rounded-[5px] bg-[var(--bg)] shadow-pop",
+    align === "right" ? "right-0 top-[calc(100%+8px)] min-w-[165px] py-[8px]" : "",
+    /*
+     * Плашка структуры модели — замер f19. Левый край плашки (1125) совпадает
+     * с ЛЕВЫМ краем шестерни (ink 1125…1149), а не с правым: вертикальная
+     * рамка #999999 стоит ровно на 1125 (на y=340 пиксель 1124 — тень,
+     * 1125 — (153,153,153), 1126 — нутро), правая — на 1283. Ширина 159,
+     * 10px под коробкой глифа (низ коробки 296, верх плашки 306).
+     *
+     * Рамка у плашки ЕСТЬ и она своего тона: 1px #999999 — --border-strong,
+     * «выпадашка» нейтрального ряда. Тень при этом остаётся: на кадре под
+     * рамкой лежит мягкий градиент (при x=1200 пиксели 464…470 идут
+     * 193→252), и именно его первая редакция приняла за низ плашки — оттого
+     * и «поле 7»: настоящий низ рамки на 463, а не на 469.
+     */
+    align === "right-out"
+      ? "left-0 top-[calc(100%+10px)] min-w-[159px] border border-border-strong py-[3px]"
+      : "",
   );
 }
 
