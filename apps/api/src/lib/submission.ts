@@ -13,6 +13,7 @@ import {
   type SurveyFull,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import { answerEvents, answers, responseScores, responses, riskAlerts, type UserRow } from "../db/schema";
 import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
@@ -318,26 +319,35 @@ export async function persistSubmission(
     }
   });
 
-  await closeCompletedBatteries(subject.id, survey.id);
+  /*
+   * Всё ниже — автоматика поверх прохождения, а не действие человека, и
+   * идёт под системной ролью в той же транзакции (см. asSystem): правила и
+   * каскады читают настройки групп, которых пациент не видит, и пишут в
+   * таблицы, которые ему закрыты. Сам случай тревоги переключается внутри
+   * attachToCase — у него есть и другие вызывающие.
+   */
+  await asSystem(() => closeCompletedBatteries(subject.id, survey.id));
 
   // каскады и протоколы наблюдения — после закрытия батарей: иначе каскадное
   // назначение могло бы закрыться тем же проходом, которым было создано
-  const cascade = await runCascades(survey.id, linkedUserId, scores);
+  const cascade = await asSystem(() => runCascades(survey.id, linkedUserId, scores));
 
   /*
    * Правила поддержки решений — после каскадов: каскад назначает методики по
    * жёсткой настройке самой методики, правило же только предлагает, и
    * предлагать разумнее с учётом уже назначенного.
    */
-  await applyRules({
-    responseId,
-    surveyId: survey.id,
-    userId: linkedUserId,
-    scores,
-    riskSeverity: risks.length
-      ? (risks.some((r) => r.severity === "severe") ? "severe" : "moderate")
-      : null,
-  });
+  await asSystem(() =>
+    applyRules({
+      responseId,
+      surveyId: survey.id,
+      userId: linkedUserId,
+      scores,
+      riskSeverity: risks.length
+        ? (risks.some((r) => r.severity === "severe") ? "severe" : "moderate")
+        : null,
+    }),
+  );
 
   return {
     responseId,

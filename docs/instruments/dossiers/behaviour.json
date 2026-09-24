@@ -1,0 +1,1007 @@
+[
+ {
+  "key": "cage",
+  "title_en": "CAGE Questionnaire",
+  "title_uk": "CAGE",
+  "title_ru": null,
+  "authors": "John A. Ewing (Bowles Center for Alcohol Studies, University of North Carolina at Chapel Hill)",
+  "year": 1984,
+  "citation": "Ewing JA. Detecting alcoholism. The CAGE questionnaire. JAMA. 1984 Oct 12;252(14):1905-1907. doi:10.1001/jama.1984.03350140051025. PMID 6471323. Использованный бланк: официальная раздаточная форма Bowles Center (текст пунктов + правило подсчёта + заявление о правах), размещённая USPSTF: https://www.uspreventiveservicestaskforce.org/Home/GetFileByID/838",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The exact wording that can be used in research studies can be found in: JA Ewing “Detecting Alcoholism: The CAGE Questionaire” JAMA 252: 1905-1907, 1984. Researchers and clinicians who are publishing studies using the CAGE Questionaire should cite the above reference. No other permission is necessary unless it is used in any profit-making endeavor in which case this Center would require to negotiate a payment. […] Source: Dr. John Ewing, founding Director of the Bowles Center for Alcohol Studies, University of North Carolina at Chapel Hill",
+   "url": "https://www.uspreventiveservicestaskforce.org/Home/GetFileByID/838",
+   "conditions": "Некоммерческое использование — свободно, требуется ссылка на Ewing 1984. Любое коммерческое (profit-making) применение — только по отдельному соглашению с Bowles Center for Alcohol Studies (UNC). ВАЖНО для проекта: если система платная/коммерческая, нужно письменное согласование с Bowles Center до релиза. Оговорка о первоисточнике: на сайте самого Bowles Center (med.unc.edu/alcohol) отдельной страницы с этим заявлением найти не удалось; текст воспроизведён в официальной раздаточной форме, распространяемой USPSTF (федеральное агентство США) с прямой атрибуцией «Source: Dr. John Ewing, founding Director of the Bowles Center for Alcohol Studies». Это не блог и не калькулятор, но и не страница правообладателя — при коммерческом использовании подтверждать напрямую в UNC."
+  },
+  "items": [
+   "Have you ever felt you should Cut down on your drinking?",
+   "Have people Annoyed you by criticizing your drinking?",
+   "Have you ever felt bad or Guilty about your drinking?",
+   "Have you ever had a drink first thing in the morning to steady your nerves or to get rid of a hangover (Eye opener)?"
+  ],
+  "items_note": "Текст дословно с официальной раздаточной формы Bowles Center (USPSTF PDF 012695 (02-2004)). Там же примечание правообладателя: «The CAGE questions can be used in the clinical setting using informal phrasing. It has been demonstrated that they are most effective when used as part of a general health history and should NOT be preceded by questions about how much or how frequently the patient drinks» — то есть CAGE НЕ ставить после вопросов о количестве/частоте выпитого.",
+  "anchors": [
+   {
+    "label": "No",
+    "score": 0
+   },
+   {
+    "label": "Yes",
+    "score": 1
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно с бланка правообладателя: «Item responses on the CAGE are scored 0 or 1, with a higher score an indication of alcohol problems.» Сумма 4 пунктов, диапазон 0–4. Подшкал нет. Период — «ever» (за всю жизнь), а не последние 12 месяцев.",
+  "bands": [
+   {
+    "from": 0,
+    "to": 1,
+    "label": "Not clinically significant",
+    "label_uk": "Подальше обстеження не показане за цим критерієм",
+    "source": "Официальный бланк Bowles Center: «A total score of 2 or greater is considered clinically significant.» (значения 0–1 — ниже порога)"
+   },
+   {
+    "from": 2,
+    "to": 4,
+    "label": "Clinically significant — further assessment indicated",
+    "label_uk": "Стверджувальна відповідь на два або більше питань вказує на необхідність подальшої оцінки розладу",
+    "source": "Официальный бланк Bowles Center: «A total score of 2 or greater is considered clinically significant.» То же пороговое правило в клинической настанове МОЗ України 2025 (Додаток, CAGE): «Дві відповіді «так» вказують на те, що з респондентом слід провести додаткове дослідження»"
+   }
+  ],
+  "risk_items": [],
+  "risk_items_note": "Опубликованного правила «поднимать тревогу по отдельному пункту» для CAGE нет. Пункт E (утренняя опохмелка) клинически указывает на возможный синдром отмены, но формального порога по одному пункту первоисточник не устанавливает — не выдумываем.",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "МОЗ України / ДЕЦ МОЗ України — «Клінічна настанова, заснована на доказах. Психічні та поведінкові розлади внаслідок вживання алкоголю», реєстровий № КН 2025-1897, опублікована 16.12.2025, статус «Чинна»; випущена разом зі Стандартом медичної допомоги ГС 2025-1897 (наказ МОЗ України 2025-1897 від 16.12.2025), Додаток, розділ «CAGE»",
+    "free": true,
+    "url": "https://www.dec.gov.ua/mtd/psyhichni-ta-povedinkovi-rozlady-vnaslidok-vzhyvannya-alkogolyu/",
+    "items_uk": [
+     "C  Ви коли-небудь відчували, що вам потрібно скоротити вживання алкоголю?",
+     "A  Чи дратували вас люди, критикуючи ваше вживання алкоголю?",
+     "G  Чи відчували ви коли-небудь провину за вживання алкоголю?",
+     "E  Чи відчували ви коли-небудь потребу випити зранку (перша дія зранку), щоб заспокоїти нерви або позбутися похмілля?"
+    ],
+    "note": "Текст пунктов и правило подсчёта приведены в приложении к клинической настанове МОЗ дословно (варианты ответа «Так / Ні»). Государственный нормативный документ — свободен. Оговорка: МОЗ указывает источником «Евінг, Дж. та Раус, Б. 1970, «Виявлення прихованого алкоголіка», 29-й Міжнародний конгрес…», а не Ewing 1984; пороговое правило (≥2) совпадает с оригиналом. Условие сайта правообладателя документа (ДЕЦ МОЗ): «При повному або частковому використанні інформації, розміщеної на веб-сайті, посилання на джерело інформації обов'язкове.»"
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от правообладателя (Bowles Center / UNC) или от органа здравоохранения найти не удалось. Своего перевода не делать."
+   }
+  },
+  "example": {
+   "answers": [
+    1,
+    0,
+    1,
+    0
+   ],
+   "total": 2,
+   "band": "Clinically significant — further assessment indicated (≥2)",
+   "note": "Арифметически однозначный пример: два «Yes» (пункты C и G) = 2 балла, порог «2 or greater» достигнут. Опубликованного пошагового примера подсчёта в первоисточнике нет — подсчёт тривиален (сумма единиц)."
+  },
+  "verdict": "завести — текст пунктов, ключ, порог и официальный украинский вариант подтверждены по первоисточникам; при коммерческом использовании системы требуется согласование с Bowles Center (UNC)."
+ },
+ {
+  "key": "auditc",
+  "title_en": "AUDIT-C (AUDIT alcohol consumption questions; AUDIT items 1–3)",
+  "title_uk": "AUDIT-C",
+  "title_ru": null,
+  "authors": "Пункты: Thomas F. Babor, John C. Higgins-Biddle, John B. Saunders, Maristela G. Monteiro (WHO) — вопросы 1–3 теста AUDIT. Как самостоятельный скрининг выделили и валидировали: Kristen Bush, Daniel R. Kivlahan, Mary B. McDonell, Stephan D. Fihn, Katharine A. Bradley (ACQUIP, VA Puget Sound)",
+  "year": 1998,
+  "citation": "Bush K, Kivlahan DR, McDonell MB, Fihn SD, Bradley KA. The AUDIT alcohol consumption questions (AUDIT-C): an effective brief screening test for problem drinking. Arch Intern Med. 1998;158(16):1789-1795. Текст пунктов — Babor TF, Higgins-Biddle JC, Saunders JB, Monteiro MG. AUDIT: The Alcohol Use Disorders Identification Test. Guidelines for Use in Primary Care. 2nd ed. Geneva: WHO; 2001. WHO/MSD/MSB/01.6a, Box 4 (Interview Version), с. 17. Валидация у женщин — Bradley KA, Bush KR, Epler AJ, et al. Two brief alcohol-screening tests from the Alcohol Use Disorders Identification Test (AUDIT): validation in a female Veterans Affairs patient population. Arch Intern Med. 2003;163(7):821-829.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "© World Health Organization 2001. This document is not a formal publication of the World Health Organization (WHO), and all rights are reserved by the Organization. The document may, however, be freely reviewed, abstracted, reproduced, and translated, in part or in whole but not for sale or for use in conjunction with commercial purposes.",
+   "url": "https://iris.who.int/handle/10665/67205",
+   "conditions": "ВОЗ разрешает свободно воспроизводить и переводить пункты (в том числе частично — то есть вопросы 1–3), НО не для продажи и не в коммерческих целях. Сами пороги AUDIT-C установлены в статьях Bush 1998 / Bradley 2003 (© American Medical Association) — воспроизводится не текст статьи, а числовые пороги со ссылкой, что допустимо."
+  },
+  "items": [
+   "1. How often do you have a drink containing alcohol?",
+   "2. How many drinks containing alcohol do you have on a typical day when you are drinking?",
+   "3. How often do you have six or more drinks on one occasion?"
+  ],
+  "items_note": "Дословно из WHO AUDIT manual, 2nd ed. (WHO/MSD/MSB/01.6a), Box 4 «The Alcohol Use Disorders Identification Test: Interview Version», с. 17. Инструкция оттуда же: «Read questions as written. Record answers carefully. Begin the AUDIT by saying “Now I am going to ask you some questions about your use of alcoholic beverages during this past year.” Explain what is meant by “alcoholic beverages” by using local examples of beer, wine, vodka, etc. Code answers in terms of “standard drinks”.» ВНИМАНИЕ: пропуск «(0) Never [Skip to Qs 9-10]» в пункте 1 относится к полному AUDIT; в AUDIT-C пропуска нет, ответ «Never» = 0 и тест продолжается.",
+  "anchors": [
+   {
+    "item": 1,
+    "options": [
+     {
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "label": "Monthly or less",
+      "score": 1
+     },
+     {
+      "label": "2 to 4 times a month",
+      "score": 2
+     },
+     {
+      "label": "2 to 3 times a week",
+      "score": 3
+     },
+     {
+      "label": "4 or more times a week",
+      "score": 4
+     }
+    ]
+   },
+   {
+    "item": 2,
+    "options": [
+     {
+      "label": "1 or 2",
+      "score": 0
+     },
+     {
+      "label": "3 or 4",
+      "score": 1
+     },
+     {
+      "label": "5 or 6",
+      "score": 2
+     },
+     {
+      "label": "7, 8, or 9",
+      "score": 3
+     },
+     {
+      "label": "10 or more",
+      "score": 4
+     }
+    ]
+   },
+   {
+    "item": 3,
+    "options": [
+     {
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "label": "Less than monthly",
+      "score": 1
+     },
+     {
+      "label": "Monthly",
+      "score": 2
+     },
+     {
+      "label": "Weekly",
+      "score": 3
+     },
+     {
+      "label": "Daily or almost daily",
+      "score": 4
+     }
+    ]
+   }
+  ],
+  "reverse": [],
+  "scoring": "Простая сумма трёх пунктов, диапазон 0–12. Подшкал нет. Bush 1998: «The AUDIT-C was scored in the same way» (как AUDIT: каждый пункт 0–4). Период — последний год.",
+  "bands": [
+   {
+    "from": 0,
+    "to": 3,
+    "label": "Negative screen (men, cut-off ≥4)",
+    "source": "Bush K et al., Arch Intern Med 1998;158:1789-1795: «For a more specific test, a cutoff of 4 or more identified 86% of patients with heavy drinking and/or active alcohol abuse or dependence (sensitivity), with a specificity of 72%.» Выборка — только мужчины (VA, средний возраст 67 лет)."
+   },
+   {
+    "from": 4,
+    "to": 12,
+    "label": "Positive screen for heavy drinking and/or active alcohol abuse or dependence (men)",
+    "source": "Bush K et al. 1998, там же. Альтернативный, более чувствительный порог из той же статьи: «at 3 or more points, the AUDIT-C would identify 90% of patients with active alcohol abuse or dependence and 98% of patients with heavy drinking, although the specificity was only 60%»."
+   }
+  ],
+  "bands_note": "ВАЖНО, ПРОВЕРЕНО ПО ПЕРВОИСТОЧНИКУ: широко тиражируемый порог «≥3 для женщин» в Bradley 2003 в таком виде НЕ сформулирован. Дословно Bradley KA et al., Arch Intern Med 2003;163:821-829, с. 826: «The optimal screening threshold for the standard AUDIT-C in women was a score of 2 or more points (sensitivity, 0.81; specificity, 0.86).» В той же статье (с. 825 и Table 4) значение ≥3 появляется только как оптимум при отдельных допущениях о распространённости и соотношении цена/польза: «Given such assumptions, the optimal cut point for the standard and sex-specific AUDIT-Cs would be at least 2 and 3, respectively.» То есть женский порог зависит от выбранного допущения (2 или 3) — в системе его надо задавать явно со ссылкой, а не «по умолчанию 3». Третий опубликованный порог: клінічна настанова МОЗ України 2025 (розділ 4, с. 143) для AUDIT-C: «Оцінка 5 або більше балів вказує на необхідність подальшого обстеження»; там же для людей старше 50 років: «для AUDIT-C … до ≥4».",
+  "risk_items": [],
+  "risk_items_note": "Отдельного «тревожного» пункта нет. Bush 1998 отмечает высокую специфичность одного пункта 3: «A report of ever drinking 6 or more drinks on any occasion in the last year identified 79% of heavy drinkers and 81% of patients with active alcohol abuse or dependence» — это не правило тревоги, а свойство отдельного скрининга (AUDIT-3).",
+  "translation": {
+   "uk": {
+    "exists": true,
+    "by": "Два официальных украинских текста, они РАЗЛИЧАЮТСЯ формулировками. (1) МОЗ України / ДЕЦ МОЗ України — «Клінічна настанова, заснована на доказах. Психічні та поведінкові розлади внаслідок вживання алкоголю», реєстровий № КН 2025-1897, опублікована 16.12.2025, статус «Чинна»; випущена разом зі Стандартом медичної допомоги ГС 2025-1897 (наказ МОЗ України 2025-1897 від 16.12.2025), Рисунок 4.1 «AUDIT-C». (2) ВООЗ, украинский перевод руководства AUDIT (WHO/MSD/MSB/01.6a, укр.), размещён Центром громадського здоров'я МОЗ України — пункты 1–3 полного AUDIT.",
+    "free": true,
+    "url": "https://www.dec.gov.ua/mtd/psyhichni-ta-povedinkovi-rozlady-vnaslidok-vzhyvannya-alkogolyu/",
+    "url2": "https://phc.org.ua/sites/default/files/users/user92/WHO_MSD_MSB_01.6a_Ukr%20(part%201)%20%D0%90%D0%A3%D0%94%D0%98%D0%A2.pdf",
+    "items_uk_moz": [
+     "1. Як часто ви вживаєте напої, що містять алкоголь?  Ніколи (0) / Щомісяця або рідше (1) / 2-4 рази на місяць (2) / 2-3 рази на тиждень (3) / 4 і більше разів на тиждень (4)",
+     "2. Скільки стандартних порцій алкоголю, ви випиваєте в звичайний день, коли п'єте?  1 або 2 (0) / 3 або 4 (1) / 5 або 6 (2) / Від 7 до 9 (3) / 10 і більше (4)",
+     "3. Як часто ви випиваєте шість або більше стандартних порцій алкоголю за один раз?  Ніколи (0) / Менше, ніж щомісяця (1) / Щомісяця (2) / Щотижня (3) / Щодня або майже щодня (4)"
+    ],
+    "note": "Брать ОДИН источник и не смешивать. Формулировки МОЗ-2025 и украинского перевода руководства ВОЗ отличаются (напр. ВОЗ-укр: «Як часто ви за один раз вживали шість або більше стандартних порцій алкоголю?» против МОЗ: «Як часто ви випиваєте шість або більше стандартних порцій алкоголю за один раз?»). Лицензия украинского перевода руководства ВОЗ — та же, что у оригинала: «Всі права стосовно даного документу належать ВООЗ. Однак дозволяється вносити в даний документ зміни, складати інформаційні реферати, відтворювати даний документ і перекладати його на інші мови частково або повністю, якщо такі версії даного документа не призначені для продажу або для використання в комерційних цілях.» Условие сайта правообладателя документа (ДЕЦ МОЗ): «При повному або частковому використанні інформації, розміщеної на веб-сайті, посилання на джерело інформації обов'язкове.»"
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официальный русский перевод руководства AUDIT ВОЗ существует как публикация ВОЗ, но конкретный файл по первоисточнику в этой работе не проверялся — до проверки русскую версию не заводить."
+   }
+  },
+  "example": {
+   "answers": [
+    3,
+    2,
+    2
+   ],
+   "total": 7,
+   "band": "Positive screen (≥4 у мужчин, Bush 1998)",
+   "note": "Арифметически однозначный пример: «2 to 3 times a week» = 3, «5 or 6» = 2, «Monthly» = 2; 3+2+2 = 7 ≥ 4. Опубликованного пошагового примера подсчёта AUDIT-C в первоисточнике нет."
+  },
+  "verdict": "завести — текст пунктов (ВОЗ) и порог (Bush 1998) подтверждены; женский порог задать явно параметром со ссылкой (2 или 3 по Bradley 2003), «3 по умолчанию» не подставлять."
+ },
+ {
+  "key": "assist",
+  "title_en": "The Alcohol, Smoking and Substance Involvement Screening Test (ASSIST) v3.1",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "WHO ASSIST Working Group; руководство v3.1 — R. Humeniuk, S. Henry-Edwards, R. Ali, V. Poznyak, M. G. Monteiro (World Health Organization)",
+  "year": 2010,
+  "citation": "Humeniuk R, Henry-Edwards S, Ali R, Poznyak V, Monteiro MG. The Alcohol, Smoking and Substance Involvement Screening Test (ASSIST): manual for use in primary care. Geneva: World Health Organization; 2010. ISBN 978 92 4 159938 2 (Appendix A — ASSIST v3.1). Разработка и надёжность: WHO ASSIST Working Group. The Alcohol, Smoking and Substance Involvement Screening Test (ASSIST): development, reliability and feasibility. Addiction. 2002;97(9):1183-1194. Валидация и пороги вмешательства: Humeniuk R, Ali R, Babor TF, et al. Validation of the Alcohol, Smoking and Substance Involvement Screening Test (ASSIST). Addiction. 2008;103(6):1039-1047.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The attached appendices contain materials for both health workers and clients. These can be photocopied and used freely where necessary, in accordance with the instructions outlined in this manual. […] Appendix A — The Alcohol, Smoking and Substance Involvement Screening Test (ASSIST v3.1): The ASSIST questionnaire can be photocopied for repeated use in primary care and other treatment settings.",
+   "url": "https://iris.who.int/bitstream/handle/10665/44320/9789241599382_eng.pdf",
+   "conditions": "1) Сам опросник можно свободно копировать и применять в первичной помощи и лечебных учреждениях. 2) Общий копирайт издания — «© World Health Organization 2010. All rights reserved. […] Requests for permission to reproduce or translate WHO publications – whether for sale or for noncommercial distribution – should be addressed to WHO Press»: переиздание РУКОВОДЦТВА целиком и любой ПЕРЕВОД требуют обращения в ВОЗ. 3) Отдельно про переводы, Appendix E: «This resource sets out the guidelines by which the ASSIST and related materials must be translated. […] Please contact the WHO for support and registration if you are planning to translate the ASSIST materials or resources into your language» — перевод только по методике ВОЗ и с регистрацией в ВОЗ. 4) Сноска на бланке: «ASSIST V3.1 is to be utilized by for screening in clinical settings. For research purposes please use the previous version ASSIST V3.0.»"
+  },
+  "items": [
+   "QUESTION 1 | In your life, which of the following substances have you ever used (non-medical use only)? — по каждому из 10 классов веществ (a–j): No / Yes. Probe if all answers are negative: “Not even when you were in school?” If “No” to all items, stop interview. If “Yes” to any of these items, ask Q2 for each substance ever used.",
+   "QUESTION 2 | In the past three months, how often have you used the substances you mentioned (first drug, second drug, etc)?",
+   "QUESTION 3 | During the past three months, how often have you had a strong desire or urge to use (first drug, second drug, etc)?",
+   "QUESTION 4 | During the past three months, how often has your use of (first drug, second drug, etc) led to health, social, legal or financial problems?",
+   "QUESTION 5 | During the past three months, how often have you failed to do what was normally expected of you because of your use of (first drug, second drug, etc)?",
+   "QUESTION 6 | Has a friend or relative or anyone else ever expressed concern about your use of (first drug, second drug, etc)?",
+   "QUESTION 7 | Have you ever tried to cut down on using (first drug, second drug, etc) but failed?",
+   "QUESTION 8 | Have you ever used any drug by injection (non-medical use only)?"
+  ],
+  "items_substances": [
+   "a Tobacco products (cigarettes, chewing tobacco, cigars, etc.)",
+   "b Alcoholic beverages (beer, wine, spirits, etc.)",
+   "c Cannabis (marijuana, pot, grass, hash, etc.)",
+   "d Cocaine (coke, crack, etc.)",
+   "e Amphetamine-type stimulants (speed, meth, ecstasy, etc.)",
+   "f Inhalants (nitrous, glue, petrol, paint thinner, etc.)",
+   "g Sedatives or sleeping pills (diazepam, alprazolam, flunitrazepam, midazolam, etc.)",
+   "h Hallucinogens (LSD, acid, mushrooms, trips, ketamine, etc.)",
+   "i Opioids (heroin, morphine, methadone, buprenorphine, codeine, etc.)",
+   "j Other – specify:"
+  ],
+  "items_note": "Дословно из Appendix A руководства ВОЗ 2010 (ASSIST v3.1). Каждый вопрос 2–7 задаётся отдельно по каждому веществу a–j — инструмент матричный (8 вопросов × 10 классов веществ). Вводный текст (читается пациенту, допускается адаптация): «The following questions ask about your experience of using alcohol, tobacco products and other drugs across your lifetime and in the past three months. These substances can be smoked, swallowed, snorted, inhaled or injected (show response card). Some of the substances listed may be prescribed by a doctor (like amphetamines, sedatives, pain medications). For this interview, we will not record medications that are used as prescribed by your doctor. However, if you have taken such medications for reasons other than prescription, or taken them more frequently or at higher doses than prescribed, please let me know. While we are also interested in knowing about your use of various illicit drugs, please be assured that information on such use will be treated as strictly confidential.»",
+  "anchors": [
+   {
+    "question": 1,
+    "options": [
+     {
+      "label": "No",
+      "score": null
+     },
+     {
+      "label": "Yes",
+      "score": null
+     }
+    ],
+    "note": "Q1 не начисляет баллов, это фильтр"
+   },
+   {
+    "question": 2,
+    "options": [
+     {
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "label": "Once or twice",
+      "score": 2
+     },
+     {
+      "label": "Monthly",
+      "score": 3
+     },
+     {
+      "label": "Weekly",
+      "score": 4
+     },
+     {
+      "label": "Daily or almost daily",
+      "score": 6
+     }
+    ]
+   },
+   {
+    "question": 3,
+    "options": [
+     {
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "label": "Once or twice",
+      "score": 3
+     },
+     {
+      "label": "Monthly",
+      "score": 4
+     },
+     {
+      "label": "Weekly",
+      "score": 5
+     },
+     {
+      "label": "Daily or almost daily",
+      "score": 6
+     }
+    ]
+   },
+   {
+    "question": 4,
+    "options": [
+     {
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "label": "Once or twice",
+      "score": 4
+     },
+     {
+      "label": "Monthly",
+      "score": 5
+     },
+     {
+      "label": "Weekly",
+      "score": 6
+     },
+     {
+      "label": "Daily or almost daily",
+      "score": 7
+     }
+    ]
+   },
+   {
+    "question": 5,
+    "options": [
+     {
+      "label": "Never",
+      "score": 0
+     },
+     {
+      "label": "Once or twice",
+      "score": 5
+     },
+     {
+      "label": "Monthly",
+      "score": 6
+     },
+     {
+      "label": "Weekly",
+      "score": 7
+     },
+     {
+      "label": "Daily or almost daily",
+      "score": 8
+     }
+    ],
+    "note": "Строка «a Tobacco products» в Q5 на бланке пустая — табак по Q5 не кодируется. Строка «j Other – specify» в Q5 на официальном бланке напечатана со значениями 0/4/5/6/7 (как в Q4), а не 0/5/6/7/8 — это расхождение в самом бланке ВОЗ; воспроизводить как в бланке, а не «выравнивать по смыслу»."
+   },
+   {
+    "question": 6,
+    "options": [
+     {
+      "label": "No, never",
+      "score": 0
+     },
+     {
+      "label": "Yes, in the past 3 months",
+      "score": 6
+     },
+     {
+      "label": "Yes, but not in the past 3 months",
+      "score": 3
+     }
+    ]
+   },
+   {
+    "question": 7,
+    "options": [
+     {
+      "label": "No, never",
+      "score": 0
+     },
+     {
+      "label": "Yes, in the past 3 months",
+      "score": 6
+     },
+     {
+      "label": "Yes, but not in the past 3 months",
+      "score": 3
+     }
+    ]
+   },
+   {
+    "question": 8,
+    "options": [
+     {
+      "label": "No, never",
+      "score": null
+     },
+     {
+      "label": "Yes, in the past 3 months",
+      "score": null
+     },
+     {
+      "label": "Yes, but not in the past 3 months",
+      "score": null
+     }
+    ],
+    "note": "Q8 не входит в сумму; используется отдельно как флаг инъекционного употребления"
+   }
+  ],
+  "reverse": [],
+  "scoring": "Дословно из Appendix A: «For each substance (labelled ‘a’ to ‘j’) add up the scores received for questions 2 through 7 inclusive. Do not include the results from either Q1 or Q8 in this score. For example, a score for cannabis would be calculated as: Q2c + Q3c + Q4c + Q5c + Q6c + Q7c.» И отдельно: «Note that Q5 for tobacco is not coded, and is calculated as: Q2a + Q3a + Q4a + Q6a + Q7a.» То есть считается НЕ один общий балл, а отдельный Specific Substance Involvement Score (SSIS) по каждому из 10 классов веществ.",
+  "bands": [
+   {
+    "substance": "b Alcohol",
+    "bands": [
+     {
+      "from": 0,
+      "to": 10,
+      "label": "No intervention"
+     },
+     {
+      "from": 11,
+      "to": 26,
+      "label": "Receive brief intervention"
+     },
+     {
+      "from": 27,
+      "to": null,
+      "label": "More intensive treatment"
+     }
+    ]
+   },
+   {
+    "substance": "a Tobacco / c Cannabis / d Cocaine / e ATS / f Inhalants / g Sedatives / h Hallucinogens / i Opioids / j Other drugs",
+    "bands": [
+     {
+      "from": 0,
+      "to": 3,
+      "label": "No intervention"
+     },
+     {
+      "from": 4,
+      "to": 26,
+      "label": "Receive brief intervention"
+     },
+     {
+      "from": 27,
+      "to": null,
+      "label": "More intensive treatment"
+     }
+    ]
+   }
+  ],
+  "bands_source": "Таблица «The type of intervention is determined by the patient's specific substance involvement score», Appendix A руководства ВОЗ 2010 (ISBN 978 92 4 159938 2), с. 47. Эмпирическое обоснование порогов: Humeniuk R, Ali R, Babor TF, et al. Validation of the ASSIST. Addiction. 2008;103(6):1039-1047. Обратить внимание: у алкоголя порог «нет вмешательства» выше (0–10), у всех остальных веществ 0–3.",
+  "risk_items": [
+   {
+    "n": 8,
+    "why": "Q8 «Have you ever used any drug by injection (non-medical use only)?» — не входит в сумму, но руководство ВОЗ предписывает отдельное действие: «IMPORTANT NOTE: Clients who have injected drugs in the last 3 months should be asked about their pattern of injecting during this period, to determine their risk levels and the best course of intervention.» Правило оттуда же: «4 days per month, on average, over the last 3 months or less» — краткое вмешательство + карточка рисков инъекций; «More than 4 days per month, on average, over the last 3 months» — дальнейшая оценка и более интенсивное лечение."
+   }
+  ],
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официальный украинский ASSIST по первоисточнику НЕ подтверждён. Клінічна настанова МОЗ України КН 2025-1897 від 16.12.2025 (Додаток, «ASSIST V3.0 (ВООЗ)») украинский текст НЕ приводит, а отсылает к ВОЗ: «ASSIST доступний 8 різними мовами. Щоб отримати копію ASSIST, відвідайте: https://www.who.int/publications/i/item/978924159938-2». Вторичные источники (напр. SA Health) упоминают украинскую версию, но страницы ВОЗ с украинским файлом найти не удалось. ВЫВОД: до получения украинского файла от ВОЗ заводить ASSIST только на английском; собственный перевод прямо запрещён условиями ВОЗ (Appendix E: перевод только по методике ВОЗ и с регистрацией)."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Русская версия ASSIST упоминается в перечнях языков, но конкретный файл на сайте ВОЗ по первоисточнику в этой работе не подтверждён. Не заводить до подтверждения."
+   }
+  },
+  "example": {
+   "answers": [
+    "Q2b Daily or almost daily = 6",
+    "Q3b Never = 0",
+    "Q4b Monthly = 5",
+    "Q5b Never = 0",
+    "Q6b Yes, but not in the past 3 months = 3",
+    "Q7b Never = 0"
+   ],
+   "total": 14,
+   "band": "Alcohol 11–26 — Receive brief intervention",
+   "note": "ОПУБЛИКОВАННЫЙ ВОЗ пример: Appendix G руководства, «Client script ASSIST v3.1 (Chloe) — Responses for paired role play», итоговая таблица «Role play Chloe's scoring»: b Alcohol = 14. Проверено арифметикой: 6+0+5+0+3+0 = 14. Второй проверочный случай из того же примера: табак a = 25 (Q2a Every day = 6, Q3a Every day = 6, Q4a Once or twice = 4, Q5a не кодируется, Q6a Yes but not in the past 3 months = 3, Q7a Yes in the past 3 months = 6; 6+6+4+3+6 = 25, полоса 4–26 — brief intervention). Оба значения совпадают с напечатанными в руководстве."
+  },
+  "verdict": "завести — текст, ключ, пороги и опубликованный проверочный пример подтверждены по руководству ВОЗ; только английский оригинал, перевод без регистрации в ВОЗ не делать."
+ },
+ {
+  "key": "asrs6",
+  "title_en": "Adult ADHD Self-Report Scale v1.1 (ASRS-v1.1) Screener — 6-question screener",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Lenard Adler (New York University), Ronald C. Kessler (Harvard Medical School), Thomas Spencer (Harvard Medical School) — Workgroup on Adult ADHD совместно с ВОЗ",
+  "year": 2005,
+  "citation": "Kessler RC, Adler L, Ames M, Demler O, Faraone S, Hiripi E, Howes MJ, Jin R, Secnik K, Spencer T, Ustun TB, Walters EE. The World Health Organization Adult ADHD Self-Report Scale (ASRS): a short screening scale for use in the general population. Psychol Med. 2005;35(2):245-256. Бланк: Adult Self-Report Scale-V1.1 (ASRS-V1.1) Screener from WHO Composite International Diagnostic Interview (официальный PDF 6Q_ASRS_ENGLISH_final.pdf, распространяется правообладателем через NYU Langone TOV).",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "The screener is freely available for clinical and non-clinical use, including commercial use, but does require attribution. This is an evidence-based tool, and as such no other modifications, other than creating electronic versions, are permitted. […] The appropriate citation for the screener is: The 6-question Adult Self-Report Scale-Version1.1 (ASRS-V1.1) Screener is a subset of the 18-question Adult ADHD Self-Report Scale-Version1.1 (Adult ASRSV1.1) Symptom Checklist. © New York University and the President and Fellows of Harvard College. The ASRS v1.1 Screener was created by Dr. Lenard Adler of NYU and Dr. Ronald Kessler of Harvard.",
+   "url": "https://license.tov.med.nyu.edu/product/asrs6Qscreener",
+   "conditions": "1) Свободно, в том числе коммерчески. 2) ОБЯЗАТЕЛЬНА атрибуция дословно в приведённой формулировке. 3) Электронная версия разрешена явно («creating electronic versions»), любые ДРУГИЕ модификации запрещены — нельзя менять формулировки, порядок, шкалу ответов, добавлять/убирать пункты. 4) Правообладатель отмечает две версии: «One has shaded blocks, which is a patient facing tool for self-scoring. The clinician facing version is unshaded, and available in select languages only, with additional scoring instructions.» 5) На старых печатных бланках стоит другой копирайт: «ASRS-V1.1 Screener COPYRIGHT © 2003 World Health Organization (WHO). Reprinted with permission of WHO. All rights reserved.» — действующим считать заявление текущего правообладателя (NYU/Harvard)."
+  },
+  "items": [
+   "1. How often do you have trouble wrapping up the final details of a project, once the challenging parts have been done?",
+   "2. How often do you have difficulty getting things in order when you have to do a task that requires organization?",
+   "3. How often do you have problems remembering appointments or obligations?",
+   "4. When you have a task that requires a lot of thought, how often do you avoid or delay getting started?",
+   "5. How often do you fidget or squirm with your hands or feet when you have to sit down for a long time?",
+   "6. How often do you feel overly active and compelled to do things, like you were driven by a motor?"
+  ],
+  "items_note": "Дословно с официального бланка «Adult Self-Report Scale-V1.1 (ASRS-V1.1) Screener from WHO Composite International Diagnostic Interview». Инструкция дословно: «Check the box that best describes how you have felt and conducted yourself over the past 6 months. Please give the completed questionnaire to your healthcare professional during your next appointment to discuss the results.» Ограничение возраста: «This Adult Self-Report Scale-V1.1 (ASRS-V1.1) Screener is intended for people aged 18 years or older.» Эти же шесть пунктов = Part A полного 18-пунктового ASRS-v1.1 Symptom Checklist.",
+  "anchors": [
+   {
+    "label": "Never",
+    "score": 0
+   },
+   {
+    "label": "Rarely",
+    "score": 1
+   },
+   {
+    "label": "Sometimes",
+    "score": 2
+   },
+   {
+    "label": "Often",
+    "score": 3
+   },
+   {
+    "label": "Very Often",
+    "score": 4
+   }
+  ],
+  "anchors_note": "ВНИМАНИЕ: баллы 0–4 приведены как порядковые метки ответов; в скрининге ASRS они НЕ суммируются. Считаются только отметки, попавшие в затемнённую зону, а зона РАЗНАЯ у разных пунктов (см. scoring).",
+  "reverse": [],
+  "scoring": "Дословно с бланка: «Add the number of checkmarks that appear in the darkly shaded area. Four (4) or more checkmarks indicate that your symptoms may be consistent with Adult ADHD.» Итог — счёт от 0 до 6. Затемнённая зона задана ПОПУНКТНО (снято с официального бланка, страница со шкалой): пункты 1, 2, 3 — затемнены Sometimes, Often, Very Often; пункты 4, 5, 6 — затемнены только Often и Very Often. Та же разметка на 18-пунктовом Symptom Checklist в Part A. Инструкция к полному чек-листу формулирует то же правило: «Score Part A. If four or more marks appear in the darkly shaded boxes within Part A then the patient has symptoms highly consistent with ADHD in adults and further investigation is warranted.»",
+  "bands": [
+   {
+    "from": 0,
+    "to": 3,
+    "label": "Negative screen",
+    "source": "Официальный бланк ASRS-V1.1 Screener (правило «Four (4) or more checkmarks»)"
+   },
+   {
+    "from": 4,
+    "to": 6,
+    "label": "Symptoms may be consistent with Adult ADHD — further investigation warranted",
+    "source": "Официальный бланк ASRS-V1.1 Screener: «Four (4) or more checkmarks indicate that your symptoms may be consistent with Adult ADHD. It may be beneficial for you to talk with your healthcare provider about an evaluation.» Психометрика порога: Kessler RC et al., Psychol Med. 2005;35(2):245-256"
+   }
+  ],
+  "risk_items": [],
+  "risk_items_note": "Отдельного «тревожного» пункта нет. Правообладатель отдельно предупреждает: «The ASRS v1.1 6Q Screener is not a standalone diagnostic tool. […] diagnosis or prescription should never been made solely on the basis of a score from the screener tool.»",
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": null,
+    "url": "https://license.tov.med.nyu.edu/product/asrs6Qscreener",
+    "note": "Официального украинского перевода У ПРАВООБЛАДАТЕЛЯ НЕТ. На странице NYU Langone TOV перечислены официальные переводы: Arabic, Chinese (Mandarin), Chinese (Traditional), Dutch, Finnish, French, German, Hebrew, Italian, Japanese, Norwegian, Portuguese (Brazil), Portuguese (Portugal), Russian, Serbian, Spanish (Spain), Spanish (US/Mexico), Swedish, Thai. Украинского в списке нет. Свой перевод делать НЕЛЬЗЯ: лицензия прямо запрещает модификации кроме перевода в электронную форму."
+   },
+   "ru": {
+    "exists": true,
+    "by": "Правообладатель — New York University / President and Fellows of Harvard College; официальный файл «ASRS v1.1 6-Question Screener, Russian Translation (Patient Facing)», 6Q_Russian_final.pdf, выдаётся через NYU Langone Technology Opportunities & Ventures",
+    "free": true,
+    "url": "https://license.tov.med.nyu.edu/product/asrs6Qscreener",
+    "note": "Файл выдаётся со страницы правообладателя; текст пунктов в этой работе НЕ выгружался и НЕ проверялся — перед заведением русской версии скачать официальный PDF и сверить дословно."
+   }
+  },
+  "example": {
+   "answers": [
+    "1. Sometimes (в затемнённой зоне)",
+    "2. Often (в затемнённой зоне)",
+    "3. Sometimes (в затемнённой зоне)",
+    "4. Often (в затемнённой зоне)",
+    "5. Rarely (вне зоны)",
+    "6. Never (вне зоны)"
+   ],
+   "total": 4,
+   "band": "Symptoms may be consistent with Adult ADHD (≥4)",
+   "note": "Арифметически однозначный пример, проверяющий главную ловушку реализации: ответ «Sometimes» засчитывается в пунктах 1–3, но НЕ засчитывается в пунктах 4–6. Здесь 4 отметки в затемнённой зоне → положительный скрининг. Контрольный обратный случай для того же теста: все шесть ответов «Sometimes» дают счёт 3 (только пункты 1, 2, 3) → скрининг ОТРИЦАТЕЛЬНЫЙ. Опубликованного пошагового примера в первоисточнике нет; правило подсчёта взято дословно с бланка."
+  },
+  "verdict": "завести — лицензия правообладателя явно разрешает свободное использование и электронные версии; только английский оригинал (украинского официального перевода нет), обязательна дословная атрибуция."
+ },
+ {
+  "key": "ais",
+  "title_en": "Athens Insomnia Scale (AIS-8)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Constantin R. Soldatos, Dimitris G. Dikeos, Thomas J. Paparrigopoulos (Sleep Research Unit, Department of Psychiatry, University of Athens)",
+  "year": 2000,
+  "citation": "Soldatos CR, Dikeos DG, Paparrigopoulos TJ. Athens Insomnia Scale: validation of an instrument based on ICD-10 criteria. J Psychosom Res. 2000;48(6):555-560. Порог: Soldatos CR, Dikeos DG, Paparrigopoulos TJ. The diagnostic validity of the Athens Insomnia Scale. J Psychosom Res. 2003;55(3):263-267.",
+  "license": {
+   "verdict": "неясно",
+   "quote": "Reprinted from Soldatos et al. [1], Copyright © 2000, with permission from Elsevier.",
+   "url": "https://www.med.upenn.edu/cbti/assets/user-content/documents/Athens%20Insomnia%20Scale%20(AIS).pdf",
+   "conditions": "Заявления правообладателя о свободном использовании НЕ найдено. Шкала опубликована в журнале Elsevier (Journal of Psychosomatic Research); все проверенные воспроизведения шкалы снабжены формулой «with permission from Elsevier», то есть каждый раз испрашивалось разрешение. Отдельной страницы разработчика (Sleep Research Unit, University of Athens) с разрешением найти не удалось. Mapi Research Trust / ePROVIDE держит карточку инструмента (https://eprovide.mapi-trust.org/instruments/athens-insomnia-scale), но, в отличие от инструментов, которые Mapi распространяет официально, страница AIS не помечена как «Official … distributed by Mapi Research Trust» — маршрут лицензирования неочевиден.",
+   "owner": "Авторы (Soldatos, Dikeos, Paparrigopoulos); права на публикацию — Elsevier (J Psychosom Res)"
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: проверяемого разрешения правообладателя на воспроизведение нет, все найденные копии опубликованы «with permission from Elsevier». Заводить содержимое можно только после письменного разрешения от Elsevier и/или авторов.",
+  "anchors": null,
+  "anchors_note": "Известно из первоисточника, что каждый из 8 пунктов оценивается 0–3; словесные метки вариантов ответа воспроизведению без разрешения не подлежат.",
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Сумма 8 пунктов, диапазон 0–24 (пункты 1–5 — ночной сон, 6–8 — дневное функционирование; структура описана в Soldatos 2000). Пошаговый ключ входит в текст статьи и здесь не воспроизводится.",
+  "bands": null,
+  "bands_source": "Порог для диагноза инсомнии — суммарный балл ≥6, установлен в Soldatos CR, Dikeos DG, Paparrigopoulos TJ. The diagnostic validity of the Athens Insomnia Scale. J Psychosom Res. 2003;55(3):263-267. Числовой порог записан как ссылка на публикацию; полосы и текст пунктов без лицензии не воспроизводим.",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официальный украинский перевод не найден. Права на переводы у правообладателя; свой перевод делать нельзя."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официальный русский перевод от правообладателя не подтверждён."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочный пример не приводится: он потребовал бы воспроизведения вариантов ответа и полос, на которые нет подтверждённого разрешения.",
+  "verdict": "завести без текста (лицензия) — разрешение правообладателя на воспроизведение не подтверждено; в системе только карточка. Если нужен инструмент по сну со свободной лицензией, брать другой, а не сочинять свой текст AIS."
+ },
+ {
+  "key": "mdq",
+  "title_en": "Mood Disorder Questionnaire (MDQ)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Robert M. A. Hirschfeld (председатель, University of Texas Medical Branch), Janet B. W. Williams, Robert L. Spitzer, Joseph R. Calabrese, Laurie Flynn, Paul E. Keck Jr., Lydia Lewis, Susan L. McElroy, Robert M. Post, Daniel J. Rapport, James M. Russell, Gary S. Sachs, John M. Zajecka",
+  "year": 2000,
+  "citation": "Hirschfeld RMA, Williams JBW, Spitzer RL, Calabrese JR, Flynn L, Keck PE Jr, Lewis L, McElroy SL, Post RM, Rapport DJ, Russell JM, Sachs GS, Zajecka J. Development and validation of a screening instrument for bipolar spectrum disorder: the Mood Disorder Questionnaire. Am J Psychiatry. 2000;157(11):1873-1875.",
+  "license": {
+   "verdict": "лицензируется",
+   "quote": "© 2000 by The University of Texas Medical Branch. Reprinted with permission. This instrument is designed for screening purposes only and is not to be used as a diagnostic tool. [Правообладатель/издатель, о порядке получения прав:] As the publisher of the MDQ, Jones & Bartlett Learning handles all sales, permissions, and licensing on behalf of the estate of Dr. Hirschfeld.",
+   "url": "https://www.cebc4cw.org/measurement-tools/the-mood-disorder-questionnaire/",
+   "conditions": "Права принадлежат The University of Texas Medical Branch (© 2000); продажами, разрешениями и лицензированием от имени наследства д-ра Hirschfeld занимается издательство Jones & Bartlett Learning (контакт по данным CEBC: bcorbett@jblearning.com, +1 978-639-3497). MDQ выпускается как платный продукт издательства (ISBN 9780763763084). Свободного разрешения на воспроизведение НЕ найдено ни на одном официальном ресурсе.",
+   "owner": "The University of Texas Medical Branch; лицензирование — Jones & Bartlett Learning (от имени наследства R. M. A. Hirschfeld)",
+   "note": "Первая часть цитаты — копирайт-футер, напечатанный на самом официальном бланке MDQ (заявление правообладателя на инструменте). Вторая часть — заявление издателя, воспроизведённое в карточке инструмента California Evidence-Based Clearinghouse for Child Welfare (государственно финансируемый реестр, не блог). Встречающиеся в сети «terms of use» университетских хранилищ (например UNC SABI: «Individuals may use this information for research or educational purposes only and may not use this information for commercial purposes») — это условия ХРАНИЛИЩА, а не правообладателя, и опираться на них нельзя."
+  },
+  "items": null,
+  "items_note": "Текст пунктов НЕ приводится: методика лицензируется правообладателем/издателем, воспроизведение опросника без договора запрещено. В систему заводится только карточка (название, правообладатель, порядок лицензирования) — без содержимого.",
+  "anchors": null,
+  "reverse": null,
+  "scoring": null,
+  "scoring_note": "Правило подсчёта (три условия одновременно по вопросам 1, 2 и 3) напечатано на лицензируемом бланке и в статье правообладателя; здесь не воспроизводится. Брать только из лицензированных материалов.",
+  "bands": null,
+  "bands_source": "Порог положительного скрининга установлен в Hirschfeld RMA et al., Am J Psychiatry 2000;157:1873-1875 и напечатан на бланке правообладателя. Без лицензии не воспроизводим.",
+  "risk_items": null,
+  "translation": {
+   "uk": {
+    "exists": false,
+    "by": null,
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org/instruments/mood-disorder-questionnaire",
+    "note": "Официального украинского перевода нет. По перечню языков MDQ (реестр ePROVIDE): китайский, нидерландский, английский, эстонский, финский, французский, немецкий, итальянский, японский, корейский, польский, словенский, испанский, шведский, тайский, турецкий — украинского в списке нет. Права на переводы у правообладателя."
+   },
+   "ru": {
+    "exists": false,
+    "by": null,
+    "free": false,
+    "url": "https://eprovide.mapi-trust.org/instruments/mood-disorder-questionnaire",
+    "note": "Официального русского перевода в перечне языков правообладателя также нет."
+   }
+  },
+  "example": null,
+  "example_note": "Проверочный пример не приводится: он потребовал бы воспроизведения пунктов и правила подсчёта, лицензируемых правообладателем.",
+  "verdict": "завести без текста (лицензия) — права у UTMB, лицензирование через Jones & Bartlett Learning; без договора в системе может быть только карточка."
+ },
+ {
+  "key": "cbi",
+  "title_en": "Copenhagen Burnout Inventory (CBI)",
+  "title_uk": null,
+  "title_ru": null,
+  "authors": "Tage S. Kristensen, Marianne Borritz, Ebbe Villadsen, Karl B. Christensen (Arbejdsmiljøinstituttet / National Institute of Occupational Health, ныне Det Nationale Forskningscenter for Arbejdsmiljø, NFA, Дания)",
+  "year": 2005,
+  "citation": "Kristensen TS, Borritz M, Villadsen E, Christensen KB. The Copenhagen Burnout Inventory: A new tool for the assessment of burnout. Work & Stress. 2005;19(3):192-207. doi:10.1080/02678370500297720. Бланк и ключ: «Copenhagen Burnout Inventory. Normative data from a representative Danish population on Personal Burnout and Results from the PUMA study on Personal Burnout, Work Burnout, and Client Burnout» (First edition, February 2004), Borritz M & Kristensen TS, National Institute of Occupational Health, Copenhagen. Полосы интерпретации: датская форма для самопроверки «CBI (Copenhagen Burnout Inventory) — et spørgeskema til måling af udbrændthed», Borritz M & Kristensen TS, Arbejdsmiljøinstituttet.",
+  "license": {
+   "verdict": "свободна с условиями",
+   "quote": "Here you can download the Copenhagen Burnout Inventory - CBI questionnaire. [и на общей странице опросников NFA:] Her finder du en række spørgeskemaer udviklet af Det Nationale Forskningscenter for Arbejdsmiljø. Spørgeskemaerne kan anvendes i det praktiske arbejdsmiljøarbejde på arbejdspladser og virksomheder.",
+   "url": "https://nfa.dk/vaerktoejer/spoergeskemaer/spoergeskema-til-maaling-af-udbraendthed-cbi/copenhagen-burnout-inventory-cbi",
+   "conditions": "Правообладатель-институт (NFA, Дания) выкладывает полный текст опросника, ключ и нормативные данные для свободного скачивания без регистрации и оплаты и прямо пишет, что его опросники можно применять в практической работе на предприятиях. Условие по существу одно — ссылаться на Kristensen et al. 2005. ОГОВОРКА ПО ЧЕСТНОСТИ: формулировка «CBI is in the public domain» повторяется в десятках вторичных источников, но дословного предложения об этом в первоисточнике (статья Work & Stress 2005 за пейволом Taylor & Francis) в этой работе подтвердить НЕ удалось; проверенным основанием считается свободная публикация инструмента самим NFA. Если нужен формальный документ о правах — запросить у NFA (nfa@nfa.dk); указанный на бланках контакт авторов: mb@ami.dk (Marianne Borritz), tsk@ami.dk (Tage S. Kristensen).",
+   "owner": "Det Nationale Forskningscenter for Arbejdsmiljø (NFA), Дания; авторы Borritz & Kristensen"
+  },
+  "items": [
+   "[Personal burnout] 1. How often do you feel tired?",
+   "[Personal burnout] 2. How often are you physically exhausted?",
+   "[Personal burnout] 3. How often are you emotionally exhausted?",
+   "[Personal burnout] 4. How often do you think: ”I can’t take it anymore”?",
+   "[Personal burnout] 5. How often do you feel worn out?",
+   "[Personal burnout] 6. How often do you feel weak and susceptible to illness?",
+   "[Work burnout] 1. Is your work emotionally exhausting?",
+   "[Work burnout] 2. Do you feel burnt out because of your work?",
+   "[Work burnout] 3. Does your work frustrate you?",
+   "[Work burnout] 4. Do you feel worn out at the end of the working day?",
+   "[Work burnout] 5. Are you exhausted in the morning at the thought of another day at work?",
+   "[Work burnout] 6. Do you feel that every working hour is tiring for you?",
+   "[Work burnout] 7. Do you have enough energy for family and friends during leisure time?",
+   "[Client burnout] 1. Do you find it hard to work with clients?",
+   "[Client burnout] 2. Do you find it frustrating to work with clients?",
+   "[Client burnout] 3. Does it drain your energy to work with clients?",
+   "[Client burnout] 4. Do you feel that you give more than you get back when you work with clients?",
+   "[Client burnout] 5. Are you tired of working with clients?",
+   "[Client burnout] 6. Do you sometimes wonder how long you will be able to continue working with clients?"
+  ],
+  "items_note": "Дословно из официального документа NFA «Copenhagen Burnout Inventory. Normative data… (First edition. February 2004)». Три отдельные шкалы, каждая со своим определением конструкта, приведённым в документе дословно: Personal burnout — «a state of prolonged physical and psychological exhaustion»; Work burnout — «a state of prolonged physical and psychological exhaustion, which is perceived as related to the person's work»; Client burnout — «a state of prolonged physical and psychological exhaustion, which is perceived as related to the person's work with clients». Два предписания правообладателя, важные для реализации: (1) «NB: The questions of the CBI should not be printed in the questionnaire in the same order as shown here. In fact, the questions could very well be mixed with questions on other topics. This is recommended in order to avoid stereotyped response patterns.» (2) «NB: In these questions one should use the appropriate term for “clients” depending on the circumstances. E.g., in a questionnaire for nurses, the term patients should be used, while the term children or students should be used in a study of teachers' burnout.» Для военного психологического отделения шкалу client burnout заводить только если она осмысленна (есть «клиенты»); иначе достаточно двух первых шкал.",
+  "anchors": [
+   {
+    "scale": "Personal burnout — все 6 пунктов",
+    "options": [
+     {
+      "label": "Always",
+      "score": 100
+     },
+     {
+      "label": "Often",
+      "score": 75
+     },
+     {
+      "label": "Sometimes",
+      "score": 50
+     },
+     {
+      "label": "Seldom",
+      "score": 25
+     },
+     {
+      "label": "Never/almost never",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "scale": "Work burnout — пункты 1–3",
+    "options": [
+     {
+      "label": "To a very high degree",
+      "score": 100
+     },
+     {
+      "label": "To a high degree",
+      "score": 75
+     },
+     {
+      "label": "Somewhat",
+      "score": 50
+     },
+     {
+      "label": "To a low degree",
+      "score": 25
+     },
+     {
+      "label": "To a very low degree",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "scale": "Work burnout — пункты 4–7",
+    "options": [
+     {
+      "label": "Always",
+      "score": 100
+     },
+     {
+      "label": "Often",
+      "score": 75
+     },
+     {
+      "label": "Sometimes",
+      "score": 50
+     },
+     {
+      "label": "Seldom",
+      "score": 25
+     },
+     {
+      "label": "Never/almost never",
+      "score": 0
+     }
+    ],
+    "note": "пункт 7 считается в обратную сторону"
+   },
+   {
+    "scale": "Client burnout — пункты 1–4",
+    "options": [
+     {
+      "label": "To a very high degree",
+      "score": 100
+     },
+     {
+      "label": "To a high degree",
+      "score": 75
+     },
+     {
+      "label": "Somewhat",
+      "score": 50
+     },
+     {
+      "label": "To a low degree",
+      "score": 25
+     },
+     {
+      "label": "To a very low degree",
+      "score": 0
+     }
+    ]
+   },
+   {
+    "scale": "Client burnout — пункты 5–6",
+    "options": [
+     {
+      "label": "Always",
+      "score": 100
+     },
+     {
+      "label": "Often",
+      "score": 75
+     },
+     {
+      "label": "Sometimes",
+      "score": 50
+     },
+     {
+      "label": "Seldom",
+      "score": 25
+     },
+     {
+      "label": "Never/almost never",
+      "score": 0
+     }
+    ]
+   }
+  ],
+  "reverse": [
+   {
+    "scale": "Work burnout",
+    "n": 7,
+    "text": "Do you have enough energy for family and friends during leisure time?",
+    "source": "Дословно в документе NFA: «(Reversed score for last question).» То есть Always = 0, Often = 25, Sometimes = 50, Seldom = 75, Never/almost never = 100."
+   }
+  ],
+  "scoring": "Дословно из документа NFA: «Scoring: Always: 100. Often: 75. Sometimes: 50. Seldom: 25. Never/almost never: 0. Total score on the scale is the average of the scores on the items.» Считается СРЕДНЕЕ по пунктам шкалы (не сумма), диапазон 0–100, отдельно по каждой из трёх шкал; общего суммарного балла CBI не существует. Правило неответов, дословно: Personal burnout — «If less than three questions have been answered, the respondent is classified as non-responder»; Work burnout — «If less than four questions have been answered, the respondent is classified as non-responder»; Client burnout — «If less than three questions have been answered, the respondent is classified as non-responder».",
+  "bands": [
+   {
+    "scale": "Personal burnout",
+    "raw_max": 24,
+    "bands": [
+     {
+      "from": 0,
+      "to": 5,
+      "label_da": "Du har ingen tegn på udbrændthed",
+      "label_ru": "Признаков выгорания нет"
+     },
+     {
+      "from": 6,
+      "to": 11,
+      "label_da": "Der er nogle ting, som du skal være opmærksom på",
+      "label_ru": "Есть на что обратить внимание"
+     },
+     {
+      "from": 12,
+      "to": 17,
+      "label_da": "Du har symptomer på udbrændthed, som du bør gøre noget ved",
+      "label_ru": "Есть симптомы выгорания, с которыми надо что-то делать"
+     },
+     {
+      "from": 18,
+      "to": 24,
+      "label_da": "Du er så udmattet og udbrændt, at du straks bør søge hjælp til at ændre din situation",
+      "label_ru": "Истощение и выгорание такой степени, что помощь нужна немедленно"
+     }
+    ]
+   },
+   {
+    "scale": "Work burnout",
+    "raw_max": 28,
+    "bands": [
+     {
+      "from": 0,
+      "to": 6,
+      "label_da": "Du har ingen tegn på udbrændthed i relation til dit arbejde"
+     },
+     {
+      "from": 7,
+      "to": 13,
+      "label_da": "Der er nogle ting, som du skal være opmærksom på i forhold til dit arbejde"
+     },
+     {
+      "from": 14,
+      "to": 20,
+      "label_da": "Du har symptomer på udbrændthed, som du bør gøre noget ved"
+     },
+     {
+      "from": 21,
+      "to": 28,
+      "label_da": "Du er så udmattet og udkørt, at du straks bør søge hjælp til at ændre din arbejdssituation"
+     }
+    ]
+   },
+   {
+    "scale": "Client burnout",
+    "raw_max": 24,
+    "bands": [
+     {
+      "from": 0,
+      "to": 5,
+      "label_da": "Du har ingen tegn på udbrændthed i relation til dit arbejde med klienter"
+     },
+     {
+      "from": 6,
+      "to": 11,
+      "label_da": "Der er nogle ting, som du skal være opmærksom på i forhold til dit arbejde"
+     },
+     {
+      "from": 12,
+      "to": 17,
+      "label_da": "Du har symptomer på udbrændthed, som du bør gøre noget ved"
+     },
+     {
+      "from": 18,
+      "to": 24,
+      "label_da": "Du er så udmattet og tappet for energi af at arbejde med klienter, at du straks bør søge hjælp til at ændre din situation"
+     }
+    ]
+   }
+  ],
+  "bands_source": "Полосы взяты дословно (раздел «Tolkning af resultaterne») из официальной датской формы самопроверки «CBI (Copenhagen Burnout Inventory) — et spørgeskema til måling af udbrændthed», Marianne Borritz & Tage Søndergård Kristensen, Arbejdsmiljøinstituttet, https://nfa.dk/media/aifokdbn/cbi-egen-test.pdf. ВАЖНО: в этой форме каждый пункт оценивается 0–4 и баллы СУММИРУЮТСЯ (в исследовательской версии — 0–100 и среднее). Полосы заданы в этой «сырой» сумме. Арифметическое соответствие точное и проверяемое: сырая сумма × 100 / (4 × число пунктов) = балл 0–100, поэтому границы 6/12/18 из 24 и 7/14/21 из 28 — это ровно 25 / 50 / 75 по шкале 0–100. Клинически валидированных порогов («порог выгорания») в самой статье Kristensen 2005 нет — в ней даются средние и нормативы, а не отсечки. Нормативы из официального документа NFA: средний балл по шкале personal burnout в репрезентативной датской выборке (N=1498, 20–59 лет) — Mean 32.7, SD 15.7, Cronbach's alpha 0.80; по датской форме самопроверки «Landsgennemsnittet for danskere er 7,7» (в сырой сумме), среднее по участникам PUMA — 8,6.",
+  "bands_warning": "Широко тиражируемый порог «≥50 = выгорание» в первоисточниках НЕ найден — не подставлять его в систему как авторский.",
+  "risk_items": [],
+  "risk_items_note": "Отдельного пункта, по которому принято поднимать тревогу, в CBI нет. Ближайшее к этому — верхняя полоса всех трёх шкал, где правообладатель прямо пишет «du straks bør søge hjælp» (нужно немедленно искать помощь); её и имеет смысл делать триггером.",
+  "translation": {
+   "uk": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального украинского перевода CBI от правообладателя (NFA) не найдено. NFA публикует английскую и датскую версии. Свой перевод не делать."
+   },
+   "ru": {
+    "exists": null,
+    "by": null,
+    "free": null,
+    "url": null,
+    "note": "Официального русского перевода от NFA не найдено."
+   }
+  },
+  "example": {
+   "answers": [
+    "Personal burnout, все 6 пунктов — «Sometimes»"
+   ],
+   "total": 50.0,
+   "band": "Personal burnout: 12 баллов в сырой сумме (6 × 2) — «Du har symptomer på udbrændthed, som du bør gøre noget ved»",
+   "note": "Арифметически однозначный пример, проверяющий обе метрики сразу. Исследовательская версия: Sometimes = 50 по каждому пункту, среднее = (50×6)/6 = 50.0 из 100. Датская форма самопроверки: Somme tider = 2 по каждому пункту, сумма = 12, что попадает в полосу 12–17. Соответствие метрик: 12 × 100 / (4 × 6) = 50 — совпадает. Опубликованного пошагового примера подсчёта в документах правообладателя нет."
+  },
+  "example2": {
+   "answers": [
+    "Work burnout: пункты 1–6 — «Never/almost never» или «To a very low degree» (0 баллов), пункт 7 «Do you have enough energy for family and friends during leisure time?» — ответ «Always»"
+   ],
+   "total": 0.0,
+   "band": "Work burnout: 0 — «Du har ingen tegn på udbrændthed i relation til dit arbejde»",
+   "note": "Проверка обратного пункта: ответ «Always» на пункт 7 после реверса даёт 0, а НЕ 100. Итог = (0×6 + 0)/7 = 0.0. Если реализация забудет реверс, тот же набор ответов даст 100/7 ≈ 14.3 — это и есть тест на ошибку."
+  },
+  "verdict": "завести — текст, ключ, обратный пункт, нормативы и полосы интерпретации взяты из документов самого правообладателя (NFA); только английский оригинал (или датский), украинского официального перевода нет."
+ }
+]
