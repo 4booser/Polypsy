@@ -256,6 +256,14 @@ describe("пройденный тест: адрес", () => {
          */
         const conclusionDeclared = /path="\/responses\/:id\/conclusion"/.test(APP);
         if (conclusionDeclared && /^\/responses\/\$\{[^}]+\}\/conclusion$/.test(m[1]!)) continue;
+        /*
+         * Тот же экран с инструментами черновика — «/responses/:id/conclusion/draft».
+         * Пропуск ровно на тех же условиях: пока маршрут объявлен. Дверь в него
+         * ведёт из бургера (Topbar.tsx), и без этой строки сторож принимал бы
+         * её за зов в пустоту.
+         */
+        const draftDeclared = /path="\/responses\/:id\/conclusion\/draft"/.test(APP);
+        if (draftDeclared && /^\/responses\/\$\{[^}]+\}\/conclusion\/draft$/.test(m[1]!)) continue;
         if (!/^\/surveys\/\$\{[^}]+\}\/responses\/\$\{[^}]+\}$/.test(m[1]!)) {
           offenders.push(`${file.slice(SRC.length + 1)}: \`${m[1]}\``);
         }
