@@ -7,7 +7,7 @@ import {
   type StatRunColumn,
   type StatRunResult,
 } from "@quizzy/shared";
-import { pinnedAreas, type PinnedArea, type Published } from "../src/lib/privacy";
+import { pinnedAreas, type PinnedArea, type Reported } from "../src/lib/privacy";
 import {
   adminA,
   adminB,
@@ -168,6 +168,110 @@ async function makeSurvey(groupId: string, owner: Person): Promise<Content> {
   };
 }
 
+/** Восемь вариантов одного выбора: на них показались обе утечки второго круга */
+interface Wide {
+  id: string;
+  pickQ: string;
+  /** идентификаторы «А»…«З» по порядку */
+  pick: string[];
+  whyQ: string;
+  why: Record<"noise" | "thoughts" | "pain", string>;
+}
+
+const PICKS = ["А", "Б", "В", "Г", "Д", "Е", "Ж", "З"];
+
+/**
+ * Методика второго круга: вопрос с ОДНИМ выбором на восемь вариантов и
+ * вопрос с несколькими на три.
+ *
+ * Восемь, а не три: обе утечки второго круга живут в том, что разбиение
+ * длинное. «Вынужденные значения» требуют пяти прочерков в одном разбиении
+ * (пять слагаемых, каждое ≥ 1, сумма 5), а «почти полный отчёт» — чтобы
+ * рядом со скрытой ячейкой печаталось двенадцать чисел из тринадцати.
+ * На трёх вариантах ни то ни другое не собирается: класс под прочерками
+ * выходит меньше порога и его находит даже прежняя проверка.
+ */
+async function makeWide(groupId: string, owner: Person): Promise<Wide> {
+  const id = crypto.randomUUID();
+  const draft = createSurveySchema.parse({
+    title: { uk: "Методика восьми варіантів" },
+    groupId,
+    administration: "self",
+    scoringEnabled: true,
+    allowRetake: true,
+    visibility: "public",
+    scales: [
+      {
+        code: "risk",
+        title: { uk: "Ризик" },
+        aggregation: "sum",
+        bands: [{ minScore: 0, maxScore: 9, label: { uk: "Рівний" }, severity: "none" }],
+      },
+    ],
+    questions: [
+      {
+        type: "single",
+        title: { uk: "Що турбує найбільше?" },
+        scaleCode: "risk",
+        required: true,
+        options: PICKS.map((text) => ({ text: { uk: text }, score: 0 })),
+      },
+      {
+        type: "multiple",
+        title: { uk: "Що заважає?" },
+        scaleCode: "risk",
+        options: [
+          { text: { uk: "Шум" }, score: 0 },
+          { text: { uk: "Думки" }, score: 0 },
+          { text: { uk: "Біль" }, score: 0 },
+        ],
+      },
+    ],
+  });
+  await db.insert(surveys).values({
+    id,
+    groupId,
+    title: draft.title,
+    administration: "self",
+    status: "published",
+    publishedAt: new Date().toISOString(),
+    visibility: "public",
+    scoringEnabled: true,
+    allowRetake: true,
+    createdBy: owner.id,
+  } as never);
+  await createVersion(id, draft, owner.id, "Перша версія");
+
+  const full = (await api(`/api/surveys/${id}`, owner.token)).body;
+  const q = (title: string) => full.questions.find((x: { title: string }) => x.title === title);
+  const opt = (question: { options: { id: string; text: string }[] }, text: string) =>
+    question.options.find((o) => o.text === text)!.id;
+  const pickQ = q("Що турбує найбільше?");
+  const whyQ = q("Що заважає?");
+  return {
+    id,
+    pickQ: pickQ.id,
+    pick: PICKS.map((t) => opt(pickQ, t)),
+    whyQ: whyQ.id,
+    why: { noise: opt(whyQ, "Шум"), thoughts: opt(whyQ, "Думки"), pain: opt(whyQ, "Біль") },
+  };
+}
+
+/** Прохождение методики восьми вариантов: один выбор по номеру, галочки — по ключам */
+async function submitWide(person: Person, pick: number, why: (keyof Wide["why"])[] = []): Promise<void> {
+  const answers = [
+    { questionId: wide.pickQ, optionIds: [wide.pick[pick]!], durationMs: 1000, changeCount: 0, visitCount: 1 },
+    ...(why.length
+      ? [{ questionId: wide.whyQ, optionIds: why.map((k) => wide.why[k]), durationMs: 1000, changeCount: 0, visitCount: 1 }]
+      : []),
+  ];
+  const res = await api(`/api/surveys/${wide.id}/responses`, person.token, {
+    method: "POST",
+    body: JSON.stringify({ startedAt: new Date(Date.now() - 60_000).toISOString(), durationMs: 60_000, events: [], answers }),
+  });
+  expect(res.status, `сдача прохождения: ${JSON.stringify(res.body)}`).toBe(201);
+}
+
 interface Picks {
   sleep: string;
   why?: string[];
@@ -217,6 +321,15 @@ let skeptic: Content;
  * и достаточно поставить рядом колонку без фильтра.
  */
 let split: Content;
+/**
+ * Методика вложенных колонок: в ней живут ТОЛЬКО три возрастные группы, и
+ * колонки «до 40» и «до 30» вкладываются одна в другую. Своя, потому что
+ * возрастные фильтры не сужаются по городу — они выбирают всех, кто сдал
+ * методику.
+ */
+let nested: Content;
+/** Методика восьми вариантов: обе утечки второго круга */
+let wide: Wide;
 /** Населённые пункты сценариев: колонка набирается фильтром по городу */
 const CITY21 = "Скепсис-21";
 const CITY14 = "Скепсис-14";
@@ -225,6 +338,21 @@ const CITY12 = "Скепсис-12";
 const CITY16 = "Скепсис-16";
 const BIG = "Скепсис-Велике";
 const SMALL = "Скепсис-Мале";
+const FORCED = "Скепсис-Вимушені";
+const LOOSE = "Скепсис-Невимушені";
+const PAIR = "Скепсис-Пара";
+const SLICE = "Скепсис-Зріз";
+
+/** Все семь непустых масок «Що заважає?» — по ним размазываются классы Венна */
+const MASKS: (keyof Wide["why"])[][] = [
+  ["noise"],
+  ["thoughts"],
+  ["pain"],
+  ["noise", "thoughts"],
+  ["noise", "pain"],
+  ["thoughts", "pain"],
+  ["noise", "thoughts", "pain"],
+];
 
 beforeAll(async () => {
   content = await makeSurvey(groupA, adminA);
@@ -357,6 +485,70 @@ beforeAll(async () => {
   for (let i = 0; i < 6; i++) {
     const p = await person(`small-${i}`, { sex: "male", birthDate: "1990-01-01", locality: SMALL });
     await submit(split, p, { sleep: i < 5 ? split.sleep.good : split.sleep.bad });
+  }
+
+  /*
+   * Первый сценарий второго круга: три колонки, из которых две вложены
+   * одна в другую. Восемь двадцатипятилетних и восемь шестидесятилетних
+   * разложены по ВСЕМ восьми маскам Венна — это приманки, шестнадцать
+   * областей по одному человеку, — а четверо тридцатипятилетних выбирают
+   * всё сразу и образуют единственный класс разности «до 40» ∖ «до 30».
+   */
+  nested = await makeSurvey(groupA, adminA);
+  const byMask = (i: number) => (MASKS[i - 1] ?? []).map((k) => nested.why[k]);
+  for (let i = 0; i < 8; i++) {
+    const p = await person(`n25-${i}`, { sex: "male", birthDate: "2001-06-01", locality: "Вкладене" });
+    await submit(nested, p, { sleep: nested.sleep.good, why: byMask(i) });
+  }
+  for (let i = 0; i < 4; i++) {
+    const p = await person(`n35-${i}`, { sex: "male", birthDate: "1991-06-01", locality: "Вкладене" });
+    await submit(nested, p, { sleep: nested.sleep.good, why: MASKS[6]!.map((k) => nested.why[k]) });
+  }
+  for (let i = 0; i < 8; i++) {
+    const p = await person(`n60-${i}`, { sex: "male", birthDate: "1966-06-01", locality: "Вкладене" });
+    await submit(nested, p, { sleep: nested.sleep.good, why: byMask(i) });
+  }
+
+  wide = await makeWide(groupA, adminA);
+  /*
+   * Второй сценарий: «А» 15 из 20, по одному на «Б»…«Е», «Ж» и «З» пусты.
+   * Пять прочерков в одном разбиении, их сумма 5 — каждый равен единице.
+   */
+  for (let i = 0; i < 20; i++) {
+    const p = await person(`w-forced-${i}`, { sex: "male", birthDate: "1990-01-01", locality: FORCED });
+    await submitWide(p, i < 15 ? 0 : i - 14);
+  }
+  /*
+   * Тот же разбор, но сумма прочерков на единицу больше их числа: «А» 14,
+   * «Б» 2, «В»…«Е» по одному. Скрытых столько же и стоят они на тех же
+   * местах, а набор их не фиксирует — и отчёт обязан остаться полнее.
+   */
+  for (let i = 0; i < 20; i++) {
+    const p = await person(`w-loose-${i}`, { sex: "male", birthDate: "1990-01-01", locality: LOOSE });
+    await submitWide(p, i < 14 ? 0 : i < 16 ? 1 : i - 14);
+  }
+  /*
+   * Верхний край прочерка: 5/5/4/4 на восемнадцати. Порог прячет обе
+   * четвёрки, их сумма 8, и если каждая меньше пяти — обе равны четырём.
+   */
+  for (let i = 0; i < 18; i++) {
+    const p = await person(`w-pair-${i}`, { sex: "male", birthDate: "1990-01-01", locality: PAIR });
+    await submitWide(p, i < 5 ? 0 : i < 10 ? 1 : i < 14 ? 2 : 3);
+  }
+  /*
+   * Третий сценарий: почти полный отчёт. «А», «Б», «В» по семеро — каждый
+   * размазан по всем семи непустым маскам Венна, то есть двадцать один
+   * класс по ОДНОМУ человеку; четверо «Г» сидят всего в двух классах по
+   * два. Прежняя проверка брала в перебор шестнадцать самых мелких
+   * областей, одиночки занимали весь срез, и «Г» не проверялась вовсе.
+   */
+  for (let i = 0; i < 21; i++) {
+    const p = await person(`w-slice-${i}`, { sex: "male", birthDate: "1990-01-01", locality: SLICE });
+    await submitWide(p, Math.floor(i / 7), MASKS[i % 7]!);
+  }
+  for (let i = 0; i < 4; i++) {
+    const p = await person(`w-slice-g${i}`, { sex: "male", birthDate: "1990-01-01", locality: SLICE });
+    await submitWide(p, 3, [i < 2 ? "noise" : "thoughts"]);
   }
 });
 
@@ -914,11 +1106,13 @@ interface Dweller {
  * называет точно.
  */
 function namedAreas(cols: StatRunColumn[], people: Dweller[]): PinnedArea[] {
-  const system: Published[] = [];
+  const system: Reported[] = [];
   const add = (key: string, cell: StatCell, members: Dweller[]) => {
-    if (!cell.suppressed) system.push({ key, members: new Set(members.map((p) => p.id)) });
+    system.push({ key, members: new Set(members.map((p) => p.id)), shown: !cell.suppressed });
   };
   for (const col of cols) {
+    /* закрытая колонка не печатает ничего, и её прочерк не значит «хотя бы один» */
+    if (col.suppressedReason) continue;
     const at = `«${col.title}»`;
     const inside = people.filter((p) => p.columns.includes(col.title!));
     add(`${at} основа`, col.respondents, inside);
@@ -1009,6 +1203,137 @@ function splitSeed(): Dweller[] {
   return out;
 }
 
+/** Тексты галочек «Що заважає?» — посев знает людей по тем же словам, что печатает отчёт */
+const MASK_TEXT: Record<keyof Wide["why"], string> = { noise: "Шум", thoughts: "Думки", pain: "Біль" };
+const textsOf = (keys: (keyof Wide["why"])[]) => keys.map((k) => MASK_TEXT[k]);
+
+/** Колонка методики вложенных колонок: показатели только у той, что без фильтра */
+function nestedColumn(title: string, filters: object, why = false) {
+  return {
+    title,
+    presetId: null,
+    filters,
+    surveyId: nested.id,
+    bands: [],
+    questions: why
+      ? [
+          {
+            questionId: nested.whyQ,
+            options: [nested.why.noise, nested.why.thoughts, nested.why.pain].map((optionId) => ({ optionId })),
+          },
+        ]
+      : [],
+  };
+}
+
+/** Колонка методики восьми вариантов: все восемь, помеченные — по номерам */
+function wideColumn(title: string, locality: string, marks: number[] = [], why = false) {
+  return {
+    title,
+    presetId: null,
+    filters: { locality },
+    surveyId: wide.id,
+    bands: [],
+    questions: [
+      { questionId: wide.pickQ, options: wide.pick.map((optionId, i) => ({ optionId, highRisk: marks.includes(i) })) },
+      ...(why
+        ? [
+            {
+              questionId: wide.whyQ,
+              options: [wide.why.noise, wide.why.thoughts, wide.why.pain].map((optionId) => ({ optionId })),
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+/** Жители методики вложенных колонок: восемь масок дважды и четверо, выбравших всё */
+function nestedSeed(): Dweller[] {
+  const at = (id: string, columns: string[], why: string[]): Dweller => ({ id, columns, band: "Низький", sleep: "Добре", why });
+  const mask = (i: number) => textsOf(MASKS[i - 1] ?? []);
+  const out: Dweller[] = [];
+  for (let i = 0; i < 8; i++) out.push(at(`n25-${i}`, ["Усі", "до 40", "до 30"], mask(i)));
+  for (let i = 0; i < 4; i++) out.push(at(`n35-${i}`, ["Усі", "до 40"], textsOf(MASKS[6]!)));
+  for (let i = 0; i < 8; i++) out.push(at(`n60-${i}`, ["Усі"], mask(i)));
+  return out;
+}
+
+/** Двадцать «вынужденных»: «А» пятнадцать, по одному на «Б»…«Е» */
+const forcedSeed = (): Dweller[] =>
+  Array.from({ length: 20 }, (_, i) => ({
+    id: `w-forced-${i}`,
+    columns: ["Вимушені"],
+    band: "Рівний",
+    sleep: PICKS[i < 15 ? 0 : i - 14]!,
+    why: [],
+  }));
+
+/** Двадцать «невынужденных»: «А» четырнадцать, «Б» двое, «В»…«Е» по одному */
+const looseSeed = (): Dweller[] =>
+  Array.from({ length: 20 }, (_, i) => ({
+    id: `w-loose-${i}`,
+    columns: ["Невимушені"],
+    band: "Рівний",
+    sleep: PICKS[i < 14 ? 0 : i < 16 ? 1 : i - 14]!,
+    why: [],
+  }));
+
+/** Восемнадцать «пары»: «А» и «Б» по пятеро, «В» и «Г» по четверо */
+const pairSeed = (): Dweller[] =>
+  Array.from({ length: 18 }, (_, i) => ({
+    id: `w-pair-${i}`,
+    columns: ["Пара"],
+    band: "Рівний",
+    sleep: PICKS[i < 5 ? 0 : i < 10 ? 1 : i < 14 ? 2 : 3]!,
+    why: [],
+  }));
+
+/** Двадцать пять «почти полного отчёта»: 7/7/7 по всем маскам Венна и четверо «Г» */
+function sliceSeed(): Dweller[] {
+  const out: Dweller[] = [];
+  for (let i = 0; i < 21; i++) {
+    out.push({
+      id: `w-slice-${i}`,
+      columns: ["Зріз"],
+      band: "Рівний",
+      sleep: PICKS[Math.floor(i / 7)]!,
+      why: textsOf(MASKS[i % 7]!),
+    });
+  }
+  for (let i = 0; i < 4; i++) {
+    out.push({ id: `w-slice-g${i}`, columns: ["Зріз"], band: "Рівний", sleep: PICKS[3]!, why: [i < 2 ? "Шум" : "Думки"] });
+  }
+  return out;
+}
+
+/**
+ * Арифметика читателя без всякого решателя: разбиение одного выбора плюс
+ * основание.
+ *
+ * Скрытых ячеек k, их сумма S = основание − показанные, и каждая не меньше
+ * единицы, потому что нули печатаются. При k = 1 скрытая равна S, при
+ * S = k каждая равна единице — в обоих случаях названы конкретные люди.
+ * Проверка нарочно написана руками, а не через pinnedAreas: сторож, который
+ * ошибается там же, где сторожимое, не сторож.
+ */
+function forcedByPartition(col: StatRunColumn): string[] {
+  const out: string[] = [];
+  if (col.respondents.suppressed) return out;
+  const total = col.respondents.count;
+  for (const q of col.questions) {
+    if (q.type === "multiple") continue;
+    const cells = [...q.options.map((o) => o.cell), q.rest];
+    const hidden = cells.filter((c) => c.suppressed).length;
+    if (!hidden) continue;
+    const left = total - cells.reduce((n, c) => n + (c.suppressed ? 0 : c.count), 0);
+    if (hidden === 1) out.push(`«${q.title}»: единственная скрытая = ${left}`);
+    else if (left === hidden) out.push(`«${q.title}»: ${hidden} скрытых, и каждая равна единице`);
+    else if (left === hidden * (FLOOR - 1)) out.push(`«${q.title}»: ${hidden} скрытых, и каждая равна ${FLOOR - 1}`);
+  }
+  return out;
+}
+
 /** Колонка методики разбиения: полосы шкалы, «Високий» помечен «ВШР» */
 function splitColumn(title: string, locality?: string) {
   return {
@@ -1076,27 +1401,27 @@ describe("порог малых чисел", () => {
     const all = [...big, ...small];
     const pick = (ids: string[], label: string) =>
       new Set(ids.filter((id) => bandOf(id, Number(id.slice(1))) === label));
-    const three: Published[] = [
-      { key: "Усі основа", members: new Set(all) },
-      { key: "Усі Низький", members: pick(all, "Низький") },
-      { key: "Усі Середній", members: pick(all, "Середній") },
-      { key: "Усі Високий", members: pick(all, "Високий") },
-      { key: "Велике основа", members: new Set(big) },
-      { key: "Велике Низький", members: pick(big, "Низький") },
-      { key: "Велике Середній", members: pick(big, "Середній") },
-      { key: "Велике Високий", members: pick(big, "Високий") },
-      { key: "Мале основа", members: new Set(small) },
+    const three: Reported[] = [
+      { key: "Усі основа", members: new Set(all), shown: true },
+      { key: "Усі Низький", members: pick(all, "Низький"), shown: true },
+      { key: "Усі Середній", members: pick(all, "Середній"), shown: true },
+      { key: "Усі Високий", members: pick(all, "Високий"), shown: true },
+      { key: "Велике основа", members: new Set(big), shown: true },
+      { key: "Велике Низький", members: pick(big, "Низький"), shown: true },
+      { key: "Велике Середній", members: pick(big, "Середній"), shown: true },
+      { key: "Велике Високий", members: pick(big, "Високий"), shown: true },
+      { key: "Мале основа", members: new Set(small), shown: true },
     ];
     const first = pinnedAreas(three);
     expect(first.map((a) => a.n).sort(), "вычитание соседок не названо: «Мале».«Високий» = 11 − 10").toContain(1);
 
     /* (2) множественный выбор: |Біль ∖ Шум| = 6 − 5 = 1 */
     const people = Array.from({ length: 16 }, (_, i) => `p${i}`);
-    const many: Published[] = [
-      { key: "основа", members: new Set(people) },
-      { key: "Шум", members: new Set(people.slice(0, 10)) },
-      { key: "Біль", members: new Set(people.slice(5, 11)) },
-      { key: "решта", members: new Set(people.slice(11)) },
+    const many: Reported[] = [
+      { key: "основа", members: new Set(people), shown: true },
+      { key: "Шум", members: new Set(people.slice(0, 10)), shown: true },
+      { key: "Біль", members: new Set(people.slice(5, 11)), shown: true },
+      { key: "решта", members: new Set(people.slice(11)), shown: true },
     ];
     expect(pinnedAreas(many).map((a) => a.n), "|Біль ∖ Шум| = 1 не названо").toContain(1);
   });
@@ -1189,6 +1514,127 @@ describe("порог малых чисел", () => {
     ]);
     expect(named([col!], seed16(["16 осіб"]))).toEqual([]);
     expect(col!.hiddenFigures, "из группы ничего не убрано").toBeGreaterThan(0);
+  });
+
+  /**
+   * Второй круг, сценарий вложенных колонок: «до 40» ⊇ «до 30», разность —
+   * четверо, и это настоящий класс неразличимости.
+   *
+   * Приманки в нём важнее самой разности: шестнадцать клеток Венна по
+   * одному человеку. Прежняя проверка брала в перебор шестнадцать САМЫХ
+   * МЕЛКИХ областей — и одиночки занимали весь срез, а четвёрка «31–40» из
+   * перебора выпадала. Защита вела себя наоборот здравому смыслу: чем
+   * подробнее отчёт, тем слабее проверка.
+   *
+   * Мутация: вернуть прежний перебор — области вместо связок, срез в
+   * шестнадцать самых мелких и без проверки строк отчёта целиком: оба
+   * основания печатаются, и 12 − 8 называет четверых.
+   */
+  test("вложенные колонки: разность «до 40» и «до 30» не называет четверых", async () => {
+    const res = await preview([
+      nestedColumn("Усі", {}, true),
+      nestedColumn("до 40", { ageMax: 40 }),
+      nestedColumn("до 30", { ageMax: 30 }),
+    ]);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const cols = res.body.columns as StatRunColumn[];
+    expect(cols.map((c) => c.title)).toEqual(["Усі", "до 40", "до 30"]);
+    const baseShown = (title: string) => !cols.find((c) => c.title === title)!.respondents.suppressed;
+    expect(baseShown("до 40") && baseShown("до 30"), "оба вложенных основания напечатаны: 12 − 8 называет четверых").toBe(false);
+    expect(named(cols, nestedSeed()), "приманки вытеснили искомую область из перебора").toEqual([]);
+    /* закрывается вложенная колонка, а не та, ради которой отчёт открывали */
+    expect(cols[0]!.respondents, "закрыта колонка без фильтра — самая полная из трёх").toEqual({
+      suppressed: false,
+      count: 20,
+      percent: 100,
+    });
+    expect(cols.filter((c) => c.suppressedReason === "recoverable"), "закрылось больше одной колонки").toHaveLength(1);
+    for (const col of cols) {
+      if (col.suppressedReason) expect(col.note, `«${col.title}» закрыта молча`).toContain("відновлюють");
+      else if (col.hiddenFigures) expect(col.note, `«${col.title}» прячет молча`).toContain("Приховано");
+    }
+  });
+
+  /**
+   * Второй круг, сценарий вынужденных значений: пятеро названы поимённо из
+   * ОДНОГО ответа, без всякого знания кода.
+   *
+   * «А» 15 из 20, «Ж» и «З» — честные нули, «Б»…«Е» — прочерки, «ВШР» 5.
+   * Читатель считает так: нули печатаются, значит за каждым прочерком хотя
+   * бы один; выбор один, значит сумма прочерков 20 − 15 − 0 = 5; пять
+   * слагаемых, каждое ≥ 1, сумма 5 — каждое равно единице.
+   *
+   * Прежняя проверка рассуждала только о линейной оболочке ПОКАЗАННЫХ
+   * чисел: классов у неё было два — «А» на пятнадцать и «ВШР» на пять, оба
+   * над порогом, и она молчала. Вся утечка жила в том, что класс из пяти
+   * поделён прочерками.
+   *
+   * Мутация: выбросить из системы скрытые числа (systemOf по kept) —
+   * колонка печатает «ВШР 5/25%» поверх пятнадцати, и проверка называет
+   * пятерых. Мутация: оставить прочерку нижнюю границу 0 вместо 1 —
+   * то же самое: без «за прочерком кто-то есть» система ничего не держит.
+   */
+  test("вынужденные значения: пять прочерков не складываются в пять единиц", async () => {
+    const [col] = await columnsApart([wideColumn("Вимушені", FORCED, [1, 2, 3, 4, 5])]);
+    expect(forcedByPartition(col!), "разбиение само называет своих скрытых").toEqual([]);
+    expect(named([col!], forcedSeed())).toEqual([]);
+    expect(col!.hiddenFigures, "из колонки ничего не убрано").toBeGreaterThan(0);
+    expect(col!.note ?? "", "цена не названа словами").toContain("Приховано");
+
+    /*
+     * Контроль, и он тут не для красоты: та же форма, но «А» 14 и «Б» 2 —
+     * сумма прочерков 6 на пять ячеек, и набор их не фиксирует. Отчёт
+     * обязан остаться полнее, иначе «защита» свелась бы к «прячем всё, где
+     * есть хоть один прочерк», и проверять в ней было бы нечего.
+     */
+    const [loose] = await columnsApart([wideColumn("Невимушені", LOOSE, [1, 2, 3, 4, 5])]);
+    expect(forcedByPartition(loose!)).toEqual([]);
+    expect(named([loose!], looseSeed())).toEqual([]);
+    expect(loose!.hiddenFigures, "у свободного набора спрятано столько же, сколько у вынужденного")
+      .toBeLessThan(col!.hiddenFigures);
+  });
+
+  /**
+   * Верхний край прочерка: два прочерка, сумма которых делится только
+   * одним способом.
+   *
+   * 5/5/4/4 на восемнадцати — порог прячет обе четвёрки, отчёт печатает
+   * «18 | 5 | 5 | × | × | решта 0», сумма прочерков 8. Правило публикации
+   * известно вместе с отчётом, и читатель, проиграв его на всех мыслимых
+   * раскладах, оставляет единственный: 4 и 4. Нижнего края («за прочерком
+   * хотя бы один») здесь мало — восьмёрку он делит семью способами.
+   *
+   * Мутация: снять верхний край у прочерка (оставить hi = всей выборке) —
+   * колонка печатает «18 | 5 | 5 | × | ×», и проверка называет обе
+   * четвёрки.
+   */
+  test("два прочерка не складываются в единственную пару", async () => {
+    const [col] = await columnsApart([wideColumn("Пара", PAIR)]);
+    expect(forcedByPartition(col!), "сумма прочерков делится единственным способом").toEqual([]);
+    expect(named([col!], pairSeed())).toEqual([]);
+  });
+
+  /**
+   * Второй круг, сценарий почти полного отчёта: двенадцать чисел из
+   * тринадцати напечатаны, а тринадцатое читается вычитанием.
+   *
+   * «А» 7, «Б» 7, «В» 7, «Г» 4, «Д»…«З» нули, остаток 0 — и 25 − 21 = 4.
+   * Прежняя проверка эту ячейку ВИДЕЛА бы (её индикатор лежит в оболочке),
+   * но добиралась до неё только через перебор объединений, а тот брал
+   * шестнадцать самых мелких областей: двадцать один класс по одному
+   * человеку занимал весь срез, и две области «Г» по два в перебор не
+   * попадали никогда. Авторское обоснование потолка («отчёт с таким числом
+   * горсток и без того почти пуст») здесь неверно буквально.
+   *
+   * Мутация: вернуть прежний перебор (см. выше) — «Г» печатается прочерком
+   * при показанных «А», «Б», «В» и основании, и вычитание называет
+   * четверых.
+   */
+  test("почти полный отчёт: единственная скрытая ячейка не читается вычитанием", async () => {
+    const [col] = await columnsApart([wideColumn("Зріз", SLICE, [], true)]);
+    expect(col!.respondents.suppressed ? "×" : col!.respondents.count).not.toBe(0);
+    expect(forcedByPartition(col!), "одна скрытая ячейка в разбиении — чистое вычитание").toEqual([]);
+    expect(named([col!], sliceSeed())).toEqual([]);
   });
 
   /**
@@ -1354,13 +1800,19 @@ describe("порог малых чисел", () => {
   });
 
   /**
-   * Потолок печатаемых чисел на колонку: шестнадцать. Он не про приватность,
-   * а про время: проверка решает систему на каждый расчёт, и её цена растёт
-   * с числом уравнений. Колонка с двумя шкалами и двумя вопросами просит
-   * восемнадцать чисел — печатается шестнадцать, и о недостающих сказано
-   * той же фразой, что и обо всём скрытом.
+   * Потолок печатаемых чисел на колонку: шестнадцать чисел С ЛЮДЬМИ. Он не
+   * про приватность, а про время: проверка решает систему на каждый расчёт,
+   * и её цена растёт с числом уравнений. Колонка с двумя шкалами и двумя
+   * вопросами просит восемнадцать чисел — печатается шестнадцать с людьми
+   * плюс нули, и о недостающих сказано той же фразой, что и обо всём
+   * скрытом.
    *
-   * Мутация: снять потолок — проверка падает: чисел становится восемнадцать.
+   * Нули считаются отдельно нарочно: число без людей не даёт системе ни
+   * одного уравнения, а спрятанный ноль сломал бы «прочерк — значит хотя бы
+   * один», на котором стоит вся проверка.
+   *
+   * Мутация: снять потолок — проверка падает: чисел с людьми становится
+   * семнадцать.
    */
   test("на колонку печатается не больше шестнадцати чисел", async () => {
     const wide = {
@@ -1382,7 +1834,9 @@ describe("порог малых чисел", () => {
       ...(col!.highRisk ? [col!.highRisk] : []),
     ];
     expect(cells.length, "колонка просит меньше восемнадцати чисел — потолок не проверяется").toBe(18);
-    expect(cells.filter((c) => !c.suppressed).length, "колонка печатает больше шестнадцати чисел").toBeLessThanOrEqual(16);
+    const withPeople = cells.filter((c) => !c.suppressed && c.count > 0);
+    expect(withPeople.length, "колонка печатает больше шестнадцати чисел с людьми").toBeLessThanOrEqual(16);
+    expect(cells.some((c) => !c.suppressed && c.count === 0), "ноль спрятан — прочерк перестал значить «хотя бы один»").toBe(true);
     expect(col!.note, "о недостающих строках не сказано").toContain("Приховано");
   });
 });
