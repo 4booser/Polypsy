@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { createOwnAppointment, dayRow, login, SEED_SURVEY } from "./helpers";
 
 /**
  * Приём: экран дня и обычная неделя.
@@ -10,6 +10,16 @@ import { login } from "./helpers";
  * что-то одно.
  */
 test("день виден целиком и явка отмечается одним нажатием", async ({ page }) => {
+  /*
+   * Явка отмечается на СВОЁМ приёме, а не на первом ждущем.
+   *
+   * Ждущих в посеве два, а отметить явку хотят и этот сценарий, и проверка
+   * доступности (a11y.e2e.ts), и проверка пометки «не подтвердил» ниже. Кто
+   * из них останется без ждущего приёма, решал порядок файлов — то есть
+   * сортировка имён, а не автор.
+   */
+  const own = await createOwnAppointment(page, "reception-came");
+
   await login(page, "psy");
   await page.goto("/today");
 
@@ -24,19 +34,23 @@ test("день виден целиком и явка отмечается одн
   await expect(rows.first()).toBeVisible();
 
   // ждущий приём предлагает ровно одно следующее действие
-  const came = page.getByRole("button", { name: "Пришёл" }).first();
+  const row = dayRow(page, own.id);
+  const came = row.getByRole("button", { name: "Пришёл", exact: true });
   await expect(came).toBeVisible();
   await came.click();
 
   // после отметки следующая кнопка — «Начать», а не снова «Пришёл»
-  await expect(page.getByRole("button", { name: "Начать" }).first()).toBeVisible();
+  await expect(row.getByRole("button", { name: "Начать" })).toBeVisible();
 });
 
 test("неподтверждённый приём помечен, а закреплённого не предлагают закреплять", async ({ page }) => {
+  // свой неподтверждённый приём: посевной у сценария выше забирает отметка явки
+  const own = await createOwnAppointment(page, "reception-unconfirmed");
+
   await login(page, "psy");
   await page.goto("/today");
 
-  await expect(page.getByText("не подтвердил").first()).toBeVisible();
+  await expect(dayRow(page, own.id).getByText("не подтвердил")).toBeVisible();
 
   /*
    * Один человек в посеве уже закреплён за специалистом. Кнопок «Закрепить
@@ -54,12 +68,22 @@ test("неявку, поставленную фоном, можно исправ
    * забыли нажать, — и если исправить это негде, напоминание уйдёт тому, кто
    * пришёл.
    */
+  /*
+   * Неявка своя, а не «какая-нибудь на экране».
+   *
+   * Фоновый проход ставит её приёмам, время которых прошло, — то есть только
+   * во второй половине дня и только тем, кого до этого не тронул соседний
+   * сценарий. Проверка о неявке не имеет права зависеть ни от часа прогона,
+   * ни от того, кто успел нажать «Пришёл» раньше.
+   */
+  const own = await createOwnAppointment(page, "reception-missed", "no_show");
+
   await login(page, "psy");
   await page.goto("/today");
 
-  const missed = page.locator('div:has-text("не пришёл")').last();
-  await expect(missed).toBeVisible();
-  await expect(page.getByRole("button", { name: "Пришёл" }).first()).toBeVisible();
+  const row = dayRow(page, own.id);
+  await expect(row).toContainText("не пришёл");
+  await expect(row.getByRole("button", { name: "Пришёл", exact: true })).toBeVisible();
 });
 
 test("сохранение недели отвечает числами, а не словом «сохранено»", async ({ page }) => {
@@ -91,11 +115,15 @@ test("экран приёма собирается одним запросом �
    * когда человек уже сидит перед ним, и любой уход отсюда стоит либо
    * набранного протокола, либо внимания пациента.
    */
+  // приём свой: протокол ниже набирается в поле, которое обязано быть пустым,
+  // а посевной приём к этому моменту мог уже подержать чужой текст
+  const own = await createOwnAppointment(page, "reception-visit");
+
   await login(page, "psy");
   await page.goto("/today");
 
   // с «Сегодня» — прямо на приём
-  await page.locator('a[href^="/visit/"]').first().click();
+  await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
   await expect(page.getByRole("heading", { name: "Приём", exact: true })).toBeVisible();
 
   // все три панели на месте сразу, а не по очереди
@@ -122,9 +150,12 @@ test("на первом приёме видно, что человек здес�
    * попадает к третьему подряд. Принимающий сегодня должен видеть, что он не
    * первый, до того как начнёт задавать вопросы, которые уже задавали.
    */
+  // свой человек заведён сегодня и ни у кого ещё не был — пометка обязана быть
+  const own = await createOwnAppointment(page, "reception-first");
+
   await login(page, "psy");
   await page.goto("/today");
-  await page.locator('a[href^="/visit/"]').first().click();
+  await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
 
   const marker = page.getByText(/Был у|Первый приём здесь/).first();
   await expect(marker).toBeVisible();
@@ -135,9 +166,11 @@ test("методика назначается прямо с приёма, не �
    * Уход с экрана стоит набранного текста: текстовое поле не переживает
    * навигацию, и специалист либо теряет написанное, либо не назначает вовсе.
    */
+  const own = await createOwnAppointment(page, "reception-assign");
+
   await login(page, "psy");
   await page.goto("/today");
-  await page.locator('a[href^="/visit/"]').first().click();
+  await dayRow(page, own.id).locator('a[href^="/visit/"]').click();
   await page.getByRole("heading", { name: "Приём", exact: true }).waitFor();
 
   /*
@@ -177,9 +210,20 @@ test("бланк вводится с клавиатуры и строкой це
   await page.goto("/surveys");
   await page.locator("h1").first().waitFor();
 
-  // берём короткую методику: сценарий про способ ввода, а не про длину
-  // ссылка из строки списка, а не первая на экране: вкладки каталога («/surveys/drafts») стоят выше
-  await page.locator('table tbody a[href^="/surveys/"]').first().click();
+  /*
+   * Методика названа поимённо, а не «первая в каталоге».
+   *
+   * Каталог упорядочен по времени создания сверху вниз, и первой строкой
+   * встаёт методика, которую только что завёл сценарий конструктора, — то
+   * есть свежесозданный черновик из трёх пунктов вместо той, ради которой
+   * написан быстрый ввод. Ссылка берётся из строки списка, а не первая на
+   * экране: вкладки каталога («/surveys/drafts») стоят выше.
+   */
+  await page
+    .locator('table tbody a[href^="/surveys/"]')
+    .filter({ hasText: SEED_SURVEY })
+    .first()
+    .click();
   await page.waitForTimeout(800);
   const url = page.url();
   const surveyId = url.split("/surveys/")[1]!.split(/[/?#]/)[0]!;
