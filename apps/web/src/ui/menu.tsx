@@ -300,6 +300,8 @@ export function ActionMenu({
   className,
   plateClassName,
   itemSize,
+  triggerSize,
+  triggerClassName,
 }: {
   label: string;
   glyph: ReactNode;
@@ -309,9 +311,26 @@ export function ActionMenu({
   plateClassName?: string;
   /** Кегль пункта, если кадр экрана даёт свой; молчание — 15 с кадров людей */
   itemSize?: MenuItemSize;
+  /*
+   * Раскрывающий элемент бывает не глифом: счётчик выборки «18 вибрано»
+   * раскрывает своё меню сам, потому что кадр f05 не рисует рядом с ним
+   * ничего. Оба свойства просто передаются ниже — MenuButton умел это и
+   * раньше, а ActionMenu их глотал, и место с надписью вместо глифа
+   * приходилось бы писать MenuButton-ом с копией разметки пунктов.
+   */
+  triggerSize?: ButtonProps["size"];
+  triggerClassName?: string;
 }) {
   return (
-    <MenuButton label={label} glyph={glyph} align="right" className={className} plateClassName={plateClassName}>
+    <MenuButton
+      label={label}
+      glyph={glyph}
+      align="right"
+      className={className}
+      plateClassName={plateClassName}
+      triggerSize={triggerSize}
+      triggerClassName={triggerClassName}
+    >
       {(close) =>
         entries.map((it) => {
           const disabled = !!it.disabled;

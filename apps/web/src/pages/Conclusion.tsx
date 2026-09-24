@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useMatch, useParams } from "react-router-dom";
 import type {
   DecisionRule,
   ResponseDetail,
@@ -20,15 +20,22 @@ import { Button, Field, Input } from "../ui/primitives";
 import { useResource } from "../useResource";
 
 /*
- * Экран «Заключення» — кадры макета f38 (три части) и f39 (две части).
+ * Экран «Заключення» — кадры макета f36 и f37.
  *
- * Два кадра — один экран. f39 рисует его для одного теста: название, описание,
- * вопросы с баллами, лестница результатов, «опитувальник спостереження»,
- * выводы. f38 — тот же экран, но полнее: сверху добавлены название документа,
- * список применённых аналитических моделей с вердиктами и список тестов с
- * набранными баллами. Взят f38 как более полный; из f39 не пропало ничего —
- * его блоки входят в f38 целиком. Где кадры расходятся мелочью (в f39 над
- * описанием стоит подпись «Опис тесту», в f38 — нет), выбран f38.
+ * Номера — по действующей описи кадров (index.json). Старые числа из
+ * docs/REWRITE-PLAN.md к ней не относятся вовсе и здесь не повторяются даже
+ * справкой: повторённые, они и есть то, по чему следующая сверка уходит не
+ * на тот кадр. Что номер из своего раздела, сторожит
+ * apps/web/test/frameRefs.test.ts.
+ *
+ * Два кадра — один экран. f37 рисует его для одного теста: название,
+ * описание, вопросы с баллами, лестница результатов, «опитувальник
+ * спостереження», выводы. f36 — тот же экран, но полнее: сверху добавлены
+ * название документа, список применённых аналитических моделей с вердиктами
+ * и список тестов с набранными баллами. Взят f36 как более полный; из f37 не
+ * пропало ничего — его блоки входят в f36 целиком. Где кадры расходятся
+ * мелочью (в f37 над описанием стоит подпись «Опис тесту», в f36 — нет),
+ * выбран f36: экран уже назвал тест заголовком.
  *
  * Прежде заключение жило раскрывающейся строкой в таблице прохождений на
  * экране аналитики методики (SurveyAnalytics.tsx): текст без протокола
@@ -42,8 +49,8 @@ import { useResource } from "../useResource";
  *     но пуст: заключение привязано к ОДНОМУ прохождению
  *     (conclusions.responseId), второго источника у него нет. Блок стоит на
  *     своём месте с кадра и честно говорит, чего ждёт от сервера, — иначе
- *     половина кадра f38_2/f39_1 просто исчезла бы без следа;
- *   · «Відправити поштою»: см. DocumentMenu.
+ *     половина кадра f36_2/f37_1 просто исчезла бы без следа;
+ *   · «Надіслати поштою»: см. DocumentMenu.
  */
 
 export default function ConclusionPage() {
@@ -69,7 +76,7 @@ export default function ConclusionPage() {
   const conclusion = useResource(() => api.conclusion(responseId), [responseId]);
 
   /*
-   * Название документа — поле «Назва заключення» с кадра f38.
+   * Название документа — поле «Назва заключення» с кадра f36.
    *
    * Живёт здесь, а не в редакторе: поле стоит первым на экране, редактор —
    * последним, а сохраняются они одной записью. Из ответа сервера название
@@ -85,7 +92,7 @@ export default function ConclusionPage() {
 
   /*
    * Текст заключения, поле ввода и то, что открыто из меню шестерёнки, живут
-   * здесь, а не в редакторе: на кадре f39_2 полоса над текстом занята
+   * здесь, а не в редакторе: на кадре f37_2 полоса над текстом занята
    * форматированием, и инструменты редактора (сборка из фактов, библиотека
    * формулировок, история версий, «Зберегти чернетку») ушли в меню документа.
    * Меню стоит в шапке экрана — значит, и текст должен лежать там, откуда его
@@ -109,17 +116,28 @@ export default function ConclusionPage() {
     enabled: !!surveyId,
   });
 
+  /*
+   * Инструменты черновика (сборка из фактов, библиотека формулировок,
+   * история версий, «Зберегти чернетку») живут в меню шестерёнки только на
+   * отдельном адресе /responses/:id/conclusion/draft: на кадре f36 в
+   * раскрытом меню ровно два пункта, и четыре инструмента рядом с ними —
+   * не кадр. Экран при этом один и тот же, состояние — одно.
+   */
+  const draftTools = useMatch("/responses/:id/conclusion/draft") !== null;
+
   return (
     <Page
       title={ut("cn3.title")}
+      /* 40, а не 50: на кадрах f36 и f37 чернила «Заключення» стоят в 47 от низа полосы */
+      topGap={40}
       actions={
         <DocumentMenu
           responseId={responseId}
-          text={text}
-          setText={setText}
+          text={draftTools ? text : undefined}
+          setText={draftTools ? setText : undefined}
           tool={tool}
-          setTool={setTool}
-          state={conclusion.data}
+          setTool={draftTools ? setTool : undefined}
+          state={draftTools ? conclusion.data : undefined}
           title={title}
           onState={conclusion.patch}
         />
@@ -164,7 +182,13 @@ export default function ConclusionPage() {
 /* ─────────── шестерёнка ─────────── */
 
 /**
- * Меню документа: «Зберегти як PDF» и «Відправити поштою», как на макете.
+ * Меню документа: «Зберегти як PDF» и «Надіслати поштою» — ровно два пункта,
+ * как на кадре f36 (плашка 174×70 у правого края, без рамки, мягкая тень).
+ *
+ * Инструменты редактора черновика меню принимает потомками свойств
+ * (`setText`, `setTool`, `state`), и экран передаёт их ТОЛЬКО на адресе
+ * /responses/:id/conclusion/draft. На самом заключении их нет: кадр рисует
+ * два пункта, и третий — хоть «Чернетка ▸» — был бы уже не кадром.
  *
  * PDF — это печатный отчёт GET /api/reports/responses/:id, открытый в новой
  * вкладке: сервер отдаёт разметку, а PDF делает печать браузера. Так решено
@@ -283,11 +307,12 @@ export function DocumentMenu({
             {ut("cn3.sendMail")}
           </MenuItem>
           {/*
-            Инструменты редактора заключения: на кадре f39_2 полоса над
-            текстом занята форматированием, и они ушли сюда — «Зібрати з
-            результатів», библиотека формулировок, история версий и
-            «Зберегти чернетку». Меню принимает их пунктами, а открывают они
-            блоки под полем текста (см. ConclusionEditor).
+            Инструменты редактора заключения — «Зібрати з результатів»,
+            библиотека формулировок, история версий и «Зберегти чернетку».
+            На кадре f37_2 полоса над текстом занята форматированием, а в
+            раскрытом меню кадра f36 стоят только два пункта выше, — поэтому
+            сюда они приходят лишь на адресе .../conclusion/draft, где
+            экрана в макете нет вовсе.
           */}
           {setText && setTool && state ? (
             <>
@@ -387,6 +412,16 @@ export interface AppliedModel {
  *
  * Правила, чьи условия смотрят на шкалу другой методики, к этому прохождению
  * не относятся и в список не попадают; выключенные — тоже.
+ *
+ * ПОДПИСЬ ВЕРДИКТА. На кадре f36 напечатано «Не Відповідає умовам» — с
+ * прописной в середине фразы. Прежняя редакция сочла это опечаткой и
+ * оставила строчную; вырезка кадра (x 1150…1420, y 350…640) говорит
+ * другое: отрицательных пилюль на нём ДВЕ, и обе с прописной, а
+ * положительные набраны «Відповідає умовам». То есть макет не меняет
+ * написание слова, приставляя «Не», — и это тот же приём, что в «Опис
+ * Групи», «Назва Заключення», «Тести Групи»: прописная стоит у смыслового
+ * слова, а не только в начале фразы. Дважды повторённое — не описка.
+ * Словарь набран по кадру: cn3.notMatched «Не Відповідає умовам».
  */
 export function applicableModels(
   rules: (DecisionRule & { note: string | null })[],
@@ -425,8 +460,13 @@ async function loadModels(responseId: string, surveyId: string): Promise<Applied
 }
 
 /**
- * Заголовок раздела свитка — 18/700 фиолетовым, вторая ступень макета, — и
- * при нём действие («+»).
+ * Заголовок раздела свитка — 20/700 фиолетовым, та же ступень, что у
+ * разделов карточки пациента, — и при нём действие («+»).
+ *
+ * Замер f36: прописная «С» в «Список примінених аналітичних моделей» и в
+ * «Список тестів» — 15 px, «О» в «Опитувальник…» — 16, «В» в «Висновки
+ * заключення» — 14; всё это кегль 20, а не 18. Зазор до «+» — 22 (чернила
+ * заголовка кончаются на 597, глиф стоит 619…642).
  *
  * Действие стоит РЯДОМ с h2, а не внутри него. Имя заголовка для диктора
  * собирается из его содержимого, и ссылка внутри h2 приклеивала бы свою
@@ -436,8 +476,8 @@ async function loadModels(responseId: string, surveyId: string): Promise<Applied
  */
 export function SectionHead({ id, action, children }: { id: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-[14px]">
-      <h2 id={id} className="m-0 text-[18px] font-bold leading-tight text-primary">
+    <div className="flex items-center gap-[22px]">
+      <h2 id={id} className="m-0 text-[20px] font-bold leading-[24px] text-primary">
         {children}
       </h2>
       {action}
@@ -450,7 +490,7 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
   return (
     <section aria-labelledby="cn-models" className="mt-[50px]">
       {/*
-        «+» у заголовка — как на кадре f38_1, тем же глифом, что у «Списку
+        «+» у заголовка — как на кадре f36_1, тем же глифом, что у «Списку
         тестів». В первой редакции его здесь не было: считалось, что экрана
         моделей в консоли нет и вести некуда. Экран есть — /analytics/new
         (App.tsx), — и «+» ведёт туда: завести аналитическую модель.
@@ -486,7 +526,7 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
               className="grid grid-cols-[200px_1fr_196px] items-center gap-x-[18px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[6px]"
             >
               {/*
-                Кадр f38_1: cap имени и вердикта 12 px → 17/700, описание 9 px
+                Кадр f36_1: cap имени и вердикта 12 px → 17/700, описание 9 px
                 → 13/400. Межстрочник имени — 20: имя модели на кадре занимает
                 две строки («Аналітична модель , / стресостійкість 1»), и их
                 базовые линии отстоят на 20 (замер столбца имён: 64 и 84, затем
@@ -517,8 +557,10 @@ function ModelList({ models, error }: { models: AppliedModel[] | null; error: st
 
 /**
  * Список тестов заключения. Строка одна: заключение привязано к одному
- * прохождению. Когда связь «заключение → несколько прохождений» появится на
- * сервере, здесь будет map по ним — разметка строки уже на это рассчитана.
+ * прохождению (conclusions.responseId). На кадре f36 строк две, и это не
+ * разница разметки, а нехватка сервера: маршрута «заключення → кілька
+ * проходжень» нет — см. отчёт сверки, строка «сервер». Когда он появится,
+ * здесь будет map по прохождениям: разметка строки уже на это рассчитана.
  */
 function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFull }) {
   const { ut } = useLang();
@@ -545,7 +587,7 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
             {detail.scores.map((s) => (
               <span key={s.scaleId} className="flex flex-col">
                 {/*
-                  Кадр f38_1: «набраний бал 72» 13/400 серым, подпись диапазона
+                  Кадр f36_1: «набраний бал 72» 13/400 серым, подпись диапазона
                   13/700 фиолетовым. Было 11 — замер не сходился: цифры «72» на
                   кадре 10 px в высоту, а высота цифры у этой гарнитуры ≈ 0,72
                   кегля, то есть кегль 13–14; 11 дал бы цифру 8. Межстрочник 19
@@ -571,7 +613,7 @@ function TestList({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
 
 /**
  * «+» у заголовка раздела: ссылка-глиф, одна на «Список примінених
- * аналітичних моделей» и «Список тестів» — на кадре f38_1 они нарисованы
+ * аналітичних моделей» и «Список тестів» — на кадре f36_1 они нарисованы
  * одинаково. Видимый квадрат 27, нажимается 44 (тот же приём, что у Button
  * size="glyph"), повторён здесь потому, что ссылка кнопкой быть не может.
  */
@@ -602,8 +644,8 @@ function PlusGlyph() {
 }
 
 /**
- * «Опитувальник спостереження за пацієнтом» — второй протокол кадров f38_2 и
- * f39_1: тот же каркас «Питання №N — варианты с баллами — Результати», только
+ * «Опитувальник спостереження за пацієнтом» — второй протокол кадров f36_2 и
+ * f37_1: тот же каркас «Питання №N — варианты с баллами — Результати», только
  * заполненный наблюдением специалиста, а не ответами пациента.
  *
  * Источника у него нет. Заключение на сервере держится на одном прохождении
@@ -647,7 +689,7 @@ function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
 
   return (
     <article aria-labelledby="cn-test" className="mt-[50px]">
-      {/* кадр f38_1: «Тест номер 1» cap 12 px → 17/700, описание под ним 13/400 */}
+      {/* кадр f36_1: «Тест номер 1» cap 12 px → 17/700, описание под ним 13/400 */}
       <h2 id="cn-test" className="m-0 text-[17px] font-bold leading-[22px] text-primary">
         {survey.title}
       </h2>
@@ -678,13 +720,26 @@ function TestBody({ detail, survey }: { detail: ResponseDetail; survey: SurveyFu
  * кадре) и для диктора рядом стоит скрытая пометка. Заливка одна не прошла
  * бы правило «не только цветом».
  */
-function Cell({ on, num, children }: { on: boolean; num?: boolean; children: ReactNode }) {
+function Cell({
+  on,
+  num,
+  className,
+  children,
+}: {
+  on: boolean;
+  num?: boolean;
+  /** Место ячейки в строке: зазоры кадра внутри строки разные, см. ResultLadder */
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <span
       className={cx(
         "flex min-h-9 items-center rounded-[5px] text-[17px] leading-[20px] text-primary",
         num ? "justify-center px-[6px] tabular-nums" : "px-[12px] py-[6px]",
-        on ? "bg-primary-soft font-bold" : "border border-border bg-[var(--bg)]",
+        /* рамка невыбранной — рамка ПОЛЯ (#666666), как на кадре, а не общая линия #cccccc */
+        on ? "bg-primary-soft font-bold" : "border border-field-border bg-[var(--bg)]",
+        className,
       )}
     >
       {children}
@@ -734,8 +789,9 @@ export function QuestionSheet({
 
   return (
     <section aria-labelledby={headId} className="mb-[40px]">
-      {/* кадр f38_2: от заголовка питання до первой строки варианта 20 px */}
-      <h3 id={headId} className="m-0 mb-[20px] text-[18px] font-bold leading-[22px] text-primary">
+      {/* кадр f36_2: от заголовка питання до первой строки варианта 20 px */}
+      {/* 17/700: прописная «П» в «Питання №1» на кадре — 12 px (1040…1051) */}
+      <h3 id={headId} className="m-0 mb-[20px] text-[17px] font-bold leading-[22px] text-primary">
         {ut("cn3.question")}
         {n} {answer.title}
       </h3>
@@ -805,7 +861,8 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
 
   return (
     <section aria-labelledby="cn-results">
-      <h3 id="cn-results" className="m-0 mb-[14px] text-[18px] font-bold leading-[22px] text-primary">
+      {/* 20/700: прописная «Р» в «Результати» на кадре — 14 px (1410…1423) */}
+      <h3 id="cn-results" className="m-0 mb-[14px] text-[20px] font-bold leading-[24px] text-primary">
         {ut("cn3.results")}
       </h3>
       {rows.map(({ score, scale }) => (
@@ -820,8 +877,12 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
                   <li
                     key={b.id}
                     data-hit={hit ? "yes" : "no"}
-                    /* «від [87] до [87] [подпись]» — замер кадра f38_3; шаг строк 51 */
-                    className="mb-[15px] grid grid-cols-[auto_87px_auto_87px_1fr] items-center gap-x-[12px] last:mb-0"
+                    /*
+                     * «від [87] до [87] [подпись]» — замер кадра f36_3; шаг строк 51.
+                     * Зазоры не равны: 10 между первыми четырьмя ячейками и 21 перед
+                     * подписью полосы (бокс кончается на 691, текст начинается на 712).
+                     */
+                    className="mb-[15px] grid grid-cols-[auto_87px_auto_87px_1fr] items-center gap-x-[10px] last:mb-0"
                   >
                     <span className="text-[13px] text-muted">{ut("cn3.from")}</span>
                     <Cell on={hit} num>
@@ -831,7 +892,7 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
                     <Cell on={hit} num>
                       {num(b.maxScore)}
                     </Cell>
-                    <Cell on={hit}>
+                    <Cell on={hit} className="ml-[11px]">
                       {b.label}
                       {hit ? <span className="sr-only">, {ut("cn3.hit")}</span> : null}
                     </Cell>
