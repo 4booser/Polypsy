@@ -18,7 +18,8 @@ import { personMeta, type PersonLike } from "./model";
  * галочка, и читать её иначе («в группе / не в группе») значило бы дать
  * одному знаку два смысла на соседних экранах. Действие над выборкой у
  * каждого экрана своё — добавить в группу, назначить тест, убрать из группы,
- * — и печатается оно рядом со счётчиком (SelectionBar).
+ * — и лежит оно в меню «⋯» рядом со счётчиком (SelectionBar): на кадре под
+ * сеткой напечатано только «18 вибрано».
  */
 
 /**
@@ -60,7 +61,8 @@ export function PersonGrid({
     <ul
       data-patients
       className={cx(
-        "m-0 grid list-none grid-cols-3 gap-x-[48px] p-0",
+        /* зазор колонок 44: левые края имён на f05 — 201/616/1030, шаг 415 при колонке 371 */
+        "m-0 grid list-none grid-cols-3 gap-x-[44px] p-0",
         "max-[1000px]:grid-cols-2 max-[640px]:grid-cols-1",
         className,
       )}
@@ -70,15 +72,21 @@ export function PersonGrid({
         return (
           <li
             key={p.userId}
-            onClick={onFocus ? () => onFocus(p) : undefined}
             /* focus всплывает (React слушает focusin): одно свойство на оба элемента строки */
             onFocus={onFocus ? () => onFocus(p) : undefined}
             className={cx(
               /* 58px — шаг строк макета: 13/18 имя + 13/18 мета + воздух */
               "flex min-h-[58px] items-center gap-[10px] rounded-[4px] pl-[4px] -ml-[4px]",
               "transition-colors duration-[var(--dur-fast)]",
-              onFocus ? "cursor-default hover:bg-surface-2" : "",
-              focusedId === p.userId ? "bg-surface-2" : "",
+              /*
+               * Подсветка — --primary-tint (#f7f5fa), ровно как на кадрах f06 и
+               * f13. Не --surface-2: та ступень разрешается в #f0ecff, то есть в
+               * заливку плашек карточки, и подсветка выходила втрое плотнее
+               * кадровой. Ложится по наведению на имя строки — единственное, на
+               * что в строке можно нажать (галочка красит себя сама).
+               */
+              "has-[a:hover]:bg-primary-tint has-[a:focus-visible]:bg-primary-tint",
+              focusedId === p.userId ? "bg-primary-tint" : "",
             )}
           >
             <div className="min-w-0 flex-1">
@@ -111,9 +119,14 @@ export function PersonGrid({
 }
 
 /**
- * Галочка макета: квадрат 20×20 со скруглением, внутри — залитый фиолетовый
- * квадрат, когда отмечено. Не системная галочка с птичкой: на макете птички
- * нет, а `accent-color` рисует именно её.
+ * Галочка макета: квадрат 22×22 со скруглением и рамкой в два пикселя
+ * #cccccc (--border), внутри — залитый фиолетовый квадрат 12, когда
+ * отмечено. Замер f05: внешний квадрат x 1379…1400, y 305…326, рамка
+ * (204,204,204) толщиной 2; внутренний 12 px. Прежние 20/1px/#999999 давали
+ * галочку мельче кадровой и темнее её рамкой.
+ *
+ * Не системная галочка с птичкой: на макете птички нет, а `accent-color`
+ * рисует именно её.
  *
  * Область нажатия — подпись 44×44 вокруг поля (как у глифов Button: мишень
  * для пальца и для промаха мышью), сама картинка остаётся 20. Размер задан
@@ -131,10 +144,10 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: ()
         checked={checked}
         onChange={onChange}
         aria-label={label}
-        style={{ width: 20, height: 20 }}
+        style={{ width: 22, height: 22 }}
         className={cx(
-          "m-0 grid min-h-0 appearance-none place-items-center rounded-[4px] border border-border-strong bg-[var(--bg)] p-0",
-          "before:size-[10px] before:rounded-[2px] before:content-['']",
+          "m-0 grid min-h-0 appearance-none place-items-center rounded-[4px] border-2 border-border bg-[var(--bg)] p-0",
+          "before:size-[12px] before:rounded-[2px] before:content-['']",
           "checked:before:bg-primary",
           "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] focus-visible:ring-offset-2",
         )}
@@ -144,10 +157,11 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: ()
 }
 
 /**
- * «18 вибрано» — нижний рядок кадра f05: число полужирным тёмным, слово
- * серым. Действия над выборкой печатаются рядом и только когда есть кого
- * выбрано: кнопка «Додати до групи» при нуле выбранных обещала бы действие,
- * которому не с кем случиться.
+ * «18 вибрано» — нижний рядок кадра f05, и на кадре в нём БОЛЬШЕ НИЧЕГО
+ * нет: ни кнопок действий, ни ссылки «Зняти вибір». Действия над выборкой
+ * экран кладёт в меню «⋯» рядом со счётчиком и передаёт их сюда потомком —
+ * меню появляется только когда есть кого выбрано: пункт «Додати до групи»
+ * при нуле выбранных обещал бы действие, которому не с кем случиться.
  *
  * `aria-live` — на счётчике, а не на всём рядке: диктор слышит «3 вибрано»
  * после каждой галочки, не уходя со списка, — иначе счётчик внизу экрана он
@@ -155,33 +169,20 @@ function Checkbox({ checked, onChange, label }: { checked: boolean; onChange: ()
  * 0→1 зачитывала бы вслед за счётчиком и появившиеся кнопки. `aria-atomic`:
  * меняется одно число, а прочесть надо всю фразу, не «три».
  */
-export function SelectionBar({
-  count,
-  onClear,
-  children,
-}: {
-  count: number;
-  onClear: () => void;
-  children?: ReactNode;
-}) {
+export function SelectionBar({ count, children }: { count: number; children?: ReactNode }) {
   const { ut } = useLang();
   return (
-    <div className="mt-[40px] flex flex-wrap items-center gap-[14px] text-[16px] text-muted">
+    /*
+     * 20/400 серым — замер f05: высота цифры «18» 14 px (y 850…863) при
+     * кап-высоте 0,72 кегля даёт 19-20, цвет обоих слов (102,102,102).
+     * Было 16, и число вдобавок набиралось почти чёрным (--text): на кадре
+     * «18» отличается от «вибрано» только толщиной штриха.
+     */
+    <div className="mt-[40px] flex flex-wrap items-center gap-[14px] text-[20px] leading-none text-muted">
       <span aria-live="polite" aria-atomic="true">
-        <strong className="font-bold text-text">{count}</strong> {ut("pg.selected")}
+        <strong className="font-bold">{count}</strong> {ut("pg.selected")}
       </span>
-      {count > 0 ? (
-        <>
-          {children}
-          <button
-            type="button"
-            onClick={onClear}
-            className="min-h-0 rounded-sm border-0 bg-transparent p-0 text-[13px] text-muted underline hover:text-primary"
-          >
-            {ut("pg.clearSelection")}
-          </button>
-        </>
-      ) : null}
+      {count > 0 ? children : null}
     </div>
   );
 }
