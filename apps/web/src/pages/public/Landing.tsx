@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
 import { useLang } from "../../lang";
+import { ButtonLink } from "../../ui/primitives";
 import { PublicFrame } from "./PublicFrame";
 
 /*
@@ -28,18 +28,19 @@ export default function Landing() {
         <p className="m-0 mt-[42px] max-w-[510px] text-[20px] leading-[29px] text-primary">
           {ut("pub.aboutText")}
         </p>
-        <Link
-          to="/login"
-          className={
-            "mt-[33px] inline-flex h-[45px] w-[215px] items-center justify-center rounded-[5px] " +
-            "bg-[var(--bg)] text-[22px] font-bold leading-none text-primary no-underline " +
-            "transition-[filter] duration-[var(--dur-fast)] hover:no-underline hover:brightness-95 " +
-            "active:brightness-90 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] " +
-            "focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-2)]"
-          }
-        >
+        {/*
+          Белая плашка 215 × 45 с «Увійти» 22/700 — та же кнопка формы, что и
+          в консоли (sizes.md + variants.paper), только ссылкой: она ведёт на
+          экран входа, а не совершает действие.
+
+          Классами вручную это было набрано до сверки: высота 45, кегль 22,
+          радиус 5 и белая заливка лежали и здесь, и в primitives.tsx — на
+          кадре f00 и на кадре f01 плашка одна и та же, а в коде их было две.
+          Ширина остаётся здесь: у кнопки её нет как свойства (см. `sizes`).
+        */}
+        <ButtonLink to="/login" size="md" variant="paper" className="mt-[33px] w-[215px]">
           {ut("lg.signIn")}
-        </Link>
+        </ButtonLink>
       </section>
     </PublicFrame>
   );
