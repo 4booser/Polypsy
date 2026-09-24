@@ -20,14 +20,22 @@ import { L, PUBLIC_DEFAULTS, allItems, bands, describe, item, sumKey, type Ancho
  * ночи, — ровно этот случай.
  */
 
-const ANCHORS: Anchor[] = [
+/**
+ * Шкала ответов семейства PHQ. Экспортируется, потому что PHQ-8 и PHQ-4 —
+ * это не самостоятельные опросники, а вырезки из PHQ-9 и GAD-7, и издатель
+ * определяет их именно так. Своя копия шкалы у каждого означала бы, что
+ * однажды они разойдутся в одном слове, и человек, прошедший PHQ-8 и PHQ-9,
+ * получит два несравнимых замера при одинаковых по смыслу ответах.
+ */
+export const PHQ_ANCHORS: Anchor[] = [
   [L("Жодного разу", "Ни разу"), 0],
   [L("Кілька днів", "Несколько дней"), 1],
   [L("Більше половини днів", "Больше половины дней"), 2],
   [L("Майже щодня", "Почти каждый день"), 3],
 ];
 
-const ITEMS: [string, string][] = [
+/** Пункты 1-8 PHQ-9. Ровно они и составляют PHQ-8 — «PHQ-9 без девятого пункта» */
+export const PHQ_ITEMS_1_8: [string, string][] = [
   [
     "Мало цікавості або задоволення від справ",
     "Мало интереса или удовольствия от дел",
@@ -119,7 +127,7 @@ export const phq9: CreateSurveyDraft = {
   alertEscalateMinutes: 60,
   sections: [],
 
-  questions: [...ITEMS.map(([uk, ru]) => item(L(uk, ru), "PHQ", ANCHORS)), SUICIDAL_ITEM],
+  questions: [...PHQ_ITEMS_1_8.map(([uk, ru]) => item(L(uk, ru), "PHQ", PHQ_ANCHORS)), SUICIDAL_ITEM],
 
   scales: [
     {
@@ -127,7 +135,7 @@ export const phq9: CreateSurveyDraft = {
       title: L("Вираженість депресії", "Выраженность депрессии"),
       kind: "clinical",
       normalization: "raw",
-      key: sumKey(allItems(ITEMS.length + 1)),
+      key: sumKey(allItems(PHQ_ITEMS_1_8.length + 1)),
       bands: bands([
         {
           min: 0,
