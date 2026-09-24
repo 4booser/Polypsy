@@ -684,6 +684,16 @@ export default function App() {
           <Route path="/surveys/:id" element={<SurveyAnalyticsPage />} />
           <Route path="/surveys/:id/administer" element={<Administer />} />
           <Route path="/responses/:id/conclusion" element={<ConclusionPage />} />
+          {/*
+            Тот же экран заключения, но с инструментами черновика в меню
+            шестерёнки: «Зібрати з результатів», библиотека формулировок,
+            история версий, «Зберегти чернетку». На кадре f36 в раскрытом
+            меню ровно два пункта — «Зберегти як PDF» и «Надіслати поштою»,
+            — и четырём инструментам редактора там места нет. Отдельный
+            адрес, а не вложенный пункт: пункт «Чернетка ▸» был бы третьим
+            на кадре, которого кадр не рисует.
+          */}
+          <Route path="/responses/:id/conclusion/draft" element={<ConclusionPage />} />
           <Route path="/surveys/:id/key" element={<KeyPrint />} />
           <Route path="/surveys/:id/norms" element={<Norms />} />
           <Route path="/surveys/:id/blank" element={<BlankForm />} />
@@ -759,6 +769,13 @@ export default function App() {
           */}
           <Route path="/patient-groups" element={<PatientGroups />} />
           <Route path="/patient-groups/:id" element={<PatientGroupCard />} />
+          {/*
+            Карточка группы с открытым окном правки названия и описания: на
+            кадре f14 в строке заголовка справа чисто, глифу-карандашу там
+            места нет, а PATCH на сервере есть. Тот же экран, отдельный
+            адрес — окно открывается сразу.
+          */}
+          <Route path="/patient-groups/:id/edit" element={<PatientGroupCard />} />
           <Route path="/groups" element={<Groups />} />
           {/*
             Учётки и текст согласия — два отдельных маршрута, а не два экрана
