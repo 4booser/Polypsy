@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { createSurveySchema, db } from "./fixtures";
-import { surveys } from "../src/db/schema";
+import { surveyVersions, surveys } from "../src/db/schema";
 import { CATALOG } from "../src/instruments/catalog";
 import { installCatalog } from "../src/lib/catalogInstall";
 
@@ -125,6 +125,34 @@ describe("установка", () => {
     const keys = CATALOG.map((e) => e.key);
     const rows = await db.select().from(surveys).where(inArray(surveys.catalogKey, keys));
     expect(rows.length, "методик каталога в базе больше, чем ключей").toBe(keys.length);
+  });
+
+  test("правка каталога доходит до стоящей методики новой версией, ручная правка — нет", async () => {
+    /*
+     * Раньше установщик узнавал методику по ключу и больше не трогал: снятые
+     * у PSS-10 выдуманные полосы остались бы на проде и открывали случаи.
+     * Мутация: убрать ветку обновления в installOne — первое ожидание падает.
+     */
+    await installCatalog();
+    const [pss] = await db.select().from(surveys).where(eq(surveys.catalogKey, "pss10"));
+    // «прежняя редакция»: заметка версии без отпечатка, как у установок до обновления
+    await db.update(surveyVersions).set({ note: "Каталог" }).where(eq(surveyVersions.surveyId, pss!.id));
+    const updated = await installCatalog();
+    expect(updated.updated, "прежняя редакция не обновлена").toContain("pss10");
+    const again = await installCatalog();
+    expect(again.updated, "одна и та же редакция выкатывается повторно").toEqual([]);
+
+    // человек выпустил свою версию в конструкторе — каталог её не перетирает
+    const [head] = await db
+      .select()
+      .from(surveyVersions)
+      .where(eq(surveyVersions.surveyId, pss!.id))
+      .orderBy(desc(surveyVersions.version))
+      .limit(1);
+    await db.update(surveyVersions).set({ note: "Правка відділення" }).where(eq(surveyVersions.id, head!.id));
+    const kept = await installCatalog();
+    expect(kept.keptLocal).toContain("pss10");
+    expect(kept.updated).not.toContain("pss10");
   });
 
   test("общедоступные методики опубликованы и доступны без назначения", async () => {

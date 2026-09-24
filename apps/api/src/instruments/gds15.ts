@@ -155,7 +155,13 @@ export const gds15: CreateSurveyDraft = {
           min: 11,
           max: 15,
           label: L("Депресія майже завжди", "Депрессия почти всегда"),
-          severity: "severe",
+          /*
+           * moderate, а не severe: у Yesavage «> 10 almost always depression»
+           * говорит о вероятности, а не о тяжести, и тяжёлый случай в очереди
+           * разбора был бы нашей выдумкой. Случай открывается и так —
+           * moderate его уже открывает.
+           */
+          severity: "moderate",
           grade: 3,
           recommendation: L(
             "Потрібен огляд фахівця найближчим часом",

@@ -21,6 +21,7 @@ const ACTION_KEY = {
   "user.create": "act.user_create",
   "user.list": "act.user_list",
   "survey.create": "act.survey_create",
+  "survey.catalog_update": "act.survey_catalog_update",
   "survey.update": "act.survey_update",
   "survey.publish": "act.survey_publish",
   "survey.delete": "act.survey_delete",

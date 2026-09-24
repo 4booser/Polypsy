@@ -85,6 +85,7 @@ export type AuditAction =
   | "user.list"
   | "profile.update"
   | "survey.create"
+  | "survey.catalog_update"
   /* установка общего каталога: заводит отделение по умолчанию */
   | "department.create"
   /* командная консоль: вызов команды пишется до выполнения */

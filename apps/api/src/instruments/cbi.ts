@@ -227,7 +227,13 @@ const cbiBands = (t: BandTexts) =>
       min: 50,
       max: 74.999,
       label: t.symptoms,
-      severity: "moderate",
+      /*
+       * mild, а не moderate: moderate открывает случай в очереди разбора
+       * риска (submission.ts), а при датской норме 32,7±15,7 полоса от 50
+       * набирается у заметной доли персонала. Очередь, где треть — рабочая
+       * усталость, перестают читать; случай открывает только верхняя полоса.
+       */
+      severity: "mild",
       grade: 3,
       recommendation: L("Обговорити з фахівцем, що можна змінити", "Обсудить со специалистом, что можно изменить"),
     },
@@ -235,7 +241,7 @@ const cbiBands = (t: BandTexts) =>
       min: 75,
       max: 100,
       label: t.seekHelp,
-      severity: "severe",
+      severity: "moderate",
       grade: 4,
       recommendation: L(
         "Потрібна допомога фахівця найближчим часом",
