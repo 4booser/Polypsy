@@ -45,8 +45,9 @@ import {
  *                                                  рамки Page (см. ниже)
  *   поле «Назва аналітичної моделі» 195…230     → Field/Input, подпись
  *                                                  плейсхолдером 17/400 серым
- *   «Структура» (чернила 273…290) + шестерня    → h2 + MenuButton, шестерня
- *   1125…1149 у правого края колонки               раскрывает плашку ВПРАВО
+ *   «Структура» (чернила 273…290) + шестерня    → h2 20/700 + MenuButton,
+ *   1125…1149 у правого края колонки               плашка от левого края
+ *                                                  шестерни вправо
  *   рамка карточки 450…1149, линия #666666      → карточка условий, поле 20
  *                                                  слева, 10 справа под
  *                                                  квадратик отметки
@@ -81,9 +82,11 @@ import {
  *   · окно «Про модель» шестым пунктом меню: за ним описание модели (его
  *     печатает перечень f10 второй колонкой, а вводить его больше негде) и
  *     выключатель модели. Единственная добавка к пяти пунктам кадра;
- *   · окно «Результат тесту» за строкой условия: шкала, что сравниваем,
- *     условие и порог. На кадре строка одна, а правилу нужны все четыре
- *     значения — без них условие не сохраняется;
+ *   · окно за строкой параметра: его вид, а для условия по шкале — ещё
+ *     шкала, что сравниваем, условие и порог. На кадре строка одна, а
+ *     правилу нужны все четыре значения; вид же обязан меняться и после
+ *     добавления — иначе строку пришлось бы удалять и заводить заново,
+ *     теряя вместе с ней заполненное;
  *   · окно «Додати Параметр» с выбором вида: кадр рисует только условие по
  *     шкале, а правило умеет ещё флаг риска и число прохождений, и открытую
  *     модель с таким условием иначе нельзя было бы ни прочитать, ни сохранить;
@@ -121,6 +124,8 @@ type LoadedSurvey = { title: string; archivedAt: string | null; scales: Scale[] 
 /* Силуэт поля кадра: 36 высотой, радиус 5, рамка #666666 — для строк, которые полем не являются */
 const FIELD_SHELL =
   "flex h-9 w-full items-center rounded-[5px] border border-field-border bg-[var(--bg)] px-[10px] text-left text-[17px]";
+/* Обводка фокуса для тех же строк: у <button> её нет там, где нет рамки браузера */
+const FIELD_FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]";
 
 function ModelEditor({ id }: { id: string | null }) {
   const { ut } = useLang();
@@ -265,13 +270,20 @@ function ModelEditor({ id }: { id: string | null }) {
           объявлено скрытым заголовком рамки ровно этими же словами, и второй
           заголовок диктор прочитал бы дважды, а порядок заголовков получил бы
           два первых уровня подряд.
+
+          Строка заголовка 36 высотой, текст в ней по центру — как в строке
+          заголовка перечня. Иначе не сходятся чернила: содержимое начинается
+          на 140, а капитель «А» на обоих кадрах стоит на 147 (f10: 147…163,
+          f19: 147…163 — при засечках «і» на 147…149 и основной массе с 151).
+          Голый <p> с leading-tight даёт коробку 140…170 и чернила примерно с
+          144 — те же 24/700 попадают на 147 только внутри строки 36.
         */}
-        <p aria-hidden className="m-0 text-[24px] font-bold leading-tight text-primary">
+        <p aria-hidden className="m-0 flex h-9 items-center text-[24px] font-bold leading-tight text-primary">
           {ut("top.analytics")}
         </p>
 
-        {/* 25 от коробки заголовка до поля — замер f19 (низ 170, верх поля 195) */}
-        <div className="mt-[25px]">
+        {/* 19 от строки заголовка до поля — замер f19 (низ строки 176, верх поля 195) */}
+        <div className="mt-[19px]">
           <Field label={ut("am.modelName")} inline>
             <Input
               ph="plain"
@@ -286,13 +298,20 @@ function ModelEditor({ id }: { id: string | null }) {
         <section aria-labelledby="am-structure" className="mt-[40px]">
           {/* «Структура» слева, шестерёнка у правого края колонки — как на кадре */}
           <div className="flex items-center justify-between">
-            <h2 id="am-structure" className="m-0 text-[18px] font-bold leading-tight text-primary">
+            {/*
+              20/700 — замер f19: капитель «С» занимает 273…286 (14 при
+              отношении 0,708 → 19,8; ниже 287…290 — выносные «р» и «у»), а
+              чернила 451…543 дают 93 на девять знаков против 18-го кегля,
+              которым это было бы ≈84.
+            */}
+            <h2 id="am-structure" className="m-0 text-[20px] font-bold leading-tight text-primary">
               {ut("am.structure")}
             </h2>
             {/*
-              Плашка раскрывается вправо от шестерни (align="right-out") — на
-              кадре её левый край 1150 совпадает с правым краем шестерни 1149.
-              Порядок пунктов — с кадра, дословно.
+              Плашка (align="right-out") висит под шестерней и уходит вправо
+              от колонки формы: на кадре её левый край 1125 совпадает с ЛЕВЫМ
+              краем шестерни (чернила 1125…1149), а правый — 1283, то есть
+              ширина 159. Порядок пунктов — с кадра, дословно.
             */}
             <MenuButton label={ut("am.structureMenu")} glyph={<IconGear />} align="right-out">
               {(close) => (
@@ -393,7 +412,23 @@ function ModelEditor({ id }: { id: string | null }) {
                     смысл строки.
                   */
                   <div className="flex justify-end pr-[30px]">
-                    <span className="inline-flex h-9 items-center rounded-[5px] border border-field-border px-[14px] text-[17px] text-muted">
+                    {/*
+                      Ширина чипа 80 — замер f19: рамки 1030 и 1109 по
+                      горизонтали, 428 и 463 по вертикали, чернила 1042…1098
+                      (57). То есть поля по 11, а не 14: при 14 чип выходил
+                      бы ≈87 и уползал влево от правого края поля, который на
+                      кадре стоит.
+
+                      `min-w` с центровкой, а не жёсткие 80: перевод («Вместе
+                      с») длиннее украинского, и фиксированная ширина резала
+                      бы слово.
+                    */}
+                    <span
+                      className={cx(
+                        "inline-flex h-9 min-w-[80px] items-center justify-center rounded-[5px]",
+                        "border border-field-border px-[10px] text-[17px] text-muted",
+                      )}
+                    >
                       {ut("am.together")}
                     </span>
                   </div>
@@ -414,7 +449,10 @@ function ModelEditor({ id }: { id: string | null }) {
               — через выбор вида.
             */}
             <div className="flex justify-end pr-[30px]">
-              <Button onClick={() => patch({ params: [...draft.params, newParam()] })}>{ut("am.addRule")}</Button>
+              {/* size="card": 36 высотой и 17/700 — замер заливки f19, см. sizes в primitives.tsx */}
+              <Button size="card" onClick={() => patch({ params: [...draft.params, newParam()] })}>
+                {ut("am.addRule")}
+              </Button>
             </div>
           </div>
 
@@ -499,15 +537,25 @@ function ModelEditor({ id }: { id: string | null }) {
  *
  * Сам флажок — настоящий <input type="checkbox">, скрытый визуально: диктор
  * и клавиатура получают штатный флажок, глаз — квадрат макета. Область
- * нажатия дорисована до 44 псевдоэлементом, как у глифов (см. Button
+ * нажатия дорисована псевдоэлементом, как у глифов (см. Button
  * size="glyph"): отступами она раздвинула бы зазор 10 до поля.
+ *
+ * Но не квадратом 44: 44 по центру квадратика 20 вылезает на 12 в каждую
+ * сторону, а слева до поля всего 10 — последние 2px правого края поля (и
+ * кнопки выбора теста внутри него) доставались бы флажку. Поэтому по
+ * горизонтали накладка растянута на 36 (по 8 в сторону — на 2 меньше
+ * зазора, то есть чужого края не касается), по вертикали на 44: строки
+ * стоят шагом 51 при высоте 36, между ними 15, и 4 выноса сверху и снизу
+ * не дотягиваются даже до соседней строки. 36×44 — это по-прежнему выше
+ * порога 2.5.8 (24) и вдвое больше самого квадратика.
  */
 function Pick({ checked, label, onChange }: { checked: boolean; label: string; onChange: (v: boolean) => void }) {
   return (
     <label
       className={cx(
         "relative inline-flex size-[20px] shrink-0 cursor-pointer items-center justify-center",
-        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:-translate-x-1/2 after:-translate-y-1/2 after:content-['']",
+        "after:absolute after:left-1/2 after:top-1/2 after:h-[44px] after:w-[36px] after:content-['']",
+        "after:-translate-x-1/2 after:-translate-y-1/2",
       )}
     >
       <input
@@ -584,10 +632,19 @@ function surveyLabel(ut: (k: UiKey) => string, loaded: Record<string, LoadedSurv
  * Выбор теста — собственный раскрывающийся список, а не <select>.
  *
  * Кадр f25 задаёт его целиком, и штатным списком ОС ни одного из этих чисел
- * не задать: панель 470…1109 × 326…1001 — ровно по рамке поля и от его
+ * не задать: панель 470…1109 × 326…999 — ровно по рамке поля и от его
  * верхнего края вниз, рамка #666666, радиус 5, пункты 17/700 фиолетовым с
- * шагом 30, первый текст в 11 от верха панели, текст в 13 от левого края,
- * своя полоса прокрутки 7px с ползунком #999999 (--polsy-edge).
+ * шагом 30, текст в 13 от левого края, своя полоса прокрутки с ползунком
+ * #999999 (--polsy-edge, замер: 1100…1104).
+ *
+ * Поле 11 сверху — единственное число этой панели, которого кадр НЕ даёт, и
+ * менять его не на что. Список на f25 прокручен: ползунок стоит на 442…599
+ * при дорожке 326…999, то есть примерно на 22% пути, а не у края. Значит
+ * расстояние «верх панели → первые чернила» (11) — это остаток прокрутки, а
+ * не поле, и ровно так же не поле — любое другое число, которое из него
+ * выведут: 22 пункта шагом 30 (660) внутри 672 не закрепляют ни 7, ни 11,
+ * пока положение прокрутки свободно. Оставлено 11 как есть; закрыть этот
+ * замер сможет только кадр с нераскрученным списком.
  *
  * Что обещает клавиатуре и диктору: role="combobox" с aria-expanded и
  * aria-controls, role="listbox"/"option" внутри, обход стрелками, Home,
@@ -707,7 +764,7 @@ export function TestPicker({
             role="listbox"
             aria-label={ut("am.testName")}
             className={cx(
-              "absolute left-0 top-0 z-50 max-h-[676px] w-full overflow-y-auto rounded-[5px]",
+              "absolute left-0 top-0 z-50 max-h-[674px] w-full overflow-y-auto rounded-[5px]",
               "border border-field-border bg-[var(--bg)] py-[11px] shadow-pop",
               "[scrollbar-color:var(--polsy-edge)_transparent] [scrollbar-width:thin]",
             )}
@@ -760,37 +817,24 @@ function ParamRow({
     /*
      * Флаг риска и число прохождений кадр не рисует вовсе (там только
      * условие по шкале), но сервер их умеет, и открытая модель с таким
-     * условием обязана читаться и сохраняться. Рисуются одной строкой в том
-     * же силуэте, что и строки кадра: поле 36, рамка #666666, подпись
-     * внутри поля.
+     * условием обязана читаться и сохраняться. Рисуются тем же силуэтом,
+     * что и строка условия кадра: поле 36, рамка #666666, значение словами
+     * внутри, а сами поля — в окне за строкой. Так вид параметра меняется
+     * из любой строки, а не только из строки со шкалой.
      */
+    const said = paramText(ut, p, loaded);
     return (
       <div className="flex items-center gap-[10px]">
-        {p.kind === "risk" ? (
-          <Field label={ut("am.riskLevel")} inline className="min-w-0 flex-1">
-            <Select
-              plain
-              ph="plain"
-              value={p.severity}
-              onChange={(e) => onChange({ severity: e.target.value as DraftParam["severity"] })}
-            >
-              <option value="moderate">{ut("am.riskModerate")}</option>
-              <option value="severe">{ut("am.riskSevere")}</option>
-            </Select>
-          </Field>
-        ) : (
-          <Field label={ut("am.completedAtLeast")} inline className="min-w-0 flex-1">
-            <Input
-              ph="plain"
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={p.completedAtLeast}
-              onChange={(e) => onChange({ completedAtLeast: e.target.value })}
-            />
-          </Field>
-        )}
+        <div className="flex min-w-0 flex-1">
+          <button
+            type="button"
+            aria-label={`${ut(PARAM_PICK_KEY[paramPick(p)])}: ${said}`}
+            onClick={onOpenCondition}
+            className={cx(FIELD_SHELL, FIELD_FOCUS)}
+          >
+            <span className="truncate text-text">{said}</span>
+          </button>
+        </div>
         {pick}
       </div>
     );
@@ -823,10 +867,7 @@ function ParamRow({
           type="button"
           aria-label={condition ? `${ut("am.testResult")}: ${condition}` : ut("am.testResult")}
           onClick={onOpenCondition}
-          className={cx(
-            FIELD_SHELL,
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-          )}
+          className={cx(FIELD_SHELL, FIELD_FOCUS)}
         >
           <span className={cx("truncate", condition ? "text-text" : "text-muted")}>
             {condition || ut("am.testResult")}
@@ -835,6 +876,68 @@ function ParamRow({
       </div>
     </div>
   );
+}
+
+/**
+ * Вид параметра одним значением — тем, каким его выбирают и человек, и код.
+ *
+ * «Будь-який тест» — не отдельный вид условия: сервер держит его как то же
+ * условие по шкале с surveyId: null (см. ANY_TEST в model.ts). Но выбирают
+ * его наравне с остальными видами, поэтому здесь четыре значения, а не три:
+ * иначе «будь-який тест» пришлось бы задавать двумя полями подряд, а
+ * вернуться к нему — нечем (ровно это и вышло у первой редакции: методику в
+ * строке меняли через список тестов, а пункта «Будь-який тест» в списке нет,
+ * и обратной дороги не было).
+ */
+export type ParamPick = "scale" | "any" | "risk" | "history";
+
+export const PARAM_PICKS: readonly ParamPick[] = ["scale", "any", "risk", "history"];
+
+export const PARAM_PICK_KEY: Record<ParamPick, UiKey> = {
+  scale: "am.testResult",
+  any: "am.anyTest",
+  risk: "am.kindRisk",
+  history: "am.kindHistory",
+};
+
+export function paramPick(p: DraftParam): ParamPick {
+  if (p.kind === "risk") return "risk";
+  if (p.kind === "history") return "history";
+  return p.surveyId === ANY_TEST ? "any" : "scale";
+}
+
+/**
+ * Смена вида уже заведённого параметра.
+ *
+ * Возвращает ровно то, что меняется, и НЕ трогает остального: строка,
+ * переведённая на флаг риска и обратно, возвращается со своей шкалой,
+ * условием и порогом. Сбрасывается только то, что после смены заведомо
+ * бессмысленно: методика при переходе на «будь-який тест» и обратно (это
+ * разные вопросы — «какой тест» и «любой»), а вместе с ней код шкалы,
+ * потому что коды у методик свои.
+ */
+export function paramKindOver(p: DraftParam, next: ParamPick): Partial<DraftParam> {
+  const now = paramPick(p);
+  if (now === next) return {};
+  switch (next) {
+    case "risk":
+      return { kind: "risk" };
+    case "history":
+      return { kind: "history" };
+    case "any":
+      return { kind: "scale", surveyId: ANY_TEST, scaleCode: now === "scale" ? "" : p.scaleCode };
+    case "scale":
+      return now === "any" ? { kind: "scale", surveyId: "", scaleCode: "" } : { kind: "scale" };
+  }
+}
+
+/** Что строка параметра говорит о себе, когда её поля убраны в окно */
+function paramText(ut: (k: UiKey) => string, p: DraftParam, loaded: Record<string, LoadedSurvey>): string {
+  const name = ut(PARAM_PICK_KEY[paramPick(p)]);
+  if (p.kind === "risk") return `${name} · ${ut(p.severity === "severe" ? "am.riskSevere" : "am.riskModerate")}`;
+  if (p.kind === "history") return `${name} · ${p.completedAtLeast}`;
+  const condition = conditionText(ut, p, loaded);
+  return condition ? `${name} · ${condition}` : name;
 }
 
 /** Условие по шкале словами: «Тривога · Не менше 12 · Сирий бал»; пусто — шкала не выбрана */
@@ -852,12 +955,17 @@ function conditionText(
 }
 
 /**
- * Окно условия: шкала, что сравниваем, условие словами и порог.
+ * Окно параметра: его вид и поля этого вида.
  *
- * Своим окном, а не тремя рядами полей в карточке: кадры раздела (и f19, и
- * f25) таких рядов не показывают ни в одной карточке — после «Результат
- * тесту» идёт сразу чип или кнопка. Убрать их с глаз, не потеряв, можно
- * только сюда: без порога и условия правило не срабатывает ни разу.
+ * Своим окном, а не рядами полей в карточке: кадры раздела (и f19, и f25)
+ * таких рядов не показывают ни в одной карточке — после «Результат тесту»
+ * идёт сразу чип или кнопка. Убрать их с глаз, не потеряв, можно только
+ * сюда: без порога и условия правило не срабатывает ни разу, а без смены
+ * вида заведённый параметр остаётся тем, чем родился.
+ *
+ * Открывает его ЛЮБАЯ строка параметра: и та, что нарисована на кадре
+ * (условие по шкале), и две, которых кадр не рисует (флаг риска, число
+ * прохождений). Заголовок окна — имя вида, поэтому меняется вместе с ним.
  */
 function ConditionWindow({
   p,
@@ -874,48 +982,54 @@ function ConditionWindow({
   const list = scales ?? [];
   /* шкала из сохранённого правила, которой у методики уже нет, остаётся видимой — иначе её потеряют молча */
   const orphan = p.scaleCode && !list.some((s) => s.code === p.scaleCode) ? p.scaleCode : null;
+  const kind = paramPick(p);
 
   return (
-    <Modal title={ut("am.testResult")} onClose={onClose}>
+    <Modal title={ut(PARAM_PICK_KEY[kind])} onClose={onClose}>
       <div className="flex flex-col">
-        {p.surveyId === ANY_TEST ? (
-          /* «будь-який тест»: перечислять нечего — правило сверяет код в той методике, которую сдали */
-          <Field label={ut("am.scaleCode")}>
-            <Input value={p.scaleCode} maxLength={40} onChange={(e) => onChange({ scaleCode: e.target.value })} />
-          </Field>
-        ) : (
-          <Field label={ut("am.scale")}>
-            <Select value={p.scaleCode} disabled={!p.surveyId} onChange={(e) => onChange({ scaleCode: e.target.value })}>
-              <option value="" disabled>
-                {ut("am.scale")}
-              </option>
-              {orphan ? <option value={orphan}>{orphan}</option> : null}
-              {list.map((s) => (
-                <option key={s.code} value={s.code}>
-                  {s.code} — {s.title}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        )}
-        <Field label={ut("am.metric")}>
-          <Select value={p.metric} onChange={(e) => onChange({ metric: e.target.value as DraftParam["metric"] })}>
-            <option value="raw">{ut("am.metricRaw")}</option>
-            <option value="normed">{ut("am.metricNormed")}</option>
-          </Select>
-        </Field>
-        <Field label={ut("am.op")}>
-          <Select value={p.op} onChange={(e) => onChange({ op: e.target.value as DraftParam["op"] })}>
-            {OPS.map((op) => (
-              <option key={op} value={op}>
-                {ut(OP_KEY[op])}
+        {/*
+          Вид параметра — здесь, а не на форме: кадр f19 рисует в карточке
+          одно поле «Результат тесту», второго поля рядом с ним нет. Но
+          заведённый параметр обязан менять вид, а не только рождаться с ним:
+          окно «Додати Параметр» задаёт вид один раз, и без этого селекта
+          строку пришлось бы удалять и заводить заново, теряя вместе с ней
+          шкалу, условие и порог. Само окно открывает ЛЮБАЯ строка
+          параметра — и та, что на кадре, и те два вида, которых кадр не
+          рисует.
+        */}
+        <Field label={ut("am.paramKind")}>
+          <Select value={kind} onChange={(e) => onChange(paramKindOver(p, e.target.value as ParamPick))}>
+            {PARAM_PICKS.map((k) => (
+              <option key={k} value={k}>
+                {ut(PARAM_PICK_KEY[k])}
               </option>
             ))}
           </Select>
         </Field>
-        <Field label={ut("am.threshold")}>
-          <Input type="number" step="any" value={p.value} onChange={(e) => onChange({ value: e.target.value })} />
-        </Field>
+        {kind === "risk" ? (
+          <Field label={ut("am.riskLevel")}>
+            <Select
+              value={p.severity}
+              onChange={(e) => onChange({ severity: e.target.value as DraftParam["severity"] })}
+            >
+              <option value="moderate">{ut("am.riskModerate")}</option>
+              <option value="severe">{ut("am.riskSevere")}</option>
+            </Select>
+          </Field>
+        ) : kind === "history" ? (
+          <Field label={ut("am.completedAtLeast")}>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              value={p.completedAtLeast}
+              onChange={(e) => onChange({ completedAtLeast: e.target.value })}
+            />
+          </Field>
+        ) : (
+          <ScaleCondFields p={p} list={list} orphan={orphan} onChange={onChange} />
+        )}
         <div className="mt-[15px] flex justify-end">
           <Button onClick={onClose}>{ut("common.close")}</Button>
         </div>
@@ -924,13 +1038,71 @@ function ConditionWindow({
   );
 }
 
+/** Четыре поля условия по шкале: сама шкала (или её код), что сравниваем, условие и порог */
+function ScaleCondFields({
+  p,
+  list,
+  orphan,
+  onChange,
+}: {
+  p: DraftParam;
+  list: Scale[];
+  orphan: string | null;
+  onChange: (next: Partial<DraftParam>) => void;
+}) {
+  const { ut } = useLang();
+  return (
+    <>
+      {p.surveyId === ANY_TEST ? (
+        /* «будь-який тест»: перечислять нечего — правило сверяет код в той методике, которую сдали */
+        <Field label={ut("am.scaleCode")}>
+          <Input value={p.scaleCode} maxLength={40} onChange={(e) => onChange({ scaleCode: e.target.value })} />
+        </Field>
+      ) : (
+        <Field label={ut("am.scale")}>
+          <Select value={p.scaleCode} disabled={!p.surveyId} onChange={(e) => onChange({ scaleCode: e.target.value })}>
+            <option value="" disabled>
+              {ut("am.scale")}
+            </option>
+            {orphan ? <option value={orphan}>{orphan}</option> : null}
+            {list.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.code} — {s.title}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+      <Field label={ut("am.metric")}>
+        <Select value={p.metric} onChange={(e) => onChange({ metric: e.target.value as DraftParam["metric"] })}>
+          <option value="raw">{ut("am.metricRaw")}</option>
+          <option value="normed">{ut("am.metricNormed")}</option>
+        </Select>
+      </Field>
+      <Field label={ut("am.op")}>
+        <Select value={p.op} onChange={(e) => onChange({ op: e.target.value as DraftParam["op"] })}>
+          {OPS.map((op) => (
+            <option key={op} value={op}>
+              {ut(OP_KEY[op])}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label={ut("am.threshold")}>
+        <Input type="number" step="any" value={p.value} onChange={(e) => onChange({ value: e.target.value })} />
+      </Field>
+    </>
+  );
+}
+
 /**
  * Окно «Додати Параметр»: вид условия выбирают при добавлении.
  *
  * На кадре видов нет вовсе — там один вид, условие по шкале, и второго
- * поля «Вид параметра» в ряду тоже нет. Поэтому вид у строки не меняется
- * после добавления: сменить его — значит удалить строку и добавить другую,
- * а видимого поля для этого кадр не даёт.
+ * поля «Вид параметра» в ряду тоже нет. Поэтому вид при добавлении выбирают
+ * здесь, а у заведённой строки его меняет окно за самой строкой (селект
+ * «Вид параметра» в ConditionWindow): удалять и заводить заново, теряя
+ * шкалу, условие и порог, человека заставлять нельзя.
  */
 function AddParam({
   onPick,
@@ -940,19 +1112,13 @@ function AddParam({
   onClose: () => void;
 }) {
   const { ut } = useLang();
-  const kinds: { key: UiKey; over: Partial<DraftParam> }[] = [
-    { key: "am.testResult", over: { kind: "scale" } },
-    /* «будь-який тест» — тот же вид условия, но без выбранной методики: сервер держит его как surveyId: null */
-    { key: "am.anyTest", over: { kind: "scale", surveyId: ANY_TEST } },
-    { key: "am.kindRisk", over: { kind: "risk" } },
-    { key: "am.kindHistory", over: { kind: "history" } },
-  ];
+  /* Тот же список видов, что и в селекте окна строки: два места, где виды расходятся, — два разных продукта */
   return (
     <Modal title={ut("am.addParam")} onClose={onClose}>
       <div className="flex flex-col gap-[10px]" role="group" aria-label={ut("am.paramKind")}>
-        {kinds.map((k) => (
-          <Button key={k.key} variant="ghost" onClick={() => onPick(k.over)}>
-            {ut(k.key)}
+        {PARAM_PICKS.map((k) => (
+          <Button key={k} variant="ghost" onClick={() => onPick(paramKindOver(newParam(), k))}>
+            {ut(PARAM_PICK_KEY[k])}
           </Button>
         ))}
       </div>
@@ -1016,7 +1182,7 @@ function ActionRow({
   return (
     <div className="flex items-center gap-[10px]">
       <Field label={ut("am.actionKind")} inline className="w-[190px] shrink-0">
-        <Select plain ph="plain" value={a.kind} onChange={(e) => onChange({ kind: e.target.value as DraftAction["kind"] })}>
+        <Select ph="plain" value={a.kind} onChange={(e) => onChange({ kind: e.target.value as DraftAction["kind"] })}>
           <option value="advise">{ut("am.actAdvise")}</option>
           <option value="notify_duty">{ut("am.actNotify")}</option>
           <option value="suggest_survey">{ut("am.actSuggest")}</option>
@@ -1034,7 +1200,7 @@ function ActionRow({
         </Field>
       ) : a.kind === "suggest_survey" ? (
         <Field label={ut("am.suggestTest")} inline className="min-w-0 flex-1">
-          <Select plain ph="plain" value={a.surveyId} onChange={(e) => onChange({ surveyId: e.target.value })}>
+          <Select ph="plain" value={a.surveyId} onChange={(e) => onChange({ surveyId: e.target.value })}>
             <option value="" disabled>
               {ut("am.suggestTest")}
             </option>
