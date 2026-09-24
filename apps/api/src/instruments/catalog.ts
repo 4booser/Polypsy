@@ -1,11 +1,16 @@
 import type { CreateSurveyDraft } from "@quizzy/shared";
 import { audit10 } from "./audit10";
 import { bigFive } from "./bigFive";
+import { briefCope } from "./briefCope";
 import { gad7 } from "./gad7";
+import { mspss } from "./mspss";
+import { osss3 } from "./osss3";
 import { pcl5 } from "./pcl5";
 import { phq9 } from "./phq9";
 import { pq16 } from "./pq16";
 import { pss10 } from "./pss10";
+import { rses } from "./rses";
+import { ucla3 } from "./ucla3";
 import { who5 } from "./who5";
 // группа «mood» — отдельным блоком, как и её записи в конце CATALOG
 import { cesdr } from "./cesdr";
@@ -175,5 +180,46 @@ export const CATALOG: CatalogEntry[] = [
     draft: sbqr,
     source:
       "SBQ-R, Osman та ін., 2001 — «© Osman et al (1999) Revised. Permission for use granted by A. Osman, MD» (на бланку), дозвіл отримано закладом; переклад пунктів робочий, офіційного україномовного тексту немає",
+  },
+
+  /*
+   * ── Группа «function»: функционирование, ресурсы, поддержка ──
+   *
+   * Источник каждой записи — docs/instruments/dossiers/function.json; ключ
+   * каталога равен ключу досье, чтобы от методики в базе до цитаты
+   * правообладателя был один поиск. Полосы есть только у двух (MSPSS —
+   * ориентир автора в средних баллах, OSSS-3 — Bøen et al. через
+   * Kocalevent et al.); RSES, UCLA-3 и Brief COPE отдают сырые баллы,
+   * потому что порогов у них нет в первоисточнике.
+   *
+   * Не заведены из той же группы досье: WHODAS 2.0 (текст пунктов не
+   * воспроизводится без лицензии ВОЗ — в досье его нет) и BRS (заявления
+   * правообладателя нет, текста пунктов в досье нет). Карточка без пунктов
+   * здесь хуже отсутствующей: её можно назначить, а пройти нельзя.
+   */
+  {
+    key: "mspss",
+    draft: mspss,
+    source: "MSPSS, Zimet, Dahlem, Zimet, Farley, 1988 (вільне використання з посиланням)",
+  },
+  {
+    key: "osss3",
+    draft: osss3,
+    source: "OSSS-3, Kocalevent та ін., BMC Psychology, 2018 (CC BY 4.0); смуги — Bøen та ін., 2012",
+  },
+  {
+    key: "rses",
+    draft: rses,
+    source: "Rosenberg Self-Esteem Scale, Rosenberg, 1965 (public domain, University of Maryland)",
+  },
+  {
+    key: "ucla3",
+    draft: ucla3,
+    source: "Three-Item Loneliness Scale, Hughes, Waite, Hawkley, Cacioppo, 2004 (UCLA)",
+  },
+  {
+    key: "brief_cope",
+    draft: briefCope,
+    source: "Brief COPE, Carver, 1997 (дозвіл автора, University of Miami)",
   },
 ];
