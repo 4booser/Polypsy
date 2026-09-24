@@ -22,7 +22,13 @@ const ANCHORS: Anchor[] = [
   [L("Майже щодня", "Почти каждый день"), 3],
 ];
 
-const ITEMS: [string, string][] = [
+/**
+ * Пункты GAD-7. Первые два — это GAD-2, из которого вместе с PHQ-2 собран
+ * PHQ-4; экспорт нужен, чтобы вырезка не превратилась в копию, живущую
+ * своей жизнью (издатель определяет PHQ-4 как «PHQ-2 and GAD-2», а не как
+ * отдельный опросник с собственным текстом).
+ */
+export const GAD_ITEMS: [string, string][] = [
   ["Відчуття нервування, тривоги або напруження", "Ощущение нервозности, тревоги или напряжения"],
   [
     "Нездатність зупинити або контролювати тривогу",
@@ -57,7 +63,7 @@ export const gad7: CreateSurveyDraft = {
   showResultsToPatient: true,
   sections: [],
 
-  questions: ITEMS.map(([uk, ru]) => item(L(uk, ru), "GAD", ANCHORS)),
+  questions: GAD_ITEMS.map(([uk, ru]) => item(L(uk, ru), "GAD", ANCHORS)),
 
   scales: [
     {
@@ -65,7 +71,7 @@ export const gad7: CreateSurveyDraft = {
       title: L("Рівень тривоги", "Уровень тревоги"),
       kind: "clinical",
       normalization: "raw",
-      key: sumKey(allItems(ITEMS.length)),
+      key: sumKey(allItems(GAD_ITEMS.length)),
       bands: bands([
         {
           min: 0,
