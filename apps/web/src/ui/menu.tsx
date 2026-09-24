@@ -270,14 +270,32 @@ export function ActionMenu({
   glyph,
   entries,
   className,
+  triggerSize,
+  triggerClassName,
 }: {
   label: string;
   glyph: ReactNode;
   entries: MenuEntry[];
   className?: string;
+  /*
+   * Раскрывающий элемент бывает не глифом: счётчик выборки «18 вибрано»
+   * раскрывает своё меню сам, потому что кадр f05 не рисует рядом с ним
+   * ничего. Оба свойства просто передаются ниже — MenuButton умел это и
+   * раньше, а ActionMenu их глотал, и место с надписью вместо глифа
+   * приходилось бы писать MenuButton-ом с копией разметки пунктов.
+   */
+  triggerSize?: ButtonProps["size"];
+  triggerClassName?: string;
 }) {
   return (
-    <MenuButton label={label} glyph={glyph} align="right" className={className}>
+    <MenuButton
+      label={label}
+      glyph={glyph}
+      align="right"
+      className={className}
+      triggerSize={triggerSize}
+      triggerClassName={triggerClassName}
+    >
       {(close) =>
         entries.map((it) => {
           const disabled = !!it.disabled;
