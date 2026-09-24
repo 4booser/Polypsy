@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { LANG_NAMES, detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
+import { LANG_NAMES, LANG_SELF_LABEL, detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
 
 /**
  * Язык консоли.
@@ -97,7 +97,8 @@ export function LangSwitch() {
     */
     <div
       role="group"
-      aria-label="Мова / Язык"
+      /* двуязычное имя одной записью на оба переключателя — см. types.ts */
+      aria-label={LANG_SELF_LABEL}
       className="flex items-center overflow-hidden rounded-md border border-hairline"
     >
       {(["uk", "ru"] as const).map((code) => (
