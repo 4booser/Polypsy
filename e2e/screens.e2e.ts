@@ -1,5 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-import { goCaseCard, login, patientLinks, patientSearch } from "./helpers";
+import { expect, test } from "@playwright/test";
+import { goCaseCard, login, openSeededPatient, SEED_SURVEY } from "./helpers";
 
 /**
  * Каждый экран консоли открывается и не падает.
@@ -112,9 +112,17 @@ test.describe("экраны с параметром", () => {
   test("аналитика методики, ключи, бланк, нормы, доступ, заполнение", async ({ page }) => {
     await login(page, "psy");
     await page.goto("/surveys");
-    const first = page.locator("table tbody tr td a").first();
-    await first.waitFor();
-    const href = await first.getAttribute("href");
+    /*
+     * Методика названа поимённо, а не «первая строка каталога».
+     *
+     * Каталог упорядочен по времени создания, и первой встаёт методика,
+     * которую только что завёл сценарий конструктора: у неё нет ни
+     * прохождений, ни норм, ни ключей — то есть половина проверяемых экранов
+     * показала бы пустое состояние, ничего не проверив.
+     */
+    const row = page.locator("table tbody tr td a").filter({ hasText: SEED_SURVEY }).first();
+    await row.waitFor();
+    const href = await row.getAttribute("href");
     const id = href!.split("/").pop()!;
 
     for (const path of [
@@ -127,28 +135,6 @@ test.describe("экраны с параметром", () => {
       await open(page, { name: path, path });
     }
   });
-
-/**
- * Пациент из посева, а не первый в списке.
- *
- * Список пациентов отсортирован по свежести последнего замера, и наверх
- * поднимается тот, кого только что завёл соседний сценарий: «Тестовый
- * Пациент» без единого события в хронологии и без карты, доступной этому
- * специалисту. Проверка карты превращалась в лотерею — в одиночку зелёная,
- * в общем прогоне красная через раз, и падала она не там, где сломано.
- *
- * Петров из посева существует всегда, у него серия из пяти повторных
- * замеров, и завести или удалить его по ходу дела некому.
- */
-const SEEDED_PATIENT = "Петров";
-
-async function openSeededPatient(page: Page) {
-  await page.goto("/patients");
-  await patientSearch(page).fill(SEEDED_PATIENT);
-  const row = patientLinks(page).first();
-  await expect(row).toContainText(SEEDED_PATIENT);
-  return row;
-}
 
   test("карта пациента и сводка консилиума", async ({ page }) => {
     await login(page, "psy");
