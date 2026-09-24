@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goMenu, login, openMenu } from "./helpers";
+import { createVisiblePatient, goMenu, login, openMenu } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -81,24 +81,32 @@ test("взятый случай помечен и отпускается обр�
 });
 
 test("разобранный случай уходит из очереди и находится по фильтру", async ({ page }) => {
-  const who = (await rows(page).first().locator(".queue-name").textContent())!.trim();
-  const title = (await rows(page).first().locator(".queue-meta").textContent())!.trim();
   /*
-   * Случай опознаётся парой «человек + методика»: у одного человека их бывает
-   * несколько, а считать строки бесполезно — очередь длиннее страницы, и на
-   * место разобранного подтягивается следующий.
+   * Разбирается СВОЙ случай, а не первый в очереди.
+   *
+   * Разбор — действие необратимое: случай уходит из очереди навсегда. Забирая
+   * первый попавшийся, проверка тратила посев, на который рассчитывают
+   * соседи (сводка и очередь в a11y.e2e.ts, горячие клавиши), — и чей именно
+   * случай достанется ей, решал порядок файлов.
+   *
+   * Свой заводится тем же путём, каким случай появляется в бою: человек
+   * сдаёт методику приёмного отделения, отметив критический пункт.
    */
-  const same = () => rows(page).filter({ hasText: who }).filter({ hasText: title.split("·").pop()!.trim() });
-  const before = await same().count();
+  const patient = await createVisiblePatient(page, "triage-done", { risky: true });
+  await page.reload();
 
-  await rows(page).first().click();
+  const mine = rows(page).filter({ hasText: patient.lastName });
+  await expect(mine, `случай «${patient.lastName}» не появился в очереди`).toHaveCount(1);
+
+  await mine.click();
+  await expect(detail(page)).toContainText(patient.lastName);
   await detail(page).getByPlaceholder("Что предпринято").fill("Смоук разбора");
   await detail(page).getByRole("button", { name: "Риск подтверждён", exact: true }).click();
 
-  await expect.poll(async () => same().count()).toBe(before - 1);
+  await expect.poll(async () => mine.count()).toBe(0);
 
   await page.getByRole("button", { name: "Все", exact: true }).first().click();
-  await expect(page.locator(".queue-row.done").first()).toBeVisible();
+  await expect(rows(page).filter({ hasText: patient.lastName })).toHaveClass(/done/);
 });
 
 test("новая тревога догоняет открытый экран без перезагрузки", async ({ page }) => {
