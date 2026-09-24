@@ -52,14 +52,40 @@ describe("содержимое каталога", () => {
   test("каждый пункт входит хотя бы в одну шкалу", () => {
     /*
      * Пункт, не попавший ни в один ключ, — вопрос, который человек
-     * заполняет впустую. У опросников каталога таких быть не должно: все
-     * восемь суммируют все свои пункты.
+     * заполняет впустую. У опросников каталога таких быть не должно, кроме
+     * пунктов, которые сама методика запрещает считать (фильтры и отдельный
+     * пункт риска ASSIST). Они перечислены в записи каталога поимённо, с
+     * причиной — `notScored`, — и только они здесь и пропускаются.
      */
     for (const entry of CATALOG) {
       const used = new Set((entry.draft.scales ?? []).flatMap((s) => (s.key ?? []).map((k) => k.item)));
+      const excused = new Set(entry.notScored?.items ?? []);
       const total = entry.draft.questions?.length ?? 0;
       for (let i = 1; i <= total; i++) {
+        if (excused.has(i)) continue;
         expect(used.has(i), `«${entry.key}»: пункт ${i} не входит ни в одну шкалу`).toBe(true);
+      }
+    }
+  });
+
+  test("пункт, объявленный непосчитанным, действительно вне ключей", () => {
+    /*
+     * Обратная сторона исключения выше. Список `notScored` набирается рядом с
+     * методикой; если номер в нём разойдётся с ключом, одно из двух неверно:
+     * либо в ключе стоит пункт, который методика считать запрещает (ASSIST Q8 в
+     * балле вещества), либо исключение прикрывает не тот пункт. Оба случая
+     * молча портят балл, поэтому пересечение запрещено, а номер обязан
+     * существовать.
+     */
+    for (const entry of CATALOG) {
+      if (!entry.notScored) continue;
+      expect(entry.notScored.reason.trim(), `«${entry.key}»: исключение без причины`).not.toBe("");
+      const used = new Set((entry.draft.scales ?? []).flatMap((s) => (s.key ?? []).map((k) => k.item)));
+      const total = entry.draft.questions?.length ?? 0;
+      for (const n of entry.notScored.items) {
+        const where = `«${entry.key}»: непосчитанный пункт ${n} при ${total} пунктах`;
+        expect(n >= 1 && n <= total, where).toBe(true);
+        expect(used.has(n), `«${entry.key}»: пункт ${n} объявлен непосчитанным, но стоит в ключе`).toBe(false);
       }
     }
   });
