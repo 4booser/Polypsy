@@ -352,10 +352,18 @@ function Row({ name, to, children }: { name: string; to: string; children: React
         "has-[a:focus-visible]:bg-primary-tint",
       )}
     >
+      {/*
+        Колонка имени — 136 по кадру, и слово длиннее неё («Посттравматичний
+        стрес (PCL-5)») вылезало поверх соседней колонки: min-w-0 разрешает
+        сжаться блоку, но не переносит слово. Перенос по слогам — там, где у
+        браузера есть словарь языка, иначе в любом месте слова; наезд на
+        «Результат тесту» хуже любого переноса.
+      */}
       <Link
         to={to}
         className={cx(
           "block min-w-0 self-start text-[17px] font-bold leading-[20px] text-primary no-underline hover:no-underline",
+          "[hyphens:auto] [overflow-wrap:anywhere]",
           "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
         )}
       >
