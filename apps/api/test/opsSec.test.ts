@@ -499,14 +499,15 @@ describe("ротация ключа: перешифровка на основн�
       signedAt: new Date().toISOString(),
     } as never);
     await db.insert(specialistProfiles).values({ userId: doctor.id, departmentId });
-    for (const path of [legacyPath, headedPath]) {
+    for (const [i, path] of [legacyPath, headedPath].entries()) {
       const slotId = crypto.randomUUID();
+      // слоты одного врача не пересекаются (миграция 0105) — второй часом позже
       await db.insert(slots).values({
         id: slotId,
         departmentId,
         specialistId: doctor.id,
-        startsAt: new Date().toISOString(),
-        endsAt: new Date(Date.now() + 3000_000).toISOString(),
+        startsAt: new Date(Date.now() + i * 3600_000).toISOString(),
+        endsAt: new Date(Date.now() + i * 3600_000 + 3000_000).toISOString(),
         kind: "primary",
       });
       const appointmentId = crypto.randomUUID();
