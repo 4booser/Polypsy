@@ -1,4 +1,4 @@
-import { UI } from "@quizzy/shared";
+import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 import { store } from "./store";
 
@@ -87,7 +87,7 @@ export async function flush(
         store.write(key(item.id), {
           ...item,
           attempts: item.attempts + 1,
-          rejectedReason: error instanceof Error ? error.message : `${UI["net.failed"][currentLang]} ${status}`,
+          rejectedReason: error instanceof Error ? error.message : `${uiText("net.failed", currentLang)} ${status}`,
         });
       }
     }

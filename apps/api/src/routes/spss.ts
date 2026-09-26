@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageAt, applyQuasi, exportQuery, generalizeQuasi } from "@quizzy/shared";
-import type { AgeBand, Generalization } from "@quizzy/shared";
+import type { AgeBand, ContentLang, Generalization } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
 import { answers, responseScores, responses, surveyVersions, users } from "../db/schema";
@@ -174,11 +174,12 @@ function bandName(age: number | null): AgeBand | null {
 
 async function buildSchema(
   surveyId: string,
-  lang: string,
+  /* язык подписей — язык содержимого: схема выгрузки (exportQuery) других не пропускает */
+  lang: ContentLang,
   profile: ExportProfile = "full",
   kanon: Generalization | null = null,
 ) {
-  const survey = await getSurvey(surveyId, null, lang === "uk" ? "uk" : "ru");
+  const survey = await getSurvey(surveyId, null, lang);
   if (!survey) notFound("err.surveyNotFound");
 
   const asked = survey.questions.filter((q) => q.type !== "info");

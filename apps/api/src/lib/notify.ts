@@ -1,6 +1,6 @@
 import nodemailer, { type Transporter } from "nodemailer";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { t } from "@quizzy/shared";
+import { renderPush, t } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import {
@@ -178,11 +178,16 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
        * открывают не всегда, а тревога о суицидальном риске должна догнать
        * дежурного там, где он есть.
        */
+      /*
+       * Текст — на языке устройства дежурного (pushToUser), название
+       * методики — тоже: t() по тому же языку. Письмо выше остаётся
+       * русским — у почтового адреса языка нет, и выбирать его не по чему.
+       */
       await pushToUsers(await pushRecipientsFor(survey.id), {
         eventKey: `alert:${alert.id}`,
         kind: "alert",
-        title: "Тревога в вашей группе",
-        body: `Методика «${title}». Откройте разбор случаев.`,
+        title: (lang) => renderPush("push.alertTitle", lang),
+        body: (lang) => renderPush("push.alertBody", lang, { title: t(survey.title as never, lang) }),
         path: "/analytics/alerts",
       });
 

@@ -11,8 +11,16 @@ import type { Lang } from "./types";
  * Текст нейтральный: слова «психолог» и «психиатр» на экране блокировки нет.
  * Уведомление видят посторонние — сосед в маршрутке, сослуживец, — и по нему
  * не должно быть понятно, к кому человек идёт.
+ *
+ * Все три языка обязательны, в отличие от словаря оболочки: записей здесь
+ * единицы, и переведены они сразу. Язык выбирается по устройству, на которое
+ * уходит уведомление (push_tokens.lang, см. apps/api/src/lib/push.ts), — то
+ * есть на том, на котором человек читает приложение, а не на том, на котором
+ * последний раз проходил методику.
  */
-export const PUSH: Record<string, { uk: string; ru: string }> = {
+export type PushEntry = Record<Lang, string>;
+
+export const PUSH: Record<string, PushEntry> = {
   /*
    * «Завтра» здесь было бы неправдой.
    *
@@ -21,25 +29,51 @@ export const PUSH: Record<string, { uk: string; ru: string }> = {
    * части этих случаев, а в остальных отправляет человека не в тот день.
    * Дата не короче и не длиннее — зато верна всегда.
    */
-  "push.appointmentDayTitle": { uk: "Нагадування про прийом", ru: "Напоминание о приёме" },
+  "push.appointmentDayTitle": {
+    uk: "Нагадування про прийом",
+    ru: "Напоминание о приёме",
+    en: "Appointment reminder",
+  },
   "push.appointmentDayBody": {
     uk: "{date}, {time}{room}. Якщо не встигаєте — перенесіть заздалегідь",
     ru: "{date}, {time}{room}. Если не успеваете — перенесите заранее",
+    en: "{date}, {time}{room}. If you can’t make it, please reschedule in advance",
   },
-  "push.appointmentSoonTitle": { uk: "Прийом за годину", ru: "Приём через час" },
-  "push.appointmentSoonBody": { uk: "{time}{room}", ru: "{time}{room}" },
-  "push.room": { uk: ", каб. {room}", ru: ", каб. {room}" },
+  "push.appointmentSoonTitle": { uk: "Прийом за годину", ru: "Приём через час", en: "Appointment in one hour" },
+  "push.appointmentSoonBody": { uk: "{time}{room}", ru: "{time}{room}", en: "{time}{room}" },
+  "push.room": { uk: ", каб. {room}", ru: ", каб. {room}", en: ", room {room}" },
   /*
    * Рассылка: ни названия, ни текста. Название пишет специалист, и «Група
    * ризику: анкета настрою» на экране блокировки сообщает соседу ровно то,
    * чего сообщать нельзя. Уведомление лишь зовёт открыть приложение.
    */
-  "push.mailingTitle": { uk: "Нове повідомлення", ru: "Новое сообщение" },
+  "push.mailingTitle": { uk: "Нове повідомлення", ru: "Новое сообщение", en: "New message" },
   "push.mailingBody": {
     uk: "Відкрийте застосунок, щоб прочитати",
     ru: "Откройте приложение, чтобы прочитать",
+    en: "Open the app to read it",
   },
-} as const;
+  /*
+   * Назначение по расписанию (lib/scheduler.ts). Было набрано в коде
+   * по-русски и уходило русским всем, включая тех, у кого приложение на
+   * украинском. Ни методики, ни диагноза — по той же причине, что выше.
+   * Дата — календарный день ISO, одинаково читаемый на любом языке.
+   */
+  "push.assignmentTitle": { uk: "Призначено обстеження", ru: "Назначено обследование", en: "New assessment assigned" },
+  "push.assignmentBody": { uk: "Строк — до {date}", ru: "Срок — до {date}", en: "Due by {date}" },
+  /*
+   * Тревога — дежурному специалисту (lib/notify.ts), тоже прежде русской
+   * строкой в коде. Название методики здесь есть и было: уведомление идёт
+   * сотруднику, а не пациенту, и без названия по нему нельзя решить, бежать
+   * ли прямо сейчас.
+   */
+  "push.alertTitle": { uk: "Тривога у вашій групі", ru: "Тревога в вашей группе", en: "Risk alert in your group" },
+  "push.alertBody": {
+    uk: "Методика «{title}». Відкрийте розбір випадків.",
+    ru: "Методика «{title}». Откройте разбор случаев.",
+    en: "Assessment “{title}”. Open risk cases to review it.",
+  },
+};
 
 export type PushKey = keyof typeof PUSH;
 export type PushParams = Record<string, string | number>;

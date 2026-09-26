@@ -1,5 +1,5 @@
 import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
-import { renderPush, type Lang } from "@quizzy/shared";
+import { LOCALE_OF, renderPush, type Lang } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { appointments, departments, responses, slots, specialistProfiles } from "../db/schema";
@@ -25,12 +25,18 @@ const DAY_AHEAD_MS = 24 * 3600_000;
 const HOUR_AHEAD_MS = 3600_000;
 
 /**
- * На каком языке писать человеку.
+ * На каком языке писать человеку, если устройство своего языка не прислало.
  *
- * Отдельного поля языка у учётной записи нет, а рассылка идёт без запроса —
- * взять язык из заголовка неоткуда. Берём тот, на котором человек последний
- * раз проходил методику: это его собственный выбор, сделанный в этой же
- * системе. Не проходил ничего — украинский, государственный язык учреждения.
+ * Главный источник теперь — само устройство: язык приходит с регистрацией
+ * для уведомлений и хранится в push_tokens.lang (миграция 0087), и текст
+ * собирается под каждое устройство в pushToUser. Эта функция — запасной путь
+ * для устройств, зарегистрированных до миграции.
+ *
+ * Запасной путь прежний: язык последнего прохождения — собственный выбор
+ * человека, сделанный в этой же системе. Не проходил ничего — украинский,
+ * государственный язык учреждения. Английского он не даст никогда:
+ * прохождение записывает язык текста методики, а английского текста у
+ * методик нет. Поэтому он и запасной, а не главный.
  */
 export async function langsOfPatients(userIds: string[]): Promise<Map<string, Lang>> {
   const out = new Map<string, Lang>();
@@ -52,17 +58,17 @@ export async function langsOfPatients(userIds: string[]): Promise<Map<string, La
   return out;
 }
 
-function timeOf(iso: string, timezone: string): string {
-  return new Date(iso).toLocaleTimeString("uk-UA", {
+function timeOf(iso: string, timezone: string, lang: Lang): string {
+  return new Date(iso).toLocaleTimeString(LOCALE_OF[lang], {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: timezone,
   });
 }
 
-/** Дата приёма по часам отделения: «12.09» */
-function dateOf(iso: string, timezone: string): string {
-  return new Date(iso).toLocaleDateString("uk-UA", {
+/** Дата приёма по часам отделения: «12.09» (по-английски — «12/09», день первым, см. LOCALE_OF) */
+function dateOf(iso: string, timezone: string, lang: Lang): string {
+  return new Date(iso).toLocaleDateString(LOCALE_OF[lang], {
     day: "2-digit",
     month: "2-digit",
     timeZone: timezone,
@@ -125,22 +131,31 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
   let hour = 0;
   for (const r of rows) {
     const left = new Date(r.slot.startsAt).getTime() - now.getTime();
-    // не проходил ничего — украинский, государственный язык учреждения
-    const lang = langs.get(r.a.patientId) ?? "uk";
+    // для устройств без своего языка; не проходил ничего — украинский
+    const fallback = langs.get(r.a.patientId) ?? "uk";
     const tzName = tz.get(r.slot.departmentId) ?? "Europe/Kyiv";
-    const time = timeOf(r.slot.startsAt, tzName);
-    const date = dateOf(r.slot.startsAt, tzName);
-    const room = r.room ? renderPush("push.room", lang, { room: r.room }) : "";
+    /*
+     * Всё, что зависит от языка, — функциями: текст собирается под каждое
+     * устройство отдельно (pushToUser), а формат даты и слово «каб.» — часть
+     * этого текста.
+     */
+    const time = (lang: Lang) => timeOf(r.slot.startsAt, tzName, lang);
+    const date = (lang: Lang) => dateOf(r.slot.startsAt, tzName, lang);
+    const room = (lang: Lang) => (r.room ? renderPush("push.room", lang, { room: r.room }) : "");
 
     if (left <= HOUR_AHEAD_MS) {
       const sent = await systemContext(baseDb, () =>
-        pushToUser(r.a.patientId, {
-          eventKey: `appointment:${r.a.id}:hour`,
-          kind: "appointment",
-          title: renderPush("push.appointmentSoonTitle", lang),
-          body: renderPush("push.appointmentSoonBody", lang, { time, room }),
-          path: "/appointments",
-        }),
+        pushToUser(
+          r.a.patientId,
+          {
+            eventKey: `appointment:${r.a.id}:hour`,
+            kind: "appointment",
+            title: (lang) => renderPush("push.appointmentSoonTitle", lang),
+            body: (lang) => renderPush("push.appointmentSoonBody", lang, { time: time(lang), room: room(lang) }),
+            path: "/appointments",
+          },
+          fallback,
+        ),
       );
       if (sent) hour += 1;
       continue;
@@ -152,13 +167,18 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
      * первое было бы просто неправдой.
      */
     const sent = await systemContext(baseDb, () =>
-      pushToUser(r.a.patientId, {
-        eventKey: `appointment:${r.a.id}:day`,
-        kind: "appointment",
-        title: renderPush("push.appointmentDayTitle", lang),
-        body: renderPush("push.appointmentDayBody", lang, { date, time, room }),
-        path: "/appointments",
-      }),
+      pushToUser(
+        r.a.patientId,
+        {
+          eventKey: `appointment:${r.a.id}:day`,
+          kind: "appointment",
+          title: (lang) => renderPush("push.appointmentDayTitle", lang),
+          body: (lang) =>
+            renderPush("push.appointmentDayBody", lang, { date: date(lang), time: time(lang), room: room(lang) }),
+          path: "/appointments",
+        },
+        fallback,
+      ),
     );
     if (sent) day += 1;
   }
