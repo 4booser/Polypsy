@@ -48,6 +48,11 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      # Скрипты копий с сервера не берутся: выкатка привозит туда только
+      # docker-compose.yml, и scripts/ на сервере — копия со дня настройки
+      # (первый прогон проверки 2026-09-26 шёл старой версией). Проверка
+      # запускается свежей версией из хранилища.
+      - uses: actions/checkout@v4
       - name: Ключ доступа
         run: |
           install -m 700 -d ~/.ssh
@@ -86,6 +91,9 @@ jobs:
             # однажды разойдутся. Значения в журнал прогона не печатаются —
             # скрипты выводят только итог.
             backup-verify|backup-status)
+              ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "mkdir -p /tmp/quizzy-verify"
+              scp -i ~/.ssh/id_ed25519 scripts/verify-backup.sh scripts/restore.sh \
+                "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/quizzy-verify/"
               ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
                 "ACTION='$ACTION' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -105,7 +113,8 @@ jobs:
             ls -1t "${BACKUP_DIR:?каталог копий не найден в окружении службы}"/daily/ 2>/dev/null | head -5 || echo "  нет суточных копий"
             exit 0
           fi
-          ./scripts/verify-backup.sh
+          trap 'rm -rf /tmp/quizzy-verify' EXIT
+          bash /tmp/quizzy-verify/verify-backup.sh
           REMOTE
               exit 0 ;;
             *) echo "неизвестное действие: $ACTION"; exit 1 ;;
