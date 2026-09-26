@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { User } from "@quizzy/shared";
+import type { Permission, User } from "@quizzy/shared";
 import { type DirectorySource, loadDirectory, loadMember } from "../src/pages/people/data";
-import { barKind, barSection } from "../src/shell/Topbar";
+import { TOP, barItems, barKind, barSection, isCurrentTop } from "../src/shell/Topbar";
 import {
   type StaffRow,
   birthYear,
@@ -251,17 +251,18 @@ describe("справочник сотрудников", () => {
 });
 
 /**
- * Состав верхней полосы: четыре рабочих места, и выбирает их раздел экрана
- * вместе с тем, лечит ли вошедший.
+ * Рабочее место: четыре вида, и выбирает их раздел экрана вместе с тем,
+ * лечит ли вошедший. От него зависит карточка человека (что под ней, чем
+ * подписана); на состав полосы с 2026-09-26 оно не влияет — см. ниже.
  *
  * Проверяется здесь, потому что оба прежних правила были догадками, которые
  * на экране видны только тому, кто открыл нужный раздел нужной учётной
  * записью: «ступень 3 и выше — чистый администратор» уносила у главного
  * лікаря шесть клинических разделов, а «суперадмін — всегда
- * «Адміністратори»» подписывала его полосу так же и в разделе организаций,
- * где кадры f44/f45/f51/f52 рисуют «Лікарі».
+ * «Адміністратори»» подписывала его так же и в разделе организаций, где
+ * кадры f44/f45/f51/f52 рисуют «Лікарі».
  */
-describe("состав полосы", () => {
+describe("рабочее место", () => {
   const superadmin = { role: "superadmin" };
   const head = { role: "admin", ladderRank: 2 };
   const chief = { role: "admin", ladderRank: 3 };
@@ -298,6 +299,68 @@ describe("состав полосы", () => {
     expect(barSection("/staff/u1/groups")).toBe("people");
     expect(barSection("/admins/new")).toBe("people");
     expect(barSection("/patients/staff")).toBe("other");
+  });
+});
+
+/**
+ * Состав полосы — решение заказчика 2026-09-26: «на вкладке админов
+ * пропадают другие кнопки, доделай бар получше».
+ *
+ * Кадры f40–f50 рисуют в разделе людей полосу из одного пункта, и она такой
+ * и была: суперадмін, зайдя к администраторам, терял шесть разделов. Теперь
+ * полоса — свойство человека, а не раздела, и проверяется это по обоим
+ * адресам раздела людей сразу, а не по одному: пункт, пропавший только на
+ * /admins, прежде и был той самой поломкой.
+ */
+describe("состав полосы", () => {
+  const superadmin = { role: "superadmin" };
+  const chief = { role: "admin", ladderRank: 3 };
+  const keysOf = (kind: Parameters<typeof barItems>[0], can?: (p: Permission) => boolean): string[] =>
+    barItems(kind, can).map((it) => it.key);
+  const FULL = ["top.patients", "ppl.staff", "top.groups", "top.tests", "top.analytics", "top.statistics", "top.messages"];
+
+  test("суперадміну — одна полная полоса на всех адресах, и в разделе людей тоже", () => {
+    for (const path of ["/patients", "/staff", "/staff/u1", "/admins", "/admins/new", "/organisations"]) {
+      expect(keysOf(barKind(superadmin, true, path), () => true), path).toEqual(FULL);
+    }
+  });
+
+  test("«Лікарі» — текущий пункт и на /staff, и на /admins: раздел людей один", () => {
+    const staff = barItems("admin").find((it) => it.key === "ppl.staff")!;
+    for (const path of ["/staff", "/staff/u1", "/admins", "/admins/new"]) {
+      expect(isCurrentTop(staff, path), path).toBe(true);
+    }
+    expect(isCurrentTop(staff, "/patients/staff")).toBe(false);
+    expect(isCurrentTop(staff, "/adminsx")).toBe(false);
+    /* и отдельного пункта «Адміністратори» в полосе нет ни у кого */
+    for (const kind of ["specialist", "admin", "peopleStaff", "peopleAdmins"] as const) {
+      expect(keysOf(kind)).not.toContain("adm.admins");
+    }
+  });
+
+  test("заведующему, который лечит, — те же семь, что суперадміну, в любом разделе (f30–f35)", () => {
+    const can = (p: Permission) => p === "patients.read";
+    for (const path of ["/patients", "/staff", "/admins"]) {
+      expect(keysOf(barKind(chief, true, path), can), path).toEqual(FULL);
+    }
+  });
+
+  test("тот, кто не лечит, — не «один пункт по центру», а все доступные ему разделы, одинаково везде", () => {
+    /* право на статистику есть, на аналитику и рассылки — нет */
+    const can = (p: Permission) => p === "statistics.read" || p === "users.manage";
+    const inside = keysOf(barKind(chief, false, "/staff"), can);
+    const outside = keysOf(barKind(chief, false, "/patients"), can);
+    expect(inside).toEqual(["ppl.staff", "top.tests", "top.statistics"]);
+    /* полоса не прыгает при переходе в раздел людей и обратно */
+    expect(outside).toEqual(inside);
+    /* клинических пунктов у него нет: они вели бы в отказ сервера */
+    expect(inside).not.toContain("top.patients");
+    expect(inside).not.toContain("top.groups");
+  });
+
+  test("рядовому лікарю — шесть пунктов без «Лікарі» (f04), права полосу не режут", () => {
+    const specialist = { role: "admin", ladderRank: 1 };
+    expect(keysOf(barKind(specialist, true, "/patients"), () => false)).toEqual(TOP.map((it) => it.key));
   });
 });
 

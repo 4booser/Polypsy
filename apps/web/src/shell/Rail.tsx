@@ -60,6 +60,15 @@ interface Item {
   icon: ReactNode;
   end?: boolean;
   badge?: number;
+  /**
+   * Число у пункта требует внимания, а не сообщает объём работы — тогда и
+   * только тогда оно янтарное (бургер, Topbar.tsx). Сейчас это одни случаи
+   * риска: неразобранный случай — человек, которому, возможно, плохо прямо
+   * сейчас. Люди на приём, задачи очереди и открытые направления — счёт
+   * дела, а не тревога, и янтарём у всех четырёх число переставало что-либо
+   * отличать.
+   */
+  attention?: boolean;
 }
 
 interface Group {
@@ -115,7 +124,7 @@ export function railGroups(
          */
         { to: "/", key: "nav.dashboard", icon: <IconDashboard />, end: true, badge: counts.today },
         { to: "/worklist", key: "nav.worklist", icon: <IconClock />, badge: counts.worklist },
-        { to: "/alerts", key: "nav.cases", icon: <IconAlert />, badge: counts.alerts },
+        { to: "/alerts", key: "nav.cases", icon: <IconAlert />, badge: counts.alerts, attention: true },
       ],
     },
     {

@@ -1,11 +1,10 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { Link, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { api, tokenStore } from "./api";
 import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
-import { Topbar, barKind } from "./shell/Topbar";
-import { Button, Tag } from "./ui/primitives";
+import { Topbar, barKind, type BurgerAccount } from "./shell/Topbar";
 import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
 import type { WorkspacePrefs } from "@quizzy/shared";
@@ -506,111 +505,85 @@ export default function App() {
    *
    * Собирается здесь, а не в полосе: тут живут и пользователь, и отвязка
    * Google, и выход. Полосе про авторизацию знать незачем — она про
-   * навигацию.
+   * навигацию. Собирается ДАННЫМИ, а не разметкой: как выглядит подвал,
+   * решает бургер (BurgerAccount в Topbar.tsx), и его строки — те же, что у
+   * разделов выше; прежде здесь стояли три разных вида у трёх действий.
    */
-  const account = (
-    <div className="flex flex-col gap-2">
-      <div className="px-1">
-        <div className="truncate text-small font-medium text-text">{user.fullName}</div>
-        <div className="text-micro text-faint">
-          {user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin")}
-        </div>
-      </div>
-      {user.readOnly ? (
-        /*
-          Человек должен понимать, почему кнопки не срабатывают, до того как
-          решит, что консоль сломана.
-        */
-        <Tag tone="attention" className="self-start">{ut("nav.readOnly")}</Tag>
-      ) : null}
-
-      {/*
-        Связь с Google — второй ключ от учётной записи, поэтому состояние
-        видно всегда, а не прячется в настройках: человек должен знать, каких
-        дверей у его записи две.
-
-        Привязка уходит переходом на сервер, а не запросом из кода: Google
-        показывает свой экран выбора учётной записи, и провести через него
-        можно только браузер целиком.
-      */}
-      {googleReady ? (
-        <div className="flex flex-col gap-1">
-          <span className="text-micro text-faint">
-            {user.googleLinked ? ut("lg.googleLinked") : ""}
-          </span>
-          {user.googleLinked ? (
-            <Button
-              variant="quiet"
-              size="sm"
-              className="justify-start"
-              onClick={() => {
-                // отвязка снимает второй ключ от учётной записи —
-                // сервер спрашивает пароль, и спросить его надо здесь
-                const pass = window.prompt(ut("lg.googleUnlinkAsk"));
-                if (!pass) return;
-                /*
-                  Отказ показывается, а не глотается.
-                  Здесь стоял пустой catch: на неверный пароль не происходило
-                  ровно ничего — ни сообщения, ни изменения на экране. Та же
-                  кнопка в разделе «Учётная запись» ошибку показывает; две
-                  версии одной кнопки, одна из них немая.
-                */
-                void run(
-                  () => api.googleUnlink(pass).then(refreshUser),
-                  ut("acct.saved"),
-                );
-              }}
-            >
-              {ut("lg.googleUnlink")}
-            </Button>
-          ) : (
-            <Button
-              variant="quiet"
-              size="sm"
-              className="justify-start"
-              onClick={() =>
-                void api
-                  .googleLinkUrl()
-                  .then((r) => {
-                    window.location.href = r.url;
-                  })
-                  .catch(() => {})
-              }
-            >
-              {ut("lg.googleLink")}
-            </Button>
-          )}
-        </div>
-      ) : null}
-
-      {/*
-        Учётная запись — рядом с именем и выходом, а не разделом работы. Туда
-        ходят раз в месяц: сменить пароль, привязать Google, поменять тему.
-        Пункт в списке разделов стоил бы внимания при каждом открытии консоли.
-      */}
-      <Link
-        to="/account"
-        className="rounded-sm px-2 py-1.5 text-caption text-muted no-underline transition-colors hover:bg-surface-2 hover:text-text"
-      >
-        {ut("acct.title")}
-      </Link>
-
-      {/*
-        Выход подписан словом, а не значком.
-
-        В свёрнутой рельсе на его месте стоял нарисованный кружок с чертой —
-        единственное, что туда помещалось. Свёрнутого состояния больше нет:
-        меню либо открыто целиком, либо закрыто целиком, — и значок, который
-        надо угадывать, стал платой ни за что.
-      */}
-      <Button variant="quiet" size="sm" onClick={logout} className="justify-start">
-        {ut("nav.logout")}
-      </Button>
-      <span className="px-1 font-mono text-micro text-faint" title={`${ut("ui.buildFrom")} ${__BUILD_DATE__}`}>
-        {__BUILD_SHA__}
-      </span>
-    </div>
-  );
+  const account: BurgerAccount = {
+    name: user.fullName,
+    roleLabel: user.role === "superadmin" ? ut("nav.roleSuper") : ut("nav.roleAdmin"),
+    build: { sha: __BUILD_SHA__, date: __BUILD_DATE__ },
+    /*
+     * Человек должен понимать, почему кнопки не срабатывают, до того как
+     * решит, что консоль сломана.
+     */
+    warning: user.readOnly ? ut("nav.readOnly") : undefined,
+    /*
+     * Связь с Google — второй ключ от учётной записи, поэтому состояние
+     * видно всегда, а не прячется в настройках: человек должен знать, каких
+     * дверей у его записи две.
+     */
+    note: googleReady && user.googleLinked ? ut("lg.googleLinked") : undefined,
+    actions: [
+      /*
+       * Привязка уходит переходом на сервер, а не запросом из кода: Google
+       * показывает свой экран выбора учётной записи, и провести через него
+       * можно только браузер целиком.
+       */
+      ...(googleReady
+        ? [
+            user.googleLinked
+              ? {
+                  id: "google",
+                  label: ut("lg.googleUnlink"),
+                  onSelect: () => {
+                    // отвязка снимает второй ключ от учётной записи —
+                    // сервер спрашивает пароль, и спросить его надо здесь
+                    const pass = window.prompt(ut("lg.googleUnlinkAsk"));
+                    if (!pass) return;
+                    /*
+                      Отказ показывается, а не глотается.
+                      Здесь стоял пустой catch: на неверный пароль не происходило
+                      ровно ничего — ни сообщения, ни изменения на экране. Та же
+                      кнопка в разделе «Учётная запись» ошибку показывает; две
+                      версии одной кнопки, одна из них немая.
+                    */
+                    void run(
+                      () => api.googleUnlink(pass).then(refreshUser),
+                      ut("acct.saved"),
+                    );
+                  },
+                }
+              : {
+                  id: "google",
+                  label: ut("lg.googleLink"),
+                  onSelect: () =>
+                    void api
+                      .googleLinkUrl()
+                      .then((r) => {
+                        window.location.href = r.url;
+                      })
+                      .catch(() => {}),
+                },
+          ]
+        : []),
+      /*
+       * Учётная запись — рядом с именем и выходом, а не разделом работы. Туда
+       * ходят раз в месяц: сменить пароль, привязать Google, поменять тему.
+       * Пункт в списке разделов стоил бы внимания при каждом открытии консоли.
+       */
+      { id: "account", label: ut("acct.title"), to: "/account" },
+      /*
+       * Выход подписан словом, а не значком.
+       *
+       * В свёрнутой рельсе на его месте стоял нарисованный кружок с чертой —
+       * единственное, что туда помещалось. Свёрнутого состояния больше нет:
+       * меню либо открыто целиком, либо закрыто целиком, — и значок, который
+       * надо угадывать, стал платой ни за что.
+       */
+      { id: "logout", label: ut("nav.logout"), onSelect: logout, ruled: true },
+    ],
+  };
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -619,9 +592,10 @@ export default function App() {
         isSuper={isSuper}
         canAssign={canAssign}
         /*
-         * Состав полосы — по рабочему месту вошедшего И по разделу экрана:
-         * кадры f44/f45/f51/f52 рисуют у суперадміна «Лікарі» там, где
-         * f47–f50 рисуют «Адміністратори» (см. barKind в Topbar.tsx).
+         * Рабочее место вошедшего — по должности И по разделу экрана (см.
+         * barKind в Topbar.tsx). Состав полосы от раздела с 2026-09-26 не
+         * зависит (решение заказчика, см. barItems), а права нужны ей, чтобы
+         * тому, кто не лечит, не показывать разделов, куда ему нет входа.
          *
          * «Лечит ли» — право видеть пациентов. Специалист лечит по классу
          * записи: справочника прав у него нет вовсе (auth.tsx), и can ему
@@ -629,11 +603,12 @@ export default function App() {
          * отобрать у него полосу целиком.
          */
         bar={barKind(user, user.role !== "admin" || can("patients.read"), pathname)}
+        can={can}
         hidden={user.workspace?.railHidden ?? []}
         onSearch={() => setPaletteOpen(true)}
         theme={theme}
         onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
-        menu={account}
+        account={account}
       />
       {/*
         Содержимое — колонка в 1200 px по центру, как на макете.

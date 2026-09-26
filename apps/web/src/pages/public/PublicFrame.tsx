@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useLang } from "../../lang";
-import { LangToggle, Logo } from "../../shell/Topbar";
+import { LangMenu } from "../../shell/LangMenu";
+import { Logo } from "../../shell/Topbar";
 import { cx } from "../../ui/cx";
 import { IconFacebook, IconTelegram, IconYouTube } from "./social";
 
@@ -77,8 +78,14 @@ export function PublicFrame({ children }: { children: ReactNode }) {
             считается отступ до знака.
           */}
           <div className={cx(INDENT, "flex pt-[57px]")}>
-            {/* токенами, а не числами полосы: лист публичных страниц темы не меняет */}
-            <LangToggle tone="token" />
+            {/*
+              Токенами, а не числами полосы: лист публичных страниц темы не
+              меняет. Плашка языков раскрывается вправо от слова: оно стоит у
+              левого края колонки, а на телефоне — в шестнадцати пикселях от
+              края стекла, и плашка, свисающая влево, как в полосе консоли,
+              ушла бы за край.
+            */}
+            <LangMenu tone="token" side="start" />
           </div>
         </header>
         <main className={cx(COLUMN, "flex-1")}>

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { langToggle, login, openMenu, setLang, topNav } from "./helpers";
+import { LANG_FULL, langToggle, login, openMenu, setLang, topNav } from "./helpers";
 
 /**
  * Двуязычная оболочка.
@@ -24,11 +24,23 @@ test("переключение языка меняет оболочку и за�
   await expect(nav.getByRole("link", { name: "Пациенты" })).toBeVisible();
   await expect(toggle).toHaveText("Рус");
 
-  // переключатель нажимается сам, а не через setLang: проверяется именно
-  // то, что одно нажатие уводит на второй язык
+  /*
+   * Меню нажимается само, а не через setLang: проверяется именно то, что
+   * слово раскрывает выбор из всех языков (решение заказчика 2026-09-26 —
+   * не «по кругу из двух»), текущий в нём отмечен не цветом, а состоянием
+   * пункта, и выбор уводит на выбранный язык.
+   */
   await toggle.click();
+  const langs = page.getByRole("menu", { name: /Мова \/ Язык/ });
+  await expect(langs.getByRole("menuitemradio")).not.toHaveCount(0);
+  await expect(langs.getByRole("menuitemradio", { name: LANG_FULL.ru })).toHaveAttribute("aria-checked", "true");
+  await expect(langs.getByRole("menuitemradio", { name: LANG_FULL.uk })).toHaveAttribute("aria-checked", "false");
+  await langs.getByRole("menuitemradio", { name: LANG_FULL.uk }).click();
+  await expect(langs).toBeHidden();
   await expect(nav.getByRole("link", { name: "Пацієнти" })).toBeVisible();
   await expect(toggle).toHaveText("Укр");
+  /* после выбора фокус вернулся на слово: человек с клавиатуры не потерял место */
+  await expect(toggle).toBeFocused();
 
   /*
    * Бургер переведён тем же нажатием: разделы в нём берутся из того же
@@ -47,7 +59,7 @@ test("переключение языка меняет оболочку и за�
   await page.reload();
   await expect(nav.getByRole("link", { name: "Пацієнти" })).toBeVisible();
 
-  await toggle.click();
+  await setLang(page, "ru");
   await expect(nav.getByRole("link", { name: "Пациенты" })).toBeVisible();
   await expect(toggle).toHaveText("Рус");
 });
@@ -177,10 +189,9 @@ test("в украинском режиме не остаётся русских 
   const found: string[] = [];
   for (const path of SCREENS) {
     /*
-     * Язык ставится, а не переключается: в шапке один переключатель на оба
-     * языка, и нажимать его вслепую значило бы через раз получать не тот
-     * (см. setLang). Он же берётся из шапки поимённо — на «Учётной записи»
-     * стоит второй переключатель.
+     * Язык ставится выбором пункта в меню языков шапки, а не нажатием
+     * вслепую (см. setLang). Меню берётся из шапки поимённо — на «Учётной
+     * записи» стоит второй переключатель.
      */
     await setLang(page, "ru");
     const inRussian = await wordsOf(path);
