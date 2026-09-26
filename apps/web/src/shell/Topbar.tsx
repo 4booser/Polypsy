@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LANG_SELF_LABEL, type UiKey } from "@quizzy/shared";
+import type { Permission, UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
-import { isTopLayer, useFocusTrap } from "../ui";
+import { IconSearchGlass, isTopLayer, useFocusTrap } from "../ui";
+import { Button, Tag } from "../ui/primitives";
 import { EventCenter } from "./EventCenter";
+import { LangMenu } from "./LangMenu";
 import { railGroups, type RailCounts } from "./Rail";
 
 /*
@@ -49,11 +51,23 @@ import { railGroups, type RailCounts } from "./Rail";
  * и полоса осталась бы без заливки — молча, без единой ошибки при сборке.
  */
 
-interface TopItem {
+export interface TopItem {
   key: UiKey;
   to: string;
   /** Точное совпадение адреса: «/» есть начало любого пути */
   end?: boolean;
+  /**
+   * Другие корни адресов, на которых этот пункт — текущий. Раздел людей один
+   * на два адреса (/staff и /admins), и пункт у него один — «Лікарі».
+   */
+  also?: string[];
+  /**
+   * Право, без которого экран раздела пуст. Спрашивается только у того, кто
+   * не лечит (см. barItems): пункт, ведущий в отказ, хуже отсутствующего.
+   * Каждое право — то, которым сервер закрывает список раздела; какое
+   * именно, записано у самого пункта.
+   */
+  need?: Permission;
 }
 
 /*
@@ -90,74 +104,117 @@ interface TopItem {
  * разговор двоих, и она осталась на /messages под именем «Листування» в
  * бургере (railGroups) и в палитре команд. Сторож — apps/web/test/mailings.test.ts.
  */
+/*
+ * Права у пунктов — те, которыми сервер закрывает СПИСОК раздела
+ * (apps/api/src/lib/openapi.ts), а не догадка по названию:
+ *   «Пацієнти», «Групи»  — GET /api/patients, GET /api/patient-groups: patients.read;
+ *   «Тести»              — GET /api/surveys открыт каждому сотруднику, права нет;
+ *   «Аналітика»          — перечень моделей читает GET /api/decisions/rules: alerts.review;
+ *   «Статистика»         — GET /api/stat-models: statistics.read;
+ *   «Повідомлення»       — GET /api/mailings: mailings.manage.
+ * Спрашиваются они только у того, кто не лечит (barItems ниже), — у
+ * остальных состав полосы задан кадрами и решением заказчика.
+ */
 export const TOP: TopItem[] = [
-  { key: "top.patients", to: "/patients" },
-  { key: "top.groups", to: "/patient-groups" },
+  { key: "top.patients", to: "/patients", need: "patients.read" },
+  { key: "top.groups", to: "/patient-groups", need: "patients.read" },
   { key: "top.tests", to: "/surveys" },
-  { key: "top.analytics", to: "/analytics" },
-  { key: "top.statistics", to: "/statistics" },
-  { key: "top.messages", to: "/mailings" },
+  { key: "top.analytics", to: "/analytics", need: "alerts.review" },
+  { key: "top.statistics", to: "/statistics", need: "statistics.read" },
+  { key: "top.messages", to: "/mailings", need: "mailings.manage" },
 ];
 
-const STAFF: TopItem = { key: "ppl.staff", to: "/staff" };
-const ADMINS: TopItem = { key: "adm.admins", to: "/admins" };
+/*
+ * «Лікарі» — дверь в раздел людей целиком, и текущий пункт она и на
+ * /staff, и на /admins: решение заказчика 2026-09-26 — раздел людей один, а
+ * «Лікарі | Адміністратори» переключаются вкладками на самой странице
+ * (pages/people). Отдельного пункта «Адміністратори» в полосе больше нет.
+ */
+const STAFF: TopItem = { key: "ppl.staff", to: "/staff", also: ["/admins"] };
+
+/** Полоса заведующего и суперадміна: шесть разделов и «Лікарі» вторым (f30, f31, f34, f35) */
+const ADMIN_BAR: TopItem[] = [TOP[0]!, STAFF, ...TOP.slice(1)];
 
 /*
- * ПОЛОСА БЫВАЕТ ЧЕТЫРЁХ СОСТАВОВ, И ВЫБИРАЕТ ИХ РАЗДЕЛ ЭКРАНА ВМЕСТЕ С ТЕМ,
- * ЛЕЧИТ ЛИ ВОШЕДШИЙ, — а не одна ступень лестницы должностей.
+ * РАБОЧЕЕ МЕСТО И ПОЛОСА — ДВА РАЗНЫХ ВОПРОСА, и с 2026-09-26 отвечают на них
+ * по-разному.
  *
- *   specialist   — шесть пунктов без «Лікарі» (f04): у рядового лікаря
- *                  раздела людей нет вовсе;
- *   admin        — те же шесть и «Лікарі» вторым (f30, f31, f34, f35): это
- *                  заведующий, у которого есть И свои пациенты, И свои
- *                  лікарі;
- *   peopleStaff  — ОДИН пункт «Лікарі» по центру (f40, f41, f42, f43) — и
- *                  он же у суперадміна в разделе организаций (f44, f45,
- *                  f51, f52);
- *   peopleAdmins — ОДИН пункт «Адміністратори» по центру (f47, f48, f49,
- *                  f50): раздел людей у суперадміна. «Адміністраторів» в
- *                  полосе не было ни в каком виде — пункт жил только в
- *                  бургере (Rail.tsx), и суперадмин видел чужую полосу.
+ * Рабочее место (BarKind) по-прежнему четырёх видов, и выбирает его раздел
+ * экрана вместе с тем, лечит ли вошедший:
  *
- * ПОЧЕМУ РАЗДЕЛ, А НЕ ДОЛЖНОСТЬ. Кадры f44/f45/f51/f52 рисуют у суперадміна
- * «Лікарі», а f47–f50 — «Адміністратори»; человек один и тот же, разные —
- * разделы. Полоса, выбранная одной должностью, такого сказать не может: она
- * подписала бы «Адміністратори» и на организациях. Поэтому состав считается
- * по паре «кто смотрит» и «в каком разделе», и раздел — из адреса.
+ *   specialist   — рядовой лікар: раздела людей у него нет вовсе (f04);
+ *   admin        — заведующий, у которого есть И свои пациенты, И свои
+ *                  лікарі (f30, f31, f34, f35), а также суперадмін вне
+ *                  раздела людей;
+ *   peopleStaff  — раздел людей у того, кто ведёт людей и не лечит (f40,
+ *                  f41, f42, f43), и раздел организаций у суперадміна (f44,
+ *                  f45, f51, f52);
+ *   peopleAdmins — раздел людей у суперадміна (f47, f48, f49, f50).
+ *
+ * От него зависит карточка человека (StaffCard: что лежит под карточкой,
+ * чем она подписана — cardTitleRole), и поэтому он остаётся как был.
+ *
+ * ПОЛОСА ОТ РАЗДЕЛА БОЛЬШЕ НЕ ЗАВИСИТ — решение заказчика 2026-09-26: «на
+ * вкладке админов пропадают другие кнопки, доделай бар получше». Кадры
+ * f40–f50 рисуют в разделе людей полосу из ОДНОГО пункта по центру
+ * («Лікарі» или «Адміністратори»), и так здесь и было: суперадмін, зайдя к
+ * администраторам, терял шесть разделов, а выйдя — получал их обратно.
+ * Теперь это прямое отступление от кадров: полоса — свойство человека, а не
+ * экрана, и одна на все разделы консоли. Суперадміну и заведующему — семь
+ * пунктов (ADMIN_BAR), рядовому лікарю — шесть (TOP).
+ *
+ * Тому, кто ведёт людей и НЕ лечит, полосу из семи дать нельзя: «Пацієнти» и
+ * «Групи» вели бы его в отказ сервера. Ему — все разделы, до которых он
+ * дотягивается, по праву каждого (`need` у пункта): «Лікарі» и то, что
+ * открыто. Тоже одна на все разделы: прежде вне раздела людей у него стояли
+ * все семь (кадров на это нет, и полоса не урезалась «без кадра»), а в
+ * разделе — один пункт; теперь полоса не прыгает при переходе вовсе.
  *
  * ПОЧЕМУ «ЛЕЧИТ», А НЕ СТУПЕНЬ. Здесь стояло «ступень 3 и выше — чистый
  * администратор», и это была догадка: ни один кадр не говорит, какой ступени
- * принадлежат f40–f43, а главный лікар (chief) терял из полосы шесть
- * клинических разделов молча. Признак взят настоящий — право видеть
- * пациентов: у кого его нет, тому пять клинических пунктов вели бы в пустые
- * экраны (f40–f43); у кого есть, тот остаётся с широкой полосой (f30–f35).
+ * принадлежат f40–f43, а главный лікар (chief) терял из полосы клинические
+ * разделы молча. Признак взят настоящий — право видеть пациентов.
  * Специалист лечит по классу записи: справочника прав у него нет вовсе.
  *
- * ВНЕ РАЗДЕЛОВ ЛЮДЕЙ И ОРГАНИЗАЦИЙ узкой полосы нет ни на одном кадре,
- * поэтому там её и не бывает: разделы из полосы не убираются без кадра,
- * который этого требует.
- *
- * Пункты, ушедшие из полосы в двух узких составах, НЕ пропали: весь набор
- * разделов целиком лежит в бургере (railGroups), и он от состава полосы не
- * зависит. Полоса — ярлыки рабочего места, бургер — все двери.
+ * Весь набор разделов по-прежнему лежит в бургере (railGroups), и от состава
+ * полосы он не зависит. Полоса — ярлыки рабочего места, бургер — все двери.
  */
 export type BarKind = "specialist" | "admin" | "peopleStaff" | "peopleAdmins";
 
-export const bars: Record<BarKind, TopItem[]> = {
-  specialist: TOP,
-  admin: [TOP[0]!, STAFF, ...TOP.slice(1)],
-  peopleStaff: [STAFF],
-  peopleAdmins: [ADMINS],
-};
+/**
+ * Состав полосы по рабочему месту и правам.
+ *
+ * `can` — тот же вопрос, что задаёт консоль (auth.tsx): суперадміну он
+ * отвечает «да» на всё, поэтому его полоса всегда полная. Без `can` — полная
+ * полоса для любого места, кроме специалиста: так себя ведёт полоса, которой
+ * права не передали (и проверки, которым они не нужны).
+ */
+export function barItems(kind: BarKind, can: (p: Permission) => boolean = () => true): TopItem[] {
+  if (kind === "specialist") return TOP;
+  if (can("patients.read")) return ADMIN_BAR;
+  return ADMIN_BAR.filter((it) => !it.need || can(it.need));
+}
+
+/**
+ * Текущий ли это пункт полосы: адрес пункта или один из его `also`, с
+ * хвостом или без. По корню, а не по вхождению строки: «/patients/staff» —
+ * не раздел людей.
+ */
+export function isCurrentTop(it: TopItem, pathname: string): boolean {
+  const at = (root: string) =>
+    it.end ? pathname === root : pathname === root || pathname.startsWith(`${root}/`);
+  return [it.to, ...(it.also ?? [])].some(at);
+}
 
 /**
  * Раздел экрана в том смысле, в каком его различают кадры.
  *
  * «Организаций» в консоли ещё нет — экрана под этот адрес не заведено. Адрес
  * назван здесь заранее не про запас, а потому что четыре кадра (f44, f45,
- * f51, f52) рисуют у суперадміна в этом разделе другую полосу, чем в разделе
- * людей: правило без него было бы записано неверно и разошлось бы с кадрами
- * в день, когда экран появится.
+ * f51, f52) рисуют у суперадміна в этом разделе другое рабочее место, чем в
+ * разделе людей: правило без него было бы записано неверно и разошлось бы с
+ * кадрами в день, когда экран появится. На полосу раздел больше не влияет
+ * (см. barItems), на карточку человека — по-прежнему.
  */
 export function barSection(pathname: string): "people" | "organisations" | "other" {
   const at = (root: string) => pathname === root || pathname.startsWith(`${root}/`);
@@ -185,7 +242,7 @@ export function barKind(
 ): BarKind {
   const section = barSection(pathname);
   if (user?.role === "superadmin") {
-    /* f47–f50 против f44/f45/f51/f52: у одного человека две полосы, и выбирает раздел */
+    /* f47–f50 против f44/f45/f51/f52: у одного человека два рабочих места, и выбирает раздел */
     if (section === "people") return "peopleAdmins";
     if (section === "organisations") return "peopleStaff";
     /* клинических экранов суперадміна кадров нет — полоса остаётся полной */
@@ -198,31 +255,79 @@ export function barKind(
 }
 
 /**
+ * Подвал бургера: кто вошёл и что он может сделать со своей записью.
+ *
+ * Данными, а не разметкой. Прежде App отдавал сюда готовый кусок разметки —
+ * и подвал жил своим оформлением: «Прив’язати Google» и «Вийти» жирными
+ * кнопками, «Обліковий запис» мелкой ссылкой, три разных вида у трёх
+ * действий одного списка. Теперь App отдаёт, ЧТО показать и что делать по
+ * нажатию (там живут и пользователь, и отвязка Google, и выход, и полосе про
+ * авторизацию знать незачем), а КАК показать — решает бургер, теми же
+ * строками, что и разделы выше.
+ */
+export interface BurgerAccount {
+  name: string;
+  /**
+   * Слово роли, уже переведённое: «Суперадміністратор», «Адміністратор
+   * групи». Названо не `role`, чтобы не путать с полем записи, где роль —
+   * перечисление протокола и печатать её как есть нельзя.
+   */
+  roleLabel: string;
+  /** Метка сборки: короткий хэш и дата — подписью наведения */
+  build: { sha: string; date: string };
+  /**
+   * То, что требует внимания, — янтарём: «только чтение» объясняет, почему
+   * кнопки не срабатывают, до того как человек решит, что консоль сломана.
+   */
+  warning?: string;
+  /** Состояние записи обычным текстом: «Google прив’язано» */
+  note?: string;
+  actions: BurgerAction[];
+}
+
+export interface BurgerAction {
+  /** Ключ React и опора проверок: подпись меняется с языком, ключ нет */
+  id: string;
+  label: string;
+  /** Переход — ссылкой; без адреса пункт — кнопка с onSelect */
+  to?: string;
+  onSelect?: () => void;
+  /** Черта над пунктом: так выход отделён от остального */
+  ruled?: boolean;
+}
+
+/**
  * Верхняя полоса консоли.
  *
- * `menu` — подвал бургера: кто вошёл, учётная запись, выход, номер сборки.
- * Собирает его App, а не полоса: там живут и пользователь, и отвязка Google,
- * и выход, и тащить их сюда значило бы дать полосе знать про авторизацию.
+ * `account` — подвал бургера: кто вошёл, учётная запись, выход, номер
+ * сборки (см. BurgerAccount).
  */
 export function Topbar({
   counts,
   isSuper,
   canAssign,
   bar,
+  can,
   hidden,
   onSearch,
   theme,
   onToggleTheme,
-  menu,
+  account,
 }: {
   counts: RailCounts;
   isSuper: boolean;
   /**
-   * Состав полосы. Без него — прежнее поведение (шесть пунктов, семь у тех,
-   * кому есть кого назначать): полосу делят все разделы, и молчаливая смена
-   * состава у того, кто свойство не передал, была бы сменой экрана.
+   * Рабочее место вошедшего. Без него — прежнее поведение (шесть пунктов,
+   * семь у тех, кому есть кого назначать): полосу делят все разделы, и
+   * молчаливая смена состава у того, кто свойство не передал, была бы
+   * сменой экрана.
    */
   bar?: BarKind;
+  /**
+   * Права вошедшего (auth.tsx). Нужны полосе ровно для одного: тому, кто не
+   * лечит, не показывать разделы, куда ему нет входа (см. barItems).
+   */
+  can?: (p: Permission) => boolean;
   /** Есть ли кому назначать роли: от этого зависит пункт «Права» */
   canAssign: boolean;
   /**
@@ -238,12 +343,13 @@ export function Topbar({
   onSearch: () => void;
   theme: "dark" | "light";
   onToggleTheme: () => void;
-  menu?: ReactNode;
+  account?: BurgerAccount;
 }) {
   const { ut } = useLang();
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const burgerRef = useRef<HTMLButtonElement | null>(null);
-  const items = bars[bar ?? (isSuper || canAssign ? "admin" : "specialist")];
+  const items = barItems(bar ?? (isSuper || canAssign ? "admin" : "specialist"), can);
 
   return (
     /*
@@ -304,11 +410,23 @@ export function Topbar({
             items.length > 6 ? "gap-[33px]" : "gap-[46px]",
           )}
         >
+          {/*
+            Ссылка с aria-current, посчитанным здесь, а не NavLink: пункт
+            «Лікарі» — текущий и на /staff, и на /admins (раздел людей один,
+            решение заказчика 2026-09-26), а NavLink знает только свой адрес.
+            Семь пунктов у суперадміна теперь стоят и в разделе людей, и
+            ширина их — та же, что у полосы заведующего (f30). Оценка, не
+            замер: 55 знаков украинских подписей по ≈12 px (Onest 700, 20)
+            дают ≈660, с зазорами 6 × 33 — ≈860 из тысячи, что остаются между
+            знаком и правой группой в колонке 1200; при окне 1100 и зазоре 30
+            остаётся ≈870 на ≈840. Ниже 1100 пункты уходят в бургер, как и
+            прежде.
+          */}
           {items.map((it) => (
-            <NavLink
+            <Link
               key={it.to}
               to={it.to}
-              end={it.end}
+              aria-current={isCurrentTop(it, pathname) ? "page" : undefined}
               className={cx(
                 "whitespace-nowrap text-[20px] font-bold leading-none no-underline",
                 "transition-colors duration-[var(--dur-fast)]",
@@ -344,7 +462,7 @@ export function Topbar({
               )}
             >
               {ut(it.key)}
-            </NavLink>
+            </Link>
           ))}
         </nav>
         {/* пункты спрятаны — место между знаком и правой группой держит распорка */}
@@ -360,7 +478,7 @@ export function Topbar({
           когда подпись станет на пиксель выше.
         */}
         <div className="relative flex shrink-0 items-center gap-[18px] self-stretch">
-          <LangToggle />
+          <LangMenu />
           <Burger buttonRef={burgerRef} open={open} onToggle={() => setOpen((v) => !v)} />
           {open ? (
             <MoreMenu
@@ -374,9 +492,8 @@ export function Topbar({
               onToggleTheme={onToggleTheme}
               onClose={() => setOpen(false)}
               items={items}
-            >
-              {menu}
-            </MoreMenu>
+              account={account}
+            />
           ) : null}
         </div>
       </div>
@@ -475,101 +592,6 @@ export function Logo({ size = 70 }: { size?: number }) {
 }
 
 /**
- * Язык одной подписью, без рамки и каретки — как на макете.
- *
- * Сегментированный переключатель (LangSwitch) показывает оба языка сразу и
- * занимает вдвое больше места; на макете справа стоит одно слово. Смысл от
- * этого не теряется: слово называет текущий язык и переключает на второй, а
- * языков всего два — третьего состояния, ради которого нужен был бы список,
- * не существует. В учётной записи и на странице приглашения LangSwitch
- * остаётся: там место есть, и выбор из двух нагляднее переключения. Лендинг
- * и вход (кадры f00/f01) берут это же слово: у них в левом верхнем углу стоит
- * одно «Укр», и отсюда оно отдано наружу, чтобы не рисовать второе.
- *
- * `tone` появился ради второго места и только ради цвета. Полоса консоли
- * прибита к цвету макета числами и НЕ следует за темой (см. пояснение о
- * цветах в начале файла и у наведения NavLink): токен в тёмной теме
- * светлеет, а полоса остаётся светло-сиреневой, и подпись на ней выцвела бы.
- * Публичный лист (кадры f00/f01) темы не меняет вовсе и обязан быть на
- * токенах — правило раздела. Умолчание `band` — ровно прежнее поведение,
- * поэтому полоса от этой правки не изменилась ни на пиксель.
- *
- * Разные ветки — не разные цвета. На публичном листе `hover:text-primary-dim`
- * даёт РОВНО тот же #7a4ea6, что литерал в полосе: --primary-dim — это
- * --polsy-violet-dim (tokens.css), а тема там прибита к светлой (App.tsx).
- * Расходятся ветки только тем, что будет, если тему однажды отпустят: в
- * полосе цвет останется макетным, на листе поедет за темой — и на листе это
- * верно, полоса же за темой ехать не должна. Ни одного кадра с наведением
- * нет ни там, ни там, так что замером ни одна из веток не держится.
- */
-export function LangToggle({ tone = "band" }: { tone?: "band" | "token" }) {
-  const { lang, setLang, ut } = useLang();
-  return (
-    <button
-      type="button"
-      onClick={() => setLang(lang === "uk" ? "ru" : "uk")}
-      /*
-       * Видимое слово входит в имя для диктора, и первым. Стояло голое
-       * «Мова / Язык»: тот, кто управляет голосом, говорит то, что видит
-       * («Укр»), — и не попадал по кнопке (WCAG 2.5.3 Label in Name).
-       * Убрать aria-label совсем было бы дешевле, но тогда имя — одно
-       * «Укр», и диктор не сообщает, что это переключатель. Хвост называет
-       * сам язык и потому не переводится — та же подпись, что у LangSwitch.
-       *
-       * И берётся она теперь из общей записи, а не набирается строкой прямо
-       * здесь: тот же текст стоял вторым литералом в lang.tsx, и разойтись
-       * им было нечему помешать. В словарь хвост не поместить — словарь по
-       * определению отдаёт одну строку на выбранном языке, а тут нужны оба
-       * названия сразу, и русское слово в украинском поле поймала бы
-       * проверка «украинский не сползает в русский». Это ровно тот случай,
-       * ради которого в types.ts заведён LANG_NAMES.
-       */
-      aria-label={`${ut("top.lang")} — ${LANG_SELF_LABEL}`}
-      className={cx(
-        // глобальное правило для button рисует рамку и поля — гасим их явно:
-        // это подпись, а не кнопка панели
-        // min-h-0 обязателен: :where(button) в legacy.css ставит min-height 34,
-        // а min-height сильнее height — без него коробка «Укр» выросла бы до 34
-        "min-h-0 rounded-sm border-0 bg-transparent p-0",
-        /*
-         * Чернила 33 × 18, и до сверки нажималась ровно эта коробка — при
-         * норме раздела 44 (WCAG 2.5.5). Площадка дорисована НАКЛАДКОЙ
-         * 44 × 44 поверх слова, а не раздутой коробкой кнопки: тот же приём,
-         * что у размера `glyph` в primitives.tsx.
-         *
-         * Коробкой было нельзя, и это уже проверено на живом: `min-w-[44px]`
-         * увёл «Укр» на 9–11 px влево на ВСЕХ экранах консоли. Правая группа
-         * полосы прибита правым краем к колонке (nav перед ней держит flex-1),
-         * поэтому коробка растёт ВЛЕВО, и слово вместе с ней. Замер четырёх
-         * кадров консоли (f04, f30, f41, f47) и трёх кадров списков (f11,
-         * f20, f26): чернила «Укр» стоят на 1321…1353, бургер на 1373…1401 —
-         * то есть правая кромка слова ровно 1400 − 29 − 18. Выравниванием по
-         * центру это не лечится: коробка всё равно шире слова и всё равно
-         * растёт только влево, слово встало бы на 1314,5.
-         *
-         * Накладка же места не занимает вовсе: коробка кнопки остаётся по
-         * слову, 33 × 20, и обе шапки стоят там, где замерены, — в консоли
-         * правым краем к 1353, на f00/f01 левым к 317 (начало колонки плюс
-         * отступ 117 с кадра). Цена накладки та же, что у соцсетей в подвале:
-         * соседние площадки перекрывались бы — но слева и справа от «Укр»
-         * пусто, перекрывать нечего.
-         */
-        "relative inline-flex items-center",
-        "after:absolute after:left-1/2 after:top-1/2 after:size-[44px] after:content-['']",
-        "after:-translate-x-1/2 after:-translate-y-1/2",
-        "text-[20px] font-bold leading-none",
-        "transition-colors duration-[var(--dur-fast)] outline-none focus-visible:ring-2",
-        tone === "token"
-          ? "text-primary hover:text-primary-dim focus-visible:ring-[var(--focus)]"
-          : "text-[#663399] hover:text-[#7a4ea6] focus-visible:ring-[#663399]",
-      )}
-    >
-      {ut("top.lang")}
-    </button>
-  );
-}
-
-/**
  * Бургер: 29×20, три полосы по 3 px.
  *
  * Полосы — элементы разметки, а не нарисованный значок: три `span` в колонке
@@ -617,6 +639,27 @@ function Burger({
  * откуда их читает экран настроек («убрать с глаз»). Второго списка разделов
  * в консоли не заводится: два списка расходятся, и расхождение видно только
  * глазами на живом экране.
+ *
+ * ОФОРМЛЕНИЕ — ТЕМ ЖЕ ЯЗЫКОМ, ЧТО ВСЯ КОНСОЛЬ: решение заказчика 2026-09-26
+ * («тоже по стилистике редизайн сделай»). Список собирался в разное время из
+ * разных кусков и говорил на трёх языках сразу: заголовок «ОГЛЯД» капителью
+ * с разрядкой и значком, соседний заголовок другого кегля и со своим
+ * значком, счётчики янтарём у всех подряд, а в подвале — жирные кнопки,
+ * мелкая ссылка и моноширинная метка вперемешку. Теперь в нём три вида
+ * строк, и у каждого одно правило:
+ *
+ *   заголовок группы — 13/700 серым, строчными, без значка: так подписаны
+ *                      колонки списков (см. Section в PatientCard); капители
+ *                      в макете нет ни в одной строке (см. SectionLabel);
+ *   пункт            — 16/400, одна строка одного вида у разделов, у дверей
+ *                      карточки и экрана, у семи пунктов полосы на узком
+ *                      экране и у действий учётной записи (burgerRow);
+ *   число            — нейтральная метка (Tag), янтарём — только случаи
+ *                      риска (см. `attention` в Rail.tsx).
+ *
+ * Плашка — та же, что у всплывающих меню консоли: рамка #999999, радиус 5,
+ * тень всплывающего слоя (align="right" в ui/menu.tsx). Прежде она стояла на
+ * своей рамке линии и своём радиусе и отличалась от соседнего меню языка.
  */
 function MoreMenu({
   counts,
@@ -629,7 +672,7 @@ function MoreMenu({
   onToggleTheme,
   onClose,
   items,
-  children,
+  account,
 }: {
   counts: RailCounts;
   isSuper: boolean;
@@ -650,7 +693,7 @@ function MoreMenu({
   theme: "dark" | "light";
   onToggleTheme: () => void;
   onClose: () => void;
-  children?: ReactNode;
+  account?: BurgerAccount;
 }) {
   const { ut } = useLang();
   const { pathname } = useLocation();
@@ -711,15 +754,28 @@ function MoreMenu({
         aria-modal="true"
         aria-label={ut("top.more")}
         /*
-          Прокручивается список разделов, а не сам слой.
-          Прокрутка на слое обрезала бы всё, что из него выступает, — а из него
-          выступает панель центра событий: она открывается поверх и шире
-          бургера. Обрезанная, она превращалась бы в полоску без текста.
+          ВЫСОТА — ПО ОКНУ, А НЕ ЧИСЛОМ. Слой начинается в 108 от верха окна
+          (полоса 100 и зазор 8) и обязан кончиться до низа окна с полем 16,
+          отсюда 100dvh − 124. Прежние «70vh, не больше 560» на ноутбуке
+          оставляли внизу пустую треть окна, а на телефоне в альбомной
+          ориентации всё равно не помещались.
+
+          Прокручивается список разделов, а не сам слой. Прокрутка на слое
+          обрезала бы всё, что из него выступает, — а из строки поиска
+          выступает панель центра событий. Строка поиска сверху и подвал
+          учётной записи снизу стоят на месте: выход не уезжает за край
+          списка, где его не найти.
+
+          Кроме совсем низкого окна (ниже 600: телефон боком). Там подвалу и
+          строке поиска вместе нужно больше половины высоты, и списку между
+          ними осталась бы полоска в пару строк. Поэтому ниже 600 прокручивается
+          весь слой целиком, а список идёт в общий поток — прокрутка внутри
+          страницы при этом по-прежнему не нужна.
         */
         className={cx(
-          "absolute right-0 top-[calc(100%+8px)] z-50 w-[min(320px,calc(100vw-32px))]",
-          "flex max-h-[min(70vh,560px)] flex-col",
-          "rounded-md border border-border bg-surface shadow-panel outline-none",
+          "absolute right-0 top-[calc(100%+8px)] z-50 flex w-[min(340px,calc(100vw-32px))] flex-col",
+          "max-h-[calc(100dvh-124px)] [@media(max-height:599px)]:overflow-y-auto",
+          "rounded-[5px] border border-border-strong bg-[var(--bg)] shadow-pop outline-none",
         )}
       >
         {/*
@@ -730,8 +786,20 @@ function MoreMenu({
           вообще единственный вход к тому, что произошло, пока вкладка была
           закрыта; тема из консоли достижима и из «Учётной записи», но она
           стояла здесь годами, и отнимать её заодно с рельсой не за что.
+
+          Строка — поле и два глифа, как строка над списком (f05: поле и «+»).
+          Поиск выглядит полем фильтра (заливка #f0ecff, высота 36, лупа 22
+          справа), хотя это кнопка: он открывает палитру команд, а печатают
+          уже в ней. Глифы — 27 видимых, 44 нажимаемых (Button size="glyph");
+          зазор 17 между ними — ровно столько, чтобы площадки 44 соседей не
+          налезали друг на друга (44 − 27).
+
+          `relative` здесь — ради панели центра событий: она раскрывается
+          под этой строкой во всю ширину слоя, а не свисает от колокольчика
+          шире бургера, как прежде (на телефоне её левый край уходил за
+          стекло).
         */}
-        <div className="flex shrink-0 items-center gap-1 border-b border-hairline p-2">
+        <div className="relative flex shrink-0 items-center gap-[17px] border-b border-hairline p-3">
           <button
             type="button"
             onClick={() => {
@@ -741,120 +809,248 @@ function MoreMenu({
               onSearch();
             }}
             className={cx(
-              "flex h-8 min-h-0 flex-1 items-center gap-2 rounded-sm border-0 px-2",
-              "bg-surface-2 text-small text-muted",
-              "transition-colors duration-[var(--dur-fast)] hover:bg-surface-3 hover:text-text",
+              "flex h-9 min-h-0 min-w-0 flex-1 items-center gap-2 rounded-[5px] border-0 bg-primary-soft px-[10px]",
+              "text-left text-[17px] font-normal leading-none text-muted",
+              "transition-colors duration-[var(--dur-fast)] hover:text-text",
               "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
             )}
           >
-            <span className="shrink-0 text-primary [&>svg]:size-[15px]">
-              <IconSearch />
+            <span className="min-w-0 flex-1 truncate">{ut("shell.search")}</span>
+            <span aria-hidden className="shrink-0 text-text-2 [&>svg]:size-[22px]">
+              <IconSearchGlass />
             </span>
-            <span className="truncate">{ut("shell.search")}</span>
           </button>
           <EventCenter />
-          <button
-            type="button"
+          <Button
+            size="glyph"
+            variant="ghost"
             onClick={onToggleTheme}
             aria-label={theme === "dark" ? ut("nav.themeLight") : ut("nav.themeDark")}
             title={theme === "dark" ? ut("nav.themeLight") : ut("nav.themeDark")}
-            className={cx(
-              "inline-grid size-8 min-h-0 shrink-0 place-items-center rounded-sm p-0",
-              "border border-transparent bg-transparent text-muted",
-              "transition-colors duration-[var(--dur-fast)] hover:bg-surface-2 hover:text-text",
-              "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-            )}
+            className="shrink-0 [&>svg]:size-[22px]"
           >
             {theme === "dark" ? <IconSun /> : <IconMoon />}
-          </button>
+          </Button>
         </div>
 
-        {/*
-          Шесть верхних пунктов повторяются здесь только на узком экране, где
-          полоса их не показывает. На широком они стоят в двух шагах выше, и
-          второй их список заставлял бы гадать, разные ли это экраны.
-        */}
-        <div className="hidden shrink-0 flex-col gap-0.5 border-b border-hairline p-2 max-[1100px]:flex">
-          {items.map((it) => (
-            <NavLink key={it.to} to={it.to} end={it.end} className={rowClass}>
-              <span className="truncate">{ut(it.key)}</span>
-            </NavLink>
-          ))}
+        <div
+          className={cx(
+            "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-width:thin]",
+            "[@media(max-height:599px)]:flex-none [@media(max-height:599px)]:overflow-visible",
+          )}
+        >
+          <BurgerSections items={items} caseLinks={caseLinks} tools={tools} groups={groups} />
         </div>
 
-        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto p-2 [scrollbar-width:thin]">
-          {/*
-            Клиническая карта открытого человека — сводка, динамика,
-            хронология. Раздел появляется только на карточке пациента и
-            только там имеет смысл: это двери к ОДНОМУ человеку, а не к
-            экрану консоли.
-
-            Стояли эти три входа шестерёнкой в строке заголовка карточки, а
-            на кадре f13 в той строке одна кнопка «Відписатись» и больше
-            ничего. Бургер — то место, куда макет и складывает все двери,
-            не поместившиеся в полосу; здесь они и лежат.
-          */}
-          {caseLinks ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2 px-2 py-1 text-micro font-semibold uppercase tracking-[var(--tracking-label)] text-faint">
-                <span className="truncate">{ut("pcard.clinical")}</span>
-              </div>
-              {caseLinks.map((it) => (
-                <NavLink key={it.to} to={it.to} end={it.end} className={rowClass}>
-                  <span className="truncate">{ut(it.key)}</span>
-                </NavLink>
-              ))}
-            </div>
-          ) : null}
-          {/*
-            Двери текущего экрана: адреса, которых кадр на самом экране не
-            рисует, — правка названия группы (f14: в строке заголовка справа
-            чисто) и инструменты черновика заключения (f36: в раскрытом меню
-            шестерёнки ровно два пункта). Оба адреса были заведены и стояли
-            без единой ссылки: дойти можно было, только набрав адрес руками.
-          */}
-          {tools ? (
-            <div className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2 px-2 py-1 text-micro font-semibold uppercase tracking-[var(--tracking-label)] text-faint">
-                <span className="truncate">{ut("tools.screen")}</span>
-              </div>
-              {tools.map((it) => (
-                <NavLink key={it.to} to={it.to} className={rowClass}>
-                  <span className="truncate">{ut(it.key)}</span>
-                </NavLink>
-              ))}
-            </div>
-          ) : null}
-          {groups.map((g) => (
-            <div key={g.key} className="flex flex-col gap-0.5">
-              <div className="flex items-center gap-2 px-2 py-1 text-micro font-semibold uppercase tracking-[var(--tracking-label)] text-faint">
-                <span className="shrink-0 [&>svg]:size-[14px]">{g.icon}</span>
-                <span className="truncate">{ut(g.key)}</span>
-              </div>
-              {g.items.map((it) => (
-                <NavLink key={it.to} to={it.to} end={it.end} className={rowClass}>
-                  <span className="shrink-0 [&>svg]:size-[18px]">{it.icon}</span>
-                  <span className="truncate">{ut(it.key)}</span>
-                  {/*
-                    Счётчик залит янтарём, а не набран янтарём по прозрачному:
-                    полупрозрачная заливка в светлой теме не добирала до порога
-                    контраста как раз на выбранном пункте, под которым лежит
-                    более светлая поверхность.
-                  */}
-                  {it.badge ? (
-                    <span className="ml-auto rounded-sm bg-accent px-1.5 py-0.5 font-mono text-micro font-semibold leading-none text-accent-text tabular-nums">
-                      {it.badge > 99 ? "99+" : it.badge}
-                    </span>
-                  ) : null}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        {children ? <div className="shrink-0 border-t border-hairline p-2">{children}</div> : null}
+        {account ? <BurgerFooter account={account} /> : null}
       </div>
     </>
+  );
+}
+
+type RailGroup = ReturnType<typeof railGroups>[number];
+
+/**
+ * Разделы бургера — всё между строкой поиска и подвалом.
+ *
+ * Отдельно от слоя ради проверки: слой держит ловушку фокуса, а она читает
+ * document уже при отрисовке, и без страницы его не нарисовать. Разделы же
+ * — чистая разметка, и их вид проверяется напрямую (apps/web/test/burger.test.tsx).
+ */
+export function BurgerSections({
+  items,
+  caseLinks,
+  tools,
+  groups,
+}: {
+  items: TopItem[];
+  caseLinks: LinkItem[] | null;
+  tools: LinkItem[] | null;
+  groups: RailGroup[];
+}) {
+  const { ut } = useLang();
+  const { pathname } = useLocation();
+  return (
+    <>
+      {/*
+        Пункты полосы повторяются здесь только на узком экране, где полоса их
+        не показывает. На широком они стоят в двух шагах выше, и второй их
+        список заставлял бы гадать, разные ли это экраны.
+
+        Ссылки с посчитанным aria-current, как в самой полосе: «Лікарі» —
+        текущий пункт и на /staff, и на /admins.
+      */}
+      <div className="hidden max-[1100px]:block">
+        <BurgerGroup title={ut("shell.sections")}>
+          {items.map((it) => {
+            const current = isCurrentTop(it, pathname);
+            return (
+              <Link key={it.to} to={it.to} aria-current={current ? "page" : undefined} className={burgerRow(current)}>
+                <span className="min-w-0 flex-1 truncate">{ut(it.key)}</span>
+              </Link>
+            );
+          })}
+        </BurgerGroup>
+      </div>
+      {/*
+        Клиническая карта открытого человека — сводка, динамика,
+        хронология. Раздел появляется только на карточке пациента и
+        только там имеет смысл: это двери к ОДНОМУ человеку, а не к
+        экрану консоли.
+
+        Стояли эти три входа шестерёнкой в строке заголовка карточки, а
+        на кадре f13 в той строке одна кнопка «Відписатись» и больше
+        ничего. Бургер — то место, куда макет и складывает все двери,
+        не поместившиеся в полосу; здесь они и лежат.
+      */}
+      {caseLinks ? (
+        <BurgerGroup title={ut("pcard.clinical")}>
+          {caseLinks.map((it) => (
+            <BurgerLink key={it.to} item={it} />
+          ))}
+        </BurgerGroup>
+      ) : null}
+      {/*
+        Двери текущего экрана: адреса, которых кадр на самом экране не
+        рисует, — правка названия группы (f14: в строке заголовка справа
+        чисто) и инструменты черновика заключения (f36: в раскрытом меню
+        шестерёнки ровно два пункта). Оба адреса были заведены и стояли
+        без единой ссылки: дойти можно было, только набрав адрес руками.
+      */}
+      {tools ? (
+        <BurgerGroup title={ut("tools.screen")}>
+          {tools.map((it) => (
+            <BurgerLink key={it.to} item={it} />
+          ))}
+        </BurgerGroup>
+      ) : null}
+      {groups.map((g) => (
+        <BurgerGroup key={g.key} title={ut(g.key)}>
+          {g.items.map((it) => (
+            <BurgerLink key={it.to} item={it} badge={it.badge} attention={it.attention} />
+          ))}
+        </BurgerGroup>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Группа бургера: заголовок и пункты под ним.
+ *
+ * Заголовок — 13/700 серым, строчными, без значка, один на все группы.
+ * Значки у заголовков сняты вместе с капителью: они были у одних групп и
+ * не было у других, и у двух групп из четырёх значок повторял значок
+ * первого пункта под ним. Группа названа для диктора (role="group"), чтобы
+ * «Огляд» и «Люди» он объявлял так же, как их видно.
+ */
+function BurgerGroup({ title, children }: { title: string; children: ReactNode }) {
+  const id = useId();
+  return (
+    <div role="group" aria-labelledby={id} className="flex flex-col">
+      <div id={id} className={GROUP_HEAD}>
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/*
+ * 13/700 --muted — подпись колонки консоли. Сверху 12: группы отделены
+ * воздухом, а не чертами — черта между каждой парой групп нарезала бы
+ * список на коробки.
+ */
+export const GROUP_HEAD = "px-3 pb-1 pt-3 text-[13px] font-bold leading-[18px] text-muted";
+
+interface LinkItem {
+  to: string;
+  key: UiKey;
+  end?: boolean;
+}
+
+/**
+ * Пункт-раздел: ссылка, число справа.
+ *
+ * ЧИСЛО — НЕЙТРАЛЬНОЙ МЕТКОЙ, ЯНТАРЁМ — ТОЛЬКО СЛУЧАИ РИСКА. Прежде все
+ * четыре счётчика стояли на янтарной заливке, и «99+» людей на сегодня
+ * кричало тем же цветом, что три неразобранных случая риска. Янтарь в
+ * консоли значит «требует внимания» и больше ничего (docs/REDESIGN.md); люди
+ * на приём, задачи в очереди и открытые направления — объём работы, а не
+ * тревога. Какой пункт тревожный, говорит его запись в railGroups
+ * (`attention`), а не место в списке: переставят пункты — цвет уедет с ними.
+ *
+ * Метка — Tag с его собственной заливкой: и на белом, и на сиреневой
+ * заливке текущего пункта у числа своя подложка, и контраст не зависит от
+ * того, выбран ли пункт (прежняя полупрозрачная заливка не добирала до 4,5
+ * как раз на выбранном).
+ *
+ * Интерлиньяж метки — 16, свой: иначе она наследует 22 строки, вырастает
+ * с рамкой и полями до 28 и раздвигает пункт с числом на 6 px выше соседей
+ * без числа — ритм списка ломался ровно на тех строках, куда смотрят.
+ */
+function BurgerLink({ item, badge, attention }: { item: LinkItem; badge?: number; attention?: boolean }) {
+  const { ut } = useLang();
+  return (
+    <NavLink to={item.to} end={item.end} className={({ isActive }) => burgerRow(isActive)}>
+      <span className="min-w-0 flex-1 truncate">{ut(item.key)}</span>
+      {badge ? (
+        <Tag tone={attention ? "attention" : "plain"} className="shrink-0 font-mono leading-4 tabular-nums">
+          {badge > 99 ? "99+" : badge}
+        </Tag>
+      ) : null}
+    </NavLink>
+  );
+}
+
+/**
+ * Подвал: кто вошёл и что он может сделать со своей записью.
+ *
+ * Имя 16/700 фиолетовым — так в списках консоли набрано имя строки; роль 13
+ * серым под ним, метка сборки 11 моноширинным справа от роли — служебная
+ * подпись, которую ищут раз в полгода, когда просят «пришлите номер сборки».
+ * Действия — те же строки, что разделы выше: «Прив’язати Google», «Обліковий
+ * запис» и «Вийти» раньше стояли в трёх разных видах, хотя это один список.
+ * Выход отделён чертой: это единственное действие, после которого консоли
+ * на экране уже нет.
+ */
+export function BurgerFooter({ account }: { account: BurgerAccount }) {
+  const { ut } = useLang();
+  const id = useId();
+  return (
+    <div role="group" aria-labelledby={id} className="flex shrink-0 flex-col border-t border-hairline px-2 pb-2 pt-3">
+      <div className="px-3 pb-2">
+        <div id={id} className="truncate text-[16px] font-bold leading-[22px] text-primary">
+          {account.name}
+        </div>
+        <div className="flex items-baseline gap-3 text-[13px] leading-[18px] text-muted">
+          <span className="min-w-0 flex-1 truncate">{account.roleLabel}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums" title={`${ut("ui.buildFrom")} ${account.build.date}`}>
+            {account.build.sha}
+          </span>
+        </div>
+        {account.note ? <div className="text-[13px] leading-[18px] text-muted">{account.note}</div> : null}
+        {account.warning ? (
+          <Tag tone="attention" className="mt-2">
+            {account.warning}
+          </Tag>
+        ) : null}
+      </div>
+      {account.actions.map((a) => (
+        <Fragment key={a.id}>
+          {a.ruled ? <hr className="mx-3 my-1 border-0 border-t border-hairline" /> : null}
+          {a.to ? (
+            <NavLink to={a.to} className={({ isActive }) => burgerRow(isActive)}>
+              {a.label}
+            </NavLink>
+          ) : (
+            <button type="button" onClick={a.onSelect} className={burgerRow(false)}>
+              {a.label}
+            </button>
+          )}
+        </Fragment>
+      ))}
+    </div>
   );
 }
 
@@ -881,21 +1077,43 @@ function clinicalLinks(pathname: string): { to: string; key: UiKey; end?: boolea
   ];
 }
 
-/** Строка меню: одна и та же у разделов и у шести верхних пунктов на узком экране */
-function rowClass({ isActive }: { isActive: boolean }): string {
+/**
+ * Строка бургера: одна у разделов, у дверей карточки и экрана, у пунктов
+ * полосы на узком экране и у действий учётной записи.
+ *
+ * 16/400 ЦВЕТОМ ТЕКСТА (--text), А НЕ ФИОЛЕТОВЫМ. Фиолетовым в консоли
+ * набрано то, что называет место или действие поодиночке: пункты полосы,
+ * заголовки, имя строки, активная вкладка. Список из двадцати строк — не
+ * то: двадцать фиолетовых строк подряд — это стена одного цвета, в которой
+ * текущий пункт отличался бы от соседей только заливкой. Меню списка на
+ * кадре f07 (единственное меню макета с пунктами у левого края, как здесь)
+ * набрано тем же --text (menuItemClass("left")). Отсюда и правило
+ * состояния: текущий пункт — заливка #f0ecff и фиолетовый текст, то есть
+ * отличается и фоном, и цветом; наведение — одна лёгкая подложка
+ * (--primary-tint, 5 % фиолетового), без смены цвета текста: это ответ на
+ * движение руки, а не новое состояние.
+ *
+ * Высота 36 (22 строки и 7 + 7), а не 58 строки списка: здесь двадцать
+ * пунктов, и при 58 бургер суперадміна не влезал бы и в высокое окно.
+ * Консоль — место мыши, и 36 — её норма (primitives.tsx, touchFloor).
+ *
+ * `border-0 bg-transparent min-h-9 justify-start` гасят правила наследия
+ * для <button> (действия подвала — кнопки): рамку, заливку, min-height 34 и
+ * выравнивание по центру — без последнего «Вийти» вставал посередине
+ * строки, а «Обліковий запис» над ним, будучи ссылкой, — у левого края.
+ */
+export function burgerRow(current: boolean): string {
   return cx(
-    "flex h-[30px] items-center gap-2.5 rounded-sm px-2 text-small no-underline",
+    "flex min-h-9 w-full items-center justify-start gap-3 rounded-[4px] border-0 px-3 py-[7px]",
+    "text-left text-[16px] font-normal leading-[22px] no-underline hover:no-underline",
     "transition-colors duration-[var(--dur-fast)] ease-[var(--ease)]",
     "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-    isActive ? "bg-surface-3 font-medium text-text" : "text-muted hover:bg-surface-2 hover:text-text",
+    current ? "bg-primary-soft text-primary" : "bg-transparent text-text hover:bg-primary-tint",
   );
 }
 
-const s = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8 } as const;
+const s = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8 } as const;
 
-function IconSearch() {
-  return <svg {...s}><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>;
-}
 function IconSun() {
   return (
     <svg {...s}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" /></svg>
