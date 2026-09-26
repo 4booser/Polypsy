@@ -530,6 +530,53 @@ export interface OpsSessionPage {
   per: number;
 }
 
+/* ─────────── техпанель: графики разделов людей (волна 11, участок people) ─────────── */
+
+/**
+ * Состояние учётки для сводки — одно на учётку, по старшинству: выключена →
+ * заперта перебором (сейчас, окно lib/loginGuard.ts) → ни разу не входила →
+ * действует. Старшинство нужно, чтобы части складывались в целое: выключенная
+ * учётка, в которую ни разу не входили, — одна учётка, а не две.
+ */
+export type AccountState = "active" | "never" | "locked" | "disabled";
+
+/**
+ * Одна роль в сводке реестра.
+ *
+ * null — число скрыто порогом малых чисел. Скрываются только пациенты: это
+ * люди, которых по горстке узнают; персонал числом всегда — его список с
+ * именами открыт тому же праву на соседней вкладке (lib/peopleStats.ts).
+ */
+export interface OpsUsersRoleSummary {
+  role: Role;
+  total: number | null;
+  states: { key: AccountState; count: number | null }[];
+  /** Второй фактор среди действующих учёток роли; у пациентов null — политика про персонал */
+  mfa: { enabled: number; total: number } | null;
+}
+
+/** Сводка реестра для графиков «Користувачів» (GET /api/ops/users/summary) — только числа, без людей */
+export interface OpsUsersSummary {
+  roles: OpsUsersRoleSummary[];
+  /** Новые учётки по неделям (понедельник недели, YYYY-MM-DD), сплошным рядом; пациенты — через порог */
+  newByWeek: { week: string; staff: number; patients: number | null }[];
+  /** Входы по дням: удачные и неудачные попытки — события, а не люди, порога нет */
+  loginsByDay: { date: string; success: number; failed: number }[];
+  smallCellFloor: number;
+}
+
+/** Возраст сессии от входа: до суток, до недели, до месяца, дольше */
+export type SessionAgeBucket = "day" | "week" | "month" | "older";
+
+/** Сводка активных сессий (GET /api/ops/sessions/summary) */
+export interface OpsSessionsSummary {
+  /** Сессий по роли; у пациентов — через порог */
+  byRole: { role: Role; sessions: number | null }[];
+  /** Возраст сессий — отдельно у персонала и у пациентов: так скрытое у пациентов не вычитается из общего */
+  byAge: { group: "staff" | "patients"; total: number | null; buckets: { key: SessionAgeBucket; count: number | null }[] }[];
+  smallCellFloor: number;
+}
+
 /* ─────────── техпанель: люди и безопасность (волна 10, участок people2) ─────────── */
 
 /** Ответ на вход, когда после пароля нужен второй шаг — код из приложения */
@@ -635,6 +682,15 @@ export interface SuspiciousPage {
   lastScanAt: string | null;
   /** Пороги правил — экран объясняет правило числами, а не словами «много» */
   thresholds: SuspiciousThresholds;
+  /** Графики над списком (волна 11): по всем срабатываниям, без учёта отбора списка */
+  stats: SuspiciousStats;
+}
+
+/** Срабатывания по правилам (за всё время) и по дням (за `days` дней, по концу серии) */
+export interface SuspiciousStats {
+  days: number;
+  byRule: { rule: SuspiciousRule; total: number; open: number }[];
+  byDay: { date: string; open: number; resolved: number }[];
 }
 
 export interface SuspiciousThresholds {
@@ -674,6 +730,22 @@ export interface TemporaryGrants {
   expired: TemporaryGrant[];
   /** Бессрочных действующих — числом: их разбирают на экране прав */
   permanent: number;
+  /** Графики над списком (волна 11) */
+  stats: GrantStats;
+}
+
+/**
+ * Все личные исключения за всё время — по состоянию, и выдачи по неделям.
+ * Состояние одно на исключение: отозванное — отозвано, даже если его срок
+ * тоже прошёл; бессрочное — отдельно от «действует со сроком».
+ */
+export interface GrantStats {
+  active: number;
+  permanent: number;
+  expired: number;
+  revoked: number;
+  /** Выдано по неделям (понедельник недели), сплошным рядом */
+  byWeek: { week: string; count: number }[];
 }
 
 /** Массовые действия над учётками */
@@ -3495,6 +3567,19 @@ export interface AuditPage {
    * странице повторяло бы строки, записанные за время чтения первой.
    */
   nextCursor?: string | null;
+}
+
+/**
+ * Записи журнала по отбору во времени (GET /api/audit/daily) — график над
+ * таблицей «Аудиту». Шаг — день, неделя или месяц, смотря по длине периода;
+ * `start` — первый день корзины. Отказ и сбой — одной частью: оба «требуют
+ * внимания».
+ */
+export interface AuditDaily {
+  step: "day" | "week" | "month";
+  from: string;
+  to: string;
+  buckets: { start: string; ok: number; refused: number }[];
 }
 
 /** Проверка хэш-цепочки журнала (GET /api/audit/verify) */

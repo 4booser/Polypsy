@@ -6,9 +6,11 @@ import { dateTime } from "../../../format";
 import { useLang } from "../../../lang";
 import { Loading, Modal, useAction } from "../../../ui";
 import { Button, Field, Tag, Textarea } from "../../../ui/primitives";
+import { RuleSection } from "../../../ui/section";
 import { useResource } from "../../../useResource";
 import { Cell, ColumnHead, FilterSelect, metaClass, rowClass } from "../controls";
 import { RULES, findingFacts, journalLink, ruleExplanation, ruleKey } from "./model";
+import { SuspiciousOverviewBody } from "./charts";
 import { Empty } from "./parts";
 
 /*
@@ -21,7 +23,9 @@ import { Empty } from "./parts";
  * зараз» — не ждать такта.
  *
  * «Нове» — янтарём: это ровно «требует внимания», и больше янтаря на экране
- * нет. Разобранное — словами и серым: оно уже не просит ничего.
+ * нет — кроме той же новизны на графике обзора (волна 11), где нерозібрані
+ * части столбцов того же цвета. Разобранное — словами и серым: оно уже не
+ * просит ничего.
  *
  * Отбор — в адресе (?status=, ?rule=), как у журнала: «нерозібрані
  * невдалі входи» пересылают коллеге ссылкой.
@@ -57,68 +61,78 @@ export default function OpsSuspicious() {
 
   return (
     <>
-      <div className="mb-[12px] grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
-        <FilterSelect
-          label={ut("ops.users.state")}
-          value={status}
-          onChange={(v) => update({ status: v === "open" ? null : v })}
-          options={[
-            { value: "open", label: ut("ops.susp.open") },
-            { value: "resolved", label: ut("ops.susp.resolvedMany") },
-            { value: "all", label: ut("ops.susp.all") },
-          ]}
-        />
-        <FilterSelect
-          label={ut("ops.susp.rule")}
-          value={rule}
-          onChange={(v) => update({ rule: v })}
-          options={[{ value: "", label: ut("ops.susp.allRules") }, ...RULES.map((r) => ({ value: r, label: ut(ruleKey(r)) }))]}
-        />
-        <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              await api.scanSuspicious();
-              res.reload();
-            }, ut("ops.susp.scanned"))
-          }
-        >
-          {ut("ops.susp.scan")}
-        </Button>
-      </div>
+      {/*
+        Волна 11: обзор графиками — по всем срабатываниям, без отбора списка
+        (сервер отдаёт его тем же ответом, stats). Янтарь в нём — только у
+        нерозібраних: то же «требует внимания», что у метки «нове» в строке.
+      */}
+      <RuleSection title={ut("opsp.overview")} hint={ut("opsp.susp.overviewHint")}>
+        {res.data ? <SuspiciousOverviewBody stats={res.data.stats} /> : res.error ? null : <Loading rows={3} />}
+      </RuleSection>
+      <RuleSection title={ut("opsp.susp.list")}>
+        <div className="mb-[12px] grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
+          <FilterSelect
+            label={ut("ops.users.state")}
+            value={status}
+            onChange={(v) => update({ status: v === "open" ? null : v })}
+            options={[
+              { value: "open", label: ut("ops.susp.open") },
+              { value: "resolved", label: ut("ops.susp.resolvedMany") },
+              { value: "all", label: ut("ops.susp.all") },
+            ]}
+          />
+          <FilterSelect
+            label={ut("ops.susp.rule")}
+            value={rule}
+            onChange={(v) => update({ rule: v })}
+            options={[{ value: "", label: ut("ops.susp.allRules") }, ...RULES.map((r) => ({ value: r, label: ut(ruleKey(r)) }))]}
+          />
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                await api.scanSuspicious();
+                res.reload();
+              }, ut("ops.susp.scanned"))
+            }
+          >
+            {ut("ops.susp.scan")}
+          </Button>
+        </div>
 
-      <div className="mb-[18px] flex flex-wrap items-center gap-x-[16px] gap-y-[4px] font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
-        {res.data ? (
+        <div className="mb-[18px] flex flex-wrap items-center gap-x-[16px] gap-y-[4px] font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
+          {res.data ? (
+            <>
+              <span>
+                {ut("ops.susp.openCount")}: {res.data.open}
+              </span>
+              <span>
+                {ut("ops.susp.lastScan")}: {res.data.lastScanAt ? dateTime(res.data.lastScanAt) : ut("ops.susp.neverScanned")}
+              </span>
+            </>
+          ) : null}
+        </div>
+
+        {res.data ? <RulesExplained thresholds={res.data.thresholds} /> : null}
+
+        {res.error ? (
+          <Loading error={res.error} onRetry={res.reload} />
+        ) : !res.data ? (
+          <Loading rows={5} />
+        ) : res.data.items.length === 0 ? (
+          <Empty>{ut("ops.susp.none")}</Empty>
+        ) : (
           <>
-            <span>
-              {ut("ops.susp.openCount")}: {res.data.open}
-            </span>
-            <span>
-              {ut("ops.susp.lastScan")}: {res.data.lastScanAt ? dateTime(res.data.lastScanAt) : ut("ops.susp.neverScanned")}
-            </span>
+            <ColumnHead grid={GRID} labels={[ut("ops.susp.rule"), ut("ops.susp.who"), ut("ops.susp.when"), ut("ops.users.state")]} />
+            <ul className="m-0 list-none p-0" aria-label={ut("ops.tab.suspicious")}>
+              {res.data.items.map((f) => (
+                <FindingRow key={f.id} f={f} explain={ruleExplanation(f.rule, res.data!.thresholds, ut)} onResolve={() => setResolving(f)} />
+              ))}
+            </ul>
           </>
-        ) : null}
-      </div>
-
-      {res.data ? <RulesExplained thresholds={res.data.thresholds} /> : null}
-
-      {res.error ? (
-        <Loading error={res.error} onRetry={res.reload} />
-      ) : !res.data ? (
-        <Loading rows={5} />
-      ) : res.data.items.length === 0 ? (
-        <Empty>{ut("ops.susp.none")}</Empty>
-      ) : (
-        <>
-          <ColumnHead grid={GRID} labels={[ut("ops.susp.rule"), ut("ops.susp.who"), ut("ops.susp.when"), ut("ops.users.state")]} />
-          <ul className="m-0 list-none p-0" aria-label={ut("ops.tab.suspicious")}>
-            {res.data.items.map((f) => (
-              <FindingRow key={f.id} f={f} explain={ruleExplanation(f.rule, res.data!.thresholds, ut)} onResolve={() => setResolving(f)} />
-            ))}
-          </ul>
-        </>
-      )}
+        )}
+      </RuleSection>
 
       {resolving ? (
         <ResolveDialog

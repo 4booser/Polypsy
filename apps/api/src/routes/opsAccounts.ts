@@ -34,6 +34,7 @@ import {
 import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { clearFailures } from "../lib/loginGuard";
 import { currentRequestId } from "../lib/log";
+import { sessionsSummary, usersSummary } from "../lib/peopleStats";
 import { revokeAllFor, revokeFamily } from "../lib/refresh";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -203,6 +204,24 @@ opsUserRoutes.get("/", async (c) => {
 
   const body: OpsUserPage = { items, total: matched.length, page, per };
   return c.json(body);
+});
+
+/**
+ * Сводка реестра для графиков над списком (волна 11, участок people): роли и
+ * состояния, второй фактор у персонала, новые учётки по неделям, входы по
+ * дням. Только числа; пациенты — через порог малых чисел (lib/peopleStats.ts).
+ *
+ * Под системной ролью: попытки входа и второй фактор политики строк
+ * открывают одной системе, и без неё заведующий с users.manage видел бы
+ * «заперто: 0» там, где заперто пятеро.
+ *
+ * В журнал — тем же user.list, что и чтение реестра: «кто смотрел на
+ * реестр» остаётся одной выборкой, чем бы на него ни смотрели.
+ */
+opsUserRoutes.get("/summary", async (c) => {
+  const summary = await asSystem(() => usersSummary());
+  await audit(c, { action: "user.list", details: { ops: true, view: "summary" } });
+  return c.json(summary);
 });
 
 /* ─────────── выключение ─────────── */
@@ -458,6 +477,17 @@ opsSessionRoutes.get("/", async (c) => {
 
   const body: OpsSessionPage = { items, total: sessions.length, page, per };
   return c.json(body);
+});
+
+/**
+ * Сводка живых сессий для графиков (волна 11): по роли и по возрасту, у
+ * персонала и у пациентов порознь. Клиента и устройства нет — см.
+ * lib/peopleStats.ts, sessionsSummary.
+ */
+opsSessionRoutes.get("/summary", async (c) => {
+  const summary = await asSystem(() => sessionsSummary());
+  await audit(c, { action: "session.list", details: { view: "summary" } });
+  return c.json(summary);
 });
 
 /** Завершить одну сессию — семью целиком; access-токены человека отсекаются сдвигом границы */

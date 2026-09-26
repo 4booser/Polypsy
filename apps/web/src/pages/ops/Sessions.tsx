@@ -7,9 +7,11 @@ import { Loading, useAction } from "../../ui";
 import { Pager } from "../../ui/pager";
 import { pageCount, pageFrom, perFrom } from "../../ui/paging";
 import { Button } from "../../ui/primitives";
+import { RuleSection } from "../../ui/section";
 import { useResource } from "../../useResource";
 import { Cell, ColumnHead, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
 import { ROLE_KEY, personHref } from "./model";
+import { SessionsOverview } from "./people2/charts";
 
 /*
  * Техпанель → «Сесії»: кто сейчас держит вход в систему.
@@ -72,83 +74,91 @@ export default function OpsSessions() {
 
   return (
     <>
-      <div className="mb-[12px] grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
-        <SearchField label={ut("ops.sessions.search")} value={q} onChange={(v) => update({ q: v, page: null })} />
-        <Pager
-          page={page}
-          pages={pages}
-          per={per}
-          onPer={(n) => update({ per: String(n), page: null })}
-          onPage={(p) => update({ page: p > 1 ? String(p) : null })}
-        />
-      </div>
-      <div className="mb-[18px] flex flex-wrap items-center gap-[16px]">
-        <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
-          {res.data ? `${ut("ppl.found")} ${res.data.total}` : ""}
-        </span>
-        {userId ? (
-          <span className="flex flex-wrap items-center gap-[8px] text-[13px] text-text-2">
-            {ut("ops.sessions.onlyOf")}: <strong className="[overflow-wrap:anywhere]">{who?.email ?? userId.slice(0, 8)}</strong>
-            <Button variant="quiet" onClick={() => update({ user: null, page: null })}>
-              {ut("ops.sessions.showAll")}
-            </Button>
-          </span>
-        ) : null}
-        <span className="text-[13px] text-muted">{ut("ops.sessions.noDevice")}</span>
-      </div>
-
-      {res.error ? (
-        <Loading error={res.error} onRetry={res.reload} />
-      ) : !res.data ? (
-        <Loading rows={6} />
-      ) : res.data.items.length === 0 ? (
-        <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ops.sessions.none")}</p>
-      ) : (
-        <>
-          <ColumnHead
-            grid={GRID}
-            labels={[
-              ut("ops.users.account"),
-              ut("adm.role"),
-              ut("ops.sessions.started"),
-              ut("ops.sessions.lastUsed"),
-              ut("ops.sessions.expires"),
-              null,
-            ]}
+      {/*
+        Волна 11: сводка живых сессий графиками — над списком. По одному
+        человеку (?user=) её нет: экран тогда про его сессии, и график всей
+        системы над тремя строками был бы шумом.
+      */}
+      {userId ? null : <SessionsOverview />}
+      <RuleSection title={ut("opsp.sess.list")}>
+        <div className="mb-[12px] grid grid-cols-[minmax(0,1fr)_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
+          <SearchField label={ut("ops.sessions.search")} value={q} onChange={(v) => update({ q: v, page: null })} />
+          <Pager
+            page={page}
+            pages={pages}
+            per={per}
+            onPer={(n) => update({ per: String(n), page: null })}
+            onPage={(p) => update({ page: p > 1 ? String(p) : null })}
           />
-          <ul className="m-0 list-none p-0">
-            {res.data.items.map((s) => (
-              <li key={s.id} className={rowClass(GRID)}>
-                <div className="min-w-0">
-                  <Link to={personHref({ id: s.userId, role: s.role })} className={nameClass}>
-                    {s.fullName || s.email}
-                  </Link>
-                  <span className={metaClass}>{s.email}</span>
-                </div>
-                <Cell label={ut("adm.role")}>{ut(ROLE_KEY[s.role])}</Cell>
-                <Cell label={ut("ops.sessions.started")}>{dateTime(s.startedAt)}</Cell>
-                <Cell label={ut("ops.sessions.lastUsed")}>{dateTime(s.lastUsedAt)}</Cell>
-                <Cell label={ut("ops.sessions.expires")}>{dateTime(s.expiresAt)}</Cell>
-                <div className="flex justify-end max-[900px]:justify-start">
-                  <Button
-                    variant="ghost"
-                    disabled={busy}
-                    aria-label={`${ut("ops.sessions.end")}: ${s.fullName || s.email}`}
-                    onClick={() =>
-                      void run(async () => {
-                        await api.revokeSession(s.id);
-                        res.reload();
-                      }, ut("ops.sessions.ended"))
-                    }
-                  >
-                    {ut("ops.sessions.end")}
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+        </div>
+        <div className="mb-[18px] flex flex-wrap items-center gap-[16px]">
+          <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
+            {res.data ? `${ut("ppl.found")} ${res.data.total}` : ""}
+          </span>
+          {userId ? (
+            <span className="flex flex-wrap items-center gap-[8px] text-[13px] text-text-2">
+              {ut("ops.sessions.onlyOf")}: <strong className="[overflow-wrap:anywhere]">{who?.email ?? userId.slice(0, 8)}</strong>
+              <Button variant="quiet" onClick={() => update({ user: null, page: null })}>
+                {ut("ops.sessions.showAll")}
+              </Button>
+            </span>
+          ) : null}
+          <span className="text-[13px] text-muted">{ut("ops.sessions.noDevice")}</span>
+        </div>
+
+        {res.error ? (
+          <Loading error={res.error} onRetry={res.reload} />
+        ) : !res.data ? (
+          <Loading rows={6} />
+        ) : res.data.items.length === 0 ? (
+          <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ops.sessions.none")}</p>
+        ) : (
+          <>
+            <ColumnHead
+              grid={GRID}
+              labels={[
+                ut("ops.users.account"),
+                ut("adm.role"),
+                ut("ops.sessions.started"),
+                ut("ops.sessions.lastUsed"),
+                ut("ops.sessions.expires"),
+                null,
+              ]}
+            />
+            <ul className="m-0 list-none p-0">
+              {res.data.items.map((s) => (
+                <li key={s.id} className={rowClass(GRID)}>
+                  <div className="min-w-0">
+                    <Link to={personHref({ id: s.userId, role: s.role })} className={nameClass}>
+                      {s.fullName || s.email}
+                    </Link>
+                    <span className={metaClass}>{s.email}</span>
+                  </div>
+                  <Cell label={ut("adm.role")}>{ut(ROLE_KEY[s.role])}</Cell>
+                  <Cell label={ut("ops.sessions.started")}>{dateTime(s.startedAt)}</Cell>
+                  <Cell label={ut("ops.sessions.lastUsed")}>{dateTime(s.lastUsedAt)}</Cell>
+                  <Cell label={ut("ops.sessions.expires")}>{dateTime(s.expiresAt)}</Cell>
+                  <div className="flex justify-end max-[900px]:justify-start">
+                    <Button
+                      variant="ghost"
+                      disabled={busy}
+                      aria-label={`${ut("ops.sessions.end")}: ${s.fullName || s.email}`}
+                      onClick={() =>
+                        void run(async () => {
+                          await api.revokeSession(s.id);
+                          res.reload();
+                        }, ut("ops.sessions.ended"))
+                      }
+                    >
+                      {ut("ops.sessions.end")}
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </RuleSection>
     </>
   );
 }

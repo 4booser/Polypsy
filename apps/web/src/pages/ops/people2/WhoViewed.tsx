@@ -8,6 +8,7 @@ import { Button, Input } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { SearchField, metaClass, useDebounced } from "../controls";
 import { ROLE_KEY, actionLabel } from "../model";
+import { WhoViewedCharts } from "./charts";
 import { defaultPeriod, whoViewedCsv } from "./model";
 import { Empty, Section, saveText } from "./parts";
 
@@ -175,6 +176,8 @@ function Report({ report, label }: { report: WhoViewedReport; label: (action: st
           {dateTime(report.generatedAt)} · <span className="font-mono tabular-nums">{report.total}</span> {ut("ops.who.actions")}
         </p>
       </header>
+      {/* волна 11: когда и что — графиками над разделами «кто»; пустой отчёт их не получает */}
+      <WhoViewedCharts report={report} label={label} />
       {report.actors.length === 0 ? (
         <Empty>{ut("ops.who.nobody")}</Empty>
       ) : (
