@@ -16,6 +16,9 @@ class HttpError extends Error {
 
 const offline = () => new HttpError("Нет связи", 0);
 
+// владелец очереди: сдачи кладутся и отправляются от его имени (owner.ts)
+const A = "owner-a";
+
 beforeEach(() => {
   resetStore();
 });
@@ -26,43 +29,43 @@ describe("накопление", () => {
      * Без него повторная отправка после потери ответа создала бы второе
      * прохождение — и человек попал бы в статистику дважды.
      */
-    const a = enqueue("s1", { answers: [] });
-    const b = enqueue("s1", { answers: [] });
+    const a = enqueue(A, "s1", { answers: [] });
+    const b = enqueue(A, "s1", { answers: [] });
     expect(a.payload.clientRequestId).toBeString();
     expect(a.payload.clientRequestId).not.toBe(b.payload.clientRequestId);
   });
 
   test("порядок сдачи сохраняется", async () => {
     // батареи со строгим порядком: методика 2 не должна уйти раньше первой
-    const first = enqueue("s1", { n: 1 });
+    const first = enqueue(A, "s1", { n: 1 });
     await Bun.sleep(2);
-    enqueue("s2", { n: 2 });
+    enqueue(A, "s2", { n: 2 });
     await Bun.sleep(2);
-    enqueue("s3", { n: 3 });
+    enqueue(A, "s3", { n: 3 });
 
-    expect(pending().map((x) => x.surveyId)).toEqual(["s1", "s2", "s3"]);
-    expect(pending()[0]!.id).toBe(first.id);
+    expect(pending(A).map((x) => x.surveyId)).toEqual(["s1", "s2", "s3"]);
+    expect(pending(A)[0]!.id).toBe(first.id);
   });
 });
 
 describe("прогон очереди", () => {
   test("успешные записи исчезают, счётчик обнуляется", async () => {
-    enqueue("s1", {});
-    enqueue("s2", {});
+    enqueue(A, "s1", {});
+    enqueue(A, "s2", {});
 
-    const res = await flush(async () => {});
+    const res = await flush(A, async () => {});
 
     expect(res).toEqual({ sent: 2, left: 0, rejected: 0 });
-    expect(pending()).toHaveLength(0);
+    expect(pending(A)).toHaveLength(0);
   });
 
   test("пропажа сети останавливает прогон, а не теряет очередь", async () => {
-    enqueue("s1", {});
-    enqueue("s2", {});
-    enqueue("s3", {});
+    enqueue(A, "s1", {});
+    enqueue(A, "s2", {});
+    enqueue(A, "s3", {});
 
     let calls = 0;
-    const res = await flush(async () => {
+    const res = await flush(A, async () => {
       calls++;
       if (calls > 1) throw offline();
     });
@@ -71,7 +74,7 @@ describe("прогон очереди", () => {
     expect(calls).toBe(2);
     expect(res.sent).toBe(1);
     expect(res.left).toBe(2);
-    expect(pending().map((x) => x.surveyId)).toEqual(["s2", "s3"]);
+    expect(pending(A).map((x) => x.surveyId)).toEqual(["s2", "s3"]);
   });
 
   test("сетевая ошибка не помечает запись отказом", async () => {
@@ -80,27 +83,27 @@ describe("прогон очереди", () => {
      * а отсутствие сети пройдёт само. Пометить первое вторым — значит
      * оставить сдачу лежать до ручного вмешательства, которого не будет.
      */
-    enqueue("s1", {});
-    await flush(async () => {
+    enqueue(A, "s1", {});
+    await flush(A, async () => {
       throw offline();
     });
 
-    expect(rejectedItems()).toHaveLength(0);
-    expect(pendingCount()).toBe(1);
+    expect(rejectedItems(A)).toHaveLength(0);
+    expect(pendingCount(A)).toBe(1);
   });
 
   test("отказ сервера помечает запись и не блокирует остальные", async () => {
-    enqueue("bad", {});
+    enqueue(A, "bad", {});
     await Bun.sleep(2);
-    enqueue("good", {});
+    enqueue(A, "good", {});
 
-    const res = await flush(async (item) => {
+    const res = await flush(A, async (item) => {
       if (item.surveyId === "bad") throw new HttpError("Методика архивирована", 409);
     });
 
     expect(res.sent).toBe(1);
     expect(res.rejected).toBe(1);
-    const stuck = rejectedItems();
+    const stuck = rejectedItems(A);
     expect(stuck).toHaveLength(1);
     expect(stuck[0]!.rejectedReason).toBe("Методика архивирована");
     // причина сохранена — сдача ждёт разбора, а не удалена молча
@@ -108,13 +111,13 @@ describe("прогон очереди", () => {
   });
 
   test("отклонённая запись больше не отправляется сама", async () => {
-    enqueue("bad", {});
-    await flush(async () => {
+    enqueue(A, "bad", {});
+    await flush(A, async () => {
       throw new HttpError("Отказ", 400);
     });
 
     let attempts = 0;
-    const res = await flush(async () => {
+    const res = await flush(A, async () => {
       attempts++;
     });
 
@@ -132,10 +135,10 @@ describe("прогон очереди", () => {
      */
     for (const status of [503, 502, 504]) {
       resetStore();
-      enqueue("s1", {});
-      enqueue("s2", {});
+      enqueue(A, "s1", {});
+      enqueue(A, "s2", {});
       let calls = 0;
-      const res = await flush(async () => {
+      const res = await flush(A, async () => {
         calls++;
         throw new HttpError("Тривають технічні роботи", status);
       });
@@ -144,20 +147,20 @@ describe("прогон очереди", () => {
       expect(res.left).toBe(2);
     }
     // работы кончились — уходит само, без участия человека
-    const done = await flush(async () => {});
+    const done = await flush(A, async () => {});
     expect(done.sent).toBe(2);
   });
 
   test("ошибка сервера в коде (500) — отказ, а не вечный повтор", async () => {
-    enqueue("s1", {});
-    const res = await flush(async () => {
+    enqueue(A, "s1", {});
+    const res = await flush(A, async () => {
       throw new HttpError("Внутрішня помилка", 500);
     });
     expect(res.rejected).toBe(1);
   });
 
   test("id первой попытки сохраняется в очереди: дубль после 504 сервер узнает", () => {
-    const item = enqueue("s1", { clientRequestId: "first-attempt" });
+    const item = enqueue(A, "s1", { clientRequestId: "first-attempt" });
     expect(item.payload.clientRequestId).toBe("first-attempt");
   });
 
@@ -167,14 +170,14 @@ describe("прогон очереди", () => {
      * два прохода взяли бы один и тот же элемент — сервер спасёт
      * clientRequestId, но лишний трафик и гонка за store остаются.
      */
-    enqueue("s1", {});
+    enqueue(A, "s1", {});
     let sends = 0;
     const slow = async () => {
       await Bun.sleep(10);
       sends++;
     };
 
-    const [a, b] = await Promise.all([flush(slow), flush(slow)]);
+    const [a, b] = await Promise.all([flush(A, slow), flush(A, slow)]);
 
     expect(sends).toBe(1);
     expect(a.sent + b.sent).toBe(1);
@@ -183,35 +186,35 @@ describe("прогон очереди", () => {
 
 describe("разбор отказов", () => {
   test("повтор снимает пометку и запись снова уходит", async () => {
-    enqueue("bad", {});
-    await flush(async () => {
+    enqueue(A, "bad", {});
+    await flush(A, async () => {
       throw new HttpError("Отказ", 400);
     });
 
-    retryRejected(rejectedItems()[0]!.id);
-    expect(rejectedItems()).toHaveLength(0);
+    retryRejected(A, rejectedItems(A)[0]!.id);
+    expect(rejectedItems(A)).toHaveLength(0);
 
-    const res = await flush(async () => {});
+    const res = await flush(A, async () => {});
     expect(res.sent).toBe(1);
   });
 
   test("повтор сохраняет данные сдачи", async () => {
     // снятие пометки не должно попутно потерять ответы
-    const item = enqueue("bad", { answers: [{ q: 1, v: "a" }] });
-    await flush(async () => {
+    const item = enqueue(A, "bad", { answers: [{ q: 1, v: "a" }] });
+    await flush(A, async () => {
       throw new HttpError("Отказ", 400);
     });
 
-    retryRejected(item.id);
-    const back = pending()[0]!;
+    retryRejected(A, item.id);
+    const back = pending(A)[0]!;
     expect(back.payload.answers).toEqual([{ q: 1, v: "a" }]);
     expect(back.payload.clientRequestId).toBe(item.payload.clientRequestId);
     expect("rejectedReason" in back).toBe(false);
   });
 
   test("удаление убирает запись насовсем", () => {
-    const item = enqueue("s1", {});
-    discard(item.id);
-    expect(pending()).toHaveLength(0);
+    const item = enqueue(A, "s1", {});
+    discard(A, item.id);
+    expect(pending(A)).toHaveLength(0);
   });
 });

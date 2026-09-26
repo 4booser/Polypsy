@@ -181,16 +181,6 @@ export const UI = {
   "consent.title": { uk: "Інформована згода", ru: "Информированное согласие", en: "Informed consent" },
   "consent.accept": { uk: "Погоджуюся", ru: "Соглашаюсь", en: "I agree" },
   "consent.decline": { uk: "Не погоджуюся", ru: "Не соглашаюсь", en: "I do not agree" },
-  /*
-   * Отказ должен быть возможен и не должен выглядеть как поломка. Согласие,
-   * от которого нельзя отказаться, — не согласие; а человек, увидевший
-   * экран без выхода, просто снесёт приложение.
-   */
-  "consent.declined": {
-    uk: "Без згоди обстеження не проводиться. Ви вийшли з облікового запису — зверніться до свого фахівця, якщо хочете обговорити умови.",
-    ru: "Без согласия обследование не проводится. Вы вышли из учётной записи — обратитесь к своему специалисту, если хотите обсудить условия.",
-    en: "The assessment is not conducted without consent. You have been signed out — contact your specialist if you would like to discuss the terms.",
-  },
   "consent.hint": {
     uk: "Без згоди проходити обстеження не можна. Питання — до вашого фахівця.",
     ru: "Без согласия проходить обследование нельзя. Вопросы — к вашему специалисту.",
@@ -6296,7 +6286,6 @@ export const UI = {
     ru: "Ждут отправки: {n}. Нажмите, чтобы отправить сейчас",
     en: "Waiting to be sent: {n}. Tap to send now",
   },
-  "mp.unsentAnswers": { uk: "Є невідправлені відповіді — дочекайтеся мережі, вони підуть самі.", ru: "Есть неотправленные ответы — дождитесь сети, они уйдут сами.", en: "There are unsent answers — wait for the network, they will be sent automatically." },
   "mp.queueLeft": {
     uk: "Не відправлено відповідей: {n}. Підуть самі, щойно з’явиться мережа.",
     ru: "Не отправлено ответов: {n}. Уйдут сами, как только появится сеть.",
@@ -7085,6 +7074,76 @@ export const UI = {
   "st.apply": { uk: "Застосувати", ru: "Применить", en: "Apply" },
   /* ── wave7:orgs ── */
   /* ── wave7:placement ── */
+
+  /* ── w12:mobile ── */
+  /*
+   * Офлайн-сохранение, которое не легло. Раньше экран в этот момент говорил
+   * «збережено» и стирал черновик; теперь — правду и что можно сделать самому.
+   */
+  "ms.notSavedOnDevice": {
+    uk: "Зв’язку немає, а зберегти відповіді на телефоні не вдалося — схоже, закінчилося місце. Відповіді не втрачено, вони на цьому екрані. Звільніть місце або дочекайтеся мережі й натисніть «Завершити» ще раз.",
+    ru: "Связи нет, а сохранить ответы на телефоне не удалось — похоже, закончилось место. Ответы не потеряны, они на этом экране. Освободите место или дождитесь сети и нажмите «Завершить» ещё раз.",
+    en: "There is no connection, and the answers could not be saved on the phone — it is probably out of storage. Nothing is lost: the answers are still on this screen. Free up some space or wait for the network, then tap “Finish” again.",
+  },
+  /* выход при неотправленном: что остаётся на устройстве и что с ним будет (offline/logout.ts) */
+  "mp.logoutKeepsAnswers": {
+    uk: "Ваші відповіді, що ще не пішли на сервер: {n}. Вони лишаться на цьому пристрої й підуть самі, коли ви знову увійдете тут і з’явиться мережа. Під іншим обліковим записом їх не видно й не відправляють.",
+    ru: "Ваших ответов, которые ещё не ушли на сервер: {n}. Они останутся на этом устройстве и уйдут сами, когда вы снова войдёте здесь и появится сеть. Под другой учётной записью их не видно и не отправляют.",
+    en: "Your answers not yet sent to the server: {n}. They stay on this device and will be sent automatically the next time you sign in here with a network connection. Other accounts cannot see or send them.",
+  },
+  "mp.logoutKeepsDrafts": {
+    uk: "Незавершені проходження, що не дійшли до сервера: {n}. Продовжити їх можна буде, коли ви знову увійдете на цьому пристрої.",
+    ru: "Незавершённых прохождений, не дошедших до сервера: {n}. Продолжить их можно будет, когда вы снова войдёте на этом устройстве.",
+    en: "Unfinished assessments not yet on the server: {n}. You can continue them the next time you sign in on this device.",
+  },
+  "mp.logoutAnyway": { uk: "Усе одно вийти", ru: "Всё равно выйти", en: "Sign out anyway" },
+  /* сдачи, положенные до появления владельца у очереди (offline/queue.ts, ownerless) */
+  "mq.ownerless": { uk: "Відповіді без власника", ru: "Ответы без владельца", en: "Answers with no owner" },
+  "mq.ownerlessHint": {
+    uk: "Ці відповіді збережено на пристрої ще до оновлення застосунку, і невідомо, хто їх давав. Самі вони не підуть. Якщо це ваші — натисніть «Це мої відповіді», і їх буде відправлено від вашого імені. Якщо не ваші — не чіпайте їх і покажіть цей екран фахівцю.",
+    ru: "Эти ответы сохранены на устройстве ещё до обновления приложения, и неизвестно, кто их давал. Сами они не уйдут. Если это ваши — нажмите «Это мои ответы», и их отправят от вашего имени. Если не ваши — не трогайте их и покажите этот экран специалисту.",
+    en: "These answers were saved on the device before the app was updated, and it is not known who gave them. They will not be sent on their own. If they are yours, tap “These are my answers” and they will be sent under your name. If not, leave them and show this screen to a specialist.",
+  },
+  "mq.claim": { uk: "Це мої відповіді", ru: "Это мои ответы", en: "These are my answers" },
+  "ob.ownerless": {
+    uk: "На пристрої є відповіді без власника: {n}. Натисніть, щоб розібрати",
+    ru: "На устройстве есть ответы без владельца: {n}. Нажмите, чтобы разобрать",
+    en: "Answers with no owner on this device: {n}. Tap to review",
+  },
+  /*
+   * Отказ от согласия — своё состояние экрана, а не мгновенный выход
+   * (src/consent/model.ts). Отказ должен быть возможен и не должен выглядеть
+   * как поломка: согласие, от которого нельзя отказаться, — не согласие, а
+   * человек, увидевший экран без выхода, просто снесёт приложение. Прежняя
+   * строка «ви вийшли з облікового запису» ставилась на экран, который в тот
+   * же миг закрывался, — её не видел никто.
+   */
+  "consent.declinedTitle": { uk: "Ви не погодилися", ru: "Вы не согласились", en: "You did not agree" },
+  "consent.declinedWhat": {
+    uk: "Без згоди обстеження не проводиться, тож далі застосунок не відкривається: пройти методики, побачити результати, записатися на прийом чи написати фахівцю тут не вийде.",
+    ru: "Без согласия обследование не проводится, поэтому дальше приложение не открывается: пройти методики, увидеть результаты, записаться на приём или написать специалисту здесь не получится.",
+    en: "The assessment is not conducted without consent, so the app will not open any further: you cannot take assessments, see results, book an appointment or message a specialist here.",
+  },
+  "consent.declinedNext": {
+    uk: "Хочете обговорити умови — зверніться до свого фахівця особисто. Передумаєте — поверніться до тексту або увійдіть знову: погодитися можна будь-коли.",
+    ru: "Хотите обсудить условия — обратитесь к своему специалисту лично. Передумаете — вернитесь к тексту или войдите снова: согласиться можно в любой момент.",
+    en: "To discuss the terms, contact your specialist in person. If you change your mind, go back to the text or sign in again — you can agree at any time.",
+  },
+  "consent.signOut": { uk: "Вийти з облікового запису", ru: "Выйти из учётной записи", en: "Sign out" },
+  "consent.reconsider": { uk: "Повернутися до тексту", ru: "Вернуться к тексту", en: "Back to the text" },
+  /* текст не загрузился: принимать нечего — согласие с невиданным текстом юридически пусто */
+  "consent.loadFailed": {
+    uk: "Не вдалося отримати текст згоди. Погодитися з текстом, якого ви не бачили, не можна — спробуйте ще раз або вийдіть з облікового запису.",
+    ru: "Не удалось получить текст согласия. Согласиться с текстом, которого вы не видели, нельзя — попробуйте ещё раз или выйдите из учётной записи.",
+    en: "Could not load the consent text. You cannot agree to a text you have not seen — try again or sign out.",
+  },
+  /* выход с замка, когда подтверждение не проходит (AppLock.tsx) */
+  "mlock.signOutHint": {
+    uk: "Не вдається підтвердити? Вийдіть з облікового запису й увійдіть знову з паролем.",
+    ru: "Не получается подтвердить? Выйдите из учётной записи и войдите снова с паролем.",
+    en: "Cannot confirm? Sign out and sign in again with your password.",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

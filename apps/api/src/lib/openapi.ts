@@ -601,6 +601,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "PUT /api/consents/text": { summary: "Новая версия текста согласия", access: "superadmin", whyNoPermission: "текст согласия — заявление учреждения, а не действие специалиста" },
   "GET /api/consents/me": { summary: "Своё согласие", access: "user" },
   "POST /api/consents/me/accept": { summary: "Принятие согласия", access: "user" },
+  "POST /api/consents/me/decline": { summary: "Отказ от согласия или отзыв принятого", access: "user" },
 };
 
 /** Маршруты, которых в описании нет намеренно */

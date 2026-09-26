@@ -21,30 +21,33 @@ const draft = (surveyId: string, answers: number, savedAt: string, synced = fals
   synced,
 });
 
+// чей черновик: локальная копия лежит под владельцем (offline/cache.ts)
+const A = "owner-a";
+
 beforeEach(() => {
   resetStore();
 });
 
 describe("черновик на устройстве", () => {
   test("сохраняется и читается по методике", () => {
-    drafts.save(draft("s1", 180, "2026-01-01T11:00:00.000Z"));
-    expect(drafts.get("s1")?.answers).toHaveLength(180);
-    expect(drafts.get("s2")).toBeNull();
+    drafts.save(A, draft("s1", 180, "2026-01-01T11:00:00.000Z"));
+    expect(drafts.get(A, "s1")?.answers).toHaveLength(180);
+    expect(drafts.get(A, "s2")).toBeNull();
   });
 
   test("один черновик на методику: повторное сохранение заменяет", () => {
-    drafts.save(draft("s1", 10, "2026-01-01T11:00:00.000Z"));
-    drafts.save(draft("s1", 42, "2026-01-01T11:05:00.000Z"));
+    drafts.save(A, draft("s1", 10, "2026-01-01T11:00:00.000Z"));
+    drafts.save(A, draft("s1", 42, "2026-01-01T11:05:00.000Z"));
 
-    expect(drafts.get("s1")?.answers).toHaveLength(42);
-    expect(drafts.unsynced()).toHaveLength(1);
+    expect(drafts.get(A, "s1")?.answers).toHaveLength(42);
+    expect(drafts.unsynced(A)).toHaveLength(1);
   });
 
   test("в досылку попадают только не ушедшие на сервер", () => {
-    drafts.save(draft("s1", 5, "2026-01-01T11:00:00.000Z", true));
-    drafts.save(draft("s2", 7, "2026-01-01T11:00:00.000Z", false));
+    drafts.save(A, draft("s1", 5, "2026-01-01T11:00:00.000Z", true));
+    drafts.save(A, draft("s2", 7, "2026-01-01T11:00:00.000Z", false));
 
-    expect(drafts.unsynced().map((d) => d.surveyId)).toEqual(["s2"]);
+    expect(drafts.unsynced(A).map((d) => d.surveyId)).toEqual(["s2"]);
   });
 
   test("после сдачи черновик удаляется", () => {
@@ -52,11 +55,11 @@ describe("черновик на устройстве", () => {
      * Иначе при следующем открытии методики приложение предложило бы
      * «продолжить» уже сданное прохождение.
      */
-    drafts.save(draft("s1", 200, "2026-01-01T11:00:00.000Z"));
-    drafts.drop("s1");
+    drafts.save(A, draft("s1", 200, "2026-01-01T11:00:00.000Z"));
+    drafts.drop(A, "s1");
 
-    expect(drafts.get("s1")).toBeNull();
-    expect(drafts.unsynced()).toEqual([]);
+    expect(drafts.get(A, "s1")).toBeNull();
+    expect(drafts.unsynced(A)).toEqual([]);
   });
 
 });

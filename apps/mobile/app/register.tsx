@@ -3,12 +3,14 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } fro
 import { useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthContext";
 import { useLang } from "@/lang";
+import { useExit } from "@/nav/useExit";
 import { Body, Button, Card, Chip, ErrorText, Field, Row, Title } from "@/components/ui";
 import { radius, spacing, useColors } from "@/theme";
 
 export default function RegisterScreen() {
   const c = useColors();
   const router = useRouter();
+  const exit = useExit();
   const { register } = useAuth();
   const { ut } = useLang();
 
@@ -190,11 +192,8 @@ export default function RegisterScreen() {
         <ErrorText>{error}</ErrorText>
 
         <Button title={ut("auth.register")} onPress={onSubmit} loading={busy} disabled={!ready} />
-        <Button
-          title={ut("mr.backToLogin")}
-          variant="secondary"
-          onPress={() => router.back()}
-        />
+        {/* открыта по ссылке первой — «назад» вёл бы в никуда; тогда ко входу заменой */}
+        <Button title={ut("mr.backToLogin")} variant="secondary" onPress={exit} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

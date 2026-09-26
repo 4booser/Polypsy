@@ -1,11 +1,12 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
+import { ownerOfToken, setActiveOwner } from "./offline/owner";
 
 const TOKEN_KEY = "quizzy.token";
 const REFRESH_KEY = "quizzy.refresh";
 
 // SecureStore недоступен в web-сборке — там падаем на localStorage
-const store =
+const raw =
   Platform.OS === "web"
     ? {
         get: async () => (typeof localStorage === "undefined" ? null : localStorage.getItem(TOKEN_KEY)),
@@ -28,7 +29,67 @@ const store =
         },
       };
 
-export const tokenStorage = store;
+/*
+ * Каждое чтение, запись и очистка токена заодно называют владельца
+ * офлайн-данных (offline/owner.ts). Владелец — функция токена, и держать его
+ * отдельно, обновляя «где не забыли», значило бы однажды разойтись: вход
+ * через второй фактор, обмен refresh, стирание устройства меняют токен в
+ * разных местах кода.
+ */
+export const tokenStorage = {
+  get: async () => {
+    const token = await raw.get();
+    setActiveOwner(ownerOfToken(token));
+    return token;
+  },
+  set: async (token: string) => {
+    await raw.set(token);
+    setActiveOwner(ownerOfToken(token));
+  },
+  getRefresh: () => raw.getRefresh(),
+  setRefresh: (token: string) => raw.setRefresh(token),
+  clear: async () => {
+    // владелец снимается первым: запрос, отвечающий уже после выхода, не должен найти «текущего»
+    setActiveOwner(null);
+    await raw.clear();
+  },
+};
+
+/*
+ * Refresh-токены вышедших, ещё не отозванные на сервере (auth/session.ts):
+ * выход не ждёт сети, а отзыв догоняет его при первой связи. Лежат там же,
+ * где лежал сам токен, — в защищённом хранилище, а не в файлах офлайн-слоя.
+ */
+const REVOKE_KEY = "quizzy.revoke";
+
+function parseList(raw: string | null): string[] {
+  try {
+    const list = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(list) ? list.filter((t): t is string => typeof t === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export const revokeStorage = {
+  get: async (): Promise<string[]> =>
+    parseList(
+      Platform.OS === "web"
+        ? typeof localStorage === "undefined"
+          ? null
+          : localStorage.getItem(REVOKE_KEY)
+        : await SecureStore.getItemAsync(REVOKE_KEY),
+    ),
+  set: async (tokens: string[]): Promise<void> => {
+    if (Platform.OS === "web") {
+      if (tokens.length) localStorage?.setItem(REVOKE_KEY, JSON.stringify(tokens));
+      else localStorage?.removeItem(REVOKE_KEY);
+      return;
+    }
+    if (tokens.length) await SecureStore.setItemAsync(REVOKE_KEY, JSON.stringify(tokens));
+    else await SecureStore.deleteItemAsync(REVOKE_KEY);
+  },
+};
 
 /**
  * Настройки (язык и т.п.) — не секреты, но живут в том же хранилище:
