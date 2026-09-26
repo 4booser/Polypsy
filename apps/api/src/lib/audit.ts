@@ -303,6 +303,8 @@ export type AuditAction =
   | "conclusion.save"
   | "conclusion.sign"
   | "consent.accept"
+  /* отказ от согласия и отзыв принятого (routes/consents.ts, /me/decline) */
+  | "consent.decline"
   | "consent.text_update"
   | "retention.answer_events"
   /* техпанель: чтение логов и групп ошибок процесса — склеено по пять минут (routes/ops.ts) */

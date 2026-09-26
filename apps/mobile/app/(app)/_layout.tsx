@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, useRouter } from "expo-router";
 import { useAuth } from "@/auth/AuthContext";
 import { Loader } from "@/components/ui";
 import { OfflineBar } from "@/components/OfflineBar";
@@ -16,6 +16,7 @@ export default function AppLayout() {
   const { ut } = useLang();
   const { user, loading, isAdmin } = useAuth();
   const c = useColors();
+  const router = useRouter();
 
   if (loading) return <Loader />;
   if (!user) return <Redirect href="/login" />;
@@ -51,9 +52,27 @@ export default function AppLayout() {
         name="rounds"
         options={{ title: ut("rounds.title"), href: isAdmin ? "/rounds" : null }}
       />
+      {/*
+        Аналитика открывается ПОВЕРХ вкладок, а не вместо них.
+
+        Раньше нажатие вело на экран-переадресацию, и та заменяла вкладки
+        разделом: вернуться стеку было некуда, стрелки «назад» не было, кнопка
+        Android сворачивала приложение. Теперь нажатие перехватывается и
+        раздел кладётся в стек над вкладками — «назад» (стрелка, жест, кнопка
+        Android, «‹ Меню») возвращает туда, откуда пришли, на ту же вкладку.
+        Сама вкладка при этом не становится текущей: иначе, вернувшись,
+        человек снова попал бы на переадресацию и обратно в раздел.
+        Экран insights остаётся — для прямого адреса /insights.
+      */}
       <Tabs.Screen
         name="insights"
         options={{ title: ut("tab.analytics"), headerShown: false, href: isAdmin ? "/insights" : null }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push("/analytics");
+          },
+        }}
       />
       <Tabs.Screen name="health" options={{ title: ut("tab.health") }} />
       {/*

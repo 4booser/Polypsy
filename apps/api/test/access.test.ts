@@ -559,6 +559,54 @@ describe("информированное согласие", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  /*
+   * Отказ — на сервере, а не только выходом из приложения. Раньше экран
+   * согласия выводил отказавшегося из учётной записи, и сервер не узнавал
+   * ничего: «отказался» и «не дошёл до экрана» выглядели одинаково.
+   *
+   * Здесь, а не отдельным файлом: первый тест этого блока проверяет «текста
+   * ещё нет», и файл, заводящий текст раньше него, ронял бы его.
+   */
+  test("отказ записывается с версией; отказ после принятия — отзыв; чужое не трогается", async () => {
+    const person = await makeUser("user", `decline-${crypto.randomUUID()}@test`);
+    const other = await makeUser("user", `decline-other-${crypto.randomUUID()}@test`);
+    const put = await api("/api/consents/text", root.token, {
+      method: "PUT",
+      body: JSON.stringify({ body: { uk: "Текст згоди для перевірки відмови", ru: "Текст согласия для проверки отказа" } }),
+    });
+    const version = put.body.version as number;
+    await api("/api/consents/me/accept", other.token, { method: "POST" });
+
+    // отказ, не приняв
+    const first = await api("/api/consents/me/decline", person.token, { method: "POST" });
+    expect(first.status).toBe(200);
+    expect(first.body).toEqual({ ok: true, withdrawn: false });
+    expect((await api("/api/consents/me", person.token)).body.accepted).toBe(false);
+
+    // принял — и передумал: принятие действующей версии снимается
+    await api("/api/consents/me/accept", person.token, { method: "POST" });
+    expect((await api("/api/consents/me", person.token)).body.accepted).toBe(true);
+    const second = await api("/api/consents/me/decline", person.token, { method: "POST" });
+    expect(second.body).toEqual({ ok: true, withdrawn: true });
+    const after = await api("/api/consents/me", person.token);
+    expect(after.body.accepted).toBe(false);
+    expect(after.body.version).toBe(version);
+
+    // согласие другого человека отказ не задел
+    expect((await api("/api/consents/me", other.token)).body.accepted).toBe(true);
+
+    // история — в журнале: оба отказа с версией, принятие между ними осталось
+    const { auditLog } = await import("../src/db/schema");
+    const rows = await db
+      .select({ action: auditLog.action, details: auditLog.details })
+      .from(auditLog)
+      .where(eq(auditLog.subjectUserId, person.id));
+    expect(rows.map((r) => r.action).sort()).toEqual(["consent.accept", "consent.decline", "consent.decline"]);
+    const declines = rows.filter((r) => r.action === "consent.decline").map((r) => r.details as Record<string, unknown>);
+    for (const d of declines) expect(d.version).toBe(version);
+    expect(declines.map((d) => d.withdrawn).sort()).toEqual([false, true]);
+  });
 });
 
 describe("полнота проверки зоны на маршрутах о пациенте", () => {

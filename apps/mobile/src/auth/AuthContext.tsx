@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import type { User } from "@quizzy/shared";
+import { isTransientStatus, type User } from "@quizzy/shared";
 import { api } from "../api/client";
+import { cache } from "../offline/cache";
+import { ownerOfToken } from "../offline/owner";
 import { tokenStorage } from "../storage";
 import { forgetPush } from "../push";
 
@@ -46,9 +48,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = await tokenStorage.get();
       if (token) {
         try {
+          // истёкший access продлевается по refresh внутри запроса (auth/session.ts)
           setUser(await api.me());
-        } catch {
-          await tokenStorage.clear();
+        } catch (error) {
+          /*
+           * Стирать сессию — только когда сервер сказал «нет». Раньше её
+           * стирал любой сбой, включая отсутствие сети: запуск в подвале
+           * выкидывал человека на вход, а войти без сети нельзя — и план
+           * безопасности, который приложение обязано показать офлайн,
+           * оказывался за экраном входа. Без сети берётся свой профиль из
+           * кэша владельца токена; кэша нет — сессия остаётся, и следующий
+           * запуск со связью её восстановит.
+           */
+          if (isTransientStatus((error as { status?: number }).status ?? -1)) {
+            const cached = cache.me(ownerOfToken(token));
+            if (cached) setUser(cached);
+          } else {
+            await tokenStorage.clear();
+          }
         }
       }
       setLoading(false);
@@ -84,10 +101,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    // на общем планшете токен обязан уехать вместе с учётной записью
-    await forgetPush().catch(() => {});
+    /*
+     * На общем планшете пуш-токен обязан уехать вместе с учётной записью. Но
+     * отвязка идёт по сети, а выход сети ждать не должен: без связи запрос
+     * висел бы, и кнопка «вийти» не выводила бы. Три секунды — и дальше без
+     * неё. Цена честная: не успевшая отвязка оставляет устройство за прежней
+     * учётной записью, пока на нём кто-нибудь не зарегистрирует уведомления
+     * заново (сервер переписывает владельца токена — lib/push.ts,
+     * registerDevice), и до того её напоминания могут прийти сюда.
+     */
+    await Promise.race([forgetPush().catch(() => {}), new Promise((done) => setTimeout(done, 3_000))]);
+    const refresh = await tokenStorage.getRefresh().catch(() => null);
+    /*
+     * Сначала — выход на устройстве, потом отзыв на сервере, и выход его не
+     * ждёт: без сети отзыв уйдёт при первой связи (auth/session.ts). Раньше
+     * серверную сессию не отзывал никто, и refresh жил до конца срока.
+     */
     await tokenStorage.clear();
     setUser(null);
+    if (refresh) void api.revokeSession(refresh).catch(() => {});
   }, []);
 
   const value = useMemo<AuthState>(

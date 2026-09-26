@@ -19,10 +19,14 @@ export default function QueueScreen() {
   const router = useRouter();
   const { ut } = useLang();
   const [items, setItems] = useState<ReturnType<typeof api.queueItems>>([]);
+  const [ownerlessItems, setOwnerless] = useState<ReturnType<typeof api.ownerlessItems>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(() => setItems(api.queueItems()), []);
+  const reload = useCallback(() => {
+    setItems(api.queueItems());
+    setOwnerless(api.ownerlessItems());
+  }, []);
   useFocusEffect(useCallback(() => reload(), [reload]));
 
   const waiting = items.filter((i) => !i.rejectedReason);
@@ -37,7 +41,7 @@ export default function QueueScreen() {
 
       <ErrorText>{error}</ErrorText>
 
-      {items.length === 0 ? (
+      {items.length === 0 && ownerlessItems.length === 0 ? (
         <Empty text={ut("mq.allSent")} />
       ) : null}
 
@@ -90,7 +94,53 @@ export default function QueueScreen() {
                 title={ut("mq.retry")}
                 variant="secondary"
                 onPress={async () => {
-                  api.retryQueued(i.id);
+                  try {
+                    api.retryQueued(i.id);
+                  } catch {
+                    // пометку снять не удалось (устройство не пишет) — запись цела, просто остаётся отвергнутой
+                    setError(ut("common.error"));
+                    return;
+                  }
+                  setError(null);
+                  await api.flushQueue().catch(() => {});
+                  reload();
+                }}
+              />
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
+      {/*
+        Сдачи без владельца — положенные до того, как у очереди появился
+        владелец (offline/queue.ts, ownerless). Сами они не уйдут никогда:
+        отправить их от имени того, кто сейчас вошёл, — ровно та ошибка,
+        из-за которой владелец и появился. Решает человек: узнал своё —
+        «це мої», и сдача уходит от его имени. Содержимого ответов здесь нет
+        намеренно: методики и времени хватает, чтобы узнать своё, и не
+        хватает, чтобы прочитать чужое.
+      */}
+      {ownerlessItems.length ? (
+        <Card>
+          <Body>
+            {ut("mq.ownerless")}: {ownerlessItems.length}
+          </Body>
+          <Body muted>{ut("mq.ownerlessHint")}</Body>
+          {ownerlessItems.map((i) => (
+            <View key={i.id} style={{ gap: 4, marginTop: spacing.sm }}>
+              <Text style={{ color: c.text, fontSize: 14 }}>
+                {i.surveyTitle ?? i.surveyId.slice(0, 8)} · {i.queuedAt.slice(0, 16).replace("T", " ")}
+              </Text>
+              <Button
+                title={ut("mq.claim")}
+                variant="secondary"
+                onPress={async () => {
+                  try {
+                    api.claimQueued(i.id);
+                  } catch {
+                    setError(ut("common.error"));
+                    return;
+                  }
                   setError(null);
                   await api.flushQueue().catch(() => {});
                   reload();

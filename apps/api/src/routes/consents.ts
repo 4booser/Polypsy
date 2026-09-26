@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { desc, } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { t, } from "@quizzy/shared";
 import { db } from "../db";
@@ -63,6 +63,47 @@ consentRoutes.post("/me/accept", async (c) => {
     details: { version: current.version },
   });
   return c.json({ ok: true });
+});
+
+/**
+ * Отказ от согласия — и отзыв уже данного.
+ *
+ * Экран согласия в приложении давал сказать «нет», но сервер об этом не
+ * узнавал: отказ был только выходом из учётной записи. Для учреждения
+ * «отказался» и «не дошёл до экрана» выглядели одинаково, а отказ — это
+ * решение человека, и оно должно остаться в документах так же, как
+ * согласие: с версией текста, которую он читал.
+ *
+ * Отдельной таблицы отказов нет намеренно. Состояние — «принято ли
+ * действующее согласие» — живёт в consents, и отказ его снимает; история —
+ * в журнале (consent.accept, consent.decline), который неизменяем и хранит
+ * версию. Так же устроен отзыв согласия на запись приёма (recordings.ts):
+ * отметка снимается, событие остаётся.
+ *
+ * Отказ после принятия — это отзыв: право отозвать согласие не слабее права
+ * его дать, и делаться должно тем же движением. Принятие действующей версии
+ * снимается, и приложение снова покажет экран согласия; что было принято
+ * раньше и когда — видно по журналу. Повторный отказ ничего не ломает.
+ */
+consentRoutes.post("/me/decline", async (c) => {
+  const user = c.get("user");
+  const current = await latestText();
+  if (!current) badRequest("err.consentTextNotConfigured");
+
+  const removed = await db
+    .delete(consents)
+    .where(and(eq(consents.userId, user.id), eq(consents.consentTextId, current.id)))
+    .returning({ userId: consents.userId });
+
+  await audit(c, {
+    action: "consent.decline",
+    resourceType: "consent_text",
+    resourceId: current.id,
+    subjectUserId: user.id,
+    // «отказался, не приняв» и «отозвал принятое» — разные события при разборе
+    details: { version: current.version, withdrawn: removed.length > 0 },
+  });
+  return c.json({ ok: true, withdrawn: removed.length > 0 });
 });
 
 /* ── управление текстом (суперадмин) ── */

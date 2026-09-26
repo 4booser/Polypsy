@@ -13,7 +13,11 @@ import {
 } from "@quizzy/shared";
 import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
+import { useAuth } from "@/auth/AuthContext";
 import { drafts, pickDraft, type LocalDraft } from "@/offline/cache";
+import { draftLaneKey, draftLanes } from "@/offline/draftLane";
+import { useExit } from "@/nav/useExit";
+import { finishFailureText, finishSubmission } from "@/runner/finish";
 import { missedBefore } from "@/runner/progress";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
@@ -34,8 +38,11 @@ export default function TakeSurveyScreen() {
   const { scale, cycle, fs } = useTextScale();
   const { ut, lang } = useLang();
   const router = useRouter();
+  const exit = useExit();
   const navigation = useNavigation();
   const { id, onBehalfOf } = useLocalSearchParams<{ id: string; onBehalfOf?: string }>();
+  // чей черновик: локальная копия лежит под владельцем (offline/cache.ts)
+  const owner = useAuth().user?.id ?? null;
   const [patient, setPatient] = useState<{ fullName: string; sex: "male" | "female" | null; age: number | null } | null>(null);
 
   const [survey, setSurvey] = useState<SurveyFull | null>(null);
@@ -65,6 +72,8 @@ export default function TakeSurveyScreen() {
    * иначе каждый тап перерендеривал бы экран лишний раз.
    */
   const events = useRef<AnswerEvent[]>([]);
+  /** Номер последней правки черновика; продолжает счёт с возобновлённого (offline/cache.ts, revision) */
+  const draftRevision = useRef(0);
   const sequence = useRef(0);
 
   const pushEvent = useCallback((questionId: string, kind: AnswerEvent["kind"], value?: unknown) => {
@@ -144,7 +153,9 @@ export default function TakeSurveyScreen() {
          * человек отвечал без сети, и именно её терять нельзя.
          */
         const remote = await api.getDraft(id).catch(() => null);
-        const draft = pickDraft(drafts.get(id), remote);
+        const stored = drafts.get(owner, id);
+        draftRevision.current = Math.max(draftRevision.current, stored?.revision ?? 0);
+        const draft = pickDraft(stored, remote);
 
         if (draft) {
           setAnswers(new Map((draft.answers as Answer[]).map((a) => [a.questionId, a])));
@@ -157,7 +168,7 @@ export default function TakeSurveyScreen() {
         setError(e instanceof Error ? e.message : ut("ms.loadFailed"));
       }
     })();
-  }, [id, navigation]);
+  }, [id, navigation, owner]);
 
   // общий таймер: нужен и для лимита времени, и для показа затраченного
   useEffect(() => {
@@ -208,7 +219,7 @@ export default function TakeSurveyScreen() {
      * положили бы ответы пациента в незавершённые прохождения врача, а при
      * следующем открытии методики предложили бы врачу их «продолжить».
      */
-    if (!survey || survey.anonymous || onBehalfOf) return;
+    if (!survey || survey.anonymous || onBehalfOf || !owner) return;
     const payload = [...answers.values()].map((a) => ({
       ...a,
       durationMs: telemetry.get(a.questionId)?.durationMs ?? 0,
@@ -217,6 +228,12 @@ export default function TakeSurveyScreen() {
     }));
     if (payload.length === 0) return;
 
+    /*
+     * Номер правки — порядок, в котором человек отвечал. По нему, а не по
+     * тому, чей ответ сервера пришёл позже, решается, какая копия свежее
+     * (offline/draftLane.ts, drafts.saveIfNewer / confirm).
+     */
+    const revision = ++draftRevision.current;
     const local: LocalDraft = {
       surveyId: survey.id,
       answers: payload,
@@ -225,25 +242,50 @@ export default function TakeSurveyScreen() {
       events: events.current,
       savedAt: new Date().toISOString(),
       synced: false,
+      revision,
     };
-    drafts.save(local);
-    setSavedAt(local.savedAt);
-    setDraftSynced(false);
+    /*
+     * Отметка «збережено тут» ставится, только если запись легла: хранилище
+     * больше не глотает отказ (offline/writeError.ts), и молча показать
+     * «сохранено» при переполненном диске значило бы обещать то, чего нет.
+     */
+    try {
+      if (drafts.saveIfNewer(owner, local)) {
+        setSavedAt(local.savedAt);
+        setDraftSynced(false);
+      }
+    } catch {
+      // места нет — остаётся сервер ниже; ответы при этом на экране
+    }
 
     try {
-      const res = await api.saveDraft(survey.id, {
-        answers: payload,
-        startedAt: local.startedAt,
-        durationMs: local.durationMs,
-        events: local.events as never,
-      });
-      drafts.save({ ...local, synced: true });
-      setSavedAt(res.lastSavedAt);
-      setDraftSynced(true);
+      /*
+       * На сервер — по дорожке: одно сохранение в пути, ждёт только самое
+       * свежее. Параллельные запросы отвечали не по порядку, и запоздалая
+       * старая правка затирала новую и на сервере, и на устройстве.
+       */
+      const sent = await draftLanes.submit(draftLaneKey(owner, survey.id), revision, () =>
+        api.saveDraft(survey.id, {
+          answers: payload,
+          startedAt: local.startedAt,
+          durationMs: local.durationMs,
+          events: local.events as never,
+        }),
+      );
+      if (sent.status === "superseded") return; // следом уже идёт правка новее — отметит она
+      try {
+        drafts.confirm(owner, survey.id, revision, sent.value.lastSavedAt);
+      } catch {
+        // отметка не легла — правка дошлётся ещё раз, сервер получит ту же копию
+      }
+      if (draftRevision.current === revision) {
+        setSavedAt(sent.value.lastSavedAt);
+        setDraftSynced(true);
+      }
     } catch {
-      // сети нет — локальная копия уже лежит, догонит при следующем проходе
+      // сети нет — локальная копия (если легла) догонит при следующем проходе
     }
-  }, [survey, answers, telemetry, onBehalfOf]);
+  }, [survey, answers, telemetry, onBehalfOf, owner]);
 
   function goTo(nextStep: number) {
     commitTiming();
@@ -317,24 +359,41 @@ export default function TakeSurveyScreen() {
           } as Answer;
         });
 
-      const res = await api.submitResponse(survey.id, {
-        answers: payload,
-        startedAt: startedAt.current,
-        durationMs: Date.now() - sessionStart.current,
-        status,
-        events: events.current,
-        onBehalfOf: onBehalfOf ?? null,
-        /*
-         * Пол и возраст пациента едут вместе с ответами: без сети баллы
-         * считаются на устройстве, а нормы методик стратифицированы. Считать
-         * чужой профиль по своему полу значит показать у койки неверный
-         * результат — и заметить это будет негде.
-         */
-        subject: patient ? { sex: patient.sex, age: patient.age } : null,
+      /*
+       * Черновик стирается только после подтверждённой сдачи: сервером или
+       * легшей на устройство очередью (runner/finish.ts). Не легла — ответы
+       * остаются и на экране, и в черновике, а «Завершити» можно нажать ещё
+       * раз.
+       */
+      const outcome = await finishSubmission({
+        submit: () =>
+          api.submitResponse(survey.id, {
+            answers: payload,
+            startedAt: startedAt.current,
+            durationMs: Date.now() - sessionStart.current,
+            status,
+            events: events.current,
+            onBehalfOf: onBehalfOf ?? null,
+            /*
+             * Пол и возраст пациента едут вместе с ответами: без сети баллы
+             * считаются на устройстве, а нормы методик стратифицированы. Считать
+             * чужой профиль по своему полу значит показать у койки неверный
+             * результат — и заметить это будет негде.
+             */
+            subject: patient ? { sex: patient.sex, age: patient.age } : null,
+          }),
+        // прохождение ушло (или встало в очередь) — локальный черновик больше
+        // не нужен и не должен всплыть «продолжением» при следующем открытии
+        dropDraft: () => {
+          if (owner) draftLanes.cancelPending(draftLaneKey(owner, survey.id));
+          drafts.drop(owner, survey.id);
+        },
       });
-      // прохождение ушло (или встало в очередь) — локальный черновик больше
-      // не нужен и не должен всплыть «продолжением» при следующем открытии
-      drafts.drop(survey.id);
+      if (!outcome.ok) {
+        setError(finishFailureText(outcome, ut));
+        return;
+      }
+      const res = outcome.result;
       setResult(res.scores);
       setSafetyPlan(res.safetyPlan ?? null);
       setQueued(!!res.queued);
@@ -351,7 +410,8 @@ export default function TakeSurveyScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: c.bg, padding: spacing.lg, gap: spacing.md }}>
         <ErrorText>{error}</ErrorText>
-        <Button title={ut("common.back")} variant="secondary" onPress={() => router.back()} />
+        {/* назад, если есть куда; открыт первым (по ссылке) — к методикам, а не в пустоту */}
+        <Button title={ut("common.back")} variant="secondary" onPress={exit} />
       </View>
     );
   }
