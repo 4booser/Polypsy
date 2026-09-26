@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   VITAL_BOUNDS,
   histQuantile,
@@ -638,6 +638,18 @@ describe("ручной запуск фоновой задачи", () => {
 /* ═══════════ записи приёмов ═══════════ */
 
 describe("записи приёмов: только числа", () => {
+  /*
+   * Записи здесь — строки без файлов, а база у сюиты одна на все файлы.
+   * Оставленная в «uploaded», такая строка встаёт в общую очередь
+   * расшифровки, и соседний файл (recordingRace) получает из очереди её, а не
+   * свою: падение зависело бы от того, в каком порядке bun обошёл каталог, —
+   * на Linux и macOS он разный. Поэтому после себя записи закрываются.
+   */
+  const made: string[] = [];
+  afterAll(async () => {
+    if (made.length) await db.update(visitRecordings).set({ status: "discarded", audioPath: null }).where(inArray(visitRecordings.id, made));
+  });
+
   async function recording(status: string, extra: Record<string, unknown> = {}) {
     const departmentId = crypto.randomUUID();
     await db.insert(departments).values({ id: departmentId, title: { uk: "Відділення", ru: "Отделение" }, timezone: "Europe/Kyiv" });
@@ -673,6 +685,7 @@ describe("записи приёмов: только числа", () => {
       endedAt: new Date(Date.now() - 3600_000).toISOString(),
       ...extra,
     } as never);
+    made.push(id);
     return { id, person };
   }
 

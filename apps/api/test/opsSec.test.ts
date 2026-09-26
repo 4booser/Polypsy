@@ -334,13 +334,22 @@ async function keys(): Promise<OpsKeysReport> {
   return res.body;
 }
 
+/*
+ * Проход перешифровывает всю базу, а база у сюиты общая: в CI до этого файла
+ * успевают пройти десятки других, и проход там длится дольше пяти секунд
+ * bun по умолчанию. Отсюда явный запас у теста прохода (REENCRYPT_MS) и
+ * ожидание до тридцати секунд: опоздавшее ожидание иначе дочитывало чужое
+ * задание из следующих тестов и падало «между тестами».
+ */
+const REENCRYPT_MS = 60_000;
+
 async function waitJob(): Promise<OpsReencryptJob> {
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < 1200; i++) {
     const { body } = await api<{ job: OpsReencryptJob | null }>("/api/ops/sec/keys/job", root.token);
     if (body.job && body.job.status !== "running") return body.job;
     await Bun.sleep(25);
   }
-  throw new Error("перешифровка не закончилась за десять секунд");
+  throw new Error("перешифровка не закончилась за тридцать секунд");
 }
 
 /** Файл записи приёма, как его писали до заголовков: iv, тег, тело — ключом v1 */
@@ -584,7 +593,7 @@ describe("ротация ключа: перешифровка на основн�
         .where(sql`${auditLog.resourceId} = ${job.id}`)
     ).map((r) => r.action);
     expect(actions).toEqual(expect.arrayContaining(["sec.reencrypt_start", "sec.reencrypt_done"]));
-  });
+  }, REENCRYPT_MS);
 
   test("служебный режим меняет у подписанной заметки только шифртекст", async () => {
     /*
@@ -613,7 +622,7 @@ describe("ротация ключа: перешифровка на основн�
     expect(job.status).toBe("done");
     // просмотренное сверх нерасшифрованного — перешифрованное; его быть не должно
     expect(job.processed - job.skipped).toBe(0);
-  });
+  }, REENCRYPT_MS);
 
   test("проход, чей процесс умер, показан оборванным и не держит запуск", async () => {
     const id = crypto.randomUUID();
