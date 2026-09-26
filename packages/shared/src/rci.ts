@@ -1,3 +1,5 @@
+import type { Incomparable } from "./types";
+
 /**
  * Индекс достоверности изменения (RCI, Jacobson & Truax, 1991).
  *
@@ -15,7 +17,15 @@
  */
 
 export interface ReliableChange {
-  /** Сам индекс: сдвиг в единицах ошибки разности */
+  /**
+   * Сам индекс: сдвиг в единицах ошибки разности — ТОЧНЫЙ, не округлённый.
+   *
+   * Округлять его здесь было ошибкой: значимость решалась по точному числу, а
+   * наружу уходило округлённое, и 1,964 становилось «RCI 1,96, достоверно»,
+   * а classifyChange по тому же 1,96 говорил «без змін». Два вывода об одном
+   * сдвиге, противоположных друг другу. Округление — дело показа:
+   * rciForDisplay.
+   */
   rci: number;
   /**
    * Стандартная ошибка одного измерения в единицах шкалы.
@@ -49,12 +59,79 @@ export function reliableChange(
 
   const rci = (last - first) / sdiff;
   return {
-    rci: Math.round(rci * 100) / 100,
+    rci,
     sem: Math.round(sem * 100) / 100,
     sdiff: Math.round(sdiff * 100) / 100,
     significant: Math.abs(rci) > criterion,
     direction: last > first ? "up" : last < first ? "down" : "flat",
   };
+}
+
+/**
+ * RCI для показа: две цифры после запятой — но не ценой перехода через
+ * критерий.
+ *
+ * Обычное округление превращает 1,964 в 1,96, и экран пишет «RCI 1,96 —
+ * достоверно» при критерии «строго больше 1,96»: читающий видит
+ * противоречие, а тот, кто классифицирует по показанному числу, получает
+ * противоположный вывод. Поэтому, если две цифры ложатся ровно на критерий,
+ * а само число не на нём, знаков добавляется, пока показанное не встанет по
+ * ту же сторону, что и настоящее: 1,964 → 1,964, 1,9591 → 1,959. Число,
+ * стоящее ровно на критерии, так и показывается — оно и есть «не значимо».
+ */
+export function rciForDisplay(rci: number, criterion = 1.96): number {
+  const at = (digits: number) => Math.round(rci * 10 ** digits) / 10 ** digits;
+  for (let digits = 2; digits <= 6; digits++) {
+    const shown = at(digits);
+    if (Math.abs(shown) !== criterion || Math.abs(rci) === criterion) return shown;
+  }
+  return rci;
+}
+
+/**
+ * Можно ли сравнивать два замера одной шкалы — одно правило на динамику,
+ * сводку случая и экран прохождения.
+ *
+ * Разность двух чисел — изменение, только если они в одних единицах и им
+ * можно верить. Проверка «версии разные» одна этого не обеспечивала:
+ * прохождение без пола (норм нет → сырой балл) и то же с полом (T-балл)
+ * лежат в одной версии, и их «разность» давала RCI 3–6 — «достоверное
+ * изменение» по девяти шкалам из одиннадцати, которого не было.
+ *
+ *   unreliable — хоть один протокол недостоверен по шкалам достоверности;
+ *   units      — нормированный против сырого (или разные нормировки одной
+ *                версии);
+ *   version    — разные версии, и приведения первой ко второй нет.
+ *
+ * Разные версии сравнимы только через приведение (`equated`), а приводятся
+ * лишь нормированные баллы — выборки для моментов набираются из них.
+ * Отсутствующие поля (старый ответ сервера, мобильный кэш) считаются «да»:
+ * так эти точки сравнивались и раньше.
+ */
+export interface ComparableMark {
+  /** Версия методики — номер или идентификатор; null — неизвестна (до версионирования) */
+  version: string | number | null;
+  normalized?: boolean;
+  normalization?: string | null;
+  reliable?: boolean;
+}
+
+export function comparability(
+  a: ComparableMark,
+  b: ComparableMark,
+  options: { equated?: boolean } = {},
+): Incomparable | null {
+  if (a.reliable === false || b.reliable === false) return "unreliable";
+  const na = a.normalized !== false;
+  const nb = b.normalized !== false;
+  if ((a.version ?? null) === (b.version ?? null)) {
+    if (na !== nb) return "units";
+    if (na && (a.normalization ?? null) !== (b.normalization ?? null)) return "units";
+    return null;
+  }
+  if (na !== nb) return "units";
+  if (!na) return "version";
+  return options.equated ? null : "version";
 }
 
 /**
