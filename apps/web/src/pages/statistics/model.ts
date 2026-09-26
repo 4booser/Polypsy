@@ -141,6 +141,58 @@ export function withoutCriteria(f: SampleFilters | null | undefined, off: readon
   return out;
 }
 
+/**
+ * Что в фильтрах набрано наоборот — ключи словаря.
+ *
+ * Решение заказчика 2026-09-26: адекватные фильтры. «Вік від 45 — Вік до
+ * 25» и период с концом раньше начала сервер отвергает (sampleFiltersSchema),
+ * но отказ приходил после нажатия и строкой схемы, а не словами экрана.
+ * Теперь поле краснеет сразу, а «Зберегти» и «Порівняти» называют причину
+ * тостом и не уходят на сервер. Ключи — те же, что у «Добору людей»: одна и
+ * та же ошибка набора не должна звучать в двух разделах по-разному.
+ */
+export function filterErrors(f: SampleFilters | null | undefined): UiKey[] {
+  const c = cleanFilters(f);
+  const out: UiKey[] = [];
+  if (c.ageMin != null && c.ageMax != null && c.ageMin > c.ageMax) out.push("coh.errAge");
+  if (c.from && c.to && c.from > c.to) out.push("coh.errPeriod");
+  return out;
+}
+
+/**
+ * Значение строки-критерия словами — для чипа выборки на экране
+ * «Статистика»: «Стать: Чоловіки», «Віковий діапазон: 25–45».
+ *
+ * Решение заказчика 2026-09-26: адекватные фильтры. На кадре чип несёт
+ * только имя критерия, и по чипу «Стать» нельзя было понять, какая именно
+ * стать отобрана, не открывая пресет. Группа и человек значением не
+ * печатаются — по тому же правилу, что в легенде (describeSample): чип
+ * читают через плечо.
+ */
+export function criterionValue(c: Criterion, f: SampleFilters | null | undefined, t: (key: UiKey) => string): string {
+  const x = cleanFilters(f);
+  const day = (iso: string) => iso.split("-").reverse().join(".");
+  switch (c) {
+    case "sex":
+      return x.sex ? t(x.sex === "male" ? "nm.menCap" : "nm.womenCap") : "";
+    case "age":
+      if (x.ageMin != null && x.ageMax != null) return `${x.ageMin}–${x.ageMax}`;
+      if (x.ageMin != null) return `${t("coh.fromWord")} ${x.ageMin}`;
+      if (x.ageMax != null) return `${t("coh.ageTo")} ${x.ageMax}`;
+      return "";
+    case "locality":
+      return x.locality ?? "";
+    case "date":
+      if (x.from && x.to) return `${day(x.from)} – ${day(x.to)}`;
+      if (x.from) return `${t("coh.fromWord")} ${day(x.from)}`;
+      if (x.to) return `${t("coh.ageTo")} ${day(x.to)}`;
+      return "";
+    case "group":
+    case "patient":
+      return "";
+  }
+}
+
 /** Одни и те же ли фильтры — по содержанию, а не по записи */
 export function sameFilters(a: SampleFilters | null | undefined, b: SampleFilters | null | undefined): boolean {
   const x = cleanFilters(a);

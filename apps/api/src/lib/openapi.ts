@@ -287,6 +287,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/cohorts/members": { summary: "Когорта поимённо — отдельное действие и отдельная запись в журнале", access: "staff", permission: "cohorts.read" },
   "GET /api/cohorts": { summary: "Свои сохранённые когорты", access: "staff", permission: "cohorts.read" },
   "POST /api/cohorts": { summary: "Сохранить правило отбора", access: "staff", permission: "cohorts.read" },
+  "GET /api/cohorts/options": { summary: "Подразделения и населённые пункты людей в зоне — только названия, для выбора в подборе", access: "staff", permission: "cohorts.read" },
+  "PATCH /api/cohorts/:id": { summary: "Переименовать свою когорту или пересохранить её правило", access: "staff", permission: "cohorts.read" },
   "DELETE /api/cohorts/:id": { summary: "Удалить свою когорту", access: "staff", permission: "cohorts.read" },
 
   /* ── статистика: пресеты фильтров и модели ── */
