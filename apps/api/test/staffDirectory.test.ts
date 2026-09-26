@@ -94,13 +94,25 @@ describe("справочник у того, кому открыт реестр",
   });
 
   test("без флага реестр прежний: с пациентами, без номеров и без пометки", async () => {
-    const res = await api("/api/users", root.token);
-    const items = res.body.items as { id: string; phone?: unknown }[];
+    /*
+     * Реестр страничный (волна 12): пациент из общей обвязки заведён раньше
+     * всех и в общем прогоне лежит далеко не на первой странице — поэтому
+     * реестр листается, пока он не найдётся.
+     */
+    const items: { id: string; phone?: unknown }[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 500; guard++) {
+      const url: string = `/api/users?limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      const res = await api(url, root.token);
+      items.push(...(res.body.items as { id: string; phone?: unknown }[]));
+      cursor = res.body.nextCursor;
+      if (!cursor || items.some((u) => u.id === patient.id)) break;
+    }
     expect(items.some((u) => u.id === patient.id)).toBe(true);
     expect(items.every((u) => u.phone === undefined)).toBe(true);
     const entry = await lastList(root.id);
     expect((entry?.details as { phones?: boolean } | null)?.phones).toBeUndefined();
-  });
+  }, 30_000);
 
   test("флаг не открывает реестр тому, у кого нет права на него", async () => {
     const head = await onLadder("head");
