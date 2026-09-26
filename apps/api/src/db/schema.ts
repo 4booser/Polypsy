@@ -207,10 +207,30 @@ export const users = pgTable(
      * человеку (см. миграцию 0074).
      */
     tokensValidFrom: timestampCol("tokens_valid_from").notNull().default(sql`to_timestamp(0)`),
+    /**
+     * Учётная запись выключена (техпанель, миграция 0088).
+     *
+     * Обратимая замена удалению: учётку с историей удалить нельзя, а убрать
+     * человека из системы надо в тот же день. Проверяется на входе, на
+     * обмене refresh и в middleware на каждом запросе — строка пользователя
+     * там читается всё равно.
+     */
+    disabledAt: timestampCol("disabled_at"),
+    disabledReason: text("disabled_reason"),
+    disabledBy: text("disabled_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+    /**
+     * Последний вход или обмен refresh — не каждый запрос: строка users под
+     * нагрузкой всей консоли стала бы точкой записи на каждый клик. См.
+     * touchLastSeen в lib/accounts.ts.
+     */
+    lastSeenAt: timestampCol("last_seen_at"),
+    /** Пароль выдан техпанелью; консоль просит сменить его при входе */
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     emailIdx: uniqueIndex("users_email_idx").on(t.email),
+    disabledIdx: index("users_disabled_idx").on(t.disabledAt),
     // одна учётная запись Google — одна наша: иначе двое входят как один
     googleSubIdx: uniqueIndex("users_google_sub_idx").on(t.googleSub),
   }),
