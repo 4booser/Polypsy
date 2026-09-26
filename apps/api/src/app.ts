@@ -22,6 +22,7 @@ import { groupRoutes } from "./routes/groups";
 import { patientGroupRoutes } from "./routes/patientGroups";
 import { surveyFolderRoutes } from "./routes/surveyFolders";
 import { analyticsRoutes } from "./routes/analytics";
+import { dashboardRoutes } from "./routes/dashboard";
 import { userRoutes } from "./routes/users";
 import { auditRoutes } from "./routes/audit";
 import { alertRoutes } from "./routes/alerts";
@@ -172,6 +173,8 @@ app.route("/api/surveys", surveyRoutes);
  */
 app.route("/api/survey-folders", surveyFolderRoutes);
 app.route("/api/analytics", analyticsRoutes);
+/* состояние пациентов по направлениям — стартовый экран «Зведення» */
+app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/users", userRoutes);
 app.route("/api/audit", auditRoutes);
 app.route("/api/alerts", alertRoutes);
