@@ -7,6 +7,7 @@ import type {
   OpsHealthCheck,
   OpsJobs,
   OpsLogs,
+  OpsLogVolume,
   OpsOverview,
   OpsRoutes,
   OpsSlow,
@@ -37,7 +38,7 @@ import {
   windowStats,
 } from "../lib/opsBuffer";
 import { attempt, collectDb, dbSummary, liveProbe, type Probe } from "../lib/opsDb";
-import { readErrorHistory, readLogHistory } from "../lib/opsHistory";
+import { readErrorHistory, readErrorHours, readLogHistory, readLogVolume } from "../lib/opsHistory";
 import { intervalOf, jobsSnapshot, lastStartOf } from "../lib/opsJobs";
 import { ERROR_RETENTION_DAYS, LOG_RETENTION_DAYS, storeState } from "../lib/opsStore";
 import { checkRls } from "../lib/rlsGuard";
@@ -325,6 +326,12 @@ opsRoutes.get("/errors", async (c) => {
   const { window } = parseQuery(c, errorsQuery);
   const { items: live, dropped } = errorGroupList();
   const history = window ? await readErrorHistory(window) : null;
+  /*
+   * Случаи по часам — для графика над списком (волна 11). Только когда
+   * часы прочитались: одна очередь без базы нарисовала бы «тихий период»,
+   * которого не было.
+   */
+  const hours = window && history && !history.failed ? await readErrorHours(window) : null;
   /* история не прочиталась — память процесса вместо пустоты, с пометкой */
   const items = history && !history.failed ? history.items : live;
   await auditRead(c, "ops.errors.read", { filters: window ? { window } : null, returned: items.length });
@@ -336,6 +343,7 @@ opsRoutes.get("/errors", async (c) => {
     ...(history
       ? { from: history.from, retentionDays: ERROR_RETENTION_DAYS, store: storeState(), historyUnavailable: history.failed }
       : {}),
+    ...(hours && !hours.failed ? { hours: hours.hours } : {}),
   };
   return c.json(body);
 });
@@ -391,9 +399,36 @@ opsRoutes.get("/logs", async (c) => {
   return c.json(body);
 });
 
+/*
+ * Объём лога по уровням за период — для графика над лентой (волна 11).
+ * Только счёт по корзинам: ни текста, ни номеров запросов, поэтому чтение
+ * в журнал не пишется — в отличие от самой ленты, где строки читаются.
+ */
+const volumeQuery = z.object({ window: z.preprocess(blank, z.enum(["1h", "24h", "7d", "14d"]).default("1h")) });
+
+opsRoutes.get("/logs/volume", async (c) => {
+  const { window } = parseQuery(c, volumeQuery);
+  const v = await readLogVolume(window);
+  const body: OpsLogVolume = {
+    window,
+    from: v.from,
+    grain: v.grain,
+    buckets: v.buckets,
+    store: storeState(),
+    historyUnavailable: v.failed,
+  };
+  return c.json(body);
+});
+
 /* ─────────── база и фоновые задачи ─────────── */
 
 opsRoutes.get("/db", async (c) => c.json(await collectDb()));
+
+/**
+ * Сколько дней срабатываний расписаний показывать столбцами: месяц — это
+ * четыре недельных расписания подряд, и пропущенная неделя видна дырой.
+ */
+export const SCHEDULE_ACTIVITY_DAYS = 30;
 
 opsRoutes.get("/jobs", async (c) => {
   /*
@@ -403,6 +438,25 @@ opsRoutes.get("/jobs", async (c) => {
    */
   const runs = await attempt("scheduleRuns", () =>
     systemProbe(sql`select ran_at, assigned, skipped, note from schedule_runs order by ran_at desc limit 10`),
+  );
+  /*
+   * Те же срабатывания за месяц суммой по часам (UTC) — столбцы по дням
+   * (волна 11). Порог малых ячеек здесь не нужен: «призначено 3» — объём
+   * работы планировщика, а не сведение о ком-то, ровно те же числа, что
+   * строки ниже, только сложенные; ни расписания, ни методики, ни людей.
+   */
+  const fromIso = new Date(Date.now() - SCHEDULE_ACTIVITY_DAYS * 86_400_000).toISOString();
+  const activity = await attempt("scheduleActivity", () =>
+    systemProbe(sql`
+      select (floor(extract(epoch from ran_at) / 3600) * 3600)::bigint as h,
+             count(*)::int as runs,
+             coalesce(sum(assigned), 0)::int as assigned,
+             coalesce(sum(skipped), 0)::int as skipped
+      from schedule_runs
+      where ran_at >= ${fromIso}
+      group by 1
+      order by 1
+    `),
   );
   const body: OpsJobs = {
     since: startedAt,
@@ -415,6 +469,17 @@ opsRoutes.get("/jobs", async (c) => {
           skipped: Number(r.skipped),
           note: r.note ? normalizeMessage(String(r.note)) : null,
         }))
+      : null,
+    scheduleActivity: activity.ok
+      ? {
+          from: fromIso,
+          hours: activity.value.map((r) => ({
+            at: new Date(Number(r.h) * 1000).toISOString(),
+            runs: Number(r.runs),
+            assigned: Number(r.assigned),
+            skipped: Number(r.skipped),
+          })),
+        }
       : null,
   };
   return c.json(body);

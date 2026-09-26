@@ -18,10 +18,10 @@
  * ответ — экран получает память процесса и пометку, что истории нет.
  */
 import { sql, type SQL } from "drizzle-orm";
-import type { OpsErrorGroup, OpsErrorWindow, OpsLevel, OpsLogLine, OpsLogWindow } from "@quizzy/shared";
+import type { OpsErrorGroup, OpsErrorWindow, OpsHourCount, OpsLevel, OpsLogBucket, OpsLogLine, OpsLogWindow } from "@quizzy/shared";
 import { attempt, liveProbe, type Probe } from "./opsDb";
 import { readLogs } from "./opsBuffer";
-import { pendingErrorGroups } from "./opsStore";
+import { pendingErrorGroups, pendingLogStamps } from "./opsStore";
 
 const DAY = 86_400_000;
 
@@ -288,4 +288,124 @@ export async function errorGroupsByFingerprint(fingerprints: readonly string[], 
   const pending = pendingErrorGroups().filter((p) => fingerprints.includes(p.fingerprint));
   /* всё время: граница периода — ноль, в счёт идёт каждый час приращения */
   return mergeErrorGroups(stored.ok ? stored.value.map(groupFromRow) : [], pending, 0);
+}
+
+/* ─────────── объём по времени (волна 11: графики техпанели) ─────────── */
+
+/*
+ * Решение заказчика 2026-09-26: «должны быть графики в админ панеле». Лента
+ * и список групп отвечают «что именно», графику нужно «сколько и когда» —
+ * числа по корзинам времени, без единого текста. Поэтому здесь только
+ * счёт: ни сообщений, ни номеров запросов, и чтение в журнал не пишется.
+ *
+ * Корзина — делением эпохи, а не date_trunc: date_trunc режет по часовому
+ * поясу сеанса базы, и у пояса с получасовым сдвигом «час» базы и «час»
+ * экрана разошлись бы. Часы здесь — ровные часы UTC; в местные дни и
+ * шестичасовки их раскладывает консоль (pages/ops/model.ts, binSeries),
+ * потому что «сутки» — понятие того, кто смотрит, а не сервера.
+ */
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 3_600_000;
+
+/** Шаг корзин объёма лога: минута для часа (60 столбцов), час для остального */
+export const LOG_VOLUME_GRAIN: Record<OpsLogWindow, "minute" | "hour"> = {
+  "1h": "minute",
+  "24h": "hour",
+  "7d": "hour",
+  "14d": "hour",
+};
+
+const emptyBucket = (at: number): OpsLogBucket => ({ at: new Date(at).toISOString(), debug: 0, info: 0, warn: 0, error: 0 });
+
+/**
+ * Сложить счёт по уровням в корзины: сохранённое из базы плюс ещё не
+ * записанная очередь. Строка в очереди в базе не лежит по построению
+ * (очередь забирается целиком перед записью), поэтому сложение, а не
+ * склейка без повторов, — повторов здесь нет.
+ */
+export function levelBuckets(
+  stored: readonly { at: number; level: string; n: number }[],
+  pending: readonly { at: string; level: string }[],
+  fromMs: number,
+  stepMs: number,
+): OpsLogBucket[] {
+  const by = new Map<number, OpsLogBucket>();
+  const floorMs = Math.floor(fromMs / stepMs) * stepMs;
+  const add = (atMs: number, level: string, n: number) => {
+    if (!(LEVELS as readonly string[]).includes(level) || atMs < floorMs) return;
+    const b = Math.floor(atMs / stepMs) * stepMs;
+    let row = by.get(b);
+    if (!row) {
+      row = emptyBucket(b);
+      by.set(b, row);
+    }
+    row[level as OpsLevel] += n;
+  };
+  for (const r of stored) add(r.at, r.level, r.n);
+  for (const p of pending) {
+    const at = Date.parse(p.at);
+    if (at >= fromMs) add(at, p.level, 1);
+  }
+  return [...by.entries()].sort(([a], [b]) => a - b).map(([, row]) => row);
+}
+
+export async function readLogVolume(
+  window: OpsLogWindow,
+  probe: Probe = liveProbe,
+  now = Date.now(),
+): Promise<{ from: string; grain: "minute" | "hour"; buckets: OpsLogBucket[]; failed: boolean }> {
+  const grain = LOG_VOLUME_GRAIN[window];
+  const stepMs = grain === "minute" ? MINUTE_MS : HOUR_MS;
+  const fromMs = now - LOG_WINDOW_MS[window];
+  const from = new Date(fromMs).toISOString();
+  /*
+   * Шаг вписан в текст запроса, а не параметром: это одна из двух констант
+   * этого файла, а не ввод, и деление эпохи на неё должно остаться
+   * числовым, а не угаданным типом параметра.
+   */
+  const stepSec = sql.raw(String(stepMs / 1000));
+  const stored = await attempt("logVolume", () =>
+    probe(sql`
+      select (floor(extract(epoch from at) / ${stepSec}) * ${stepSec})::bigint as b, level, count(*)::int as n
+      from ops_log_lines
+      where at >= ${from}
+      group by 1, 2
+    `),
+  );
+  const rows = stored.ok ? stored.value.map((r) => ({ at: Number(r.b) * 1000, level: String(r.level), n: Number(r.n) })) : [];
+  return { from, grain, buckets: levelBuckets(rows, pendingLogStamps(), fromMs, stepMs), failed: !stored.ok };
+}
+
+/**
+ * Случаи всех групп ошибок по часам периода: сохранённые часы плюс
+ * приращения из очереди. Граница периода — час вниз, как у счёта групп
+ * (readErrorHistory): столбцы и строки списка считают одно и то же.
+ */
+export async function readErrorHours(
+  window: OpsErrorWindow,
+  probe: Probe = liveProbe,
+  now = Date.now(),
+): Promise<{ hours: OpsHourCount[]; failed: boolean }> {
+  const fromHour = Math.floor((now - ERROR_WINDOW_MS[window]) / HOUR_MS) * HOUR_MS;
+  const stored = await attempt("errorHours", () =>
+    probe(sql`
+      select hour, sum(count)::bigint as n
+      from ops_error_hours
+      where hour >= ${new Date(fromHour).toISOString()}
+      group by hour
+    `),
+  );
+  const by = new Map<number, number>();
+  if (stored.ok) for (const r of stored.value) by.set(Date.parse(iso(r.hour)), Number(r.n));
+  for (const p of pendingErrorGroups()) {
+    for (const [h, n] of p.hours) if (h >= fromHour) by.set(h, (by.get(h) ?? 0) + n);
+  }
+  return {
+    hours: [...by.entries()]
+      .filter(([, n]) => n > 0)
+      .sort(([a], [b]) => a - b)
+      .map(([h, count]) => ({ at: new Date(h).toISOString(), count })),
+    failed: !stored.ok,
+  };
 }
