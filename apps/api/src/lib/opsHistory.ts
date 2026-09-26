@@ -388,12 +388,19 @@ export async function readErrorHours(
   now = Date.now(),
 ): Promise<{ hours: OpsHourCount[]; failed: boolean }> {
   const fromHour = Math.floor((now - ERROR_WINDOW_MS[window]) / HOUR_MS) * HOUR_MS;
+  /*
+   * Час выравнивается и при чтении, а не только при записи. Запись в базу
+   * всегда кладёт начало часа, но строка, положенная мимо неё (руками,
+   * восстановлением, тестом), со «сдвинутым» часом дала бы на графике
+   * отдельный столбец между часами — и не сложилась бы с очередью, которая
+   * считает по началу часа.
+   */
   const stored = await attempt("errorHours", () =>
     probe(sql`
-      select hour, sum(count)::bigint as n
+      select date_trunc('hour', hour) as hour, sum(count)::bigint as n
       from ops_error_hours
       where hour >= ${new Date(fromHour).toISOString()}
-      group by hour
+      group by 1
     `),
   );
   const by = new Map<number, number>();
