@@ -15,6 +15,7 @@ import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
 import { canOpenOps, opsHome } from "./pages/ops/model";
 import { TrackedRoutes } from "./telemetry/screens";
+import { MaintenanceBanner } from "./service/MaintenanceBanner";
 
 /*
  * Экраны догружаются по требованию.
@@ -46,6 +47,12 @@ const OpsDataQuality = lazy(() => import("./pages/ops/data/Quality"));
 const OpsUsage = lazy(() => import("./pages/ops/data/Usage"));
 const OpsMobile = lazy(() => import("./pages/ops/data/Mobile"));
 const OpsPush = lazy(() => import("./pages/ops/data/Push"));
+/* техпанель, эксплуатация: обслуживание, флаги функций, выпуски */
+const OpsMaintenance = lazy(() => import("./pages/ops/maint/Maintenance"));
+const OpsFlags = lazy(() => import("./pages/ops/maint/Flags"));
+const OpsReleases = lazy(() => import("./pages/ops/maint/Releases"));
+/* страница статуса: открыта и гостю, и пациенту, и сотруднику — в своей рамке у каждого */
+const StatusPage = lazy(() => import("./pages/Status"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -468,6 +475,8 @@ export default function App() {
       <Suspense fallback={<Loading rows={3} />}>
         <Routes>
           <Route path="/" element={<Landing />} />
+          {/* статус — без входа: нужен как раз тогда, когда войти не выходит */}
+          <Route path="/status" element={<StatusPage frame="public" />} />
           <Route path="*" element={<Login />} />
         </Routes>
       </Suspense>
@@ -509,6 +518,7 @@ export default function App() {
             <Route path="profile" element={<PatientProfile />} />
           </Route>
           <Route path="/me/tests/:id" element={<Runner />} />
+          <Route path="/status" element={<StatusPage frame="patient" />} />
           <Route path="*" element={<Navigate to="/me" replace />} />
         </TrackedRoutes>
       </Suspense>
@@ -647,6 +657,12 @@ export default function App() {
         onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
         account={account}
       />
+      {/*
+        Баннер работ — под верхней полосой, во всю ширину: решение заказчика
+        2026-09-26 (техпанель, пункт 10). Вне колонки экрана и вне Suspense:
+        он обязан стоять и тогда, когда экран ещё догружается или упал.
+      */}
+      <MaintenanceBanner place="console" />
       {/*
         Содержимое — колонка в 1200 px по центру, как на макете.
 
@@ -869,6 +885,8 @@ export default function App() {
             <Route path="groups" element={<StaffGroups />} />
           </Route>
           <Route path="/permissions" element={<Permissions />} />
+          {/* состояние системы — каждому сотруднику, не только техпанели */}
+          <Route path="/status" element={<StatusPage frame="console" />} />
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {/* прежний «Журнал доступу» — вкладка «Аудит» техпанели; адрес — перенаправлением, по тому же праву */}
           {can("audit.read") ? <Route path="/audit" element={<Navigate to="/ops/audit" replace />} /> : null}
@@ -891,11 +909,19 @@ export default function App() {
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}
-              {/* «Дані й продукт» — по тому же ops.read, что и вся панель */}
-              <Route path="quality" element={<OpsDataQuality />} />
-              <Route path="usage" element={<OpsUsage />} />
-              <Route path="mobile" element={<OpsMobile />} />
-              <Route path="push" element={<OpsPush />} />
+              {/*
+                «Дані й продукт» и «Експлуатація» — по ops.read, как и наблюдаемость:
+                панель открывается и по users.manage/audit.read, и раздел без права
+                должен отсутствовать, а не вести в отказ сервера. Менять режим
+                обслуживания и флаги — ops.manage, это проверяет сервер и сам экран.
+              */}
+              {can("ops.read") ? <Route path="quality" element={<OpsDataQuality />} /> : null}
+              {can("ops.read") ? <Route path="usage" element={<OpsUsage />} /> : null}
+              {can("ops.read") ? <Route path="mobile" element={<OpsMobile />} /> : null}
+              {can("ops.read") ? <Route path="push" element={<OpsPush />} /> : null}
+              {can("ops.read") ? <Route path="maintenance" element={<OpsMaintenance />} /> : null}
+              {can("ops.read") ? <Route path="flags" element={<OpsFlags />} /> : null}
+              {can("ops.read") ? <Route path="releases" element={<OpsReleases />} /> : null}
             </Route>
           ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />

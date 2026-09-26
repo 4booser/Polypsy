@@ -2765,6 +2765,125 @@ export interface AuditChainReport {
   headHash: string | null;
 }
 
+/* ─────────── техпанель: эксплуатация (волна 10, участок maint) ─────────── */
+
+/**
+ * Объявление о состоянии системы — строка истории на странице статуса.
+ *
+ * Без автора: страница статуса открыта без входа, и имя того, кто включил
+ * обслуживание, постороннему знать незачем. Автор есть только в техпанели
+ * (OpsAnnouncement).
+ */
+export interface ServiceAnnouncement {
+  id: string;
+  status: import("./serviceStatus").ServiceStatus;
+  message: string | null;
+  expectedEnd: string | null;
+  at: string;
+}
+
+/** Ответ GET /api/status — открыт без входа, поэтому в нём нет ничего сверх нужного людям */
+export interface PublicServiceStatus {
+  status: import("./serviceStatus").ServiceStatus;
+  message: string | null;
+  expectedEnd: string | null;
+  /** С какого момента действует текущее состояние; null — объявлений не было или база молчит */
+  since: string | null;
+  /** Принимает ли сервер изменения прямо сейчас */
+  writable: boolean;
+  /**
+   * Что сервер увидел сам, без объявления: `db` — база не ответила на
+   * проверку. null — сам он ничего плохого не видит. Выдумывать здесь
+   * нечего: только то, что сервер знает наверняка.
+   */
+  auto: "db" | null;
+  checkedAt: string;
+  history: ServiceAnnouncement[];
+}
+
+export interface OpsAnnouncement extends ServiceAnnouncement {
+  /** Кто объявил — только в техпанели */
+  by: string | null;
+}
+
+export interface OpsServiceStatus {
+  current: PublicServiceStatus;
+  history: OpsAnnouncement[];
+}
+
+/** Флаг в техпанели: из реестра кода и из таблицы вместе */
+export interface OpsFlag {
+  key: string;
+  /** Ключ есть в реестре (packages/shared/src/featureFlags.ts); иначе строка пережила ключ */
+  known: boolean;
+  title: { uk: string; ru: string; en: string } | null;
+  description: { uk: string; ru: string; en: string } | null;
+  enabled: boolean;
+  audience: import("./featureFlags").FeatureFlagAudience;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** Подписи к идентификаторам в аудиториях: экран показывает имена, а не uuid */
+export interface FlagAudienceNames {
+  staffRoles: Record<string, LocalizedText>;
+  users: Record<string, string>;
+  surveyGroups: Record<string, string>;
+  departments: Record<string, LocalizedText>;
+}
+
+export interface OpsFlagsView {
+  items: OpsFlag[];
+  names: FlagAudienceNames;
+}
+
+export interface FlagChange {
+  id: string;
+  key: string;
+  before: { enabled: boolean; audience: import("./featureFlags").FeatureFlagAudience } | null;
+  after: { enabled: boolean; audience: import("./featureFlags").FeatureFlagAudience };
+  by: string | null;
+  at: string;
+}
+
+/** Из чего собирать аудиторию флага */
+export interface FlagAudienceOptions {
+  staffRoles: { code: string; title: LocalizedText }[];
+  surveyGroups: { id: string; title: string }[];
+  departments: { id: string; title: LocalizedText }[];
+  people: { id: string; name: string; email: string; role: Role }[];
+}
+
+/** Выкатка: одна строка на каждый запуск новой версии */
+export interface ReleaseEntry {
+  id: string;
+  version: string;
+  commitSha: string | null;
+  commitUrl: string | null;
+  /** Логин GitHub того, кто запустил выкатку */
+  deployedBy: string | null;
+  runUrl: string | null;
+  startedAt: string;
+  /** Когда его сменил следующий выпуск; null — работает сейчас */
+  endedAt: string | null;
+  /**
+   * Миграции, применённые с прошлого выпуска. null — неизвестно: это первый
+   * записанный выпуск, и что было до него, таблица не знает.
+   */
+  migrations: string[] | null;
+  lastMigration: string | null;
+}
+
+export interface ReleasesView {
+  items: ReleaseEntry[];
+  /** Что работает в этом процессе — из окружения, а не из таблицы */
+  running: { version: string | null; commitSha: string | null };
+  /** Страница ручного запуска выкатки в GitHub Actions; null — репозиторий не известен */
+  workflowUrl: string | null;
+  /** Задан ли на сервере GITHUB_DISPATCH_TOKEN — только «да/нет», сам токен наружу не уходит */
+  dispatchConfigured: boolean;
+}
+
 
 /* ─────────── случаи риска ─────────── */
 

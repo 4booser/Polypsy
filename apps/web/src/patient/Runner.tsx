@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { contentLangNotice, isAnswered, isQuestionVisible, type SurveyFull } from "@quizzy/shared";
-import { api } from "../api";
+import { contentLangNotice, isAnswered, isQuestionVisible, isTransientStatus, type SurveyFull } from "@quizzy/shared";
+import { api, ApiError } from "../api";
+import { useAuth } from "../auth";
+import { MaintenanceBanner } from "../service/MaintenanceBanner";
 import { Screen, useAction } from "../ui";
 import { Button, Input, Textarea, TouchArea } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { IconCheck, IconClose } from "./icons";
 import { cx } from "../ui/cx";
+import { offlineSafetyPlan, outbox } from "./outbox";
 
 /**
  * Прохождение методики на телефоне: один пункт на экран.
@@ -33,6 +36,7 @@ export default function Runner() {
   const { ut, lang } = useLang();
   const navigate = useNavigate();
   const { run, busy } = useAction();
+  const { user } = useAuth();
 
   const res = useResource(() => api.survey(id!), [id], { enabled: !!id });
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
@@ -40,7 +44,8 @@ export default function Runner() {
   const [startedAt] = useState(() => new Date().toISOString());
   const [enteredAt, setEnteredAt] = useState(() => Date.now());
   const [times] = useState<Map<string, number>>(new Map());
-  const [done, setDone] = useState<{ safetyPlan: string | null } | null>(null);
+  /* queued — ответы легли ждать на устройстве (идут работы или нет сети), а не на сервер */
+  const [done, setDone] = useState<{ safetyPlan: string | null; queued: boolean } | null>(null);
 
   /*
    * Фокус переезжает на заголовок нового пункта.
@@ -119,7 +124,11 @@ export default function Runner() {
                   сама методика (showResultsToPatient), а «спасибо» без цифры —
                   честный ответ: интерпретирует результат специалист.
                 */}
-                <p className="m-0 max-w-[30ch] text-muted">{ut("pw.handed")}</p>
+                {/*
+                  Отложенная сдача сказана прямо: «передано специалисту» было бы
+                  неправдой, пока ответы лежат на этом устройстве.
+                */}
+                <p className="m-0 max-w-[30ch] text-muted">{done.queued ? ut("pw.queued") : ut("pw.handed")}</p>
                 {done.safetyPlan ? (
                   <div className="w-full rounded-xl border border-warning bg-surface-2 p-3.5 text-small">
                     {done.safetyPlan}
@@ -187,17 +196,42 @@ export default function Runner() {
                 changeCount: 0,
                 visitCount: 1,
               }));
-            const result = await api.submitResponse(survey.id, {
+            const body = {
               startedAt,
               durationMs: Date.now() - new Date(startedAt).getTime(),
               answers: payload as never,
               events: [],
-            });
-            setDone({ safetyPlan: result.safetyPlan ?? null });
+              // id сдачи — с первой попытки: повтор из очереди сервер узнает как дубль
+              clientRequestId: crypto.randomUUID(),
+            };
+            try {
+              const result = await api.submitResponse(survey.id, body);
+              setDone({ safetyPlan: result.safetyPlan ?? null, queued: false });
+            } catch (error) {
+              /*
+               * Временный отказ — режим обслуживания (503), перезапуск при
+               * выкатке (502/504), нет сети — не повод терять ответы: они
+               * ложатся в очередь кабинета и уходят сами (PatientApp).
+               * Отказ по существу показывается как прежде, ответы остаются
+               * на экране.
+               */
+              if (!(error instanceof ApiError) || !isTransientStatus(error.status) || !user) throw error;
+              outbox.enqueue(user.id, survey.id, body);
+              setDone({ safetyPlan: offlineSafetyPlan(survey, payload as { optionIds?: string[] }[]), queued: true });
+              // «надіслано» здесь было бы неправдой — всплывашку не показываем
+              return false;
+            }
           }, ut("pw.sent"));
 
         return (
           <div className="mx-auto flex min-h-[100dvh] max-w-md flex-col p-4">
+            {/*
+              Баннер работ — и здесь: человек посреди методики должен знать
+              до «Завершити», что ответы уйдут позже, а не узнать это отказом.
+            */}
+            <div className="-mx-4 -mt-4 mb-4 empty:hidden">
+              <MaintenanceBanner place="patient" />
+            </div>
             {/*
               Полоса прогресса вместо «вопрос 7 из 20»: число впереди пугает.
               Рядом — выход. До него уйти с методики можно было только кнопкой
