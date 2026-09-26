@@ -64,7 +64,8 @@ export async function verifyChain(): Promise<ChainReport> {
         ip: row.ip,
         userAgent: row.userAgent,
         details: row.details,
-      });
+        // каждая строка — своей версией канонизации: старые остаются версией 1 (миграция 0096)
+      }, row.hashVersion);
       if (expected !== row.entryHash || row.prevHash !== prevHash) {
         return { ok: false, checked: prevSeq, legacy, brokenAtSeq: row.seq, headSeq: null, headHash: null };
       }

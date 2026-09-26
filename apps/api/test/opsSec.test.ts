@@ -681,6 +681,8 @@ describe("телефоны: переиндексация", () => {
       .select()
       .from(auditLog)
       .where(sql`${auditLog.action} = 'sec.phone_reindex' and ${auditLog.actorId} = ${root.id}`)
+      // последняя, а не первая попавшаяся: строку той же кнопки пишет и тест выше (волна 12, integrity)
+      .orderBy(sql`${auditLog.seq} desc`)
       .limit(1);
     expect(row?.details?.total).toBe(res.body.total);
   });

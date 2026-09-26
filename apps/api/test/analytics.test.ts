@@ -172,24 +172,30 @@ describe("профили деидентификации", () => {
   });
 
   test("выгрузка фиксируется в журнале с хэшем датасета", async () => {
+    /*
+     * Своя выгрузка, найденная по своему номеру запроса. Прежде бралась любая
+     * строка analytics.export с хэшем во всей базе — выгрузки других файлов
+     * подходили, и тест прошёл бы, перестань этот путь писать хэш вовсе
+     * (волна 12, integrity).
+     */
     const { auditLog } = await import("../src/db/schema");
-    const { desc: descOp } = await import("drizzle-orm");
-    const [entry] = await db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, "analytics.export"))
-      .orderBy(descOp(auditLog.at))
-      .limit(1);
-    const details = entry!.details as { datasetSha256?: string; profile?: string };
-    // последняя data.csv-выгрузка несёт хэш
+    const requestId = `analytics-hash-${crypto.randomUUID()}`;
+    const res = await app.request(`/api/spss/surveys/${surveyInA}/data.csv?profile=deidentified`, {
+      headers: { Authorization: `Bearer ${adminA.token}`, "x-request-id": requestId },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.text()).replace(/^\uFEFF/, "");
+
     const rows = await db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.action, "analytics.export"))
-      .orderBy(descOp(auditLog.at));
-    const withHash = rows.find((r) => (r.details as { datasetSha256?: string }).datasetSha256);
-    expect(withHash).toBeDefined();
-    expect((withHash!.details as { datasetSha256: string }).datasetSha256).toMatch(/^[0-9a-f]{64}$/);
+      .where(and(eq(auditLog.action, "analytics.export"), eq(auditLog.actorId, adminA.id), eq(auditLog.resourceId, surveyInA)));
+    const mine = rows.find((r) => (r.details as { requestId?: string }).requestId === requestId);
+    expect(mine).toBeDefined();
+    const details = mine!.details as { datasetSha256: string; format: string };
+    expect(details.format).toBe("spss-data");
+    // хэш — именно от отданного файла: по нему выгрузку и узнают через год
+    expect(details.datasetSha256).toBe(new Bun.CryptoHasher("sha256").update(body).digest("hex"));
   });
 });
 
@@ -247,8 +253,8 @@ describe("long-format экспорт", () => {
     expect(csv).not.toContain(patient.id);
     expect(lines.length).toBeGreaterThan(1);
 
-    // полный профиль отдаёт подразделение и точную дату
-    const full = await app.request(`/api/spss/surveys/${surveyInA}/long.csv`, {
+    // полный профиль отдаёт подразделение и точную дату — по слову «full», без него выгрузка обезличена
+    const full = await app.request(`/api/spss/surveys/${surveyInA}/long.csv?profile=full`, {
       headers: { Authorization: `Bearer ${adminA.token}` },
     });
     const fullHeader = (await full.text()).split("\r\n")[0]!;
@@ -409,7 +415,7 @@ describe("k-анонимность выгрузки", () => {
 
   test("полный профиль k-анонимность не трогает", async () => {
     // он и не притворяется обезличенным: там есть имя и подразделение
-    const res = await api(`/api/spss/surveys/${surveyInA}/manifest.json`, adminA.token);
+    const res = await api(`/api/spss/surveys/${surveyInA}/manifest.json?profile=full`, adminA.token);
     expect(res.body.kanon).toBeNull();
   });
 });

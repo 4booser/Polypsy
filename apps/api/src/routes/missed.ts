@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, gt, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { t } from "@quizzy/shared";
+import { queryDate, t } from "@quizzy/shared";
 import { db } from "../db";
 import { alertCases, batteries, referrals, scheduleRuns, schedules, surveys, users } from "../db/schema";
 import { fullNameOf } from "../lib/auth";
@@ -32,7 +32,8 @@ missedRoutes.use("*", requireAuth, requireStaff, requirePermission("patients.rea
  */
 
 const query = z.object({
-  since: z.string(),
+  /* «с какого момента» сравнивается с метками случаев и направлений — только настоящая дата */
+  since: queryDate,
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 

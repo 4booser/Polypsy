@@ -29,10 +29,11 @@ import { ROUTE_DOCS } from "../src/lib/openapi";
  */
 
 /** Пациент в зоне adminA — штатным путём, назначением методики группы А */
-async function patientOfA(tag: string, extra: Record<string, unknown> = {}): Promise<Person> {
-  const person = await makeUser("user", `pc-${tag}-${crypto.randomUUID()}@test`, extra);
+async function patientOfA(tag: string, extra: Record<string, unknown> = {}): Promise<Person & { email: string }> {
+  const email = `pc-${tag}-${crypto.randomUUID()}@test`;
+  const person = await makeUser("user", email, extra);
   await db.insert(surveyAccess).values({ surveyId: surveyInA, userId: person.id, grantedBy: adminA.id });
-  return person;
+  return { ...person, email };
 }
 
 async function makeGroup(owner: Person, title: string): Promise<string> {
@@ -56,7 +57,12 @@ describe("GET /api/patients — пациенты зоны видимости", (
     const unit = `Рота-${crypto.randomUUID().slice(0, 8)}`;
     const person = await patientOfA("zone", { unit, sex: "female", birthDate: "1991-05-05" });
 
-    const own = await api("/api/patients?limit=200", adminA.token);
+    /*
+     * Поиском по своей почте, а не первыми двумястами: список упорядочен по
+     * ФИО и режется, а зону adminA наполняют все файлы сюиты — в каком-то
+     * порядке «pc-zone» оказывался за двухсотым (волна 12, integrity).
+     */
+    const own = await api(`/api/patients?limit=200&q=${encodeURIComponent(person.email)}`, adminA.token);
     expect(own.status).toBe(200);
     expect(idsOf(own.body)).toContain(person.id);
     const row = own.body.items.find((p: { id: string }) => p.id === person.id);
@@ -80,6 +86,9 @@ describe("GET /api/patients — пациенты зоны видимости", (
     const foreignIds = idsOf(foreign.body);
     expect(foreignIds).toContain(theirs.id);
     expect(foreignIds, `GET /api/patients отдал чужому специалисту ${person.id}`).not.toContain(person.id);
+    // и поиском по почте — иначе «не видно» могло значить «не влез в первые двести»
+    const aimed = await api(`/api/patients?limit=200&q=${encodeURIComponent(person.email)}`, adminB.token);
+    expect(idsOf(aimed.body)).not.toContain(person.id);
 
     const all = await api(`/api/patients?q=${encodeURIComponent("pc-zone")}`, root.token);
     expect(idsOf(all.body)).toContain(person.id);
@@ -287,7 +296,7 @@ describe("GET /api/patients/:id/card — карточка пациента", () 
     const signedVersion = rootDraft.body.current.version as number;
     const signed = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, root.token, {
       method: "POST",
-      body: JSON.stringify({ version: signedVersion }),
+      body: JSON.stringify({ version: signedVersion, revision: rootDraft.body.current.revision }),
     });
     expect(signed.status, JSON.stringify(signed.body)).toBe(200);
     const ownDraft = await api(`/api/conclusions/responses/${responseId}/conclusion`, adminA.token, {
@@ -583,7 +592,8 @@ describe("телефон пациента — как на макете (f05, f13
     const phone = "+380671119876";
     const person = await patientOfA("phone", { phoneEnc: encryptField(phone) });
 
-    const list = await api("/api/patients?limit=200", adminA.token);
+    // поиском по своей почте — см. первый тест файла: первые двести зависят от чужих данных
+    const list = await api(`/api/patients?limit=200&q=${encodeURIComponent(person.email)}`, adminA.token);
     expect(list.body.items.find((p: { id: string }) => p.id === person.id)?.phone, "список пациентов").toBe(phone);
 
     const card = await api(`/api/patients/${person.id}/card`, adminA.token);

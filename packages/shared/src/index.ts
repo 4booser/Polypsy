@@ -1,5 +1,7 @@
 export * from "./types";
 export * from "./schemas";
+/* дата снаружи: строгий ISO, который база прочтёт так же (волна 12, integrity) */
+export * from "./dates";
 export * from "./scoring";
 export * from "./validate";
 export * from "./phone";

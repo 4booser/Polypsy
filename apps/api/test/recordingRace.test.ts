@@ -179,9 +179,15 @@ describe("удаление во время расшифровки", () => {
     const { id, patient, specialist } = await visit("transcribe");
     await api(`/api/recordings/${id}/consent`, patient.token, { method: "POST" });
     const path = await storeAudio(`race-${crypto.randomUUID()}`, new Uint8Array([1, 2, 3, 4]));
+    /*
+     * Своя запись — самой старой в очереди: transcribeNext берёт старейшую
+     * «uploaded» во всей таблице, а другие файлы (bodyLimit, recordings)
+     * оставляют там свои. Без этого очередь подхватывала чужую, run() всё
+     * равно удалял нашу — и гонка не проверялась вовсе (волна 12, integrity).
+     */
     await db
       .update(visitRecordings)
-      .set({ status: "uploaded", audioPath: path })
+      .set({ status: "uploaded", audioPath: path, createdAt: "1990-01-01T00:00:00.000Z" })
       .where(eq(visitRecordings.appointmentId, id));
 
     /*
@@ -191,7 +197,9 @@ describe("удаление во время расшифровки", () => {
      */
     setTranscriberForTests({
       name: "тест",
-      run: async () => {
+      run: async (audio) => {
+        // расшифровывается именно наша запись, а не чужая из общей очереди
+        expect([...audio]).toEqual([1, 2, 3, 4]);
         const res = await api(`/api/recordings/${id}/discard`, patient.token, { method: "POST" });
         expect(res.status).toBe(200);
         throw new Error("модель не загружена");
