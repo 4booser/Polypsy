@@ -1,4 +1,4 @@
-import { t } from "@quizzy/shared";
+import { bandFor, t } from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -67,14 +67,16 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
         .where(eq(riskAlerts.responseId, existing.id))
         .limit(1);
       const survey = await getSurvey(existing.surveyId, null, langOf(c));
+      // повтор отдаёт то же, что первая попытка: баллы — только тем, кому их показывают (resultsShownTo)
+      const shown = resultsShownTo(user, survey);
 
       return c.json(
         {
           id: existing.id,
           surveyId: existing.surveyId,
           submittedAt: existing.submittedAt,
-          scores: stored,
-          reliable: existing.reliable,
+          scores: shown ? stored : [],
+          reliable: shown ? existing.reliable : null,
           /*
            * Предупреждений в строке не хранится: они собираются при подсчёте
            * и в базу не попадают. Пустой список здесь — честное «нечего
@@ -163,7 +165,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       ? { id: user.id, sex: user.sex, birthDate: user.birthDate }
       : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
 
-  const { responseId, submittedAt, scores, profile, risksTriggered, cascade } = await persistSubmission(
+  const { responseId, submittedAt, scores, profile, risk, cascade } = await persistSubmission(
     survey,
     subject,
     input,
@@ -193,17 +195,35 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     },
   });
 
+  /*
+   * Баллы, полоса, достоверность и предупреждения (в них названия шкал и
+   * текст шкалы лжи) — только тому, кому методика их показывает
+   * (resultsShownTo внизу файла). null у достоверности — «не сообщается», а
+   * не «недостоверно».
+   */
+  const shown = resultsShownTo(user, survey);
+
   return c.json(
     {
       id: responseId,
       surveyId,
       submittedAt,
-      scores,
-      reliable: profile.reliable,
-      warnings: profile.warnings,
-      // safety-план показывается тому, кто держит устройство, ровно в момент,
-      // когда сработал критический пункт — и только самому обследуемому
-      safetyPlan: risksTriggered > 0 && subjectId === user.id ? survey.safetyPlan : null,
+      scores: shown ? scores : [],
+      reliable: shown ? profile.reliable : null,
+      warnings: shown ? profile.warnings : [],
+      /*
+       * Safety-план показывается тому, кто держит устройство, ровно в момент,
+       * когда сдача подняла риск, — и только самому обследуемому.
+       *
+       * Риск — итоговый, тот же, по которому подняты тревоги и проверены
+       * правила: критические ответы И полосы шкал (lib/submission →
+       * packages/shared/src/risk.ts). Здесь стояло число одних критических
+       * ответов, и человек с тяжёлой полосой PHQ-9 или МЛО, у которого в
+       * очереди дежурного уже открыт случай, плана безопасности не видел.
+       * Повтор из очереди (выше, `duplicate: true`) решает по сохранённым
+       * тревогам — то есть по тому же самому.
+       */
+      safetyPlan: risk.severity !== null && subjectId === user.id ? survey.safetyPlan : null,
       // что назначила автоматика — специалист должен видеть это сразу,
       // а не обнаруживать в списке назначений через неделю
       cascade,
@@ -410,7 +430,23 @@ responseRoutes.get("/me/responses", async (c) => {
     .from(responses)
     .where(eq(responses.userId, user.id))
     .orderBy(desc(responses.submittedAt));
-  return c.json({ items: await withScores(rows, user.fullName) });
+  const items = await withScores(rows, user.fullName);
+  // свои прохождения — со своими баллами только там, где методика их показывает (resultsShownTo)
+  const shownSurveys = new Set(
+    rows.length
+      ? (
+          await db
+            .select({ id: surveys.id })
+            .from(surveys)
+            .where(and(inArray(surveys.id, [...new Set(rows.map((r) => r.surveyId))]), eq(surveys.showResultsToPatient, true)))
+        ).map((s) => s.id)
+      : [],
+  );
+  return c.json({
+    items: items.map((item) =>
+      resultsShownTo(user, { showResultsToPatient: shownSurveys.has(item.surveyId) }) ? item : { ...item, scores: [] },
+    ),
+  });
 });
 
 /** Все прохождения методики — админам */
@@ -657,7 +693,8 @@ responseRoutes.get("/responses/:id", async (c) => {
     startedAt: response.startedAt,
     submittedAt: response.submittedAt,
     durationMs: response.durationMs,
-    scores: scoreRows.map((s) => {
+    // баллы и полосы — только тому, кому методика их показывает (resultsShownTo внизу файла)
+    scores: (resultsShownTo(user, survey) ? scoreRows : []).map((s) => {
       const scale = scaleTitles.get(s.scaleId);
       const band = s.bandLabel
         ? { label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
@@ -677,8 +714,7 @@ responseRoutes.get("/responses/:id", async (c) => {
        */
       const ladder = [...(scale?.bands ?? [])].sort((a, b) => a.minScore - b.minScore || a.position - b.position);
       const hit = band
-        ? (ladder.find((b) => s.value >= b.minScore && s.value <= b.maxScore) ??
-          ladder.find((b) => b.label === band.label))
+        ? (bandFor(ladder, s.value) ?? ladder.find((b) => b.label === band.label))
         : undefined;
       return {
         scaleId: s.scaleId,
@@ -821,3 +857,23 @@ async function withScores(
 }
 
 
+/**
+ * Видит ли читающий баллы и полосы этого прохождения (волна 12, engine).
+ *
+ * Сотрудник — всегда. Обследуемый — только если психолог включил у методики
+ * показ результатов (showResultsToPatient). У PHQ-9, PCL-5, PQ-16 он
+ * выключен намеренно: балл без разговора со специалистом — «тяжёлая
+ * депрессия» на экране телефона в одиночестве. Флаг до сих пор уважала
+ * только динамика (/me/dynamics), а сдача, список своих прохождений и
+ * разбор прохождения отдавали баллы и полосу как есть (клиническое ревью:
+ * `{"raw":24,"band":"Тяжка депресія"}` в ответе на сдачу).
+ *
+ * Кризисная карточка этим правилом не закрывается: она — не результат, а
+ * помощь. В ней нет ни балла, ни полосы — только что делать и куда звонить,
+ * и показывается она ровно тогда, когда риск поднят; спрятать её вместе с
+ * баллом значило бы оставить человека с риском без плана безопасности ради
+ * того, чтобы не показать ему число.
+ */
+function resultsShownTo(user: { role: string }, survey: { showResultsToPatient: boolean } | null | undefined): boolean {
+  return isStaff(user as never) || survey?.showResultsToPatient === true;
+}

@@ -95,6 +95,12 @@ export const ERRORS = {
   },
   "err.batteryArchived": { uk: "Набір в архіві", ru: "Набор в архиве", en: "This battery is archived" },
   "err.batteryNotFound": { uk: "Набір не знайдено", ru: "Набор не найден", en: "Battery not found" },
+  /* каскад полосы указывает на набор, которого нет или который не виден редактору (волна 12, engine) */
+  "err.cascadeBatteryNotFound": {
+    uk: "Набір для автоматичного призначення за смугою не знайдено: {title}",
+    ru: "Набор для автоматического назначения по полосе не найден: {title}",
+    en: "The battery for band-based assignment wasn’t found: {title}",
+  },
   "err.consentTextNotConfigured": {
     uk: "Текст згоди не налаштовано",
     ru: "Текст согласия не настроен",
@@ -107,6 +113,11 @@ export const ERRORS = {
     en: "Device not found or already wiped",
   },
   "err.devicesNotFound": { uk: "Пристрої не знайдено", ru: "Устройства не найдены", en: "Devices not found" },
+  "err.duplicateAnswer": {
+    uk: "На питання відправлено кілька відповідей: {title}",
+    ru: "На вопрос отправлено несколько ответов: {title}",
+    en: "More than one answer was sent for a question: {title}",
+  },
   "err.importParseFailed": {
     uk: "Файл не розібрано: {path}: {message}",
     ru: "Файл не разобран: {path}: {message}",
@@ -169,6 +180,11 @@ export const ERRORS = {
     en: "The patient is registered with another department — the booking needs its approval",
   },
   "err.patientNotFound": { uk: "Пацієнта не знайдено", ru: "Пациент не найден", en: "Patient not found" },
+  "err.optionDuplicates": {
+    uk: "Варіант відповіді обрано кілька разів: {title}",
+    ru: "Вариант ответа выбран несколько раз: {title}",
+    en: "The same answer option was chosen more than once: {title}",
+  },
   "err.rankingDuplicates": {
     uk: "У ранжуванні є повтори: {title}",
     ru: "В ранжировании есть повторы: {title}",
@@ -233,6 +249,16 @@ export const ERRORS = {
     en: "This assessment isn’t available to take",
   },
   "err.surveyNotFound": { uk: "Методику не знайдено", ru: "Методика не найдена", en: "Assessment not found" },
+  /*
+   * Правку содержимого начали от версии, которая уже не действующая:
+   * между открытием конструктора и сохранением методику сохранил кто-то
+   * другой. Принять — значит молча стереть чужую правку (волна 12, engine).
+   */
+  "err.surveyVersionConflict": {
+    uk: "Методику щойно змінили в іншому вікні або інша людина. Відкрийте її заново й повторіть зміни",
+    ru: "Методику только что изменили в другом окне или другой человек. Откройте её заново и повторите изменения",
+    en: "This assessment was just changed in another window or by someone else. Reopen it and make your changes again",
+  },
   "err.surveyPublishErrors": {
     uk: "Методику не можна опублікувати: {count} структурних помилок. {details}",
     ru: "Методику нельзя опубликовать: {count} структурных ошибок. {details}",
@@ -502,6 +528,12 @@ export const ERRORS = {
     uk: "Висновок доступний пацієнту або співробітнику",
     ru: "Заключение доступно пациенту или сотруднику",
     en: "The conclusion is available to the patient or to staff",
+  },
+  /* результаты методики со снятым показом пациенту — обсуждаются со специалистом (волна 12, engine) */
+  "err.resultsWithSpecialist": {
+    uk: "Результати цієї методики обговорює з вами фахівець",
+    ru: "Результаты этой методики обсуждает с вами специалист",
+    en: "A clinician will go through the results of this assessment with you",
   },
   "err.conclusionChanged": {
     uk: "Висновок змінився: зараз версія {current}, а правка велася поверх {base}. Оновіть текст.",

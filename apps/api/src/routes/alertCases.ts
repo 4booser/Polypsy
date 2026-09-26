@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import {
+  bandFor,
   queryDate,
   queryInt,
   t,
@@ -734,11 +735,13 @@ alertCaseRoutes.get("/:id/signals", async (c) => {
      * другом языке не совпала бы ни с одной полосой — границы пропали бы
      * ровно у того читателя, который переключил язык.
      */
+    // тем же правилом, что движок подсчёта (bandFor): полуинтервал через щель точности границ
     const band =
       score && score.value !== null
-        ? bandRows.find(
-            (b) => b.scaleId === s.a.scaleId && score.value >= b.minScore && score.value <= b.maxScore,
-          )
+        ? (bandFor(
+            bandRows.filter((b) => b.scaleId === s.a.scaleId),
+            score.value,
+          ) ?? undefined)
         : undefined;
 
     return {

@@ -811,6 +811,11 @@ export const scales = pgTable(
     validityThreshold: doublePrecision("validity_threshold"),
     validityDirection: text("validity_direction", { enum: ["above", "below"] }),
     validityMessage: localized("validity_message"),
+    /**
+     * Минимальная доля отвеченных пунктов, при которой балл считается
+     * (миграция 0101); null — умолчание движка. Ниже — шкала не вычислена.
+     */
+    minAnsweredShare: doublePrecision("min_answered_share"),
   },
   (t) => ({
     surveyIdx: index("scales_survey_idx").on(t.surveyId),
