@@ -1,5 +1,7 @@
 import {
+  Suspense,
   createContext,
+  lazy,
   useCallback,
   useRef,
   useEffect,
@@ -9,8 +11,9 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { IconClose } from "./glyphs";
+import { rowKeyOf } from "./rowKeys";
+import type { VirtualRowsProps } from "./virtualRows";
 import type { Resource } from "../useResource";
 import {
   applyFacets,
@@ -979,13 +982,11 @@ export function DataTable<T>({
   /*
    * Большинство таблиц показывают сущности с id — берём его, не заставляя
    * каждый вызов передавать rowKey. Номер строки остаётся только там, где
-   * идентификатора действительно нет (сводные строки, агрегаты).
+   * идентификатора действительно нет (сводные строки, агрегаты). Правило —
+   * в rowKeys.ts: там же числовой id, который раньше молча уводил таблицу
+   * на номер строки.
    */
-  const keyOf = (row: T, i: number): string => {
-    if (rowKey) return rowKey(row);
-    const id = (row as { id?: unknown }).id;
-    return typeof id === "string" ? id : String(i);
-  };
+  const keyOf = (row: T, i: number): string => rowKeyOf(row, i, rowKey);
 
   const [urlSort, setUrlSort] = useUrlState(stateKey ? `${stateKey}.sort` : "");
   const [localSort, setLocalSort] = useState(initialSort ?? null);
@@ -1146,14 +1147,23 @@ export function DataTable<T>({
   return (
     <>
       {tools}
-      <VirtualRows
-        sorted={sorted}
-        columns={shown}
-        head={head}
-        keyOf={keyOf}
-        onRowClick={onRowClick}
-        isRowActive={isRowActive}
-      />
+      {/* пока кусок виртуализации в пути — скелет, а не пустое место: длинные таблицы открывают на медленной сети */}
+      <Suspense fallback={<Loading rows={8} />}>
+        <VirtualRows
+          sorted={sorted}
+          head={head}
+          renderRow={(row, i, height) => (
+            <Row
+              key={keyOf(row, i)}
+              row={row}
+              columns={shown}
+              height={height}
+              onRowClick={onRowClick}
+              active={isRowActive?.(row) ?? false}
+            />
+          )}
+        />
+      </Suspense>
     </>
   );
 }
@@ -1242,92 +1252,13 @@ function Row<T>({
 /** С какого числа строк включается виртуализация */
 const VIRTUAL_FROM = 60;
 
-/**
- * Длинная таблица: в DOM живут только видимые строки.
- *
- * Список пациентов — девять тысяч человек, и раньше все девять тысяч строк
- * рисовались сразу: вкладка занимала полгигабайта и прокручивалась рывками.
- * Высота строки берётся из токена плотности, поэтому в плотном режиме
- * пересчёт происходит сам.
+/*
+ * Длинная таблица (VirtualRows) — в virtualRows.tsx и по требованию: она
+ * одна тянет за собой @tanstack/react-virtual, а в начальный кусок консоли
+ * ui/index попадает целиком — ради тостов, загрузки и модальных окон. Волна
+ * 12: библиотека виртуализации ехала к каждому, кто открывал вход.
  */
-function VirtualRows<T>({
-  sorted,
-  columns,
-  head,
-  keyOf,
-  onRowClick,
-  isRowActive,
-}: {
-  sorted: T[];
-  columns: Column<T>[];
-  head: ReactNode;
-  keyOf: (row: T, i: number) => string;
-  onRowClick?: (row: T) => void;
-  isRowActive?: (row: T) => boolean;
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const rowHeight = useRowHeight(scrollRef);
-
-  const virtual = useVirtualizer({
-    count: sorted.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
-    overscan: 12,
-  });
-
-  const items = virtual.getVirtualItems();
-  const padTop = items[0]?.start ?? 0;
-  const padBottom = virtual.getTotalSize() - (items[items.length - 1]?.end ?? 0);
-
-  return (
-    <div className="scroll-x virtual-wrap" ref={scrollRef}>
-      <table>
-        {head}
-        <tbody>
-          {/* распорки вместо абсолютного позиционирования: строки таблицы
-              нельзя вынимать из потока, не потеряв выравнивание колонок */}
-          {padTop > 0 ? <tr style={{ height: padTop }} aria-hidden /> : null}
-          {items.map((v) => {
-            const row = sorted[v.index]!;
-            return (
-              <Row
-                key={keyOf(row, v.index)}
-                row={row}
-                columns={columns}
-                height={rowHeight}
-                onRowClick={onRowClick}
-                active={isRowActive?.(row) ?? false}
-              />
-            );
-          })}
-          {padBottom > 0 ? <tr style={{ height: padBottom }} aria-hidden /> : null}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/**
- * Высота строки из токена плотности.
- *
- * Захардкодить нельзя: в плотном режиме строка ниже на восемь пикселей, и
- * виртуализация с чужой высотой оставляет пустоты в конце списка.
- */
-function useRowHeight(ref: React.RefObject<HTMLElement | null>): number {
-  const [h, setH] = useState(38);
-  useEffect(() => {
-    const read = () => {
-      const raw = getComputedStyle(document.documentElement).getPropertyValue("--row-h");
-      const px = Number.parseFloat(raw);
-      if (Number.isFinite(px) && px > 0) setH(px);
-    };
-    read();
-    const observer = new MutationObserver(read);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-density"] });
-    return () => observer.disconnect();
-  }, [ref]);
-  return h;
-}
+const VirtualRows = lazy(() => import("./virtualRows")) as <T>(props: VirtualRowsProps<T>) => ReactNode;
 
 /** Поле поиска с иконкой */
 export function Search({

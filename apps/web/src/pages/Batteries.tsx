@@ -11,6 +11,7 @@ import { day } from "../format";
 import { Empty, IconBattery, Loading, Screen, Search, useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
+import { choiceLabel, keepChosen } from "../ui/choices";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
@@ -35,7 +36,8 @@ export default function Batteries() {
   const res = useResource(async () => {
     const [rows, surveys, groups, patients] = await Promise.all([
       api.batteries(),
-      api.surveys().catch(() => [] as SurveyListItem[]),
+      /* со снятыми: состав батареи может держать снятую методику, и редактор обязан её назвать (см. BatteryEditor) */
+      api.surveys(true).catch(() => [] as SurveyListItem[]),
       api.groups().catch(() => [] as SurveyGroupWithCounts[]),
       api.patients().then((p) => p.items).catch(() => [] as Patient[]),
     ]);
@@ -318,7 +320,27 @@ function BatteryEditor({
   );
   const { run } = useAction();
 
-  const titleOf = (id: string) => surveys.find((s) => s.id === id)?.title ?? id;
+  /*
+   * Шаг батареи, методику которого сняли с использования или которая ушла
+   * из групп смотрящего, назывался своим идентификатором: имя бралось из
+   * списка выбора, а снятых там нет. Теперь имя — из списка со снятыми или
+   * из самой батареи, с пометкой словами; заново такую методику не
+   * предложат — кнопки «+» строятся по доступным (ui/choices.ts).
+   */
+  const live = surveys.filter((s) => !s.archivedAt);
+  const itemTitles = new Map(battery?.items.map((i) => [i.surveyId, i.title]) ?? []);
+  const known = (id: string) => {
+    const s = surveys.find((x) => x.id === id);
+    if (s) return { title: s.title, retired: !!s.archivedAt };
+    const title = itemTitles.get(id);
+    return title ? { title, retired: false } : null;
+  };
+  const choices = new Map(keepChosen(live, items.map((i) => i.surveyId), known).map((c) => [c.id, c]));
+  const words = { retired: ut("mark.retired"), unavailable: ut("choice.unavailable"), unknown: ut("am.testUnavailable") };
+  const titleOf = (id: string) => {
+    const c = choices.get(id);
+    return c ? choiceLabel(c, words) : id;
+  };
   const move = (index: number, delta: number) => {
     const next = [...items];
     const target = index + delta;
@@ -425,7 +447,7 @@ function BatteryEditor({
       )}
 
       <div className="row tight mt-3">
-        {surveys
+        {live
           .filter((s) => !items.some((i) => i.surveyId === s.id))
           .map((s) => (
             <button key={s.id} onClick={() => setItems([...items, { surveyId: s.id, required: true }])}>

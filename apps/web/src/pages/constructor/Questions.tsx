@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { BulkPaste } from "./BulkPaste";
 import { Loc, Toggle, useEditLang } from "./fields";
-import { TYPES, newUid, type Draft, type DraftOption, type DraftQuestion } from "./model";
+import { TYPES, newUid, optionKey, type Draft, type DraftOption, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
 import { IconCopy, IconDisclosure } from "../../ui/glyphs";
@@ -320,7 +320,7 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
   const { ut } = useLang();
   const lang = useEditLang();
   const set = (k: number, patch: Partial<DraftOption>) => onChange(options.map((o, i) => (i === k ? { ...o, ...patch } : o)));
-  const add = () => onChange([...options, { text: { uk: "", ru: "" }, score: 0 }]);
+  const add = () => onChange([...options, { uid: newUid(), text: { uk: "", ru: "" }, score: 0 }]);
   const addButton = (
     <Button size="glyph" variant="ghost" aria-label={ut("cn.addAnswer")} title={ut("cn.addAnswer")} onClick={add}>
       +
@@ -331,8 +331,9 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
       {/* h3 под h2 раздела «Питання»: уровень не пропускается, как и в карточке шкалы */}
       <h3 className="m-0 mb-[8px] text-[17px] font-bold text-primary">{ut("cn.answers")}</h3>
       <div className="flex flex-col gap-[8px]">
+        {/* ключ — uid варианта, а не номер: удаление среднего ответа не отдаёт его поле соседу (DraftOption.uid) */}
         {options.map((o, k) => (
-          <div key={k} className="flex items-center gap-[10px]">
+          <div key={optionKey(o, k)} className="flex items-center gap-[10px]">
             <Field label={ut("cn.answerText")} inline className="min-w-0 flex-1">
               <Input value={o.text[lang] ?? ""} onChange={(e) => set(k, { text: { ...o.text, [lang]: e.target.value } })} />
             </Field>
@@ -355,7 +356,7 @@ function OwnAnswers({ options, onChange }: { options: DraftOption[]; onChange: (
           </summary>
           <div className="flex flex-col gap-[8px] pt-[12px]">
             {options.map((o, k) => (
-              <div key={k} className="flex items-center gap-[10px]">
+              <div key={optionKey(o, k)} className="flex items-center gap-[10px]">
                 <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{o.text[lang] || `${ut("cn.answerText")} ${k + 1}`}</span>
                 <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-[13px] text-muted">
                   <input type="checkbox" className="size-4" checked={!!o.riskFlag} onChange={(e) => set(k, { riskFlag: e.target.checked })} />

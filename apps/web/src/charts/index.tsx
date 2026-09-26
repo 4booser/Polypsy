@@ -543,7 +543,8 @@ export function StackedArea({
   const pw = W - PAD.left - PAD.right;
   const ph = height - PAD.top - PAD.bottom;
   const xAt = (i: number) => PAD.left + (n > 1 ? (i / (n - 1)) * pw : pw / 2);
-  const yAt = (v: number) => PAD.top + ph - ((v - axis.min) / Math.max(axis.max - axis.min, 1)) * ph;
+  /* делитель — настоящий размах оси: единица снизу сжимала доли (0…0,4) в нижние сорок процентов поля */
+  const yAt = (v: number) => PAD.top + ph - ((v - axis.min) / Math.max(axis.max - axis.min, Number.EPSILON)) * ph;
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const box = svgRef.current?.getBoundingClientRect();

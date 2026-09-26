@@ -1980,7 +1980,6 @@ export const UI = {
    */
   "pt.listActions": { uk: "Дії зі списком", ru: "Действия со списком", en: "List actions" },
   "pt.selectionActions": { uk: "Дії з вибраними", ru: "Действия с выбранными", en: "Actions on selected" },
-  "views.show": { uk: "Збережені вигляди", ru: "Сохранённые виды", en: "Saved views" },
   /*
    * Раздел бургера с дверями, которых кадр не рисует на самом экране.
    * Два адреса — /responses/:id/conclusion/draft и /patient-groups/:id/edit —
@@ -7182,6 +7181,25 @@ export const UI = {
     ru: "По этому отбору случаев нет",
     en: "No cases match these filters",
   },
+  /* ── w12:ui ── */
+  /* выбранное, которого среди доступных нет: чужая группа или удалено (ui/choices.ts) */
+  "choice.unavailable": { uk: "недоступна", ru: "недоступна", en: "unavailable" },
+  "choice.batteryGone": { uk: "Недоступна батарея (видалена)", ru: "Недоступная батарея (удалена)", en: "Unavailable battery (deleted)" },
+  /* раздел карточки сотрудника без права patients.read: запрос не уходит, вместо списка — объяснение */
+  "ppl.noPatientsRight": {
+    uk: "Пацієнтів і їхні групи видно лише з правом переглядати пацієнтів — у вас його немає",
+    ru: "Пациентов и их группы видно только с правом просматривать пациентов — у вас его нет",
+    en: "Patients and their groups are shown only with the right to view patients, which you do not have",
+  },
+  /* сохранённые виды списка пациентов — пункты шестерёнки (pages/patientGroups/views.tsx) */
+  "views.current": { uk: "Цей вигляд вже відкрито", ru: "Этот вид уже открыт", en: "This view is already open" },
+  "views.saveCurrent": { uk: "Зберегти відбір…", ru: "Сохранить отбор…", en: "Save selection…" },
+  "views.nothingToSave": {
+    uk: "Спершу оберіть групу або введіть пошук — зберігати поки нічого",
+    ru: "Сначала выберите группу или введите поиск — сохранять пока нечего",
+    en: "Pick a group or enter a search first: there is nothing to save yet",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

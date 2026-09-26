@@ -8,6 +8,7 @@ import { useAuth } from "../auth";
 import { useResource } from "../useResource";
 import { dateTime, severityKey } from "../format";
 import { cx } from "../ui/cx";
+import { occurrenceKeys } from "../ui/rowKeys";
 import { Button, SeverityTag } from "../ui/primitives";
 
 /**
@@ -43,6 +44,7 @@ export function EventCenter() {
   const { ut } = useLang();
   const { user, refreshUser } = useAuth();
   const [events, setEvents] = useState<AppEvent[]>([]);
+  const eventKeys = useMemo(() => occurrenceKeys(events, (e) => `${e.at}|${e.kind}|${e.userId ?? ""}`), [events]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -257,8 +259,14 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
             <Empty>{ut("ev.empty")}</Empty>
           ) : (
             <div className="flex flex-col">
+              {/*
+                Ключ — момент и вид события, а не место в ленте: новое встаёт
+                сверху, и по номеру каждое прибытие перенумеровывало все
+                строки ниже — React пересоздавал их целиком, и фокус с
+                клавиатуры слетал со строки, на которой стоял.
+              */}
               {events.map((e, i) => (
-                <Link key={`${e.at}-${i}`} to="/alerts" className={ROW} onClick={() => setOpen(false)}>
+                <Link key={eventKeys[i]} to="/alerts" className={ROW} onClick={() => setOpen(false)}>
                   <span className="min-w-0 flex-1 truncate">{ut(EVENT_KEY[e.kind])}</span>
                   {e.severity ? <SevMark level={e.severity} /> : null}
                   <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">
