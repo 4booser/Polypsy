@@ -230,10 +230,20 @@ function StaffGrid({ rows, omit, meta }: { rows: StaffRow[]; omit?: StaffGroupBy
               {staffMeta(r, meta, omit).map((s, i) => (
                 /* ключ — место в строке: части не переставляются, а значения могут совпасть (відділення и посада) */
                 <Fragment key={i}>
+                  {/*
+                    Пробелы вокруг точки — настоящие, а не отступ: без них вся
+                    мета-строка для браузера одно слово, и перенос ложился
+                    посреди него («Психологіч|не відділення») по
+                    overflow-wrap:anywhere. С пробелами строка ломается между
+                    частями, а посреди слова — только у длинной почты.
+                  */}
                   {i > 0 ? (
-                    <span aria-hidden className="px-[6px]">
-                      ·
-                    </span>
+                    <>
+                      {" "}
+                      <span aria-hidden className="px-[2px]">
+                        ·
+                      </span>{" "}
+                    </>
                   ) : null}
                   <span>{s}</span>
                 </Fragment>
