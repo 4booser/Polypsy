@@ -7220,6 +7220,19 @@ export const UI = {
     ru: "Сначала выберите группу или введите поиск — сохранять пока нечего",
     en: "Pick a group or enter a search first: there is nothing to save yet",
   },
+  /* конструктор: методику сохранили раньше нас — 409 на baseVersionId (pages/constructor/Conflict.tsx) */
+  "co.conflictTitle": {
+    uk: "Зміни не збережено: методику вже змінили",
+    ru: "Изменения не сохранены: методику уже изменили",
+    en: "Changes not saved: the assessment has already been changed",
+  },
+  "co.conflictHint": {
+    uk: "Перечитайте методику й повторіть свої правки. Якщо правок багато — спершу заберіть їх текстом",
+    ru: "Перечитайте методику и повторите свои правки. Если правок много — сначала заберите их текстом",
+    en: "Reload the assessment and repeat your edits. If there are many, copy them as text first",
+  },
+  "co.conflictReload": { uk: "Перечитати методику", ru: "Перечитать методику", en: "Reload assessment" },
+  "co.conflictShowMine": { uk: "Показати мої правки", ru: "Показать мои правки", en: "Show my edits" },
 
   /* ── w12:lists ── */
   "lists.shownOf": {

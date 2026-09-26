@@ -39,11 +39,37 @@ export interface Draft {
   alertEscalateMinutes?: number | null;
   safetyPlan?: Record<string, string> | null;
   showResultsToPatient?: boolean;
-  sections: unknown[];
+  /**
+   * Секции версии — переносятся как есть: своего редактора у них в
+   * конструкторе нет, но вопросы ссылаются на них (DraftQuestion.sectionKey),
+   * и пустой список раньше молча снимал разбиение методики на части.
+   */
+  sections: DraftSection[];
   questions: DraftQuestion[];
   scales: DraftScale[];
 
   /* ── поля редактора: на сервер не уходят ── */
+
+  /**
+   * Версия, от которой начата правка (versionId открытой методики).
+   *
+   * Уходит на сервер как baseVersionId: если между открытием и сохранением
+   * методику сохранил кто-то другой, сервер отвечает 409, а не пишет поверх
+   * чужой правки (волна 12). Хранится в черновике, а не в состоянии экрана:
+   * восстановленный вчерашний автосейв обязан сверяться с той версией, от
+   * которой его начали, а не с сегодняшней.
+   */
+  baseVersionId?: string | null;
+  /**
+   * Итоговый ключ комплексного теста собирает сам конструктор (withTotalKey).
+   *
+   * Для теста, заведённого здесь, — да: ключ итоговой шкалы — все пункты.
+   * Для сохранённой методики — только если её ключ уже таков (toDraft):
+   * иначе сохранение без единой правки переписывало ключ встроенной
+   * методики на «все пункты» — и пункт, который пособие в итог не
+   * включает, начинал считаться. Не задано — собирает (старые черновики).
+   */
+  totalKeyManaged?: boolean;
 
   /** Вкладка макета; см. Mode. Отсутствует у черновиков, сохранённых раньше. */
   mode?: Mode;
@@ -85,6 +111,32 @@ export interface DraftOption {
   riskFlag?: boolean;
   riskLabel?: Record<string, string> | null;
   riskSeverity?: "moderate" | "severe" | null;
+  /** Вариант или строка матрицы; без него — вариант */
+  kind?: "option" | "row";
+}
+
+/** Секция версии: ключ — её id, на него ссылаются вопросы */
+export interface DraftSection {
+  key: string;
+  title: Record<string, string>;
+  description?: Record<string, string> | null;
+}
+
+/**
+ * Условие показа вопроса.
+ *
+ * Источник — по uid вопроса, а не по номеру, как у сервера (sourceIndex):
+ * номер в редакторе меняется при каждом ↑/↓, удалении и копии, и условие
+ * «показать, если на вопрос 4 ответили “так”» молча переезжало бы на
+ * соседа. Номер вычисляется при отправке (toPayload); условие, чей
+ * источник удалён, не уходит вовсе. Значение (id варианта прежней версии)
+ * сервер сам переводит на вариант новой (remapOptionRefs).
+ */
+export interface DraftLogic {
+  sourceUid: string;
+  operator: string;
+  value?: unknown;
+  action: "show" | "hide";
 }
 
 export interface DraftQuestion {
@@ -101,6 +153,29 @@ export interface DraftQuestion {
   help?: Record<string, string> | null;
   required: boolean;
   options: DraftOption[];
+
+  /*
+   * Поля версии, у которых в конструкторе нет своего редактора. Они не
+   * «лишние»: по ним считается и поднимает тревогу методика — обратный
+   * ключ, порог риска числового пункта, шкала пункта, условия показа,
+   * границы шкалы. Черновик их переносит (toDraft → toPayload), и сохранение
+   * без правки даёт ту же версию, а не урезанную (волна 12, находка
+   * участка engine).
+   */
+  sectionKey?: string | null;
+  scaleCode?: string | null;
+  reverseScored?: boolean;
+  minValue?: number | null;
+  maxValue?: number | null;
+  step?: number | null;
+  minLabel?: Record<string, string> | null;
+  maxLabel?: Record<string, string> | null;
+  randomizeOptions?: boolean;
+  timeLimitSec?: number | null;
+  riskThreshold?: number | null;
+  riskLabel?: Record<string, string> | null;
+  riskSeverity?: "moderate" | "severe" | null;
+  logic?: DraftLogic[];
 }
 
 export interface DraftScale {
@@ -116,10 +191,27 @@ export interface DraftScale {
   validityThreshold?: number | null;
   validityDirection?: "above" | "below" | null;
   validityMessage?: Record<string, string> | null;
+  /** Доля отвеченных, ниже которой балл не вычисляется (движок, волна 12); null — умолчание движка */
+  minAnsweredShare?: number | null;
   key: { item: number; matchKey?: string | null; weight?: number }[];
   corrections: { from: string; coefficient: number }[];
-  norms: { sex?: "male" | "female" | null; mean: number; sd: number }[];
-  stenTable: { rawMin: number; rawMax: number; sten: number }[];
+  /* возраст и источник нормы, пол и возраст строки стенов — страты, без них норма считается не по той группе */
+  norms: {
+    sex?: "male" | "female" | null;
+    ageMin?: number | null;
+    ageMax?: number | null;
+    mean: number;
+    sd: number;
+    source?: string | null;
+  }[];
+  stenTable: {
+    sex?: "male" | "female" | null;
+    ageMin?: number | null;
+    ageMax?: number | null;
+    rawMin: number;
+    rawMax: number;
+    sten: number;
+  }[];
   bands: DraftBand[];
 }
 
@@ -130,6 +222,8 @@ export interface DraftBand {
   maxScore: number;
   label: Record<string, string>;
   severity: "none" | "mild" | "moderate" | "severe";
+  /** Описание полосы — текст для специалиста под названием; редактора нет, переносится */
+  description?: Record<string, string> | null;
   grade?: number | null;
   recommendation?: Record<string, string> | null;
   cascadeBatteryId?: string | null;
@@ -194,22 +288,54 @@ export const TYPES = [
 export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
   const loc = (v: unknown): Record<string, string> =>
     typeof v === "string" ? { ru: v } : ((v ?? {}) as Record<string, string>);
+  /* необязательный текст: null остаётся null, а не пустым объектом — сервер различает «нет» и «пусто» */
+  const locOrNull = (v: unknown): Record<string, string> | null => (v ? loc(v) : null);
   const indexById = new Map(s.questions.map((q, i) => [q.id, i + 1]));
+  const scaleCodeById = new Map(s.scales.map((sc) => [sc.id, sc.code]));
 
+  /*
+   * Всё, что принимает запись версии (questionInputSchema и соседи), —
+   * переносится, даже если своего поля в конструкторе нет. Образец —
+   * versionContent на сервере (apps/api/src/lib/surveys.ts): круговой путь
+   * «версия → черновик → payload» обязан давать то же содержимое, и это
+   * проверяется для каждой встроенной методики и всего каталога
+   * (apps/api/test/constructorRoundtrip.test.ts).
+   */
   const questions: DraftQuestion[] = s.questions.map((q) => ({
     uid: q.id,
     type: q.type,
     title: loc(q.title),
-    help: q.help ? loc(q.help) : null,
+    help: locOrNull(q.help),
     required: q.required,
+    sectionKey: q.sectionId ?? null,
+    scaleCode: q.scaleId ? (scaleCodeById.get(q.scaleId) ?? null) : null,
+    reverseScored: q.reverseScored ?? false,
+    minValue: q.minValue ?? null,
+    maxValue: q.maxValue ?? null,
+    step: q.step ?? null,
+    minLabel: locOrNull(q.minLabel),
+    maxLabel: locOrNull(q.maxLabel),
+    randomizeOptions: q.randomizeOptions ?? false,
+    timeLimitSec: q.timeLimitSec ?? null,
+    riskThreshold: q.riskThreshold ?? null,
+    riskLabel: locOrNull(q.riskLabel),
+    riskSeverity: q.riskSeverity ?? null,
     options: q.options.map((o) => ({
       uid: o.id,
       text: loc(o.text),
       score: o.score,
+      kind: o.kind ?? "option",
       keyCode: o.keyCode,
       riskFlag: o.riskFlag,
-      riskLabel: o.riskLabel ? loc(o.riskLabel) : null,
+      riskLabel: locOrNull(o.riskLabel),
       riskSeverity: o.riskSeverity,
+    })),
+    /* источник — по uid вопроса (= его id в этой версии), см. DraftLogic */
+    logic: (q.logic ?? []).map((rule) => ({
+      sourceUid: rule.sourceQuestionId,
+      operator: rule.operator,
+      value: rule.value,
+      action: rule.action,
     })),
   }));
 
@@ -217,39 +343,49 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
     uid: sc.id,
     code: sc.code,
     title: loc(sc.title),
-    description: sc.description ? loc(sc.description) : null,
+    description: locOrNull(sc.description),
     kind: sc.kind,
     normalization: sc.normalization,
     aggregation: sc.aggregation,
     ratioDenominator: sc.ratioDenominator,
     validityThreshold: sc.validityThreshold,
     validityDirection: sc.validityDirection,
-    validityMessage: sc.validityMessage ? loc(sc.validityMessage) : null,
+    validityMessage: locOrNull(sc.validityMessage),
+    minAnsweredShare: sc.minAnsweredShare ?? null,
     key: sc.items.flatMap((i) => {
       const item = indexById.get(i.questionId);
       return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
     }),
     corrections: sc.corrections.map((c) => ({ from: c.sourceScaleCode, coefficient: c.coefficient })),
-    norms: sc.norms.map((n) => ({ sex: n.sex, mean: n.mean, sd: n.sd })),
-    stenTable: sc.stenTable.map((r) => ({ rawMin: r.rawMin, rawMax: r.rawMax, sten: r.sten })),
+    norms: sc.norms.map((n) => ({ sex: n.sex, ageMin: n.ageMin, ageMax: n.ageMax, mean: n.mean, sd: n.sd, source: n.source })),
+    stenTable: sc.stenTable.map((r) => ({
+      sex: r.sex,
+      ageMin: r.ageMin,
+      ageMax: r.ageMax,
+      rawMin: r.rawMin,
+      rawMax: r.rawMax,
+      sten: r.sten,
+    })),
     bands: sc.bands.map((b) => ({
       uid: b.id,
       minScore: b.minScore,
       maxScore: b.maxScore,
       label: loc(b.label),
       severity: b.severity,
+      description: locOrNull(b.description),
       grade: b.grade,
-      recommendation: b.recommendation ? loc(b.recommendation) : null,
+      recommendation: locOrNull(b.recommendation),
       cascadeBatteryId: b.cascadeBatteryId,
       cascadeDueDays: b.cascadeDueDays,
       followUpDays: b.followUpDays,
     })),
   }));
 
+  const mode = deriveMode(scales);
   return {
     title: loc(s.title),
-    description: s.description ? loc(s.description) : null,
-    instructions: s.instructions ? loc(s.instructions) : null,
+    description: locOrNull(s.description),
+    instructions: locOrNull(s.instructions),
     groupId: s.groupId ?? groups[0]?.id ?? null,
     administration: s.administration,
     visibility: s.visibility,
@@ -262,12 +398,29 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
     timeLimitSec: s.timeLimitSec,
     tooFastMs: s.tooFastMs,
     alertEscalateMinutes: s.alertEscalateMinutes,
-    sections: [],
+    safetyPlan: locOrNull(s.safetyPlan),
+    showResultsToPatient: s.showResultsToPatient,
+    sections: (s.sections ?? []).map((sec) => ({ key: sec.id, title: loc(sec.title), description: locOrNull(sec.description) })),
     questions,
     scales,
-    mode: deriveMode(scales),
+    mode,
     answers: deriveAnswers(questions),
+    baseVersionId: s.versionId ?? null,
+    totalKeyManaged: mode === "complex" && coversAllItems(scales[0], questions),
   };
+}
+
+/**
+ * Ключ шкалы — ровно «все пункты, кроме информационных, без ожидаемого
+ * ответа»: такой ключ withTotalKey воспроизводит сам, и ему можно доверить
+ * сборку итога после правки. Любой другой ключ — пособия, и трогать его
+ * конструктор не вправе.
+ */
+function coversAllItems(scale: DraftScale | undefined, questions: DraftQuestion[]): boolean {
+  if (!scale) return true;
+  const all = questions.flatMap((q, i) => (q.type === "info" ? [] : [i + 1]));
+  const keyed = new Set(scale.key.filter((k) => (k.matchKey ?? null) === null).map((k) => k.item));
+  return scale.key.length === all.length && all.every((n) => keyed.has(n));
 }
 
 /**
@@ -421,12 +574,19 @@ export function totalScale(): DraftScale {
  */
 export function withTotalKey(draft: Draft): Draft {
   if ((draft.mode ?? "specific") !== "complex") return draft;
+  // ключ сохранённой методики, собранный не конструктором, — ключ пособия (см. Draft.totalKeyManaged)
+  if (draft.totalKeyManaged === false) return draft;
   const first = draft.scales[0];
   if (!first) return draft;
   const weights = new Map(first.key.map((k) => [k.item, k.weight ?? 1]));
   const key = draft.questions.flatMap((q, i) =>
     q.type === "info" ? [] : [{ item: i + 1, matchKey: null, weight: weights.get(i + 1) ?? 1 }],
   );
+  /* тот же ключ другим порядком — не правка: порядок строк ключа для подсчёта ничего не значит */
+  const same = (k: DraftScale["key"][number]) => `${k.item}\0${k.matchKey ?? ""}\0${k.weight ?? 1}`;
+  if (key.length === first.key.length && new Set(first.key.map(same)).size === key.length && key.every((k) => first.key.some((x) => same(x) === same(k)))) {
+    return draft;
+  }
   return { ...draft, scales: [{ ...first, key }, ...draft.scales.slice(1)] };
 }
 
@@ -448,7 +608,8 @@ export function switchMode(draft: Draft, mode: Mode): Draft {
   const total = first
     ? { ...first, key: first.key.map((k) => ({ ...k, matchKey: null })), corrections: [] }
     : totalScale();
-  return { ...draft, mode, scales: [total] };
+  /* переключение в комплексный — явное «итог — все пункты»: ключ дальше собирает конструктор */
+  return { ...draft, mode, scales: [total], totalKeyManaged: true };
 }
 
 /**
@@ -498,21 +659,68 @@ export function optionKey(row: { uid?: string }, index: number): string {
 /**
  * Черновик в том виде, в каком его принимает API.
  *
- * uid, mode, answers и folderId — поля редактора, на сервере им делать
- * нечего: идентификаторы там выдаются заново при каждой новой версии, вид
- * теста читается по ключу, общий набор ответов уже скопирован в вопросы, а
- * папку при заведении подставляет экран отдельным полем.
+ * uid, mode, answers, folderId и totalKeyManaged — поля редактора, на
+ * сервере им делать нечего: идентификаторы там выдаются заново при каждой
+ * новой версии, вид теста читается по ключу, общий набор ответов уже
+ * скопирован в вопросы, а папку при заведении подставляет экран отдельным
+ * полем. baseVersionId уходит — это сверка версий (см. Draft.baseVersionId).
+ *
+ * Всё остальное уходит полностью, в том числе поля без своего редактора
+ * (DraftQuestion, «поля версии»): для нетронутого черновика результат
+ * совпадает с тем, что сервер сам перенёс бы из действующей версии
+ * (versionContent) — ключ, собранный по коду шкалы, уходит пустым, как там,
+ * а условие показа — номером источника на момент отправки.
  */
-export function toPayload(draft: Draft): Omit<Draft, "questions" | "scales" | "mode" | "answers" | "folderId"> & {
-  questions: (Omit<DraftQuestion, "uid" | "options"> & { options: Omit<DraftOption, "uid">[] })[];
-  scales: (Omit<DraftScale, "uid" | "bands"> & { bands: Omit<DraftBand, "uid">[] })[];
-} {
-  const { questions, scales, mode: _m, answers: _a, folderId: _f, ...rest } = withTotalKey(draft);
+export function toPayload(draft: Draft) {
+  const {
+    questions,
+    scales,
+    mode: _m,
+    answers: _a,
+    folderId: _f,
+    totalKeyManaged: _t,
+    sections,
+    ...rest
+  } = withTotalKey(draft);
+  const indexByUid = new Map(questions.map((q, i) => [q.uid, i]));
+
   return {
     ...rest,
-    questions: questions.map(({ uid: _q, options, ...q }) => ({ ...q, options: options.map(({ uid: _o, ...o }) => o) })),
-    scales: scales.map(({ uid: _s, bands, ...sc }) => ({ ...sc, bands: bands.map(({ uid: _b, ...b }) => b) })),
+    sections: (sections ?? []).map((sec) => ({ key: sec.key, title: sec.title, description: sec.description ?? null })),
+    questions: questions.map(({ uid: _q, options, logic, ...q }) => ({
+      ...q,
+      options: options.map(({ uid: _o, ...o }) => o),
+      /* источник удалён — условия нет: ссылаться ему не на что */
+      logic: (logic ?? []).flatMap((rule) => {
+        const sourceIndex = indexByUid.get(rule.sourceUid);
+        return sourceIndex === undefined
+          ? []
+          : [{ sourceIndex, operator: rule.operator, value: rule.value, action: rule.action }];
+      }),
+    })),
+    scales: scales.map(({ uid: _s, bands, ...sc }) => ({
+      ...sc,
+      key: derivedKey(sc, questions) ? [] : sc.key,
+      bands: bands.map(({ uid: _b, ...b }) => b),
+    })),
   };
+}
+
+/**
+ * Ключ шкалы собран по коду шкалы у вопросов — отправляется пустым.
+ *
+ * То же правило, что у сервера (versionContent): ключ из одних пунктов,
+ * помеченных кодом шкалы, без ожидаемого ответа и с весом 1, в версии не
+ * хранится списком номеров — сервер собирает его по коду сам. Отправить его
+ * списком значило бы заморозить: пункт, добавленный потом с тем же кодом,
+ * в шкалу уже не попал бы.
+ */
+function derivedKey(scale: Pick<DraftScale, "code" | "key">, questions: Pick<DraftQuestion, "scaleCode">[]): boolean {
+  const linked = new Set(questions.flatMap((q, i) => (q.scaleCode === scale.code ? [i + 1] : [])));
+  return (
+    scale.key.length === linked.size &&
+    scale.key.every((k) => (k.matchKey ?? null) === null && (k.weight ?? 1) === 1 && linked.has(k.item))
+  );
 }
 
 /**
@@ -563,6 +771,21 @@ export function draftToSurvey(source: Draft, lang: Lang): SurveyFull {
   const text = (value: Record<string, string> | null | undefined): string =>
     value?.[lang] || value?.uk || value?.ru || "";
 
+  /*
+   * Поля версии, у которых нет редактора (обратный ключ, шкала пункта,
+   * границы, условия), в проверку ключа идут тоже: иначе предпросмотр
+   * считал бы пункты с обратным ключом прямыми и показывал бы не тот балл,
+   * что посчитает сервер. Условие показа ссылается на варианты id прежней
+   * версии — они переводятся на синтетические id этой (по uid варианта).
+   */
+  const scaleIdByCode = new Map(draft.scales.map((sc, i) => [sc.code, `s${i + 1}`]));
+  const questionIdByUid = new Map(draft.questions.map((q, i) => [q.uid, `q${i + 1}`]));
+  const optionIdByUid = new Map(
+    draft.questions.flatMap((q, i) => q.options.flatMap((o, k) => (o.uid ? [[o.uid, `q${i + 1}o${k + 1}`] as const] : []))),
+  );
+  const remap = (v: unknown): unknown =>
+    typeof v === "string" ? (optionIdByUid.get(v) ?? v) : Array.isArray(v) ? v.map(remap) : v;
+
   const questions = draft.questions.map((q, i) => ({
     id: `q${i + 1}`,
     surveyId: "draft",
@@ -573,15 +796,28 @@ export function draftToSurvey(source: Draft, lang: Lang): SurveyFull {
     required: q.required,
     position: i,
     sectionId: null,
-    randomizeOptions: false,
-    minValue: null,
-    maxValue: null,
-    step: null,
-    logic: [],
+    scaleId: q.scaleCode ? (scaleIdByCode.get(q.scaleCode) ?? null) : null,
+    reverseScored: q.reverseScored ?? false,
+    randomizeOptions: q.randomizeOptions ?? false,
+    minValue: q.minValue ?? null,
+    maxValue: q.maxValue ?? null,
+    step: q.step ?? null,
+    minLabel: q.minLabel ? text(q.minLabel) : null,
+    maxLabel: q.maxLabel ? text(q.maxLabel) : null,
+    timeLimitSec: q.timeLimitSec ?? null,
+    riskThreshold: q.riskThreshold ?? null,
+    riskLabel: q.riskLabel ? text(q.riskLabel) : null,
+    riskSeverity: q.riskSeverity ?? null,
+    logic: (q.logic ?? []).flatMap((rule, r) => {
+      const source = questionIdByUid.get(rule.sourceUid);
+      return source
+        ? [{ id: `q${i + 1}l${r + 1}`, questionId: `q${i + 1}`, sourceQuestionId: source, operator: rule.operator, value: remap(rule.value), action: rule.action }]
+        : [];
+    }),
     options: q.options.map((o, k) => ({
       id: `q${i + 1}o${k + 1}`,
       questionId: `q${i + 1}`,
-      kind: "option" as const,
+      kind: o.kind ?? "option",
       text: text(o.text),
       score: o.score ?? 0,
       keyCode: o.keyCode ?? null,
@@ -606,11 +842,13 @@ export function draftToSurvey(source: Draft, lang: Lang): SurveyFull {
     validityThreshold: sc.validityThreshold ?? null,
     validityDirection: (sc.validityDirection ?? null) as never,
     validityMessage: sc.validityMessage ? text(sc.validityMessage) : null,
+    minAnsweredShare: sc.minAnsweredShare ?? null,
     bands: sc.bands.map((b) => ({
       minScore: b.minScore,
       maxScore: b.maxScore,
       label: text(b.label),
       severity: b.severity as never,
+      description: b.description ? text(b.description) : null,
       grade: b.grade ?? null,
       recommendation: b.recommendation ? text(b.recommendation) : null,
       cascadeBatteryId: b.cascadeBatteryId ?? null,
@@ -635,13 +873,20 @@ export function draftToSurvey(source: Draft, lang: Lang): SurveyFull {
     })),
     norms: sc.norms.map((n) => ({
       sex: n.sex ?? null,
-      ageMin: null,
-      ageMax: null,
+      ageMin: n.ageMin ?? null,
+      ageMax: n.ageMax ?? null,
       mean: n.mean,
       sd: n.sd,
-      source: null,
+      source: n.source ?? null,
     })),
-    stenTable: sc.stenTable,
+    stenTable: sc.stenTable.map((r) => ({
+      sex: r.sex ?? null,
+      ageMin: r.ageMin ?? null,
+      ageMax: r.ageMax ?? null,
+      rawMin: r.rawMin,
+      rawMax: r.rawMax,
+      sten: r.sten,
+    })),
   }));
 
   return {

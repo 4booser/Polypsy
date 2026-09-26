@@ -21,6 +21,7 @@ import {
   type Mode,
 } from "./model";
 import { Preview } from "./Preview";
+import { VersionConflict, saveFailure } from "./Conflict";
 import { IconGroup, IconPatients, Loading } from "../../ui";
 import { Page } from "../../ui/layout";
 import { Button, Tabs, Textarea } from "../../ui/primitives";
@@ -143,6 +144,8 @@ export default function Constructor() {
   const [focused, setFocused] = useState(0);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /* отказ 409: методику сохранили раньше нас — объяснение и выбор вместо строки ошибки (Conflict.tsx) */
+  const [conflict, setConflict] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(!id);
   const [issues, setIssues] = useState<Issue[] | null>(null);
@@ -278,6 +281,7 @@ export default function Constructor() {
   async function save(publish: boolean) {
     setBusy(true);
     setError(null);
+    setConflict(null);
     try {
       const payload = toPayload(draft);
       /*
@@ -285,18 +289,50 @@ export default function Constructor() {
        * для переноса есть свой маршрут со своей записью в журнале
        * (PUT /api/surveys/:id/folder).
        */
+      /*
+       * baseVersionId — только правке: при заведении сверяться не с чем.
+       * Черновик без неё (старый автосейв) уходит, как прежде, — в очередь.
+       */
+      const { baseVersionId, ...content } = payload;
       const survey = id
-        ? await api.updateSurvey(id, { ...payload, versionNote: ut("co.versionNote") })
-        : await api.createSurvey({ ...payload, folderId: draft.folderId ?? undefined });
+        ? await api.updateSurvey(id, {
+            ...content,
+            ...(baseVersionId ? { baseVersionId } : {}),
+            versionNote: ut("co.versionNote"),
+          })
+        : await api.createSurvey({ ...content, folderId: draft.folderId ?? undefined });
       if (publish) await api.updateSurvey(survey.id, { status: "published" });
       localStorage.removeItem(draftKey(id));
       setDirty(false);
       navigate(`/surveys/${survey.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : ut("co.saveFailed"));
+      const failure = saveFailure(e, ut("co.saveFailed"));
+      if (failure.conflict) setConflict(failure.message);
+      else setError(failure.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  /*
+   * Перечитать методику с сервера — со свежей версией и её versionId: свои
+   * правки при этом уходят (и из автосейва тоже), поэтому рядом есть
+   * «показать мои правки».
+   */
+  function reloadFromServer() {
+    if (!id) return;
+    localStorage.removeItem(draftKey(id));
+    setRestored(false);
+    setDirty(false);
+    setConflict(null);
+    undoStack.current = [];
+    api
+      .surveyRaw(id)
+      .then((s) => {
+        setDraftRaw(toDraft(s, []));
+        setPublished(s.status === "published");
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : ut("co.saveFailed")));
   }
 
   function applyJson() {
@@ -558,6 +594,16 @@ export default function Constructor() {
         </div>
       ) : null}
 
+      {conflict ? (
+        <VersionConflict
+          message={conflict}
+          onReload={reloadFromServer}
+          onShowMine={() => {
+            setJson(JSON.stringify(draft, null, 2));
+            setTool("json");
+          }}
+        />
+      ) : null}
       {error ? <p className="mb-3 text-small text-danger">{error}</p> : null}
 
       {issues ? (
