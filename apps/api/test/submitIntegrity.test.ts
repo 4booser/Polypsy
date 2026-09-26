@@ -10,6 +10,7 @@ import {
   db,
   eq,
   groupA,
+  groupAdmins,
   makeUser,
   root,
   sql,
@@ -484,6 +485,68 @@ describe("заполнение за пациента", () => {
     const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, root.token)).body;
     const res = await submit(surveyId, root.token, { onBehalfOf: crypto.randomUUID(), versionId: v1.versionId, answers: yesAnswers(v1) });
     expect(res.status).toBe(404);
+  });
+});
+
+/* ─────────── повтор попытки отдаёт только своё ─────────── */
+
+describe("повтор по clientRequestId", () => {
+  test("чужой человек с тем же идентификатором — 409 без чужого прохождения, строка журнала", async () => {
+    const surveyId = await makeSurvey();
+    const owner = await makeUser("user", `replay-own-${tag()}@test.dev`, { sex: "male", birthDate: "1990-01-01" });
+    const other = await makeUser("user", `replay-other-${tag()}@test.dev`);
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, owner.token)).body;
+    const clientRequestId = crypto.randomUUID();
+    const first = await submit(surveyId, owner.token, { clientRequestId, versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(first.status).toBe(201);
+
+    // тот же человек — обычный повтор офлайн-очереди, сохранённое прохождение
+    const again = await submit(surveyId, owner.token, { clientRequestId, versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(again.status).toBe(200);
+    expect(again.body.id).toBe(first.body.id);
+
+    const foreign = await submit(surveyId, other.token, { clientRequestId, versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(foreign.status, "чужое прохождение отдано по одному идентификатору").toBe(409);
+    expect(JSON.stringify(foreign.body)).not.toContain(first.body.id);
+    expect(foreign.body.scores).toBeUndefined();
+    expect((await denials(other.id, "client_request_foreign")).length).toBe(1);
+    // и своего не завёл: отказ, а не второе прохождение под тем же id
+    const mine = await db.select().from(responses).where(eq(responses.userId, other.id));
+    expect(mine).toEqual([]);
+  });
+
+  test("тот же человек, но другая методика — тоже отказ", async () => {
+    const surveyId = await makeSurvey();
+    const otherSurvey = await makeSurvey();
+    const person = await makeUser("user", `replay-survey-${tag()}@test.dev`);
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const clientRequestId = crypto.randomUUID();
+    expect((await submit(surveyId, person.token, { clientRequestId, versionId: v1.versionId, answers: yesAnswers(v1) })).status).toBe(201);
+
+    const w1 = (await api<Loaded>(`/api/surveys/${otherSurvey}`, person.token)).body;
+    const res = await submit(otherSurvey, person.token, { clientRequestId, versionId: w1.versionId, answers: yesAnswers(w1) });
+    expect(res.status).toBe(409);
+  });
+
+  test("за пациента: повтор своего — прохождение, коллеги с тем же id — отказ", async () => {
+    const surveyId = await makeSurvey();
+    const patientOf = await makeUser("user", `replay-patient-${tag()}@test.dev`, { sex: "female", birthDate: "1985-05-05" });
+    await db.insert(surveyAccess).values({ surveyId, userId: patientOf.id, grantedBy: adminA.id });
+    const colleague = await makeUser("admin", `replay-colleague-${tag()}@test.dev`);
+    await db.insert(groupAdmins).values({ groupId: groupA, userId: colleague.id, addedBy: root.id });
+
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, adminA.token)).body;
+    const clientRequestId = crypto.randomUUID();
+    const body = { clientRequestId, onBehalfOf: patientOf.id, versionId: v1.versionId, answers: yesAnswers(v1) };
+    const first = await submit(surveyId, adminA.token, body);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+
+    const again = await submit(surveyId, adminA.token, body);
+    expect(again.status).toBe(200);
+    expect(again.body.id).toBe(first.body.id);
+
+    const byColleague = await submit(surveyId, colleague.token, body);
+    expect(byColleague.status).toBe(409);
   });
 });
 
