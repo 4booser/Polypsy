@@ -106,6 +106,26 @@ export type AuditAction =
   | "department.create"
   /* командная консоль: вызов команды пишется до выполнения */
   | "console.run"
+  /*
+   * Техпанель, участок безопасности (routes/opsSec.ts). Префикс sec — чтобы
+   * разбирающий журнал одной подстрокой собрал всё, что делалось с ключами,
+   * проверками целостности и SQL-консолью.
+   *
+   * sec.sql_query — каждый запрос консоли с причиной, текстом и числом
+   * строк, включая отказы разбора (outcome denied) и ошибки базы (error).
+   * sec.secret_changed — система заметила новое значение секрета (актор
+   * пуст: смену делал тот, кто правил окружение, и журналу он не известен).
+   * sec.audit_chain_broken — разрыв цепочки журнала; по этому имени (и по
+   * одноимённому событию лога) заводятся оповещения.
+   */
+  | "sec.reencrypt_start"
+  | "sec.reencrypt_done"
+  | "sec.phone_reindex"
+  | "sec.secret_changed"
+  | "sec.rls_check"
+  | "sec.audit_check"
+  | "sec.audit_chain_broken"
+  | "sec.sql_query"
   /* календарь специалиста: подключение права создавать встречи Meet */
   | "meet.connect_start"
   | "meet.connected"
