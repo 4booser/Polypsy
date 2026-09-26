@@ -2972,6 +2972,44 @@ export interface OpsErrors {
   store?: OpsStoreState;
   /** История из базы не прочиталась — показана только память процесса */
   historyUnavailable?: boolean;
+  /**
+   * Режим истории, волна 11: случаи всех групп по часам периода — для
+   * графика «випадки в часі». Только часы, где случаи были (разреженно);
+   * часы — по UTC, в местные дни и шестичасовки их раскладывает консоль.
+   */
+  hours?: OpsHourCount[];
+}
+
+/** Число за час: начало часа (UTC) и счёт */
+export interface OpsHourCount {
+  at: string;
+  count: number;
+}
+
+/**
+ * Объём строк лога по уровням за период (GET /api/ops/logs/volume, волна 11).
+ *
+ * Только числа: ни текста, ни номеров запросов — поэтому чтение в журнал не
+ * пишется, в отличие от самой ленты. Корзины разреженные (только те, где
+ * строки были), шаг — минута для часа и час для остального; в местные
+ * корзины экрана их раскладывает консоль.
+ */
+export interface OpsLogVolume {
+  window: OpsLogWindow;
+  from: string;
+  grain: "minute" | "hour";
+  buckets: OpsLogBucket[];
+  store: OpsStoreState;
+  /** База не ответила: корзины — только из ещё не записанной очереди */
+  historyUnavailable: boolean;
+}
+
+export interface OpsLogBucket {
+  at: string;
+  debug: number;
+  info: number;
+  warn: number;
+  error: number;
 }
 
 export interface OpsLogLine {
@@ -3108,6 +3146,20 @@ export interface OpsJobs {
   items: OpsJob[];
   /** Последние срабатывания расписаний из базы — они переживают перезапуск */
   scheduleRuns: { at: string; assigned: number; skipped: number; note: string | null }[] | null;
+  /**
+   * Срабатывания расписаний за SCHEDULE_ACTIVITY_DAYS дней по часам (UTC) —
+   * для столбцов по дням (волна 11). Только часы со срабатываниями; null —
+   * база не ответила. Числа — объём работы, а не сведения о людях: те же
+   * «призначено / пропущено», что в строках ниже, только суммой за час.
+   */
+  scheduleActivity?: { from: string; hours: OpsScheduleHour[] } | null;
+}
+
+export interface OpsScheduleHour {
+  at: string;
+  runs: number;
+  assigned: number;
+  skipped: number;
 }
 
 /* ─────────── техпанель: сигналы и клиент (obs2b) ─────────── */

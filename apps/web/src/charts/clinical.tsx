@@ -23,15 +23,26 @@ import { axisFor } from "./scale";
  *   BandTrend     — как балл двигался по лестнице во времени;
  *   ShareBar      — из чего состоит целое (полосы, варианты ответа);
  *   HBars         — сравнение величин по строкам;
+ *   PairBars      — то же «было / стало» парой полос;
  *   TimeColumns   — сколько за день/неделю;
+ *   StackColumns  — то же с разбивкой столбца на части (классы ответа, уровни);
+ *   TimeLines     — несколько величин по одним корзинам времени, с разрывами;
  *   Kpi, Sparkline — одно число, которое читают первым.
  *
  * Цвет. Одиночный ряд — фиолетовый действия (--primary): в макете нет
  * другого цвета для данных, и синий ряд «Пульта» (--s1) на белом листе
  * макета выглядел чужим. Тяжесть — только ступенями --sev-*, и никогда
  * цветом в одиночку: рядом подпись, у точки — форма (круг, квадрат, ромб),
- * как у SeverityTag. Янтарь не используется вовсе — он значит «требует
- * внимания», а график ничего не требует.
+ * как у SeverityTag. Клинические графики янтаря не используют вовсе — он
+ * значит «требует внимания», а балл шкалы ничего не требует.
+ *
+ * Волна 11 (графики техпанели) добавила формы, где янтарь по делу: пятисотки,
+ * упавшие проходы задач, строки уровня «помилка», «гірше» после выкатки —
+ * это и есть «требует внимания». Поэтому у HBars, TimeColumns и PairBars
+ * появился тон attention, а у рядов StackColumns/TimeLines цвет задаёт
+ * вызывающий: несколько рядов — токены --cat-* в постоянном порядке и
+ * легенда, янтарь — только ряду, который требует внимания. Слово рядом
+ * обязательно и здесь: заголовок фигуры, легенда или подпись строки.
  *
  * Раскладка — HTML там, где форма прямоугольная (линейка, доли, полосы):
  * текст подписей в HTML переносится и обрезается браузером, а в SVG его
@@ -556,9 +567,16 @@ export interface SharePart {
    * один тон, порядок читается светлотой.
    */
   step?: number;
+  /**
+   * Свой цвет части — токеном. Для частей другой природы, чем остальные:
+   * «вільно» рядом с занятыми подключениями — дорожка сетки, а не ещё одна
+   * ступень фиолетового (иначе свободное читалось бы как ещё одно состояние).
+   */
+  color?: string;
 }
 
 function partColor(p: SharePart): string {
+  if (p.color) return p.color;
   if (p.severity) return `var(--sev-${p.severity})`;
   const k = Math.round(28 + (p.step ?? 1) * 72);
   return `color-mix(in srgb, var(--primary) ${k}%, var(--card))`;
@@ -582,11 +600,17 @@ export function ShareBar({
   legend = true,
   label,
   className,
+  format = String,
+  percent = true,
 }: {
   parts: readonly SharePart[];
   legend?: boolean;
   label: string;
   className?: string;
+  /** Как печатать величину части: «120 мс», «41 %»; по умолчанию — числом */
+  format?: (v: number) => string;
+  /** Дописывать ли долю от целого; у частей, которые сами доли, она повторила бы число */
+  percent?: boolean;
 }) {
   const { ut } = useLang();
   const shown = parts.filter((p) => p.value !== null && p.value > 0);
@@ -595,12 +619,16 @@ export function ShareBar({
 
   return (
     <div className={className}>
-      <div role="img" aria-label={`${label}: ${parts.map((p) => `${p.label} ${p.value ?? "—"}`).join(", ")}`} className="flex h-[10px] gap-[2px]">
+      <div
+        role="img"
+        aria-label={`${label}: ${parts.map((p) => `${p.label} ${p.value === null ? "—" : format(p.value)}`).join(", ")}`}
+        className="flex h-[10px] gap-[2px]"
+      >
         {total > 0 ? (
           shown.map((p) => (
             <span
               key={p.key}
-              title={`${p.label}: ${p.value} (${pct(p.value!)}%)`}
+              title={`${p.label}: ${format(p.value!)}${percent ? ` (${pct(p.value!)}%)` : ""}`}
               className="h-full min-w-[2px] first:rounded-l-[4px] last:rounded-r-[4px]"
               style={{ width: `${((p.value! / total) * 100).toFixed(3)}%`, background: partColor(p) }}
             />
@@ -625,8 +653,8 @@ export function ShareBar({
                 </span>
               ) : (
                 <span className="font-mono text-muted tabular-nums">
-                  {p.value}
-                  {total > 0 && p.value > 0 ? ` · ${pct(p.value)}%` : ""}
+                  {format(p.value)}
+                  {percent && total > 0 && p.value > 0 ? ` · ${pct(p.value)}%` : ""}
                 </span>
               )}
             </li>
@@ -648,6 +676,11 @@ export interface HBar {
   severity?: Severity | null;
   /** Строка, на которую стоит обратить взгляд (выше порога, выше медианы) */
   strong?: boolean;
+  /**
+   * Величина, которая требует внимания (пятисотки, сбои задач): полоса
+   * янтарём в полную силу. Что именно считается, говорит заголовок фигуры.
+   */
+  attention?: boolean;
 }
 
 /**
@@ -682,11 +715,118 @@ export function HBars({ items, max, unit = "" }: { items: readonly HBar[]; max?:
           <div className="h-[6px] rounded-[3px] bg-[var(--grid-fine)]">
             {i.value !== null && top > 0 ? (
               <div
-                className={cx("h-full rounded-[3px]", i.severity ? SEV_FILL[i.severity] : "bg-primary", !i.strong && !i.severity && "opacity-70")}
+                className={cx(
+                  "h-full rounded-[3px]",
+                  i.severity ? SEV_FILL[i.severity] : i.attention ? "bg-accent" : "bg-primary",
+                  !i.strong && !i.severity && !i.attention && "opacity-70",
+                )}
                 style={{ width: `${Math.max(1.5, Math.min(100, (i.value / top) * 100)).toFixed(2)}%` }}
               />
             ) : null}
           </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ─────────── пары «было / стало» ─────────── */
+
+export interface PairRow {
+  key: string;
+  label: ReactNode;
+  /** null — в этом окне величины нет (маршрута не было): полосы нет, а не нулевая */
+  before: number | null;
+  after: number | null;
+  /** Числа справа: «120 → 340 мс» */
+  text: string;
+  /** «Стало» требует внимания: полоса янтарём, слово — в note */
+  attention?: boolean;
+  /** Слово сдвига рядом с числами — цвет полосы в одиночку ничего не значит */
+  note?: ReactNode;
+}
+
+const BEFORE_COLOR = "color-mix(in srgb, var(--primary) 35%, var(--card))";
+
+/**
+ * Пара полос на строку: «було» светлой, «стало» полной — от общего нуля.
+ *
+ * Вместо знаковых столбиков изменения (advanced.tsx, DivergingBar): «+200 мс»
+ * у маршрута с p95 в 40 мс и у маршрута с p95 в 3 секунды — разные истории,
+ * а полоса разницы рисует их одинаково. Пара показывает обе величины, и
+ * разница читается длиной, не теряя масштаба.
+ */
+export function PairBars({
+  rows,
+  before,
+  after,
+  max,
+}: {
+  rows: readonly PairRow[];
+  /** Подписи легенды: «Було», «Стало» */
+  before: string;
+  after: string;
+  max?: number;
+}) {
+  if (!rows.length) return <NoData />;
+  const top = max ?? Math.max(0, ...rows.flatMap((r) => [r.before ?? 0, r.after ?? 0]));
+  const width = (v: number) => `${Math.max(1.5, Math.min(100, (v / top) * 100)).toFixed(2)}%`;
+  const bar = (v: number | null, color: string) =>
+    v !== null && v > 0 && top > 0 ? <div className="h-full rounded-[2px]" style={{ width: width(v), background: color }} /> : null;
+  return (
+    <div>
+      <ul className="m-0 grid list-none gap-[12px] p-0">
+        {rows.map((r) => (
+          <li key={r.key} className="min-w-0">
+            <div className="mb-[4px] flex items-baseline justify-between gap-[12px]">
+              <span className="min-w-0 truncate text-[13px] leading-[17px] text-text-2">{r.label}</span>
+              <span className="flex shrink-0 items-baseline gap-[10px]">
+                {r.note}
+                <span className="font-mono text-[12px] text-muted tabular-nums">{r.text}</span>
+              </span>
+            </div>
+            <div className="grid gap-[2px]">
+              <div className="h-[4px] rounded-[2px] bg-[var(--grid-fine)]">{bar(r.before, BEFORE_COLOR)}</div>
+              <div className="h-[4px] rounded-[2px] bg-[var(--grid-fine)]">
+                {bar(r.after, r.attention ? "var(--accent)" : "var(--primary)")}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <SeriesLegend
+        items={[
+          { key: "before", label: before, color: BEFORE_COLOR },
+          { key: "after", label: after, color: "var(--primary)" },
+        ]}
+      />
+    </div>
+  );
+}
+
+/* ─────────── легенда рядов ─────────── */
+
+export interface SeriesKey {
+  key: string;
+  label: string;
+  /** Цвет токеном: var(--primary), var(--cat-1), var(--accent) */
+  color: string;
+}
+
+/**
+ * Легенда нескольких рядов — HTML-строкой под графиком, как у ShareBar.
+ * Прежняя Legend (charts/index.tsx) держится на классах наследия (.legend,
+ * .dot); эта — на утилитах. Один ряд не подписывается: его подпись —
+ * заголовок фигуры.
+ */
+export function SeriesLegend({ items, className }: { items: readonly SeriesKey[]; className?: string }) {
+  if (items.length < 2) return null;
+  return (
+    <ul className={cx("m-0 mt-[10px] flex list-none flex-wrap gap-x-[18px] gap-y-[4px] p-0 text-[13px] leading-[18px]", className)}>
+      {items.map((i) => (
+        <li key={i.key} className="flex min-w-0 items-center gap-[6px]">
+          <span aria-hidden className="inline-block size-[8px] shrink-0 rounded-[2px]" style={{ background: i.color }} />
+          <span className="truncate text-text-2">{i.label}</span>
         </li>
       ))}
     </ul>
@@ -700,9 +840,25 @@ export interface Column {
   /** Подпись под столбцом и в подсказке: «12 вер», «тиж. 38» */
   label: string;
   value: number;
+  /** Подпись в подсказке, когда она длиннее подписи под столбцом: «25 вер., 14:00–15:00» */
+  tip?: string;
+}
+
+/**
+ * Столбец, у которого замера может не быть: null — процесс ещё не работал,
+ * история не писалась. Столбца тогда нет вовсе, а не нулевой: ноль — это
+ * «ничего не было», и он честный, а «не знаем» нулём не рисуется. Отдельным
+ * типом, а не `value: number | null` у Column: у рядов по дням из базы
+ * пропусков не бывает, и их потребителям незачем проверять null.
+ */
+export interface GapColumn extends Omit<Column, "value"> {
+  value: number | null;
 }
 
 const CP = { top: 12, right: 8, bottom: 26, left: 40 };
+
+/** Подписи под столбцами — не чаще, чем раз в 64 пикселя: иначе даты налезут друг на друга */
+const tickEvery = (slot: number) => Math.max(1, Math.ceil(64 / slot));
 
 /**
  * Столбцы по дням или неделям: «сколько прошли».
@@ -710,23 +866,39 @@ const CP = { top: 12, right: 8, bottom: 26, left: 40 };
  * Счёт — столбцами, а не линией с заливкой: число прохождений за день — это
  * отдельные корзины, и линия между ними рисовала бы промежуточные значения,
  * которых не было. Ось всегда от нуля — у столбца другой высоты нет.
+ *
+ * `tone="attention"` — столбцы янтарём: счёт того, что требует внимания
+ * (случаи ошибок, упавшие проходы). Тон задаёт смысл всей фигуры, а не
+ * отдельного столбца: «вот этот день плохой» говорит высота, а не цвет.
  */
-export function TimeColumns({ columns, height = 200, label }: { columns: readonly Column[]; height?: number; label: string }) {
+export function TimeColumns({
+  columns,
+  height = 200,
+  label,
+  tone = "plain",
+  emptyTip,
+}: {
+  columns: readonly GapColumn[];
+  height?: number;
+  label: string;
+  tone?: "plain" | "attention";
+  /** Что сказать в подсказке у корзины без замера; без неё — прочерк */
+  emptyTip?: string;
+}) {
   const [W, boxRef] = useChartWidth();
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
-  if (!columns.length) return <NoData />;
+  if (!columns.some((c) => c.value !== null)) return <NoData />;
 
-  const axis = axisFor({ lo: 0, hi: Math.max(...columns.map((c) => c.value), 0) });
+  const axis = axisFor({ lo: 0, hi: Math.max(...columns.map((c) => c.value ?? 0), 0) });
   const pw = Math.max(40, W - CP.left - CP.right);
   const ph = height - CP.top - CP.bottom;
   const slot = pw / columns.length;
   const bw = Math.max(2, Math.min(28, slot * 0.62));
   const yAt = (v: number) => CP.top + ph - (v / Math.max(axis.max, 1)) * ph;
   const xAt = (i: number) => CP.left + slot * i + slot / 2;
-
-  /* подписи — не чаще, чем раз в 64 пикселя: иначе даты налезут друг на друга */
-  const every = Math.max(1, Math.ceil(64 / slot));
+  const every = tickEvery(slot);
+  const fill = tone === "attention" ? "var(--accent)" : "var(--primary)";
 
   const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const box = svgRef.current?.getBoundingClientRect();
@@ -757,18 +929,20 @@ export function TimeColumns({ columns, height = 200, label }: { columns: readonl
             </text>
           </g>
         ))}
-        {columns.map((c, i) => (
-          <rect
-            key={c.key}
-            x={xAt(i) - bw / 2}
-            y={yAt(c.value)}
-            width={bw}
-            height={Math.max(0, yAt(0) - yAt(c.value))}
-            rx={2}
-            fill="var(--primary)"
-            fillOpacity={hover === null || hover === i ? 0.85 : 0.4}
-          />
-        ))}
+        {columns.map((c, i) =>
+          c.value === null ? null : (
+            <rect
+              key={c.key}
+              x={xAt(i) - bw / 2}
+              y={yAt(c.value)}
+              width={bw}
+              height={Math.max(0, yAt(0) - yAt(c.value))}
+              rx={2}
+              fill={fill}
+              fillOpacity={hover === null || hover === i ? 0.85 : 0.4}
+            />
+          ),
+        )}
         {/* шаг считается от конца: последний столбец — «сейчас», его подпись нужнее первой */}
         {columns.map((c, i) =>
           (columns.length - 1 - i) % every === 0 ? (
@@ -780,12 +954,351 @@ export function TimeColumns({ columns, height = 200, label }: { columns: readonl
       </svg>
       {at ? (
         <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
-          <span className="chart-tip-x">{at.label}</span>
+          <span className="chart-tip-x">{at.tip ?? at.label}</span>
           <span className="chart-tip-row">
-            <b>{num(at.value)}</b>
+            {at.value === null ? <span className="text-muted">{emptyTip ?? "—"}</span> : <b>{num(at.value)}</b>}
           </span>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/* ─────────── столбцы с разбивкой ─────────── */
+
+/** Ряд столбцов: подпись и цвет токеном (порядок рядов — снизу вверх) */
+export type StackSeries = SeriesKey;
+
+export interface StackColumn {
+  key: string;
+  label: string;
+  tip?: string;
+  /** По числу на ряд, в порядке рядов снизу вверх; null — замера нет, столбца нет */
+  values: readonly number[] | null;
+}
+
+/**
+ * Столбцы по времени, разрезанные на части: ответы по классам, строки лога
+ * по уровням.
+ *
+ * Части лежат в постоянном порядке снизу вверх — порядок рядов, а не
+ * величин: переставь их по размеру, и одна и та же часть оказывалась бы то
+ * внизу, то посередине, и «стало ли 5xx больше» пришлось бы искать глазами.
+ * Ненулевая часть не тоньше пикселя: одна пятисотка среди трёх тысяч
+ * запросов иначе не видна вовсе, а ради неё график и смотрят. Сдвиг вершины
+ * на пиксель — цена, которую подсказка возвращает числом.
+ */
+export function StackColumns({
+  series,
+  columns,
+  height = 200,
+  label,
+  total,
+  emptyTip,
+  format = num,
+}: {
+  series: readonly StackSeries[];
+  columns: readonly StackColumn[];
+  height?: number;
+  label: string;
+  /** Подпись итога в подсказке: «усього» */
+  total?: string;
+  emptyTip?: string;
+  format?: (v: number) => string;
+}) {
+  const [W, boxRef] = useChartWidth();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  if (!series.length || !columns.some((c) => c.values !== null)) return <NoData />;
+
+  const sums = columns.map((c) => (c.values ? c.values.reduce((s, v) => s + Math.max(0, v), 0) : null));
+  const axis = axisFor({ lo: 0, hi: Math.max(0, ...sums.map((s) => s ?? 0)) });
+  const pw = Math.max(40, W - CP.left - CP.right);
+  const ph = height - CP.top - CP.bottom;
+  const slot = pw / columns.length;
+  const bw = Math.max(2, Math.min(28, slot * 0.62));
+  const hOf = (v: number) => (v > 0 ? Math.max(1, (v / axis.max) * ph) : 0);
+  const yAt = (v: number) => CP.top + ph - (v / axis.max) * ph;
+  const xAt = (i: number) => CP.left + slot * i + slot / 2;
+  const every = tickEvery(slot);
+
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const x = ((e.clientX - box.left) / box.width) * W - CP.left;
+    const i = Math.floor(x / slot);
+    setHover(i >= 0 && i < columns.length ? i : null);
+  };
+  const at = hover === null ? null : columns[hover]!;
+  const atSum = hover === null ? null : sums[hover]!;
+
+  return (
+    <div className="chart-wrap" ref={boxRef}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${height}`}
+        width="100%"
+        height={height}
+        role="img"
+        aria-label={`${label} (${series.map((s) => s.label).join(", ")}): ${columns[0]!.label} — ${columns.at(-1)!.label}`}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+      >
+        {axis.ticks.map((t) => (
+          <g key={t}>
+            <line x1={CP.left} x2={W - CP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
+            <text x={CP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
+              {num(t)}
+            </text>
+          </g>
+        ))}
+        {columns.map((c, i) => {
+          if (!c.values) return null;
+          /* вершина части считается в пикселях: минимум в пиксель у каждой ненулевой */
+          let top = yAt(0);
+          return (
+            <g key={c.key} opacity={hover === null || hover === i ? 0.9 : 0.45}>
+              {series.map((s, k) => {
+                const h = hOf(c.values![k] ?? 0);
+                if (!h) return null;
+                top -= h;
+                return <rect key={s.key} x={xAt(i) - bw / 2} y={top} width={bw} height={h} fill={s.color} />;
+              })}
+            </g>
+          );
+        })}
+        {columns.map((c, i) =>
+          (columns.length - 1 - i) % every === 0 ? (
+            <text key={c.key} x={xAt(i)} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
+              {c.label}
+            </text>
+          ) : null,
+        )}
+      </svg>
+      {at ? (
+        <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
+          <span className="chart-tip-x">{at.tip ?? at.label}</span>
+          {at.values ? (
+            <>
+              {/* сверху вниз, как на картинке: нижний ряд в подсказке последний */}
+              {series
+                .map((s, k) => ({ s, v: at.values![k] ?? 0 }))
+                .reverse()
+                .map(({ s, v }) => (
+                  <span key={s.key} className="chart-tip-row">
+                    <i style={{ background: s.color }} />
+                    <span className="grow">{s.label}</span>
+                    <b>{format(v)}</b>
+                  </span>
+                ))}
+              {total && atSum !== null ? (
+                <span className="chart-tip-row">
+                  <span className="grow">{total}</span>
+                  <b>{format(atSum)}</b>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-muted">{emptyTip ?? "—"}</span>
+          )}
+        </div>
+      ) : null}
+      <SeriesLegend items={series} />
+    </div>
+  );
+}
+
+/* ─────────── линии по корзинам времени ─────────── */
+
+export interface TimeTick {
+  key: string;
+  label: string;
+  tip?: string;
+}
+
+export interface LineSeries extends SeriesKey {
+  /** По значению на корзину; null — замера нет, и линия здесь рвётся */
+  values: readonly (number | null)[];
+}
+
+const LP = { top: 12, right: 12, bottom: 26, left: 48 };
+
+/**
+ * Одна или несколько величин по одним корзинам времени: p50/p95/p99, доля
+ * пятисоток.
+ *
+ * Отдельно от LineChart (charts/index.tsx), потому что там ось X — номер
+ * точки, а пропусков нет: пустую минуту приходилось выбрасывать, и тихий
+ * час сжимался до одной точки рядом с нагруженным. Здесь корзина стоит на
+ * своём месте, а её отсутствие — разрыв линии: «ноль миллисекунд» нарисовал
+ * бы скорость, которой не было. Одиночная корзина между пустыми — точкой,
+ * иначе её не видно вовсе.
+ *
+ * Корзины — те же слоты, что у TimeColumns: линия рядом со столбцами той же
+ * нагрузки стоит точно над своими столбцами.
+ *
+ * Ось от нуля: время ответа и доля — величины, у которых ноль осмысленен,
+ * и полоса «от 180 до 210 мс» на срезанной оси выглядела бы обвалом.
+ *
+ * `threshold` — порог пунктиром (это порог, и пунктир здесь по делу, как у
+ * ступеней BandTrend) с подписью; значения выше порога отмечены янтарной
+ * точкой — ровно те корзины, которые требуют внимания. Ось всегда включает
+ * порог: «насколько далеко до него» — половина ответа.
+ */
+export function TimeLines({
+  x,
+  series,
+  height = 200,
+  label,
+  format = num,
+  tick,
+  threshold,
+}: {
+  x: readonly TimeTick[];
+  series: readonly LineSeries[];
+  height?: number;
+  label: string;
+  /** Число в подсказке: «240 мс», «1,2 %» */
+  format?: (v: number) => string;
+  /** Число у оси; по умолчанию — как в подсказке */
+  tick?: (v: number) => string;
+  threshold?: { value: number; label: string };
+}) {
+  const [W, boxRef] = useChartWidth();
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const known = series.flatMap((s) => s.values.filter((v): v is number => v !== null));
+  if (!x.length || !known.length) return <NoData />;
+
+  const axis = axisFor({ lo: 0, hi: Math.max(0, ...known, threshold?.value ?? 0) });
+  const pw = Math.max(40, W - LP.left - LP.right);
+  const ph = height - LP.top - LP.bottom;
+  const slot = pw / x.length;
+  const xAt = (i: number) => LP.left + slot * i + slot / 2;
+  const span = Math.max(axis.max - axis.min, Number.EPSILON);
+  const yAt = (v: number) => LP.top + ph - ((v - axis.min) / span) * ph;
+  const every = tickEvery(slot);
+  const tickFmt = tick ?? format;
+  const single = series.length === 1;
+
+  /* отрезки подряд идущих известных корзин: линия идёт только внутри отрезка */
+  const runsOf = (values: readonly (number | null)[]): number[][] => {
+    const runs: number[][] = [];
+    let run: number[] = [];
+    values.forEach((v, i) => {
+      if (v === null) {
+        if (run.length) runs.push(run);
+        run = [];
+      } else run.push(i);
+    });
+    if (run.length) runs.push(run);
+    return runs;
+  };
+
+  const onMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const box = svgRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const px = ((e.clientX - box.left) / box.width) * W - LP.left;
+    const i = Math.floor(px / slot);
+    setHover(i >= 0 && i < x.length ? i : null);
+  };
+  const at = hover === null ? null : x[hover]!;
+
+  return (
+    <div className="chart-wrap" ref={boxRef}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${height}`}
+        width="100%"
+        height={height}
+        role="img"
+        aria-label={`${label}${single ? "" : ` (${series.map((s) => s.label).join(", ")})`}: ${x[0]!.label} — ${x.at(-1)!.label}`}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+      >
+        {axis.ticks.map((t) => (
+          <g key={t}>
+            <line x1={LP.left} x2={W - LP.right} y1={yAt(t)} y2={yAt(t)} stroke="var(--grid)" />
+            <text x={LP.left - 8} y={yAt(t) + 4} fontSize="11" fill="var(--axis)" textAnchor="end" fontFamily="var(--font-mono)">
+              {tickFmt(t)}
+            </text>
+          </g>
+        ))}
+
+        {threshold ? (
+          <g>
+            <line
+              x1={LP.left}
+              x2={W - LP.right}
+              y1={yAt(threshold.value)}
+              y2={yAt(threshold.value)}
+              stroke="var(--axis)"
+              strokeOpacity={0.6}
+              strokeDasharray="3 4"
+            />
+            <text x={W - LP.right} y={yAt(threshold.value) - 4} fontSize="10" fill="var(--axis)" textAnchor="end">
+              {threshold.label}
+            </text>
+          </g>
+        ) : null}
+
+        {hover !== null ? (
+          <line x1={xAt(hover)} x2={xAt(hover)} y1={LP.top} y2={LP.top + ph} stroke="var(--primary)" strokeOpacity={0.4} />
+        ) : null}
+
+        {series.map((s) => (
+          <g key={s.key}>
+            {runsOf(s.values).map((run) =>
+              run.length === 1 ? (
+                <circle key={run[0]} cx={xAt(run[0]!)} cy={yAt(s.values[run[0]!]!)} r={2.5} fill={s.color} />
+              ) : (
+                <path
+                  key={run[0]}
+                  d={run.map((i, k) => `${k ? "L" : "M"}${xAt(i).toFixed(1)},${yAt(s.values[i]!).toFixed(1)}`).join(" ")}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+              ),
+            )}
+            {threshold
+              ? s.values.map((v, i) =>
+                  v !== null && v > threshold.value ? (
+                    <circle key={i} cx={xAt(i)} cy={yAt(v)} r={3.5} fill="var(--accent)" stroke="var(--card)" strokeWidth={1.5} />
+                  ) : null,
+                )
+              : null}
+            {hover !== null && s.values[hover] != null ? (
+              <circle cx={xAt(hover)} cy={yAt(s.values[hover]!)} r={4} fill={s.color} stroke="var(--card)" strokeWidth={2} />
+            ) : null}
+          </g>
+        ))}
+
+        {x.map((c, i) =>
+          (x.length - 1 - i) % every === 0 ? (
+            <text key={c.key} x={xAt(i)} y={height - 8} fontSize="11" fill="var(--axis)" textAnchor="middle">
+              {c.label}
+            </text>
+          ) : null,
+        )}
+      </svg>
+      {at ? (
+        <div className="chart-tip" style={{ left: `${((xAt(hover!) / W) * 100).toFixed(2)}%` }} role="status">
+          <span className="chart-tip-x">{at.tip ?? at.label}</span>
+          {series.map((s) => {
+            const v = s.values[hover!] ?? null;
+            return (
+              <span key={s.key} className="chart-tip-row">
+                <i style={{ background: s.color }} />
+                {single ? null : <span className="grow">{s.label}</span>}
+                {v === null ? <span className="text-muted">—</span> : <b>{format(v)}</b>}
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+      <SeriesLegend items={series} />
     </div>
   );
 }

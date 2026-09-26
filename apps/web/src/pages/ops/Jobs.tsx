@@ -7,6 +7,7 @@ import { Loading, useAction } from "../../ui";
 import { Button } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
+import { JobCharts, ScheduleCharts } from "./charts";
 import { JOB_KEY, RESULT_KEY, fmtAgo, fmtInt, fmtMs, fmtUptime } from "./model";
 import { Cell, GridRow, GridTable, NumHead, Quiet, Stamp, StatusMark, type Tone, useOpsResource } from "./parts";
 import { canRunNow } from "./obs2b/model";
@@ -29,7 +30,13 @@ import { canRunNow } from "./obs2b/model";
  * оповещений (apps/api/src/lib/opsManual.ts). Запуск — фоном, не в
  * запросе: строка задачи покажет «виконується», потом итог или ошибку.
  * Кнопку видит только ops.manage; кто и что запустил — в журнале.
+ *
+ * Графики (волна 11): над реестром — проходы, сбои и длительность
+ * последнего прохода по задачам; над срабатываниями — они же за месяц по
+ * местным суткам (из базы, суммой по часам).
  */
+
+const DAY_MS = 86_400_000;
 
 const POLL_MS = 15_000;
 
@@ -56,6 +63,11 @@ export default function OpsJobs() {
 
       <RuleSection className="mt-[16px]" title={ut("ops.jobs.title")} hint={ut("ops.jobs.hint")}>
         {!d.schedulerEnabled ? <Quiet>{ut("ops.jobs.disabled")}</Quiet> : null}
+        {d.items.length ? (
+          <div className="mb-[28px]">
+            <JobCharts items={d.items} />
+          </div>
+        ) : null}
         {d.items.length === 0 ? (
           d.schedulerEnabled ? <Quiet>{ut("ops.jobs.empty")}</Quiet> : null
         ) : (
@@ -83,6 +95,16 @@ export default function OpsJobs() {
       </RuleSection>
 
       <RuleSection title={ut("ops.jobs.runsTitle")} hint={ut("ops.jobs.runsHint")}>
+        {/* без единого срабатывания вообще об этом скажет строка ниже — второй раз словами незачем */}
+        {d.scheduleActivity && d.scheduleRuns?.length ? (
+          <div className="mb-[28px]">
+            <ScheduleCharts
+              activity={d.scheduleActivity}
+              days={Math.round((now - Date.parse(d.scheduleActivity.from)) / DAY_MS)}
+              now={now}
+            />
+          </div>
+        ) : null}
         {d.scheduleRuns === null ? (
           <Quiet>{ut("ops.jobs.runsFailed")}</Quiet>
         ) : d.scheduleRuns.length === 0 ? (

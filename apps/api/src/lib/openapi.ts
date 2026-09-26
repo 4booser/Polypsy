@@ -131,6 +131,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/ops/slow": { summary: "Медленные запросы (от 1 с), последние 200: номер запроса, маршрут, код, роль, время", access: "staff", permission: "ops.read" },
   "GET /api/ops/errors": { summary: "Необработанные ошибки, сгруппированные по отпечатку; чтение в журнал (ops.errors.read)", access: "staff", permission: "ops.read" },
   "GET /api/ops/logs": { summary: "Кольцевой буфер лога: `?level=&q=&requestId=&after=&limit=`, курсор `after` для живой ленты; чтение в журнал (ops.logs.read)", access: "staff", permission: "ops.read" },
+  "GET /api/ops/logs/volume": { summary: "Объём лога по уровням за `?window=1h|24h|7d|14d`: счёт строк по минутам или часам (UTC) из истории и очереди записи; без текста, без журнала (волна 11)", access: "staff", permission: "ops.read" },
   "GET /api/ops/db": { summary: "База: размеры таблиц, подключения, долгие запросы, ожидания блокировок, миграции; без прав роли — null с пояснением", access: "staff", permission: "ops.read" },
   "GET /api/ops/jobs": { summary: "Фоновые задачи процесса: последний проход, длительность, результат, ошибка, следующий такт", access: "staff", permission: "ops.read" },
   /* ── техпанель: история, трасса, выкатки, медленный SQL (obs2a; /logs и /errors — `?window=` для истории из базы) ── */

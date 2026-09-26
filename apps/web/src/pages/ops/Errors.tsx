@@ -9,6 +9,7 @@ import { Button, Input, Num } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
 import { PeriodSwitch } from "../dashboard/parts";
+import { ErrorCharts } from "./charts";
 import { ERROR_WINDOWS, PERIOD_KEY, filterErrors, fmtInt, parseErrorWindow } from "./model";
 import { HistoryNote, TraceSearch } from "./obs2a/parts";
 import { Quiet, RequestId, Stamp, StatusMark, useOpsResource } from "./parts";
@@ -32,6 +33,10 @@ import { Quiet, RequestId, Stamp, StatusMark, useOpsResource } from "./parts";
  * хранится (90 дней без повторов). Группа, впервые появившаяся внутри
  * периода, помечена «нова»: после выкатки это первое, что ищут. Поле
  * номера запроса ведёт в трассу — номер с экрана ошибки у человека.
+ *
+ * Над списком (волна 11) — случаи во времени (часы из базы, разложенные в
+ * местные корзины периода) и самые частые группы. Поиск на графики не
+ * действует: он сужает список, а «сколько всего и когда» — вопрос периода.
  */
 
 const POLL_MS = 30_000;
@@ -85,6 +90,11 @@ export default function OpsErrors() {
           </>
         }
       >
+        {res.data.items.length ? (
+          <div className="mb-[28px]">
+            <ErrorCharts data={res.data} window={win} now={res.updatedAt ?? Date.now()} />
+          </div>
+        ) : null}
         <div className="mb-[12px] flex flex-wrap items-start justify-between gap-[12px]">
           <Input
             look="fill"

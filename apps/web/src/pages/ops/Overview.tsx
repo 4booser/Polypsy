@@ -1,7 +1,6 @@
 import type { OpsHealthCheck, OpsOverview } from "@quizzy/shared";
 import { api } from "../../api";
-import { LineChart } from "../../charts";
-import { Figure, Kpi, TimeColumns } from "../../charts/clinical";
+import { Kpi } from "../../charts/clinical";
 import { dateTime, locale } from "../../format";
 import { useLang } from "../../lang";
 import { Loading, useUrlState } from "../../ui";
@@ -9,21 +8,8 @@ import { Num } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
 import { PeriodSwitch } from "../dashboard/parts";
-import {
-  HEALTH_NAME,
-  STATUS_KEY,
-  fmtAgo,
-  fmtBytes,
-  fmtInt,
-  fmtMs,
-  fmtShare,
-  fmtUptime,
-  healthReason,
-  hhmm,
-  latencySeries,
-  parseWindow,
-  trafficColumns,
-} from "./model";
+import { AccountsShare, TrafficCharts } from "./charts";
+import { HEALTH_NAME, STATUS_KEY, fmtAgo, fmtBytes, fmtInt, fmtMs, fmtShare, fmtUptime, healthReason, parseWindow } from "./model";
 import { Facts, Stamp, StatusMark, type Tone, useOpsResource } from "./parts";
 
 /*
@@ -31,8 +17,10 @@ import { Facts, Stamp, StatusMark, type Tone, useOpsResource } from "./parts";
  *
  * Сверху — шесть чисел, которые читают первыми (запросы за час, доля 5xx,
  * p95, время работы, память, подключения к базе). Под ними — нагрузка за
- * час или сутки: столбцы запросов и линия p95 с полосой p50…p99. Дальше
- * проверки здоровья словами и сведения о сборке и базе.
+ * час или сутки (волна 11, pages/ops/charts.tsx): запросы столбцами по
+ * классам ответа, время ответа тремя перцентилями, доля пятисоток с порогом
+ * и состав ответов за окно. Дальше проверки здоровья словами и сведения о
+ * сборке и базе; учётки по ролям — полосой долей.
  *
  * Обновляется сам раз в двадцать секунд, пока вкладка открыта; окно
  * графика — в адресе (?window=24h), ссылку «вот так было сутки» пересылают.
@@ -55,11 +43,6 @@ export default function OpsOverview() {
   if (!ov.data) return <Loading rows={6} />;
   const d = ov.data;
   const h1 = d.traffic.h1;
-
-  const label = (iso: string) => hhmm(iso, loc);
-  const columns = traffic.data ? trafficColumns(traffic.data.buckets, label) : [];
-  const latency = traffic.data ? latencySeries(traffic.data.buckets, label) : [];
-  const step = traffic.data ? fmtUptime(traffic.data.stepSec, loc) : "";
 
   return (
     <div>
@@ -130,14 +113,7 @@ export default function OpsOverview() {
         ) : !traffic.data ? (
           <Loading rows={3} />
         ) : (
-          <div className="grid grid-cols-1 gap-x-[32px] gap-y-[24px] min-[900px]:grid-cols-2">
-            <Figure title={ut("ops.traffic.requests")} caption={fill(ut("ops.traffic.step"), { step })}>
-              <TimeColumns columns={columns} label={ut("ops.traffic.requests")} />
-            </Figure>
-            <Figure title={ut("ops.traffic.latency")} caption={ut("ops.traffic.latencyHint")}>
-              <LineChart series={[{ label: ut("ops.traffic.p95"), points: latency }]} height={200} />
-            </Figure>
-          </div>
+          <TrafficCharts buckets={traffic.data.buckets} stepSec={traffic.data.stepSec} since={traffic.data.since} />
         )}
       </RuleSection>
 
@@ -256,21 +232,8 @@ function DataFacts({ d }: { d: OpsOverview }) {
         [ut("ops.data.cases"), <Num key="c">{fmtInt(d.openCases, loc)}</Num>],
         [
           ut("ops.data.accounts"),
-          d.accounts ? (
-            <span key="a" className="flex flex-wrap gap-x-[14px]">
-              <span>
-                {ut("adm.roleSuper")} <Num>{fmtInt(d.accounts.superadmin, loc)}</Num>
-              </span>
-              <span>
-                {ut("adm.roleAdmin")} <Num>{fmtInt(d.accounts.admin, loc)}</Num>
-              </span>
-              <span>
-                {ut("adm.rolePatient")} <Num>{fmtInt(d.accounts.user, loc)}</Num>
-              </span>
-            </span>
-          ) : (
-            "—"
-          ),
+          /* полосой долей (волна 11): «сколько пациентов на одного специалиста» видно длиной, числа — в легенде */
+          d.accounts ? <AccountsShare key="a" accounts={d.accounts} /> : "—",
         ],
       ]}
     />

@@ -1,17 +1,21 @@
 import type { OpsDb, OpsDbNote, UiKey } from "@quizzy/shared";
 import { api } from "../../api";
-import { HBars, ShareBar } from "../../charts/clinical";
 import { day, locale } from "../../format";
 import { useLang } from "../../lang";
 import { Loading } from "../../ui";
 import { Num } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
-import { CONN_KEY, fmtAgo, fmtBytes, fmtInt, fmtSec } from "./model";
+import { ConnectionsShare, TableCharts } from "./charts";
+import { CONN_KEY, deadRowsAlarm, fmtAgo, fmtBytes, fmtInt, fmtSec } from "./model";
 import { Cell, GridRow, GridTable, NumHead, Quiet, Stamp, StatusMark, useOpsResource } from "./parts";
 
 /*
  * База: что занимает место, кто подключён, что висит и что ждёт.
+ *
+ * Графики (волна 11): десять самых больших таблиц и «інші», мёртвые строки
+ * (янтарём — где автоочистка не успевает), подключения по состояниям и
+ * свободное до max_connections одной полосой. Таблица строк — под ними.
  *
  * В отличие от остальных вкладок, здесь не память процесса, а состояние
  * базы в момент вопроса: pg_stat_activity, pg_locks, размеры — поэтому
@@ -86,15 +90,8 @@ function Tables({ d }: { d: OpsDb }) {
       {!d.tables ? (
         <Quiet>{ut("ops.db.unavailable")}</Quiet>
       ) : (
-        <div className="grid grid-cols-1 gap-x-[45px] gap-y-[28px] min-[1100px]:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <HBars
-            items={d.tables.map((t) => ({
-              key: t.table,
-              label: <span className="font-mono text-[12px]">{t.table}</span>,
-              value: t.totalBytes,
-              text: fmtBytes(t.totalBytes, loc),
-            }))}
-          />
+        <div className="grid grid-cols-1 gap-y-[28px]">
+          <TableCharts tables={d.tables} />
           <GridTable
             label={ut("ops.db.rowsTitle")}
             cols={ROWS_COLS}
@@ -117,14 +114,7 @@ function Tables({ d }: { d: OpsDb }) {
                   таблица пухнет, и выборки по ней медленнеют. Это требует
                   внимания, остальное — нет.
                 */}
-                <Cell
-                  num
-                  className={
-                    t.deadRows !== null && t.liveRows !== null && t.deadRows > 1000 && t.deadRows > t.liveRows * 0.2
-                      ? "font-bold text-accent"
-                      : "text-muted"
-                  }
-                >
+                <Cell num className={deadRowsAlarm(t) ? "font-bold text-accent" : "text-muted"}>
                   {fmtInt(t.deadRows, loc)}
                 </Cell>
                 <Cell num className="text-muted">
@@ -150,6 +140,7 @@ function Connections({ d }: { d: OpsDb }) {
   return (
     <RuleSection
       title={ut("ops.db.connections")}
+      hint={c?.max ? ut("ops.ch.connHint") : undefined}
       actions={
         c ? (
           <Num className="text-[13px] text-muted">
@@ -160,20 +151,7 @@ function Connections({ d }: { d: OpsDb }) {
         ) : null
       }
     >
-      {!c ? (
-        <Quiet>{ut("ops.db.unavailable")}</Quiet>
-      ) : (
-        <ShareBar
-          label={ut("ops.db.connections")}
-          parts={c.byState.map((s, i) => ({
-            key: s.state,
-            label: ut(CONN_KEY[s.state]),
-            value: s.count,
-            /* одна величина — один тон, порядок читается светлотой: самое частое темнее */
-            step: c.byState.length > 1 ? 1 - i / (c.byState.length - 1) : 1,
-          }))}
-        />
-      )}
+      {!c ? <Quiet>{ut("ops.db.unavailable")}</Quiet> : <ConnectionsShare c={c} />}
     </RuleSection>
   );
 }

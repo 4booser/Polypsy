@@ -307,6 +307,15 @@ export function pendingAggRows(): AggRow[] {
   return [...pendingAggs.values()].map((a) => ({ ...a, hist: a.hist.slice() }));
 }
 
+/**
+ * Строки лога, ещё не ушедшие в базу, — только момент и уровень: объёму лога
+ * по уровням (lib/opsHistory.ts, readLogVolume) нужны последние секунды до
+ * такта записи, а текст строк ему ни к чему.
+ */
+export function pendingLogStamps(): { at: string; level: string }[] {
+  return pendingLogs.map((l) => ({ at: l.at, level: l.level }));
+}
+
 /** Приращения групп ошибок, ещё не ушедшие в базу */
 export function pendingErrorGroups(): (OpsErrorGroup & { hours: [number, number][] })[] {
   return [...pendingErrors.values()].map((p) => ({
