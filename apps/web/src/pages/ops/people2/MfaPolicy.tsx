@@ -10,6 +10,7 @@ import { Button, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { Cell, ColumnHead, metaClass, nameClass, rowClass } from "../controls";
 import { ROLE_KEY, personHref } from "../model";
+import { MfaCoverageChart } from "./charts";
 import { Empty, Section } from "./parts";
 import { ResetMfaDialog } from "./UserTools";
 
@@ -91,6 +92,8 @@ export default function OpsMfaPolicy() {
       </Section>
 
       <Section title={ut("ops.mfa.coverage")}>
+        {/* волна 11: доля с фактором по причине требования — над списком покрытия, из того же ответа */}
+        <MfaCoverageChart coverage={coverage} />
         {coverage.length === 0 ? (
           <Empty>{ut("ops.mfa.nobody")}</Empty>
         ) : (

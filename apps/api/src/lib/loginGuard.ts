@@ -21,6 +21,25 @@ export async function isLockedOut(email: string): Promise<boolean> {
   return Number(row?.n ?? 0) >= MAX_FAILURES;
 }
 
+/**
+ * Все адреса, запертые прямо сейчас, — для сводки учёток техпанели (волна 11).
+ *
+ * Здесь, рядом с isLockedOut, а не счётом в маршруте: окно и порог — одно
+ * правило, и «заперто» на графике обязано значить ровно то же, что отказ на
+ * входе. Таблица попыток открыта одной системе (миграция 0075) — зовут под
+ * asSystem.
+ */
+export async function lockedEmails(): Promise<Set<string>> {
+  const since = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
+  const rows = await db
+    .select({ email: loginAttempts.email })
+    .from(loginAttempts)
+    .where(gte(loginAttempts.at, since))
+    .groupBy(loginAttempts.email)
+    .having(sql`count(*) >= ${MAX_FAILURES}`);
+  return new Set(rows.map((r) => r.email));
+}
+
 export async function recordFailure(email: string, ip: string | null): Promise<void> {
   await db.insert(loginAttempts).values({ id: crypto.randomUUID(), email, ip });
 }

@@ -11,6 +11,7 @@ import { ActionMenu, type MenuEntry } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
 import { pageCount, pageFrom, perFrom } from "../../ui/paging";
 import { Button, ButtonLink, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
+import { RuleSection } from "../../ui/section";
 import { useResource } from "../../useResource";
 import { Cell, ColumnHead, FilterSelect, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
 import { ConfirmPlain, ConfirmTyped, OneTimePassword } from "./dialogs";
@@ -19,6 +20,7 @@ import { UserDevices } from "./UserDevices";
 import { toggleId, withPage } from "./people2/model";
 import { RowCheck } from "./people2/parts";
 import { BulkDialog, ImpersonateDialog, ImportDialog, ResetMfaDialog, SelectionBar, useRowExtras } from "./people2/UserTools";
+import { UsersOverview } from "./people2/charts";
 
 /*
  * Техпанель → «Користувачі»: весь реестр учётных записей и всё, что с ними
@@ -193,117 +195,126 @@ export default function OpsUsers() {
   return (
     <>
       {/*
-        Строка отбора: поиск тянется, три выбора по колонке, «+» — заведение.
-        Всё — залитыми полями фильтра (look="fill"), как фильтры «Статистики»:
-        это отбор, а не форма.
+        Волна 11: сводка реестра графиками — над списком, по всему реестру и
+        без его отбора (решение заказчика 2026-09-26: «должны быть графики в
+        админ панеле»). Список ниже — своим разделом, чтобы линия раздела
+        отделяла «весь реестр» от «отобранного».
       */}
-      <div className="mb-[12px] grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
-        <SearchField label={ut("ops.users.search")} value={q} onChange={(v) => update({ q: v, page: null })} />
-        <FilterSelect
-          label={ut("adm.role")}
-          value={role}
-          onChange={(v) => update({ role: v, page: null })}
-          options={[
-            { value: "", label: ut("ops.users.allRoles") },
-            { value: "superadmin", label: ut("adm.roleSuper") },
-            { value: "admin", label: ut("adm.roleAdmin") },
-            { value: "user", label: ut("adm.rolePatient") },
-          ]}
-        />
-        <FilterSelect
-          label={ut("ops.users.state")}
-          value={status}
-          onChange={(v) => update({ status: v, page: null })}
-          options={[
-            { value: "", label: ut("ops.users.allStates") },
-            { value: "active", label: ut("ops.users.active") },
-            { value: "disabled", label: ut("ops.users.disabledMany") },
-          ]}
-        />
-        <FilterSelect
-          label={ut("ppl.sort")}
-          value={sort}
-          onChange={(v) => update({ sort: v === "name" ? null : v, page: null })}
-          options={[
-            { value: "name", label: ut("ppl.sortByName") },
-            { value: "created", label: ut("ops.users.sortCreated") },
-            { value: "lastSeen", label: ut("ops.users.sortLastSeen") },
-            { value: "role", label: ut("ops.users.sortRole") },
-          ]}
-        />
-        <Button size="glyph" variant="ghost" aria-label={ut("adm.newUser")} onClick={() => setDialog({ kind: "create" })}>
-          <IconPlusThick />
-        </Button>
-      </div>
-
-      <div className="mb-[18px] flex flex-wrap items-center justify-between gap-[12px]">
-        <div className="flex flex-wrap items-center gap-[16px]">
-          <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
-            {res.data ? `${ut("ppl.found")} ${res.data.total}` : ""}
-          </span>
-          {/*
-            Текст згоди жил вкладкой прежнего экрана учёток; экран снят, дверь
-            к тексту согласия остаётся здесь — править его может суперадмин.
-          */}
-          {isSuper ? (
-            <ButtonLink to="/consent-text" variant="ghost">
-              {ut("adm.consentTitle")}
-            </ButtonLink>
-          ) : null}
-          {/* импорт сотрудников из CSV (people2) — рядом с заведением по одному */}
-          <Button variant="ghost" onClick={() => setDialog({ kind: "import" })}>
-            {ut("ops.import.button")}
+      <UsersOverview />
+      <RuleSection title={ut("adm.allAccounts")}>
+        {/*
+          Строка отбора: поиск тянется, три выбора по колонке, «+» — заведение.
+          Всё — залитыми полями фильтра (look="fill"), как фильтры «Статистики»:
+          это отбор, а не форма.
+        */}
+        <div className="mb-[12px] grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
+          <SearchField label={ut("ops.users.search")} value={q} onChange={(v) => update({ q: v, page: null })} />
+          <FilterSelect
+            label={ut("adm.role")}
+            value={role}
+            onChange={(v) => update({ role: v, page: null })}
+            options={[
+              { value: "", label: ut("ops.users.allRoles") },
+              { value: "superadmin", label: ut("adm.roleSuper") },
+              { value: "admin", label: ut("adm.roleAdmin") },
+              { value: "user", label: ut("adm.rolePatient") },
+            ]}
+          />
+          <FilterSelect
+            label={ut("ops.users.state")}
+            value={status}
+            onChange={(v) => update({ status: v, page: null })}
+            options={[
+              { value: "", label: ut("ops.users.allStates") },
+              { value: "active", label: ut("ops.users.active") },
+              { value: "disabled", label: ut("ops.users.disabledMany") },
+            ]}
+          />
+          <FilterSelect
+            label={ut("ppl.sort")}
+            value={sort}
+            onChange={(v) => update({ sort: v === "name" ? null : v, page: null })}
+            options={[
+              { value: "name", label: ut("ppl.sortByName") },
+              { value: "created", label: ut("ops.users.sortCreated") },
+              { value: "lastSeen", label: ut("ops.users.sortLastSeen") },
+              { value: "role", label: ut("ops.users.sortRole") },
+            ]}
+          />
+          <Button size="glyph" variant="ghost" aria-label={ut("adm.newUser")} onClick={() => setDialog({ kind: "create" })}>
+            <IconPlusThick />
           </Button>
         </div>
-        <Pager
-          page={page}
-          pages={pages}
-          per={per}
-          onPer={(n) => update({ per: String(n), page: null })}
-          onPage={(p) => update({ page: p > 1 ? String(p) : null })}
-        />
-      </div>
 
-      {res.error ? (
-        <Loading error={res.error} onRetry={res.reload} />
-      ) : !res.data ? (
-        <Loading rows={6} />
-      ) : res.data.items.length === 0 ? (
-        <p className="m-0 py-[24px] text-[13px] text-muted">{ut("pt.nobodyFound")}</p>
-      ) : (
-        <>
-          <SelectionBar
-            selected={selected}
-            pageIds={pageIds}
-            total={res.data.total}
-            onPage={(on) => setSelected(withPage(selected, pageIds, on))}
-            onAll={() =>
-              void api
-                .opsUserIds({ q: settledQ, role: role || undefined, status: status || undefined })
-                .then((r) => setSelected(new Set(r.ids)))
-                .catch(() => {})
-            }
-            onClear={() => setSelected(new Set())}
-            onAction={(action) => setDialog({ kind: "bulk", action })}
-            canAssign={isSuper || (user?.ladderRank ?? 0) > 1}
+        <div className="mb-[18px] flex flex-wrap items-center justify-between gap-[12px]">
+          <div className="flex flex-wrap items-center gap-[16px]">
+            <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
+              {res.data ? `${ut("ppl.found")} ${res.data.total}` : ""}
+            </span>
+            {/*
+              Текст згоди жил вкладкой прежнего экрана учёток; экран снят, дверь
+              к тексту согласия остаётся здесь — править его может суперадмин.
+            */}
+            {isSuper ? (
+              <ButtonLink to="/consent-text" variant="ghost">
+                {ut("adm.consentTitle")}
+              </ButtonLink>
+            ) : null}
+            {/* импорт сотрудников из CSV (people2) — рядом с заведением по одному */}
+            <Button variant="ghost" onClick={() => setDialog({ kind: "import" })}>
+              {ut("ops.import.button")}
+            </Button>
+          </div>
+          <Pager
+            page={page}
+            pages={pages}
+            per={per}
+            onPer={(n) => update({ per: String(n), page: null })}
+            onPage={(p) => update({ page: p > 1 ? String(p) : null })}
           />
-          <ColumnHead
-            grid={GRID}
-            labels={[null, ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
-          />
-          <ul className="m-0 list-none p-0" aria-label={ut("adm.allAccounts")}>
-            {res.data.items.map((row) => (
-              <UserRow
-                key={row.id}
-                row={row}
-                menu={entriesFor(row)}
-                checked={selected.has(row.id)}
-                onToggle={() => setSelected(toggleId(selected, row.id))}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+        </div>
+
+        {res.error ? (
+          <Loading error={res.error} onRetry={res.reload} />
+        ) : !res.data ? (
+          <Loading rows={6} />
+        ) : res.data.items.length === 0 ? (
+          <p className="m-0 py-[24px] text-[13px] text-muted">{ut("pt.nobodyFound")}</p>
+        ) : (
+          <>
+            <SelectionBar
+              selected={selected}
+              pageIds={pageIds}
+              total={res.data.total}
+              onPage={(on) => setSelected(withPage(selected, pageIds, on))}
+              onAll={() =>
+                void api
+                  .opsUserIds({ q: settledQ, role: role || undefined, status: status || undefined })
+                  .then((r) => setSelected(new Set(r.ids)))
+                  .catch(() => {})
+              }
+              onClear={() => setSelected(new Set())}
+              onAction={(action) => setDialog({ kind: "bulk", action })}
+              canAssign={isSuper || (user?.ladderRank ?? 0) > 1}
+            />
+            <ColumnHead
+              grid={GRID}
+              labels={[null, ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
+            />
+            <ul className="m-0 list-none p-0" aria-label={ut("adm.allAccounts")}>
+              {res.data.items.map((row) => (
+                <UserRow
+                  key={row.id}
+                  row={row}
+                  menu={entriesFor(row)}
+                  checked={selected.has(row.id)}
+                  onToggle={() => setSelected(toggleId(selected, row.id))}
+                />
+              ))}
+            </ul>
+          </>
+        )}
+      </RuleSection>
 
       {dialog?.kind === "create" ? <CreateDialog isSuper={isSuper} onClose={close} onDone={done} /> : null}
       {dialog?.kind === "role" ? <RoleDialog row={dialog.row} isSuper={isSuper} onClose={close} onDone={done} /> : null}
