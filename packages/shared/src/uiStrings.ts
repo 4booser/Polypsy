@@ -2639,6 +2639,196 @@ export const UI = {
   /* ── wave10:accounts ── */
 
   /* ── wave10:maint ── */
+  "ops.tab.maintenance": { uk: "Обслуговування", ru: "Обслуживание", en: "Maintenance" },
+  "ops.tab.flags": { uk: "Прапорці", ru: "Флаги", en: "Feature flags" },
+  "ops.tab.releases": { uk: "Випуски", ru: "Выпуски", en: "Releases" },
+
+  /* состояние системы: страница /status и баннер — их читают все, пациенты тоже */
+  "svc.title": { uk: "Стан системи", ru: "Состояние системы", en: "System status" },
+  "svc.status.ok": { uk: "Працює", ru: "Работает", en: "Operational" },
+  "svc.status.maintenance": { uk: "Обслуговування", ru: "Обслуживание", en: "Maintenance" },
+  "svc.status.degraded": { uk: "Збої", ru: "Сбои", en: "Disruptions" },
+  "svc.since": { uk: "Від", ru: "С", en: "Since" },
+  "svc.until": { uk: "Орієнтовно до", ru: "Ориентировочно до", en: "Expected until" },
+  "svc.writeClosed": {
+    uk: "Зміни зараз не зберігаються. Переглядати можна.",
+    ru: "Изменения сейчас не сохраняются. Смотреть можно.",
+    en: "Changes can’t be saved right now. Viewing still works.",
+  },
+  "svc.writeOpen": { uk: "Зміни зберігаються як завжди.", ru: "Изменения сохраняются как обычно.", en: "Changes are saved as usual." },
+  "svc.autoDb": {
+    uk: "Сервер не отримує відповіді від бази даних.",
+    ru: "Сервер не получает ответа от базы данных.",
+    en: "The server isn’t getting a response from the database.",
+  },
+  "svc.unreachable": {
+    uk: "Сервер не відповідає. Спробуйте за кілька хвилин.",
+    ru: "Сервер не отвечает. Попробуйте через несколько минут.",
+    en: "The server isn’t responding. Please try again in a few minutes.",
+  },
+  "svc.history": { uk: "Історія оголошень", ru: "История объявлений", en: "Announcement history" },
+  "svc.noHistory": { uk: "Оголошень ще не було", ru: "Объявлений ещё не было", en: "No announcements yet" },
+  "svc.checkedAt": { uk: "Перевірено", ru: "Проверено", en: "Checked" },
+  "svc.toLogin": { uk: "До входу", ru: "Ко входу", en: "Back to sign in" },
+  "svc.banner.maintenance": { uk: "Тривають технічні роботи", ru: "Идут технические работы", en: "Maintenance in progress" },
+  "svc.banner.maintenanceHint": {
+    uk: "зміни тимчасово не зберігаються, переглядати можна",
+    ru: "изменения временно не сохраняются, смотреть можно",
+    en: "changes can’t be saved for now, viewing still works",
+  },
+  "svc.banner.degraded": { uk: "Можливі збої в роботі", ru: "Возможны сбои в работе", en: "Service disruptions" },
+  "svc.details": { uk: "Докладніше", ru: "Подробнее", en: "Details" },
+
+  /* кабинет пациента: сдача, отложенная до конца работ или появления сети */
+  "pw.queued": {
+    uk: "Відповіді збережено на цьому пристрої й буде відправлено, щойно сервер знову прийматиме зміни.",
+    ru: "Ответы сохранены на этом устройстве и будут отправлены, как только сервер снова начнёт принимать изменения.",
+    en: "Your answers are saved on this device and will be sent as soon as the server accepts changes again.",
+  },
+  "pt.outboxWaiting": { uk: "Чекають на відправлення", ru: "Ждут отправки", en: "Waiting to be sent" },
+  "pt.outboxRejected": { uk: "Сервер не прийняв", ru: "Сервер не принял", en: "Not accepted by the server" },
+  "pt.outboxSend": { uk: "Відправити зараз", ru: "Отправить сейчас", en: "Send now" },
+
+  /* техпанель: обслуживание */
+  "mt.mode": { uk: "Режим обслуговування", ru: "Режим обслуживания", en: "Maintenance mode" },
+  "mt.modeHint": {
+    uk: "Поки режим увімкнено, усі зміни, крім техпанелі та входу, отримують відмову 503, а перегляд працює. Банер бачать усі: консоль, кабінет пацієнта, екран входу. Відповіді пацієнтів чекають на пристроях і відправляються після робіт.",
+    ru: "Пока режим включён, все изменения, кроме техпанели и входа, получают отказ 503, а просмотр работает. Баннер видят все: консоль, кабинет пациента, экран входа. Ответы пациентов ждут на устройствах и отправляются после работ.",
+    en: "While the mode is on, every change except the tech panel and sign-in is refused with 503, and viewing works. Everyone sees the banner: the console, the patient area, the sign-in screen. Patients’ answers wait on their devices and are sent after the work.",
+  },
+  "mt.on": { uk: "Увімкнути режим обслуговування", ru: "Включить режим обслуживания", en: "Turn on maintenance mode" },
+  "mt.off": { uk: "Вимкнути режим обслуговування", ru: "Выключить режим обслуживания", en: "Turn off maintenance mode" },
+  "mt.confirmOn": {
+    uk: "Закрити збереження змін для всіх? Переглядати буде можна, зберігати — ні.",
+    ru: "Закрыть сохранение изменений для всех? Смотреть будет можно, сохранять — нет.",
+    en: "Stop saving changes for everyone? Viewing will still work, saving won’t.",
+  },
+  "mt.message": { uk: "Текст для людей", ru: "Текст для людей", en: "Message for people" },
+  "mt.until": { uk: "Орієнтовне завершення", ru: "Ожидаемое окончание", en: "Expected end" },
+  "mt.announce": { uk: "Оголошення про стан", ru: "Объявление о состоянии", en: "Status announcement" },
+  "mt.announceHint": {
+    uk: "Збої збереження не закривають: люди бачать банер, а зміни зберігаються. «Працює» знімає банер.",
+    ru: "Сбои сохранение не закрывают: люди видят баннер, а изменения сохраняются. «Работает» снимает баннер.",
+    en: "Disruptions don’t stop saving: people see the banner and changes are still saved. “Operational” removes the banner.",
+  },
+  "mt.status": { uk: "Стан", ru: "Состояние", en: "Status" },
+  "mt.publish": { uk: "Опублікувати", ru: "Опубликовать", en: "Publish" },
+  "mt.by": { uk: "Хто", ru: "Кто", en: "By" },
+  "mt.when": { uk: "Коли", ru: "Когда", en: "When" },
+  "mt.done": { uk: "Стан оновлено", ru: "Состояние обновлено", en: "Status updated" },
+  "mt.needManage": {
+    uk: "Змінювати стан можна з правом «Керувати роботою системи».",
+    ru: "Менять состояние можно с правом «Управлять работой системы».",
+    en: "Changing the status requires the “Manage how the system runs” permission.",
+  },
+
+  /* техпанель: флаги функций */
+  "fl.title": { uk: "Прапорці функцій", ru: "Флаги функций", en: "Feature flags" },
+  "fl.hint": {
+    uk: "Новий екран чи нову поведінку вмикають окремим людям і групам без викатки. Прапорець — не право: закрите правом лишається закритим на сервері.",
+    ru: "Новый экран или новое поведение включают отдельным людям и группам без выкатки. Флаг — не право: закрытое правом остаётся закрытым на сервере.",
+    en: "A new screen or behaviour is turned on for particular people and groups without a deployment. A flag isn’t a permission: what a permission closes stays closed on the server.",
+  },
+  "fl.on": { uk: "Увімкнено", ru: "Включён", en: "On" },
+  "fl.off": { uk: "Вимкнено", ru: "Выключен", en: "Off" },
+  "fl.audience": { uk: "Кому", ru: "Кому", en: "For whom" },
+  "fl.everyone": { uk: "усім", ru: "всем", en: "everyone" },
+  "fl.nobody": { uk: "нікому", ru: "никому", en: "no one" },
+  "fl.stale": {
+    uk: "Застарілий: ключа вже немає в коді, нікому нічого не вмикає",
+    ru: "Устаревший: ключа уже нет в коде, никому ничего не включает",
+    en: "Stale: the key is gone from the code and turns nothing on",
+  },
+  "fl.edit": { uk: "Змінити", ru: "Изменить", en: "Edit" },
+  "fl.enabled": { uk: "Прапорець увімкнено", ru: "Флаг включён", en: "Flag is on" },
+  "fl.all": { uk: "Усім", ru: "Всем", en: "Everyone" },
+  "fl.roles": { uk: "Класи облікових записів", ru: "Классы учётных записей", en: "Account classes" },
+  "fl.role.superadmin": { uk: "Суперадміністратори", ru: "Суперадминистраторы", en: "Super administrators" },
+  "fl.role.admin": { uk: "Співробітники", ru: "Сотрудники", en: "Staff" },
+  "fl.role.user": { uk: "Пацієнти", ru: "Пациенты", en: "Patients" },
+  "fl.staffRoles": { uk: "Посади", ru: "Должности", en: "Positions" },
+  "fl.people": { uk: "Люди", ru: "Люди", en: "People" },
+  "fl.surveyGroups": { uk: "Групи методик", ru: "Группы методик", en: "Assessment groups" },
+  "fl.departments": { uk: "Відділення", ru: "Отделения", en: "Departments" },
+  "fl.add": { uk: "Додати", ru: "Добавить", en: "Add" },
+  "fl.remove": { uk: "Прибрати", ru: "Убрать", en: "Remove" },
+  "fl.changes": { uk: "Журнал змін", ru: "Журнал изменений", en: "Change log" },
+  "fl.noChanges": { uk: "Змін ще не було", ru: "Изменений ещё не было", en: "No changes yet" },
+  "fl.before": { uk: "Було", ru: "Было", en: "Before" },
+  "fl.after": { uk: "Стало", ru: "Стало", en: "After" },
+  "fl.created": { uk: "заведено", ru: "заведён", en: "created" },
+  "fl.emptyWarn": {
+    uk: "Прапорець увімкнено, але нікого не вибрано — він нікому нічого не вмикає.",
+    ru: "Флаг включён, но никто не выбран — он никому ничего не включает.",
+    en: "The flag is on but no one is selected, so it turns nothing on.",
+  },
+
+  /* техпанель: выпуски */
+  "rl.hint": {
+    uk: "Кожен запуск нової версії записує сам сервер під час старту: версію, коміт, хто й коли викотив, міграції, прогін CI.",
+    ru: "Каждый запуск новой версии записывает сам сервер при старте: версию, коммит, кто и когда выкатил, миграции, прогон CI.",
+    en: "The server records every new version itself when it starts: version, commit, who deployed it and when, migrations, the CI run.",
+  },
+  "rl.running": { uk: "Зараз працює", ru: "Сейчас работает", en: "Running now" },
+  "rl.commit": { uk: "Коміт", ru: "Коммит", en: "Commit" },
+  "rl.by": { uk: "Хто викотив", ru: "Кто выкатил", en: "Deployed by" },
+  "rl.uptime": { uk: "Час роботи", ru: "Время работы", en: "Ran for" },
+  "rl.migrations": { uk: "Міграції", ru: "Миграции", en: "Migrations" },
+  "rl.noMigrations": { uk: "без нових міграцій", ru: "без новых миграций", en: "no new migrations" },
+  "rl.migrationsUnknown": {
+    uk: "невідомо: перший записаний випуск",
+    ru: "неизвестно: первый записанный выпуск",
+    en: "unknown: the first recorded release",
+  },
+  "rl.run": { uk: "Прогін CI", ru: "Прогон CI", en: "CI run" },
+  "rl.now": { uk: "досі працює", ru: "работает до сих пор", en: "still running" },
+  "rl.rollback": { uk: "Відкотити на", ru: "Откатить на", en: "Roll back to" },
+  "rl.rollbackHint": {
+    uk: "Відкат — це викатка попереднього тегу поверх тієї самої бази. Міграції переключенням тегу не відкочуються.",
+    ru: "Откат — это выкатка предыдущего тега поверх той же базы. Миграции переключением тега не откатываются.",
+    en: "A rollback deploys the previous tag on top of the same database. Migrations aren’t reverted by switching tags.",
+  },
+  "rl.rollbackLeft": {
+    uk: "У базі лишаться міграції, що прийшли після нього:",
+    ru: "В базе останутся миграции, пришедшие после него:",
+    en: "These migrations, applied after it, will stay in the database:",
+  },
+  "rl.rollbackNoMig": {
+    uk: "Нових міграцій після нього не було — схема та сама.",
+    ru: "Новых миграций после него не было — схема та же.",
+    en: "No migrations were applied after it, so the schema is the same.",
+  },
+  "rl.rollbackUnknownMig": {
+    uk: "Які міграції прийшли після нього, невідомо — перевірте журнал міграцій перед відкатом.",
+    ru: "Какие миграции пришли после него, неизвестно — проверьте журнал миграций перед откатом.",
+    en: "It’s unknown which migrations came after it, so check the migration journal before rolling back.",
+  },
+  "rl.rollbackPage": {
+    uk: "На сторінці GitHub натисніть «Run workflow» і впишіть тег",
+    ru: "На странице GitHub нажмите «Run workflow» и впишите тег",
+    en: "On the GitHub page press “Run workflow” and enter the tag",
+  },
+  "rl.rollbackOpen": { uk: "Відкрити запуск у GitHub", ru: "Открыть запуск в GitHub", en: "Open the run page on GitHub" },
+  "rl.rollbackConfirm": {
+    uk: "Запустити викатку попереднього тегу? Старий код стане поверх тієї самої бази.",
+    ru: "Запустить выкатку предыдущего тега? Старый код встанет поверх той же базы.",
+    en: "Start deploying the previous tag? The old code will run on top of the same database.",
+  },
+  "rl.rollbackStarted": {
+    uk: "Викатку запущено — стежте за прогоном у GitHub",
+    ru: "Выкатка запущена — следите за прогоном в GitHub",
+    en: "Deployment started — follow the run on GitHub",
+  },
+  "rl.noPrevious": {
+    uk: "Попереднього випуску в історії немає — відкочувати нема на що.",
+    ru: "Предыдущего выпуска в истории нет — откатывать не на что.",
+    en: "There’s no previous release in the history, so there’s nothing to roll back to.",
+  },
+  "rl.empty": {
+    uk: "Викаток ще не записано. Сервер записує випуск під час старту, якщо викатка передала QUIZZY_VERSION.",
+    ru: "Выкаток ещё не записано. Сервер записывает выпуск при старте, если выкатка передала QUIZZY_VERSION.",
+    en: "No deployments recorded yet. The server records a release at start-up when the deployment passes QUIZZY_VERSION.",
+  },
 
   /* ── wave10:data ── */
 

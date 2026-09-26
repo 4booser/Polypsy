@@ -123,6 +123,44 @@ describe("прогон очереди", () => {
     expect(res.rejected).toBe(1);
   });
 
+  test("режим обслуживания (503) — не отказ: сдача ждёт конца работ", async () => {
+    /*
+     * Пока идут работы, сервер отвечает 503 на всякую запись. Прежде очередь
+     * читала это как отказ по существу и помечала сдачу «отклонённой» — она
+     * ждала бы разбора человеком, а не конца работ, и сама бы не ушла уже
+     * никогда. Так же временны 502 и 504: так выглядит перезапуск при выкатке.
+     */
+    for (const status of [503, 502, 504]) {
+      resetStore();
+      enqueue("s1", {});
+      enqueue("s2", {});
+      let calls = 0;
+      const res = await flush(async () => {
+        calls++;
+        throw new HttpError("Тривають технічні роботи", status);
+      });
+      expect(calls).toBe(1);
+      expect(res.rejected).toBe(0);
+      expect(res.left).toBe(2);
+    }
+    // работы кончились — уходит само, без участия человека
+    const done = await flush(async () => {});
+    expect(done.sent).toBe(2);
+  });
+
+  test("ошибка сервера в коде (500) — отказ, а не вечный повтор", async () => {
+    enqueue("s1", {});
+    const res = await flush(async () => {
+      throw new HttpError("Внутрішня помилка", 500);
+    });
+    expect(res.rejected).toBe(1);
+  });
+
+  test("id первой попытки сохраняется в очереди: дубль после 504 сервер узнает", () => {
+    const item = enqueue("s1", { clientRequestId: "first-attempt" });
+    expect(item.payload.clientRequestId).toBe("first-attempt");
+  });
+
   test("параллельный вызов не отправляет одно и то же дважды", async () => {
     /*
      * Прогон запускают и восстановление сети, и открытие экрана. Без защиты

@@ -117,6 +117,22 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
       GOOGLE_ALLOWED_DOMAINS: ${GOOGLE_ALLOWED_DOMAINS:-}
+      # Какой выпуск работает — для истории выкаток в техпанели («Випуски»).
+      #
+      # QUIZZY_VERSION уже стоит в .env.docker (по ней выбирается образ), но
+      # в окружение контейнера она попадает только отсюда: подстановка в
+      # `image:` и переменная процесса — разные вещи. Остальные четыре пишет
+      # deploy.yml. Без них API работает как прежде, просто выкатка не
+      # записывается в историю; дошли ли они, проверяет сама выкатка.
+      QUIZZY_VERSION: ${QUIZZY_VERSION:-local}
+      QUIZZY_COMMIT: ${QUIZZY_COMMIT:-}
+      QUIZZY_DEPLOYED_BY: ${QUIZZY_DEPLOYED_BY:-}
+      QUIZZY_RUN_URL: ${QUIZZY_RUN_URL:-}
+      QUIZZY_REPO: ${QUIZZY_REPO:-}
+      # Откат из техпанели одной кнопкой (workflow_dispatch через API GitHub).
+      # Пусто — кнопка ведёт на страницу запуска в GitHub. Fine-grained токен
+      # с одним правом: Actions — read and write, только на этот репозиторий.
+      GITHUB_DISPATCH_TOKEN: ${GITHUB_DISPATCH_TOKEN:-}
     volumes:
       # тот же том, что у расшифровщика: API кладёт аудио, воркер его читает
       - recordings:/data/recordings

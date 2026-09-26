@@ -1,5 +1,7 @@
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
+import { MaintenanceBanner } from "../service/MaintenanceBanner";
 import { useLang } from "../lang";
 import { Button, Field } from "../ui/primitives";
 import { PublicFrame } from "./public/PublicFrame";
@@ -77,6 +79,14 @@ export default function Login() {
   return (
     <PublicFrame>
       {/*
+        Баннер работ и ссылка на статус — сверх кадра f01, по решению
+        заказчика 2026-09-26 (техпанель, пункты 8 и 10): войти во время работ
+        можно, а сохранить — нет, и человек должен узнать это до входа, а не
+        после первой отказанной кнопки. Баннера нет, пока всё работает, —
+        кадр в обычный день остаётся нетронутым.
+      */}
+      <MaintenanceBanner place="public" />
+      {/*
         В две строки — не переносом руками, а шириной: 400 вмещает «Введіть
         логін та пароль» (374 на кадре) и не вмещает следующее слово. Перенос
         <br> сломался бы на русском, где строки делятся иначе.
@@ -137,6 +147,16 @@ export default function Login() {
           {busy ? ut("lg.signingIn") : ut("lg.signIn")}
         </Button>
       </form>
+      {/*
+        Ссылка на страницу статуса — тихая строка под формой: она нужна тому,
+        у кого вход не получается, и в обычный день не спорит с кнопкой.
+      */}
+      <Link
+        to="/status"
+        className="mt-[22px] inline-block rounded-sm text-[14px] text-primary underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+      >
+        {ut("svc.title")}
+      </Link>
     </PublicFrame>
   );
 }

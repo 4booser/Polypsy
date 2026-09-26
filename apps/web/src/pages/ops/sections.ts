@@ -47,6 +47,14 @@ export const OPS_GROUPS: OpsGroup[] = [
     sections: [
       { to: "/ops/jobs", label: "ops.tab.jobs", perm: "ops.read" },
       /* ── sections:maint ── */
+      /*
+       * Эксплуатация (участок maint): смотреть — ops.read, менять внутри
+       * разделов — ops.manage (кнопки без него не рисуются, сервер
+       * проверяет сам).
+       */
+      { to: "/ops/maintenance", label: "ops.tab.maintenance", perm: "ops.read" },
+      { to: "/ops/flags", label: "ops.tab.flags", perm: "ops.read" },
+      { to: "/ops/releases", label: "ops.tab.releases", perm: "ops.read" },
       /* ── sections:obs2-ops ── */
     ],
   },
