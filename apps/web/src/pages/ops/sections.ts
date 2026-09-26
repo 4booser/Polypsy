@@ -66,6 +66,10 @@ export const OPS_GROUPS: OpsGroup[] = [
     label: "ops.group.data",
     sections: [
       /* ── sections:data ── */
+      { to: "/ops/quality", label: "opsd.tab.quality", perm: "ops.read" },
+      { to: "/ops/usage", label: "opsd.tab.usage", perm: "ops.read" },
+      { to: "/ops/mobile", label: "opsd.tab.mobile", perm: "ops.read" },
+      { to: "/ops/push", label: "opsd.tab.push", perm: "ops.read" },
     ],
   },
 ];

@@ -61,3 +61,29 @@ export function platformName(): string {
   const { Platform } = require("react-native") as typeof import("react-native");
   return Platform.OS;
 }
+
+/**
+ * Версия приложения и номер сборки — для учёта устройств (техпанель).
+ *
+ * Версия — из app.json (expoConfig.version): её видит человек в магазине.
+ * Номер сборки — из самого бинарника (iOS buildNumber, Android versionCode):
+ * две сборки одной версии различаются только им, а исправление движка
+ * подсчёта может приехать именно пересборкой. В Expo Go номера нет — null.
+ *
+ * Импорт внутри функции по той же причине, что у platformName: модуль
+ * должен грузиться в тестовом процессе без react-native.
+ */
+export function appBuildInfo(): { appVersion: string | null; appBuild: string | null } {
+  try {
+    const Constants = (require("expo-constants") as typeof import("expo-constants")).default;
+    const version = Constants.expoConfig?.version ?? null;
+    const build =
+      Constants.platform?.ios?.buildNumber ?? Constants.platform?.android?.versionCode ?? null;
+    return {
+      appVersion: version && /^[0-9][0-9A-Za-z.+-]*$/.test(version) ? version.slice(0, 32) : null,
+      appBuild: build === null || build === undefined ? null : String(build).slice(0, 32),
+    };
+  } catch {
+    return { appVersion: null, appBuild: null };
+  }
+}

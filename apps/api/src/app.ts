@@ -65,6 +65,7 @@ import { conclusionRoutes } from "./routes/conclusions";
 import { consentRoutes } from "./routes/consents";
 import { normRoutes } from "./routes/norms";
 import { dataQualityRoutes } from "./routes/dataQuality";
+import { opsDataRoutes, usageRoutes } from "./routes/opsData";
 import { facetRoutes } from "./routes/facets";
 import { referralRoutes } from "./routes/referrals";
 import { templateRoutes } from "./routes/templates";
@@ -227,6 +228,13 @@ app.route("/api/conclusions", conclusionRoutes);
 app.route("/api/consents", consentRoutes);
 app.route("/api/norms", normRoutes);
 app.route("/api/data-quality", dataQualityRoutes);
+/*
+ * Техпанель, «Дані й продукт» — рядом с остальной техпанелью (/api/ops).
+ * Приём счётчиков экранов — своим путём: пишут в него все вошедшие, а под
+ * /api/ops всё закрыто правом ops.read (см. routes/opsData.ts).
+ */
+app.route("/api/ops/data", opsDataRoutes);
+app.route("/api/usage", usageRoutes);
 app.route("/api/facets", facetRoutes);
 app.route("/api/clinic", clinicRoutes);
 app.route("/api/messages", messageRoutes);
