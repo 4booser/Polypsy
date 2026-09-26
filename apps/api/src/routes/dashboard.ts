@@ -13,6 +13,7 @@ import {
   type DomainAggregate,
 } from "../lib/conditions";
 import { langOf, parseQuery } from "../lib/http";
+import { patientRespondent } from "../lib/population";
 import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -56,6 +57,18 @@ const EMPTY_SPREAD = {
  * Анонимные прохождения (user_id пуст) не считаются: «последний замер
  * человека» у них определить нельзя, и каждый анонимный бланк считался бы
  * отдельным человеком.
+ *
+ * И ещё два отсева — одним условием `counted` на все три запроса:
+ *
+ *  - прохождение сотрудника на себя (lib/population.ts). У заведующего
+ *    зона людей (accessiblePatientIds) и так только из обследуемых, а у
+ *    суперадмина зоны нет вовсе — и пробный бланк врача садился в «стан
+ *    пацієнтів» человеком, иногда с «тяжким»;
+ *  - недостоверный протокол (reliable = false). Его баллам не верят, и
+ *    «последним замером» человека он не становится: за человека говорит
+ *    его последний достоверный замер, а если такого нет — человек не
+ *    замерен. Иначе один бланк, заполненный «всё — так», переводил человека
+ *    в «тяжкий» поверх честного замера неделей раньше.
  */
 dashboardRoutes.get("/conditions", async (c) => {
   const { days } = parseQuery(c, conditionsQuery);
@@ -90,6 +103,8 @@ dashboardRoutes.get("/conditions", async (c) => {
   const peopleIn: SQL = patients
     ? sql`and r.user_id in (${sql.join([...patients].map((id) => sql`${id}`), sql`, `)})`
     : sql``;
+  /* кого считаем: пациент, а не сотрудник на себя, и протокол, которому можно верить */
+  const counted = sql`and r.reliable and ${patientRespondent("r")}`;
   /*
    * Состав направлений — таблицей VALUES прямо в запросе: направление,
    * источник и его место в списке. Место нужно для той же ничьей, что
@@ -154,6 +169,7 @@ dashboardRoutes.get("/conditions", async (c) => {
           and r.submitted_at >= ${since}
           and ${surveyIn}
           ${peopleIn}
+          ${counted}
           and (s.catalog_key, sc.code) in (select catalog_key, code from src)
         order by r.user_id, r.survey_id, sc.code, r.submitted_at desc, r.id desc
       ),
@@ -227,6 +243,7 @@ dashboardRoutes.get("/conditions", async (c) => {
               and r.submitted_at >= ${since}
               and ${surveyIn}
               ${peopleIn}
+              ${counted}
               and (r.survey_id, sc.code) in (${sql.join(measuredPairs.map(([id, code]) => sql`(${id}, ${code})`), sql`, `)})
           ),
           latest as (
@@ -302,6 +319,7 @@ dashboardRoutes.get("/conditions", async (c) => {
         and sc.kind = 'clinical'
         and ${surveyIn}
         ${peopleIn}
+        ${counted}
       order by r.user_id, r.survey_id, sc.code, r.submitted_at desc, r.id desc
     ),
     per_user as (

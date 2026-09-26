@@ -1163,11 +1163,16 @@ export const api = {
   normCandidates: (surveyId: string) =>
     request<{
       minGroup: number;
+      /** Недостоверных протоколов вне выборки; null — меньше порога малых ячеек */
+      unreliable: number | null;
       scales: {
         code: string;
         title: string;
         current: { sex: string | null; mean: number; sd: number; source: string | null }[];
+        /** n — люди: первое достоверное прохождение каждого */
         candidate: { sex: string | null; n: number; mean: number; sd: number; publishable: boolean }[];
+        /** Версии, чьи прохождения вошли в выборку: сырой балл в них считается так же */
+        versions: number[];
       }[];
     }>(`/api/norms/surveys/${surveyId}/candidates`),
   applyNorms: (surveyId: string, scaleCodes: string[]) =>

@@ -496,6 +496,11 @@ function GroupInsight({ groupId }: { groupId: string }) {
         <SectionLabel className="mb-2">{ut("grp.severityTitle")}</SectionLabel>
         <BarList items={severityItems} />
         <p className="mt-2 max-w-[68ch] text-caption text-muted">{ut("grp.severityHint")}</p>
+        {data.unreliableCount ? (
+          <p className="mt-1 max-w-[68ch] text-caption text-muted">
+            {ut("stats.unreliableLeftOut")} <Num>{data.unreliableCount}</Num>
+          </p>
+        ) : null}
       </div>
 
       <div>

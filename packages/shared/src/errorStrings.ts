@@ -602,6 +602,41 @@ export const ERRORS = {
     ru: "Скрыто показателей: {count} — иначе остальные числа отчёта называют отдельных людей",
     en: "Figures hidden: {count} — otherwise the remaining figures in the report would identify individuals",
   },
+  /*
+   * Подписи срезов (routes/facets.ts): что именно усреднено в группе шкалы.
+   * Не отказы, а пометки к числам, как и «stat»-пометки выше: сервер отдаёт
+   * их готовым текстом на языке запроса.
+   */
+  "err.facetBasisT": {
+    uk: "Середнє T-балів (норму застосовано); версії методики: {versions}",
+    ru: "Среднее T-баллов (норма применена); версии методики: {versions}",
+    en: "Mean T-score (norms applied); assessment versions: {versions}",
+  },
+  "err.facetBasisSten": {
+    uk: "Середнє стенів (норму застосовано); версії методики: {versions}",
+    ru: "Среднее стенов (норма применена); версии методики: {versions}",
+    en: "Mean sten (norms applied); assessment versions: {versions}",
+  },
+  "err.facetBasisRatio": {
+    uk: "Середня частка від максимуму шкали; версії методики: {versions}",
+    ru: "Средняя доля от максимума шкалы; версии методики: {versions}",
+    en: "Mean share of the scale maximum; assessment versions: {versions}",
+  },
+  "err.facetBasisRaw": {
+    uk: "Середнє сирих балів; версії методики: {versions}",
+    ru: "Среднее сырых баллов; версии методики: {versions}",
+    en: "Mean raw score; assessment versions: {versions}",
+  },
+  "err.facetBasisRawNoNorm": {
+    uk: "Середнє сирих балів — норму не застосовано (немає норми для статі чи віку); версії методики: {versions}",
+    ru: "Среднее сырых баллов — норма не применена (нет нормы для пола или возраста); версии методики: {versions}",
+    en: "Mean raw score — norms not applied (no norm for this sex or age); assessment versions: {versions}",
+  },
+  "err.facetBasisExcluded": {
+    uk: "Недостовірні протоколи та проходження, які співробітники заповнили на себе, не враховано.",
+    ru: "Недостоверные протоколы и прохождения, которые сотрудники заполнили на себя, не учтены.",
+    en: "Unreliable protocols and responses that staff filled in for themselves are not counted.",
+  },
   "err.statModelQuestionType": {
     uk: "Показник за питанням можливий лише для питань із варіантами відповіді: «{title}»",
     ru: "Показатель по вопросу возможен только для вопросов с вариантами ответа: «{title}»",
