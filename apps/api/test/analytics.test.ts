@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { env } from "../src/env";
 import { percentileOf } from "../src/lib/norms";
 import { durationBins, weekOf, weeklyMeans } from "../src/lib/stats";
 import { adminA, adminB, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sql, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
@@ -40,6 +41,20 @@ describe("локальные нормы", () => {
     } as never);
     await createVersion(sid, input, adminA.id, "v1");
 
+    /*
+     * Пункты шкалы лжи — всегда «Вірно», то есть мимо её ключа «Невірно».
+     * Прежде ответы чередовались и у каждого второго L выходила выше 70 T:
+     * семнадцать из тридцати пяти протоколов были недостоверными — и всё
+     * равно шли в норму, потому что кандидаты не смотрели на reliable. Теперь
+     * смотрят (lib/normCandidates.ts), и тридцать пять человек здесь — это
+     * тридцать пять достоверных протоколов, как тест и задумывал.
+     */
+    const lieItems = new Set(
+      (minimult as unknown as { scales: { code: string; key: { item: number }[] }[] }).scales
+        .find((s) => s.code === "L")!
+        .key.map((k) => k.item - 1),
+    );
+
     // 35 прохождений: берём готовый конвейер сдачи от 35 свежих пациентов
     for (let i = 0; i < 35; i++) {
       const person = await makeUser("user", `norm${i}@test.dev`, {
@@ -53,7 +68,7 @@ describe("локальные нормы", () => {
         .filter((q: { type: string; options: unknown[] }) => q.type !== "info" && (q.options as unknown[]).length)
         .map((q: { id: string; options: { id: string }[] }, qi: number) => ({
           questionId: q.id,
-          optionIds: [q.options[(i + qi) % q.options.length]!.id],
+          optionIds: [q.options[lieItems.has(qi) ? 0 : (i + qi) % q.options.length]!.id],
           durationMs: 1500,
           changeCount: 0,
           visitCount: 1,
@@ -453,7 +468,9 @@ describe("ряд выраженности по неделям", () => {
 
     const weeks = res.body.weeks as { none: number; mild: number; moderate: number; severe: number }[];
     const counted =
-      weeks.reduce((s, w) => s + w.none + w.mild + w.moderate + w.severe, 0) + (res.body.unbanded as number);
+      weeks.reduce((s, w) => s + w.none + w.mild + w.moderate + w.severe, 0) +
+      (res.body.unbanded as number) +
+      (res.body.unreliable as number);
 
     /*
      * Столько же, сколько завершённых прохождений за период, — и меньше, чем
@@ -461,7 +478,13 @@ describe("ряд выраженности по неделям", () => {
      * СР-45 две шкалы, у мини-мульта одиннадцать, и счёт по шкалам вместо
      * прохождений дал бы методике с одиннадцатью субшкалами вес одиннадцати
      * коротких скринингов.
+     *
+     * Недостоверные — в счёте своей строкой (unreliable), а не ступенью;
+     * прохождения сотрудников на себя (platform.test сдаёт от суперадмина) —
+     * вне ряда, как и во всех сводках (lib/population.ts). Неделя — по поясу
+     * учреждения: так её режет и ряд.
      */
+    const tz = env.institutionTz;
     const [totals] = [
       ...(await db.execute<{ responses: number; scored: number } & Record<string, unknown>>(sql`
         select
@@ -472,7 +495,8 @@ describe("ряд выраженности по неделям", () => {
         left join scales sc on sc.id = rs.scale_id
         where r.status = 'completed'
           and r.submitted_at is not null
-          and r.submitted_at >= date_trunc('week', now()) - interval '25 weeks'
+          and r.submitted_at >= ((date_trunc('week', now() at time zone ${tz}) - interval '25 weeks') at time zone ${tz})
+          and not exists (select 1 from users su where su.id = r.user_id and su.role <> 'user')
       `)),
     ];
 
@@ -613,7 +637,7 @@ describe("аналитика тестов: срезы и новые ряды", (
       others.push(person);
       expect((await submitSurvey(sid, person.token)).status).toBe(201);
     }
-  });
+  }, 30_000); // шесть регистраций с argon2 и восемь сдач не укладываются в пять секунд по умолчанию
 
   test("неделя — с понедельника и по поясу учреждения, а не по Гринвичу", () => {
     // 27.09.2026 — воскресенье; 20:30 UTC — это 23:30 по Киеву, ещё воскресенье

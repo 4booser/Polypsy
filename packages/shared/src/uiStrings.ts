@@ -7206,6 +7206,44 @@ export const UI = {
     ru: "Показаны первые {shown} — самые свежие. Остальные открывает «Показать ещё» под списком.",
     en: "Showing the first {shown} — the most recent. “Show more” below the list opens the rest.",
   },
+
+  /* ── w12:stats ── */
+  "stats.unreliableCell": {
+    uk: "недостовірний протокол",
+    ru: "недостоверный протокол",
+    en: "unreliable protocol",
+  },
+  "stats.unreliableLeftOut": {
+    uk: "Недостовірних протоколів — не враховано у вираженості:",
+    ru: "Недостоверных протоколов — не учтено в выраженности:",
+    en: "Unreliable protocols left out of severity:",
+  },
+  "stats.unreliableScales": {
+    uk: "Змістовні шкали пораховано без недостовірних протоколів — їх",
+    ru: "Содержательные шкалы посчитаны без недостоверных протоколов — их",
+    en: "Content scales are calculated without unreliable protocols:",
+  },
+  "stats.unreliableScalesTail": {
+    uk: "Шкали достовірності — за всіма протоколами.",
+    ru: "Шкалы достоверности — по всем протоколам.",
+    en: "Validity scales count every protocol.",
+  },
+  "stats.normsBasis": {
+    uk: "N — люди, а не проходження: перше достовірне проходження кожного, стать — на момент проходження. У вибірку йдуть лише версії, де сирий бал шкали рахується так само, як у чинній.",
+    ru: "N — люди, а не прохождения: первое достоверное прохождение каждого, пол — на момент прохождения. В выборку идут только версии, где сырой балл шкалы считается так же, как в действующей.",
+    en: "N counts people, not responses: each person's first reliable response, with sex as recorded at that time. Only versions whose raw score for the scale is computed the same way as the current one are pooled.",
+  },
+  "stats.normsVersions": { uk: "Версії у вибірці:", ru: "Версии в выборке:", en: "Versions in the sample:" },
+  "stats.normsUnreliable": {
+    uk: "Недостовірних протоколів не враховано:",
+    ru: "Недостоверных протоколов не учтено:",
+    en: "Unreliable protocols left out:",
+  },
+  "stats.normsUnreliableFew": {
+    uk: "Недостовірних протоколів не враховано: менше п’яти.",
+    ru: "Недостоверных протоколов не учтено: меньше пяти.",
+    en: "Unreliable protocols left out: fewer than five.",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

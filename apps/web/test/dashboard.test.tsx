@@ -253,6 +253,7 @@ const overview = (timeline: OverviewAnalytics["timeline"]): OverviewAnalytics =>
   publishedCount: 20,
   responseCount: 1641,
   respondentCount: 122,
+  unreliableCount: 0,
   avgDurationMs: 48_600,
   completionRate: 100,
   topSurveys: [],

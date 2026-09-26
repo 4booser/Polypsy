@@ -325,8 +325,15 @@ describe("вік — повних років на момент проходже�
 
 describe("період проходження", () => {
   test("кінець періоду — увесь день включно", async () => {
+    /*
+     * «Сьогодні» — по поясу установи, а не сесії бази: так межі й ріжуться
+     * (lib/population.ts). current_date сесії на CI — за Гринвічем, і з
+     * півночі до третьої за Києвом тест брав би вчорашній день.
+     */
+    const { env } = await import("../src/env");
     const [row] = await db.execute<{ today: string; yesterday: string }>(
-      sql`select current_date::text as today, (current_date - 1)::text as yesterday`,
+      sql`select (now() at time zone ${env.institutionTz})::date::text as today,
+                 ((now() at time zone ${env.institutionTz})::date - 1)::text as yesterday`,
     );
     /* мутация: сравнивать `submitted_at <= to` — сданное сегодня после полуночи выпадает */
     expect((await preview({ units: [aged], from: row!.today, to: row!.today })).body.size).toBe(6);

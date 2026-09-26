@@ -150,11 +150,24 @@ export default function Norms() {
             <p className="mt-3 text-caption text-muted">
               {ut("nm.shiftHint")}
             </p>
+            {s.versions.length ? (
+              <p className="mt-1 text-caption text-muted">
+                {ut("stats.normsVersions")} <span className="font-mono tabular-nums">{s.versions.join(", ")}</span>
+              </p>
+            ) : null}
           </Panel>
         );
       })}
       <Panel>
-        <p className="text-caption text-muted">
+        <p className="text-caption text-muted">{ut("stats.normsBasis")}</p>
+        {data.unreliable === null ? (
+          <p className="mt-1 text-caption text-muted">{ut("stats.normsUnreliableFew")}</p>
+        ) : data.unreliable > 0 ? (
+          <p className="mt-1 text-caption text-muted">
+            {ut("stats.normsUnreliable")} <span className="font-mono tabular-nums">{data.unreliable}</span>
+          </p>
+        ) : null}
+        <p className="mt-1 text-caption text-muted">
           {ut("nm.publishNote")}
           <Link to={`/surveys/${id}/key`} className="ml-1.5">{ut("nm.checkKeys")}</Link>
         </p>
