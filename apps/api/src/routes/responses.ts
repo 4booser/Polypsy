@@ -19,7 +19,8 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
-import { assertSurveyAccess, isStaff } from "../lib/scope";
+import { assertPatientAccess, assertPatientGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
+import { fullNameOf } from "../lib/auth";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const responseRoutes = new Hono<AppEnv>();
@@ -370,20 +371,50 @@ responseRoutes.get("/me/responses", async (c) => {
 
 /** Все прохождения методики — админам */
 responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("patients.read"), async (c) => {
-  await assertSurveyAccess(c.get("user"), c.req.param("id"));
+  const staff = c.get("user");
+  await assertSurveyAccess(staff, c.req.param("id"));
 
   // курсорная пагинация по времени сдачи: limit+1, чтобы узнать «есть ещё».
   // offset-вариант на живой таблице съезжает при вставках между страницами
-  const { limit, before } = parseQuery(c, responseListQuery);
+  const { limit, before, from, to, versionId, userId, patientGroup } = parseQuery(c, responseListQuery);
   const cursor = decodeCursor(before);
 
+  /*
+   * Срез по человеку и по группе — с теми же проверками, что у аналитики
+   * методики (routes/analytics.ts): чужой пациент и чужая группа отвечают
+   * «не найдено», а не пустым списком.
+   */
+  if (userId) await assertPatientAccess(staff, userId);
+  if (patientGroup) await assertPatientGroupAccess(staff, patientGroup);
+
+  /*
+   * Имя — полное и через fullNameOf, а не одна расшифрованная фамилия:
+   * список стоит на экране аналитики строками «как у пациентов», где человек
+   * назван целиком, а у анонимного прохождения вместо фамилии — псевдоним,
+   * который fullNameOf и подставляет.
+   */
   const rows = await db
-    .select({ response: responses, userName: users.lastName })
+    .select({
+      response: responses,
+      lastName: users.lastName,
+      firstName: users.firstName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+    })
     .from(responses)
     .leftJoin(users, eq(users.id, responses.userId))
     .where(
       and(
         eq(responses.surveyId, c.req.param("id")),
+        versionId ? eq(responses.versionId, versionId) : undefined,
+        userId ? eq(responses.userId, userId) : undefined,
+        patientGroup
+          ? sql`${responses.userId} in (select patient_id from patient_group_members where group_id = ${patientGroup})`
+          : undefined,
+        from ? sql`${responses.submittedAt} >= ${from}` : undefined,
+        // верхняя граница включительно: выбирают день, а не момент — как в аналитике
+        to ? sql`${responses.submittedAt} < (${to}::date + 1)` : undefined,
         /*
          * Пара «время и идентификатор», а не одно время.
          *
@@ -407,17 +438,34 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("pa
   const enriched = await withScores(
     page.map((r) => r.response),
     null,
-    new Map(page.map((r) => [r.response.id, decryptField(r.userName)])),
+    new Map(
+      page.map((r) => [
+        r.response.id,
+        r.response.userId
+          ? fullNameOf({
+              lastName: r.lastName ?? undefined,
+              firstName: r.firstName ?? undefined,
+              middleName: r.middleName,
+              anonymous: r.anonymous ?? undefined,
+              pseudonym: r.pseudonym,
+            }) || null
+          : null,
+      ]),
+    ),
   );
 
-  // выгрузка списка прохождений — это доступ к данным всех респондентов сразу
+  // выгрузка списка прохождений — это доступ к данным всех респондентов сразу;
+  // список одного человека — чтение его данных, и журнал знает, о ком
   await audit(c, {
     action: "response.list",
     resourceType: "survey",
     resourceId: c.req.param("id"),
+    subjectUserId: userId ?? null,
     details: {
       count: enriched.length,
       subjects: [...new Set(rows.map((r) => r.response.userId).filter(Boolean))].length,
+      ...(userId ? { userId } : {}),
+      ...(patientGroup ? { patientGroup } : {}),
     },
   });
 
