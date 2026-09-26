@@ -275,6 +275,13 @@ describe("применение локальных норм", () => {
     expect(strip(after)).toEqual(strip(before));
   });
 
+  test("экспорт несёт долю ответов шкалы (участок engine: minAnsweredShare)", async () => {
+    const res = await api(`/api/surveys/${surveyId}/export`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.scales.length).toBeGreaterThan(0);
+    for (const scale of res.body.scales) expect(scale).toHaveProperty("minAnsweredShare");
+  });
+
   test("копия без правок совпадает с исходной целиком", async () => {
     const [row] = await db.select({ current: surveys.currentVersionId }).from(surveys).where(eq(surveys.id, surveyId));
     const from = row!.current!;

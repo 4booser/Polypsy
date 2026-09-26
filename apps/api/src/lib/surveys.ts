@@ -786,6 +786,13 @@ export function surveyToDraft(survey: SurveyFull) {
       validityDirection: s.validityDirection,
       validityMessage: s.validityMessage,
       /*
+       * Своя доля ответов шкалы, ниже которой балл не вычисляется (участок
+       * engine, миграция 0101). Правило подсчёта, а не местная настройка:
+       * без него у получателя шкала считалась бы по общей доле. Приведение —
+       * до слияния с веткой engine, где поле есть в Scale.
+       */
+      minAnsweredShare: (s as { minAnsweredShare?: number | null }).minAnsweredShare ?? null,
+      /*
        * Ключ выводится по номерам пунктов, а не в том порядке, в каком его
        * вернула база.
        *

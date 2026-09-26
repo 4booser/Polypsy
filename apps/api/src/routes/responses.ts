@@ -482,7 +482,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       ? { id: user.id, sex: user.sex, birthDate: user.birthDate }
       : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
 
-  const { responseId, submittedAt, scores, profile, risksTriggered, cascade } = await persistSubmission(
+  const persisted = await persistSubmission(
     survey,
     subject,
     input,
@@ -496,6 +496,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
      */
     { filledBySelf: subjectId === user.id, lang: survey.contentLang ?? langOf(c) },
   );
+  const { responseId, submittedAt, scores, profile, risksTriggered, cascade } = persisted;
 
   if (drafts.length) {
     const draftIds = drafts.map((d) => d.id);
@@ -518,6 +519,13 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       // по какой версии посчитано и откуда она известна — см. pinnedVersion
       versionId: survey.versionId,
       versionSource: pin.source,
+      /*
+       * Сколько ответов на скрытые условием пункты движок отбросил до
+       * подсчёта (участок engine: PersistResult.hiddenDropped — идентификаторы
+       * пунктов). Приведение — только до слияния с веткой engine, где поле
+       * уже есть: после него здесь просто `persisted.hiddenDropped.length`.
+       */
+      hiddenDropped: (persisted as { hiddenDropped?: readonly string[] }).hiddenDropped?.length ?? 0,
     },
   });
 

@@ -372,6 +372,8 @@ describe("версия прохождения", () => {
       .from(auditLog)
       .where(and(eq(auditLog.action, "response.submit"), eq(auditLog.resourceId, res.body.id)));
     expect((entry!.details as { versionSource?: string }).versionSource).toBe("inferred");
+    // отброшенные движком ответы на скрытые пункты — числом в том же журнале (участок engine)
+    expect((entry!.details as { hiddenDropped?: number }).hiddenDropped).toBe(0);
   });
 
   test("версия чужой методики — 400 с понятной причиной, прохождения нет", async () => {
