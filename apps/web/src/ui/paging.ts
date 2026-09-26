@@ -55,3 +55,28 @@ export function pagesOf(loaded: number, total: number | null | undefined, hasMor
   if (total !== null && total !== undefined) return pageCount(total, per);
   return pageCount(loaded, per) + (hasMore ? 1 : 0);
 }
+
+/**
+ * Строка «показано не всё» над списком, который приезжает курсором.
+ *
+ * Список, обрезанный молча, выглядит полным — так реестр направлений терял
+ * двести первое направление, и никто этого не видел. Поэтому, пока за
+ * страницей есть продолжение, экран говорит об этом словами и называет, как
+ * добраться до остального. Общее число известно не всегда (сервер считает
+ * его только на первой странице), и без него строка говорит «перші N», а не
+ * выдумывает «з N».
+ *
+ * Функция чистая и получает перевод снаружи — чтобы проверяться без экрана.
+ */
+export function shownNote(
+  ut: (key: "lists.shownOf" | "lists.shownFirst") => string,
+  shown: number,
+  total: number | null | undefined,
+  hasMore: boolean,
+): string | null {
+  if (!hasMore) return null;
+  if (total !== null && total !== undefined && total > shown) {
+    return ut("lists.shownOf").replace("{shown}", String(shown)).replace("{total}", String(total));
+  }
+  return ut("lists.shownFirst").replace("{shown}", String(shown));
+}

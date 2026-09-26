@@ -319,7 +319,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   /* ── расписания ── */
 
   /* ── приглашения и киоск ── */
-  "GET /api/invites": { summary: "Приглашения", access: "staff", permission: "invites.manage" },
+  "GET /api/invites": { summary: "Приглашения, свежие сверху — страница `{items, nextCursor}`: `?limit=` (100, не больше 200), `?cursor=`", access: "staff", permission: "invites.manage" },
   "POST /api/invites": { summary: "Создание приглашения", access: "staff", permission: "invites.manage", body: createInviteSchema },
   "POST /api/invites/:id/revoke": { summary: "Отзыв приглашения", access: "staff", permission: "invites.manage" },
   "GET /api/invites/preview/:token": { summary: "Что даёт приглашение — до регистрации", access: "public" },
@@ -376,7 +376,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff", permission: "alerts.review" },
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
   "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке", access: "staff", permission: "alerts.review" },
-  "GET /api/referrals": { summary: "Направления; ?all=1 — вместе с завершёнными", access: "staff", permission: "referrals.manage" },
+  "GET /api/referrals": { summary: "Направления, свежие сверху; ?all=1 — вместе с завершёнными. Страница `{items, nextCursor, truncated, total}`: `?limit=` (100, не больше 200), `?cursor=`; total — на первой странице", access: "staff", permission: "referrals.manage" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", permission: "referrals.manage", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },
   "GET /api/referrals/summary/:userId": { summary: "Сводка для консилиума", access: "staff", permission: "referrals.manage" },
@@ -416,7 +416,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   },
   "GET /api/analytics/surveys/:id": { summary: "Аналитика методики: распределения, психометрика, воронка", access: "staff", permission: "analytics.read" },
   "GET /api/analytics/surveys/:id/export": { summary: "Выгрузка прохождений методики", access: "staff", permission: "export.full" },
-  "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами", access: "staff", permission: "patients.read" },
+  "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами — страница `{items, nextCursor, total}` по человеку, а не по замеру: `?limit=` (50, не больше 200), `?cursor=`, `?search=`", access: "staff", permission: "patients.read" },
   "GET /api/dynamics/respondents/:userId": {
     summary: "Динамика обследуемого с метками RCI; ?survey=<id> — только одна методика",
     access: "staff",
@@ -435,7 +435,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/spss/surveys/:id/long.csv": { summary: "Данные в длинном формате для R и Python", access: "staff", permission: "export.deidentified" },
 
   /* ── администрирование ── */
-  "GET /api/users": { summary: "Учётные записи; `?directory=1` — только сотрудники, с профилем приёма и телефоном, чтение в журнал (user.list, phones)", access: "superadmin", permission: "users.manage" },
+  "GET /api/users": { summary: "Учётные записи, свежие сверху — страница `{items, nextCursor}`: `?limit=` (100, не больше 500), `?cursor=`, `?staff=1` — без пациентов; `?directory=1` — только сотрудники целиком, с профилем приёма и телефоном, чтение в журнал (user.list, phones)", access: "superadmin", permission: "users.manage" },
   "POST /api/users": { summary: "Создание учётной записи", access: "superadmin", permission: "users.manage", body: createUserSchema },
   "PATCH /api/users/:id/role": { summary: "Смена роли", access: "superadmin", permission: "users.manage" },
   "GET /api/audit": { summary: "Журнал доступа: отбор по тому, кто, над кем, действию, типу ресурса, исходу, периоду и тексту; страницы курсором или смещением", access: "superadmin", permission: "audit.read" },

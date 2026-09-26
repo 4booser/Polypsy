@@ -1,12 +1,14 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   ageAt,
   createReferralSchema,
+  referralListQuery,
   reliableChange,
   t,
   updateReferralSchema,
   type CaseSummary,
+  type Page,
   type Referral,
   type ScaleNormalization,
   type Severity,
@@ -24,9 +26,10 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
-import { badRequest, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round, variance } from "../lib/stats";
 import { accessiblePatientIds, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -73,27 +76,54 @@ async function serialize(rows: (typeof referrals.$inferSelect)[]): Promise<Refer
   }));
 }
 
-/** Направления в зоне ответственности: открытые сверху */
+/**
+ * Реестр направлений: свежие сверху, страницами (`?limit=&cursor=`).
+ *
+ * Признак усечения — то, ради чего список отдаётся объектом, а не массивом:
+ * двести первое направление когда-то просто исчезало, и экран выглядел
+ * полным. Потом про обрыв стали говорить (`truncated`), но дальше двухсотого
+ * всё равно было не пройти: экран советовал «сузить выборку» переключателем,
+ * который её расширяет, а незакрытых направлений может быть и больше двухсот.
+ * Теперь за страницей есть курсор, и экран дозагружает следующую.
+ *
+ * Общее число — на первой странице, как у очереди случаев: по нему стоит
+ * счётчик в навигации, и считать его длиной страницы значило бы показать
+ * «100», когда ждут ответа сто сорок.
+ */
 referralRoutes.get("/", async (c) => {
-  const all = c.req.query("all") === "1";
-  const LIMIT = 200;
+  const { all, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
+  const cursor = decodeExactCursor(rawCursor);
+  const filter = all ? undefined : ne(referrals.status, "completed");
+
   const rows = await db
-    .select()
+    .select({ r: referrals, at: exactAt(referrals.createdAt) })
     .from(referrals)
-    .where(all ? undefined : ne(referrals.status, "completed"))
-    .orderBy(desc(referrals.createdAt))
-    .limit(LIMIT + 1);
+    .where(and(filter, afterCursor(referrals.createdAt, referrals.id, cursor)))
+    /* идентификатор вторым ключом: направления одной вставки делят одно время */
+    .orderBy(desc(referrals.createdAt), desc(referrals.id))
+    .limit(limit + 1);
 
-  /*
-   * Признак усечения — то, ради чего список отдаётся объектом, а не массивом.
-   * Раньше двести первое направление просто исчезало, и экран выглядел
-   * полным. Теперь про обрыв сказано, и это видно в интерфейсе.
-   */
-  const truncated = rows.length > LIMIT;
-  const page = truncated ? rows.slice(0, LIMIT) : rows;
+  const truncated = rows.length > limit;
+  const page = rows.slice(0, limit);
 
-  await audit(c, { action: "referral.list", details: { count: page.length, all, truncated } });
-  return c.json({ items: await serialize(page), truncated });
+  let total: number | undefined;
+  if (!cursor) {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(referrals).where(filter);
+    total = Number(row?.n ?? 0);
+  }
+
+  await audit(c, {
+    action: "referral.list",
+    details: { count: page.length, all, truncated, ...(cursor ? { page: "next" } : {}) },
+  });
+
+  const last = page[page.length - 1];
+  return c.json({
+    items: await serialize(page.map((p) => p.r)),
+    nextCursor: truncated && last ? encodeCursor(last.at, last.r.id) : null,
+    truncated,
+    total,
+  } satisfies Page<Referral>);
 });
 
 referralRoutes.post("/", async (c) => {

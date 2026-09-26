@@ -776,7 +776,13 @@ export const api = {
   cancelAssignment: (assignmentId: string) =>
     request<{ ok: true }>(`/api/batteries/assignments/${assignmentId}/cancel`, { method: "POST" }),
 
-  invites: () => unwrap(request<Items<Invite>>("/api/invites")),
+  /*
+   * Выписанные приглашения — страницей по сотне, свежие сверху; следующая —
+   * по nextCursor. Первая страница спрашивается тем же адресом, что и
+   * прежний «весь список».
+   */
+  invites: (cursor?: string | null) =>
+    request<Page<Invite>>(`/api/invites${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`),
   createInvite: (input: CreateInviteInput) =>
     request<{ id: string; token: string; code: string }>("/api/invites", {
       method: "POST",
@@ -952,8 +958,18 @@ export const api = {
   openapi: () => request<OpenApiSpec>("/api/openapi.json"),
   downloadOpenapi: () => download("/api/openapi.json", "openapi.json"),
 
-  referrals: (all = false) =>
-    request<Items<Referral> & { truncated: boolean }>(`/api/referrals${all ? "?all=1" : ""}`),
+  /*
+   * Реестр направлений — страницей по сотне. `total` приходит на первой
+   * странице: по нему стоит счётчик в навигации. Адрес первой страницы —
+   * прежний (`/api/referrals`, `?all=1`): его же спрашивает счётчик.
+   */
+  referrals: (all = false, cursor?: string | null) => {
+    const qs = new URLSearchParams();
+    if (all) qs.set("all", "1");
+    if (cursor) qs.set("cursor", cursor);
+    const tail = qs.toString();
+    return request<Page<Referral>>(`/api/referrals${tail ? `?${tail}` : ""}`);
+  },
   createReferral: (input: CreateReferralInput) =>
     request<Referral>("/api/referrals", { method: "POST", body: JSON.stringify(input) }),
   updateReferral: (id: string, status: string, outcomeNote?: string) =>
@@ -1353,7 +1369,18 @@ export const api = {
     );
   },
 
-  users: () => unwrap(request<Items<User>>("/api/users")),
+  /*
+   * Учётные записи — страницей (по умолчанию сто, не больше пятисот);
+   * `staff` — без пациентов, отбор на сервере.
+   */
+  users: (query: { staff?: boolean; limit?: number; cursor?: string | null } = {}) => {
+    const qs = new URLSearchParams();
+    if (query.staff) qs.set("staff", "1");
+    if (query.limit) qs.set("limit", String(query.limit));
+    if (query.cursor) qs.set("cursor", query.cursor);
+    const tail = qs.toString();
+    return request<Page<User>>(`/api/users${tail ? `?${tail}` : ""}`);
+  },
   /* справочник сотрудников: без пациентов, с профилем приёма и телефоном; чтение в журнале */
   staffDirectory: () => unwrap(request<Items<StaffDirectoryUser>>("/api/users?directory=1")),
   createUser: (input: CreateUserInput) =>

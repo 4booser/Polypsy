@@ -31,8 +31,15 @@ import { SMALL_CELL_FLOOR, suppress } from "./privacy";
  *
  * Чистые функции без базы: сценарии «последний замер легче первого»,
  * «WHO-5 низкий — значит клинический», «одна тяжёлая в маленькой группе»
- * проверяются на массивах (apps/api/test/dashboardConditions.test.ts), а
- * маршрут только выбирает строки.
+ * проверяются на массивах (apps/api/test/dashboardConditions.test.ts).
+ *
+ * Счёт — в базе (волна 12): маршрут прежде выбирал по строке на человека и
+ * шкалу, а на каждого человека ещё и его худшую ступень, и складывал их
+ * здесь — тысячи строк в память ради семи раскладок и среднего. Теперь база
+ * отдаёт готовые счётчики (DomainAggregate), а здесь остаются порог малых
+ * ячеек, выбор основной методики и полярность — то, что и есть смысл сводки.
+ * Прежний подсчёт по строкам (aggregateDomain) оставлен как образец: на нём
+ * проверка сверяет, что числа при переезде не сдвинулись.
  */
 
 export interface DomainSource {
@@ -209,7 +216,42 @@ export interface SummaryInput {
 }
 
 /**
- * Одно направление из последних замеров.
+ * Одна шкала одной методики внутри направления — уже свёрнутая.
+ *
+ * `people` — сколько людей замерено ею за период (по последнему замеру
+ * каждого), `mean` — несглаженное среднее их процентов: округление — дело
+ * сводки, а не свёртки, иначе среднее двух путей расходилось бы на единицу.
+ */
+export interface SourceAggregate {
+  surveyId: string;
+  code: string;
+  /** Место источника в списке направления: при равенстве людей выше — главнее */
+  order: number;
+  people: number;
+  mean: number | null;
+}
+
+/**
+ * Направление, свёрнутое до счётчиков: всё, что нужно сводке, и ничего
+ * поимённого.
+ *
+ * Эту форму отдаёт база (routes/dashboard.ts), и её же строит
+ * aggregateDomain из строк замеров. Два пути к одной форме — не
+ * дублирование, а способ проверки: маршрут считает в SQL, чтобы не тянуть в
+ * память по строке на человека и шкалу, а проверка сверяет его ответ с
+ * прежним подсчётом по строкам на одних и тех же данных
+ * (apps/api/test/dashboardConditions.test.ts).
+ */
+export interface DomainAggregate {
+  /** Людей с хотя бы одним замером направления */
+  people: number;
+  /** Раскладка по последнему замеру С ПОЛОСОЙ каждого человека */
+  counts: Record<Severity, number>;
+  sources: SourceAggregate[];
+}
+
+/**
+ * Свёртка направления из последних замеров — прежний подсчёт в приложении.
  *
  * Для раскладки по ступеням берётся последний замер человека С ПОЛОСОЙ среди
  * всех методик направления: если последним был DASS-42 без полос, а неделей
@@ -220,13 +262,12 @@ export interface SummaryInput {
  * Средний балл — по основной методике, по последнему замеру каждого
  * человека именно ею.
  */
-export function summarizeDomain(def: DomainDef, input: SummaryInput): ConditionSummary {
+export function aggregateDomain(def: DomainDef, rows: readonly Measurement[]): DomainAggregate {
   const wanted = new Map(def.sources.map((s, i) => [sourceKey(s.catalogKey, s.code), i]));
-  const rows = input.rows.filter((r) => wanted.has(sourceKey(r.catalogKey, r.code)));
+  const own = rows.filter((r) => wanted.has(sourceKey(r.catalogKey, r.code)));
 
   const byUser = new Map<string, Measurement[]>();
-  for (const r of rows) byUser.set(r.userId, [...(byUser.get(r.userId) ?? []), r]);
-  const people = byUser.size;
+  for (const r of own) byUser.set(r.userId, [...(byUser.get(r.userId) ?? []), r]);
 
   const counts: Record<Severity, number> = { none: 0, mild: 0, moderate: 0, severe: 0 };
   for (const list of byUser.values()) {
@@ -234,32 +275,68 @@ export function summarizeDomain(def: DomainDef, input: SummaryInput): ConditionS
     if (last?.severity) counts[last.severity] += 1;
   }
 
-  /* основная методика: больше людей, при равенстве — выше в списке источников */
-  const bySource = new Map<string, { surveyId: string; code: string; order: number; rows: Measurement[] }>();
-  for (const r of rows) {
+  const bySource = new Map<string, { surveyId: string; code: string; order: number; sum: number; n: number }>();
+  for (const r of own) {
     const k = `${r.surveyId}:${r.code}`;
     const entry = bySource.get(k) ?? {
       surveyId: r.surveyId,
       code: r.code,
       order: wanted.get(sourceKey(r.catalogKey, r.code)) ?? 99,
-      rows: [],
+      sum: 0,
+      n: 0,
     };
-    entry.rows.push(r);
+    entry.sum += r.percent;
+    entry.n += 1;
     bySource.set(k, entry);
   }
-  const ranked = [...bySource.values()].sort((a, b) => b.rows.length - a.rows.length || a.order - b.order);
+
+  return {
+    people: byUser.size,
+    counts,
+    sources: [...bySource.values()].map((s) => ({
+      surveyId: s.surveyId,
+      code: s.code,
+      order: s.order,
+      people: s.n,
+      mean: s.n ? s.sum / s.n : null,
+    })),
+  };
+}
+
+/**
+ * Сводка направления из свёртки: порог малых ячеек, основная методика, ход.
+ *
+ * Основная — та, которой замерено больше людей; при равенстве — стоящая
+ * раньше в списке направления; при полном равенстве (одна и та же методика
+ * каталога установлена дважды, в две группы, и замерила поровну) — по
+ * идентификатору методики. Последнее правило введено вместе с переносом
+ * счёта в базу: раньше такую ничью решал порядок строк выборки, то есть
+ * случай, и один и тот же экран мог назвать основной то одну копию, то
+ * другую.
+ */
+export function summarizeAggregate(
+  def: DomainDef,
+  agg: DomainAggregate,
+  input: Pick<SummaryInput, "titleOf" | "weekly">,
+): ConditionSummary {
+  const people = agg.people;
+  const ranked = [...agg.sources].sort(
+    (a, b) =>
+      b.people - a.people ||
+      a.order - b.order ||
+      (a.surveyId < b.surveyId ? -1 : a.surveyId > b.surveyId ? 1 : 0) ||
+      (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
+  );
   const head = ranked[0] ?? null;
 
   const tooFew = people > 0 && suppress(people) === null;
-  const mean = (list: readonly Measurement[]) =>
-    list.length ? Math.round(list.reduce((s, m) => s + m.percent, 0) / list.length) : null;
 
   const primary = head
     ? {
         surveyId: head.surveyId,
         title: input.titleOf(head.surveyId),
-        people: suppress(head.rows.length),
-        meanPercent: suppress(head.rows.length) === null ? null : mean(head.rows),
+        people: suppress(head.people),
+        meanPercent: suppress(head.people) === null || head.mean === null ? null : Math.round(head.mean),
       }
     : null;
 
@@ -281,11 +358,16 @@ export function summarizeDomain(def: DomainDef, input: SummaryInput): ConditionS
      */
     spread: tooFew
       ? { banded: null, clinical: { count: null, percent: null }, bands: { none: null, mild: null, moderate: null, severe: null } }
-      : spreadOf(counts),
+      : spreadOf(agg.counts),
     primary: tooFew && primary ? { ...primary, people: null, meanPercent: null } : primary,
     weeks: tooFew ? weeks.map((w) => ({ ...w, meanPercent: null })) : weeks,
     sources: ranked.map((s) => ({ surveyId: s.surveyId, title: input.titleOf(s.surveyId) })),
   };
+}
+
+/** Одно направление из последних замеров: свёртка в приложении и та же сводка */
+export function summarizeDomain(def: DomainDef, input: SummaryInput): ConditionSummary {
+  return summarizeAggregate(def, aggregateDomain(def, input.rows), input);
 }
 
 /**
@@ -300,7 +382,17 @@ export function summarizeDomain(def: DomainDef, input: SummaryInput): ConditionS
 export function overallSpread(worst: readonly (Severity | null)[]): { people: number | null; spread: BandSpread } {
   const counts: Record<Severity, number> = { none: 0, mild: 0, moderate: 0, severe: 0 };
   for (const s of worst) if (s) counts[s] += 1;
-  const people = worst.length;
+  return overallFromCounts(worst.length, counts);
+}
+
+/**
+ * То же из готовых счётчиков — так их отдаёт база: людей всего (включая тех,
+ * у кого ни одной полосы) и раскладка по самой тяжёлой ступени каждого.
+ */
+export function overallFromCounts(
+  people: number,
+  counts: Record<Severity, number>,
+): { people: number | null; spread: BandSpread } {
   if (people > 0 && suppress(people) === null) {
     return {
       people: null,

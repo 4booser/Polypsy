@@ -6854,11 +6854,6 @@ export const UI = {
   "pt.higherThanPct": { uk: "вище, ніж у", ru: "выше, чем у", en: "higher than" },
   "pt.reliable": { uk: "достовірний", ru: "достоверный", en: "reliable" },
   "ref.csvName": { uk: "направлення", ru: "направления", en: "referrals" },
-  "ref.truncatedHint": {
-    uk: "Показано перші 200 направлень — найсвіжіші. Щоб побачити інші, звузьте вибірку перемикачем вище.",
-    ru: "Показаны первые 200 направлений — самые свежие. Чтобы увидеть остальные, сузьте выборку переключателем выше.",
-    en: "Showing the first 200 referrals — the most recent ones. To see the rest, narrow the selection with the switch above.",
-  },
   "ui.buildFrom": { uk: "Складання від", ru: "Сборка от", en: "Build of" },
 
   /* строки, вычищенные из разметки: см. apps/web/test/uiStrings.test.ts */
@@ -7085,6 +7080,19 @@ export const UI = {
   "st.apply": { uk: "Застосувати", ru: "Применить", en: "Apply" },
   /* ── wave7:orgs ── */
   /* ── wave7:placement ── */
+
+  /* ── w12:lists ── */
+  "lists.shownOf": {
+    uk: "Показано {shown} з {total} — найсвіжіші. Решту відкриває «Показати ще» під списком.",
+    ru: "Показано {shown} из {total} — самые свежие. Остальные открывает «Показать ещё» под списком.",
+    en: "Showing {shown} of {total} — the most recent. “Show more” below the list opens the rest.",
+  },
+  "lists.shownFirst": {
+    uk: "Показано перші {shown} — найсвіжіші. Решту відкриває «Показати ще» під списком.",
+    ru: "Показаны первые {shown} — самые свежие. Остальные открывает «Показать ещё» под списком.",
+    en: "Showing the first {shown} — the most recent. “Show more” below the list opens the rest.",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

@@ -1,9 +1,17 @@
 import { Hono, type Context } from "hono";
-import { desc, eq, ne } from "drizzle-orm";
-import { createUserSchema, staffDirectoryQuery, type StaffDirectoryUser, type User } from "@quizzy/shared";
+import { and, desc, eq, ne } from "drizzle-orm";
+import {
+  createUserSchema,
+  staffDirectoryQuery,
+  userListQuery,
+  type Page,
+  type StaffDirectoryUser,
+  type User,
+} from "@quizzy/shared";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { decryptField, encryptPersonFields } from "../lib/crypto";
 import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
@@ -25,12 +33,38 @@ export const userRoutes = new Hono<AppEnv>();
  */
 userRoutes.use("*", requireAuth, requireStaff, requirePermission("users.manage"));
 
+/**
+ * Реестр учётных записей — страницами (`?limit=&cursor=`), свежие сверху.
+ *
+ * Прежде список отдавался целиком: каждый пациент учреждения, с
+ * расшифрованным ФИО, на каждое открытие экрана групп — которому из всего
+ * этого нужны были только сотрудники, и он отбрасывал остальных уже в
+ * браузере. `?staff=1` отбирает сотрудников в SQL; без него — все учётки, но
+ * по сотне. Справочник (`?directory=1`) — другой вопрос и прежний ответ:
+ * только сотрудники, целиком, их десятки.
+ */
 userRoutes.get("/", async (c) => {
   const { directory } = parseQuery(c, staffDirectoryQuery);
   if (directory) return c.json({ items: await staffDirectory(c) });
-  const rows = await db.select().from(users).orderBy(desc(users.createdAt));
-  await audit(c, { action: "user.list", details: { count: rows.length } });
-  return c.json({ items: rows.map(toPublicUser) satisfies User[] });
+
+  const { staff, limit, cursor: rawCursor } = parseQuery(c, userListQuery);
+  const cursor = decodeExactCursor(rawCursor);
+  const rows = await db
+    .select({ u: users, at: exactAt(users.createdAt) })
+    .from(users)
+    .where(and(staff ? ne(users.role, "user") : undefined, afterCursor(users.createdAt, users.id, cursor)))
+    .orderBy(desc(users.createdAt), desc(users.id))
+    .limit(limit + 1);
+
+  const more = rows.length > limit;
+  const page = rows.slice(0, limit);
+  await audit(c, { action: "user.list", details: { count: page.length, ...(staff ? { staff: true } : {}) } });
+
+  const last = page[page.length - 1];
+  return c.json({
+    items: page.map((r) => toPublicUser(r.u)),
+    nextCursor: more && last ? encodeCursor(last.at, last.u.id) : null,
+  } satisfies Page<User>);
 });
 
 /**
