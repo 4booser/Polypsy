@@ -54,12 +54,22 @@ describe("разделы меню", () => {
     expect(admin!.items.map((i) => i.to)).toContain("/permissions");
   });
 
-  test("суперадмину доступны и права, и учётные записи", () => {
-    const admin = railGroups(COUNTS, true, false).find((g) => g.key === "nav.admin");
+  test("суперадмину доступны и права, и техпанель", () => {
+    const admin = railGroups(COUNTS, true, false, [], true).find((g) => g.key === "nav.admin");
     const paths = admin!.items.map((i) => i.to);
     expect(paths).toContain("/permissions");
-    expect(paths).toContain("/users");
-    expect(paths).toContain("/audit");
+    expect(paths).toContain("/ops");
+  });
+
+  test("учётки и журнал — одной дверью: вкладками техпанели, а не пунктами меню", () => {
+    /*
+     * С волны 10 «Облікові записи» и «Журнал доступу» — вкладки техпанели,
+     * а их прежние адреса лишь перенаправляют. Два пункта меню на один экран
+     * — две двери, из которых одна однажды поведёт не туда.
+     */
+    const paths = railGroups(COUNTS, true, true, [], true).flatMap((g) => g.items.map((i) => i.to));
+    expect(paths).not.toContain("/users");
+    expect(paths).not.toContain("/audit");
   });
 
   test("ни один раздел не пуст", () => {

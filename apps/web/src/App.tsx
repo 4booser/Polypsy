@@ -13,6 +13,7 @@ import { PatientDynamics, PatientList } from "./pages/Patients";
 import { peopleLists } from "./pages/people/model";
 import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
+import { canOpenOps, opsHome } from "./pages/ops/model";
 
 /*
  * Экраны догружаются по требованию.
@@ -28,7 +29,6 @@ import { Loading, useAction } from "./ui";
 const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
 const Access = lazy(() => import("./pages/Access"));
 const Permissions = lazy(() => import("./pages/Permissions"));
-const Audit = lazy(() => import("./pages/Audit"));
 /* техпанель: оболочка и вкладки — каждая своим куском, панель тяжёлая и нужна немногим */
 const OpsPanel = lazy(() => import("./pages/ops"));
 const OpsOverview = lazy(() => import("./pages/ops/Overview"));
@@ -48,7 +48,6 @@ const Groups = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Grou
 /* группы ПАЦИЕНТОВ — раздел «Групи» верхней полосы; /groups выше — группы методик */
 const PatientGroups = lazy(() => import("./pages/patientGroups/PatientGroups"));
 const PatientGroupCard = lazy(() => import("./pages/patientGroups/PatientGroupCard"));
-const Users = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Users })));
 const Batteries = lazy(() => import("./pages/Batteries"));
 const BlankForm = lazy(() => import("./pages/BlankForm"));
 const Invites = lazy(() => import("./pages/Invites"));
@@ -60,6 +59,8 @@ const CaseCard = lazy(() => import("./pages/CaseCard"));
 const PatientCard = lazy(() => import("./pages/patientCard/PatientCard"));
 const Start = lazy(() => import("./pages/Start"));
 const Account = lazy(() => import("./pages/Account"));
+/* смена временного пароля, выданного техпанелью, — вместо рабочего места */
+const ForcePassword = lazy(() => import("./pages/ForcePassword"));
 /* кабинет пациента: отдельная оболочка, а не консоль с урезанным меню */
 const PatientApp = lazy(() => import("./patient/PatientApp"));
 const PatientHome = lazy(() => import("./patient/Home"));
@@ -468,6 +469,21 @@ export default function App() {
   }
 
   /*
+   * Временный пароль — сначала свой, потом работа (техпанель, волна 10).
+   *
+   * Раньше проверки класса учётки: пароль, выданный администратором, видел
+   * он сам, и это одинаково плохо и для врача, и для пациента. Экран один
+   * на обоих — ни консоли, ни кабинета до смены.
+   */
+  if (user.mustChangePassword) {
+    return (
+      <Suspense fallback={<Loading rows={3} />}>
+        <ForcePassword />
+      </Suspense>
+    );
+  }
+
+  /*
    * Пациент попадает в свой кабинет, а не в консоль специалиста.
    *
    * До этого он видел рельсу с «Пациентами», «Очередью работы» и «Случаями
@@ -814,7 +830,13 @@ export default function App() {
             разметка на месте, ошибок в консоли нет, а половина страницы
             недостижима.
           */}
-          {isSuper ? <Route path="/users" element={<Users />} /> : null}
+          {/*
+            Прежние «Облікові записи» — вкладка техпанели «Користувачі»: два
+            экрана одного назначения расходились бы в том, что умеют. Адрес
+            остаётся перенаправлением для закладок — тому, у кого есть право
+            вести учётки (им закрыт и сам список на сервере).
+          */}
+          {canManageUsers ? <Route path="/users" element={<Navigate to="/ops/users" replace />} /> : null}
           {/*
             Разделы «Лікарі» и «Адміністратори» — тем, кому есть кого назначать,
             и суперадмину: как и пункт меню. Заведение («/new») — по праву
@@ -840,19 +862,24 @@ export default function App() {
           </Route>
           <Route path="/permissions" element={<Permissions />} />
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
-          {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
+          {/* прежний «Журнал доступу» — вкладка «Аудит» техпанели; адрес — перенаправлением, по тому же праву */}
+          {can("audit.read") ? <Route path="/audit" element={<Navigate to="/ops/audit" replace />} /> : null}
           {/*
-            Техпанель — по праву ops.read (суперадмину оно есть всегда); вкладки
-            о людях — по своим правам, как и их пункты во вкладках панели.
+            Техпанель открыта, если есть хоть одно из ops.read, users.manage,
+            audit.read (canOpenOps в pages/ops/model.ts — то же правило решает
+            пункт бургера). Вкладки — каждая по своему праву; наблюдаемость —
+            ops.read. Кто открыл /ops без ops.read, уходит на первую доступную
+            вкладку: обзор системы ему не положен, а пустой экран хуже
+            перехода.
           */}
-          {can("ops.read") ? (
+          {canOpenOps(can, isSuper) ? (
             <Route path="/ops" element={<OpsPanel />}>
-              <Route index element={<OpsOverview />} />
-              <Route path="requests" element={<OpsRequests />} />
-              <Route path="errors" element={<OpsErrors />} />
-              <Route path="logs" element={<OpsLogs />} />
-              <Route path="db" element={<OpsDatabase />} />
-              <Route path="jobs" element={<OpsJobs />} />
+              <Route index element={can("ops.read") ? <OpsOverview /> : <Navigate to={opsHome(can, isSuper) ?? "/"} replace />} />
+              {can("ops.read") ? <Route path="requests" element={<OpsRequests />} /> : null}
+              {can("ops.read") ? <Route path="errors" element={<OpsErrors />} /> : null}
+              {can("ops.read") ? <Route path="logs" element={<OpsLogs />} /> : null}
+              {can("ops.read") ? <Route path="db" element={<OpsDatabase />} /> : null}
+              {can("ops.read") ? <Route path="jobs" element={<OpsJobs />} /> : null}
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}

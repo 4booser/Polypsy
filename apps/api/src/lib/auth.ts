@@ -139,6 +139,8 @@ export function toPublicUser(row: UserRow): User {
     locality: row.locality,
     role: row.role,
     readOnly: row.readOnly,
+    /* по нему консоль открывает смену пароля вместо рабочего места (техпанель, 0088) */
+    mustChangePassword: row.mustChangePassword,
     workspace: (row.workspace as never) ?? null,
     createdAt: row.createdAt,
   };

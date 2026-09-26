@@ -309,6 +309,63 @@ export const ERRORS = {
     ru: "Нельзя изменить собственную роль",
     en: "You can’t change your own role",
   },
+  /*
+   * Учётные записи в техпанели (волна 10). Выключение отвечает одним и тем
+   * же текстом на входе, на обновлении токена и на живом токене — веб и
+   * мобильное приложение показывают отказ сервера как есть, и человек в
+   * любом из них должен прочитать одно: учётку выключили, а не «сессия
+   * истекла» и не «неверный пароль».
+   */
+  "err.accountDisabled": {
+    uk: "Обліковий запис вимкнено. Зверніться до адміністратора",
+    ru: "Учётная запись отключена. Обратитесь к администратору",
+    en: "This account has been disabled. Please contact your administrator",
+  },
+  "err.cannotDisableSelf": {
+    uk: "Не можна вимкнути власний обліковий запис",
+    ru: "Нельзя отключить собственную учётную запись",
+    en: "You can’t disable your own account",
+  },
+  "err.cannotDeleteSelf": {
+    uk: "Не можна видалити власний обліковий запис",
+    ru: "Нельзя удалить собственную учётную запись",
+    en: "You can’t delete your own account",
+  },
+  "err.cannotResetOwnPassword": {
+    uk: "Власний пароль змінюють у розділі «Обліковий запис»",
+    ru: "Собственный пароль меняют в разделе «Учётная запись»",
+    en: "Change your own password in the “Account” section",
+  },
+  "err.lastSuperadmin": {
+    uk: "Це останній активний суперадміністратор — без нього системою не буде кому керувати",
+    ru: "Это последний активный суперадминистратор — без него системой некому будет управлять",
+    en: "This is the last active super administrator — without them nobody could manage the system",
+  },
+  "err.userAlreadyDisabled": {
+    uk: "Обліковий запис вже вимкнено",
+    ru: "Учётная запись уже отключена",
+    en: "The account is already disabled",
+  },
+  "err.userNotDisabled": {
+    uk: "Обліковий запис не вимкнено",
+    ru: "Учётная запись не отключена",
+    en: "The account isn’t disabled",
+  },
+  "err.userHasTrace": {
+    uk: "Обліковий запис не можна видалити — його тримають: {details}. Вимкніть його замість видалення",
+    ru: "Учётную запись нельзя удалить — её держат: {details}. Отключите её вместо удаления",
+    en: "The account can’t be deleted — it is held by: {details}. Disable it instead",
+  },
+  "err.userHeld": {
+    uk: "Обліковий запис тримають пов’язані записи в базі. Вимкніть його замість видалення",
+    ru: "Учётную запись держат связанные записи в базе. Отключите её вместо удаления",
+    en: "Related records in the database hold this account. Disable it instead",
+  },
+  "err.sessionNotFound": {
+    uk: "Сесію не знайдено або її вже завершено",
+    ru: "Сессия не найдена или уже завершена",
+    en: "The session wasn’t found or has already ended",
+  },
   "err.caseAlreadyHandled": {
     uk: "Випадок вже розібрано",
     ru: "Случай уже разобран",

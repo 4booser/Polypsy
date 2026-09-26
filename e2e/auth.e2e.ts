@@ -69,12 +69,13 @@ test.describe("вход в консоль", () => {
     await login(page, "psy");
     const asPsy = await openMenu(page);
     await expect(asPsy.getByText(/^Администрирование$/i)).toHaveCount(0);
-    await expect(asPsy.getByRole("link", { name: "Журнал доступа" })).toHaveCount(0);
+    /* журнал доступа живёт вкладкой техпанели (волна 10): граница — её пункт в меню */
+    await expect(asPsy.getByRole("link", { name: "Техпанель" })).toHaveCount(0);
 
     await logout(page);
     await login(page, "superadmin");
     const asRoot = await openMenu(page);
     await expect(asRoot.getByText(/^Администрирование$/i)).toBeVisible();
-    await expect(asRoot.getByRole("link", { name: "Журнал доступа" })).toBeVisible();
+    await expect(asRoot.getByRole("link", { name: "Техпанель" })).toBeVisible();
   });
 });

@@ -1433,8 +1433,12 @@ export function Tabs({ items, label }: { items: TabItem[]; label?: string }) {
            * различии по светлоте платить за это видом не за что.
            */
           aria-current="page"
-          /* цвета и кегль — в tabClass: у кнопки состояния они те же самые */
-          className={({ isActive }) => tabClass(isActive)}
+          /*
+           * цвета и кегль — в tabClass: у кнопки состояния они те же самые.
+           * Явный `active` сильнее совпадения адреса: вкладка-группа (техпанель)
+           * ведёт на первый раздел группы, а активна на любом из них.
+           */
+          className={({ isActive }) => tabClass(t.active ?? isActive)}
         >
           {t.label}
         </NavLink>

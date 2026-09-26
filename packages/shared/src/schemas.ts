@@ -155,6 +155,78 @@ export const createUserSchema = z.object({
   password: z.string().min(8).max(128),
   ...personNameSchema,
   role: roleSchema,
+  /**
+   * Пароль временный: при первом входе консоль требует сменить его.
+   *
+   * Техпанель (/ops/users) заводит учётку с паролем, который генерирует сама
+   * и показывает один раз, — его видел тот, кто заводил, и жить с ним
+   * человеку незачем. Необязательно и по умолчанию «нет»: прежняя форма
+   * заведения (раздел «Лікарі») задаёт пароль, выбранный вместе с человеком.
+   */
+  mustChangePassword: z.boolean().optional(),
+});
+
+/* ─────────────── техпанель: учётные записи ─────────────── */
+
+/**
+ * Список ВСЕХ учётных записей техпанели (GET /api/ops/users).
+ *
+ * Страницы — offset-ные и считаются в приложении после расшифровки, как у
+ * списка пациентов: ФИО шифровано, упорядочить и найти его в SQL нечем.
+ * Поиск — по ФИО, почте и телефону (телефон — слепым индексом, см. маршрут).
+ * Роль и состояние — закрытыми списками: опечатка в `?status=disabld`
+ * должна давать отказ, а не молча весь реестр.
+ */
+export const opsUserListQuery = z.object({
+  q: z
+    .string()
+    .max(120)
+    .optional()
+    .transform((v) => (v ?? "").trim().toLowerCase()),
+  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  status: z.enum(["active", "disabled"]).optional(),
+  sort: z.enum(["name", "created", "lastSeen", "role"]).optional().default("name"),
+  page: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? 1 : Number(v)))
+    .pipe(z.number().int().min(1).max(100_000)),
+  per: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? 20 : Number(v)))
+    .pipe(z.number().int().min(1).max(100)),
+});
+
+/**
+ * Выключение учётной записи — с причиной словами.
+ *
+ * Причина обязательна по той же причине, что у личного исключения прав:
+ * через год «кто и зачем выключил врача» разбирают по журналу, и «—» там
+ * ничего не объясняет.
+ */
+export const disableUserSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+});
+
+/** Активные сессии (GET /api/ops/sessions): по человеку или поиском, страницами */
+export const opsSessionQuery = z.object({
+  userId: z.string().uuid().optional(),
+  q: z
+    .string()
+    .max(120)
+    .optional()
+    .transform((v) => (v ?? "").trim().toLowerCase()),
+  page: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? 1 : Number(v)))
+    .pipe(z.number().int().min(1).max(100_000)),
+  per: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? 20 : Number(v)))
+    .pipe(z.number().int().min(1).max(100)),
 });
 
 /**
@@ -958,12 +1030,29 @@ export const surveyAnalyticsQuery = dateRangeQuery.extend({
   patientGroup: z.string().uuid().optional(),
 });
 
+/**
+ * Отбор журнала.
+ *
+ * `actorId`/`subjectUserId` — прежние точные фильтры по идентификатору, их
+ * зовут тесты и старые ссылки. Техпанель (волна 10) добавила то, чего
+ * разбирающему не хватало: `actor` и `subject` — идентификатор ИЛИ кусок
+ * почты (человек помнит почту, а не uuid), тип ресурса, исход, свободный
+ * текст по действию, ресурсу и подробностям, и курсор вместо смещения —
+ * журнал растёт сверху, и смещение на второй странице повторяло бы строки,
+ * записанные, пока человек читал первую.
+ */
 export const auditQuery = dateRangeQuery.extend({
   limit: queryInt(1, 500, 100),
   offset: queryInt(0, 1_000_000, 0),
   action: z.string().max(64).optional(),
   actorId: z.string().uuid().optional(),
   subjectUserId: z.string().uuid().optional(),
+  actor: z.string().trim().max(200).optional(),
+  subject: z.string().trim().max(200).optional(),
+  resourceType: z.string().trim().max(64).optional(),
+  outcome: z.enum(["success", "denied", "error"]).optional(),
+  q: z.string().trim().max(200).optional(),
+  cursor: z.string().max(400).optional(),
 });
 
 export const exportQuery = z.object({

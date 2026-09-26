@@ -47,7 +47,7 @@ export async function issuePair(user: { id: string; role: "superadmin" | "admin"
 
 export type RefreshOutcome =
   | { ok: true; pair: IssuedPair; userId: string }
-  | { ok: false; reason: "unknown" | "expired" | "revoked" | "reused"; userId?: string };
+  | { ok: false; reason: "unknown" | "expired" | "revoked" | "reused" | "disabled"; userId?: string };
 
 /** Обмен refresh-токена на новую пару с ротацией */
 /**
@@ -77,6 +77,18 @@ export async function rotateRefresh(raw: string): Promise<RefreshOutcome> {
   });
   if (!row) return { ok: false, reason: "unknown" };
 
+  /*
+   * Выключенная учётка — раньше всех прочих причин (техпанель, 0088).
+   *
+   * Выключение гасит все семьи, так что без этой строки обмен всё равно
+   * отказал бы — но словами «сессия истекла», и мобильное приложение
+   * показывало бы человеку предложение войти заново, а вход отвечал бы уже
+   * другим текстом. Причина одна, и назвать её надо одинаково везде.
+   * Раскрывать тут нечего: токен предъявил тот, кто в эту учётку входил.
+   */
+  const owner = await db.query.users.findFirst({ where: eq(users.id, row.userId) });
+  if (owner?.disabledAt) return { ok: false, reason: "disabled", userId: row.userId };
+
   if (row.revokedAt) return { ok: false, reason: "revoked", userId: row.userId };
 
   if (row.rotatedAt) {
@@ -92,7 +104,7 @@ export async function rotateRefresh(raw: string): Promise<RefreshOutcome> {
     return { ok: false, reason: "expired", userId: row.userId };
   }
 
-  const user = await db.query.users.findFirst({ where: eq(users.id, row.userId) });
+  const user = owner;
   if (!user) return { ok: false, reason: "unknown" };
 
   const nextRaw = newRawToken();
@@ -181,6 +193,30 @@ export async function revokeByToken(raw: string): Promise<void> {
    * его семья не отозвана. Для того, кто вышел, — ровно то, что он просил.
    */
   await invalidateAccessTokens(row.userId);
+}
+
+/**
+ * Отзыв одной сессии — семьи — по её идентификатору (техпанель, «Сесії»).
+ *
+ * Та же пара действий, что у выхода: семья гасится, граница access-токенов
+ * сдвигается. Сдвиг задевает и остальные сессии человека, но им это стоит
+ * одной 401 и незаметного обмена refresh — их семьи живы. Без сдвига
+ * «завершённая» сессия ещё до получаса открывала бы карты тем, что у неё уже
+ * на руках, а завершают сессию обычно ровно тогда, когда подозревают чужие
+ * руки.
+ *
+ * Возвращает владельца семьи или null, если живой семьи с таким
+ * идентификатором нет.
+ */
+export async function revokeFamily(familyId: string): Promise<string | null> {
+  const rows = await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date().toISOString() })
+    .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)))
+    .returning({ userId: refreshTokens.userId });
+  const userId = rows[0]?.userId ?? null;
+  if (userId) await invalidateAccessTokens(userId);
+  return userId;
 }
 
 /** Отзыв всех сессий пользователя: смена пароля, смена роли, блокировка */

@@ -8,6 +8,7 @@ import { Button, Tag } from "../ui/primitives";
 import { EventCenter } from "./EventCenter";
 import { LangMenu } from "./LangMenu";
 import { railGroups, type RailCounts } from "./Rail";
+import { canOpenOps } from "../pages/ops/model";
 
 /*
  * Верхнее меню вместо боковой рельсы — раскладка заказчика, один в один.
@@ -485,7 +486,8 @@ export function Topbar({
               counts={counts}
               isSuper={isSuper}
               canAssign={canAssign}
-              canOps={can?.("ops.read") ?? false}
+              /* техпанель — любому из ops.read / users.manage / audit.read: то же правило, что у маршрута (pages/ops/model.ts) */
+              canOps={can ? canOpenOps(can, isSuper) : false}
               hidden={hidden}
               opener={burgerRef}
               onSearch={onSearch}
@@ -679,7 +681,7 @@ function MoreMenu({
   counts: RailCounts;
   isSuper: boolean;
   canAssign: boolean;
-  /** Право ops.read: пункт «Техпанель» в администрировании */
+  /** Пункт «Техпанель» в администрировании: есть хоть одно право её вкладок */
   canOps?: boolean;
   hidden?: string[];
   /** Пункты полосы — те же, что показаны вверху: на узком экране они повторяются здесь */
