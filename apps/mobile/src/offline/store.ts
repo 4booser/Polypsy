@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { StoreWriteError } from "./writeError";
 
 /**
  * JSON-хранилище офлайн-слоя.
@@ -11,6 +12,11 @@ import { Platform } from "react-native";
 
 interface JsonStore {
   read<T>(name: string): T | null;
+  /**
+   * Бросает StoreWriteError, если запись не легла. Глотать отказ здесь
+   * нельзя: хранилище не знает, кэш ему дали или единственную копию ответов,
+   * — решает вызывающий (см. writeError.ts).
+   */
   write(name: string, value: unknown): void;
   remove(name: string): void;
   /** Имена записей с данным префиксом */
@@ -32,8 +38,12 @@ function webStore(): JsonStore {
     write(name, value) {
       try {
         localStorage.setItem(`${PREFIX}:${name}`, JSON.stringify(value));
-      } catch {
-        /* квота — офлайн-слой деградирует молча, сеть остаётся основным путём */
+      } catch (error) {
+        /*
+         * Квота. Раньше здесь офлайн-слой «деградировал молча» — и молча же
+         * терял сдачу, которую очередь считала сохранённой.
+         */
+        throw new StoreWriteError(name, error);
       }
     },
     remove(name) {
@@ -100,6 +110,8 @@ function nativeStore(): JsonStore {
           /* мусорный временный файл переживём */
         }
         console.warn("offline store: запись не удалась", name, error);
+        // вызывающий обязан узнать: для него это не кэш, а, может быть, единственная копия ответов
+        throw new StoreWriteError(name, error);
       }
     },
     remove(name) {

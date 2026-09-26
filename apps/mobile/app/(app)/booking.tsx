@@ -64,7 +64,12 @@ export default function BookingScreen() {
           { text: ut("bk.screeningLater"), style: "cancel", onPress: () => router.replace("/home") },
           {
             text: ut("bk.screeningStart"),
-            onPress: () => router.replace(`/survey/${res.screeningSurveyId}`),
+            /*
+             * Поверх вкладок, а не вместо них: замена оставляла прохождение
+             * единственным экраном приложения — без стрелки «назад», и выйти
+             * из скрининга, не пройдя его до конца, было нельзя.
+             */
+            onPress: () => router.push(`/survey/${res.screeningSurveyId}`),
           },
         ]);
       } else {

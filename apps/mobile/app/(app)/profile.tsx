@@ -5,6 +5,7 @@ import { LANGS, LANG_NAMES, ageAt, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { authenticate, isAvailable, isEnabled, setEnabled as setBiometrics } from "@/auth/biometrics";
 import { useAuth } from "@/auth/AuthContext";
+import { logoutNotice, type LogoutLine } from "@/offline/logout";
 import { API_URL } from "@/config";
 import { Body, Button, Card, Chip, Divider, ErrorText, Field, Row, Title } from "@/components/ui";
 import { LineChart } from "@/components/viz/LineChart";
@@ -78,16 +79,29 @@ export default function AccountScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  async function onLogout() {
-    // непустая очередь = несданные ответы; выход стёр бы контекст их отправки
-    if (api.pendingCount() > 0) {
-      // строка уже есть в словаре на обоих языках; ветвление по языку в
-      // разметке означало два текста, из которых правят обычно один
-      setError(ut("mp.unsentAnswers"));
-      return;
-    }
+  /*
+   * Выход разрешён всегда. Раньше с непустой очередью он запрещался — и на
+   * общем планшете это запирало двоих: выходящий ждал сети, следующий ждал
+   * его. Неотправленное остаётся за владельцем до его следующего входа
+   * (offline/queue.ts); перед выходом человеку говорят, сколько его ответов
+   * остаётся здесь, и выходит он вторым нажатием. Подтверждение — карточкой
+   * на экране, а не системным окном: в веб-сборке Alert не показывается, и
+   * кнопка выхода там перестала бы работать вовсе.
+   */
+  const [leaving, setLeaving] = useState<LogoutLine[] | null>(null);
+
+  async function doLogout() {
     await logout();
     router.replace("/login");
+  }
+
+  async function onLogout() {
+    const notice = logoutNotice(api.unsentOfMine());
+    if (notice) {
+      setLeaving(notice);
+      return;
+    }
+    await doLogout();
   }
 
   return (
@@ -253,7 +267,19 @@ export default function AccountScreen() {
         <Body>{API_URL}</Body>
       </Card>
 
-      <Button title={ut("auth.logout")} onPress={onLogout} variant="danger" />
+      {leaving ? (
+        <Card style={{ borderColor: severityColor.mild, borderWidth: 1 }}>
+          {leaving.map((line) => (
+            <Body key={line.key}>{ut(line.key).replace("{n}", String(line.n))}</Body>
+          ))}
+          <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+            <Button title={ut("mp.logoutAnyway")} onPress={() => void doLogout()} variant="danger" />
+            <Button title={ut("common.cancel")} onPress={() => setLeaving(null)} variant="secondary" />
+          </View>
+        </Card>
+      ) : (
+        <Button title={ut("auth.logout")} onPress={onLogout} variant="danger" />
+      )}
     </ScrollView>
   );
 }

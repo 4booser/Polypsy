@@ -15,6 +15,8 @@ import { useScreenTelemetry } from "@/telemetry/screens";
 import { API_URL } from "@/config";
 import { tokenStorage } from "@/storage";
 import { createMobileTelemetry, type ErrorUtilsLike } from "@/telemetry";
+import { dropLegacyCache } from "@/offline/cache";
+import { ExitHeaderButton, useHardwareBackFallback } from "@/nav/useExit";
 
 /*
  * Ошибки приложения — в «Помилки клієнта» техпанели (src/telemetry.ts).
@@ -47,6 +49,17 @@ export default function RootLayout() {
    */
   useEffect(() => {
     /*
+     * Кэш под общими ключами от версии без владельца — чей он, не узнать, и
+     * показывать его нельзя никому (offline/cache.ts, dropLegacyCache).
+     * Стирается до первого прогона; очередь сдач он не трогает.
+     */
+    try {
+      dropLegacyCache();
+    } catch {
+      /* не стёрлось — не прочитается всё равно: новые ключи под владельцем */
+    }
+
+    /*
      * Отметка устройства идёт вместе с прогоном очереди: оба нужны ровно
      * тогда, когда появилась сеть. Если сервер просит стереть локальные
      * данные — приложение стирает их и выходит из учётной записи.
@@ -54,6 +67,8 @@ export default function RootLayout() {
     const sync = () => {
       void api.deviceCheckin(null).catch(() => {});
       void api.flushQueue().catch(() => {});
+      // отзыв сессий, из которых вышли без сети (auth/session.ts)
+      void api.flushRevocations();
     };
 
     sync();
@@ -93,6 +108,16 @@ function RootStack() {
   const c = useColors();
   // какие экраны открывают — шаблоном маршрута, без людей и адресов (src/telemetry)
   useScreenTelemetry();
+  // кнопка «назад» на Android там, где стеку возвращаться некуда (src/nav/exits.ts)
+  useHardwareBackFallback();
+  /*
+   * Экран, открытый первым (по ссылке, после замены), остаётся без
+   * системной стрелки — слева тогда встаёт «Закрити» на запасное место. Есть
+   * куда вернуться — кнопки нет, работает обычная стрелка.
+   */
+  const closeIfAlone = ({ canGoBack }: { canGoBack?: boolean }) => (
+    <ExitHeaderButton canGoBack={!!canGoBack} label={ut("common.close")} />
+  );
   return (
     <Stack
       screenOptions={{
@@ -102,6 +127,11 @@ function RootStack() {
         headerTitleStyle: { color: c.text },
         headerTintColor: c.primary,
         contentStyle: { backgroundColor: c.bg },
+        /*
+         * Подпись стрелки на iOS — имя предыдущего экрана, а у группы
+         * вкладок его нет: стрелка читалась «‹ (app)».
+         */
+        headerBackTitle: ut("common.back"),
       }}
     >
       <Stack.Screen name="index" />
@@ -109,7 +139,20 @@ function RootStack() {
       <Stack.Screen name="register" />
       <Stack.Screen name="consent" />
       <Stack.Screen name="(app)" />
-      <Stack.Screen name="survey/[id]" options={{ headerShown: true, title: ut("mnav.instrument") }} />
+      <Stack.Screen
+        name="survey/[id]"
+        options={{ headerShown: true, title: ut("mnav.instrument"), headerLeft: closeIfAlone }}
+      />
+      {/*
+        Карта пациента в обходе не была объявлена здесь и наследовала
+        headerShown: false — без шапки и без стрелки. На Android выручала
+        системная кнопка, на iPhone оставался только жест от края, о котором
+        никто не знает. Заголовок экран ставит сам (имя пациента).
+      */}
+      <Stack.Screen
+        name="rounds/[userId]"
+        options={{ headerShown: true, title: ut("rounds.title"), headerLeft: closeIfAlone }}
+      />
       <Stack.Screen name="analytics" />
     </Stack>
   );

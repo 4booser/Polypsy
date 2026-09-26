@@ -4,6 +4,7 @@ import { useSegments } from "expo-router";
 import { ScreenBatch } from "@quizzy/shared";
 import { api } from "../api/client";
 import { cache } from "../offline/cache";
+import { activeOwner } from "../offline/owner";
 import { tokenStorage } from "../storage";
 import { templateOfSegments } from "./template";
 
@@ -28,7 +29,7 @@ async function flush(): Promise<void> {
    * пишется в журнал (middleware/auth.ts): строка журнала в минуту от
    * демонстрационной учётки была бы шумом, а не сведением.
    */
-  if (cache.me()?.readOnly) return;
+  if (cache.me(activeOwner())?.readOnly) return;
   for (const pack of packs) await api.sendScreenViews(pack).catch(() => {});
 }
 

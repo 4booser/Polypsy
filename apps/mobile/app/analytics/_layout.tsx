@@ -1,7 +1,17 @@
-import { Pressable, Text } from "react-native";
-import { Stack, useRouter } from "expo-router";
-import { spacing, useColors } from "@/theme";
+import { Stack } from "expo-router";
+import { useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { ExitHeaderButton } from "@/nav/useExit";
+
+/*
+ * Корень раздела лежит под любым вложенным экраном.
+ *
+ * По ссылке (`quizzy://analytics/<методика>`, `…/patients/<id>`) раздел
+ * открывался сразу вложенным экраном — единственным в стеке: ни стрелки, ни
+ * корня, где есть выход. С якорем expo-router кладёт корень раздела под него,
+ * и путь назад всегда один: вложенный → корень → вкладки.
+ */
+export const unstable_settings = { anchor: "index" };
 
 /**
  * Аналитика — отдельный полноэкранный раздел вне вкладок: при входе панель вкладок
@@ -11,26 +21,23 @@ import { useLang } from "@/lang";
 export default function AnalyticsLayout() {
   const { ut } = useLang();
   const c = useColors();
-  const router = useRouter();
 
   /*
    * Выход к вкладкам на корневом экране раздела.
    *
-   * Вкладка «Аналитика» переадресует сюда заменой, поэтому возвращаться
-   * стеку некуда: системной стрелки «назад» нет, панель вкладок скрыта — и
-   * приложение приходилось перезапускать. Кнопка ставится только на корне;
-   * на вложенных экранах стрелка появляется сама.
+   * Вкладка «Аналитика» переадресовывала сюда заменой, поэтому возвращаться
+   * стеку было некуда: системной стрелки «назад» нет, панель вкладок скрыта —
+   * и приложение приходилось перезапускать. Теперь вкладка открывает раздел
+   * поверх вкладок ((app)/_layout.tsx), и «‹ Меню» просто возвращает назад;
+   * а если раздел открыт по ссылке и позади ничего нет — уводит к вкладкам
+   * заменой (src/nav/exits.ts). Кнопка «назад» на Android делает то же
+   * (useHardwareBackFallback в корневой раскладке).
+   *
+   * Подпись своя, а не системная стрелка: у группы вкладок нет имени, и
+   * стрелка читалась бы «‹ (app)».
    */
-  const closeButton = () => (
-    <Pressable
-      onPress={() => router.replace("/(app)/surveys")}
-      accessibilityRole="button"
-      accessibilityLabel={ut("mnav.exit")}
-      hitSlop={12}
-      style={{ paddingRight: spacing.sm }}
-    >
-      <Text style={{ color: c.primary, fontSize: 16 }}>{ut("ma.backToMenu")}</Text>
-    </Pressable>
+  const closeButton = ({ canGoBack }: { canGoBack?: boolean }) => (
+    <ExitHeaderButton canGoBack={!!canGoBack} always label={ut("ma.backToMenu")} accessibilityLabel={ut("mnav.exit")} />
   );
 
   return (

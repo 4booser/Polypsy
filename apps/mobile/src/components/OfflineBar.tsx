@@ -23,12 +23,15 @@ export function OfflineBar() {
   const router = useRouter();
   const [left, setLeft] = useState(0);
   const [rejected, setRejected] = useState(0);
+  // сдачи без владельца (offline/queue.ts, ownerless): сами не уйдут, их надо узнать на экране очереди
+  const [unclaimed, setUnclaimed] = useState(0);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const update = () => {
       setLeft(api.pendingCount());
       setRejected(api.rejectedCount());
+      setUnclaimed(api.ownerlessCount());
     };
     update();
     // опрос, а не подписка: очередь меняется из разных мест, и один источник
@@ -37,7 +40,7 @@ export function OfflineBar() {
     return () => clearInterval(timer);
   }, []);
 
-  if (left === 0 && rejected === 0) return null;
+  if (left === 0 && rejected === 0 && unclaimed === 0) return null;
 
   const retry = async () => {
     setBusy(true);
@@ -56,7 +59,14 @@ export function OfflineBar() {
    * именно не принято, а не запускает бесполезную попытку.
    */
   const problem = rejected > 0;
-  const onPress = problem ? () => router.push("/(app)/queue") : retry;
+  /*
+   * Безхозные сдачи — не беда и не повод красить полосу: это не отказ, а
+   * вопрос «чьё это». Но и повтор им бесполезен — сами они не уйдут, —
+   * поэтому полоса ведёт на экран очереди, как и при отказе. Своё
+   * ждущее важнее: пока оно есть, полоса говорит о нём.
+   */
+  const toQueue = problem || (left === 0 && unclaimed > 0);
+  const onPress = toQueue ? () => router.push("/(app)/queue") : retry;
 
   return (
     <Pressable
@@ -66,7 +76,9 @@ export function OfflineBar() {
       accessibilityLabel={
         problem
           ? ut("ob.rejectedHint").replace("{n}", String(rejected))
-          : ut("ob.waitingHint").replace("{n}", String(left))
+          : left > 0
+            ? ut("ob.waitingHint").replace("{n}", String(left))
+            : ut("ob.ownerless").replace("{n}", String(unclaimed))
       }
       style={{
         flexDirection: "row",
@@ -88,10 +100,12 @@ export function OfflineBar() {
       <Text style={{ flex: 1, fontSize: 13, color: problem ? "#fff" : c.text }}>
         {problem
           ? ut("ob.rejected").replace("{n}", String(rejected))
-          : ut("ob.waiting").replace("{n}", String(left))}
+          : left > 0
+            ? ut("ob.waiting").replace("{n}", String(left))
+            : ut("ob.ownerless").replace("{n}", String(unclaimed))}
       </Text>
       <Text style={{ fontSize: 13, fontWeight: "600", color: problem ? "#fff" : c.primary }}>
-        {problem ? ut("mob.resolve") : busy ? ut("mob.sending") : ut("common.retry")}
+        {toQueue ? ut("mob.resolve") : busy ? ut("mob.sending") : ut("common.retry")}
       </Text>
     </Pressable>
   );
