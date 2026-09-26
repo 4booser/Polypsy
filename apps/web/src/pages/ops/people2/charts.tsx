@@ -54,8 +54,8 @@ import { FIGURE_GRID, Section, ShareRows, StackColumns } from "./parts";
  *
  * Цвет — по правилам набора: один ряд — фиолетовый действия; части одного
  * целого — светлотой того же фиолетового (ShareBar, step); два независимых
- * ряда — категориальные слоты --cat-1/--cat-2 в постоянном порядке с
- * легендой; янтарь — только у того, что требует внимания: неудачные входы,
+ * ряда — фиолетовый действия и фоновый --series-quiet в постоянном порядке
+ * с легендой (--cat-* — синий и оранжевый старой палитры, в консоли чужие); янтарь — только у того, что требует внимания: неудачные входы,
  * отказы в журнале, нерозібрані срабатывания. Статус нигде не цветом в
  * одиночку — рядом подпись легенды.
  */
@@ -86,8 +86,8 @@ export function UsersOverviewBody({ data }: { data: OpsUsersSummary }) {
   const label = roleLabel(ut);
   const staff = data.roles.filter((r) => r.mfa);
   const accounts: StackSeries[] = [
-    { key: "staff", label: ut("opsp.series.staff"), color: "var(--cat-1)" },
-    { key: "patients", label: ut("opsp.series.patients"), color: "var(--cat-2)" },
+    { key: "staff", label: ut("opsp.series.staff"), color: "var(--primary)" },
+    { key: "patients", label: ut("opsp.series.patients"), color: "var(--series-quiet)" },
   ];
   const logins: StackSeries[] = [
     { key: "success", label: ut("opsp.series.success"), color: PRIMARY },

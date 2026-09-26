@@ -226,7 +226,7 @@ describe("блоки вкладок", () => {
       <LogVolumeCharts volume={{ ...volume, buckets: [{ ...volume.buckets[0]!, warn: 2, error: 1 }] }} now={now} />,
     );
     expect(loud).toContain('fill="var(--accent)"');
-    expect(loud).toContain('fill="var(--cat-1)"');
+    expect(loud).toContain('fill="var(--series-quiet)"');
   });
 
   test("задачи без сбоев — «збоїв не було», янтаря нет", () => {
