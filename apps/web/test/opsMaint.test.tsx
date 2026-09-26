@@ -24,6 +24,7 @@ import {
 } from "../src/pages/ops/maint/model";
 import { bannerFor, flagsStale, minutesLeft, sameLocalDay, statusPollMs } from "../src/service/model";
 import { createOutbox, offlineSafetyPlan, type OutboxStorage } from "../src/patient/outbox";
+import { riskCases } from "../../../packages/shared/test/riskCases";
 
 /**
  * Техпанель, эксплуатация — на клиенте: баннер, страница статуса, флаги,
@@ -291,9 +292,12 @@ describe("отложенные сдачи кабинета пациента", ()
   });
 
   test("памятка безопасности — по тем же критическим вариантам, что на сервере", () => {
-    const survey = { safetyPlan: "Зателефонуйте 7333", questions: [{ options: [{ id: "o1", riskFlag: true }, { id: "o2", riskFlag: false }] }] };
-    expect(offlineSafetyPlan(survey, [{ optionIds: ["o1"] }])).toBe("Зателефонуйте 7333");
-    expect(offlineSafetyPlan(survey, [{ optionIds: ["o2"] }])).toBeNull();
-    expect(offlineSafetyPlan({ ...survey, safetyPlan: null }, [{ optionIds: ["o1"] }])).toBeNull();
+    // полный набор случаев (порог, матрица, полоса) — offlineRisk.test.ts (волна 12, engine)
+    const c = riskCases().find((x) => x.name === "флаг варианта")!;
+    const off = riskCases().find((x) => x.name === "флаг не выбран")!;
+    const survey = { ...c.survey, safetyPlan: "Зателефонуйте 7333" };
+    expect(offlineSafetyPlan(survey, c.answers, null)).toBe("Зателефонуйте 7333");
+    expect(offlineSafetyPlan(survey, off.answers, null)).toBeNull();
+    expect(offlineSafetyPlan({ ...survey, safetyPlan: null }, c.answers, null)).toBeNull();
   });
 });

@@ -745,6 +745,12 @@ export const scaleInputSchema = z.object({
   validityThreshold: z.number().nullish(),
   validityDirection: z.enum(["above", "below"]).nullish(),
   validityMessage: localizedSchema.nullish(),
+  /**
+   * Минимальная доля отвеченных пунктов, 0–1; ниже — балл не вычисляется
+   * (волна 12). Не задана — умолчание движка (scoring.ts,
+   * DEFAULT_MIN_ANSWERED_SHARE); 0 — считать при любом числе ответов.
+   */
+  minAnsweredShare: z.number().min(0).max(1).nullish(),
 
   bands: z.array(bandInputSchema).default([]),
 
@@ -976,6 +982,12 @@ export const updateSurveySchema = z
     questions: z.array(questionInputSchema).optional(),
     /** Комментарий к новой версии — что именно поменяли */
     versionNote: z.string().max(500).optional(),
+    /**
+     * Версия, от которой начата правка содержимого (versionId открытой
+     * методики). Действующая уже другая — 409 вместо записи поверх чужой
+     * правки (волна 12). Не прислана — правки встают в очередь, как раньше.
+     */
+    baseVersionId: z.string().min(1).max(64).optional(),
   })
   .merge(surveySettingsSchema.partial());
 

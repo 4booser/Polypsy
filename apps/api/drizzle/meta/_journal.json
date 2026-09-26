@@ -675,6 +675,13 @@
       "breakpoints": true
     },
     {
+      "idx": 101,
+      "version": "7",
+      "when": 1788474009043,
+      "tag": "0101_scale_min_answered",
+      "breakpoints": true
+    },
+    {
       "idx": 107,
       "version": "7",
       "when": 1788474369043,

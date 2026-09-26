@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useMatch, useParams } from "react-router-dom";
-import type {
-  DecisionRule,
-  ResponseDetail,
-  ResponseDetailAnswer,
-  RuleHit,
-  Scale,
-  ScoreResult,
-  SurveyFull,
+import {
+  bandFor,
+  type DecisionRule,
+  type ResponseDetail,
+  type ResponseDetailAnswer,
+  type RuleHit,
+  type Scale,
+  type ScoreResult,
+  type SurveyFull,
 } from "@quizzy/shared";
 import { api, openInTab, type ConclusionState } from "../api";
 import { ConclusionEditor, buildDraft } from "../components/ConclusionEditor";
@@ -831,9 +832,13 @@ export function QuestionSheet({
   );
 }
 
-/** Попала ли полоса — по тому же правилу, что и движок подсчёта (scoring.ts) */
-function bandHit(score: ScoreResult, band: Scale["bands"][number]): boolean {
-  return score.band !== null && score.value >= band.minScore && score.value <= band.maxScore;
+/**
+ * Попала ли полоса — той же функцией, что и движок подсчёта (scoring.ts,
+ * bandFor): соседние полосы читаются полуинтервалом, и «0,743» у СР-45
+ * подсвечивает «0,60–0,74», а не ни одну (волна 12, engine).
+ */
+function bandHit(score: ScoreResult, band: Scale["bands"][number], bands: Scale["bands"]): boolean {
+  return score.band !== null && bandFor(bands, score.value)?.id === band.id;
 }
 
 /** Числа полос печатаются как заданы: 0.35 — не «0.350000» и не «0» */
@@ -873,7 +878,7 @@ export function ResultLadder({ scores, scales }: { scores: ScoreResult[]; scales
             {[...scale.bands]
               .sort((a, b) => a.minScore - b.minScore)
               .map((b) => {
-                const hit = bandHit(score, b);
+                const hit = bandHit(score, b, scale.bands);
                 return (
                   <li
                     key={b.id}

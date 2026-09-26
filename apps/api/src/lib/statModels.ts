@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   ageAt,
+  bandFor,
   renderError,
   type Lang,
   type SampleFilters,
@@ -584,7 +585,8 @@ async function measureColumn(prep: Prepared, index: number): Promise<Sheet> {
     for (const s of scoreRows) {
       if (!s.normalized) continue;
       const scale = scaleById.get(s.scaleId);
-      const band = scale?.bands.find((b) => s.value >= b.minScore && s.value <= b.maxScore);
+      // тем же правилом, что движок подсчёта (bandFor): иначе значение в щели точности границ выпадало бы
+      const band = scale ? bandFor(scale.bands, s.value) : null;
       const userId = userOf.get(s.responseId);
       if (!band || !userId) continue;
       const hits = bandHits.get(band.id) ?? new Set<string>();

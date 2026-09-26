@@ -142,8 +142,28 @@ describe("золотой протокол: СР-45", () => {
       .items.filter((i) => i.matchKey === "no").length;
     expect(sr.rawScore).toBe(noKeyed);
     expect(sr.value).toBe(Math.round((noKeyed / 35) * 1000) / 1000);
-    expect(l.value).toBeLessThanOrEqual(0.6);
+    // достоверен только L < 0,6: «при L ≥ 0,6 результат ненадійний» (пособие; см. sr45.ts)
+    expect(l.value).toBeLessThan(0.6);
     expect(reliable).toBe(true);
+  });
+
+  test("шкала лжи на пороге: L = 6/10 — уже недостоверно, 5/10 — ещё достоверно", () => {
+    /*
+     * Пособие: «При L ≥ 0,6 результат обстеження ненадійний». Здесь эталон
+     * закреплял обратное — L = 0,6 проходил как достоверный, потому что
+     * движок нарушением считает строго «больше порога», а порог стоял 0,6.
+     * Порог в методике теперь 0,5 (доля из десяти пунктов идёт шагом 0,1),
+     * и ровно шесть совпадений валят профиль (волна 12, клиническое ревью).
+     */
+    const lScale = survey.scales.find((s) => s.code === "L")!;
+    const lYes = lScale.items.filter((i) => i.matchKey === "yes").map((i) => Number(i.questionId.slice(1)));
+    // «Нет» на пункт 42 уже даёт одно совпадение (обратная часть ключа), значит «Да» — ещё на пять
+    const six = computeProfile(survey, answersByNumbers(survey, new Set(lYes.slice(0, 5))));
+    const five = computeProfile(survey, answersByNumbers(survey, new Set(lYes.slice(0, 4))));
+    expect(six.scores.find((s) => s.scaleCode === "L")!.value).toBe(0.6);
+    expect(six.reliable).toBe(false);
+    expect(five.scores.find((s) => s.scaleCode === "L")!.value).toBe(0.5);
+    expect(five.reliable).toBe(true);
   });
 
   test("все «Да»: шкала лжи валит достоверность", () => {

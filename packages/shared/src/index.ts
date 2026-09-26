@@ -3,6 +3,8 @@ export * from "./schemas";
 /* дата снаружи: строгий ISO, который база прочтёт так же (волна 12, integrity) */
 export * from "./dates";
 export * from "./scoring";
+/* оценка сдачи целиком: отбор ответов, профиль и риск — общая для сервера и клиентов */
+export * from "./risk";
 export * from "./validate";
 export * from "./phone";
 export * from "./uiStrings";
