@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
 import Constants from "expo-constants";
-import { Stack, usePathname } from "expo-router";
+import { Stack, usePathname, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
@@ -103,6 +103,30 @@ export default function RootLayout() {
   );
 }
 
+/**
+ * «Сначала смените пароль» из любого запроса — на экран смены.
+ *
+ * Пароль могли сбросить в техпанели, пока приложение открыто: тогда первый же
+ * запрос получает 403 password_change_required, и человек должен увидеть
+ * смену пароля, а не череду отказов. Уже на экране смены — не уводим повторно:
+ * фоновые запросы (очередь, отметка устройства) получают тот же отказ, и
+ * каждый переход заново стирал бы набранное.
+ */
+function usePasswordGate(): void {
+  const router = useRouter();
+  const segments = useSegments();
+  const current = useRef<readonly string[]>(segments);
+  current.current = segments;
+  useEffect(
+    () =>
+      api.onPasswordChangeRequired(() => {
+        if (current.current[0] === "password") return;
+        router.replace("/password");
+      }),
+    [router],
+  );
+}
+
 function RootStack() {
   const { ut } = useLang();
   const c = useColors();
@@ -110,6 +134,7 @@ function RootStack() {
   useScreenTelemetry();
   // кнопка «назад» на Android там, где стеку возвращаться некуда (src/nav/exits.ts)
   useHardwareBackFallback();
+  usePasswordGate();
   /*
    * Экран, открытый первым (по ссылке, после замены), остаётся без
    * системной стрелки — слева тогда встаёт «Закрити» на запасное место. Есть
@@ -138,6 +163,8 @@ function RootStack() {
       <Stack.Screen name="login" />
       <Stack.Screen name="register" />
       <Stack.Screen name="consent" />
+      {/* смена временного пароля: до согласия и до всего остального (auth/passwordGate.ts) */}
+      <Stack.Screen name="password" />
       <Stack.Screen name="(app)" />
       <Stack.Screen
         name="survey/[id]"
