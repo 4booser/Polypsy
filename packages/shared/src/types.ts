@@ -1605,6 +1605,12 @@ export interface SurveyFull extends Survey {
   contentLang?: Lang;
 }
 
+/**
+ * Почему два замера одной шкалы нельзя сравнить (comparability в rci.ts):
+ * разные версии без приведения, разные единицы, недостоверный протокол.
+ */
+export type Incomparable = "version" | "units" | "unreliable";
+
 /** Точка динамики пациента по одной субшкале */
 export interface DynamicsPoint {
   responseId: string;
@@ -1622,6 +1628,23 @@ export interface DynamicsPoint {
    * изменение состояния. Без этой отметки его читают как динамику.
    */
   versionNo?: number | null;
+  /**
+   * Удалась ли нормировка: ложь — `rawScore` здесь сырой балл, хотя шкала
+   * нормируется (у человека не было пола или возраста для норм).
+   *
+   * Отдаётся, чтобы экран не вычитал сырой балл из T-балла: такая «разность»
+   * выглядит как огромный достоверный сдвиг. Поля нет у ответа старого
+   * сервера и в кэше мобильного — тогда считается «да», как и было.
+   */
+  normalized?: boolean;
+  /** Нормировка шкалы в версии этого замера: raw, ratio, tscore, sten */
+  normalization?: ScaleNormalization;
+  /**
+   * Достоверен ли протокол по шкалам достоверности (responses.reliable).
+   * Недостоверный замер не годится в концы сравнения: его числам верить
+   * нельзя. Нет поля — считается «да».
+   */
+  reliable?: boolean;
 }
 
 export interface ScaleDynamics {
@@ -1629,10 +1652,20 @@ export interface ScaleDynamics {
   code: string;
   title: string;
   points: DynamicsPoint[];
-  /** Изменение между первым и последним замером */
+  /** Изменение между первым и последним замером; null — сравнивать нечего или нельзя (см. incomparable) */
   delta: number | null;
   /** Направление: улучшение зависит от того, что шкала измеряет */
   direction: "up" | "down" | "flat" | null;
+  /**
+   * Почему первый и последний замер нельзя сравнить — и потому нет ни
+   * изменения, ни RCI (правило одно: comparability в rci.ts).
+   *
+   * version — разные версии методики, и приведения первой к последней нет;
+   * units — в разных единицах (нормированный и сырой балл);
+   * unreliable — хоть один из двух протоколов недостоверен.
+   * null/нет поля — сравнимы (или замер один).
+   */
+  incomparable?: Incomparable | null;
   /**
    * Стандартная ошибка одного измерения — полуширина полосы на графике.
    *
@@ -2613,6 +2646,8 @@ export interface CaseSummary {
       severity: Severity | null;
       /** Достоверность сдвига между первым и последним замером */
       reliableChange: { rci: number; significant: boolean; direction: "up" | "down" | "flat" } | null;
+      /** Почему первый и последний замер не сравниваются — то же правило, что в динамике */
+      incomparable?: Incomparable | null;
     }[];
   }[];
   openAlerts: { id: string; label: string; severity: string; at: string; surveyTitle: string }[];

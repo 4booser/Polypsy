@@ -7235,6 +7235,17 @@ export const UI = {
     en: "After reloading, the field will show the saved text. If you need your version, copy it first.",
   },
 
+  "rch.units": {
+    uk: "один із замірів без норм, у сирих балах — з нормованим напряму не порівнюється",
+    ru: "один из замеров без норм, в сырых баллах — с нормированным напрямую не сравнивается",
+    en: "one measurement has no norms and is in raw points — it can't be compared with a normed one directly",
+  },
+  "rch.unreliable": {
+    uk: "один із протоколів недостовірний за шкалами достовірності — зміну не оцінюємо",
+    ru: "один из протоколов недостоверен по шкалам достоверности — изменение не оцениваем",
+    en: "one of the protocols failed the validity scales — the change is not assessed",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
