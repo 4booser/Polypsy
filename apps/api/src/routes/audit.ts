@@ -1,9 +1,10 @@
 import { Hono } from "hono";
 import type { z } from "zod";
 import { and, desc, eq, gte, ilike, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
-import { auditQuery, type AuditPage } from "@quizzy/shared";
+import { auditQuery, type AuditDaily, type AuditPage } from "@quizzy/shared";
 import { parseQuery } from "../lib/http";
 import { db } from "../db";
+import { env } from "../env";
 import { auditLog, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
@@ -258,6 +259,92 @@ auditRoutes.get("/export.csv", async (c) => {
       ...(truncated ? { "X-Truncated": "1" } : {}),
     },
   });
+});
+
+/* ─────────── записи по отбору во времени (волна 11) ─────────── */
+
+const DAY_MS = 86_400_000;
+/** Без «с» — последние тридцать дней: столько же, сколько у рядов остальных разделов техпанели */
+export const AUDIT_DAILY_DAYS = 30;
+/** Дальше десяти лет назад месяцев слишком много для одной полосы столбцов, и журнал столько не живёт */
+const AUDIT_DAILY_MAX_DAYS = 3660;
+
+const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const dayMs = (day: string) => Date.parse(`${day}T00:00:00.000Z`);
+
+/**
+ * Окно и шаг графика по отбору журнала.
+ *
+ * Период — тот же, что у таблицы: «з» и «по» из отбора, днями включительно.
+ * Нет «по» — сегодня (по часам учреждения); нет «з» — тридцать дней до «по».
+ * Шаг — по длине: до трёх месяцев днями, до двух лет неделями, дальше
+ * месяцами. Столбец на день за три года — тысяча столбцов по пикселю, и
+ * форма пропала бы вместе с подписями.
+ *
+ * «З» позже «по» — пустое окно, а не перевёрнутое: таблица при таком отборе
+ * тоже пуста, и график не должен показывать то, чего нет в ней.
+ */
+export function dailyWindow(
+  from: string | undefined,
+  to: string | undefined,
+  today: string,
+): { from: string; to: string; step: AuditDaily["step"]; empty: boolean } {
+  const end = to ? to.slice(0, 10) : today;
+  let start = from ? from.slice(0, 10) : isoDay(dayMs(end) - (AUDIT_DAILY_DAYS - 1) * DAY_MS);
+  if (dayMs(end) - dayMs(start) > AUDIT_DAILY_MAX_DAYS * DAY_MS) start = isoDay(dayMs(end) - AUDIT_DAILY_MAX_DAYS * DAY_MS);
+  const span = Math.round((dayMs(end) - dayMs(start)) / DAY_MS) + 1;
+  const step = span <= 92 ? "day" : span <= 732 ? "week" : "month";
+  return { from: start, to: end, step, empty: span < 1 };
+}
+
+/**
+ * Записи журнала по текущему отбору во времени: удачные и отказы/сбои.
+ *
+ * Условия — те же filtersOf, что у таблицы и выгрузки: график обязан
+ * рисовать ровно то, что человек видит строками под ним. Наружу — только
+ * числа по корзинам.
+ *
+ * Само чтение — строка журнала (audit.read, view: daily), как у сводки:
+ * с отбором «кто» это распорядок работы одного человека по дням, и «кто
+ * смотрел на чужой распорядок» — вопрос того же рода, что «кто листал
+ * журнал».
+ */
+auditRoutes.get("/daily", async (c) => {
+  const query = parseQuery(c, auditQuery);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: env.institutionTz }).format(new Date());
+  const win = dailyWindow(query.from, query.to, today);
+  const tz = env.institutionTz;
+  let buckets: AuditDaily["buckets"] = [];
+  if (!win.empty) {
+    const filters = await filtersOf(query);
+    const where = and(
+      ...filters,
+      sql`${auditLog.at} >= (${win.from}::date::timestamp at time zone ${tz})`,
+      sql`${auditLog.at} < ((${win.to}::date + 1)::timestamp at time zone ${tz})`,
+    );
+    const rows = [
+      ...(await db.execute<{ start: string; ok: number; refused: number }>(sql`
+        with s as (
+          select d::date as start
+            from generate_series(date_trunc(${win.step}, ${win.from}::date::timestamp)::date, ${win.to}::date, ${`1 ${win.step}`}::interval) d
+        )
+        select to_char(s.start, 'YYYY-MM-DD') as start,
+               count(a.b) filter (where a.outcome = 'success')::int as ok,
+               count(a.b) filter (where a.outcome <> 'success')::int as refused
+          from s
+          left join (
+            select date_trunc(${win.step}, ${auditLog.at} at time zone ${tz})::date as b, ${auditLog.outcome} as outcome
+              from ${auditLog} where ${where}
+          ) a on a.b = s.start
+         group by s.start order by s.start
+      `)),
+    ];
+    buckets = rows.map((r) => ({ start: r.start, ok: Number(r.ok), refused: Number(r.refused) }));
+  }
+
+  await audit(c, { action: "audit.read", details: { view: "daily", step: win.step, filters: filterNote(query) } });
+  const body: AuditDaily = { step: win.step, from: win.from, to: win.to, buckets };
+  return c.json(body);
 });
 
 /** Сводка по журналу: какие действия и кто чаще всего */
