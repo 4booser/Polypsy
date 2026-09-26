@@ -80,7 +80,8 @@ describe("каждый экран вне вкладок имеет запасн�
    * куда уйти, если позади пусто. Новый экран без запасного выхода уронит
    * этот тест в тот же день, когда появится.
    */
-  const FLOW_ROOTS = new Set(["", "login", "consent"]);
+  // смена временного пароля — такой же шлюз, как согласие: выход с него — кнопка выхода (auth/passwordGate.ts)
+  const FLOW_ROOTS = new Set(["", "login", "consent", "password"]);
 
   test("обход каталога app/", () => {
     const files = routeFiles(APP);
