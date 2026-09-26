@@ -20,6 +20,8 @@ export default function AppLayout() {
 
   if (loading) return <Loader />;
   if (!user) return <Redirect href="/login" />;
+  // с временным паролем сервер вкладкам ничего не отдаст — сначала смена (auth/passwordGate.ts)
+  if (user.mustChangePassword) return <Redirect href="/password" />;
 
   return (
     // полоса очереди над вкладками: она должна быть видна на любом экране,

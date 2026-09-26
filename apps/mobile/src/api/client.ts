@@ -36,6 +36,7 @@ import type {
 import { API_URL } from "../config";
 import { revokeStorage, tokenStorage } from "../storage";
 import { flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
+import { isPasswordChangeRequired, isPasswordGate } from "../auth/passwordGate";
 import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 
@@ -74,11 +75,21 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Машинный код отказа, если сервер его дал (например, password_change_required) */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
+
+/*
+ * «Сначала смените пароль» может прийти из любого запроса — пароль сбросили
+ * в техпанели, пока приложение было открыто. Экран об этом узнаёт через
+ * подписку (корневая раскладка уводит на смену пароля), а запрос всё равно
+ * падает своей ошибкой: вызывающий не должен принять отказ за данные.
+ */
+const passwordGateListeners = new Set<() => void>();
 
 /** Общий на все запросы обмен refresh: одноразовый токен нельзя жечь параллельно */
 let refreshing: Promise<boolean> | null = null;
@@ -163,7 +174,14 @@ async function request<T>(path: string, init: RequestInit = {}, opts: RequestOpt
 
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(body?.error ?? `${netText("net.failed")} ${res.status}`, res.status);
+  if (!res.ok) {
+    if (isPasswordChangeRequired(res.status, body)) for (const listener of passwordGateListeners) listener();
+    throw new ApiError(
+      body?.error ?? `${netText("net.failed")} ${res.status}`,
+      res.status,
+      typeof body?.code === "string" ? body.code : undefined,
+    );
+  }
   return body as T;
 }
 
@@ -272,6 +290,22 @@ export const api = {
         body: JSON.stringify({ refreshToken }),
       }).then(() => undefined),
     ).catch(() => 0),
+  /** Подписка на «сначала смените пароль» из любого запроса; возвращает отписку */
+  onPasswordChangeRequired: (listener: () => void) => {
+    passwordGateListeners.add(listener);
+    return () => {
+      passwordGateListeners.delete(listener);
+    };
+  },
+  /**
+   * Смена пароля. Сервер при этом обрывает все сессии, включая эту
+   * (routes/auth.ts, POST /password), — после неё нужен вход новым паролем.
+   */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: true }>("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
   me: () =>
     request<User>("/api/auth/me").then((u) => {
       cache.saveMe(u);
@@ -603,8 +637,14 @@ export const api = {
           ),
         );
       } catch (error) {
-        // сети по-прежнему нет, идут работы или токен уже чужой — остальные тоже не уйдут
-        if (isOwnerChanged(error) || isTransientStatus((error as { status?: number }).status ?? 0)) break;
+        // сети по-прежнему нет, идут работы, токен уже чужой или сперва нужна смена пароля — остальные тоже не уйдут
+        if (
+          isOwnerChanged(error) ||
+          isPasswordGate(error) ||
+          isTransientStatus((error as { status?: number }).status ?? 0)
+        ) {
+          break;
+        }
         /*
          * Отказ по существу черновик не роняет: он всё равно лежит на
          * устройстве, а прохождение можно продолжить и сдать целиком.
