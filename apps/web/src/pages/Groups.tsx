@@ -48,7 +48,8 @@ export default function Groups() {
   const res = useResource(async () => {
     const groups = await api.groups();
     const staff = groups.some((g) => g.manageable)
-      ? await api.users().then((u) => u.filter((x) => x.role !== "user")).catch(() => [] as User[])
+      ? /* сотрудники отбираются на сервере: реестр теперь страничный, и отбор по первой странице всех учёток потерял бы людей */
+        await api.users({ staff: true, limit: 500 }).then((p) => p.items).catch(() => [] as User[])
       : [];
     return { groups, staff };
   }, []);

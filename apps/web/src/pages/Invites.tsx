@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import qrcode from "qrcode-generator";
-import type { Battery, SurveyListItem } from "@quizzy/shared";
+import type { Battery, Invite, SurveyListItem } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
 import { Empty, Loading, Screen, useAction } from "../ui";
 import { Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { usePagedResource, useResource } from "../useResource";
+import { shownNote } from "../ui/paging";
 
 /** Строка справочника специалистов — ровно то, что нужно выпадающему списку */
 type Specialist = { userId: string; fullName: string };
@@ -26,25 +27,34 @@ export default function Invites() {
   const { run } = useAction();
 
   /*
+   * Выписанные ссылки — страницами (волна 12): приглашения копятся годами, и
+   * список целиком рос вместе с возрастом отделения. Справочники формы
+   * грузятся отдельно и по-прежнему разом: их десятки, и страницы им ни к
+   * чему.
+   */
+  const list = usePagedResource<Invite>((cursor) => api.invites(cursor), []);
+  const rows = list.items;
+  const reload = list.reload;
+  const note = rows ? shownNote(ut, rows.length, list.total, list.hasMore) : null;
+
+  /*
    * Справочники нужны только форме, и каждый падает молча по отдельности:
    * список выписанных ссылок важнее любого из них, а отказ в правах на
    * методики — их видит не всякий, кто выписывает приглашения — не должен
    * оставлять человека перед пустым экраном вместо его же ссылок.
    */
   const res = useResource(async () => {
-    const [rows, batteries, surveys, specialists] = await Promise.all([
-      api.invites(),
+    const [batteries, surveys, specialists] = await Promise.all([
       api.batteries().then((b) => b.filter((x) => !x.archived)).catch(() => [] as Battery[]),
       api.surveys().then((r) => r.filter((x) => !x.archivedAt)).catch(() => [] as SurveyListItem[]),
       api.specialists().then((r) => r.items).catch(() => [] as Specialist[]),
     ]);
-    return { rows, batteries, surveys, specialists };
+    return { batteries, surveys, specialists };
   }, []);
-  const reload = res.reload;
 
   return (
     <Screen res={res}>
-      {({ rows, batteries, surveys, specialists }) => (
+      {({ batteries, surveys, specialists }) => (
         <Stack>
           {/*
             Заголовок и дату экрана рисует «Начало смены»: приглашения теперь
@@ -71,11 +81,12 @@ export default function Invites() {
 
           {fresh ? <FreshInvite token={fresh.token} code={fresh.code} onClose={() => setFresh(null)} /> : null}
 
-          {!rows ? <Loading /> : null}
+          {!rows ? <Loading error={list.error} onRetry={list.reload} busy={list.loading} /> : null}
           {rows && !rows.length && !showForm ? (
             <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
           ) : null}
 
+          {note ? <p className="m-0 text-caption text-muted">{note}</p> : null}
           {rows?.length ? (
             <Panel flush>
               <div className="overflow-x-auto">
@@ -146,6 +157,13 @@ export default function Invites() {
                 </table>
               </div>
             </Panel>
+          ) : null}
+          {list.hasMore ? (
+            <div className="flex justify-center">
+              <Button variant="ghost" disabled={list.loadingMore} onClick={list.loadMore}>
+                {list.loadingMore ? ut("ui.loadingMore") : ut("ui.loadMore")}
+              </Button>
+            </div>
           ) : null}
         </Stack>
       )}

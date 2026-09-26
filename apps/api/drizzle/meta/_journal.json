@@ -654,6 +654,13 @@
       "breakpoints": true
     },
     {
+      "idx": 97,
+      "version": "7",
+      "when": 1788473769043,
+      "tag": "0097_list_indexes",
+      "breakpoints": true
+    },
+    {
       "idx": 98,
       "version": "7",
       "when": 1788473829043,
