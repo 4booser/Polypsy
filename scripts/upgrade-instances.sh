@@ -7,7 +7,9 @@
 # же порядок для каждого и останавливается на первом отказе.
 #
 # Порядок не случаен:
-#   1. снимок базы — до всего, потому что откатывать нечем, если его нет;
+#   1. снимок базы — до всего, потому что откатывать нечем, если его нет
+#      (тем же scripts/backup.sh, что и копии по расписанию: шифрованный и
+#      проверенный чтением, в $BACKUP_DIR/upgrade/<имя>/);
 #   2. миграции;
 #   3. дошифровка открытых значений;
 #   4. проверка, что приложение поднимается на новой схеме;
@@ -17,7 +19,8 @@
 # остальные значило бы получить пять учреждений в разных состояниях, из
 # которых неизвестно какое рабочее.
 #
-#   INSTANCES=/etc/quizzy/instances.txt BACKUP_DIR=/backups ./scripts/upgrade-instances.sh
+#   INSTANCES=/etc/quizzy/instances.txt BACKUP_DIR=/backups BACKUP_PASSPHRASE=… \
+#     ./scripts/upgrade-instances.sh
 #
 # Файл instances.txt — по строке на экземпляр:
 #   hospital1  postgres://quizzy_app:…@localhost/quizzy_hospital1
@@ -40,36 +43,48 @@ if [[ -z "$BACKUP_DIR" ]]; then
   exit 1
 fi
 
-mkdir -p "$BACKUP_DIR"
+# Проверяется до первого экземпляра, а не на нём: отказ на середине списка
+# оставил бы часть учреждений обновлёнными, часть нет.
+if [[ -z "${BACKUP_PASSPHRASE:-}" ]]; then
+  echo "BACKUP_PASSPHRASE не задан. Снимок шифруется всегда — той же фразой, что копии по расписанию." >&2
+  exit 1
+fi
+
+here="$(cd "$(dirname "$0")" && pwd)"
 
 total=0
 done_count=0
 
-while read -r name url; do
+# Список читается с дескриптора 4, а не со стандартного входа. Всё внутри
+# цикла наследует вход, и программа, которая его читает, съедает оставшиеся
+# строки списка: с PG_EXEC="docker compose exec -T postgres" так делает
+# docker exec. Цикл тогда молча кончается после первого экземпляра, а итог
+# «Обновлено: 1 из 1» выглядит удачей — остальных он просто не увидел.
+while read -r name url <&4; do
   [[ -z "${name:-}" || "${name:0:1}" == "#" ]] && continue
   total=$((total + 1))
 
   echo
   echo "── $name ──"
 
-  stamp="$(date +%Y%m%d-%H%M%S)"
-  dump="$BACKUP_DIR/$name-$stamp.sql.gz"
-
-  echo "  снимок → $dump"
-  if ! pg_dump "$url" | gzip > "$dump"; then
+  # Снимок — тем же backup.sh, что и копии по расписанию. Прежде здесь был
+  # свой pg_dump | gzip в обычный .sql.gz: обязательное шифрование копий
+  # (backup.sh без фразы не работает вовсе) обходилось в том самом месте,
+  # где снимок почти наверняка понадобится, и клинические базы учреждений
+  # ложились на диск открытым текстом. Свой путь к тому же не знал ни
+  # PG_EXEC (pg_dump другой версии, чем сервер), ни проверки чтением.
+  snap_dir="$BACKUP_DIR/upgrade/$name"
+  echo "  снимок → $snap_dir/"
+  if ! DATABASE_URL="$url" BACKUP_DIR="$BACKUP_DIR" BACKUP_KIND="upgrade/$name" \
+       "$here/backup.sh" | sed 's/^/  /'; then
     echo "  ОТКАЗ: снимок не сделан. Остальные экземпляры не трогаем." >&2
     exit 1
   fi
-  # Пустой снимок — это не снимок. Проверяем размер, а не код возврата:
-  # pg_dump на недоступной базе иногда выходит нулём с пустым выводом.
-  if [[ ! -s "$dump" ]]; then
-    echo "  ОТКАЗ: снимок пуст." >&2
-    exit 1
-  fi
+  dump="$(ls -1t "$snap_dir"/quizzy_*.dump.zst.gpg | head -1)"
 
   echo "  миграции"
   if ! DATABASE_URL="$url" bun run --cwd apps/api db:migrate; then
-    echo "  ОТКАЗ на миграциях. Снимок здесь: $dump" >&2
+    echo "  ОТКАЗ на миграциях. Снимок здесь: $dump (восстановление — scripts/restore.sh)" >&2
     exit 1
   fi
 
@@ -106,7 +121,7 @@ while read -r name url; do
 
   done_count=$((done_count + 1))
   echo "  готово"
-done < "$INSTANCES"
+done 4< "$INSTANCES"
 
 echo
 echo "Обновлено: $done_count из $total."
