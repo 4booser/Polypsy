@@ -17,6 +17,7 @@ import {
 import { Body, Button, Card, Chip, Divider, ErrorText, Loader, Row, Segmented } from "@/components/ui";
 import { formatDuration, severityColor, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { dailyBuckets } from "@/components/viz/math";
 
 type Tab = "overview" | "questions" | "scales" | "quality";
 
@@ -123,7 +124,8 @@ export default function SurveyAnalyticsScreen() {
               series={[
                 {
                   label: ut("ma.responses"),
-                  points: data.timeline.map((t) => ({ x: t.date.slice(5), y: t.count })),
+                  // по дню на корзину: дни без сдач — разрыв, а не соседние точки (viz/math.ts)
+                  points: dailyBuckets(data.timeline),
                 },
               ]}
             />
