@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { desc } from "drizzle-orm";
-import { client, db, isNull, sql } from "./fixtures";
+import { and, eq } from "drizzle-orm";
+import { client, db, isNull } from "./fixtures";
 import { alertCases } from "../src/db/schema";
 
 /**
@@ -15,7 +15,7 @@ import { alertCases } from "../src/db/schema";
  *
  * Наличие индекса само по себе ничего не доказывает — 0028 тоже завела
  * индекс, который потом ни разу не использовался. Поэтому здесь спрашивается
- * план: отдаёт ли индекс строки в порядке очереди без сортировки.
+ * план: берёт ли его запрос, ради которого он заведён.
  */
 
 async function indexDef(name: string): Promise<string | null> {
@@ -51,9 +51,6 @@ async function planOf(query: { sql: string; params: unknown[] }): Promise<PlanNo
   }) as Promise<PlanNode[]>;
 }
 
-/* то же выражение, что severityRank в routes/alertCases.ts — сторож ниже сверяет их текстом */
-const severityRank = sql<number>`(case when ${alertCases.severity} = 'severe' then 1 else 0 end)`;
-
 describe("индексы под списки", () => {
   test("у сигналов есть индекс по случаю, и счётчик сигналов идёт по нему", async () => {
     expect(await indexDef("alerts_case_idx")).toContain("(case_id)");
@@ -62,57 +59,46 @@ describe("индексы под списки", () => {
     expect(found.some((n) => n["Index Name"] === "alerts_case_idx")).toBe(true);
   });
 
-  test("индекс очереди повторяет её порядок: тяжесть, время, идентификатор — только открытые", async () => {
-    const def = await indexDef("alert_cases_queue_idx");
+  /*
+   * Поправка при сведении волны 12: индекс под порядок очереди снят (очередь
+   * сложена по человеку и порядок наводит сама), вместо него — частичный по
+   * открытым случаям человека. Он нужен двум запросам: поиску открытого
+   * случая при сдаче и выборке открытой очереди без чтения закрытых.
+   */
+  test("индекс открытых случаев — по человеку и только открытые; прежние сняты", async () => {
+    const def = await indexDef("alert_cases_open_user_idx");
     expect(def).not.toBeNull();
-    expect(def!).toMatch(/\( ?CASE WHEN \(severity = 'severe'::text\) THEN 1 ELSE 0 END\) DESC, last_alert_at DESC, id DESC\)/);
+    expect(def!).toContain("(user_id)");
     expect(def!).toContain("WHERE (acknowledged_at IS NULL)");
-    // прежний, под старый порядок, снят: два индекса на одно и то же — лишняя запись на каждую тревогу
     expect(await indexDef("alert_cases_open_idx")).toBeNull();
+    expect(await indexDef("alert_cases_queue_idx")).toBeNull();
   });
 
-  test("первая страница очереди читается индексом без сортировки", async () => {
+  test("открытый случай человека ищется этим индексом", async () => {
     const query = db
       .select({ id: alertCases.id })
       .from(alertCases)
-      .where(isNull(alertCases.acknowledgedAt))
-      .orderBy(desc(severityRank), desc(alertCases.lastAlertAt), desc(alertCases.id))
-      .limit(31)
+      .where(and(eq(alertCases.userId, "нет-такого"), isNull(alertCases.acknowledgedAt)))
       .toSQL();
     const found = await planOf(query);
-    expect(found.some((n) => n["Index Name"] === "alert_cases_queue_idx")).toBe(true);
-    expect(found.map((n) => n["Node Type"])).not.toContain("Sort");
+    expect(found.some((n) => n["Index Name"] === "alert_cases_open_user_idx")).toBe(true);
   });
 
-  test("следующая страница — тоже: условие курсора ложится на тот же индекс", async () => {
-    const query = db
-      .select({ id: alertCases.id })
-      .from(alertCases)
-      .where(
-        sql`${isNull(alertCases.acknowledgedAt)} and (${severityRank}, ${alertCases.lastAlertAt}, ${alertCases.id})
-            < (${1}, ${new Date().toISOString()}::timestamptz, ${"zzz"})`,
-      )
-      .orderBy(desc(severityRank), desc(alertCases.lastAlertAt), desc(alertCases.id))
-      .limit(31)
-      .toSQL();
+  test("открытая очередь читает только открытые — индексом, без полного прохода", async () => {
+    const query = db.select({ id: alertCases.id }).from(alertCases).where(isNull(alertCases.acknowledgedAt)).toSQL();
     const found = await planOf(query);
-    expect(found.some((n) => n["Index Name"] === "alert_cases_queue_idx")).toBe(true);
-    expect(found.map((n) => n["Node Type"])).not.toContain("Sort");
+    expect(found.some((n) => n["Index Name"] === "alert_cases_open_user_idx")).toBe(true);
+    expect(found.map((n) => n["Node Type"])).not.toContain("Seq Scan");
   });
 
   /*
-   * Индекс подходит запросу, пока выражение тяжести в маршруте то же самое.
-   * Поменяют его там (другая шкала рангов, ещё одна ступень) — индекс молча
-   * превратится в фильтр, как уже случилось однажды. Маршрут принадлежит
-   * другому участку, поэтому сверка — по тексту исходника: упала — значит,
-   * вместе с порядком очереди пора менять и индекс.
+   * Индекс подходит, пока горячий путь ищет открытый случай именно так.
+   * Путь принадлежит другому участку, поэтому сверка — по тексту исходника:
+   * упала — значит, вместе с поиском случая пора менять и индекс.
    */
-  test("сторож: порядок очереди в маршруте тот, под который построен индекс", () => {
-    const source = readFileSync(new URL("../src/routes/alertCases.ts", import.meta.url), "utf8");
-    expect(source).toContain(
-      "const severityRank = sql<number>`(case when ${alertCases.severity} = 'severe' then 1 else 0 end)`;",
-    );
-    expect(source).toContain(".orderBy(desc(severityRank), desc(alertCases.lastAlertAt), desc(alertCases.id))");
+  test("сторож: поиск открытого случая в attachCaseRow — по человеку и открытости", () => {
+    const source = readFileSync(new URL("../src/lib/alertCases.ts", import.meta.url), "utf8");
+    expect(source).toContain("eq(alertCases.userId, params.userId)");
     expect(source).toContain("isNull(alertCases.acknowledgedAt)");
   });
 });
