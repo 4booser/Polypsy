@@ -129,3 +129,23 @@ export function dayFull(iso: string): string {
 export function timeOfDay(iso: string): string {
   return new Date(iso).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 }
+
+/**
+ * Сколько календарных дней до срока: 1 — «сегодня последний день»,
+ * 2 — «завтра», null — срок уже прошёл или дата не разбирается.
+ *
+ * Считалось делением разницы на сутки с округлением вверх, и у этого два
+ * промаха. Прошедший срок давал ноль или минус — и строка писала «сегодня
+ * последний день» о том, что закончилось вчера (экран держат открытым
+ * часами, и исключение успевает истечь у человека на глазах). А срок
+ * «завтра в 09:00», до которого двенадцать часов, округлялся до одних суток
+ * и тоже выходил «сегодня последним днём». Здесь считаются полуночи по
+ * местному календарю, а не сутки от «сейчас».
+ */
+export function daysLeft(expiresAt: string, now: number): number | null {
+  const end = new Date(expiresAt);
+  if (!Number.isFinite(end.getTime()) || end.getTime() <= now) return null;
+  const midnight = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  // округление гасит час перехода на летнее время: такие сутки короче или длиннее 24 ч
+  return Math.round((midnight(end) - midnight(new Date(now))) / 86_400_000) + 1;
+}

@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 /**
  * Состояние системы для людей: «працює / обслуговування / збої».
  *
@@ -19,23 +17,7 @@ import { z } from "zod";
 export const SERVICE_STATUSES = ["ok", "maintenance", "degraded"] as const;
 export type ServiceStatus = (typeof SERVICE_STATUSES)[number];
 
-/**
- * Объявление из техпанели: новое состояние, текст для людей и когда
- * ожидается конец.
- *
- * Текст — для людей, а не для журнала: его читают на баннере и на странице
- * статуса все, включая пациентов, поэтому длина ограничена одной-двумя
- * фразами. Время конца — момент с поясом, а не «через час»: объявление
- * переживает перезапуск, а «через час» от чего — после перезапуска уже не
- * сказать.
- */
-export const serviceStatusInputSchema = z.object({
-  status: z.enum(SERVICE_STATUSES),
-  message: z.string().trim().max(500).nullish(),
-  expectedEnd: z.string().datetime({ offset: true }).nullish(),
-});
-
-export type ServiceStatusInput = z.output<typeof serviceStatusInputSchema>;
+/* Схема объявления (serviceStatusInputSchema) — в wireSchemas.ts, по той же причине, что у пачки счётчиков */
 
 /** Код отказа в теле ответа: клиенты узнают по нему закрытую запись */
 export const MAINTENANCE_CODE = "maintenance";

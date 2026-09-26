@@ -17,11 +17,11 @@ import { DEFAULT_PER, pageCount, pageFrom, pagesOf, perFrom, slicePage } from ".
 import { Input, Tabs } from "../ui/primitives";
 import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
-import { SavedViews } from "../ui/SavedViews";
 import { usePagedResource, useResource } from "../useResource";
 import { AssignSurveyDialog, PickGroupDialog } from "./patientGroups/dialogs";
 import { keepPresent, matchesQuery, toggleIn, type PersonLike } from "./patientGroups/model";
 import { PersonGrid, SelectionBar } from "./patientGroups/PersonGrid";
+import { usePatientViews } from "./patientGroups/views";
 
 /*
  * Список пациентов — кадр f05 макета: реестр с вкладками-группами.
@@ -59,10 +59,12 @@ import { PersonGrid, SelectionBar } from "./patientGroups/PersonGrid";
  *    («А це хто?»), и только тогда; нажатие по строке её больше не зовёт —
  *    у строки на кадре два действия, имя-ссылка и галочка, третьего там
  *    не нарисовано. Пока панель открыта, она следует за фокусом строки.
- * 4. Сохранённые виды (SavedViews). Строка чипсов стояла между вкладками и
- *    сеткой, а на кадре там 38 px чистого поля; вызывается пунктом меню
- *    шестерёнки. Виды лежат на сервере, у людей уже сохранены, а состояние
- *    экрана по-прежнему целиком в адресе — ?group, ?q, ?per.
+ * 4. Сохранённые виды. Строка чипсов стояла между вкладками и сеткой, а на
+ *    кадре там 38 px чистого поля; виды живут в меню шестерёнки. Виды лежат
+ *    на сервере, у людей уже сохранены, а состояние экрана по-прежнему
+ *    целиком в адресе — ?group, ?q, ?per. С волны 12 это не строка чипсов
+ *    по вызову, а сами пункты меню: выбрать, сохранить отбор, открыть
+ *    коллегам, удалить (patientGroups/views.tsx — там и почему).
  * 5. Подпись под заголовком «Ті, хто проходив методики ваших груп». На
  *    кадре под «Пацієнти» сразу вкладки. Текст остался ключом patients.sub
  *    и печатается в панели контекста: список показывает обследованных, а не
@@ -188,13 +190,13 @@ function Frame({
   const { ut } = useLang();
   const { groups, groupsError, activeId, q, page, per, update } = frame;
   /*
-   * Что открыто из шестерёнки. Оба — состояние экрана, а не адреса: строка
-   * сохранённых видов и панель контекста ничего не меняют в том, ЧТО
-   * показано, и ссылка на список с открытой панелью сбивала бы с толку
-   * того, кому её прислали.
+   * Что открыто из шестерёнки — состояние экрана, а не адреса: панель
+   * контекста ничего не меняет в том, ЧТО показано, и ссылка на список с
+   * открытой панелью сбивала бы с толку того, кому её прислали.
    */
-  const [views, setViews] = useState(false);
   const [panel, setPanel] = useState(false);
+  /* сохранённые виды — пункты той же шестерёнки (patientGroups/views.tsx) */
+  const views = usePatientViews();
 
   /*
    * Вкладки — кнопочный вид Tabs, а не ссылки. Вкладка живёт в параметре
@@ -289,7 +291,7 @@ function Frame({
                 /* фильтр уже снят — пункт остаётся на месте, но вести ему некуда */
                 disabled: activeId === null,
               },
-              { label: ut("views.show"), onSelect: () => setViews((v) => !v) },
+              ...views.entries,
               { label: ut("pt.whoIsThis"), onSelect: () => setPanel((v) => !v) },
             ]}
           />
@@ -320,17 +322,13 @@ function Frame({
       <Tabs label={ut("pg.tabsLabel")} items={tabs} />
       {groupsError ? <p className="m-0 mt-[12px] text-[13px] text-danger">{groupsError}</p> : null}
       {/*
-        Сохранённые виды — не в потоке, а по вызову из шестерёнки: на кадре
-        между полосой прокрутки вкладок и первой строкой сетки чистое поле.
-        Убрать их совсем было бы дороже — виды хранятся на сервере
-        (saved_views, scope «patients»), и уже сохранённые стали бы
-        недостижимы при живом адресном состоянии.
+        Сохранённые виды — не в потоке, а в шестерёнке: на кадре между
+        полосой прокрутки вкладок и первой строкой сетки чистое поле. Убрать
+        их совсем было бы дороже — виды хранятся на сервере (saved_views,
+        scope «patients»), и уже сохранённые стали бы недостижимы при живом
+        адресном состоянии. Окно «Зберегти відбір» — здесь же.
       */}
-      {views ? (
-        <div className="mt-[16px]">
-          <SavedViews scope="patients" />
-        </div>
-      ) : null}
+      {views.dialog}
       {/*
         24, а не 20: на кадре от низа полосы прокрутки (261) до верха литер
         первого имени (299) — 38, из которых 11 съедает воздух строки сетки
@@ -341,7 +339,7 @@ function Frame({
         role="tabpanel"
         aria-labelledby={activeTab}
         aria-label={activeTab ? undefined : ut("patients.title")}
-        className={views ? "mt-[20px]" : "mt-[24px]"}
+        className="mt-[24px]"
       >
         {children}
       </div>

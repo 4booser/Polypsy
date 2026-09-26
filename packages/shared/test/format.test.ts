@@ -50,6 +50,27 @@ describe("длительность", () => {
     expect(formatDuration(Number.NaN)).toBe("—");
     expect(formatDuration(Number.POSITIVE_INFINITY)).toBe("—");
   });
+
+  /* волна 12, разбор кода: граничные значения длительности */
+  test("59,95 с и дольше — уже минута, а не «60,0 с»", () => {
+    // проверка шла по сырому значению, а печатались десятые
+    expect(formatDuration(59_949)).toBe("59,9 с");
+    expect(formatDuration(59_950)).toBe("1 мин");
+    expect(formatDuration(59_999)).toBe("1 мин");
+  });
+
+  test("измеренные доли секунды не выглядят нулём", () => {
+    // «0,0 с» читалось бы как «не измерено» или «мгновенно» — это ни то ни другое
+    expect(formatDuration(30)).toBe("< 0,1 с");
+    expect(formatDuration(30, "en")).toBe("< 0.1 s");
+    expect(formatDuration(50)).toBe("0,1 с");
+  });
+
+  test("самое малое отрицательное — тоже не длительность", () => {
+    expect(formatDuration(-1)).toBe("—");
+    expect(formatDuration(-0)).toBe("—");
+    expect(formatDuration(Number.NEGATIVE_INFINITY)).toBe("—");
+  });
 });
 
 describe("даты", () => {

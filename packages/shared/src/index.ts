@@ -19,4 +19,6 @@ export * from "./rules";
 export * from "./equating";
 export * from "./kanon";
 export * from "./usage";
+/* схемы входа техпанели — отдельно от чистых функций, которые консоль грузит сразу */
+export * from "./wireSchemas";
 export * from "./telemetry";

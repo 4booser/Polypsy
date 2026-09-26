@@ -67,6 +67,18 @@ export interface Draft {
 }
 
 export interface DraftOption {
+  /**
+   * Идентификатор варианта на время правки — то же, что DraftQuestion.uid,
+   * для строк ответов и их полей.
+   *
+   * Варианты шли по номеру, и удаление среднего ответа сдвигало список: поле
+   * «текст ответа 2» оставалось тем же узлом DOM и получало текст третьего,
+   * курсор и выделение — в нём же, а раскрытые «Налаштування варіантів»
+   * переезжали к соседу. Необязательно по типу: черновик из JSON и старый
+   * автосейв его не несут, и normalizeDraft (withUids) доставляет его сам.
+   * На сервер не уходит (toPayload).
+   */
+  uid?: string;
   text: Record<string, string>;
   score?: number;
   keyCode?: string | null;
@@ -112,6 +124,8 @@ export interface DraftScale {
 }
 
 export interface DraftBand {
+  /** См. DraftOption.uid — то же для строк «від · до · текст» результатов */
+  uid?: string;
   minScore: number;
   maxScore: number;
   label: Record<string, string>;
@@ -132,8 +146,8 @@ export interface DraftBand {
  * макета — порядковый, он рисуется, а не хранится.
  */
 export const defaultAnswers = (): DraftOption[] => [
-  { text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
-  { text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
+  { uid: newUid(), text: { uk: UI["bp.yes"].uk, ru: UI["bp.yes"].ru }, keyCode: "yes" },
+  { uid: newUid(), text: { uk: UI["bp.no"].uk, ru: UI["bp.no"].ru }, keyCode: "no" },
 ];
 
 export const EMPTY: Draft = {
@@ -189,6 +203,7 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
     help: q.help ? loc(q.help) : null,
     required: q.required,
     options: q.options.map((o) => ({
+      uid: o.id,
       text: loc(o.text),
       score: o.score,
       keyCode: o.keyCode,
@@ -218,6 +233,7 @@ export function toDraft(s: SurveyFull, groups: SurveyGroupWithCounts[]): Draft {
     norms: sc.norms.map((n) => ({ sex: n.sex, mean: n.mean, sd: n.sd })),
     stenTable: sc.stenTable.map((r) => ({ rawMin: r.rawMin, rawMax: r.rawMax, sten: r.sten })),
     bands: sc.bands.map((b) => ({
+      uid: b.id,
       minScore: b.minScore,
       maxScore: b.maxScore,
       label: loc(b.label),
@@ -469,6 +485,17 @@ export function newUid(): string {
 }
 
 /**
+ * Ключ строки варианта или полосы в разметке.
+ *
+ * uid у них необязателен по типу (см. DraftOption.uid), и запасной ключ
+ * нужен только строке, пришедшей мимо normalizeDraft; помечен он так, чтобы
+ * не совпасть ни с одним uid.
+ */
+export function optionKey(row: { uid?: string }, index: number): string {
+  return row.uid ?? `@${index}`;
+}
+
+/**
  * Черновик в том виде, в каком его принимает API.
  *
  * uid, mode, answers и folderId — поля редактора, на сервере им делать
@@ -477,14 +504,14 @@ export function newUid(): string {
  * папку при заведении подставляет экран отдельным полем.
  */
 export function toPayload(draft: Draft): Omit<Draft, "questions" | "scales" | "mode" | "answers" | "folderId"> & {
-  questions: Omit<DraftQuestion, "uid">[];
-  scales: Omit<DraftScale, "uid">[];
+  questions: (Omit<DraftQuestion, "uid" | "options"> & { options: Omit<DraftOption, "uid">[] })[];
+  scales: (Omit<DraftScale, "uid" | "bands"> & { bands: Omit<DraftBand, "uid">[] })[];
 } {
   const { questions, scales, mode: _m, answers: _a, folderId: _f, ...rest } = withTotalKey(draft);
   return {
     ...rest,
-    questions: questions.map(({ uid: _q, ...q }) => q),
-    scales: scales.map(({ uid: _s, ...sc }) => sc),
+    questions: questions.map(({ uid: _q, options, ...q }) => ({ ...q, options: options.map(({ uid: _o, ...o }) => o) })),
+    scales: scales.map(({ uid: _s, bands, ...sc }) => ({ ...sc, bands: bands.map(({ uid: _b, ...b }) => b) })),
   };
 }
 
@@ -494,10 +521,13 @@ export function toPayload(draft: Draft): Omit<Draft, "questions" | "scales" | "m
  * поедет по индексам.
  */
 export function withUids(draft: Draft): Draft {
+  const keyed = <T extends { uid?: string }>(row: T): T & { uid: string } =>
+    (row.uid ? row : { ...row, uid: newUid() }) as T & { uid: string };
   return {
     ...draft,
-    questions: draft.questions.map((q) => (q.uid ? q : { ...q, uid: newUid() })),
-    scales: draft.scales.map((sc) => (sc.uid ? sc : { ...sc, uid: newUid() })),
+    questions: draft.questions.map((q) => ({ ...keyed(q), options: (q.options ?? []).map(keyed) })),
+    scales: draft.scales.map((sc) => ({ ...keyed(sc), bands: (sc.bands ?? []).map(keyed) })),
+    ...(draft.answers ? { answers: draft.answers.map(keyed) } : {}),
   };
 }
 

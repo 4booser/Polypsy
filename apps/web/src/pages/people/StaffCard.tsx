@@ -15,7 +15,7 @@ import { Button, Field, Input, Readout, Select } from "../../ui/primitives";
 import { barKind, type BarKind } from "../../shell/Topbar";
 import { usePagedResource, useResource } from "../../useResource";
 import { DEFAULT_PER, pageCount, pageFrom, perFrom } from "../constructor/catalogue";
-import { loadDirectory, loadMember } from "./data";
+import { ladderReadable, loadDirectory, loadMember } from "./data";
 import { type StaffRow, cardTitleRole, isDoctor, matchesQuery, metaSegments, ownGroups, pageSlice } from "./model";
 import { gridClass, metaClass, nameClass, rowClass } from "./StaffList";
 
@@ -394,7 +394,17 @@ export function StaffProfile() {
    * раздела «Адміністратор групи», который в поле «должность» читался бы
    * как должность.
    */
-  const perms = useResource(() => api.userPermissions(row.id).catch(() => null), [row.id]);
+  /*
+   * Карточку прав суперадмина сервер открывает только суперадмину — прочим
+   * запрос заведомо вернулся бы отказом, и он не уходит (ladderReadable,
+   * волна 12). Поле «Роль» у суперадмина и без неё не пустое: nav.roleSuper.
+   */
+  const { user } = useAuth();
+  const readable = ladderReadable({ id: user?.id ?? "", isSuper: user?.role === "superadmin" }, row);
+  const perms = useResource(
+    () => (readable ? api.userPermissions(row.id).catch(() => null) : Promise.resolve(null)),
+    [row.id, readable],
+  );
 
   const roleText = useMemo(() => {
     const parts: string[] = [];
@@ -762,8 +772,27 @@ export function StaffPatients() {
   );
 }
 
+/*
+ * Пациентов отдаёт маршрут под правом patients.read, и без права запрос
+ * заведомо кончился бы отказом — а отказ в праве сервер пишет в журнал как
+ * access.denied (волна 12, разбор кода: «справочник сотрудников засорял
+ * аудит штатными отказами»). Право проверяется до запроса, и вместо списка
+ * стоит объяснение.
+ */
+function OwnPatients(props: { heading?: boolean; to?: string } = {}) {
+  const { ut } = useLang();
+  const { can } = useAuth();
+  if (can("patients.read")) return <OwnPatientsList {...props} />;
+  return (
+    <>
+      {props.heading ? <SectionBar title={ut("top.patients")} to={props.to} /> : null}
+      <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ppl.noPatientsRight")}</p>
+    </>
+  );
+}
+
 /* отдельным компонентом, чтобы запрос за списком не уходил из чужой карточки, где он не нужен */
-function OwnPatients({ heading, to }: { heading?: boolean; to?: string } = {}) {
+function OwnPatientsList({ heading, to }: { heading?: boolean; to?: string } = {}) {
   const { ut } = useLang();
   const page = usePagedResource<Respondent>((cursor) => api.respondents({ cursor: cursor ?? undefined }), []);
   const meta = { male: ut("adm.male"), female: ut("adm.female"), year: ut("ppl.yearShort") };
@@ -956,8 +985,14 @@ export function StaffGroups() {
     [setParams],
   );
 
-  const res = useResource(() => api.patientGroups(), []);
-  const all = useMemo(() => (res.data ? ownGroups(res.data, row.id, q) : null), [res.data, row.id, q]);
+  /* группы пациентов — под правом patients.read: без права не спрашиваем (см. OwnPatients) */
+  const { can } = useAuth();
+  const canPatients = can("patients.read");
+  const res = useResource(() => api.patientGroups(), [], { enabled: canPatients });
+  const all = useMemo(
+    () => (res.data ? ownGroups(res.data, row.id, q) : canPatients ? null : []),
+    [res.data, row.id, q, canPatients],
+  );
   const pages = pageCount(all?.length ?? 0, per);
   const shown = useMemo(() => (all ? pageSlice(all, pageNo, per) : null), [all, pageNo, per]);
 
@@ -986,7 +1021,7 @@ export function StaffGroups() {
         <Loading rows={4} />
       ) : shown.length === 0 ? (
         <p className="m-0 py-[24px] text-[13px] text-muted">
-          {!me && !isSuper ? ut("ppl.groupsOthersHint") : ut("ppl.noGroups")}
+          {!canPatients ? ut("ppl.noPatientsRight") : !me && !isSuper ? ut("ppl.groupsOthersHint") : ut("ppl.noGroups")}
         </p>
       ) : (
         <ul className="m-0 grid list-none grid-cols-2 gap-x-[60px] gap-y-[26px] p-0 max-[900px]:grid-cols-1">

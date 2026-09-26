@@ -5,6 +5,7 @@ import { api } from "../api";
 import { day } from "../format";
 import { useLang } from "../lang";
 import { Loading, Modal, useAction, useToast } from "../ui";
+import { choiceLabel, keepChosen } from "../ui/choices";
 import { cx } from "../ui/cx";
 import { IconDots, IconPlusThick } from "../ui/glyphs";
 import { Page } from "../ui/layout";
@@ -258,6 +259,20 @@ export default function Cohorts() {
   const usableSurveys = (surveys.data ?? [])
     .filter((s) => s.responseCount > 0 || s.id === spec.surveyId)
     .sort((a, b) => a.title.localeCompare(b.title));
+  /*
+   * Отбор по снятой методике (ссылка, сохранённый отбор) — пунктом с
+   * пометкой, а не «будь-яка методика»: список методик снятых не отдаёт, и
+   * селект показывал первый пункт, хотя отбор по-прежнему шёл по снятой.
+   * Название — из карточки методики, которую экран и так читает ради шкал.
+   */
+  const surveyChoices = keepChosen(usableSurveys, spec.surveyId ?? "", (id) =>
+    survey.data?.id === id ? { title: survey.data.title, retired: !!survey.data.archivedAt } : null,
+  );
+  const choiceWords = {
+    retired: ut("mark.retired"),
+    unavailable: ut("choice.unavailable"),
+    unknown: survey.loading ? ut("common.loading") : ut("am.testUnavailable"),
+  };
   const people = names?.items ?? [];
   const allChosen = people.length > 0 && people.every((p) => selected.has(p.userId));
 
@@ -323,9 +338,9 @@ export default function Cohorts() {
                 disabled={!surveys.data}
               >
                 <option value="">{ut("coh.anySurvey")}</option>
-                {usableSurveys.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title}
+                {surveyChoices.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {choiceLabel(c, choiceWords)}
                   </option>
                 ))}
               </FillSelect>
