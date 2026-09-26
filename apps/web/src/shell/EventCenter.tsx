@@ -177,6 +177,8 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
         {total > 0 ? (
           <span
             aria-hidden
+            /* признак для сквозного сценария «тревога догоняет открытый экран»: класс здесь — набор утилит, и цепляться за него хрупко */
+            data-events-dot=""
             className="absolute -right-2 -top-1.5 min-w-[16px] rounded-full bg-primary px-1 text-center font-mono text-[10px] font-bold leading-[16px] text-primary-text tabular-nums"
           >
             {total > 9 ? "9+" : total}
