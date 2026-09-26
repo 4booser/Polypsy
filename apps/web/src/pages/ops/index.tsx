@@ -54,9 +54,13 @@ export default function OpsPanel() {
   }));
 
   return (
-    <Page title={ut("ops.title")} crumbs={<Tabs items={groupItems} label={ut("ops.title")} />}>
+    <Page title={ut("ops.title")}>
+      {/* заголовок → группы → разделы группы: слот crumbs рисуется над заголовком, а группы — его часть */}
+      <div className="mb-[14px]">
+        <Tabs items={groupItems} label={ut("ops.title")} />
+      </div>
       {active && active.tabs.length > 1 ? (
-        <nav aria-label={ut(active.label)} className="-mt-[6px] mb-[22px] overflow-x-auto">
+        <nav aria-label={ut(active.label)} className="mb-[24px] overflow-x-auto">
           <ul className="m-0 flex list-none gap-x-[28px] gap-y-[6px] p-0 max-[900px]:flex-wrap">
             {active.tabs.map((t) => (
               <li key={t.to} className="shrink-0">
