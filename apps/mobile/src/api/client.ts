@@ -373,10 +373,23 @@ export const api = {
       (error) => offlineFallback(error, { plan: cache.safetyPlan() }),
     ),
   consentStatus: () =>
-    request<{ required: boolean; accepted: boolean; version: number | null; text: string | null }>(
-      "/api/consents/me",
-    ),
-  acceptConsent: () => request<{ ok: true }>("/api/consents/me/accept", { method: "POST" }),
+    request<{
+      required: boolean;
+      accepted: boolean;
+      version: number | null;
+      /** Редакция, которую показывают, — её и присылают при принятии */
+      textId?: string | null;
+      text: string | null;
+    }>("/api/consents/me"),
+  /**
+   * Принять ту редакцию, которую показали. Текст обновился, пока человек
+   * читал, — сервер отвечает 409, и экран показывает новый (волна 12).
+   */
+  acceptConsent: (textId?: string | null) =>
+    request<{ ok: true }>("/api/consents/me/accept", {
+      method: "POST",
+      body: JSON.stringify(textId ? { textId } : {}),
+    }),
 
   listSurveys: (groupId?: string) =>
     request<Items<SurveyListItem>>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`).then(

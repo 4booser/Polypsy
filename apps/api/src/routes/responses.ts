@@ -44,6 +44,7 @@ import {
   isStaff,
 } from "../lib/scope";
 import { log } from "../lib/log";
+import { hasCurrentConsent } from "../lib/consent";
 import { fullNameOf } from "../lib/auth";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -143,6 +144,34 @@ async function assertMayTake(c: Context<AppEnv>, user: User, survey: SurveyFull)
     });
     forbidden("err.surveyGrantEnded");
   }
+}
+
+/**
+ * Информированное согласие — условие приёма ответов, а не только экран.
+ *
+ * Проверял его один экран приложения: прямой запрос, веб-кабинет (своего
+ * экрана согласия у него не было) и офлайн-очередь, досланная после отзыва
+ * согласия, сдавали ответы без него (волна 12). Ответы методики — ровно те
+ * данные, на обработку которых согласие и берётся, поэтому проверка здесь,
+ * на сдаче и черновике.
+ *
+ * Только для самого пациента. Заполнение за пациента специалистом — работа
+ * у койки по согласию, взятому очно, и у многих таких пациентов нет учётной
+ * записи, где его можно было бы принять; запереть это значило бы
+ * остановить приём. Сотрудник, проходящий методику сам, согласия пациента
+ * не даёт.
+ */
+async function assertConsent(c: Context<AppEnv>, user: User): Promise<void> {
+  if (isStaff(user) || (await hasCurrentConsent(user.id))) return;
+  await audit(c, {
+    action: "access.denied",
+    outcome: "denied",
+    resourceType: "consent",
+    resourceId: user.id,
+    subjectUserId: user.id,
+    details: { method: c.req.method, reason: "consent_missing", path: c.req.path },
+  });
+  forbidden("err.consentRequired");
 }
 
 /**
@@ -382,6 +411,7 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     badRequest("err.onBehalfRequired");
   } else {
     await assertMayTake(c, user, survey);
+    await assertConsent(c, user);
   }
 
   // версию проверяем после прав: иначе ответ «такой версии нет» рассказывал
@@ -531,6 +561,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   if (survey.anonymous) badRequest("err.anonymousNoDraft");
   if (survey.administration !== "self" && !isStaff(user)) forbidden("err.staffFillsOnly");
   await assertMayTake(c, user, survey);
+  await assertConsent(c, user);
   if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
 
   const existing = await db.query.responses.findFirst({

@@ -1239,6 +1239,13 @@ export const api = {
 
   consentText: () =>
     request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),
+  /* своё согласие (кабинет): статус и принятие показанной редакции — 409, если текст обновился */
+  consentStatus: () =>
+    request<{ required: boolean; accepted: boolean; version: number | null; textId?: string | null; text: string | null }>(
+      "/api/consents/me",
+    ),
+  acceptConsent: (textId: string | null) =>
+    request<{ ok: true }>("/api/consents/me/accept", { method: "POST", body: JSON.stringify(textId ? { textId } : {}) }),
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
 

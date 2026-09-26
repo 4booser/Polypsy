@@ -20,6 +20,8 @@ import {
 import {
   alertCases,
   auditLog,
+  consentTexts,
+  consents,
   loginAttempts,
   referrals,
   responseScores,
@@ -747,6 +749,94 @@ describe("тревоги черновика при сдаче", () => {
     // survey:purge — тревоги уходят каскадом по методике в том же операторе
     await db.delete(surveys).where(eq(surveys.id, surveyId));
     expect(await db.select().from(riskAlerts).where(eq(riskAlerts.surveyId, surveyId))).toEqual([]);
+  });
+});
+
+/* ─────────── согласие: условие сдачи и принятие показанной редакции ─────────── */
+
+describe("информированное согласие на сервере", () => {
+  /* текст согласия общий на всю базу: после блока его не остаётся (см. access.test.ts) */
+  afterAll(async () => {
+    await db.delete(consents);
+    await db.delete(consentTexts);
+  });
+
+  const putText = (uk: string) =>
+    api("/api/consents/text", root.token, { method: "PUT", body: JSON.stringify({ body: { uk, ru: uk } }) });
+  const accept = (token: string, textId?: string) =>
+    api("/api/consents/me/accept", token, { method: "POST", body: JSON.stringify(textId ? { textId } : {}) });
+
+  test("без принятой редакции сдача и черновик — 403 consentRequired; принял — проходит; отозвал — снова нет", async () => {
+    expect((await putText(`Згода на обстеження, редакція ${tag()}`)).status).toBe(200);
+    const surveyId = await makeSurvey();
+    const person = await makeUser("user", `consent-${tag()}@test.dev`);
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const body = { versionId: v1.versionId, answers: yesAnswers(v1) };
+
+    const draft = await saveDraft(surveyId, person.token, body);
+    expect(draft.status).toBe(403);
+    expect(draft.body.error).toContain("згоду");
+    expect((await submit(surveyId, person.token, body)).status).toBe(403);
+    expect((await denials(person.id, "consent_missing")).length).toBe(2);
+
+    const status = await api("/api/consents/me", person.token);
+    expect((await accept(person.token, status.body.textId)).status).toBe(200);
+    expect((await submit(surveyId, person.token, body)).status).toBe(201);
+
+    // отзыв согласия (мобильный «не погоджуюся» снимает принятие действующей редакции)
+    await db.delete(consents).where(eq(consents.userId, person.id));
+    const after = await submit(surveyId, person.token, body);
+    expect(after.status, "сдача прошла после отзыва согласия").toBe(403);
+  });
+
+  test("новая редакция требует согласия заново — и сдача ждёт его", async () => {
+    await putText(`Перша редакція ${tag()}`);
+    const surveyId = await makeSurvey();
+    const person = await makeUser("user", `consent-new-${tag()}@test.dev`);
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const first = await api("/api/consents/me", person.token);
+    expect((await accept(person.token, first.body.textId)).status).toBe(200);
+
+    await putText(`Нова редакція ${tag()}`);
+    expect((await submit(surveyId, person.token, { versionId: v1.versionId, answers: yesAnswers(v1) })).status).toBe(403);
+  });
+
+  test("принятие показанной редакции: устаревшая — 409 и не принято, действующая — принято", async () => {
+    await putText(`Редакція, яку показали ${tag()}`);
+    const person = await makeUser("user", `consent-stale-${tag()}@test.dev`);
+    const shown = await api("/api/consents/me", person.token);
+    // пока человек читал, текст обновили
+    await putText(`Редакція, якої він не бачив ${tag()}`);
+
+    const stale = await accept(person.token, shown.body.textId);
+    expect(stale.status).toBe(409);
+    const status = await api("/api/consents/me", person.token);
+    expect(status.body.accepted, "согласие записалось на текст, которого человек не видел").toBe(false);
+    expect(status.body.text).toContain("якої він не бачив");
+
+    expect((await accept(person.token, status.body.textId)).status).toBe(200);
+    expect((await api("/api/consents/me", person.token)).body.accepted).toBe(true);
+  });
+
+  test("старый клиент без textId принимает, как раньше, — с пометкой в журнале", async () => {
+    await putText(`Редакція для старого клієнта ${tag()}`);
+    const person = await makeUser("user", `consent-legacy-${tag()}@test.dev`);
+    expect((await accept(person.token)).status).toBe(200);
+    const [entry] = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "consent.accept"), eq(auditLog.subjectUserId, person.id)));
+    expect((entry!.details as { shownTextId: string | null }).shownTextId).toBeNull();
+  });
+
+  test("специалист заполняет за своего пациента без его согласия в системе — принимается", async () => {
+    await putText(`Редакція ${tag()}`);
+    const surveyId = await makeSurvey();
+    const own = await makeUser("user", `consent-onbehalf-${tag()}@test.dev`, { sex: "male", birthDate: "1980-01-01" });
+    await db.insert(surveyAccess).values({ surveyId, userId: own.id, grantedBy: adminA.id });
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, adminA.token)).body;
+    const res = await submit(surveyId, adminA.token, { onBehalfOf: own.id, versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
   });
 });
 

@@ -1,21 +1,19 @@
 import { Hono } from "hono";
-import { desc, } from "drizzle-orm";
 import { z } from "zod";
 import { t, } from "@quizzy/shared";
 import { db } from "../db";
 import { consentTexts, consents } from "../db/schema";
+import { currentConsentText } from "../lib/consent";
 import { audit } from "../lib/audit";
-import { badRequest, langOf, parseBody } from "../lib/http";
+import { badRequest, conflict, langOf, parseBody } from "../lib/http";
 import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
 export const consentRoutes = new Hono<AppEnv>();
 
 consentRoutes.use("*", requireAuth);
 
-async function latestText() {
-  const [row] = await db.select().from(consentTexts).orderBy(desc(consentTexts.version)).limit(1);
-  return row ?? null;
-}
+/* действующая редакция — одна точка с проверкой согласия при сдаче (lib/consent.ts) */
+const latestText = currentConsentText;
 
 /**
  * Статус согласия текущего пользователя.
@@ -37,14 +35,49 @@ consentRoutes.get("/me", async (c) => {
     required: true,
     accepted: !!existing,
     version: current.version,
+    // редакция, которую показывают: её клиент и присылает при принятии
+    textId: current.id,
     text: t(current.body as never, langOf(c)),
   });
 });
 
+const acceptSchema = z.object({
+  /** Редакция, которую человек читал (textId из GET /me) */
+  textId: z.string().min(1).max(64).nullish(),
+});
+
+/**
+ * Принять согласие — на ту редакцию, которую показали.
+ *
+ * Сервер брал последнюю редакцию, не спрашивая, какую читал человек: текст
+ * обновили, пока экран был открыт, — и в документах оказывалось согласие на
+ * текст, которого он не видел (волна 12, воспроизведено ревью). Теперь
+ * клиент присылает textId показанной редакции; не совпала с действующей —
+ * 409, и экран показывает новый текст.
+ *
+ * Без textId — принимается, как раньше: так шлют уже установленные
+ * приложения, и отказ запер бы их на экране согласия до обновления. Такое
+ * принятие помечено в журнале (shownTextId: null) — отличить его от
+ * подтверждённого можно всегда.
+ */
 consentRoutes.post("/me/accept", async (c) => {
   const user = c.get("user");
   const current = await latestText();
   if (!current) badRequest("err.consentTextNotConfigured");
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = acceptSchema.safeParse(body ?? {});
+  const shownTextId = parsed.success ? (parsed.data.textId ?? null) : null;
+  if (shownTextId && shownTextId !== current.id) {
+    await audit(c, {
+      action: "consent.accept",
+      outcome: "denied",
+      resourceType: "consent_text",
+      resourceId: current.id,
+      subjectUserId: user.id,
+      details: { version: current.version, reason: "text_changed", shownTextId },
+    });
+    conflict("err.consentTextChanged");
+  }
 
   await db
     .insert(consents)
@@ -60,7 +93,7 @@ consentRoutes.post("/me/accept", async (c) => {
     resourceType: "consent_text",
     resourceId: current.id,
     subjectUserId: user.id,
-    details: { version: current.version },
+    details: { version: current.version, shownTextId },
   });
   return c.json({ ok: true });
 });

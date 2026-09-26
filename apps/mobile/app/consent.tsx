@@ -20,6 +20,8 @@ export default function ConsentScreen() {
   const { ut } = useLang();
   const { logout } = useAuth();
   const [text, setText] = useState<string | null>(null);
+  // редакция на экране: принимается именно она (сервер сверит с действующей)
+  const [textId, setTextId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +36,7 @@ export default function ConsentScreen() {
           return;
         }
         setText(s.text);
+        setTextId(s.textId ?? null);
       })
       .catch((e) => {
         // без сети экран не должен запирать уже работавшего человека:
@@ -75,10 +78,18 @@ export default function ConsentScreen() {
           setBusy(true);
           setError(null);
           try {
-            await api.acceptConsent();
+            await api.acceptConsent(textId);
             router.replace("/(app)/home");
           } catch (e) {
             setError(e instanceof Error ? e.message : ut("common.error"));
+            // текст обновился, пока человек читал: показываем новую редакцию, принимать — её
+            if ((e as { status?: number }).status === 409) {
+              const fresh = await api.consentStatus().catch(() => null);
+              if (fresh) {
+                setText(fresh.text);
+                setTextId(fresh.textId ?? null);
+              }
+            }
           } finally {
             setBusy(false);
           }
