@@ -293,12 +293,20 @@ describe("планировщик", () => {
     expect(healthyRuns.length, "следующее расписание не отработало — проход встал на первом сбое").toBe(1);
     expect(healthyRuns[0]!.assigned).toBeGreaterThan(0);
 
-    // срок кривого сдвинут: иначе оно вернётся на следующем же тике
+    /*
+     * Кривое не вернётся на следующем же тике — у него срок повторной
+     * попытки в будущем. Плановый срок при этом НЕ сдвигается на следующий
+     * период (волна 12, участок delivery): прежде сдвигался, и временный
+     * сбой стоил целого периода без назначений. Подробно — scheduleRetry.test.ts.
+     */
     const [after] = await db.select().from(schedules).where(eq(schedules.id, broken));
     expect(
-      new Date(after!.nextRunAt).getTime(),
-      "срок кривого расписания не сдвинут — оно будет падать каждый тик",
+      new Date(after!.retryAt!).getTime(),
+      "срок повторной попытки не назначен — кривое будет падать каждый тик",
     ).toBeGreaterThan(Date.now());
+    expect(new Date(after!.nextRunAt).getTime()).toBeLessThan(Date.now());
+    // кривое снимается: иначе его повтор сработал бы в чужом прогоне с `now` из будущего
+    await db.update(schedules).set({ active: false }).where(eq(schedules.id, broken));
 
     // от кривого не осталось наполовину розданных назначений
     const leftovers = await db
