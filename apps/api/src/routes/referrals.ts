@@ -4,7 +4,6 @@ import {
   ageAt,
   createReferralSchema,
   referralListQuery,
-  reliableChange,
   t,
   updateReferralSchema,
   type CaseSummary,
@@ -22,15 +21,17 @@ import {
   responses,
   riskAlerts,
   scales,
+  surveyVersions,
   surveys,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { fullNameOf } from "../lib/auth";
+import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { round, variance } from "../lib/stats";
+import { round } from "../lib/stats";
 import { accessiblePatientIds, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -249,26 +250,31 @@ referralRoutes.get("/summary/:userId", async (c) => {
    * человека и любого сдвига. На экране это выглядело как уверенное
    * «достоверное возрастание» у каждой строки подряд, то есть как настоящий
    * клинический вывод, которым не являлось.
+   *
+   * И выборка, и надёжность, и правило сравнимости — те же, что в динамике
+   * (lib/changeBasis.ts). Прежде сводка брала выборку по всем версиям и
+   * нормировкам сразу, надёжность — константой 0,8, и сравнивала любые
+   * версии: один и тот же человек выглядел «достоверно улучшившимся» на
+   * консилиуме и «в пределах ошибки» в карте.
    */
-  const populationRows = own.length
-    ? await db
-        .select({ code: scales.code, surveyId: responses.surveyId, value: responseScores.value })
-        .from(responseScores)
-        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .innerJoin(responses, eq(responses.id, responseScores.responseId))
-        .where(
-          and(
-            inArray(responses.surveyId, [...new Set(own.map((r) => r.surveyId))]),
-            eq(responses.status, "completed"),
-          ),
-        )
-    : [];
-
-  const populationByKey = new Map<string, number[]>();
-  for (const row of populationRows) {
-    const key = `${row.surveyId}:${row.code}`;
-    populationByKey.set(key, [...(populationByKey.get(key) ?? []), row.value]);
-  }
+  const ownSurveyIds = [...new Set(own.map((r) => r.surveyId))];
+  const samples = await normativeSamples(ownSurveyIds);
+  const alphas = await alphasOf(
+    own
+      .filter((r): r is typeof r & { versionId: string } => !!r.versionId)
+      .map((r) => ({ surveyId: r.surveyId, versionId: r.versionId })),
+  );
+  const ownVersionIds = [...new Set(own.map((r) => r.versionId).filter((v): v is string => !!v))];
+  const versionNoById = new Map(
+    ownVersionIds.length
+      ? (
+          await db
+            .select({ id: surveyVersions.id, version: surveyVersions.version })
+            .from(surveyVersions)
+            .where(inArray(surveyVersions.id, ownVersionIds))
+        ).map((v) => [v.id, v.version] as const)
+      : [],
+  );
 
   const bySurvey = new Map<string, typeof own>();
   for (const r of own) {
@@ -279,8 +285,8 @@ referralRoutes.get("/summary/:userId", async (c) => {
 
   const summarySurveys: CaseSummary["surveys"] = [...bySurvey.entries()].map(([surveyId, list]) => {
     const survey = scoped.find((s) => s.id === surveyId)!;
-    const responseIds = new Set(list.map((r) => r.id));
-    const own2 = scoreRows.filter((s) => responseIds.has(s.score.responseId) && s.kind === "clinical");
+    const responseById = new Map(list.map((r) => [r.id, r]));
+    const own2 = scoreRows.filter((s) => responseById.has(s.score.responseId) && s.kind === "clinical");
 
     const byCode = new Map<string, typeof own2>();
     for (const s of own2) {
@@ -297,31 +303,29 @@ referralRoutes.get("/summary/:userId", async (c) => {
       scales: [...byCode.entries()].map(([code, rows]) => {
         // порядок замеров — по времени сдачи
         const ordered = rows
-          .map((r) => ({ ...r, at: list.find((x) => x.id === r.score.responseId)?.submittedAt ?? "" }))
-          .sort((a, b) => a.at.localeCompare(b.at));
-        const first = ordered[0]!;
+          .map((r) => ({ ...r, response: responseById.get(r.score.responseId)! }))
+          .sort((a, b) => (a.response.submittedAt ?? "").localeCompare(b.response.submittedAt ?? ""));
         const last = ordered[ordered.length - 1]!;
 
         /*
-         * RCI: SD по популяции той же шкалы, надёжность консервативно 0.8 —
-         * точная альфа считается в аналитике, здесь важен порядок величины.
-         *
-         * Порог в десять наблюдений не формальность: на меньшей выборке SD
-         * сама по себе шум, и «достоверность» превращается в подбрасывание
-         * монеты с уверенным лицом. Лучше показать «недостаточно данных»,
-         * чем вывод, которого нет.
+         * RCI и причина, если его нет, — тем же правилом, что в динамике:
+         * одна версия или приведение, одни единицы, оба протокола
+         * достоверны; SD — по выборке версии и нормировки последнего замера
+         * не меньше MIN_RCI_SAMPLE, альфа — фактическая альфа этой версии.
+         * Лучше показать «недостаточно данных», чем вывод, которого нет.
          */
-        let rc: CaseSummary["surveys"][number]["scales"][number]["reliableChange"] = null;
-        if (ordered.length >= 2) {
-          const sample = populationByKey.get(`${surveyId}:${code}`) ?? [];
-          if (sample.length >= 10) {
-            const sd = Math.sqrt(variance(sample));
-            const computed = reliableChange(first.score.value, last.score.value, sd, 0.8);
-            if (computed) {
-              rc = { rci: computed.rci, significant: computed.significant, direction: computed.direction };
-            }
-          }
-        }
+        const change = changeOverSeries(
+          ordered.map((r) => ({
+            value: r.score.value,
+            versionId: r.response.versionId ?? null,
+            versionNo: versionNoById.get(r.response.versionId ?? "") ?? null,
+            normalized: r.score.normalized,
+            normalization: r.score.normalization,
+            reliable: r.response.reliable,
+          })),
+          { surveyId, code, samples, alphas },
+        );
+        const rc = change.reliableChange;
 
         return {
           code,
@@ -330,7 +334,8 @@ referralRoutes.get("/summary/:userId", async (c) => {
           normalization: last.score.normalization as ScaleNormalization,
           bandLabel: last.score.bandLabel,
           severity: last.score.severity as Severity | null,
-          reliableChange: rc,
+          reliableChange: rc ? { rci: rc.rci, significant: rc.significant, direction: rc.direction } : null,
+          incomparable: change.incomparable,
         };
       }),
     };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import type { PatientGroupWithCounts, Respondent, UiKey } from "@quizzy/shared";
+import type { Incomparable, PatientGroupWithCounts, Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
 import { Chart, LineChart } from "../charts";
 import { versionMarks } from "../charts/marks";
@@ -704,10 +704,19 @@ function rciHint(
   sc: {
     delta: number | null;
     reliableChange: { rci: number; significant: boolean; basis: { sd: number; alpha: number; sampleN: number } } | null;
+    incomparable?: Incomparable | null;
   },
   // переводчик аргументом: функция чистая и живёт вне компонента
   ut: (k: UiKey) => string,
 ): string {
+  /*
+   * Изменения нет по двум разным причинам, и путать их нельзя: «нужен
+   * второй замер» при трёх замерах разных версий отправляет человека делать
+   * замер, который уже есть. Причина — от сервера (волна 12).
+   */
+  if (sc.incomparable === "version") return ut("rch.versions");
+  if (sc.incomparable === "units") return ut("rch.units");
+  if (sc.incomparable === "unreliable") return ut("rch.unreliable");
   if (sc.delta === null) return ut("pt.needSecond");
   const base = `${ut("pt.change")}: ${sc.delta > 0 ? "+" : ""}${sc.delta}`;
   const rc = sc.reliableChange;

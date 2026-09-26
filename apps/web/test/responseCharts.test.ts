@@ -167,6 +167,76 @@ describe("динамика: ряд этой методики и сдвиг от 
     expect(shiftOf(p(10, null), p(11, null), 2).verdict).toBe("within");
   });
 
+  /*
+   * Клинический разбор: прохождение без пола (норм нет → сырой балл) и то же
+   * с полом (T-балл) лежат в одной версии, и их «разность» давала RCI 3–6 —
+   * «більше за похибку» по девяти шкалам из одиннадцати. Сравнимость — то же
+   * правило, что у сервера (comparability).
+   */
+  test("вердикты: разные единицы и недостоверный протокол — не RCI", () => {
+    const p = (value: number, extra: Partial<TrendPointView> = {}): TrendPointView => ({
+      responseId: String(value),
+      at: "2026-08-01T00:00:00Z",
+      value,
+      band: null,
+      focus: false,
+      versionNo: 2,
+      normalized: true,
+      normalization: "tscore",
+      reliable: true,
+      ...extra,
+    });
+
+    const units = shiftOf(p(18, { normalized: false }), p(55), 2);
+    expect(units.verdict, "сырой балл вычтен из T-балла").toBe("units");
+    expect(units.rci).toBeNull();
+
+    const unreliable = shiftOf(p(50, { reliable: false }), p(62), 2);
+    expect(unreliable.verdict, "база сравнения — недостоверный протокол").toBe("unreliable");
+    expect(unreliable.rci).toBeNull();
+
+    // оба сырые и достоверные — сравнимы, как и прежде
+    expect(shiftOf(p(10, { normalized: false }), p(12, { normalized: false }), 2).verdict).toBe("within");
+  });
+
+  test("RCI на экране не перескакивает через критерий: 1,964 не пишется как 1,96", () => {
+    const p = (value: number): TrendPointView => ({
+      responseId: String(value),
+      at: "2026-08-01T00:00:00Z",
+      value,
+      band: null,
+      focus: false,
+      versionNo: 2,
+    });
+    // SEM = 10/√2 → Sdiff = 10, и RCI равен сдвигу, делённому на десять
+    const s = shiftOf(p(0), p(19.64), 10 / Math.SQRT2);
+    expect(s.verdict).toBe("reliable");
+    expect(s.rci).toBe(1.964);
+  });
+
+  test("SEM последней версии не приписывается паре из другой версии или других единиц", () => {
+    /*
+     * Сервер считает SEM в единицах последнего замера ряда. Пара соседних
+     * замеров, оба сырых (норм не было), с этой SEM дала бы вердикт в чужих
+     * единицах — поэтому для неё «оценить не из чего».
+     */
+    const view = buildTrends(
+      detail({ id: "r2" }),
+      dynamics([
+        series(
+          [
+            { responseId: "r1", rawScore: 10, normalized: false },
+            { responseId: "r2", rawScore: 30, normalized: false },
+            { responseId: "r3", rawScore: 50, normalized: true },
+          ],
+          { sem: 2 },
+        ),
+      ]),
+    );
+    if (view.kind !== "series") throw new Error("ожидался ряд");
+    expect(view.scales[0]!.shift!.verdict).toBe("noSem");
+  });
+
   test("это прохождение первое в ряду — сдвига нет, есть пометка", () => {
     const view = buildTrends(
       detail({ id: "r1" }),

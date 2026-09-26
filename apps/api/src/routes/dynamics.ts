@@ -1,24 +1,20 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { ageAt, equate, itemContribution, reliableChange, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
-import type { RespondentDynamics, ScaleDynamics, Sex } from "@quizzy/shared";
+import { ageAt, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
+import type { RespondentDynamics, ScaleDynamics, ScaleNormalization, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { langOf } from "../lib/http";
 import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { alphasOf, basisOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
 import { percentileOf } from "../lib/norms";
 import { birthYearOf } from "../lib/privacy";
-import { getSurvey } from "../lib/surveys";
-import { reliabilityOf } from "../lib/psychometrics";
-import { round, variance } from "../lib/stats";
-import { answers as answersTable } from "../db/schema";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
-import { log } from "../lib/log";
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
@@ -266,48 +262,21 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     .where(inArray(scales.id, [...new Set(scoreRows.map((s) => s.scaleId))]));
   const scaleById = new Map(scaleRows.map((s) => [s.id, s]));
 
-  // нормативная выборка: все баллы по субшкалам с тем же кодом в той же методике
-  const sampleByKey = new Map<string, number[]>();
-  const allScores = await db
-    .select({
-      score: responseScores,
-      surveyId: responses.surveyId,
-      scaleCode: scales.code,
-      versionId: responses.versionId,
-    })
-    .from(responseScores)
-    .innerJoin(responses, eq(responses.id, responseScores.responseId))
-    .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-    .where(and(inArray(responses.surveyId, surveyIds), eq(responses.status, "completed")));
-
   /*
-   * Та же выборка, но разложенная по версиям: из неё считаются моменты для
-   * приведения баллов между версиями. Отдельный запрос был бы вторым проходом
-   * по тем же строкам.
+   * Нормативная выборка — баллы той же шкалы той же методики В ТЕХ ЖЕ
+   * ЕДИНИЦАХ: той же версии и той же нормировки (lib/changeBasis.ts).
+   *
+   * Прежде ключом были методика и код шкалы, и выборка смешивала версии.
+   * Пока нормировка у версий одна, это неточность; когда её меняют (была
+   * доля 0–1, стал T-балл 20–80) — это выборка в двух единицах сразу. SD
+   * такой смеси — разброс между единицами, а не между людьми, и RCI по нему
+   * объявлял «в пределах погрешности» почти любой сдвиг; перцентиль T-балла
+   * среди долей выходил около ста при любом значении. Приводить всю выборку
+   * к одной версии ради этого незачем: у точки своя версия, и сравнивать её
+   * надо со своими. Из этой же выборки считаются моменты для приведения
+   * версий друг к другу.
    */
-  const byVersionKey = new Map<string, number[]>();
-  for (const row of allScores) {
-    const key = `${row.surveyId}:${row.scaleCode}`;
-    /*
-     * Непронормированный балл в выборку не идёт.
-     *
-     * Из неё считаются перцентиль человека и SD для RCI. Смешав T-баллы с
-     * сырыми, оба получаешь бессмысленными: перцентиль — относительно
-     * выборки в двух единицах сразу, RCI — по разбросу, которого нет.
-     * Правило то же, что в аналитике, см. comparableScores.
-     */
-    if (!row.score.normalized) continue;
-    const list = sampleByKey.get(key) ?? [];
-    list.push(row.score.value);
-    sampleByKey.set(key, list);
-
-    if (row.versionId) {
-      const vk = `${key}:${row.versionId}`;
-      const vlist = byVersionKey.get(vk) ?? [];
-      vlist.push(row.score.value);
-      byVersionKey.set(vk, vlist);
-    }
-  }
+  const sampleByKey = await normativeSamples(surveyIds);
 
   const scoresByResponse = new Map<string, typeof scoreRows>();
   for (const s of scoreRows) {
@@ -339,64 +308,19 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   }
 
   /*
-   * Альфа для RCI: считается по фактической выборке методики (последние 300
-   * завершённых прохождений — статистически достаточно, а МЛО-200 на тысячах
-   * прохождений не кладёт запрос). Ключ — код шкалы: коды стабильны между
-   * версиями, id — нет.
+   * Альфа для RCI — по каждой версии, которую человек видел, по её вопросам
+   * и по её свежим прохождениям (lib/changeBasis.ts, alphasOf). Прежде
+   * бралось триста самых старых прохождений методики и сверялось с вопросами
+   * действующей версии: после правки методики старые ответы не находили
+   * своих вопросов, и RCI пропадал навсегда.
    */
-  const alphaBySurveyCode = new Map<string, number>();
-  for (const surveyId of bySurvey.keys()) {
-    try {
-      const survey = await getSurvey(surveyId, null, "ru");
-      if (!survey) continue;
-      const sample = await db
-        .select({ id: responses.id })
-        .from(responses)
-        .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
-        .orderBy(asc(responses.submittedAt))
-        .limit(300);
-      if (sample.length < 10) continue;
-      const answerRows = await db
-        .select()
-        .from(answersTable)
-        .where(inArray(answersTable.responseId, sample.map((r) => r.id)));
-      const byResponse = new Map<string, Map<string, (typeof answerRows)[number]>>();
-      for (const a of answerRows) {
-        const m = byResponse.get(a.responseId) ?? new Map();
-        m.set(a.questionId, a);
-        byResponse.set(a.responseId, m);
-      }
-      const questionById = new Map(survey.questions.map((q) => [q.id, q]));
-      for (const scale of survey.scales) {
-        if (scale.items.length < 2) continue;
-        const matrix = new Map<string, Map<string, number>>();
-        for (const [responseId, byQuestion] of byResponse) {
-          const row = new Map<string, number>();
-          for (const item of scale.items) {
-            const question = questionById.get(item.questionId);
-            const stored = byQuestion.get(item.questionId);
-            if (!question || !stored) continue;
-            const value = itemContribution(question, item, {
-              questionId: item.questionId,
-              optionIds: stored.optionIds ?? undefined,
-              number: stored.number ?? undefined,
-              matrix: stored.matrix ?? undefined,
-              skipped: stored.skipped,
-            });
-            if (value !== null) row.set(item.questionId, value);
-          }
-          if (row.size) matrix.set(responseId, row);
-        }
-        const rel = reliabilityOf(
-          scale.items.map((i) => questionById.get(i.questionId)).filter((q): q is NonNullable<typeof q> => !!q),
-          matrix,
-        );
-        if (rel) alphaBySurveyCode.set(`${surveyId}:${scale.code}`, rel.alpha);
-      }
-    } catch (error) {
-      log.error("rci.alpha_failed", { surveyId, error: String(error) });
-    }
-  }
+  const alphas = await alphasOf(
+    responseRows
+      .filter((r): r is typeof r & { versionId: string } => !!r.versionId)
+      .map((r) => ({ surveyId: r.surveyId, versionId: r.versionId })),
+  );
+  const versionIdOf = new Map(responseRows.map((r) => [r.id, r.versionId ?? null]));
+  const reliableOf = new Map(responseRows.map((r) => [r.id, r.reliable]));
 
   const result: RespondentDynamics = {
     userId,
@@ -418,6 +342,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         for (const score of scoresByResponse.get(response.id) ?? []) {
           const scale = scaleById.get(score.scaleId);
           if (!scale) continue;
+          const basis = basisOf(response.versionId ?? null, score);
           const entry = byCode.get(scale.code) ?? {
             scaleId: scale.id,
             code: scale.code,
@@ -451,8 +376,22 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
              * имел сырой балл выше любого стена в выборке и получал
              * перцентиль около ста. Худший возможный результат
              * показывался как лучший.
+             *
+             * И выборка — той же версии и нормировки (см. basisOf); у
+             * ненормированного балла её нет, и перцентиля тоже: сырой балл
+             * среди T-баллов — то же сравнение в двух единицах.
              */
-            percentile: percentileOf(score.value, sampleByKey.get(`${surveyId}:${scale.code}`) ?? []),
+            percentile: score.normalized
+              ? percentileOf(score.value, sampleByKey.get(`${surveyId}:${scale.code}:${basis}`) ?? [])
+              : null,
+            /*
+             * Единицы и достоверность точки — наружу: без них экран не
+             * отличит сырой балл от T-балла той же шкалы и вычтет одно из
+             * другого (response/model.ts, shiftOf).
+             */
+            normalized: score.normalized,
+            normalization: score.normalization as ScaleNormalization,
+            reliable: response.reliable,
           });
           byCode.set(scale.code, entry);
         }
@@ -462,127 +401,46 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         entry.points.sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
 
         /*
-         * Приведение баллов к версии последнего замера.
+         * Приведение, изменение и RCI — одним правилом с экраном прохождения
+         * и сводкой случая (lib/changeBasis.ts, changeOverSeries).
          *
-         * Версия иммутабельна, и это правильно, но следствие до сих пор
-         * замалчивалось: баллы разных версий формально несравнимы, а график
-         * рисует их в один ряд — правку одного пункта видно как «динамику».
+         * Версия иммутабельна, и это правильно, но баллы разных версий
+         * формально несравнимы, а график рисует их в один ряд. Коэффициенты
+         * приведения к версии последнего замера отдаются вместе с баллами, а
+         * не вместо них: приведение опирается на допущение о сопоставимости
+         * выборок, и знает о нём только человек, который помнит, менялся ли
+         * контингент.
          *
-         * Коэффициенты отдаются вместе с приведённым баллом, а не вместо
-         * него: приведение опирается на допущение о сопоставимости выборок, и
-         * знает о нём только человек, который помнит, менялся ли контингент.
+         * Изменение и RCI считаются только между СРАВНИМЫМИ концами ряда:
+         * одна версия или приведение именно первой к последней, одни единицы,
+         * оба протокола достоверны. Прежде хватало одного удачного
+         * коэффициента на весь ряд — при трёх версиях первая вычиталась из
+         * последней неприведённой — и сырой балл без норм вычитался из
+         * T-балла той же версии: «достоверное изменение» там, где изменился
+         * инструмент или единицы. Теперь прочерк и причина (incomparable).
+         *
+         * SEM — ошибка одного измерения в единицах последнего замера, для
+         * полосы на графике. Именно SEM, а не Sdiff: Sdiff — ошибка РАЗНОСТИ
+         * двух замеров, и рисовать её вокруг каждой точки значит завысить
+         * неопределённость в полтора раза.
          */
-        /* номер версии → коэффициенты приведения к версии последнего замера */
-        const toTarget = new Map<number, { slope: number; intercept: number }>();
-        const versionIdsOfPoints = new Set(
-          list.map((r) => r.versionId).filter(Boolean) as string[],
+        const change = changeOverSeries(
+          entry.points.map((p) => ({
+            value: p.rawScore,
+            versionId: versionIdOf.get(p.responseId) ?? null,
+            versionNo: p.versionNo ?? null,
+            normalized: p.normalized ?? true,
+            normalization: p.normalization ?? "raw",
+            reliable: reliableOf.get(p.responseId) ?? true,
+          })),
+          { surveyId, code, samples: sampleByKey, alphas },
         );
-        const targetVersionId = list
-          .slice()
-          .sort((a, b) =>
-            (a.submittedAt ?? a.startedAt).localeCompare(b.submittedAt ?? b.startedAt),
-          )
-          .at(-1)?.versionId;
-
-        if (versionIdsOfPoints.size > 1 && targetVersionId) {
-          const momentsOf = (versionId: string) => {
-            const values = byVersionKey.get(`${surveyId}:${code}:${versionId}`) ?? [];
-            if (!values.length) return null;
-            return {
-              version: versionNoById.get(versionId) ?? 0,
-              n: values.length,
-              mean: values.reduce((a, b) => a + b, 0) / values.length,
-              sd: Math.sqrt(variance(values)),
-            };
-          };
-
-          const to = momentsOf(targetVersionId);
-          if (to) {
-            entry.equated = [];
-            for (const versionId of versionIdsOfPoints) {
-              if (versionId === targetVersionId) continue;
-              const from = momentsOf(versionId);
-              const eq = from && to ? equate(from, to) : null;
-              if (!eq) continue;
-              /* неокруглённые коэффициенты — для счёта; округлённые уходят наружу */
-              toTarget.set(eq.from.version, { slope: eq.slope, intercept: eq.intercept });
-              entry.equated.push({
-                fromVersion: eq.from.version,
-                toVersion: eq.to.version,
-                slope: round(eq.slope),
-                intercept: round(eq.intercept),
-                fromN: eq.from.n,
-                toN: eq.to.n,
-              });
-            }
-            if (!entry.equated.length) entry.equated = null;
-          }
-        }
-        /*
-         * Изменение и RCI считаются только там, где числа сравнимы.
-         *
-         * Точки разных версий методики лежат в разных шкалах: правка ключа
-         * одного пункта сдвигает средний балл, и разность «до» и «после»
-         * читается как улучшение, которого не было. Коэффициенты приведения
-         * тут же и посчитаны (`entry.equated`), но на числа не влияли:
-         * `first` и `last` брались из неприведённых точек. При типичных SD
-         * и альфе это давало |RCI| > 1.96, то есть «достоверное улучшение».
-         *
-         * Если версий несколько и привести их не удалось — не считаем
-         * вовсе. Прочерк честнее выдуманного улучшения.
-         */
-        const mixedVersions =
-          new Set(entry.points.map((x) => x.versionNo).filter((v) => v !== null)).size > 1;
-        const comparable = !mixedVersions || Boolean(entry.equated?.length);
-
-        /**
-         * Балл точки в шкале последней версии.
-         *
-         * Коэффициенты приведения считались тут же и отдавались наружу, но на
-         * числа не влияли: разность бралась из неприведённых баллов. Правка
-         * ключа одного пункта сдвигает средний балл версии — и при типичных
-         * SD и альфе разность «до» и «после» давала |RCI| > 1.96, то есть
-         * «достоверное улучшение состояния» там, где изменился только
-         * инструмент. Это уходило в карту, в заключение и в решение о снятии
-         * с наблюдения.
-         *
-         * Комментарий ниже описывал эту ошибку как исправленную. Исправлено
-         * было условие «считать или не считать», а сам счёт — нет.
-         */
-        const inTargetScale = (p: { rawScore: number; versionNo?: number | null }): number => {
-          const eq = p.versionNo == null ? null : toTarget.get(p.versionNo);
-          return eq ? eq.slope * p.rawScore + eq.intercept : p.rawScore;
-        };
-
-        if (entry.points.length >= 2 && comparable) {
-          const first = inTargetScale(entry.points[0]!);
-          const last = inTargetScale(entry.points[entry.points.length - 1]!);
-          entry.delta = Math.round((last - first) * 100) / 100;
-          entry.direction = entry.delta > 0 ? "up" : entry.delta < 0 ? "down" : "flat";
-
-          // RCI: SD из выборки той же шкалы, альфа — фактическая
-          const sample = sampleByKey.get(`${surveyId}:${code}`) ?? [];
-          const alpha = alphaBySurveyCode.get(`${surveyId}:${code}`);
-          if (sample.length >= 10 && alpha !== undefined) {
-            const sd = Math.sqrt(variance(sample));
-            const rc = reliableChange(first, last, sd, alpha);
-            if (rc) {
-              entry.reliableChange = {
-                rci: rc.rci,
-                significant: rc.significant,
-                direction: rc.direction,
-                basis: { sd: round(sd), alpha, sampleN: sample.length },
-              };
-              /*
-               * Ошибка одного измерения — для полосы на графике. Именно SEM,
-               * а не Sdiff: Sdiff — ошибка РАЗНОСТИ двух замеров, и рисовать
-               * её вокруг каждой точки значит завысить неопределённость в
-               * полтора раза.
-               */
-              entry.sem = rc.sem;
-            }
-          }
-        }
+        entry.delta = change.delta;
+        entry.direction = change.direction;
+        entry.reliableChange = change.reliableChange;
+        entry.incomparable = change.incomparable;
+        entry.equated = change.equated;
+        entry.sem = change.sem;
       }
 
       return {
