@@ -49,7 +49,7 @@ export default function Account() {
    */
   const railItems = useMemo(
     () =>
-      railGroups({ today: 0, worklist: 0, alerts: 0, referrals: 0 }, true, true)
+      railGroups({ today: 0, worklist: 0, alerts: 0, referrals: 0 }, true, true, [], true)
         .flatMap((g) => g.items)
         .map((i) => ({
           key: i.key,

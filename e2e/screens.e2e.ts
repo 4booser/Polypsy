@@ -56,8 +56,10 @@ const SUPER: Screen[] = [
    */
   { name: "перечень аналитики", path: "/analytics" },
   { name: "новая аналитическая модель", path: "/analytics/new" },
-  { name: "учётные записи", path: "/users" },
-  { name: "журнал доступа", path: "/audit" },
+  /* учётки и журнал — вкладки техпанели с волны 10; /users и /audit только перенаправляют сюда */
+  { name: "учётные записи", path: "/ops/users" },
+  { name: "сессии", path: "/ops/sessions" },
+  { name: "журнал доступа", path: "/ops/audit" },
   { name: "описание API", path: "/api-docs" },
 ];
 

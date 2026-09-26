@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { LocalizedText, PermissionEffectKind } from "@quizzy/shared";
 import { ROLE_LADDER } from "@quizzy/shared";
 import { api } from "../api";
@@ -62,7 +63,23 @@ export default function Permissions() {
   const { ut, lang } = useLang();
   const { run, busy } = useAction();
   const [query, setQuery] = useState("");
-  const [picked, setPicked] = useState<string | null>(null);
+  /*
+   * Человек из адреса (`?user=<id>`): техпанель ведёт сюда из меню строки
+   * «Користувачі» — «права й винятки» конкретного человека, — и экран должен
+   * открыться на нём, а не на пустом выборе. Выбор в списке пишется обратно
+   * в адрес: ссылку на права человека пересылают так же, как на карточку.
+   */
+  const [params, setParams] = useSearchParams();
+  const picked = params.get("user");
+  const setPicked = (id: string) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set("user", id);
+        return next;
+      },
+      { replace: true },
+    );
   /* открыт ровно один конструктор: шесть развёрнутых наборов сразу — это стена */
   const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);

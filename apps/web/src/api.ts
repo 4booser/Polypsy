@@ -16,6 +16,9 @@ import type {
   SafetyPlan,
   SafetyPlanContent,
   AuditPage,
+  AuditChainReport,
+  OpsSessionPage,
+  OpsUserPage,
   OverviewAnalytics,
   RespondentDynamics,
   RiskAlert,
@@ -1144,6 +1147,33 @@ export const api = {
   staffDirectory: () => unwrap(request<Items<StaffDirectoryUser>>("/api/users?directory=1")),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
+  /* ── техпанель: учётные записи и сессии (волна 10) ── */
+  setUserRole: (id: string, role: User["role"]) =>
+    request<User>(`/api/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+  opsUsers: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<OpsUserPage>(`/api/ops/users?${qs}`);
+  },
+  disableUser: (id: string, reason: string) =>
+    request<{ ok: true; disabledAt: string }>(`/api/ops/users/${id}/disable`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  enableUser: (id: string) => request<{ ok: true }>(`/api/ops/users/${id}/enable`, { method: "POST" }),
+  revokeUserSessions: (id: string) =>
+    request<{ ok: true; revokedTokens: number }>(`/api/ops/users/${id}/revoke-sessions`, { method: "POST" }),
+  /** Временный пароль приходит в ответе один раз — экран показывает его и забывает */
+  resetUserPassword: (id: string) =>
+    request<{ password: string; revokedTokens: number }>(`/api/ops/users/${id}/reset-password`, { method: "POST" }),
+  /** 409 несёт в теле `holds` — что держит учётку; экран читает их из ApiError.body */
+  deleteUser: (id: string) => request<{ ok: true }>(`/api/ops/users/${id}`, { method: "DELETE" }),
+  opsSessions: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<OpsSessionPage>(`/api/ops/sessions?${qs}`);
+  },
+  revokeSession: (id: string) => request<{ ok: true }>(`/api/ops/sessions/${id}/revoke`, { method: "POST" }),
   createGroup: (input: GroupInput) =>
     request<SurveyGroup>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
   updateGroup: (id: string, input: Partial<GroupInput>) =>
@@ -1159,11 +1189,19 @@ export const api = {
     request<unknown>(`/api/groups/${groupId}/admins`, { method: "POST", body: JSON.stringify({ userId }) }),
   revokeGroupAdmin: (groupId: string, userId: string) =>
     request<void>(`/api/groups/${groupId}/admins/${userId}`, { method: "DELETE" }),
-  audit: (params: { action?: string; limit?: number } = {}) => {
-    const q = new URLSearchParams();
-    if (params.action) q.set("action", params.action);
-    q.set("limit", String(params.limit ?? 200));
-    return request<AuditPage>(`/api/audit?${q}`);
+  /** Журнал с отбором техпанели: кто, над кем, действие, тип ресурса, исход, период, текст; страницы курсором */
+  auditPage: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<AuditPage>(`/api/audit?${qs}`);
+  },
+  /** 409 — цепочка порвана; отчёт тогда в ApiError.body */
+  auditVerify: () => request<AuditChainReport>("/api/audit/verify"),
+  /** Выгрузка текущего отбора: собирает сервер, с потолком строк и записью в журнал */
+  auditExport: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return download(`/api/audit/export.csv?${qs}`, "audit.csv");
   },
   auditSummary: () =>
     request<{

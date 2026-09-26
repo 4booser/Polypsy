@@ -25,6 +25,7 @@ import { analyticsRoutes } from "./routes/analytics";
 import { dashboardRoutes } from "./routes/dashboard";
 import { userRoutes } from "./routes/users";
 import { auditRoutes } from "./routes/audit";
+import { opsSessionRoutes, opsUserRoutes } from "./routes/opsAccounts";
 import { alertRoutes } from "./routes/alerts";
 import { dynamicsRoutes } from "./routes/dynamics";
 import { reportRoutes } from "./routes/reports";
@@ -178,6 +179,17 @@ app.route("/api/analytics", analyticsRoutes);
 /* состояние пациентов по направлениям — стартовый экран «Зведення» */
 app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/users", userRoutes);
+/*
+ * Техпанель, учётные записи и сессии — под users.manage, а не под ops.read.
+ *
+ * Стоят РАНЬШЕ наблюдаемости техпанели (/api/ops целиком, свой заслон по
+ * ops.read), и порядок здесь — смысл, а не вкус: Hono собирает обработчики в
+ * порядке регистрации, и ответ отсюда уходит раньше, чем очередь дойдёт до
+ * заслона префикса. Переставь строки — и вкладку «Користувачі» открывало бы
+ * право смотреть логи, а не право вести учётки.
+ */
+app.route("/api/ops/users", opsUserRoutes);
+app.route("/api/ops/sessions", opsSessionRoutes);
 app.route("/api/audit", auditRoutes);
 app.route("/api/alerts", alertRoutes);
 app.route("/api/dynamics", dynamicsRoutes);

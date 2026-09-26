@@ -99,6 +99,21 @@ export type AuditAction =
   | "user.create"
   | "user.role_change"
   | "user.list"
+  /*
+   * Техпанель, учётные записи (волна 10). Каждое действие над чужой
+   * учёткой — своим именем: «кто выключил», «кто сбросил пароль» и «кто
+   * пытался удалить» ищут по журналу разными вопросами, и одно общее
+   * user.update с пометкой в details отвечало бы на них подстрокой.
+   */
+  | "user.disable"
+  | "user.enable"
+  | "user.delete"
+  | "user.password_reset"
+  | "user.sessions_revoke"
+  | "session.list"
+  | "session.revoke"
+  /* выгрузка журнала — сама строка журнала: журнал уезжает за пределы системы */
+  | "audit.export"
   | "profile.update"
   | "survey.create"
   | "survey.catalog_update"
