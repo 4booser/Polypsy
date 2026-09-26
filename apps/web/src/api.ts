@@ -3,6 +3,15 @@ import type {
   ScheduleExceptionView,
   ScheduleTemplateView,
   LocalizedText,
+  OpsDb,
+  OpsErrors,
+  OpsJobs,
+  OpsLogs,
+  OpsOverview,
+  OpsRoutes,
+  OpsSlow,
+  OpsTraffic,
+  OpsWindow,
   PermissionEffectKind,
   SafetyPlan,
   SafetyPlanContent,
@@ -991,6 +1000,28 @@ export const api = {
       tables: { table: string; rows: number; totalBytes: number; totalPretty: string }[];
       auditGrowth: { month: string; entries: number }[];
     }>("/api/stats/storage"),
+
+  /*
+   * Техпанель: наблюдаемость (/api/ops, право ops.read). Всё — память
+   * процесса API до его перезапуска; `since` в каждом ответе.
+   */
+  opsOverview: () => request<OpsOverview>("/api/ops/overview"),
+  opsTraffic: (window: OpsWindow) => request<OpsTraffic>(`/api/ops/traffic?window=${window}`),
+  opsRoutes: () => request<OpsRoutes>("/api/ops/routes"),
+  opsSlow: () => request<OpsSlow>("/api/ops/slow"),
+  opsErrors: () => request<OpsErrors>("/api/ops/errors"),
+  /** Лента логов: без `after` — последние строки, с `after` — только новее курсора */
+  opsLogs: (params: { level?: string; q?: string; requestId?: string; after?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params.level) q.set("level", params.level);
+    if (params.q) q.set("q", params.q);
+    if (params.requestId) q.set("requestId", params.requestId);
+    if (params.after !== undefined) q.set("after", String(params.after));
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    return request<OpsLogs>(`/api/ops/logs?${q}`);
+  },
+  opsDb: () => request<OpsDb>("/api/ops/db"),
+  opsJobs: () => request<OpsJobs>("/api/ops/jobs"),
 
   consentText: () =>
     request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),

@@ -12,13 +12,18 @@
 
 interface Histogram {
   /** Границы в миллисекундах */
-  buckets: number[];
+  buckets: readonly number[];
   counts: number[];
   sum: number;
   total: number;
 }
 
-const LATENCY_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
+/*
+ * Границы корзин общие с техпанелью (lib/opsBuffer.ts): p95 на экране и
+ * histogram_quantile в Prometheus считаются по одним и тем же корзинам, и
+ * расходиться им не с чего. Две копии чисел разъехались бы при первой правке.
+ */
+export const LATENCY_BUCKETS: readonly number[] = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000];
 
 const counters = new Map<string, number>();
 const gauges = new Map<string, number>();

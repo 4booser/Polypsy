@@ -227,6 +227,9 @@ export type AuditAction =
   | "consent.accept"
   | "consent.text_update"
   | "retention.answer_events"
+  /* техпанель: чтение логов и групп ошибок процесса — склеено по пять минут (routes/ops.ts) */
+  | "ops.logs.read"
+  | "ops.errors.read"
   | "norms.publish"
   | "analytics.data_quality"
   | "analytics.facets"

@@ -14,6 +14,7 @@ import { env } from "../env";
 import { auditSystem } from "./audit";
 import { parseTs } from "./time";
 import { log } from "./log";
+import { registerJob, skipJob, trackJob } from "./opsJobs";
 import { pushToUsers } from "./push";
 import { remindAppointments } from "./remind";
 import { pushMailings } from "./mailingPush";
@@ -264,6 +265,10 @@ async function runNotifierInner(now: Date): Promise<{ initial: number; escalated
 /** Минутный тик: тревога должна догонять специалиста быстро */
 export function startNotifier(intervalMs = 60_000): () => void {
   let running = false;
+  /* такты — в реестр техпанели (opsJobs.ts), как у планировщика */
+  registerJob("notifier", intervalMs);
+  registerJob("clinic.remind", intervalMs);
+  registerJob("mailings.push", intervalMs);
   const tick = () => {
     /*
      * Такты не накладываются друг на друга.
@@ -274,10 +279,11 @@ export function startNotifier(intervalMs = 60_000): () => void {
      */
     if (running) {
       log.warn("notifier.tick_skipped", { reason: "предыдущий проход ещё идёт" });
+      skipJob("notifier");
       return;
     }
     running = true;
-    runNotifierOnce()
+    trackJob("notifier", () => runNotifierOnce())
       .catch((error) => log.error("notifier.tick_failed", { error: String(error) }))
       .finally(() => {
         running = false;
@@ -290,7 +296,7 @@ export function startNotifier(intervalMs = 60_000): () => void {
     // без обёртки контекстом: рассылка сама берёт снимок данных одной
     // транзакцией и отправляет вне её — общая обёртка держала бы соединение
     // из пула открытым на все сетевые вызовы разом
-    void remindAppointments().catch((error) =>
+    void trackJob("clinic.remind", () => remindAppointments()).catch((error) =>
       log.warn("clinic.remind_failed", { error: String(error) }),
     );
     /*
@@ -299,7 +305,9 @@ export function startNotifier(intervalMs = 60_000): () => void {
      * человек), а сетевые вызовы идут вне транзакции запроса, который
      * рассылку отправил.
      */
-    void pushMailings().catch((error) => log.warn("mailings.push_failed", { error: String(error) }));
+    void trackJob("mailings.push", () => pushMailings()).catch((error) =>
+      log.warn("mailings.push_failed", { error: String(error) }),
+    );
   };
   tick();
   const timer = setInterval(tick, intervalMs);
