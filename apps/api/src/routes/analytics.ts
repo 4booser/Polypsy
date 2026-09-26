@@ -1,15 +1,16 @@
 import {
   MIN_RCI_SAMPLE,
   comparableScores,
-  dateRangeQuery,
   guttmanErrorsNormed,
   itemContribution,
   measurementError,
+  surveyAnalyticsQuery,
   t,
 } from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
+  AnswerMatrix,
   GroupAnalytics,
   OverviewAnalytics,
   QuestionAnalytics,
@@ -24,10 +25,27 @@ import { answerEvents, answers, responseScores, responses, surveyGroups, surveyV
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { assertGroupAccess, assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
-import { cell } from "../lib/privacy";
+import {
+  assertGroupAccess,
+  assertPatientAccess,
+  assertPatientGroupAccess,
+  assertSurveyAccess,
+  surveyScopeFilter,
+} from "../lib/scope";
+import { SMALL_CELL_FLOOR, cell, suppress } from "../lib/privacy";
 import { decryptField } from "../lib/crypto";
-import { average, distribution, median, percent, quantile, round, stdev, timelineByDay } from "../lib/stats";
+import {
+  average,
+  distribution,
+  durationBins,
+  median,
+  percent,
+  quantile,
+  round,
+  stdev,
+  timelineByDay,
+  weeklyMeans,
+} from "../lib/stats";
 import { TOO_FAST_MS, floorCeiling, qualityOf, reliabilityOf, scaleShape } from "../lib/psychometrics";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -450,12 +468,39 @@ analyticsRoutes.get("/groups/:id", async (c) => {
 /** Полная аналитика по одной методике */
 analyticsRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
-  await assertSurveyAccess(c.get("user"), surveyId);
+  const user = c.get("user");
+  await assertSurveyAccess(user, surveyId);
+
+  /*
+   * Срез: период, версия и — по желанию — один человек или группа людей.
+   *
+   * Человек проверяется по зоне ответственности, а не только по доступу к
+   * методике: доступ к методике даёт её прохождения, но идентификатор в
+   * адресе может быть чужим пациентом, и ответ «пусто» подтверждал бы, что
+   * такой человек в системе есть. Отказ — «не найдено», как везде в
+   * lib/scope.ts. Группа пациентов — личный список владельца
+   * (assertPatientGroupAccess): чужой список не срез, а подсмотренная
+   * рабочая раскладка коллеги.
+   */
+  const query = parseQuery(c, surveyAnalyticsQuery);
+  const { from, to } = query;
+  if (query.userId) await assertPatientAccess(user, query.userId);
+  if (query.patientGroup) await assertPatientGroupAccess(user, query.patientGroup);
+  const whose = [
+    query.userId ? eq(responses.userId, query.userId) : undefined,
+    query.patientGroup
+      ? sql`${responses.userId} in (select patient_id from patient_group_members where group_id = ${query.patientGroup})`
+      : undefined,
+  ];
 
   /*
    * Выбор версии. По умолчанию берём НЕ действующую, а ту, где больше всего
    * прохождений: после правки методики действующая версия пуста, и аналитика
    * по ней показывала бы нули при полной базе ответов на старой версии.
+   *
+   * Для одного человека «больше всего» считается по ЕГО прохождениям: у
+   * отделения основная масса на третьей версии, а человек, пришедший до
+   * правки, проходил вторую — и его экран открывался бы пустым.
    */
   const versionRows = await db
     .select({
@@ -469,10 +514,20 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     .orderBy(desc(surveyVersions.version));
 
   const versions = versionRows.map((v) => ({ ...v, responseCount: Number(v.responseCount ?? 0) }));
-  const requested = c.req.query("versionId");
+  const requested = query.versionId;
+  const ownCount = new Map<string, number>();
+  if (query.userId && !requested) {
+    const own = await db
+      .select({ versionId: responses.versionId, n: sql<number>`count(*)::int` })
+      .from(responses)
+      .where(and(eq(responses.surveyId, surveyId), eq(responses.userId, query.userId), eq(responses.status, "completed")))
+      .groupBy(responses.versionId);
+    for (const r of own) if (r.versionId) ownCount.set(r.versionId, Number(r.n));
+  }
+  const weight = (v: (typeof versions)[number]) => (ownCount.size ? (ownCount.get(v.id) ?? 0) : v.responseCount);
   const chosen =
     (requested ? versions.find((v) => v.id === requested) : undefined) ??
-    [...versions].sort((a, b) => b.responseCount - a.responseCount || b.version - a.version)[0] ??
+    [...versions].sort((a, b) => weight(b) - weight(a) || b.version - a.version)[0] ??
     null;
   const survey = await getSurvey(surveyId, chosen?.id ?? null);
   if (!survey) notFound("err.surveyNotFound");
@@ -490,6 +545,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         eq(responses.surveyId, surveyId),
         eq(responses.status, "in_progress"),
         sql`${responses.lastSavedAt} > now() - interval '30 minutes'`,
+        ...whose,
       ),
     )
     .limit(20);
@@ -509,10 +565,9 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     answered: answeredOf.get(r.response.id) ?? 0,
   }));
 
-  // диапазон дат: аналитика «за квартал» и «до/после ротации» — разные вопросы
-  const { from, to } = parseQuery(c, dateRangeQuery);
-
-  // считаем только по прохождениям выбранной версии: смешивать ответы разных
+  // диапазон дат (from/to разобраны выше вместе со срезом): аналитика «за
+  // квартал» и «до/после ротации» — разные вопросы.
+  // Считаем только по прохождениям выбранной версии: смешивать ответы разных
   // редакций методики нельзя — вопросы у них разные
   const responseRows = await db
     .select()
@@ -524,6 +579,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         from ? sql`${responses.submittedAt} >= ${from}` : undefined,
         // верхняя граница включительно: пользователь выбирает день, а не момент
         to ? sql`${responses.submittedAt} < (${to}::date + 1)` : undefined,
+        ...whose,
       ),
     );
   const responseIds = responseRows.map((r) => r.id);
@@ -636,6 +692,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
               // у матрицы каждый респондент заполняет все строки, поэтому база —
               // общее число ячеек, иначе доли суммарно превышают 100%
               percent: question.type === "matrix" ? percent(count, totalPicks) : percent(count, real.length),
+              score: Number.isFinite(o.score) ? o.score : null,
               ...(question.type === "ranking" && count > 0
                 ? { avgRank: round((rankSums.get(o.id) ?? 0) / count, 2) }
                 : {}),
@@ -684,9 +741,15 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    * бы пункт, к которому он вернулся, а не тот, на котором ушёл.
    */
   const positionOf = new Map(survey.questions.map((q) => [q.id, q.position]));
+  /*
+   * Только незавершённые: у сданного прохождения «последний отвеченный» —
+   * почти всегда последний пункт методики, и без этого фильтра последний
+   * пункт выходил бы главным местом обрыва ровно на число сдавших.
+   */
+  const unfinished = new Set(responseRows.filter((r) => r.status !== "completed").map((r) => r.id));
   const lastOfResponse = new Map<string, { questionId: string; position: number }>();
   for (const a of answerRows) {
-    if (a.skipped) continue;
+    if (a.skipped || !unfinished.has(a.responseId)) continue;
     const position = positionOf.get(a.questionId);
     if (position === undefined) continue;
     const seen = lastOfResponse.get(a.responseId);
@@ -801,6 +864,10 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     return { ...err, basis: { sd: round(sd), alpha, sampleN: values.length } };
   };
 
+  /* момент сдачи — для недель общего состояния; у балла своей даты нет */
+  const submittedAtOf = new Map(responseRows.map((r) => [r.id, r.submittedAt]));
+  const timelines: SurveyAnalytics["scaleTimeline"] = [];
+
   const scaleStats: ScaleAnalytics[] = survey.scales.map((scale) => {
     const own = scoresByScale.get(scale.id) ?? [];
     /*
@@ -827,10 +894,19 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       counts.set(s.bandLabel, (counts.get(s.bandLabel) ?? 0) + 1);
     }
 
+    timelines.push({
+      scaleId: scale.id,
+      weeks: weeklyMeans(
+        kept.map((s) => ({ at: submittedAtOf.get(s.responseId) ?? null, value: s.value })),
+        SMALL_CELL_FLOOR,
+      ),
+    });
+
     return {
       scaleId: scale.id,
       code: scale.code,
       title: scale.title,
+      kind: scale.kind,
       average: round(average(values)),
       median: round(median(values)),
       min: values.length ? Math.min(...values) : 0,
@@ -843,6 +919,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         severity: band.severity,
         count: counts.get(band.label) ?? 0,
         percent: percent(counts.get(band.label) ?? 0, own.length),
+        min: band.minScore,
+        max: band.maxScore,
       })),
       reliability,
       shape: scaleShape(values),
@@ -938,6 +1016,12 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     .filter((q) => q.flagged)
     .sort((a, b) => b.reasons.length - a.reasons.length);
 
+  /*
+   * Матрица «пункт × прохождение» — только для одного человека: по отделению
+   * она была бы поимённой выгрузкой ответов всех, а не аналитикой.
+   */
+  const answerMatrix = query.userId ? matrixOf(survey, completed, answersByResponseId, changedKeys) : null;
+
   const result: SurveyAnalytics = {
     surveyId,
     title: survey.title,
@@ -957,15 +1041,82 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     timeline: timelineByDay(completed.map((r) => r.submittedAt)),
     quality,
     tooFastThresholdMs: tooFastMs,
+    respondentCount: new Set(completed.map((r) => r.userId).filter(Boolean)).size,
+    scaleTimeline: timelines,
+    durationBins: durationBins(durations, suppress),
+    answerMatrix,
   };
+  /*
+   * Срез по человеку — чтение его данных, и журнал знает, о ком: поле
+   * subjectUserId, а не строка в details, — по нему отвечают на вопрос «кто
+   * смотрел этого пациента», и искать его в тексте никто не станет.
+   */
   await audit(c, {
     action: "analytics.survey",
     resourceType: "survey",
     resourceId: surveyId,
-    details: { completed: result.completed },
+    subjectUserId: query.userId ?? null,
+    details: {
+      completed: result.completed,
+      ...(query.userId ? { userId: query.userId } : {}),
+      ...(query.patientGroup ? { patientGroup: query.patientGroup } : {}),
+    },
   });
   return c.json(result);
 });
+
+/** Сколько последних прохождений человека стоит в матрице ответов */
+const MATRIX_COLUMNS = 6;
+
+/**
+ * «Як змінювались відповіді»: клетка на пункт и прохождение.
+ *
+ * Подпись клетки — текст варианта или число; свободный текст и дата в клетку
+ * не попадают (label null): это персональные сведения, а матрица — обзор,
+ * который держат открытым при пациенте. Балл — сохранённый при сдаче
+ * (answers.score), а не пересчитанный: правка ключа не должна менять то, что
+ * человек ответил полгода назад.
+ */
+function matrixOf(
+  survey: NonNullable<Awaited<ReturnType<typeof getSurvey>>>,
+  completed: { id: string; submittedAt: string | null; durationMs: number }[],
+  answersByResponseId: Map<string, Map<string, { optionIds: string[] | null; number: number | null; skipped: boolean; score: number | null; durationMs: number; changeCount: number }>>,
+  changedKeys: Set<string>,
+): AnswerMatrix {
+  const columns = [...completed]
+    .sort((a, b) => (a.submittedAt ?? "").localeCompare(b.submittedAt ?? ""))
+    .slice(-MATRIX_COLUMNS);
+  const optionText = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o.text])));
+  return {
+    responses: columns.map((r) => ({ id: r.id, submittedAt: r.submittedAt, durationMs: r.durationMs })),
+    rows: survey.questions
+      .filter((q) => q.type !== "info")
+      .map((q) => {
+        const weights = q.options.filter((o) => o.kind === "option").map((o) => o.score);
+        const weighted = weights.some((w) => Number.isFinite(w) && w !== 0);
+        return {
+          questionId: q.id,
+          position: q.position,
+          title: q.title,
+          type: q.type,
+          maxScore: weighted ? Math.max(...weights) : null,
+          cells: columns.map((r) => {
+            const a = answersByResponseId.get(r.id)?.get(q.id);
+            if (!a) return null;
+            const changed = a.changeCount > 0 || changedKeys.has(`${r.id}:${q.id}`);
+            if (a.skipped) return { label: null, score: null, skipped: true, changed, durationMs: a.durationMs };
+            const label =
+              ["single", "multiple", "yesno"].includes(q.type) && a.optionIds?.length
+                ? a.optionIds.map((id) => optionText.get(id) ?? "—").join("; ")
+                : ["scale", "slider", "number"].includes(q.type) && a.number !== null
+                  ? String(a.number)
+                  : null;
+            return { label, score: a.score, skipped: false, changed, durationMs: a.durationMs };
+          }),
+        };
+      }),
+  };
+}
 
 /** Выгрузка сырых данных прохождений в CSV */
 /*

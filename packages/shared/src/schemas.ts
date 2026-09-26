@@ -919,6 +919,20 @@ export const dateRangeQuery = z.object({
   to: queryDate.optional(),
 });
 
+/**
+ * Срез аналитики методики: период, версия, один человек или группа людей.
+ *
+ * Идентификаторы проверяются формой, а не только существованием: строка в
+ * параметре уходит в условие запроса, и «что угодно длиной до мегабайта»
+ * там не нужно. Версия — не uuid по форме у старых записей, поэтому только
+ * длиной.
+ */
+export const surveyAnalyticsQuery = dateRangeQuery.extend({
+  versionId: z.string().max(64).optional(),
+  userId: z.string().uuid().optional(),
+  patientGroup: z.string().uuid().optional(),
+});
+
 export const auditQuery = dateRangeQuery.extend({
   limit: queryInt(1, 500, 100),
   offset: queryInt(0, 1_000_000, 0),
@@ -992,6 +1006,13 @@ export const responseListQuery = z.object({
    * совпадают до миллисекунды. Клиент курсор не разбирает: получил и вернул.
    */
   before: z.string().max(200).optional(),
+  /*
+   * Те же срезы, что у аналитики методики (surveyAnalyticsQuery): список
+   * прохождений стоит на том же экране под теми же фильтрами, и список,
+   * не знающий периода или человека, показывал бы не то, о чём графики
+   * над ним.
+   */
+  ...surveyAnalyticsQuery.shape,
 });
 
 /**

@@ -189,3 +189,93 @@ export function kurtosisExcess(values: number[]): number | null {
   const g2 = m4 / (m2 * m2) - 3;
   return ((n - 1) / ((n - 2) * (n - 3))) * ((n + 1) * g2 + 6);
 }
+
+/**
+ * Понедельник недели замера в поясе учреждения, YYYY-MM-DD.
+ *
+ * День берётся тем же dayOf, что и у timelineByDay, а не делением
+ * миллисекунд: иначе замер в воскресенье в 23:30 по Киеву уезжал бы в
+ * следующую неделю по Гринвичу, и среднее недели на графике расходилось бы
+ * со столбцом того же дня рядом. Неделя — с понедельника, как date_trunc в
+ * ряду выраженности (routes/analytics.ts): два ряда на соседних экранах
+ * режут время одинаково.
+ */
+export function weekOf(iso: string | null | undefined): string | null {
+  const day = dayOf(iso);
+  if (!day) return null;
+  const at = new Date(`${day}T00:00:00Z`);
+  const back = (at.getUTCDay() + 6) % 7; // понедельник → 0, воскресенье → 6
+  at.setUTCDate(at.getUTCDate() - back);
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * Среднее по неделям с порогом малых ячеек.
+ *
+ * Неделя с числом замеров ниже `floor` отдаёт mean: null — «замало даних»,
+ * а не ноль и не пропуск: пропущенную неделю линия перешагнула бы, соединив
+ * соседей так, будто между ними что-то измерено, а ноль на лестнице тяжести
+ * читался бы как «всем стало хорошо». Сам n отдаётся всегда — это объём.
+ */
+export function weeklyMeans(
+  points: { at: string | null; value: number }[],
+  floor: number,
+): { week: string; n: number; mean: number | null }[] {
+  const byWeek = new Map<string, number[]>();
+  for (const p of points) {
+    const week = weekOf(p.at);
+    if (!week || !Number.isFinite(p.value)) continue;
+    const list = byWeek.get(week) ?? [];
+    list.push(p.value);
+    byWeek.set(week, list);
+  }
+  return [...byWeek.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([week, values]) => ({
+      week,
+      n: values.length,
+      mean: values.length >= floor ? round(average(values)) : null,
+    }));
+}
+
+/*
+ * Шаги корзин длительности: круглые числа, в которых человек думает о
+ * времени. «2–4 хв», а не «1,7–3,4 хв»: корзину читают, а не вычисляют.
+ */
+const DURATION_STEPS_MS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600].map((s) => s * 1000);
+
+/**
+ * Корзины общей длительности прохождения.
+ *
+ * Ширина — круглый шаг, при котором до 95-го перцентиля выходит не больше
+ * десяти корзин; всё, что дольше, — в последнюю, открытую справа (toMs
+ * null). Край по 95-му перцентилю, а не по максимуму: один забытый на ночь
+ * открытым протокол растянул бы ось на восемь часов, и все остальные легли
+ * бы в первую корзину.
+ *
+ * `hide` — порог малых ячеек (lib/privacy suppress): в маленьком отделении
+ * «одна людина проходила дві години» — сведение о человеке.
+ */
+export function durationBins(
+  durations: number[],
+  hide: (n: number) => number | null,
+): { fromMs: number; toMs: number | null; count: number | null }[] {
+  const values = durations.filter((d) => Number.isFinite(d) && d > 0);
+  if (!values.length) return [];
+  const top = Math.max(quantile(values, 0.95), 1);
+  const step = DURATION_STEPS_MS.find((s) => top / s <= 10) ?? DURATION_STEPS_MS.at(-1)!;
+  /* floor + 1, а не ceil: сам 95-й перцентиль обязан лечь в закрытую корзину, а не открыть «і довше» */
+  const closed = Math.floor(top / step) + 1;
+  const counts = new Array<number>(closed + 1).fill(0);
+  for (const d of values) {
+    const at = Math.min(closed, Math.floor(d / step));
+    counts[at] = (counts[at] ?? 0) + 1;
+  }
+  const bins = counts.map((n, i) => ({
+    fromMs: i * step,
+    toMs: i === closed ? null : (i + 1) * step,
+    count: hide(n),
+  }));
+  /* открытая корзина без единого замера не нужна: «і довше — 0» ничего не сообщает */
+  return counts[closed] === 0 ? bins.slice(0, closed) : bins;
+}

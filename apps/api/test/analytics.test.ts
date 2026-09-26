@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { percentileOf } from "../src/lib/norms";
-import { adminA, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sql, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
+import { durationBins, weekOf, weeklyMeans } from "../src/lib/stats";
+import { adminA, adminB, and, api, app, createSurveySchema, createVersion, db, eq, groupA, makeUser, patient, responsesTable, root, sql, sr45, submitSurvey, surveyInA, surveys } from "./fixtures";
 
 /* Аналитика: нормы, DIF, калибровка, витрина, отчёты */
 
@@ -573,3 +574,187 @@ describe("срезы не называют человека остатком", (
     expect(rest, "остаток пуст — скрытых страт нет вовсе, посев не сработал").toBeGreaterThan(0);
   });
 });
+
+/*
+ * Вкладка «Тести» раздела «Аналітика»: срез по человеку и по группе, недели
+ * общего состояния, корзины длительности, матрица ответов одного человека.
+ *
+ * Проверяется то, из-за чего экран может соврать молча: чужой срез,
+ * малая неделя, выданная за состояние, последний пункт, выданный за место
+ * обрыва, и чтение одного человека без следа в журнале.
+ */
+describe("аналитика тестов: срезы и новые ряды", () => {
+  let sid: string;
+  let alone: Awaited<ReturnType<typeof makeUser>>;
+  let others: Awaited<ReturnType<typeof makeUser>>[];
+
+  beforeAll(async () => {
+    sid = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: sid,
+      groupId: groupA,
+      title: { uk: "Методика для вкладки тестів", ru: "Методика для вкладки тестов" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(sid, createSurveySchema.parse(sr45), adminA.id, "Версия вкладки тестов");
+
+    /* один человек — трижды, пятеро — по разу: срез по человеку обязан дать три, а не восемь */
+    alone = await makeUser("user", `tests-alone-${crypto.randomUUID().slice(0, 8)}@test.dev`);
+    for (let i = 0; i < 3; i++) expect((await submitSurvey(sid, alone.token)).status).toBe(201);
+    others = [];
+    for (let i = 0; i < 5; i++) {
+      const person = await makeUser("user", `tests-other${i}-${crypto.randomUUID().slice(0, 8)}@test.dev`);
+      others.push(person);
+      expect((await submitSurvey(sid, person.token)).status).toBe(201);
+    }
+  });
+
+  test("неделя — с понедельника и по поясу учреждения, а не по Гринвичу", () => {
+    // 27.09.2026 — воскресенье; 20:30 UTC — это 23:30 по Киеву, ещё воскресенье
+    expect(weekOf("2026-09-27T20:30:00Z")).toBe("2026-09-21");
+    // 21:30 UTC — уже 00:30 понедельника по Киеву: новая неделя
+    expect(weekOf("2026-09-27T21:30:00Z")).toBe("2026-09-28");
+    expect(weekOf(null)).toBeNull();
+  });
+
+  test("малая неделя отдаёт «мало данных», а не ноль и не среднее четырёх", () => {
+    const at = (d: string) => `${d}T10:00:00Z`;
+    const weeks = weeklyMeans(
+      [
+        ...[1, 2, 3, 4].map((v) => ({ at: at("2026-09-02"), value: v })),
+        ...[10, 10, 10, 10, 20].map((v) => ({ at: at("2026-09-09"), value: v })),
+      ],
+      5,
+    );
+    expect(weeks).toEqual([
+      { week: "2026-08-31", n: 4, mean: null },
+      { week: "2026-09-07", n: 5, mean: 12 },
+    ]);
+  });
+
+  test("корзины длительности: хвост в открытой корзине, малые — скрыты", () => {
+    const hide = (n: number) => (n === 0 ? 0 : n >= 5 ? n : null);
+    const bins = durationBins([...Array(20).fill(60_000), 8 * 3_600_000], hide);
+    // 95-й перцентиль — минута, и она лежит в закрытой корзине, а не открывает «і довше»
+    const minute = bins.find((b) => b.fromMs <= 60_000 && b.toMs !== null && 60_000 < b.toMs)!;
+    expect(minute.count).toBe(20);
+    // восьмичасовой протокол — в открытой корзине и один: его не видно
+    const open = bins.at(-1)!;
+    expect(open.toMs).toBeNull();
+    expect(open.count).toBeNull();
+    // и ни одна корзина не рисует шкалу до восьми часов
+    expect(bins.length).toBeLessThanOrEqual(12);
+    expect(durationBins([], hide)).toEqual([]);
+  });
+
+  test("срез по человеку: только его прохождения, матрица ответов и след в журнале", async () => {
+    const res = await api(`/api/analytics/surveys/${sid}?userId=${alone.id}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.completed).toBe(3);
+    expect(res.body.respondentCount).toBe(1);
+
+    const matrix = res.body.answerMatrix;
+    expect(matrix, "матрица ответов пуста при срезе по человеку").toBeTruthy();
+    expect(matrix.responses.length).toBe(3);
+    const answered = matrix.rows.find((r: { cells: unknown[] }) => r.cells.some((c) => c !== null));
+    expect(answered.cells.length).toBe(3);
+    expect(typeof answered.cells[0].label).toBe("string");
+
+    const [logged] = [
+      ...(await db.execute<{ n: number } & Record<string, unknown>>(sql`
+        select count(*)::int as n from audit_log
+        where action = 'analytics.survey' and resource_id = ${sid} and subject_user_id = ${alone.id}
+      `)),
+    ];
+    expect(Number(logged!.n), "чтение одного человека не записано в журнал с его идентификатором").toBeGreaterThan(0);
+  });
+
+  test("без среза по человеку матрицы нет, а ряды и границы полос — есть", async () => {
+    const res = await api(`/api/analytics/surveys/${sid}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.completed).toBe(8);
+    expect(res.body.respondentCount).toBe(6);
+    expect(res.body.answerMatrix).toBeNull();
+
+    const scale = res.body.scales.find((s: { bands: unknown[] }) => s.bands.length > 0);
+    expect(scale, "у СР-45 нет шкалы с полосами — посев не тот").toBeTruthy();
+    expect(typeof scale.bands[0].min).toBe("number");
+    expect(typeof scale.bands[0].max).toBe("number");
+    expect(scale.kind).toBeTruthy();
+
+    const line = res.body.scaleTimeline.find((t: { scaleId: string }) => t.scaleId === scale.scaleId);
+    expect(line.weeks.reduce((s: number, w: { n: number }) => s + w.n, 0)).toBeGreaterThan(0);
+
+    const withOptions = res.body.questions.find((q: { options?: unknown[] }) => q.options?.length);
+    expect("score" in withOptions.options[0]).toBe(true);
+    expect(res.body.durationBins.length).toBeGreaterThan(0);
+  });
+
+  test("сданное прохождение не считается обрывом на последнем пункте", async () => {
+    const res = await api(`/api/analytics/surveys/${sid}`, adminA.token);
+    const ended = (res.body.dropOff as { endedHere: number | null }[]).map((d) => d.endedHere);
+    expect(ended.every((n) => n === 0), `обрывы при одних сданных: ${ended.join(",")}`).toBe(true);
+  });
+
+  test("чужой пациент и чужая группа — «не найдено», а не пустой срез", async () => {
+    const stranger = await makeUser("user", `tests-stranger-${crypto.randomUUID().slice(0, 8)}@test.dev`);
+    const person = await api(`/api/analytics/surveys/${sid}?userId=${stranger.id}`, adminA.token);
+    expect(person.status).toBe(404);
+
+    const group = await api(`/api/analytics/surveys/${sid}?patientGroup=${crypto.randomUUID()}`, adminA.token);
+    expect(group.status).toBe(404);
+
+    const list = await api(`/api/surveys/${sid}/responses?userId=${stranger.id}`, adminA.token);
+    expect(list.status).toBe(404);
+  });
+
+  test("срез по своей группе пациентов: только её люди, и в аналитике, и в списке", async () => {
+    const made = await api("/api/patient-groups", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: `Зріз ${crypto.randomUUID().slice(0, 6)}`, description: "для вкладки тестів" }),
+    });
+    expect(made.status).toBe(201);
+    const gid = made.body.id as string;
+    for (const person of [alone, others[0]!]) {
+      const added = await api(`/api/patient-groups/${gid}/members`, adminA.token, {
+        method: "POST",
+        body: JSON.stringify({ userId: person.id }),
+      });
+      expect(added.status).toBe(201);
+    }
+
+    // трое прохождений одного и одно — второго: четыре, а не восемь
+    const res = await api(`/api/analytics/surveys/${sid}?patientGroup=${gid}`, adminA.token);
+    expect(res.status).toBe(200);
+    expect(res.body.completed).toBe(4);
+    expect(res.body.respondentCount).toBe(2);
+
+    const list = await api(`/api/surveys/${sid}/responses?patientGroup=${gid}`, adminA.token);
+    expect(list.status).toBe(200);
+    expect(list.body.rows.length).toBe(4);
+
+    // чужая группа — «не найдено»: личный список коллеги срезом не становится
+    const foreign = await api(`/api/analytics/surveys/${sid}?patientGroup=${gid}`, adminB.token);
+    expect([403, 404]).toContain(foreign.status);
+  });
+
+  test("список прохождений держит те же срезы: человек и период", async () => {
+    const mine = await api(`/api/surveys/${sid}/responses?userId=${alone.id}`, adminA.token);
+    expect(mine.status).toBe(200);
+    expect(mine.body.rows.length).toBe(3);
+    expect(mine.body.rows.every((r: { userId: string }) => r.userId === alone.id)).toBe(true);
+    // имя полное, а не одна фамилия
+    expect(mine.body.rows[0].userName).toContain("Тест");
+
+    const future = await api(`/api/surveys/${sid}/responses?from=2099-01-01`, adminA.token);
+    expect(future.status).toBe(200);
+    expect(future.body.rows.length).toBe(0);
+  });
+});
+
