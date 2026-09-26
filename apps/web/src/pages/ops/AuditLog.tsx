@@ -14,6 +14,7 @@ import { Button, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { Cell, ColumnHead, FilterSelect, SearchField, useDebounced } from "./controls";
 import { AUDIT_ACTION_CHOICES, AUDIT_PRESETS, type AuditFilterKey, actionLabel, auditFiltersFrom, prettyDetails } from "./model";
+import { AuditTimeline } from "./people2/charts";
 
 /*
  * Техпанель → «Аудит»: журнал действий целиком, с отбором, проверкой
@@ -224,89 +225,98 @@ export default function OpsAuditLog() {
       {chain ? <ChainResult report={chain} /> : null}
       {summaryOpen ? <Summary isSuper={user?.role === "superadmin"} /> : null}
 
-      {error ? (
-        <Loading error={error} onRetry={() => setTick((t) => t + 1)} />
-      ) : !list ? (
-        <Loading rows={8} />
-      ) : list.entries.length === 0 ? (
-        <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ops.audit.none")}</p>
-      ) : (
-        <>
-          <ColumnHead grid={GRID} labels={[ut("aud.when"), ut("aud.who"), ut("aud.action"), ut("ops.audit.subjectCol"), ut("aud.outcome"), null]} />
-          <ul className="m-0 list-none p-0" aria-label={ut("aud.title")}>
-            {list.entries.map((e) => (
-              <Fragment key={e.id}>
-                <li className={cx(GRID, "items-start border-b border-hairline py-[10px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[4px]", open === e.id && "bg-primary-tint")}>
-                  <Cell label={ut("aud.when")} className="font-mono text-[13px] tabular-nums">
-                    {dateTime(e.at)}
-                  </Cell>
-                  <Cell label={ut("aud.who")} className="[overflow-wrap:anywhere]">
-                    <button
-                      type="button"
-                      className="m-0 border-0 bg-transparent p-0 text-left text-[15px] text-primary [overflow-wrap:anywhere] hover:underline"
-                      title={ut("ops.audit.byThisActor")}
-                      disabled={!e.actorId}
-                      onClick={() => e.actorId && set("actor", e.actorId)}
-                    >
-                      {e.actorEmail ?? ut("ops.audit.system")}
-                    </button>
-                    {e.actorRole ? <span className="block text-[11px] text-muted">{e.actorRole}</span> : null}
-                  </Cell>
-                  <Cell label={ut("aud.action")}>
-                    <span className="block text-text">{actionLabel(e.action, ut)}</span>
-                    <span className="block font-mono text-[11px] text-muted">{e.action}</span>
-                  </Cell>
-                  <Cell label={ut("ops.audit.subjectCol")}>
-                    {e.subjectUserId ? (
+      {/*
+        Волна 11: записи по тому же отбору во времени — над таблицей, в одном
+        разделе с ней: график — форма тех же строк, что ниже, а не отдельный
+        отчёт. «Хто частіше / що роблять» остаётся в «Зведенні» по кнопке:
+        оно читает журнал целиком и не зависит от отбора.
+      */}
+      <RuleSection title={ut("opsp.audit.section")}>
+        <AuditTimeline query={settled} />
+        {error ? (
+          <Loading error={error} onRetry={() => setTick((t) => t + 1)} />
+        ) : !list ? (
+          <Loading rows={8} />
+        ) : list.entries.length === 0 ? (
+          <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ops.audit.none")}</p>
+        ) : (
+          <>
+            <ColumnHead grid={GRID} labels={[ut("aud.when"), ut("aud.who"), ut("aud.action"), ut("ops.audit.subjectCol"), ut("aud.outcome"), null]} />
+            <ul className="m-0 list-none p-0" aria-label={ut("aud.title")}>
+              {list.entries.map((e) => (
+                <Fragment key={e.id}>
+                  <li className={cx(GRID, "items-start border-b border-hairline py-[10px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[4px]", open === e.id && "bg-primary-tint")}>
+                    <Cell label={ut("aud.when")} className="font-mono text-[13px] tabular-nums">
+                      {dateTime(e.at)}
+                    </Cell>
+                    <Cell label={ut("aud.who")} className="[overflow-wrap:anywhere]">
                       <button
                         type="button"
-                        className="m-0 border-0 bg-transparent p-0 font-mono text-[13px] text-primary hover:underline"
-                        title={ut("ops.audit.aboutThisSubject")}
-                        onClick={() => set("subject", e.subjectUserId!)}
+                        className="m-0 border-0 bg-transparent p-0 text-left text-[15px] text-primary [overflow-wrap:anywhere] hover:underline"
+                        title={ut("ops.audit.byThisActor")}
+                        disabled={!e.actorId}
+                        onClick={() => e.actorId && set("actor", e.actorId)}
                       >
-                        {e.subjectUserId.slice(0, 8)}
+                        {e.actorEmail ?? ut("ops.audit.system")}
                       </button>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </Cell>
-                  <Cell label={ut("aud.outcome")}>
-                    {/* отказ и сбой — словом цвета danger; успех — тихим серым: в журнале почти всё успех */}
-                    {e.outcome === "success" ? (
-                      <span className="text-muted">{ut("aud.outcomeOk")}</span>
-                    ) : (
-                      <span className="font-bold text-danger">
-                        {e.outcome === "denied" ? ut("aud.outcomeDenied") : ut("aud.outcomeError")}
-                      </span>
-                    )}
-                  </Cell>
-                  <div className="flex justify-end max-[900px]:justify-start">
-                    <Button
-                      size="glyph"
-                      variant="ghost"
-                      aria-expanded={open === e.id}
-                      aria-label={`${ut("aud.details")}: ${actionLabel(e.action, ut)}`}
-                      onClick={() => setOpen((v) => (v === e.id ? null : e.id))}
-                    >
-                      <span className={cx("transition-transform duration-[var(--dur-fast)]", open === e.id && "rotate-180")}>
-                        <IconDisclosure />
-                      </span>
-                    </Button>
-                  </div>
-                </li>
-                {open === e.id ? <EntryDetails entry={e} /> : null}
-              </Fragment>
-            ))}
-          </ul>
-          {list.next ? (
-            <div className="mt-[18px] flex justify-center">
-              <Button variant="ghost" disabled={loadingMore} onClick={more}>
-                {ut("ui.loadMore")}
-              </Button>
-            </div>
-          ) : null}
-        </>
-      )}
+                      {e.actorRole ? <span className="block text-[11px] text-muted">{e.actorRole}</span> : null}
+                    </Cell>
+                    <Cell label={ut("aud.action")}>
+                      <span className="block text-text">{actionLabel(e.action, ut)}</span>
+                      <span className="block font-mono text-[11px] text-muted">{e.action}</span>
+                    </Cell>
+                    <Cell label={ut("ops.audit.subjectCol")}>
+                      {e.subjectUserId ? (
+                        <button
+                          type="button"
+                          className="m-0 border-0 bg-transparent p-0 font-mono text-[13px] text-primary hover:underline"
+                          title={ut("ops.audit.aboutThisSubject")}
+                          onClick={() => set("subject", e.subjectUserId!)}
+                        >
+                          {e.subjectUserId.slice(0, 8)}
+                        </button>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </Cell>
+                    <Cell label={ut("aud.outcome")}>
+                      {/* отказ и сбой — словом цвета danger; успех — тихим серым: в журнале почти всё успех */}
+                      {e.outcome === "success" ? (
+                        <span className="text-muted">{ut("aud.outcomeOk")}</span>
+                      ) : (
+                        <span className="font-bold text-danger">
+                          {e.outcome === "denied" ? ut("aud.outcomeDenied") : ut("aud.outcomeError")}
+                        </span>
+                      )}
+                    </Cell>
+                    <div className="flex justify-end max-[900px]:justify-start">
+                      <Button
+                        size="glyph"
+                        variant="ghost"
+                        aria-expanded={open === e.id}
+                        aria-label={`${ut("aud.details")}: ${actionLabel(e.action, ut)}`}
+                        onClick={() => setOpen((v) => (v === e.id ? null : e.id))}
+                      >
+                        <span className={cx("transition-transform duration-[var(--dur-fast)]", open === e.id && "rotate-180")}>
+                          <IconDisclosure />
+                        </span>
+                      </Button>
+                    </div>
+                  </li>
+                  {open === e.id ? <EntryDetails entry={e} /> : null}
+                </Fragment>
+              ))}
+            </ul>
+            {list.next ? (
+              <div className="mt-[18px] flex justify-center">
+                <Button variant="ghost" disabled={loadingMore} onClick={more}>
+                  {ut("ui.loadMore")}
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </RuleSection>
     </>
   );
 }

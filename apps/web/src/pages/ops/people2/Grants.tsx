@@ -12,6 +12,7 @@ import { Button, Field, Select, Tag } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
 import { Cell, ColumnHead, metaClass, rowClass } from "../controls";
 import { ConfirmPlain } from "../dialogs";
+import { GrantsOverviewBody } from "./charts";
 import { EXTEND_CHOICES, timeLeft } from "./model";
 import { Empty, Section } from "./parts";
 
@@ -76,6 +77,8 @@ export default function OpsGrants() {
 
   return (
     <>
+      {/* волна 11: все исключения по состоянию и выдачи по неделям — над списками, тем же ответом сервера */}
+      <GrantsOverviewBody stats={res.data.stats} />
       <Section
         title={ut("ops.grants.active")}
         aside={

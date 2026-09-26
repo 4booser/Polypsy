@@ -51,6 +51,7 @@ import { badRequest, langOf, notFound, parseBody, parseQuery } from "../lib/http
 import { endImpersonation, startImpersonation } from "../lib/impersonation";
 import { currentRequestId } from "../lib/log";
 import { bulkSkip, groupWhoViewed, roleFrom, validateImport, type BulkActor, type BulkRole, type BulkTarget } from "../lib/people";
+import { grantStats, suspiciousStats } from "../lib/peopleStats";
 import { ensureBuiltinRole, ladderRankOf, permissionsOf } from "../lib/permissions";
 import { revokeAllFor } from "../lib/refresh";
 import { readPolicy, removeFactor, writePolicy } from "../lib/secondFactor";
@@ -305,6 +306,13 @@ opsPeopleRoutes.get("/suspicious", requirePermission("audit.read"), async (c) =>
     open: Number(counts?.open ?? 0),
     lastScanAt: lastScan(),
     thresholds: thresholdsOf(await ruleConfig()),
+    /*
+     * Графики над списком (волна 11) — по всем срабатываниям, без отбора
+     * списка: «сколько и каких» — вопрос обзора, а отбор — вопрос разбора.
+     * Тем же ответом, а не своим маршрутом: одна строка журнала на одно
+     * открытие раздела.
+     */
+    stats: await suspiciousStats(),
   };
   return c.json(body);
 });
@@ -386,6 +394,8 @@ opsPeopleRoutes.get("/grants", requirePermission("users.manage"), async (c) => {
       .map(toGrant)
       .reverse(),
     permanent: rows.filter((r) => !r.expiresAt).length,
+    /* графики над списком (волна 11): все исключения за всё время и выдачи по неделям */
+    stats: await grantStats(),
   };
   await audit(c, {
     action: "permission.exception_list",

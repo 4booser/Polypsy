@@ -440,16 +440,19 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/audit": { summary: "Журнал доступа: отбор по тому, кто, над кем, действию, типу ресурса, исходу, периоду и тексту; страницы курсором или смещением", access: "superadmin", permission: "audit.read" },
   "GET /api/audit/export.csv": { summary: "Выгрузка текущего отбора журнала в CSV, до 10 000 строк; сама выгрузка — строка журнала (audit.export)", access: "superadmin", permission: "audit.read" },
   "GET /api/audit/summary": { summary: "Сводка по журналу", access: "superadmin", permission: "audit.read" },
+  "GET /api/audit/daily": { summary: "Записи журнала по текущему отбору во времени (день, неделя или месяц по длине периода): удачные и отказы/сбои; чтение в журнал (audit.read)", access: "superadmin", permission: "audit.read" },
   "GET /api/audit/verify": { summary: "Проверка хэш-цепочки журнала", access: "superadmin", permission: "audit.read" },
 
   /* ── техпанель: учётные записи и сессии ── */
   "GET /api/ops/users": { summary: "Все учётные записи с состоянием: последний вход, выключение, сессии, клинический след и записи журнала; чтение в журнал (user.list)", access: "staff", permission: "users.manage" },
+  "GET /api/ops/users/summary": { summary: "Сводка реестра для графиков: роли и состояния, второй фактор у персонала, новые учётки по неделям, входы по дням; пациенты — через порог малых чисел; чтение в журнал (user.list)", access: "staff", permission: "users.manage" },
   "POST /api/ops/users/:id/disable": { summary: "Выключить учётку с причиной: вход, обмен токена и живые токены отказывают сразу; нельзя себя и последнего суперадмина", access: "staff", permission: "users.manage" },
   "POST /api/ops/users/:id/enable": { summary: "Включить выключенную учётку", access: "staff", permission: "users.manage" },
   "POST /api/ops/users/:id/revoke-sessions": { summary: "Завершить все сессии учётки", access: "staff", permission: "users.manage" },
   "POST /api/ops/users/:id/reset-password": { summary: "Сбросить пароль: временный — в ответе один раз, сессии отозваны, при входе потребуется смена", access: "staff", permission: "users.manage" },
   "DELETE /api/ops/users/:id": { summary: "Удалить учётку без клинического следа и без записей журнала; иначе 409 со списком, что держит. Только суперадмину", access: "superadmin", permission: "users.manage" },
   "GET /api/ops/sessions": { summary: "Активные сессии (семьи refresh-токенов): по человеку или поиском", access: "staff", permission: "users.manage" },
+  "GET /api/ops/sessions/summary": { summary: "Сводка живых сессий для графиков: по роли и по возрасту; пациенты — через порог малых чисел", access: "staff", permission: "users.manage" },
   "POST /api/ops/sessions/:id/revoke": { summary: "Завершить одну сессию", access: "staff", permission: "users.manage" },
   /* ── техпанель: безопасность (волна 10, участок sec) ── */
   "GET /api/ops/sec/keys": { summary: "Ключи шифрования по версиям в данных и файлах, состояние секретов (без значений), ход перешифровки", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
@@ -481,10 +484,10 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     access: "superadmin",
     whyNoPermission: "снять второй замок с чужой учётки — то же по весу, что вход под ней; право на это никому не выдаётся",
   },
-  "GET /api/ops/people/suspicious": { summary: "Срабатывания правил подозрительной активности с порогами правил; чтение в журнал", access: "staff", permission: "audit.read" },
+  "GET /api/ops/people/suspicious": { summary: "Срабатывания правил подозрительной активности с порогами правил и сводкой для графиков (по правилам, по дням); чтение в журнал", access: "staff", permission: "audit.read" },
   "POST /api/ops/people/suspicious/:id/resolve": { summary: "Отметить срабатывание «розібрано» с комментарием", access: "staff", permission: "audit.read", body: resolveFindingSchema },
   "POST /api/ops/people/suspicious/scan": { summary: "Проверить журнал на подозрительное сейчас, не дожидаясь такта задачи", access: "staff", permission: "audit.read" },
-  "GET /api/ops/people/grants": { summary: "Временные доступы: действующие исключения со сроком и истёкшие за 30 дней", access: "staff", permission: "users.manage" },
+  "GET /api/ops/people/grants": { summary: "Временные доступы: действующие исключения со сроком и истёкшие за 30 дней; сводка для графиков — все исключения по состоянию и выдачи по неделям", access: "staff", permission: "users.manage" },
   "POST /api/ops/people/grants/:id/extend": {
     summary: "Продлить временный доступ на N дней",
     access: "superadmin",

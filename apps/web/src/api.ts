@@ -23,10 +23,13 @@ import type {
   PermissionEffectKind,
   SafetyPlan,
   SafetyPlanContent,
+  AuditDaily,
   AuditPage,
   AuditChainReport,
   OpsSessionPage,
+  OpsSessionsSummary,
   OpsUserPage,
+  OpsUsersSummary,
   OpsAuditChainReport,
   OpsIntegrityState,
   OpsKeysReport,
@@ -1360,6 +1363,8 @@ export const api = {
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<OpsUserPage>(`/api/ops/users?${qs}`);
   },
+  /** Сводка реестра для графиков над списком: только числа, пациенты — через порог (волна 11) */
+  opsUsersSummary: () => request<OpsUsersSummary>("/api/ops/users/summary"),
   disableUser: (id: string, reason: string) =>
     request<{ ok: true; disabledAt: string }>(`/api/ops/users/${id}/disable`, {
       method: "POST",
@@ -1378,6 +1383,7 @@ export const api = {
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<OpsSessionPage>(`/api/ops/sessions?${qs}`);
   },
+  opsSessionsSummary: () => request<OpsSessionsSummary>("/api/ops/sessions/summary"),
   revokeSession: (id: string) => request<{ ok: true }>(`/api/ops/sessions/${id}/revoke`, { method: "POST" }),
   /* ── техпанель: люди и безопасность (people2) ── */
   /** Токен «от имени» — в ответе один раз; экран кладёт его в хранилище вкладки */
@@ -1438,6 +1444,12 @@ export const api = {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<AuditPage>(`/api/audit?${qs}`);
+  },
+  /** Тот же отбор, что у таблицы, — во времени: график над ней (волна 11) */
+  auditDaily: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<AuditDaily>(`/api/audit/daily?${qs}`);
   },
   /** 409 — цепочка порвана; отчёт тогда в ApiError.body */
   auditVerify: () => request<AuditChainReport>("/api/audit/verify"),
