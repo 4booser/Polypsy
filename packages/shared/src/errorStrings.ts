@@ -543,6 +543,32 @@ export const ERRORS = {
     ru: "Нужен токен сбора метрик",
     en: "A metrics collection token is required",
   },
+  /* техпанель, участок obs2b: оповещения, ручной запуск задач, записи приёма */
+  "err.opsRuleNotFound": {
+    uk: "Такого правила сповіщень немає",
+    ru: "Такого правила оповещений нет",
+    en: "There is no such alert rule",
+  },
+  "err.opsJobNotFound": {
+    uk: "Цю задачу не можна запустити вручну",
+    ru: "Эту задачу нельзя запустить вручную",
+    en: "This job can’t be run by hand",
+  },
+  "err.opsJobRunning": {
+    uk: "Задача вже виконується — дочекайтеся, поки попередній прохід закінчиться",
+    ru: "Задача уже выполняется — дождитесь, пока закончится предыдущий проход",
+    en: "The job is already running — wait for the current run to finish",
+  },
+  "err.opsRecordingNotFound": {
+    uk: "Такого завдання розшифровки немає",
+    ru: "Такого задания расшифровки нет",
+    en: "There is no such transcription job",
+  },
+  "err.opsRecordingNotRetryable": {
+    uk: "Повторити не можна: завдання не в стані збою або файл запису вже стерто",
+    ru: "Повторить нельзя: задание не в состоянии сбоя или файл записи уже стёрт",
+    en: "Can’t retry: the job hasn’t failed, or the recording file has already been erased",
+  },
   "err.noRefreshToken": { uk: "Немає refresh-токена", ru: "Нет refresh-токена", en: "No refresh token" },
   "err.noteNotYet": { uk: "Запису ще немає", ru: "Заметки ещё нет", en: "There’s no note yet" },
   "err.noteTextChangedAfterOpen": {

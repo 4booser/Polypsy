@@ -1,12 +1,15 @@
 import type { OpsJob, OpsJobResult } from "@quizzy/shared";
 import { api } from "../../api";
+import { useAuth } from "../../auth";
 import { dateTime, locale } from "../../format";
 import { useLang } from "../../lang";
-import { Loading } from "../../ui";
+import { Loading, useAction } from "../../ui";
+import { Button } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
 import { JOB_KEY, RESULT_KEY, fmtAgo, fmtInt, fmtMs, fmtUptime } from "./model";
 import { Cell, GridRow, GridTable, NumHead, Quiet, Stamp, StatusMark, type Tone, useOpsResource } from "./parts";
+import { canRunNow } from "./obs2b/model";
 
 /*
  * Фонові задачі: тикает ли то, что должно тикать.
@@ -19,19 +22,28 @@ import { Cell, GridRow, GridTable, NumHead, Quiet, Stamp, StatusMark, type Tone,
  *
  * Ниже — срабатывания расписаний из базы: они, в отличие от реестра,
  * переживают перезапуск и отвечают на «что планировщик сделал вчера».
+ *
+ * «Запустити зараз» (участок obs2b, решение заказчика 2026-09-26) — у
+ * задач, которые безопасно запускать вне такта: пересчёт аналитики,
+ * переиндексация поиска, установка каталога, ретенция, проверка правил
+ * оповещений (apps/api/src/lib/opsManual.ts). Запуск — фоном, не в
+ * запросе: строка задачи покажет «виконується», потом итог или ошибку.
+ * Кнопку видит только ops.manage; кто и что запустил — в журнале.
  */
 
 const POLL_MS = 15_000;
 
 const RESULT_TONE: Record<OpsJobResult, Tone> = { ok: "ok", error: "fail", skipped: "warn", running: "quiet" };
 
-const JOB_COLS = "grid-cols-[minmax(220px,1fr)_130px_150px_88px_150px_96px]";
+const JOB_COLS = "grid-cols-[minmax(220px,1fr)_130px_150px_88px_150px_96px_150px]";
 const RUN_COLS = "grid-cols-[minmax(170px,220px)_96px_96px_minmax(0,1fr)]";
 
 export default function OpsJobs() {
   const { ut } = useLang();
   const loc = locale();
   const res = useOpsResource(() => api.opsJobs(), [], POLL_MS);
+  const { can } = useAuth();
+  const manage = can("ops.manage");
 
   if (res.error && !res.data) return <Loading error={res.error} onRetry={res.reload} />;
   if (!res.data) return <Loading rows={5} />;
@@ -50,7 +62,7 @@ export default function OpsJobs() {
           <GridTable
             label={ut("ops.jobs.title")}
             cols={JOB_COLS}
-            minW="min-w-[880px]"
+            minW="min-w-[1040px]"
             head={[
               ut("ops.col.job"),
               ut("ops.col.result"),
@@ -58,13 +70,15 @@ export default function OpsJobs() {
               <NumHead key="d">{ut("ops.col.took")}</NumHead>,
               ut("ops.col.next"),
               <NumHead key="r">{ut("ops.col.runs")}</NumHead>,
+              "",
             ]}
           >
             {d.items.map((j) => (
-              <JobRow key={j.name} j={j} now={now} loc={loc} />
+              <JobRow key={j.name} j={j} now={now} loc={loc} manage={manage} onStarted={res.reload} />
             ))}
           </GridTable>
         )}
+        {d.items.some((j) => j.manual) ? <Quiet>{ut(manage ? "o2b.jobs.manualHint" : "o2b.jobs.manualReadOnly")}</Quiet> : null}
         <Quiet>{ut("ops.jobs.transcriber")}</Quiet>
       </RuleSection>
 
@@ -102,8 +116,9 @@ export default function OpsJobs() {
   );
 }
 
-function JobRow({ j, now, loc }: { j: OpsJob; now: number; loc: string }) {
+function JobRow({ j, now, loc, manage, onStarted }: { j: OpsJob; now: number; loc: string; manage: boolean; onStarted: () => void }) {
   const { ut } = useLang();
+  const { run, busy } = useAction();
   const key = JOB_KEY[j.name];
   return (
     <>
@@ -121,6 +136,7 @@ function JobRow({ j, now, loc }: { j: OpsJob; now: number; loc: string }) {
           ) : (
             <StatusMark tone="quiet">{ut("ops.never")}</StatusMark>
           )}
+          {j.lastByHand ? <span className="block text-[12px] text-muted">{ut("o2b.jobs.byHand")}</span> : null}
         </Cell>
         <Cell className="text-text-2">
           <span title={j.lastStartAt ? dateTime(j.lastStartAt) : undefined}>{fmtAgo(j.lastStartAt, now, loc)}</span>
@@ -132,6 +148,22 @@ function JobRow({ j, now, loc }: { j: OpsJob; now: number; loc: string }) {
         <Cell num>
           {fmtInt(j.runs, loc)}
           {j.failures ? <span className="text-accent"> / {fmtInt(j.failures, loc)}</span> : null}
+        </Cell>
+        <Cell className="text-right">
+          {manage && j.manual ? (
+            <Button
+              variant="ghost"
+              disabled={busy || !canRunNow(j)}
+              onClick={() =>
+                void run(async () => {
+                  await api.opsRunJob(j.name);
+                  onStarted();
+                }, ut("o2b.jobs.started"))
+              }
+            >
+              {ut("o2b.jobs.runNow")}
+            </Button>
+          ) : null}
         </Cell>
       </GridRow>
       {j.lastError ? (

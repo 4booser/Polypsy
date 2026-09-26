@@ -3,6 +3,7 @@ import { app } from "./app";
 import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
+import { startOpsAlerts } from "./lib/opsAlerts";
 import { client } from "./db";
 import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
@@ -63,6 +64,13 @@ const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
 const stopNotifier = env.schedulerEnabled ? startNotifier() : null;
 const stopRetention = env.schedulerEnabled ? startRetention() : null;
+/*
+ * Проверка правил оповещений техпанели — там же, где планировщик: правило
+ * «планировщик молчит» имеет смысл только рядом с ним, а две реплики с
+ * проверкой прислали бы один «збій» дважды (замок в базе это ловит, но
+ * лишний проход незачем).
+ */
+const stopOpsAlerts = env.schedulerEnabled ? startOpsAlerts() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -77,6 +85,7 @@ async function shutdown(signal: string) {
   stopScheduler?.();
   stopNotifier?.();
   stopRetention?.();
+  stopOpsAlerts?.();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }

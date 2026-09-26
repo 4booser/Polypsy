@@ -31,6 +31,8 @@ interface JobState {
   lastResult: OpsJobResult | null;
   lastError: string | null;
   lastErrorAt: number | null;
+  /** Последний проход запущен руками (участок obs2b) */
+  lastByHand: boolean;
 }
 
 const jobs = new Map<string, JobState>();
@@ -60,6 +62,7 @@ export function registerJob(name: string, intervalMs: number, now = Date.now()):
     lastResult: null,
     lastError: null,
     lastErrorAt: null,
+    lastByHand: false,
   });
 }
 
@@ -85,6 +88,7 @@ export async function trackJob<T>(name: string, fn: () => Promise<T>): Promise<T
   s.running = true;
   s.lastStartAt = started;
   s.lastResult = "running";
+  s.lastByHand = false;
   try {
     const out = await fn();
     s.lastResult = "ok";
@@ -122,7 +126,7 @@ export function intervalOf(name: string): number | null {
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString());
 
 export function jobsSnapshot(now = Date.now()): OpsJob[] {
-  return [...jobs.values()].map((s) => {
+  const known = [...jobs.values()].map((s) => {
     /* следующий такт setInterval — ближайшее кратное шагу от момента заведения */
     const next =
       s.intervalMs > 0 ? s.since + Math.max(1, Math.ceil((now - s.since) / s.intervalMs)) * s.intervalMs : null;
@@ -139,8 +143,84 @@ export function jobsSnapshot(now = Date.now()): OpsJob[] {
       lastError: s.lastError,
       lastErrorAt: iso(s.lastErrorAt),
       nextAt: iso(next),
+      manual: runnables.has(s.name),
+      lastByHand: s.lastByHand,
     };
   });
+  /*
+   * Задачи, которые можно запустить руками, видны и до первого прохода:
+   * переиндексация и установка каталога тактов не имеют вовсе, и без этого
+   * кнопку «Запустити зараз» негде было бы нажать в первый раз.
+   */
+  const idle: OpsJob[] = [...runnables.keys()]
+    .filter((name) => !jobs.has(name))
+    .map((name) => ({
+      name,
+      intervalSec: 0,
+      runs: 0,
+      failures: 0,
+      skipped: 0,
+      lastStartAt: null,
+      lastEndAt: null,
+      lastDurationMs: null,
+      lastResult: null,
+      lastError: null,
+      lastErrorAt: null,
+      nextAt: null,
+      manual: true,
+      lastByHand: false,
+    }));
+  return [...known, ...idle];
+}
+
+/* ─────────── ручной запуск (участок obs2b) ─────────── */
+
+/**
+ * Задачи, которые можно запустить руками из техпанели.
+ *
+ * Решение заказчика 2026-09-26: «Запустити зараз» у задач, которые
+ * безопасно запускать вне такта. Реестр — здесь, рядом с тактами, а не
+ * отдельный: ручной проход — тот же проход той же задачи, и на экране он
+ * должен быть той же строкой, с тем же «виконується», итогом и ошибкой.
+ * Что именно регистрируется и почему безопасно — lib/opsManual.ts.
+ */
+const runnables = new Map<string, () => Promise<unknown>>();
+
+export function registerRunnable(name: string, run: () => Promise<unknown>): void {
+  runnables.set(name, run);
+}
+
+export function isRunnable(name: string): boolean {
+  return runnables.has(name);
+}
+
+/** Идёт ли проход задачи в этом процессе — тактом или руками */
+export function isRunning(name: string): boolean {
+  return jobs.get(name)?.running ?? false;
+}
+
+/**
+ * Запустить руками — фоном, не в запросе.
+ *
+ * Ответ уходит сразу («запущено»), а проход идёт своим ходом: переиндексация
+ * на десятках тысяч записей — минуты, и держать запрос открытым всё это
+ * время значило бы держать и соединение из пула, и терпение прокси.
+ * Итог — в реестре: строка задачи покажет «виконується», потом итог или
+ * ошибку, как у прохода по такту.
+ *
+ * Один проход за раз: пока идёт прошлый (руками или тактом), второй не
+ * начинается — «running». Это граница процесса; между репликами задачу
+ * держит транзакционный замок внутри самой задачи (lib/opsManual.ts).
+ */
+export function startManual(name: string, onError?: (error: unknown) => void): "started" | "running" | "unknown" {
+  const run = runnables.get(name);
+  if (!run) return "unknown";
+  if (isRunning(name)) return "running";
+  const pass = trackJob(name, run);
+  /* trackJob выставил running синхронно; отметку «руками» — поверх неё */
+  stateOf(name).lastByHand = true;
+  pass.catch((error) => onError?.(error));
+  return "started";
 }
 
 /** Только для тестов */

@@ -14,7 +14,14 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { LANGS, type LocalizedText, type SampleFilters, type StatModelColumn } from "@quizzy/shared";
+import {
+  LANGS,
+  type LocalizedText,
+  type OpsAlertChannel,
+  type OpsAlertDelivery,
+  type SampleFilters,
+  type StatModelColumn,
+} from "@quizzy/shared";
 
 /**
  * Временные метки храним как timestamptz: в отличие от SQLite, где всё было
@@ -2992,4 +2999,90 @@ export const dispensary = pgTable(
     removedBy: text("removed_by").references(() => users.id, { onDelete: "set null" }),
   },
   (t) => ({ dueIdx: index("dispensary_due_idx").on(t.nextDueAt) }),
+);
+
+/* ═══════════ техпанель: сигналы и клиент (obs2b, миграция 0095) ═══════════ */
+
+/**
+ * Правило оповещения и состояние его инцидента.
+ *
+ * Набор правил задан кодом (lib/opsAlerts.ts) и заведён миграцией; человек
+ * с ops.manage правит пороги, окно, повтор и каналы. Состояние инцидента —
+ * в той же строке: «идёт с», «последнее оповещение», «последнее значение».
+ * В базе, а не в памяти: перезапуск посреди инцидента не должен ни
+ * повторить «збій», ни потерять «відновлено».
+ */
+export const opsAlertRules = pgTable("ops_alert_rules", {
+  key: text("key").primaryKey(),
+  enabled: boolean("enabled").notNull().default(true),
+  threshold: doublePrecision("threshold"),
+  windowMin: integer("window_min"),
+  repeatMin: integer("repeat_min").notNull().default(60),
+  channels: jsonb("channels").$type<OpsAlertChannel[]>().notNull().default(sql`'["telegram","email"]'::jsonb`),
+  firingSince: timestampCol("firing_since"),
+  lastSentAt: timestampCol("last_sent_at"),
+  lastValue: doublePrecision("last_value"),
+  lastState: text("last_state"),
+  lastReason: text("last_reason"),
+  lastCheckedAt: timestampCol("last_checked_at"),
+  updatedAt: timestampCol("updated_at"),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+/** История оповещений: сработало, повтор, восстановлено, тестовое — и что с каждым каналом */
+export const opsAlertEvents = pgTable(
+  "ops_alert_events",
+  {
+    id: text("id").primaryKey(),
+    at: timestampCol("at").notNull().default(sql`now()`),
+    ruleKey: text("rule_key"),
+    kind: text("kind", { enum: ["fired", "repeat", "resolved", "test"] }).notNull(),
+    value: doublePrecision("value"),
+    threshold: doublePrecision("threshold"),
+    deliveries: jsonb("deliveries").$type<OpsAlertDelivery[]>().notNull().default(sql`'[]'::jsonb`),
+  },
+  (t) => ({ atIdx: index("ops_alert_events_at_idx").on(t.at) }),
+);
+
+/**
+ * Группа ошибок клиента по отпечатку. Ни одной ссылки на человека:
+ * маршрут шаблоном, текст вычищен, браузер и ОС грубо.
+ */
+export const opsClientErrors = pgTable(
+  "ops_client_errors",
+  {
+    fingerprint: text("fingerprint").primaryKey(),
+    platform: text("platform", { enum: ["web", "mobile"] }).notNull(),
+    kind: text("kind", { enum: ["react", "error", "rejection", "network"] }).notNull(),
+    name: text("name").notNull(),
+    message: text("message").notNull(),
+    route: text("route").notNull(),
+    apiMethod: text("api_method"),
+    apiRoute: text("api_route"),
+    status: integer("status"),
+    release: text("release"),
+    browser: text("browser"),
+    os: text("os"),
+    frames: jsonb("frames").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    count: integer("count").notNull().default(0),
+    firstAt: timestampCol("first_at").notNull().default(sql`now()`),
+    lastAt: timestampCol("last_at").notNull().default(sql`now()`),
+  },
+  (t) => ({ lastIdx: index("ops_client_errors_last_idx").on(t.lastAt) }),
+);
+
+/**
+ * Скорость экранов: число замеров в корзине за день по маршруту и мере.
+ * Корзины — VITAL_BOUNDS из @quizzy/shared; p75 считается из них.
+ */
+export const opsVitals = pgTable(
+  "ops_vitals",
+  {
+    day: date("day").notNull(),
+    route: text("route").notNull(),
+    metric: text("metric").notNull(),
+    bucket: integer("bucket").notNull(),
+    n: integer("n").notNull().default(0),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.day, t.route, t.metric, t.bucket] }) }),
 );

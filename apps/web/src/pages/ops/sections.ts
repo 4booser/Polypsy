@@ -38,6 +38,10 @@ export const OPS_GROUPS: OpsGroup[] = [
       { to: "/ops/logs", label: "ops.tab.logs", perm: "ops.read" },
       { to: "/ops/db", label: "ops.tab.db", perm: "ops.read" },
       /* ── sections:obs2 ── */
+
+      /* obs2b — ошибки клиента и скорость экранов */
+      { to: "/ops/client-errors", label: "o2b.tab.clientErrors", perm: "ops.read" },
+      { to: "/ops/vitals", label: "o2b.tab.vitals", perm: "ops.read" },
       /* ── sections:sec-system ── */
     ],
   },
@@ -48,6 +52,10 @@ export const OPS_GROUPS: OpsGroup[] = [
       { to: "/ops/jobs", label: "ops.tab.jobs", perm: "ops.read" },
       /* ── sections:maint ── */
       /* ── sections:obs2-ops ── */
+
+      /* obs2b — оповещения и хранилище записей приёма */
+      { to: "/ops/alerts", label: "o2b.tab.alerts", perm: "ops.read" },
+      { to: "/ops/recordings", label: "o2b.tab.recordings", perm: "ops.read" },
     ],
   },
   {

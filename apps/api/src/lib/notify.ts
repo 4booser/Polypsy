@@ -97,7 +97,7 @@ async function pushRecipientsFor(surveyId: string): Promise<string[]> {
   return supers.map((r) => r.id);
 }
 
-async function superadminEmails(): Promise<string[]> {
+export async function superadminEmails(): Promise<string[]> {
   const rows = await db.select({ email: users.email }).from(users).where(eq(users.role, "superadmin"));
   return rows.map((r) => r.email);
 }
@@ -118,6 +118,23 @@ async function send(mail: AlertMail): Promise<"email" | "none"> {
     text: mail.text,
   });
   return "email";
+}
+
+/**
+ * Письмо техпанели — оповещение о работе системы (lib/opsAlerts.ts).
+ *
+ * Тем же транспортом и с теми же таймаутами, что тревоги: второй
+ * транспорт рядом был бы вторым местом, где однажды забудут таймаут, и
+ * зависший почтовый сервер снова съел бы пул. «none» — SMTP не настроен или
+ * слать некому.
+ */
+export function sendSystemMail(to: string[], subject: string, text: string): Promise<"email" | "none"> {
+  return send({ to, subject, text });
+}
+
+/** Есть ли чем слать почту — только «да / нет», адрес сервера наружу не уходит */
+export function mailTransportReady(): boolean {
+  return getTransport() !== null;
 }
 
 const SEVERITY_LABEL: Record<string, string> = {

@@ -73,6 +73,22 @@ export const PUSH: Record<string, PushEntry> = {
     ru: "Методика «{title}». Откройте разбор случаев.",
     en: "Assessment “{title}”. Open risk cases to review it.",
   },
+  /*
+   * Оповещения техпанели (участок obs2b, apps/api/src/lib/opsAlerts.ts) —
+   * в Telegram и на почту дежурным разработчикам и администратору. Язык —
+   * украинский: у адреса в Telegram и почтового ящика языка нет, а у
+   * отделения он один. {what} — описание сигнала из push.ops.what.*.
+   */
+  "push.ops.fired": { uk: "Збій: {what}", ru: "Сбой: {what}", en: "Failure: {what}" },
+  "push.ops.repeat": { uk: "Досі триває (з {since}): {what}", ru: "Всё ещё идёт (с {since}): {what}", en: "Still ongoing (since {since}): {what}" },
+  "push.ops.resolved": { uk: "Відновлено: {what}. Тривало {minutes} хв.", ru: "Восстановлено: {what}. Длилось {minutes} мин.", en: "Recovered: {what}. Lasted {minutes} min." },
+  "push.ops.test": { uk: "Тестове сповіщення техпанелі: канал працює", ru: "Тестовое оповещение техпанели: канал работает", en: "Tech panel test alert: the channel works" },
+  "push.ops.link": { uk: "Техпанель: {url}", ru: "Техпанель: {url}", en: "Tech panel: {url}" },
+  "push.ops.what.errors5xx": { uk: "частка 5xx {value} % за {window} хв (поріг {threshold} %)", ru: "доля 5xx {value} % за {window} мин (порог {threshold} %)", en: "5xx share {value}% over {window} min (threshold {threshold}%)" },
+  "push.ops.what.schedulerSilent": { uk: "планувальник мовчить {value} хв (поріг {threshold} хв)", ru: "планировщик молчит {value} мин (порог {threshold} мин)", en: "scheduler silent for {value} min (threshold {threshold} min)" },
+  "push.ops.what.p95": { uk: "p95 відповіді {value} мс за {window} хв (поріг {threshold} мс)", ru: "p95 ответа {value} мс за {window} мин (порог {threshold} мс)", en: "response p95 {value} ms over {window} min (threshold {threshold} ms)" },
+  "push.ops.what.diskFree": { uk: "вільно {value} % диска записів (поріг {threshold} %)", ru: "свободно {value} % диска записей (порог {threshold} %)", en: "{value}% free on the recordings disk (threshold {threshold}%)" },
+  "push.ops.what.auditChain": { uk: "перевірка ланцюжка журналу не пройшла", ru: "проверка цепочки журнала не прошла", en: "audit log chain check failed" },
 };
 
 export type PushKey = keyof typeof PUSH;

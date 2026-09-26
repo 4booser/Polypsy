@@ -2437,6 +2437,14 @@ export interface OpsJob {
   lastError: string | null;
   lastErrorAt: string | null;
   nextAt: string | null;
+  /**
+   * Задачу можно запустить руками («Запустити зараз», право ops.manage).
+   * Только те, что безопасно запускать вне такта: идемпотентные и без
+   * выдачи людям чего-либо (участок obs2b, lib/opsManual.ts).
+   */
+  manual: boolean;
+  /** Последний проход запущен руками, а не тактом */
+  lastByHand: boolean;
 }
 
 export interface OpsJobs {
@@ -2446,6 +2454,241 @@ export interface OpsJobs {
   items: OpsJob[];
   /** Последние срабатывания расписаний из базы — они переживают перезапуск */
   scheduleRuns: { at: string; assigned: number; skipped: number; note: string | null }[] | null;
+}
+
+/* ─────────── техпанель: сигналы и клиент (obs2b) ─────────── */
+
+/*
+ * В отличие от памяти процесса выше, всё здесь лежит в базе (миграция
+ * 0095): правила оповещений и их история, ошибки клиента, скорость экранов.
+ * Оповещение, которое забыло про себя после перезапуска, прислало бы
+ * «сбой» второй раз и никогда не прислало бы «відновлено».
+ */
+
+/** Правило оповещения — по одному на сигнал */
+export type OpsAlertRuleKey = "errors5xx" | "schedulerSilent" | "p95" | "diskFree" | "auditChain";
+
+export type OpsAlertChannel = "telegram" | "email";
+
+/**
+ * Состояние правила на последней проверке.
+ *
+ * `unavailable` — сигнал сейчас не измерить (планировщик выключен на этом
+ * экземпляре, источник проверки журнала не подключён, statfs не ответил):
+ * это не «гаразд» и не «сбой», и оповещение по нему не шлётся.
+ */
+export type OpsAlertState = "ok" | "firing" | "unavailable" | "off" | "unknown";
+
+export interface OpsAlertRule {
+  key: OpsAlertRuleKey;
+  enabled: boolean;
+  /** Порог в единице правила: %, мс, минуты; у проверки журнала порога нет */
+  threshold: number | null;
+  /** Окно, по которому считается сигнал, минуты; null — у правила окна нет */
+  windowMin: number | null;
+  /** Повтор оповещения по незакрытому инциденту — не чаще раза в столько минут */
+  repeatMin: number;
+  channels: OpsAlertChannel[];
+  state: OpsAlertState;
+  /** Код причины недоступности; фразу берёт консоль */
+  unavailable: string | null;
+  firingSince: string | null;
+  lastValue: number | null;
+  lastCheckedAt: string | null;
+  lastSentAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface OpsAlertChannels {
+  /** TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID — только «задано / нет», значений нет нигде */
+  telegram: { configured: boolean; token: boolean; chat: boolean };
+  /** SMTP_URL задан; кому — OPS_ALERT_EMAIL или суперадминам, числом без адресов */
+  email: { configured: boolean; smtp: boolean; recipients: "env" | "superadmins" | "none"; count: number };
+}
+
+export interface OpsAlerts {
+  rules: OpsAlertRule[];
+  channels: OpsAlertChannels;
+  checker: {
+    /** Проверка правил идёт на этом экземпляре (SCHEDULER_ENABLED) */
+    enabled: boolean;
+    intervalSec: number;
+    lastRunAt: string | null;
+  };
+  /** Каталог, место которого меряет правило diskFree — именем переменной, не путём */
+  diskOf: "RECORDINGS_DIR";
+}
+
+export type OpsAlertEventKind = "fired" | "repeat" | "resolved" | "test";
+
+export interface OpsAlertDelivery {
+  channel: OpsAlertChannel;
+  /** sent — ушло; failed — канал ответил отказом; unset — канал не настроен */
+  outcome: "sent" | "failed" | "unset";
+  /** Текст отказа без токенов и адресов */
+  error: string | null;
+}
+
+export interface OpsAlertEvent {
+  id: string;
+  at: string;
+  rule: OpsAlertRuleKey | null;
+  kind: OpsAlertEventKind;
+  value: number | null;
+  threshold: number | null;
+  deliveries: OpsAlertDelivery[];
+}
+
+export interface OpsAlertHistory {
+  items: OpsAlertEvent[];
+}
+
+export interface OpsAlertRuleInput {
+  enabled?: boolean;
+  threshold?: number | null;
+  windowMin?: number | null;
+  repeatMin?: number;
+  channels?: OpsAlertChannel[];
+}
+
+/* ── ошибки клиента ── */
+
+export type ClientPlatform = "web" | "mobile";
+/** react — граница ошибок; error — window.onerror / глобальный обработчик RN; rejection — необработанный отказ промиса; network — сеть, 5xx, таймаут */
+export type ClientErrorKind = "react" | "error" | "rejection" | "network";
+
+/**
+ * Одна ошибка с клиента — то, что уходит в POST /api/ops/client-errors.
+ *
+ * Без ПДн по устройству: адрес — шаблоном (`/patients/:id`), сообщение и
+ * стек вычищены на клиенте и ещё раз на сервере, браузер и ОС — грубо
+ * («Chrome 128», «Windows»). Лишнее поле отвергается сервером целиком.
+ */
+export interface ClientErrorInput {
+  platform: ClientPlatform;
+  kind: ClientErrorKind;
+  name: string;
+  message: string;
+  stack?: string;
+  route: string;
+  apiMethod?: string;
+  apiRoute?: string;
+  /** HTTP-код сетевого сбоя; 0 — до сервера не дошли */
+  status?: number;
+  release?: string;
+  browser?: string;
+  os?: string;
+  /** Сколько одинаковых ошибок склеено на клиенте в одну */
+  count?: number;
+}
+
+export interface OpsClientErrorGroup {
+  fingerprint: string;
+  platform: ClientPlatform;
+  kind: ClientErrorKind;
+  name: string;
+  message: string;
+  route: string;
+  apiMethod: string | null;
+  apiRoute: string | null;
+  status: number | null;
+  release: string | null;
+  browser: string | null;
+  os: string | null;
+  count: number;
+  firstAt: string;
+  lastAt: string;
+  frames: string[];
+}
+
+export interface OpsClientErrors {
+  items: OpsClientErrorGroup[];
+  /** Сколько групп хранится, и сколько их может быть: сверх — новые не заводятся */
+  total: number;
+  capacity: number;
+  retentionDays: number;
+}
+
+/* ── скорость экранов (RUM) ── */
+
+/**
+ * LCP, INP, CLS, TTFB — Web Vitals; NAV — своя мера консоли: от смены
+ * адреса в одностраничном приложении до стабильного экрана (500 мс без
+ * изменений разметки). У NAV нет общепринятых порогов — они наши.
+ */
+export type VitalMetric = "LCP" | "INP" | "CLS" | "TTFB" | "NAV";
+/** good — «добре», needs — «потребує уваги», poor — «погано» */
+export type VitalRating = "good" | "needs" | "poor";
+
+export interface VitalInput {
+  metric: VitalMetric;
+  route: string;
+  value: number;
+}
+
+export interface OpsVitalCell {
+  /** p75 за весь период; null — замеров нет */
+  p75: number | null;
+  n: number;
+  rating: VitalRating | null;
+  /** p75 по дням периода, по порядку `days`; null — в этот день замеров нет */
+  daily: (number | null)[];
+}
+
+export interface OpsVitalRoute {
+  route: string;
+  metrics: Partial<Record<VitalMetric, OpsVitalCell>>;
+}
+
+export interface OpsVitals {
+  days: string[];
+  /** Доля сессий, которые меряются (RUM_SAMPLE_RATE) */
+  sampleRate: number;
+  routes: OpsVitalRoute[];
+}
+
+/* ── записи приёмов ── */
+
+export type RecordingStatus =
+  | "consent_pending"
+  | "ready"
+  | "recording"
+  | "uploaded"
+  | "transcribing"
+  | "done"
+  | "failed"
+  | "discarded";
+
+/**
+ * Хранилище записей приёма — только числа.
+ *
+ * Ни имени пациента, ни пути к файлу: идентификатор задания (строки записи),
+ * возраст и текст ошибки, из которого вычищены пути и данные.
+ */
+export interface OpsRecordings {
+  byStatus: { status: RecordingStatus; count: number; bytes: number }[];
+  /** Файлы, которые по базе должны лежать на диске */
+  stored: { count: number; bytes: number };
+  /** Каталог записей по диску: null — не прочитался */
+  disk: {
+    files: number;
+    bytes: number;
+    /** Файлов больше, чем умеет пересчитать один запрос: числа — нижняя граница */
+    truncated: boolean;
+    totalBytes: number | null;
+    freeBytes: number | null;
+  } | null;
+  queue: {
+    waiting: number;
+    transcribing: number;
+    /** Самое старое ожидающее — секунды с конца приёма */
+    oldestWaitingSec: number | null;
+    /** Расшифровываются дольше шести часов — вероятно, воркер упал посреди записи */
+    stuck: number;
+  };
+  failed: { id: string; ageSec: number | null; error: string | null; retryable: boolean }[];
+  /** Настроена ли расшифровка в ЭТОМ процессе; воркер — отдельный, его отсюда не видно */
+  transcriberHere: boolean;
 }
 
 /** Запись журнала доступа */
