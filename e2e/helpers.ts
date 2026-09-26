@@ -539,24 +539,35 @@ async function freeSlotToday(page: Page, staffToken: string, specialistId: strin
    * conflict do nothing`, то есть уже занятое время, — и проверка падала бы
    * на «свободного слота не появилось». Поэтому окна расходятся по пять
    * минут вперёд, а не берутся «через минуту от сейчас».
+   *
+   * Окно может лечь и поверх сетки дня: свободного впереди нет, а текущий
+   * слот ещё идёт или следующие разобраны. С волны 12 открытые слоты одного
+   * специалиста не пересекаются (миграция 0105, lib/schedule.ts layOutDay):
+   * дополнительное время поверх занятого не заводится, и свободного слота
+   * не появляется. Тогда окно сдвигается дальше, пока не найдёт свободное
+   * место, — так же поступил бы специалист, которому система не дала
+   * добавить время поверх приёма. Прежде такое окно создавало второй
+   * открытый слот на то же время, и сценарий проходил на двойной записи.
    */
-  extraWindowSeq += 1;
-  const start = 4 + (extraWindowSeq - 1) * 5;
-  const from = kyivClock(start);
-  const to = kyivClock(start + 5);
-  if (to <= from) {
-    throw new Error("до конца суток в Киеве не осталось места под своё время приёма");
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    extraWindowSeq += 1;
+    const start = 4 + (extraWindowSeq - 1) * 5;
+    const from = kyivClock(start);
+    const to = kyivClock(start + 5);
+    if (to <= from) {
+      throw new Error("до конца суток в Киеве не осталось места под своё время приёма");
+    }
+    const created = await page.request.post("/api/clinic/schedule/exceptions", {
+      headers,
+      data: { date: today, kind: "extra", startsAt: from, endsAt: to, slotMinutes: 5, note: "Смоук" },
+    });
+    if (!created.ok()) {
+      throw new Error(`не удалось добавить время приёма: ${created.status()} ${await created.text()}`);
+    }
+    const again = await open();
+    if (again.length) return again[0]!.id;
   }
-  const created = await page.request.post("/api/clinic/schedule/exceptions", {
-    headers,
-    data: { date: today, kind: "extra", startsAt: from, endsAt: to, slotMinutes: 5, note: "Смоук" },
-  });
-  if (!created.ok()) {
-    throw new Error(`не удалось добавить время приёма: ${created.status()} ${await created.text()}`);
-  }
-  const again = await open();
-  expect(again.length, "дополнительное время заведено, а свободного слота не появилось").toBeGreaterThan(0);
-  return again[0]!.id;
+  throw new Error("дополнительное время заводилось пять часов подряд, а свободного слота не появилось");
 }
 
 export interface OwnAppointment {

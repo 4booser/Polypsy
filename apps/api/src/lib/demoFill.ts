@@ -734,6 +734,8 @@ async function bookDemoAppointments(specialistId: string): Promise<number> {
     .where(
       and(
         eq(slots.specialistId, specialistId),
+        // закрытый слот — история отменённого приёма, а не свободное время (0105)
+        eq(slots.status, "open"),
         sql`${slots.startsAt} > now() - interval '60 days'`,
         sql`${slots.startsAt} < now() + interval '21 days'`,
         sql`not exists (select 1 from appointments a where a.slot_id = ${slots.id} and a.status <> 'cancelled')`,
