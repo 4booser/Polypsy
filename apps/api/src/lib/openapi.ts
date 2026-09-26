@@ -104,6 +104,16 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /health/ready": { summary: "Готово ли принимать нагрузку (проверяет БД)", access: "public" },
   "GET /metrics": { summary: "Метрики Prometheus; закрыты METRICS_TOKEN, без него 404", access: "public" },
 
+  /* ── техпанель: наблюдаемость (память процесса, до перезапуска) ── */
+  "GET /api/ops/overview": { summary: "Сборка, процесс, база, запросы за 5 мин / 1 ч / 24 ч, проверки здоровья; ключи окружения — только «задан / нет»", access: "staff", permission: "ops.read" },
+  "GET /api/ops/traffic": { summary: "Корзины нагрузки за `?window=1h|6h|24h`: запросы, 4xx/5xx, среднее, p50/p95/p99", access: "staff", permission: "ops.read" },
+  "GET /api/ops/routes": { summary: "Запросы по шаблонам маршрутов с момента запуска: число, ошибки, среднее, перцентили, максимум", access: "staff", permission: "ops.read" },
+  "GET /api/ops/slow": { summary: "Медленные запросы (от 1 с), последние 200: номер запроса, маршрут, код, роль, время", access: "staff", permission: "ops.read" },
+  "GET /api/ops/errors": { summary: "Необработанные ошибки, сгруппированные по отпечатку; чтение в журнал (ops.errors.read)", access: "staff", permission: "ops.read" },
+  "GET /api/ops/logs": { summary: "Кольцевой буфер лога: `?level=&q=&requestId=&after=&limit=`, курсор `after` для живой ленты; чтение в журнал (ops.logs.read)", access: "staff", permission: "ops.read" },
+  "GET /api/ops/db": { summary: "База: размеры таблиц, подключения, долгие запросы, ожидания блокировок, миграции; без прав роли — null с пояснением", access: "staff", permission: "ops.read" },
+  "GET /api/ops/jobs": { summary: "Фоновые задачи процесса: последний проход, длительность, результат, ошибка, следующий такт", access: "staff", permission: "ops.read" },
+
   /* ── вход и профиль ── */
   "POST /api/auth/register": { summary: "Регистрация обследуемого", access: "public", body: registerSchema },
   "POST /api/auth/login": { summary: "Вход", access: "public", body: loginSchema },
