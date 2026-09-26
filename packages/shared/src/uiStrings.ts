@@ -7191,6 +7191,17 @@ export const UI = {
     ru: "По этому отбору случаев нет",
     en: "No cases match these filters",
   },
+  /* закрытие обращения при незакрытых направлениях — объяснение в журнал (routes/episodes.ts) */
+  "ep.openReferralsNote": {
+    uk: "Чому звернення закривається з незакритими направленнями",
+    ru: "Почему обращение закрывается с незакрытыми направлениями",
+    en: "Why the episode is being closed with open referrals",
+  },
+  "ep.openReferralsNoteHint": {
+    uk: "Наприклад: людину переведено, направлення закриє сторона, що приймає. Пояснення потрапить до журналу",
+    ru: "Например: человек переведён, направление закроет принимающая сторона. Пояснение попадёт в журнал",
+    en: "For example: the person was transferred and the receiving side will close the referral. The explanation goes into the log",
+  },
   /* ── w12:ui ── */
   /* выбранное, которого среди доступных нет: чужая группа или удалено (ui/choices.ts) */
   "choice.unavailable": { uk: "недоступна", ru: "недоступна", en: "unavailable" },

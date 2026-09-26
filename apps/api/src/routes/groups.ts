@@ -237,6 +237,16 @@ groupRoutes.post("/:id/archive", requirePermission("groups.manage"), async (c) =
  *
  * Ни то, ни другое не должно случаться как побочный эффект «прибраться в
  * списке групп»: сначала переносим содержимое, потом удаляем пустую.
+ *
+ * Правила поддержки решений — тоже содержимое (клиническое ревью волны 12).
+ * Внешний ключ стоял SET NULL, а правило без группы действует на всё
+ * учреждение: удаление «пустой» группы превращало её правила в общие, и
+ * правило, написанное для одного отделения, начинало предлагать шаги по
+ * всем прохождениям. Считаются и выключенные: выключенное правило без
+ * группы включается одной галочкой — уже для всех. Правило переносят в
+ * другую группу (PATCH /api/decisions/rules/:id), а общим его делают только
+ * явно. Внешний ключ теперь NO ACTION (миграция 0107): без маршрута тоже не
+ * удалить.
  */
 groupRoutes.delete("/:id", requirePermission("groups.manage"), async (c) => {
   const id = c.req.param("id");
@@ -247,12 +257,14 @@ groupRoutes.delete("/:id", requirePermission("groups.manage"), async (c) => {
     .select({
       surveys: sql<number>`(select count(*)::int from surveys where group_id = ${id})`,
       batteries: sql<number>`(select count(*)::int from batteries where group_id = ${id})`,
+      rules: sql<number>`(select count(*)::int from decision_rules where group_id = ${id})`,
     })
     .from(sql`(select 1) as _`);
 
   const inside: string[] = [];
   if (counts?.surveys) inside.push(`методик: ${counts.surveys}`);
   if (counts?.batteries) inside.push(`батарей: ${counts.batteries}`);
+  if (counts?.rules) inside.push(`правил поддержки решений: ${counts.rules}`);
   if (inside.length) {
     badRequest("err.groupNotEmpty", { details: inside.join(", ") });
   }
