@@ -95,6 +95,48 @@ export function jobShare(job: OpsReencryptJob): number {
   return Math.min(1, Math.max(0, job.processed / job.total));
 }
 
+/* ═══════════ сверки цепочки по дням (волна 11) ═══════════ */
+
+export type CheckDayState = "ok" | "broken" | "none";
+
+export interface CheckDay {
+  /** День по часам экрана, «YYYY-MM-DD» */
+  key: string;
+  ok: number;
+  broken: number;
+  /** Итог дня: хоть одна сверка нашла разрыв — «розрив», даже если другая в тот же день прошла */
+  state: CheckDayState;
+}
+
+/**
+ * Сверки цепочки → дни окна.
+ *
+ * Итог дня — худший, а не последний: разрыв, найденный утром, не
+ * отменяется тем, что к вечеру кто-то нажал кнопку ещё раз, — цепочка
+ * после разрыва снова «сходится» от новой головы, а сама поломка никуда не
+ * делась. День без сверок — «не перевіряли», а не «ціла»: отсутствие
+ * проверки не доказывает целости.
+ *
+ * `dayOf` — функция дня по часам экрана (obs2b/model.ts, localDay):
+ * параметром, чтобы тест не зависел от пояса машины.
+ */
+export function checkDays(
+  history: readonly { at: string; ok: boolean }[],
+  days: readonly string[],
+  dayOf: (iso: string) => string,
+): CheckDay[] {
+  const out: CheckDay[] = days.map((key) => ({ key, ok: 0, broken: 0, state: "none" }));
+  const idx = new Map(days.map((d, i) => [d, i]));
+  for (const h of history) {
+    const i = idx.get(dayOf(h.at));
+    if (i === undefined) continue;
+    if (h.ok) out[i]!.ok += 1;
+    else out[i]!.broken += 1;
+  }
+  for (const d of out) d.state = d.broken ? "broken" : d.ok ? "ok" : "none";
+  return out;
+}
+
 /* ═══════════ секреты ═══════════ */
 
 export type SecretAge =

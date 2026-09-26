@@ -2,14 +2,16 @@ import type { ReactNode } from "react";
 import type { ReleaseEntry, ReleasesView } from "@quizzy/shared";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
-import { dateTime, duration } from "../../../format";
+import { Figure, TimeColumns } from "../../../charts/clinical";
+import { dateTime, day, duration } from "../../../format";
 import { useLang } from "../../../lang";
 import { Screen, useAction } from "../../../ui";
 import { cx } from "../../../ui/cx";
-import { Button } from "../../../ui/primitives";
+import { Button, Num } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
 import { useResource } from "../../../useResource";
-import { rollbackPlan, shortSha, uptimeMs, type RollbackPlan } from "./model";
+import { fill } from "../../dashboard/model";
+import { perWeek, rollbackPlan, shortSha, uptimeMs, weeklyDeploys, type RollbackPlan } from "./model";
 
 /**
  * Раздел «Випуски» техпанели: история выкаток и откат на предыдущий тег.
@@ -35,6 +37,7 @@ export default function OpsReleases() {
           view.items.length ? (
             <>
               <Rollback view={view} plan={rollbackPlan(view.items)} />
+              <Cadence items={view.items} />
               <ReleaseList items={view.items} />
             </>
           ) : (
@@ -114,6 +117,40 @@ function Rollback({ view, plan }: { view: ReleasesView; plan: RollbackPlan | nul
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** Недель в ряду: полгода — видно и ритм, и паузу; дальше столбцы стали бы нитками */
+const WEEKS = 26;
+
+/**
+ * Частота выкладок над списком (волна 11): столбцы по неделям.
+ *
+ * Список отвечает «что и когда», но не «как часто»: десять строк за неделю
+ * и десять за квартал выглядят в нём одинаково. Столбцы — счёт по неделе,
+ * пустая неделя — ноль в ряду. Одна неделя — не ряд: тогда достаточно
+ * списка, и график не рисуется.
+ */
+export function Cadence({ items, now = Date.now() }: { items: readonly ReleaseEntry[]; now?: number }) {
+  const { ut } = useLang();
+  const weeks = weeklyDeploys(items, now, WEEKS);
+  if (weeks.length < 2) return null;
+  const avg = perWeek(weeks);
+  return (
+    <Figure
+      className="mb-[28px]"
+      title={ut("sig.rl.cadence")}
+      caption={fill(ut("sig.rl.cadenceCaption"), { weeks: weeks.length, n: items.length })}
+      aside={
+        avg === null ? null : (
+          <span className="text-[13px] text-muted">
+            {ut("sig.rl.perWeek")} <Num className="text-text-2">{avg}</Num>
+          </span>
+        )
+      }
+    >
+      <TimeColumns columns={weeks.map((w) => ({ key: w.key, label: day(w.key), value: w.value }))} label={ut("sig.rl.cadence")} />
+    </Figure>
   );
 }
 

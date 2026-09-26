@@ -1,13 +1,14 @@
 import type { OpsAuditChainReport, OpsIntegrityCheck, OpsIntegrityState, OpsRlsReport, UiKey } from "@quizzy/shared";
 import { api } from "../../../api";
-import { dateTime } from "../../../format";
+import { dateTime, day } from "../../../format";
 import { useLang } from "../../../lang";
 import { Loading, useAction } from "../../../ui";
 import { Button } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
 import { useResource } from "../../../useResource";
-import { fill } from "./model";
-import { Caption, Note, Verdict } from "./parts";
+import { lastDays, localDay } from "../obs2b/model";
+import { checkDays, fill } from "./model";
+import { Caption, CheckStrip, Note, Verdict } from "./parts";
 
 /*
  * Раздел «Цілісність» техпанели — только суперадмину.
@@ -193,6 +194,41 @@ export function AuditResult({ state }: { state: OpsIntegrityState }) {
           <Note className="mt-[4px]">{fill(ut("ops.sec.int.nextAfter"), { time: dateTime(state.nextScheduledAfter) })}</Note>
         ) : null}
       </div>
+      <ChainHistory state={state} />
     </>
+  );
+}
+
+/**
+ * Сверки цепочки за месяц — полосой дней (волна 11).
+ *
+ * Последняя сверка выше говорит, цела ли цепочка сейчас; полоса — была ли
+ * она цела всё это время и сверяли ли её вообще: плановая сверка раз в
+ * сутки, и пропуск в полосе — это день, когда планировщик не дошёл до
+ * проверки. Дни с разрывом ещё и перечислены словами: их ищут глазами,
+ * и по цвету ромба искать их не должен никто.
+ */
+export function ChainHistory({ state, now = Date.now() }: { state: OpsIntegrityState; now?: number }) {
+  const { ut } = useLang();
+  const history = state.auditHistory ?? [];
+  if (!history.length) return null;
+  const days = checkDays(history, lastDays(now, state.historyDays), localDay);
+  const broken = days.filter((d) => d.state === "broken");
+  return (
+    <div className="mt-[20px] border-t border-hairline pt-[12px]">
+      <Caption className="mb-[4px]">{fill(ut("sig.int.history"), { days: state.historyDays })}</Caption>
+      <Note className="mb-[10px]">{ut("sig.int.historyCaption")}</Note>
+      <CheckStrip
+        days={days}
+        label={fill(ut("sig.int.history"), { days: state.historyDays })}
+        words={{ ok: ut("ops.sec.int.intact"), broken: ut("ops.sec.int.broken"), none: ut("sig.int.notChecked") }}
+        dayLabel={day}
+      />
+      {broken.length ? (
+        <p className="m-0 mt-[8px] max-w-[760px] text-[13px] font-bold leading-[18px] text-danger">
+          {fill(ut("sig.int.brokenDays"), { days: broken.map((d) => day(d.key)).join(", ") })}
+        </p>
+      ) : null}
+    </div>
   );
 }

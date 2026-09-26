@@ -10,8 +10,11 @@ import { Num } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { APP_LABEL, dayColumns, funnelSteps, maybeDayColumns, type Window } from "./model";
+import { APP_LABEL, dayColumns, funnelSteps, maybeDayColumns, topScreens, type Window } from "./model";
 import { KPI_GRID, MaybeColumns, NUM, Note, PAIR_GRID, TD, TH, WindowSwitch } from "./parts";
+
+/** Полос в рейтинге экранов: больше глаз разом не сравнит, остальное — строкой «інші» и в таблице */
+const TOP_SCREENS = 8;
 
 /**
  * «Використання» — какие экраны открывают, сколько людей работает, где
@@ -41,10 +44,48 @@ export function UsageBody({ data, days, onDays }: { data: UsageReport; days: Win
   const screenCols = dayColumns(data.screens.byDay, (d) => d.views, day);
   const staffCols = dayColumns(data.active.byDay, (d) => d.staff, day);
   const patientCols = maybeDayColumns(data.active.byDay, (d) => d.patients, day);
+  const top = topScreens(data.screens.top, data.screens.total, TOP_SCREENS);
 
   return (
     <>
       <RuleSection title={ut("opsd.u.screens")} hint={ut("opsd.u.screensHint")} actions={<WindowSwitch value={days} onChange={onDays} />}>
+        {/*
+          Волна 11: графики — над таблицей, таблица — их табличный вид.
+          Слева — какие экраны открывают чаще (форма таблицы ниже), справа —
+          открытия по дням; до волны 11 он стоял под таблицей один.
+        */}
+        <div className={cx(PAIR_GRID, "mb-[28px]")}>
+          <Figure title={ut("sig.u.topScreens")} caption={fill(ut("sig.u.topCaption"), { n: TOP_SCREENS })}>
+            {top.rows.length ? (
+              <HBars
+                items={[
+                  ...top.rows.map((r) => ({
+                    key: `${r.app}${r.route}`,
+                    label: (
+                      <>
+                        <span className="text-muted">{ut(APP_LABEL[r.app])}</span> <span className="font-mono text-[12px]">{r.route}</span>
+                      </>
+                    ),
+                    value: r.views,
+                  })),
+                  ...(top.rest > 0 ? [{ key: "\u0000rest", label: ut("sig.u.otherScreens"), value: top.rest }] : []),
+                ]}
+              />
+            ) : (
+              <p className="m-0 text-[13px] text-muted">{ut("opsd.u.noScreens")}</p>
+            )}
+          </Figure>
+          <Figure
+            title={ut("opsd.u.viewsByDay")}
+            aside={
+              <span className="text-[13px] text-muted">
+                {ut("opsd.u.total")} <Num className="text-text-2">{data.screens.total}</Num>
+              </span>
+            }
+          >
+            <TimeColumns columns={screenCols} label={ut("opsd.u.viewsByDay")} />
+          </Figure>
+        </div>
         {data.screens.top.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse">
@@ -71,20 +112,7 @@ export function UsageBody({ data, days, onDays }: { data: UsageReport; days: Win
               </tbody>
             </table>
           </div>
-        ) : (
-          <p className="m-0 text-[13px] text-muted">{ut("opsd.u.noScreens")}</p>
-        )}
-        <Figure
-          className="mt-[28px]"
-          title={ut("opsd.u.viewsByDay")}
-          aside={
-            <span className="text-[13px] text-muted">
-              {ut("opsd.u.total")} <Num className="text-text-2">{data.screens.total}</Num>
-            </span>
-          }
-        >
-          <TimeColumns columns={screenCols} label={ut("opsd.u.viewsByDay")} />
-        </Figure>
+        ) : null}
       </RuleSection>
 
       <RuleSection title={ut("opsd.u.active")} hint={fill(ut("opsd.u.activeHint"), { n: data.smallCellFloor })}>

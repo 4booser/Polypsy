@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { PushReport } from "@quizzy/shared";
 import { api } from "../../../api";
 import { Figure, HBars, Kpi, TimeColumns } from "../../../charts/clinical";
-import { dateTime, day } from "../../../format";
+import { dateTime, day, locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { Screen } from "../../../ui";
 import { cx } from "../../../ui/cx";
@@ -10,8 +10,15 @@ import { Num } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { PLATFORM_LABEL, PUSH_KIND_LABEL, dayColumns, pushCodeHint, pushErrors, type Window } from "./model";
+import { GapLine } from "../obs2b/charts";
+import { PLATFORM_LABEL, PUSH_KIND_LABEL, dayColumns, errorShare, pushCodeHint, pushErrors, type Window } from "./model";
 import { KPI_GRID, NUM, Note, PAIR_GRID, TD, TH, WindowSwitch } from "./parts";
+
+/** Кодов в полосах: остальные — в таблице ниже */
+const TOP_CODES = 8;
+
+/** Доля в процентах: «4,2 %» — по языку экрана */
+const pct = (v: number) => `${new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 }).format(v)} %`;
 
 /**
  * «Пуш-сповіщення» — что ушло, что принял Expo, что он передал Apple и
@@ -102,6 +109,30 @@ export function PushBody({ data, days, onDays }: { data: PushReport; days: Windo
       </RuleSection>
 
       <RuleSection title={ut("opsd.p.errorCodes")} hint={ut("opsd.p.errorCodesHint")}>
+        {/*
+          Волна 11: над таблицей кодов — доля ошибок по дням (столбцы выше
+          говорят «сколько», эта линия — «насколько плохо») и коды полосами,
+          форма таблицы ниже. День без отправок — разрыв линии, а не ноль.
+        */}
+        {data.byDay.some((d) => d.sent > 0) ? (
+          <div className={cx(PAIR_GRID, "mb-[28px]")}>
+            <Figure title={ut("sig.p.share")} caption={ut("sig.p.shareCaption")}>
+              <GapLine points={errorShare(data.byDay, day)} label={ut("sig.p.share")} format={pct} tick={pct} />
+            </Figure>
+            {/* кодов нет — «помилок немає» скажет место таблицы ниже, второй раз не повторяем */}
+            {data.errors.length ? (
+              <Figure title={ut("sig.p.codes")} caption={ut("sig.p.codesCaption")}>
+                <HBars
+                  items={data.errors.slice(0, TOP_CODES).map((e) => ({
+                    key: e.code,
+                    label: <span className="font-mono text-[12px]">{e.code}</span>,
+                    value: e.count,
+                  }))}
+                />
+              </Figure>
+            ) : null}
+          </div>
+        ) : null}
         {data.errors.length ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse">
