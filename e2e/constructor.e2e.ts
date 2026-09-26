@@ -116,9 +116,14 @@ test("методика создаётся из вставленного текс
    */
   await page.getByRole("button", { name: "Опубликовать", exact: true }).click();
 
-  // публикация уводит на аналитику новой методики: версия 1, прохождений нет
-  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
-  await expect(page.getByText(/^Версия 1 ·/)).toBeVisible();
+  /*
+   * Публикация уводит на аналитику новой методики: версия 1, прохождений нет.
+   * С волны 9 аналитика методики живёт во вкладке «Тести» раздела
+   * «Аналітика» (/analytics/tests?survey=…), прежний адрес /surveys/:id туда
+   * перенаправляет, а методику и версию называет строка «Показано: …».
+   */
+  await expect(page).toHaveURL(/\/analytics\/tests\?(.*&)?survey=/);
+  await expect(page.getByText(`${title} · версия 1`)).toBeVisible();
 
   // каталог открывается на опубликованных, свежая методика — первой строкой
   await goTop(page, "Тесты");

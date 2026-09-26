@@ -140,7 +140,7 @@ test("новая тревога догоняет открытый экран б�
    * закрытом меню была бы пустой: её там нет и быть не может.
    */
   const menu = await openMenu(page);
-  await expect(menu.locator(".events-dot")).toHaveCount(0);
+  await expect(menu.locator("[data-events-dot]")).toHaveCount(0);
 
   /*
    * Запросы идут через page.request и относительные адреса: у стенда свой
@@ -184,7 +184,7 @@ test("новая тревога догоняет открытый экран б�
   });
 
   // ни одного действия в браузере — отметка появляется сама
-  await expect(menu.locator(".events-dot")).toBeVisible({ timeout: 15_000 });
+  await expect(menu.locator("[data-events-dot]")).toBeVisible({ timeout: 15_000 });
 });
 
 test("срез экрана сохраняется под именем и восстанавливается", async ({ page }) => {
