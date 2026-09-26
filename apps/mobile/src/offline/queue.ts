@@ -1,4 +1,4 @@
-import { uiText } from "@quizzy/shared";
+import { isTransientStatus, uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 import { store } from "./store";
 
@@ -30,7 +30,13 @@ export function enqueue(surveyId: string, payload: Record<string, unknown>): Que
   const item: QueuedSubmission = {
     id: crypto.randomUUID(),
     surveyId,
-    payload: { ...payload, clientRequestId: crypto.randomUUID() },
+    /*
+     * Идентификатор первой попытки сохраняется, если он был. Сдача, упавшая
+     * на 502/504, могла успеть закоммититься: прокси не дождался ответа, а
+     * приложение своё сделало. Повтор с новым id завёл бы второе
+     * прохождение; с тем же — сервер узнает дубль.
+     */
+    payload: { ...payload, clientRequestId: payload.clientRequestId ?? crypto.randomUUID() },
     queuedAt: new Date().toISOString(),
     attempts: 0,
   };
@@ -63,9 +69,14 @@ export interface FlushResult {
 let flushing = false;
 
 /**
- * Прогон очереди. submit — функция реальной отправки; сетевые ошибки
- * (status 0) останавливают прогон, серверные отказы помечают запись и
- * пропускаются: битую сдачу нельзя ни потерять молча, ни ретраить вечно.
+ * Прогон очереди. submit — функция реальной отправки; временные отказы
+ * останавливают прогон, отказы по существу помечают запись и пропускаются:
+ * битую сдачу нельзя ни потерять молча, ни ретраить вечно.
+ *
+ * Временный — не только «сети нет» (status 0), но и 502/503/504
+ * (isTransientStatus). Режим обслуживания отвечает 503 на всякую запись, и
+ * до него очередь помечала бы каждую сдачу «отклонённой сервером»: она
+ * ждала бы разбора человеком, а не конца работ.
  */
 export async function flush(
   submit: (item: QueuedSubmission) => Promise<void>,
@@ -82,7 +93,7 @@ export async function flush(
         sent++;
       } catch (error) {
         const status = (error as { status?: number }).status ?? 0;
-        if (status === 0) break; // сети нет — остальные тоже не уйдут
+        if (isTransientStatus(status)) break; // сети нет или идут работы — остальные тоже не уйдут
         // сервер отказал по существу: фиксируем причину, не блокируем остальных
         store.write(key(item.id), {
           ...item,

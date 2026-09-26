@@ -7,6 +7,9 @@ export * from "./uiStrings";
 export * from "./errorStrings";
 export * from "./pushStrings";
 export * from "./permissions";
+/* техпанель, эксплуатация: состояние системы и флаги функций */
+export * from "./serviceStatus";
+export * from "./featureFlags";
 export * from "./rci";
 export * from "./medstats";
 export * from "./versionDiff";

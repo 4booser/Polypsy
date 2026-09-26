@@ -125,6 +125,33 @@ const schema = z.object({
    * существующей учётной записи, но лишний рубеж здесь дёшев.
    */
   GOOGLE_ALLOWED_DOMAINS: z.string().default(""),
+  /**
+   * Что за выпуск работает: версия (тег), коммит, кто выкатил, ссылка на
+   * прогон CI, репозиторий. Пишет их deploy.yml в .env.docker, а
+   * docker-compose.yml передаёт в контейнер api — переменная, которую
+   * compose не объявил, в контейнер не доезжает (это уже ловили с
+   * SITE_ALIASES). Пусто — выкатка не записывается в историю: «local» не
+   * называет никакого выпуска (lib/releases.ts).
+   *
+   * Необязательны намеренно: это сведения о развёртывании, а не настройка
+   * работы. Сервер без них работает так же, просто раздел «Випуски»
+   * техпанели пуст.
+   */
+  QUIZZY_VERSION: z.string().max(120).default(""),
+  QUIZZY_COMMIT: z.string().max(64).default(""),
+  QUIZZY_DEPLOYED_BY: z.string().max(120).default(""),
+  QUIZZY_RUN_URL: z.string().max(400).default(""),
+  QUIZZY_REPO: z.string().max(200).default(""),
+  /**
+   * Токен для запуска выкатки из техпанели (workflow_dispatch через API
+   * GitHub): откат на предыдущий тег одной кнопкой. Пусто — кнопка ведёт на
+   * страницу запуска в GitHub Actions, где тег вписывают руками.
+   *
+   * Отдельный токен, а не токен выкатки: ему нужно ровно одно право —
+   * actions:write на этот репозиторий (fine-grained). Наружу не отдаётся
+   * никогда: техпанель знает только «задан / не задан».
+   */
+  GITHUB_DISPATCH_TOKEN: z.string().max(400).default(""),
   /** Открытая регистрация пациентов без приглашения (в бою выключать) */
   OPEN_REGISTRATION: z
     .string()
@@ -260,6 +287,15 @@ export const env = {
   googleAllowedDomains: raw.GOOGLE_ALLOWED_DOMAINS.split(",")
     .map((d) => d.trim().toLowerCase())
     .filter(Boolean),
+  /** Сведения о выпуске — см. QUIZZY_* выше; разбираются в lib/releases.ts */
+  release: {
+    version: raw.QUIZZY_VERSION.trim(),
+    commit: raw.QUIZZY_COMMIT.trim(),
+    deployedBy: raw.QUIZZY_DEPLOYED_BY.trim(),
+    runUrl: raw.QUIZZY_RUN_URL.trim(),
+    repo: raw.QUIZZY_REPO.trim(),
+  },
+  githubDispatchToken: raw.GITHUB_DISPATCH_TOKEN.trim(),
   whisperBin: raw.WHISPER_BIN,
   whisperModel: raw.WHISPER_MODEL,
   corsOrigins: raw.CORS_ORIGINS

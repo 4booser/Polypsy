@@ -1,9 +1,13 @@
+import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { api } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
+import { MaintenanceBanner } from "../service/MaintenanceBanner";
 import { cx } from "../ui/cx";
-import { TouchArea } from "../ui/primitives";
+import { Button, TouchArea } from "../ui/primitives";
 import { IconCalendar, IconHome, IconPerson, IconTest } from "./icons";
+import { outbox, type OutboxItem } from "./outbox";
 
 /**
  * Кабинет пациента.
@@ -57,6 +61,8 @@ export default function PatientApp() {
    */
   const here = tabs.find((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to))) ?? tabs[0];
 
+  const pending = useOutbox(user?.id ?? null);
+
   return (
     /*
       Весь кабинет — территория пальца: телефон, одна рука, человек в
@@ -73,6 +79,30 @@ export default function PatientApp() {
         </span>
         <span className="truncate text-small text-muted">{user?.fullName ?? ""}</span>
       </header>
+      <MaintenanceBanner place="patient" />
+      {pending.waiting || pending.rejected ? (
+        /*
+          Отложенные сдачи видны, пока не ушли: человек, закрывший методику во
+          время работ, должен знать, что ответы не пропали, а ждут.
+        */
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-hairline px-4 py-2 text-small">
+          {pending.waiting ? (
+            <span className="text-text">
+              {ut("pt.outboxWaiting")}: <span className="font-mono tabular-nums">{pending.waiting}</span>
+            </span>
+          ) : null}
+          {pending.rejected ? (
+            <span className="text-danger">
+              {ut("pt.outboxRejected")}: <span className="font-mono tabular-nums">{pending.rejected}</span>
+            </span>
+          ) : null}
+          {pending.waiting ? (
+            <Button variant="quiet" className="ml-auto" disabled={pending.busy} onClick={pending.flush}>
+              {ut("pt.outboxSend")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* pb под высоту полосы вкладок: иначе последняя кнопка экрана под ней */}
       <main className="flex-1 pb-20">
@@ -109,4 +139,45 @@ export default function PatientApp() {
       </nav>
     </TouchArea>
   );
+}
+
+/**
+ * Досылка отложенных сдач (patient/outbox.ts): при входе в кабинет, при
+ * возвращении сети и раз в минуту, пока кабинет открыт, — и по кнопке.
+ *
+ * Раз в минуту, а не по Retry-After: работы заканчивают и раньше
+ * объявленного, а минута ожидания после конца работ никого не задевает.
+ * Прохождение отложенной сдачи через тот же маршрут сдачи, с тем же
+ * clientRequestId: сервер отбросит дубль, если первая попытка всё же дошла.
+ */
+function useOutbox(userId: string | null) {
+  const [counts, setCounts] = useState({ waiting: 0, rejected: 0 });
+  const [busy, setBusy] = useState(false);
+
+  const flush = useCallback(() => {
+    if (!userId) return;
+    const recount = () =>
+      setCounts({ waiting: outbox.waiting(userId).length, rejected: outbox.rejected(userId).length });
+    recount();
+    if (!outbox.waiting(userId).length) return;
+    setBusy(true);
+    void outbox
+      .flush(userId, (item: OutboxItem) => api.submitResponse(item.surveyId, item.payload as never))
+      .finally(() => {
+        recount();
+        setBusy(false);
+      });
+  }, [userId]);
+
+  useEffect(() => {
+    flush();
+    const timer = setInterval(flush, 60_000);
+    window.addEventListener("online", flush);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("online", flush);
+    };
+  }, [flush]);
+
+  return { ...counts, busy, flush };
 }

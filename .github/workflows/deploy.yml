@@ -39,15 +39,35 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       prefix: ${{ steps.meta.outputs.prefix }}
+      sha: ${{ steps.meta.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
 
+      # Версия — то, что выкатываем, а не то, откуда запущено.
+      #
+      # При пуше тега это одно и то же. При ручном запуске (workflow_dispatch —
+      # так же запускает откат из техпанели) GITHUB_REF_NAME — ветка, с которой
+      # взят сам рабочий процесс, то есть «main»: образы вышли бы с тегом
+      # «main», в .env.docker легла бы версия «main», и история выкаток в
+      # техпанели записала бы откат на v1.2.0 как выпуск «main». Поэтому при
+      # ручном запуске версия — введённый тег.
+      #
+      # Коммит — из того, что реально выгружено (git rev-parse), а не
+      # github.sha: при ручном запуске github.sha — вершина main, а собирается
+      # введённый тег.
+      #
+      # Введённое значение приходит через env, а не подстановкой в текст
+      # сценария: подстановка ${{ }} вставила бы его в bash как есть.
       - id: meta
         name: Версия и адрес образов
+        env:
+          INPUT_REF: ${{ github.event.inputs.ref }}
         run: |
-          echo "version=${GITHUB_REF_NAME#refs/tags/}" >> "$GITHUB_OUTPUT"
+          ref="${INPUT_REF:-$GITHUB_REF_NAME}"
+          echo "version=${ref#refs/tags/}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           # имя владельца и репозитория приводится к строчным: реестр не
           # принимает заглавные, а «4booser/Quizzy» их содержит — сборка
           # падала на самом последнем шаге, уже после всех проверок
@@ -127,10 +147,19 @@ jobs:
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
 
+      # Кроме версии, на сервер едут коммит, кто запустил выкатку, ссылка на
+      # прогон и репозиторий: по ним API при старте записывает выпуск в историю
+      # (раздел «Випуски» техпанели, apps/api/src/lib/releases.ts). Кто — это
+      # triggering_actor: человек, запустивший именно эту попытку; при
+      # перезапуске упавшей выкатки им будет перезапустивший, а не автор тега.
       - name: Выкатка
         env:
           VERSION: ${{ needs.build.outputs.version }}
           PREFIX: ${{ needs.build.outputs.prefix }}
+          SHA: ${{ needs.build.outputs.sha }}
+          ACTOR: ${{ github.triggering_actor || github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
         run: |
           # Второе имя того же сайта. Предел выдачи сертификатов Let's Encrypt
           # считается на ТОЧНЫЙ набор имён: набор из двух — отдельный счётчик,
@@ -160,7 +189,7 @@ jobs:
           scp -i ~/.ssh/id_ed25519 docker-compose.yml \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/docker-compose.new.yml"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "VERSION='$VERSION' PREFIX='$PREFIX' ALIASES='$ALIASES' MAIL='${{ secrets.ACME_EMAIL }}' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+            "VERSION='$VERSION' PREFIX='$PREFIX' SHA='$SHA' ACTOR='$ACTOR' RUN_URL='$RUN_URL' REPO='$REPO' ALIASES='$ALIASES' MAIL='${{ secrets.ACME_EMAIL }}' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
 
@@ -172,8 +201,15 @@ jobs:
           rm -f /tmp/docker-compose.new.yml
 
           # версия и адрес образов живут в .env.docker, а не в переменных
-          # оболочки: перезапуск сервера не должен откатывать выкатку
-          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION" "SITE_ALIASES=$ALIASES" "ACME_EMAIL=$MAIL"; do
+          # оболочки: перезапуск сервера не должен откатывать выкатку.
+          #
+          # QUIZZY_COMMIT, QUIZZY_DEPLOYED_BY, QUIZZY_RUN_URL, QUIZZY_REPO — для
+          # истории выкаток. До контейнера api они доезжают только потому, что
+          # docker-compose.yml объявляет их в environment: переменная, записанная
+          # сюда и не объявленная там, в контейнере пропадает (так уже было с
+          # SITE_ALIASES). Доехали ли — проверяет шаг «Настройка доехала до
+          # контейнера» ниже.
+          for kv in "QUIZZY_IMAGE_PREFIX=$PREFIX" "QUIZZY_VERSION=$VERSION" "QUIZZY_COMMIT=$SHA" "QUIZZY_DEPLOYED_BY=$ACTOR" "QUIZZY_RUN_URL=$RUN_URL" "QUIZZY_REPO=$REPO" "SITE_ALIASES=$ALIASES" "ACME_EMAIL=$MAIL"; do
             k="${kv%%=*}"
             grep -q "^$k=" .env.docker               && sed -i "s|^$k=.*|$kv|" .env.docker               || echo "$kv" >> .env.docker
           done
@@ -249,20 +285,31 @@ jobs:
       #
       # Сравнение идёт на сервере, наружу выходит только «совпало» или нет:
       # адрес сайта — секрет, и печатать его в журнал незачем.
+      #
+      # Версия и коммит проверяются в контейнере api тем же способом: без них
+      # история выкаток в техпанели молча перестаёт пополняться, и узнают об
+      # этом через месяц, открыв пустой раздел.
       - name: Настройка доехала до контейнера
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          SHA: ${{ needs.build.outputs.sha }}
         run: |
           ALIASES=""
           host="${{ secrets.SITE_ADDRESS }}"
           dots=$(printf '%s' "$host" | tr -cd . | wc -c | tr -d ' ')
           if [ "$dots" = "1" ]; then ALIASES="www.$host"; fi
           out=$(ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "WANT_A='$host' WANT_L='$ALIASES' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+            "WANT_A='$host' WANT_L='$ALIASES' WANT_V='$VERSION' WANT_C='$SHA' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
           got_a=$(docker compose --env-file .env.docker exec -T web printenv SITE_ADDRESS 2>/dev/null || true)
           got_l=$(docker compose --env-file .env.docker exec -T web printenv SITE_ALIASES 2>/dev/null || true)
           [ "$(printf '%s' "$got_a" | tr -d '\r')" = "$WANT_A" ] && echo "адрес: совпал" || echo "адрес: НЕ ДОЕХАЛ"
           [ "$(printf '%s' "$got_l" | tr -d '\r')" = "$WANT_L" ] && echo "имена: совпали" || echo "имена: НЕ ДОЕХАЛИ"
+          got_v=$(docker compose --env-file .env.docker exec -T api printenv QUIZZY_VERSION 2>/dev/null || true)
+          got_c=$(docker compose --env-file .env.docker exec -T api printenv QUIZZY_COMMIT 2>/dev/null || true)
+          [ "$(printf '%s' "$got_v" | tr -d '\r')" = "$WANT_V" ] && echo "версия: совпала" || echo "версия: НЕ ДОЕХАЛА"
+          [ "$(printf '%s' "$got_c" | tr -d '\r')" = "$WANT_C" ] && echo "коммит: совпал" || echo "коммит: НЕ ДОЕХАЛ"
           REMOTE
           )
           echo "$out"

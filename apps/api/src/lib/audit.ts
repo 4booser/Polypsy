@@ -106,6 +106,20 @@ export type AuditAction =
   | "department.create"
   /* командная консоль: вызов команды пишется до выполнения */
   | "console.run"
+  /*
+   * Техпанель, эксплуатация (волна 10, участок maint). Включение и
+   * выключение обслуживания — своими именами, а не ops.status_set с
+   * пометкой: «кто закрыл запись в пятницу вечером» ищут подстрокой, и
+   * ответ обязан найтись без разбора details. Чтение имён в аудиториях
+   * флагов — данные о людях, пусть и о сотрудниках, поэтому тоже строка.
+   */
+  | "ops.maintenance_on"
+  | "ops.maintenance_off"
+  | "ops.status_set"
+  | "ops.flag_set"
+  | "ops.flags_read"
+  | "ops.flag_audience_read"
+  | "ops.release_rollback"
   /* календарь специалиста: подключение права создавать встречи Meet */
   | "meet.connect_start"
   | "meet.connected"

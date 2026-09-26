@@ -624,6 +624,48 @@ export const ERRORS = {
   /* отказы маршрутов */
   "err.dbUnavailable": { uk: "База даних недоступна", ru: "База данных недоступна", en: "The database is unavailable" },
 
+  /*
+   * Техпанель, эксплуатация (волна 10, участок maint). Отказ режима
+   * обслуживания читает любой — пациент на телефоне тоже, — поэтому в нём
+   * сказано главное: что изменения сейчас не сохраняются, что смотреть
+   * можно и что это пройдёт.
+   */
+  "err.maintenance": {
+    uk: "Тривають технічні роботи: зміни зараз не зберігаються. Переглядати можна; спробуйте зберегти трохи пізніше",
+    ru: "Идут технические работы: изменения сейчас не сохраняются. Смотреть можно; попробуйте сохранить чуть позже",
+    en: "Maintenance is in progress: changes can’t be saved right now. You can still view everything; please try saving a little later",
+  },
+  "err.flagUnknown": {
+    uk: "Прапорця «{key}» немає в реєстрі коду",
+    ru: "Флага «{key}» нет в реестре кода",
+    en: "There is no flag “{key}” in the code registry",
+  },
+  "err.flagAudienceUnknown": {
+    uk: "Серед адресатів прапорця є те, чого немає в системі: {what}",
+    ru: "Среди адресатов флага есть то, чего нет в системе: {what}",
+    en: "The flag audience lists something that doesn’t exist in the system: {what}",
+  },
+  "err.releaseUnknown": {
+    uk: "Випуску «{version}» немає в історії викаток",
+    ru: "Выпуска «{version}» нет в истории выкаток",
+    en: "Release “{version}” isn’t in the deployment history",
+  },
+  "err.releaseIsCurrent": {
+    uk: "Випуск «{version}» і так працює зараз",
+    ru: "Выпуск «{version}» и так работает сейчас",
+    en: "Release “{version}” is already running",
+  },
+  "err.dispatchNotConfigured": {
+    uk: "Запуск викатки з панелі не налаштований: на сервері не задано GITHUB_DISPATCH_TOKEN або репозиторій",
+    ru: "Запуск выкатки из панели не настроен: на сервере не задан GITHUB_DISPATCH_TOKEN или репозиторий",
+    en: "Starting a deployment from the panel isn’t configured: GITHUB_DISPATCH_TOKEN or the repository isn’t set on the server",
+  },
+  "err.dispatchFailed": {
+    uk: "GitHub не прийняв запуск викатки (код {status})",
+    ru: "GitHub не принял запуск выкатки (код {status})",
+    en: "GitHub didn’t accept the deployment run (status {status})",
+  },
+
 
   /* поликлиника: расписание, слоты, приёмы */
   "err.specialistMustBeStaff": {

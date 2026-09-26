@@ -459,11 +459,27 @@ export function effectsOf(permissions: Iterable<Permission>): UnlockedEffect[] {
  * означать то же самое — иначе переход на права начнётся с того, что у людей
  * пропадут возможности, которыми они пользовались вчера.
  */
+/*
+ * Техническая служба (ops.read, ops.manage) в набор не входит.
+ *
+ * Набор выводится вычитанием из ALL_PERMISSIONS, и новая группа прав
+ * попадает в него сама, если её не вычесть. С ops.* так и вышло: заведённые
+ * в волне 10, они молча легли каждому психологу — а ops.manage закрывает
+ * запись всей системе режимом обслуживания и переключает флаги функций.
+ * syncBuiltinRole при старте снимет их с роли у тех, кому они уже выданы.
+ * Техпанель выдаётся разработчику личным исключением (см. группу «ops»).
+ */
 export const PSYCHOLOGIST_PERMISSIONS: readonly Permission[] = ALL_PERMISSIONS.filter(
   (p) =>
-    !["users.manage", "groups.manage", "audit.read", "decisions.manage", "departments.manage"].includes(
-      p,
-    ),
+    ![
+      "users.manage",
+      "groups.manage",
+      "audit.read",
+      "decisions.manage",
+      "departments.manage",
+      "ops.read",
+      "ops.manage",
+    ].includes(p),
 );
 
 /**

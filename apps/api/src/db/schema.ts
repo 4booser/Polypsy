@@ -2993,3 +2993,69 @@ export const dispensary = pgTable(
   },
   (t) => ({ dueIdx: index("dispensary_due_idx").on(t.nextDueAt) }),
 );
+
+/* ═══════════ Техпанель: эксплуатация (волна 10, участок maint) ═══════════
+ *
+ * Объявления о состоянии системы, флаги функций и история выкаток.
+ * Обоснование устройства и политик строк — в заголовке миграции
+ * 0090_ops_maint.sql; здесь только описание колонок для запросов.
+ */
+
+/** Объявление о состоянии: последняя строка — то, что действует сейчас */
+export const serviceAnnouncements = pgTable(
+  "service_announcements",
+  {
+    id: text("id").primaryKey(),
+    status: text("status", { enum: ["ok", "maintenance", "degraded"] }).notNull(),
+    message: text("message"),
+    expectedEnd: timestampCol("expected_end"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({ atIdx: index("service_announcements_at_idx").on(t.createdAt) }),
+);
+
+/** Состояние флага функции; перечень ключей — в packages/shared/src/featureFlags.ts */
+export const featureFlags = pgTable("feature_flags", {
+  key: text("key").primaryKey(),
+  description: text("description"),
+  enabled: boolean("enabled").notNull().default(false),
+  audience: jsonb("audience").notNull().default({}),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+});
+
+/** История флагов: что было и что стало, целиком */
+export const featureFlagChanges = pgTable(
+  "feature_flag_changes",
+  {
+    id: text("id").primaryKey(),
+    flagKey: text("flag_key").notNull(),
+    before: jsonb("before"),
+    after: jsonb("after").notNull(),
+    changedBy: text("changed_by").references(() => users.id, { onDelete: "set null" }),
+    changedAt: timestampCol("changed_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    atIdx: index("feature_flag_changes_at_idx").on(t.changedAt),
+    keyIdx: index("feature_flag_changes_key_idx").on(t.flagKey, t.changedAt),
+  }),
+);
+
+/** Выкатка: одна строка на запуск новой версии или нового коммита */
+export const releases = pgTable(
+  "releases",
+  {
+    id: text("id").primaryKey(),
+    version: text("version").notNull(),
+    commitSha: text("commit_sha"),
+    deployedBy: text("deployed_by"),
+    runUrl: text("run_url"),
+    repo: text("repo"),
+    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
+    /** Теги миграций с прошлого выпуска; null — неизвестно (первая запись) */
+    migrations: jsonb("migrations").$type<string[] | null>(),
+    lastMigration: text("last_migration"),
+  },
+  (t) => ({ startedIdx: index("releases_started_idx").on(t.startedAt) }),
+);

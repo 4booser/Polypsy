@@ -13,6 +13,7 @@ import { PatientDynamics, PatientList } from "./pages/Patients";
 import { peopleLists } from "./pages/people/model";
 import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
+import { MaintenanceBanner } from "./service/MaintenanceBanner";
 
 /*
  * Экраны догружаются по требованию.
@@ -40,6 +41,12 @@ const OpsJobs = lazy(() => import("./pages/ops/Jobs"));
 const OpsUsers = lazy(() => import("./pages/ops/Users"));
 const OpsSessions = lazy(() => import("./pages/ops/Sessions"));
 const OpsAuditLog = lazy(() => import("./pages/ops/AuditLog"));
+/* техпанель, эксплуатация: обслуживание, флаги функций, выпуски */
+const OpsMaintenance = lazy(() => import("./pages/ops/maint/Maintenance"));
+const OpsFlags = lazy(() => import("./pages/ops/maint/Flags"));
+const OpsReleases = lazy(() => import("./pages/ops/maint/Releases"));
+/* страница статуса: открыта и гостю, и пациенту, и сотруднику — в своей рамке у каждого */
+const StatusPage = lazy(() => import("./pages/Status"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -461,6 +468,8 @@ export default function App() {
       <Suspense fallback={<Loading rows={3} />}>
         <Routes>
           <Route path="/" element={<Landing />} />
+          {/* статус — без входа: нужен как раз тогда, когда войти не выходит */}
+          <Route path="/status" element={<StatusPage frame="public" />} />
           <Route path="*" element={<Login />} />
         </Routes>
       </Suspense>
@@ -486,6 +495,7 @@ export default function App() {
             <Route path="profile" element={<PatientProfile />} />
           </Route>
           <Route path="/me/tests/:id" element={<Runner />} />
+          <Route path="/status" element={<StatusPage frame="patient" />} />
           <Route path="*" element={<Navigate to="/me" replace />} />
         </Routes>
       </Suspense>
@@ -624,6 +634,12 @@ export default function App() {
         onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
         account={account}
       />
+      {/*
+        Баннер работ — под верхней полосой, во всю ширину: решение заказчика
+        2026-09-26 (техпанель, пункт 10). Вне колонки экрана и вне Suspense:
+        он обязан стоять и тогда, когда экран ещё догружается или упал.
+      */}
+      <MaintenanceBanner place="console" />
       {/*
         Содержимое — колонка в 1200 px по центру, как на макете.
 
@@ -839,6 +855,8 @@ export default function App() {
             <Route path="groups" element={<StaffGroups />} />
           </Route>
           <Route path="/permissions" element={<Permissions />} />
+          {/* состояние системы — каждому сотруднику, не только техпанели */}
+          <Route path="/status" element={<StatusPage frame="console" />} />
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
           {/*
@@ -856,6 +874,9 @@ export default function App() {
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}
+              <Route path="maintenance" element={<OpsMaintenance />} />
+              <Route path="flags" element={<OpsFlags />} />
+              <Route path="releases" element={<OpsReleases />} />
             </Route>
           ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />
