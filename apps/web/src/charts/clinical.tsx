@@ -4,7 +4,7 @@ import { useLang } from "../lang";
 import { cx } from "../ui/cx";
 import { NoData } from "../ui/primitives";
 import { useChartWidth } from "./index";
-import { boundaries, ladderDomain, num, rungOf, sameLadder, segments, share, sortRungs, type Rung } from "./ladder";
+import { boundaries, ladderDomain, num, profileRuns, rungOf, segments, share, sortRungs, type Rung } from "./ladder";
 import { axisFor } from "./scale";
 
 /**
@@ -221,15 +221,16 @@ const ROW_H = 52;
  * ПОРЯДКА шкал — переставь две, и «профиль» стал другим. У строк порядок
  * тоже есть, но он ничего не рисует: каждая линейка читается сама по себе.
  *
- * Если лестницы у всех шкал одни и те же (Т-баллы Міні-мульта, стени МЛО),
- * маркеры соединяются тонкой линией — это классический профиль, повёрнутый
- * на бок, и соединять тут есть что. У шкал с разными лестницами линии нет:
- * она соединяла бы несоизмеримое (sameLadder).
+ * Подряд идущие шкалы с одной и той же лестницей (Т-баллы Міні-мульта,
+ * стени МЛО) соединяются тонкой линией — это классический профиль,
+ * повёрнутый на бок. На шкале с другой лестницей линия рвётся: соединять
+ * несоизмеримое нельзя, а терять из-за одной шкалы весь профиль незачем
+ * (profileRuns).
  */
 export function ScaleProfile({ rows }: { rows: readonly ProfileRow[] }) {
   if (!rows.length) return <NoData />;
   const domains = rows.map((r) => ladderDomain(r.rungs, [r.value], r.max));
-  const joined = sameLadder(rows.map((r, i) => ({ rungs: r.rungs, domain: domains[i]! })));
+  const runs = profileRuns(rows.map((r, i) => ({ rungs: r.rungs, domain: domains[i]!, value: r.value })));
   const H = rows.length * ROW_H;
 
   return (
@@ -254,26 +255,26 @@ export function ScaleProfile({ rows }: { rows: readonly ProfileRow[] }) {
             />
           </div>
         ))}
-        {joined ? (
+        {runs.length ? (
           <svg
             aria-hidden
             className="pointer-events-none absolute inset-0 h-full w-full"
             viewBox={`0 0 100 ${H}`}
             preserveAspectRatio="none"
           >
-            <polyline
-              points={rows
-                .map((r, i) =>
-                  r.value === null ? null : `${(share(r.value, domains[i]!) * 100).toFixed(3)},${i * ROW_H + ROW_H / 2}`,
-                )
-                .filter(Boolean)
-                .join(" ")}
-              fill="none"
-              stroke="var(--primary)"
-              strokeWidth={1.5}
-              strokeOpacity={0.55}
-              vectorEffect="non-scaling-stroke"
-            />
+            {runs.map((run) => (
+              <polyline
+                key={run[0]}
+                points={run
+                  .map((i) => `${(share(rows[i]!.value!, domains[i]!) * 100).toFixed(3)},${i * ROW_H + ROW_H / 2}`)
+                  .join(" ")}
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth={1.5}
+                strokeOpacity={0.55}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
           </svg>
         ) : null}
       </div>
