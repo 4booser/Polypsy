@@ -16,11 +16,9 @@
  * Без react-native — проверяется тестом.
  */
 
-/*
- * TODO(w12:auth): заменить на PASSWORD_CHANGE_CODE из packages/shared/src/types.ts,
- * когда участок auth будет слит, — строка должна совпадать с серверной.
- */
-export const PASSWORD_CHANGE_CODE = "password_change_required";
+/* код отказа — общий с сервером (packages/shared/src/types.ts): одна строка на обе стороны */
+import { PASSWORD_CHANGE_CODE } from "@quizzy/shared";
+export { PASSWORD_CHANGE_CODE };
 
 /** Отказ сервера значит «сначала смените пароль», а не «нельзя вообще» */
 export function isPasswordChangeRequired(status: number, body: unknown): boolean {

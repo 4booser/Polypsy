@@ -151,6 +151,14 @@ jobs:
         run: |
           scp -i ~/.ssh/id_ed25519 docker-compose.yml \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/docker-compose.new.yml"
+          # Скрипты копий едут тем же шагом: служба quizzy-backup (и снимок
+          # ниже) запускает scripts/backup.sh с сервера, а там лежала копия со
+          # дня настройки — исправления шифрования и прав (волна 12) иначе
+          # туда не доехали бы никогда. До снимка — по той же причине, что и
+          # состав: снимок должен сниматься исправленным скриптом.
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "rm -rf /tmp/quizzy-scripts.new && mkdir -p /tmp/quizzy-scripts.new"
+          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/quizzy-scripts.new/"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -166,6 +174,22 @@ jobs:
             echo "состав обновлён, прежний сохранён рядом"
           fi
           rm -f /tmp/docker-compose.new.yml
+
+          # скрипты: каждый сперва разбирается bash -n; прежний — рядом с
+          # отметкой времени, как состав; права — исполняемые, только владельцу
+          for f in /tmp/quizzy-scripts.new/*.sh; do
+            bash -n "$f" || { echo "скрипт $(basename "$f") не разбирается — на сервере остаются прежние" >&2; rm -rf /tmp/quizzy-scripts.new; exit 1; }
+          done
+          mkdir -p scripts
+          for f in /tmp/quizzy-scripts.new/*.sh; do
+            name="$(basename "$f")"
+            if ! cmp -s "$f" "scripts/$name"; then
+              [ -f "scripts/$name" ] && cp -p "scripts/$name" "scripts/$name.$(date +%Y%m%d-%H%M%S).bak"
+              install -m 0750 "$f" "scripts/$name"
+              echo "скрипт $name обновлён"
+            fi
+          done
+          rm -rf /tmp/quizzy-scripts.new
           REMOTE
 
       # Снимок базы ДО миграций. Миграции не откатываются переключением тега:
