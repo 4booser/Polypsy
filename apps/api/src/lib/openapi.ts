@@ -101,6 +101,14 @@ interface RouteDoc {
   body?: ZodTypeAny;
 }
 
+/*
+ * Причина одна на весь участок безопасности техпанели: решение заказчика
+ * 2026-09-26 — SQL-консоль, ротация ключей и карта дыр в политиках не
+ * выдаются никаким правом, только ролью суперадмина.
+ */
+const SEC_ROLE_ONLY =
+  "SQL-консоль, ключи и секреты, карта политик строк — только роль суперадмина: право выдают «на неделю, для разбора» и забывают снять, роль так не раздают (решение заказчика 2026-09-26)";
+
 /** Ключ — `МЕТОД /путь` ровно в том виде, в каком его знает Hono */
 export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /health": { summary: "Живо ли приложение", access: "public" },
@@ -415,6 +423,16 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "DELETE /api/ops/users/:id": { summary: "Удалить учётку без клинического следа и без записей журнала; иначе 409 со списком, что держит. Только суперадмину", access: "superadmin", permission: "users.manage" },
   "GET /api/ops/sessions": { summary: "Активные сессии (семьи refresh-токенов): по человеку или поиском", access: "staff", permission: "users.manage" },
   "POST /api/ops/sessions/:id/revoke": { summary: "Завершить одну сессию", access: "staff", permission: "users.manage" },
+  /* ── техпанель: безопасность (волна 10, участок sec) ── */
+  "GET /api/ops/sec/keys": { summary: "Ключи шифрования по версиям в данных и файлах, состояние секретов (без значений), ход перешифровки", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "GET /api/ops/sec/keys/job": { summary: "Ход последней перешифровки на основной ключ", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "POST /api/ops/sec/keys/reencrypt": { summary: "Запустить фоновую перешифровку на основной ключ; 409 — уже идёт или ключа нет; в журнал", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "POST /api/ops/sec/keys/reindex-phones": { summary: "Пересчитать слепой индекс телефонов под текущий PHONE_INDEX_SECRET; в журнал", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "GET /api/ops/sec/integrity": { summary: "Последние проверки политик строк и цепочки журнала, расписание сверки", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "POST /api/ops/sec/integrity/rls": { summary: "Проверить политики строк на подключении приложения; результат в историю и журнал", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "POST /api/ops/sec/integrity/audit": { summary: "Сверить цепочку журнала целиком; разрыв — sec.audit_chain_broken", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "GET /api/ops/sec/sql": { summary: "Под какой ролью базы и с какими лимитами идёт запрос SQL-консоли", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
+  "POST /api/ops/sec/sql": { summary: "Запрос на чтение: { query, reason }; один оператор, READ ONLY с откатом, лимиты строк и времени; каждый — в журнал", access: "superadmin", whyNoPermission: SEC_ROLE_ONLY },
   "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin", whyNoPermission: "техническое состояние хранилища; делегировать его мы не собираемся, и право осталось бы навсегда только у суперадмина" },
 
   /* ── техпанель: данные и продукт ── */

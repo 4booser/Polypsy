@@ -1,4 +1,4 @@
-import { asc, isNotNull } from "drizzle-orm";
+import { and, asc, gt, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { auditLog } from "../db/schema";
 import { chainHash } from "./audit";
@@ -13,6 +13,17 @@ export interface ChainReport {
   headHash: string | null;
 }
 
+/*
+ * Порциями по seq, а не одной выборкой всей таблицы.
+ *
+ * Прежде журнал читался в память целиком. Пока проверку звали руками раз в
+ * квартал, это было терпимо; с проверкой раз в сутки в планировщике (техпанель,
+ * раздел «Цілісність») журнал в миллионы строк означал бы ежесуточный пик
+ * памяти процесса, обслуживающего приём. Порция держит в памяти две тысячи
+ * строк, а цепочке нужен только хэш предыдущей.
+ */
+const PAGE = 2000;
+
 /**
  * Проверка целостности цепочки журнала.
  *
@@ -21,45 +32,53 @@ export interface ChainReport {
  * первой затронутой записи, и отчёт называет её номер.
  */
 export async function verifyChain(): Promise<ChainReport> {
-  const legacyRows = await db.$count(auditLog);
-  const rows = await db
-    .select()
-    .from(auditLog)
-    .where(isNotNull(auditLog.seq))
-    .orderBy(asc(auditLog.seq));
+  const legacy = await db.$count(auditLog, isNull(auditLog.seq));
 
   let prevHash: string | null = null;
   let prevSeq = 0;
-  for (const row of rows) {
-    if (row.seq !== prevSeq + 1) {
-      return { ok: false, checked: prevSeq, legacy: legacyRows - rows.length, brokenAtSeq: row.seq, headSeq: null, headHash: null };
+  let chained = 0;
+  for (;;) {
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(and(isNotNull(auditLog.seq), gt(auditLog.seq, prevSeq)))
+      .orderBy(asc(auditLog.seq))
+      .limit(PAGE);
+
+    for (const row of rows) {
+      // «проверено» на разрыве — сколько записей подтверждено до него
+      if (row.seq !== prevSeq + 1) {
+        return { ok: false, checked: prevSeq, legacy, brokenAtSeq: row.seq, headSeq: null, headHash: null };
+      }
+      const expected = chainHash(prevHash, {
+        id: row.id,
+        at: row.at,
+        actorId: row.actorId,
+        actorEmail: row.actorEmail,
+        actorRole: row.actorRole,
+        action: row.action,
+        resourceType: row.resourceType,
+        resourceId: row.resourceId,
+        subjectUserId: row.subjectUserId,
+        outcome: row.outcome,
+        ip: row.ip,
+        userAgent: row.userAgent,
+        details: row.details,
+      });
+      if (expected !== row.entryHash || row.prevHash !== prevHash) {
+        return { ok: false, checked: prevSeq, legacy, brokenAtSeq: row.seq, headSeq: null, headHash: null };
+      }
+      prevHash = row.entryHash;
+      prevSeq = row.seq!;
+      chained++;
     }
-    const expected = chainHash(prevHash, {
-      id: row.id,
-      at: row.at,
-      actorId: row.actorId,
-      actorEmail: row.actorEmail,
-      actorRole: row.actorRole,
-      action: row.action,
-      resourceType: row.resourceType,
-      resourceId: row.resourceId,
-      subjectUserId: row.subjectUserId,
-      outcome: row.outcome,
-      ip: row.ip,
-      userAgent: row.userAgent,
-      details: row.details,
-    });
-    if (expected !== row.entryHash || row.prevHash !== prevHash) {
-      return { ok: false, checked: prevSeq, legacy: legacyRows - rows.length, brokenAtSeq: row.seq, headSeq: null, headHash: null };
-    }
-    prevHash = row.entryHash;
-    prevSeq = row.seq!;
+    if (rows.length < PAGE) break;
   }
 
   return {
     ok: true,
-    checked: rows.length,
-    legacy: legacyRows - rows.length,
+    checked: chained,
+    legacy,
     brokenAtSeq: null,
     headSeq: prevSeq || null,
     headHash: prevHash,

@@ -96,6 +96,42 @@ export function activeKey(): { id: string; key: Buffer } | null {
 export function keyById(id: string): Buffer | undefined {
   return keys.byId.get(id);
 }
+
+/**
+ * Какие версии ключа загружены — только идентификаторы, без самих ключей.
+ *
+ * Нужны техпанели (раздел «Ключі й секрети»): сверить версии в данных с
+ * версиями в окружении. Порядок — как в ENCRYPTION_KEY, первый — основной.
+ */
+export function loadedKeyIds(): string[] {
+  return [...keys.byId.keys()];
+}
+
+/**
+ * Строгая расшифровка: признак успеха вместо «не расшифровано».
+ *
+ * decryptField на отказе возвращает строку-пометку — для экрана это честно,
+ * а для перешифровки смертельно: пометка, зашифрованная новым ключом,
+ * навсегда заменила бы собой настоящее значение. Перешифровка и проверка
+ * «открывает ли ключ свои значения» ходят только сюда.
+ */
+export function tryDecryptField(
+  value: string,
+): { ok: true; plain: string } | { ok: false; keyId: string | null } {
+  if (!value.startsWith(`${PREFIX}:`)) return { ok: true, plain: value };
+  const [, keyId, ivB64, payloadB64] = value.split(":");
+  const key = keyId ? keys.byId.get(keyId) : undefined;
+  if (!key || !ivB64 || !payloadB64) return { ok: false, keyId: keyId ?? null };
+  try {
+    const payload = Buffer.from(payloadB64, "base64");
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
+    decipher.setAuthTag(payload.subarray(payload.length - 16));
+    const plain = Buffer.concat([decipher.update(payload.subarray(0, payload.length - 16)), decipher.final()]);
+    return { ok: true, plain: plain.toString("utf8") };
+  } catch {
+    return { ok: false, keyId: keyId ?? null };
+  }
+}
 /** @deprecated снимок на момент импорта; используйте isEncryptionEnabled() */
 export const encryptionEnabled = keys.active !== null;
 

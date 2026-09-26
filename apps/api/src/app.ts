@@ -26,6 +26,7 @@ import { dashboardRoutes } from "./routes/dashboard";
 import { userRoutes } from "./routes/users";
 import { auditRoutes } from "./routes/audit";
 import { opsSessionRoutes, opsUserRoutes } from "./routes/opsAccounts";
+import { opsSecRoutes } from "./routes/opsSec";
 import { alertRoutes } from "./routes/alerts";
 import { dynamicsRoutes } from "./routes/dynamics";
 import { reportRoutes } from "./routes/reports";
@@ -201,6 +202,8 @@ app.route("/api/users", userRoutes);
 app.route("/api/ops/users", opsUserRoutes);
 app.route("/api/ops/sessions", opsSessionRoutes);
 app.route("/api/audit", auditRoutes);
+/* техпанель, безопасность: ключи и секреты, целостность, SQL на чтение — только суперадмину */
+app.route("/api/ops/sec", opsSecRoutes);
 app.route("/api/alerts", alertRoutes);
 app.route("/api/dynamics", dynamicsRoutes);
 app.route("/api/reports", reportRoutes);
