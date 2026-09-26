@@ -15,8 +15,8 @@ import {
   type MailingRecipient,
   type User,
 } from "@quizzy/shared";
-import { baseDb, db } from "../db";
-import { systemContext } from "../db/context";
+import { db } from "../db";
+import { asSystem } from "../db/context";
 import { mailingRecipients, mailings, patientGroupMembers, users, type MailingRow } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
@@ -268,14 +268,20 @@ mailingRoutes.post("/", ...staffOnly, async (c) => {
  * при отправке — ещё одна шифрованная колонка с персональным полем, которая
  * расходится с users при смене фамилии.
  *
- * Системный контекст здесь — на одну выборку ровно тех колонок, из которых
+ * Системная роль здесь — на одну выборку ровно тех колонок, из которых
  * складывается имя, и только по авторам рассылок, которые получателю уже
  * отданы политикой: больше, чем имя автора собственного письма, он не
- * узнаёт. Тот же приём, что у чтения учётной записи в requireAuth.
+ * узнаёт.
+ *
+ * asSystem — в той же транзакции запроса, а не systemContext. Отдельная
+ * системная транзакция брала второе соединение пула, пока транзакция
+ * запроса держала первое, — на каждый просмотр ящика. Это тот же узор, от
+ * которого пул вставал при двойной авторизации (внешний разбор 2026-09-26,
+ * сторож — test/authOnce.test.ts).
  */
 async function authorNames(ids: string[]): Promise<Map<string, string>> {
   if (!ids.length) return new Map();
-  const rows = await systemContext(baseDb, () =>
+  const rows = await asSystem(() =>
     db
       .select({
         id: users.id,

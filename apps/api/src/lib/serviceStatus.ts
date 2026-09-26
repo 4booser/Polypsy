@@ -9,7 +9,7 @@ import {
   type ServiceStatusInput,
 } from "@quizzy/shared";
 import { baseDb, db } from "../db";
-import { systemContext } from "../db/context";
+import { asSystem, dbContext, systemContext } from "../db/context";
 import { serviceAnnouncements } from "../db/schema";
 import { langOf } from "./http";
 import { currentRequestId } from "./log";
@@ -56,6 +56,22 @@ export function resetStatusCache(): void {
   lastKnown = null;
 }
 
+/*
+ * Системное чтение — в транзакции запроса, если запрос уже в ней.
+ *
+ * Состояние читают и до входа (заслон обслуживания, страница статуса без
+ * токена — там своя короткая системная транзакция), и изнутри запроса
+ * техпанели (GET/POST /api/ops/maint/status). Во втором случае
+ * systemContext открывал вторую транзакцию на втором соединении, пока
+ * транзакция запроса держала первое, — тот же узор, что у двойной
+ * авторизации (внешний разбор 2026-09-26, test/authOnce.test.ts): при
+ * десяти одновременных таких запросах пул вставал. asSystem берёт системную
+ * роль на время чтения в той же транзакции.
+ */
+function systemRead<T>(fn: () => Promise<T>): Promise<T> {
+  return dbContext.getStore() ? asSystem(fn) : systemContext(baseDb, fn);
+}
+
 async function readLatest(): Promise<AnnouncementRow | null> {
   /*
    * Системным контекстом: проверка стоит до requireAuth (запись закрывается
@@ -63,7 +79,7 @@ async function readLatest(): Promise<AnnouncementRow | null> {
    * ничего — режим выглядел бы выключенным всегда, но только в бою, где
    * приложение ходит ролью без прав владельца.
    */
-  const [row] = await systemContext(baseDb, () =>
+  const [row] = await systemRead(() =>
     db.select().from(serviceAnnouncements).orderBy(desc(serviceAnnouncements.createdAt)).limit(1),
   );
   return row ?? null;
@@ -183,7 +199,7 @@ export async function publicStatus(
 
 /** Последние объявления — системным чтением: страница статуса открыта без входа */
 export function readHistory(limit: number): Promise<AnnouncementRow[]> {
-  return systemContext(baseDb, () =>
+  return systemRead(() =>
     db.select().from(serviceAnnouncements).orderBy(desc(serviceAnnouncements.createdAt)).limit(limit),
   );
 }
@@ -214,17 +230,21 @@ export function retryAfterSeconds(expectedEnd: string | null, now: number): numb
  * - техпанель (/api/ops/*): иначе выключить обслуживание некому — запрос
  *   «выключить» сам был бы записью. Туда же попадают и ручные задачи
  *   техпанели: работы для того и объявлены;
- * - вход и выход (login, logout, refresh, обмен кода Google): иначе войти,
- *   чтобы выключить, нельзя, а сессия, истёкшая посреди работ, выкинула бы
- *   человека насовсем. Регистрации и смены пароля здесь нет — это запись в
- *   учётные данные, и она подождёт.
+ * - вход и выход (login, logout, refresh, обмен кода Google, второй шаг
+ *   входа mfa/login): иначе войти, чтобы выключить, нельзя, а сессия,
+ *   истёкшая посреди работ, выкинула бы человека насовсем. Второго шага
+ *   здесь сначала не было (внешний разбор 2026-09-26): пароль проходил,
+ *   код упирался в 503 — и администратор со вторым фактором, а именно он
+ *   выключает обслуживание, войти не мог. Регистрации, смены пароля и
+ *   настройки фактора здесь нет — это запись в учётные данные, и она
+ *   подождёт.
  *
  * Список путей, а не пометка на маршрутах: исключений два, и их полнота
  * видна одним взглядом. Пометка на маршрутах разнесла бы решение по
  * двадцати файлам — и новое исключение появлялось бы незаметно.
  */
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const EXEMPT = [/^\/api\/ops(\/|$)/, /^\/api\/auth\/(login|logout|refresh|google\/exchange)$/];
+const EXEMPT = [/^\/api\/ops(\/|$)/, /^\/api\/auth\/(login|logout|refresh|google\/exchange|mfa\/login)$/];
 
 export function exemptFromMaintenance(method: string, path: string): boolean {
   return READ_METHODS.has(method) || EXEMPT.some((re) => re.test(path));

@@ -416,6 +416,11 @@ export const ERRORS = {
     ru: "Для вашей учётной записи обязателен второй фактор. Настройте его в разделе «Учётная запись» веб-консоли",
     en: "A second factor is required for your account. Set it up under “Account” in the web console",
   },
+  "err.passwordChangeRequired": {
+    uk: "Пароль тимчасовий. Спершу змініть його — потім можна працювати далі",
+    ru: "Пароль временный. Сначала смените его — потом можно работать дальше",
+    en: "Your password is temporary. Change it first, then you can carry on",
+  },
   "err.mfaInvalidCode": {
     uk: "Код не підходить. Введіть свіжий код із застосунку або код відновлення",
     ru: "Код не подходит. Введите свежий код из приложения или код восстановления",

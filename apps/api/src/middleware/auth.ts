@@ -8,6 +8,7 @@ import { forbidden, unauthorized } from "../lib/http";
 import { audit } from "../lib/audit";
 import { guardImpersonated, resolveImpersonation } from "../lib/impersonation";
 import { allowedDuringSetup, policyActive, setupRequired } from "../lib/secondFactor";
+import { allowedWithTemporaryPassword, passwordChangeRequired } from "../lib/tempPassword";
 import type { Permission, User } from "@quizzy/shared";
 import { hasPermission } from "../lib/permissions";
 
@@ -19,7 +20,34 @@ export interface AppEnv {
   };
 }
 
+/*
+ * Запросы, уже прошедшие requireAuth, — чтобы второй заслон на том же пути
+ * не открыл вторую транзакцию запроса.
+ *
+ * Наборы маршрутов ставят `use("*", requireAuth)` каждый у себя, а Hono
+ * собирает промежуточные слои по префиксу пути: /api/ops/data проходил и
+ * общий заслон техпанели (/api/ops), и свой; сдача прохождения — заслон
+ * /api/surveys и заслон набора прохождений на /api. Второй requireAuth шёл
+ * внутри next() первого: первая транзакция держала соединение, вторая
+ * просила ещё одно. При пуле в десять соединений (db/index.ts) десять
+ * одновременных таких запросов занимали весь пул первыми транзакциями и
+ * ждали вторых вечно — процесс вставал без единой строки в логе (внешний
+ * разбор 2026-09-26, сторож — test/authOnce.test.ts).
+ *
+ * Метка — на контексте запроса, а не «есть ли пользователь в контексте»:
+ * пользователя ставит и ветка входа «от имени», а метка говорит ровно
+ * одно — «этот запрос уже внутри своей транзакции». Повторный заслон
+ * ничего не пропускает: все проверки первого (отзыв, выключение, второй
+ * фактор, временный пароль, «только просмотр») уже выполнены, а до next()
+ * первого запрос дойти иначе, чем пройдя их, не может. Перестановкой
+ * регистрации в app.ts это не лечится целиком: набор прохождений висит на
+ * /api и накрывает собой всё, что провалилось мимо своих маршрутов.
+ */
+const authorized = new WeakSet<object>();
+
 export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
+  if (authorized.has(c)) return next();
+
   const header = c.req.header("Authorization");
   if (!header?.startsWith("Bearer ")) unauthorized();
 
@@ -66,6 +94,7 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
     if (typeof imp === "string") unauthorized(imp);
     const viewed: User = { ...toPublicUser(row), impersonation: imp };
     c.set("user", viewed);
+    authorized.add(c);
     await guardImpersonated(c, viewed);
     await withDbContext(baseDb, { userId: row.id, role: row.role }, () => next());
     return;
@@ -88,6 +117,26 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
 
   const me = toPublicUser(row);
   c.set("user", me);
+  authorized.add(c);
+
+  /*
+   * Временный пароль — сначала свой, потом работа (lib/tempPassword.ts).
+   *
+   * Раньше второго фактора: консоль открывает смену пароля первой, и отказ
+   * должен называть то же, что человек видит на экране. Токен «от имени»
+   * сюда не доходит (ветка выше): временный пароль того, под кем смотрят,
+   * суперадмину не известен и не его забота, а смотрит он только на чтение.
+   */
+  if (row.mustChangePassword && !allowedWithTemporaryPassword(c.req.method, c.req.path)) {
+    await audit(c, {
+      action: "access.denied",
+      outcome: "denied",
+      resourceType: "route",
+      resourceId: c.req.path,
+      details: { method: c.req.method, reason: "password_change_required" },
+    });
+    return passwordChangeRequired(c);
+  }
 
   /*
    * Второй фактор обязателен по политике, а не настроен (техпанель, people2).

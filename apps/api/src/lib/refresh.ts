@@ -93,10 +93,7 @@ export async function rotateRefresh(raw: string): Promise<RefreshOutcome> {
 
   if (row.rotatedAt) {
     // повторное предъявление погашенного токена — гасим всю семью
-    await db
-      .update(refreshTokens)
-      .set({ revokedAt: new Date().toISOString() })
-      .where(and(eq(refreshTokens.familyId, row.familyId), isNull(refreshTokens.revokedAt)));
+    await revokeOnReuse(row);
     return { ok: false, reason: "reused", userId: row.userId };
   }
 
@@ -143,10 +140,7 @@ export async function rotateRefresh(raw: string): Promise<RefreshOutcome> {
      * Гасим семью, как при обычном повторе: два предъявления одного
      * одноразового токена означают, что копий у него две.
      */
-    await db
-      .update(refreshTokens)
-      .set({ revokedAt: new Date().toISOString() })
-      .where(and(eq(refreshTokens.familyId, row.familyId), isNull(refreshTokens.revokedAt)));
+    await revokeOnReuse(row);
     return { ok: false, reason: "reused", userId: row.userId };
   }
 
@@ -174,6 +168,29 @@ async function invalidateAccessTokens(userId: string): Promise<void> {
     .update(users)
     .set({ tokensValidFrom: new Date().toISOString() })
     .where(eq(users.id, userId));
+}
+
+/**
+ * Повторное предъявление — кража: гасится семья И граница access-токенов.
+ *
+ * Внешний разбор 2026-09-26: семья гасилась, а граница оставалась, хотя
+ * выход, смена пароля и завершение сессии её сдвигают. Вор, успевший
+ * обменять украденный токен первым, уходил с живым access ещё на полчаса:
+ * обнаружение кражи закрывало ему будущее и не трогало настоящее. Одна
+ * функция на оба пути обнаружения (обычный повтор и проигранная гонка) —
+ * чтобы второй не забыл то, что помнит первый.
+ *
+ * Сдвиг задевает все устройства человека, как и при выходе: остальным это
+ * стоит одной 401 и обмена их (живых) семей. Для жертвы это правильно
+ * вдвойне — её консоль тоже держит копию украденной цепочки и выходит на
+ * вход, где ей и надо быть.
+ */
+async function revokeOnReuse(row: { familyId: string; userId: string }): Promise<void> {
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date().toISOString() })
+    .where(and(eq(refreshTokens.familyId, row.familyId), isNull(refreshTokens.revokedAt)));
+  await invalidateAccessTokens(row.userId);
 }
 
 /** Отзыв по сырому токену (logout) */
