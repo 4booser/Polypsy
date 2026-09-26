@@ -60,6 +60,8 @@ import type {
   CohortSpec,
   CohortPreview,
   CohortRow,
+  CohortMembers,
+  CohortOptions,
   Mailing,
   MailingCard,
   MailingListPage,
@@ -703,17 +705,23 @@ export const api = {
 
   cohortPreview: (spec: CohortSpec) =>
     request<CohortPreview>("/api/cohorts/preview", { method: "POST", body: JSON.stringify(spec) }),
+  /*
+   * Ответ целиком, а не только items: «ниже порога» (suppressed) и «пусто» —
+   * разные ответы, и экран обязан их различать. Прежде флаг отрезался здесь,
+   * и малая когорта показывалась пустым списком, как будто никого нет.
+   */
   cohortMembers: (spec: CohortSpec) =>
-    request<{ items: { userId: string; fullName: string; unit: string | null; sex: string | null }[] }>(
-      "/api/cohorts/members",
-      { method: "POST", body: JSON.stringify(spec) },
-    ).then((r) => r.items),
+    request<CohortMembers>("/api/cohorts/members", { method: "POST", body: JSON.stringify(spec) }),
+  /** Подразделения и населённые пункты зоны — из чего выбирать в подборе */
+  cohortOptions: () => request<CohortOptions>("/api/cohorts/options"),
   cohorts: () => request<{ items: CohortRow[] }>("/api/cohorts").then((r) => r.items),
   saveCohort: (title: string, spec: CohortSpec) =>
     request<{ id: string }>("/api/cohorts", {
       method: "POST",
       body: JSON.stringify({ title, spec }),
     }),
+  updateCohort: (id: string, patch: { title?: string; spec?: CohortSpec }) =>
+    request<CohortRow>(`/api/cohorts/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteCohort: (id: string) => request<{ ok: true }>(`/api/cohorts/${id}`, { method: "DELETE" }),
 
   devices: (userId?: string) =>

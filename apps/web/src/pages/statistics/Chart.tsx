@@ -20,6 +20,7 @@ import {
   columnInput,
   columnsChanged,
   criteriaOf,
+  criterionValue,
   describeSample,
   indicatorsOf,
   withoutCriteria,
@@ -198,6 +199,7 @@ export default function StatChart() {
                 key={i}
                 label={presetOf(c)?.title ?? c.title ?? `${ut("st.sample")} ${i + 1}`}
                 criteria={criteriaOf(baseOf(c))}
+                filters={baseOf(c)}
                 off={off[i] ?? []}
                 onToggle={(k) =>
                   setOff((o) =>
@@ -278,15 +280,23 @@ export default function StatChart() {
  * отпущенный — контур #666666 и серый («Стать» у №124: рамка 701…759).
  * Область нажатия дотянута до 44 по высоте псевдоэлементом: строки стоят с
  * шагом 40, и соседние области перекрываются на 4 — лучше, чем промах мимо.
+ *
+ * Решение заказчика 2026-09-26: адекватные фильтры. Чип несёт и значение —
+ * «Стать Чоловіки», «Віковий діапазон 25–45»: по одному имени критерия
+ * нельзя было понять, кого именно отбирает выборка, не открывая пресет.
+ * Значение набрано обычным начертанием после полужирного имени — имя
+ * остаётся тем, что нажимают, значение — тем, что читают.
  */
 function SampleLine({
   label,
   criteria,
+  filters,
   off,
   onToggle,
 }: {
   label: string;
   criteria: Criterion[];
+  filters: SampleFilters;
   off: Criterion[];
   onToggle: (c: Criterion) => void;
 }) {
@@ -297,11 +307,13 @@ function SampleLine({
       <div role="group" aria-label={label} className="flex flex-wrap items-center gap-[10px]">
         {criteria.map((k) => {
           const on = !off.includes(k);
+          const value = criterionValue(k, filters, ut);
           return (
             <button
               key={k}
               type="button"
               aria-pressed={on}
+              title={value ? `${ut(CRITERION_LABEL[k])}: ${value}` : undefined}
               onClick={() => onToggle(k)}
               className={cx(
                 "relative flex h-[30px] items-center whitespace-nowrap rounded-[5px] px-[8px] text-[15px] font-bold",
@@ -311,6 +323,7 @@ function SampleLine({
               )}
             >
               {ut(CRITERION_LABEL[k])}
+              {value ? <span className="ml-[6px] max-w-[220px] truncate font-normal">{value}</span> : null}
             </button>
           );
         })}

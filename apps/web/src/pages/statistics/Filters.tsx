@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { SampleFilters } from "@quizzy/shared";
 import { api } from "../../api";
@@ -10,7 +10,8 @@ import { Page } from "../../ui/layout";
 import { MenuButton, menuItemClass } from "../../ui/menu";
 import { Button } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { CRITERION_LABEL, type Criterion, STATS_FILTERS, cleanFilters, presetHref, withoutCriteria } from "./model";
+import { useLocalityHints } from "./data";
+import { CRITERION_LABEL, type Criterion, STATS_FILTERS, cleanFilters, filterErrors, presetHref, withoutCriteria } from "./model";
 import {
   AgeRow,
   DateField,
@@ -76,6 +77,15 @@ function FiltersScreen({ id }: { id: string | null }) {
   const presets = useResource(() => api.filterPresets(), []);
   const preset = useResource(() => api.filterPreset(id!), [id], { enabled: id !== null });
   const groups = useResource(() => api.patientGroups(), []);
+  const hints = useLocalityHints();
+  const listId = useId();
+  /*
+   * Заголовок у сохранённого пресета — «Зміна фільтра». Решение заказчика
+   * 2026-09-26: адекватные фильтры. Кадр рисует форму нового пресета, и
+   * «Створення фільтра» над уже существующим читалось как «сейчас будет
+   * создан ещё один» — человек не понимал, правит он или копирует.
+   */
+  const heading = ut(id === null ? "st.filterNew" : "st.filterEdit");
 
   const [title, setTitle] = useState("");
   const [filters, setFilters] = useState<SampleFilters>({});
@@ -95,9 +105,14 @@ function FiltersScreen({ id }: { id: string | null }) {
   const add = (row: RowKind) => setRows((r) => [...FRAME_ROWS, "group" as const].filter((x) => x === row || r.includes(x)));
   const missing = ([...FRAME_ROWS, "group"] as RowKind[]).filter((r) => !rows.includes(r));
 
+  const errs = filterErrors(filters);
   const save = () => {
     if (!title.trim()) {
       toast(ut("st.errFilterName"), "err");
+      return;
+    }
+    if (errs.length) {
+      toast(ut(errs[0]!), "err");
       return;
     }
     void run(async () => {
@@ -130,7 +145,7 @@ function FiltersScreen({ id }: { id: string | null }) {
 
   if (id !== null && !preset.data) {
     return (
-      <Page title={ut("st.filterNew")} snug tight>
+      <Page title={heading} snug tight>
         <Loading rows={5} error={preset.error} onRetry={preset.reload} />
       </Page>
     );
@@ -145,7 +160,7 @@ function FiltersScreen({ id }: { id: string | null }) {
   );
 
   return (
-    <Page title={ut("st.filterNew")} snug tight>
+    <Page title={heading} snug tight>
       {/* форма: 700 по центру, первое поле на 125 ниже строки заголовка (170 → 295) */}
       <div className="mx-auto mt-[125px] flex w-[700px] max-w-full flex-col gap-[15px]">
         {line(
@@ -165,11 +180,25 @@ function FiltersScreen({ id }: { id: string | null }) {
           line(
             row,
             row === "date" ? (
-              <DateField look="fill" from={filters.from} to={filters.to} onChange={(p) => patch(p)} />
+              <DateField
+                look="fill"
+                from={filters.from}
+                to={filters.to}
+                onChange={(p) => patch(p)}
+                invalid={errs.includes("coh.errPeriod")}
+              />
             ) : row === "patient" ? (
               <PatientField look="fill" value={filters.patientId} onChange={(patientId) => patch({ patientId })} />
             ) : row === "age" ? (
-              <AgeRow look="fill" min={filters.ageMin} max={filters.ageMax} onChange={(p) => patch(p)} dash={17} gap={10} />
+              <AgeRow
+                look="fill"
+                min={filters.ageMin}
+                max={filters.ageMax}
+                onChange={(p) => patch(p)}
+                dash={17}
+                gap={10}
+                invalid={errs.includes("coh.errAge")}
+              />
             ) : (
               <GroupSelect
                 look="fill"
@@ -193,8 +222,17 @@ function FiltersScreen({ id }: { id: string | null }) {
               label={ut("st.locality")}
               value={filters.locality ?? ""}
               maxLength={160}
+              list={hints.length ? listId : undefined}
+              autoComplete="off"
               onChange={(e) => patch({ locality: e.target.value })}
             />
+            {hints.length ? (
+              <datalist id={listId}>
+                {hints.map((h) => (
+                  <option key={h} value={h} />
+                ))}
+              </datalist>
+            ) : null}
           </div>,
           missing.length ? (
             <MenuButton label={ut("st.addCriterion")} glyph={<IconPlusThick />} align="right-out">
@@ -221,6 +259,12 @@ function FiltersScreen({ id }: { id: string | null }) {
             </GlyphButton>
           ),
         )}
+        {/* перевёрнутый диапазон — словами у места, а не только красным значением */}
+        {errs.length ? (
+          <p role="alert" className="m-0 text-[13px] leading-[18px] text-danger">
+            {errs.map((k) => ut(k)).join(" · ")}
+          </p>
+        ) : null}
         {/* «Зберегти» 30 ниже строк (15 шага + 15), правым краем по 1150 */}
         <div className="mt-[15px] flex justify-end">
           <Button size="md" className="w-[215px]" disabled={busy} onClick={save}>

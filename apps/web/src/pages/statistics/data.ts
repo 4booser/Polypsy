@@ -47,3 +47,44 @@ export function useSurveyAt(surveyId: string | null, versionId: string | null): 
   if (!surveyId) return null;
   return state?.key === key ? state.survey : undefined;
 }
+
+/**
+ * Населённые пункты людей в зоне сотрудника — подсказки к полю «Населений
+ * пункт».
+ *
+ * Решение заказчика 2026-09-26: адекватные фильтры. Поле свободное, а
+ * сравнение — точное (без учёта регистра): «Київ» против «м. Київ» давало
+ * пустую выборку, и экран не говорил почему. Подсказки — штатный datalist:
+ * набирать по-прежнему можно что угодно, но записанные названия видны.
+ *
+ * Источник — список подбора людей (GET /api/cohorts/options): только
+ * названия, без чисел. Закрыт он правом «Добору людей»; у кого его нет,
+ * тот получает отказ — и поле без подсказок, как раньше, а не ошибку.
+ */
+export function useLocalityHints(): string[] {
+  const [items, setItems] = useState<string[]>([]);
+  useEffect(() => {
+    let live = true;
+    void localityHints().then((list) => {
+      if (live) setItems(list);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return items;
+}
+
+/*
+ * Один запрос на страницу, а не на поле: на экране двух выборок полей
+ * «Населений пункт» два (и до восьми), а список у них один. Отказ
+ * запоминается пустым списком — повторять его на каждой колонке незачем.
+ */
+let hints: Promise<string[]> | null = null;
+function localityHints(): Promise<string[]> {
+  hints ??= api
+    .cohortOptions()
+    .then((o) => o.localities)
+    .catch(() => []);
+  return hints;
+}
