@@ -7,15 +7,17 @@
  * настоящее удаление уносит клиническую историю живых людей. Такое решение
  * не должно приниматься нажатием кнопки в браузере.
  *
+ * Сама логика — в lib/surveyPurge.ts (там же — почему так и что чинилось):
+ * сводка и чистка идут под системным контекстом, случаи с сигналами других
+ * методик переносятся, а не уничтожаются, журнал пишется в одной транзакции
+ * с удалением.
+ *
  * Запуск:
  *   bun run survey:purge <id>              — показать, что будет уничтожено
  *   bun run survey:purge <id> --confirm "<название>"
  */
-import { eq, sql } from "drizzle-orm";
-import { t } from "@quizzy/shared";
-import { client, db } from "./db";
-import { auditSystem } from "./lib/audit";
-import { responses, riskAlerts, surveyAccess, surveys } from "./db/schema";
+import { client } from "./db";
+import { PurgeRefused, purgePlan, purgeSurvey, type PurgePlan } from "./lib/surveyPurge";
 
 const [id, ...rest] = process.argv.slice(2);
 if (!id) {
@@ -26,61 +28,53 @@ if (!id) {
 const confirmIdx = rest.indexOf("--confirm");
 const confirmed = confirmIdx >= 0 ? rest[confirmIdx + 1] : null;
 
-const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
-if (!survey) {
+const plan = await purgePlan(id);
+if (!plan) {
   console.error(`Методика ${id} не найдена`);
+  await client.end();
   process.exit(1);
 }
 
-const title = t(survey.title as never);
-
-// снятие с использования — обязательный предварительный шаг: между решением
-// и необратимым действием должен быть промежуток, в котором можно передумать
-if (!survey.archivedAt) {
-  console.error(`«${title}» в работе. Сначала снимите её с использования в консоли.`);
-  process.exit(1);
+function show(p: PurgePlan) {
+  console.log(`\nМетодика: «${p.title}»`);
+  console.log(`Снята с использования: ${p.archivedAt ?? "нет"}`);
+  console.log("Будет уничтожено безвозвратно:");
+  console.log(`  прохождений: ${p.responses}`);
+  console.log(`  тревог этой методики: ${p.alerts}`);
+  console.log(`  назначений: ${p.assignments}`);
+  console.log(`  заключений (черновиков): ${p.conclusions}`);
+  console.log(`  срабатываний правил: ${p.ruleHits}`);
+  console.log(`  случаев только из её сигналов: ${p.casesRemoved}`);
+  /*
+   * То, чего прежняя сводка не говорила: случаи, начатые этой методикой,
+   * держат и чужие сигналы. Они НЕ уничтожаются — переходят на оставшиеся.
+   */
+  console.log("Сохраняется:");
+  console.log(`  случаев, переходящих на другие методики: ${p.casesMoved}`);
+  console.log(`  сигналов других методик в них: ${p.keptSignals}`);
+  if (p.signedConclusions) {
+    console.log(`\nПодписанных заключений: ${p.signedConclusions} — чистка невозможна, пока они есть.`);
+  }
 }
 
-const count = async (table: typeof responses | typeof riskAlerts | typeof surveyAccess) => {
-  const [row] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(table)
-    .where(eq((table as typeof responses).surveyId, id));
-  return row?.n ?? 0;
-};
+show(plan);
 
-const stats = {
-  прохождений: await count(responses),
-  тревог: await count(riskAlerts),
-  назначений: await count(surveyAccess),
-};
-
-console.log(`\nМетодика: «${title}»`);
-console.log(`Снята с использования: ${survey.archivedAt}`);
-console.log("Будет уничтожено безвозвратно:");
-for (const [k, v] of Object.entries(stats)) console.log(`  ${k}: ${v}`);
-
-if (confirmed !== title) {
+if (confirmed !== plan.title) {
   console.log(
     `\nЧтобы удалить, повторите с точным названием:\n` +
-      `  bun run survey:purge ${id} --confirm ${JSON.stringify(title)}\n`,
+      `  bun run survey:purge ${id} --confirm ${JSON.stringify(plan.title)}\n`,
   );
   await client.end();
   process.exit(confirmed === null ? 0 : 1);
 }
 
-/*
- * Запись в журнал ДО удаления: журнал защищён от правки хэш-цепочкой и
- * триггерами, поэтому запись переживёт саму методику — иначе после чистки
- * не осталось бы следа о том, что здесь вообще что-то было.
- */
-await auditSystem({
-  action: "survey.purge",
-  resourceType: "survey",
-  resourceId: id,
-  details: { title, archivedAt: survey.archivedAt, ...stats },
-});
-
-await db.delete(surveys).where(eq(surveys.id, id));
-console.log(`\nУдалено. Запись о чистке осталась в журнале доступа.`);
+try {
+  await purgeSurvey(id, confirmed);
+  console.log(`\nУдалено. Запись о чистке осталась в журнале доступа.`);
+} catch (e) {
+  console.error(`\n${e instanceof PurgeRefused ? "Отказ" : "Ошибка"}: ${e instanceof Error ? e.message : String(e)}`);
+  console.error("Ничего не удалено, в журнал ничего не записано.");
+  await client.end();
+  process.exit(1);
+}
 await client.end();

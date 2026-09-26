@@ -10,13 +10,23 @@
  */
 import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
-import { fillDemoData, purgeDemoData } from "./lib/demoFill";
+import { DemoPurgeRefused, fillDemoData, purgeDemoData } from "./lib/demoFill";
 import { purgeDemoGroupsRules, seedDemoGroupsRules } from "./seed/demoGroupsRules";
 
 const arg = process.argv[2] ?? "60";
 
 if (arg === "purge") {
-  const removed = await systemContext(baseDb, () => purgeDemoData());
+  /*
+   * Отказ уборки — сообщением, а не трассой стека: он говорит, что передать
+   * настоящему сотруднику, и транзакция системного контекста уже откатила
+   * всё сделанное (см. purgeDemoData).
+   */
+  const removed = await systemContext(baseDb, () => purgeDemoData()).catch(async (e: unknown) => {
+    if (!(e instanceof DemoPurgeRefused)) throw e;
+    console.error(`  ✗ ${e.message}`);
+    await client.end();
+    process.exit(1);
+  });
   /*
    * Группы и правила посева — такие же вымышленные данные, как люди, и
    * убираются той же командой. Собранные из вымышленных, после их удаления

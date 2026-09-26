@@ -1404,7 +1404,13 @@ export const riskAlerts = pgTable(
      * Случай, к которому относится сигнал. Nullable только ради миграции:
      * тревоги, поднятые до перехода, привязываются отдельным шагом.
      */
-    caseId: text("case_id").references(() => alertCases.id, { onDelete: "cascade" }),
+    /*
+     * NO ACTION, а не каскад (миграция 0107): случай собирает сигналы разных
+     * методик, и удаление случая по одной из них уносило бы сигналы других.
+     * Проверка в конце оператора пропускает удаление, уносящее случай вместе
+     * со всеми его сигналами, и останавливает всё остальное.
+     */
+    caseId: text("case_id").references(() => alertCases.id, { onDelete: "no action" }),
     label: text("label").notNull(),
     severity: text("severity", { enum: ["moderate", "severe"] }).notNull().default("severe"),
     at: timestampCol("at").notNull().default(sql`now()`),
@@ -2215,7 +2221,12 @@ export const decisionRules = pgTable(
   {
     id: text("id").primaryKey(),
     title: text("title").notNull(),
-    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "set null" }),
+    /*
+     * NO ACTION, а не SET NULL (миграция 0107): правило без группы действует
+     * на всё учреждение, и удаление группы превращало её правила в общие.
+     * Группу с правилами не удалить — маршрут отказывает раньше базы.
+     */
+    groupId: text("group_id").references(() => surveyGroups.id, { onDelete: "no action" }),
     enabled: boolean("enabled").notNull().default(true),
     conditions: jsonb("conditions").notNull(),
     actions: jsonb("actions").notNull(),

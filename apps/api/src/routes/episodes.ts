@@ -1,18 +1,20 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { renderError } from "@quizzy/shared";
 import { db } from "../db";
 import {
   appointments,
   dispensary,
   episodes,
+  surveys,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
-import { badRequest, notFound, parseBody } from "../lib/http";
-import { assertPatientAccess } from "../lib/scope";
+import { badRequest, langOf, notFound, parseBody } from "../lib/http";
+import { assertPatientAccess, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -36,6 +38,11 @@ const openSchema = z.object({
 const closeSchema = z.object({
   outcome: z.string().max(2000).nullish(),
   outcomeKind: z.enum(["improved", "stable", "worse", "referred", "dropped", "transferred"]),
+  /**
+   * Почему обращение закрывается при незакрытых направлениях — см. маршрут.
+   * Без него при открытом направлении ответ 409 с перечнем.
+   */
+  openReferralsNote: z.string().trim().min(3).max(2000).optional(),
 });
 
 /** Обращения человека: открытые сверху, закрытые ниже */
@@ -145,14 +152,83 @@ episodeRoutes.post("/", requirePermission("episodes.manage"), async (c) => {
  *
  * Исход обязателен, и не списком, а списком плюс словами: «улучшение» без
  * пояснения через год не читается, а пояснение без разряда не считается.
+ *
+ * ═══ Что ещё открыто (клиническое ревью волны 12) ═══
+ *
+ * Обращение закрывалось при открытом случае риска и незакрытых направлениях
+ * — и то и другое после этого выглядело частью завершённой истории: в карте
+ * «обращение закрыто, исход — стабильно», а в очереди разбора висит
+ * неразобранный сигнал о суицидальном риске того же человека. Два правила,
+ * и они разные намеренно:
+ *
+ *   · открытый случай риска — отказ без обхода. Закрывать обращение, пока
+ *     сигнал не разобран, клинически нельзя ни при каком исходе, а разбор
+ *     случая — одно действие, и решение по нему записывается. Считаются
+ *     случаи в зоне видимости закрывающего (lib/scope.ts): о чужой зоне
+ *     отказ не должен сообщать даже числом;
+ *   · незакрытое направление — отказ, который снимается явным объяснением
+ *     (`openReferralsNote`), и объяснение ложится в журнал. Здесь обход
+ *     нужен: исход «направлен» или «переведён» и означает, что человек ушёл
+ *     к другим специалистам, а направление закроет принимающая сторона —
+ *     потом. Запретить это значило бы держать обращения открытыми неделями
+ *     ради чужой отметки; промолчать — терять направления.
+ *
+ * Отказ — ответом 409 с перечнем (`open`), а не исключением: исключение
+ * откатило бы и запись журнала о попытке, а «кто пытался закрыть обращение
+ * при открытом случае риска» — то, что журнал должен помнить.
  */
 episodeRoutes.post("/:id/close", requirePermission("episodes.manage"), async (c) => {
+  const user = c.get("user");
   const row = await db.query.episodes.findFirst({ where: eq(episodes.id, c.req.param("id")) });
   if (!row) notFound("err.episodeNotFound");
-  await assertPatientAccess(c.get("user"), row.patientId);
+  await assertPatientAccess(user, row.patientId);
   if (row.closedAt) badRequest("err.episodeClosed");
 
   const input = await parseBody(c.req.raw, closeSchema);
+
+  const scope = await surveyScopeFilter(user);
+  const visible = await db.select({ id: surveys.id }).from(surveys).where(scope);
+  const [open] = await db
+    .select({
+      riskCases: visible.length
+        ? sql<number>`(select count(*)::int from alert_cases ac
+            where ac.user_id = ${row.patientId} and ac.acknowledged_at is null
+              and ac.survey_id in (${sql.join(
+                visible.map((v) => sql`${v.id}`),
+                sql`, `,
+              )}))`
+        : sql<number>`0`,
+      referrals: sql<number>`(select count(*)::int from referrals rf
+        where rf.user_id = ${row.patientId} and rf.status in ('created', 'accepted'))`,
+    })
+    .from(sql`(select 1) as _`);
+  const riskCases = Number(open?.riskCases ?? 0);
+  const openReferrals = Number(open?.referrals ?? 0);
+  const blockedBy = riskCases ? "risk_case" : openReferrals && !input.openReferralsNote ? "referrals" : null;
+  if (blockedBy) {
+    const lang = langOf(c);
+    await audit(c, {
+      action: "episode.close",
+      resourceType: "episode",
+      resourceId: row.id,
+      subjectUserId: row.patientId,
+      outcome: "denied",
+      details: { reason: blockedBy, riskCases, openReferrals },
+    });
+    return c.json(
+      {
+        error:
+          blockedBy === "risk_case"
+            ? renderError("err.episodeOpenRiskCase", lang, { n: riskCases })
+            : renderError("err.episodeOpenReferrals", lang, { n: openReferrals }),
+        open: { riskCases, referrals: openReferrals },
+        /* направления снимаются объяснением, случай риска — только разбором */
+        overridable: blockedBy === "referrals",
+      },
+      409,
+    );
+  }
+
   await db
     .update(episodes)
     .set({
@@ -167,7 +243,10 @@ episodeRoutes.post("/:id/close", requirePermission("episodes.manage"), async (c)
     resourceType: "episode",
     resourceId: row.id,
     subjectUserId: row.patientId,
-    details: { outcomeKind: input.outcomeKind },
+    details: {
+      outcomeKind: input.outcomeKind,
+      ...(openReferrals ? { openReferrals, openReferralsNote: input.openReferralsNote } : {}),
+    },
   });
   return c.json({ ok: true });
 });
