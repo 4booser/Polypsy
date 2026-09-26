@@ -284,12 +284,62 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
     }
 
     for (const risk of detectRisks(survey, input.answers as Answer[])) {
+      /*
+       * Случай — только для нового факта: впервые отмеченного пункта или
+       * повышения умеренного до тяжёлого (w12:alerts, внешний разбор P1).
+       *
+       * Автосохранение пишет тревогу на каждом шаге, и прежде каждый шаг
+       * звал attachToCase. Пока случай открыт, это лишь двигало время; но
+       * после разбора следующий же шаг с тем же ответом заводил новый
+       * случай — пустой, без сигнала, — а повышение до тяжёлого
+       * переписывало тревогу внутри разобранного случая, где её уже никто
+       * не видел. Теперь тот же ответ ничего не открывает (решение о нём
+       * принято), а повышение переносит тревогу в открытый случай и снимает
+       * с неё прежнюю отметку разбора: тяжёлого ответа разбирающий не видел.
+       *
+       * Прочитанная строка может устареть, если тот же черновик
+       * сохраняется дважды разом; вставка ниже всё равно упирается в
+       * уникальный ключ, так что вторая тревога не появится, а случай
+       * найдёт открытым attachToCase под своей блокировкой.
+       */
+      const prior = await tx.query.riskAlerts.findFirst({
+        where: and(eq(riskAlerts.responseId, responseId), eq(riskAlerts.questionId, risk.questionId)),
+        columns: { id: true, severity: true },
+      });
+      const upgrade = !!prior && prior.severity !== "severe" && risk.severity === "severe";
+      if (prior && !upgrade) {
+        /*
+         * Тяжесть повышается, а не игнорируется — и не понижается: снятая
+         * галочка не отменяет того, что человек её ставил, а случай уже мог
+         * уйти в работу. Умеренный остаётся умеренным со свежей подписью.
+         */
+        if (prior.severity !== "severe") {
+          await tx.update(riskAlerts).set({ label: risk.label, at: now }).where(eq(riskAlerts.id, prior.id));
+        }
+        continue;
+      }
+
       const caseId = await attachToCase(tx as never, {
         userId: user.id,
         surveyId,
         severity: risk.severity,
         at: now,
       });
+      if (prior) {
+        await tx
+          .update(riskAlerts)
+          .set({
+            label: risk.label,
+            severity: risk.severity,
+            at: now,
+            caseId,
+            acknowledgedAt: null,
+            acknowledgedBy: null,
+            outcome: null,
+          })
+          .where(eq(riskAlerts.id, prior.id));
+        continue;
+      }
       await tx.insert(riskAlerts)
         .values({
           id: crypto.randomUUID(),
@@ -303,16 +353,10 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           at: now,
         })
         /*
-         * Тяжесть повышается, а не игнорируется.
-         *
-         * Автосохранение пишет тревогу на каждом шаге. Если человек сначала
-         * отметил умеренный вариант, а потом добавил тяжёлый, вторая запись
-         * упиралась в уникальный ключ (прохождение, вопрос) и молча
-         * отбрасывалась — тревога навсегда оставалась умеренной, хотя на
-         * экране уже стоял тяжёлый ответ.
-         *
-         * Понижать нельзя: снятая галочка не отменяет того, что человек её
-         * ставил, а случай уже мог уйти в работу.
+         * Если тот же черновик сохраняется дважды разом, второй шаг
+         * упирается в уникальный ключ (прохождение, вопрос). Тяжесть при
+         * этом повышается, а не отбрасывается — иначе тревога навсегда
+         * осталась бы умеренной при тяжёлом ответе на экране.
          */
         .onConflictDoUpdate({
           target: [riskAlerts.responseId, riskAlerts.questionId],

@@ -10,8 +10,16 @@ import { createVisiblePatient, goMenu, login, openMenu } from "./helpers";
  * случай помечен и что разобранный уходит из очереди.
  */
 
-const rows = (page: import("@playwright/test").Page) => page.locator(".queue-row");
-const detail = (page: import("@playwright/test").Page) => page.locator(".triage-case .card.case");
+/*
+ * Разметка экрана переписана (волна 12): строки и панель разбора помечены
+ * data-атрибутами, а не классами оформления — класс «card» и прочее наследие
+ * из экрана ушли, а зацепка для проверки не должна зависеть от того, как
+ * строка нарисована.
+ */
+const rows = (page: import("@playwright/test").Page) => page.locator("[data-queue-row]");
+const detail = (page: import("@playwright/test").Page) => page.locator("[data-triage-case] [data-case-card]");
+/* выраженность — залитый выбор со счётчиками, а не ряд кнопок; имя ему даёт подпись для диктора */
+const severity = (page: import("@playwright/test").Page) => page.getByLabel("Срочность", { exact: true });
 
 test.beforeEach(async ({ page }) => {
   await login(page, "psy");
@@ -22,7 +30,7 @@ test.beforeEach(async ({ page }) => {
 
 test("выбор строки меняет случай, не уводя со списка", async ({ page }) => {
   const second = rows(page).nth(1);
-  const who = (await second.locator(".queue-name").textContent())!.trim();
+  const who = (await second.locator("[data-queue-name]").textContent())!.trim();
   const before = await rows(page).count();
 
   await second.click();
@@ -36,26 +44,26 @@ test("выбор строки меняет случай, не уводя со с
 test("фильтр по выраженности сужает выборку и держится в адресе", async ({ page }) => {
   const before = await rows(page).count();
 
-  await page.getByRole("button", { name: "Только тяжёлые", exact: true }).click();
+  await severity(page).selectOption("severe");
   await expect.poll(async () => rows(page).count()).toBeLessThanOrEqual(before);
   expect(page.url()).toContain("severity=severe");
 
   await page.reload();
-  await expect(page.getByRole("button", { name: "Только тяжёлые", exact: true })).toHaveClass(/active/);
+  await expect(severity(page)).toHaveValue("severe");
 });
 
 test("подгрузка дописывает страницу, а не заменяет показанное", async ({ page }) => {
   const more = page.getByRole("button", { name: /Показать ещё|Загрузить ещё/ });
   if ((await more.count()) === 0) test.skip(true, "случаев меньше страницы");
 
-  const first = (await rows(page).first().locator(".queue-name").textContent())!.trim();
+  const first = (await rows(page).first().locator("[data-queue-name]").textContent())!.trim();
   const before = await rows(page).count();
 
   await more.first().click();
   await expect.poll(async () => rows(page).count()).toBeGreaterThan(before);
 
   // первый остался первым: дописали, а не перезагрузили
-  expect((await rows(page).first().locator(".queue-name").textContent())!.trim()).toBe(first);
+  expect((await rows(page).first().locator("[data-queue-name]").textContent())!.trim()).toBe(first);
 });
 
 test("взятый случай помечен и отпускается обратно", async ({ page }) => {
@@ -105,8 +113,9 @@ test("разобранный случай уходит из очереди и н
 
   await expect.poll(async () => mine.count()).toBe(0);
 
-  await page.getByRole("button", { name: "Все", exact: true }).first().click();
-  await expect(rows(page).filter({ hasText: patient.lastName })).toHaveClass(/done/);
+  // статус — вкладками: «Все» теперь вкладка состояния, а не кнопка сегмента
+  await page.getByRole("tab", { name: "Все", exact: true }).click();
+  await expect(rows(page).filter({ hasText: patient.lastName })).toHaveAttribute("data-done", "true");
 });
 
 test("новая тревога догоняет открытый экран без перезагрузки", async ({ page }) => {
@@ -193,7 +202,7 @@ test("срез экрана сохраняется под именем и вос
    * Хранится строка запроса, поэтому проверка идёт по адресу — вид обязан
    * вернуть ровно тот фильтр, при котором его сохранили.
    */
-  await page.getByRole("button", { name: "Только тяжёлые", exact: true }).click();
+  await severity(page).selectOption("severe");
   await expect.poll(() => page.url()).toContain("severity=severe");
 
   const name = `Тяжёлые ${Date.now()}`;
@@ -205,7 +214,7 @@ test("срез экрана сохраняется под именем и вос
   await expect(view).toBeVisible();
 
   // сбрасываем фильтр и возвращаемся к нему одним нажатием
-  await page.getByRole("button", { name: "Любая срочность", exact: true }).click();
+  await severity(page).selectOption("");
   await expect.poll(() => page.url()).not.toContain("severity=severe");
 
   await view.click();

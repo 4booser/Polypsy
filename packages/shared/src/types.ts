@@ -4091,6 +4091,49 @@ export interface AlertCase {
   outcome: AlertOutcome | null;
   /** Собран автоматически при переходе со старой модели, а не решением специалиста */
   mergedFromLegacy: boolean;
+  /**
+   * Строка очереди по человеку: что стоит за ней, кроме этого случая.
+   *
+   * Есть только в открытой очереди, сгруппированной по людям (`grouping:
+   * "person"`). Сам случай — самый срочный из открытых случаев человека; здесь
+   * — все они вместе: сколько, сколько сигналов, с какого времени человек ждёт
+   * и просрочен ли хоть один.
+   */
+  group?: AlertCaseGroup;
+}
+
+export interface AlertCaseGroup {
+  cases: number;
+  signals: number;
+  overdue: boolean;
+  oldestOpenedAt: string;
+}
+
+/**
+ * Счётчики очереди — по всей выборке, из SQL, а не по загруженной странице.
+ *
+ * Единицы те же, что у строк: люди при группировке по человеку, случаи — без
+ * неё. Счётчик варианта фильтра считается без этого фильтра и со всеми
+ * остальными — ровно столько строк покажет нажатие на вариант.
+ */
+export interface AlertCaseFacets {
+  total: number;
+  /** Варианты фильтра выраженности: «есть хоть один такой случай» */
+  severity: { severe: number; moderate: number };
+  /** Разделы текущей выборки по самому срочному случаю строки; в сумме — total */
+  sections: { severe: number; moderate: number };
+  /** Варианты фильтра «взят»: мной, никем, другими */
+  assigned: { me: number; none: number; others: number };
+  /** Строк с хотя бы одним просроченным случаем */
+  overdue: number;
+  /** Самый давний открытый случай выборки: сколько ждёт тот, кто ждёт дольше всех */
+  oldestOpenedAt: string | null;
+}
+
+/** Страница очереди: строки, курсор, вид строк и — на первой странице — счётчики */
+export interface AlertCasePage extends Page<AlertCase> {
+  grouping: "person" | "case";
+  facets?: AlertCaseFacets;
 }
 
 export type AlertOutcome = "confirmed" | "not_confirmed" | "needs_followup";
@@ -4104,14 +4147,27 @@ export interface Page<T> {
   total?: number;
 }
 
+/**
+ * Отбор очереди — как его понимает GET /api/alert-cases.
+ *
+ * Строки, потому что так они и ходят: в адресе консоли и в строке запроса.
+ * Пустое значение — «не задано».
+ */
 export interface AlertCaseFilters {
-  /** Разобранные тоже */
-  all?: boolean;
+  /** open (умолчание) · resolved · all */
+  status?: "open" | "resolved" | "all";
+  /** person (умолчание открытой очереди) · case */
+  group?: "person" | "case";
   severity?: RiskSeverity;
-  unit?: string;
-  /** "me" — мои, "none" — ничьи */
+  /** me · none · others · идентификатор сотрудника */
   assigned?: string;
+  unit?: string;
   surveyId?: string;
+  patient?: string;
+  patientGroup?: string;
+  /** Период открытия случая, ГГГГ-ММ-ДД, включительно */
+  from?: string;
+  to?: string;
   search?: string;
 }
 
