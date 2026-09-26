@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { durable } from "../db/context";
+import { bookkeeping, durable } from "../db/context";
 import { auditLog } from "../db/schema";
 import type { User } from "@quizzy/shared";
 import { currentRequestId, log } from "./log";
@@ -477,7 +477,11 @@ async function emit(input: AuditInput, actorId: string | null): Promise<void> {
  * изменилось, перечитывать нечего.
  */
 function keepRefusal(input: Pick<AuditInput, "outcome">, write: () => Promise<void>): Promise<void> {
-  return input.outcome && input.outcome !== "success" ? durable(write) : write();
+  /*
+   * Успешная строка — bookkeeping: вне контекста она пишется системной ролью,
+   * в read-only транзакции «от имени» — после неё (db/context.ts).
+   */
+  return input.outcome && input.outcome !== "success" ? durable(write) : bookkeeping(write);
 }
 
 export async function audit(c: Context, input: AuditInput): Promise<void> {

@@ -1538,11 +1538,19 @@ export const api = {
       }[];
       lead: string | null;
     }>("/api/messages"),
-  thread: (id: string) =>
+  /*
+   * Последние письма разговора; before — курсор к более ранним (nextBefore).
+   * Чтение ничего не помечает: «прочитано» — markRead по показанным.
+   */
+  thread: (id: string, before?: string | null) =>
     request<{
       id: string;
       items: { id: string; mine: boolean; text: string; sentAt: string; readAt: string | null }[];
-    }>(`/api/messages/${id}`),
+      hasMore: boolean;
+      nextBefore: string | null;
+    }>(`/api/messages/${id}${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  markRead: (id: string, ids: string[]) =>
+    request<{ marked: number }>(`/api/messages/${id}/read`, { method: "POST", body: JSON.stringify({ ids }) }),
   sendMessage: (input: { patientId?: string; text: string }) =>
     request<{ id: string; threadId: string }>("/api/messages", {
       method: "POST",

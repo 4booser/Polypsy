@@ -68,7 +68,8 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
     const viewed: User = { ...toPublicUser(row), impersonation: imp };
     c.set("user", viewed);
     await guardImpersonated(c, viewed);
-    await inRequestTransaction(c, { userId: row.id, role: row.role }, next);
+    // только чтение держит база: транзакция запроса — READ ONLY (db/context.ts)
+    await inRequestTransaction(c, { userId: row.id, role: row.role }, next, true);
     return;
   }
 
@@ -139,8 +140,12 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
    * Дальше запрос живёт в транзакции с app.user_id/app.role: RLS-политики
    * видят, кто работает. Неудачный ответ откатывает транзакцию целиком —
    * для записи это правильнее прежней семантики, а не опаснее.
+   *
+   * Учётке «только просмотр» транзакция — READ ONLY, как и входу «от
+   * имени»: сторож выше режет по методу, а GET тоже бывает пишущим
+   * (отметка «прочитано», ленивое заведение строк). Держит база.
    */
-  await inRequestTransaction(c, { userId: row.id, role: row.role }, next);
+  await inRequestTransaction(c, { userId: row.id, role: row.role }, next, row.readOnly);
 });
 
 /**
@@ -160,8 +165,11 @@ function inRequestTransaction(
   c: Context<AppEnv>,
   identity: { userId: string; role: User["role"] },
   next: Next,
+  readOnly = false,
 ): Promise<void> {
-  return withRequestContext(baseDb, identity, () => next(), () => c.error !== undefined || c.res.status >= 400);
+  return withRequestContext(baseDb, identity, () => next(), () => c.error !== undefined || c.res.status >= 400, {
+    readOnly,
+  });
 }
 
 /** Доступ для персонала: администратор группы или суперадмин */
