@@ -3,6 +3,7 @@ import { app } from "./app";
 import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
+import { startOpsRotation, startOpsStore } from "./lib/opsStore";
 import { client } from "./db";
 import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
@@ -63,6 +64,14 @@ const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
 const stopNotifier = env.schedulerEnabled ? startNotifier() : null;
 const stopRetention = env.schedulerEnabled ? startRetention() : null;
+/*
+ * История техпанели (lib/opsStore.ts): запись пачками — на каждой реплике,
+ * у каждой свои буферы; ротация по сроку — одна на всех, там, где
+ * планировщик. Заводится здесь, на верхнем уровне, а не при первом
+ * запросе: таймер унёс бы хранилище того запроса во все свои такты.
+ */
+const stopOpsStore = startOpsStore();
+const stopOpsRotation = env.schedulerEnabled ? startOpsRotation() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -77,6 +86,9 @@ async function shutdown(signal: string) {
   stopScheduler?.();
   stopNotifier?.();
   stopRetention?.();
+  stopOpsRotation?.();
+  /* последний такт записи истории — до закрытия пула, не дольше трёх секунд */
+  await stopOpsStore();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }

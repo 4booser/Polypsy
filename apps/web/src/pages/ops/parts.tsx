@@ -66,18 +66,23 @@ export function Stamp({ since, updatedAt, note }: { since?: string; updatedAt: n
   );
 }
 
-/** Номер запроса: укороченный на экране, целиком — в подсказке и в буфере обмена */
-export function RequestId({ id, toLogs = true }: { id: string | null; toLogs?: boolean }) {
+/**
+ * Номер запроса: укороченный на экране, целиком — в подсказке и в буфере обмена.
+ *
+ * Ведёт в трассу запроса (/ops/trace/:id, участок obs2a), а не в ленту с
+ * фильтром: трасса — это те же строки лога плюс итог, ошибка, журнал и SQL,
+ * то есть всё, ради чего номер нажимают.
+ */
+export function RequestId({ id, linked = true }: { id: string | null; linked?: boolean }) {
   const { ut } = useLang();
   const toast = useToast();
   if (!id) return <span className="text-muted">—</span>;
   return (
     <span className="inline-flex min-w-0 items-center gap-[6px]">
-      {toLogs ? (
-        /* переход в ленту с фильтром по этому запросу: номер для того и нужен */
+      {linked ? (
         <Link
-          to={`/ops/logs?rid=${encodeURIComponent(id)}`}
-          title={`${id} — ${ut("ops.logs.byId")}`}
+          to={`/ops/trace/${encodeURIComponent(id)}`}
+          title={`${id} — ${ut("ops.trace.open")}`}
           className="truncate font-mono text-[12px] text-primary no-underline hover:underline"
         >
           {shortId(id)}

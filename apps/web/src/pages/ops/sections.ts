@@ -38,6 +38,13 @@ export const OPS_GROUPS: OpsGroup[] = [
       { to: "/ops/logs", label: "ops.tab.logs", perm: "ops.read" },
       { to: "/ops/db", label: "ops.tab.db", perm: "ops.read" },
       /* ── sections:obs2 ── */
+      /*
+       * obs2a: сравнение выкаток и медленный SQL. Трасса запроса
+       * (/ops/trace/:id) — страница без пункта: в неё ведут номера запросов
+       * и поле «номер → траса» в «Логах» и «Помилках».
+       */
+      { to: "/ops/releases", label: "ops.tab.releases", perm: "ops.read" },
+      { to: "/ops/statements", label: "ops.tab.statements", perm: "ops.read" },
       /* ── sections:sec-system ── */
     ],
   },

@@ -11,16 +11,37 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "../env";
 import { captureLog } from "./opsBuffer";
+import type { SqlTally } from "./opsSql";
 
-const store = new AsyncLocalStorage<{ requestId: string }>();
+/**
+ * Что живёт на время одного запроса. Кроме номера — счёт SQL этого
+ * запроса (lib/opsSql.ts): его пишет обёртка вокруг драйвера, а читает
+ * промежуточный слой по завершении запроса. Хранилище одно на оба, чтобы
+ * «запрос» для лога и для счёта SQL не мог разойтись.
+ */
+export interface RequestScope {
+  requestId: string;
+  sql?: SqlTally;
+}
+
+const store = new AsyncLocalStorage<RequestScope>();
 
 /** Идентификатор текущего запроса; вне запроса — null */
 export function currentRequestId(): string | null {
   return store.getStore()?.requestId ?? null;
 }
 
-export function withRequestId<T>(requestId: string, fn: () => T): T {
-  return store.run({ requestId }, fn);
+/** Хранилище текущего запроса целиком; вне запроса — null */
+export function currentRequestScope(): RequestScope | null {
+  return store.getStore() ?? null;
+}
+
+/**
+ * `scope` передаёт тот, кому после fn нужно прочесть накопленное (счёт SQL
+ * в middleware/requestId.ts); остальным хватает номера.
+ */
+export function withRequestId<T>(requestId: string, fn: () => T, scope: RequestScope = { requestId }): T {
+  return store.run(scope, fn);
 }
 
 type Level = "debug" | "info" | "warn" | "error";

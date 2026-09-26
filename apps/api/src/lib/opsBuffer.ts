@@ -27,6 +27,15 @@
  * Поэтому поверх правила стоит пояс: поля с запрещёнными именами
  * заменяются, почта и телефоны в строках маскируются (scrub). Лог в stdout
  * этого не делает — его читает тот, кто и так держит сервер и базу.
+ *
+ * Решение заказчика 2026-09-26 (участок obs2a): поверх буферов — история в
+ * базе, которая переживает перезапуск (lib/opsStore.ts). Возражение выше
+ * при этом в силе и учтено, а не отменено: в базу идёт не строка на
+ * запрос, а пачка раз в десять секунд из очереди в памяти, у таблиц свой
+ * срок хранения и своя ротация, а в очередь попадает уже вычищенное здесь.
+ * Буфер о базе не знает — хранилище вешает приёмник (setOpsSink) само;
+ * буферы остались живым хвостом, и «з моменту запуску» теперь говорят
+ * только вкладки, у которых истории нет.
  */
 import type {
   OpsErrorGroup,
@@ -46,6 +55,51 @@ import { LATENCY_BUCKETS } from "./metrics";
  * модуль грузится позже старта, и на холодном процессе разница заметна.
  */
 export const startedAt = new Date(Date.now() - process.uptime() * 1000).toISOString();
+
+/**
+ * Экземпляр процесса — для истории в базе (lib/opsStore.ts). Номер строки
+ * лога сквозной только внутри процесса и после перезапуска начинается с
+ * единицы; строки истории различаются парой «экземпляр + номер», и по ней
+ * же живой хвост из памяти склеивается с историей без дублей.
+ */
+let instance = crypto.randomUUID().slice(0, 8);
+export const instanceId = () => instance;
+
+/* ─────────── постоянное хранение ─────────── */
+
+/** Один случай ошибки — то, что пришло в группу, с моментом и номером запроса */
+export type OpsErrorOccurrence = Omit<OpsErrorGroup, "count" | "firstAt" | "lastAt"> & { at: string };
+
+/**
+ * Куда ещё уходят записи буфера: история в базе (lib/opsStore.ts).
+ *
+ * Буфер о базе не знает — хранилище само вешает сюда приёмник при своей
+ * загрузке. Так log.ts, который грузят и миграции, и сиды, и расшифровщик,
+ * не тянет за собой пул соединений, а процесс без хранилища просто ничего
+ * не копит. Отказ приёмника не должен стоить ни строки лога, ни ответа на
+ * запрос — поэтому каждый вызов под защитой.
+ */
+export interface OpsSink {
+  log(line: OpsLogLine): void;
+  request(s: RequestSample & { at: number }): void;
+  error(o: OpsErrorOccurrence): void;
+  reset(): void;
+}
+
+let sink: OpsSink | null = null;
+
+export function setOpsSink(next: OpsSink | null): void {
+  sink = next;
+}
+
+function toSink(fn: (s: OpsSink) => void): void {
+  if (!sink) return;
+  try {
+    fn(sink);
+  } catch {
+    // история — удобство; лог и ответ важнее
+  }
+}
 
 /* ─────────── вычистка данных ─────────── */
 
@@ -173,24 +227,32 @@ export function captureLog(
   const clean = (scrub(fields) ?? {}) as Record<string, unknown>;
   const text = scrubText(message, 200);
   const seq = ++logSeq;
-  logRing[seq % LOG_CAPACITY] = {
+  /*
+   * Ошибка, записанная в лог мимо обработчика запросов, — тоже ошибка:
+   * упавший проход расписания или рассылки иначе был бы виден только в
+   * ленте, где его унесёт через пять тысяч строк. «unhandled» и строку
+   * запроса с кодом 5xx пропускаем: их группу заводит onError, со стеком,
+   * а отпечаток приходит в поле fingerprint (app.ts). Отпечаток у строки —
+   * мостик для трассы запроса: «эта строка — вот эта группа».
+   */
+  let fingerprint: string | null = null;
+  if (level === "error" && message !== "unhandled" && message !== "request") {
+    fingerprint = recordLoggedError(text, fields, requestId);
+  } else if (message === "unhandled" && typeof fields.fingerprint === "string") {
+    fingerprint = fields.fingerprint;
+  }
+  const line: OpsLogLine = {
     seq,
     at: new Date().toISOString(),
     level,
     message: text,
     requestId,
     fields: clean,
-    hay: `${text} ${JSON.stringify(clean)}`.toLowerCase(),
+    instance,
+    fingerprint,
   };
-  /*
-   * Ошибка, записанная в лог мимо обработчика запросов, — тоже ошибка:
-   * упавший проход расписания или рассылки иначе был бы виден только в
-   * ленте, где его унесёт через пять тысяч строк. «unhandled» и строку
-   * запроса с кодом 5xx пропускаем: их группу заводит onError, со стеком.
-   */
-  if (level === "error" && message !== "unhandled" && message !== "request") {
-    recordLoggedError(text, fields, requestId);
-  }
+  logRing[seq % LOG_CAPACITY] = { ...line, hay: `${text} ${JSON.stringify(clean)}`.toLowerCase() };
+  toSink((k) => k.log(line));
 }
 
 export interface LogQuery {
@@ -365,6 +427,7 @@ export function recordRequest(s: RequestSample): void {
   ensureLagSampler();
   const at = s.at ?? Date.now();
   addTo(minuteSlot(Math.floor(at / 60_000)), s.code, s.ms);
+  toSink((k) => k.request({ ...s, at }));
 
   const key = `${s.method} ${s.route}`;
   let r = routeAggs.get(key);
@@ -495,7 +558,8 @@ function fingerprintOf(parts: string[]): string {
   return new Bun.CryptoHasher("sha1").update(parts.join("\u0000")).digest("hex").slice(0, 12);
 }
 
-function upsertGroup(g: Omit<OpsErrorGroup, "count" | "firstAt" | "lastAt"> & { at: string }): void {
+function upsertGroup(g: OpsErrorOccurrence): void {
+  toSink((k) => k.error(g));
   const known = errorGroups.get(g.fingerprint);
   if (known) {
     known.count++;
@@ -534,13 +598,14 @@ export function recordError(input: {
   code?: number | null;
   requestId?: string | null;
   at?: number;
-}): void {
+}): string {
   const err = input.error instanceof Error ? input.error : new Error(String(input.error));
   const message = normalizeMessage(err.message || "");
   const frames = framesOf(err.stack);
   const top = frames.find(isOwnFrame)?.replace(/:\d+\)?$/, "") ?? "";
+  const fingerprint = fingerprintOf(["request", err.name, message, top, `${input.method ?? ""} ${input.route ?? ""}`]);
   upsertGroup({
-    fingerprint: fingerprintOf(["request", err.name, message, top, `${input.method ?? ""} ${input.route ?? ""}`]),
+    fingerprint,
     origin: "request",
     name: err.name || "Error",
     message,
@@ -551,15 +616,17 @@ export function recordError(input: {
     frames,
     at: new Date(input.at ?? Date.now()).toISOString(),
   });
+  return fingerprint;
 }
 
 /** log.error вне обработчика запроса: упавший проход, отказ журнала, сбой отправки */
-function recordLoggedError(message: string, fields: Record<string, unknown>, requestId: string | null): void {
+function recordLoggedError(message: string, fields: Record<string, unknown>, requestId: string | null): string {
   const raw = fields.error;
   const detail = raw instanceof Error ? raw.message : typeof raw === "string" ? raw : "";
   const text = normalizeMessage(detail);
+  const fingerprint = fingerprintOf(["log", message, text]);
   upsertGroup({
-    fingerprint: fingerprintOf(["log", message, text]),
+    fingerprint,
     origin: "log",
     name: message,
     message: text,
@@ -570,6 +637,7 @@ function recordLoggedError(message: string, fields: Record<string, unknown>, req
     frames: raw instanceof Error ? framesOf(raw.stack) : [],
     at: new Date().toISOString(),
   });
+  return fingerprint;
 }
 
 /** Группы ошибок, последние первыми */
@@ -617,8 +685,14 @@ export function eventLoopLag(): { mean: number | null; max: number | null } {
   };
 }
 
-/** Только для тестов: буферы общие на процесс, и проверки не должны видеть чужое */
+/**
+ * Только для тестов: буферы общие на процесс, и проверки не должны видеть
+ * чужое. Сброс — это «перезапуск процесса»: номер экземпляра новый, и
+ * очередь записи истории (если хранилище подключено) пуста.
+ */
 export function resetOpsBuffers(): void {
+  instance = crypto.randomUUID().slice(0, 8);
+  toSink((k) => k.reset());
   logRing.fill(undefined);
   logSeq = 0;
   for (const slot of minuteRing) Object.assign(slot, emptyAgg(), { minute: -1 });
