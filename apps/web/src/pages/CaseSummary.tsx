@@ -127,8 +127,9 @@ export default function CaseSummaryTab() {
           {data.conclusions.length ? (
         <div className="card">
           <h2>{ut("sum.conclusions")}</h2>
-          {data.conclusions.map((c, i) => (
-            <div className="conclusion-view" key={i} style={{ marginTop: 8 }}>
+          {data.conclusions.map((c) => (
+            /* заключение одно на прохождение — его номер и есть личность строки */
+            <div className="conclusion-view" key={c.responseId} style={{ marginTop: 8 }}>
               <p style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 13 }}>{c.text}</p>
               <p className="hint">
                 {c.surveyTitle} · {c.authorName}

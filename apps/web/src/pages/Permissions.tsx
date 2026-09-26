@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { LocalizedText, PermissionEffectKind } from "@quizzy/shared";
 import { ROLE_LADDER } from "@quizzy/shared";
 import { api } from "../api";
-import { day } from "../format";
+import { day, daysLeft } from "../format";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Loading, Search, useAction } from "../ui";
@@ -387,12 +387,13 @@ function Until({ expiresAt }: { expiresAt: string | null }) {
    * календарь и вычесть, а разбирают исключения обычно бегло: важно не
    * число, а «это ещё надолго или уже вчера».
    */
-  const left = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000);
+  const left = daysLeft(expiresAt, Date.now());
   return (
     <>
       {ut("perm.until")} {day(expiresAt)}
       {" · "}
-      {left <= 1 ? ut("perm.lastDay") : `${left} ${ut("perm.daysLeft")}`}
+      {/* прошедший срок — «строк минув», а не «сегодня последний день» (см. daysLeft) */}
+      {left === null ? ut("opsp.grant.expired") : left <= 1 ? ut("perm.lastDay") : `${left} ${ut("perm.daysLeft")}`}
     </>
   );
 }

@@ -7,6 +7,7 @@ import { IconClose } from "../ui/glyphs";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { Panel } from "../ui/layout";
+import { freshKey, withKeys, withoutKeys, type Keyed } from "../ui/rowKeys";
 
 /**
  * Личный план безопасности (Стэнли–Браун).
@@ -33,49 +34,80 @@ const EMPTY: SafetyPlanContent = {
 
 type ListKey = "warningSigns" | "copingStrategies" | "distractions" | "reasonsToLive";
 type PeopleKey = "people" | "professionals";
+type Person = SafetyPlanContent["people"][number];
+
+/**
+ * План в редакторе: те же разделы, но каждая строка со своим ключом.
+ *
+ * Строки плана — голые строки и пары «кто · как связаться», без
+ * идентификаторов, и ключом React был номер строки. Удаление средней строки
+ * сдвигало список: поле удалённой оставалось тем же узлом и показывало текст
+ * следующей, а курсор и история правки поля (Ctrl+Z) доставались чужой
+ * строке. Ключ выдаётся при открытии редактора и на сервер не уходит
+ * (rowsToPlan).
+ */
+export type PlanRows = { [K in ListKey]: Keyed<string>[] } & { [K in PeopleKey]: Keyed<Person>[] } & {
+  meansRestriction: string;
+};
+
+export function planToRows(c: SafetyPlanContent): PlanRows {
+  return {
+    warningSigns: withKeys(c.warningSigns),
+    copingStrategies: withKeys(c.copingStrategies),
+    distractions: withKeys(c.distractions),
+    reasonsToLive: withKeys(c.reasonsToLive),
+    people: withKeys(c.people),
+    professionals: withKeys(c.professionals),
+    meansRestriction: c.meansRestriction,
+  };
+}
+
+/** Обратно в план для сервера; пустые строки не сохраняем — они стали бы пустыми пунктами в кризисе */
+export function rowsToPlan(d: PlanRows): SafetyPlanContent {
+  return {
+    warningSigns: withoutKeys(d.warningSigns).filter((x) => x.trim()),
+    copingStrategies: withoutKeys(d.copingStrategies).filter((x) => x.trim()),
+    distractions: withoutKeys(d.distractions).filter((x) => x.trim()),
+    reasonsToLive: withoutKeys(d.reasonsToLive).filter((x) => x.trim()),
+    people: withoutKeys(d.people).filter((p) => p.name.trim()),
+    professionals: withoutKeys(d.professionals).filter((p) => p.name.trim()),
+    meansRestriction: d.meansRestriction.trim(),
+  };
+}
 
 export function SafetyPlanEditor({ userId }: { userId: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const res = useResource(() => api.safetyPlans(userId), [userId]);
-  const [draft, setDraft] = useState<SafetyPlanContent>(EMPTY);
+  const [draft, setDraft] = useState<PlanRows>(() => planToRows(EMPTY));
   const [open, setOpen] = useState(false);
 
   const active = res.data?.versions.find((v) => v.active) ?? null;
 
   useEffect(() => {
-    if (active) setDraft(active.content);
+    if (active) setDraft(planToRows(active.content));
   }, [active]);
 
-  const setList = (key: ListKey, i: number, value: string) =>
-    setDraft((d) => ({ ...d, [key]: d[key].map((x, k) => (k === i ? value : x)) }));
-  const addList = (key: ListKey) => setDraft((d) => ({ ...d, [key]: [...d[key], ""] }));
-  const dropList = (key: ListKey, i: number) =>
-    setDraft((d) => ({ ...d, [key]: d[key].filter((_, k) => k !== i) }));
+  /* строки находятся по ключу, а не по номеру: номер между нажатием и обновлением мог уже сдвинуться */
+  const setList = (key: ListKey, rowKey: string, value: string) =>
+    setDraft((d) => ({ ...d, [key]: d[key].map((x) => (x.key === rowKey ? { ...x, value } : x)) }));
+  const addList = (key: ListKey) => setDraft((d) => ({ ...d, [key]: [...d[key], { key: freshKey(), value: "" }] }));
+  const dropList = (key: ListKey, rowKey: string) =>
+    setDraft((d) => ({ ...d, [key]: d[key].filter((x) => x.key !== rowKey) }));
 
-  const setPerson = (key: PeopleKey, i: number, patch: { name?: string; contact?: string }) =>
+  const setPerson = (key: PeopleKey, rowKey: string, patch: { name?: string; contact?: string }) =>
     setDraft((d) => ({
       ...d,
-      [key]: d[key].map((p, k) => (k === i ? { ...p, ...patch } : p)),
+      [key]: d[key].map((p) => (p.key === rowKey ? { ...p, value: { ...p.value, ...patch } } : p)),
     }));
   const addPerson = (key: PeopleKey) =>
-    setDraft((d) => ({ ...d, [key]: [...d[key], { name: "", contact: "" }] }));
-  const dropPerson = (key: PeopleKey, i: number) =>
-    setDraft((d) => ({ ...d, [key]: d[key].filter((_, k) => k !== i) }));
+    setDraft((d) => ({ ...d, [key]: [...d[key], { key: freshKey(), value: { name: "", contact: "" } }] }));
+  const dropPerson = (key: PeopleKey, rowKey: string) =>
+    setDraft((d) => ({ ...d, [key]: d[key].filter((p) => p.key !== rowKey) }));
 
   const save = () =>
     void run(async () => {
-      // пустые строки не сохраняем: они бы стали пустыми пунктами в кризисе
-      const clean: SafetyPlanContent = {
-        warningSigns: draft.warningSigns.filter((x) => x.trim()),
-        copingStrategies: draft.copingStrategies.filter((x) => x.trim()),
-        distractions: draft.distractions.filter((x) => x.trim()),
-        reasonsToLive: draft.reasonsToLive.filter((x) => x.trim()),
-        people: draft.people.filter((p) => p.name.trim()),
-        professionals: draft.professionals.filter((p) => p.name.trim()),
-        meansRestriction: draft.meansRestriction.trim(),
-      };
-      await api.saveSafetyPlan(userId, clean);
+      await api.saveSafetyPlan(userId, rowsToPlan(draft));
       res.reload();
       setOpen(false);
     }, ut("sp.saved"));
@@ -129,14 +161,14 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
           ).map(([key, label]) => (
             <section key={key}>
               <h3>{ut(label)}</h3>
-              {draft[key].map((value, i) => (
-                <div className="row tight" key={i}>
+              {draft[key].map((row) => (
+                <div className="row tight" key={row.key}>
                   <input
-                    value={value}
-                    onChange={(e) => setList(key, i, e.target.value)}
+                    value={row.value}
+                    onChange={(e) => setList(key, row.key, e.target.value)}
                     placeholder={ut("sp.ownWords")}
                   />
-                  <button className="chip-x" onClick={() => dropList(key, i)} aria-label={ut("ui.remove")}>
+                  <button className="chip-x" onClick={() => dropList(key, row.key)} aria-label={ut("ui.remove")}>
                     <IconClose />
                   </button>
                 </div>
@@ -155,19 +187,19 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
           ).map(([key, label]) => (
             <section key={key}>
               <h3>{ut(label)}</h3>
-              {draft[key].map((p, i) => (
-                <div className="row tight" key={i}>
+              {draft[key].map(({ key: rowKey, value: p }) => (
+                <div className="row tight" key={rowKey}>
                   <input
                     value={p.name}
-                    onChange={(e) => setPerson(key, i, { name: e.target.value })}
+                    onChange={(e) => setPerson(key, rowKey, { name: e.target.value })}
                     placeholder={ut("sp.who")}
                   />
                   <input
                     value={p.contact}
-                    onChange={(e) => setPerson(key, i, { contact: e.target.value })}
+                    onChange={(e) => setPerson(key, rowKey, { contact: e.target.value })}
                     placeholder={ut("sp.contact")}
                   />
-                  <button className="chip-x" onClick={() => dropPerson(key, i)} aria-label={ut("ui.remove")}>
+                  <button className="chip-x" onClick={() => dropPerson(key, rowKey)} aria-label={ut("ui.remove")}>
                     <IconClose />
                   </button>
                 </div>

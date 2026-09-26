@@ -8,7 +8,9 @@ import {
   applyAnswers,
   keyRows,
   newScale,
+  newUid,
   nextKeyCode,
+  optionKey,
   questionsWithOwnAnswers,
   removeRowItem,
   setRowWeight,
@@ -20,6 +22,8 @@ import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 import { IconDisclosure } from "../../ui/glyphs";
+import { occurrenceKeys } from "../../ui/rowKeys";
+import { choiceLabel, keepChosen } from "../../ui/choices";
 
 type SetDraft = (f: (d: Draft) => Draft) => void;
 
@@ -48,7 +52,7 @@ export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft 
         {answers.map((a, i) => {
           const value = a.text[lang] ?? "";
           return (
-            <div key={i} className="flex h-9 w-[139px] items-center gap-[10px] rounded-[5px] border border-border bg-[var(--bg)] px-[10px]">
+            <div key={optionKey(a, i)} className="flex h-9 w-[139px] items-center gap-[10px] rounded-[5px] border border-border bg-[var(--bg)] px-[10px]">
               <span aria-hidden className="text-[17px] font-bold text-text">{i + 1}</span>
               <Field label={`${ut("cn.answerText")} ${i + 1}`} inline>
                 {/*
@@ -72,7 +76,7 @@ export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft 
           variant="ghost"
           aria-label={ut("cn.addAnswer")}
           title={ut("cn.addAnswer")}
-          onClick={() => update([...answers, { text: { uk: "", ru: "" }, keyCode: nextKeyCode(answers.map((a) => a.keyCode)) }])}
+          onClick={() => update([...answers, { uid: newUid(), text: { uk: "", ru: "" }, keyCode: nextKeyCode(answers.map((a) => a.keyCode)) }])}
         >
           +
         </Button>
@@ -113,8 +117,9 @@ export function Answers({ draft, setDraft }: { draft: Draft; setDraft: SetDraft 
 export function Scales({ draft, setDraft }: { draft: Draft; setDraft: SetDraft }) {
   const { ut } = useLang();
   const lang = useEditLang();
-  // батареи нужны для каскадов: попадание в полосу может назначить углублённую
-  const batteries = (useResource(() => api.batteries(), []).data ?? []).filter((b) => !b.archived);
+  // батареи нужны для каскадов: попадание в полосу может назначить углублённую;
+  // архивные — тоже, чтобы выбранную не подменял «без каскада» (Bands)
+  const batteries = useResource(() => api.batteries(), []).data ?? [];
   const text = (v: Record<string, string> | null | undefined) => v?.[lang] || v?.uk || v?.ru || "";
 
   const upd = (uid: string, patch: Partial<DraftScale> | ((s: DraftScale) => DraftScale)) =>
@@ -312,7 +317,7 @@ function ScaleCard({
   index: number;
   scale: DraftScale;
   draft: Draft;
-  batteries: { id: string; title: string }[];
+  batteries: { id: string; title: string; archived?: boolean }[];
   scaleName: (code: string) => string;
   onChange: (patch: Partial<DraftScale> | ((s: DraftScale) => DraftScale)) => void;
   onAdd: () => void;
@@ -340,6 +345,7 @@ function ScaleCard({
     setAdding(null);
   };
 
+  const termKeys = occurrenceKeys(s.corrections, (c) => c.from);
   const addTerm = () => {
     const coefficient = Number(builder.coefficient);
     if (!builder.from || !Number.isFinite(coefficient)) return;
@@ -469,7 +475,8 @@ function ScaleCard({
             ) : null}
             {s.corrections.map((c, ci) => (
               <span
-                key={ci}
+                /* ключ — шкала-источник и номер её вхождения, а не место чипа: снятое слагаемое не отдаёт соседу открытое поле коэффициента */
+                key={termKeys[ci]}
                 className="inline-flex items-center gap-[6px] rounded-[5px] bg-primary-soft py-[2px] pl-[10px] pr-[2px] text-[17px] font-bold text-primary"
               >
                 {scaleName(c.from)}
@@ -662,16 +669,23 @@ export function Bands({
   bands: DraftBand[];
   onChange: (b: DraftBand[]) => void;
   details?: boolean;
-  batteries: { id: string; title: string }[];
+  batteries: { id: string; title: string; archived?: boolean }[];
 }) {
   const { ut } = useLang();
   const lang = useEditLang();
   const set = (k: number, patch: Partial<DraftBand>) => onChange(bands.map((b, i) => (i === k ? { ...b, ...patch } : b)));
+  const liveBatteries = batteries.filter((x) => !x.archived);
+  const knownBattery = (id: string) => {
+    const x = batteries.find((y) => y.id === id);
+    return x ? { title: x.title, retired: !!x.archived } : null;
+  };
+  const batteryWords = { retired: ut("bt.archived"), unavailable: ut("choice.unavailable"), unknown: ut("choice.batteryGone") };
   const add = () => {
     const last = bands[bands.length - 1];
     onChange([
       ...bands,
       {
+        uid: newUid(),
         minScore: last ? last.maxScore + 1 : 0,
         maxScore: last ? last.maxScore + 10 : 10,
         label: { uk: "", ru: "" },
@@ -691,7 +705,8 @@ export function Bands({
         const last = k === bands.length - 1;
         const range = `${b.minScore}–${b.maxScore}`;
         return (
-          <div key={k} className="flex flex-col gap-[6px]">
+          /* ключ — uid полосы: «−» у средней строки не отдаёт её поля нижней вместе с курсором */
+          <div key={optionKey(b, k)} className="flex flex-col gap-[6px]">
             {/* кадр f30: «від» 22 · поле 87 · «до» 22 · поле 87, зазоры по 10 */}
             <div className="flex items-center gap-[10px]">
               <span aria-hidden className="w-[22px] text-[13px] text-muted">{ut("cn.from")}</span>
@@ -733,8 +748,13 @@ export function Bands({
                 <Field label={`${ut("cs.cascade")} ${range}`} hint={ut("cs.cascadeHint")} inline>
                   <Select value={b.cascadeBatteryId ?? ""} onChange={(e) => set(k, { cascadeBatteryId: e.target.value || null })}>
                     <option value="">{ut("co.noCascade")}</option>
-                    {batteries.map((bat) => (
-                      <option key={bat.id} value={bat.id}>{bat.title}</option>
+                    {/*
+                      Каскад на архивную батарею — пунктом с пометкой: без него
+                      селект показывал «без каскада», а каскад оставался в
+                      силе и уходил на сервер при каждом сохранении (ui/choices.ts).
+                    */}
+                    {keepChosen(liveBatteries, b.cascadeBatteryId ?? "", knownBattery).map((c) => (
+                      <option key={c.id} value={c.id}>{choiceLabel(c, batteryWords)}</option>
                     ))}
                   </Select>
                 </Field>

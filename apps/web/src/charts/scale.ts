@@ -95,24 +95,74 @@ function niceStep(span: number): number {
 }
 
 /*
- * Двоичная дробь округляется до шести знаков.
+ * Двоичная дробь округляется — до точности шага, а не до шести знаков.
  *
  * 0.1 + 0.2 в подписи оси выглядит как 0.30000000000000004, а граница окна,
  * посчитанная делением и умножением на 2.5, — как 24.999999999999996.
  * Округление здесь не косметика: по этим же числам считается положение
  * линии, и без него верхняя линия сетки уезжает на полпикселя за рамку.
+ *
+ * Шесть знаков были постоянными, и на малых величинах (доли, частоты —
+ * 0,000688…0,000689) округление съедало сам шаг: соседние деления
+ * сливались в одно число, а верх оси вставал НИЖЕ максимума данных. Три
+ * знака сверх порядка шага держат хвосты и не трогают деления.
  */
-const round = (v: number) => Math.round(v * 1e6) / 1e6;
+const snap = (v: number, step: number) => {
+  const p = 10 ** Math.max(0, Math.ceil(-Math.log10(step)) + 3);
+  return Math.round(v * p) / p;
+};
+
+/*
+ * Сколько шагов до значения — с допуском на ту же двоичную дробь: 0.1 + 0.2
+ * делится на 0.1 как 3.0000000000000004, и без допуска ось получала лишний
+ * пустой шаг сверху — ровно то пустое поле, с которым модуль воюет.
+ */
+const EPS = 1e-9;
+const stepsUp = (v: number, step: number) => Math.ceil(v / step - EPS);
+const stepsDown = (v: number, step: number) => Math.floor(v / step + EPS);
 
 function series(min: number, max: number, step: number): number[] {
   const out: number[] = [];
   // шаг умножается на номер, а не накапливается сложением: за десять
   // сложений шага 2.5 набегает ошибка в последнем знаке
-  for (let i = 0; min + step * i <= max + step / 2; i++) out.push(round(min + step * i));
+  for (let i = 0; min + step * i <= max + step / 2; i++) out.push(snap(min + step * i, step));
   return out;
 }
 
+/**
+ * Край оси, который обязан покрыть данные: верх — не ниже максимума, низ —
+ * не выше минимума. Допуск — миллионная шага: разница такого размера —
+ * след двоичной дроби, а не данные за краем.
+ */
+function cover(max: number, hi: number, step: number): number {
+  return max < hi - step * 1e-6 ? snap(max + step, step) : max;
+}
+
 export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
+  /*
+   * Не-число и бесконечность приходят из данных, а не из ошибки в коде
+   * (деление на ноль в доле, пустая выборка): рисовать по ним ось нечем,
+   * и сетке хватает вырожденного случая ниже.
+   */
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { min: 0, max: 1, ticks: [0, 1], zoomed: false };
+  if (hi < lo) [lo, hi] = [hi, lo];
+
+  /*
+   * Отрицательные значения — разность замеров, сдвиг от нормы, z-балл.
+   *
+   * Ось начиналась с нуля всегда, и всё, что ниже нуля, уходило за нижний
+   * край поля: линия обрывалась, а подпись оси говорила, что меньше нуля
+   * ничего нет. Здесь ноль остаётся на оси (от него читается знак), а низ
+   * опускается до данных. Срезом это не считается: ноль на месте.
+   */
+  if (lo < 0) {
+    const top = Math.max(hi, 0);
+    const step = niceStep(top - lo);
+    const min = snap(Math.min(0, stepsDown(lo, step) * step), step);
+    const max = cover(snap(Math.max(0, stepsUp(top, step) * step), step), top, step);
+    return { min, max, ticks: series(min, max, step), zoomed: false };
+  }
+
   const top = Math.max(hi, 0);
   const span = Math.max(0, hi - lo);
 
@@ -121,10 +171,16 @@ export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
 
   const narrow = span < top * NARROW;
   const emptyBottom = lo > top * EMPTY_BOTTOM;
+  const window = Math.max(span * MARGIN, atom * 3);
 
-  if (!narrow || !emptyBottom) {
+  /*
+   * Окно нулевой ширины — одинаковые значения и неизвестная ошибка: срезать
+   * не во что, и прежде ось схлопывалась в одно деление «7…7», по которому
+   * линию негде было нарисовать. Такой ряд честнее показать от нуля.
+   */
+  if (!narrow || !emptyBottom || !(window > 0)) {
     const step = niceStep(top);
-    const max = Math.max(step, round(Math.ceil(top / step) * step));
+    const max = cover(Math.max(step, snap(stepsUp(top, step) * step, step)), hi, step);
     return { min: 0, max, ticks: series(0, max, step), zoomed: false };
   }
 
@@ -134,11 +190,10 @@ export function axisFor({ lo, hi, atom = 0 }: AxisRequest): Axis {
    * разница; из-за неё ряд, колеблющийся в пределах ошибки измерения, так и
    * останется плоским, а не растянется во весь экран.
    */
-  const window = Math.max(span * MARGIN, atom * 3);
   const step = niceStep(window);
   const centre = (lo + hi) / 2;
-  const min = round(Math.max(0, Math.floor((centre - window / 2) / step) * step));
-  const max = round(Math.ceil(Math.max(hi, min + window) / step) * step);
+  const min = snap(Math.max(0, stepsDown(centre - window / 2, step) * step), step);
+  const max = cover(snap(stepsUp(Math.max(hi, min + window), step) * step, step), hi, step);
 
   return { min, max, ticks: series(min, max, step), zoomed: min > 0 };
 }

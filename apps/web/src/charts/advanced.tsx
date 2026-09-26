@@ -114,7 +114,8 @@ export function BoxPlot({ boxes, categorical = false, height = 240 }: { boxes: B
     atom: widths[Math.floor(widths.length / 2)] ?? 0,
   });
   const ph = height - 46;
-  const yAt = (v: number) => 14 + ph - ((v - axis.min) / Math.max(axis.max - axis.min, 1)) * ph;
+  /* делитель — настоящий размах оси: единица снизу сжимала узкие ящики (2,1…2,3) к низу поля, под верхнее деление */
+  const yAt = (v: number) => 14 + ph - ((v - axis.min) / Math.max(axis.max - axis.min, Number.EPSILON)) * ph;
   const slot = (W - 60) / boxes.length;
 
   return (

@@ -267,6 +267,7 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
    */
   const canManage = can("users.manage");
   const viewerId = user?.id ?? "";
+  const isSuper = user?.role === "superadmin";
   /*
    * Поиск, отбор и порядок — в адресе: «вот эти люди» пересылаются ссылкой,
    * как и в списке пациентов, каталоге тестов и перечне аналитики. Пишется
@@ -294,9 +295,9 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
   const res = useResource(
     async () => {
       const dir = await loadDirectory({ id: viewerId, canManageUsers: canManage });
-      return kind === "admins" ? { ...dir, rows: await withLadder(dir.rows) } : dir;
+      return kind === "admins" ? { ...dir, rows: await withLadder(dir.rows, { id: viewerId, isSuper }) } : dir;
     },
-    [kind, viewerId, canManage],
+    [kind, viewerId, canManage, isSuper],
     { enabled: !!user },
   );
 
