@@ -1712,10 +1712,15 @@ export const api = {
     request<{ ok: true }>(`/api/episodes/dispensary/${userId}`, { method: "DELETE" }),
   openEpisode: (input: { patientId: string; reason?: string | null }) =>
     request<{ id: string }>("/api/episodes", { method: "POST", body: JSON.stringify(input) }),
-  closeEpisode: (id: string, outcomeKind: string, outcome?: string | null) =>
+  /**
+   * Закрыть обращение. При незакрытых направлениях сервер отвечает 409 с
+   * `overridable: true` — тогда закрытие повторяется с объяснением; при
+   * открытом случае риска — 409 без обхода (routes/episodes.ts).
+   */
+  closeEpisode: (id: string, outcomeKind: string, outcome?: string | null, openReferralsNote?: string) =>
     request<{ ok: true }>(`/api/episodes/${id}/close`, {
       method: "POST",
-      body: JSON.stringify({ outcomeKind, outcome }),
+      body: JSON.stringify({ outcomeKind, outcome, openReferralsNote }),
     }),
   attachVisit: (episodeId: string, appointmentId: string) =>
     request<{ ok: true }>(`/api/episodes/${episodeId}/appointments/${appointmentId}`, {

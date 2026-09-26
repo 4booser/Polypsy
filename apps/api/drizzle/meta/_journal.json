@@ -673,6 +673,13 @@
       "when": 1788473829043,
       "tag": "0098_alert_case_zones",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1788474369043,
+      "tag": "0107_case_data_lifecycle",
+      "breakpoints": true
     }
   ]
 }
