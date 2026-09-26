@@ -33,14 +33,16 @@ const only =
 
 describe("вкладки техпанели", () => {
   test("у каждой вкладки своё право: наблюдаемость, люди, журнал", () => {
-    expect(opsTabs(only("ops.read")).map((t) => t.to)).toEqual([
-      "/ops",
-      "/ops/requests",
-      "/ops/errors",
-      "/ops/logs",
-      "/ops/db",
-      "/ops/jobs",
-    ]);
+    /*
+     * Не точным списком: разделы по ops.read дописывают сразу несколько
+     * участков (наблюдаемость, данные, …). Держится суть — наблюдаемость на
+     * месте, а разделов о людях и журнала это право не открывает.
+     */
+    const observe = opsTabs(only("ops.read")).map((t) => t.to);
+    expect(observe).toEqual(
+      expect.arrayContaining(["/ops", "/ops/requests", "/ops/errors", "/ops/logs", "/ops/db", "/ops/jobs"]),
+    );
+    for (const people of ["/ops/users", "/ops/sessions", "/ops/audit"]) expect(observe).not.toContain(people);
     expect(opsTabs(only("users.manage")).map((t) => t.to)).toEqual(["/ops/users", "/ops/sessions"]);
     expect(opsTabs(only("audit.read")).map((t) => t.to)).toEqual(["/ops/audit"]);
   });

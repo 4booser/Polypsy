@@ -14,6 +14,7 @@ import { peopleLists } from "./pages/people/model";
 import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
 import { canOpenOps, opsHome } from "./pages/ops/model";
+import { TrackedRoutes } from "./telemetry/screens";
 
 /*
  * Экраны догружаются по требованию.
@@ -40,6 +41,11 @@ const OpsJobs = lazy(() => import("./pages/ops/Jobs"));
 const OpsUsers = lazy(() => import("./pages/ops/Users"));
 const OpsSessions = lazy(() => import("./pages/ops/Sessions"));
 const OpsAuditLog = lazy(() => import("./pages/ops/AuditLog"));
+/* техпанель, «Дані й продукт»: качество данных, использование, мобильное приложение, пуши */
+const OpsDataQuality = lazy(() => import("./pages/ops/data/Quality"));
+const OpsUsage = lazy(() => import("./pages/ops/data/Usage"));
+const OpsMobile = lazy(() => import("./pages/ops/data/Mobile"));
+const OpsPush = lazy(() => import("./pages/ops/data/Push"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -494,7 +500,8 @@ export default function App() {
   if (user.role === "user") {
     return (
       <Suspense fallback={<Loading rows={4} />}>
-        <Routes>
+        {/* TrackedRoutes — тот же <Routes>, плюс счёт открытых экранов шаблоном маршрута (telemetry/screens.tsx) */}
+        <TrackedRoutes app="patient" enabled={!user.readOnly}>
           <Route path="/me" element={<PatientApp />}>
             <Route index element={<PatientHome />} />
             <Route path="tests" element={<PatientTests />} />
@@ -503,7 +510,7 @@ export default function App() {
           </Route>
           <Route path="/me/tests/:id" element={<Runner />} />
           <Route path="*" element={<Navigate to="/me" replace />} />
-        </Routes>
+        </TrackedRoutes>
       </Suspense>
     );
   }
@@ -656,7 +663,8 @@ export default function App() {
           выглядели бы поломкой.
         */}
         <Suspense fallback={<Loading rows={5} />}>
-          <Routes>
+          {/* тот же <Routes>, плюс счёт открытых экранов шаблоном маршрута (telemetry/screens.tsx) */}
+          <TrackedRoutes app="console" enabled={!user.readOnly}>
           {/*
             Стартовый экран настраивается: дежурному нужна сводка, а тому, кто
             весь день разбирает случаи, — очередь. Замена происходит здесь, а
@@ -883,10 +891,15 @@ export default function App() {
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}
+              {/* «Дані й продукт» — по тому же ops.read, что и вся панель */}
+              <Route path="quality" element={<OpsDataQuality />} />
+              <Route path="usage" element={<OpsUsage />} />
+              <Route path="mobile" element={<OpsMobile />} />
+              <Route path="push" element={<OpsPush />} />
             </Route>
           ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          </TrackedRoutes>
         </Suspense>
       </main>
 

@@ -18,7 +18,7 @@ import { sweepNoShows } from "./noShow";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { registerJob, trackJob } from "./opsJobs";
-import { pushToUser } from "./push";
+import { checkPushReceipts, pushToUser } from "./push";
 import { langsOfPatients } from "./remind";
 
 const DAY_MS = 86_400_000;
@@ -334,6 +334,7 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
   registerJob("schedules", intervalMs);
   registerJob("presence.sweep", intervalMs);
   registerJob("clinic.noShows", intervalMs);
+  registerJob("push.receipts", intervalMs);
   const tick = () => {
     trackJob("schedules", () => runDueSchedules()).catch((error) =>
       log.error("scheduler.tick_failed", { error: String(error) }),
@@ -352,6 +353,14 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      */
     void trackJob("clinic.noShows", () => systemContext(baseDb, () => sweepNoShows())).catch((error) =>
       log.warn("clinic.no_show_sweep_failed", { error: String(error) }),
+    );
+    /*
+     * Квитанции пуш-уведомлений (lib/push.ts). Раз в час хватает с запасом:
+     * Expo хранит их сутки, а вопрос «дошло ли» задают на следующий день, а
+     * не в ту же минуту. Заодно чистятся исходы старше полугода.
+     */
+    void trackJob("push.receipts", () => systemContext(baseDb, () => checkPushReceipts())).catch((error) =>
+      log.warn("push.receipts_failed", { error: String(error) }),
     );
     /*
      * Расшифровка записей приёма здесь больше не идёт — она вынесена в

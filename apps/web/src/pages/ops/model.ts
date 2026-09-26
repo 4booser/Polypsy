@@ -169,6 +169,7 @@ export const JOB_KEY: Record<string, UiKey> = {
   schedules: "ops.job.schedules",
   "presence.sweep": "ops.job.presence",
   "clinic.noShows": "ops.job.noShows",
+  "push.receipts": "ops.job.pushReceipts",
   notifier: "ops.job.notifier",
   "clinic.remind": "ops.job.remind",
   "mailings.push": "ops.job.mailings",

@@ -29,6 +29,7 @@ import {
   registerSchema,
   rescheduleAppointmentSchema,
   scheduleExceptionSchema,
+  screenViewsSchema,
   specialistProfileSchema,
   statModelInputSchema,
   statModelRunSchema,
@@ -413,6 +414,13 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/ops/sessions": { summary: "Активные сессии (семьи refresh-токенов): по человеку или поиском", access: "staff", permission: "users.manage" },
   "POST /api/ops/sessions/:id/revoke": { summary: "Завершить одну сессию", access: "staff", permission: "users.manage" },
   "GET /api/stats/storage": { summary: "Размеры таблиц и рост журнала", access: "superadmin", whyNoPermission: "техническое состояние хранилища; делегировать его мы не собираемся, и право осталось бы навсегда только у суперадмина" },
+
+  /* ── техпанель: данные и продукт ── */
+  "GET /api/ops/data/quality": { summary: "Проверки целостности данных: число, примеры (голые id), разбивка по методикам", access: "staff", permission: "ops.read" },
+  "GET /api/ops/data/usage": { summary: "Открытия экранов по шаблону маршрута, активные люди по дням, воронка пациента; `?days=7|30|90`", access: "staff", permission: "ops.read" },
+  "GET /api/ops/data/mobile": { summary: "Версии мобильного приложения, очередь на устройствах, опоздавшие сдачи; `?days=7|30|90`", access: "staff", permission: "ops.read" },
+  "GET /api/ops/data/push": { summary: "Пуш-уведомления: исходы, квитанции Expo, ошибки по отпечаткам токенов; `?days=7|30|90`", access: "staff", permission: "ops.read" },
+  "POST /api/usage/screens": { summary: "Пачка счётчиков открытия экранов: шаблон маршрута, не адрес; лишние поля отвергаются", access: "user", body: screenViewsSchema },
   "GET /api/timeline/:userId": { summary: "Хронология пациента: всё на одной оси", access: "staff", permission: "patients.read" },
   "GET /api/events": { summary: "Поток событий (SSE): тревоги и изменения случаев", access: "staff", permission: "alerts.review", streaming: true },
 

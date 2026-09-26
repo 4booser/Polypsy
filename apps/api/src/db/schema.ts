@@ -1790,6 +1790,35 @@ export const pushDeliveries = pgTable(
   }),
 );
 
+/**
+ * Исход каждого уведомления на каждом устройстве (миграция 0091).
+ *
+ * push_deliveries выше отвечает «решили ли отправить» и при сбое снимается —
+ * о сбоях она молчит по построению. Здесь — что ответил сервис Expo и что
+ * пришло в квитанции. Токена нет, только отпечаток: адрес устройства
+ * человека в техпанели не нужен никому.
+ */
+export const pushOutcomes = pgTable(
+  "push_outcomes",
+  {
+    id: text("id").primaryKey(),
+    at: timestampCol("at").notNull().default(sql`now()`),
+    kind: text("kind").notNull(),
+    platform: text("platform"),
+    /** Первые 16 знаков SHA-256 от токена */
+    tokenHash: text("token_hash").notNull(),
+    /** accepted — Expo выдал билет; rejected — Expo отказал; failed — до Expo не дошли */
+    status: text("status", { enum: ["accepted", "rejected", "failed"] }).notNull(),
+    error: text("error"),
+    ticketId: text("ticket_id"),
+    /** Квитанция: ok — передано Apple/Google; error — отказ с кодом в receipt_error */
+    receiptStatus: text("receipt_status", { enum: ["ok", "error"] }),
+    receiptError: text("receipt_error"),
+    receiptAt: timestampCol("receipt_at"),
+  },
+  (t) => ({ atIdx: index("push_outcomes_at_idx").on(t.at) }),
+);
+
 export const safetyPlans = pgTable(
   "safety_plans",
   {
@@ -2137,11 +2166,40 @@ export const devices = pgTable(
     wipeRequestedAt: timestampCol("wipe_requested_at"),
     wipeRequestedBy: text("wipe_requested_by").references(() => users.id, { onDelete: "set null" }),
     wipedAt: timestampCol("wiped_at"),
+    /**
+     * Версия приложения и номер сборки с последней отметки (миграция 0091).
+     * null — устройство отмечалось до неё: пришлёт при следующем запуске.
+     */
+    appVersion: text("app_version"),
+    appBuild: text("app_build"),
+    /**
+     * Сколько сдач лежит в офлайн-очереди устройства и сколько из них
+     * отклонено сервером — единственный способ увидеть то, что НЕ пришло.
+     */
+    queuePending: integer("queue_pending"),
+    queueRejected: integer("queue_rejected"),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
     userIdx: index("devices_user_idx").on(t.userId, t.lastSeenAt),
   }),
+);
+
+/**
+ * Открытия экранов: день × приложение × шаблон маршрута (миграция 0091).
+ *
+ * Шаблон, а не адрес — `/patients/:userId`, а не адрес с идентификатором:
+ * адрес говорил бы, чью карточку открывали, а это вопрос журнала чтений.
+ */
+export const screenViews = pgTable(
+  "screen_views",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    app: text("app", { enum: ["console", "patient", "mobile"] }).notNull(),
+    route: text("route").notNull(),
+    views: integer("views").notNull().default(0),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.day, t.app, t.route] }) }),
 );
 
 /**

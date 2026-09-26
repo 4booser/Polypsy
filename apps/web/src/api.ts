@@ -90,6 +90,11 @@ import type {
   StatModelListPage,
   StatModelUpdateInput,
   StatRunResult,
+  DataQualityReport,
+  UsageReport,
+  MobileReport,
+  PushReport,
+  ScreenViewsInput,
 } from "@quizzy/shared";
 import { uiText } from "@quizzy/shared";
 import { currentLang } from "./lang";
@@ -959,6 +964,24 @@ export const api = {
       drift: { code: string; title: string; month: string; psi: number; n: number; verdict: string }[];
       retest: { code: string; title: string; pairs: number; icc: number | null }[];
     }>(`/api/data-quality/surveys/${surveyId}`),
+
+  /*
+   * Техпанель, «Дані й продукт»: проверки целостности по всей базе,
+   * использование, мобильное приложение, пуши. Рядом с качеством данных
+   * методики: вопрос родственный, масштаб другой.
+   */
+  opsDataQuality: () => request<DataQualityReport>("/api/ops/data/quality"),
+  opsUsage: (days: 7 | 30 | 90) => request<UsageReport>(`/api/ops/data/usage?days=${days}`),
+  opsMobile: (days: 7 | 30 | 90) => request<MobileReport>(`/api/ops/data/mobile?days=${days}`),
+  opsPush: (days: 7 | 30 | 90) => request<PushReport>(`/api/ops/data/push?days=${days}`),
+  /**
+   * Пачка счётчиков открытия экранов (telemetry/screens.ts).
+   *
+   * `keepalive` — чтобы последняя пачка ушла и при закрытии вкладки: без
+   * него браузер обрывает запрос вместе со страницей.
+   */
+  sendScreenViews: (input: ScreenViewsInput, keepalive = false) =>
+    request<{ ok: true }>("/api/usage/screens", { method: "POST", body: JSON.stringify(input), keepalive }),
 
   ageCurves: (surveyId: string) =>
     request<{

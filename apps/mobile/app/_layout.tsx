@@ -10,6 +10,7 @@ import { TextScaleProvider } from "@/textScale";
 import { api } from "@/api/client";
 import { AppLock } from "@/components/AppLock";
 import { useColors } from "@/theme";
+import { useScreenTelemetry } from "@/telemetry/screens";
 
 export default function RootLayout() {
   /*
@@ -63,6 +64,8 @@ export default function RootLayout() {
 function RootStack() {
   const { ut } = useLang();
   const c = useColors();
+  // какие экраны открывают — шаблоном маршрута, без людей и адресов (src/telemetry)
+  useScreenTelemetry();
   return (
     <Stack
       screenOptions={{
