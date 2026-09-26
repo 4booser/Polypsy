@@ -99,6 +99,10 @@ export function band(scaleId: string, min: number, max: number, label: string, o
     description: null,
     grade: null,
     recommendation: null,
+    cascadeBatteryId: null,
+    cascadeDueDays: null,
+    followUpDays: null,
+    position: 0,
     ...over,
   };
 }

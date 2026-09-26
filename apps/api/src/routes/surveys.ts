@@ -7,19 +7,19 @@ import {
   surveyGetQuery,
   surveyListQuery,
   updateSurveySchema,
-  type SurveyFull,
   type SurveyKeySheet,
   type SurveyListItem,
   type SurveyListPage,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { responses, surveyVersions, surveys } from "../db/schema";
-import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { attachContent, createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
+import { batteries, responses, surveyVersions, surveys } from "../db/schema";
+import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { attachContent, createVersion, getSurvey, surveyToDraft, versionContent, type Content } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { hasPermission } from "../lib/permissions";
 import {
+  accessibleGroupIds,
   assertGroupAccess,
   assertSurveyAccess,
   assertSurveyFolderAccess,
@@ -31,26 +31,41 @@ import { patientVisibilityFilter } from "./access";
 import { hasGrant } from "../lib/scope";
 
 /**
- * Приводит сохранённую методику к виду, который понимает валидатор.
+ * Каскад полосы указывает на батарею, которую редактор видит.
  *
- * Сохранённая методика хранит ключ ссылками на вопросы и поправки ссылками на
- * шкалы, а валидатор работает с номерами пунктов и кодами шкал, как в пособии.
- * Без этого перевода проверка молча считала бы поправки битыми.
+ * Пока createVersion каскад не записывал, проверять было нечего; теперь он
+ * пишется — и ссылка на несуществующую батарею упёрлась бы во внешний ключ
+ * пятисоткой, а на батарею чужой группы — назначала бы пациентам этой
+ * методики чужой набор, открывая им чужие методики (назначение даёт доступ).
+ * Правило видимости — то же, что у списка батарей в конструкторе
+ * (routes/batteries.ts): своя группа или общая.
+ *
+ * Проверяется только новое: каскад, который уже стоит в действующей версии
+ * (`already`), поставил тот, кто имел на это право, — и правка вопросов
+ * другим сотрудником не должна из-за него отказывать. Конструктор при
+ * сохранении присылает все полосы целиком, вместе с чужими каскадами.
  */
-function toValidatable(survey: SurveyFull | null) {
-  if (!survey) return { questions: [], scales: [] };
-  const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
-  return {
-    questions: survey.questions,
-    scales: survey.scales.map((s) => ({
-      ...s,
-      key: s.items.flatMap((i) => {
-        const item = indexById.get(i.questionId);
-        return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
-      }),
-      corrections: s.corrections.map((c) => ({ from: c.sourceScaleCode, coefficient: c.coefficient })),
-    })),
-  };
+async function assertCascadeTargets(
+  user: Parameters<typeof accessibleGroupIds>[0],
+  scales: { code: string; bands: { cascadeBatteryId?: string | null }[] }[],
+  already: ReadonlySet<string> = new Set(),
+): Promise<void> {
+  const wanted = scales.flatMap((s) =>
+    s.bands.flatMap((b) =>
+      b.cascadeBatteryId && !already.has(b.cascadeBatteryId) ? [{ id: b.cascadeBatteryId, code: s.code }] : [],
+    ),
+  );
+  if (!wanted.length) return;
+  const groups = await accessibleGroupIds(user);
+  const rows = await db
+    .select({ id: batteries.id, groupId: batteries.groupId })
+    .from(batteries)
+    .where(inArray(batteries.id, [...new Set(wanted.map((w) => w.id))]));
+  for (const w of wanted) {
+    const row = rows.find((r) => r.id === w.id);
+    const visible = !!row && (groups === null || row.groupId === null || groups.includes(row.groupId));
+    if (!visible) badRequest("err.cascadeBatteryNotFound", { title: w.code });
+  }
 }
 
 export const surveyRoutes = new Hono<AppEnv>();
@@ -328,6 +343,7 @@ surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c
     const folder = await assertSurveyFolderAccess(c.get("user"), input.folderId);
     if (folder.groupId !== (input.groupId ?? null)) badRequest("err.surveyFolderOtherGroup");
   }
+  await assertCascadeTargets(c.get("user"), input.scales);
 
   const [row] = await db
     .insert(surveys)
@@ -372,7 +388,18 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
   const input = await parseBody(c.req.raw, updateSurveySchema);
   if (input.groupId) await assertGroupAccess(c.get("user"), input.groupId);
 
-  const existing = await db.query.surveys.findFirst({ where: eq(surveys.id, id) });
+  /*
+   * Строка методики — под замком до конца запроса.
+   *
+   * Правка читает действующую версию (перенос неуказанного, проверка перед
+   * публикацией, базовая версия) и пишет новую. Без замка две правки,
+   * сохранённые разом, читали бы одну и ту же действующую версию: правка
+   * одних шкал и правка одних вопросов, перенося друг у друга «неуказанное»,
+   * молча стёрли бы одна другую. С замком вторая ждёт коммита первой и
+   * читает уже её версию. Тот же замок берёт createVersion при выделении
+   * номера — повторно в той же транзакции он ничего не стоит.
+   */
+  const [existing] = await db.select().from(surveys).where(eq(surveys.id, id)).for("update");
   if (!existing) notFound("err.surveyNotFound");
 
   /*
@@ -397,6 +424,61 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
   const goingLive = input.status === "published" && existing.status !== "published";
 
   /*
+   * Правка начата от версии, которая уже не действующая, — конфликт, а не
+   * запись поверх.
+   *
+   * Клиент, приславший baseVersionId (versionId методики, которую он
+   * открыл), получает 409, если между открытием и сохранением методику
+   * сохранил кто-то другой: принять правку значило бы молча выбросить
+   * чужую. Без baseVersionId правки встают в очередь под замком и каждая
+   * становится новой версией — как было, но без пятисотки на номере.
+   * Проверяется только правка содержимого: настройки методики версий не
+   * создают и друг друга не стирают.
+   */
+  if (changesContent && input.baseVersionId && input.baseVersionId !== existing.currentVersionId) {
+    conflict("err.surveyVersionConflict");
+  }
+
+  /*
+   * Действующая версия — сырой, на всех языках: из неё переносится то, чего
+   * правка не касается, и по ней проверяется методика, которую публикуют
+   * без правки содержимого.
+   */
+  const current =
+    changesContent || input.status === "published" ? await getSurvey(id, null, "uk", true) : null;
+  if (input.scales) {
+    const already = new Set(
+      (current?.scales ?? []).flatMap((s) => s.bands.flatMap((b) => (b.cascadeBatteryId ? [b.cascadeBatteryId] : []))),
+    );
+    await assertCascadeTargets(c.get("user"), input.scales, already);
+  }
+
+  /*
+   * Неуказанное — переносится, а не стирается.
+   *
+   * PATCH с одними questions создавал версию с пустыми scales и sections:
+   * методика переставала считаться вовсе, а шкалы с полосами и каскадами
+   * пропадали из действующей версии без единого предупреждения. PATCH с
+   * одними scales — версию без единого вопроса. Каждая часть, которой нет
+   * в запросе, берётся из действующей версии целиком (versionContent —
+   * без потерь). Пустой массив в запросе — это «сделать пустым», а не
+   * «не трогать».
+   *
+   * Ключ перенесённой шкалы ссылается на пункты по номеру, как в пособиях:
+   * присылая одни вопросы, клиент сохраняет их порядок, иначе номера в ключе
+   * укажут на другие пункты. Опубликованную методику от этого страхует
+   * проверка ниже — ключ на несуществующий пункт она не пропустит.
+   */
+  const carried = current ? versionContent(current) : null;
+  const next: Content | null = changesContent
+    ? {
+        sections: input.sections ?? carried?.sections ?? [],
+        scales: input.scales ?? carried?.scales ?? [],
+        questions: input.questions ?? carried?.questions ?? [],
+      }
+    : null;
+
+  /*
    * Смена группы снимает методику с полки. Папка живёт в группе, и в новой
    * группе этой папки нет; оставить указатель значило бы показать
    * сотрудникам нового отделения папку, которой им не видно, — а база такой
@@ -410,11 +492,21 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
    * Публикация со структурными ошибками запрещена: методика, которая не может
    * быть корректно посчитана, не должна попадать к пациентам. Черновик с
    * ошибками сохранить можно — это нормальное состояние незаконченной работы.
+   *
+   * «Публикация» — не только явный status: "published". Правка содержимого
+   * методики, которая УЖЕ опубликована, делает новую версию действующей для
+   * пациентов сразу же, и проверка обязана быть той же. Раньше она стояла
+   * только на поле status, а конструктор сохраняет опубликованную методику
+   * без него — и сломанная версия уходила к пациентам в обход проверки.
+   *
+   * Проверяется методика, которая получится, — с перенесённым, а не только
+   * присланное. Валидатор работает с номерами пунктов и кодами шкал, как в
+   * пособии; versionContent отдаёт ровно это, без перевода ссылок база
+   * ошибочно считала бы поправки битыми.
    */
-  if (input.status === "published") {
-    const full = changesContent
-      ? { questions: input.questions ?? [], scales: input.scales ?? [] }
-      : toValidatable(await getSurvey(id, null, "uk", true));
+  const staysLive = (input.status ?? existing.status) === "published";
+  if (input.status === "published" || (changesContent && staysLive)) {
+    const full = next ?? (current ? versionContent(current) : { questions: [], scales: [] });
     const errors = validateSurvey(full as never).filter((i) => i.level === "error");
     if (errors.length) {
       badRequest("err.surveyPublishErrors", {
@@ -451,19 +543,12 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
     .where(eq(surveys.id, id))
     .returning();
 
-  if (changesContent) {
+  if (next) {
     // правка не трогает старые строки: создаётся новая версия, а уже собранные
-    // прохождения продолжают ссылаться на ту версию, которую респондент видел
-    await createVersion(
-      id,
-      {
-        sections: input.sections ?? [],
-        scales: input.scales ?? [],
-        questions: input.questions ?? [],
-      },
-      c.get("user").id,
-      input.versionNote,
-    );
+    // прохождения продолжают ссылаться на ту версию, которую респондент видел.
+    // Действующая версия идёт источником: условия показа, ссылающиеся на её
+    // варианты, переводятся на варианты новой (lib/surveys, remapOptionRefs)
+    await createVersion(id, next, c.get("user").id, input.versionNote, current ?? undefined);
   }
 
   await audit(c, {
@@ -483,8 +568,14 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
 /** Копия методики — штатный способ «отредактировать» методику, по которой уже есть данные */
 surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edit"), async (c) => {
   await assertSurveyAccess(c.get("user"), c.req.param("id"));
-  const source = await getSurvey(c.req.param("id"));
+  /*
+   * Исходник — сырой, на всех языках. Копия собиралась из украинской
+   * выдачи, и русский текст пунктов терялся, а украинский ложился с
+   * пометкой «ru» (normalizeLocalized метит строку русским).
+   */
+  const source = await getSurvey(c.req.param("id"), null, "uk", true);
   if (!source) notFound("err.surveyNotFound");
+  const titleIn = (lang: "uk" | "ru") => t(source.title as never, lang);
 
   const [row] = await db
     .insert(surveys)
@@ -493,9 +584,9 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
       groupId: source.groupId,
       // копия ложится рядом с оригиналом: искать её в корне каталога незачем
       folderId: source.folderId,
-      title: { uk: `${source.title} (копія)`, ru: `${source.title} (копия)` } as Record<string, string>,
-      description: source.description ? { uk: source.description } : null,
-      instructions: source.instructions ? { uk: source.instructions } : null,
+      title: { uk: `${titleIn("uk")} (копія)`, ru: `${titleIn("ru")} (копия)` } as Record<string, string>,
+      description: normalizeLocalized(source.description as never),
+      instructions: normalizeLocalized(source.instructions as never),
       status: "draft",
       timeLimitSec: source.timeLimitSec,
       randomizeQuestions: source.randomizeQuestions,
@@ -506,87 +597,27 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
       administration: source.administration,
       allowRetake: source.allowRetake,
       scoringEnabled: source.scoringEnabled,
+      /*
+       * План безопасности и пороги — часть методики, а не оформление. Копия
+       * их не несла: в копии с критическими пунктами тревога поднималась, а
+       * кризисной карточки человек не видел — её текст остался у оригинала.
+       */
+      safetyPlan: normalizeLocalized(source.safetyPlan as never),
+      tooFastMs: source.tooFastMs,
+      alertEscalateMinutes: source.alertEscalateMinutes,
+      showResultsToPatient: source.showResultsToPatient,
       createdBy: c.get("user").id,
     })
     .returning();
 
-  const sectionKeyById = new Map(source.sections.map((s) => [s.id, s.id]));
-  const questionIndexById = new Map(source.questions.map((q, i) => [q.id, i]));
-
-  await createVersion(
-    row!.id,
-    {
-    sections: source.sections.map((s) => ({
-      key: s.id,
-      title: s.title,
-      description: s.description,
-    })),
-    // копия сохраняет всю механику шкал, иначе она перестанет считаться
-    scales: source.scales.map((s) => ({
-      code: s.code,
-      title: s.title,
-      description: s.description,
-      aggregation: s.aggregation,
-      kind: s.kind,
-      normalization: s.normalization,
-      ratioDenominator: s.ratioDenominator,
-      validityThreshold: s.validityThreshold,
-      validityDirection: s.validityDirection,
-      validityMessage: s.validityMessage,
-      bands: s.bands.map((b) => ({
-        minScore: b.minScore,
-        maxScore: b.maxScore,
-        label: b.label,
-        severity: b.severity,
-        description: b.description,
-        grade: b.grade,
-        recommendation: b.recommendation,
-      })),
-      key: s.items.flatMap((i) => {
-        const idx = questionIndexById.get(i.questionId);
-        return idx === undefined ? [] : [{ item: idx + 1, matchKey: i.matchKey, weight: i.weight }];
-      }),
-      corrections: s.corrections.map((c) => ({ from: c.sourceScaleCode, coefficient: c.coefficient })),
-      norms: s.norms,
-      stenTable: s.stenTable,
-    })),
-    questions: source.questions.map((q) => ({
-      type: q.type,
-      title: q.title,
-      help: q.help,
-      required: q.required,
-      sectionKey: q.sectionId ? (sectionKeyById.get(q.sectionId) ?? null) : null,
-      scaleCode: source.scales.find((s) => s.id === q.scaleId)?.code ?? null,
-      reverseScored: q.reverseScored,
-      minValue: q.minValue,
-      maxValue: q.maxValue,
-      step: q.step,
-      minLabel: q.minLabel,
-      maxLabel: q.maxLabel,
-      randomizeOptions: q.randomizeOptions,
-      timeLimitSec: q.timeLimitSec,
-      riskThreshold: q.riskThreshold,
-      riskLabel: q.riskLabel,
-      riskSeverity: q.riskSeverity,
-      options: q.options.map((o) => ({
-        text: o.text,
-        score: o.score,
-        kind: o.kind,
-        riskFlag: o.riskFlag,
-        riskLabel: o.riskLabel,
-        riskSeverity: o.riskSeverity,
-      })),
-      logic: q.logic.flatMap((rule) => {
-        const sourceIndex = questionIndexById.get(rule.sourceQuestionId);
-        return sourceIndex === undefined
-          ? []
-          : [{ sourceIndex, operator: rule.operator, value: rule.value, action: rule.action }];
-      }),
-    })),
-    },
-    c.get("user").id,
-    `Копия «${source.title}»`,
-  );
+  /*
+   * Содержимое — тем же переводом, что перенос при правке (versionContent),
+   * а не своим списком полей. Свой список терял коды вариантов — ключ
+   * «Так/Ні» у копии СР-45 давал ноль по всем шкалам — и оставлял условия
+   * показа на вариантах исходника, где они не срабатывают никогда. Исходник
+   * идёт источником: ссылки условий переводятся на варианты копии.
+   */
+  await createVersion(row!.id, versionContent(source), c.get("user").id, `Копия «${titleIn("uk")}»`, source);
 
   await audit(c, {
     action: "survey.duplicate",
@@ -826,6 +857,8 @@ surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), as
     */
     return c.json({ error: renderError("err.structureErrors", langOf(c)), issues }, 422);
   }
+  // выгрузка каскадов не несёт (surveyToDraft), но файл правят руками — и ссылка обязана вести к своей батарее
+  await assertCascadeTargets(user, input.scales);
 
   const id = crypto.randomUUID();
   await db.insert(surveys).values({

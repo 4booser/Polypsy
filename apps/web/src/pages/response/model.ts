@@ -1,5 +1,6 @@
 import {
   TOO_FAST_MS,
+  bandFor,
   itemContribution,
   itemMaxContribution,
   quantile,
@@ -193,7 +194,8 @@ export function buildResponseView(detail: ResponseDetail, survey: SurveyFull): R
      * помнит подпись полосы на момент подсчёта, и совпадение по ней надёжнее,
      * чем оставить лестницу без подсветки при живой полосе.
      */
-    const byValue = sc.band ? bands.find((b) => sc.value >= b.minScore && sc.value <= b.maxScore) : undefined;
+    // тем же правилом, что движок (bandFor): щель точности между полосами — полуинтервал
+    const byValue = sc.band ? (bandFor(bands, sc.value) ?? undefined) : undefined;
     const hitId = byValue?.id ?? (sc.band ? bands.find((b) => b.label === sc.band?.label)?.id : undefined);
     return {
       scaleId: sc.scaleId,

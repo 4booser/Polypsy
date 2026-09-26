@@ -1,6 +1,8 @@
 export * from "./types";
 export * from "./schemas";
 export * from "./scoring";
+/* оценка сдачи целиком: отбор ответов, профиль и риск — общая для сервера и клиентов */
+export * from "./risk";
 export * from "./validate";
 export * from "./phone";
 export * from "./uiStrings";

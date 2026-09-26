@@ -145,10 +145,16 @@ describe("вес варианта и лестница полос", () => {
     const leaked = res.body.answers.flatMap((a) => a.options.filter((o) => o.score !== null).map((o) => o.id));
     expect(leaked, `веса вариантов ушли обследуемому: ${leaked.slice(0, 3).join(", ")}`).toEqual([]);
 
-    // всё остальное — то же, что видит персонал: ответы, баллы и лестница (у шкалы достоверности она пуста, и это норма)
+    // ответы — те же, что видит персонал
     const staff = (await api<ResponseDetail>(`/api/responses/${responseId}`, adminA.token)).body;
     expect(res.body.answers.map((a) => a.optionIds)).toEqual(staff.answers.map((a) => a.optionIds));
-    expect(res.body.scores.map((s) => s.bands)).toEqual(staff.scores.map((s) => s.bands));
+    /*
+     * Баллов и лестницы у обследуемого нет: у методики снят показ результатов
+     * пациенту (showResultsToPatient), и с волны 12 сервер это уважает и
+     * здесь (engine; routes/responses.ts, resultsShownTo). Персонал их видит.
+     */
+    expect(res.body.scores).toEqual([]);
+    expect(staff.scores.length).toBeGreaterThan(0);
   });
 });
 
