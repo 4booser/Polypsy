@@ -10,6 +10,7 @@ import { GlyphLink, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { DEFAULT_PER, pageCount, pageFrom, perFrom } from "../constructor/catalogue";
 import { filterModels, modelHref, pageSlice } from "./model";
+import { AnalyticsTabs } from "./tabs";
 
 /*
  * Перечень аналитики — кадр f10 макета.
@@ -86,6 +87,8 @@ export default function AnalyticsList() {
   return (
     <Page
       title={ut("am.title")}
+      /* вкладки «Моделі · Тести» — над строкой f10, почему именно там — см. tabs.tsx */
+      crumbs={<AnalyticsTabs />}
       snug
       pagerGap={78}
       toolbar={

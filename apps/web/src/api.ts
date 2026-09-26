@@ -283,6 +283,23 @@ export interface Patient {
   unit: string | null;
 }
 
+/** Срез аналитики методики и списка её прохождений: период, человек, группа людей */
+export interface AnalyticsSlice {
+  from?: string;
+  to?: string;
+  userId?: string;
+  patientGroup?: string;
+}
+
+function sliceParams(slice?: AnalyticsSlice): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const key of ["from", "to", "userId", "patientGroup"] as const) {
+    const v = slice?.[key];
+    if (v) params.set(key, v);
+  }
+  return params;
+}
+
 export interface VersionDiffResult extends VersionDiff {
   before: { versionId: string | null; versionNumber: number };
   after: { versionId: string | null; versionNumber: number };
@@ -538,18 +555,27 @@ export const api = {
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
   severityTrend: () => request<SeverityTrendResult>("/api/analytics/severity-trend"),
-  analytics: (id: string, versionId?: string, range?: { from?: string; to?: string }) => {
-    const params = new URLSearchParams();
+  /**
+   * Аналитика методики. Срез (`slice`) — тот же, что у списка прохождений
+   * ниже: вкладка «Тести» ставит их рядом под одной строкой фильтров, и
+   * разойтись им нельзя. Пустые значения в адрес не попадают — сервер
+   * читает «?userId=» как «человек с пустым идентификатором».
+   */
+  analytics: (id: string, versionId?: string, slice?: AnalyticsSlice) => {
+    const params = sliceParams(slice);
     if (versionId) params.set("versionId", versionId);
-    if (range?.from) params.set("from", range.from);
-    if (range?.to) params.set("to", range.to);
     const qs = params.toString();
     return request<SurveyAnalytics>(`/api/analytics/surveys/${id}${qs ? `?${qs}` : ""}`);
   },
-  responses: (id: string, before?: string | null) =>
-    request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
-      `/api/surveys/${id}/responses?limit=50${before ? `&before=${encodeURIComponent(before)}` : ""}`,
-    ),
+  responses: (id: string, before?: string | null, slice?: AnalyticsSlice & { versionId?: string }) => {
+    const params = sliceParams(slice);
+    params.set("limit", "50");
+    if (slice?.versionId) params.set("versionId", slice.versionId);
+    if (before) params.set("before", before);
+    return request<{ rows: SurveyResponse[]; hasMore: boolean; nextBefore: string | null }>(
+      `/api/surveys/${id}/responses?${params.toString()}`,
+    );
+  },
   exportUrl: (id: string) => `/api/analytics/surveys/${id}/export`,
   spssDataUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/data.csv?profile=${profile}`,
   spssSyntaxUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/syntax.sps?profile=${profile}`,
