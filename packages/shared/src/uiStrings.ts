@@ -7143,6 +7143,21 @@ export const UI = {
     ru: "Не получается подтвердить? Выйдите из учётной записи и войдите снова с паролем.",
     en: "Cannot confirm? Sign out and sign in again with your password.",
   },
+  /*
+   * Результат методики, которую пациенту не показывают (showResultsToPatient
+   * снят — runner/resultView.ts): вместо баллов — почему их нет, а в строке
+   * про офлайн-сдачу — без «бали нижче».
+   */
+  "msv.scoresForSpecialist": {
+    uk: "Бали тлумачить фахівець — саме тому ми їх тут не показуємо.",
+    ru: "Баллы истолкует специалист — именно поэтому мы их здесь не показываем.",
+    en: "The specialist interprets the scores — that is why we do not show them here.",
+  },
+  "msv.tookQueuedNoScores": {
+    uk: "Проходження зайняло {d}. Мережі немає — відповіді збережено на пристрої і вони підуть самі, щойно вона з’явиться.",
+    ru: "Прохождение заняло {d}. Сети нет — ответы сохранены на устройстве и уйдут сами, как только она появится.",
+    en: "The test took {d}. There is no network — answers are saved on the device and will be sent automatically as soon as it is back.",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 
