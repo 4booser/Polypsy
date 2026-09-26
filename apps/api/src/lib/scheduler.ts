@@ -15,6 +15,7 @@ import { grantAccess } from "./grantAccess";
 import { publish } from "./events";
 import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
+import { securityTick } from "./integrity";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -342,6 +343,16 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      */
     void systemContext(baseDb, () => sweepNoShows()).catch((error) =>
       log.warn("clinic.no_show_sweep_failed", { error: String(error) }),
+    );
+    /*
+     * Безопасность (техпанель, lib/integrity.ts): отметка смены секретов —
+     * каждый тик, сверка цепочки журнала — раз в сутки. Сутки отмеряет сама
+     * задача по последней плановой сверке в базе, а не счётчик тиков:
+     * счётчик обнулялся бы каждым перезапуском. Разрыв цепочки — log.error и
+     * запись sec.audit_chain_broken в журнал.
+     */
+    void securityTick().catch((error) =>
+      log.warn("sec.tick_failed", { error: String(error) }),
     );
     /*
      * Расшифровка записей приёма здесь больше не идёт — она вынесена в

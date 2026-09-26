@@ -14,7 +14,9 @@ import { sql } from "drizzle-orm";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { answers, conclusions, users } from "../db/schema";
-import { encryptField } from "./crypto";
+import { activeKey, encryptField, tryDecryptField } from "./crypto";
+import { encryptedColumns, recordingFiles, type EncryptedColumn } from "./keyInventory";
+import { rewrapAudio } from "./recordings";
 
 export interface BackfillCounts {
   users: number;
@@ -88,4 +90,133 @@ export async function runEncryptBackfill(): Promise<BackfillCounts> {
 
     return counts;
   });
+}
+
+/* ═══════════ перешифровка на основной ключ (ротация) ═══════════ */
+
+/*
+ * Проход выше отвечает на вопрос «что лежит открытым» и только на него: всё
+ * с заголовком enc1: он пропускает. А RUNBOOK обещал большее — «прогнать
+ * db:encrypt (перешифрует старое активным ключом)», — и этого не делал
+ * никто: значения на старом ключе оставались на нём сколько угодно
+ * прогонов, и «когда enc1:v-старый: не останется» не наступало никогда.
+ *
+ * Здесь — недостающая половина: всё, что лежит не на основном ключе
+ * (открытым текстом или на любом другом), переводится на основной. По
+ * описи шифрованных колонок (lib/keyInventory), а не по трём таблицам:
+ * заметки приёма, планы безопасности, переписка, рассылки, стенограммы и
+ * телефоны шифруются тем же ключом, и ротация, забывшая их, оставила бы их
+ * на ключе, который вот-вот уберут.
+ *
+ * Порциями и по первичному ключу: огромная таблица не держит одну
+ * транзакцию на час, а оборванный проход продолжается с начала без потерь —
+ * перешифрованное уже на основном ключе и в выборку не попадает.
+ */
+
+export interface RewrapBatch {
+  /** Последний просмотренный первичный ключ — отсюда следующая порция */
+  last: string | null;
+  /** Сколько строк выбрано: меньше лимита — колонка пройдена */
+  seen: number;
+  rewrapped: number;
+  /** Не расшифровалось: ключа нет или значение битое — не тронуто */
+  skipped: number;
+}
+
+const likeEscape = (s: string) => s.replace(/[\\%_]/g, (m) => `\\${m}`);
+
+/**
+ * Одна порция одной колонки. Контекст (системный, app.maintenance) задаёт
+ * вызывающий: порция — единица транзакции, а не прохода.
+ */
+export async function rewrapBatch(col: EncryptedColumn, after: string | null, limit: number): Promise<RewrapBatch> {
+  const active = activeKey();
+  if (!active) throw new Error("ENCRYPTION_KEY не задан — перешифровывать не на что");
+  if (!col.pk) return { last: null, seen: 0, rewrapped: 0, skipped: 0 };
+
+  const t = sql.raw(`"${col.table}"`);
+  const c = sql.raw(`"${col.column}"`);
+  const pk = sql.raw(`"${col.pk}"`);
+  const current = `enc1:${likeEscape(active.id)}:%`;
+
+  const rows = await db.execute<{ id: string; v: string }>(sql`
+    select ${pk}::text as id, ${c} as v
+      from ${t}
+     where ${c} is not null and ${c} <> '' and ${c} not like ${current}
+       and (${after}::text is null or ${pk}::text > ${after}::text)
+     order by ${pk}::text
+     limit ${limit}
+  `);
+
+  let rewrapped = 0;
+  let skipped = 0;
+  let last: string | null = after;
+  for (const row of rows) {
+    last = String(row.id);
+    const opened = tryDecryptField(String(row.v));
+    if (!opened.ok) {
+      skipped++;
+      continue;
+    }
+    /*
+     * Сравнение со старым значением в самом UPDATE: между выборкой и записью
+     * строку мог поправить живой запрос, и его значение (уже на основном
+     * ключе) затёрлось бы нашим, собранным из прежнего.
+     */
+    const next = encryptField(opened.plain);
+    const updated = await db.execute(sql`
+      update ${t} set ${c} = ${next}
+       where ${pk}::text = ${row.id} and ${c} = ${row.v}
+    `);
+    if ((updated as unknown as { count?: number }).count !== 0) rewrapped++;
+  }
+  return { last, seen: rows.length, rewrapped, skipped };
+}
+
+export interface RewrapTotals {
+  rewrapped: number;
+  skipped: number;
+  files: number;
+  filesUnreadable: number;
+}
+
+/**
+ * Весь проход: колонки порциями, потом файлы записей приёма. `onBatch`
+ * получает прирост после каждой порции — фоновое задание техпанели пишет
+ * по нему ход, скрипт db:encrypt не передаёт ничего.
+ */
+export async function rewrapAll(
+  onBatch: (delta: { processed: number; skipped: number }) => Promise<void> = async () => {},
+  batchSize = 200,
+): Promise<RewrapTotals> {
+  const totals: RewrapTotals = { rewrapped: 0, skipped: 0, files: 0, filesUnreadable: 0 };
+  const columns = await systemContext(baseDb, () => encryptedColumns());
+
+  for (const col of columns) {
+    let after: string | null = null;
+    for (;;) {
+      const from: string | null = after;
+      const batch: RewrapBatch = await systemContext(baseDb, async () => {
+        // подписанные заключения неизменяемы для всех, кроме служебной сессии
+        await db.execute(sql`select set_config('app.maintenance', '1', true)`);
+        return rewrapBatch(col, from, batchSize);
+      });
+      totals.rewrapped += batch.rewrapped;
+      totals.skipped += batch.skipped;
+      await onBatch({ processed: batch.rewrapped + batch.skipped, skipped: batch.skipped });
+      if (batch.seen < batchSize) break;
+      after = batch.last;
+    }
+  }
+
+  const { paths } = await systemContext(baseDb, () => recordingFiles());
+  for (const path of paths) {
+    const outcome = await rewrapAudio(path);
+    if (outcome === "rewrapped") totals.files++;
+    if (outcome === "unreadable") totals.filesUnreadable++;
+    if (outcome === "rewrapped" || outcome === "unreadable") {
+      await onBatch({ processed: 1, skipped: outcome === "unreadable" ? 1 : 0 });
+    }
+  }
+  return totals;
 }

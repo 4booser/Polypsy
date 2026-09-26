@@ -39,6 +39,7 @@ export const OPS_GROUPS: OpsGroup[] = [
       { to: "/ops/db", label: "ops.tab.db", perm: "ops.read" },
       /* ── sections:obs2 ── */
       /* ── sections:sec-system ── */
+      { to: "/ops/integrity", label: "ops.tab.integrity", role: "superadmin" },
     ],
   },
   {
@@ -59,6 +60,8 @@ export const OPS_GROUPS: OpsGroup[] = [
       { to: "/ops/audit", label: "ops.tab.audit", perm: "audit.read" },
       /* ── sections:people2 ── */
       /* ── sections:sec ── */
+      { to: "/ops/keys", label: "ops.tab.keys", role: "superadmin" },
+      { to: "/ops/sql", label: "ops.tab.sql", role: "superadmin" },
     ],
   },
   {

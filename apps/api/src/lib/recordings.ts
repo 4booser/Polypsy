@@ -1,11 +1,11 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { visitRecordings } from "../db/schema";
 import { env } from "../env";
-import { activeKey, keyById } from "./crypto";
+import { activeKey, keyById, loadedKeyIds } from "./crypto";
 import { log } from "./log";
 
 /**
@@ -38,20 +38,87 @@ function fileHeader(keyId: string): Buffer {
   return Buffer.from(`${FILE_PREFIX}:${keyId}:`, "utf8");
 }
 
+/**
+ * Каким ключом зашифрован файл: идентификатор из заголовка, null — файл без
+ * заголовка (записан до его появления). Хватает первых MAX_HEADER байт —
+ * техпанель считает файлы по ключам, не читая многомегабайтное тело.
+ */
+export function recordingKeyId(blob: Buffer): { keyId: string | null; bodyAt: number } {
+  const head = blob.subarray(0, MAX_HEADER).toString("latin1");
+  if (!head.startsWith(`${FILE_PREFIX}:`)) return { keyId: null, bodyAt: 0 };
+  const end = head.indexOf(":", FILE_PREFIX.length + 1);
+  return { keyId: end > 0 ? head.slice(FILE_PREFIX.length + 1, end) : "", bodyAt: end + 1 };
+}
+
 /** Разобрать заголовок: ключ файла и то, что после заголовка */
 function openFile(blob: Buffer): { key: Buffer; body: Buffer } {
-  const head = blob.subarray(0, MAX_HEADER).toString("latin1");
-  if (head.startsWith(`${FILE_PREFIX}:`)) {
-    const end = head.indexOf(":", FILE_PREFIX.length + 1);
-    const keyId = end > 0 ? head.slice(FILE_PREFIX.length + 1, end) : "";
+  const { keyId, bodyAt } = recordingKeyId(blob);
+  if (keyId !== null) {
     const key = keyId ? keyById(keyId) : undefined;
     if (!key) throw new Error(`ключ ${keyId || "?"} не найден: запись приёма не расшифровать`);
-    return { key, body: blob.subarray(end + 1) };
+    return { key, body: blob.subarray(bodyAt) };
   }
   // легаси: заголовка нет, писалось активным ключом
   const active = activeKey();
   if (!active) throw new Error("шифрование не настроено");
   return { key: active.key, body: blob };
+}
+
+function decryptPayload(key: Buffer, payload: Buffer): Buffer {
+  const decipher = createDecipheriv("aes-256-gcm", key, payload.subarray(0, 12));
+  decipher.setAuthTag(payload.subarray(12, 28));
+  return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]);
+}
+
+/**
+ * Перешифровать файл записи на основной ключ — шаг ротации ключей.
+ *
+ * Без этого шага ротация тихо губила бы записи приёма: поля в базе
+ * перешифровываются, счётчик «на старом ключе» показывает ноль, старый ключ
+ * убирают — и файлы, записанные им, больше не открыть. Хуже того, файлы без
+ * заголовка читаются ОСНОВНЫМ ключом (см. openFile), то есть ломаются уже в
+ * момент, когда основным становится новый ключ.
+ *
+ * Для файла без заголовка ключ ищется перебором загруженных: тег GCM
+ * отличает верный ключ от неверного без догадок. Новый файл пишется рядом и
+ * подменяет старый переименованием — атомарно: читающий видит либо прежний
+ * файл целиком, либо новый целиком.
+ */
+export async function rewrapAudio(
+  path: string,
+): Promise<"rewrapped" | "current" | "unreadable" | "missing"> {
+  const active = activeKey();
+  if (!active) throw new Error("шифрование не настроено");
+  let blob: Buffer;
+  try {
+    blob = await readFile(path);
+  } catch {
+    return "missing";
+  }
+  const { keyId, bodyAt } = recordingKeyId(blob);
+  if (keyId === active.id) return "current";
+
+  const candidates = keyId !== null ? [keyById(keyId)] : loadedKeyIds().map((id) => keyById(id));
+  const payload = blob.subarray(bodyAt);
+  let plain: Buffer | null = null;
+  for (const key of candidates) {
+    if (!key) continue;
+    try {
+      plain = decryptPayload(key, payload);
+      break;
+    } catch {
+      // не тот ключ — тег не сошёлся; пробуем следующий
+    }
+  }
+  if (!plain) return "unreadable";
+
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", active.key, iv);
+  const body = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const next = `${path}.rewrap-${crypto.randomUUID()}`;
+  await writeFile(next, Buffer.concat([fileHeader(active.id), iv, cipher.getAuthTag(), body]));
+  await rename(next, path);
+  return "rewrapped";
 }
 
 /**
@@ -78,12 +145,7 @@ export async function storeAudio(id: string, bytes: Uint8Array): Promise<string>
 export async function readAudio(path: string): Promise<Buffer> {
   const blob = await readFile(path);
   const { key, body: payload } = openFile(blob);
-  const iv = payload.subarray(0, 12);
-  const tag = payload.subarray(12, 28);
-  const body = payload.subarray(28);
-  const decipher = createDecipheriv("aes-256-gcm", key, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(body), decipher.final()]);
+  return decryptPayload(key, payload);
 }
 
 /** Стереть файл. Строка в базе остаётся: след того, что запись была, нужен */
