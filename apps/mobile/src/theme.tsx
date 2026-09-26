@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { useColorScheme } from "react-native";
 import { chartDark, chartLight, chartNight, dark, light, night } from "./palettes";
 import { prefStorage } from "./storage";
+import { currentLang } from "./currentLang";
 import { SEVERITY_FILL, formatDuration as sharedDuration, type Severity, type UiKey } from "@quizzy/shared";
 
 
@@ -131,5 +132,11 @@ export const type = {
   mono: { fontVariant: ["tabular-nums"] } as { fontVariant: ["tabular-nums"] },
 } as const;
 
-/** Длительность — из общего пакета, чтобы формат совпадал с консолью */
-export const formatDuration = sharedDuration;
+/**
+ * Длительность — из общего пакета, чтобы формат совпадал с консолью.
+ *
+ * Язык — текущий язык приложения (currentLang): единицы у языков разные
+ * («4 хв», «4 мин», «4 min»). Модуль, а не хук: зовут её прямо в разметке
+ * десятка экранов, и каждый из них и так перерисовывается при смене языка.
+ */
+export const formatDuration = (ms: number): string => sharedDuration(ms, currentLang);

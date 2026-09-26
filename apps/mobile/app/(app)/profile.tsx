@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { LANG_NAMES, ageAt, type MyDynamics } from "@quizzy/shared";
+import { LANGS, LANG_NAMES, ageAt, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { authenticate, isAvailable, isEnabled, setEnabled as setBiometrics } from "@/auth/biometrics";
 import { useAuth } from "@/auth/AuthContext";
@@ -108,7 +108,7 @@ export default function AccountScreen() {
       <Card>
         <Body>{ut("profile.language")}</Body>
         <Row>
-          {(["uk", "ru"] as const).map((code) => (
+          {LANGS.map((code) => (
             <Chip
               key={code}
               label={LANG_NAMES[code].full}

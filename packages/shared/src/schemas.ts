@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ALWAYS_VISIBLE_RAIL } from "./permissions";
+import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
 
 export const roleSchema = z.enum(["superadmin", "admin", "user"]);
 
@@ -7,6 +8,12 @@ export const roleSchema = z.enum(["superadmin", "admin", "user"]);
  * Текст в конструкторе можно задать строкой или объектом языков.
  * Строка нормализуется в объект на записи — так старые вызовы продолжают
  * работать, а двуязычные методики заводятся сразу как есть.
+ *
+ * Языки — CONTENT_LANGS, а не все языки интерфейса: английского текста у
+ * методик нет намеренно (см. types.ts). Поле `en` схема не отвергает, а
+ * отбрасывает — так делает zod с любым лишним ключом, — и методика с ним
+ * сохраняется без него. Отказ был бы честнее, но сломал бы импорт методик,
+ * выгруженных где-то ещё, ради поля, которое здесь всё равно не читают.
  */
 export const localizedSchema = z.union([
   z.string().max(4000),
@@ -20,7 +27,7 @@ export function normalizeLocalized(
    * текст, заведённый строкой, написан по-русски. Двуязычные методики
    * передают объект и этого умолчания не касаются.
    */
-  defaultLang: "uk" | "ru" = "ru",
+  defaultLang: ContentLang = "ru",
 ): Record<string, string> | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "string") return value.trim() ? { [defaultLang]: value } : null;
@@ -947,7 +954,12 @@ export const auditQuery = dateRangeQuery.extend({
 
 export const exportQuery = z.object({
   profile: queryEnum(["full", "deidentified", "anonymous"], "full"),
-  lang: queryEnum(["uk", "ru"], "ru"),
+  /*
+   * Язык подписей в выгрузке — язык СОДЕРЖИМОГО (названия пунктов и
+   * вариантов), поэтому из CONTENT_LANGS: английских подписей у методик нет,
+   * и «?lang=en» честнее отвергнуть, чем молча отдать украинские.
+   */
+  lang: queryEnum(CONTENT_LANGS, "ru"),
   /**
    * Зачем выгружают.
    *
@@ -1135,7 +1147,7 @@ export const workspacePrefsSchema = z.object({
    */
   motion: z.enum(["system", "reduced"]).optional(),
   theme: z.enum(["dark", "light"]).optional(),
-  lang: z.enum(["uk", "ru"]).optional(),
+  lang: z.enum(LANGS).optional(),
   dismissedHints: z.array(z.string().max(60)).max(100).optional(),
   /*
    * Скрытые пункты рельсы. Сигнальные сюда не проходят: правило проверяется

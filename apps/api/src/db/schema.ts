@@ -14,7 +14,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { LocalizedText, SampleFilters, StatModelColumn } from "@quizzy/shared";
+import { LANGS, type LocalizedText, type SampleFilters, type StatModelColumn } from "@quizzy/shared";
 
 /**
  * Временные метки храним как timestamptz: в отличие от SQLite, где всё было
@@ -1051,8 +1051,15 @@ export const responses = pgTable(
     respondentSex: text("respondent_sex", { enum: ["male", "female"] }),
     /** "<25" | "25-34" | "35-44" | "45+" */
     respondentAgeBand: text("respondent_age_band"),
-    /** Язык предъявления контента — психометрический фактор (7.4) */
-    lang: text("lang", { enum: ["uk", "ru"] }),
+    /**
+     * Язык предъявления контента — психометрический фактор (7.4).
+     *
+     * Язык ТЕКСТА, а не интерфейса: при английском интерфейсе здесь
+     * украинский — пункты показаны по-украински (SurveyFull.contentLang).
+     * Тип допускает все языки на день, когда английский текст появится у
+     * какой-нибудь методики; ограничения в базе нет и не было.
+     */
+    lang: text("lang", { enum: LANGS }),
     /**
      * Достоверен ли протокол по шкалам достоверности.
      *
@@ -1720,6 +1727,12 @@ export const pushTokens = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     token: text("token").notNull(),
     platform: text("platform", { enum: ["ios", "android", "web"] }).notNull(),
+    /**
+     * Язык приложения на этом устройстве — на нём пишутся уведомления.
+     * Приходит заголовком при регистрации; null — устройство
+     * зарегистрировано до миграции 0087 (см. её обоснование).
+     */
+    lang: text("lang", { enum: LANGS }),
     /** Когда устройство последний раз выходило на связь: мёртвые чистятся */
     lastSeenAt: timestampCol("last_seen_at").notNull().default(sql`now()`),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),

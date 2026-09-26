@@ -25,7 +25,7 @@ type Specialist = {
  */
 export default function BookingScreen() {
   const c = useColors();
-  const { ut } = useLang();
+  const { ut, locale } = useLang();
   const router = useRouter();
 
   const [specialists, setSpecialists] = useState<Specialist[] | null>(null);
@@ -130,13 +130,13 @@ export default function BookingScreen() {
               {slots.slice(0, 40).map((slot) => (
                 <Card key={slot.id}>
                   <Body>
-                    {new Date(slot.startsAt).toLocaleDateString([], {
+                    {new Date(slot.startsAt).toLocaleDateString(locale, {
                       day: "2-digit",
                       month: "long",
                       weekday: "short",
                     })}
                     {", "}
-                    {new Date(slot.startsAt).toLocaleTimeString([], {
+                    {new Date(slot.startsAt).toLocaleTimeString(locale, {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}

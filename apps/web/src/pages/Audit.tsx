@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { BarList, Chart } from "../charts";
-import { dateTime } from "../format";
+import { dateTime, locale } from "../format";
 import { Screen } from "../ui";
 import { Page, Panel, Grid, Stack } from "../ui/layout";
 import { Stat, Tag, Toolbar } from "../ui/primitives";
@@ -179,7 +179,7 @@ function Storage() {
                   </div>
                 </td>
                 <td className="num w-[90px]">{t.totalPretty}</td>
-                <td className="num w-[110px] text-muted">{t.rows.toLocaleString("uk-UA")} {ut("aud.rows")}</td>
+                <td className="num w-[110px] text-muted">{t.rows.toLocaleString(locale())} {ut("aud.rows")}</td>
               </tr>
             ))}
           </tbody>

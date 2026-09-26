@@ -57,17 +57,21 @@ export async function pushMailings(now = new Date()): Promise<number> {
 
   let sent = 0;
   for (const r of rows) {
-    // не проходил ничего — украинский, государственный язык учреждения
-    const lang = langs.get(r.userId) ?? "uk";
+    // для устройств без своего языка (см. langsOfPatients); не проходил ничего — украинский
+    const fallback = langs.get(r.userId) ?? "uk";
     const ok = await systemContext(baseDb, () =>
-      pushToUser(r.userId, {
-        eventKey: `mailing:${r.mailingId}`,
-        kind: "mailing",
-        // ни темы, ни текста: экран блокировки видят посторонние
-        title: renderPush("push.mailingTitle", lang),
-        body: renderPush("push.mailingBody", lang),
-        path: "/messages",
-      }),
+      pushToUser(
+        r.userId,
+        {
+          eventKey: `mailing:${r.mailingId}`,
+          kind: "mailing",
+          // ни темы, ни текста: экран блокировки видят посторонние
+          title: (lang) => renderPush("push.mailingTitle", lang),
+          body: (lang) => renderPush("push.mailingBody", lang),
+          path: "/messages",
+        },
+        fallback,
+      ),
     );
     if (ok) sent += 1;
   }

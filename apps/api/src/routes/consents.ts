@@ -67,8 +67,23 @@ consentRoutes.post("/me/accept", async (c) => {
 
 /* ── управление текстом (суперадмин) ── */
 
+/*
+ * Английский — необязательным третьим. Согласие — не методика: норм у него
+ * нет, и довод, по которому у методик нет английского текста, сюда не
+ * дотягивается. Не заполнен — человеку с английским интерфейсом покажут
+ * украинский (t() → LANG_FALLBACK), как и прочее содержимое. Пустая строка
+ * здесь означает «не задан»: поле формы отправляется всегда.
+ */
 const textSchema = z.object({
-  body: z.object({ uk: z.string().min(10), ru: z.string().min(10) }),
+  body: z.object({
+    uk: z.string().min(10),
+    ru: z.string().min(10),
+    en: z
+      .string()
+      .optional()
+      .transform((v) => (v?.trim() ? v : undefined))
+      .pipe(z.string().min(10).optional()),
+  }),
 });
 
 consentRoutes.get("/text", requireSuperadmin, async (c) => {

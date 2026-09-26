@@ -1,18 +1,23 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import type { ErrorKey, ErrorParams, Lang } from "@quizzy/shared";
+import { detectLang, isLang, parseAcceptLanguage, type ErrorKey, type ErrorParams, type Lang } from "@quizzy/shared";
 import type { z, ZodTypeAny } from "zod";
 
 /**
  * Язык выдачи: параметр ?lang, иначе заголовок Accept-Language, иначе украинский.
  * Отсутствующий перевод подменяется другим языком уже в t(), поэтому пустых
  * экранов не бывает.
+ *
+ * Заголовок разбирается целиком, по весам, и тем же правилом, что язык
+ * браузера на клиенте (detectLang): наши клиенты шлют один язык, а браузер,
+ * открывший печатную форму напрямую, — свой список. Прежде читались только
+ * первые две буквы, и «en-US,uk;q=0.9» давало украинский лишь потому, что
+ * всё, кроме русского, им и было.
  */
 export function langOf(c: Context): Lang {
   const q = c.req.query("lang");
-  if (q === "ru" || q === "uk") return q;
-  const header = c.req.header("Accept-Language") ?? "";
-  return header.toLowerCase().startsWith("ru") ? "ru" : "uk";
+  if (isLang(q)) return q;
+  return detectLang(parseAcceptLanguage(c.req.header("Accept-Language")));
 }
 
 /*

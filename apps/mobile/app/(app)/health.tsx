@@ -17,7 +17,7 @@ import { spacing, type, useColors } from "@/theme";
  */
 export default function HealthScreen() {
   const c = useColors();
-  const { ut } = useLang();
+  const { ut, locale } = useLang();
   const router = useRouter();
   const [data, setData] = useState<MyDynamics | null | undefined>(undefined);
 
@@ -78,12 +78,12 @@ export default function HealthScreen() {
                     <Body>
                       {ut("hl.latest")}: {Math.round(latest.value * 10) / 10}
                       {latest.bandLabel ? ` — ${latest.bandLabel}` : ""} ·{" "}
-                      {new Date(latest.submittedAt).toLocaleDateString()}
+                      {new Date(latest.submittedAt).toLocaleDateString(locale)}
                     </Body>
                     <Body muted>
                       {ut("hl.before")}: {Math.round(before.value * 10) / 10}
                       {before.bandLabel ? ` — ${before.bandLabel}` : ""} ·{" "}
-                      {new Date(before.submittedAt).toLocaleDateString()}
+                      {new Date(before.submittedAt).toLocaleDateString(locale)}
                     </Body>
                   </View>
                 );

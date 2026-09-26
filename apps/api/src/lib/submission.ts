@@ -6,6 +6,7 @@ import {
   isAnswered,
   isQuestionVisible,
   type Answer,
+  type Lang,
   type ProfileResult,
   type Question,
   type ScoreResult,
@@ -71,7 +72,7 @@ export async function persistSubmission(
   survey: SurveyFull,
   subject: Pick<UserRow, "id" | "sex" | "birthDate">,
   input: SubmitResponseInput,
-  options: { filledBySelf: boolean; lang?: "uk" | "ru"; source?: ResponseSource },
+  options: { filledBySelf: boolean; lang?: Lang; source?: ResponseSource },
 ): Promise<PersistResult> {
   validateAnswers(survey, input);
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { LANG_NAMES, LANG_SELF_LABEL, detectLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
+import { LANGS, LANG_NAMES, LANG_SELF_LABEL, detectLang, isLang, makeUiT, type Lang, type UiKey } from "@quizzy/shared";
 
 /**
  * Язык консоли.
@@ -8,10 +8,10 @@ import { LANG_NAMES, LANG_SELF_LABEL, detectLang, makeUiT, type Lang, type UiKey
  * специалист читает эти экраны каждый день. Содержимое методик уже
  * двуязычно, а обёртка вокруг него была зашита в разметку.
  *
- * По умолчанию — из настроек браузера (uk-* → украинский), переключается в
- * верхней панели и запоминается. Тот же выбор уходит в Accept-Language —
- * сервер выбирает по нему язык названий методик, инструкций и текстов
- * отказов.
+ * По умолчанию — из настроек браузера (первый из uk/ru/en в списке языков,
+ * см. detectLang), переключается в верхней панели и запоминается. Тот же
+ * выбор уходит в Accept-Language — сервер выбирает по нему язык названий
+ * методик, инструкций и текстов отказов.
  *
  * Долгое время это было написано здесь, но не сделано в api.ts: заголовок не
  * отправлялся, сервер отвечал по умолчанию по-украински, и переключатель
@@ -33,7 +33,7 @@ export let currentLang: Lang = readSavedLang();
 function readSavedLang(): Lang {
   try {
     const saved = localStorage.getItem(KEY);
-    if (saved === "uk" || saved === "ru") return saved;
+    if (isLang(saved)) return saved;
     return detectLang(navigator.languages ?? [navigator.language]);
   } catch {
     // приватный режим и киоски без хранилища: язык берётся из браузера
@@ -90,19 +90,19 @@ export function LangSwitch() {
   const { lang, setLang } = useLang();
   return (
     /*
-      Сегментированный переключатель, а не две кнопки рядом: две кнопки
-      выглядят как два действия, а здесь одно состояние из двух. Текущий язык
-      виден заливкой, а не только жирностью — жирность на трёх буквах
+      Сегментированный переключатель, а не кнопки рядом: кнопки выглядят
+      как отдельные действия, а здесь одно состояние из нескольких. Текущий
+      язык виден заливкой, а не только жирностью — жирность на трёх буквах
       прописными не читается.
     */
     <div
       role="group"
-      /* двуязычное имя одной записью на оба переключателя — см. types.ts */
+      /* многоязычное имя одной записью на оба переключателя — см. types.ts */
       aria-label={LANG_SELF_LABEL}
       className="flex items-center overflow-hidden rounded-md border border-hairline"
     >
-      {/* языки — ключи LANG_NAMES, а не два литерала: третий встаёт сюда сам (см. shell/LangMenu.tsx) */}
-      {(Object.keys(LANG_NAMES) as Lang[]).map((code) => (
+      {/* все языки перечнем из общего пакета: третий язык появился здесь без правки разметки */}
+      {LANGS.map((code) => (
         <button
           key={code}
           type="button"

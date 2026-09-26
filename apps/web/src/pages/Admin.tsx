@@ -190,6 +190,8 @@ export function ConsentText() {
   const { ut } = useLang();
   const [uk, setUk] = useState("");
   const [ru, setRu] = useState("");
+  // английский необязателен: пустое поле — «не задан», и человеку с английским интерфейсом покажут украинский
+  const [en, setEn] = useState("");
   const [version, setVersion] = useState<number | null>(null);
   const { run } = useAction();
 
@@ -199,6 +201,7 @@ export function ConsentText() {
     setVersion(current.version);
     setUk(current.body.uk ?? "");
     setRu(current.body.ru ?? "");
+    setEn(current.body.en ?? "");
   }, [current]);
 
   /*
@@ -220,21 +223,29 @@ export function ConsentText() {
       }
     >
       <Panel>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 min-[900px]:grid-cols-3">
         <Field label={ut("adm.inUkrainian")}>
           <Textarea rows={5} value={uk} onChange={(e) => setUk(e.target.value)} />
         </Field>
         <Field label={ut("adm.inRussian")}>
           <Textarea rows={5} value={ru} onChange={(e) => setRu(e.target.value)} />
         </Field>
+        <Field label={ut("adm.inEnglish")}>
+          <Textarea rows={5} value={en} onChange={(e) => setEn(e.target.value)} />
+        </Field>
       </div>
       <div className="mt-3">
         <Button
           variant="primary"
-          disabled={uk.trim().length < 10 || ru.trim().length < 10}
+          disabled={
+            uk.trim().length < 10 ||
+            ru.trim().length < 10 ||
+            // начатый английский должен быть текстом, а не парой букв — ту же границу держит сервер
+            (en.trim().length > 0 && en.trim().length < 10)
+          }
           onClick={() =>
             run(async () => {
-              const res = await api.saveConsentText({ uk: uk.trim(), ru: ru.trim() });
+              const res = await api.saveConsentText({ uk: uk.trim(), ru: ru.trim(), en: en.trim() });
               setVersion(res.version);
             }, ut("adm.consentSaved"))
           }
