@@ -9,6 +9,7 @@ import { Readout } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useResource } from "../../useResource";
 import { buildResponseView, type QuestionView, type ScaleLadder } from "./model";
+import { ResponseTabs } from "./tabs";
 
 /*
  * Пройденный тест — кадры f31 и f34 макета, один экран.
@@ -107,6 +108,14 @@ export default function ResponseView() {
       actions={<span className="text-[17px] font-bold text-primary">{makeUiT(lang)("top.lang")}</span>}
     >
       <p className="sr-only">{meta}</p>
+      {/*
+        Вкладки «Відповіді · Графіки» — единственное, что добавлено к кадру
+        f34: сам протокол ниже не тронут. На кадре вкладок нет, потому что
+        графиков прохождения на кадрах нет вовсе; они появились по просьбе
+        заказчика (2026-09-26) отдельной вкладкой, чтобы протокол остался
+        таким, каким нарисован.
+      */}
+      <ResponseTabs surveyId={detail.survey.id} responseId={detail.id} />
       {survey.description ? (
         <section className="mb-[40px]">
           <h2 className="m-0 mb-[12px] text-[18px] font-bold leading-tight text-primary">

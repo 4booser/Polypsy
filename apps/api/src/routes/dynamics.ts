@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { ageAt, equate, itemContribution, reliableChange, respondentQuery, t } from "@quizzy/shared";
+import { ageAt, equate, itemContribution, reliableChange, respondentDynamicsQuery, respondentQuery, t } from "@quizzy/shared";
 import type { RespondentDynamics, ScaleDynamics, Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
@@ -189,6 +189,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   const lang = langOf(c);
   const staff = c.get("user");
   const userId = c.req.param("userId");
+  const { survey: onlySurvey } = parseQuery(c, respondentDynamicsQuery);
 
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!patient) notFound("err.patientNotFound");
@@ -202,8 +203,23 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
   const allowed = await accessiblePatientIds(staff);
   if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
+  /*
+   * ?survey=<id> сужает всё, что ниже, до одной методики — и выборку для
+   * перцентиля и SD, и подсчёт альфы, самый дорогой шаг маршрута (до трёхсот
+   * прохождений с ответами на каждую методику человека). Графики одного
+   * прохождения просят ровно одну методику, и считать ради неё остальные
+   * девять — чистая трата.
+   *
+   * Сужение — внутри зоны, а не вместо неё: методика вне зоны сотрудника
+   * отвечает тем же пустым списком, что и методика, которой человек не
+   * проходил. Отказ «нет доступа» рассказал бы, что такая методика у
+   * человека есть.
+   */
   const scope = await surveyScopeFilterFor(staff, userId);
-  const scoped = await db.select().from(surveys).where(scope);
+  const scoped = await db
+    .select()
+    .from(surveys)
+    .where(onlySurvey ? and(scope, eq(surveys.id, onlySurvey)) : scope);
   const surveyIds = scoped.map((s) => s.id);
   if (!surveyIds.length) {
     return c.json({
@@ -585,7 +601,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     resourceType: "respondent",
     resourceId: userId,
     subjectUserId: userId,
-    details: { view: "dynamics", surveys: result.surveys.length },
+    // сужение по методике — тоже в журнал: «смотрел динамику PHQ-9» и «смотрел всю карту» — разные чтения
+    details: { view: "dynamics", surveys: result.surveys.length, ...(onlySurvey ? { survey: onlySurvey } : {}) },
   });
 
   return c.json(result);

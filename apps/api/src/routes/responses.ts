@@ -537,6 +537,15 @@ responseRoutes.get("/responses/:id", async (c) => {
 
   return c.json({
     id: response.id,
+    /*
+     * Обследуемый. Графикам прохождения нужна динамика этого человека по
+     * этой методике, а адрес прохождения человека не несёт. Нового здесь
+     * читающий не узнаёт: прохождение и так открыто только ему самому и
+     * персоналу в зоне методики, а чтение уже записано в журнал выше с тем же
+     * subjectUserId. У анонимной методики и у заполненного со слов другого
+     * здесь null — прохождение с человеком не связано намеренно.
+     */
+    userId: response.userId,
     survey: {
       id: survey.id,
       title: survey.title,
@@ -578,6 +587,13 @@ responseRoutes.get("/responses/:id", async (c) => {
         kind: "clinical" as const,
         correctedScore: s.rawScore,
         value: s.value,
+        /*
+         * Удалось ли нормирование — из сохранённого при подсчёте. Тип
+         * ответа (ScoreResult) обещал это поле давно, а маршрут его не
+         * отдавал, и экран не мог отличить сырой балл от T-балла: без
+         * полосы «64» читалось бы как T 64, хотя это сырой балл без нормы.
+         */
+        normalized: s.normalized,
         normalization: s.normalization,
         rawScore: s.rawScore,
         maxScore: s.maxScore,

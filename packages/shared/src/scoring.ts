@@ -75,8 +75,14 @@ export function answerScore(question: Question, answer: Answer | undefined): num
   return min + max - raw;
 }
 
-/** Максимально возможный вклад пункта в шкалу по её ключу */
-function itemMaxContribution(question: Question, item: ScaleItem): number {
+/**
+ * Максимально возможный вклад пункта в шкалу по её ключу.
+ *
+ * Открыт наружу ради графиков прохождения: полоса «внесок пункту» строится
+ * от нуля до того, что пункт мог дать, и считать этот верх вторым способом
+ * рядом с движком значило бы однажды разойтись с максимумом шкалы.
+ */
+export function itemMaxContribution(question: Question, item: ScaleItem): number {
   if (item.matchKey !== null) return item.weight;
   const range = questionScoreRange(question);
   return Math.max(Math.abs(range.min), Math.abs(range.max)) * item.weight;
