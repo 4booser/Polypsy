@@ -57,6 +57,9 @@ fi
 
 # одноразовая база с меткой времени: параллельные прогоны не мешают друг другу
 check_db="quizzy_verify_$(date +%s)"
+# restore.sh берётся рядом с этим файлом, а не из ./scripts текущего каталога:
+# обслуживание (maintenance.yml) привозит свежие скрипты во временную папку и
+# запускает их из каталога установки — там лежат копии со дня настройки
 base_url="${DATABASE_URL%/*}"
 admin_url="$base_url/postgres"
 
@@ -67,7 +70,7 @@ trap cleanup EXIT
 
 $PG_EXEC psql "$admin_url" -q -c "CREATE DATABASE \"$check_db\""
 DATABASE_URL="$base_url/$check_db" BACKUP_PASSPHRASE="$BACKUP_PASSPHRASE" \
-  PG_EXEC="$PG_EXEC" ./scripts/restore.sh "$latest" >/dev/null
+  PG_EXEC="$PG_EXEC" "$(dirname "$0")/restore.sh" "$latest" >/dev/null
 
 restored_url="$base_url/$check_db"
 
