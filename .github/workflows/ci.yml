@@ -105,6 +105,19 @@ jobs:
     needs: test
     steps:
       - uses: actions/checkout@v4
+      # Состав разбирается здесь, а не впервые на сервере: повтор ключа в
+      # environment (так встала выкатка v1.11.1) compose отвергает целиком,
+      # и узнавать об этом на шаге «docker compose up» — поздно. Секреты —
+      # заглушки: проверяется разбор файла, а не значения.
+      - name: Состав docker-compose разбирается
+        run: docker compose -f docker-compose.yml config -q
+        env:
+          JWT_SECRET: ci-placeholder
+          ENCRYPTION_KEY: ci-placeholder
+          PHONE_INDEX_SECRET: ci-placeholder
+          EXPORT_SECRET: ci-placeholder
+          APP_DB_PASSWORD: ci-placeholder
+          POSTGRES_PASSWORD: ci-placeholder
       - name: Сборка образа API
         run: docker build -f apps/api/Dockerfile .
       - name: Сборка образа консоли
