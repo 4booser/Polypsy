@@ -217,7 +217,7 @@ export default function Runner() {
                */
               if (!(error instanceof ApiError) || !isTransientStatus(error.status) || !user) throw error;
               outbox.enqueue(user.id, survey.id, body);
-              setDone({ safetyPlan: offlineSafetyPlan(survey, payload as { optionIds?: string[] }[]), queued: true });
+              setDone({ safetyPlan: offlineSafetyPlan(survey, payload, user), queued: true });
               // «надіслано» здесь было бы неправдой — всплывашку не показываем
               return false;
             }

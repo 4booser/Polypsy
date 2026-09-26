@@ -2,7 +2,7 @@ import {
   ageAt,
   ageBandOf,
   answerScore,
-  computeProfile,
+  evaluateSubmission,
   isAnswered,
   isQuestionVisible,
   type Answer,
@@ -10,19 +10,30 @@ import {
   type ProfileResult,
   type Question,
   type ScoreResult,
+  type SubmissionRisk,
   type SubmitResponseInput,
   type SurveyFull,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
-import { answerEvents, answers, responseScores, responses, riskAlerts, type UserRow } from "../db/schema";
+import { and, eq } from "drizzle-orm";
+import {
+  answerEvents,
+  answers,
+  responseScores,
+  responses,
+  riskAlerts,
+  surveyAccess,
+  surveyVersions,
+  type UserRow,
+} from "../db/schema";
 import { badRequest } from "./http";
 import { decryptField, encryptField } from "./crypto";
 import { responseSource } from "./responseSource";
 import { attachToCase } from "./alertCases";
 import { applyRules } from "./decisions";
 import { publish } from "./events";
-import { detectRisks } from "./risk";
+import { log } from "./log";
 import { assertAttemptsLeft, consumeAttempt } from "./attempts";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
@@ -37,6 +48,23 @@ import { runCascades, type CascadeOutcome } from "./cascade";
  */
 
 export function validateAnswers(survey: SurveyFull, input: SubmitResponseInput): Map<string, Answer> {
+  /*
+   * Один ответ на вопрос.
+   *
+   * Карта ниже оставляет последний из повторов, и проверялся только он — а
+   * записывались все: первый, непроверенный, ложился в ответы прохождения
+   * рядом со вторым. Такой сдачи честный клиент не собирает, и принимать её
+   * не за что.
+   */
+  const seen = new Set<string>();
+  for (const a of input.answers) {
+    if (seen.has(a.questionId)) {
+      const title = survey.questions.find((q) => q.id === a.questionId)?.title ?? a.questionId;
+      badRequest("err.duplicateAnswer", { title });
+    }
+    seen.add(a.questionId);
+  }
+
   const answerMap = new Map(input.answers.map((a) => [a.questionId, a as Answer]));
 
   for (const question of survey.questions) {
@@ -62,8 +90,22 @@ export interface PersistResult {
   submittedAt: string;
   scores: ScoreResult[];
   profile: ProfileResult;
-  /** Сработали критические пункты — вызывающий решает, что показать */
+  /**
+   * Сколько сигналов риска дала сдача — критические ответы и полосы шкал.
+   * До волны 12 считались только ответы; что показать, решается по `risk`.
+   */
   risksTriggered: number;
+  /**
+   * Итоговый риск сдачи — тот самый, по которому подняты тревоги и
+   * проверены правила (packages/shared/src/risk.ts). Кризисная карточка
+   * берёт его же: три решения по одному прохождению не расходятся.
+   */
+  risk: SubmissionRisk;
+  /**
+   * Вопросы, ответы на которые пришли, но вопрос скрыт условием показа:
+   * такие ответы не считались и не записаны. Для журнала сдачи.
+   */
+  hiddenDropped: string[];
   /** Что назначила автоматика по интерпретационным полосам */
   cascade: CascadeOutcome;
 }
@@ -116,22 +158,43 @@ export async function persistSubmission(
     await assertAttemptsLeft(linkedUserId, survey.id);
   }
 
+  const submittedAt = await completionTime(survey, linkedUserId, input);
   const respondent = {
     sex: subject.sex,
-    age: ageAt(decryptField(subject.birthDate), new Date().toISOString()),
+    // возраст — на момент ответов, а не отправки: нормы стратифицированы по возрасту
+    age: ageAt(decryptField(subject.birthDate), submittedAt),
   };
   // снэпшоты стратификации на момент сдачи: профиль меняется, история — нет;
   // и это единственный путь SQL-группировки при шифрованной дате рождения
   const ageBand = ageBandOf(respondent.age);
-  const profile: ProfileResult = survey.scoringEnabled
-    ? computeProfile(survey, input.answers as Answer[], respondent)
-    : { scores: [], reliable: true, warnings: [] };
+  /*
+   * Отбор ответов, профиль и риск — одним вызовом общего движка, тем же, что
+   * у клиентов без сети (packages/shared/src/risk.ts). Здесь больше не
+   * решается ни что считать, ни что считать риском: иначе сервер и
+   * устройство снова разошлись бы, а разошлись они ровно на кризисной
+   * карточке.
+   *
+   * Скрытые условием ответы отбрасываются до подсчёта, записи и поиска
+   * риска — проверка выше их пропускает, значит, и считать их не за что.
+   */
+  const evaluation = evaluateSubmission(survey, input.answers as Answer[], respondent);
+  const profile: ProfileResult = evaluation.profile;
   const scores = profile.scores;
+  const risk = evaluation.risk;
+  const counted = evaluation.answers;
   const responseId = crypto.randomUUID();
-  const submittedAt = new Date().toISOString();
   const validIds = new Set(survey.questions.map((q) => q.id));
+  const questionById = new Map(survey.questions.map((q) => [q.id, q]));
 
-  const risks = detectRisks(survey, input.answers as Answer[]);
+  if (evaluation.hidden.length) {
+    // идентификаторы пунктов — не сведения о человеке; число и какие — для разбора клиента
+    log.warn("submission.hidden_answers_dropped", {
+      surveyId: survey.id,
+      versionId: survey.versionId,
+      count: evaluation.hidden.length,
+      questionIds: evaluation.hidden,
+    });
+  }
 
   await db.transaction(async (tx) => {
     if (linkedUserId && options.filledBySelf) {
@@ -171,15 +234,24 @@ export async function persistSubmission(
         (linkedUserId ? await responseSource(linkedUserId, survey.id, input.onBehalfOf ?? null) : null),
     });
 
-    // тревоги — до подсчёта: они не зависят от шкал и должны сработать даже
-    // у методики без подсчёта
+    /*
+     * Тревоги — по итоговому риску сдачи: критические ответы (они есть и у
+     * методики без подсчёта) и полосы содержательных шкал. Список сигналов
+     * решён движком (packages/shared/src/risk.ts, detectBandRisks — почему
+     * полоса тоже сигнал и почему только содержательной шкалы); здесь он
+     * только записывается.
+     */
     const riskAt = new Date().toISOString();
-    for (const risk of risks) {
+    const signals = [
+      ...risk.answers.map((r) => ({ questionId: r.questionId, scaleId: null, label: r.label, severity: r.severity })),
+      ...risk.bands.map((r) => ({ questionId: null, scaleId: r.scaleId, label: r.label, severity: r.severity })),
+    ];
+    for (const signal of signals) {
       // случай открывается один на человека: разбирают не пункты, а человека
       const caseId = await attachToCase(tx as never, {
         userId: linkedUserId,
         surveyId: survey.id,
-        severity: risk.severity,
+        severity: signal.severity,
         at: riskAt,
       });
       await tx
@@ -188,11 +260,12 @@ export async function persistSubmission(
           id: crypto.randomUUID(),
           responseId,
           surveyId: survey.id,
-          questionId: risk.questionId,
+          questionId: signal.questionId,
+          scaleId: signal.scaleId,
           userId: linkedUserId,
           caseId,
-          label: risk.label,
-          severity: risk.severity,
+          label: signal.label,
+          severity: signal.severity,
           at: riskAt,
         })
         .onConflictDoNothing();
@@ -206,14 +279,16 @@ export async function persistSubmission(
         kind: "alert.created",
         surveyIds: [survey.id],
         userId: linkedUserId,
-        severity: risk.severity,
+        severity: signal.severity,
         at: riskAt,
       });
     }
 
-    for (const answer of input.answers) {
-      if (!validIds.has(answer.questionId)) continue;
-      const question = survey.questions.find((q) => q.id === answer.questionId)!;
+    // записываются те же ответы, что посчитаны: скрытый условием пункт не
+    // должен всплыть в карте, в разборе пунктов и в аналитике по пунктам
+    for (const answer of counted) {
+      const question = questionById.get(answer.questionId);
+      if (!question) continue;
       await tx.insert(answers).values({
         id: crypto.randomUUID(),
         responseId,
@@ -244,62 +319,6 @@ export async function persistSubmission(
         elapsedMs: event.elapsedMs,
         at: event.at,
         value: event.value ?? null,
-      });
-    }
-
-    /*
-     * Сигнал по полосе шкалы.
-     *
-     * Тревогу до сих пор поднимал только вариант ответа с riskFlag. У МЛО
-     * «Адаптивність-200» — основной методики учреждения — таких вариантов
-     * нет ни одного: её суицидальный риск выражен полосой стенов, и полоса
-     * «вкрай низький рівень» не поднимала ни тревоги, ни случая. Человек с
-     * крайним значением по СР не появлялся в очереди разбора вовсе. То же у
-     * PHQ-9: 27 баллов из 27 при ответе «жодного разу» на девятый пункт не
-     * давали ничего.
-     *
-     * Берутся только содержательные шкалы: полоса шкалы достоверности
-     * говорит о качестве протокола, а не о состоянии человека, и звать по
-     * ней специалиста незачем.
-     *
-     * `normalized === false` пропускается: полосы заданы в единицах
-     * нормировки, и при неудавшейся нормировке движок полосу не назначает —
-     * но проверить это здесь дешевле, чем однажды получить тревогу по
-     * сырому баллу, случайно попавшему в диапазон стенов.
-     */
-    for (const score of scores) {
-      const severity = score.band?.severity;
-      if (score.kind !== "clinical") continue;
-      if (severity !== "moderate" && severity !== "severe") continue;
-
-      const caseId = await attachToCase(tx as never, {
-        userId: linkedUserId,
-        surveyId: survey.id,
-        severity,
-        at: riskAt,
-      });
-      await tx
-        .insert(riskAlerts)
-        .values({
-          id: crypto.randomUUID(),
-          responseId,
-          surveyId: survey.id,
-          questionId: null,
-          scaleId: score.scaleId,
-          userId: linkedUserId,
-          caseId,
-          label: `${score.scaleTitle}: ${score.band?.label ?? ""}`.trim(),
-          severity,
-          at: riskAt,
-        })
-        .onConflictDoNothing();
-
-      await publish(tx as never, {
-        kind: "alert.created",
-        surveyIds: [survey.id],
-        userId: linkedUserId,
-        severity,
-        at: riskAt,
       });
     }
 
@@ -344,9 +363,12 @@ export async function persistSubmission(
       surveyId: survey.id,
       userId: linkedUserId,
       scores,
-      riskSeverity: risks.length
-        ? (risks.some((r) => r.severity === "severe") ? "severe" : "moderate")
-        : null,
+      /*
+       * Тот же итоговый риск, что поднял тревоги. Здесь стояла тяжесть одних
+       * критических ответов: тяжёлая полоса шкалы открывала случай в очереди
+       * дежурного, а правило «тяжёлый риск» по тому же прохождению молчало.
+       */
+      riskSeverity: risk.severity,
     }),
   );
 
@@ -355,9 +377,72 @@ export async function persistSubmission(
     submittedAt,
     scores,
     profile,
-    risksTriggered: risks.length,
+    risksTriggered: risk.answers.length + risk.bands.length,
+    risk,
+    hiddenDropped: evaluation.hidden,
     cascade,
   };
+}
+
+/**
+ * Когда человек закончил отвечать — этим моментом и датируется прохождение.
+ *
+ * Сдача из офлайн-очереди доходит через часы и дни, и датировалась она
+ * моментом синхронизации: замер, сделанный в понедельник, ложился в
+ * динамику средой, а возраст для норм считался на среду — у человека,
+ * которому между ними исполнилось 18 или 60, это другая страта норм, то
+ * есть другой T-балл (клиническое ревью, волна 12). Клиент момент знает:
+ * начало (startedAt) и длительность (durationMs) он присылает всегда.
+ *
+ * Принимается он в разумных пределах, а не на веру: время устройства бывает
+ * сбито, а дата сдачи — клинический факт. Не из будущего; не раньше, чем
+ * появилась версия методики, которую человек проходил; не раньше
+ * назначения этой методики этому человеку, если оно есть. Вне пределов —
+ * время приёма сервером, как было до правки, со строкой в журнале: сбитые
+ * часы видно, а не угадывается.
+ *
+ * Время тревоги этим не сдвигается: случай в очереди дежурного датируется
+ * тем, когда сигнал пришёл (см. riskAt ниже), — «сколько минут висит»
+ * считается от него, а не от прошлого понедельника.
+ */
+async function completionTime(
+  survey: SurveyFull,
+  userId: string | null,
+  input: SubmitResponseInput,
+): Promise<string> {
+  const now = Date.now();
+  const claimed = Date.parse(input.startedAt) + input.durationMs;
+  if (!Number.isFinite(claimed)) return new Date(now).toISOString();
+
+  const [version] = survey.versionId
+    ? await db
+        .select({ createdAt: surveyVersions.createdAt })
+        .from(surveyVersions)
+        .where(eq(surveyVersions.id, survey.versionId))
+    : [];
+  const [grant] = userId
+    ? await db
+        .select({ grantedAt: surveyAccess.grantedAt })
+        .from(surveyAccess)
+        .where(and(eq(surveyAccess.surveyId, survey.id), eq(surveyAccess.userId, userId)))
+    : [];
+  const floor = Math.max(
+    version ? Date.parse(version.createdAt) : Number.NEGATIVE_INFINITY,
+    grant ? Date.parse(grant.grantedAt) : Number.NEGATIVE_INFINITY,
+  );
+
+  // запас на расхождение часов устройства и сервера: минута — не «из будущего»
+  const SKEW_MS = 60_000;
+  if (claimed > now + SKEW_MS || claimed < floor - SKEW_MS) {
+    // info, а не warn: посев демо-данных (demoFill) датирует сдачи прошлым нарочно и упирается сюда на каждой
+    log.info("submission.completion_time_rejected", {
+      surveyId: survey.id,
+      claimed: new Date(claimed).toISOString(),
+      reason: claimed > now ? "future" : "before_version_or_assignment",
+    });
+    return new Date(now).toISOString();
+  }
+  return new Date(Math.min(claimed, now)).toISOString();
 }
 
 function validateAnswerShape(question: Question, answer: Answer): void {
@@ -373,11 +458,21 @@ function validateAnswerShape(question: Question, answer: Answer): void {
       if ((answer.optionIds?.length ?? 0) > 1) {
         badRequest("err.singleChoiceOnly", { title: question.title });
       }
-    case "multiple":
-      for (const id of answer.optionIds ?? []) {
+    case "multiple": {
+      /*
+       * Каждый вариант — не больше одного раза. Проверялась только
+       * принадлежность вопросу, и три одинаковых id при максимуме 3 давали
+       * балл 9 (воспроизведено). Движок теперь и сам считает вариант один
+       * раз, но такую сдачу честный клиент не собирает — отказ, а не
+       * молчаливая правка чужих данных.
+       */
+      const ids = answer.optionIds ?? [];
+      if (new Set(ids).size !== ids.length) badRequest("err.optionDuplicates", { title: question.title });
+      for (const id of ids) {
         if (!optionIds.has(id)) badRequest("err.invalidOption", { title: question.title });
       }
       break;
+    }
 
     case "matrix":
       for (const [rowId, optionId] of Object.entries(answer.matrix ?? {})) {

@@ -1503,6 +1503,13 @@ export interface Scale {
   validityThreshold: number | null;
   validityDirection: ValidityDirection | null;
   validityMessage: string | null;
+  /**
+   * Минимальная доля отвеченных пунктов (из заданных), при которой балл
+   * считается; ниже — шкала не вычислена (null, а не 0). null — общее
+   * умолчание движка (DEFAULT_MIN_ANSWERED_SHARE). Необязательное в типе:
+   * методики, собранные в памяти (конструктор, эталоны), его не знают.
+   */
+  minAnsweredShare?: number | null;
 
   bands: ScaleBand[];
   items: ScaleItem[];

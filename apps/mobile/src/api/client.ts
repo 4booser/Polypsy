@@ -54,7 +54,7 @@ import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName, wipeLocalData } from "../offline/device";
 import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
-import { computeProfile, isTransientStatus } from "@quizzy/shared";
+import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -439,32 +439,33 @@ export const api = {
        * обслуживания, перезапуск при выкатке). Ответы — клинические данные,
        * терять их нельзя: кладём в очередь (уйдёт при первой возможности, с
        * идемпотентным id) и считаем баллы локально тем же движком, что на
-       * сервере, — computeProfile общий, расхождений быть не может по
+       * сервере, — evaluateSubmission общий, расхождений быть не может по
        * построению.
        */
       const item = enqueue(surveyId, body);
       const survey = cache.survey(surveyId);
       // чей пол и возраст берём для норм — см. respondentFor
       const respondent = respondentFor(payload.subject, cache.me());
-      const profile =
-        survey && survey.scoringEnabled
-          ? computeProfile(survey, payload.answers, {
-              sex: respondent.sex,
-              age: respondent.age,
-            })
-          : null;
-      const risky = profile
-        ? payload.answers.some((a) =>
-            survey!.questions.some((q) =>
-              q.options.some((o) => o.riskFlag && (a.optionIds ?? []).includes(o.id)),
-            ),
-          )
-        : false;
+      /*
+       * Баллы и риск — одним вызовом общего движка, тем же, что у сервера
+       * при записи (packages/shared/src/risk.ts, evaluateSubmission): те же
+       * видимые ответы, тот же профиль, тот же итоговый риск.
+       *
+       * Здесь стояла своя проверка — по одному флагу варианта, и только
+       * если у методики включён подсчёт. Числовой порог, критический
+       * столбец матрицы и тяжёлая полоса шкалы без сети карточки не давали,
+       * а методика без подсчёта не давала её вовсе. Кризисная карточка
+       * пропадала ровно тогда, когда связи нет. Выключенный подсчёт теперь
+       * убирает только баллы: критические ответы проверяются всегда.
+       */
+      const evaluation = survey
+        ? evaluateSubmission(survey, payload.answers, { sex: respondent.sex, age: respondent.age })
+        : null;
       // офлайн каскады не выполняются: назначения делает сервер при синке
       const offline: SubmitResult = {
         id: item.id,
-        scores: profile?.scores ?? [],
-        safetyPlan: risky ? (survey?.safetyPlan ?? null) : null,
+        scores: evaluation?.profile.scores ?? [],
+        safetyPlan: evaluation?.risk.severity ? (survey?.safetyPlan ?? null) : null,
         queued: true,
       };
       return offline;

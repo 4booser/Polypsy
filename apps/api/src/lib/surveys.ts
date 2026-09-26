@@ -1,4 +1,4 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { normalizeLocalized, presentedLang, t, type Lang } from "@quizzy/shared";
 import type {
   CreateSurveyInput,
@@ -27,6 +27,7 @@ import {
   surveys,
   type SurveyRow,
 } from "../db/schema";
+import { conflict } from "./http";
 
 /**
  * Загружает методики вместе с содержимым конкретной версии.
@@ -295,7 +296,158 @@ export async function getSurveyForResponse(responseId: string, lang: Lang = "uk"
   return getSurvey(response.surveyId, response.versionId, lang);
 }
 
-type Content = Pick<CreateSurveyInput, "sections" | "scales" | "questions">;
+/**
+ * Действующая версия → содержимое в формате записи (CreateSurveyInput) —
+ * обратное к createVersion, без потерь.
+ *
+ * Нужно правке, которая меняет не всё: PATCH с одними questions обязан
+ * перенести шкалы и секции из действующей версии, а не создать версию без
+ * них (так и было: версия без шкал, а PATCH одних scales — версия без
+ * единого вопроса). Нужно и копии методики.
+ *
+ * Не путать с surveyToDraft ниже: тот — формат ОБМЕНА с чужим учреждением и
+ * по назначению теряет то, что не должно уехать наружу (локальные нормы,
+ * ссылки каскадов, секции, условия). Здесь содержимое остаётся в своём же
+ * экземпляре, и терять нельзя ничего: ни кодов вариантов (без них ключ
+ * «Так/Ні» перестаёт считать), ни каскадов полос, ни условий показа.
+ *
+ * Ожидает сырое представление (getSurvey(..., raw = true)): тексты уходят
+ * на всех языках. Ключ перенесённой секции — её id: именно его клиент видит
+ * в `questions[].sectionId` и шлёт как `sectionKey`, если правит одни вопросы.
+ */
+export function versionContent(survey: SurveyFull): Content {
+  const indexById = new Map(survey.questions.map((q, i) => [q.id, i]));
+  const scaleCodeById = new Map(survey.scales.map((s) => [s.id, s.code]));
+  const L = (v: unknown) => v as never;
+
+  return {
+    sections: survey.sections.map((s) => ({ key: s.id, title: L(s.title), description: L(s.description) })),
+    scales: survey.scales.map((s) => {
+      /*
+       * Ключ, собранный по коду шкалы у вопросов (в исходнике key: [] —
+       * см. createVersion), переносится так же — пустым, а не списком
+       * номеров. Иначе вопрос, добавленный в следующей правке с тем же
+       * кодом шкалы, в неё уже не попал бы: перенесённый явный ключ его не
+       * знает, а балл молча считался бы без нового пункта.
+       */
+      const linked = survey.questions.filter((q) => q.scaleId === s.id).map((q) => q.id);
+      const derived =
+        s.items.length === linked.length &&
+        s.items.every((i) => i.matchKey === null && i.weight === 1 && linked.includes(i.questionId));
+      return {
+        code: s.code,
+        title: L(s.title),
+        description: L(s.description),
+        aggregation: s.aggregation,
+        kind: s.kind,
+        normalization: s.normalization,
+        ratioDenominator: s.ratioDenominator,
+        validityThreshold: s.validityThreshold,
+        validityDirection: s.validityDirection,
+        validityMessage: L(s.validityMessage),
+        minAnsweredShare: s.minAnsweredShare ?? null,
+        bands: s.bands.map((b) => ({
+          minScore: b.minScore,
+          maxScore: b.maxScore,
+          label: L(b.label),
+          severity: b.severity,
+          description: L(b.description),
+          grade: b.grade,
+          recommendation: L(b.recommendation),
+          // каскад — ссылка на батарею этого же экземпляра, и она едет как есть
+          cascadeBatteryId: b.cascadeBatteryId,
+          cascadeDueDays: b.cascadeDueDays,
+          followUpDays: b.followUpDays,
+        })),
+        key: derived
+          ? []
+          : s.items.flatMap((i) => {
+              const index = indexById.get(i.questionId);
+              return index === undefined ? [] : [{ item: index + 1, matchKey: i.matchKey, weight: i.weight }];
+            }),
+        corrections: s.corrections.map((c) => ({ from: c.sourceScaleCode, coefficient: c.coefficient })),
+        // нормы — все, и локальные тоже: методика остаётся в своём учреждении
+        norms: s.norms.map((n) => ({ sex: n.sex, ageMin: n.ageMin, ageMax: n.ageMax, mean: n.mean, sd: n.sd, source: n.source })),
+        stenTable: s.stenTable.map((r) => ({
+          sex: r.sex,
+          ageMin: r.ageMin,
+          ageMax: r.ageMax,
+          rawMin: r.rawMin,
+          rawMax: r.rawMax,
+          sten: r.sten,
+        })),
+      };
+    }),
+    questions: survey.questions.map((q) => ({
+      type: q.type,
+      title: L(q.title),
+      help: L(q.help),
+      required: q.required,
+      sectionKey: q.sectionId,
+      scaleCode: q.scaleId ? (scaleCodeById.get(q.scaleId) ?? null) : null,
+      reverseScored: q.reverseScored,
+      minValue: q.minValue,
+      maxValue: q.maxValue,
+      step: q.step,
+      minLabel: L(q.minLabel),
+      maxLabel: L(q.maxLabel),
+      randomizeOptions: q.randomizeOptions,
+      timeLimitSec: q.timeLimitSec,
+      riskThreshold: q.riskThreshold,
+      riskLabel: L(q.riskLabel),
+      riskSeverity: q.riskSeverity,
+      options: q.options.map((o) => ({
+        text: L(o.text),
+        score: o.score,
+        kind: o.kind,
+        keyCode: o.keyCode,
+        riskFlag: o.riskFlag,
+        riskLabel: L(o.riskLabel),
+        riskSeverity: o.riskSeverity,
+      })),
+      // значения условий — id вариантов этой версии; createVersion переведёт их по source
+      logic: q.logic.flatMap((rule) => {
+        const sourceIndex = indexById.get(rule.sourceQuestionId);
+        return sourceIndex === undefined
+          ? []
+          : [{ sourceIndex, operator: rule.operator, value: rule.value, action: rule.action }];
+      }),
+    })),
+  };
+}
+
+export type Content = Pick<CreateSurveyInput, "sections" | "scales" | "questions">;
+
+/**
+ * Версия, из которой выведено новое содержимое, — ради ссылок на варианты.
+ *
+ * Достаточно вариантов по порядку вопросов: см. remapOptionRefs.
+ */
+export interface ContentSource {
+  questions: { options: { id: string }[] }[];
+}
+
+/**
+ * Перевод ссылок на варианты в значении условия показа.
+ *
+ * Условие «показать, если выбран вариант X» (eq, contains — scoring.ts,
+ * evaluateRule) хранит ИДЕНТИФИКАТОР варианта, а каждая версия заводит
+ * варианты с новыми. Значение, указывающее на вариант прежней версии,
+ * переводится на его двойника в новой; число и текст остаются как есть.
+ * Тот же приём, что у copyVersion (участок submit) — одна функция на оба
+ * пути, чтобы однажды не разойтись.
+ */
+export function remapOptionRefs(value: unknown, resolve: (id: string) => string | undefined): unknown {
+  if (typeof value === "string") return resolve(value) ?? value;
+  if (Array.isArray(value)) return value.map((v) => remapOptionRefs(v, resolve));
+  return value;
+}
+
+/** Нарушение уникального ключа (версия, номер) — PostgreSQL 23505 по этому индексу */
+function isVersionNumberClash(error: unknown): boolean {
+  const e = error as { code?: string; constraint_name?: string; constraint?: string } | null;
+  return e?.code === "23505" && (e.constraint_name ?? e.constraint) === "versions_survey_number_idx";
+}
 
 /**
  * Создаёт НОВУЮ версию содержимого и делает её действующей.
@@ -303,26 +455,57 @@ type Content = Pick<CreateSurveyInput, "sections" | "scales" | "questions">;
  * Старые строки не удаляются: на них ссылаются уже собранные ответы, и только
  * так прохождение остаётся интерпретируемым после правки методики.
  * Всё внутри одной транзакции — частично применённая версия недопустима.
+ *
+ * `source` — версия, из которой содержимое выведено (правка, копия): по ней
+ * ссылки условий показа на варианты переводятся на варианты новой версии.
+ * Без неё значения условий пишутся как пришли.
  */
 export async function createVersion(
   surveyId: string,
   content: Content,
   createdBy: string | null,
   note?: string,
+  source?: ContentSource,
 ): Promise<string> {
   const { sections: inputSections = [], scales: inputScales = [], questions: inputQuestions = [] } = content;
   const versionId = crypto.randomUUID();
 
   await db.transaction(async (tx) => {
-    const previous = await tx
-      .select({ version: surveyVersions.version })
+    /*
+     * Номер версии — под замком строки методики.
+     *
+     * max(version)+1 считался без замка: две правки, сохранённые разом
+     * (два окна конструктора, конструктор и применение локальных норм),
+     * читали один и тот же максимум, и вторая падала нарушением
+     * уникальности (survey_id, version) — пятисоткой вместо понятного
+     * ответа, после того как человек уже потратил время на правку.
+     * Замок строки методики ставит их в очередь: вторая читает максимум
+     * после коммита первой. Тот же замок и тот же приём у copyVersion
+     * (участок submit): оба пути выделения номера обязаны быть одинаковыми,
+     * иначе они гонялись бы друг с другом.
+     *
+     * Замок держится до конца транзакции запроса (здесь — точка сохранения
+     * внутри неё), то есть до коммита всей правки.
+     */
+    await tx.select({ id: surveys.id }).from(surveys).where(eq(surveys.id, surveyId)).for("update");
+    const [{ next } = { next: 1 }] = await tx
+      .select({ next: sql<number>`coalesce(max(${surveyVersions.version}), 0)::int + 1` })
       .from(surveyVersions)
       .where(eq(surveyVersions.surveyId, surveyId));
-    const nextNumber = previous.reduce((max, v) => Math.max(max, v.version), 0) + 1;
 
-    await tx
-      .insert(surveyVersions)
-      .values({ id: versionId, surveyId, version: nextNumber, note: note ?? null, createdBy });
+    try {
+      await tx
+        .insert(surveyVersions)
+        .values({ id: versionId, surveyId, version: next, note: note ?? null, createdBy });
+    } catch (error) {
+      /*
+       * Страховка: номер выделил кто-то, кто замка не брал (прямой скрипт,
+       * будущий путь). Это конфликт одновременных правок, а не сбой сервера,
+       * — и отвечается он как конфликт.
+       */
+      if (isVersionNumberClash(error)) conflict("err.surveyVersionConflict");
+      throw error;
+    }
 
     const sectionIdByKey = new Map<string, string>();
     for (const [index, section] of inputSections.entries()) {
@@ -357,6 +540,7 @@ export async function createVersion(
         validityThreshold: scale.validityThreshold ?? null,
         validityDirection: scale.validityDirection ?? null,
         validityMessage: normalizeLocalized(scale.validityMessage),
+        minAnsweredShare: scale.minAnsweredShare ?? null,
       });
 
       for (const [bandIndex, band] of scale.bands.entries()) {
@@ -370,6 +554,18 @@ export async function createVersion(
           description: normalizeLocalized(band.description),
           grade: band.grade ?? null,
           recommendation: normalizeLocalized(band.recommendation),
+          /*
+           * Каскад полосы — назначение батареи и повторные замеры.
+           *
+           * Схема и конструктор их принимали, а запись здесь молча
+           * выбрасывала: каждое сохранение методики в конструкторе снимало
+           * настроенные назначения по полосе, и человек с тяжёлой полосой
+           * больше не получал углублённого обследования — без единого
+           * сообщения об этом.
+           */
+          cascadeBatteryId: band.cascadeBatteryId ?? null,
+          cascadeDueDays: band.cascadeDueDays ?? null,
+          followUpDays: band.followUpDays?.trim() || null,
           position: bandIndex,
         });
       }
@@ -377,6 +573,8 @@ export async function createVersion(
 
     // первый проход: вопросы и варианты, запоминаем id по индексу для логики
     const questionIdByIndex: string[] = [];
+    // id вариантов по индексу вопроса — для перевода ссылок условий (remapOptionRefs)
+    const optionIdsByIndex: string[][] = [];
     for (const [index, question] of inputQuestions.entries()) {
       const id = crypto.randomUUID();
       questionIdByIndex[index] = id;
@@ -406,9 +604,12 @@ export async function createVersion(
         riskSeverity: question.riskSeverity ?? null,
       });
 
+      optionIdsByIndex[index] = [];
       for (const [optionIndex, option] of question.options.entries()) {
+        const optionId = crypto.randomUUID();
+        optionIdsByIndex[index]!.push(optionId);
         await tx.insert(options).values({
-          id: crypto.randomUUID(),
+          id: optionId,
           questionId: id,
           text: normalizeLocalized(option.text)!,
           score: option.score,
@@ -422,18 +623,32 @@ export async function createVersion(
       }
     }
 
+    /*
+     * Место варианта в своём вопросе в исходной версии: вариант прежней
+     * версии переводится на вариант с тем же местом в вопросе-источнике
+     * условия. По месту, а не по тексту — тексты правят, и как раз в правке.
+     * Порядок вариантов у перенесённого вопроса тот же по построению
+     * (versionContent), у присланного клиентом — тот, что он видел.
+     */
+    const positionOf = new Map<string, number>();
+    for (const q of source?.questions ?? []) q.options.forEach((o, i) => positionOf.set(o.id, i));
+
     // второй проход: логика ссылается на вопросы по индексу, поэтому только
     // после вставки всех вопросов
     for (const [index, question] of inputQuestions.entries()) {
       for (const rule of question.logic) {
         const sourceId = questionIdByIndex[rule.sourceIndex];
         if (!sourceId) continue;
+        const resolve = (id: string) => {
+          const position = positionOf.get(id);
+          return position === undefined ? undefined : optionIdsByIndex[rule.sourceIndex]?.[position];
+        };
         await tx.insert(questionLogic).values({
           id: crypto.randomUUID(),
           questionId: questionIdByIndex[index]!,
           sourceQuestionId: sourceId,
           operator: rule.operator,
-          value: rule.value ?? null,
+          value: remapOptionRefs(rule.value ?? null, resolve) ?? null,
           action: rule.action,
         });
       }

@@ -15,7 +15,13 @@ describe("сдача прохождения", () => {
   test("пациент сдаёт сам; прохождение записано на него", async () => {
     const res = await submitSurvey(surveyInA, patient.token);
     expect(res.status).toBe(201);
-    expect(res.body.reliable).toBe(true);
+    /*
+     * Достоверность пациенту не сообщается: показ результатов у методики
+     * снят (волна 12, engine — resultsShownTo). Записана она при этом верно.
+     */
+    expect(res.body.reliable).toBeNull();
+    const row = await db.query.responses.findFirst({ where: eq(responsesTable.id, res.body.id) });
+    expect(row!.reliable).toBe(true);
 
     const detail = await api(`/api/responses/${res.body.id}`, root.token);
     expect(detail.status).toBe(200);

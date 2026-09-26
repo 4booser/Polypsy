@@ -652,6 +652,13 @@
       "when": 1788473649043,
       "tag": "0095_ops_signals",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1788474009043,
+      "tag": "0101_scale_min_answered",
+      "breakpoints": true
     }
   ]
 }

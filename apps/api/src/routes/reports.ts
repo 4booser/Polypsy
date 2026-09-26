@@ -52,6 +52,15 @@ reportRoutes.get("/responses/:id", async (c) => {
 
   const survey = await getSurveyForResponse(response.id, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
+  /*
+   * Печатный отчёт — это баллы, полосы и нормативная выборка. Обследуемому
+   * он положен, только если психолог включил показ результатов этой
+   * методики (showResultsToPatient); иначе отчёт отдавался целиком и
+   * обходил флаг, который уважала динамика (волна 12, клиническое ревью).
+   * Отказ с причиной, а не 404: человек только что проходил эту методику, и
+   * «не найдено» было бы неправдой; результаты он обсудит со специалистом.
+   */
+  if (!isStaff(user) && !survey.showResultsToPatient) forbidden("err.resultsWithSpecialist");
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
   const [signedConclusion] = await db

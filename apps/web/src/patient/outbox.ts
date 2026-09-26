@@ -1,4 +1,4 @@
-import { isTransientStatus } from "@quizzy/shared";
+import { ageAt, evaluateSubmission, isTransientStatus, type Answer, type SurveyFull } from "@quizzy/shared";
 
 /**
  * Несданные ответы веб-кабинета — ждут конца работ или появления сети.
@@ -167,17 +167,26 @@ export const outbox = createOutbox(browserStorage());
 
 /**
  * Памятка при сдаче, ушедшей в очередь: план безопасности показывается так
- * же, как после обычной сдачи с отмеченным критическим вариантом.
+ * же, как после обычной сдачи, поднявшей риск.
  *
- * Сервер решил бы то же самое по тем же вариантам (riskFlag), просто позже;
- * а человеку, отметившему критический пункт во время работ, памятка нужна
- * сейчас, а не после них. Так делает и мобилка без сети.
+ * Риск решает тот же код, что на сервере, — evaluateSubmission из общего
+ * пакета (packages/shared/src/risk.ts): критические варианты, числовые
+ * пороги, ответы матрицы и полосы шкал, только по видимым ответам. Здесь
+ * стояла своя проверка — по одному флагу варианта, — и без сети карточки не
+ * было ровно у тех, у кого риск выражен порогом числового пункта или
+ * тяжёлой полосой шкалы. Сервер решил бы то же самое, просто позже; а
+ * человеку памятка нужна сейчас, а не после работ.
+ *
+ * Пол и возраст — того, кто вошёл: нормы шкал стратифицированы, и без них
+ * T-балл не посчитается, а с ним не назначится и полоса.
  */
 export function offlineSafetyPlan(
-  survey: { safetyPlan: string | null; questions: { options: { id: string; riskFlag: boolean }[] }[] },
-  answers: { optionIds?: string[] }[],
+  survey: SurveyFull,
+  answers: Answer[],
+  me: { sex?: "male" | "female" | null; birthDate?: string | null } | null,
+  now = new Date().toISOString(),
 ): string | null {
   if (!survey.safetyPlan) return null;
-  const risky = new Set(survey.questions.flatMap((q) => q.options.filter((o) => o.riskFlag).map((o) => o.id)));
-  return answers.some((a) => (a.optionIds ?? []).some((id) => risky.has(id))) ? survey.safetyPlan : null;
+  const respondent = { sex: me?.sex ?? null, age: ageAt(me?.birthDate ?? null, now) };
+  return evaluateSubmission(survey, answers, respondent).risk.severity ? survey.safetyPlan : null;
 }

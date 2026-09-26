@@ -56,6 +56,8 @@ describe("ключ по совпадению (matchKey)", () => {
     const scale = makeScale({
       code: "S",
       aggregation: "average",
+      // правило пропусков здесь своё: половины пунктов хватает (умолчание — 4/5, см. risk.test.ts)
+      minAnsweredShare: 0.5,
       items: [
         { questionId: q1.id, matchKey: "yes", weight: 1 },
         { questionId: q2.id, matchKey: "yes", weight: 1 },
@@ -241,11 +243,12 @@ describe("полосы и гейт достоверности", () => {
     scale.bands = [band(scale.id, 0, 0.5, "Низкий"), band(scale.id, 0.51, 1, "Высокий", { severity: "severe", grade: 1 })];
     const survey = makeSurvey(qs, [scale]);
 
-    const three = computeProfile(survey, qs.slice(0, 3).map((q) => answerYesNo(q, true)));
+    // на остальные пункты — «Нет»: пропуск сделал бы шкалу невычисленной (минимальная доля ответов)
+    const three = computeProfile(survey, qs.map((q, i) => answerYesNo(q, i < 3)));
     // сырой 3 попал бы в «Высокий» по сырому; доля 0.75 → «Высокий» — совпадает,
     // а вот 2 из 4 (0.5) должен попасть в «Низкий», хотя сырой 2 > 1
     expect(three.scores[0]!.band?.label).toBe("Высокий");
-    const two = computeProfile(survey, qs.slice(0, 2).map((q) => answerYesNo(q, true)));
+    const two = computeProfile(survey, qs.map((q, i) => answerYesNo(q, i < 2)));
     expect(two.scores[0]!.band?.label).toBe("Низкий");
     expect(two.scores[0]!.band?.grade ?? null).toBe(null);
   });
