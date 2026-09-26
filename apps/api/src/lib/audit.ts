@@ -285,6 +285,9 @@ export type AuditAction =
   | "ops.job.run"
   | "ops.recording.retry"
   | "ops.client_errors.read"
+  /* техпанель: трасса одного запроса (каждое чтение) и план медленного SQL по кнопке (routes/opsObs.ts) */
+  | "ops.trace.read"
+  | "ops.statements.explain"
   | "norms.publish"
   | "analytics.data_quality"
   /*

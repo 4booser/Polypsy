@@ -42,6 +42,13 @@ export const OPS_GROUPS: OpsGroup[] = [
       /* obs2b — ошибки клиента и скорость экранов */
       { to: "/ops/client-errors", label: "o2b.tab.clientErrors", perm: "ops.read" },
       { to: "/ops/vitals", label: "o2b.tab.vitals", perm: "ops.read" },
+      /*
+       * obs2a: сравнение выкаток и медленный SQL. Трасса запроса
+       * (/ops/trace/:id) — страница без пункта: в неё ведут номера запросов
+       * и поле «номер → траса» в «Логах» и «Помилках».
+       */
+      { to: "/ops/compare", label: "ops.tab.releaseCompare", perm: "ops.read" },
+      { to: "/ops/statements", label: "ops.tab.statements", perm: "ops.read" },
       /* ── sections:sec-system ── */
       { to: "/ops/integrity", label: "ops.tab.integrity", role: "superadmin" },
     ],

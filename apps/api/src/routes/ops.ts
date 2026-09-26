@@ -37,9 +37,12 @@ import {
   windowStats,
 } from "../lib/opsBuffer";
 import { attempt, collectDb, dbSummary, liveProbe, type Probe } from "../lib/opsDb";
+import { readErrorHistory, readLogHistory } from "../lib/opsHistory";
 import { intervalOf, jobsSnapshot, lastStartOf } from "../lib/opsJobs";
+import { ERROR_RETENTION_DAYS, LOG_RETENTION_DAYS, storeState } from "../lib/opsStore";
 import { checkRls } from "../lib/rlsGuard";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { opsObsRoutes } from "./opsObs";
 
 /**
  * Техпанель: как работает система — для разработчиков.
@@ -59,6 +62,10 @@ import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../mi
  * Память — процесса (lib/opsBuffer.ts, lib/opsJobs.ts): до перезапуска и
  * одной реплики. Каждый ответ несёт `since`, и экран говорит «з моменту
  * запуску», а не делает вид, что история полная.
+ *
+ * Исключение — /logs и /errors с `?window=` (участок obs2a): история из
+ * базы за период, склеенная с памятью без дублей (lib/opsHistory.ts). Там
+ * ответ несёт начало периода и срок хранения вместо `since`.
  */
 export const opsRoutes = new Hono<AppEnv>();
 
@@ -304,31 +311,83 @@ opsRoutes.get("/slow", (c) => {
 
 /* ─────────── ошибки и логи ─────────── */
 
+/* пустой параметр адреса — то же, что его отсутствие: «?level=» не повод для 400 */
+const blank = (v: unknown) => (v === "" ? undefined : v);
+
+/*
+ * `window` — история из базы за период (lib/opsHistory.ts, участок obs2a):
+ * сохранённые группы с числом случаев за период плюс ещё не записанное
+ * приращение. Без него — как прежде, память процесса «з моменту запуску».
+ */
+const errorsQuery = z.object({ window: z.preprocess(blank, z.enum(["24h", "7d", "30d", "90d"]).optional()) });
+
 opsRoutes.get("/errors", async (c) => {
-  const { items, dropped } = errorGroupList();
-  await auditRead(c, "ops.errors.read", { returned: items.length });
-  const body: OpsErrors = { since: startedAt, capacity: ERROR_CAPACITY, dropped, items };
+  const { window } = parseQuery(c, errorsQuery);
+  const { items: live, dropped } = errorGroupList();
+  const history = window ? await readErrorHistory(window) : null;
+  /* история не прочиталась — память процесса вместо пустоты, с пометкой */
+  const items = history && !history.failed ? history.items : live;
+  await auditRead(c, "ops.errors.read", { filters: window ? { window } : null, returned: items.length });
+  const body: OpsErrors = {
+    since: startedAt,
+    capacity: ERROR_CAPACITY,
+    dropped: history && !history.failed ? 0 : dropped,
+    items,
+    ...(history
+      ? { from: history.from, retentionDays: ERROR_RETENTION_DAYS, store: storeState(), historyUnavailable: history.failed }
+      : {}),
+  };
   return c.json(body);
 });
 
-/* пустой параметр адреса — то же, что его отсутствие: «?level=» не повод для 400 */
-const blank = (v: unknown) => (v === "" ? undefined : v);
 const logsQuery = z.object({
   level: z.preprocess(blank, z.enum(["debug", "info", "warn", "error"]).optional()),
   q: z.preprocess(blank, z.string().max(200).optional()),
   requestId: z.preprocess(blank, z.string().max(64).optional()),
   after: z.preprocess(blank, z.coerce.number().int().min(0).optional()),
   limit: z.preprocess(blank, z.coerce.number().int().min(1).max(1000).optional()),
+  /* история из базы за период и курсор её более старой страницы (участок obs2a) */
+  window: z.preprocess(blank, z.enum(["1h", "24h", "7d", "14d"]).optional()),
+  before: z.preprocess(blank, z.string().max(64).optional()),
 });
 
 opsRoutes.get("/logs", async (c) => {
   const query = parseQuery(c, logsQuery);
-  const page = readLogs(query);
+  /*
+   * С `window` первая страница — история за период, склеенная с памятью
+   * процесса без дублей; `cursor` в ответе — по-прежнему номер буфера
+   * памяти, и живой хвост дальше опрашивается как раньше, через `after`.
+   * С `after` — только живой хвост: история у ленты уже есть.
+   */
+  const live = readLogs(query);
+  const history = query.window && query.after === undefined ? await readLogHistory({ ...query, window: query.window }) : null;
+  const page = history
+    ? { ...live, items: history.failed ? live.items : history.items, gap: false, truncated: false }
+    : live;
   await auditRead(c, "ops.logs.read", {
-    filters: { level: query.level ?? null, q: query.q ?? null, requestId: query.requestId ?? null },
+    filters: {
+      level: query.level ?? null,
+      q: query.q ?? null,
+      requestId: query.requestId ?? null,
+      ...(query.window ? { window: query.window } : {}),
+    },
     returned: page.items.length,
   });
-  const body: OpsLogs = { since: startedAt, capacity: LOG_CAPACITY, threshold: logThreshold(), ...page };
+  const body: OpsLogs = {
+    since: startedAt,
+    capacity: LOG_CAPACITY,
+    threshold: logThreshold(),
+    ...page,
+    ...(history
+      ? {
+          from: history.from,
+          retentionDays: LOG_RETENTION_DAYS,
+          older: history.failed ? null : history.older,
+          store: storeState(),
+          historyUnavailable: history.failed,
+        }
+      : {}),
+  };
   return c.json(body);
 });
 
@@ -360,3 +419,10 @@ opsRoutes.get("/jobs", async (c) => {
   };
   return c.json(body);
 });
+
+/*
+ * Трасса запроса, сравнение выкаток, медленные SQL (routes/opsObs.ts) —
+ * под тем же замком, что и всё выше: use("*") этого роутера объявлен
+ * раньше и действует на подключённые ниже маршруты.
+ */
+opsRoutes.route("/", opsObsRoutes);

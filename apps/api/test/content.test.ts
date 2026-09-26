@@ -158,6 +158,15 @@ const NOT_TEXT: [string, string][] = [
   ["ops_alert_events", "deliveries"],
   ["ops_alert_rules", "channels"],
   ["ops_client_errors", "frames"],
+  /*
+   * История техпанели (миграция 0093): поля строки лога, разбивка SQL
+   * запроса и кадры стека группы ошибок — служебные записи для
+   * разработчика, коды и числа. Переводить в них нечего: язык интерфейса
+   * к ним не относится, как и к самому stdout.
+   */
+  ["ops_log_lines", "fields"],
+  ["ops_log_lines", "sql"],
+  ["ops_error_groups", "frames"],
 ];
 
 describe("двуязычность содержимого", () => {
