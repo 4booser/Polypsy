@@ -7193,6 +7193,8 @@ export const UI = {
     uk: "Спершу оберіть групу або введіть пошук — зберігати поки нічого",
     ru: "Сначала выберите группу или введите поиск — сохранять пока нечего",
     en: "Pick a group or enter a search first: there is nothing to save yet",
+  },
+
   /* ── w12:lists ── */
   "lists.shownOf": {
     uk: "Показано {shown} з {total} — найсвіжіші. Решту відкриває «Показати ще» під списком.",
@@ -7204,7 +7206,6 @@ export const UI = {
     ru: "Показаны первые {shown} — самые свежие. Остальные открывает «Показать ещё» под списком.",
     en: "Showing the first {shown} — the most recent. “Show more” below the list opens the rest.",
   },
-
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
