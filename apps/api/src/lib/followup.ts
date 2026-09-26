@@ -1,3 +1,12 @@
+import { and, asc, eq, isNull, lte } from "drizzle-orm";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
+import { surveyFollowups, users } from "../db/schema";
+import { endOfDayAfter } from "./day";
+import { grantAccess } from "./grantAccess";
+import { log } from "./log";
+import { parseTs } from "./time";
+
 /**
  * Метка повторного замера в примечании к доступу.
  *
@@ -18,3 +27,116 @@
  * завести колонку потом.
  */
 export const FOLLOWUP_NOTE = "Протокол наблюдения";
+
+/* ─── окна повторов (участок delivery, волна 12, миграция 0103) ─── */
+
+/** Сколько дней открыто окно повтора, если следующее не открывается раньше */
+const WINDOW_DAYS = 14;
+
+export interface FollowUpWindow {
+  afterDays: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+/**
+ * Окна повторов «через d₁, d₂, … дней» от момента замера.
+ *
+ * Окно открывается в начале своего дня по поясу учреждения и закрывается в
+ * конце дня через две недели — или раньше, к открытию следующего окна: два
+ * открытых окна одной методики сливались бы в одно, и замер «через месяц»
+ * можно было бы пройти на десятый день. Чистая функция — ради проверки
+ * границ без базы.
+ */
+export function followUpWindows(from: Date, days: number[]): FollowUpWindow[] {
+  const sorted = [...new Set(days)].sort((a, b) => a - b);
+  const opens = sorted.map((d) => parseTs(endOfDayAfter(from, d - 1)) + 1);
+  return sorted.map((d, i) => {
+    const natural = parseTs(endOfDayAfter(from, d + WINDOW_DAYS - 1));
+    const next = opens[i + 1];
+    const closes = next !== undefined ? Math.min(natural, next - 1) : natural;
+    return {
+      afterDays: d,
+      opensAt: new Date(opens[i]!).toISOString(),
+      closesAt: new Date(closes).toISOString(),
+    };
+  });
+}
+
+/**
+ * Поставить окна повторов вместо ещё не открытых.
+ *
+ * Новый замер в той же полосе начинает протокол заново — от себя: окна,
+ * которые ещё не открылись, заменяются. Уже открытое окно не трогается —
+ * по нему человек, возможно, как раз проходит.
+ */
+export async function planFollowUps(surveyId: string, userId: string, days: number[], from = new Date()): Promise<number> {
+  const windows = followUpWindows(from, days);
+  await db
+    .delete(surveyFollowups)
+    .where(
+      and(
+        eq(surveyFollowups.surveyId, surveyId),
+        eq(surveyFollowups.userId, userId),
+        isNull(surveyFollowups.openedAt),
+      ),
+    );
+  if (windows.length) {
+    await db.insert(surveyFollowups).values(
+      windows.map((w) => ({ id: crypto.randomUUID(), surveyId, userId, ...w })),
+    );
+  }
+  return windows.length;
+}
+
+/**
+ * Открыть наступившие окна: выдать доступ до закрытия окна.
+ *
+ * Выдача — через grantAccess, то есть как перевыдача: срок, дата выдачи и
+ * счётчик попыток сдвигаются вместе, лимит попыток сохраняется. Каждое окно —
+ * своей короткой транзакцией: одно неудачное не отменяет остальные.
+ * Выключенной учётке окно не открывается — выдавать доступ человеку,
+ * которого нет, незачем; окно останется неоткрытым.
+ */
+export async function openFollowUps(now = new Date()): Promise<number> {
+  const due = await systemContext(baseDb, () =>
+    db
+      .select({ f: surveyFollowups })
+      .from(surveyFollowups)
+      .innerJoin(users, eq(users.id, surveyFollowups.userId))
+      .where(
+        and(
+          isNull(surveyFollowups.openedAt),
+          lte(surveyFollowups.opensAt, now.toISOString()),
+          isNull(users.disabledAt),
+        ),
+      )
+      .orderBy(asc(surveyFollowups.opensAt))
+      .limit(500),
+  );
+  let opened = 0;
+  for (const { f } of due) {
+    try {
+      await systemContext(baseDb, async () => {
+        await grantAccess(db, [
+          {
+            surveyId: f.surveyId,
+            userId: f.userId,
+            grantedBy: f.userId,
+            expiresAt: f.closesAt,
+            note: `${FOLLOWUP_NOTE}: повтор через ${f.afterDays} дн.`,
+          },
+        ]);
+        await db
+          .update(surveyFollowups)
+          .set({ openedAt: now.toISOString() })
+          .where(and(eq(surveyFollowups.id, f.id), isNull(surveyFollowups.openedAt)));
+      });
+      opened++;
+    } catch (error) {
+      log.warn("followup.open_failed", { id: f.id, error: String(error) });
+    }
+  }
+  if (opened) log.info("followup.opened", { opened });
+  return opened;
+}

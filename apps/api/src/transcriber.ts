@@ -20,8 +20,7 @@
  * бы занять все ядра и вернуть первую проблему с другой стороны.
  */
 import { env } from "./env";
-import { baseDb, client } from "./db";
-import { systemContext } from "./db/context";
+import { client } from "./db";
 import { log } from "./lib/log";
 import { transcribeNext, transcriptionAvailable } from "./lib/recordings";
 
@@ -68,7 +67,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 while (!stopping) {
   let did = false;
   try {
-    did = await systemContext(baseDb, () => transcribeNext());
+    /*
+     * Без обёртки systemContext — и это главное в этом цикле.
+     *
+     * Обёртка делала весь проход одной транзакцией: захват строки держал
+     * замок, пока минутами работает модель, удаление записи и отзыв
+     * согласия ждали на нём конца расшифровки, а статус «розшифровується»
+     * никто не видел до коммита. Расшифровка сама берёт короткие
+     * транзакции — на захват и на запись итога — и работает между ними вне
+     * транзакции (lib/recordings.ts). Упадёт процесс посреди работы — строку
+     * подберёт следующий проход, когда истечёт аренда захвата.
+     */
+    did = await transcribeNext();
   } catch (error) {
     log.warn("transcribe failed", { error: String(error) });
     await sleep(ERROR_MS);

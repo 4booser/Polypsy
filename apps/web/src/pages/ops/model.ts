@@ -559,6 +559,8 @@ export const JOB_KEY: Record<string, UiKey> = {
   "presence.sweep": "ops.job.presence",
   "clinic.noShows": "ops.job.noShows",
   "push.receipts": "ops.job.pushReceipts",
+  /* волна 12, участок delivery: окна повторов протокола наблюдения (apps/api/src/lib/followup.ts) */
+  "followups.open": "ops.job.followups",
   security: "ops.job.security",
   notifier: "ops.job.notifier",
   "clinic.remind": "ops.job.remind",

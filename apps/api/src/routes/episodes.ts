@@ -13,6 +13,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
+import { addMonths } from "../lib/day";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { assertPatientAccess, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -293,11 +294,15 @@ const dispensarySchema = z.object({
   note: z.string().max(500).nullish(),
 });
 
-/** Через сколько месяцев показываться снова */
+/**
+ * Через сколько месяцев показываться снова.
+ *
+ * Не `setMonth`: 31 января плюс месяц давал 3 марта, и осмотр, положенный в
+ * феврале, уезжал в март. Число прижимается к концу месяца, и считается по
+ * часам учреждения (lib/day.ts, addMonths).
+ */
 function dueAfter(months: number, from = new Date()): string {
-  const d = new Date(from);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString();
+  return addMonths(from, months).toISOString();
 }
 
 /** Состоит ли человек на учёте и когда следующий осмотр */

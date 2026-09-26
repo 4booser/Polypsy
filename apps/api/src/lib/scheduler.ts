@@ -3,6 +3,7 @@ import { renderPush } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import {
+  batteries,
   batteryAssignments,
   batteryItems,
   scheduleRuns,
@@ -11,6 +12,9 @@ import {
   users,
 } from "../db/schema";
 import { auditSystem } from "./audit";
+import { dayOf, endOfDayAfter } from "./day";
+import { openFollowUps } from "./followup";
+import { parseTs } from "./time";
 import { grantAccess } from "./grantAccess";
 import { publish } from "./events";
 import { sweepPresence } from "../routes/presence";
@@ -36,18 +40,25 @@ export async function scheduleReach(schedule: {
   scope: string;
   unit: string | null;
 }): Promise<string[]> {
+  /*
+   * Выключенная учётка (0088) не охватывается. Человека выключают, когда он
+   * ушёл из учреждения: войти он не может, пройти назначенное — тоже, и
+   * назначение ему висело бы вечным «не пройдено», а пуш уходил бы на
+   * телефон человека, которого здесь больше нет.
+   */
   if (schedule.scope === "unit") {
     if (!schedule.unit) return [];
     const rows = await db
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.role, "user"), eq(users.unit, schedule.unit)));
+      .where(and(eq(users.role, "user"), eq(users.unit, schedule.unit), isNull(users.disabledAt)));
     return rows.map((r) => r.id);
   }
   const rows = await db
     .select({ id: scheduleTargets.userId })
     .from(scheduleTargets)
-    .where(eq(scheduleTargets.scheduleId, schedule.id));
+    .innerJoin(users, eq(users.id, scheduleTargets.userId))
+    .where(and(eq(scheduleTargets.scheduleId, schedule.id), isNull(users.disabledAt)));
   return rows.map((r) => r.id);
 }
 
@@ -67,18 +78,52 @@ function nextRun(previous: Date, intervalDays: number, now: Date): Date {
   return new Date(next);
 }
 
-/** Одно срабатывание расписания. Возвращает, сколько назначено и пропущено. */
-async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
+/** Одно срабатывание расписания. Возвращает, сколько назначено, пропущено и закрыто пропусками. */
+async function runSchedule(
+  schedule: typeof schedules.$inferSelect,
+  now: Date,
+): Promise<{
   assigned: number;
   skipped: number;
+  missed: number;
+  note?: string;
+  /** Кому и с каким сроком сообщить — после коммита выдачи */
+  notify?: { userIds: string[]; dueAt: string };
 }> {
-  const targets = await scheduleReach(schedule);
-  if (!targets.length) return { assigned: 0, skipped: 0 };
+  /*
+   * Батарея в архиве — расписание не выдаёт ничего. Ручное назначение
+   * архивной батареи запрещено (routes/batteries.ts, err.batteryArchived), а
+   * расписание обходило этот запрет: архивировали набор — и он продолжал
+   * приходить людям по графику.
+   */
+  const [battery] = await db
+    .select({ archived: batteries.archived })
+    .from(batteries)
+    .where(eq(batteries.id, schedule.batteryId));
+  if (!battery || battery.archived) {
+    return { assigned: 0, skipped: 0, missed: 0, note: "Набор в архиве — назначения не выдаются" };
+  }
 
-  // у кого уже висит незакрытое назначение этой батареи — тем не выдаём
-  // повторно: два одинаковых задания подряд человек читает как ошибку
-  const busy = await db
-    .select({ userId: batteryAssignments.userId })
+  const targets = await scheduleReach(schedule);
+  if (!targets.length) return { assigned: 0, skipped: 0, missed: 0 };
+
+  /*
+   * У кого висит незакрытое назначение этой батареи — тем повторно не
+   * выдаём: два одинаковых задания подряд человек читает как ошибку.
+   *
+   * Но только если срок у него ещё не вышел. Прежде «незакрытое» значило
+   * и «просроченное»: человек, пропустивший один замер, оставался занятым
+   * навсегда — его назначение не закрывалось, и расписание больше не
+   * выдавало ему ничего ни через месяц, ни через год. Один пропуск
+   * выбрасывал человека из наблюдения молча.
+   *
+   * Просроченное назначение закрывается как пропущенное — с отметкой в
+   * примечании, не молча (см. комментарий к cancelledAt), — и вместо него
+   * выдаётся новое. Одно активное назначение на человека (уникальный
+   * индекс) при этом сохраняется.
+   */
+  const open = await db
+    .select({ id: batteryAssignments.id, userId: batteryAssignments.userId, dueAt: batteryAssignments.dueAt })
     .from(batteryAssignments)
     .where(
       and(
@@ -88,15 +133,16 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
         isNull(batteryAssignments.cancelledAt),
       ),
     );
-  const busyIds = new Set(busy.map((b) => b.userId));
+  const overdue = open.filter((a) => a.dueAt !== null && parseTs(a.dueAt) < now.getTime());
+  const busyIds = new Set(open.filter((a) => !overdue.includes(a)).map((b) => b.userId));
   const fresh = targets.filter((id) => !busyIds.has(id));
-  if (!fresh.length) return { assigned: 0, skipped: targets.length };
+  if (!fresh.length) return { assigned: 0, skipped: targets.length, missed: 0 };
 
   const items = await db
     .select()
     .from(batteryItems)
     .where(eq(batteryItems.batteryId, schedule.batteryId));
-  if (!items.length) return { assigned: 0, skipped: targets.length };
+  if (!items.length) return { assigned: 0, skipped: targets.length, missed: 0 };
 
   // снятая методика не выдаётся даже автоматически; остальные — выдаются
   const inUse = new Set(await batterySurveysInUse(schedule.batteryId));
@@ -107,11 +153,28 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
       skipped: items.length - grantable.length,
     });
   }
-  if (!grantable.length) return { assigned: 0, skipped: targets.length };
+  if (!grantable.length) return { assigned: 0, skipped: targets.length, missed: 0 };
 
-  const dueAt = new Date(Date.now() + schedule.dueDays * DAY_MS).toISOString();
+  /*
+   * Срок — конец дня по поясу учреждения, а не «ровно через N суток от
+   * минуты прохода»: иначе в сам день срока назначение с утра уже числилось
+   * бы просроченным (см. lib/day.ts, endOfDay). От `now` прохода, а не от
+   * часов сервера: проход, запущенный с чужим `now`, иначе ставил бы сроки
+   * из другого времени, чем проверял просрочку.
+   */
+  const dueAt = endOfDayAfter(now, schedule.dueDays);
+  const missed = overdue.filter((a) => fresh.includes(a.userId));
 
   await db.transaction(async (tx) => {
+    if (missed.length) {
+      await tx
+        .update(batteryAssignments)
+        .set({
+          cancelledAt: now.toISOString(),
+          note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${`пропущено: срок истёк, выдано следующее по расписанию «${schedule.title}»`}::text)`,
+        })
+        .where(inArray(batteryAssignments.id, missed.map((a) => a.id)));
+    }
     await tx.insert(batteryAssignments).values(
       fresh.map((userId) => ({
         id: crypto.randomUUID(),
@@ -133,38 +196,58 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
           note: `Расписание «${schedule.title}»`,
         })),
       ),
+      // назначение поверх более долгого доступа его не укорачивает — см. grantAccess
+      { extendOnly: true },
     );
   });
 
-  /*
-   * Уведомление — после транзакции, а не внутри: пуш нельзя откатить, и
-   * отправленное «вам назначено обследование» при откате выдачи было бы
-   * обещанием, которого система не выполнит. Порядок «сначала запись, потом
-   * сообщение» здесь важнее скорости.
-   *
-   * В тексте нет ни методики, ни диагноза: экран блокировки видят
-   * посторонние — в казарме, в транспорте, на построении.
-   *
-   * Текст — из словаря уведомлений и на языке устройства (pushToUser); до
-   * этого он был набран здесь по-русски и уходил русским всем.
-   */
-  const langs = await langsOfPatients(fresh);
-  const date = dueAt.slice(0, 10);
-  for (const userId of fresh) {
-    await pushToUser(
-      userId,
-      {
-        eventKey: `schedule:${schedule.id}:${dueAt}`,
-        kind: "assignment",
-        title: (lang) => renderPush("push.assignmentTitle", lang),
-        body: (lang) => renderPush("push.assignmentBody", lang, { date }),
-        path: "/(app)/surveys",
-      },
-      langs.get(userId) ?? "uk",
-    );
-  }
+  return {
+    assigned: fresh.length,
+    skipped: targets.length - fresh.length,
+    missed: missed.length,
+    notify: { userIds: fresh, dueAt },
+  };
+}
 
-  return { assigned: fresh.length, skipped: targets.length - fresh.length };
+/**
+ * Пуш «вам назначено обследование» — после того, как выдача
+ * закоммичена, каждому своей короткой транзакцией.
+ *
+ * Прежде пуш уходил изнутри транзакции прохода по расписанию: если потом
+ * падала отметка о прогоне, выдача откатывалась, а уведомление уже было на
+ * экране — обещание, которого система не выполнила. Пуш нельзя откатить,
+ * поэтому порядок «сначала запись, потом сообщение» здесь важнее скорости.
+ *
+ * В тексте нет ни методики, ни диагноза: экран блокировки видят
+ * посторонние — в казарме, в транспорте, на построении. Текст — из словаря
+ * уведомлений и на языке устройства (pushToUser).
+ *
+ * Дата — день срока по поясу учреждения, а не `dueAt.slice(0, 10)`: это
+ * день по Гринвичу, и срок «до конца 12-го» по Киеву в ночные часы
+ * превращался в уведомлении в «до 11-го».
+ */
+async function notifyAssigned(scheduleId: string, userIds: string[], dueAt: string): Promise<void> {
+  const langs = await systemContext(baseDb, () => langsOfPatients(userIds));
+  const date = dayOf(dueAt)!;
+  for (const userId of userIds) {
+    try {
+      await systemContext(baseDb, () =>
+        pushToUser(
+          userId,
+          {
+            eventKey: `schedule:${scheduleId}:${dueAt}`,
+            kind: "assignment",
+            title: (lang) => renderPush("push.assignmentTitle", lang),
+            body: (lang) => renderPush("push.assignmentBody", lang, { date }),
+            path: "/(app)/surveys",
+          },
+          langs.get(userId) ?? "uk",
+        ),
+      );
+    } catch (error) {
+      log.warn("schedule.push_failed", { scheduleId, error: String(error) });
+    }
+  }
 }
 
 /**
@@ -227,6 +310,8 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
             isNull(schedules.endsAt),
             sql`${schedules.endsAt} > ${now.toISOString()}`,
           ),
+          // после сбоя — не раньше срока повторной попытки (см. catch ниже)
+          or(isNull(schedules.retryAt), lte(schedules.retryAt, now.toISOString())),
         ),
       )
       .orderBy(asc(schedules.nextRunAt)),
@@ -241,8 +326,8 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
      * отметкой о прогоне), а следующее начинает с чистого соединения.
      */
     try {
-      await systemContext(baseDb, async () => {
-        const { assigned, skipped } = await runSchedule(schedule);
+      const notify = await systemContext(baseDb, async () => {
+        const { assigned, skipped, missed, note, notify } = await runSchedule(schedule, now);
         const planned = new Date(schedule.nextRunAt);
         await db
           .update(schedules)
@@ -253,6 +338,8 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
               schedule.intervalDays,
               now,
             ).toISOString(),
+            retryAt: null,
+            failures: 0,
           })
           .where(eq(schedules.id, schedule.id));
         await db.insert(scheduleRuns).values({
@@ -261,7 +348,13 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
           ranAt: now.toISOString(),
           assigned,
           skipped,
-          note: assigned === 0 && skipped === 0 ? "Некого охватить" : null,
+          note:
+            note ??
+            (missed > 0
+              ? `Пропущено и закрыто: ${missed}`
+              : assigned === 0 && skipped === 0
+                ? "Некого охватить"
+                : null),
         });
         if (assigned > 0) {
           /*
@@ -280,10 +373,12 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
           action: "schedule.run",
           resourceType: "schedule",
           resourceId: schedule.id,
-          details: { title: schedule.title, assigned, skipped },
+          details: { title: schedule.title, assigned, skipped, ...(missed ? { missed } : {}) },
         });
+        return notify;
       });
       handled++;
+      if (notify) await notifyAssigned(schedule.id, notify.userIds, notify.dueAt);
     } catch (error) {
       log.error("schedule.failed", {
         scheduleId: schedule.id,
@@ -302,15 +397,26 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
               ? error.message.slice(0, 300)
               : "Неизвестная ошибка",
         });
-        // сдвигаем срок, иначе сломанное расписание будет крутиться каждый тик
+        /*
+         * Плановый срок НЕ сдвигается — назначается отдельный срок
+         * повторной попытки.
+         *
+         * Прежде сбой сдвигал nextRunAt на следующий регулярный срок: база
+         * моргнула в минуту прохода — и ежемесячный замер не выдавался
+         * месяц. Теперь попытка повторяется через 15 минут, потом через 30,
+         * час и так далее до шести часов между попытками (тик планировщика
+         * часовой, так что на деле — со следующим тиком и реже). Сломанное
+         * всерьёз расписание не крутится каждый тик, а временный сбой стоит
+         * час, а не период. Плановая сетка при этом не уползает: успешная
+         * попытка считает следующий срок от ПЛАНОВОГО, а не от момента
+         * успеха.
+         */
+        const failures = schedule.failures + 1;
         await db
           .update(schedules)
           .set({
-            nextRunAt: nextRun(
-              new Date(schedule.nextRunAt),
-              schedule.intervalDays,
-              now,
-            ).toISOString(),
+            failures,
+            retryAt: new Date(now.getTime() + retryDelay(failures)).toISOString(),
           })
           .where(eq(schedules.id, schedule.id));
       }).catch((e) =>
@@ -322,6 +428,11 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
     }
   }
   return handled;
+}
+
+/** Пауза перед повторной попыткой после n-го сбоя подряд: 15 мин, 30, час… не больше шести часов */
+function retryDelay(failures: number): number {
+  return Math.min(15 * 60_000 * 2 ** (failures - 1), 6 * 3_600_000);
 }
 
 /** Периодический запуск. Часа достаточно: расписания меряются днями. */
@@ -337,9 +448,18 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
   registerJob("clinic.noShows", intervalMs);
   registerJob("push.receipts", intervalMs);
   registerJob("security", intervalMs);
+  registerJob("followups.open", intervalMs);
   const tick = () => {
     trackJob("schedules", () => runDueSchedules()).catch((error) =>
       log.error("scheduler.tick_failed", { error: String(error) }),
+    );
+    /*
+     * Окна повторных замеров протокола наблюдения (lib/followup.ts). Часа
+     * хватает: окно — это дни, и открыть его в 00:40 вместо 00:00 никому не
+     * мешает. Каждое окно — своей транзакцией внутри openFollowUps.
+     */
+    void trackJob("followups.open", () => openFollowUps()).catch((error) =>
+      log.warn("followup.tick_failed", { error: String(error) }),
     );
     /*
      * Заодно вычищаем протухшее присутствие. Отдельного таймера оно не

@@ -5,6 +5,7 @@ import { db } from "../db";
 import { patientGroupMembers, surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { deadlineOf } from "../lib/day";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import {
   accessibleGroupIds,
@@ -95,17 +96,6 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
     badRequest("err.assignOnlyToPatient");
   }
 
-  await grantAccess(db, [
-    {
-      surveyId,
-      userId: input.userId,
-      grantedBy: c.get("user").id,
-      expiresAt: input.expiresAt ?? null,
-      note: input.note ?? null,
-      attemptsAllowed: input.attemptsAllowed,
-    },
-  ]);
-
   /*
    * Отмечаем, был ли человек в зоне видимости ДО выдачи.
    *
@@ -118,9 +108,33 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
    *
    * Отличать теперь можно. Расширение собственной зоны — событие журнала
    * с отдельной пометкой, а не строка, теряющаяся среди сотен назначений.
+   *
+   * Зона считается строго ДО grantAccess. Прежде она читалась после — той
+   * же транзакцией, которая уже видит новую выдачу, — и человек числился
+   * «своим» именно благодаря ей: пометка не появлялась никогда, в том числе
+   * ровно в том случае, ради которого её завели.
    */
   const seenBefore = await accessiblePatientIds(c.get("user"));
   const wasOutside = seenBefore !== null && !seenBefore.has(input.userId);
+
+  /*
+   * Срок из поля даты — до конца этого дня по поясу учреждения. Голая дата
+   * ложилась в базу полуночью по поясу сессии (в docker — UTC, то есть
+   * 02:00–03:00 по Киеву), и в сам день срока методика пациенту уже не
+   * открывалась (lib/day.ts, endOfDay).
+   */
+  const expiresAt = deadlineOf(input.expiresAt);
+
+  await grantAccess(db, [
+    {
+      surveyId,
+      userId: input.userId,
+      grantedBy: c.get("user").id,
+      expiresAt,
+      note: input.note ?? null,
+      attemptsAllowed: input.attemptsAllowed,
+    },
+  ]);
 
   await audit(c, {
     action: "access.grant",
@@ -129,7 +143,7 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
     subjectUserId: input.userId,
     details: {
       patient: target.email,
-      expiresAt: input.expiresAt ?? null,
+      expiresAt,
       attemptsAllowed: input.attemptsAllowed,
       /*
        * Истина здесь означает: сотрудник получил доступ к карте человека,
