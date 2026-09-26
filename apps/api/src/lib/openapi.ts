@@ -354,7 +354,11 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/analytics/surveys/:id": { summary: "Аналитика методики: распределения, психометрика, воронка", access: "staff", permission: "analytics.read" },
   "GET /api/analytics/surveys/:id/export": { summary: "Выгрузка прохождений методики", access: "staff", permission: "export.full" },
   "GET /api/dynamics/respondents": { summary: "Обследуемые с повторными замерами", access: "staff", permission: "patients.read" },
-  "GET /api/dynamics/respondents/:userId": { summary: "Динамика обследуемого с метками RCI", access: "staff", permission: "patients.read" },
+  "GET /api/dynamics/respondents/:userId": {
+    summary: "Динамика обследуемого с метками RCI; ?survey=<id> — только одна методика",
+    access: "staff",
+    permission: "patients.read",
+  },
   "GET /api/facets/surveys/:id": { summary: "Срезы по полу и возрасту", access: "staff", permission: "analytics.read" },
   "GET /api/data-quality/surveys/:id": { summary: "Дрейф выборки, отсев по стратам, тест-ретест", access: "staff", permission: "analytics.read" },
   "GET /api/norms/surveys/:id/candidates": { summary: "Кандидатные локальные нормы по выборке", access: "staff", permission: "norms.manage" },

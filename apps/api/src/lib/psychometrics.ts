@@ -1,8 +1,13 @@
-import type { ItemStat, QualityFlags, Question, Reliability } from "@quizzy/shared";
+import { TOO_FAST_MS, type ItemStat, type QualityFlags, type Question, type Reliability } from "@quizzy/shared";
 import { cronbachAlpha, pearson, round, variance } from "./stats";
 
-/** Порог, ниже которого ответ считается слишком быстрым для осмысленного чтения пункта */
-export const TOO_FAST_MS = 1500;
+/**
+ * Порог, ниже которого ответ считается слишком быстрым для осмысленного
+ * чтения пункта. Само число — в @quizzy/shared: по той же мерке графики
+ * прохождения выделяют быстрые ответы на клиенте, и копия здесь разошлась бы
+ * с той при первой правке.
+ */
+export { TOO_FAST_MS };
 
 /**
  * Надёжность субшкалы и вклад каждого пункта.

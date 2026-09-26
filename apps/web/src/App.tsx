@@ -94,6 +94,7 @@ const UiKit = lazy(() => import("./pages/UiKit"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const KeyPrint = lazy(() => import("./pages/KeyPrint"));
 const ResponseView = lazy(() => import("./pages/response"));
+const ResponseCharts = lazy(() => import("./pages/response/charts"));
 /*
  * Заключение — свой экран, а не строка в таблице прохождений.
  *
@@ -691,6 +692,12 @@ export default function App() {
             три экрана; их форму сторожит apps/web/test/responseView.test.ts.
           */}
           <Route path="/surveys/:id/responses/:rid" element={<ResponseView />} />
+          {/*
+            Графики того же прохождения — вкладка рядом с протоколом, своим
+            адресом: карточка пациента ведёт сюда прямо (решение заказчика
+            2026-09-26), а ссылку на графики пересылают так же, как на протокол.
+          */}
+          <Route path="/surveys/:id/responses/:rid/charts" element={<ResponseCharts />} />
           <Route path="/constructor" element={<Constructor />} />
           <Route path="/constructor/:id" element={<Constructor />} />
           <Route path="/surveys/:id/access" element={<Access />} />

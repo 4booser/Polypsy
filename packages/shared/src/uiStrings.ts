@@ -1940,6 +1940,127 @@ export const UI = {
    * конфликтом, а через неизменённую строку — чисто.
    */
   /* ── wave9:response ── */
+  /*
+   * Графики одного прохождения — вкладка «Графіки» рядом с «Відповіді»
+   * (pages/response/charts.tsx). Своё семейство rch.*, а не rsp.*: там
+   * кадр f34, и его ключи сторожит сверка с макетом; здесь экран, которого
+   * на кадрах нет, и его слова меняются по другим причинам.
+   *
+   * Вердикты о сдвиге — полными словами, без «достовірно/недостовірно»:
+   * «більше за похибку вимірювання» говорит, ЧТО проверено, а
+   * «достовірно» читается как «значит, лечение подействовало», чего RCI не
+   * утверждает.
+   */
+  "rch.tabsLabel": { uk: "Проходження тесту", ru: "Прохождение теста", en: "Test completion" },
+  "rch.tabAnswers": { uk: "Відповіді", ru: "Ответы", en: "Answers" },
+  "rch.tabCharts": { uk: "Графіки", ru: "Графики", en: "Charts" },
+  "rch.result": { uk: "Результат", ru: "Результат", en: "Result" },
+  "rch.dynamics": { uk: "Динаміка", ru: "Динамика", en: "Progress" },
+  "rch.contribution": { uk: "Внесок пунктів", ru: "Вклад пунктов", en: "Item contributions" },
+  "rch.answering": { uk: "Як відповідав", ru: "Как отвечал", en: "How it was answered" },
+  "rch.interpretation": { uk: "Що означає результат", ru: "Что означает результат", en: "What the result means" },
+  "rch.recommendation": { uk: "Рекомендація", ru: "Рекомендация", en: "Recommendation" },
+  "rch.noBands": {
+    uk: "без інтерпретаційних меж: методика не задає для цієї шкали полос",
+    ru: "без интерпретационных границ: методика не задаёт для этой шкалы полос",
+    en: "no interpretation bands: the instrument defines none for this scale",
+  },
+  "rch.notNormalized": {
+    uk: "не нормовано — показано сирий бал; межі інтерпретації задані в інших одиницях і до нього не застосовуються",
+    ru: "не нормировано — показан сырой балл; границы интерпретации заданы в других единицах и к нему не применяются",
+    en: "not normalised — raw score shown; the interpretation bands use other units and do not apply to it",
+  },
+  "rch.outside": {
+    uk: "значення поза інтерпретаційними межами методики",
+    ru: "значение вне интерпретационных границ методики",
+    en: "value outside the instrument's interpretation bands",
+  },
+  "rch.dynamicsHint": {
+    uk: "Усі завершені проходження цієї методики цією людиною; кільце — це проходження. Смуга навколо лінії — похибка вимірювання, коли її можна оцінити.",
+    ru: "Все завершённые прохождения этой методики этим человеком; кольцо — это прохождение. Полоса вокруг линии — ошибка измерения, когда её можно оценить.",
+    en: "All completed runs of this instrument by this person; the ring marks this one. The band around the line is measurement error, where it can be estimated.",
+  },
+  "rch.single": {
+    uk: "Перше проходження цієї методики — порівнювати ні з чим",
+    ru: "Первое прохождение этой методики — сравнивать не с чем",
+    en: "First completion of this instrument — nothing to compare with",
+  },
+  "rch.firstInSeries": {
+    uk: "це проходження перше — попереднього заміру немає",
+    ru: "это прохождение первое — предыдущего замера нет",
+    en: "this is the first completion — no previous measurement",
+  },
+  "rch.notInSeries": {
+    uk: "Це проходження не завершене, тому на графіку його немає — показано лише завершені.",
+    ru: "Это прохождение не завершено, поэтому на графике его нет — показаны только завершённые.",
+    en: "This completion is unfinished, so it is not on the chart — only finished ones are shown.",
+  },
+  "rch.since": { uk: "з", ru: "с", en: "since" },
+  "rch.reliable": { uk: "більше за похибку вимірювання", ru: "больше ошибки измерения", en: "larger than measurement error" },
+  "rch.within": { uk: "у межах похибки вимірювання", ru: "в пределах ошибки измерения", en: "within measurement error" },
+  "rch.noSem": {
+    uk: "оцінити надійність зміни нема з чого",
+    ru: "оценить надёжность изменения не из чего",
+    en: "no basis to judge whether the change is reliable",
+  },
+  "rch.versions": {
+    uk: "між замірами методику змінено — бали напряму не порівнюються",
+    ru: "между замерами методика изменена — баллы напрямую не сравниваются",
+    en: "the instrument changed between measurements — scores are not directly comparable",
+  },
+  "rch.mixedVersions": {
+    uk: "Методику змінювали між замірами: межі полос показано за версією цього проходження",
+    ru: "Методику меняли между замерами: границы полос показаны по версии этого прохождения",
+    en: "The instrument changed between measurements: bands follow the version of this completion",
+  },
+  "rch.pickScale": { uk: "Шкала на графіку", ru: "Шкала на графике", en: "Scale on the chart" },
+  "rch.shifts": { uk: "Зсув від попереднього заміру", ru: "Сдвиг от предыдущего замера", en: "Change since the previous measurement" },
+  "rch.contributionHint": {
+    uk: "Які відповіді дали бал — за ключем тієї версії методики, яку проходили. Смуга — від нуля до того, що пункт міг дати.",
+    ru: "Какие ответы дали балл — по ключу той версии методики, которую проходили. Полоса — от нуля до того, что пункт мог дать.",
+    en: "Which answers produced the score, using the key of the version that was taken. Each bar runs from zero to what the item could give.",
+  },
+  "rch.itemN": { uk: "№{n}", ru: "№{n}", en: "#{n}" },
+  "rch.more": { uk: "Ще {n}", ru: "Ещё {n}", en: "{n} more" },
+  "rch.less": { uk: "Згорнути", ru: "Свернуть", en: "Collapse" },
+  "rch.unanswered": {
+    uk: "без відповіді: {n} з {m} пунктів шкали",
+    ru: "без ответа: {n} из {m} пунктов шкалы",
+    en: "unanswered: {n} of {m} scale items",
+  },
+  "rch.noContribution": { uk: "жоден пункт шкали не дав балів", ru: "ни один пункт шкалы не дал баллов", en: "no item of this scale scored" },
+  "rch.versionMissing": {
+    uk: "Методику тієї версії, яку проходили, отримати не вдалося — внесок пунктів не рахується",
+    ru: "Методику той версии, которую проходили, получить не удалось — вклад пунктов не считается",
+    en: "The version of the instrument that was taken is unavailable — item contributions are not computed",
+  },
+  "rch.answeringHint": {
+    uk: "Це підказка тому, хто розбирає протокол, а не вирок: швидку відповідь дає і людина, яка знає її заздалегідь, а змінена відповідь буває просто уважністю.",
+    ru: "Это подсказка тому, кто разбирает протокол, а не приговор: быстрый ответ даёт и человек, который знает его заранее, а изменённый ответ бывает просто внимательностью.",
+    en: "A hint for the reviewer, not a verdict: a quick answer can come from someone who knew it in advance, and a changed answer can simply be care.",
+  },
+  "rch.totalTime": { uk: "Загальний час", ru: "Общее время", en: "Total time" },
+  "rch.medianTime": { uk: "Медіана на пункт", ru: "Медиана на пункт", en: "Median per item" },
+  "rch.changedCount": { uk: "Змінено відповідей", ru: "Изменено ответов", en: "Answers changed" },
+  "rch.skippedCount": { uk: "Пропущено", ru: "Пропущено", en: "Skipped" },
+  "rch.timeChart": { uk: "Час на кожен пункт", ru: "Время на каждый пункт", en: "Time per item" },
+  "rch.timeCaption": {
+    uk: "секунди; порожній стовпець — швидше за поріг {t} с",
+    ru: "секунды; пустой столбец — быстрее порога {t} с",
+    en: "seconds; a hollow column is faster than the {t} s threshold",
+  },
+  "rch.threshold": { uk: "поріг", ru: "порог", en: "threshold" },
+  "rch.aboveAxis": { uk: "вище за край осі", ru: "выше края оси", en: "above the axis" },
+  "rch.fastList": { uk: "Швидше за поріг", ru: "Быстрее порога", en: "Faster than the threshold" },
+  "rch.changedList": { uk: "Змінював відповідь", ru: "Менял ответ", en: "Changed the answer" },
+  "rch.noneWord": { uk: "немає", ru: "нет", en: "none" },
+  "rch.noTimes": {
+    uk: "Час на пунктах не записано — проходження вводили без замірів",
+    ru: "Время на пунктах не записано — прохождение вводили без замеров",
+    en: "No per-item time recorded — the completion was entered without timing",
+  },
+  "rch.sec": { uk: "с", ru: "с", en: "s" },
+  "rch.min": { uk: "хв", ru: "мин", en: "min" },
 
   /* ── wave9:survey ── */
 
