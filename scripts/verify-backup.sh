@@ -9,8 +9,11 @@
 # сверяет, что данные на месте, проверяет цепочку журнала и удаляет базу за
 # собой. Ненулевой код возврата — повод для оповещения.
 #
-#   DATABASE_URL=postgres://user@host/quizzy \
+#   cd /opt/quizzy && DATABASE_URL=postgres://user@host/quizzy \
 #   BACKUP_DIR=/backups BACKUP_PASSPHRASE=... ./scripts/verify-backup.sh
+#
+# Из каталога установки (там, где docker-compose.yml и .env.docker): журнал
+# пересчитывается образом api, см. пункт 3.
 #
 # В cron: раз в неделю, вывод — в систему оповещений.
 set -euo pipefail
@@ -33,9 +36,20 @@ PG_EXEC="${PG_EXEC:-}"
 : "${BACKUP_DIR:?BACKUP_DIR обязателен}"
 : "${BACKUP_PASSPHRASE:?BACKUP_PASSPHRASE обязателен}"
 
-# самый свежий файл из суточных; если их нет — из любых
-latest="$(ls -1t "$BACKUP_DIR"/daily/* 2>/dev/null | head -1 || true)"
-[ -n "$latest" ] || latest="$(find "$BACKUP_DIR" -type f -name 'quizzy_*' | sort -r | head -1 || true)"
+# Самый свежий файл из суточных; если их нет — из недельных и месячных.
+#
+# Только копии по расписанию и только готовые. Недописанный снимок
+# (backup.sh пишет в *.gpg.part и переименовывает после проверки чтением) —
+# не копия. Снимки перед обновлением (upgrade/<экземпляр>/) бывают сняты с
+# других баз, и сверять их с рабочей, указанной здесь, нельзя. Прежний поиск
+# «любой quizzy_* по всему каталогу» к тому же брал последний по имени
+# каталога, а не по времени. Файлы .age берутся наравне с .gpg: если самый
+# свежий — от прежней ветки age, restore.sh откажет с объяснением, и это
+# должно стать тревогой, а не пропуском.
+pick() { ls -1t "$@" 2>/dev/null | head -1 || true; }
+latest="$(pick "$BACKUP_DIR"/daily/quizzy_*.gpg "$BACKUP_DIR"/daily/quizzy_*.age)"
+[ -n "$latest" ] || latest="$(pick "$BACKUP_DIR"/weekly/quizzy_*.gpg "$BACKUP_DIR"/weekly/quizzy_*.age \
+  "$BACKUP_DIR"/monthly/quizzy_*.gpg "$BACKUP_DIR"/monthly/quizzy_*.age)"
 [ -n "$latest" ] || { echo "ПРОВАЛ: в $BACKUP_DIR нет ни одного бэкапа"; exit 1; }
 
 # Сначала форма GNU, потом BSD. Обратный порядок не работает: на Linux
@@ -63,8 +77,15 @@ check_db="quizzy_verify_$(date +%s)"
 base_url="${DATABASE_URL%/*}"
 admin_url="$base_url/postgres"
 
+chain_err="$(mktemp)"   # поток ошибок пересчёта журнала, см. пункт 3
+
+# WITH (FORCE): проверка цепочки ниже подключается к одноразовой базе из
+# контейнера приложения, и соединение, не закрытое вовремя (прерванный
+# прогон, зависший контейнер), молча оставляло бы базу-копию лежать на
+# сервере — с персональными данными, вне ротации и вне чьего-либо внимания.
 cleanup() {
-  $PG_EXEC psql "$admin_url" -q -c "DROP DATABASE IF EXISTS \"$check_db\"" >/dev/null 2>&1 || true
+  $PG_EXEC psql "$admin_url" -q -c "DROP DATABASE IF EXISTS \"$check_db\" WITH (FORCE)" >/dev/null 2>&1 || true
+  rm -f "$chain_err"
 }
 trap cleanup EXIT
 
@@ -147,19 +168,66 @@ fi
 # 3. Цепочка журнала цела. Хэш-цепочка — единственное, что доказывает, что
 #    журнал не переписан; если она рвётся в бэкапе, восстанавливать его в
 #    качестве доказательства бессмысленно.
-broken="$($PG_EXEC psql "$restored_url" -tAc "
-  with chained as (
-    select seq, prev_hash, lag(entry_hash) over (order by seq) as expected
-    from audit_log
-  )
-  select count(*) from chained where seq > 1 and prev_hash is distinct from expected
-" 2>/dev/null || echo "нет")"
-if [ "$broken" = "нет" ]; then
-  say_fail "не удалось проверить цепочку журнала"
-elif [ "$broken" != "0" ]; then
-  say_fail "цепочка журнала рвётся в $broken местах"
+#
+#    Цепочка ПЕРЕСЧИТЫВАЕТСЯ по восстановленным строкам, а не сверяется по
+#    соседним хэшам. Прежняя проверка сравнивала prev_hash каждой строки с
+#    entry_hash предыдущей — это доказывает, что хэши сцеплены между собой,
+#    но не что они принадлежат содержимому строк: запись с изменёнными
+#    полями и прежними хэшами проходила как «цепочка цела» (ревью заказчика,
+#    2026-09-27). Сверка последнего хэша с рабочей базой выше этого тоже не
+#    ловит: последняя строка при подмене в середине остаётся нетронутой.
+#
+#    Пересчитывает код приложения — verifyChain через auditReport.ts (то же,
+#    что действие audit-verify в maintenance.yml), — а не копия алгоритма
+#    здесь. Канонизация строки журнала — часть приложения и меняется вместе с
+#    ним (вложенные details — с сохранением проверки прежних строк); копия на
+#    оболочке однажды разошлась бы с ним и начала либо браковать исправные
+#    копии, либо, что хуже, пропускать подменённые. От приложения берётся
+#    только код возврата: вывод его — для человека.
+#
+#    APP_EXEC — чем запускать приложение, APP_DB_HOST — адрес сервера базы,
+#    каким его видит приложение. По умолчанию, если в текущем каталоге лежит
+#    развёртывание (docker-compose.yml и .env.docker — так запускает
+#    maintenance.yml), — одноразовый контейнер api того же выпуска, что
+#    работает: его код и писал журнал. --no-deps не трогает остальные
+#    службы. База из контейнера видна по имени службы postgres, а не по петле
+#    хоста, поэтому хост в адресе подменяется; пользователь и пароль остаются
+#    из DATABASE_URL (владелец: политики строк на журнале его не касаются).
+#    Адрес уходит в контейнер окружением (-e DATABASE_URL без значения берёт
+#    его из окружения вызова), а не строкой команды — в ps и в журнал
+#    прогона он не попадает. Без развёртывания в каталоге (разработка,
+#    scripts/test/backup-roundtrip.sh) — bun из рабочей копии.
+if [ -z "${APP_EXEC+x}" ]; then
+  if [ -f docker-compose.yml ] && [ -f .env.docker ] && command -v docker >/dev/null 2>&1; then
+    APP_EXEC="docker compose --env-file .env.docker run --rm --no-deps -T -e DATABASE_URL api"
+    APP_DB_HOST="${APP_DB_HOST:-postgres:5432}"
+  else
+    APP_EXEC=""
+  fi
+fi
+app_url="$restored_url"
+if [ -n "${APP_DB_HOST:-}" ]; then
+  rest="${restored_url#*://}"
+  cred=""
+  case "$rest" in *@*) cred="${rest%%@*}@"; rest="${rest#*@}" ;; esac
+  app_url="${restored_url%%://*}://$cred$APP_DB_HOST/${rest#*/}"
+fi
+# Пароль из вывода приложения вырезается на случай, если оно, падая,
+# напечатает адрес базы: этот вывод уходит в журнал прогона обслуживания.
+mask() { sed -E 's#(://[^:@/[:space:]]*):[^@/[:space:]]*@#\1:***@#g'; }
+
+# Поток ошибок — отдельно: туда же docker compose пишет ход запуска
+# контейнера («Container … Created»), и при удаче это шум в отчёте. При
+# провале нужен и он: там причина, если контейнер не поднялся, и там же
+# строка приложения о разрыве цепочки.
+if [ -z "$APP_EXEC" ] && [ ! -f apps/api/src/auditReport.ts ]; then
+  say_fail "цепочку журнала нечем пересчитать: в $(pwd) нет ни развёртывания (docker-compose.yml, .env.docker), ни рабочей копии с apps/api"
+elif chain_out="$(DATABASE_URL="$app_url" $APP_EXEC bun apps/api/src/auditReport.ts 2>"$chain_err")"; then
+  echo "  цепочка журнала: пересчитана кодом приложения"
+  printf '%s\n' "$chain_out" | mask | sed 's/^ */    /'
 else
-  echo "  цепочка журнала: цела"
+  say_fail "цепочка журнала не сходится при пересчёте (или пересчёт не запустился):"
+  { cat "$chain_err"; printf '%s\n' "$chain_out"; } | mask | { grep -v '^ *$' || true; } | tail -n 8 | sed 's/^ */    /'
 fi
 
 if [ "$fail" != "0" ]; then
