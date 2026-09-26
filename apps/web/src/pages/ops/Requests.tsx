@@ -8,7 +8,19 @@ import { Input } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
 import { PeriodSwitch } from "../dashboard/parts";
-import { ROLE_KEY, clock, filterRoutes, fmtInt, fmtMs, parseSort, sortMetric, sortRoutes, type RouteSort } from "./model";
+import { RouteCharts, TrafficCharts } from "./charts";
+import {
+  ROLE_KEY,
+  clock,
+  filterRoutes,
+  fmtInt,
+  fmtMs,
+  parseSort,
+  parseTrafficWindow,
+  sortMetric,
+  sortRoutes,
+  type RouteSort,
+} from "./model";
 import { Cell, GridRow, GridTable, NumHead, Quiet, RequestId, Stamp, useOpsResource } from "./parts";
 
 /*
@@ -19,6 +31,11 @@ import { Cell, GridRow, GridTable, NumHead, Quiet, RequestId, Stamp, useOpsResou
  * (?sort=count|p95|errors) и поиск (?q=) — в адресе. Полоска под маршрутом
  * — та величина, по которой сейчас отсортировано, от общего максимума: её
  * читают раньше чисел, и глаз находит тяжёлую строку, не сравнивая цифры.
+ *
+ * Над таблицей (волна 11) — рейтинги: самые частые, самые медленные по p95
+ * и доля пятисоток по маршрутам. Поиск на них не действует — он сужает
+ * таблицу. Под ней — нагрузка за окно (?window=1h|6h|24h): запросы по
+ * классам ответа и время ответа перцентилями, как на «Огляді».
  *
  * Ниже — медленные запросы (от секунды) поштучно: номер запроса ведёт в
  * ленту логов с фильтром по нему и копируется одним нажатием — ровно то,
@@ -36,10 +53,13 @@ export default function OpsRequests() {
   const loc = locale();
   const [rawSort, setSort] = useUrlState("sort", "count");
   const [q, setQ] = useUrlState("q", "");
+  const [rawWindow, setWindow] = useUrlState("window", "1h");
   const sort = parseSort(rawSort);
+  const win = parseTrafficWindow(rawWindow);
 
   const routes = useOpsResource(() => api.opsRoutes(), [], POLL_MS);
   const slow = useOpsResource(() => api.opsSlow(), [], POLL_MS);
+  const traffic = useOpsResource(() => api.opsTraffic(win), [win], POLL_MS);
 
   const rows = useMemo(
     () => (routes.data ? sortRoutes(filterRoutes(routes.data.items, q), sort) : null),
@@ -84,6 +104,12 @@ export default function OpsRequests() {
           </>
         }
       >
+        {routes.data.items.length ? (
+          <div className="mb-[28px]">
+            <RouteCharts items={routes.data.items} />
+            {q ? <p className="m-0 mt-[16px] text-[13px] leading-[18px] text-muted">{ut("ops.ch.searchNote")}</p> : null}
+          </div>
+        ) : null}
         {routes.data.items.length === 0 ? (
           <Quiet>{ut("ops.routes.empty")}</Quiet>
         ) : rows.length === 0 ? (
@@ -142,6 +168,30 @@ export default function OpsRequests() {
               );
             })}
           </GridTable>
+        )}
+      </RuleSection>
+
+      <RuleSection
+        title={ut("ops.traffic.title")}
+        actions={
+          <PeriodSwitch
+            label={ut("ops.traffic.window")}
+            value={win}
+            onChange={(w) => setWindow(w)}
+            options={[
+              ["1h", ut("ops.window.1h")],
+              ["6h", ut("ops.window.6h")],
+              ["24h", ut("ops.window.24h")],
+            ]}
+          />
+        }
+      >
+        {traffic.error && !traffic.data ? (
+          <Loading error={traffic.error} onRetry={traffic.reload} />
+        ) : !traffic.data ? (
+          <Loading rows={3} />
+        ) : (
+          <TrafficCharts buckets={traffic.data.buckets} stepSec={traffic.data.stepSec} since={traffic.data.since} compact />
         )}
       </RuleSection>
 

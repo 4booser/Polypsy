@@ -2667,10 +2667,7 @@ export const UI = {
   "ops.window.1h": { uk: "Година", ru: "Час", en: "Hour" },
   "ops.window.24h": { uk: "Доба", ru: "Сутки", en: "24 hours" },
   "ops.traffic.requests": { uk: "Запити", ru: "Запросы", en: "Requests" },
-  "ops.traffic.step": { uk: "Стовпець — {step}", ru: "Столбец — {step}", en: "One column per {step}" },
   "ops.traffic.latency": { uk: "Час відповіді", ru: "Время ответа", en: "Response time" },
-  "ops.traffic.latencyHint": { uk: "Лінія — p95, смуга — від p50 до p99; лише проміжки, в яких були запити", ru: "Линия — p95, полоса — от p50 до p99; только промежутки, в которых были запросы", en: "Line is p95, band spans p50 to p99; only intervals that had requests" },
-  "ops.traffic.p95": { uk: "p95", ru: "p95", en: "p95" },
 
   "ops.health.title": { uk: "Перевірки", ru: "Проверки", en: "Health checks" },
   "ops.health.hint": { uk: "Про ключі й токени — лише «задано / не задано»: їхні значення сюди не потрапляють ніколи.", ru: "О ключах и токенах — только «задано / не задано»: их значения сюда не попадают никогда.", en: "Keys and tokens are reported only as set or not set; their values never appear here." },
@@ -4574,6 +4571,91 @@ export const UI = {
   "o2b.rec.failedNone": { uk: "Збоїв немає", ru: "Сбоев нет", en: "No failures" },
   "o2b.rec.noFile": { uk: "файл стерто", ru: "файл стёрт", en: "file erased" },
   "o2b.rec.retried": { uk: "Повернуто в чергу розшифровки", ru: "Возвращено в очередь расшифровки", en: "Returned to the transcription queue" },
+
+  /* ── w11:obs ── */
+  /*
+   * Графики наблюдаемости техпанели (волна 11): Огляд, Запити, Помилки,
+   * Логи, Фонові задачі, База, Порівняння випусків, Повільні SQL, Траса.
+   * Якорь стоит в конце блока наблюдаемости, а не после people2: так три
+   * участка волны дописывают словарь в разных местах и не сталкиваются.
+   */
+  "ops.window.6h": { uk: "6 годин", ru: "6 часов", en: "6 hours" },
+  "ops.ch.class.ok": { uk: "Успішні (2xx–3xx)", ru: "Успешные (2xx–3xx)", en: "Successful (2xx–3xx)" },
+  "ops.ch.class.c4": { uk: "Відмови клієнту (4xx)", ru: "Отказы клиенту (4xx)", en: "Client errors (4xx)" },
+  "ops.ch.class.c5": { uk: "Збої сервера (5xx)", ru: "Сбои сервера (5xx)", en: "Server errors (5xx)" },
+  "ops.ch.total": { uk: "Усього", ru: "Всего", en: "Total" },
+  "ops.ch.noProcess": { uk: "процес тоді ще не працював", ru: "процесс тогда ещё не работал", en: "the process wasn't running yet" },
+  "ops.ch.requestsHint": { uk: "Стовпець — {step}, розбитий за класом відповіді", ru: "Столбец — {step}, разбит по классу ответа", en: "One column per {step}, split by response class" },
+  "ops.ch.latencyHint": { uk: "Мілісекунди; де запитів не було, лінія переривається", ru: "Миллисекунды; где запросов не было, линия прерывается", en: "Milliseconds; the line breaks where there were no requests" },
+  "ops.ch.share5xx": { uk: "Частка 5xx", ru: "Доля 5xx", en: "5xx share" },
+  "ops.ch.share5xxHint": { uk: "Пунктир — поріг, як у плитки й оповіщення; проміжки понад поріг позначено окремою точкою", ru: "Пунктир — порог, как у плитки и оповещения; промежутки выше порога отмечены отдельной точкой", en: "The dashed line is the threshold used by the tile and the alert; intervals above it are marked with a dot" },
+  "ops.ch.limit": { uk: "поріг {v}", ru: "порог {v}", en: "threshold {v}" },
+  "ops.ch.mix": { uk: "Склад відповідей за період", ru: "Состав ответов за период", en: "Response mix for the period" },
+  "ops.ch.mixHint": { uk: "Усі запити вікна графіка", ru: "Все запросы окна графика", en: "All requests in the chart window" },
+  "ops.ch.others": { uk: "інші ({n})", ru: "прочие ({n})", en: "others ({n})" },
+  "ops.ch.more": { uk: "і ще {n}", ru: "и ещё {n}", en: "and {n} more" },
+  "ops.ch.nOfM": { uk: "{v} · {n} з {m}", ru: "{v} · {n} из {m}", en: "{v} · {n} of {m}" },
+  "ops.ch.searchNote": { uk: "Графіки — без пошуку: він звужує лише список під ними.", ru: "Графики — без поиска: он сужает только список под ними.", en: "Charts ignore the search: it narrows only the list below them." },
+
+  "ops.ch.routesCount": { uk: "Найчастіші маршрути", ru: "Самые частые маршруты", en: "Busiest routes" },
+  "ops.ch.routesP95": { uk: "Найповільніші за p95", ru: "Самые медленные по p95", en: "Slowest by p95" },
+  "ops.ch.routesP95Hint": { uk: "Маршрути від {n} запитів: p95 меншої вибірки — майже максимум", ru: "Маршруты от {n} запросов: p95 меньшей выборки — почти максимум", en: "Routes with at least {n} requests: p95 of a smaller sample is nearly the maximum" },
+  "ops.ch.routesP95Few": { uk: "Замало запитів: p95 рахується для маршрутів від {n} запитів", ru: "Мало запросов: p95 считается для маршрутов от {n} запросов", en: "Too few requests: p95 is ranked for routes with at least {n} requests" },
+  "ops.ch.routes5xx": { uk: "Частка 5xx за маршрутами", ru: "Доля 5xx по маршрутам", en: "5xx share by route" },
+  "ops.ch.routes5xxHint": { uk: "Поруч із часткою — скільки збоїв із скількох запитів", ru: "Рядом с долей — сколько сбоев из скольких запросов", en: "Next to each share: how many failures out of how many requests" },
+  "ops.ch.routes5xxNone": { uk: "Збоїв сервера з моменту запуску не було", ru: "Сбоев сервера с момента запуска не было", en: "No server errors since the process started" },
+  "ops.ch.sinceStart": { uk: "З моменту запуску процесу", ru: "С момента запуска процесса", en: "Since the process started" },
+
+  "ops.ch.step.minute": { uk: "Стовпець — хвилина", ru: "Столбец — минута", en: "One column per minute" },
+  "ops.ch.step.hour": { uk: "Стовпець — година", ru: "Столбец — час", en: "One column per hour" },
+  "ops.ch.step.6h": { uk: "Стовпець — шість годин", ru: "Столбец — шесть часов", en: "One column per six hours" },
+  "ops.ch.step.day": { uk: "Стовпець — доба", ru: "Столбец — сутки", en: "One column per day" },
+
+  "ops.ch.errCases": { uk: "Випадки в часі", ru: "Случаи во времени", en: "Occurrences over time" },
+  "ops.ch.errTop": { uk: "Найчастіші групи", ru: "Самые частые группы", en: "Most frequent groups" },
+  "ops.ch.errTopHint": { uk: "Випадки за період", ru: "Случаи за период", en: "Occurrences in the period" },
+  "ops.ch.errNoHours": { uk: "Випадки в часі видно лише з історії в базі, а вона зараз не прочиталася", ru: "Случаи во времени видны только из истории в базе, а она сейчас не прочиталась", en: "Occurrences over time come only from the database history, which couldn't be read right now" },
+
+  "ops.ch.logAll": { uk: "Рядки лога", ru: "Строки лога", en: "Log lines" },
+  "ops.ch.logLoud": { uk: "Попередження й помилки", ru: "Предупреждения и ошибки", en: "Warnings and errors" },
+  "ops.ch.logHint": { uk: "{step}; увесь період, без фільтрів стрічки", ru: "{step}; весь период, без фильтров ленты", en: "{step}; the whole period, without feed filters" },
+  "ops.ch.logQuiet": { uk: "Попереджень і помилок за період не було", ru: "Предупреждений и ошибок за период не было", en: "No warnings or errors in this period" },
+  "ops.ch.logUnavailable": { uk: "База не відповіла — у графіках лише ще не записані рядки", ru: "База не ответила — в графиках только ещё не записанные строки", en: "The database didn't respond — the charts show only lines not yet written" },
+
+  "ops.ch.jobRuns": { uk: "Проходи", ru: "Проходы", en: "Runs" },
+  "ops.ch.jobRunsText": { uk: "{runs} · збоїв {n}", ru: "{runs} · сбоев {n}", en: "{runs} · {n} failed" },
+  "ops.ch.jobFails": { uk: "Збої", ru: "Сбои", en: "Failures" },
+  "ops.ch.jobNoFails": { uk: "Збоїв з моменту запуску не було", ru: "Сбоев с момента запуска не было", en: "No failures since the process started" },
+  "ops.ch.jobTook": { uk: "Тривалість останнього проходу", ru: "Длительность последнего прохода", en: "Last run duration" },
+  "ops.ch.jobNeverRan": { uk: "Жодна задача ще не проходила", ru: "Ни одна задача ещё не проходила", en: "No job has run yet" },
+  "ops.ch.schedDays": { uk: "Спрацювання за добу", ru: "Срабатывания за сутки", en: "Runs per day" },
+  "ops.ch.schedAssigned": { uk: "Призначено й пропущено", ru: "Назначено и пропущено", en: "Assigned and skipped" },
+  "ops.ch.schedHint": { uk: "За {n} днів, з бази — переживає перезапуск", ru: "За {n} дней, из базы — переживает перезапуск", en: "Last {n} days, from the database — survives restarts" },
+  "ops.ch.schedEmpty": { uk: "За {n} днів розклади не спрацьовували", ru: "За {n} дней расписания не срабатывали", en: "No schedule ran in the last {n} days" },
+
+  "ops.ch.tableSize": { uk: "Найбільші таблиці", ru: "Самые большие таблицы", en: "Largest tables" },
+  "ops.ch.tableSizeHint": { uk: "Разом з індексами; «інші» — решта з {n} найбільших", ru: "Вместе с индексами; «прочие» — остальные из {n} самых больших", en: "Including indexes; “others” are the rest of the {n} largest" },
+  "ops.ch.deadRows": { uk: "Мертві рядки", ru: "Мёртвые строки", en: "Dead rows" },
+  "ops.ch.deadRowsHint": { uk: "Виділено, де автоочищення не встигає: понад 1000 і понад п’яту частину живих", ru: "Выделено, где автоочистка не успевает: больше 1000 и больше пятой части живых", en: "Highlighted where autovacuum falls behind: over 1,000 and over a fifth of live rows" },
+  "ops.ch.deadNone": { uk: "Мертвих рядків немає", ru: "Мёртвых строк нет", en: "No dead rows" },
+  "ops.ch.free": { uk: "вільно", ru: "свободно", en: "free" },
+  "ops.ch.connHint": { uk: "Стани підключень і скільки лишилося до max_connections", ru: "Состояния подключений и сколько осталось до max_connections", en: "Connection states and how much is left before max_connections" },
+
+  "ops.ch.relP95": { uk: "p95: було й стало", ru: "p95: было и стало", en: "p95: before and after" },
+  "ops.ch.relP95Hint": { uk: "Найбільші зсуви в будь-який бік; маршрути із замалою вибіркою не показано", ru: "Самые большие сдвиги в любую сторону; маршруты со слишком малой выборкой не показаны", en: "The largest shifts either way; routes with too small a sample are left out" },
+  "ops.ch.rel5xx": { uk: "Частка 5xx: було й стало", ru: "Доля 5xx: было и стало", en: "5xx share: before and after" },
+  "ops.ch.rel5xxHint": { uk: "Лише маршрути, де 5xx були хоч в одному вікні", ru: "Только маршруты, где 5xx были хотя бы в одном окне", en: "Only routes with 5xx in at least one window" },
+  "ops.ch.rel5xxNone": { uk: "5xx не було в жодному вікні", ru: "5xx не было ни в одном окне", en: "No 5xx in either window" },
+  "ops.ch.relFew": { uk: "Порівнювати нічого: у маршрутів замало запитів в одному з вікон", ru: "Сравнивать нечего: у маршрутов мало запросов в одном из окон", en: "Nothing to compare: routes have too few requests in one of the windows" },
+
+  "ops.ch.sqlTop": { uk: "Найдорожчі запити", ru: "Самые дорогие запросы", en: "Most expensive queries" },
+  "ops.ch.sqlTopHint": { uk: "{sort}; номер — як у списку нижче", ru: "{sort}; номер — как в списке ниже", en: "{sort}; numbers match the list below" },
+  "ops.ch.sqlShare": { uk: "Частка часу бази", ru: "Доля времени базы", en: "Share of database time" },
+  "ops.ch.sqlShareHint": { uk: "Від усього часу запитів своєї бази з моменту скидання статистики", ru: "От всего времени запросов своей базы с момента сброса статистики", en: "Of all query time in this database since the statistics were reset" },
+  "ops.ch.sqlRest": { uk: "решта", ru: "остальное", en: "the rest" },
+  "ops.ch.traceTime": { uk: "Куди пішов час", ru: "Куда ушло время", en: "Where the time went" },
+  "ops.ch.traceSql": { uk: "запити до бази", ru: "запросы к базе", en: "database queries" },
+  "ops.ch.traceOther": { uk: "решта обробки", ru: "остальная обработка", en: "everything else" },
 
   /* ── wave10:people2 ── */
   /*

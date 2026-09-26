@@ -8,6 +8,7 @@ import type {
   OpsErrorWindow,
   OpsJobs,
   OpsLogs,
+  OpsLogVolume,
   OpsLogWindow,
   OpsOverview,
   OpsReleaseCompare,
@@ -1198,6 +1199,8 @@ export const api = {
     if (params.before) q.set("before", params.before);
     return request<OpsLogs>(`/api/ops/logs?${q}`);
   },
+  /** Объём лога по уровням за период — только счёт по корзинам, для графика над лентой (волна 11) */
+  opsLogVolume: (window: OpsLogWindow) => request<OpsLogVolume>(`/api/ops/logs/volume?window=${window}`),
   /* трасса запроса, сравнение выкаток, медленные SQL — история из базы (участок obs2a) */
   opsTrace: (requestId: string) => request<OpsTrace>(`/api/ops/trace/${encodeURIComponent(requestId)}`),
   /* версии в истории запросов — для выбора пары в «Порівнянні випусків» (не путать с историей выкаток opsReleases ниже) */

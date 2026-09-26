@@ -15,7 +15,7 @@ import {
   fmtShare,
   fmtUptime,
   healthReason,
-  latencySeries,
+  latencyLines,
   mergeFeed,
   parseLevel,
   parseSort,
@@ -23,7 +23,7 @@ import {
   shortId,
   sortMetric,
   sortRoutes,
-  trafficColumns,
+  trafficStack,
 } from "../src/pages/ops/model";
 
 /**
@@ -122,17 +122,17 @@ describe("графики", () => {
   const buckets = [bucket(0, 3, 40), bucket(1, 0, null), bucket(2, 5, 45)];
 
   test("столбцы — каждая корзина, в том числе пустая: ноль запросов — это тоже ответ", () => {
-    const cols = trafficColumns(buckets, (iso) => iso.slice(11, 16));
-    expect(cols.map((c) => c.value)).toEqual([3, 0, 5]);
+    const since = new Date(Date.UTC(2026, 8, 26, 11)).toISOString();
+    const cols = trafficStack(buckets, 60, since, (iso) => iso.slice(11, 16), (iso) => iso);
+    expect(cols.map((c) => c.values?.reduce((s, v) => s + v, 0))).toEqual([3, 0, 5]);
     expect(cols[2]!.label).toBe("12:02");
   });
 
-  test("линия p95 — только там, где были запросы, с полосой p50…p99", () => {
-    const pts = latencySeries(buckets, (iso) => iso.slice(11, 16));
-    expect(pts).toEqual([
-      { x: "12:00", y: 40, lo: 8, hi: 60 },
-      { x: "12:02", y: 45, lo: 8, hi: 60 },
-    ]);
+  test("перцентили — только там, где были запросы: пустая корзина рвёт линию, а не роняет её в ноль", () => {
+    const lines = latencyLines(buckets);
+    expect(lines.p95).toEqual([40, null, 45]);
+    expect(lines.p50).toEqual([8, null, 8]);
+    expect(lines.p99).toEqual([60, null, 60]);
   });
 });
 
@@ -225,7 +225,8 @@ describe("ошибки", () => {
  * инлайнового стиля, кроме значений из рантайма (ширина полоски).
  */
 describe("вкладки техпанели без наследия", () => {
-  const FILES = ["Overview", "Requests", "Errors", "Logs", "Database", "Jobs", "parts"].map((n) =>
+  /* графики волны 11 — тот же язык: charts.tsx вкладок и obs2a/charts.tsx */
+  const FILES = ["Overview", "Requests", "Errors", "Logs", "Database", "Jobs", "parts", "charts", "obs2a/charts"].map((n) =>
     resolve(import.meta.dir, `../src/pages/ops/${n}.tsx`),
   );
   const LEGACY = new Set(["card", "tile", "row", "chip", "btn", "hint", "muted", "tabs", "grid-cols-2", "cols-2", "cols-3", "cols-4"]);

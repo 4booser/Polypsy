@@ -25,8 +25,9 @@ import {
   parseLogWindow,
   shortId,
 } from "./model";
+import { LogVolumeCharts } from "./charts";
 import { HistoryNote } from "./obs2a/parts";
-import { Quiet, Stamp, StatusMark } from "./parts";
+import { Quiet, Stamp, StatusMark, useOpsResource } from "./parts";
 
 /*
  * Логи: история из базы за период и живой хвост процесса поверх неё.
@@ -51,9 +52,16 @@ import { Quiet, Stamp, StatusMark } from "./parts";
  *
  * Скрытая вкладка браузера не опрашивается; ушёл с вкладки панели —
  * компонент размонтирован, и цикл гаснет вместе с ним.
+ *
+ * Над лентой (волна 11) — объём строк за период по уровням: всего и
+ * отдельно предупреждения с ошибками (GET /api/ops/logs/volume, только
+ * счёт). Своим опросом раз в минуту и без фильтров ленты: график отвечает
+ * «когда стало шумно», а фильтр — «что именно», и смешивать их значило бы
+ * рисовать поиск по тексту за две недели на каждый набранный символ.
  */
 
 const POLL_MS = 4_000;
+const VOLUME_POLL_MS = 60_000;
 /* первая выборка — побольше: человек открывает ленту, чтобы увидеть, что было */
 const FIRST_LIMIT = 300;
 const NEXT_LIMIT = 500;
@@ -78,6 +86,7 @@ export default function OpsLogs() {
   const [rawWindow, setWindow] = useUrlState("window", "1h");
   const level = parseLevel(rawLevel);
   const win: OpsLogWindow = parseLogWindow(rawWindow);
+  const volume = useOpsResource(() => api.opsLogVolume(win), [win], VOLUME_POLL_MS);
 
   /* поиск печатается в поле сразу, а в адрес и на сервер уходит после паузы в наборе */
   const [draft, setDraft] = useState(q);
@@ -233,6 +242,12 @@ export default function OpsLogs() {
           </>
         }
       >
+        {/* график — только когда пришёл: его отказ не должен закрывать ленту, ради которой вкладку открыли */}
+        {volume.data ? (
+          <div className="mb-[28px]">
+            <LogVolumeCharts volume={volume.data} now={volume.updatedAt ?? Date.now()} />
+          </div>
+        ) : null}
         <div className="mb-[12px] flex flex-wrap items-center gap-[12px]">
           <Select
             aria-label={ut("ops.logs.level")}
