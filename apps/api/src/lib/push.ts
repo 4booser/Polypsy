@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { isLang, type Lang } from "@quizzy/shared";
 import { db } from "../db";
 import { pushDeliveries, pushTokens } from "../db/schema";
 import { log } from "./log";
@@ -15,15 +16,28 @@ import { log } from "./log";
  * приучает игнорировать уведомления, а это дороже, чем не отправить вовсе.
  */
 
+/**
+ * Текст уведомления: готовой строкой или по языку.
+ *
+ * Функцией — когда текст зависит от языка: он собирается отдельно для
+ * каждого устройства, на языке его приложения (push_tokens.lang). У одного
+ * человека телефон может быть на английском, а планшет в кабинете — на
+ * украинском, и каждый получит своё. Строкой — когда язык выбирать не из
+ * чего (тесты, служебные сообщения).
+ */
+export type PushText = string | ((lang: Lang) => string);
+
 export interface PushMessage {
   /** Ключ события: `assignment:<id>`; по нему же дедупликация */
   eventKey: string;
   kind: string;
-  title: string;
-  body: string;
+  title: PushText;
+  body: PushText;
   /** Куда открыть приложение */
   path?: string;
 }
+
+const render = (text: PushText, lang: Lang) => (typeof text === "string" ? text : text(lang));
 
 type Sender = (messages: { to: string; title: string; body: string; data?: unknown }[]) => Promise<void>;
 
@@ -64,13 +78,20 @@ export async function registerDevice(
   userId: string,
   token: string,
   platform: "ios" | "android" | "web",
+  /** Язык приложения на устройстве — из заголовка регистрации */
+  lang: Lang | null = null,
 ): Promise<void> {
   await db
     .insert(pushTokens)
-    .values({ id: crypto.randomUUID(), userId, token, platform })
+    .values({ id: crypto.randomUUID(), userId, token, platform, lang })
     .onConflictDoUpdate({
       target: pushTokens.token,
-      set: { userId, platform, lastSeenAt: new Date().toISOString() },
+      /*
+       * Язык обновляется при каждой регистрации: человек переключил язык
+       * в приложении — приложение перерегистрирует устройство, и следующее
+       * уведомление придёт уже на новом.
+       */
+      set: { userId, platform, lang, lastSeenAt: new Date().toISOString() },
     });
 }
 
@@ -85,7 +106,16 @@ export async function forgetDevice(token: string): Promise<void> {
  * проверять это сам — идемпотентность живёт здесь, а не рассыпана по местам
  * отправки.
  */
-export async function pushToUser(userId: string, message: PushMessage): Promise<boolean> {
+export async function pushToUser(
+  userId: string,
+  message: PushMessage,
+  /**
+   * Язык для устройств, которые своего не прислали (зарегистрированы до
+   * миграции 0087). Вызывающий знает о человеке больше, чем эта функция, —
+   * например, язык его последнего прохождения, — и решает сам.
+   */
+  fallbackLang: Lang = "uk",
+): Promise<boolean> {
   /*
    * Устройства проверяются ДО заявки на отправку.
    *
@@ -113,12 +143,15 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
 
   try {
     await sender(
-      devices.map((d) => ({
-        to: d.token,
-        title: message.title,
-        body: message.body,
-        data: message.path ? { path: message.path } : undefined,
-      })),
+      devices.map((d) => {
+        const lang = isLang(d.lang) ? d.lang : fallbackLang;
+        return {
+          to: d.token,
+          title: render(message.title, lang),
+          body: render(message.body, lang),
+          data: message.path ? { path: message.path } : undefined,
+        };
+      }),
     );
     return true;
   } catch (error) {
@@ -140,9 +173,13 @@ export async function pushToUser(userId: string, message: PushMessage): Promise<
 }
 
 /** Уведомить нескольких: используется для дежурных по группе */
-export async function pushToUsers(userIds: string[], message: PushMessage): Promise<number> {
+export async function pushToUsers(
+  userIds: string[],
+  message: PushMessage,
+  fallbackLang: Lang = "uk",
+): Promise<number> {
   let sent = 0;
-  for (const id of userIds) if (await pushToUser(id, message)) sent++;
+  for (const id of userIds) if (await pushToUser(id, message, fallbackLang)) sent++;
   return sent;
 }
 

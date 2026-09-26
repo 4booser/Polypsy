@@ -1,5 +1,5 @@
 import { asc, eq, inArray } from "drizzle-orm";
-import { normalizeLocalized, t, type Lang } from "@quizzy/shared";
+import { normalizeLocalized, presentedLang, t, type Lang } from "@quizzy/shared";
 import type {
   CreateSurveyInput,
   LogicRule,
@@ -61,6 +61,18 @@ function cacheContent(key: string, value: CachedContent): void {
   contentCache.set(key, value);
 }
 
+/**
+ * На каком языке отдан текст методики — по названию.
+ *
+ * По названию, а не по пунктам: пункты в кэше лежат уже разрешёнными, и
+ * их язык оттуда не прочесть, а название пишется вместе с пунктами — в
+ * каталоге и в конструкторе оба языка заводятся разом. У сырой выдачи
+ * (конструктор) языка нет: там отдаются все.
+ */
+function contentLangOf(title: unknown, lang: Lang, raw: boolean): Lang | undefined {
+  return raw ? undefined : presentedLang(title as never, lang);
+}
+
 export async function attachContent(
   rows: SurveyRow[],
   versionOverride?: Map<string, string>,
@@ -86,6 +98,7 @@ export async function attachContent(
       description: r.description ? t(r.description as never, lang) : null,
       instructions: r.instructions ? t(r.instructions as never, lang) : null,
       safetyPlan: r.safetyPlan ? t(r.safetyPlan as never, lang) : null,
+      contentLang: contentLangOf(r.title, lang, raw),
       sections: [],
       scales: [],
       questions: [],
@@ -108,6 +121,7 @@ export async function attachContent(
         description: Lnull(survey.description),
         instructions: Lnull(survey.instructions),
         safetyPlan: Lnull(survey.safetyPlan),
+        contentLang: contentLangOf(survey.title, lang, raw),
         versionId: vId,
         versionNumber: cached?.versionNumber ?? 0,
         sections: cached?.sections ?? [],
@@ -245,6 +259,7 @@ export async function attachContent(
       description: Lnull(survey.description),
       instructions: Lnull(survey.instructions),
       safetyPlan: Lnull(survey.safetyPlan),
+      contentLang: contentLangOf(survey.title, lang, raw),
       versionId: vId,
       ...content,
     } as SurveyFull;

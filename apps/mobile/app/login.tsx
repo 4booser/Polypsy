@@ -6,6 +6,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { Body, Button, ErrorText, Field, Title } from "@/components/ui";
 import { spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { LANGS, LANG_NAMES } from "@quizzy/shared";
 
 export default function LoginScreen() {
   const c = useColors();
@@ -72,8 +73,20 @@ export default function LoginScreen() {
           variant="secondary"
         />
         <View style={{ flexDirection: "row", gap: 8, justifyContent: "center" }}>
-          <Button title="УКР" variant={lang === "uk" ? "primary" : "secondary"} onPress={() => setLang("uk")} />
-          <Button title="РУС" variant={lang === "ru" ? "primary" : "secondary"} onPress={() => setLang("ru")} />
+          {/*
+            Языки — перечнем и их собственными именами из общей записи: здесь
+            стояли литералы «УКР» и «РУС», и третий язык пришлось бы
+            вписывать в разметку. Подпись на своём языке — чтобы тот, кто не
+            читает текущий, нашёл свой (см. LANG_NAMES).
+          */}
+          {LANGS.map((code) => (
+            <Button
+              key={code}
+              title={LANG_NAMES[code].short}
+              variant={lang === code ? "primary" : "secondary"}
+              onPress={() => setLang(code)}
+            />
+          ))}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

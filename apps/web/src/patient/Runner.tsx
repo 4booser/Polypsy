@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { isAnswered, isQuestionVisible, type SurveyFull } from "@quizzy/shared";
+import { contentLangNotice, isAnswered, isQuestionVisible, type SurveyFull } from "@quizzy/shared";
 import { api } from "../api";
 import { Screen, useAction } from "../ui";
 import { Button, Input, Textarea, TouchArea } from "../ui/primitives";
@@ -30,7 +30,7 @@ interface Answer {
 
 export default function Runner() {
   const { id } = useParams<{ id: string }>();
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const navigate = useNavigate();
   const { run, busy } = useAction();
 
@@ -81,6 +81,18 @@ export default function Runner() {
       {(survey: SurveyFull) => {
         const visible = survey.questions.filter((q) => isQuestionVisible(q, survey.questions, answers as never));
         const current = visible[step];
+        /*
+         * Английский интерфейс, а пункты — на украинском (английского текста
+         * у методик нет, см. CONTENT_LANGS). Одной строкой под названием на
+         * первом пункте: дальше человек уже знает, а повтор на каждом из
+         * сорока пяти пунктов стал бы шумом.
+         *
+         * Тот же язык — атрибутом lang на тексте методики: страница
+         * объявлена английской, и диктор читал бы украинские пункты
+         * английским голосом, то есть неразборчиво (WCAG 3.1.2).
+         */
+        const foreign = contentLangNotice(lang, survey.contentLang);
+        const partLang = foreign ?? undefined;
 
         if (done) {
           return (
@@ -231,7 +243,12 @@ export default function Runner() {
             </div>
 
             <div className="flex-1">
-              <p className="mb-2 text-caption text-muted">{survey.title}</p>
+              <p lang={partLang} className="mb-2 text-caption text-muted">
+                {survey.title}
+              </p>
+              {foreign && step === 0 ? (
+                <p className="mb-3 text-caption text-muted">{ut(`contentLang.${foreign}`)}</p>
+              ) : null}
               {/*
                 tabIndex={-1} — чтобы сюда можно было увести фокус после смены
                 пункта. Мышью на заголовок не попасть: -1 убирает его из
@@ -244,10 +261,10 @@ export default function Runner() {
                 className="mb-6 text-balance rounded-sm font-display text-[21px] font-medium leading-[1.3] tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
               >
                 <span className="sr-only">{position}. </span>
-                {current.title}
+                <span lang={partLang}>{current.title}</span>
               </h1>
               {current.help ? (
-                <p id={helpId} className="mb-4 text-small text-muted">
+                <p id={helpId} lang={partLang} className="mb-4 text-small text-muted">
                   {current.help}
                 </p>
               ) : null}
@@ -281,7 +298,7 @@ export default function Runner() {
                             : "border-hairline bg-surface-2 hover:border-border-strong",
                         )}
                       >
-                        <span>{o.text}</span>
+                        <span lang={partLang}>{o.text}</span>
                         {/*
                           Отметка, а не только цвет: выбранный вариант должен
                           читаться и тем, кто цвет не различает.

@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { renderPush } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import {
@@ -17,6 +18,7 @@ import { sweepNoShows } from "./noShow";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { pushToUser } from "./push";
+import { langsOfPatients } from "./remind";
 
 const DAY_MS = 86_400_000;
 
@@ -140,15 +142,24 @@ async function runSchedule(schedule: typeof schedules.$inferSelect): Promise<{
    *
    * В тексте нет ни методики, ни диагноза: экран блокировки видят
    * посторонние — в казарме, в транспорте, на построении.
+   *
+   * Текст — из словаря уведомлений и на языке устройства (pushToUser); до
+   * этого он был набран здесь по-русски и уходил русским всем.
    */
+  const langs = await langsOfPatients(fresh);
+  const date = dueAt.slice(0, 10);
   for (const userId of fresh) {
-    await pushToUser(userId, {
-      eventKey: `schedule:${schedule.id}:${dueAt}`,
-      kind: "assignment",
-      title: "Назначено обследование",
-      body: `Срок — до ${dueAt.slice(0, 10)}`,
-      path: "/(app)/surveys",
-    });
+    await pushToUser(
+      userId,
+      {
+        eventKey: `schedule:${schedule.id}:${dueAt}`,
+        kind: "assignment",
+        title: (lang) => renderPush("push.assignmentTitle", lang),
+        body: (lang) => renderPush("push.assignmentBody", lang, { date }),
+        path: "/(app)/surveys",
+      },
+      langs.get(userId) ?? "uk",
+    );
   }
 
   return { assigned: fresh.length, skipped: targets.length - fresh.length };

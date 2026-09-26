@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { parseBody } from "../lib/http";
+import { langOf, parseBody } from "../lib/http";
 import { forgetDevice, registerDevice } from "../lib/push";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 
@@ -23,7 +23,8 @@ const registerSchema = z.object({
 pushRoutes.post("/register", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, registerSchema);
-  await registerDevice(user.id, input.token, input.platform);
+  // язык приложения приходит тем же заголовком, что у любого запроса
+  await registerDevice(user.id, input.token, input.platform, langOf(c));
   return c.json({ ok: true });
 });
 

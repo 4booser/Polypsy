@@ -33,7 +33,7 @@ import type {
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
-import { UI } from "@quizzy/shared";
+import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 
 /*
@@ -45,7 +45,8 @@ import { currentLang } from "../currentLang";
  * связи. В консоли это уже решено ровно так же.
  */
 function netText(key: "net.offline" | "net.failed"): string {
-  return UI[key][currentLang];
+  // через uiText, а не UI[key][lang]: у записи без английского поля en нет, и прямое чтение отдало бы undefined
+  return uiText(key, currentLang);
 }
 import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";

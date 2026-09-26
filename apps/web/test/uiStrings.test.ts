@@ -738,7 +738,7 @@ describe("украинский не сползает в русский", () => {
 });
 
 /**
- * Подпись «Мова / Язык» живёт одной записью.
+ * Подпись «Мова / Язык / Language» живёт одной записью.
  *
  * Она особенная: словарь по определению отдаёт одну строку на выбранном
  * языке, а здесь нужны сразу оба названия — иначе тот, кто уже переключился
@@ -755,7 +755,8 @@ describe("подпись языка", () => {
   const TYPES = join(ROOT, "packages/shared/src/types.ts");
 
   test("объявлена один раз и в общей записи", () => {
-    const declarations = [...readFileSync(TYPES, "utf8").matchAll(/"Мова \/ Язык"/g)];
+    // с английским подпись выросла хвостом «/ Language»; начало прежнее — по нему ищут e2e
+    const declarations = [...readFileSync(TYPES, "utf8").matchAll(/"Мова \/ Язык \/ Language"/g)];
     expect(declarations, "LANG_SELF_LABEL пропал или набран дважды").toHaveLength(1);
   });
 

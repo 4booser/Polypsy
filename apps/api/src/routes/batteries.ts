@@ -24,13 +24,19 @@ import {
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, assertBatteryInUse, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { parseTs } from "../lib/time";
 
-/** Язык из запроса: всё, кроме украинского, отдаём по-русски */
-const langOf = (raw: string | undefined): Lang => (raw === "uk" ? "uk" : "ru");
+/*
+ * Язык — общим правилом (lib/http.ts: ?lang, затем Accept-Language).
+ *
+ * Здесь жило своё: «всё, кроме украинского, — по-русски», и читался только
+ * параметр ?lang, которого клиенты не шлют. Названия методик в наборах
+ * поэтому приходили русскими на любом интерфейсе, а с английским правило
+ * «всё прочее — русский» выдало бы русский и ему.
+ */
 
 export const batteryRoutes = new Hono<AppEnv>();
 
@@ -105,7 +111,7 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
 batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   if (!isStaff(user)) forbidden("err.staffAccessOnly");
-  const lang = langOf(c.req.query("lang"));
+  const lang = langOf(c);
   const groupIds = await accessibleGroupIds(user);
 
   const rows = await db
@@ -361,7 +367,7 @@ batteryRoutes.get("/:id/assignments", requireStaff, requirePermission("assignmen
   await assertBatteryAccess(user, batteryId);
   const result = await loadAssignments(
     eq(batteryAssignments.batteryId, batteryId),
-    langOf(c.req.query("lang")),
+    langOf(c),
   );
   await audit(c, {
     action: "battery.assignment_list",
@@ -458,7 +464,7 @@ batteryRoutes.get("/mine", async (c) => {
   const user = c.get("user");
   const result = await loadAssignments(
     and(eq(batteryAssignments.userId, user.id), isNull(batteryAssignments.cancelledAt)),
-    langOf(c.req.query("lang")),
+    langOf(c),
   );
   return c.json({ items: result });
 });

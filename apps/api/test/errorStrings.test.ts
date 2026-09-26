@@ -67,15 +67,32 @@ describe("тексты отказов", () => {
     expect(unused).toEqual([]);
   });
 
-  test("у каждого отказа есть оба перевода", () => {
+  test("у каждого отказа есть все три перевода", () => {
+    /*
+     * Английский — наравне с двумя прежними, а не «когда переведут»: в
+     * отличие от словаря оболочки, отказы переведены целиком сразу (их две
+     * сотни, и именно их человек читает, когда что-то не вышло). Тип
+     * ErrorEntry держит наличие поля, здесь — то, чего тип не видит:
+     * пустоту и разъехавшиеся подстановки.
+     */
     const bad: string[] = [];
-    for (const [key, pair] of Object.entries(ERRORS)) {
-      if (!pair.uk?.trim()) bad.push(`${key}: пустой uk`);
-      if (!pair.ru?.trim()) bad.push(`${key}: пустой ru`);
+    for (const [key, entry] of Object.entries(ERRORS)) {
+      if (!entry.uk?.trim()) bad.push(`${key}: пустой uk`);
+      if (!entry.ru?.trim()) bad.push(`${key}: пустой ru`);
+      if (!entry.en?.trim()) bad.push(`${key}: пустой en`);
       // подстановки должны совпадать: иначе на одном языке пропадёт число
       const marks = (t: string) => [...t.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
-      if (marks(pair.uk) !== marks(pair.ru)) bad.push(`${key}: разные подстановки в переводах`);
+      if (marks(entry.uk) !== marks(entry.ru)) bad.push(`${key}: разные подстановки uk/ru`);
+      if (marks(entry.uk) !== marks(entry.en)) bad.push(`${key}: разные подстановки uk/en`);
     }
     expect(bad).toEqual([]);
+  });
+
+  test("английский отказ написан по-английски", () => {
+    // кириллица в английском поле — это скопированная, а не переведённая строка
+    const leaked = Object.entries(ERRORS)
+      .filter(([, entry]) => /[\u0400-\u04FF]/.test(entry.en))
+      .map(([key, entry]) => `${key}: «${entry.en}»`);
+    expect(leaked).toEqual([]);
   });
 });

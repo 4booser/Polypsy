@@ -1,4 +1,4 @@
-import { UI } from "@quizzy/shared";
+import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 import * as LocalAuthentication from "expo-local-authentication";
 import { Platform } from "react-native";
@@ -46,8 +46,8 @@ export async function authenticate(): Promise<boolean> {
   try {
     const result = await LocalAuthentication.authenticateAsync({
       // системный диалог рисует ОС, языкового контекста здесь нет
-      promptMessage: UI["bio.prompt"][currentLang],
-      cancelLabel: UI["common.cancel"][currentLang],
+      promptMessage: uiText("bio.prompt", currentLang),
+      cancelLabel: uiText("common.cancel", currentLang),
     });
     return result.success;
   } catch {

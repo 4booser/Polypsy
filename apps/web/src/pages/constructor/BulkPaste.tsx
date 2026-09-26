@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { UI, type UiKey } from "@quizzy/shared";
+import { UI, type ContentLang, type UiKey } from "@quizzy/shared";
 import { newUid, type DraftQuestion } from "./model";
 import { useLang } from "../../lang";
 import { Grid, Panel } from "../../ui/layout";
@@ -73,7 +73,7 @@ export function BulkPaste({
 }) {
   const { ut } = useLang();
   const [raw, setRaw] = useState("");
-  const [lang, setLang] = useState<"uk" | "ru">("uk");
+  const [lang, setLang] = useState<ContentLang>("uk");
   const [type, setType] = useState<"yesno" | "single">("yesno");
 
   const items = useMemo(() => parseBulk(raw), [raw]);

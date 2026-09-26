@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { makeUiT, type Issue, type Lang, type SurveyGroupWithCounts } from "@quizzy/shared";
+import { CONTENT_LANGS, contentLangFor, makeUiT, type ContentLang, type Issue, type SurveyGroupWithCounts } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { AssignGroup } from "./AssignGroup";
@@ -150,8 +150,12 @@ export default function Constructor() {
    * Язык, на котором правится текст теста, — не язык консоли. Начинается с
    * него, потому что чаще всего они совпадают, но переключается отдельно:
    * специалист с русской консолью вписывает украинский текст методики.
+   *
+   * Английская консоль начинает с украинского: английского текста у методик
+   * нет (CONTENT_LANGS), а украинский — первое, что английский интерфейс
+   * покажет вместо него.
    */
-  const [editLang, setEditLang] = useState<Lang>(lang);
+  const [editLang, setEditLang] = useState<ContentLang>(contentLangFor(lang));
   /*
    * Что развёрнуто из меню шестерёнки. Одно за раз: это блоки под формой, и
    * два открытых сразу увели бы «Створити» на два экрана вниз.
@@ -458,6 +462,14 @@ export default function Constructor() {
             Третий пункт кадра — «English» — не заведён: Lang в модели
             содержит только uk и ru, и пустая строка в списке обещала бы язык,
             которого нет ни в одном поле теста.
+
+            С английским интерфейсом (решение заказчика 2026-09-26) довод
+            уточнился, но не отпал: английский стал языком ОБОЛОЧКИ, а текст
+            методик остаётся на двух языках намеренно — нормы сняты с
+            украинского и русского текста (CONTENT_LANGS в shared/types.ts,
+            docs/INSTRUMENTS.md). Пункт «English» здесь позволил бы написать
+            английские пункты, которые схема записи отбросит, а норма — не
+            признает.
           */}
           {/*
             Пояснение «текст хранится обоими языками» — подписью наведения на
@@ -475,7 +487,7 @@ export default function Constructor() {
               glyph={makeUiT(editLang)("top.lang")}
             >
               {(close) =>
-                (["uk", "ru"] as const).map((l) => (
+                CONTENT_LANGS.map((l) => (
                   <button
                     key={l}
                     type="button"
@@ -487,7 +499,7 @@ export default function Constructor() {
                       close();
                     }}
                   >
-                    {ut(l === "uk" ? "lang.uk" : "lang.ru")}
+                    {ut(`lang.${l}`)}
                   </button>
                 ))
               }

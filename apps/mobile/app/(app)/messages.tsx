@@ -19,7 +19,7 @@ type Message = { id: string; mine: boolean; text: string; sentAt: string; readAt
  */
 export default function MessagesScreen() {
   const c = useColors();
-  const { ut } = useLang();
+  const { ut, locale } = useLang();
   const [threadId, setThreadId] = useState<string | null | undefined>(undefined);
   const [items, setItems] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -87,8 +87,8 @@ export default function MessagesScreen() {
                 >
                   <Body>{m.text}</Body>
                   <Text style={{ ...type.caption, color: c.muted, marginTop: 4 }}>
-                    {new Date(m.sentAt).toLocaleDateString()}{" "}
-                    {new Date(m.sentAt).toLocaleTimeString([], {
+                    {new Date(m.sentAt).toLocaleDateString(locale)}{" "}
+                    {new Date(m.sentAt).toLocaleTimeString(locale, {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
