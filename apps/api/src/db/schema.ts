@@ -3137,3 +3137,73 @@ export const releases = pgTable(
   },
   (t) => ({ startedIdx: index("releases_started_idx").on(t.startedAt) }),
 );
+
+/* ═══════════ техпанель: безопасность (миграция 0092) ═══════════ */
+
+/**
+ * Отметки секретов: когда система впервые увидела текущее значение.
+ *
+ * Возраст секрета из окружения не узнать — переменная не несёт даты, —
+ * поэтому смена отмечается по факту: отпечаток текущего значения
+ * сравнивается с запомненным (lib/secretMarks.ts). Отпечаток — 32 бита
+ * HMAC и наружу не уходит; почему это не утечка — в миграции 0092.
+ */
+export const securitySecretMarks = pgTable("security_secret_marks", {
+  name: text("name").primaryKey(),
+  fingerprint: text("fingerprint"),
+  /** С какого момента видно текущее значение */
+  seenSince: timestampCol("seen_since").notNull().default(sql`now()`),
+  /** С какого момента за секретом вообще следят */
+  trackedSince: timestampCol("tracked_since").notNull().default(sql`now()`),
+  checkedAt: timestampCol("checked_at").notNull().default(sql`now()`),
+});
+
+/**
+ * Фоновые задания раздела «Ключі й секрети»: перешифровка на основной ключ.
+ *
+ * Ход — в базе, а не в памяти процесса: опрос экрана может прийти в другой
+ * процесс, а проход, оборванный перезапуском, должен остаться видимым как
+ * оборванный (по застывшему heartbeat_at), а не исчезнуть.
+ */
+export const securityJobs = pgTable(
+  "security_jobs",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: ["reencrypt"] }).notNull(),
+    status: text("status", { enum: ["running", "done", "failed"] }).notNull(),
+    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
+    heartbeatAt: timestampCol("heartbeat_at").notNull().default(sql`now()`),
+    finishedAt: timestampCol("finished_at"),
+    startedBy: text("started_by").references(() => users.id, { onDelete: "set null" }),
+    /** На какой ключ перешифровывали — основной на момент запуска */
+    targetKey: text("target_key"),
+    total: integer("total").notNull().default(0),
+    processed: integer("processed").notNull().default(0),
+    /** Не расшифровались: ключа нет или значение битое — оставлены как есть */
+    skipped: integer("skipped").notNull().default(0),
+    error: text("error"),
+  },
+  (t) => ({ kindIdx: index("security_jobs_kind_started_idx").on(t.kind, t.startedAt) }),
+);
+
+/**
+ * Результаты проверок целостности: политики строк и цепочка журнала.
+ *
+ * Сверка цепочки раз в сутки идёт в планировщике, и её итог — в том числе
+ * проваленный — должен быть виден в разделе «Цілісність». Журнал для этого
+ * не годится: провал пишется и туда (sec.audit_chain_broken), но «как прошла
+ * последняя проверка» экран спрашивает у этой таблицы.
+ */
+export const integrityChecks = pgTable(
+  "integrity_checks",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind", { enum: ["audit_chain", "rls"] }).notNull(),
+    trigger: text("trigger", { enum: ["manual", "schedule"] }).notNull(),
+    at: timestampCol("at").notNull().default(sql`now()`),
+    ok: boolean("ok").notNull(),
+    actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+    summary: jsonb("summary").$type<Record<string, unknown>>().notNull(),
+  },
+  (t) => ({ kindIdx: index("integrity_checks_kind_at_idx").on(t.kind, t.trigger, t.at) }),
+);

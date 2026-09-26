@@ -145,6 +145,11 @@ const NOT_TEXT: [string, string][] = [
   ["feature_flag_changes", "before"],
   ["feature_flag_changes", "after"],
   ["releases", "migrations"],
+  /*
+   * Техпанель: итог проверки целостности — числа, имена таблиц и роль
+   * базы; слова к ним экран берёт из словаря (миграция 0092).
+   */
+  ["integrity_checks", "summary"],
 ];
 
 describe("двуязычность содержимого", () => {

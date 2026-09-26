@@ -18,55 +18,23 @@
  * чем и при этом занимает уникальность.
  *
  * Идемпотентен: повторный прогон переписывает те же значения теми же.
+ * Тот же пересчёт запускается кнопкой «Переіндексувати телефони» в
+ * техпанели (раздел «Ключі й секрети»); тело — в lib/phoneReindex.
  */
-import { eq } from "drizzle-orm";
-import { baseDb, client, db } from "./db";
+import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
-import { users } from "./db/schema";
-import { decryptField } from "./lib/crypto";
-import { normalizePhone, phoneFingerprint } from "./lib/phone";
+import { runPhoneReindex } from "./lib/phoneReindex";
 
-const report = await systemContext(baseDb, async () => {
-  let updated = 0;
-  let cleared = 0;
-  let unreadable = 0;
-
-  const rows = await db
-    .select({ id: users.id, phoneEnc: users.phoneEnc, phoneIndex: users.phoneIndex })
-    .from(users);
-
-  for (const row of rows) {
-    const plain = decryptField(row.phoneEnc);
-    const normalized = plain ? normalizePhone(plain) : null;
-
-    if (!normalized) {
-      /*
-       * Номера нет или он не читается (утрачен ключ шифрования). Оставлять
-       * старый отпечаток нельзя: он посчитан другим секретом и означает
-       * «такой номер уже есть» для номера, которого система не знает.
-       */
-      if (row.phoneEnc && !normalized) unreadable++;
-      if (row.phoneIndex !== null) {
-        await db.update(users).set({ phoneIndex: null }).where(eq(users.id, row.id));
-        cleared++;
-      }
-      continue;
-    }
-
-    const next = phoneFingerprint(normalized);
-    if (next === row.phoneIndex) continue;
-    await db.update(users).set({ phoneIndex: next }).where(eq(users.id, row.id));
-    updated++;
-  }
-
-  return { total: rows.length, updated, cleared, unreadable };
-});
+const report = await systemContext(baseDb, () => runPhoneReindex());
 
 console.log(`учётных записей просмотрено: ${report.total}`);
 console.log(`  индекс пересчитан: ${report.updated}`);
 console.log(`  индекс снят (номера нет): ${report.cleared}`);
 if (report.unreadable) {
   console.log(`  номер не расшифровался: ${report.unreadable} — проверьте ENCRYPTION_KEY`);
+}
+if (report.conflicts) {
+  console.log(`  номер уже закреплён за более старой учётной записью: ${report.conflicts} — дубли разобрать руками`);
 }
 
 await client.end();

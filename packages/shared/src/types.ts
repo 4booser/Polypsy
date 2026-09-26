@@ -2884,6 +2884,187 @@ export interface ReleasesView {
   dispatchConfigured: boolean;
 }
 
+/* ─────────── техпанель: безопасность (волна 10, участок sec) ─────────── */
+
+/**
+ * Версия ключа шифрования полей — как её видит техпанель.
+ *
+ * Ни одного ключа: только идентификатор («v1») и счётчики. Ключ, которого
+ * нет в окружении, но на котором лежат значения (`loaded: false`,
+ * `values > 0`), — потеря данных, и экран называет её прямо.
+ */
+export interface OpsKeyVersion {
+  id: string;
+  /** Основной: им шифруется всё новое */
+  active: boolean;
+  /** Задан в ENCRYPTION_KEY */
+  loaded: boolean;
+  /** Значений на этом ключе во всех шифрованных колонках */
+  values: number;
+  /** Файлов записей приёма на этом ключе */
+  files: number;
+  /** Пробное расшифрование своих значений: null — пробовать нечего или ключа нет */
+  opens: boolean | null;
+}
+
+/** Шифрованная колонка и её значения по версиям ключа */
+export interface OpsKeyColumn {
+  table: string;
+  column: string;
+  byKey: Record<string, number>;
+  /** Непустых значений без заголовка enc1: — лежат открытым текстом */
+  plain: number;
+  /** Есть одностолбцовый первичный ключ — перешифровка пройдёт её порциями */
+  rewrappable: boolean;
+}
+
+/** Файлы записей приёма по ключам: ключ записан в заголовке самого файла */
+export interface OpsRecordingFiles {
+  byKey: Record<string, number>;
+  /** Без заголовка: читаются основным ключом — после ротации без перешифровки не откроются */
+  legacy: number;
+  /** Строка в базе есть, файла на диске нет */
+  missing: number;
+}
+
+export interface OpsReencryptJob {
+  id: string;
+  /** interrupted — процесс, который вёл проход, перестал отзываться */
+  status: "running" | "done" | "failed" | "interrupted";
+  startedAt: string;
+  finishedAt: string | null;
+  startedBy: string | null;
+  targetKey: string | null;
+  total: number;
+  processed: number;
+  /** Не расшифровалось — оставлено как было */
+  skipped: number;
+  error: string | null;
+}
+
+export type OpsSecretName = "ENCRYPTION_KEY" | "JWT_SECRET" | "PHONE_INDEX_SECRET" | "EXPORT_SECRET" | "METRICS_TOKEN";
+
+/** Секрет без значения: задан ли и когда система увидела текущее значение */
+export interface OpsSecretStatus {
+  name: OpsSecretName;
+  /** default — стоит значение для разработки из env.ts */
+  state: "set" | "default" | "unset";
+  seenSince: string | null;
+  /** С какого момента за секретом следят; совпадает с seenSince — смены при нас не было */
+  trackedSince: string | null;
+}
+
+export interface OpsKeysReport {
+  encryption: boolean;
+  activeKey: string | null;
+  loadedKeys: string[];
+  keys: OpsKeyVersion[];
+  columns: OpsKeyColumn[];
+  files: OpsRecordingFiles;
+  /** Лежит открытым текстом */
+  plainTotal: number;
+  /** На ключах, которых нет в окружении: не прочитать */
+  lostTotal: number;
+  /** Не на основном ключе, но перешифровать можно: открытое, старые ключи, файлы без заголовка */
+  staleTotal: number;
+  job: OpsReencryptJob | null;
+  secrets: OpsSecretStatus[];
+  countedAt: string;
+}
+
+export interface OpsPhoneReindexReport {
+  total: number;
+  updated: number;
+  cleared: number;
+  unreadable: number;
+  /** Номер уже закреплён за более старой учётной записью — дубль для разбора */
+  conflicts: number;
+}
+
+/** Проверка политик строк на подключении приложения */
+export interface OpsRlsReport {
+  at: string;
+  /** Нет обхода политик и нет политик без включённого RLS */
+  ok: boolean;
+  role: string;
+  bypasses: boolean;
+  reason: string | null;
+  tables: number;
+  rlsTables: number;
+  policies: number;
+  /** Политики написаны, RLS не включён — политики не действуют */
+  policiesWithoutRls: string[];
+  /** RLS включён, политик нет — для роли приложения таблица пуста */
+  rlsWithoutPolicies: string[];
+  /** Ссылаются на человека и не закрыты RLS */
+  personTablesWithoutRls: string[];
+  forced: string[];
+  /** У роли остались UPDATE/DELETE на audit_log */
+  auditWritable: boolean;
+}
+
+/** Сверка цепочки журнала */
+export interface OpsAuditChainReport {
+  at: string;
+  ok: boolean;
+  checked: number;
+  legacy: number;
+  brokenAtSeq: number | null;
+  headSeq: number | null;
+  headHash: string | null;
+}
+
+export interface OpsIntegrityCheck<T> {
+  at: string;
+  trigger: "manual" | "schedule";
+  ok: boolean;
+  actorEmail: string | null;
+  summary: T;
+}
+
+export interface OpsIntegrityState {
+  rls: OpsIntegrityCheck<OpsRlsReport> | null;
+  /** Последняя сверка журнала любым путём */
+  audit: OpsIntegrityCheck<OpsAuditChainReport> | null;
+  /** Последняя плановая сверка */
+  auditScheduled: OpsIntegrityCheck<OpsAuditChainReport> | null;
+  scheduleHours: number;
+  /** Раньше этого планировщик сверять не станет */
+  nextScheduledAfter: string;
+}
+
+/** Почему консоль отказалась выполнять запрос, не отправив его в базу */
+export type OpsSqlRefusal =
+  | "empty"
+  | "too_long"
+  | "multiple_statements"
+  | "not_read"
+  | "write_keyword"
+  | "row_lock"
+  | "side_effect"
+  | "placeholder";
+
+export type OpsSqlResult =
+  | {
+      status: "ok";
+      columns: { name: string; type: string; masked?: boolean }[];
+      rows: (string | null)[][];
+      rowCount: number;
+      truncated: boolean;
+      ms: number;
+    }
+  | { status: "refused"; code: OpsSqlRefusal; detail: string | null }
+  | { status: "error"; code: string | null; message: string; ms: number };
+
+/** Под какой ролью и с какими лимитами идёт запрос консоли */
+export interface OpsSqlInfo {
+  role: string;
+  bypassesRls: boolean;
+  rlsReason: string | null;
+  maxRows: number;
+  timeoutMs: number;
+}
+
 
 /* ─────────── случаи риска ─────────── */
 

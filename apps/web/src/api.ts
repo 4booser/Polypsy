@@ -19,6 +19,14 @@ import type {
   AuditChainReport,
   OpsSessionPage,
   OpsUserPage,
+  OpsAuditChainReport,
+  OpsIntegrityState,
+  OpsKeysReport,
+  OpsPhoneReindexReport,
+  OpsReencryptJob,
+  OpsRlsReport,
+  OpsSqlInfo,
+  OpsSqlResult,
   OverviewAnalytics,
   RespondentDynamics,
   RiskAlert,
@@ -1256,6 +1264,20 @@ export const api = {
       byActor: { actorEmail: string; count: number }[];
       deniedCount: number;
     }>("/api/audit/summary"),
+
+  /* ── техпанель, безопасность: только суперадмин, проверка на сервере ── */
+  opsSecKeys: () => request<OpsKeysReport>("/api/ops/sec/keys"),
+  opsSecJob: () => request<{ job: OpsReencryptJob | null }>("/api/ops/sec/keys/job"),
+  opsSecReencrypt: () =>
+    request<{ job: OpsReencryptJob; outcome: "started" }>("/api/ops/sec/keys/reencrypt", { method: "POST" }),
+  opsSecReindexPhones: () =>
+    request<OpsPhoneReindexReport>("/api/ops/sec/keys/reindex-phones", { method: "POST" }),
+  opsSecIntegrity: () => request<OpsIntegrityState>("/api/ops/sec/integrity"),
+  opsSecCheckRls: () => request<OpsRlsReport>("/api/ops/sec/integrity/rls", { method: "POST" }),
+  opsSecCheckAudit: () => request<OpsAuditChainReport>("/api/ops/sec/integrity/audit", { method: "POST" }),
+  opsSecSqlInfo: () => request<OpsSqlInfo>("/api/ops/sec/sql"),
+  opsSecSql: (query: string, reason: string) =>
+    request<OpsSqlResult>("/api/ops/sec/sql", { method: "POST", body: JSON.stringify({ query, reason }) }),
 
   /* ── командная консоль ── */
   consoleCommands: () =>

@@ -53,6 +53,10 @@ const OpsFlags = lazy(() => import("./pages/ops/maint/Flags"));
 const OpsReleases = lazy(() => import("./pages/ops/maint/Releases"));
 /* страница статуса: открыта и гостю, и пациенту, и сотруднику — в своей рамке у каждого */
 const StatusPage = lazy(() => import("./pages/Status"));
+/* техпанель, безопасность: ключи, целостность, SQL на чтение — только суперадмину */
+const OpsSecKeys = lazy(() => import("./pages/ops/sec/Keys"));
+const OpsSecIntegrity = lazy(() => import("./pages/ops/sec/Integrity"));
+const OpsSecSql = lazy(() => import("./pages/ops/sec/Sql"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -922,6 +926,10 @@ export default function App() {
               {can("ops.read") ? <Route path="maintenance" element={<OpsMaintenance />} /> : null}
               {can("ops.read") ? <Route path="flags" element={<OpsFlags />} /> : null}
               {can("ops.read") ? <Route path="releases" element={<OpsReleases />} /> : null}
+              {/* ролью, а не правом: сервер отвечает 403 всем, кроме суперадмина */}
+              {isSuper ? <Route path="keys" element={<OpsSecKeys />} /> : null}
+              {isSuper ? <Route path="integrity" element={<OpsSecIntegrity />} /> : null}
+              {isSuper ? <Route path="sql" element={<OpsSecSql />} /> : null}
             </Route>
           ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />

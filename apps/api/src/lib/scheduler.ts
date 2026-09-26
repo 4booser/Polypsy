@@ -15,6 +15,7 @@ import { grantAccess } from "./grantAccess";
 import { publish } from "./events";
 import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
+import { securityTick } from "./integrity";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 import { registerJob, trackJob } from "./opsJobs";
@@ -335,6 +336,7 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
   registerJob("presence.sweep", intervalMs);
   registerJob("clinic.noShows", intervalMs);
   registerJob("push.receipts", intervalMs);
+  registerJob("security", intervalMs);
   const tick = () => {
     trackJob("schedules", () => runDueSchedules()).catch((error) =>
       log.error("scheduler.tick_failed", { error: String(error) }),
@@ -361,6 +363,16 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      */
     void trackJob("push.receipts", () => systemContext(baseDb, () => checkPushReceipts())).catch((error) =>
       log.warn("push.receipts_failed", { error: String(error) }),
+    );
+    /*
+     * Безопасность (техпанель, lib/integrity.ts): отметка смены секретов —
+     * каждый тик, сверка цепочки журнала — раз в сутки. Сутки отмеряет сама
+     * задача по последней плановой сверке в базе, а не счётчик тиков:
+     * счётчик обнулялся бы каждым перезапуском. Разрыв цепочки — log.error и
+     * запись sec.audit_chain_broken в журнал.
+     */
+    void trackJob("security", () => securityTick()).catch((error) =>
+      log.warn("sec.tick_failed", { error: String(error) }),
     );
     /*
      * Расшифровка записей приёма здесь больше не идёт — она вынесена в

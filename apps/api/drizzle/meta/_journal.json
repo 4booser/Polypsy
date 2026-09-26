@@ -624,6 +624,13 @@
       "when": 1788473409043,
       "tag": "0091_ops_data",
       "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1788473469043,
+      "tag": "0092_security_panel",
+      "breakpoints": true
     }
   ]
 }
