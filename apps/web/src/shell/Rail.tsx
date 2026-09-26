@@ -14,6 +14,7 @@ import {
   IconGroup,
   IconMessage,
   IconPatients,
+  IconPulse,
   IconReferral,
   IconStack,
   IconSurvey,
@@ -111,6 +112,7 @@ export function railGroups(
   isSuper: boolean,
   canAssign = false,
   hidden: readonly string[] = [],
+  canOps = false,
 ): Group[] {
   const groups: Group[] = [
     {
@@ -214,6 +216,12 @@ export function railGroups(
       { to: "/console", key: "nav.console", icon: <IconStack /> },
     );
   }
+  /*
+   * Техпанель — по праву ops.read, а не по классу: суперадмину оно
+   * достаётся вместе со всеми, разработчику его выдают исключением. Панель
+   * о системе, а не о людях, поэтому стоит последней в администрировании.
+   */
+  if (canOps) adminItems.push({ to: "/ops", key: "nav.ops", icon: <IconPulse /> });
   if (adminItems.length) {
     groups.push({ key: "nav.admin", icon: <IconUserGear />, items: adminItems });
   }
