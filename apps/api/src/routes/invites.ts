@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { desc, eq, inArray } from "drizzle-orm";
-import { createInviteSchema, t, type Invite, type InvitePreview } from "@quizzy/shared";
+import { createInviteSchema, inviteListQuery, t, type Invite, type InvitePreview, type Page } from "@quizzy/shared";
 import { db } from "../db";
 import { batteries, invites, inviteUses, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { findUsableInvite, hashInviteToken, newInviteCode, newInviteToken } from "../lib/invites";
 import { assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -65,19 +66,65 @@ async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0]
   if (battery.groupId) await assertGroupAccess(user, battery.groupId);
 }
 
+/**
+ * Выписанные приглашения — страницами (`?limit=&cursor=`), свежие сверху.
+ *
+ * Прежде список отдавался целиком, и видимость проверялась на каждой строке
+ * отдельно: за каждое приглашение, когда-либо выписанное в учреждении, —
+ * свой поход за батареей и за правом на её группу. Приглашения копятся
+ * годами, и экран становился тем медленнее, чем дольше отделение работает.
+ *
+ * Видимость по-прежнему решает assertInviteBattery — то есть область
+ * ответственности из lib/scope.ts, а не второе правило в SQL рядом с ней, —
+ * но вердикт запоминается на батарею: батарей десятки, приглашений тысячи.
+ * Страница собирается кусками, пока не наберётся limit видимых и ещё одно —
+ * чтобы знать, что за ней есть продолжение.
+ */
 inviteRoutes.get("/", async (c) => {
   const user = c.get("user");
-  const rows = await db.select().from(invites).orderBy(desc(invites.createdAt));
+  const { limit, cursor: rawCursor } = parseQuery(c, inviteListQuery);
+  let scanFrom = decodeExactCursor(rawCursor);
 
-  const visible: (typeof invites.$inferSelect)[] = [];
-  for (const row of rows) {
+  const verdicts = new Map<string, boolean>();
+  const canSee = async (batteryId: string | null): Promise<boolean> => {
+    const key = batteryId ?? "";
+    const known = verdicts.get(key);
+    if (known !== undefined) return known;
+    let ok = true;
     try {
-      await assertInviteBattery(user, row.batteryId);
-      visible.push(row);
+      await assertInviteBattery(user, batteryId);
     } catch {
       // чужие приглашения не показываем
+      ok = false;
     }
+    verdicts.set(key, ok);
+    return ok;
+  };
+
+  const picked: { r: typeof invites.$inferSelect; at: string }[] = [];
+  let more = false;
+  const CHUNK = Math.max(limit + 1, 100);
+  for (;;) {
+    const chunk = await db
+      .select({ r: invites, at: exactAt(invites.createdAt) })
+      .from(invites)
+      .where(afterCursor(invites.createdAt, invites.id, scanFrom))
+      .orderBy(desc(invites.createdAt), desc(invites.id))
+      .limit(CHUNK);
+    for (const row of chunk) {
+      if (!(await canSee(row.r.batteryId))) continue;
+      if (picked.length === limit) {
+        more = true;
+        break;
+      }
+      picked.push(row);
+    }
+    if (more || chunk.length < CHUNK) break;
+    const tail = chunk[chunk.length - 1]!;
+    scanFrom = { at: tail.at, id: tail.r.id };
   }
+  const visible = picked.map((p) => p.r);
+  const lastPicked = picked[picked.length - 1];
 
   const batteryIds = [...new Set(visible.map((r) => r.batteryId).filter((x): x is string => !!x))];
   const batteryRows = batteryIds.length
@@ -137,7 +184,10 @@ inviteRoutes.get("/", async (c) => {
       .filter((u) => u.use.inviteId === r.id)
       .map((u) => ({ userId: u.user.id, fullName: fullNameOf(u.user), usedAt: u.use.usedAt })),
   }));
-  return c.json({ items: result });
+  return c.json({
+    items: result,
+    nextCursor: more && lastPicked ? encodeCursor(lastPicked.at, lastPicked.r.id) : null,
+  } satisfies Page<Invite>);
 });
 
 /** Создание: токен показывается ОДИН раз — дальше в базе только хеш */

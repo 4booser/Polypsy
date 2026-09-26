@@ -676,7 +676,12 @@ export const api = {
     ).then((page) => page.rows),
   responseDetail: (id: string) => request<ResponseDetail>(`/api/responses/${id}`),
 
-  listUsers: () => unwrap(request<Items<User>>("/api/users")),
+  /*
+   * Реестр учётных записей страничный (волна 12): здесь — первая страница,
+   * по сотне свежих. Экрана, которому нужен весь реестр, в приложении нет;
+   * появится — пусть листает по nextCursor, как консоль.
+   */
+  listUsers: () => request<Page<User>>("/api/users").then((p) => p.items),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
 

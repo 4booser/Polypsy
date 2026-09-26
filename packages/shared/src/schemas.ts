@@ -1187,6 +1187,45 @@ export const facetQuery = z.object({
   facet: queryEnum(["sex", "age", "sexAge", "lang", "unit"], "sexAge"),
 });
 
+/**
+ * Страница курсорного списка: `?limit=&cursor=`.
+ *
+ * Умолчание и потолок у каждого списка свои — их задаёт маршрут, а форма
+ * одна: так клиенту не приходится помнить, какой список как листается.
+ * Курсор непрозрачен (apps/api/src/lib/cursor.ts); испорченный — это первая
+ * страница, а не отказ: он приходит из адресной строки, и опечатка в нём не
+ * должна ронять экран.
+ */
+export const cursorPageQuery = (defaultLimit: number, maxLimit: number) =>
+  z.object({
+    limit: queryInt(1, maxLimit, defaultLimit),
+    cursor: z.string().max(400).optional(),
+  });
+
+/** Реестр направлений: ?all=1 — вместе с завершёнными; страница по 100, не больше 200 */
+export const referralListQuery = cursorPageQuery(100, 200).extend({
+  all: z
+    .string()
+    .optional()
+    .transform((v) => v === "1"),
+});
+
+/**
+ * Учётные записи (GET /api/users без ?directory): страница по 100, не больше
+ * 500; ?staff=1 — без пациентов. Отбор в SQL, а не на экране: экрану групп
+ * нужны только сотрудники, и ради них он получал бы каждого пациента
+ * учреждения с расшифрованным ФИО.
+ */
+export const userListQuery = cursorPageQuery(100, 500).extend({
+  staff: z
+    .string()
+    .optional()
+    .transform((v) => v === "1"),
+});
+
+/** Приглашения: страница по 100, не больше 200 */
+export const inviteListQuery = cursorPageQuery(100, 200);
+
 export const respondentQuery = z.object({
   limit: queryInt(1, 200, 50),
   cursor: z.string().max(200).optional(),
