@@ -29,6 +29,37 @@ const checkinSchema = z.object({
   deviceId: z.string().min(8).max(64),
   label: z.string().max(120).nullable().optional(),
   platform: z.string().max(20).nullable().optional(),
+  /*
+   * Версия приложения и номер сборки (миграция 0091). Необязательны: старая
+   * сборка их не шлёт, и отказывать ей в отметке — значит перестать стирать
+   * потерянные устройства ровно у тех, кто не обновился.
+   *
+   * Форма — цифры и точки (с хвостом вроде «-beta»): версия уходит в
+   * техпанель как есть, и строке сюда незачем быть чем-то ещё.
+   */
+  appVersion: z
+    .string()
+    .max(32)
+    .regex(/^[0-9][0-9A-Za-z.+-]*$/)
+    .nullable()
+    .optional(),
+  appBuild: z
+    .string()
+    .max(32)
+    .regex(/^[0-9A-Za-z.+-]+$/)
+    .nullable()
+    .optional(),
+  /**
+   * Что лежит в офлайн-очереди устройства: только числа, без содержимого.
+   * Сервер иначе не видит сдач, которые до него не дошли (см. 0091).
+   */
+  queue: z
+    .object({
+      pending: z.number().int().min(0).max(10_000),
+      rejected: z.number().int().min(0).max(10_000),
+    })
+    .nullable()
+    .optional(),
 });
 
 /**
@@ -39,6 +70,18 @@ deviceRoutes.post("/checkin", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, checkinSchema);
   const now = new Date().toISOString();
+  /*
+   * Поля, которых устройство не прислало, не затираются: старая сборка не
+   * знает про версию, и её отметка не должна стирать то, что прислала новая
+   * на том же устройстве до отката.
+   */
+  const reported = {
+    ...(input.appVersion !== undefined ? { appVersion: input.appVersion } : {}),
+    ...(input.appBuild !== undefined ? { appBuild: input.appBuild } : {}),
+    ...(input.queue !== undefined
+      ? { queuePending: input.queue?.pending ?? null, queueRejected: input.queue?.rejected ?? null }
+      : {}),
+  };
 
   const [row] = await db
     .insert(devices)
@@ -48,10 +91,11 @@ deviceRoutes.post("/checkin", async (c) => {
       label: input.label ?? null,
       platform: input.platform ?? null,
       lastSeenAt: now,
+      ...reported,
     })
     .onConflictDoUpdate({
       target: devices.id,
-      set: { lastSeenAt: now, label: input.label ?? null, platform: input.platform ?? null },
+      set: { lastSeenAt: now, label: input.label ?? null, platform: input.platform ?? null, ...reported },
     })
     .returning();
 

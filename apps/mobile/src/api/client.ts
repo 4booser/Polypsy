@@ -30,6 +30,7 @@ import type {
   SurveyVersion,
   BatteryAssignment,
   MyDynamics,
+  ScreenViewsInput,
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { tokenStorage } from "../storage";
@@ -50,7 +51,7 @@ function netText(key: "net.offline" | "net.failed"): string {
 }
 import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
-import { deviceId, platformName, wipeLocalData } from "../offline/device";
+import { appBuildInfo, deviceId, platformName, wipeLocalData } from "../offline/device";
 import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
 import { computeProfile } from "@quizzy/shared";
 
@@ -343,6 +344,9 @@ export const api = {
     }),
   forgetPush: (token: string) =>
     request<{ ok: true }>("/api/push/forget", { method: "POST", body: JSON.stringify({ token }) }),
+  /** Пачка счётчиков открытия экранов — шаблоны маршрутов, не адреса (telemetry/screens.ts) */
+  sendScreenViews: (input: ScreenViewsInput) =>
+    request<{ ok: true }>("/api/usage/screens", { method: "POST", body: JSON.stringify(input) }),
   /**
    * Свой план безопасности.
    *
@@ -584,9 +588,21 @@ export const api = {
   deviceCheckin: async (label: string | null): Promise<boolean> => {
     const id = deviceId();
     try {
+      /*
+       * С отметкой уходят версия сборки и счёт очереди (техпанель,
+       * «Мобільний застосунок»): сервер иначе не знает, сколько людей сидит
+       * на старой сборке, и не видит сдач, застрявших на телефоне. Только
+       * числа — содержимое очереди остаётся на устройстве.
+       */
       const res = await request<{ wipe: boolean }>("/api/devices/checkin", {
         method: "POST",
-        body: JSON.stringify({ deviceId: id, label, platform: platformName() }),
+        body: JSON.stringify({
+          deviceId: id,
+          label,
+          platform: platformName(),
+          ...appBuildInfo(),
+          queue: { pending: pendingCount(), rejected: rejectedItems().length },
+        }),
       });
       if (!res.wipe) return false;
 
