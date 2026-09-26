@@ -1378,9 +1378,15 @@ export const riskAlerts = pgTable(
   "risk_alerts",
   {
     id: text("id").primaryKey(),
+    /*
+     * Не каскад (миграция 0106): удаление прохождения не должно молча уносить
+     * клинический сигнал. Сдача переносит тревоги черновика на итоговое
+     * прохождение и только потом удаляет черновик (routes/responses.ts,
+     * adoptDraftAlerts); удалить прохождение с тревогами иначе база не даст.
+     */
     responseId: text("response_id")
       .notNull()
-      .references(() => responses.id, { onDelete: "cascade" }),
+      .references(() => responses.id, { onDelete: "restrict" }),
     surveyId: text("survey_id")
       .notNull()
       .references(() => surveys.id, { onDelete: "cascade" }),
