@@ -582,6 +582,20 @@
       "when": 1788472989043,
       "tag": "0084_patient_card",
       "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1788473049043,
+      "tag": "0085_stat_models",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1788473109043,
+      "tag": "0086_user_locality",
+      "breakpoints": true
     }
   ]
 }

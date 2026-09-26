@@ -80,6 +80,8 @@ const profileFields = {
   position: z.string().max(160).nullish(),
   specialty: z.string().max(160).nullish(),
   rank: z.string().max(120).nullish(),
+  /** «Населений пункт» с кадров f19/f25: фильтр выборок статистики. Пробелы по краям — не часть названия */
+  locality: z.string().trim().max(160).nullish(),
 };
 
 export const profileSchema = z.object({
@@ -89,6 +91,7 @@ export const profileSchema = z.object({
   position: z.string().max(160).nullish(),
   specialty: z.string().max(160).nullish(),
   rank: z.string().max(120).nullish(),
+  locality: z.string().trim().max(160).nullish(),
 });
 
 export const updateProfileSchema = profileSchema.extend({
@@ -334,6 +337,103 @@ export const assignSurveyToPatientGroupSchema = z.object({
   expiresAt: z.string().nullish(),
   note: z.string().max(500).nullish(),
   attemptsAllowed: z.number().int().min(1).max(10).default(1),
+});
+
+/* ─────────────── Раздел «Статистика» ───────────────
+ *
+ * Пресеты фильтров выборки и статистические модели. Форма jsonb-колонок
+ * задаётся здесь и проверяется на входе; принадлежность показателей версии
+ * методики и зона ответственности проверяются в lib/statModels.ts — схема
+ * о базе не знает.
+ */
+
+/** Строки-критерии выборки с кадра f25; отсутствующий ключ — отсутствующая строка */
+export const sampleFiltersSchema = z
+  .object({
+    from: plainDate.nullish(),
+    to: plainDate.nullish(),
+    ageMin: z.number().int().min(0).max(120).nullish(),
+    ageMax: z.number().int().min(0).max(120).nullish(),
+    sex: sexSchema.nullish(),
+    locality: z.string().trim().min(1).max(160).nullish(),
+    patientGroupId: z.string().min(1).nullish(),
+    patientId: z.string().min(1).nullish(),
+  })
+  .refine((v) => v.ageMin == null || v.ageMax == null || v.ageMin <= v.ageMax, {
+    message: "«Вік від» не может быть больше «Вік до»",
+    path: ["ageMax"],
+  })
+  .refine((v) => !v.from || !v.to || v.from <= v.to, {
+    message: "Начало периода позже его конца",
+    path: ["to"],
+  });
+
+export const filterPresetInputSchema = z.object({
+  title: z.string().min(1).max(200),
+  criteria: sampleFiltersSchema,
+});
+
+export const filterPresetUpdateSchema = filterPresetInputSchema.partial();
+
+/** «Варіант результату» — полоса шкалы; highRisk — пометка «ВШР» */
+export const statModelBandSchema = z.object({
+  scaleId: z.string().min(1),
+  bandId: z.string().min(1),
+  highRisk: z.boolean().default(false),
+});
+
+/** «Текст відповіді» с пометкой «ВШР» */
+export const statModelOptionSchema = z.object({
+  optionId: z.string().min(1),
+  highRisk: z.boolean().default(false),
+});
+
+/** «Текст питання» и его показываемые варианты */
+export const statModelQuestionSchema = z.object({
+  questionId: z.string().min(1),
+  options: z.array(statModelOptionSchema).max(50).default([]),
+});
+
+/**
+ * Колонка-выборка. Пресет и собственные фильтры — одно из двух: с обоими
+ * непонятно, что из них правда, и правка пресета молча не доходила бы до
+ * колонки. Версия необязательна на входе — без неё берётся действующая и
+ * записывается в модель, см. StatModelColumn.
+ */
+export const statModelColumnSchema = z
+  .object({
+    title: z.string().max(200).nullish(),
+    presetId: z.string().min(1).nullish(),
+    filters: sampleFiltersSchema.nullish(),
+    surveyId: z.string().min(1),
+    versionId: z.string().min(1).nullish(),
+    bands: z.array(statModelBandSchema).max(50).default([]),
+    questions: z.array(statModelQuestionSchema).max(50).default([]),
+  })
+  .refine((c) => !(c.presetId && c.filters), {
+    message: "Колонка берёт фильтры либо из пресета, либо свои — не оба сразу",
+    path: ["filters"],
+  });
+
+/**
+ * Потолок в восемь колонок — не техническое ограничение, а защита от
+ * машины для нарезки выборки: чем больше колонок с соседними фильтрами,
+ * тем легче вычесть одну из другой. Восемь ставит рядом, а не режет.
+ */
+export const statModelInputSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(4000).nullish(),
+  columns: z.array(statModelColumnSchema).min(1).max(8),
+});
+
+export const statModelUpdateSchema = statModelInputSchema.partial();
+
+/**
+ * Превью без сохранения — «Порівняти» до «Створити»: те же колонки, а
+ * название необязательно, его ещё могли не придумать.
+ */
+export const statModelRunSchema = statModelInputSchema.extend({
+  title: z.string().max(200).nullish(),
 });
 
 /* ─────────────── Рассылки ───────────────
@@ -738,6 +838,12 @@ export type MailingInput = z.input<typeof mailingInputSchema>;
 export type MailingUpdateInput = z.input<typeof mailingUpdateSchema>;
 export type MailingAnswerInput = z.infer<typeof mailingAnswerSchema>;
 export type AssignSurveyToPatientGroupInput = z.input<typeof assignSurveyToPatientGroupSchema>;
+export type FilterPresetInput = z.input<typeof filterPresetInputSchema>;
+export type FilterPresetUpdateInput = z.input<typeof filterPresetUpdateSchema>;
+export type StatModelColumnInput = z.input<typeof statModelColumnSchema>;
+export type StatModelInput = z.input<typeof statModelInputSchema>;
+export type StatModelUpdateInput = z.input<typeof statModelUpdateSchema>;
+export type StatModelRunInput = z.input<typeof statModelRunSchema>;
 export type OptionInput = z.infer<typeof optionInputSchema>;
 export type BandInput = z.infer<typeof bandInputSchema>;
 export type ScaleInput = z.infer<typeof scaleInputSchema>;
@@ -942,6 +1048,26 @@ export const surveyListQuery = z.object({
     })
     .pipe(z.array(surveyStatusSchema).optional()),
   /** Подстрока названия без учёта регистра, на любом из языков */
+  q: z.string().max(200).optional().transform((v) => (v ?? "").trim()),
+});
+
+/**
+ * Перечень статистических моделей (кадр f06): поиск и страницы — ровно как у
+ * каталога методик. Без ?limit= — весь список: экран «Статистика» (f26)
+ * выбирает модель из списка и о страницах знать не должен.
+ */
+export const statModelListQuery = z.object({
+  q: z.string().max(200).optional().transform((v) => (v ?? "").trim()),
+  limit: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? undefined : Number(v)))
+    .pipe(z.number().int().min(1).max(500).optional()),
+  offset: queryInt(0, 1_000_000, 0),
+});
+
+/** Пресеты фильтров: только поиск, страниц нет — их у одного человека десятки, не тысячи */
+export const filterPresetListQuery = z.object({
   q: z.string().max(200).optional().transform((v) => (v ?? "").trim()),
 });
 
