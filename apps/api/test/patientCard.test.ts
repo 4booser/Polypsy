@@ -579,7 +579,8 @@ describe("телефон пациента — как на макете (f05, f13
    */
   test("номер приходит в списке, в составе группы, в списке обследованных и в карточке", async () => {
     const { encryptField } = await import("../src/lib/crypto");
-    const phone = "+380671112233";
+    // номер свой, не из phone.test: переиндексация телефонов (opsSec) даёт индекс и этой записи, и регистрация там упёрлась бы в «номер занят»
+    const phone = "+380671119876";
     const person = await patientOfA("phone", { phoneEnc: encryptField(phone) });
 
     const list = await api("/api/patients?limit=200", adminA.token);
