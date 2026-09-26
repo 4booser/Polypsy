@@ -421,6 +421,12 @@ export const api = {
       onBehalfOf?: string | null;
       /** Пол и возраст пациента — для офлайн-подсчёта в режиме обхода */
       subject?: { sex: "male" | "female" | null; age: number | null } | null;
+      /**
+       * Версия, которую показали. Едет и в офлайн-очередь вместе с телом:
+       * сдача, досланная после обновления методики, считается по своей
+       * версии, а не по новой (routes/responses.ts, pinnedVersion).
+       */
+      versionId?: string | null;
     },
   ) => {
     /*
@@ -538,7 +544,7 @@ export const api = {
 
   saveDraft: (
     surveyId: string,
-    payload: { answers: Answer[]; startedAt: string; durationMs: number; events: unknown[] },
+    payload: { answers: Answer[]; startedAt: string; durationMs: number; events: unknown[]; versionId?: string | null },
   ) =>
     request<{ id: string; lastSavedAt: string; answers: number }>(
       `/api/surveys/${surveyId}/draft`,

@@ -987,8 +987,18 @@ export const answerSchema = z.object({
   visitCount: z.number().int().min(0).max(10000).optional(),
 });
 
+/**
+ * Версия методики, которую клиент показывал (волна 12).
+ *
+ * Необязательна: клиенты без неё уже стоят на телефонах, и их офлайн-очередь
+ * хранит сдачи, собранные раньше. Без неё сервер выводит версию по
+ * идентификаторам отвеченных пунктов (routes/responses.ts, pinnedVersion).
+ */
+const shownVersionSchema = z.string().min(1).max(64).nullish();
+
 /** Автосохранение черновика прохождения */
 export const draftSchema = z.object({
+  versionId: shownVersionSchema,
   answers: z.array(answerSchema),
   startedAt: z.string(),
   durationMs: z.number().int().min(0).max(86_400_000),
@@ -1008,6 +1018,8 @@ export const answerEventSchema = z.object({
 export const submitResponseSchema = z.object({
   /** Ид попытки для идемпотентного повтора из офлайн-очереди */
   clientRequestId: z.string().max(64).nullish(),
+  /** Версия, которую показывали: по ней ответы проверяются и считаются */
+  versionId: shownVersionSchema,
   answers: z.array(answerSchema),
   startedAt: z.string(),
   durationMs: z.number().int().min(0).max(86_400_000),

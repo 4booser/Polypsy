@@ -1,5 +1,6 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { db } from "../db";
+import { durable } from "../db/context";
 import { loginAttempts } from "../db/schema";
 
 /**
@@ -40,8 +41,20 @@ export async function lockedEmails(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.email));
 }
 
+/*
+ * Отметка неудачи обязана пережить откат запроса (db/context.ts, durable).
+ *
+ * Вход и второй шаг пишут её в системной транзакции и отказывают снаружи —
+ * там откатывать нечему. Но выключение второго фактора (routes/secondFactor.ts,
+ * POST /disable) идёт внутри транзакции запроса, и с тех пор как неудачный
+ * ответ её честно откатывает (волна 12), отметка уходила бы вместе с отказом:
+ * перебор пароля и кода через «выключить фактор» перестал бы считаться.
+ * Идентификатор строки выбирается один раз — повтор после отката пишет ту
+ * же самую строку, а не вторую.
+ */
 export async function recordFailure(email: string, ip: string | null): Promise<void> {
-  await db.insert(loginAttempts).values({ id: crypto.randomUUID(), email, ip });
+  const id = crypto.randomUUID();
+  await durable(() => db.insert(loginAttempts).values({ id, email, ip }));
 }
 
 /** Успешный вход сбрасывает счётчик — иначе легальный пользователь копит хвост */

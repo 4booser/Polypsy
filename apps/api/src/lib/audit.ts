@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { durable } from "../db/context";
 import { auditLog } from "../db/schema";
 import type { User } from "@quizzy/shared";
 import { currentRequestId, log } from "./log";
@@ -463,6 +464,22 @@ async function emit(input: AuditInput, actorId: string | null): Promise<void> {
   });
 }
 
+/**
+ * Отказ и сбой переживают откат запроса (волна 12, участок submit).
+ *
+ * Неудачный ответ теперь откатывает транзакцию запроса (db/context.ts,
+ * withRequestContext), а строка «отказано» пишется как раз перед неудачным
+ * ответом — и без этой обёртки уходила бы вместе с откатом. Журнал отказов
+ * доказательный: «кто ломился к чужой карте» обязано оставаться в нём
+ * независимо от того, чем закончился запрос. Успешные записи не трогаем:
+ * откатившийся запрос ничего не сделал, и строка «сделано» о нём была бы
+ * ложью. Событие потока (emit) за отказом не повторяется — ничего не
+ * изменилось, перечитывать нечего.
+ */
+function keepRefusal(input: Pick<AuditInput, "outcome">, write: () => Promise<void>): Promise<void> {
+  return input.outcome && input.outcome !== "success" ? durable(write) : write();
+}
+
 export async function audit(c: Context, input: AuditInput): Promise<void> {
   try {
     const ctxUser = c.get("user") as User | undefined;
@@ -480,7 +497,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
       ? { ...(input.details ?? {}), asUserId: ctxUser!.id, asEmail: ctxUser!.email, impersonation: imp.sessionId }
       : input.details;
     const subjectUserId = input.subjectUserId ?? (imp ? ctxUser!.id : null);
-    await writeChained({
+    await keepRefusal(input, () => writeChained({
       id: crypto.randomUUID(),
       actorId: actor?.id ?? null,
       actorEmail: actor?.email ?? null,
@@ -499,7 +516,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
        * запроса — а найти по details Postgres умеет.
        */
       details: withRequestId(details),
-    });
+    }));
 
     /*
      * Чтение событием не становится. Различаются они не списком действий, а
@@ -523,7 +540,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
  */
 export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<void> {
   try {
-    await writeChained({
+    await keepRefusal(input, () => writeChained({
       id: crypto.randomUUID(),
       actorId: null,
       actorEmail: null,
@@ -536,7 +553,7 @@ export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<voi
       ip: null,
       userAgent: "система",
       details: input.details ?? null,
-    });
+    }));
     // фоновой проход читающим не бывает: он на то и проход, что что-то делает
     await emit(input, null);
   } catch (err) {

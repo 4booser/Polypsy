@@ -1,15 +1,28 @@
 import { t } from "@quizzy/shared";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   submitResponseSchema,
   type Answer,
   type ResponseDetailBand,
   type ScoreResult,
+  type SurveyFull,
   type SurveyResponse,
+  type User,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { answerEvents, answers, riskAlerts, responseScores, responses, scales, surveys, users } from "../db/schema";
+import {
+  answerEvents,
+  answers,
+  questions,
+  riskAlerts,
+  responseScores,
+  responses,
+  scales,
+  surveyVersions,
+  surveys,
+  users,
+} from "../db/schema";
 import { attachToCase } from "../lib/alertCases";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
@@ -19,13 +32,142 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
-import { assertPatientAccess, assertPatientGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
+import {
+  accessiblePatientIds,
+  assertPatientAccess,
+  assertPatientGroupAccess,
+  assertSurveyAccess,
+  hasGrant,
+  isStaff,
+} from "../lib/scope";
+import { log } from "../lib/log";
 import { fullNameOf } from "../lib/auth";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const responseRoutes = new Hono<AppEnv>();
 
 responseRoutes.use("*", requireAuth);
+
+/* ─────────── версия прохождения и право его сдать (волна 12, участок submit) ─────────── */
+
+/**
+ * Откуда известна версия, по которой считается прохождение.
+ *
+ *   client   — клиент прислал ту, что показывал (новые клиенты);
+ *   inferred — не прислал, но все отвеченные пункты принадлежат одной
+ *              версии этой методики: она и была на экране;
+ *   current  — не прислал и вывести не из чего (пусто или пункты разных
+ *              версий): считаем по действующей, как считали всегда;
+ *   invalid  — прислал версию, которой у этой методики нет.
+ */
+type VersionSource = "client" | "inferred" | "current" | "invalid";
+
+/**
+ * Версия методики, которую человек видел, — а не та, что действует сейчас.
+ *
+ * До волны 12 сервер брал действующую версию. Начатое прохождение ни к
+ * чему не было привязано: методику обновили, пока пациент отвечал или пока
+ * сдача ждала сети в офлайн-очереди, — и его ответы проверялись по чужим
+ * вопросам. Каждая версия заводит пункты с НОВЫМИ идентификаторами, поэтому
+ * исход был один из двух, оба плохие: 400 «не отвечен обязательный вопрос»
+ * на честно заполненную методику (и, до правки транзакции, потерянный
+ * черновик) — или, если обязательных нет, прохождение без единого ответа,
+ * посчитанное в нули. Клинический результат, которого человек не давал.
+ *
+ * Клиент без versionId — решение: ПРИНИМАТЬ. Такие клиенты уже стоят на
+ * телефонах, и их офлайн-очередь хранит сдачи, собранные до этой правки;
+ * отказ означал бы потерю ответов, которые человек честно дал. Но и
+ * «по действующей» вслепую не берём: версия выводится по идентификаторам
+ * отвеченных пунктов — они уникальны для версии, и если все они из одной,
+ * на экране была именно она. Только если вывести не из чего, считаем по
+ * действующей, как раньше. Какой путь сработал — в журнале сдачи
+ * (versionSource) и строкой лога: по ней видно, сколько старых клиентов ещё
+ * в ходу и когда подпорку можно снимать.
+ */
+async function pinnedVersion(
+  surveyId: string,
+  input: { versionId?: string | null; answers: { questionId: string }[] },
+): Promise<{ versionId: string | null; source: VersionSource }> {
+  if (input.versionId) {
+    const [own] = await db
+      .select({ id: surveyVersions.id })
+      .from(surveyVersions)
+      .where(and(eq(surveyVersions.id, input.versionId), eq(surveyVersions.surveyId, surveyId)));
+    return own ? { versionId: own.id, source: "client" } : { versionId: null, source: "invalid" };
+  }
+  const ids = [...new Set(input.answers.map((a) => a.questionId))];
+  if (!ids.length) return { versionId: null, source: "current" };
+  const found = await db
+    .selectDistinct({ versionId: questions.versionId })
+    .from(questions)
+    .where(and(eq(questions.surveyId, surveyId), inArray(questions.id, ids)));
+  return found.length === 1 ? { versionId: found[0]!.versionId, source: "inferred" } : { versionId: null, source: "current" };
+}
+
+/**
+ * Вправе ли человек сдавать эту методику — теми же правилами, что открывают её.
+ *
+ * Ограничение доступа проверялось только на чтении (routes/surveys.ts,
+ * GET /:id): закрытую методику пациенту отдают при действующем назначении.
+ * Сдача и черновик назначения не спрашивали. Пациент, сохранивший вопросы
+ * раньше, — открытая вкладка, офлайн-кэш телефона, — мог прислать результат
+ * после того, как назначение отозвали или оно истекло, и результат ложился в
+ * карту как ни в чём не бывало.
+ *
+ * Отказ — 403 с причиной, а не 404, как на чтении. Читающему незачем знать,
+ * что методика существует; сдающий её уже видел, и «не найдено» на
+ * методику, которую он только что заполнял, было бы неправдой. Причина
+ * нужна и очереди отправки: отказ по существу разбирает человек, и «строк
+ * призначення минув» он поймёт, а «не знайдено» — нет. Отказ — в журнал:
+ * сдача после отзыва — ровно то, что стоит найти потом.
+ *
+ * Сотрудник сдаёт то, с чем вправе работать (assertSurveyAccess) — как и
+ * открывает.
+ */
+async function assertMayTake(c: Context<AppEnv>, user: User, survey: SurveyFull): Promise<void> {
+  if (isStaff(user)) {
+    await assertSurveyAccess(user, survey.id);
+    return;
+  }
+  if (survey.visibility === "restricted" && !(await hasGrant(user.id, survey.id))) {
+    await audit(c, {
+      action: "access.denied",
+      outcome: "denied",
+      resourceType: "survey",
+      resourceId: survey.id,
+      subjectUserId: user.id,
+      details: { method: c.req.method, reason: "survey_grant_missing", path: c.req.path },
+    });
+    forbidden("err.surveyGrantEnded");
+  }
+}
+
+/**
+ * Пациент в зоне сотрудника — или отказ со строкой журнала.
+ *
+ * Заполнение за пациента проверяло сотрудника, методику и существование
+ * пациента, но не саму зону видимости. А зона считается В ТОМ ЧИСЛЕ по
+ * прохождениям методик группы (lib/scope.ts, accessiblePatientIds): знания
+ * чужого идентификатора хватало, чтобы вписать человеку клинический
+ * результат — и тем самым втянуть его в свою зону, открыв себе карту.
+ *
+ * Проверка идёт ДО поиска пациента, и отказ один на «нет такого» и «не ваш»:
+ * иначе разница 404/403 отвечала бы на вопрос, есть ли в системе человек с
+ * этим идентификатором. Суперадмину (зона — все) ищется как прежде.
+ */
+async function assertMayFillFor(c: Context<AppEnv>, user: User, patientId: string, surveyId: string): Promise<void> {
+  const allowed = await accessiblePatientIds(user);
+  if (allowed === null || allowed.has(patientId)) return;
+  await audit(c, {
+    action: "access.denied",
+    outcome: "denied",
+    resourceType: "user",
+    resourceId: patientId,
+    subjectUserId: null,
+    details: { method: c.req.method, reason: "patient_out_of_scope", surveyId },
+  });
+  forbidden("err.onBehalfPatientOutOfScope");
+}
 
 /** Отправка прохождения вместе с телеметрией по каждому вопросу */
 responseRoutes.post("/surveys/:id/responses", async (c) => {
@@ -91,7 +233,13 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     }
   }
 
-  const survey = await getSurvey(surveyId, null, langOf(c));
+  /*
+   * Содержимое — той версии, которую человек видел (pinnedVersion);
+   * статус, архив, видимость и настройки — из строки методики как она есть
+   * сейчас: снятую с использования методику не сдают и по старой версии.
+   */
+  const pin = await pinnedVersion(surveyId, input);
+  const survey = await getSurvey(surveyId, pin.versionId, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
   if (survey.status !== "published") badRequest("err.surveyNotAvailableToTake");
   if (survey.archivedAt) badRequest("err.surveyArchived");
@@ -108,12 +256,29 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   if (input.onBehalfOf) {
     if (!isStaff(user)) forbidden("err.onBehalfStaffOnly");
     await assertSurveyAccess(user, surveyId);
+    await assertMayFillFor(c, user, input.onBehalfOf, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
     if (!subject) notFound("err.patientNotFound");
     if (subject.role !== "user") badRequest("err.onBehalfPatientOnly");
     subjectId = subject.id;
   } else if (survey.administration === "clinician") {
     badRequest("err.onBehalfRequired");
+  } else {
+    await assertMayTake(c, user, survey);
+  }
+
+  // версию проверяем после прав: иначе ответ «такой версии нет» рассказывал
+  // бы о версиях методики тому, кому её не открывали
+  if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
+  /*
+   * Выведенная версия — обычный путь старого клиента, и считается она верно:
+   * это сведение, а не тревога. Предупреждение — только когда вывести было не
+   * из чего и посчитали по действующей, как до правки.
+   */
+  if (pin.source === "inferred") {
+    log.info("response.version_inferred", { surveyId, versionId: survey.versionId });
+  } else if (pin.source === "current") {
+    log.warn("response.version_unpinned", { surveyId, versionId: survey.versionId });
   }
 
   if (!survey.allowRetake && !survey.anonymous) {
@@ -190,6 +355,9 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       events: input.events.length,
       // кто именно внёс данные, если заполнял специалист
       filledBy: subjectId === user.id ? null : user.email,
+      // по какой версии посчитано и откуда она известна — см. pinnedVersion
+      versionId: survey.versionId,
+      versionSource: pin.source,
     },
   });
 
@@ -224,11 +392,16 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   const surveyId = c.req.param("id");
   const input = await parseBody(c.req.raw, draftSchema);
 
-  const survey = await getSurvey(surveyId, null, langOf(c));
+  // та же версия и те же права, что у сдачи: черновик — начало той же сдачи
+  const pin = await pinnedVersion(surveyId, input);
+  const survey = await getSurvey(surveyId, pin.versionId, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
   if (survey.status !== "published") badRequest("err.surveyNotAvailable");
   if (survey.archivedAt) badRequest("err.surveyArchived");
   if (survey.anonymous) badRequest("err.anonymousNoDraft");
+  if (survey.administration !== "self" && !isStaff(user)) forbidden("err.staffFillsOnly");
+  await assertMayTake(c, user, survey);
+  if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
 
   const existing = await db.query.responses.findFirst({
     where: and(
@@ -244,8 +417,13 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
 
   await db.transaction(async (tx) => {
     if (existing) {
+      /*
+       * Версия черновика следует за клиентом: ответы перезаписываются
+       * целиком, и если человек начал заново на новой версии, черновик
+       * обязан помнить новую — иначе продолжение открыло бы старую.
+       */
       await tx.update(responses)
-        .set({ durationMs: input.durationMs, lastSavedAt: now })
+        .set({ durationMs: input.durationMs, lastSavedAt: now, versionId: survey.versionId })
         .where(eq(responses.id, responseId));
       await tx.delete(answers).where(eq(answers.responseId, responseId));
     } else {
@@ -340,6 +518,8 @@ responseRoutes.get("/surveys/:id/draft", async (c) => {
   const rows = await db.select().from(answers).where(eq(answers.responseId, draft.id));
   return c.json({
     id: draft.id,
+    // версия, на которой черновик начат: продолжать и сдавать — по ней
+    versionId: draft.versionId,
     startedAt: draft.startedAt,
     lastSavedAt: draft.lastSavedAt,
     durationMs: draft.durationMs,
