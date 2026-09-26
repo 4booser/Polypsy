@@ -12,9 +12,9 @@ import { login } from "./helpers";
 test("j и k ведут по очереди, / ставит курсор в поиск", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/alerts");
-  await page.locator(".queue-row").first().waitFor();
+  await page.locator("[data-queue-row]").first().waitFor();
 
-  const rows = page.locator(".queue-row");
+  const rows = page.locator("[data-queue-row]");
   await expect(rows.nth(0)).toHaveAttribute("aria-current", "true");
 
   await page.keyboard.press("j");
@@ -25,18 +25,18 @@ test("j и k ведут по очереди, / ставит курсор в по
   await expect(rows.nth(0)).toHaveAttribute("aria-current", "true");
 
   await page.keyboard.press("/");
-  await expect(page.locator(".triage-filters input")).toBeFocused();
+  await expect(page.locator("[data-queue-search]")).toBeFocused();
 
   await page.keyboard.press("Escape");
-  await expect(page.locator(".triage-filters input")).not.toBeFocused();
+  await expect(page.locator("[data-queue-search]")).not.toBeFocused();
 });
 
 test("клавиши молчат, пока курсор в поле ввода", async ({ page }) => {
   await login(page, "psy");
   await page.goto("/alerts");
-  await page.locator(".case").first().waitFor();
+  await page.locator("[data-case-card]").first().waitFor();
 
-  const note = page.locator(".case").first().locator("input").first();
+  const note = page.locator("[data-case-card]").first().locator("input").first();
   await note.click();
   await note.fill("");
   // «j» и «1» — обычные символы, пока человек печатает

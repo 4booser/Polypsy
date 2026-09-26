@@ -1277,7 +1277,6 @@ export const UI = {
   "cases.title": { uk: "Розбір випадків", ru: "Разбор случаев", en: "Case review" },
   "cases.pickOne": { uk: "Оберіть випадок зі списку", ru: "Выберите случай из списка", en: "Select a case from the list" },
   "cases.pickOneHint": { uk: "Ліворуч — черга; праворуч відкриється розбір", ru: "Слева — очередь; справа откроется разбор", en: "Queue on the left; the review opens on the right" },
-  "cases.openCount": { uk: "Відкритих", ru: "Открытых", en: "Open" },
   "cases.allSub": { uk: "Усі випадки, зокрема розібрані", ru: "Все случаи, включая разобранные", en: "All cases, including reviewed ones" },
   "cases.overdue": { uk: "прострочено", ru: "просрочено", en: "overdue" },
   "cases.mine": { uk: "на мені", ru: "на мне", en: "mine" },
@@ -7085,6 +7084,46 @@ export const UI = {
   "st.apply": { uk: "Застосувати", ru: "Применить", en: "Apply" },
   /* ── wave7:orgs ── */
   /* ── wave7:placement ── */
+
+  /* ── w12:alerts ── */
+  /*
+   * Экран разбора случаев на сотнях открытых: статус вкладками, залитые
+   * фильтры со счётчиками из SQL, разделы по выраженности, строка на
+   * человека и его случаи рядом (pages/Alerts.tsx, pages/alerts/model.ts).
+   */
+  "cases.statusLabel": { uk: "Стан випадків", ru: "Состояние случаев", en: "Case status" },
+  "cases.filterResolved": { uk: "Розібрані", ru: "Разобранные", en: "Reviewed" },
+  "cases.severityLabel": { uk: "Терміновість", ru: "Срочность", en: "Urgency" },
+  "cases.assignedLabel": { uk: "Хто розбирає", ru: "Кто разбирает", en: "Who is reviewing" },
+  "cases.assignedOthers": { uk: "Взяті іншими", ru: "Взяты другими", en: "Taken by others" },
+  "cases.groupLabel": { uk: "Група пацієнтів", ru: "Группа пациентов", en: "Patient group" },
+  "cases.groupAll": { uk: "Усі групи пацієнтів", ru: "Все группы пациентов", en: "All patient groups" },
+  "cases.periodFrom": { uk: "Відкрито від", ru: "Открыт с", en: "Opened from" },
+  "cases.periodTo": { uk: "Відкрито до", ru: "Открыт по", en: "Opened until" },
+  "cases.sectionSevere": { uk: "Важкі", ru: "Тяжёлые", en: "Severe" },
+  "cases.peopleSub": { uk: "Людей на розбір {n}", ru: "Людей на разбор {n}", en: "People to review {n}" },
+  "cases.resolvedSub": {
+    uk: "Розібрані випадки: рішення, хто і коли його ухвалив",
+    ru: "Разобранные случаи: решение, кто и когда его принял",
+    en: "Reviewed cases: the decision, who made it and when",
+  },
+  "cases.casesN": { uk: "випадків: {n}", ru: "случаев: {n}", en: "cases: {n}" },
+  "cases.queueLabel": { uk: "Черга випадків", ru: "Очередь случаев", en: "Case queue" },
+  "cases.personCases": { uk: "Випадки людини", ru: "Случаи человека", en: "This person's cases" },
+  "cases.personCasesHint": {
+    uk: "Відкриті випадки в різних групах або давніші за вікно методики. Рішення ухвалюється про кожен окремо: кожен бачать свої фахівці.",
+    ru: "Открытые случаи в разных группах или старше окна методики. Решение принимается о каждом отдельно: каждый видят свои специалисты.",
+    en: "Open cases in different groups or older than the questionnaire's window. Each is decided on separately: each is seen by its own specialists.",
+  },
+  "cases.showPersonCases": { uk: "Усі випадки людини", ru: "Все случаи человека", en: "All of this person's cases" },
+  "cases.patientFilter": { uk: "Пацієнт", ru: "Пациент", en: "Patient" },
+  "cases.clearPatient": { uk: "Прибрати відбір за пацієнтом", ru: "Убрать отбор по пациенту", en: "Clear the patient filter" },
+  "cases.clearFilters": { uk: "Скинути фільтри", ru: "Сбросить фильтры", en: "Reset filters" },
+  "cases.emptyFiltered": {
+    uk: "За цим відбором випадків немає",
+    ru: "По этому отбору случаев нет",
+    en: "No cases match these filters",
+  },
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
