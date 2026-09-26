@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { listRecords, readRecord, removeRecord, writeRecord, type RawFiles } from "./atomicFile";
 import { StoreWriteError } from "./writeError";
 
 /**
@@ -75,40 +76,47 @@ function nativeStore(): JsonStore {
   // имя записи может содержать ':' и id — в файловое имя кодируем безопасно
   const fileName = (name: string) => `${encodeURIComponent(name)}.json`;
 
+  /*
+   * Файлы каталога — в виде, в каком их понимает модель замещения
+   * (atomicFile.ts): она решает порядок шагов и что поднимать после сбоя.
+   */
+  const files: RawFiles = {
+    exists: (n) => new File(dir, n).exists,
+    read: (n) => new File(dir, n).textSync(),
+    write: (n, text) => {
+      const f = new File(dir, n);
+      if (f.exists) f.delete();
+      f.create();
+      f.write(text);
+    },
+    remove: (n) => new File(dir, n).delete(),
+    rename: (from, to) => new File(dir, from).move(new File(dir, to)),
+    list: () =>
+      dir
+        .list()
+        .filter((e): e is InstanceType<typeof File> => e instanceof File)
+        .map((f) => f.name),
+  };
+
   return {
     read<T>(name: string): T | null {
       try {
-        const f = new File(dir, fileName(name));
-        if (!f.exists) return null;
-        return JSON.parse(f.textSync()) as T;
+        const text = readRecord(files, fileName(name));
+        return text === null ? null : (JSON.parse(text) as T);
       } catch {
         return null;
       }
     },
     write(name, value) {
       /*
-       * Через временный файл с переименованием.
-       *
-       * Прямая запись поверх — не атомарная операция: если телефон выключится
-       * посреди неё, на диске останется обрезанный JSON, и черновик двухсот
-       * ответов превратится в ничто. Переименование в пределах одной
-       * директории атомарно, поэтому наблюдатель видит либо старую запись,
-       * либо новую целиком.
+       * Через временный файл, и так, чтобы сбой между любыми шагами не
+       * оставлял хранилище без основной копии (atomicFile.ts). Прямая запись
+       * поверх не годится: выключение посреди неё оставляет обрезанный JSON,
+       * и черновик двухсот ответов превращается в ничто.
        */
-      const tmp = new File(dir, `${fileName(name)}.tmp`);
       try {
-        if (tmp.exists) tmp.delete();
-        tmp.create();
-        tmp.write(JSON.stringify(value));
-        const target = new File(dir, fileName(name));
-        if (target.exists) target.delete();
-        tmp.move(target);
+        writeRecord(files, fileName(name), JSON.stringify(value));
       } catch (error) {
-        try {
-          if (tmp.exists) tmp.delete();
-        } catch {
-          /* мусорный временный файл переживём */
-        }
         console.warn("offline store: запись не удалась", name, error);
         // вызывающий обязан узнать: для него это не кэш, а, может быть, единственная копия ответов
         throw new StoreWriteError(name, error);
@@ -116,19 +124,15 @@ function nativeStore(): JsonStore {
     },
     remove(name) {
       try {
-        const f = new File(dir, fileName(name));
-        if (f.exists) f.delete();
+        removeRecord(files, fileName(name));
       } catch {
-        /* уже нет */
+        /* не удалилась — останется целой (atomicFile.ts); повтор удалит */
       }
     },
     keys(prefix) {
       try {
-        return dir
-          .list()
-          .filter((e): e is InstanceType<typeof File> => e instanceof File)
-          .filter((f) => !f.name.endsWith(".tmp"))
-          .map((f) => decodeURIComponent(f.name.replace(/\.json$/, "")))
+        return listRecords(files)
+          .map((n) => decodeURIComponent(n.replace(/\.json$/, "")))
           .filter((n) => n.startsWith(prefix));
       } catch {
         return [];

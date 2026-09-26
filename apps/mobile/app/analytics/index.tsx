@@ -5,6 +5,7 @@ import type { OverviewAnalytics, AlertCase, SurveyListItem } from "@quizzy/share
 import { api } from "@/api/client";
 import { ChartCard, StatTile } from "@/components/charts";
 import { Donut, LineChart } from "@/components/viz";
+import { dailyBuckets } from "@/components/viz/math";
 import { Body, Button, Card, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { formatDuration, severityColor, severityKey, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
@@ -115,7 +116,8 @@ export default function OverviewScreen() {
           series={[
             {
               label: ut("ma.responses"),
-              points: data.timeline.map((t) => ({ x: t.date.slice(5), y: t.count })),
+              // по дню на корзину: дни без сдач — разрыв, а не соседние точки (viz/math.ts)
+              points: dailyBuckets(data.timeline),
             },
           ]}
         />

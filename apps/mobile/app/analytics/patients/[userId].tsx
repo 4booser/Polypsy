@@ -111,6 +111,8 @@ export default function PatientDynamicsScreen() {
                       label: sc.title,
                       points: sc.points.map((pt) => ({
                         x: pt.submittedAt.slice(5, 10),
+                        // ось по времени замера: месяц между замерами — месяц на графике
+                        t: Date.parse(pt.submittedAt),
                         y: pt.rawScore,
                         tone: pt.severity ?? undefined,
                       })),

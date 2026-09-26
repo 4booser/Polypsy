@@ -18,6 +18,7 @@ import { drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { draftLaneKey, draftLanes } from "@/offline/draftLane";
 import { useExit } from "@/nav/useExit";
 import { finishFailureText, finishSubmission } from "@/runner/finish";
+import { resultView } from "@/runner/resultView";
 import { missedBefore } from "@/runner/progress";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
@@ -419,6 +420,20 @@ export default function TakeSurveyScreen() {
 
   /* ─── экран результата ─── */
   if (result) {
+    /*
+     * Что из результата можно показать — решает методика (showResultsToPatient)
+     * и то, кто у телефона (runner/resultView.ts). Баллы в состоянии экрана
+     * есть в любом случае: запрет — про показ, а не про подсчёт.
+     */
+    const view = resultView({
+      showResultsToPatient: survey.showResultsToPatient,
+      scoringEnabled: survey.scoringEnabled,
+      onBehalfOf: !!onBehalfOf,
+      queued,
+      scoresCount: result.length,
+      responseId,
+      safetyPlan,
+    });
     return (
       <ScrollView
         style={{ backgroundColor: c.bg }}
@@ -426,7 +441,7 @@ export default function TakeSurveyScreen() {
       >
         <Title>{ut("ms.done")}</Title>
         <Body muted>
-          {ut(queued ? "msv.tookQueued" : "msv.tookSaved").replace(
+          {ut(view.tookKey).replace(
             "{d}",
             formatDuration(Date.now() - sessionStart.current),
           )}
@@ -438,15 +453,16 @@ export default function TakeSurveyScreen() {
             </Body>
           </Card>
         ) : null}
-        {safetyPlan ? (
+        {view.safetyPlan ? (
           <Card style={{ borderColor: severityColor.severe, borderWidth: 2 }}>
             <Text style={{ color: c.text, fontSize: 16, fontWeight: "700", marginBottom: 6 }}>
               {ut("msv.importantNow")}
             </Text>
-            <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>{safetyPlan}</Text>
+            <Text style={{ color: c.text, fontSize: 15, lineHeight: 22 }}>{view.safetyPlan}</Text>
           </Card>
         ) : null}
-        {result.length > 0 ? (
+        {view.hiddenNote ? <Body muted>{ut("msv.scoresForSpecialist")}</Body> : null}
+        {view.scores ? (
           <Card>
             <Body>{ut("ms.subscaleResults")}</Body>
             {result.map((s) => (
@@ -467,7 +483,7 @@ export default function TakeSurveyScreen() {
             </Body>
           </Card>
         ) : null}
-        {responseId ? (
+        {view.conclusion && responseId ? (
           <Button
             title={ut("ms.openConclusion")}
             variant="secondary"

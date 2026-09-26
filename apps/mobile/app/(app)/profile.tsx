@@ -187,6 +187,8 @@ export default function AccountScreen() {
                       label: sc.title,
                       points: sc.points.map((pt) => ({
                         x: pt.submittedAt.slice(5, 10),
+                        // ось по времени замера: месяц между замерами — месяц на графике
+                        t: Date.parse(pt.submittedAt),
                         y: pt.value,
                         tone: pt.severity ?? undefined,
                       })),
