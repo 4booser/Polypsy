@@ -10,7 +10,8 @@ import { RuleSection } from "../../../ui/section";
 import { fill } from "../../dashboard/model";
 import { fmtBytes, fmtInt, fmtShare, fmtUptime, shortId } from "../model";
 import { Cell, Facts, GridRow, GridTable, NumHead, Quiet, Stamp, StatusMark, useOpsResource } from "../parts";
-import { REC_STATUS_KEY, countOf, diskMismatch, freeShare } from "./model";
+import { REC_STATUS_KEY, countOf, diskMismatch, diskParts, freeShare, statusParts } from "./model";
+import { ToneShare } from "./charts";
 
 /*
  * Записи прийомів: хранилище и очередь расшифровки — только числами.
@@ -81,22 +82,33 @@ export default function OpsRecordingsPage() {
           {d.byStatus.length === 0 ? (
             <Quiet>{ut("o2b.rec.none")}</Quiet>
           ) : (
-            <GridTable
-              label={ut("o2b.rec.byStatus")}
-              cols={STATUS_COLS}
-              minW="min-w-[440px]"
-              head={[ut("o2b.rec.col.status"), <NumHead key="n">{ut("o2b.rec.col.count")}</NumHead>, <NumHead key="b">{ut("o2b.rec.col.bytes")}</NumHead>]}
-            >
-              {d.byStatus.map((s) => (
-                <GridRow key={s.status} cols={STATUS_COLS}>
-                  <Cell className="text-text">{ut(REC_STATUS_KEY[s.status])}</Cell>
-                  <Cell num>{fmtInt(s.count, loc)}</Cell>
-                  <Cell num className="text-muted">
-                    {s.bytes ? fmtBytes(s.bytes, loc) : "—"}
-                  </Cell>
-                </GridRow>
-              ))}
-            </GridTable>
+            <>
+              {/*
+                Состав целого над таблицей (волна 11): путь записи слева
+                направо, сбой — янтарём, удалённые — серым. Байты — в таблице.
+              */}
+              <ToneShare
+                className="mb-[20px]"
+                label={ut("o2b.rec.byStatus")}
+                parts={statusParts(d).map((p) => ({ key: p.status, label: ut(REC_STATUS_KEY[p.status]), value: p.value, tone: p.tone, step: p.step }))}
+              />
+              <GridTable
+                label={ut("o2b.rec.byStatus")}
+                cols={STATUS_COLS}
+                minW="min-w-[440px]"
+                head={[ut("o2b.rec.col.status"), <NumHead key="n">{ut("o2b.rec.col.count")}</NumHead>, <NumHead key="b">{ut("o2b.rec.col.bytes")}</NumHead>]}
+              >
+                {d.byStatus.map((s) => (
+                  <GridRow key={s.status} cols={STATUS_COLS}>
+                    <Cell className="text-text">{ut(REC_STATUS_KEY[s.status])}</Cell>
+                    <Cell num>{fmtInt(s.count, loc)}</Cell>
+                    <Cell num className="text-muted">
+                      {s.bytes ? fmtBytes(s.bytes, loc) : "—"}
+                    </Cell>
+                  </GridRow>
+                ))}
+              </GridTable>
+            </>
           )}
         </RuleSection>
         <RuleSection title={ut("o2b.rec.disk")}>
@@ -128,8 +140,27 @@ function Disk({ d }: { d: OpsRecordings }) {
   const { ut } = useLang();
   const loc = locale();
   const mismatch = diskMismatch(d);
+  const vol = diskParts(d);
   return (
     <>
+      {/*
+        Том целиком (волна 11): сколько занимают записи, сколько — всё
+        остальное, сколько свободно. Отвечает на вопрос, который плитка
+        «вільно» оставляет открытым: место съедают записи или что-то чужое
+        на том же томе. Не прочитан том — полосы нет: половина полосы была
+        бы выдумкой.
+      */}
+      {vol ? (
+        <ToneShare
+          className="mb-[16px]"
+          label={ut("sig.rec.volume")}
+          parts={[
+            { key: "records", label: ut("sig.rec.records"), value: vol.records, tone: "ok", text: fmtBytes(vol.records, loc) },
+            { key: "other", label: ut("sig.rec.other"), value: vol.other, tone: "ok", step: 0.3, text: fmtBytes(vol.other, loc) },
+            { key: "free", label: ut("sig.rec.free"), value: vol.free, tone: "quiet", text: fmtBytes(vol.free, loc) },
+          ]}
+        />
+      ) : null}
       <Facts
         items={[
           [

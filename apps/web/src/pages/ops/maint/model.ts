@@ -68,6 +68,60 @@ export function rollbackPlan(items: ReleaseEntry[]): RollbackPlan | null {
   return { target: items[at]!, left, unknown: newer.some((r) => r.migrations === null) };
 }
 
+/* ─────────── частота выкладок (волна 11) ─────────── */
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** Понедельник недели момента по часам экрана — «YYYY-MM-DD» (неделя по-украински начинается с понедельника) */
+export function weekOf(at: string | number | Date): string {
+  const d = new Date(at);
+  const back = (d.getDay() + 6) % 7;
+  return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate() - back));
+}
+
+/**
+ * Выкладки по неделям — от недели самой старой строки списка до текущей,
+ * не длиннее `maxWeeks`.
+ *
+ * Неделя без выкладок — ноль и стоит в ряду: пауза в выпусках — такая же
+ * часть ответа «как часто выкатываем», как и сами выпуски. Каждая строка —
+ * выкладка, включая откат и повторную выкладку той же версии: сервер
+ * поднимался, и для частоты это событие. Список сервера ограничен (полсотни
+ * последних), поэтому ряд начинается не раньше недели самой старой строки —
+ * раньше неё список ничего не знает, и нули там были бы выдумкой.
+ */
+export function weeklyDeploys(
+  items: readonly Pick<ReleaseEntry, "startedAt">[],
+  now: number,
+  maxWeeks: number,
+): { key: string; value: number }[] {
+  if (!items.length) return [];
+  const current = weekOf(now);
+  const oldest = weekOf(Math.min(...items.map((r) => Date.parse(r.startedAt))));
+  const weeks: string[] = [];
+  /* от текущей недели назад — календарём (−7 дней к дате), не миллисекундами: переход часов не сдвинет понедельник */
+  const [y, m, d] = current.split("-").map(Number) as [number, number, number];
+  for (let i = 0; i < maxWeeks; i++) {
+    const w = ymd(new Date(y, m - 1, d - 7 * i));
+    weeks.unshift(w);
+    if (w <= oldest) break;
+  }
+  const idx = new Map(weeks.map((w, i) => [w, i]));
+  const out = weeks.map((key) => ({ key, value: 0 }));
+  for (const r of items) {
+    const i = idx.get(weekOf(r.startedAt));
+    if (i !== undefined) out[i]!.value += 1;
+  }
+  return out;
+}
+
+/** Выкладок в неделю в среднем по ряду — одно число рядом с графиком; пусто — null */
+export function perWeek(weeks: readonly { value: number }[]): number | null {
+  if (!weeks.length) return null;
+  return Math.round((weeks.reduce((s, w) => s + w.value, 0) / weeks.length) * 10) / 10;
+}
+
 /** Короткий коммит для строки: семь знаков, как пишет git */
 export function shortSha(sha: string | null): string | null {
   return sha ? sha.slice(0, 7) : null;

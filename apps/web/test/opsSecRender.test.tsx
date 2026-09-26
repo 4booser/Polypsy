@@ -179,6 +179,8 @@ describe("цілісність", () => {
       auditScheduled: { at: report.at, trigger: "schedule", ok: false, actorEmail: null, summary: report },
       scheduleHours: 24,
       nextScheduledAfter: "2026-09-27T09:55:00.000Z",
+      historyDays: 30,
+      auditHistory: [],
     };
     const html = draw(<AuditResult state={state} />);
     clean(html);

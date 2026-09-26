@@ -7,6 +7,7 @@ import {
   type OpsAlertChannel,
   type OpsAlertDelivery,
   type OpsAlertEventKind,
+  type OpsAlertHistory,
   type OpsAlertRule,
   type OpsAlertRuleInput,
   type OpsAlertRuleKey,
@@ -21,8 +22,8 @@ import {
   type VitalMetric,
   type VitalRating,
 } from "@quizzy/shared";
-import type { LinePoint } from "../../../charts";
 import type { Tone } from "../parts";
+import type { ColumnGroup, GapPoint } from "./charts";
 
 /**
  * Чистая логика разделов техпанели участка obs2b: «Сповіщення», «Помилки
@@ -265,17 +266,15 @@ export function filterVitalRoutes(routes: readonly OpsVitalRoute[], q: string): 
 }
 
 /**
- * Ход p75 по дням — точки только там, где замеры были: день без замеров не
- * «ноль миллисекунд», а отсутствие данных (то же правило, что у графика
- * нагрузки в «Огляді»).
+ * Ход p75 по дням — все дни периода, день без замеров — null: не «ноль
+ * миллисекунд», а отсутствие данных. Прежде такие дни выбрасывались из ряда,
+ * и LineChart, ставящий точки через равные шаги, сжимал время: неделя без
+ * замеров выглядела соседними днями. Волна 11: ось — дни, пустой день —
+ * разрыв линии (GapLine).
  */
-export function vitalSeries(cell: OpsVitalCell | undefined, days: readonly string[], label: (day: string) => string): LinePoint[] {
-  if (!cell) return [];
-  const out: LinePoint[] = [];
-  cell.daily.forEach((v, i) => {
-    if (v !== null && days[i]) out.push({ x: label(days[i]), y: v });
-  });
-  return out;
+export function vitalSeries(cell: OpsVitalCell | undefined, days: readonly string[], label: (day: string) => string): GapPoint[] {
+  if (!cell || !cell.daily.some((v) => v !== null)) return [];
+  return days.map((d, i) => ({ key: d, label: label(d), value: cell.daily[i] ?? null }));
 }
 
 /** Числа хода для строки таблицы (Sparkline): только дни с замерами */
@@ -319,3 +318,207 @@ export function freeShare(r: OpsRecordings): number | null {
 
 /** Кнопка «Запустити зараз» активна: задача ручная и сейчас не идёт */
 export const canRunNow = (j: OpsJob) => j.manual && j.lastResult !== "running";
+
+/* ═══════════ графики сигналов (волна 11) ═══════════ */
+
+/*
+ * Ряды для графиков над таблицами — чистыми функциями, без «сейчас» внутри:
+ * момент передаётся, и тест (apps/web/test/opsSignals.test.ts) проверяет
+ * правило на краях — пустой день, пустой период, скрытое, «інші».
+ */
+
+/* ─────────── дни по часам экрана ─────────── */
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * День момента по часам экрана — «YYYY-MM-DD».
+ *
+ * Ряды, которые считает сервер, режутся по поясу учреждения (lib/day.ts);
+ * ряды, собранные здесь из моментов (первое появление ошибки, выкатка,
+ * сверка журнала), — по часам того, кто смотрит. Для техпанели это одно и
+ * то же место, а у разработчика в другом поясе граница суток и так совпадает
+ * с его собственными часами — с тем, что он помнит о своём дне.
+ */
+export function localDay(at: string | number | Date): string {
+  const d = new Date(at);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/**
+ * Последние `n` дней по календарю, старые первыми, последний — день `now`.
+ * Календарём, а не вычитанием суток в миллисекундах: в ночь перевода часов
+ * сутки длятся 23 или 25 часов, и вычитание дало бы один день дважды.
+ */
+export function lastDays(now: number, n: number): string[] {
+  const d = new Date(now);
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) out.push(localDay(new Date(d.getFullYear(), d.getMonth(), d.getDate() - i)));
+  return out;
+}
+
+/* ─────────── сповіщення ─────────── */
+
+/**
+ * Ряды графика истории: «збій» и «відновлено». Повтор («досі триває») —
+ * не новое событие, а напоминание о прежнем: рядом со сбоем он рисовал бы
+ * инцидент дважды, поэтому его число — в полосах по правилам, а не здесь.
+ * Тон — как у метки события в списке ниже (EVENT_TONE).
+ */
+export const ALERT_SERIES: readonly { key: "fired" | "resolved"; label: UiKey; tone: Tone }[] = [
+  { key: "fired", label: "o2b.event.fired", tone: EVENT_TONE.fired },
+  { key: "resolved", label: "o2b.event.resolved", tone: EVENT_TONE.resolved },
+];
+
+export function alertGroups(daily: OpsAlertHistory["daily"], label: (day: string) => string): ColumnGroup[] {
+  return daily.map((d) => ({ key: d.date, label: label(d.date), values: { fired: d.fired, resolved: d.resolved } }));
+}
+
+/** Было ли за период хоть одно событие — пустой месяц говорится словами, а не пустыми осями */
+export const anyAlerts = (daily: OpsAlertHistory["daily"]) => daily.some((d) => d.fired + d.repeat + d.resolved > 0);
+
+/* ─────────── помилки клієнта ─────────── */
+
+/**
+ * Новые группы по дню первого появления.
+ *
+ * Не «сколько раз падало в этот день»: группа хранит общий счётчик и два
+ * момента (первый и последний раз), а не счёт по дням, — разложить его по
+ * дням значило бы выдумать. Первое появление — настоящее событие: в этот
+ * день у людей начала падать новая ошибка, и столбец после выкатки виден
+ * сразу.
+ */
+export function newGroupsByDay(items: readonly Pick<OpsClientErrorGroup, "firstAt">[], days: readonly string[]): number[] {
+  const at = new Map(days.map((d, i) => [d, i]));
+  const out = days.map(() => 0);
+  for (const g of items) {
+    const i = at.get(localDay(g.firstAt));
+    if (i !== undefined) out[i]! += 1;
+  }
+  return out;
+}
+
+/** Ключ строки «інші» — не может совпасть с маршрутом или браузером */
+export const REST_KEY = "\u0000rest";
+
+export interface Ranked {
+  key: string;
+  /** Случаев (сумма счётчиков групп) */
+  value: number;
+  /** Групп */
+  groups: number;
+}
+
+/**
+ * Рейтинг по признаку группы: сумма случаев, первые `limit` и остаток одной
+ * строкой. Остаток — одной строкой, а не хвостом из двадцати: полос в
+ * рейтинге не больше, чем глаз сравнивает разом. Признак не известен
+ * (браузер мобилки, ОС без подписи) — ключ "", экран называет его словом.
+ */
+export function rankBy<T extends { count: number }>(
+  items: readonly T[],
+  keyOf: (item: T) => string | null,
+  limit: number,
+): { top: Ranked[]; rest: (Ranked & { keys: number }) | null } {
+  const acc = new Map<string, Ranked>();
+  for (const it of items) {
+    const key = keyOf(it) ?? "";
+    const r = acc.get(key) ?? { key, value: 0, groups: 0 };
+    r.value += it.count;
+    r.groups += 1;
+    acc.set(key, r);
+  }
+  const all = [...acc.values()].sort((a, b) => b.value - a.value || b.groups - a.groups || a.key.localeCompare(b.key));
+  const top = all.slice(0, limit);
+  const tail = all.slice(limit);
+  const rest = tail.length
+    ? {
+        key: REST_KEY,
+        value: tail.reduce((s, r) => s + r.value, 0),
+        groups: tail.reduce((s, r) => s + r.groups, 0),
+        keys: tail.length,
+      }
+    : null;
+  return { top, rest };
+}
+
+/** «Chrome 128» → «Chrome»: доля по семейству, версии — в строке группы */
+export function browserFamily(b: string | null): string | null {
+  if (!b) return null;
+  return b.replace(/\s+\d+$/, "") || null;
+}
+
+/** Самые частые группы: по счётчику, при равенстве — свежая выше */
+export function topGroups(items: readonly OpsClientErrorGroup[], limit: number): OpsClientErrorGroup[] {
+  return [...items].sort((a, b) => b.count - a.count || b.lastAt.localeCompare(a.lastAt)).slice(0, limit);
+}
+
+/* ─────────── швидкість екранів ─────────── */
+
+/**
+ * Самые медленные экраны по мере: p75 по убыванию. Экран без замеров этой
+ * меры в рейтинг не входит — у него нет p75, и нулём в конце списка он
+ * читался бы как самый быстрый.
+ */
+export function slowestRoutes(
+  routes: readonly OpsVitalRoute[],
+  metric: VitalMetric,
+  limit: number,
+): { rows: { route: string; p75: number; rating: VitalRating; n: number }[]; more: number } {
+  const all = routes
+    .map((r) => ({ route: r.route, cell: r.metrics[metric] }))
+    .filter((r): r is { route: string; cell: OpsVitalCell & { p75: number; rating: VitalRating } } => r.cell?.p75 != null && r.cell.rating !== null)
+    .map((r) => ({ route: r.route, p75: r.cell.p75, rating: r.cell.rating, n: r.cell.n }))
+    .sort((a, b) => b.p75 - a.p75 || b.n - a.n || a.route.localeCompare(b.route));
+  return { rows: all.slice(0, limit), more: Math.max(0, all.length - limit) };
+}
+
+/** Замеры меры по оценке — по всем экранам (или по одной клетке) */
+export function ratingTotals(cells: readonly (OpsVitalCell | undefined)[]): Record<VitalRating, number> {
+  const out: Record<VitalRating, number> = { good: 0, needs: 0, poor: 0 };
+  for (const c of cells) {
+    if (!c?.ratings) continue;
+    out.good += c.ratings.good;
+    out.needs += c.ratings.needs;
+    out.poor += c.ratings.poor;
+  }
+  return out;
+}
+
+export const RATING_ORDER: readonly VitalRating[] = ["good", "needs", "poor"];
+
+/* ─────────── записи прийомів ─────────── */
+
+/**
+ * Порядок и тон состояний в полосе: путь записи слева направо —
+ * расшифрованные, затем то, что ещё в пути (светлее — дальше от конца),
+ * затем сбой (янтарь — его надо разобрать) и удалённые (серым: их больше
+ * нет, и внимания они не требуют).
+ */
+export const REC_ORDER: readonly { status: RecordingStatus; tone: Tone; step?: number }[] = [
+  { status: "done", tone: "ok", step: 1 },
+  { status: "transcribing", tone: "ok", step: 0.7 },
+  { status: "uploaded", tone: "ok", step: 0.55 },
+  { status: "recording", tone: "ok", step: 0.4 },
+  { status: "ready", tone: "ok", step: 0.25 },
+  { status: "consent_pending", tone: "ok", step: 0.1 },
+  { status: "failed", tone: "fail" },
+  { status: "discarded", tone: "quiet" },
+];
+
+export function statusParts(r: OpsRecordings): { status: RecordingStatus; value: number; tone: Tone; step?: number }[] {
+  return REC_ORDER.map((o) => ({ ...o, value: countOf(r, o.status) })).filter((p) => p.value > 0);
+}
+
+/**
+ * Том записей по частям: записи (по диску), всё остальное на томе, свободно.
+ * null — сложить нечего: том не прочитан, размер или свободное место не
+ * известны, или файлов больше, чем пересчитал один запрос (тогда «записи» —
+ * нижняя граница, и полоса соврала бы о доле).
+ */
+export function diskParts(r: OpsRecordings): { records: number; other: number; free: number } | null {
+  const d = r.disk;
+  if (!d || d.truncated || !d.totalBytes || d.freeBytes === null) return null;
+  const used = Math.max(0, d.totalBytes - d.freeBytes);
+  return { records: Math.min(d.bytes, used), other: Math.max(0, used - d.bytes), free: d.freeBytes };
+}

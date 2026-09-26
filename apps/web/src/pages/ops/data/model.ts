@@ -3,7 +3,9 @@ import type {
   DataCheckExample,
   DataCheckKey,
   MobileReport,
+  MobileVersionRow,
   PushReport,
+  ScreenUsageRow,
   UiKey,
   UsageReport,
 } from "@quizzy/shared";
@@ -282,6 +284,94 @@ export const PLATFORM_LABEL: Record<string, UiKey> = {
 /** Ошибка — всё, что не «принято и не отвергнуто квитанцией» (как на сервере) */
 export function pushErrors(t: PushReport["totals"]): number {
   return t.rejected + t.failed + t.receiptErrors;
+}
+
+/* ═══════════ графики (волна 11) ═══════════ */
+
+/**
+ * Доля ошибок отправки по дням, в процентах с одним знаком.
+ *
+ * День без отправок — null, а не ноль: «0 % ошибок» в день, когда ничего не
+ * уходило, звучит как «всё дошло», а доли там просто нет. Столбцы «помилки
+ * по днях» рядом отвечают «сколько», эта линия — «насколько плохо»: десять
+ * ошибок из десяти и десять из тысячи выглядят в столбцах одинаково.
+ */
+export function errorShare(
+  byDay: PushReport["byDay"],
+  label: (iso: string) => string,
+): { key: string; label: string; value: number | null }[] {
+  return byDay.map((d) => ({
+    key: d.date,
+    label: label(d.date),
+    value: d.sent > 0 ? Math.round((Math.min(d.errors, d.sent) / d.sent) * 1000) / 10 : null,
+  }));
+}
+
+/**
+ * Первые экраны по открытиям и остаток до общего числа.
+ *
+ * Остаток — от `total` окна, а не от суммы присланного топа: топ — только
+ * верхушка, и «інші» от его суммы занизили бы хвост до нуля. Отрицательного
+ * остатка не бывает (топ и итог считаются одним запросом, но округление
+ * времени окна между ними однажды разойдётся).
+ */
+export function topScreens(top: readonly ScreenUsageRow[], total: number, limit: number): { rows: ScreenUsageRow[]; rest: number } {
+  const rows = [...top].sort((a, b) => b.views - a.views).slice(0, limit);
+  return { rows, rest: Math.max(0, total - rows.reduce((s, r) => s + r.views, 0)) };
+}
+
+/**
+ * Сравнение версий «1.10.2» и «1.9»: по числам слева направо, а не строкой
+ * («1.10» строкой меньше «1.9»). Нечисловые хвосты («1.2.0-beta») сравниваются
+ * по числу в начале части.
+ */
+export function cmpVersion(a: string, b: string): number {
+  const pa = a.split(".").map((p) => Number.parseInt(p, 10) || 0);
+  const pb = b.split(".").map((p) => Number.parseInt(p, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+export interface VersionPart {
+  key: string;
+  /** null — сборка не сообщила версию; «старіші» — сводная часть хвоста */
+  version: string | null;
+  devices: number;
+  old: boolean;
+  /** Сводная часть «ще N старіших» */
+  rest?: number;
+}
+
+/**
+ * Устройства по версии приложения — от новой к старым.
+ *
+ * Платформы и сборки одной версии складываются: вопрос полосы — «на какой
+ * версии сидят люди», а платформа и сборка — в таблице ниже. Старые версии
+ * после `limit` сворачиваются в одну часть «старіші», неизвестная версия —
+ * отдельной частью в конце: у неё нет места в порядке версий.
+ */
+export function versionParts(rows: readonly MobileVersionRow[], limit: number): VersionPart[] {
+  const acc = new Map<string, VersionPart>();
+  for (const r of rows) {
+    const key = r.version ?? "";
+    const p = acc.get(key) ?? { key: key || "\u0000unknown", version: r.version, devices: 0, old: false };
+    p.devices += r.devices;
+    p.old = p.old || r.old;
+    acc.set(key, p);
+  }
+  const known = [...acc.values()].filter((p) => p.version !== null).sort((a, b) => cmpVersion(b.version!, a.version!));
+  const unknown = acc.get("");
+  const head = known.slice(0, limit);
+  const tail = known.slice(limit);
+  const out = [...head];
+  if (tail.length) {
+    out.push({ key: "\u0000rest", version: null, devices: tail.reduce((s, p) => s + p.devices, 0), old: true, rest: tail.length });
+  }
+  if (unknown && unknown.devices > 0) out.push(unknown);
+  return out.filter((p) => p.devices > 0);
 }
 
 /** Типы уведомлений, которые шлёт сервер (lib/notify, mailingPush, remind, scheduler) */
