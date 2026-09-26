@@ -1,429 +1,329 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { SurveyStatus, UiKey, Worklist, WorkKind } from "@quizzy/shared";
+import type { AlertCase, OverviewAnalytics, Page as CursorPage, Worklist } from "@quizzy/shared";
 import { api } from "../api";
-import { BarList, Chart, Donut, LineChart, StackedArea } from "../charts";
-import { duration, day, severityColor, severityKey } from "../format";
+import { Figure, Kpi, TimeColumns } from "../charts/clinical";
+import { day, duration, severityKey } from "../format";
 import { Screen } from "../ui";
-import { Panel, Grid, Stack } from "../ui/layout";
-import { Num, SectionLabel } from "../ui/primitives";
+import { ButtonLink, Num, SeverityTag, Tag } from "../ui/primitives";
+import { RuleSection } from "../ui/section";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { useLiveReload } from "../events";
 import { Suggestions } from "../components/Suggestions";
+import { describeWork } from "../workText";
+import { ConditionsSection, PeriodSwitch } from "./dashboard/parts";
+import {
+  WORK_KIND,
+  dailyColumns,
+  fill,
+  localDay,
+  periodTotals,
+  weeklyColumns,
+  weeklyCounts,
+  workTiles,
+} from "./dashboard/model";
 
-/*
- * Статус методики словами, а не кодом. Тот же перебор, что в списке методик:
- * в колонке «Статус» стояло «published» латиницей на обоих языках.
- */
-/*
- * Названия видов работы для плиток обзора.
+/**
+ * «Зведення» — первая вкладка стартового экрана.
  *
- * Перебор полный: новый вид работы не соберётся, пока ему не дадут имени —
- * так же, как в самой очереди. Именно на этом однажды и попались: счётчики
- * там перечислялись поимённо и отстали от списка видов, а плитки с нулями
- * висели над строкой, до которой нельзя было отфильтроваться.
+ * Редизайн по просьбе заказчика 2026-09-26: «тут редизайн по стилю, нужные
+ * графики сделай типо прохождений тестов за последнее время, средний уровень
+ * стресса, депрессии, тревоги и подобное». Экран собран из пяти блоков, и
+ * порядок их задан, а не сложился: сначала то, что требует действия сегодня,
+ * потом очередь, потом объём работы, потом состояние людей.
+ *
+ *   1. Случаи на разбор и просрочки — единственное место с янтарём.
+ *   2. Очередь работы — строками консоли, а не карточками.
+ *   3. Проходження за останній час — столбцы по дням или неделям и плитки.
+ *   4. Стан пацієнтів за напрямами — доля в клинических полосах и средний
+ *      балл основной методики (pages/dashboard/parts.tsx, сервер —
+ *      routes/dashboard.ts).
+ *
+ * Что ушло и почему. Линия «Динаміка проходжень» с заливкой — счёт по дням
+ * это отдельные корзины, и линия между ними рисовала промежуточные значения,
+ * которых не было (см. TimeColumns). Кольцо «Вираженість за всіма шкалами»
+ * считало строки баллов, а не людей: методика с одиннадцатью шкалами давала
+ * одиннадцать отметок; его вопрос теперь отвечает «Усі методики разом» — по
+ * человеку один раз. Область по неделям и «Навантаження за методиками» — их
+ * вопросы («больше ли тяжёлых», «чем занято отделение») отвечают ход среднего
+ * в каждом направлении и столбцы проходжень; таблица «Усі методики» — это
+ * каталог тестов, и второй его копии на стартовом экране не нужно.
  */
-const WORK_KIND: Record<WorkKind, UiKey> = {
-  noshow: "work.filterNoshows",
-  message: "work.filterMessages",
-  dispensary: "work.filterDispensary",
-  followup: "work.filterFollowups",
-  referral: "work.filterReferrals",
-  assignment: "work.filterAssignments",
-} as const;
 
-const SURVEY_STATUS: Record<SurveyStatus, UiKey> = {
-  draft: "st.surveyDraft",
-  published: "st.surveyPublished",
-  closed: "st.surveyClosed",
-} as const;
+type Range = "30d" | "12w";
+
+/* отказ очереди не должен прятать сводку — отдаём пустую, но полной формы */
+const NO_WORK: Worklist = {
+  items: [],
+  total: 0,
+  truncated: false,
+  byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 },
+  mine: 0,
+};
 
 export default function Dashboard() {
-  const { ut } = useLang();
-
   /*
-   * Три запроса одной загрузкой: экран без любого из них неполон, и показывать
-   * его по частям значит подсовывать сводку, в которой чего-то не хватает без
-   * объяснения.
+   * Три запроса одной загрузкой: экран без сводки неполон, а очередь и случаи
+   * — дополнение, и их отказ (нет права разбирать случаи) не повод прятать
+   * всё остальное. Раньше отказ случаев гасил сводку целиком — у того, кому
+   * разбор не положен, стартовый экран не открывался вовсе.
+   *
+   * Состояние по направлениям грузится отдельно (ConditionsSection): у него
+   * свой период, и смена периода не должна перезапрашивать очередь.
    */
   const res = useResource(async () => {
-    const [overview, surveys, alerts, work, trend] = await Promise.all([
+    const [overview, alerts, work] = await Promise.all([
       api.overview(),
-      api.surveys(),
-      api.alertCases({ limit: "6" }),
-      // очередь работы — то, с чего начинается день; её отказ не должен
-      // прятать остальную сводку
-      api.worklist().catch(
-        (): Worklist => ({
-          items: [],
-          total: 0,
-          truncated: false,
-          /* отказ очереди не должен прятать сводку — отдаём пустую, но полной формы */
-          byKind: { noshow: 0, message: 0, dispensary: 0, followup: 0, referral: 0, assignment: 0 },
-          mine: 0,
-        }),
-      ),
-      // то же и с рядом по неделям: он объясняет кольцо рядом, а не заменяет
-      // сводку, и его отказ не повод прятать всё остальное
-      api.severityTrend().catch(() => ({ weeks: [], unbanded: 0 })),
+      api.alertCases({ limit: "6" }).catch((): CursorPage<AlertCase> | null => null),
+      // очередь работы — то, с чего начинается день; её отказ не должен прятать остальную сводку
+      api.worklist().catch((): Worklist => NO_WORK),
     ]);
-    return {
-      data: overview,
-      surveys,
-      trend,
-      /*
-       * Не имена, а то, что помогает решить, идти ли разбирать сейчас.
-       *
-       * Сами случаи со сводки больше не нужны: имена людей со сработавшей
-       * тревогой на первом экране — это раскрытие того самого факта, ради
-       * сокрытия которого в системе есть коды вместо имён и спрятанный
-       * телефон.
-       */
-      urgentCases: alerts.items.filter((x) => x.severity === "severe").length,
-      oldestCaseDays: alerts.items.length
-        ? Math.max(
-            ...alerts.items.map((x) =>
-              Math.floor((Date.now() - new Date(x.openedAt).getTime()) / 86_400_000),
-            ),
-          )
-        : 0,
-      openCases: alerts.total ?? alerts.items.length,
-      work,
-    };
+    return { overview, alerts, work };
   }, []);
   // сводка дежурного стареет от чужих действий: сдача, тревога, тик расписания
   useLiveReload(["alert.created", "case.changed", "response.submitted", "schedule.run"], res.reload);
 
   return (
     <Screen res={res} rows={5}>
-      {({ data, surveys, trend, urgentCases, oldestCaseDays, openCases, work }) => (
-        <>
-          <Stack>
-            {/*
-              Порядок экрана задан, а не сложился: сначала то, что требует
-              действия сегодня, потом показатели, потом обоснование. Раньше
-              первой шла подтверждаемость тревог — важный, но справочный
-              показатель, который стоял даже выше заголовка страницы.
-            */}
-            {/*
-              Предложения правил стоят выше очереди работы, но ниже тревог:
-              это подсказка, а не сигнал. Если предложений нет, блок не
-              рисуется вовсе — постоянный пустой заголовок быстро становится
-              невидимым.
-            */}
-            <Suggestions />
-
-            {openCases ? (
-              /*
-                Янтарь ушёл из заливки в само число.
-                Полоса была залита янтарём — «требует внимания», — и на
-                светлой теме эта заливка сдвигала землю настолько, что текст
-                на ней переставал проходить по контрасту: приглушённый давал
-                4,35:1, действие 4,08:1 при пороге 4,5. Нашла это проверка
-                доступности, а не глаз.
-
-                Заливка была и лишней: внимание держит число, набранное
-                крупно и янтарём, а не подложка под ним. Поверхность
-                осталась обычной панелью — и вместе с ней вернулся весь
-                запас контраста.
-              */
-              <Link
-                to="/alerts"
-                className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-md bg-surface-2 px-5 py-4 no-underline shadow-[0_0_0_1px_var(--border)]"
-              >
-                <span className="font-mono text-stat leading-none tabular-nums text-accent">{openCases}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-body font-medium text-text">{ut("dash.casesOpen")}</span>
-                  {/*
-                    Здесь стояли три фамилии людей со сработавшей тревогой
-                    риска — на стартовом экране, который открывается первым и
-                    висит на мониторе весь день.
-
-                    Система в остальном бережёт ровно этот факт: анонимный
-                    аккаунт виден специалисту как «Респондент А-4821», телефон
-                    спрятан из списков, а его показ пишется в журнал. Три
-                    фамилии людей с суицидальным риском для любого, кто
-                    прошёл мимо, отменяли всё это одной строкой.
-
-                    Вместо имён — то, что помогает решить, идти ли разбирать
-                    прямо сейчас: сколько срочных и сколько ждёт самый давний.
-                    Имена в двух нажатиях, на экране разбора, куда просто так
-                    не заглядывают.
-                  */}
-                  <span className="block truncate text-caption text-muted">
-                    {urgentCases > 0
-                      ? `${ut("dash.casesUrgent").replace("{n}", String(urgentCases))} · `
-                      : ""}
-                    {ut("dash.casesOldest").replace("{n}", String(oldestCaseDays))}
-                  </span>
-                </span>
-                <span className="btn primary shrink-0">{ut("dash.review")}</span>
-              </Link>
-            ) : null}
-
-            {/*
-              Разбивка очереди по видам работы — прямо на обзоре.
-              Счётчики уже приезжают вместе со списком, но показывался только
-              итог: «71» ничего не говорит о том, что именно ждёт. Шесть
-              чисел отвечают на это сразу, а нажатие ведёт в отфильтрованную
-              очередь, а не в общий список, где потом надо искать.
-
-              Пустые виды не показываются: плитка с нулём — это место, куда
-              нажимают и попадают в пустоту.
-            */}
-            {work.total > 0 ? (
-              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-                {(Object.keys(WORK_KIND) as WorkKind[])
-                  .filter((k) => (work.byKind?.[k] ?? 0) > 0)
-                  .map((k) => (
-                    <Link
-                      key={k}
-                      to={`/worklist?kind=${k}`}
-                      className="flex flex-col gap-1 rounded-md bg-surface-2 px-3.5 py-3 no-underline shadow-[0_0_0_1px_var(--border)] hover:bg-surface-3"
-                    >
-                      <SectionLabel>{ut(WORK_KIND[k])}</SectionLabel>
-                      <span className="font-mono text-section font-medium leading-none tabular-nums">
-                        {work.byKind[k]}
-                      </span>
-                    </Link>
-                  ))}
-              </div>
-            ) : null}
-
-            <Grid min={380}>
-              <Panel
-                title={ut("work.title")}
-                actions={
-                  <Link to="/worklist" className="text-caption text-muted no-underline hover:text-text">
-                    <Num>{work.total}</Num> →
-                  </Link>
-                }
-                flush
-              >
-                {work.items.length === 0 ? (
-                  <p className="m-0 px-5 pb-5 text-caption text-muted">{ut("work.nothing")}</p>
-                ) : (
-                  <div className="flex flex-col">
-                    {work.items.slice(0, 7).map((i) => (
-                      <Link
-                        key={i.id}
-                        to={i.href ?? "/worklist"}
-                        className="flex h-[var(--row-h)] items-center gap-3 border-t border-hairline px-5 text-small no-underline hover:bg-surface-2"
-                      >
-                        <i
-                          aria-hidden
-                          className="size-2 shrink-0 rounded-full bg-border-strong"
-                          style={i.severity ? { background: severityColor[i.severity] } : undefined}
-                        />
-                        {/*
-                          Имя занимает столько, сколько ему нужно, а растягивается
-                          повод. Наоборот было хуже: имя расталкивало строку, и
-                          повод убегал к правому краю — глазу приходилось
-                          прыгать через полэкрана, чтобы связать одно с другим.
-                        */}
-                        {/*
-                          Сначала то, что различает строки, потом общее.
-                          На экране очереди это уже сделано, а здесь осталась
-                          своя отрисовка: семь строк подряд с одинаковой
-                          методикой и одинаковой точкой, различающиеся только
-                          фамилией. Выбрать, за что взяться, по такому списку
-                          нельзя — а открывают именно сводку.
-                        */}
-                        <span className="shrink-0 truncate text-text">{i.userName}</span>
-                        {i.signals ? (
-                          <span className="shrink-0 text-caption text-muted">
-                            <Num>{i.signals}</Num>
-                          </span>
-                        ) : null}
-                        <span className="min-w-0 flex-1 truncate text-caption text-muted">{i.title}</span>
-                        {i.overdue ? <span className="badge bad shrink-0">{ut("cases.overdue")}</span> : null}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </Panel>
-
-              {data.inProgress.length ? (
-                /*
-                 * Кто прямо сейчас за экраном. Смысл в оперативности: если
-                 * человек застрял или закрыл приложение посреди методики,
-                 * специалист узнаёт об этом сегодня, а не при разборе
-                 * назначений через месяц.
-                 */
-                <Panel
-                  title={ut("dash.inProgress")}
-                  actions={<Num className="text-caption text-muted">{data.inProgress.length}</Num>}
-                  flush
-                >
-                  <div className="flex flex-col">
-                    {data.inProgress.slice(0, 6).map((r) => (
-                      <div
-                        key={r.responseId}
-                        className="flex h-[var(--row-h)] items-center gap-3 border-t border-hairline px-5 text-small"
-                      >
-                        <span className="live-dot" />
-                        <span className="min-w-0 flex-1 truncate">{r.surveyTitle}</span>
-                        <Num className="text-caption text-muted">
-                          {duration(Date.now() - new Date(r.lastSavedAt).getTime())}
-                        </Num>
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              ) : null}
-            </Grid>
-
-            {/*
-              Показатели — четыре плитки в ряд.
-              Раньше это была одна панель с разделителями: тогда панель
-              рисовалась рамкой, и четыре карточки подряд давали двойную
-              линию на каждом стыке. Теперь панель — обод в один пиксель,
-              двойных линий не бывает, и разъехавшиеся плитки дают каждому
-              числу воздух вокруг, а не делят общую коробку.
-            */}
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <Figure label={ut("dash.responses")} value={data.responseCount} hint={`${ut("dash.completion")} ${data.completionRate}%`} />
-              <Figure label={ut("dash.respondents")} value={data.respondentCount} />
-              <Figure label={ut("dash.surveys")} value={data.surveyCount} hint={`${ut("dash.published")} ${data.publishedCount}`} />
-              <Figure label={ut("dash.avgTime")} value={duration(data.avgDurationMs)} />
-            </div>
-
-            {/* подтверждаемость — справочный показатель качества скрининга:
-                он объясняет цифры выше, а не требует действия */}
-
-            <Chart title={ut("dash.timeline")} hint={ut("dash.timelineHint")}>
-              <LineChart
-                area
-                series={[{ label: ut("cl.responses"), points: data.timeline.map((t) => ({ x: day(t.date), y: t.count })) }]}
-              />
-            </Chart>
-
-            {/*
-              Кольцо ниже отвечает на вопрос «сколько тяжёлых всего», и это не
-              тот вопрос, который задают на планёрке. Спрашивают, становится ли
-              их больше, — а одно и то же кольцо получается и когда тяжёлые
-              копились полгода ровно, и когда все пришли на прошлой неделе.
-              Поэтому ряд по неделям стоит выше кольца, а не вместо него: итог
-              за всё время тоже нужен, но вторым.
-            */}
-            {trend.weeks.length > 1 ? (
-              <Chart title={ut("dash.severityTrend")} hint={ut("dash.severityTrendHint")}>
-                <StackedArea
-                  x={trend.weeks.map((w) => day(w.week))}
-                  total={ut("dash.severityTrendTotal")}
-                  /*
-                   * Снизу вверх — от спокойных к срочным. Порядок не по
-                   * величине: степени выраженности упорядочены сами по себе, и
-                   * перестановка слоёв ради «покрасивее» сломала бы главное
-                   * свойство графика — узнаваемость с одного взгляда. Срочные
-                   * сверху ещё и потому, что верхняя кромка читается лучше
-                   * прочих, а следят именно за ними.
-                   */
-                  series={(["none", "mild", "moderate", "severe"] as const).map((sev) => ({
-                    label: ut(severityKey[sev]),
-                    color: severityColor[sev],
-                    values: trend.weeks.map((w) => w[sev]),
-                  }))}
-                />
-                {trend.unbanded > 0 ? (
-                  /* прохождения без полос норм не попадают ни в один слой:
-                     промолчать о них значило бы занизить все четыре */
-                  <p className="hint">
-                    {ut("dash.severityTrendUnbanded")}: <Num>{trend.unbanded}</Num>
-                  </p>
-                ) : null}
-              </Chart>
-            ) : null}
-
-            <Grid min={380}>
-              {data.severityBreakdown.length ? (
-                <Chart title={ut("dash.severity")} hint={ut("dash.severityHint")}>
-                  <Donut
-                    center={String(data.severityBreakdown.reduce((s, x) => s + x.count, 0))}
-                    centerLabel={ut("chart.results")}
-                    slices={data.severityBreakdown.map((s) => ({
-                      label: ut(severityKey[s.severity]),
-                      value: s.count,
-                      color: severityColor[s.severity],
-                    }))}
-                  />
-                </Chart>
-              ) : null}
-
-              <Chart title={ut("dash.load")} hint={ut("dash.loadHint")}>
-                <BarList
-                  items={data.topSurveys.map((s) => ({
-                    label: s.title,
-                    value: s.responseCount,
-                    caption: `${ut("chart.onAverage")} ${duration(s.avgDurationMs)}`,
-                  }))}
-                />
-              </Chart>
-            </Grid>
-
-            <Panel title={ut("dash.allSurveys")} hint={ut("dash.allSurveysHint")} flush>
-              <div className="overflow-x-auto px-5 pb-5">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{ut("dash.survey")}</th>
-                      <th>{ut("cl.status")}</th>
-                      <th>{ut("cl.visibility")}</th>
-                      <th className="num">{ut("cl.questions")}</th>
-                      <th className="num">{ut("cl.responses")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {surveys.map((s) => (
-                      <tr key={s.id}>
-                        <td><Link to={`/surveys/${s.id}`}>{s.title}</Link></td>
-                        {/* статус словами, а не кодом: см. SURVEY_STATUS */}
-                        <td className="text-muted">{ut(SURVEY_STATUS[s.status])}</td>
-                        <td className="text-muted">
-                          {s.visibility === "restricted" ? ut("cl.byGrant") : ut("dash.public")}
-                        </td>
-                        <td className="num">{s.questionCount}</td>
-                        <td className="num">{s.responseCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
-          </Stack>
-        </>
+      {({ overview, alerts, work }) => (
+        <div className="flex flex-col">
+          {/*
+            Предложения правил стоят выше всего, но это подсказка, а не
+            сигнал. Если предложений нет, блок не рисуется вовсе — постоянный
+            пустой заголовок быстро становится невидимым.
+          */}
+          <Suggestions />
+          <Attention alerts={alerts} work={work} />
+          <WorkQueue work={work} inProgress={overview.inProgress} />
+          <Passes overview={overview} />
+          <ConditionsSection />
+        </div>
       )}
     </Screen>
   );
 }
 
-/**
- * Показатель в ряду.
- *
- * Подпись первой, число под ней, пояснение ещё ниже.
- *
- * Раньше было наоборот — числом вверх, из соображения «ряд сканируют по
- * числам». Числа выравниваются по строке в обоих порядках, так что
- * сравнивать одинаково удобно; а вот сказать, ЧТО сравниваешь, подпись
- * успевает только стоя первой. Сводку открывают не каждый день, и «1284»
- * без подписи над ним — это число, которое надо разгадывать.
- */
-function Figure({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
+/* ─────────── 1. требует внимания ─────────── */
+
+export function Attention({ alerts, work }: { alerts: CursorPage<AlertCase> | null; work: Worklist }) {
+  const { ut } = useLang();
+  const openCases = alerts ? (alerts.total ?? alerts.items.length) : 0;
+  /*
+   * Не имена, а то, что помогает решить, идти ли разбирать сейчас.
+   *
+   * Сами случаи со сводки убраны давно: имена людей со сработавшей тревогой
+   * на первом экране — это раскрытие того самого факта, ради сокрытия
+   * которого в системе есть коды вместо имён и спрятанный телефон. Экран
+   * открывается первым и висит на мониторе весь день; вместо фамилий —
+   * сколько срочных и сколько ждёт самый давний. Имена — в двух нажатиях, на
+   * экране разбора, куда просто так не заглядывают.
+   */
+  const urgent = alerts ? alerts.items.filter((x) => x.severity === "severe").length : 0;
+  const oldest = alerts?.items.length
+    ? Math.max(...alerts.items.map((x) => Math.floor((Date.now() - new Date(x.openedAt).getTime()) / 86_400_000)))
+    : 0;
+  const tiles = workTiles(work.byKind);
+
+  if (!openCases && !tiles.length) return null;
+
+  return (
+    <div className="mb-[32px] flex flex-col gap-[20px]">
+      {openCases ? (
+        /*
+          Без рамки и подложки: внимание держит число, набранное крупно и
+          янтарём, а не коробка вокруг. Янтарная заливка здесь уже была и
+          ушла — на светлой теме она роняла контраст текста на себе ниже 4,5:1
+          (нашла это проверка доступности, а не глаз).
+        */
+        <div className="flex flex-wrap items-center gap-x-[20px] gap-y-[12px]">
+          <span className="font-mono text-[40px] leading-none tabular-nums text-accent">{openCases}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[17px] font-bold leading-[20px] text-text">{ut("dash.casesOpen")}</span>
+            <span className="block text-[13px] leading-[18px] text-muted">
+              {urgent > 0 ? `${ut("dash.casesUrgent").replace("{n}", String(urgent))} · ` : ""}
+              {ut("dash.casesOldest").replace("{n}", String(oldest))}
+            </span>
+          </span>
+          <ButtonLink to="/alerts" className="shrink-0">
+            {ut("dash.review")}
+          </ButtonLink>
+        </div>
+      ) : null}
+
+      {/*
+        Разбивка очереди по видам работы. «71» ничего не говорит о том, что
+        именно ждёт; шесть чисел отвечают сразу, а нажатие ведёт в
+        отфильтрованную очередь, а не в общий список. Пустые виды не
+        показываются, янтарь — только у просроченных (model.ts, workTiles).
+      */}
+      {tiles.length ? (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[16px]">
+          {tiles.map((t) => (
+            <Link
+              key={t.kind}
+              to={`/worklist?kind=${t.kind}`}
+              className="group block rounded-[5px] no-underline outline-none hover:no-underline focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+            >
+              <Kpi
+                label={ut(WORK_KIND[t.kind])}
+                value={t.count}
+                tone={t.attention ? "attention" : "plain"}
+                className="h-full transition-shadow duration-[var(--dur-fast)] group-hover:shadow-[0_0_0_1px_var(--primary-rule)]"
+              />
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ─────────── 2. очередь ─────────── */
+
+export function WorkQueue({ work, inProgress }: { work: Worklist; inProgress: OverviewAnalytics["inProgress"] }) {
+  const { ut } = useLang();
   return (
     /*
-      Плитка собрана своей разметкой, а не через Panel.
-      Panel кладёт содержимое в собственную обёртку, поэтому раскладка,
-      заданная ему классом, до строк не доходила: подпись, число и пояснение
-      вставали в одну строку без отбивки — «1633доходимость 100%». Внешний
-      вид у плитки тот же, что у панели, но собирается он здесь, где и
-      раскладка.
+      `grid-cols-1` на узком — не лишнее. Без него у сетки одна неявная
+      колонка размером `auto`, то есть по самому длинному содержимому, и
+      обрезанная многоточием строка очереди растягивала её на ширину всей
+      строки текста: на телефоне страница уезжала вбок на 160px.
     */
-    <div className="flex flex-col gap-1.5 rounded-md bg-surface-2 px-[18px] py-3.5 shadow-[0_0_0_1px_var(--border)]">
-      <SectionLabel>{label}</SectionLabel>
-      <span className="font-mono text-page font-medium leading-none tracking-[-0.03em] tabular-nums">
-        {value}
-      </span>
-      {hint ? <span className="text-caption text-muted">{hint}</span> : null}
+    <div className={inProgress.length ? "grid grid-cols-1 gap-x-[45px] min-[900px]:grid-cols-[minmax(0,1fr)_300px]" : ""}>
+      <RuleSection
+        title={ut("work.title")}
+        actions={
+          <Link to="/worklist" className="text-[13px] font-bold text-primary no-underline hover:underline">
+            {fill(ut("dash.workAll"), { n: work.total })} →
+          </Link>
+        }
+      >
+        {work.items.length === 0 ? (
+          <p className="m-0 text-[13px] text-muted">{ut("work.nothing")}</p>
+        ) : (
+          <ul className="m-0 list-none p-0">
+            {work.items.slice(0, 7).map((i) => (
+              /*
+                Строка списка консоли: имя 17/700 ссылкой, за ним то, что
+                различает строки, — вид работы и срок, — потом метки. Сначала
+                различающее, потом общее: семь строк с одинаковой методикой,
+                различающиеся только фамилией, выбрать не помогают.
+              */
+              <li
+                key={`${i.kind}-${i.id}`}
+                className="flex min-h-[58px] flex-wrap items-center gap-x-[16px] gap-y-[4px] border-b border-hairline py-[10px]"
+              >
+                <Link
+                  to={i.href || "/worklist"}
+                  className="max-w-full shrink-0 truncate text-[17px] font-bold leading-[20px] text-primary no-underline hover:underline"
+                >
+                  {i.userName}
+                </Link>
+                <span className="min-w-0 flex-1 basis-[200px] truncate text-[13px] leading-[18px] text-muted">
+                  {[i.unit, describeWork(i, ut)].filter(Boolean).join(" · ")}
+                </span>
+                {i.severity ? <SeverityTag level={i.severity}>{ut(severityKey[i.severity])}</SeverityTag> : null}
+                {/* «Прострочено» — обычным регистром: капители в консоли нет, метка — не крик */}
+                {i.overdue ? <Tag tone="attention">{ut("dash.overdueTag")}</Tag> : null}
+                <span className="w-[72px] shrink-0 text-right font-mono text-[12px] text-muted tabular-nums">
+                  {day(i.since)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </RuleSection>
+
+      {inProgress.length ? (
+        /*
+         * Кто прямо сейчас за экраном. Смысл в оперативности: если человек
+         * застрял или закрыл приложение посреди методики, специалист узнаёт
+         * об этом сегодня, а не при разборе назначений через месяц.
+         */
+        <RuleSection title={ut("dash.inProgress")} actions={<Num className="text-[13px] text-muted">{inProgress.length}</Num>}>
+          <ul className="m-0 list-none p-0">
+            {inProgress.slice(0, 6).map((r) => (
+              <li key={r.responseId} className="flex min-h-[44px] items-center gap-[12px] border-b border-hairline text-[13px]">
+                <span aria-hidden className="size-[8px] shrink-0 rounded-full bg-primary" />
+                <span className="min-w-0 flex-1 truncate text-text-2">{r.surveyTitle}</span>
+                <Num className="text-muted">{duration(Date.now() - new Date(r.lastSavedAt).getTime())}</Num>
+              </li>
+            ))}
+          </ul>
+        </RuleSection>
+      ) : null}
     </div>
+  );
+}
+
+/* ─────────── 3. проходження ─────────── */
+
+/**
+ * Проходження за останній час.
+ *
+ * Четыре прежние плитки остались — они отвечают на «сколько всего» и
+ * графиком не дублируются. Столбцы — на «сколько за последнее время», по
+ * дням за 30 дней или по неделям за 12: день показывает ритм недели
+ * (выходные, день приёма), неделя — направление за квартал. Плитка справа
+ * — итог окна рядом с таким же окном перед ним и ход за полгода линией:
+ * полгода длиннее любого из двух окон, так что линия не повторяет столбцы.
+ */
+export function Passes({ overview }: { overview: OverviewAnalytics }) {
+  const { ut } = useLang();
+  const [range, setRange] = useState<Range>("30d");
+  const today = localDay(new Date());
+  const weekly = range === "12w";
+  const columns = weekly
+    ? weeklyColumns(overview.timeline, 12, today, day)
+    : dailyColumns(overview.timeline, 30, today, day);
+  const totals = periodTotals(overview.timeline, weekly ? 84 : 30, today);
+  const title = weekly ? ut("dash.byWeek") : ut("dash.byDay");
+
+  return (
+    <RuleSection
+      title={ut("dash.passes")}
+      actions={
+        <PeriodSwitch
+          label={ut("dash.rangeLabel")}
+          value={range}
+          onChange={setRange}
+          options={[
+            ["30d", ut("dash.range30d")],
+            ["12w", ut("dash.range12w")],
+          ]}
+        />
+      }
+    >
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(200px,100%),1fr))] gap-[16px]">
+        <Kpi
+          label={ut("dash.responses")}
+          value={overview.responseCount}
+          hint={`${ut("dash.completion")} ${overview.completionRate}%`}
+        />
+        <Kpi label={ut("dash.respondents")} value={overview.respondentCount} />
+        <Kpi label={ut("dash.surveys")} value={overview.surveyCount} hint={`${ut("dash.published")} ${overview.publishedCount}`} />
+        <Kpi label={ut("dash.avgTime")} value={duration(overview.avgDurationMs)} />
+      </div>
+
+      <div className="mt-[28px] grid grid-cols-1 gap-x-[32px] gap-y-[20px] min-[900px]:grid-cols-[minmax(0,1fr)_240px]">
+        <Figure title={title} caption={weekly ? ut("dash.byWeekHint") : undefined}>
+          <TimeColumns columns={columns} label={title} />
+        </Figure>
+        <Kpi
+          className="self-start"
+          label={weekly ? ut("dash.last12w") : ut("dash.last30d")}
+          value={totals.current}
+          spark={weeklyCounts(overview.timeline, 26, today)}
+          hint={
+            <>
+              {fill(ut("dash.prevPeriod"), { n: totals.previous })}
+              <br />
+              {ut("dash.halfYear")}
+            </>
+          }
+        />
+      </div>
+    </RuleSection>
   );
 }

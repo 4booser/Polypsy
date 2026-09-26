@@ -1873,6 +1873,84 @@ export interface SeverityTrendResult {
   unbanded: number;
 }
 
+/**
+ * Клиническое направление сводки: к какому вопросу о человеке относится шкала.
+ *
+ * Направление — не методика и не шкала, а то, что спрашивают на планёрке:
+ * «как у нас с депрессией». Отвечают на него разные методики (PHQ-9, PHQ-8,
+ * депрессивная часть PHQ-4, CESD-R…), и баллы их в одних единицах не
+ * складываются — поэтому сводятся они только через собственные полосы
+ * каждой методики, а средний балл считается по одной, основной
+ * (apps/api/src/lib/conditions.ts).
+ */
+export type ConditionDomain =
+  | "depression"
+  | "anxiety"
+  | "stress"
+  | "ptsd"
+  | "wellbeing"
+  | "burnout"
+  | "alcohol";
+
+/**
+ * Люди по ступеням выраженности — уже через порог малых ячеек.
+ *
+ * `null` везде значит «не показываем», а не «ноль»: ноль приходит нулём.
+ * Три состояния различаются по `banded`: 0 — у методик направления нет
+ * полос вовсе (PSS-10, DASS-42), null — людей с полосой меньше порога,
+ * число — раскладка есть, но отдельные ячейки в ней могут быть скрыты.
+ */
+export interface BandSpread {
+  banded: number | null;
+  /** Помірна + виражена по полосам самой методики: число и доля от banded */
+  clinical: { count: number | null; percent: number | null };
+  bands: Record<Severity, number | null>;
+}
+
+export interface ConditionSummary {
+  domain: ConditionDomain;
+  /**
+   * Куда смотрит балл: у благополучия (WHO-5) больше — лучше. Доля в
+   * клинических полосах от этого не зависит — полосы методики уже повёрнуты
+   * как надо, — а средний балл без этого флага читался бы наоборот.
+   */
+  higherIsWorse: boolean;
+  /** Людей с замером за период; null — меньше порога («замало даних») */
+  people: number | null;
+  spread: BandSpread;
+  /**
+   * Основная методика направления — та, по которой за период замерено больше
+   * всего людей. Средний балл — только по ней: проценты разных методик
+   * в одно среднее не сводятся.
+   */
+  primary: {
+    surveyId: string;
+    title: string;
+    people: number | null;
+    /** Средний балл последних замеров, % от максимума шкалы; null — скрыто */
+    meanPercent: number | null;
+  } | null;
+  /** Ход среднего балла основной методики по неделям; null — неделя под порогом */
+  weeks: { week: string; meanPercent: number | null }[];
+  /** Методики, чьи замеры вошли в направление, — словами */
+  sources: { surveyId: string; title: string }[];
+}
+
+export interface ConditionsResult {
+  days: number;
+  /** Начало периода, ISO */
+  since: string;
+  /** Направления, по которым за период есть хоть один замер */
+  domains: ConditionSummary[];
+  /** Направления без единого замера — одной строкой, без пустых блоков */
+  empty: ConditionDomain[];
+  /**
+   * Все методики разом: каждый человек — один раз, по самой тяжёлой из
+   * последних оценок каждой его шкалы.
+   */
+  overall: { people: number | null; spread: BandSpread };
+}
+
 export interface AuthPayload {
   /** Одноразовый refresh-токен: хранить в защищённом хранилище */
   refreshToken: string;

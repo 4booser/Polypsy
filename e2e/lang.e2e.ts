@@ -75,7 +75,13 @@ test("экраны ежедневного пути переведены цели
    * склоняется по-украински, чего словарь не покрывает вовсе.
    */
   await page.goto("/");
-  await expect(page.locator(".main").getByRole("link", { name: "Зведення" })).toBeVisible();
+  /*
+   * Заголовок называет экран («Зведення»), а первая вкладка — «Огляд»:
+   * решение заказчика 2026-09-26, заголовок не повторяет вкладку
+   * (pages/Start.tsx). Проверяются оба — и заголовок, и вкладка.
+   */
+  await expect(page.locator(".main").getByRole("heading", { level: 1, name: "Зведення" })).toBeVisible();
+  await expect(page.locator(".main").getByRole("link", { name: "Огляд" })).toBeVisible();
   /*
    * Дата стоит подзаголовком, а не заголовком.
    *
