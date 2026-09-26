@@ -1,6 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { api, type TimelineItem } from "../api";
-import { dateTime, severityColor } from "../format";
+import { dateTime, dayKey, severityColor, timeOfDay } from "../format";
 import { Empty, Loading } from "../ui";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
@@ -29,6 +29,24 @@ const KIND_KEY = {
   assignment: "tl.assignment",
 } as const satisfies Record<TimelineItem["kind"], UiKey>;
 
+/**
+ * События по календарным дням — в поясе консоли, а не по UTC.
+ *
+ * День брался срезом строки ISO, то есть по Гринвичу: всё, что случилось в
+ * Киеве после 21:00 летом (после 22:00 зимой), уезжало в следующий день —
+ * тревога, сработавшая вечером, стояла под завтрашней датой рядом с
+ * утренним замером того «завтра». Для хронологии, где смысл — порядок, это
+ * ошибка по существу. Порядок внутри дня — как пришёл с сервера.
+ */
+export function groupByDay<T extends { at: string }>(items: readonly T[], timeZone?: string): Map<string, T[]> {
+  const byDay = new Map<string, T[]>();
+  for (const i of items) {
+    const day = dayKey(i.at, timeZone);
+    byDay.set(day, [...(byDay.get(day) ?? []), i]);
+  }
+  return byDay;
+}
+
 export default function Timeline() {
   const { userId } = useParams<{ userId: string }>();
   const { ut } = useLang();
@@ -38,11 +56,7 @@ export default function Timeline() {
   if (!items) return <Loading rows={6} error={res.error} />;
 
   // группировка по дню: лента из двухсот строк без неё читается как журнал
-  const byDay = new Map<string, TimelineItem[]>();
-  for (const i of items) {
-    const day = i.at.slice(0, 10);
-    byDay.set(day, [...(byDay.get(day) ?? []), i]);
-  }
+  const byDay = groupByDay(items);
 
   return (
     <>
@@ -66,7 +80,14 @@ export default function Timeline() {
                       className="tl-dot"
                       style={e.severity ? { background: severityColor[e.severity] } : undefined}
                     />
-                    <time className="tl-time">{dateTime(e.at).slice(11)}</time>
+                    {/*
+                      Время — timeOfDay, а не хвост dateTime: полная дата
+                      пишется словами («2 вересня 2026 р. о 14:05»), и срез с
+                      одиннадцатого знака давал обрывок года вместо часа.
+                    */}
+                    <time className="tl-time" dateTime={e.at} title={dateTime(e.at)}>
+                      {timeOfDay(e.at)}
+                    </time>
                     <div className="tl-body">
                       <span className="tl-kind">{ut(KIND_KEY[e.kind])}</span>
                       {e.href ? <Link to={e.href}>{e.title}</Link> : <span>{e.title}</span>}

@@ -149,3 +149,24 @@ export function daysLeft(expiresAt: string, now: number): number | null {
   // округление гасит час перехода на летнее время: такие сутки короче или длиннее 24 ч
   return Math.round((midnight(end) - midnight(new Date(now))) / 86_400_000) + 1;
 }
+
+/**
+ * Календарный день момента, «YYYY-MM-DD», — по часам консоли, а не по
+ * Гринвичу.
+ *
+ * `iso.slice(0, 10)` — день по UTC: событие в 00:30 по Киеву летом — это
+ * 21:30Z предыдущих суток, и срез отправлял его во вчера. Сервер считает
+ * день в поясе учреждения (apps/api/src/lib/day.ts); консоль открывают в
+ * учреждении, и её пояс — тот же, что у времени в строке рядом
+ * (timeOfDay), поэтому день и час не расходятся, а переход на летнее время
+ * Intl учитывает сам.
+ *
+ * `timeZone` — для проверок: без него берётся пояс браузера, как у всех
+ * дат этого файла.
+ */
+export function dayKey(iso: string, timeZone?: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return iso.slice(0, 10);
+  /* en-CA даёт ровно YYYY-MM-DD — формат, в котором дни сравниваются строкой */
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
+}
