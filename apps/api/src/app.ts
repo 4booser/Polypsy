@@ -27,6 +27,8 @@ import { userRoutes } from "./routes/users";
 import { auditRoutes } from "./routes/audit";
 import { opsSessionRoutes, opsUserRoutes } from "./routes/opsAccounts";
 import { opsSecRoutes } from "./routes/opsSec";
+import { opsPeopleRoutes } from "./routes/opsPeople";
+import { mfaRoutes } from "./routes/secondFactor";
 import { alertRoutes } from "./routes/alerts";
 import { dynamicsRoutes } from "./routes/dynamics";
 import { reportRoutes } from "./routes/reports";
@@ -166,6 +168,8 @@ app.get("/health/ready", async (c) => {
 });
 
 app.route("/api/auth", authRoutes);
+/* второй фактор своей учётки и второй шаг входа (people2) */
+app.route("/api/auth/mfa", mfaRoutes);
 app.route("/api/groups", groupRoutes);
 /*
  * Группы ПАЦИЕНТОВ — отдельный путь, а не вложение в /api/groups.
@@ -202,6 +206,8 @@ app.route("/api/users", userRoutes);
  */
 app.route("/api/ops/users", opsUserRoutes);
 app.route("/api/ops/sessions", opsSessionRoutes);
+/* люди и безопасность (people2) — тоже раньше заслона ops.read, по той же причине */
+app.route("/api/ops/people", opsPeopleRoutes);
 app.route("/api/audit", auditRoutes);
 /* техпанель, безопасность: ключи и секреты, целостность, SQL на чтение — только суперадмину */
 app.route("/api/ops/sec", opsSecRoutes);

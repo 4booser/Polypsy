@@ -1,7 +1,9 @@
 import { and, eq, gt, inArray, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
-import { uiText, type ClinicalTrace, type ClinicalTraceKey, type Lang, type UiKey } from "@quizzy/shared";
+import { uiText, type ClinicalTrace, type ClinicalTraceKey, type Lang, type Role, type UiKey } from "@quizzy/shared";
 import { db } from "../db";
 import { auditLog, refreshTokens, users } from "../db/schema";
+import { fullNameOf } from "./auth";
+import { normalizePhone, phoneFingerprint } from "./phone";
 
 /**
  * Учётные записи в техпанели: след, сессии, выключение, временный пароль.
@@ -12,6 +14,75 @@ import { auditLog, refreshTokens, users } from "../db/schema";
  * на первой же новой таблице — и разошлись бы в опасную сторону: список
  * показал бы «можно», удаление унесло бы каскадом чьи-то прохождения.
  */
+
+/* ─────────── реестр: отбор и порядок ─────────── */
+
+export interface RegistryQuery {
+  q: string;
+  role?: Role;
+  status?: "active" | "disabled";
+  sort?: "name" | "created" | "lastSeen" | "role";
+}
+
+/**
+ * Отбор и порядок реестра учёток — одно правило на список «Користувачів» и
+ * на «вибрати всіх у відборі» массовых действий (участок people2).
+ *
+ * Вынесено из маршрута списка, когда появился второй читатель: выбор «всех
+ * в отборе», посчитанный по чуть другим условиям, выключил бы не тех, кого
+ * человек видел на экране. Поиск и порядок — в приложении после расшифровки
+ * (ФИО шифровано, искать его в SQL нечем); телефон — слепым индексом и
+ * только целым номером (см. пояснение у GET /api/ops/users).
+ */
+export async function matchRegistry(query: RegistryQuery, lang: Lang) {
+  const all = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+      phoneIndex: users.phoneIndex,
+      createdAt: users.createdAt,
+      lastSeenAt: users.lastSeenAt,
+      disabledAt: users.disabledAt,
+      disabledReason: users.disabledReason,
+      disabledBy: users.disabledBy,
+      mustChangePassword: users.mustChangePassword,
+    })
+    .from(users);
+
+  const { q, role, status, sort = "name" } = query;
+  const words = q.split(/\s+/).filter(Boolean);
+  const phone = q ? normalizePhone(q) : null;
+  const phoneKey = phone ? phoneFingerprint(phone) : null;
+
+  const matched = all
+    .filter((u) => !role || u.role === role)
+    .filter((u) => !status || (status === "disabled" ? u.disabledAt !== null : u.disabledAt === null))
+    .map((u) => ({ ...u, fullName: fullNameOf(u) }))
+    .filter((u) => {
+      if (!words.length) return true;
+      if (phoneKey && u.phoneIndex === phoneKey) return true;
+      const hay = `${u.fullName} ${u.email}`.toLowerCase();
+      return words.every((w) => hay.includes(w));
+    });
+
+  const ROLE_ORDER = { superadmin: 0, admin: 1, user: 2 } as const;
+  const byName = (a: { fullName: string }, b: { fullName: string }) => a.fullName.localeCompare(b.fullName, lang);
+  /* «давно» и «никогда» — в конец: сверху те, кто был недавно */
+  const recent = (x: string | null) => (x ? new Date(x).getTime() : Number.NEGATIVE_INFINITY);
+  matched.sort((a, b) => {
+    if (sort === "created") return recent(b.createdAt) - recent(a.createdAt) || byName(a, b);
+    if (sort === "lastSeen") return recent(b.lastSeenAt) - recent(a.lastSeenAt) || byName(a, b);
+    if (sort === "role") return ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byName(a, b);
+    return byName(a, b);
+  });
+  return { all, matched };
+}
 
 /* ─────────── последний вход ─────────── */
 

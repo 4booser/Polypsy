@@ -43,8 +43,10 @@ describe("вкладки техпанели", () => {
       expect.arrayContaining(["/ops", "/ops/requests", "/ops/errors", "/ops/logs", "/ops/db", "/ops/jobs"]),
     );
     for (const people of ["/ops/users", "/ops/sessions", "/ops/audit"]) expect(observe).not.toContain(people);
-    expect(opsTabs(only("users.manage")).map((t) => t.to)).toEqual(["/ops/users", "/ops/sessions"]);
-    expect(opsTabs(only("audit.read")).map((t) => t.to)).toEqual(["/ops/audit"]);
+    // люди и безопасность (people2): временные доступы — к учёткам, подозрительное и отчёт — к журналу
+    expect(opsTabs(only("users.manage")).map((t) => t.to)).toEqual(["/ops/users", "/ops/sessions", "/ops/grants"]);
+    expect(opsTabs(only("audit.read")).map((t) => t.to)).toEqual(["/ops/audit", "/ops/suspicious", "/ops/who-viewed"]);
+    expect(opsTabs(only("ops.manage")).map((t) => t.to)).toEqual(["/ops/mfa"]);
   });
 
   test("панель открыта при любом из трёх прав и закрыта без них", () => {
