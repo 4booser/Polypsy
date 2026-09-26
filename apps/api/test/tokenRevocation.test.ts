@@ -167,6 +167,34 @@ describe("обнаружение кражи refresh-токена", () => {
     // и цепочка, выданная первым обменом, мертва тоже
     expect((await refresh(rotated.body.refreshToken as string)).status).toBe(401);
   });
+
+  test("повторное предъявление гасит и уже выданные access-токены", async () => {
+    /*
+     * Внешний разбор 2026-09-26: семья refresh гасилась, а граница
+     * access-токенов оставалась на месте — хотя выход, смена пароля и
+     * завершение сессии её сдвигают. У вора, успевшего обменять токен, на
+     * руках оставался свежий access ещё на полчаса: обнаружение кражи
+     * закрывало будущее и не трогало настоящее. Проверяются оба токена —
+     * и тот, что выдан входом, и тот, что выдан обменом (он мог достаться
+     * вору).
+     */
+    const email = `revoke-theft-access-${crypto.randomUUID()}@test.dev`;
+    await makeUser("admin", email);
+
+    const session = await login(email);
+    const rotated = await refresh(session.body.refreshToken as string);
+    expect(rotated.status).toBe(200);
+    // до повтора обменянный access рабочий — иначе проверка ниже ничего не доказывает
+    expect((await api("/api/auth/me", rotated.body.token as string)).status).toBe(200);
+
+    expect((await refresh(session.body.refreshToken as string)).status).toBe(401);
+
+    expect((await api("/api/auth/me", session.body.token as string)).status).toBe(401);
+    expect(
+      (await api("/api/auth/me", rotated.body.token as string)).status,
+      "обнаружение кражи оставило вору живой access-токен",
+    ).toBe(401);
+  });
 });
 
 describe("неудачный вход", () => {

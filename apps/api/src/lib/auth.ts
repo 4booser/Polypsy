@@ -89,7 +89,7 @@ export function issueToken(user: Pick<UserRow, "id" | "role">): Promise<string> 
  * было вовсе; а обновление системы и так сдвигает метку всем сразу (см.
  * миграцию 0074), то есть эти токены недействительны по любому счёту.
  */
-export function issuedAfterRevocation(claims: TokenClaims, tokensValidFrom: string): boolean {
+export function issuedAfterRevocation(claims: Pick<TokenClaims, "ims">, tokensValidFrom: string): boolean {
   if (!Number.isFinite(claims.ims)) return false;
   return claims.ims >= new Date(tokensValidFrom).getTime();
 }
@@ -146,16 +146,39 @@ export function issueImpersonationToken(input: {
 const MFA_TOKEN_TTL_SECONDS = 5 * 60;
 const mfaKey = () => `${env.jwtSecret}:mfa-step`;
 
+/*
+ * Время выдачи — и в миллисекундах (`ims`), как у access-токена.
+ *
+ * Знак живёт пять минут, и за эти минуты сессии человека могут отозвать:
+ * сброс пароля администратором, выключение, «завершить все сессии». До
+ * внешнего разбора 2026-09-26 второй шаг входа границу токенов не сверял,
+ * а время выдачи при чтении знака терялось вовсе, — и вход, начатый старым
+ * паролем до сброса, спокойно завершался кодом после него. Теперь
+ * readMfaToken отдаёт `ims`, и второй шаг сверяет его с той же границей,
+ * что requireAuth (issuedAfterRevocation). Знак без `ims` — выданный до
+ * этой правки — считается отозванным, как и access без него.
+ */
 export function issueMfaToken(userId: string, via: "password" | "google"): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return sign({ sub: userId, purpose: "mfa", via, iat: now, exp: now + MFA_TOKEN_TTL_SECONDS }, mfaKey(), ALG);
+  const nowMs = Date.now();
+  const now = Math.floor(nowMs / 1000);
+  return sign(
+    { sub: userId, purpose: "mfa", via, iat: now, ims: nowMs, exp: now + MFA_TOKEN_TTL_SECONDS },
+    mfaKey(),
+    ALG,
+  );
 }
 
-export async function readMfaToken(token: string): Promise<{ sub: string; via: "password" | "google" } | null> {
+export async function readMfaToken(
+  token: string,
+): Promise<{ sub: string; via: "password" | "google"; ims: number } | null> {
   try {
-    const claims = (await verify(token, mfaKey(), ALG)) as { sub?: string; purpose?: string; via?: string };
+    const claims = (await verify(token, mfaKey(), ALG)) as { sub?: string; purpose?: string; via?: string; ims?: unknown };
     if (claims.purpose !== "mfa" || typeof claims.sub !== "string") return null;
-    return { sub: claims.sub, via: claims.via === "google" ? "google" : "password" };
+    return {
+      sub: claims.sub,
+      via: claims.via === "google" ? "google" : "password",
+      ims: typeof claims.ims === "number" ? claims.ims : Number.NaN,
+    };
   } catch {
     return null;
   }

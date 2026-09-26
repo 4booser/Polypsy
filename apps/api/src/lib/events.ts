@@ -23,8 +23,6 @@ import type { AppEvent } from "@quizzy/shared";
 export type { AppEvent, AppEventKind } from "@quizzy/shared";
 
 type Handler = (event: AppEvent) => void;
-const handlers = new Set<Handler>();
-let listening: Promise<void> | null = null;
 
 /**
  * Публикация. Вызывается внутри транзакции обработчика: `pg_notify`
@@ -44,27 +42,74 @@ export async function publish(
   }
 }
 
-/** Подписка процесса на канал; повторные вызовы переиспользуют соединение */
-async function ensureListening(): Promise<void> {
-  if (listening) return listening;
-  listening = client
-    .listen(CHANNEL, (payload) => {
+/** LISTEN канала: в бою — client.listen postgres.js, в тестах — подмена */
+type Listen = (channel: string, onNotify: (payload: string) => void) => Promise<unknown>;
+
+/**
+ * Шина процесса: один LISTEN на процесс и сколько угодно подписчиков.
+ *
+ * Фабрикой, а не состоянием модуля, чтобы поведение при сбое подписки
+ * проверялось на своём экземпляре (test/eventBus.test.ts): общий к тому
+ * моменту уже подписан другими файлами сюиты.
+ */
+export function createEventBus(listen: Listen) {
+  const handlers = new Set<Handler>();
+  let listening: Promise<void> | null = null;
+  /* номер текущей попытки LISTEN; слушатели прежних попыток молчат */
+  let attempt = 0;
+
+  /**
+   * Подписка процесса на канал; повторные вызовы переиспользуют удачную.
+   *
+   * Неудачная НЕ запоминается (внешний разбор 2026-09-26). Раньше
+   * отклонённое обещание оставалось в `listening` навсегда: база не
+   * ответила в момент первой подписки — и до перезапуска процесса каждая
+   * новая вкладка консоли получала тот же старый отказ, хотя база давно
+   * вернулась. Теперь отказ получает только тот, кто подписывался во время
+   * сбоя; следующий пробует LISTEN заново.
+   *
+   * Слушатель неудачной попытки при этом не умирает: postgres.js держит
+   * его у себя и после восстановления соединения сам повторяет LISTEN
+   * (onclose его listen-клиента). Разбуди его и новый слушатель вместе —
+   * каждое событие ушло бы подписчикам дважды. Поэтому слушатель знает
+   * номер своей попытки и молчит, если попытка уже не текущая.
+   */
+  function ensureListening(): Promise<void> {
+    if (listening) return listening;
+    const mine = ++attempt;
+    const current = listen(CHANNEL, (payload) => {
+      if (mine !== attempt) return;
       try {
         const event = JSON.parse(payload) as AppEvent;
         for (const h of handlers) h(event);
       } catch {
         /* чужое сообщение в том же канале — не наша забота */
       }
-    })
-    .then(() => undefined);
-  return listening;
+    }).then(
+      () => undefined,
+      (error: unknown) => {
+        if (listening === current) listening = null;
+        log.warn("events.listen_failed", { error: String(error) });
+        throw error;
+      },
+    );
+    listening = current;
+    return current;
+  }
+
+  /** Подписаться на события; возвращает функцию отписки */
+  async function subscribe(handler: Handler): Promise<() => void> {
+    await ensureListening();
+    handlers.add(handler);
+    return () => handlers.delete(handler);
+  }
+
+  return { subscribe };
 }
 
-/** Подписаться на события; возвращает функцию отписки */
-export async function subscribe(handler: Handler): Promise<() => void> {
-  await ensureListening();
-  handlers.add(handler);
-  return () => handlers.delete(handler);
-}
+const bus = createEventBus((channel, onNotify) => client.listen(channel, onNotify));
+
+/** Подписаться на события процесса; возвращает функцию отписки */
+export const subscribe = bus.subscribe;
 
 export { db };

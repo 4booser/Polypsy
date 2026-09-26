@@ -64,116 +64,156 @@ export async function findUsableInvite(raw: string): Promise<InviteLookup> {
 }
 
 /**
+ * Притязание на одно использование: счётчик растёт, только если лимит не
+ * исчерпан, ссылка не отозвана и не просрочена, — условием самого UPDATE.
+ *
+ * Отдельно от выдачи назначений (applyInvite), потому что стоять они
+ * должны по разные стороны создания учётной записи. Регистрация гасит
+ * использование ДО того, как заводит человека, и в той же транзакции:
+ * иначе (как было до внешнего разбора 2026-09-26) две регистрации по
+ * одноразовой ссылке обе проходили проверку чтением, обе заводили учётку,
+ * и проигравшему гонку за счётчик всё равно выдавались токены. Проигравший
+ * ждёт коммита победителя на блокировке строки и видит уже исчерпанный
+ * лимит; откатился победитель — счётчик вернулся, и проходит следующий.
+ *
+ * Ложь — использования не досталось; почему именно, скажет повторный
+ * findUsableInvite. Исполнитель передаётся явно, как у claimRotation
+ * (lib/refresh.ts): притязание обязано идти в транзакции вызывающего, и
+ * это должно быть видно в вызове, а не зависеть от контекста.
+ */
+export async function claimInvite(tx: typeof db, inviteId: string): Promise<boolean> {
+  const [updated] = await tx
+    .update(invites)
+    .set({ usedCount: sql`${invites.usedCount} + 1` })
+    .where(
+      sql`${invites.id} = ${inviteId}
+        and ${invites.usedCount} < ${invites.maxUses}
+        and ${invites.revokedAt} is null
+        and ${invites.expiresAt} > now()`,
+    )
+    .returning({ id: invites.id });
+  return Boolean(updated);
+}
+
+/**
  * Погашение приглашения новым пользователем: счётчик, след, назначение батареи.
  *
  * Счётчик инкрементируется атомарно с проверкой лимита — два одновременных
- * входа по последнему использованию не проскочат оба.
+ * входа по последнему использованию не проскочат оба. Для уже заведённого
+ * человека (перевыдача ссылки); регистрация зовёт claimInvite и applyInvite
+ * порознь — см. claimInvite.
  */
 export async function consumeInvite(
   invite: typeof invites.$inferSelect,
   userId: string,
 ): Promise<{ ok: boolean }> {
   return db.transaction(async (tx) => {
-    const [updated] = await tx
-      .update(invites)
-      .set({ usedCount: sql`${invites.usedCount} + 1` })
-      .where(sql`${invites.id} = ${invite.id} and ${invites.usedCount} < ${invites.maxUses}`)
-      .returning({ id: invites.id });
-    if (!updated) return { ok: false };
+    if (!(await claimInvite(tx as never, invite.id))) return { ok: false };
+    await applyInvite(tx as never, invite, userId);
+    return { ok: true };
+  });
+}
 
-    await tx.insert(inviteUses).values({ inviteId: invite.id, userId });
+/**
+ * Что даёт уже погашенное использование: след, методика или набор,
+ * закрепление за врачом. Зовётся после claimInvite, в той же транзакции.
+ */
+export async function applyInvite(
+  tx: typeof db,
+  invite: typeof invites.$inferSelect,
+  userId: string,
+): Promise<void> {
+  await tx.insert(inviteUses).values({ inviteId: invite.id, userId });
 
-    /*
-     * Одна методика выдаётся напрямую.
-     *
-     * Через grantAccess, а не вставкой с onConflictDoNothing: приглашение
-     * может быть вторым для того же человека — например взамен
-     * просроченного, — и тогда «ничего не делать при совпадении» означало
-     * бы, что по новой ссылке методика по-прежнему недоступна. Ровно на этом
-     * уже обжигались с плановыми повторами.
-     */
-    if (invite.surveyId) {
-      const [survey] = await tx
-        .select({ id: surveys.id })
-        .from(surveys)
-        .where(and(eq(surveys.id, invite.surveyId), isNull(surveys.archivedAt)))
-        .limit(1);
-      if (survey) {
-        await grantAccess(tx as never, [
-          {
-            surveyId: survey.id,
+  /*
+   * Одна методика выдаётся напрямую.
+   *
+   * Через grantAccess, а не вставкой с onConflictDoNothing: приглашение
+   * может быть вторым для того же человека — например взамен
+   * просроченного, — и тогда «ничего не делать при совпадении» означало
+   * бы, что по новой ссылке методика по-прежнему недоступна. Ровно на этом
+   * уже обжигались с плановыми повторами.
+   */
+  if (invite.surveyId) {
+    const [survey] = await tx
+      .select({ id: surveys.id })
+      .from(surveys)
+      .where(and(eq(surveys.id, invite.surveyId), isNull(surveys.archivedAt)))
+      .limit(1);
+    if (survey) {
+      await grantAccess(tx as never, [
+        {
+          surveyId: survey.id,
+          userId,
+          grantedBy: invite.createdBy,
+          expiresAt: null,
+          note: "По приглашению",
+        },
+      ]);
+    }
+  }
+
+  /*
+   * Закрепление за врачом — то самое явное действие, которого плану не
+   * хватало.
+   *
+   * Человек, пришедший по ссылке, оказывался ничьим: его надо было потом
+   * искать среди остальных и закреплять руками. Приглашение, выписанное
+   * врачом, и есть явное «этот человек мой» — вывода из последнего приёма
+   * здесь нет, есть прямое решение того, кто ссылку выписал.
+   *
+   * Ставится только если своего врача ещё нет: приглашение не должно
+   * переназначать человека, которого уже ведут. Смена ведущего — отдельное
+   * действие с записью в журнал, а не побочный эффект перехода по ссылке.
+   */
+  if (invite.specialistId) {
+    await tx
+      .update(users)
+      .set({ leadSpecialistId: invite.specialistId })
+      .where(and(eq(users.id, userId), isNull(users.leadSpecialistId)));
+
+    /* и прикрепление к отделению врача — иначе повторный приём не записать */
+    const [profile] = await tx
+      .select({ departmentId: specialistProfiles.departmentId })
+      .from(specialistProfiles)
+      .where(eq(specialistProfiles.userId, invite.specialistId))
+      .limit(1);
+    if (profile) {
+      await tx
+        .insert(departmentPatients)
+        .values({ departmentId: profile.departmentId, patientId: userId, attachedVia: "staff" })
+        .onConflictDoNothing();
+    }
+  }
+
+  if (invite.batteryId) {
+    const battery = await tx.query.batteries.findFirst({ where: eq(batteries.id, invite.batteryId) });
+    if (battery && !battery.archived) {
+      // снятые методики по приглашению не выдаются — как и везде
+      const items = await tx
+        .select({ surveyId: batteryItems.surveyId })
+        .from(batteryItems)
+        .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
+        .where(and(eq(batteryItems.batteryId, battery.id), isNull(surveys.archivedAt)));
+      if (items.length) {
+        await tx.insert(batteryAssignments).values({
+          id: crypto.randomUUID(),
+          batteryId: battery.id,
+          userId,
+          assignedBy: invite.createdBy,
+          note: "По приглашению",
+        });
+        await grantAccess(
+          tx as never,
+          items.map((item) => ({
+            surveyId: item.surveyId,
             userId,
             grantedBy: invite.createdBy,
             expiresAt: null,
             note: "По приглашению",
-          },
-        ]);
+          })),
+        );
       }
     }
-
-    /*
-     * Закрепление за врачом — то самое явное действие, которого плану не
-     * хватало.
-     *
-     * Человек, пришедший по ссылке, оказывался ничьим: его надо было потом
-     * искать среди остальных и закреплять руками. Приглашение, выписанное
-     * врачом, и есть явное «этот человек мой» — вывода из последнего приёма
-     * здесь нет, есть прямое решение того, кто ссылку выписал.
-     *
-     * Ставится только если своего врача ещё нет: приглашение не должно
-     * переназначать человека, которого уже ведут. Смена ведущего — отдельное
-     * действие с записью в журнал, а не побочный эффект перехода по ссылке.
-     */
-    if (invite.specialistId) {
-      await tx
-        .update(users)
-        .set({ leadSpecialistId: invite.specialistId })
-        .where(and(eq(users.id, userId), isNull(users.leadSpecialistId)));
-
-      /* и прикрепление к отделению врача — иначе повторный приём не записать */
-      const [profile] = await tx
-        .select({ departmentId: specialistProfiles.departmentId })
-        .from(specialistProfiles)
-        .where(eq(specialistProfiles.userId, invite.specialistId))
-        .limit(1);
-      if (profile) {
-        await tx
-          .insert(departmentPatients)
-          .values({ departmentId: profile.departmentId, patientId: userId, attachedVia: "staff" })
-          .onConflictDoNothing();
-      }
-    }
-
-    if (invite.batteryId) {
-      const battery = await tx.query.batteries.findFirst({ where: eq(batteries.id, invite.batteryId) });
-      if (battery && !battery.archived) {
-        // снятые методики по приглашению не выдаются — как и везде
-        const items = await tx
-          .select({ surveyId: batteryItems.surveyId })
-          .from(batteryItems)
-          .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
-          .where(and(eq(batteryItems.batteryId, battery.id), isNull(surveys.archivedAt)));
-        if (items.length) {
-          await tx.insert(batteryAssignments).values({
-            id: crypto.randomUUID(),
-            batteryId: battery.id,
-            userId,
-            assignedBy: invite.createdBy,
-            note: "По приглашению",
-          });
-          await grantAccess(
-            tx as never,
-            items.map((item) => ({
-              surveyId: item.surveyId,
-              userId,
-              grantedBy: invite.createdBy,
-              expiresAt: null,
-              note: "По приглашению",
-            })),
-          );
-        }
-      }
-    }
-    return { ok: true };
-  });
+  }
 }

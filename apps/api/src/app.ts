@@ -247,6 +247,16 @@ app.route("/api/push", pushRoutes);
 app.route("/api/status", serviceStatusRoutes);
 app.route("/api/flags", featureFlagRoutes);
 app.route("/api/ops/maint", opsMaintRoutes);
+/*
+ * Техпанель, «Дані й продукт» — раньше общего заслона /api/ops, как
+ * учётки и сессии выше: у набора свой заслон с тем же правом ops.read, и
+ * подключённый после общего он проходил обе проверки подряд. Вторая
+ * авторизация одного запроса держала второе соединение пула — при десяти
+ * одновременных запросах пул вставал целиком (внешний разбор 2026-09-26;
+ * requireAuth теперь и сам не повторяется, см. middleware/auth.ts, а
+ * порядок здесь снимает и повторную проверку права).
+ */
+app.route("/api/ops/data", opsDataRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);
 /*
@@ -284,11 +294,10 @@ app.route("/api/consents", consentRoutes);
 app.route("/api/norms", normRoutes);
 app.route("/api/data-quality", dataQualityRoutes);
 /*
- * Техпанель, «Дані й продукт» — рядом с остальной техпанелью (/api/ops).
  * Приём счётчиков экранов — своим путём: пишут в него все вошедшие, а под
- * /api/ops всё закрыто правом ops.read (см. routes/opsData.ts).
+ * /api/ops всё закрыто правом ops.read (см. routes/opsData.ts). Сама
+ * группа «Дані й продукт» подключена выше, раньше общего заслона /api/ops.
  */
-app.route("/api/ops/data", opsDataRoutes);
 app.route("/api/usage", usageRoutes);
 app.route("/api/facets", facetRoutes);
 app.route("/api/clinic", clinicRoutes);
