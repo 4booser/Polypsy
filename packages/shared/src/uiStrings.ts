@@ -2629,9 +2629,24 @@ export const UI = {
   "ops.tab.audit": { uk: "Аудит", ru: "Аудит", en: "Audit" },
   "ops.soon": { uk: "Розділ збирається", ru: "Раздел собирается", en: "This section is being built" },
 
+  "ops.group.system": { uk: "Система", ru: "Система", en: "System" },
+  "ops.group.operations": { uk: "Експлуатація", ru: "Эксплуатация", en: "Operations" },
+  "ops.group.people": { uk: "Люди й безпека", ru: "Люди и безопасность", en: "People and security" },
+  "ops.group.data": { uk: "Дані й продукт", ru: "Данные и продукт", en: "Data and product" },
+
   /* ── wave10:ops ── */
 
   /* ── wave10:accounts ── */
+
+  /* ── wave10:maint ── */
+
+  /* ── wave10:data ── */
+
+  /* ── wave10:sec ── */
+
+  /* ── wave10:obs2 ── */
+
+  /* ── wave10:people2 ── */
   "ppl.listsLabel": { uk: "Списки співробітників", ru: "Списки сотрудников", en: "Staff lists" },
   "ppl.searchStaff": { uk: "Пошук за ПІБ, логіном або телефоном", ru: "Поиск по ФИО, логину или телефону", en: "Search by name, login or phone" },
   "ppl.department": { uk: "Відділення", ru: "Отделение", en: "Department" },
