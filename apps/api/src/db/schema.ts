@@ -1360,23 +1360,21 @@ export const alertCases = pgTable(
   (t) => ({
     userIdx: index("alert_cases_user_idx").on(t.userId),
     /*
-     * Порядок колонок ровно как в запросе списка: тяжесть, время последнего
-     * сигнала, идентификатор. Прежний (acknowledgedAt, lastAlertAt) не
-     * использовался ни разу — ведущая колонка в сортировке не участвовала.
-     * Второй, (lastAlertAt, id), разошёлся с запросом, когда очередь стала
-     * упорядочиваться по тяжести: план брал его только фильтром «открытые» и
-     * сортировал все открытые случаи ради первой страницы (миграция 0097).
+     * Открытые случаи по человеку — частичный индекс (миграция 0097).
      *
-     * Выражение тяжести обязано совпадать с severityRank в
-     * routes/alertCases.ts буквально — иначе планировщик не узнает в нём ключ
-     * индекса; сторож — apps/api/test/listIndexes.test.ts.
+     * Индексы «под порядок очереди» здесь стояли дважды, и оба разошлись с
+     * запросом: сперва (acknowledgedAt, lastAlertAt), потом (тяжесть, время,
+     * id) — открытая очередь с волны 12 сложена по человеку (distinct on
+     * user_id с оконными счётами) и сравнивает время до миллисекунды. Порядок
+     * она наводит сама, по сотням открытых строк; от индекса ей нужно другое —
+     * не читать закрытые, которых со временем в десятки раз больше.
      *
-     * Частичный: в списке всегда только неразобранные, и держать в индексе
-     * закрытые случаи незачем.
+     * Тот же индекс держит горячий путь сдачи: открытый случай человека ищется
+     * под советующей блокировкой (lib/alertCases.ts, attachCaseRow), и полный
+     * alert_cases_user_idx читал бы там и все разобранные случаи человека.
+     * Сторож — apps/api/test/listIndexes.test.ts.
      */
-    queueIdx: index("alert_cases_queue_idx")
-      .on(sql`(case when ${t.severity} = 'severe' then 1 else 0 end) desc`, t.lastAlertAt.desc(), t.id.desc())
-      .where(sql`acknowledged_at is null`),
+    openUserIdx: index("alert_cases_open_user_idx").on(t.userId).where(sql`acknowledged_at is null`),
     surveyIdx: index("alert_cases_survey_idx").on(t.surveyId),
   }),
 );

@@ -32,11 +32,18 @@ CREATE INDEX IF NOT EXISTS "alerts_case_idx" ON "risk_alerts" ("case_id");
 --
 -- Новое имя, а не пересоздание под старым: CREATE INDEX IF NOT EXISTS под
 -- прежним именем молча оставил бы старое определение там, где оно уже есть.
+-- ПОПРАВКА ПРИ СВЕДЕНИИ ВОЛНЫ 12. Индекс под порядок очереди (тяжесть,
+-- время, идентификатор) пережил только до слияния с участком alerts: тот
+-- сложил открытую очередь по человеку (distinct on user_id с оконными
+-- счётами) и сравнивает время с точностью до миллисекунды — ни один режим
+-- очереди этот порядок больше не читает. Индекс, который ничего не отдаёт,
+-- только утяжеляет каждую запись случая.
+--
+-- Горячий путь теперь другой: при каждой сдаче с тревогой открытый случай
+-- человека ищется под советующей блокировкой (lib/alertCases.ts,
+-- attachCaseRow: user_id = … and acknowledged_at is null), и тот же отбор
+-- делает очередь по пациенту. Под него и индекс — частичный, по открытым.
 DROP INDEX IF EXISTS "alert_cases_open_idx";
-CREATE INDEX IF NOT EXISTS "alert_cases_queue_idx"
-  ON "alert_cases" (
-    (CASE WHEN "severity" = 'severe' THEN 1 ELSE 0 END) DESC,
-    "last_alert_at" DESC,
-    "id" DESC
-  )
+CREATE INDEX IF NOT EXISTS "alert_cases_open_user_idx"
+  ON "alert_cases" ("user_id")
   WHERE "acknowledged_at" IS NULL;
