@@ -27,11 +27,30 @@ import { log } from "./log";
  */
 export const NO_SHOW_GRACE_HOURS = 2;
 
+/** Что делает приём неявкой: никто ничего не нажал, а его слот кончился до отсечки */
+const PENDING = ["booked", "confirmed"] as const;
+
 /**
  * Развести истёкшие приёмы по неявкам.
  *
- * Возвращает число разведённых. Идемпотентна: приём, уже переведённый в
- * no_show, второй раз не берётся, а отмеченный «пришёл» не берётся вовсе.
+ * Возвращает число разведённых — по факту записи, а не по выборке.
+ * Идемпотентна: приём, уже переведённый в no_show, второй раз не берётся, а
+ * отмеченный «пришёл» не берётся вовсе.
+ *
+ * Условие неявки проверяется в самом UPDATE, а не только в выборке.
+ *
+ * Прежде выборка находила booked/confirmed с истёкшим слотом, а запись шла
+ * по списку идентификаторов — и всё, что случилось между ними, затиралось
+ * (внешний разбор, решение заказчика 2026-09-26). Специалист отмечал
+ * «пришёл» в ту секунду, когда проход уже выбрал приём, — и человеку,
+ * сидевшему в кабинете, ставилась неявка; следом шло «вы пропустили приём».
+ * Так же проход «доставал» приём, только что перенесённый на завтра: слот в
+ * выборке был прежний, истёкший.
+ *
+ * Теперь запись повторяет оба условия — статус и истёкший слот, причём слот
+ * нынешний, по slot_id строки в момент записи. Postgres, дождавшись замка
+ * строки, перепроверяет WHERE на её свежей версии: отмеченный приход и
+ * перенос выводят приём из-под условия, и запись его пропускает.
  */
 export async function sweepNoShows(now = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - NO_SHOW_GRACE_HOURS * 3600_000).toISOString();
@@ -40,23 +59,31 @@ export async function sweepNoShows(now = new Date()): Promise<number> {
     .select({ id: appointments.id })
     .from(appointments)
     .innerJoin(slots, eq(slots.id, appointments.slotId))
-    .where(
-      and(
-        inArray(appointments.status, ["booked", "confirmed"]),
-        lt(slots.endsAt, cutoff),
-      ),
-    )
+    .where(and(inArray(appointments.status, [...PENDING]), lt(slots.endsAt, cutoff)))
     .limit(500);
 
   if (!stale.length) return 0;
 
-  await db
+  const swept = await db
     .update(appointments)
     .set({ status: "no_show" })
-    .where(inArray(appointments.id, stale.map((r) => r.id)));
+    .where(
+      and(
+        inArray(
+          appointments.id,
+          stale.map((r) => r.id),
+        ),
+        inArray(appointments.status, [...PENDING]),
+        sql`exists (
+          select 1 from slots s
+          where s.id = ${appointments.slotId} and s.ends_at < ${cutoff}::timestamptz
+        )`,
+      ),
+    )
+    .returning({ id: appointments.id });
 
-  log.info("clinic.no_show_swept", { count: stale.length });
-  return stale.length;
+  if (swept.length) log.info("clinic.no_show_swept", { count: swept.length, skipped: stale.length - swept.length });
+  return swept.length;
 }
 
 /**

@@ -18,6 +18,7 @@ import {
   type ScheduleTemplateView,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import {
   appointments,
   departmentPatients,
@@ -35,9 +36,9 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
-import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireDateParam } from "../lib/dates";
-import { HORIZON_WEEKS, syncSlots } from "../lib/schedule";
+import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -153,19 +154,42 @@ clinicRoutes.patch(
   },
 );
 
-/** Кто принимает: список для записи. Открыт всем — пациент выбирает специалиста */
+/**
+ * К кому можно записаться: галочка «принимает» стоит и учётная запись не
+ * выключена.
+ *
+ * Одно условие на все три места — список специалистов, выдачу свободного
+ * времени и само занятие слота. Внешний разбор (решение заказчика
+ * 2026-09-26) поймал ровно их расхождение: галочку проверял только список,
+ * а слот по известному идентификатору занимался у того, кто уже не
+ * принимает или уволен, — 201, приём в чужом дне, напоминание, а принять
+ * некому. Выключенную учётную запись не проверял никто.
+ *
+ * Читать его надо в запросе, соединённом с users и specialist_profiles.
+ */
+const acceptingBookings = and(eq(specialistProfiles.acceptsBookings, true), isNull(users.disabledAt));
+
+/**
+ * Кто принимает: список для записи. Открыт всем — пациент выбирает специалиста.
+ *
+ * Строки специалистов читаются системным контекстом. Политика users_read
+ * (0075) не показывает пациенту чужих строк, и под боевой ролью базы этот
+ * список был для пациента пуст — сюита, которая ходит владельцем базы, этого
+ * не видела (bookingGate.test.ts теперь проверяет путь записи под боевой
+ * ролью). Что именно отдаётся — имя, кабинет, должность — решает код ниже,
+ * а не политика: справочник принимающих публичен по назначению.
+ */
 clinicRoutes.get("/specialists", async (c) => {
   const departmentId = c.req.query("departmentId");
-  const rows = await db
-    .select({ profile: specialistProfiles, person: users })
-    .from(specialistProfiles)
-    .innerJoin(users, eq(users.id, specialistProfiles.userId))
-    .where(
-      and(
-        eq(specialistProfiles.acceptsBookings, true),
-        departmentId ? eq(specialistProfiles.departmentId, departmentId) : undefined,
+  const rows = await asSystem(() =>
+    db
+      .select({ profile: specialistProfiles, person: users })
+      .from(specialistProfiles)
+      .innerJoin(users, eq(users.id, specialistProfiles.userId))
+      .where(
+        and(acceptingBookings, departmentId ? eq(specialistProfiles.departmentId, departmentId) : undefined),
       ),
-    );
+  );
 
   const me = c.get("user");
   return c.json({
@@ -302,6 +326,8 @@ clinicRoutes.put("/schedule", requireStaff, requirePermission("schedule.own"), a
     z.object({ templates: z.array(scheduleTemplateSchema).max(60) }),
   );
 
+  // две правки недели одновременно переплетались бы: см. lockSchedule
+  await lockSchedule(specialistId);
   await db.delete(scheduleTemplates).where(eq(scheduleTemplates.specialistId, specialistId));
   if (input.templates.length) {
     await db.insert(scheduleTemplates).values(
@@ -413,36 +439,54 @@ clinicRoutes.get("/slots", async (c) => {
   const from = q.from && q.from > now ? q.from : now;
   const to = q.to ?? new Date(Date.now() + HORIZON_WEEKS * 7 * 24 * 3600 * 1000).toISOString();
 
-  const rows = await db
-    .select({ slot: slots, person: users, profile: specialistProfiles })
-    .from(slots)
-    .innerJoin(users, eq(users.id, slots.specialistId))
-    .leftJoin(specialistProfiles, eq(specialistProfiles.userId, slots.specialistId))
-    .where(
-      and(
-        eq(slots.status, "open"),
-        eq(slots.offSchedule, false),
-        gte(slots.startsAt, from),
-        lte(slots.startsAt, to),
-        q.specialistId ? eq(slots.specialistId, q.specialistId) : undefined,
-        q.departmentId ? eq(slots.departmentId, q.departmentId) : undefined,
-      ),
-    )
-    .orderBy(asc(slots.startsAt))
-    .limit(2000);
+  /*
+   * Слоты, их специалисты и занятость читаются системным контекстом.
+   *
+   * Политики строк отвечают на вопрос «чьи это данные», а свободное время
+   * — вопрос о чужих данных по определению: занят ли слот ЧУЖИМ приёмом, как
+   * зовут специалиста, который пациенту ещё никто. Под боевой ролью базы
+   * пациент не видел ни строк специалистов (users_read, 0075) — и выдача
+   * была пуста, — ни чужих приёмов (appointments_access) — и занятый слот
+   * выглядел бы свободным. Наружу уходят только время, имя и кабинет.
+   */
+  const rows = await asSystem(() =>
+    db
+      .select({ slot: slots, person: users, profile: specialistProfiles })
+      .from(slots)
+      .innerJoin(users, eq(users.id, slots.specialistId))
+      .innerJoin(specialistProfiles, eq(specialistProfiles.userId, slots.specialistId))
+      .where(
+        and(
+          eq(slots.status, "open"),
+          eq(slots.offSchedule, false),
+          acceptingBookings,
+          gte(slots.startsAt, from),
+          lte(slots.startsAt, to),
+          q.specialistId ? eq(slots.specialistId, q.specialistId) : undefined,
+          q.departmentId ? eq(slots.departmentId, q.departmentId) : undefined,
+        ),
+      )
+      .orderBy(asc(slots.startsAt))
+      .limit(2000),
+  );
 
   if (!rows.length) return c.json({ items: [] });
 
-  const taken = await db
-    .select({ slotId: appointments.slotId, n: sql<number>`count(*)` })
-    .from(appointments)
-    .where(
-      and(
-        inArray(appointments.slotId, rows.map((r) => r.slot.id)),
-        ne(appointments.status, "cancelled"),
-      ),
-    )
-    .groupBy(appointments.slotId);
+  const taken = await asSystem(() =>
+    db
+      .select({ slotId: appointments.slotId, n: sql<number>`count(*)` })
+      .from(appointments)
+      .where(
+        and(
+          inArray(
+            appointments.slotId,
+            rows.map((r) => r.slot.id),
+          ),
+          ne(appointments.status, "cancelled"),
+        ),
+      )
+      .groupBy(appointments.slotId),
+  );
   const busy = new Map(taken.map((t) => [t.slotId, Number(t.n)]));
 
   /*
@@ -461,7 +505,7 @@ clinicRoutes.get("/slots", async (c) => {
       id: r.slot.id,
       specialistId: r.slot.specialistId,
       specialistName: fullNameOf(r.person),
-      room: r.profile?.room ?? null,
+      room: r.profile.room ?? null,
       startsAt: r.slot.startsAt,
       endsAt: r.slot.endsAt,
     }));
@@ -515,13 +559,37 @@ async function takeSlot(slotId: string): Promise<typeof slots.$inferSelect> {
   await db.execute(sql`select id from slots where id = ${slotId} for update`);
   const slot = await db.query.slots.findFirst({ where: eq(slots.id, slotId) });
   if (!slot) notFound("err.slotNotFound");
-  if (slot.status !== "open") badRequest("err.slotClosed");
+  /*
+   * Занять можно ровно то, что выдаётся как свободное (GET /slots), и ничего
+   * сверх: открытый слот в расписании у принимающего специалиста. Слот «вне
+   * расписания» выдачей скрыт — он живёт только ради приёма, который на нём
+   * уже стоял, — и по идентификатору в него тоже не записывают.
+   */
+  if (slot.status !== "open" || slot.offSchedule) badRequest("err.slotClosed");
   if (new Date(slot.startsAt).getTime() <= Date.now()) badRequest("err.slotInPast");
 
-  const [busy] = await db
-    .select({ n: sql<number>`count(*)` })
-    .from(appointments)
-    .where(and(eq(appointments.slotId, slotId), ne(appointments.status, "cancelled")));
+  /*
+   * Строка специалиста и чужие приёмы — системным контекстом, по той же
+   * причине, что в выдаче времени: пациенту под боевой ролью базы не видны
+   * ни чужие строки users, ни чужие приёмы. Проверка принимающего без этого
+   * отказывала бы всем подряд, а проверка занятости видела бы только свой
+   * приём — и пускала бы второго человека в занятый слот.
+   */
+  const [accepting] = await asSystem(() =>
+    db
+      .select({ id: users.id })
+      .from(users)
+      .innerJoin(specialistProfiles, eq(specialistProfiles.userId, users.id))
+      .where(and(eq(users.id, slot.specialistId), acceptingBookings)),
+  );
+  if (!accepting) badRequest("err.specialistNotAccepting");
+
+  const [busy] = await asSystem(() =>
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(appointments)
+      .where(and(eq(appointments.slotId, slotId), ne(appointments.status, "cancelled"))),
+  );
   if (Number(busy?.n ?? 0) >= slot.capacity) badRequest("err.slotTaken");
   return slot;
 }
@@ -810,16 +878,25 @@ async function loadAppointments(where: ReturnType<typeof and>) {
   );
 }
 
-/** Свои приёмы — то, что видит пациент в мобилке */
+/**
+ * Свои приёмы — то, что видит пациент в мобилке.
+ *
+ * Системным контекстом: список соединён со строкой специалиста, а её
+ * пациенту политика users_read (0075) не показывает, и под боевой ролью базы
+ * человек видел пустой список сразу после успешной записи. Выборка ограничена
+ * своими приёмами условием ниже, а не политикой.
+ */
 clinicRoutes.get("/appointments/mine", async (c) => {
   const me = c.get("user");
   const past = c.req.query("past") === "1";
-  const items = await loadAppointments(
-    and(
-      eq(appointments.patientId, me.id),
-      past ? undefined : gte(slots.startsAt, new Date().toISOString()),
-      past ? undefined : ne(appointments.status, "cancelled"),
-    )!,
+  const items = await asSystem(() =>
+    loadAppointments(
+      and(
+        eq(appointments.patientId, me.id),
+        past ? undefined : gte(slots.startsAt, new Date().toISOString()),
+        past ? undefined : ne(appointments.status, "cancelled"),
+      )!,
+    ),
   );
   return c.json({ items });
 });
@@ -940,17 +1017,50 @@ async function loadOne(c: Context<AppEnv>, id: string) {
   return row;
 }
 
-/** Подтверждение приёма пациентом — за сутки, одним нажатием */
+/**
+ * Отказ тому, кто проиграл гонку за приём.
+ *
+ * Условная запись (moveAppointment) не нашла приём в том состоянии и на том
+ * слоте, которые маршрут прочитал: между чтением и записью его изменил
+ * кто-то другой. Закрытый приём так и называется — это не новость, а итог.
+ * Остальное — 409 «приём только что изменили»: решение принималось о
+ * состоянии, которого больше нет, и повторять его вслепую нельзя, а
+ * пересмотреть на свежих данных — можно.
+ */
+async function refuseChanged(id: string): Promise<never> {
+  const [current] = await db
+    .select({ status: appointments.status })
+    .from(appointments)
+    .where(eq(appointments.id, id));
+  if (!current || current.status === "cancelled" || current.status === "done") {
+    badRequest("err.appointmentClosed");
+  }
+  conflict("err.appointmentChanged");
+}
+
+/**
+ * Подтверждение приёма пациентом — за сутки, одним нажатием.
+ *
+ * Запись условная: приём всё ещё «записан» и всё ещё на прочитанном слоте.
+ * Прежде после проверки статуса подтверждение ставилось безусловно по
+ * идентификатору, и отмена, пришедшая между чтением и записью, затиралась —
+ * отменённый приём воскресал подтверждённым (внешний разбор, решение
+ * заказчика 2026-09-26). Слот сверяется потому, что подтверждение относится к
+ * времени, которое человек видел: перенос снимает его намеренно.
+ */
 clinicRoutes.post("/appointments/:id/confirm", async (c) => {
   const row = await loadOne(c, c.req.param("id"));
   const me = c.get("user");
   if (row.patientId !== me.id) forbidden("err.confirmSelfOnly");
   if (row.status !== "booked") badRequest("err.appointmentNotPending");
 
-  await db
-    .update(appointments)
-    .set({ status: "confirmed", confirmedAt: new Date().toISOString() })
-    .where(eq(appointments.id, row.id));
+  const confirmed = await moveAppointment(
+    row.id,
+    ["booked"],
+    { status: "confirmed", confirmedAt: new Date().toISOString() },
+    { slotId: row.slotId },
+  );
+  if (!confirmed) await refuseChanged(row.id);
   await audit(c, {
     action: "clinic.confirm",
     resourceType: "appointment",
@@ -985,16 +1095,24 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
 
   /*
    * Прежнее состояние проверяется в самой записи, а не только прочитанным
-   * выше значением: см. moveAppointment.
+   * выше значением: см. moveAppointment. Проверяется ровно прочитанное —
+   * статус и слот, — а не «любой статус, из которого перенос разрешён»:
+   * второй перенос, пришедший в то же мгновение, иначе затирал первый, а в
+   * журнале оставалось «из A в C» при приёме, уже стоявшем в B.
    */
-  const moved = await moveAppointment(row.id, ["booked", "confirmed", "arrived", "in_progress"], {
-    slotId: slot.id,
-    specialistId: slot.specialistId,
-    // подтверждение относилось к прежнему времени и на новое не переносится
-    status: "booked",
-    confirmedAt: null,
-  });
-  if (!moved) badRequest("err.appointmentClosed");
+  const moved = await moveAppointment(
+    row.id,
+    [row.status],
+    {
+      slotId: slot.id,
+      specialistId: slot.specialistId,
+      // подтверждение относилось к прежнему времени и на новое не переносится
+      status: "booked",
+      confirmedAt: null,
+    },
+    { slotId: row.slotId },
+  );
+  if (!moved) await refuseChanged(row.id);
 
   await audit(c, {
     action: "clinic.reschedule",
@@ -1035,17 +1153,25 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
   const hoursLeft = (new Date(slot!.startsAt).getTime() - Date.now()) / 3600000;
   const late = hoursLeft < LATE_CANCEL_HOURS && hoursLeft > 0;
 
+  /*
+   * Условие — прочитанные статус и слот, а не весь список, откуда отмена
+   * вообще возможна. Отмена с телефона, пришедшая в ту секунду, когда
+   * специалист отметил «пришёл», снимала человека, сидящего в кабинете; а
+   * пришедшая сразу за переносом отменяла уже перенесённый приём с
+   * пометкой «поздняя», посчитанной по прежнему слоту.
+   */
   const cancelled = await moveAppointment(
     row.id,
-    ["booked", "confirmed", "arrived", "in_progress", "no_show"],
+    [row.status],
     {
       status: "cancelled",
       cancelledAt: new Date().toISOString(),
       cancelledBy: me.id,
       cancelledLate: late,
     },
+    { slotId: row.slotId },
   );
-  if (!cancelled) badRequest("err.appointmentClosed");
+  if (!cancelled) await refuseChanged(row.id);
 
   await audit(c, {
     action: "clinic.cancel",
@@ -1101,18 +1227,39 @@ clinicRoutes.post(
     }
 
     const now = new Date().toISOString();
-    // допустимые исходные состояния — те, из которых разрешён именно этот
-    // переход: список NEXT читается в обратную сторону
-    const allowedFrom = (Object.keys(NEXT) as AppointmentStatus[]).filter((from) =>
-      NEXT[from]!.includes(input.status),
+    /*
+     * Запись проходит только из прочитанного состояния и на прочитанном
+     * слоте.
+     *
+     * Прежде условием был весь список состояний, откуда переход разрешён
+     * (NEXT в обратную сторону). Этого мало: из «пришёл» в неявку переход
+     * разрешён, и неявка, поставленная по прочитанному «записан», молча
+     * затирала приход, отмеченный соседом в ту же секунду, — тот же дефект,
+     * что у фоновой неявки (lib/noShow.ts), только руками. Решение
+     * принималось о «записан», и записываться может только поверх него.
+     */
+    const moved = await moveAppointment(
+      row.id,
+      [row.status as AppointmentStatus],
+      {
+        status: input.status,
+        ...(input.status === "arrived" && { arrivedAt: now }),
+        ...(input.status === "in_progress" && { startedAt: now }),
+        ...(input.status === "done" && { finishedAt: now }),
+      },
+      { slotId: row.slotId },
     );
-    const moved = await moveAppointment(row.id, allowedFrom, {
-      status: input.status,
-      ...(input.status === "arrived" && { arrivedAt: now }),
-      ...(input.status === "in_progress" && { startedAt: now }),
-      ...(input.status === "done" && { finishedAt: now }),
-    });
-    if (!moved) badRequest("err.appointmentBadTransition", { from: row.status, to: input.status });
+    if (!moved) {
+      const [current] = await db
+        .select({ status: appointments.status })
+        .from(appointments)
+        .where(eq(appointments.id, row.id));
+      // из нового состояния этот переход не разрешён вовсе — так и говорим
+      if (!current || !NEXT[current.status]?.includes(input.status)) {
+        badRequest("err.appointmentBadTransition", { from: current?.status ?? row.status, to: input.status });
+      }
+      conflict("err.appointmentChanged");
+    }
 
     await audit(c, {
       action: "clinic.status",
@@ -1152,6 +1299,16 @@ clinicRoutes.post(
     await assertPatientAccess(me, patientId);
     const input = await parseBody(c.req.raw, z.object({ take: z.boolean() }));
 
+    /*
+     * Строка человека — под замок до проверки «снять можно только своё».
+     *
+     * Проверка шла по прочитанному, а запись — по идентификатору: коллега,
+     * закрепивший человека между чтением и записью, молча терял закрепление,
+     * и переписка пациента уходила тому, кто его уже не ведёт. Замок держится
+     * до конца запроса, и вторая правка ждёт первую, а потом проверяется по
+     * тому, что та записала.
+     */
+    await db.execute(sql`select id from users where id = ${patientId} for update`);
     const person = await db.query.users.findFirst({ where: eq(users.id, patientId) });
     if (!person) notFound("err.userNotFound");
 

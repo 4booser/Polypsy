@@ -60,6 +60,22 @@ async function freeSlot() {
   return row!.id;
 }
 
+/**
+ * Специалист без сетки — под слот, заведённый напрямую на нужное время.
+ *
+ * С волны 12 открытые слоты одного специалиста не пересекаются (миграция
+ * 0105). Слот «пять часов назад» или «через два часа» у основного
+ * специалиста ложился то поверх его сетки, то поверх соседнего такого же —
+ * смотря в котором часу идёт прогон, — и база его не примет. У каждого
+ * такого слота теперь свой специалист, и время проверки остаётся ровно тем,
+ * которое ей нужно.
+ */
+async function looseSpecialist(tag: string) {
+  const person = await makeUser("admin", `clinic-loose-${tag}-${crypto.randomUUID()}@test`);
+  await db.insert(specialistProfiles).values({ userId: person.id, departmentId });
+  return person;
+}
+
 beforeAll(async () => {
   departmentId = crypto.randomUUID();
   await db.insert(departments).values({
@@ -276,7 +292,7 @@ describe("запись", () => {
     const past = crypto.randomUUID();
     await db.insert(slots).values({
       id: past,
-      specialistId,
+      specialistId: (await looseSpecialist("past")).id,
       departmentId,
       startsAt: new Date(Date.now() - 3600_000).toISOString(),
       endsAt: new Date(Date.now() - 1800_000).toISOString(),
@@ -448,7 +464,7 @@ describe("перенос и отмена", () => {
     const soon = crypto.randomUUID();
     await db.insert(slots).values({
       id: soon,
-      specialistId,
+      specialistId: (await looseSpecialist("soon")).id,
       departmentId,
       startsAt: new Date(Date.now() + 2 * 3600_000).toISOString(),
       endsAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
@@ -614,10 +630,12 @@ describe("неявка", () => {
   /** Приём, время которого давно прошло, а никто ничего не нажал */
   async function missedVisit(tag: string, hoursAgo = 5) {
     const patient = await makeUser("user", `clinic-${tag}-${crypto.randomUUID()}@test`);
+    // свой специалист у каждого: см. looseSpecialist
+    const specialist = await looseSpecialist(tag);
     const slotId = crypto.randomUUID();
     await db.insert(slots).values({
       id: slotId,
-      specialistId,
+      specialistId: specialist.id,
       departmentId,
       startsAt: new Date(Date.now() - hoursAgo * 3600_000).toISOString(),
       endsAt: new Date(Date.now() - (hoursAgo - 1) * 3600_000).toISOString(),
@@ -627,10 +645,10 @@ describe("неявка", () => {
       id,
       slotId,
       patientId: patient.id,
-      specialistId,
+      specialistId: specialist.id,
       status: "booked",
     });
-    return { patient, id };
+    return { patient, id, specialist };
   }
 
   test("истёкший приём уходит в неявку", async () => {
@@ -671,10 +689,10 @@ describe("неявка", () => {
   test("неявку можно исправить на явку", async () => {
     // ставит её и фоновый проход тоже, а он ошибается ровно там, где
     // специалист забыл нажать кнопку
-    const { id } = await missedVisit("ns5");
+    const { id, specialist } = await missedVisit("ns5");
     await sweepNoShows();
 
-    const res = await api(`/api/clinic/appointments/${id}/status`, specialistToken, {
+    const res = await api(`/api/clinic/appointments/${id}/status`, specialist.token, {
       method: "POST",
       body: JSON.stringify({ status: "arrived" }),
     });
@@ -682,15 +700,15 @@ describe("неявка", () => {
   });
 
   test("неявка попадает в очередь работы к своему специалисту", async () => {
-    const { patient } = await missedVisit("ns6");
+    const { patient, specialist } = await missedVisit("ns6");
     await sweepNoShows();
 
-    const mine = await api("/api/worklist", specialistToken);
+    const mine = await api("/api/worklist", specialist.token);
     const item = mine.body.items.find(
       (i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id,
     );
     expect(item).toBeDefined();
-    expect(item.assignedTo).toBe(specialistId);
+    expect(item.assignedTo).toBe(specialist.id);
 
     // и не попадает к постороннему специалисту
     const other = await api("/api/worklist", adminA.token);
@@ -700,8 +718,12 @@ describe("неявка", () => {
   });
 
   test("новая запись снимает неявку с очереди", async () => {
-    const { patient } = await missedVisit("ns7");
+    const { patient, specialist } = await missedVisit("ns7");
     await sweepNoShows();
+    const before = await api("/api/worklist", specialist.token);
+    expect(
+      before.body.items.some((i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id),
+    ).toBe(true);
 
     const slotId = await freeSlot();
     const booked = await api("/api/clinic/appointments", patient.token, {
@@ -710,7 +732,7 @@ describe("неявка", () => {
     });
     expect(booked.status).toBe(201);
 
-    const mine = await api("/api/worklist", specialistToken);
+    const mine = await api("/api/worklist", specialist.token);
     expect(
       mine.body.items.some((i: { kind: string; userId: string }) => i.kind === "noshow" && i.userId === patient.id),
     ).toBe(false);
@@ -721,10 +743,12 @@ describe("напоминания", () => {
   /** Приём через заданное число часов, чтобы попадать в нужное окно */
   async function upcoming(tag: string, hoursAhead: number) {
     const patient = await makeUser("user", `clinic-${tag}-${crypto.randomUUID()}@test`);
+    // свой специалист у каждого: см. looseSpecialist
+    const specialist = await looseSpecialist(tag);
     const slotId = crypto.randomUUID();
     await db.insert(slots).values({
       id: slotId,
-      specialistId,
+      specialistId: specialist.id,
       departmentId,
       startsAt: new Date(Date.now() + hoursAhead * 3600_000).toISOString(),
       endsAt: new Date(Date.now() + (hoursAhead + 1) * 3600_000).toISOString(),
@@ -734,7 +758,7 @@ describe("напоминания", () => {
       id,
       slotId,
       patientId: patient.id,
-      specialistId,
+      specialistId: specialist.id,
       status: "booked",
     });
     await db.insert(pushTokens).values({

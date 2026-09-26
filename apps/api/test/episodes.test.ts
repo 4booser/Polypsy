@@ -12,6 +12,11 @@ import { appointments, departments, episodes, slots, specialistProfiles } from "
  */
 
 let departmentId: string;
+/*
+ * Каждому приёму своё время: открытые слоты одного специалиста не
+ * пересекаются (миграция 0105), а все приёмы здесь — у adminA.
+ */
+let visitSeq = 0;
 
 async function patientOf(tag: string) {
   const person = await makeUser("user", `ep-${tag}-${crypto.randomUUID()}@test`);
@@ -38,8 +43,8 @@ async function visitFor(patientId: string) {
     id: slotId,
     specialistId: adminA.id,
     departmentId,
-    startsAt: new Date(Date.now() + 86_400_000).toISOString(),
-    endsAt: new Date(Date.now() + 90_000_000).toISOString(),
+    startsAt: new Date(Date.now() + 86_400_000 + ++visitSeq * 7_200_000).toISOString(),
+    endsAt: new Date(Date.now() + 90_000_000 + visitSeq * 7_200_000).toISOString(),
     kind: "any",
   });
   const id = crypto.randomUUID();

@@ -1,5 +1,6 @@
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import { db } from "../db";
+import { and, asc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import { baseDb, db } from "../db";
+import { asSystem, dbContext } from "../db/context";
 import {
   appointments,
   departments,
@@ -109,6 +110,31 @@ export function sliceInterval(interval: Interval): { from: string; to: string }[
   return out;
 }
 
+/**
+ * Слоты одного дня без пересечений.
+ *
+ * Интервалы берутся по порядку — обычная неделя раньше дополнительных
+ * часов, — и каждый следующий режется только по времени, которое ещё не
+ * занято уже разложенными слотами. Без этого дополнительные часы 09:45–11:00
+ * поверх обычных 09:00–10:00 давали 09:45–10:15 поверх 09:30–10:00: два
+ * открытых слота на одни и те же четверть часа. Теперь такое не примет и
+ * база (миграция 0105), и сетка обязана строиться так, чтобы ей нечего было
+ * отвергать, — иначе дополнительные часы молча пропадали бы целиком.
+ *
+ * Вычитаются именно слоты, а не интервалы: отброшенный хвост обычного
+ * интервала (09:50–10:10 при слотах по 50 минут) свободен, и дополнительные
+ * часы вправе его занять.
+ */
+export function layOutDay(intervals: Interval[]): { from: string; to: string }[] {
+  const laid: { from: string; to: string }[] = [];
+  for (const interval of intervals) {
+    let free: Interval[] = [interval];
+    for (const piece of laid) free = free.flatMap((part) => subtract(part, piece));
+    for (const part of free) laid.push(...sliceInterval(part));
+  }
+  return laid.sort((a, b) => toMinutes(a.from) - toMinutes(b.from));
+}
+
 interface Wanted {
   date: string;
   from: string;
@@ -117,10 +143,12 @@ interface Wanted {
 
 /** Желаемая сетка специалиста на окно вперёд — в стенных часах, без поясов */
 export async function plannedSlots(specialistId: string, weeks = HORIZON_WEEKS): Promise<Wanted[]> {
+  // порядок важен: раскладка дня отдаёт время тому интервалу, что раньше
   const templates = await db
     .select()
     .from(scheduleTemplates)
-    .where(eq(scheduleTemplates.specialistId, specialistId));
+    .where(eq(scheduleTemplates.specialistId, specialistId))
+    .orderBy(asc(scheduleTemplates.startsAt), asc(scheduleTemplates.endsAt));
 
   const today = new Date();
   const from = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
@@ -160,35 +188,131 @@ export async function plannedSlots(specialistId: string, weeks = HORIZON_WEEKS):
       }));
 
     const intervals = intervalsForDay(isoWeekday(d), dayTemplates, offs, extras);
-    for (const interval of intervals) {
-      for (const piece of sliceInterval(interval)) {
-        wanted.push({ date: key, from: piece.from, to: piece.to });
-      }
+    for (const piece of layOutDay(intervals)) {
+      wanted.push({ date: key, from: piece.from, to: piece.to });
     }
   }
   return wanted;
 }
 
 /**
+ * Правки расписания одного специалиста выполняются по одной.
+ *
+ * Транзакционный advisory-замок на специалиста. Две правки одной недели
+ * одновременно — специалист у себя и регистратор за него — иначе
+ * переплетались бы: удаление шаблона одной не видит вставку другой, и
+ * неделя удваивается, а две синхронизации решают судьбу одних и тех же
+ * слотов каждая по своему прочитанному. Берут его маршруты правки
+ * расписания до того, как тронуть шаблон, и сама синхронизация; повторный
+ * захват в той же транзакции ничего не ждёт.
+ */
+export async function lockSchedule(specialistId: string): Promise<void> {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`schedule:${specialistId}`}))`);
+}
+
+/**
+ * Выполнить в транзакции: у запроса она уже есть (middleware/auth.ts), у
+ * посева и прямого вызова из тестов — нет. Замки синхронизации без
+ * транзакции отпускались бы в конце своего же оператора и не держали бы
+ * ничего.
+ */
+async function inTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  if (dbContext.getStore()) return fn();
+  return baseDb.transaction((tx) => dbContext.run(tx, fn));
+}
+
+interface Span {
+  startsAt: string;
+  endsAt: string;
+}
+
+/**
+ * Ключ слота — оба конца, а не одно начало.
+ *
+ * Прежде слот узнавался по началу, и смена длительности 50 → 30 минут
+ * оставляла 09:00–09:50 на месте: начало совпало с желаемым 09:00–09:30,
+ * вставка упиралась в ключ начала и молча ничего не делала, а удалять было
+ * «нечего». Рядом появлялся 09:30–10:00, и оба были открыты для записи.
+ */
+function keyOf(s: Span): string {
+  return `${new Date(s.startsAt).toISOString()}|${new Date(s.endsAt).toISOString()}`;
+}
+
+function overlap(a: Span, b: Span): boolean {
+  return Date.parse(a.startsAt) < Date.parse(b.endsAt) && Date.parse(b.startsAt) < Date.parse(a.endsAt);
+}
+
+/**
+ * Желаемая сетка в настоящих моментах — оба конца, одним запросом Postgres.
+ *
+ * `at time zone` знает про переводы часов; сложение смещения в JS — нет.
+ * Сетка уходит одним параметром-JSON, а не парой параметров на слот: год
+ * расписания по пять минут — это десятки тысяч значений, больше, чем
+ * протокол пропускает в одном запросе.
+ */
+async function resolveWanted(wanted: Wanted[], tz: string): Promise<Span[]> {
+  if (!wanted.length) return [];
+  const walls = JSON.stringify(wanted.map((w) => ({ s: `${w.date} ${w.from}`, e: `${w.date} ${w.to}` })));
+  const rows = await db.execute<{ s: string | Date; e: string | Date }>(sql`
+    select (w->>'s')::timestamp at time zone ${tz} as s,
+           (w->>'e')::timestamp at time zone ${tz} as e
+    from jsonb_array_elements(${walls}::jsonb) with ordinality as t(w, n)
+    order by n
+  `);
+  return rows.map((r) => ({
+    startsAt: new Date(r.s).toISOString(),
+    endsAt: new Date(r.e).toISOString(),
+  }));
+}
+
+/**
  * Привести сетку слотов специалиста к шаблону.
  *
- * Идемпотентна: повторный прогон ничего не меняет. Держится это на уникальном
- * индексе (specialist_id, starts_at) — дубликат физически невозможен, а не
- * «мы стараемся его не вставить».
+ * Идемпотентна: повторный прогон ничего не меняет. Держится это на ключе
+ * слота по обоим концам и на правилах базы: уникальное начало среди
+ * открытых и запрет пересечения открытых слотов одного специалиста (0105) —
+ * дубликат и наложение физически невозможны, а не «мы стараемся их не
+ * вставить».
  *
  * Три действия, и третье — самое важное:
  *  — недостающие слоты добавляются;
- *  — свободные слоты, выпавшие из расписания, удаляются;
+ *  — свободные слоты, выпавшие из расписания, удаляются (или закрываются,
+ *    если на них лежит история отменённого приёма);
  *  — занятые, выпавшие из расписания, ОСТАЮТСЯ и помечаются.
  *
  * Молчаливая отмена чужого приёма недопустима ни при каких обстоятельствах, а
  * «сузил приёмные часы задним числом» — самый вероятный способ её устроить.
  * Поэтому занятый слот вне расписания живёт дальше и подсвечивается:
  * переносить или оставить решает человек.
+ *
+ * «Выпал из расписания» теперь значит «нет в сетке слота с тем же началом И
+ * концом». Занятый слот 09:00–09:50 после смены длительности на 30 минут —
+ * вне расписания, хотя начало совпадает. Его интервал не меняется
+ * (решение заказчика 2026-09-26, внешний разбор): человек записан на
+ * 09:00–09:50 и это время видел, а растянуть или ужать чужой приём молча —
+ * та же молчаливая правка. Новая сетка этого дня строится вокруг него:
+ * пересекающиеся с ним слоты не создаются, пока он занят, — иначе к
+ * специалисту записали бы двоих на одно время. Освободится — следующая
+ * синхронизация закроет его и вернёт время в сетку.
  */
 export async function syncSlots(
   specialistId: string,
   weeks = HORIZON_WEEKS,
+): Promise<{ added: number; removed: number; flagged: number }> {
+  /*
+   * Системным контекстом: занятость слота — это ВСЕ приёмы на нём, а не те,
+   * что видны правящему. Регистратор, ведущий чужое расписание, под боевой
+   * ролью базы видит только пациентов своей зоны (appointments_access), и
+   * занятый чужим пациентом слот выглядел бы свободным: закрылся бы из-под
+   * живого приёма, а новая сетка легла бы поверх него. Право править это
+   * расписание маршрут уже проверил (scheduleTarget).
+   */
+  return inTransaction(() => asSystem(() => syncWithin(specialistId, weeks)));
+}
+
+async function syncWithin(
+  specialistId: string,
+  weeks: number,
 ): Promise<{ added: number; removed: number; flagged: number }> {
   const profile = await db.query.specialistProfiles.findFirst({
     where: eq(specialistProfiles.userId, specialistId),
@@ -200,61 +324,47 @@ export async function syncSlots(
   });
   if (!department) return { added: 0, removed: 0, flagged: 0 };
 
-  const tz = department.timezone;
-  const wanted = await plannedSlots(specialistId, weeks);
+  await lockSchedule(specialistId);
+
+  const wanted = await resolveWanted(await plannedSlots(specialistId, weeks), department.timezone);
 
   const today = new Date();
   const windowFrom = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
   const windowTo = new Date(windowFrom.getTime() + weeks * 7 * 24 * 3600 * 1000);
-
-  let added = 0;
-  if (wanted.length) {
-    /*
-     * Перевод стенного времени в момент — здесь, одним выражением Postgres.
-     * `at time zone` знает про переводы часов; сложение смещения — нет.
-     */
-    const rows = wanted.map((w) => ({
-      id: crypto.randomUUID(),
-      specialistId,
-      departmentId: profile.departmentId,
-      startsAt: sql`(${`${w.date} ${w.from}`}::timestamp at time zone ${tz})`,
-      endsAt: sql`(${`${w.date} ${w.to}`}::timestamp at time zone ${tz})`,
-    }));
-    for (let i = 0; i < rows.length; i += 500) {
-      const chunk = rows.slice(i, i + 500);
-      const result = await db
-        .insert(slots)
-        .values(chunk as never)
-        .onConflictDoNothing()
-        .returning({ id: slots.id });
-      added += result.length;
-    }
-  }
-
-  // что должно быть — в виде набора моментов, посчитанных той же базой
-  const wantedKeys = new Set(
-    wanted.length
-      ? (
-          await db.execute<{ at: string }>(
-            sql`select unnest(array[${sql.join(
-              wanted.map((w) => sql`(${`${w.date} ${w.from}`}::timestamp at time zone ${tz})`),
-              sql`, `,
-            )}]) as at`,
-          )
-        ).map((r) => new Date(r.at).toISOString())
-      : [],
+  const inWindow = and(
+    eq(slots.specialistId, specialistId),
+    gte(slots.startsAt, windowFrom.toISOString()),
+    lt(slots.startsAt, windowTo.toISOString()),
   );
 
+  /*
+   * Открытые слоты окна — под замок до чтения занятости.
+   *
+   * Судьба слота решается по прочитанной занятости, а записать на него в
+   * это время может пациент. Прежде окно закрывалось условием в DELETE, но
+   * условие не видит незакоммиченную запись: DELETE ждал её замка, а
+   * дождавшись, удалял строку, которую запись лишь заперла, — и падал на
+   * ключе 0064 уже после того, как половина сетки была переписана. Замок тот
+   * же, что берёт takeSlot в routes/clinic.ts, поэтому они просто встают в
+   * очередь: либо запись закончилась и видна ниже, либо она ждёт нас и потом
+   * увидит закрытый или удалённый слот.
+   */
+  await db.execute(sql`
+    select id from slots
+    where specialist_id = ${specialistId} and status = 'open'
+      and starts_at >= ${windowFrom.toISOString()} and starts_at < ${windowTo.toISOString()}
+    order by id
+    for update
+  `);
+
   const existing = await db
-    .select({ id: slots.id, startsAt: slots.startsAt, offSchedule: slots.offSchedule })
+    .select({ id: slots.id, startsAt: slots.startsAt, endsAt: slots.endsAt, offSchedule: slots.offSchedule })
     .from(slots)
-    .where(
-      and(
-        eq(slots.specialistId, specialistId),
-        gte(slots.startsAt, windowFrom.toISOString()),
-        lt(slots.startsAt, windowTo.toISOString()),
-      ),
-    );
+    .where(and(inWindow, eq(slots.status, "open")));
+
+  const wantedKeys = new Set(wanted.map(keyOf));
+  const inGrid = existing.filter((s) => wantedKeys.has(keyOf(s)));
+  const stale = existing.filter((s) => !wantedKeys.has(keyOf(s)));
 
   /*
    * Снятая пометка считается первой и безусловно.
@@ -265,81 +375,141 @@ export async function syncSlots(
    * часы снимают пометку» это и поймала: в установившемся состоянии удалять
    * действительно нечего, и весь хвост не выполнялся никогда.
    */
-  const backIn = existing
-    .filter((s) => s.offSchedule && wantedKeys.has(new Date(s.startsAt).toISOString()))
-    .map((s) => s.id);
+  const backIn = inGrid.filter((s) => s.offSchedule).map((s) => s.id);
   if (backIn.length) {
     await db.update(slots).set({ offSchedule: false }).where(inArray(slots.id, backIn));
   }
 
-  const stale = existing.filter((s) => !wantedKeys.has(new Date(s.startsAt).toISOString()));
-  if (!stale.length) return { added, removed: 0, flagged: 0 };
+  /* Занятое время, вокруг которого строится сетка: новые слоты его не пересекают */
+  const blockers: Span[] = [];
+  let removed = 0;
+  let flagged = 0;
 
-  const live = await db
-    .select({ slotId: appointments.slotId })
-    .from(appointments)
-    .where(
-      and(
-        inArray(appointments.slotId, stale.map((s) => s.id)),
-        sql`${appointments.status} <> 'cancelled'`,
-      ),
-    );
-  const busy = new Set(live.map((a) => a.slotId));
-
-  const toRemove = stale.filter((s) => !busy.has(s.id)).map((s) => s.id);
-  const toFlag = stale.filter((s) => busy.has(s.id) && !s.offSchedule).map((s) => s.id);
-
-  /*
-   * Удаляем с проверкой занятости в самом операторе, а не по списку,
-   * прочитанному выше.
-   *
-   * Между чтением занятых слотов и удалением проходит время, и в это окно
-   * пациент может записаться на слот, который мы уже решили удалить. У
-   * `appointments.slot_id` стоит `on delete cascade`, поэтому удаление
-   * слота уносит и приём — молча, без строки в журнале, без уведомления.
-   * Пациент при этом видел на экране «вы записаны».
-   *
-   * Это ровно та «молчаливая отмена чужого приёма», которую пояснение к
-   * `offSchedule` объявляет недопустимой ни при каких обстоятельствах:
-   * пометка защищала от последовательного случая, но не от параллельного.
-   *
-   * Условие в самом DELETE закрывает окно; ключ базы (`on delete restrict`)
-   * закрывает его окончательно, чем бы гонка ни кончилась. Здесь учитывается
-   * ЛЮБОЙ приём, включая отменённый: он тоже история, и удаление слота под
-   * ним упёрлось бы во внешний ключ.
-   */
-  let removedSlots: { id: string }[] = [];
-  if (toRemove.length) {
-    removedSlots = await db
-      .delete(slots)
+  if (stale.length) {
+    const live = await db
+      .select({ slotId: appointments.slotId })
+      .from(appointments)
       .where(
         and(
-          inArray(slots.id, toRemove),
-          sql`not exists (
-            select 1 from appointments a where a.slot_id = ${slots.id}
-          )`,
+          inArray(
+            appointments.slotId,
+            stale.map((s) => s.id),
+          ),
+          ne(appointments.status, "cancelled"),
         ),
-      )
-      .returning({ id: slots.id });
-  }
-  /*
-   * Кого записали в последний момент — помечаем «вне расписания», как и
-   * тех, кто был занят на момент чтения. Иначе слот остался бы обычным, и
-   * специалист не увидел бы, что приём выпал из его часов.
-   */
-  const survived = toRemove.filter((id) => !removedSlots.some((r) => r.id === id));
-  if (survived.length) {
-    await db.update(slots).set({ offSchedule: true }).where(inArray(slots.id, survived));
-  }
-  if (toFlag.length) {
-    await db.update(slots).set({ offSchedule: true }).where(inArray(slots.id, toFlag));
+      );
+    const busy = new Set(live.map((a) => a.slotId));
+    const free = stale.filter((s) => !busy.has(s.id));
+
+    /*
+     * Удаляем и закрываем с проверкой занятости в самом операторе, а не по
+     * списку, прочитанному выше.
+     *
+     * Замок выше не пускает в эти слоты новую запись, но проверка в самом
+     * операторе остаётся: она не зависит от того, все ли пишущие берут
+     * замок (посев, наполнение демонстрационными данными пишут приёмы
+     * напрямую). Ключ базы (`on delete restrict`, 0064) закрывает окно
+     * окончательно: удаление слота под приёмом упёрлось бы в него. Здесь
+     * учитывается ЛЮБОЙ приём, включая отменённый: он тоже история.
+     */
+    const deleted = free.length
+      ? await db
+          .delete(slots)
+          .where(
+            and(
+              inArray(
+                slots.id,
+                free.map((s) => s.id),
+              ),
+              sql`not exists (select 1 from appointments a where a.slot_id = ${slots.id})`,
+            ),
+          )
+          .returning({ id: slots.id })
+      : [];
+    const gone = new Set(deleted.map((r) => r.id));
+
+    /*
+     * Слот, на котором лежит только отменённый приём, не удалить, а
+     * оставить открытым нельзя: он держал бы время, которого в расписании
+     * больше нет, и новая сетка не могла бы его занять. Он закрывается —
+     * уходит из записи и из правила о пересечениях, а история приёма
+     * остаётся при нём со своим временем.
+     */
+    const withHistory = free.filter((s) => !gone.has(s.id));
+    const closed = withHistory.length
+      ? await db
+          .update(slots)
+          .set({ status: "closed", offSchedule: false })
+          .where(
+            and(
+              inArray(
+                slots.id,
+                withHistory.map((s) => s.id),
+              ),
+              sql`not exists (
+                select 1 from appointments a where a.slot_id = ${slots.id} and a.status <> 'cancelled'
+              )`,
+            ),
+          )
+          .returning({ id: slots.id })
+      : [];
+    const shut = new Set(closed.map((r) => r.id));
+
+    /*
+     * Кого записали в последний момент — помечаем «вне расписания», как и
+     * тех, кто был занят на момент чтения. Иначе слот остался бы обычным, и
+     * специалист не увидел бы, что приём выпал из его часов.
+     */
+    const kept = stale.filter((s) => !gone.has(s.id) && !shut.has(s.id));
+    const toFlag = kept.filter((s) => !s.offSchedule).map((s) => s.id);
+    if (toFlag.length) {
+      await db.update(slots).set({ offSchedule: true }).where(inArray(slots.id, toFlag));
+    }
+    blockers.push(...kept);
+    // считаем по факту, а не по намерению: часть могла уцелеть
+    removed = deleted.length + closed.length;
+    flagged = toFlag.length;
   }
 
-  // считаем удалённые по факту, а не по намерению: часть могла уцелеть
-  // из-за записи, появившейся между чтением и удалением
-  return {
-    added,
-    removed: removedSlots.length,
-    flagged: toFlag.length + survived.length,
-  };
+  /*
+   * Закрытый слот с живым приёмом — след двойной записи, которую разобрала
+   * миграция 0105: приём живёт, в правило о пересечениях слот уже не входит.
+   * Его время тоже занято, и сетка обходит его сама — база здесь не
+   * подскажет.
+   */
+  const closedButBusy = await db
+    .select({ startsAt: slots.startsAt, endsAt: slots.endsAt })
+    .from(slots)
+    .where(
+      and(
+        inWindow,
+        eq(slots.status, "closed"),
+        sql`exists (select 1 from appointments a where a.slot_id = ${slots.id} and a.status <> 'cancelled')`,
+      ),
+    );
+  blockers.push(...closedButBusy);
+
+  const present = new Set(inGrid.map(keyOf));
+  const missing = wanted.filter((w) => !present.has(keyOf(w)) && !blockers.some((b) => overlap(b, w)));
+
+  /*
+   * Вставка — после того, как выпавшее убрано: новый 09:00–09:30 иначе
+   * упёрся бы в ещё не удалённый 09:00–09:50. `on conflict do nothing` без
+   * цели ловит и ключ начала, и запрет пересечения — на случай, если кто-то
+   * успел раньше; добавленные считаются по факту.
+   */
+  let added = 0;
+  for (let i = 0; i < missing.length; i += 500) {
+    const chunk = missing.slice(i, i + 500).map((w) => ({
+      id: crypto.randomUUID(),
+      specialistId,
+      departmentId: profile.departmentId,
+      startsAt: w.startsAt,
+      endsAt: w.endsAt,
+    }));
+    const result = await db.insert(slots).values(chunk).onConflictDoNothing().returning({ id: slots.id });
+    added += result.length;
+  }
+
+  return { added, removed, flagged };
 }

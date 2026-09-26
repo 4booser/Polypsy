@@ -2828,6 +2828,13 @@ export const slots = pgTable(
     endsAt: timestampCol("ends_at").notNull(),
     kind: text("kind", { enum: ["primary", "repeat", "any"] }).notNull().default("any"),
     capacity: integer("capacity").notNull().default(1),
+    /**
+     * Открытый слот — обещание времени специалиста, свободное или уже
+     * отданное; два таких на одно время база не примет (0105). Закрытый —
+     * убран из сетки, но не удалён, потому что на нём лежит история
+     * отменённого приёма: так синхронизация уводит его, когда шаблон
+     * изменился (lib/schedule.ts). В закрытый слот не записывают.
+     */
     status: text("status", { enum: ["open", "closed"] }).notNull().default("open"),
     /**
      * Слот, который больше не попадает в расписание, но занят.
@@ -2844,8 +2851,16 @@ export const slots = pgTable(
     /*
      * Идемпотентность генерации держится на этом индексе: повторный прогон
      * не плодит дубликаты, потому что дубликат физически невозможен.
+     *
+     * Только среди открытых (0105): закрытый слот — история отменённого
+     * приёма, и его начало не должно мешать новому слоту на то же время.
+     * Рядом в базе стоит ограничение slots_open_no_overlap — открытые слоты
+     * специалиста не пересекаются вовсе (exclusion по tstzrange). Drizzle
+     * такие ограничения не описывает, поэтому оно живёт только в миграции.
      */
-    uniq: uniqueIndex("slots_specialist_start_uniq").on(t.specialistId, t.startsAt),
+    uniq: uniqueIndex("slots_specialist_start_uniq")
+      .on(t.specialistId, t.startsAt)
+      .where(sql`status = 'open'`),
     lookupIdx: index("slots_lookup_idx").on(t.departmentId, t.startsAt),
   }),
 );

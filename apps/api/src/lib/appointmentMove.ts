@@ -25,16 +25,30 @@ export type AppointmentStatus = NonNullable<typeof appointments.$inferSelect["st
  * молча затирает чужое решение. Возвращается обновлённая строка или null —
  * решение, что сказать в отказе, остаётся за маршрутом: «приём уже закрыт»
  * и «такой переход не разрешён» читаются по-разному.
+ *
+ * Слот — вторая половина состояния (волна 12, внешний разбор). Перенос
+ * меняет не статус, а слот: приём остаётся «записан», и проверка одного
+ * статуса пропускала запись, решённую о прежнем времени, — подтверждение
+ * прежнего времени ложилось на новое, отмена считала «позднюю» по старому
+ * слоту, второй перенос затирал первый. Маршрут передаёт слот, который
+ * прочитал, и запись проходит, только если приём всё ещё на нём.
  */
 export async function moveAppointment(
   id: string,
   from: readonly AppointmentStatus[],
   set: Partial<typeof appointments.$inferInsert>,
+  expected: { slotId?: string } = {},
 ): Promise<typeof appointments.$inferSelect | null> {
   const [row] = await db
     .update(appointments)
     .set(set)
-    .where(and(eq(appointments.id, id), inArray(appointments.status, [...from])))
+    .where(
+      and(
+        eq(appointments.id, id),
+        inArray(appointments.status, [...from]),
+        expected.slotId ? eq(appointments.slotId, expected.slotId) : undefined,
+      ),
+    )
     .returning();
   return row ?? null;
 }

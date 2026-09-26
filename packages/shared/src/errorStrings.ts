@@ -1136,6 +1136,16 @@ export const ERRORS = {
     ru: "Так приём не движется: из «{from}» не переходят в «{to}»",
     en: "An appointment can’t move that way: “{from}” doesn’t lead to “{to}”",
   },
+  "err.appointmentChanged": {
+    uk: "Прийом щойно змінили. Оновіть сторінку й перевірте, чи дія ще потрібна",
+    ru: "Приём только что изменили. Обновите страницу и проверьте, нужно ли ещё действие",
+    en: "The appointment has just been changed. Refresh and check whether the action is still needed",
+  },
+  "err.specialistNotAccepting": {
+    uk: "Цей фахівець зараз не приймає запис. Оберіть іншого",
+    ru: "Этот специалист сейчас не принимает запись. Выберите другого",
+    en: "This specialist isn’t taking bookings right now. Please choose another",
+  },
   "err.confirmSelfOnly": {
     uk: "Підтвердити прийом може лише той, кого записано",
     ru: "Подтвердить приём может только тот, кто записан",
