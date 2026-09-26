@@ -85,17 +85,51 @@ say_fail() { echo "ПРОВАЛ: $1"; fail=1; }
 #    Сравнение с источником отвечает на настоящий вопрос: воспроизводит ли
 #    дамп то, с чего снят. Пустая таблица при пустом источнике — норма;
 #    пустая при непустом — та самая беда, ради которой проверка написана.
-for table in users surveys responses audit_log; do
+#
+#    Сравнение — на МОМЕНТ СНИМКА, а не на момент проверки. Рабочая база живёт
+#    дальше: за час после снимка журнал дописал полторы сотни строк, и
+#    сравнение «сейчас» объявило непригодной исправную копию (первый же
+#    прогон по расписанию, 2026-09-26). Поэтому источник считается до
+#    последней строки, которая есть в копии: для таблиц — по времени её
+#    создания, для журнала — по номеру записи, и там же сверяется хэш этой
+#    записи: совпавший хэш доказывает, что копия — начало того же журнала, а
+#    не другой журнал той же длины.
+for spec in users:created_at surveys:created_at responses:started_at; do
+  table="${spec%%:*}"; col="${spec#*:}"
   n="$($PG_EXEC psql "$restored_url" -tAc "select count(*) from $table" 2>/dev/null || echo "нет")"
-  src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from $table" 2>/dev/null || echo "нет")"
   if [ "$n" = "нет" ]; then
     say_fail "таблицы $table нет в восстановленной базе"
-  elif [ "$n" != "$src" ]; then
-    say_fail "в $table восстановлено $n строк, в рабочей базе $src"
+    continue
+  fi
+  edge="$($PG_EXEC psql "$restored_url" -tAc "select coalesce(max($col)::text, '') from $table" 2>/dev/null || echo "")"
+  if [ -z "$edge" ]; then
+    src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from $table where $col is null" 2>/dev/null || echo "нет")"
   else
-    echo "  $table: $n строк (совпадает с рабочей)"
+    src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from $table where $col <= '$edge'::timestamptz" 2>/dev/null || echo "нет")"
+  fi
+  if [ "$n" != "$src" ]; then
+    say_fail "в $table восстановлено $n строк, в рабочей базе на момент снимка $src"
+  else
+    echo "  $table: $n строк (совпадает с рабочей на момент снимка)"
   fi
 done
+
+n="$($PG_EXEC psql "$restored_url" -tAc "select count(*) from audit_log" 2>/dev/null || echo "нет")"
+if [ "$n" = "нет" ]; then
+  say_fail "таблицы audit_log нет в восстановленной базе"
+else
+  last="$($PG_EXEC psql "$restored_url" -tAc "select coalesce(max(seq), 0) from audit_log" 2>/dev/null || echo 0)"
+  src="$($PG_EXEC psql "$DATABASE_URL" -tAc "select count(*) from audit_log where seq <= $last" 2>/dev/null || echo "нет")"
+  h_copy="$($PG_EXEC psql "$restored_url" -tAc "select entry_hash from audit_log where seq = $last" 2>/dev/null || echo "")"
+  h_live="$($PG_EXEC psql "$DATABASE_URL" -tAc "select entry_hash from audit_log where seq = $last" 2>/dev/null || echo "")"
+  if [ "$n" != "$src" ]; then
+    say_fail "в audit_log восстановлено $n строк, в рабочей базе до записи №$last — $src"
+  elif [ "$last" != "0" ] && [ "$h_copy" != "$h_live" ]; then
+    say_fail "запись журнала №$last в копии и в рабочей базе разная — копия не того журнала"
+  else
+    echo "  audit_log: $n строк до записи №$last, хэш совпадает с рабочей"
+  fi
+fi
 
 # 2. Миграции накатаны полностью: восстановленная база должна знать столько же
 #    миграций, сколько рабочая, иначе дамп снят со старой схемы.
