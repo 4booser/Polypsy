@@ -22,6 +22,7 @@ import { buildResponseView } from "../src/pages/response/model";
 
 const detail: ResponseDetail = {
   id: "r1",
+  userId: "u1",
   survey: { id: "s1", title: "Тест", scoringEnabled: true, versionNumber: 1 },
   status: "completed",
   startedAt: "2026-09-01T10:00:00Z",
@@ -225,10 +226,13 @@ function codeFiles(dir: string): string[] {
 
 describe("пройденный тест: адрес", () => {
   const ROUTE = '<Route path="/surveys/:id/responses/:rid"';
+  const CHARTS = '<Route path="/surveys/:id/responses/:rid/charts"';
 
   test("маршрут объявлен в таблице маршрутов", () => {
     const app = readFileSync(join(SRC, "App.tsx"), "utf8");
     expect(app, "apps/web/src/App.tsx: маршрут прохождения снят или переименован").toContain(ROUTE);
+    // вкладка «Графіки» и карточка пациента ведут сюда — без маршрута это тихий уход на «*»
+    expect(app, "apps/web/src/App.tsx: маршрут графиков прохождения снят или переименован").toContain(CHARTS);
   });
 
   test("каждая ссылка на прохождение собрана по форме маршрута", () => {
@@ -264,6 +268,13 @@ describe("пройденный тест: адрес", () => {
          */
         const draftDeclared = /path="\/responses\/:id\/conclusion\/draft"/.test(APP);
         if (draftDeclared && /^\/responses\/\$\{[^}]+\}\/conclusion\/draft$/.test(m[1]!)) continue;
+        /*
+         * Вкладка «Графіки» того же прохождения — «/surveys/:id/responses/:rid/charts».
+         * Пропуск на тех же условиях: пока маршрут объявлен. Форма начала —
+         * та же, что у протокола: методика впереди обязательна и здесь.
+         */
+        const chartsDeclared = /path="\/surveys\/:id\/responses\/:rid\/charts"/.test(APP);
+        if (chartsDeclared && /^\/surveys\/\$\{[^}]+\}\/responses\/\$\{[^}]+\}\/charts$/.test(m[1]!)) continue;
         if (!/^\/surveys\/\$\{[^}]+\}\/responses\/\$\{[^}]+\}$/.test(m[1]!)) {
           offenders.push(`${file.slice(SRC.length + 1)}: \`${m[1]}\``);
         }
