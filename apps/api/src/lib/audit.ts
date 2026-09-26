@@ -230,6 +230,9 @@ export type AuditAction =
   /* техпанель: чтение логов и групп ошибок процесса — склеено по пять минут (routes/ops.ts) */
   | "ops.logs.read"
   | "ops.errors.read"
+  /* техпанель: трасса одного запроса (каждое чтение) и план медленного SQL по кнопке (routes/opsObs.ts) */
+  | "ops.trace.read"
+  | "ops.statements.explain"
   | "norms.publish"
   | "analytics.data_quality"
   | "analytics.facets"

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { OpsErrorGroup } from "@quizzy/shared";
+import type { OpsErrorGroup, OpsErrorWindow } from "@quizzy/shared";
 import { api } from "../../api";
 import { dateTime, locale } from "../../format";
 import { useLang } from "../../lang";
@@ -8,8 +8,10 @@ import { IconDisclosure } from "../../ui/glyphs";
 import { Button, Input, Num } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
-import { clock, filterErrors, fmtInt } from "./model";
-import { Quiet, RequestId, Stamp, useOpsResource } from "./parts";
+import { PeriodSwitch } from "../dashboard/parts";
+import { ERROR_WINDOWS, PERIOD_KEY, filterErrors, fmtInt, parseErrorWindow } from "./model";
+import { HistoryNote, TraceSearch } from "./obs2a/parts";
+import { Quiet, RequestId, Stamp, StatusMark, useOpsResource } from "./parts";
 
 /*
  * Помилки: необработанные исключения процесса, сведённые в группы.
@@ -23,6 +25,13 @@ import { Quiet, RequestId, Stamp, useOpsResource } from "./parts";
  * Раскрытая группа — в адресе (?open=<отпечаток>): ссылку «вот эта ошибка»
  * пересылают коллеге. Поиск (?q=) — тоже там. Чтение вкладки пишется в
  * журнал (ops.errors.read) — опросы одного человека склеены сервером.
+ *
+ * Решение заказчика 2026-09-26 (участок obs2a): группы — из истории в базе
+ * за период (?window=24h|7d|30d|90d), а не с момента запуска. Число в
+ * строке — случаи за период; «усього» — с первого появления, пока группа
+ * хранится (90 дней без повторов). Группа, впервые появившаяся внутри
+ * периода, помечена «нова»: после выкатки это первое, что ищут. Поле
+ * номера запроса ведёт в трассу — номер с экрана ошибки у человека.
  */
 
 const POLL_MS = 30_000;
@@ -32,17 +41,31 @@ export default function OpsErrors() {
   const loc = locale();
   const [q, setQ] = useUrlState("q", "");
   const [open, setOpen] = useUrlState("open", "");
+  const [rawWindow, setWindow] = useUrlState("window", "24h");
+  const win: OpsErrorWindow = parseErrorWindow(rawWindow);
 
-  const res = useOpsResource(() => api.opsErrors(), [], POLL_MS);
+  const res = useOpsResource(() => api.opsErrors(win), [win], POLL_MS);
   const shown = useMemo(() => (res.data ? filterErrors(res.data.items, q) : null), [res.data, q]);
 
   if (res.error && !res.data) return <Loading error={res.error} onRetry={res.reload} />;
   if (!res.data || !shown) return <Loading rows={5} />;
   const total = res.data.items.reduce((s, g) => s + g.count, 0);
+  const from = res.data.from;
 
   return (
     <div>
-      <Stamp since={res.data.since} updatedAt={res.updatedAt} />
+      <Stamp
+        updatedAt={res.updatedAt}
+        note={
+          <HistoryNote
+            window={win}
+            from={res.data.from}
+            retentionDays={res.data.retentionDays}
+            store={res.data.store}
+            unavailable={res.data.historyUnavailable}
+          />
+        }
+      />
 
       <RuleSection
         className="mt-[16px]"
@@ -53,25 +76,34 @@ export default function OpsErrors() {
             <Num className="text-[13px] text-muted">
               {fill(ut("ops.errors.summary"), { groups: fmtInt(res.data.items.length, loc), n: fmtInt(total, loc) })}
             </Num>
-            <Input
-              look="fill"
-              ph="plain"
-              aria-label={ut("ops.errors.search")}
-              placeholder={ut("ops.errors.search")}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="w-[280px] px-[10px] max-[600px]:w-full"
-              autoComplete="off"
-              maxLength={120}
+            <PeriodSwitch<OpsErrorWindow>
+              label={ut("ops.history.periodLabel")}
+              value={win}
+              onChange={(v) => setWindow(v)}
+              options={ERROR_WINDOWS.map((w) => [w, ut(PERIOD_KEY[w])] as const)}
             />
           </>
         }
       >
+        <div className="mb-[12px] flex flex-wrap items-start justify-between gap-[12px]">
+          <Input
+            look="fill"
+            ph="plain"
+            aria-label={ut("ops.errors.search")}
+            placeholder={ut("ops.errors.search")}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="w-[280px] px-[10px] max-[600px]:w-full"
+            autoComplete="off"
+            maxLength={120}
+          />
+          <TraceSearch />
+        </div>
         {res.data.dropped > 0 ? (
           <Quiet>{fill(ut("ops.errors.dropped"), { n: fmtInt(res.data.dropped, loc), cap: res.data.capacity })}</Quiet>
         ) : null}
         {res.data.items.length === 0 ? (
-          <Quiet>{ut("ops.errors.empty")}</Quiet>
+          <Quiet>{res.data.from ? ut("ops.history.errorsEmpty") : ut("ops.errors.empty")}</Quiet>
         ) : shown.length === 0 ? (
           <Quiet>{ut("ops.errors.noMatch")}</Quiet>
         ) : (
@@ -80,6 +112,7 @@ export default function OpsErrors() {
               <ErrorRow
                 key={g.fingerprint}
                 g={g}
+                from={from}
                 open={open === g.fingerprint}
                 onToggle={() => setOpen(open === g.fingerprint ? "" : g.fingerprint)}
               />
@@ -91,10 +124,23 @@ export default function OpsErrors() {
   );
 }
 
-function ErrorRow({ g, open, onToggle }: { g: OpsErrorGroup; open: boolean; onToggle: () => void }) {
+function ErrorRow({
+  g,
+  from,
+  open,
+  onToggle,
+}: {
+  g: OpsErrorGroup;
+  /** Начало периода истории; нет — вкладка в режиме памяти процесса */
+  from?: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
   const { ut } = useLang();
   const loc = locale();
   const stackId = `ops-stack-${g.fingerprint}`;
+  /* впервые — внутри периода: новая ошибка, а не старая знакомая */
+  const fresh = Boolean(from && g.firstAt >= from);
   return (
     <li className="border-b border-hairline py-[12px]">
       <div className="flex flex-wrap items-baseline gap-x-[14px] gap-y-[4px]">
@@ -104,6 +150,7 @@ function ErrorRow({ g, open, onToggle }: { g: OpsErrorGroup; open: boolean; onTo
         <span className="min-w-0 flex-1 basis-[280px] break-words font-mono text-[13px] leading-[18px] text-text-2">
           {g.message || "—"}
         </span>
+        {fresh ? <StatusMark tone="warn">{ut("ops.history.new")}</StatusMark> : null}
       </div>
       <div className="mt-[6px] flex flex-wrap items-center gap-x-[16px] gap-y-[6px] pl-[70px] text-[13px] leading-[18px] text-muted max-[600px]:pl-0">
         {g.route ? (
@@ -115,7 +162,10 @@ function ErrorRow({ g, open, onToggle }: { g: OpsErrorGroup; open: boolean; onTo
         )}
         {g.code ? <Num>{g.code}</Num> : null}
         <span title={dateTime(g.firstAt)}>{fill(ut("ops.errors.first"), { time: dateTime(g.firstAt) })}</span>
-        <span title={dateTime(g.lastAt)}>{fill(ut("ops.errors.last"), { time: clock(g.lastAt, loc) })}</span>
+        <span title={dateTime(g.lastAt)}>{fill(ut("ops.history.lastOn"), { time: dateTime(g.lastAt) })}</span>
+        {g.totalCount !== undefined && g.totalCount !== g.count ? (
+          <Num>{fill(ut("ops.history.total"), { n: fmtInt(g.totalCount, loc) })}</Num>
+        ) : null}
         <RequestId id={g.lastRequestId} />
         <Button
           variant="ghost"
