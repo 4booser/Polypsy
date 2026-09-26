@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { boundaries, ladderDomain, rungOf, sameLadder, segments, share } from "../src/charts/ladder";
+import { boundaries, ladderDomain, profileRuns, rungOf, sameLadder, segments, share } from "../src/charts/ladder";
 
 /**
  * Арифметика лестницы полос — общая для линейки, профиля и динамики.
@@ -104,5 +104,24 @@ describe("соединение профиля", () => {
 
   test("одна строка — не профиль", () => {
     expect(sameLadder([{ rungs: phq9, domain: ladderDomain(phq9) }])).toBe(false);
+  });
+});
+
+describe("отрезки линии профиля", () => {
+  const d = ladderDomain(phq9);
+  const row = (value: number | null, rungs = phq9) => ({ rungs, domain: rungs === phq9 ? d : ladderDomain(rungs, [value]), value });
+
+  test("шкала с другой лестницей рвёт линию, а не выключает её целиком", () => {
+    // так у Міні-мульта: девятая шкала без норм стоит сырым метром среди Т-шкал
+    const rows = [row(3), row(12), row(7, []), row(20), row(15)];
+    expect(profileRuns(rows)).toEqual([[0, 1], [3, 4]]);
+  });
+
+  test("строка без значения тоже рвёт линию", () => {
+    expect(profileRuns([row(3), row(null), row(12)])).toEqual([]);
+  });
+
+  test("одна строка своей лестницы — не отрезок", () => {
+    expect(profileRuns([row(3), row(7, [])])).toEqual([]);
   });
 });

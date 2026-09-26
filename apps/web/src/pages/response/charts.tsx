@@ -273,7 +273,13 @@ export function ResultSection({ rows }: { rows: ResultRow[] }) {
     const r = rows[0]!;
     return (
       <RuleSection title={ut("rch.result")}>
-        <Figure title={r.title} className="max-w-[860px]">
+        {/*
+          Линейка — во всю колонку, а не в 860, как полосы вклада ниже: у
+          полос длинный текст строки, и его удобнее читать узкой колонкой, а
+          у линейки текст — подписи ступеней, и на 860 они обрезались
+          многоточием уже у PHQ-9 («Легка («субклінічна…»).
+        */}
+        <Figure title={r.title}>
           {drawable(r) ? (
             <SeverityRuler
               rungs={r.rungs}

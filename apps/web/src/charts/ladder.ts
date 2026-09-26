@@ -149,12 +149,45 @@ export function rungOf<T extends Rung>(rungs: readonly T[], value: number): T | 
  */
 export function sameLadder(rows: readonly { rungs: readonly Rung[]; domain: Domain }[]): boolean {
   if (rows.length < 2) return false;
-  const key = (r: (typeof rows)[number]) =>
-    `${r.domain.lo}:${r.domain.hi}|${sortRungs(r.rungs)
-      .map((x) => `${x.min}-${x.max}`)
-      .join(",")}`;
-  const first = key(rows[0]!);
-  return rows.every((r) => key(r) === first);
+  const first = ladderKey(rows[0]!);
+  return rows.every((r) => ladderKey(r) === first);
+}
+
+/** Отпечаток лестницы строки: одинаковый — значит, одна система координат */
+export function ladderKey(r: { rungs: readonly Rung[]; domain: Domain }): string {
+  return `${r.domain.lo}:${r.domain.hi}|${sortRungs(r.rungs)
+    .map((x) => `${x.min}-${x.max}`)
+    .join(",")}`;
+}
+
+/**
+ * Отрезки линии профиля: подряд идущие строки с одной и той же лестницей.
+ *
+ * Правило «соединять, только если лестницы у всех одинаковые» выключало
+ * линию целиком из-за одной шкалы: у Міні-мульта девятая шкала (Ma) норм
+ * не имеет и рисуется сырым метром — и десять Т-шкал вокруг неё теряли
+ * профиль. Здесь линия рвётся ровно на строке с другой лестницей (и на
+ * строке без значения), а соседние строки одной системы координат
+ * соединяются, как на бланке. Отрезок из одной строки — не линия.
+ */
+export function profileRuns(
+  rows: readonly { rungs: readonly Rung[]; domain: Domain; value: number | null }[],
+): number[][] {
+  const runs: number[][] = [];
+  let run: number[] = [];
+  let key: string | null = null;
+  rows.forEach((r, i) => {
+    const k = r.value === null || !r.rungs.length ? null : ladderKey(r);
+    if (k !== null && k === key) {
+      run.push(i);
+    } else {
+      if (run.length > 1) runs.push(run);
+      run = k === null ? [] : [i];
+    }
+    key = k;
+  });
+  if (run.length > 1) runs.push(run);
+  return runs;
 }
 
 /**
