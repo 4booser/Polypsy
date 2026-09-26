@@ -376,7 +376,7 @@ describe("случаи риска", () => {
     expect(signals.length).toBeGreaterThan(1);
   });
 
-  test("сигналы по разным методикам собираются в один случай на человека", async () => {
+  test("сигналы по разным методикам одной группы собираются в один случай на человека", async () => {
     /*
      * Случай заводится на ЧЕЛОВЕКА. Так написано на экране разбора: «Случай —
      * это человек, а не отдельный пункт. Решение принимается один раз обо
@@ -384,6 +384,11 @@ describe("случаи риска", () => {
      * методика». Человек, у которого риск сработал по двум опросникам, висел
      * в очереди дважды, и второе решение принималось в отрыве от первого:
      * разбирающий мог не знать, что этот же человек уже разобран.
+     *
+     * Человек — внутри своей зоны видимости: методика другой группы заводит
+     * свой случай (решение заказчика 2026-09-26, внешний разбор P1; почему —
+     * у attachCaseRow, проверки под боевой ролью — alertCaseZones.test.ts).
+     * Здесь вторая методика — той же группы А, заведённая на месте.
      */
     const { attachToCase } = await import("../src/lib/alertCases");
     const { alertCases: casesTable } = await import("../src/db/schema");
@@ -391,6 +396,17 @@ describe("случаи риска", () => {
       "user",
       `two-surveys-${crypto.randomUUID()}@test`,
     );
+    const secondSurvey = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id: secondSurvey,
+      groupId: groupA,
+      title: { uk: "Друга методика групи А", ru: "Вторая методика группы А" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "private",
+      createdBy: adminA.id,
+    } as never);
     const at = new Date().toISOString();
 
     const first = await attachToCase(db as never, {
@@ -400,6 +416,12 @@ describe("случаи риска", () => {
       at,
     });
     const second = await attachToCase(db as never, {
+      userId: person.id,
+      surveyId: secondSurvey,
+      severity: "moderate",
+      at,
+    });
+    const foreign = await attachToCase(db as never, {
       userId: person.id,
       surveyId: surveyInB,
       severity: "moderate",
@@ -411,6 +433,7 @@ describe("случаи риска", () => {
       second,
       "вторая методика завела человеку второй случай — решение придётся принимать дважды",
     ).toBe(first);
+    expect(foreign, "сигнал чужой группы лёг в случай, которого её сотрудники не видят").not.toBe(first);
 
     const open = await db
       .select()
@@ -421,16 +444,16 @@ describe("случаи риска", () => {
           isNull(casesTable.acknowledgedAt),
         ),
       );
-    expect(open.length).toBe(1);
+    expect(open.length).toBe(2);
     // тяжесть случая — по худшему сигналу, а не по последнему
-    expect(open[0]!.severity).toBe("severe");
+    expect(open.find((x) => x.id === first)!.severity).toBe("severe");
 
     /*
-     * За собой прибираемся: случай заведён напрямую, без единого сигнала, и
+     * За собой прибираемся: случаи заведены напрямую, без единого сигнала, и
      * соседняя проверка «разбор ставит исход на все сигналы» берёт первый
      * открытый случай из списка — она бы взяла этот и не нашла в нём ничего.
      */
-    await db.delete(casesTable).where(eq(casesTable.id, first!));
+    await db.delete(casesTable).where(inArray(casesTable.id, [first!, foreign!]));
   });
 
   test("полоса шкалы поднимает случай без жодного розміченого варіанта", async () => {

@@ -93,7 +93,7 @@ import type {
   CreateReferralInput,
   CaseSummary,
   VersionDiff,
-  AlertCase,
+  AlertCasePage,
   AlertSignalBasis,
   GroupAnalytics,
   ResponseDetail,
@@ -785,11 +785,11 @@ export const api = {
   revokeInvite: (id: string) =>
     request<{ ok: true }>(`/api/invites/${id}/revoke`, { method: "POST" }),
 
-  /** Случаи риска: страница с курсором */
+  /** Случаи риска: страница с курсором; на первой — счётчики очереди из SQL */
   alertCases: (params: Record<string, string | undefined>) => {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
-    return request<Page<AlertCase>>(`/api/alert-cases?${qs}`);
+    return request<AlertCasePage>(`/api/alert-cases?${qs}`);
   },
   alertCaseUnits: () => unwrap(request<Items<string>>("/api/alert-cases/units")),
   /** Основание тревог случая: пункт с отмеченным вариантом либо полоса шкалы */
@@ -943,10 +943,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ release }),
     }),
-  resolveCase: (id: string, outcome: string, note: string) =>
+  /**
+   * Разбор случая. `seenLastAlertAt` — время последнего сигнала того случая,
+   * который человек видел: пришёл новый — сервер отвечает 409, а не кладёт
+   * решение на непрочитанный сигнал.
+   */
+  resolveCase: (id: string, outcome: string, note: string, seenLastAlertAt?: string) =>
     request<void>(`/api/alert-cases/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ outcome, note }),
+      body: JSON.stringify({ outcome, note, seenLastAlertAt }),
     }),
 
   openapi: () => request<OpenApiSpec>("/api/openapi.json"),

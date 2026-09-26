@@ -471,6 +471,11 @@ export const ERRORS = {
     ru: "Случай уже разобран",
     en: "This case has already been reviewed",
   },
+  "err.caseChanged": {
+    uk: "Поки ви розбирали випадок, надійшов новий сигнал. Перегляньте його й ухваліть рішення ще раз",
+    ru: "Пока вы разбирали случай, пришёл новый сигнал. Просмотрите его и примите решение ещё раз",
+    en: "A new signal arrived while you were reviewing this case. Look at it and decide again",
+  },
   "err.caseNotFound": { uk: "Випадок не знайдено", ru: "Случай не найден", en: "Case not found" },
   "err.caseTakenByOther": {
     uk: "Випадок вже взятий іншим фахівцем",

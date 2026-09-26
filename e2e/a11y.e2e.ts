@@ -256,9 +256,9 @@ for (const theme of ["dark", "light"] as const) {
      * пустое место справа — то есть примерно половину экрана, и как раз ту,
      * которая меняется чаще.
      */
-    await page.locator(".queue-row").first().waitFor();
-    await page.locator(".queue-row").first().click();
-    await expect(page.locator(".triage-case")).toBeVisible();
+    await page.locator("[data-queue-row]").first().waitFor();
+    await page.locator("[data-queue-row]").first().click();
+    await expect(page.locator("[data-triage-case]")).toBeVisible();
     await page.waitForTimeout(400);
     expect(await violationsOf(page, "/alerts")).toEqual([]);
   });
