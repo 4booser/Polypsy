@@ -108,6 +108,7 @@ export default function RoundsCardScreen() {
                         label: sc.title,
                         points: sc.points.map((p) => ({
                           x: p.submittedAt.slice(5, 10),
+                          t: Date.parse(p.submittedAt),
                           y: p.rawScore,
                           tone: p.severity ?? undefined,
                         })),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { boxStatsOf, formatShort, niceTicks } from "../src/components/viz/math";
+import { boxStatsOf, dailyBuckets, formatShort, lineRuns, niceTicks, xFractions } from "../src/components/viz/math";
 
 describe("деления оси", () => {
   test("круглые значения вместо дробных", () => {
@@ -86,5 +86,79 @@ describe("квартили", () => {
   test("пустая выборка — null, а не нули", () => {
     // нулевой ящик нарисовался бы как настоящий результат «все по нулям»
     expect(boxStatsOf("x", [])).toBeNull();
+  });
+});
+
+/*
+ * Линия во времени: дни без замеров — разрыв, а не соседние точки.
+ *
+ * Дефект: сервер отдаёт счёт только за дни, когда что-то было, и график
+ * ставил их подряд — три недели тишины выглядели как соседние сутки, а линия
+ * шла через пустоту. В веб-наборе (TimeLines) у пустой корзины null и линия
+ * рвётся; теперь так же.
+ */
+describe("счёт по дням", () => {
+  test("у каждого дня своё место; день без замера — null", () => {
+    expect(
+      dailyBuckets([
+        { date: "2026-03-01", count: 4 },
+        { date: "2026-03-04", count: 2 },
+      ]),
+    ).toEqual([
+      { x: "03-01", y: 4 },
+      { x: "03-02", y: null },
+      { x: "03-03", y: null },
+      { x: "03-04", y: 2 },
+    ]);
+  });
+
+  test("порядок и повторы дня не важны; переход месяца считается честно", () => {
+    expect(
+      dailyBuckets([
+        { date: "2026-03-01", count: 1 },
+        { date: "2026-02-28", count: 2 },
+        { date: "2026-03-01", count: 3 },
+      ]),
+    ).toEqual([
+      { x: "02-28", y: 2 },
+      { x: "03-01", y: 4 },
+    ]);
+  });
+
+  test("пусто — пусто", () => {
+    expect(dailyBuckets([])).toEqual([]);
+  });
+});
+
+describe("отрезки линии", () => {
+  test("null рвёт линию; одиночный замер — свой отрезок из одной точки", () => {
+    expect(lineRuns([1, 2, null, null, 5, null, 7, 8])).toEqual([[0, 1], [4], [6, 7]]);
+  });
+
+  test("без пропусков — одна линия, как было", () => {
+    expect(lineRuns([3, 1, 4])).toEqual([[0, 1, 2]]);
+    expect(lineRuns([null, null])).toEqual([]);
+  });
+});
+
+describe("ось X", () => {
+  test("у всех точек есть момент — ось по времени: месяц между замерами — месяц на графике", () => {
+    const day = 86_400_000;
+    const [xs] = xFractions([{ points: [{ t: 0 }, { t: day }, { t: 31 * day }] }]);
+    expect(xs![0]).toBe(0);
+    expect(xs![1]).toBeCloseTo(1 / 31);
+    expect(xs![2]).toBe(1);
+  });
+
+  test("моментов нет — равные шаги по номеру, общие для рядов", () => {
+    expect(xFractions([{ points: [{}, {}, {}] }, { points: [{}, {}] }])).toEqual([
+      [0, 0.5, 1],
+      [0, 0.5],
+    ]);
+  });
+
+  test("одна точка — посередине", () => {
+    expect(xFractions([{ points: [{ t: 5 }] }])).toEqual([[0.5]]);
+    expect(xFractions([{ points: [{}] }])).toEqual([[0.5]]);
   });
 });
