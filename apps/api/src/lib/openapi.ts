@@ -127,7 +127,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     summary: "Набор прав роли; встроенная роль не правится вручную",
     access: "superadmin", whyNoPermission: "управление правами закрыто ролью, а не правом: право на раздачу прав позволило бы выдать себе всё остальное, и справочник перестал бы что-либо ограничивать",
   },
-  "GET /api/permissions/staff": { summary: "Люди, которых актор вправе назначать", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
+  "GET /api/permissions/staff": { summary: "Люди, которых актор вправе назначать; `?directory=1` — справочник раздела «Лікарі»: с профилем приёма и телефоном, чтение в журнал (user.list, phones)", access: "staff", whyNoPermission: "раздача прав закрыта лестницей должностей, а не правом: право на раздачу прав позволило бы выдать себе всё остальное. Назначающий видит только ступени ниже своей" },
   "GET /api/permissions/users/:id": {
     summary: "Что человек может и из чего это сложилось: роли, исключения, итог",
     access: "staff",
@@ -368,7 +368,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/spss/surveys/:id/long.csv": { summary: "Данные в длинном формате для R и Python", access: "staff", permission: "export.deidentified" },
 
   /* ── администрирование ── */
-  "GET /api/users": { summary: "Учётные записи", access: "superadmin", permission: "users.manage" },
+  "GET /api/users": { summary: "Учётные записи; `?directory=1` — только сотрудники, с профилем приёма и телефоном, чтение в журнал (user.list, phones)", access: "superadmin", permission: "users.manage" },
   "POST /api/users": { summary: "Создание учётной записи", access: "superadmin", permission: "users.manage", body: createUserSchema },
   "PATCH /api/users/:id/role": { summary: "Смена роли", access: "superadmin", permission: "users.manage" },
   "GET /api/audit": { summary: "Журнал доступа", access: "superadmin", permission: "audit.read" },

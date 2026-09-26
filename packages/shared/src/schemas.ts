@@ -150,6 +150,24 @@ export const createUserSchema = z.object({
   role: roleSchema,
 });
 
+/**
+ * Справочник сотрудников: `?directory=1` у GET /api/users и у
+ * GET /api/permissions/staff.
+ *
+ * Флаг, а не третий маршрут: кому какой из двух списков открыт, решено давно
+ * и по-разному (право users.manage против ступени лестницы), и третий
+ * маршрут повторял бы оба правила. Флаг меняет не круг людей, а состав
+ * строки: только сотрудники, с телефоном и профилем приёма, — и чтение
+ * пишется в журнал с пометкой `phones`. Без флага оба маршрута отвечают
+ * по-прежнему: экрану учётных записей и экрану прав телефоны не нужны.
+ */
+export const staffDirectoryQuery = z.object({
+  directory: z
+    .string()
+    .optional()
+    .transform((v) => v === "1"),
+});
+
 /** Назначение методики конкретному пациенту */
 export const grantAccessSchema = z.object({
   userId: z.string().min(1),

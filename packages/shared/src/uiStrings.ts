@@ -1956,6 +1956,17 @@ export const UI = {
   /* ── wave9:shell ── */
 
   /* ── wave9:staff ── */
+  "ppl.listsLabel": { uk: "Списки співробітників", ru: "Списки сотрудников", en: "Staff lists" },
+  "ppl.searchStaff": { uk: "Пошук за ПІБ, логіном або телефоном", ru: "Поиск по ФИО, логину или телефону", en: "Search by name, login or phone" },
+  "ppl.department": { uk: "Відділення", ru: "Отделение", en: "Department" },
+  "ppl.allDepartments": { uk: "Усі відділення", ru: "Все отделения", en: "All departments" },
+  "ppl.allPositions": { uk: "Усі посади", ru: "Все должности", en: "All positions" },
+  "ppl.noDepartment": { uk: "Без відділення", ru: "Без отделения", en: "No department" },
+  "ppl.noPosition": { uk: "Без посади", ru: "Без должности", en: "No position" },
+  "ppl.sort": { uk: "Сортування", ru: "Сортировка", en: "Sort" },
+  "ppl.sortByName": { uk: "Сортування: за ім’ям", ru: "Сортировка: по имени", en: "Sort: by name" },
+  "ppl.sortByDepartment": { uk: "Сортування: за відділенням", ru: "Сортировка: по отделению", en: "Sort: by department" },
+  "ppl.sortByPosition": { uk: "Сортування: за посадою", ru: "Сортировка: по должности", en: "Sort: by position" },
 
   /* ─────────── аналитика методики ─────────── */
   "an.version": { uk: "Версія", ru: "Версия" },
