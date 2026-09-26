@@ -1,15 +1,16 @@
-import { Hono } from "hono";
-import { desc, eq } from "drizzle-orm";
-import { createUserSchema, type User } from "@quizzy/shared";
+import { Hono, type Context } from "hono";
+import { desc, eq, ne } from "drizzle-orm";
+import { createUserSchema, staffDirectoryQuery, type StaffDirectoryUser, type User } from "@quizzy/shared";
 import { db } from "../db";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { encryptPersonFields } from "../lib/crypto";
+import { decryptField, encryptPersonFields } from "../lib/crypto";
 import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
-import { conflict, forbidden, notFound, parseBody } from "../lib/http";
+import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { ensureBuiltinRole } from "../lib/permissions";
+import { placementsOf } from "../lib/staffDirectory";
 
 export const userRoutes = new Hono<AppEnv>();
 
@@ -25,10 +26,42 @@ export const userRoutes = new Hono<AppEnv>();
 userRoutes.use("*", requireAuth, requireStaff, requirePermission("users.manage"));
 
 userRoutes.get("/", async (c) => {
+  const { directory } = parseQuery(c, staffDirectoryQuery);
+  if (directory) return c.json({ items: await staffDirectory(c) });
   const rows = await db.select().from(users).orderBy(desc(users.createdAt));
   await audit(c, { action: "user.list", details: { count: rows.length } });
   return c.json({ items: rows.map(toPublicUser) satisfies User[] });
 });
+
+/**
+ * Справочник сотрудников (`?directory=1`) — список «Лікарі» и
+ * «Адміністратори» у того, кому открыт реестр.
+ *
+ * Прежде раздел брал весь реестр и отбрасывал пациентов уже в браузере: ради
+ * десятка коллег сервер расшифровывал ФИО и даты рождения каждого пациента
+ * учреждения и отдавал их наружу. Здесь пациентов нет вовсе — отбор в SQL.
+ *
+ * Телефон — расшифрованный, как в списке пациентов (решение заказчика
+ * 2026-09-25, docs/REWRITE-PLAN.md §14; для сотрудников — 2026-09-26:
+ * «фильтр по имени, номеру телефона и логину»). Ищет по нему экран: список
+ * сотрудников отдаётся целиком, и отбор, сортировка и группы считаются там же,
+ * где и значения выпадающих фильтров. Шифротекст наружу не уходит, а вопрос
+ * «кто видел номера» отвечается журналом — пометкой `phones`, как у
+ * access.patient_list.
+ */
+async function staffDirectory(c: Context<AppEnv>): Promise<StaffDirectoryUser[]> {
+  const rows = await db.select().from(users).where(ne(users.role, "user")).orderBy(desc(users.createdAt));
+  const placed = await placementsOf(
+    rows.map((r) => r.id),
+    langOf(c),
+  );
+  await audit(c, { action: "user.list", details: { count: rows.length, directory: true, phones: true } });
+  return rows.map((r) => ({
+    ...toPublicUser(r),
+    phone: decryptField(r.phoneEnc),
+    placement: placed.get(r.id) ?? null,
+  }));
+}
 
 /** Единственный способ завести администратора или специалиста */
 userRoutes.post("/", async (c) => {

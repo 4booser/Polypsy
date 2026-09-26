@@ -29,6 +29,8 @@ import type {
   SurveyStatus,
   SurveyVersion,
   User,
+  StaffDirectoryUser,
+  AssignableStaff,
   Issue,
   CreateUserInput,
   UpdateProfileInput,
@@ -859,6 +861,8 @@ export const api = {
         "/api/permissions/staff",
       ),
     ),
+  /* те же люди справочником раздела «Лікарі»: с профилем приёма и телефоном, чтение в журнале */
+  assignableDirectory: () => unwrap(request<Items<AssignableStaff>>("/api/permissions/staff?directory=1")),
   activeExceptions: () =>
     unwrap(
       request<Items<{
@@ -1057,6 +1061,8 @@ export const api = {
   },
 
   users: () => unwrap(request<Items<User>>("/api/users")),
+  /* справочник сотрудников: без пациентов, с профилем приёма и телефоном; чтение в журнале */
+  staffDirectory: () => unwrap(request<Items<StaffDirectoryUser>>("/api/users?directory=1")),
   createUser: (input: CreateUserInput) =>
     request<User>("/api/users", { method: "POST", body: JSON.stringify(input) }),
   createGroup: (input: GroupInput) =>

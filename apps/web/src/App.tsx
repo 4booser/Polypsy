@@ -11,6 +11,7 @@ import { onAppEvent } from "./events";
 import type { WorkspacePrefs } from "@quizzy/shared";
 import Dashboard from "./pages/Dashboard";
 import { PatientDynamics, PatientList } from "./pages/Patients";
+import { peopleLists } from "./pages/people/model";
 import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
 
@@ -826,8 +827,9 @@ export default function App() {
             (кадр f03) это первый экран лікаря после входа. Чужая — тем же,
             кому открыты списки; остальным сервер откажет в справочнике.
           */}
-          {isSuper || canAssign ? <Route path="/staff" element={<StaffList kind="doctors" />} /> : null}
-          {isSuper || canAssign ? <Route path="/admins" element={<StaffList kind="admins" />} /> : null}
+          {/* правило — peopleLists (pages/people/model.ts): по нему же список решает, показывать ли вкладки «Лікарі | Адміністратори» */}
+          {peopleLists(user).doctors ? <Route path="/staff" element={<StaffList kind="doctors" />} /> : null}
+          {peopleLists(user).admins ? <Route path="/admins" element={<StaffList kind="admins" />} /> : null}
           {canManageUsers ? <Route path="/staff/new" element={<StaffNew kind="doctor" />} /> : null}
           {canManageUsers ? <Route path="/admins/new" element={<StaffNew kind="admin" />} /> : null}
           <Route path="/staff/:id" element={<StaffCard />}>
