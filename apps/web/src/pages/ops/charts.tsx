@@ -148,7 +148,7 @@ export function TrafficCharts({
           series={[
             { key: "p50", label: ut("ops.col.p50"), color: PCT_COLOR.p50, values: lines.p50 },
             { key: "p95", label: ut("ops.col.p95"), color: PCT_COLOR.p95, values: lines.p95 },
-            { key: "p99", label: ut("ops.col.p99"), color: PCT_COLOR.p99, values: lines.p99 },
+            { key: "p99", label: ut("ops.col.p99"), color: PCT_COLOR.p99, dashed: true, values: lines.p99 },
           ]}
           format={ms}
           tick={(v) => fmtInt(v, loc)}

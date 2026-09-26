@@ -809,8 +809,10 @@ export function PairBars({
 export interface SeriesKey {
   key: string;
   label: string;
-  /** Цвет токеном: var(--primary), var(--cat-1), var(--accent) */
+  /** Цвет токеном: var(--primary), var(--series-quiet), var(--accent) */
   color: string;
+  /** Линия пунктиром (TimeLines) — и в легенде образец пунктиром */
+  dashed?: boolean;
 }
 
 /**
@@ -825,7 +827,11 @@ export function SeriesLegend({ items, className }: { items: readonly SeriesKey[]
     <ul className={cx("m-0 mt-[10px] flex list-none flex-wrap gap-x-[18px] gap-y-[4px] p-0 text-[13px] leading-[18px]", className)}>
       {items.map((i) => (
         <li key={i.key} className="flex min-w-0 items-center gap-[6px]">
-          <span aria-hidden className="inline-block size-[8px] shrink-0 rounded-[2px]" style={{ background: i.color }} />
+          {i.dashed ? (
+            <span aria-hidden className="inline-block h-0 w-[14px] shrink-0 border-t-2 border-dashed" style={{ borderColor: i.color }} />
+          ) : (
+            <span aria-hidden className="inline-block size-[8px] shrink-0 rounded-[2px]" style={{ background: i.color }} />
+          )}
           <span className="truncate text-text-2">{i.label}</span>
         </li>
       ))}
@@ -1258,6 +1264,7 @@ export function TimeLines({
                   fill="none"
                   stroke={s.color}
                   strokeWidth={2}
+                  strokeDasharray={s.dashed ? "5 4" : undefined}
                   strokeLinejoin="round"
                 />
               ),
