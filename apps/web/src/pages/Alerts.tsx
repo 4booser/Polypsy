@@ -46,7 +46,13 @@ const PAGE = 30;
  * украинском экране.
  */
 function duration(minutes: number, ut: (k: UiKey) => string): string {
-  if (minutes < 60) return `${minutes} ${ut("dur.min")}`;
+  /*
+   * Отрицательное или нечисло — часы клиента разошлись с сервером (или
+   * данных нет): «-5 хв тому» читалось бы как время из будущего, а не как
+   * сбой. Прочерк честнее — то же правило, что у длительностей в format.ts.
+   */
+  if (!Number.isFinite(minutes) || minutes < 0) return "—";
+  if (minutes < 60) return `${Math.round(minutes)} ${ut("dur.min")}`;
   const hours = Math.round(minutes / 60);
   if (hours < 48) return `${hours} ${ut("dur.hour")}`;
   return `${Math.round(hours / 24)} ${ut("dur.day")}`;
