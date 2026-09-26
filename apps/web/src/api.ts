@@ -11,6 +11,7 @@ import type {
   RespondentDynamics,
   RiskAlert,
   SeverityTrendResult,
+  ConditionsResult,
   SurveyAnalytics,
   SurveyFull,
   SurveyGrant,
@@ -538,6 +539,8 @@ export const api = {
 
   overview: () => request<OverviewAnalytics>("/api/analytics/overview"),
   severityTrend: () => request<SeverityTrendResult>("/api/analytics/severity-trend"),
+  /** Состояние пациентов по направлениям за период — стартовый экран «Зведення» */
+  dashboardConditions: (days: number) => request<ConditionsResult>(`/api/dashboard/conditions?days=${days}`),
   analytics: (id: string, versionId?: string, range?: { from?: string; to?: string }) => {
     const params = new URLSearchParams();
     if (versionId) params.set("versionId", versionId);
