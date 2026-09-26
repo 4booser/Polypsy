@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { UI, makeUiT, detectLang, parseAcceptLanguage, untranslatedEn, uiText, type UiKey } from "./uiStrings";
+import { EMPTY_BY_DESIGN_EN, UI, makeUiT, detectLang, parseAcceptLanguage, untranslatedEn, uiText, type UiKey } from "./uiStrings";
 import { LANGS, LANG_FALLBACK, LANG_NAMES, contentLangNotice, presentedLang, t } from "./types";
 import { ERRORS } from "./errorStrings";
 import { PUSH, renderPush } from "./pushStrings";
@@ -52,6 +52,8 @@ describe("словарь оболочки", () => {
       const t = makeUiT(lang);
       for (const [key] of entries) {
         expect(typeof t(key)).toBe("string");
+        // пустой английский суффикс года — намеренно (EMPTY_BY_DESIGN_EN)
+        if (lang === "en" && EMPTY_BY_DESIGN_EN.has(key)) continue;
         expect(t(key).length).toBeGreaterThan(0);
       }
     }
@@ -124,17 +126,16 @@ describe("английский в словаре оболочки", () => {
     ([, v]) => v.en !== undefined,
   );
 
-  test("считает непереведённые — и пока не падает", () => {
-    const missing = untranslatedEn();
-    const total = Object.keys(UI).length;
-    // счёт виден в выводе теста: это рабочая цифра для переводчиков
-    console.info(`uiStrings: без английского ${missing.length} из ${total}`);
-    expect(missing.length).toBeLessThanOrEqual(total);
-    // после перевода: expect(missing).toEqual([]);
+  test("переведено всё", () => {
+    // словарь переведён целиком в волне 9; тип UiEntry требует en, а этот
+    // тест ловит пустую строку, которую тип пропускает
+    expect(untranslatedEn()).toEqual([]);
   });
 
   test("переведённое — непустое и не заглушка", () => {
-    const bad = translated.filter(([, v]) => !v.en!.trim() || /TODO|FIXME|xxx/i.test(v.en!)).map(([k]) => k);
+    const bad = translated
+      .filter(([k, v]) => (!v.en!.trim() && !EMPTY_BY_DESIGN_EN.has(k)) || /TODO|FIXME|xxx/i.test(v.en!))
+      .map(([k]) => k);
     expect(bad).toEqual([]);
   });
 
