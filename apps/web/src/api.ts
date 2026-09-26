@@ -114,7 +114,20 @@ import type {
   ServiceStatusInput,
 } from "@quizzy/shared";
 import { MAINTENANCE_CODE, uiText } from "@quizzy/shared";
+import type {
+  OpsAlertChannel,
+  OpsAlertDelivery,
+  OpsAlertHistory,
+  OpsAlertRule,
+  OpsAlertRuleInput,
+  OpsAlertRuleKey,
+  OpsAlerts,
+  OpsClientErrors,
+  OpsRecordings,
+  OpsVitals,
+} from "@quizzy/shared";
 import { currentLang } from "./lang";
+import { noteNetworkFailure } from "./telemetry/bus";
 
 /*
  * Текст сетевого отказа.
@@ -234,8 +247,12 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
       },
     });
   } catch {
+    /* сбой сети — в «Помилки клієнта» техпанели (telemetry/): шаблоном адреса, без тела */
+    noteNetworkFailure({ method: init.method ?? "GET", path, status: 0 });
     throw new ApiError(netText("net.offline"), 0);
   }
+  /* пятисотка — тоже сбой, а не бизнес-отказ; 4xx туда не идут — это поведение, не поломка */
+  if (res.status >= 500) noteNetworkFailure({ method: init.method ?? "GET", path, status: res.status });
   if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
     if (await tryRefresh()) return request<T>(path, init, true);
     tokenStore.clear();
@@ -1080,6 +1097,24 @@ export const api = {
   },
   opsDb: () => request<OpsDb>("/api/ops/db"),
   opsJobs: () => request<OpsJobs>("/api/ops/jobs"),
+  /*
+   * Техпанель, участок obs2b: оповещения, ошибки клиента, скорость экранов,
+   * записи приёмов, ручной запуск задач. В отличие от методов выше — из
+   * базы (миграция 0095), а не из памяти процесса.
+   */
+  opsAlerts: () => request<OpsAlerts>("/api/ops/alerts"),
+  opsAlertHistory: () => request<OpsAlertHistory>("/api/ops/alerts/history"),
+  opsSaveAlertRule: (key: OpsAlertRuleKey, input: OpsAlertRuleInput) =>
+    request<OpsAlertRule>(`/api/ops/alerts/rules/${key}`, { method: "PUT", body: JSON.stringify(input) }),
+  opsTestAlert: (channel: OpsAlertChannel) =>
+    request<OpsAlertDelivery>("/api/ops/alerts/test", { method: "POST", body: JSON.stringify({ channel }) }),
+  opsClientErrors: () => request<OpsClientErrors>("/api/ops/client-errors"),
+  opsVitals: (days = 30) => request<OpsVitals>(`/api/ops/vitals?days=${days}`),
+  opsRecordings: () => request<OpsRecordings>("/api/ops/recordings"),
+  opsRetryRecording: (id: string) =>
+    request<{ ok: true }>(`/api/ops/recordings/${encodeURIComponent(id)}/retry`, { method: "POST", body: "{}" }),
+  opsRunJob: (name: string) =>
+    request<{ started: true }>(`/api/ops/jobs/${encodeURIComponent(name)}/run`, { method: "POST", body: "{}" }),
 
   consentText: () =>
     request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),

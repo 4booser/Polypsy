@@ -19,3 +19,4 @@ export * from "./rules";
 export * from "./equating";
 export * from "./kanon";
 export * from "./usage";
+export * from "./telemetry";

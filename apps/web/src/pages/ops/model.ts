@@ -175,6 +175,11 @@ export const JOB_KEY: Record<string, UiKey> = {
   "clinic.remind": "ops.job.remind",
   "mailings.push": "ops.job.mailings",
   retention: "ops.job.retention",
+  /* участок obs2b: задачи, которые запускают и руками (apps/api/src/lib/opsManual.ts) */
+  "analytics.cache": "o2b.job.analyticsCache",
+  "search.reindex": "o2b.job.searchReindex",
+  "catalog.install": "o2b.job.catalogInstall",
+  "ops.alerts": "o2b.job.alerts",
 };
 
 export const STATUS_KEY: Record<OpsHealthCheck["status"], UiKey> = {

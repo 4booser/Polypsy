@@ -108,6 +108,11 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Quizzy <noreply@localhost>}
       CONSOLE_URL: ${CONSOLE_URL:-}
+      # Оповещения техпанели («Сповіщення»): бот Telegram и почта дежурных.
+      # Пусто — канал «не задано», оповещения остаются в истории панели.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      OPS_ALERT_EMAIL: ${OPS_ALERT_EMAIL:-}
       INSTITUTION_NAME: ${INSTITUTION_NAME:-}
       INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
       PORT: "3001"

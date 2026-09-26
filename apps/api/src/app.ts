@@ -81,6 +81,7 @@ import { currentRequestId, log } from "./lib/log";
 import { reportError } from "./lib/errorReport";
 import { recordError } from "./lib/opsBuffer";
 import { opsRoutes } from "./routes/ops";
+import { opsIntakeRoutes, opsSignalRoutes } from "./routes/opsSignals";
 
 const app = new Hono<AppEnv>();
 
@@ -242,6 +243,16 @@ app.route("/api/flags", featureFlagRoutes);
 app.route("/api/ops/maint", opsMaintRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);
+/*
+ * Приём телеметрии клиента (ошибки, скорость экранов) — ПЕРВЫМ под /api/ops.
+ * Его шлют и экран входа, и кабинет пациента, а остальная техпанель под
+ * /api/ops закрыта общим слоем проверки сотрудника (routes/ops.ts,
+ * use("*")): подключённый после неё, приём упирался бы в этот слой.
+ * Сигналы техпанели (оповещения, записи приёмов, ручной запуск) несут
+ * заслоны сами — см. routes/opsSignals.ts.
+ */
+app.route("/api/ops", opsIntakeRoutes);
+app.route("/api/ops", opsSignalRoutes);
 /*
  * Техпанель для разработчиков: то же состояние, что в /metrics и логе, но
  * для человека в консоли — под правом ops.read, а не под общим секретом.
