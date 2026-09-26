@@ -11,6 +11,13 @@
 name: Обслуживание
 
 on:
+  # Раз в месяц — проверка восстановимости копии базы (решение заказчика
+  # 2026-09-26). «Снимок без проверки восстановлением — это не резервная
+  # копия, а надежда» (docs/DEPLOY.md); руками её не прогоняли ни разу, а
+  # выкатка v1.11.1 показала, что снимок может молча встать. Расписанием
+  # запускается только она — остальное в перечне по-прежнему руками.
+  schedule:
+    - cron: "0 4 1 * *"
   workflow_dispatch:
     inputs:
       action:
@@ -26,6 +33,8 @@ on:
           - leftovers
           - logs-web
           - logs-api
+          - backup-verify
+          - backup-status
       count:
         description: "Сколько вымышленных людей завести (только для demo-fill)"
         required: false
@@ -48,7 +57,8 @@ jobs:
 
       - name: Выполнить
         env:
-          ACTION: ${{ inputs.action }}
+          # у запуска по расписанию входных полей нет — это проверка копии
+          ACTION: ${{ inputs.action || 'backup-verify' }}
           COUNT: ${{ inputs.count }}
         run: |
           # команда собирается ЗДЕСЬ, из выбранного действия, а не приходит
@@ -68,6 +78,35 @@ jobs:
               SVC="${ACTION#logs-}"
               ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
                 "cd ${{ secrets.VPS_PATH }} && docker compose --env-file .env.docker logs --tail 120 $SVC"
+              exit 0 ;;
+            # Копии базы — на хосте, а не в контейнере api: снимок снимает
+            # служба quizzy-backup (systemd), и адрес базы, каталог копий и
+            # парольная фраза лежат в ЕЁ окружении. Отсюда их и берём, а не
+            # заводим второй список тех же значений в секретах: два места
+            # однажды разойдутся. Значения в журнал прогона не печатаются —
+            # скрипты выводят только итог.
+            backup-verify|backup-status)
+              ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+                "ACTION='$ACTION' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$TARGET"
+          set -a
+          for f in $(systemctl show quizzy-backup.service -p EnvironmentFiles --value | awk '{print $1}'); do
+            [ -r "$f" ] && . "$f"
+          done
+          # systemd берёт в кавычки значения с пробелами (PG_EXEC — это
+          # «docker compose … exec -T postgres»): разбор — оболочкой, в массив
+          eval "unit_env=( $(systemctl show quizzy-backup.service -p Environment --value) )"
+          for kv in "${unit_env[@]}"; do export "$kv"; done
+          set +a
+          if [ "$ACTION" = "backup-status" ]; then
+            systemctl status quizzy-backup.service --no-pager -n 0 | sed -n '1,4p' || true
+            echo "последние копии:"
+            ls -1t "${BACKUP_DIR:?каталог копий не найден в окружении службы}"/daily/ 2>/dev/null | head -5 || echo "  нет суточных копий"
+            exit 0
+          fi
+          ./scripts/verify-backup.sh
+          REMOTE
               exit 0 ;;
             *) echo "неизвестное действие: $ACTION"; exit 1 ;;
           esac
