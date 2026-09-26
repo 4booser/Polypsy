@@ -69,13 +69,28 @@ export async function beginSetup(
   if (existing?.confirmedAt) return { ok: false };
   const secret = base32Encode(newSecret());
   const secretEnc = encryptField(secret)!;
-  await db
+  /*
+   * «Не включён» — условием самой записи, а не только проверкой выше.
+   *
+   * Проверка чтением и запись шли порознь (внешний разбор 2026-09-26):
+   * подтверждение, закоммиченное между ними, затиралось — запись ставила
+   * confirmedAt = null и новый секрет, а у человека на руках оставались
+   * коды восстановления от стёртого фактора и уверенность, что фактор
+   * включён. Теперь перезаписывается только неподтверждённый: запись ждёт
+   * блокировки строки, перечитывает её и включённый фактор не трогает.
+   * Ноль строк в ответе — нас опередило подтверждение, то же, что
+   * «уже включён».
+   */
+  const written = await db
     .insert(userSecondFactor)
     .values({ userId, secretEnc })
     .onConflictDoUpdate({
       target: userSecondFactor.userId,
       set: { secretEnc, confirmedAt: null, lastStep: null, createdAt: new Date().toISOString() },
-    });
+      setWhere: isNull(userSecondFactor.confirmedAt),
+    })
+    .returning({ userId: userSecondFactor.userId });
+  if (!written.length) return { ok: false };
   return { ok: true, secret, otpauthUrl: otpauthUrl(account, secret) };
 }
 

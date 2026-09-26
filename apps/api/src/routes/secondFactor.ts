@@ -14,7 +14,7 @@ import { asSystem, systemContext } from "../db/context";
 import { users } from "../db/schema";
 import { touchLastSeen } from "../lib/accounts";
 import { audit } from "../lib/audit";
-import { readMfaToken, toPublicUser, verifyPassword } from "../lib/auth";
+import { issuedAfterRevocation, readMfaToken, toPublicUser, verifyPassword } from "../lib/auth";
 import { langOf, parseBody, unauthorized } from "../lib/http";
 import { currentRequestId } from "../lib/log";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
@@ -99,6 +99,26 @@ async function mfaLogin(c: Context<AppEnv>): Promise<Response | ErrorKey> {
       details: { email: row.email, reason: "disabled", step: "mfa" },
     });
     return "err.accountDisabled";
+  }
+
+  /*
+   * Сессии отозвали между шагами — начатый вход не завершается (внешний
+   * разбор 2026-09-26). Та же граница, что у access-токена в requireAuth:
+   * сброс пароля администратором, выключение, «завершить все сессии»
+   * сдвигают её, и знак «пароль верный», выданный раньше, — свидетельство
+   * о пароле, которого уже нет. Неудачей для счётчика попыток это не
+   * считается: код тут никто не подбирал.
+   */
+  if (!issuedAfterRevocation(step, row.tokensValidFrom)) {
+    await audit(c, {
+      action: "auth.login_failed",
+      outcome: "denied",
+      resourceType: "user",
+      resourceId: row.id,
+      actor,
+      details: { email: row.email, reason: "revoked", step: "mfa" },
+    });
+    return "err.sessionExpired";
   }
 
   if (await isLockedOut(row.email)) {

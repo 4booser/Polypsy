@@ -244,33 +244,110 @@ export class ApiError extends Error {
  * запрос один раз. Обмен общий на все параллельные запросы — иначе пачка
  * одновременных 401 сожжёт одноразовый refresh-токен на первом же обмене,
  * а остальные обмены сервер прочтёт как кражу и разлогинит всех.
+ *
+ * То же самое — между вкладками (внешний разбор 2026-09-26). Refresh лежит
+ * в localStorage, общем для всех вкладок, а `refreshing` — своя переменная
+ * каждой вкладки. Две вкладки с истёкшим access меняли один и тот же
+ * refresh; второй обмен сервер читал как повтор украденного токена, гасил
+ * семью и access-токены (lib/refresh.ts), и человек вылетал отовсюду разом,
+ * просто держа консоль открытой в двух вкладках.
+ *
+ * Поэтому обмен идёт под замком браузера (Web Locks, одно имя на все
+ * вкладки источника), а под замком вкладка сначала смотрит, не сменился ли
+ * access в хранилище с тех пор, как ушёл её запрос: сменился — значит,
+ * другая вкладка уже обменяла, и остаётся повторить запрос с новым.
+ * Без Web Locks (старый браузер) остаётся та же сверка без замка: она
+ * закрывает частый случай «соседняя вкладка успела раньше», но не
+ * одновременный старт двух обменов — его закрывает только замок.
  */
+const REFRESH_LOCK = "quizzy.auth.refresh";
 let refreshing: Promise<boolean> | null = null;
 
-async function tryRefresh(): Promise<boolean> {
-  refreshing ??= (async () => {
-    const raw = tokenStore.getRefresh();
-    if (!raw) return false;
-    try {
-      const res = await fetch("/api/auth/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: raw }),
-      });
-      if (!res.ok) return false;
-      const pair = (await res.json()) as { token: string; refreshToken: string };
-      tokenStore.set(pair.token);
-      tokenStore.setRefresh(pair.refreshToken);
-      return true;
-    } catch {
-      return false;
-    } finally {
+/** Выполнить под межвкладочным замком, если браузер его умеет */
+function underRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === "undefined" ? undefined : (navigator as { locks?: LockManager }).locks;
+  if (!locks?.request) return fn();
+  return locks.request(REFRESH_LOCK, fn) as Promise<T>;
+}
+
+/**
+ * Обмен, если его ещё никто не сделал.
+ *
+ * `stale` — access, с которым ушёл запрос, получивший 401. Токен в
+ * хранилище другой — его уже обменяла другая вкладка (или человек вошёл
+ * заново): второй обмен того же refresh был бы для сервера кражей.
+ */
+async function refreshUnlessRenewed(stale: string | null): Promise<boolean> {
+  const current = tokenStore.own();
+  if (current && current !== stale) return true;
+  const raw = tokenStore.getRefresh();
+  if (!raw) return false;
+  try {
+    const res = await fetch("/api/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: raw }),
+    });
+    if (!res.ok) return false;
+    const pair = (await res.json()) as { token: string; refreshToken: string };
+    // до того, как отпустить замок: следующая вкладка должна увидеть новую пару
+    tokenStore.set(pair.token);
+    tokenStore.setRefresh(pair.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryRefresh(stale: string | null): Promise<boolean> {
+  refreshing ??= underRefreshLock(() => refreshUnlessRenewed(stale))
+    .catch(() => false)
+    .finally(() => {
       setTimeout(() => {
         refreshing = null;
       }, 0);
-    }
-  })();
+    });
   return refreshing;
+}
+
+/**
+ * Маршруты, чей 401 — ответ о предъявленных учётных данных, а не об
+ * истёкшем access-токене.
+ *
+ * Обмен refresh их не чинит: неверный пароль останется неверным. Хуже —
+ * повтор после обмена посчитал бы неверный пароль второй раз (выключение
+ * второго фактора считает неудачи в тот же лимит, что вход) и лишний раз
+ * провернул бы ротацию. Вход, регистрация, второй шаг входа и обмен кода
+ * Google — без сессии вовсе; обмен и выход — сами работают с refresh; смена
+ * пароля, отвязка Google и выключение второго фактора отвечают 401 на
+ * неверный пароль или код.
+ */
+const CREDENTIAL_ROUTES = new Set([
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+  "/api/auth/mfa/login",
+  "/api/auth/google/exchange",
+  "/api/auth/password",
+  "/api/auth/google/unlink",
+  "/api/auth/mfa/disable",
+]);
+
+/**
+ * Чинится ли 401 этого запроса обменом refresh.
+ *
+ * Раньше из продления исключался весь /api/auth/*, а с ним и защищённый
+ * GET /api/auth/me — тот, которым консоль восстанавливает сессию при
+ * открытии (auth.tsx). Access живёт полчаса, refresh — месяц: открыл
+ * консоль утром — /me отвечает 401, обмена нет, и старт чистит сессию,
+ * хотя refresh жив (внешний разбор 2026-09-26). Теперь исключены только
+ * маршруты из перечня выше; остальной /api/auth — обычные защищённые
+ * маршруты. Мобильный клиент решает то же у себя.
+ */
+export function refreshesOn401(path: string): boolean {
+  const bare = path.split("?")[0]!;
+  return !CREDENTIAL_ROUTES.has(bare);
 }
 
 /**
@@ -333,8 +410,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   if (res.status === 401 && impersonationStore.get()) {
     impersonationStore.clear();
     window.location.assign("/ops/users");
-  } else if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
-    if (await tryRefresh()) return request<T>(path, init, true);
+  } else if (res.status === 401 && !retried && refreshesOn401(path)) {
+    if (await tryRefresh(token)) return request<T>(path, init, true);
     tokenStore.clear();
   }
   if (res.status === 204) return undefined as T;

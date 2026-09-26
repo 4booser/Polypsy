@@ -20,7 +20,7 @@ import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { touchLastSeen } from "../lib/accounts";
 import { badRequest, conflict, notFound, parseBody, unauthorized } from "../lib/http";
 import { normalizePhone, phoneFingerprint } from "../lib/phone";
-import { consumeInvite, findUsableInvite } from "../lib/invites";
+import { applyInvite, claimInvite, findUsableInvite } from "../lib/invites";
 import { encryptField, encryptPersonFields } from "../lib/crypto";
 import { env } from "../env";
 import { authorizeUrl, domainAllowed, exchangeCode, googleEnabled } from "../lib/google";
@@ -38,6 +38,19 @@ export const authRoutes = new Hono<AppEnv>();
  */
 const DUMMY_HASH = await hashPassword(crypto.randomUUID() + crypto.randomUUID());
 
+/*
+ * Отказ по приглашению — возвращается из транзакции регистрации, а
+ * бросается снаружи, как у входа (см. ниже): он идёт ПОСЛЕ записи в
+ * журнал, и брошенный изнутри откатывал её вместе с собой. Попытки пройти
+ * по чужой, отозванной или исчерпанной ссылке не оставляли следа (внешний
+ * разбор 2026-09-26, test/inviteRace.test.ts).
+ */
+type InviteRefusal = "err.inviteExpired" | "err.inviteExhausted" | "err.inviteInvalid";
+
+function inviteRefusal(reason: "unknown" | "expired" | "revoked" | "exhausted"): InviteRefusal {
+  return reason === "expired" ? "err.inviteExpired" : reason === "exhausted" ? "err.inviteExhausted" : "err.inviteInvalid";
+}
+
 /**
  * Самостоятельная регистрация всегда создаёт обычного пользователя.
  * Роль с клиента не принимается: раздавать себе права администратора,
@@ -50,10 +63,12 @@ const DUMMY_HASH = await hashPassword(crypto.randomUUID() + crypto.randomUUID())
  */
 authRoutes.post("/register", async (c) => {
   // регистрация — до аутентификации: пишет назначения и доступы системно
-  return systemContext(baseDb, () => registerHandler(c));
+  const outcome = await systemContext(baseDb, () => registerHandler(c));
+  if (typeof outcome === "string") badRequest(outcome);
+  return outcome;
 });
 
-async function registerHandler(c: Context<AppEnv>) {
+async function registerHandler(c: Context<AppEnv>): Promise<Response | InviteRefusal> {
   const input = await parseBody(c.req.raw, registerSchema);
   const email = input.email.toLowerCase();
 
@@ -123,13 +138,7 @@ async function registerHandler(c: Context<AppEnv>) {
         outcome: "denied",
         details: { email, reason: `invite_${invite.reason}` },
       });
-      badRequest(
-        invite.reason === "expired"
-          ? "err.inviteExpired"
-          : invite.reason === "exhausted"
-            ? "err.inviteExhausted"
-            : "err.inviteInvalid",
-      );
+      return inviteRefusal(invite.reason);
     }
   } else if (!env.openRegistration && !isBootstrap) {
     badRequest("err.inviteRequired");
@@ -153,6 +162,35 @@ async function registerHandler(c: Context<AppEnv>) {
 
   const samePhone = await db.query.users.findFirst({ where: eq(users.phoneIndex, phoneIndex) });
   if (samePhone) conflict("err.phoneExists");
+
+  // хеш — до притязания: argon2 не должен идти под блокировкой строки приглашения
+  const passwordHash = await hashPassword(input.password);
+
+  /*
+   * Использование приглашения гасится ДО создания учётной записи и в той
+   * же транзакции (внешний разбор 2026-09-26).
+   *
+   * Раньше проверка выше была единственной до создания, а гашение шло
+   * последним: две регистрации по одноразовой ссылке обе проходили
+   * проверку чтением, обе заводили учётку, одна гасила ссылку — а
+   * проигравшей всё равно выдавались токены («аккаунт уже создан,
+   * назначения нет — это честнее, чем падать после создания»). Лимит
+   * ссылки ограничивал назначения, но не число людей в системе с закрытой
+   * регистрацией. Теперь проигравший ждёт коммита победителя на строке
+   * приглашения, видит исчерпанный лимит и уходит с отказом, не оставив ни
+   * учётки, ни токенов (lib/invites.ts, claimInvite). Упадёт что-то ниже —
+   * откатится и счётчик.
+   */
+  if (invite?.ok && !(await claimInvite(db, invite.invite.id))) {
+    const again = await findUsableInvite(input.inviteCode!);
+    const reason = again.ok ? "exhausted" : again.reason;
+    await audit(c, {
+      action: "auth.register",
+      outcome: "denied",
+      details: { email, reason: `invite_${reason}`, raced: true },
+    });
+    return inviteRefusal(reason);
+  }
 
   const [row] = await db
     .insert(users)
@@ -190,7 +228,7 @@ async function registerHandler(c: Context<AppEnv>) {
       specialty: input.specialty ?? null,
       rank: input.rank ?? null,
       locality: input.locality || null,
-      passwordHash: await hashPassword(input.password),
+      passwordHash,
       role: isBootstrap ? "admin" : "user",
     })
     .returning();
@@ -212,19 +250,16 @@ async function registerHandler(c: Context<AppEnv>) {
   });
 
   if (invite?.ok) {
-    const consumed = await consumeInvite(invite.invite, row!.id);
-    if (consumed.ok) {
-      await audit(c, {
-        action: "invite.use",
-        resourceType: "invite",
-        resourceId: invite.invite.id,
-        subjectUserId: row!.id,
-        actor: toPublicUser(row!),
-        details: { batteryId: invite.invite.batteryId },
-      });
-    }
-    // гонка на последнем использовании: аккаунт уже создан, назначения нет —
-    // это честнее, чем падать после создания; специалист выдаст батарею руками
+    // использование уже погашено выше — здесь только то, что оно даёт
+    await applyInvite(db, invite.invite, row!.id);
+    await audit(c, {
+      action: "invite.use",
+      resourceType: "invite",
+      resourceId: invite.invite.id,
+      subjectUserId: row!.id,
+      actor: toPublicUser(row!),
+      details: { batteryId: invite.invite.batteryId },
+    });
   }
 
   const pair = await issuePair(row!);
