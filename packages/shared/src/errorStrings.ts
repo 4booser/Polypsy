@@ -148,6 +148,11 @@ export const ERRORS = {
     ru: "Для этой методики нужно указать пациента, за которого она заполняется",
     en: "This assessment requires you to specify the patient it’s being filled in for",
   },
+  "err.onBehalfPatientOutOfScope": {
+    uk: "Цей пацієнт поза вашою зоною відповідальності — заповнити за нього не можна",
+    ru: "Этот пациент вне вашей зоны ответственности — заполнить за него нельзя",
+    en: "This patient is outside your area of responsibility — you can’t fill this in for them",
+  },
   "err.onBehalfStaffOnly": {
     uk: "Заповнювати за іншу людину може лише співробітник",
     ru: "Заполнять за другого может только сотрудник",
@@ -229,6 +234,16 @@ export const ERRORS = {
     en: "The assessment can’t be published: {count} structural errors. {details}",
   },
   "err.surveyVersionNotFound": { uk: "Версію не знайдено", ru: "Версия не найдена", en: "Version not found" },
+  "err.surveyVersionInvalid": {
+    uk: "Відповіді відправлено до версії, якої в цієї методики немає",
+    ru: "Ответы отправлены к версии, которой у этой методики нет",
+    en: "The answers were sent for a version this assessment doesn’t have",
+  },
+  "err.surveyGrantEnded": {
+    uk: "Доступ до методики закрито: призначення відкликали або його строк минув. Відповіді не прийнято",
+    ru: "Доступ к методике закрыт: назначение отозвали или его срок истёк. Ответы не приняты",
+    en: "Access to this assessment has ended: the assignment was withdrawn or has expired. The answers weren’t accepted",
+  },
   /*
    * Папки методик — полки каталога внутри группы. Отказы названы по папке,
    * а не по группе: «Групу не знайдено» на экране каталога отправило бы

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { mergeNorms } from "../lib/norms";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { ageAt, createSurveySchema, quantile, type Sex } from "@quizzy/shared";
+import { ageAt, quantile, type Sex } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -10,7 +10,7 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { average, round, variance } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
-import { createVersion, getSurvey, surveyToDraft } from "../lib/surveys";
+import { copyVersion, getSurvey, type NormValues } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const normRoutes = new Hono<AppEnv>();
@@ -152,37 +152,38 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
     }
   }
 
-  const raw = await getSurvey(surveyId, null, "uk", true);
-  if (!raw) notFound("err.surveyNotFound");
-  const draft = surveyToDraft(raw) as { scales?: { code: string; norms?: unknown[] }[] };
-
+  /*
+   * Новая версия — копия действующей по строкам (copyVersion), в которой
+   * меняются только нормы выбранных шкал. До волны 12 здесь стоял путь
+   * через экспорт (surveyToDraft → createVersion): он терял секции, условия
+   * показа, обратный ключ пунктов, привязку пунктов к шкалам, каскады полос
+   * и локальные нормы ДРУГИХ шкал — «обновить нормы одной шкалы» тихо
+   * переписывало всю методику, и по этой новой версии считались все
+   * следующие сдачи.
+   *
+   * Нормы берутся из той же копируемой версии, под её замком: локальная
+   * норма другого пола этой же шкалы, опубликованная раньше, остаётся на
+   * месте (mergeNorms), а не пропадает вместе с экспортным фильтром.
+   */
   const today = new Date().toISOString().slice(0, 10);
-  for (const scale of draft.scales ?? []) {
-    if (!input.scaleCodes.includes(scale.code)) continue;
-    const stat = byCode.get(scale.code)!;
-    const fresh = stat.candidate
-      .filter((g) => g.sex !== null && g.publishable)
-      .map((g) => ({
-        sex: g.sex,
-        mean: g.mean,
-        sd: g.sd,
-        source: `локальная выборка, N=${g.n}, ${today}`,
-      }));
-
-    // локальные нормы дополняют, а не заменяют — см. mergeNorms в lib/norms.ts
-    scale.norms = mergeNorms(
-      (scale.norms ?? []).map((n) => n as { sex: string | null }),
-      fresh,
-    );
-  }
-
-  const parsed = createSurveySchema.parse(draft);
-  const versionId = await createVersion(
-    surveyId,
-    parsed,
-    user.id,
-    `Локальные нормы: ${input.scaleCodes.join(", ")}`,
-  );
+  const versionId = await copyVersion(surveyId, user.id, `Локальные нормы: ${input.scaleCodes.join(", ")}`, {
+    norms: (code, current) => {
+      if (!input.scaleCodes.includes(code)) return undefined;
+      const stat = byCode.get(code)!;
+      const fresh: NormValues[] = stat.candidate
+        .filter((g) => g.sex !== null && g.publishable)
+        .map((g) => ({
+          sex: g.sex,
+          ageMin: null,
+          ageMax: null,
+          mean: g.mean,
+          sd: g.sd,
+          source: `локальная выборка, N=${g.n}, ${today}`,
+        }));
+      // локальные нормы дополняют, а не заменяют — см. mergeNorms в lib/norms.ts
+      return mergeNorms(current, fresh);
+    },
+  });
 
   await audit(c, {
     action: "norms.publish",

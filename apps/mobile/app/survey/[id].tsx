@@ -232,6 +232,7 @@ export default function TakeSurveyScreen() {
 
     try {
       const res = await api.saveDraft(survey.id, {
+        versionId: survey.versionId,
         answers: payload,
         startedAt: local.startedAt,
         durationMs: local.durationMs,
@@ -318,6 +319,8 @@ export default function TakeSurveyScreen() {
         });
 
       const res = await api.submitResponse(survey.id, {
+        // версия на экране — по ней сервер проверит и посчитает, даже если методику уже обновили
+        versionId: survey.versionId,
         answers: payload,
         startedAt: startedAt.current,
         durationMs: Date.now() - sessionStart.current,

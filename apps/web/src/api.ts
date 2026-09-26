@@ -1822,7 +1822,19 @@ export const api = {
      * уходит с тем же id, и сервер узнает дубль, если первая попытка всё же
      * успела записаться (patient/outbox.ts).
      */
-    body: { startedAt: string; durationMs: number; answers: unknown[]; events: unknown[]; clientRequestId?: string },
+    /*
+     * versionId — версия, которую показали: ответы проверяются и считаются по
+     * ней, даже если методику обновили, пока человек отвечал или сдача
+     * ждала в очереди (routes/responses.ts, pinnedVersion).
+     */
+    body: {
+      startedAt: string;
+      durationMs: number;
+      answers: unknown[];
+      events: unknown[];
+      clientRequestId?: string;
+      versionId?: string | null;
+    },
   ) =>
     request<{ id: string; safetyPlan: string | null }>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",
