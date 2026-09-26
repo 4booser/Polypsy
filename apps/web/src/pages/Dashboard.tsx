@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { AlertCase, OverviewAnalytics, Page as CursorPage, Worklist } from "@quizzy/shared";
+import type { AlertCase, AlertCasePage, OverviewAnalytics, Page as CursorPage, Worklist } from "@quizzy/shared";
 import { api } from "../api";
 import { Figure, Kpi, TimeColumns } from "../charts/clinical";
 import { day, duration, severityKey } from "../format";
@@ -119,10 +119,26 @@ export function Attention({ alerts, work }: { alerts: CursorPage<AlertCase> | nu
    * сколько срочных и сколько ждёт самый давний. Имена — в двух нажатиях, на
    * экране разбора, куда просто так не заглядывают.
    */
-  const urgent = alerts ? alerts.items.filter((x) => x.severity === "severe").length : 0;
-  const oldest = alerts?.items.length
-    ? Math.max(...alerts.items.map((x) => Math.floor((Date.now() - new Date(x.openedAt).getTime()) / 86_400_000)))
-    : 0;
+  /*
+   * «Термінових» и «найдовший чекає» — из счётчиков очереди (SQL по всей
+   * выборке), а не из шести загруженных строк. Очередь упорядочена
+   * тяжёлыми вперёд, и по шести строкам выходило «термінових: 6» при
+   * восьмидесяти тяжёлых, а «самый давний» — самый давний из шести
+   * тяжёлых, а не из очереди (w12:alerts, внешний разбор). Без счётчиков
+   * (сервер старше) — прежний подсчёт по строкам.
+   */
+  const facets = alerts && "facets" in alerts ? (alerts as AlertCasePage).facets : undefined;
+  const urgent = facets
+    ? facets.sections.severe
+    : alerts
+      ? alerts.items.filter((x) => x.severity === "severe").length
+      : 0;
+  const oldestAt = facets
+    ? facets.oldestOpenedAt
+    : alerts?.items.length
+      ? alerts.items.map((x) => x.openedAt).sort()[0]!
+      : null;
+  const oldest = oldestAt ? Math.floor((Date.now() - new Date(oldestAt).getTime()) / 86_400_000) : 0;
   const tiles = workTiles(work.byKind);
 
   if (!openCases && !tiles.length) return null;

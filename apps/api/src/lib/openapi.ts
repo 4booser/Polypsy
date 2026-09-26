@@ -325,7 +325,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/invites/preview/:token": { summary: "Что даёт приглашение — до регистрации", access: "public" },
 
   /* ── тревоги, направления, заключения ── */
-  "GET /api/alerts": { summary: "Тревоги риска по пунктам; ?all=1 — вместе с разобранными", access: "staff", permission: "alerts.review" },
+  "GET /api/alerts": { summary: "Тревоги риска по пунктам страницами с курсором (?limit, ?cursor); ?all=1 — вместе с разобранными", access: "staff", permission: "alerts.review" },
   "PUT /api/auth/me/workspace": { summary: "Настройки рабочего места: стартовый экран, тема, плотность", access: "user" },
   "GET /api/conclusions/batch": { summary: "Пакет подписанных заключений подразделения за период", access: "staff", permission: "patients.read" },
   "GET /api/spss/surveys/:id/manifest.json": { summary: "Снимок параметров выгрузки: версии, нормы, профиль обезличивания", access: "staff", permission: "export.deidentified" },
@@ -366,7 +366,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/presence": { summary: "Пульс присутствия: я на этом экране", access: "staff", whyNoPermission: "пульс присутствия шлёт сам клиент за того, кто уже вошёл" },
   "GET /api/presence": { summary: "Кто ещё держит открытым этот экран", access: "staff", whyNoPermission: "кто ещё держит открытым этот экран — видно тем, кто на этом же экране; скрывать нечего" },
   "GET /api/worklist": { summary: "Что от меня ждут сегодня: случаи, направления, просроченные назначения", access: "staff", permission: "patients.read" },
-  "GET /api/alert-cases": { summary: "Случаи риска: страница с курсором и фильтрами", access: "staff", permission: "alerts.review" },
+  "GET /api/alert-cases": { summary: "Очередь случаев риска: курсор, строгие фильтры (статус, выраженность, взят, пациент, группа пациентов, период), строка на человека в открытой очереди, счётчики из SQL на первой странице", access: "staff", permission: "alerts.review" },
   "GET /api/alert-cases/units": { summary: "Подразделения среди случаев — для фильтра", access: "staff", permission: "alerts.review" },
   "GET /api/alert-cases/:id/signals": {
     summary: "Основание тревоги: пункт и отмеченный вариант либо шкала, значение и границы полосы",
@@ -375,7 +375,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   },
   "GET /api/alert-cases/:id/history": { summary: "Кто и что делал со случаем — выборка из журнала доступа", access: "staff", permission: "alerts.review" },
   "POST /api/alert-cases/:id/assign": { summary: "Взять случай на себя или отпустить", access: "staff", permission: "alerts.review" },
-  "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке", access: "staff", permission: "alerts.review" },
+  "PATCH /api/alert-cases/:id": { summary: "Разбор случая: одно решение о человеке; seenLastAlertAt — отказ 409, если после просмотра пришёл новый сигнал", access: "staff", permission: "alerts.review" },
   "GET /api/referrals": { summary: "Направления; ?all=1 — вместе с завершёнными", access: "staff", permission: "referrals.manage" },
   "POST /api/referrals": { summary: "Выписать направление", access: "staff", permission: "referrals.manage", body: createReferralSchema },
   "PATCH /api/referrals/:id": { summary: "Движение статуса направления (только вперёд)", access: "staff", permission: "referrals.manage", body: updateReferralSchema },

@@ -132,8 +132,15 @@ export interface Page<T> {
   total?: number | null;
 }
 
-export interface PagedResource<T> {
+export interface PagedResource<T, P extends Page<T> = Page<T>> {
   items: T[] | null;
+  /**
+   * Первая страница выборки целиком — со всем, что сервер кладёт рядом со
+   * строками (счётчики очереди случаев, вид строк). Принимается под тем же
+   * номером запуска, что и строки: счётчики от прежнего фильтра не встанут
+   * над строками нового.
+   */
+  head: P | null;
   loading: boolean;
   /** Идёт подгрузка следующей страницы: список на экране остаётся */
   loadingMore: boolean;
@@ -162,13 +169,14 @@ export interface PagedResource<T> {
  * `debounceMs` — для поиска: набор текста не должен дёргать сервер на каждую
  * букву, но первая загрузка и смена фильтров должны идти сразу.
  */
-export function usePagedResource<T>(
-  load: (cursor: string | null) => Promise<Page<T>>,
+export function usePagedResource<T, P extends Page<T> = Page<T>>(
+  load: (cursor: string | null) => Promise<P>,
   deps: readonly unknown[],
   options: { debounceMs?: number } = {},
-): PagedResource<T> {
+): PagedResource<T, P> {
   const debounceMs = options.debounceMs ?? 0;
   const [items, setItems] = useState<T[] | null>(null);
+  const [head, setHead] = useState<P | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -202,7 +210,10 @@ export function usePagedResource<T>(
         cursorRef.current = page.nextCursor;
         setCursor(page.nextCursor);
         setItems((prev) => (more && prev ? [...prev, ...page.items] : page.items));
-        if (!more) setTotal(page.total ?? null);
+        if (!more) {
+          setTotal(page.total ?? null);
+          setHead(page);
+        }
       })
       .catch((e: unknown) => {
         if (id !== runId.current || !mounted.current) return;
@@ -234,6 +245,7 @@ export function usePagedResource<T>(
 
   return {
     items,
+    head,
     loading: busy && !appending && items === null,
     loadingMore: appending,
     error,
