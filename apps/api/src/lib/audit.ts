@@ -205,6 +205,8 @@ export type AuditAction =
   | "response.read"
   | "analytics.overview"
   | "analytics.severityTrend"
+  /* состояние пациентов по направлениям на стартовом экране: обезличенные доли */
+  | "dashboard.conditions"
   | "analytics.group"
   | "analytics.survey"
   | "analytics.export"

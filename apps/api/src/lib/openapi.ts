@@ -348,6 +348,17 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
     access: "staff",
     permission: "analytics.read",
   },
+  /*
+   * Тот же `analytics.read`: наружу — доли, средние и число людей через
+   * порог малых ячеек, без имён и без идентификаторов прохождений. Отдельный
+   * раздел, а не `/api/analytics/*`: это вопрос «в каком состоянии люди», а
+   * не «как прошла методика».
+   */
+  "GET /api/dashboard/conditions": {
+    summary: "Состояние пациентов по направлениям (депрессия, тревога, стресс…): доля в клинических полосах и средний балл за период",
+    access: "staff",
+    permission: "analytics.read",
+  },
   "GET /api/analytics/groups/:id": {
     summary: "Аналитика группы: люди, прохождения, распределение по степеням выраженности",
     access: "staff",

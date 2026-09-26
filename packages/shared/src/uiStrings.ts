@@ -1275,24 +1275,7 @@ export const UI = {
   "dash.completion": { uk: "доходимість", ru: "доходимость", en: "completion rate" },
   "dash.avgTime": { uk: "Середній час", ru: "Среднее время", en: "Average time" },
   "dash.inProgress": { uk: "Проходять зараз", ru: "Проходят сейчас", en: "In progress now" },
-  "dash.timeline": { uk: "Динаміка проходжень", ru: "Динамика прохождений", en: "Completion dynamics" },
   "dash.timelineHint": { uk: "Завершені проходження за днями", ru: "Завершённые прохождения по дням", en: "Finished completions by day" },
-  "dash.severity": { uk: "Вираженість за всіма шкалами", ru: "Выраженность по всем шкалам", en: "Severity across all scales" },
-  "dash.severityHint": { uk: "Скільки результатів потрапило до кожної категорії норм", ru: "Сколько результатов попало в каждую категорию норм", en: "How many results fell into each norm category" },
-  "dash.load": { uk: "Навантаження за методиками", ru: "Нагрузка по методикам", en: "Load by instrument" },
-  "dash.loadHint": { uk: "Кількість завершених проходжень", ru: "Число завершённых прохождений", en: "Number of finished completions" },
-  "dash.severityTrend": { uk: "Вираженість за тижнями", ru: "Выраженность по неделям", en: "Severity by week" },
-  "dash.severityTrendHint": {
-    uk: "Кожне обстеження зараховано один раз — за найважчою зі своїх шкал",
-    ru: "Каждое обследование засчитано один раз — по самой тяжёлой из своих шкал",
-    en: "Each assessment is counted once — by the most severe of its scales",
-  },
-  "dash.severityTrendTotal": { uk: "обстежень", ru: "обследований", en: "assessments" },
-  "dash.severityTrendUnbanded": {
-    uk: "Без інтерпретації, бо у шкал немає норм",
-    ru: "Без интерпретации, потому что у шкал нет норм",
-    en: "No interpretation because the scales have no norms",
-  },
 
   /* ─────────── консоль: случаи риска ─────────── */
   "cases.title": { uk: "Розбір випадків", ru: "Разбор случаев", en: "Case review" },
@@ -2055,9 +2038,6 @@ export const UI = {
   "urg.urgent": { uk: "терміново", ru: "срочно", en: "urgent" },
   "urg.immediate": { uk: "негайно", ru: "немедленно", en: "immediate" },
   /* статус методики: на экране он должен читаться, а не приезжать кодом */
-  "st.surveyDraft": { uk: "чернетка", ru: "черновик", en: "draft" },
-  "st.surveyPublished": { uk: "опубліковано", ru: "опубликована", en: "published" },
-  "st.surveyClosed": { uk: "закрито", ru: "закрыта", en: "closed" },
   "st.created": { uk: "виписано", ru: "выписано", en: "issued" },
   "st.accepted": { uk: "прийнято", ru: "принято", en: "accepted" },
   "st.completed": { uk: "завершено", ru: "завершено", en: "completed" },
@@ -2239,6 +2219,58 @@ export const UI = {
   "kit.hidden": { uk: "приховано: замало людей", ru: "скрыто: слишком мало людей", en: "hidden: too few people" },
 
   /* ── wave9:dashboard ── */
+  /*
+   * Стартовый экран «Зведення»: шапка, очередь, проходження, стан пацієнтів
+   * за напрямами (pages/Dashboard.tsx, pages/dashboard/*). Решение заказчика
+   * 2026-09-26: заголовок экрана не повторяет вкладку — первая вкладка
+   * называется «Огляд».
+   */
+  "dash.tabOverview": { uk: "Огляд", ru: "Обзор", en: "Overview" },
+  "dash.overdueTag": { uk: "Прострочено", ru: "Просрочено", en: "Overdue" },
+  "dash.workAll": { uk: "усі {n}", ru: "все {n}", en: "all {n}" },
+  "dash.passes": { uk: "Проходження за останній час", ru: "Прохождения за последнее время", en: "Recent completions" },
+  "dash.rangeLabel": { uk: "Період", ru: "Период", en: "Period" },
+  "dash.range30d": { uk: "30 днів", ru: "30 дней", en: "30 days" },
+  "dash.range90d": { uk: "90 днів", ru: "90 дней", en: "90 days" },
+  "dash.range12w": { uk: "12 тижнів", ru: "12 недель", en: "12 weeks" },
+  "dash.last30d": { uk: "За 30 днів", ru: "За 30 дней", en: "Last 30 days" },
+  "dash.last12w": { uk: "За 12 тижнів", ru: "За 12 недель", en: "Last 12 weeks" },
+  "dash.prevPeriod": { uk: "попередній такий самий період: {n}", ru: "предыдущий такой же период: {n}", en: "previous period of the same length: {n}" },
+  "dash.halfYear": { uk: "лінія — хід за пів року, за тижнями", ru: "линия — ход за полгода, по неделям", en: "line: the last six months, by week" },
+  "dash.byDay": { uk: "Завершені проходження за днями", ru: "Завершённые прохождения по дням", en: "Completed responses by day" },
+  "dash.byWeek": { uk: "Завершені проходження за тижнями", ru: "Завершённые прохождения по неделям", en: "Completed responses by week" },
+  "dash.byWeekHint": { uk: "тиждень підписано понеділком", ru: "неделя подписана понедельником", en: "each week is labelled by its Monday" },
+  "dash.conditions": { uk: "Стан пацієнтів за напрямами", ru: "Состояние пациентов по направлениям", en: "Patient state by domain" },
+  "dash.conditionsHint": {
+    uk: "Останній замір кожної людини за період. Частка — скільки людей у смугах «помірна» і «виражена» за смугами самої методики. Бали різних методик не додаються, тому середній бал — лише за основною методикою напряму, у відсотках від її максимуму. Групи, менші за 5 людей, не показуються.",
+    ru: "Последний замер каждого человека за период. Доля — сколько людей в полосах «умеренная» и «выраженная» по полосам самой методики. Баллы разных методик не складываются, поэтому средний балл — только по основной методике направления, в процентах от её максимума. Группы меньше 5 человек не показываются.",
+    en: "Each person's latest measurement in the period. The share is how many people fall in the moderate and severe bands of the instrument itself. Scores of different instruments do not add up, so the mean score is given only for the main instrument of the domain, as a percentage of its maximum. Groups of fewer than 5 people are not shown.",
+  },
+  "dash.dom.depression": { uk: "Депресія", ru: "Депрессия", en: "Depression" },
+  "dash.dom.anxiety": { uk: "Тривога", ru: "Тревога", en: "Anxiety" },
+  "dash.dom.stress": { uk: "Стрес", ru: "Стресс", en: "Stress" },
+  "dash.dom.ptsd": { uk: "ПТСР", ru: "ПТСР", en: "PTSD" },
+  "dash.dom.wellbeing": { uk: "Благополуччя", ru: "Благополучие", en: "Well-being" },
+  "dash.dom.burnout": { uk: "Вигорання", ru: "Выгорание", en: "Burnout" },
+  "dash.dom.alcohol": { uk: "Алкоголь", ru: "Алкоголь", en: "Alcohol" },
+  "dash.clinical": { uk: "у клінічних смугах", ru: "в клинических полосах", en: "in clinical bands" },
+  "dash.clinicalWhat": { uk: "помірна або виражена", ru: "умеренная или выраженная", en: "moderate or severe" },
+  "dash.people": { uk: "Людей", ru: "Человек", en: "People" },
+  "dash.mean": { uk: "Середній бал", ru: "Средний балл", en: "Mean score" },
+  "dash.ofMax": { uk: "{p} % від максимуму", ru: "{p} % от максимума", en: "{p}% of maximum" },
+  "dash.higherBetter": { uk: "вище — краще", ru: "выше — лучше", en: "higher is better" },
+  "dash.higherWorse": { uk: "вище — гірше", ru: "выше — хуже", en: "higher is worse" },
+  "dash.meanWeekly": { uk: "середній бал за тижнями; тижні, де менше 5 людей, пропущено", ru: "средний балл по неделям; недели, где меньше 5 человек, пропущены", en: "mean score by week; weeks with fewer than 5 people are skipped" },
+  "dash.sources": { uk: "Методики", ru: "Методики", en: "Instruments" },
+  "dash.tooFew": { uk: "Замало даних: менше 5 людей, тому числа не показуються", ru: "Слишком мало данных: меньше 5 человек, поэтому числа не показываются", en: "Too little data: fewer than 5 people, so no figures are shown" },
+  "dash.shareHidden": { uk: "Частку приховано: в одній зі смуг менше 5 людей", ru: "Доля скрыта: в одной из полос меньше 5 человек", en: "Share hidden: one of the bands has fewer than 5 people" },
+  "dash.noBands": { uk: "У методики немає смуг вираженості — частку не пораховано", ru: "У методики нет полос выраженности — доля не посчитана", en: "The instrument has no severity bands, so there is no share" },
+  "dash.noMeasures": { uk: "Немає замірів", ru: "Нет замеров", en: "No measurements" },
+  "dash.nothingMeasured": { uk: "За період жодна методика напрямів не проходилася", ru: "За период ни одна методика направлений не проходилась", en: "No domain instrument was completed in this period" },
+  "dash.overall": { uk: "Усі методики разом", ru: "Все методики вместе", en: "All instruments together" },
+  "dash.overallHint": { uk: "кожна людина один раз — за найважчою з останніх оцінок", ru: "каждый человек один раз — по самой тяжёлой из последних оценок", en: "each person once, by the most severe of their latest results" },
+  "dash.bandLow": { uk: "Норма або легка", ru: "Норма или лёгкая", en: "Normal or mild" },
+  "dash.bandHigh": { uk: "Помірна або виражена", ru: "Умеренная или выраженная", en: "Moderate or severe" },
 
   /* ── wave9:cohorts ── */
   /* «Добір людей» — решение заказчика 2026-09-26: стиль проекта, адекватные фильтры, понятный результат */
@@ -2573,8 +2605,6 @@ export const UI = {
   "severity.moderate": { uk: "Помірна", ru: "Умеренная", en: "Moderate" },
   "severity.severe": { uk: "Виражена", ru: "Выраженная", en: "Severe" },
 
-  "chart.results": { uk: "результатів", ru: "результатов", en: "results" },
-  "chart.onAverage": { uk: "у середньому", ru: "в среднем", en: "on average" },
 
   /* горячие клавиши разбора */
   "hotkey.next": { uk: "наступний випадок", ru: "следующий случай", en: "next case" },
@@ -2788,11 +2818,8 @@ export const UI = {
   "cl.archived": { uk: "Методику знято з використання", ru: "Методика снята с использования", en: "Instrument retired from use" },
   "cl.fileIssues": { uk: "Зауваження до файлу", ru: "Замечания к файлу", en: "Issues in the file" },
   "cl.name": { uk: "Назва", ru: "Название", en: "Name" },
-  "cl.status": { uk: "Статус", ru: "Статус", en: "Status" },
-  "cl.visibility": { uk: "Видимість", ru: "Видимость", en: "Visibility" },
   "cl.questions": { uk: "Питань", ru: "Вопросов", en: "Questions" },
   "cl.responses": { uk: "Проходжень", ru: "Прохождений", en: "Completions" },
-  "cl.byGrant": { uk: "за призначенням", ru: "по назначению", en: "by assignment" },
   "sch.from": { uk: "з", ru: "с", en: "from" },
   "sch.to": { uk: "по", ru: "по", en: "to" },
   "nm.men": { uk: "чоловіки", ru: "мужчины", en: "men" },
@@ -2812,10 +2839,6 @@ export const UI = {
   "nm.menCap": { uk: "Чоловіки", ru: "Мужчины", en: "Men" },
   "nm.womenCap": { uk: "Жінки", ru: "Женщины", en: "Women" },
   "nm.age": { uk: "Вік", ru: "Возраст", en: "Age" },
-  "dash.allSurveys": { uk: "Усі методики", ru: "Все методики", en: "All instruments" },
-  "dash.allSurveysHint": { uk: "Відкрийте методику, щоб побачити докладні зрізи", ru: "Откройте методику, чтобы увидеть подробные срезы", en: "Open an instrument to see detailed breakdowns" },
-  "dash.survey": { uk: "Методика", ru: "Методика", en: "Instrument" },
-  "dash.public": { uk: "загальна", ru: "общая", en: "public" },
   "bp.yes": { uk: "Так", ru: "Так", en: "Yes" },
   "bp.no": { uk: "Ні", ru: "Нет", en: "No" },
   "bp.title": { uk: "Вставка пунктів з тексту", ru: "Вставка пунктов из текста", en: "Paste items from text" },
