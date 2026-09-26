@@ -94,17 +94,15 @@ const SHELL: Record<Look, string> = {
   plain: "border border-field-border bg-[var(--bg)] px-[10px]",
 };
 
-/** Подпись поля — то, что видно в пустом поле */
+/**
+ * Подпись поля — то, что видно в пустом поле. У текстовых полей она стоит
+ * и в заполненном — слева от значения (см. StatInput); плейсхолдеров в
+ * разделе больше нет, и их начертание здесь не заводится.
+ */
 export const LABEL: Record<Look, string> = {
   outline: "text-[16px] font-bold text-primary",
   fill: "text-[16px] font-bold text-primary",
   plain: "text-[17px] font-normal text-muted",
-};
-
-const PLACEHOLDER: Record<Look, string> = {
-  outline: "placeholder:text-[16px] placeholder:font-bold placeholder:text-primary",
-  fill: "placeholder:text-[16px] placeholder:font-bold placeholder:text-primary",
-  plain: "placeholder:text-[17px] placeholder:font-normal placeholder:text-muted",
 };
 
 /** Набранное — данные, а не подпись: обычным начертанием, иначе заполненное не отличить от пустого */
@@ -114,33 +112,61 @@ const VALUE: Record<Look, string> = {
   plain: "text-[17px] font-normal text-text",
 };
 
+/** То же начертание красным — перевёрнутый диапазон; цвет не один: рядом строка ошибки и aria-invalid */
+const VALUE_INVALID: Record<Look, string> = {
+  outline: "text-[16px] font-normal text-danger",
+  fill: "text-[16px] font-normal text-danger",
+  plain: "text-[17px] font-normal text-danger",
+};
+
 const FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]";
+/* кольцо на силуэте, когда фокус у поля внутри подписи */
+const FOCUS_WITHIN = "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--focus)]";
 
 /** Силуэт поля: 36 высотой, радиус 5 — общее у всех трёх начертаний */
 export function shell(look: Look, extra?: string): string {
   return cx("flex h-9 min-w-0 items-center rounded-[5px]", SHELL[look], extra);
 }
 
+/*
+ * Поле внутри силуэта: браузерные и наследные рамка, заливка и поля сняты —
+ * силуэт рисует обёртка-подпись.
+ */
+const BARE_INPUT = "m-0 h-full min-h-0 w-full min-w-0 flex-1 border-0 bg-transparent p-0 outline-none";
+
 /**
  * Текстовое поле с подписью внутри.
  *
- * Имя полю — aria-label тем же текстом, что стоит в плейсхолдере: подписи
- * над полем на кадрах нет, а плейсхолдер исчезает при наборе и именем не
- * считается. Видимое слово входит в звучащее целиком (WCAG 2.5.3).
+ * Имя полю — aria-label тем же текстом, что стоит в подписи: подписи над
+ * полем на кадрах нет. Видимое слово входит в звучащее целиком (WCAG 2.5.3).
+ *
+ * Решение заказчика 2026-09-26: адекватные фильтры. Подпись стоит в поле
+ * ВСЕГДА, а не плейсхолдером: плейсхолдер исчезал при наборе, и заполненная
+ * форма читалась как «25 — 45 · Київ» без единого слова о том, что это
+ * возраст и город. Пустое поле выглядит ровно как на кадре — подпись
+ * 16/700 фиолетовым у левого края; заполненное — «Вік від 25». Отвергнуто:
+ * подпись над полем — у кадров раздела её нет, и строки формы разъехались
+ * бы на шаг по вертикали.
  */
 export function StatInput({
   look,
   label,
   className,
+  invalid,
   ...rest
-}: { look: Look; label: string } & Omit<InputHTMLAttributes<HTMLInputElement>, "placeholder">) {
+}: { look: Look; label: string; invalid?: boolean } & Omit<InputHTMLAttributes<HTMLInputElement>, "placeholder">) {
   return (
-    <input
-      aria-label={label}
-      placeholder={label}
-      className={cx(shell(look), "w-full", VALUE[look], PLACEHOLDER[look], FOCUS, className)}
-      {...rest}
-    />
+    <label className={cx(shell(look), "m-0 w-full cursor-text gap-[8px]", FOCUS_WITHIN, className)}>
+      <span aria-hidden className={cx("shrink-0 whitespace-nowrap", LABEL[look])}>
+        {label}
+      </span>
+      <input
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        className={cx(BARE_INPUT, invalid ? VALUE_INVALID[look] : VALUE[look])}
+        {...rest}
+      />
+    </label>
   );
 }
 
@@ -178,10 +204,17 @@ export function StatSelect({
       onChange={(e) => onChange(e.target.value)}
       className={cx(
         shell(look),
-        "w-full appearance-none truncate disabled:opacity-45",
+        /*
+         * Ширина — либо своя от места, либо «во всю строку», но не обе
+         * сразу. Прежде `w-full` стоял всегда, а место добавляло
+         * `w-[96px]`: два правила ширины в одной строке классов спорят, и
+         * победил `w-full` — «Стать» растягивалась на всю строку, а
+         * «Населений пункт» справа сжимался до сиреневого огрызка в 10px.
+         */
+        className ?? "w-full",
+        "appearance-none truncate disabled:opacity-45",
         value ? VALUE[look] : LABEL[look],
         FOCUS,
-        className,
       )}
     >
       <option value="">{label}</option>
@@ -207,6 +240,7 @@ export function Readout({
   className,
   align = "start",
   title,
+  pending,
 }: {
   look: Look;
   label: string;
@@ -214,6 +248,17 @@ export function Readout({
   className?: string;
   align?: "start" | "center";
   title?: string;
+  /**
+   * Значение ещё не посчитано: плашка пустая, подпись — только диктору.
+   *
+   * Решение заказчика 2026-09-26 (замечание со стенда): подписи «Відсоток
+   * відповідей 1…4» в пустых плашках до расчёта читались как данные или
+   * поломка. Прочерк здесь не годится — в разделе он значит «приховано
+   * порогом», и один знак с двумя смыслами путал бы именно тогда, когда
+   * важно не путать. Что делать, чтобы плашки заполнились, говорит одна
+   * строка под отчётом (st.percentPending).
+   */
+  pending?: boolean;
 }) {
   const empty = text === undefined || text === null || text === "";
   return (
@@ -221,7 +266,9 @@ export function Readout({
       title={title}
       className={cx(shell(look), LABEL[look], align === "center" && "justify-center", className)}
     >
-      {empty ? (
+      {empty && pending ? (
+        <span className="sr-only">{label}</span>
+      ) : empty ? (
         <span className="truncate">{label}</span>
       ) : (
         <span className="truncate">
@@ -308,7 +355,20 @@ export function GlyphButton({
   className?: string;
 }) {
   return (
-    <Button size="glyph" variant="ghost" aria-label={label} onClick={onClick} disabled={disabled} className={className}>
+    /*
+     * Подсказка при наведении — то же слово, что у диктора: «−» у названия
+     * пресета удаляет пресет целиком, и мышью об этом узнавали только из
+     * окна подтверждения.
+     */
+    <Button
+      size="glyph"
+      variant="ghost"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className={className}
+    >
       {children}
     </Button>
   );
@@ -344,11 +404,14 @@ export function DateField({
   from,
   to,
   onChange,
+  invalid,
 }: {
   look: Look;
   from?: string | null;
   to?: string | null;
   onChange: (next: { from: string | null; to: string | null }) => void;
+  /** Начало позже конца — период печатается красным, строка ошибки — у места */
+  invalid?: boolean;
 }) {
   const { ut } = useLang();
   const id = useId();
@@ -370,10 +433,14 @@ export function DateField({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         aria-label={text ? `${ut("st.date")}: ${text}` : ut("st.date")}
+        aria-invalid={invalid || undefined}
         onClick={() => setOpen((v) => !v)}
-        className={cx(shell(look), "w-full text-left", text ? VALUE[look] : LABEL[look], FOCUS)}
+        /* m-0, min-h-0, border-0: у кнопки в слое наследия свои поля, высота и рамка */
+        className={cx(shell(look), "m-0 min-h-0 w-full gap-[8px] text-left", FOCUS)}
       >
-        <span className="truncate">{text || ut("st.date")}</span>
+        {/* подпись остаётся и у заполненного поля — см. StatInput */}
+        <span className={cx("shrink-0", LABEL[look])}>{ut("st.date")}</span>
+        {text ? <span className={cx("truncate", invalid ? VALUE_INVALID[look] : VALUE[look])}>{text}</span> : null}
       </button>
       {open ? (
         <>
@@ -412,6 +479,12 @@ export function DateField({
                 />
               </label>
             ))}
+            {/* снять период одним нажатием, а не стирать два поля по очереди */}
+            {from || to ? (
+              <Button size="sm" variant="quiet" onClick={() => onChange({ from: null, to: null })}>
+                {ut("st.clearDate")}
+              </Button>
+            ) : null}
             <Button size="sm" onClick={() => setOpen(false)}>
               {ut("common.close")}
             </Button>
@@ -509,13 +582,17 @@ export function PatientField({
 
   return (
     <div className="relative min-w-0 flex-1">
+      {/* подпись остаётся и у заполненного поля — см. StatInput */}
+      <label className={cx(shell(look), "m-0 w-full cursor-text gap-[8px]", FOCUS_WITHIN)}>
+      <span aria-hidden className={cx("shrink-0 whitespace-nowrap", LABEL[look])}>
+        {ut("st.patient")}
+      </span>
       <input
         role="combobox"
         aria-expanded={open && !!found}
         aria-controls={open && found ? id : undefined}
         aria-autocomplete="list"
         aria-label={ut("st.patient")}
-        placeholder={ut("st.patient")}
         value={text}
         onChange={(e) => {
           setText(e.target.value);
@@ -537,9 +614,10 @@ export function PatientField({
           setOpen(false);
           setText(value ? (known.current.get(value) ?? "") : "");
         }}
-        className={cx(shell(look), "w-full", VALUE[look], PLACEHOLDER[look], FOCUS)}
+        className={cx(BARE_INPUT, VALUE[look])}
         autoComplete="off"
       />
+      </label>
       {open && found ? (
         <>
           <div aria-hidden onClick={() => setOpen(false)} className="fixed inset-0 z-40" />
@@ -599,6 +677,7 @@ export function AgeRow({
   onChange,
   dash,
   gap,
+  invalid,
 }: {
   look: Look;
   min?: number | null;
@@ -606,6 +685,8 @@ export function AgeRow({
   onChange: (next: { ageMin: number | null; ageMax: number | null }) => void;
   dash: 17 | 25;
   gap: 6 | 10;
+  /** «від» больше «до» — оба поля красным; строку ошибки печатает место */
+  invalid?: boolean;
 }) {
   const { ut } = useLang();
   const num = (v: string) => {
@@ -622,6 +703,7 @@ export function AgeRow({
         inputMode="numeric"
         min={0}
         max={120}
+        invalid={invalid}
         value={min ?? ""}
         onChange={(e) => onChange({ ageMin: num(e.target.value), ageMax: max ?? null })}
       />
@@ -634,6 +716,7 @@ export function AgeRow({
         inputMode="numeric"
         min={0}
         max={120}
+        invalid={invalid}
         value={max ?? ""}
         onChange={(e) => onChange({ ageMin: min ?? null, ageMax: num(e.target.value) })}
       />

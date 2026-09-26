@@ -2223,19 +2223,39 @@ export interface WorkspacePrefs {
  */
 export interface CohortSpec {
   sex?: "male" | "female" | null;
+  /**
+   * Возраст на момент прохождения, полных лет, обе границы включительно.
+   * Считается от даты рождения, а не по полосе-снимку: полоса «25–34»
+   * ответила бы на «від 27 до 29» всеми десятью годами.
+   */
   ageMin?: number | null;
   ageMax?: number | null;
   units?: string[];
+  /** Населённые пункты — любой из перечисленных, без учёта регистра */
+  localities?: string[];
   /** Методика, по которой смотрим баллы и период */
   surveyId?: string | null;
+  /** Период проходження, ГГГГ-ММ-ДД, оба конца — календарные дни включительно */
   from?: string | null;
   to?: string | null;
   /** Условия по шкалам выбранной методики */
   scales?: { code: string; op: ">=" | "<=" | ">" | "<"; value: number }[];
+  /**
+   * Выраженность не ниже: хоть одна шкала хоть одного прохождения выборки
+   * лежит в этой полосе или тяжелее. «none» здесь нет — «не ниже нормы»
+   * значит «все», и такое условие ничего не сужает.
+   */
+  minSeverity?: Exclude<Severity, "none"> | null;
   /** Только те, у кого есть повторный замер: без него динамики нет */
   repeatedOnly?: boolean;
   /** Только те, у кого поднималась тревога риска */
   riskOnly?: boolean;
+}
+
+/** Ячейка разбивки: ключ — значение из базы, число — null, если скрыто порогом */
+export interface CohortCell {
+  key: string;
+  count: number | null;
 }
 
 export interface CohortPreview {
@@ -2244,9 +2264,53 @@ export interface CohortPreview {
   /** Можно ли показывать разбивки: у малой когорты они указывают на людей */
   breakdownAllowed: boolean;
   smallCellFloor: number;
-  bySex: { key: string; count: number | null }[];
-  byUnit: { key: string; count: number | null }[];
-  bySeverity: { key: string; count: number | null }[];
+  bySex: CohortCell[];
+  byUnit: CohortCell[];
+  /** По населённым пунктам; «—» — пункт не указан */
+  byLocality: CohortCell[];
+  /** По возрастной полосе последнего прохождения выборки: «<25», «25-34», «35-44», «45+» */
+  byAge: CohortCell[];
+  /**
+   * По самой тяжёлой полосе человека среди прохождений выборки — каждый
+   * человек в одной ячейке, доли складываются в целое. «—» — ни одна шкала
+   * его прохождений полос не имеет.
+   */
+  bySeverity: CohortCell[];
+}
+
+/**
+ * Человек когорты в поимённом списке. Телефона нет намеренно: подбор —
+ * про «кто это», а позвонить — из карточки, где чтение телефона и так
+ * журналируется своим порядком.
+ */
+export interface CohortMember {
+  userId: string;
+  fullName: string;
+  email: string;
+  unit: string | null;
+  locality: string | null;
+  sex: "male" | "female" | null;
+  birthYear: number | null;
+  /** Последнее прохождение выборки и его самая тяжёлая полоса */
+  last: { responseId: string; surveyId: string; submittedAt: string | null; severity: Severity | null } | null;
+}
+
+export interface CohortMembers {
+  items: CohortMember[];
+  /** Когорта найдена, но ниже порога: имён не будет — это не «никого нет» */
+  suppressed: boolean;
+  smallCellFloor: number;
+  /** Список обрезан потолком выдачи: людей больше, чем в items */
+  truncated: boolean;
+}
+
+/**
+ * Из чего выбирать в подборе: подразделения и населённые пункты людей в
+ * зоне ответственности. Только названия, без чисел.
+ */
+export interface CohortOptions {
+  units: string[];
+  localities: string[];
 }
 
 export interface CohortRow {

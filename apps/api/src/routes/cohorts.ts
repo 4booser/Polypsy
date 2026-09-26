@@ -1,13 +1,23 @@
 import { Hono } from "hono";
 import { desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import type { CohortPreview, CohortSpec } from "@quizzy/shared";
+import {
+  ageAt,
+  type CohortCell,
+  type CohortMember,
+  type CohortMembers,
+  type CohortOptions,
+  type CohortPreview,
+  type CohortSpec,
+  type Severity,
+} from "@quizzy/shared";
 import { db } from "../db";
 import { cohorts, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
-import { SMALL_CELL_FLOOR, canBreakDown, suppress } from "../lib/privacy";
+import { SMALL_CELL_FLOOR, birthYearOf, canBreakDown, suppress, suppressedKeys } from "../lib/privacy";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -43,18 +53,61 @@ const scaleCond = z.object({
   value: z.number(),
 });
 
-const specSchema = z.object({
-  sex: z.enum(["male", "female"]).nullable().optional(),
-  ageMin: z.number().int().min(0).max(120).nullable().optional(),
-  ageMax: z.number().int().min(0).max(120).nullable().optional(),
-  units: z.array(z.string().max(120)).max(50).optional(),
-  surveyId: z.string().nullable().optional(),
-  from: z.string().nullable().optional(),
-  to: z.string().nullable().optional(),
-  scales: z.array(scaleCond).max(10).optional(),
-  repeatedOnly: z.boolean().optional(),
-  riskOnly: z.boolean().optional(),
-});
+/*
+ * Дата — день, а не момент: «по 30 вересня» означает весь день, и строка
+ * вида «вчера» или «2026-9-1» в сравнение уйти не должна. Раньше период
+ * принимался любой строкой и сравнивался с моментом сдачи как есть:
+ * «по 2026-09-30» отсекало всё, что сдано 30-го после полуночи.
+ */
+const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const specSchema = z
+  .object({
+    sex: z.enum(["male", "female"]).nullable().optional(),
+    ageMin: z.number().int().min(0).max(120).nullable().optional(),
+    ageMax: z.number().int().min(0).max(120).nullable().optional(),
+    units: z.array(z.string().max(120)).max(50).optional(),
+    localities: z.array(z.string().trim().min(1).max(160)).max(50).optional(),
+    surveyId: z.string().nullable().optional(),
+    from: day.nullable().optional(),
+    to: day.nullable().optional(),
+    scales: z.array(scaleCond).max(10).optional(),
+    minSeverity: z.enum(["mild", "moderate", "severe"]).nullable().optional(),
+    repeatedOnly: z.boolean().optional(),
+    riskOnly: z.boolean().optional(),
+  })
+  /*
+   * Перевёрнутый диапазон — ошибка набора, а не пустая когорта: «від 45 до
+   * 25» честным нулём читалось бы как «таких людей нет». Экран не даёт его
+   * отправить; здесь — страховка для тех, кто зовёт маршрут мимо экрана.
+   */
+  .refine((v) => v.ageMin == null || v.ageMax == null || v.ageMin <= v.ageMax, { path: ["ageMax"] })
+  .refine((v) => !v.from || !v.to || v.from <= v.to, { path: ["to"] });
+
+/** Ступени выраженности по возрастанию — порядок, в котором «не нижче» имеет смысл */
+const SEVERITY_ORDER: Severity[] = ["none", "mild", "moderate", "severe"];
+
+/** Ступень полосы в SQL: сравнивать перечисление строкой нельзя — «severe» < «mild» по алфавиту */
+function severityRank(column: string): SQL {
+  const col = sql.raw(column);
+  return sql`case ${col} when 'none' then 0 when 'mild' then 1 when 'moderate' then 2 when 'severe' then 3 end`;
+}
+
+/**
+ * Отбор: условие на людей и определение «прохождения выборки».
+ *
+ * Второе — не мелочь. Период, методика, «повторний замір», «тривога
+ * ризику», условия по шкалам, выраженность и разбивки обязаны говорить об
+ * ОДНИХ И ТЕХ ЖЕ прохождениях. Раньше каждое условие смотрело на своё:
+ * период ограничивал только «есть ли прохождение», а тревога бралась за всю
+ * историю человека, шкалы — без периода. «Тривога ризику за вересень»
+ * находила людей с тревогой в марте, и экран об этом молчал.
+ */
+interface Selection {
+  where: SQL;
+  /** Прохождение под алиасом входит в выборку */
+  taken: (alias: string) => SQL;
+}
 
 /**
  * Условие отбора одним SQL.
@@ -62,15 +115,14 @@ const specSchema = z.object({
  * Собирается фрагментами, а не строкой: значения уходят параметрами, и
  * подстановка чужого текста в запрос невозможна по устройству. Название
  * подразделения приходит от человека и вполне может содержать кавычку.
+ * Алиасы (`r`, `r3` …) — константы этого файла, а не ввод, поэтому
+ * подставляются как есть.
  */
-async function cohortWhere(
-  user: Parameters<typeof surveyScopeFilter>[0],
-  spec: CohortSpec,
-): Promise<SQL> {
+async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], spec: CohortSpec): Promise<Selection> {
   const scope = await surveyScopeFilter(user);
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
   const allowed = scoped.map((s) => s.id);
-  if (!allowed.length) return sql`false`;
+  if (!allowed.length) return { where: sql`false`, taken: () => sql`false` };
 
   if (spec.surveyId && !allowed.includes(spec.surveyId)) {
     /*
@@ -81,54 +133,51 @@ async function cohortWhere(
   }
 
   const surveyIds = spec.surveyId ? [spec.surveyId] : allowed;
+  /*
+   * Границы периода — календарные дни включительно, в поясе базы: так же
+   * считает статистика (lib/statModels.ts, sampleOf), и одна и та же дата
+   * в двух разделах не должна означать разные сутки.
+   */
+  const taken = (alias: string): SQL => {
+    const r = sql.raw(alias);
+    return sql`${r}.status = 'completed'
+      and ${r}.survey_id in ${surveyIds}
+      ${spec.from ? sql`and ${r}.submitted_at >= ${spec.from}::date` : sql``}
+      ${spec.to ? sql`and ${r}.submitted_at < (${spec.to}::date + 1)` : sql``}`;
+  };
+
   const parts: SQL[] = [
     sql`u.role = 'user'`,
-    sql`exists (
-      select 1 from responses r
-      where r.user_id = u.id
-        and r.status = 'completed'
-        and r.survey_id in ${surveyIds}
-        ${spec.from ? sql`and r.submitted_at >= ${spec.from}` : sql``}
-        ${spec.to ? sql`and r.submitted_at <= ${spec.to}` : sql``}
-    )`,
+    sql`exists (select 1 from responses r where r.user_id = u.id and ${taken("r")})`,
   ];
 
   if (spec.sex) parts.push(sql`u.sex = ${spec.sex}`);
-
-  /*
-   * Возраст считается по снимку на момент сдачи, а не по нынешней дате
-   * рождения: выборка «20–30 лет» должна означать возраст на обследовании.
-   * Дата рождения зашифрована, поэтому фильтровать по ней в SQL нельзя — для
-   * этого и существует снимок возрастной полосы в прохождении.
-   */
-  if (spec.ageMin != null || spec.ageMax != null) {
-    const bands: string[] = [];
-    for (const band of ["<25", "25-34", "35-44", "45+"]) {
-      const [lo, hi] =
-        band === "<25" ? [0, 24] : band === "25-34" ? [25, 34] : band === "35-44" ? [35, 44] : [45, 120];
-      if ((spec.ageMax ?? 120) < lo) continue;
-      if ((spec.ageMin ?? 0) > hi) continue;
-      bands.push(band);
-    }
-    if (!bands.length) return sql`false`;
-    parts.push(sql`exists (
-      select 1 from responses r2
-      where r2.user_id = u.id and r2.respondent_age_band in ${bands}
-    )`);
-  }
-
   if (spec.units?.length) parts.push(sql`u.unit in ${spec.units}`);
 
+  /*
+   * Населённый пункт — без учёта регистра, как в статистике: поле свободное,
+   * и «київ» с «Київ» — один город. Каждое значение — своим параметром под
+   * lower(), а не одной склейкой: кавычка в названии села не должна ничего
+   * значить для запроса.
+   */
+  if (spec.localities?.length) {
+    const wanted = sql.join(
+      spec.localities.map((l) => sql`lower(${l})`),
+      sql`, `,
+    );
+    parts.push(sql`lower(u.locality) in (${wanted})`);
+  }
+
   if (spec.repeatedOnly) {
-    parts.push(sql`(
-      select count(*) from responses r3
-      where r3.user_id = u.id and r3.status = 'completed'
-        and r3.survey_id in ${surveyIds}
-    ) >= 2`);
+    parts.push(sql`(select count(*) from responses r3 where r3.user_id = u.id and ${taken("r3")}) >= 2`);
   }
 
   if (spec.riskOnly) {
-    parts.push(sql`exists (select 1 from risk_alerts ra where ra.user_id = u.id)`);
+    parts.push(sql`exists (
+      select 1 from risk_alerts ra
+      join responses r5 on r5.id = ra.response_id
+      where r5.user_id = u.id and ${taken("r5")}
+    )`);
   }
 
   for (const cond of spec.scales ?? []) {
@@ -144,20 +193,97 @@ async function cohortWhere(
       join responses r4 on r4.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
       where r4.user_id = u.id
-        and r4.status = 'completed'
-        and r4.survey_id in ${surveyIds}
+        and ${taken("r4")}
         and sc.code = ${cond.code}
         and rs.value ${op} ${cond.value}
     )`);
   }
 
-  return sql.join(parts, sql` and `);
+  if (spec.minSeverity) {
+    const floor = SEVERITY_ORDER.indexOf(spec.minSeverity);
+    parts.push(sql`exists (
+      select 1 from response_scores rs6
+      join responses r6 on r6.id = rs6.response_id
+      where r6.user_id = u.id
+        and ${taken("r6")}
+        and ${severityRank("rs6.severity")} >= ${floor}
+    )`);
+  }
+
+  let where = sql.join(parts, sql` and `);
+
+  /*
+   * Возраст — на момент прохождения, от даты рождения, а не по полосе-снимку.
+   *
+   * Прежде «Вік від 27 до 29» переводился в полосы снимка и отвечал всей
+   * полосой «25–34»: экран спрашивал про три года, а считал десять, и
+   * никакой подписи об этом не было. Дата рождения зашифрована, поэтому
+   * возраст считается здесь, в приложении, по кандидатам остальных условий;
+   * в SQL уходит уже список подошедших — одной строкой JSON, а не тысячей
+   * параметров: у драйвера им есть потолок.
+   *
+   * Человек подходит, если хоть одно его прохождение выборки сдано в этом
+   * возрасте. Без даты рождения под возрастное условие не попадает никто:
+   * «від 25» про него неизвестно — так же решено в статистике.
+   */
+  if (spec.ageMin != null || spec.ageMax != null) {
+    const rows = await db.execute<{ id: string; birth: string | null; at: string | null }>(sql`
+      select u.id, u.birth_date as birth, r.submitted_at as at
+      from users u
+      join responses r on r.user_id = u.id and ${taken("r")}
+      where ${where} and u.birth_date is not null
+    `);
+    const born = new Map<string, string | null>();
+    const fits = new Set<string>();
+    for (const row of rows) {
+      if (fits.has(row.id) || !row.at) continue;
+      if (!born.has(row.id)) born.set(row.id, decryptField(row.birth));
+      const age = ageAt(born.get(row.id) ?? null, new Date(row.at).toISOString());
+      if (age === null) continue;
+      if (spec.ageMin != null && age < spec.ageMin) continue;
+      if (spec.ageMax != null && age > spec.ageMax) continue;
+      fits.add(row.id);
+    }
+    if (!fits.size) return { where: sql`false`, taken };
+    where = sql`${where} and u.id in (select jsonb_array_elements_text(${JSON.stringify([...fits])}::jsonb))`;
+  }
+
+  return { where, taken };
+}
+
+/**
+ * Разбивка с дополняющим подавлением.
+ *
+ * Число когорты печатается рядом, а значит одна скрытая ячейка
+ * восстанавливалась вычитанием: «у вибірці 8, чоловіків 5» называло
+ * женщин — троих — без всякого прочерка. Прежде ячейки прятались каждая
+ * сама по себе (suppress), и разбивка по полу у когорты из восьми отдавала
+ * скрытое арифметикой первого класса. Теперь правило то же, что в отчётах:
+ * suppressedKeys прячет пару (или всё разбиение, где пара не спасает).
+ *
+ * Поэтому запрос отдаёт ВСЕ ячейки, без потолка строк: правило решает по
+ * целому разбиению, а обрезанный хвост сделал бы сумму «неизвестной» только
+ * на вид — хвост легко получить соседним запросом.
+ *
+ * Порядок: показанные — по убыванию, скрытые — после них по ключу.
+ * Сортировка всех по числу выдавала бы место скрытой ячейки между
+ * соседями, то есть её границы.
+ */
+async function breakdown(query: SQL): Promise<CohortCell[]> {
+  const rows = [...(await db.execute<{ key: string | null; n: number }>(query))].map((r) => ({
+    key: r.key ?? "—",
+    n: Number(r.n),
+  }));
+  const hidden = suppressedKeys(rows);
+  const shown = rows.filter((r) => !hidden.has(r.key)).sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+  const closed = rows.filter((r) => hidden.has(r.key)).sort((a, b) => a.key.localeCompare(b.key));
+  return [...shown.map((r) => ({ key: r.key, count: r.n })), ...closed.map((r) => ({ key: r.key, count: null }))];
 }
 
 cohortRoutes.post("/preview", async (c) => {
   const user = c.get("user");
   const spec = await parseBody(c.req.raw, specSchema);
-  const where = await cohortWhere(user, spec);
+  const { where, taken } = await cohortSelection(user, spec);
 
   const [{ n = 0 } = { n: 0 }] = await db.execute<{ n: number }>(
     sql`select count(*)::int as n from users u where ${where}`,
@@ -171,26 +297,59 @@ cohortRoutes.post("/preview", async (c) => {
    */
   const allowed = canBreakDown(size);
 
-  const group = async (column: SQL): Promise<{ key: string; count: number | null }[]> => {
-    if (!allowed) return [];
-    const rows = await db.execute<{ key: string | null; n: number }>(
-      sql`select ${column} as key, count(*)::int as n from users u where ${where} group by 1 order by 2 desc limit 20`,
-    );
-    return [...rows].map((r) => ({ key: r.key ?? "—", count: suppress(Number(r.n)) }));
-  };
+  const byColumn = (column: SQL) =>
+    allowed
+      ? breakdown(sql`select ${column} as key, count(*)::int as n from users u where ${where} group by 1`)
+      : Promise.resolve([]);
 
-  const bySeverity = allowed
-    ? [
-        ...(await db.execute<{ key: string | null; n: number }>(sql`
-          select rs.severity as key, count(distinct u.id)::int as n
+  /*
+   * Возраст — полоса ПОСЛЕДНЕГО прохождения выборки: человек за два года
+   * наблюдения мог перейти из «25–34» в «35–44», и считать его в обеих
+   * значило бы, что доли не складываются в целое.
+   */
+  const byAge = allowed
+    ? breakdown(sql`
+        select b.band as key, count(*)::int as n from (
+          select distinct on (u.id) u.id, r.respondent_age_band as band
           from users u
-          join responses r on r.user_id = u.id and r.status = 'completed'
-          join response_scores rs on rs.response_id = r.id
-          where ${where} and rs.severity is not null
-          group by 1 order by 2 desc
-        `)),
-      ].map((r) => ({ key: r.key ?? "—", count: suppress(Number(r.n)) }))
-    : [];
+          join responses r on r.user_id = u.id and ${taken("r")}
+          where ${where}
+          order by u.id, r.submitted_at desc nulls last, r.id desc
+        ) b group by 1
+      `)
+    : Promise.resolve([]);
+
+  /*
+   * Выраженность — самая тяжёлая полоса человека среди прохождений выборки.
+   *
+   * Прежде человек попадал в каждую ступень, где у него была хоть одна
+   * шкала, и за всю историю, а не за выбранный период: строки разбивки не
+   * складывались в когорту, и «помірна: 40» при когорте 60 нельзя было
+   * прочесть как долю. Одна ступень на человека — это вопрос, который
+   * задают на самом деле: «сколько из них хотя бы где-то в тяжёлой полосе».
+   */
+  const bySeverity = allowed
+    ? breakdown(sql`
+        select m.rank::text as key, count(*)::int as n from (
+          select u.id, max(${severityRank("rs.severity")}) as rank
+          from users u
+          join responses r on r.user_id = u.id and ${taken("r")}
+          left join response_scores rs on rs.response_id = r.id
+          where ${where}
+          group by u.id
+        ) m group by 1
+      `).then((cells) =>
+        cells.map((cell) => ({ ...cell, key: SEVERITY_ORDER[Number(cell.key)] ?? "—" })),
+      )
+    : Promise.resolve([]);
+
+  const [bySex, byUnit, byLocality, ages, severities] = await Promise.all([
+    byColumn(sql`u.sex`),
+    byColumn(sql`u.unit`),
+    byColumn(sql`u.locality`),
+    byAge,
+    bySeverity,
+  ]);
 
   await audit(c, { action: "cohort.preview", details: { size, spec } });
 
@@ -199,11 +358,44 @@ cohortRoutes.post("/preview", async (c) => {
     size: suppress(size),
     breakdownAllowed: allowed,
     smallCellFloor: SMALL_CELL_FLOOR,
-    bySex: await group(sql`u.sex`),
-    byUnit: await group(sql`u.unit`),
-    bySeverity,
+    bySex,
+    byUnit,
+    byLocality,
+    byAge: ages,
+    bySeverity: severities,
   } satisfies CohortPreview);
 });
+
+/**
+ * Из чего выбирать: подразделения и населённые пункты людей в зоне.
+ *
+ * Прежде список подразделений копился на экране из разбивок предпросмотра:
+ * справочника подразделений в системе нет. Это работало, пока разбивка
+ * была одна; с фильтром по населённому пункту тот же приём дал бы список,
+ * который зависит от того, что человек успел понажимать, — и пункт, в
+ * который он ни разу не сузился, выбрать было бы нечем.
+ *
+ * Отдаются только названия, без чисел, и только в пределах зоны: те же
+ * люди, что попадают в пустое правило отбора. Название подразделения — не
+ * сведение о человеке; сколько там людей, скажет предпросмотр — со своим
+ * порогом и своей записью в журнале.
+ */
+cohortRoutes.get("/options", async (c) => {
+  const user = c.get("user");
+  const { where } = await cohortSelection(user, {});
+  const values = async (column: SQL) =>
+    [
+      ...(await db.execute<{ v: string }>(
+        sql`select distinct ${column} as v from users u where ${where} and ${column} is not null and ${column} <> ''`,
+      )),
+    ]
+      .map((r) => r.v)
+      .sort((a, b) => a.localeCompare(b, "uk"));
+  return c.json({ units: await values(sql`u.unit`), localities: await values(sql`u.locality`) } satisfies CohortOptions);
+});
+
+/** Потолок поимённого списка: дальше это уже выгрузка, а не список на экране */
+const MEMBERS_CAP = 500;
 
 /**
  * Список когорты поимённо.
@@ -235,17 +427,26 @@ cohortRoutes.post("/preview", async (c) => {
  * Ответ поэтому не отказ, а честный пустой список с флагом: когорта
  * найдена, размер её ниже порога, имён не будет. Отказ (403) читался бы
  * как «вам сюда нельзя», хотя дело не в правах спрашивающего.
+ *
+ * Строка человека несёт то, что нужно, чтобы решить «что с ним делать» не
+ * открывая карточку: почта и год — различить тёзок, подразделение и пункт —
+ * узнать своих, последнее прохождение выборки и его самая тяжёлая полоса —
+ * увидеть, кого смотреть первым. Телефона нет: см. CohortMember.
  */
 cohortRoutes.post("/members", async (c) => {
   const user = c.get("user");
   const spec = await parseBody(c.req.raw, specSchema);
-  const where = await cohortWhere(user, spec);
+  const { where, taken } = await cohortSelection(user, spec);
 
   const rows = await db.execute<{ id: string }>(
-    sql`select u.id from users u where ${where} limit 500`,
+    sql`select u.id from users u where ${where} order by u.id limit ${MEMBERS_CAP + 1}`,
   );
-  const ids = [...rows].map((r) => r.id);
-  if (!ids.length) return c.json({ items: [], suppressed: false, smallCellFloor: SMALL_CELL_FLOOR });
+  const found = [...rows].map((r) => r.id);
+  const truncated = found.length > MEMBERS_CAP;
+  const ids = found.slice(0, MEMBERS_CAP);
+  if (!ids.length) {
+    return c.json({ items: [], suppressed: false, smallCellFloor: SMALL_CELL_FLOOR, truncated: false } satisfies CohortMembers);
+  }
 
   if (!canBreakDown(ids.length)) {
     /*
@@ -258,31 +459,70 @@ cohortRoutes.post("/members", async (c) => {
       outcome: "denied",
       details: { size: ids.length, spec, reason: "small_cell" },
     });
-    return c.json({ items: [], suppressed: true, smallCellFloor: SMALL_CELL_FLOOR });
+    return c.json({ items: [], suppressed: true, smallCellFloor: SMALL_CELL_FLOOR, truncated: false } satisfies CohortMembers);
   }
 
   const people = await db.select().from(users).where(sql`${users.id} in ${ids}`);
 
+  const last = new Map<string, CohortMember["last"]>();
+  for (const r of await db.execute<{
+    userId: string;
+    responseId: string;
+    surveyId: string;
+    submittedAt: string | null;
+    rank: number | null;
+  }>(sql`
+    select distinct on (r.user_id)
+      r.user_id as "userId", r.id as "responseId", r.survey_id as "surveyId", r.submitted_at as "submittedAt",
+      (select max(${severityRank("rs.severity")}) from response_scores rs where rs.response_id = r.id) as rank
+    from responses r
+    where r.user_id in ${ids} and ${taken("r")}
+    order by r.user_id, r.submitted_at desc nulls last, r.id desc
+  `)) {
+    last.set(r.userId, {
+      responseId: r.responseId,
+      surveyId: r.surveyId,
+      submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
+      severity: r.rank === null ? null : (SEVERITY_ORDER[Number(r.rank)] ?? null),
+    });
+  }
+
   await audit(c, { action: "cohort.members", details: { size: ids.length, spec } });
 
-  return c.json({
-    items: people.map((p) => ({
+  const items: CohortMember[] = people
+    .map((p) => ({
       userId: p.id,
       fullName: fullNameOf(p),
+      email: p.email,
       unit: p.unit,
+      locality: p.locality,
       sex: p.sex,
-    })),
-    suppressed: false,
-    smallCellFloor: SMALL_CELL_FLOOR,
-  });
+      birthYear: birthYearOf(decryptField(p.birthDate)),
+      last: last.get(p.id) ?? null,
+    }))
+    // по фамилии: имена зашифрованы, и сортировать их может только приложение
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, "uk"));
+
+  return c.json({ items, suppressed: false, smallCellFloor: SMALL_CELL_FLOOR, truncated } satisfies CohortMembers);
 });
 
 /* ── сохранённые когорты ── */
 
 const saveSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().trim().min(1).max(200),
   note: z.string().max(1000).nullable().optional(),
   spec: specSchema,
+});
+
+/*
+ * Правка — название, заметка и само правило. Правило заменяется целиком,
+ * а не сливается: снятое на экране условие, слитое со старым, вернулось бы
+ * назад, и «оновити умови» сохраняло бы не то, что человек видит.
+ */
+const updateSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  note: z.string().max(1000).nullable().optional(),
+  spec: specSchema.optional(),
 });
 
 cohortRoutes.get("/", async (c) => {
@@ -319,6 +559,44 @@ cohortRoutes.post("/", async (c) => {
 
   await audit(c, { action: "cohort.save", resourceType: "cohort", resourceId: id });
   return c.json({ id }, 201);
+});
+
+/**
+ * Переименовать или пересохранить свою когорту.
+ *
+ * Чужая — «не найдено», как у удаления: когорта личная, и отличать «нет
+ * такой» от «есть, но не ваша» значило бы подтверждать существование чужой.
+ */
+cohortRoutes.patch("/:id", async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const input = await parseBody(c.req.raw, updateSchema);
+
+  const changes = {
+    ...(input.title !== undefined && { title: input.title }),
+    ...(input.note !== undefined && { note: input.note }),
+    ...(input.spec !== undefined && { spec: input.spec }),
+  };
+
+  const [row] = Object.keys(changes).length
+    ? await db
+        .update(cohorts)
+        .set(changes)
+        .where(sql`${cohorts.id} = ${id} and ${cohorts.createdBy} = ${user.id}`)
+        .returning()
+    : await db
+        .select()
+        .from(cohorts)
+        .where(sql`${cohorts.id} = ${id} and ${cohorts.createdBy} = ${user.id}`);
+  if (!row) notFound("err.cohortNotFound");
+
+  await audit(c, {
+    action: "cohort.update",
+    resourceType: "cohort",
+    resourceId: id,
+    details: { fields: Object.keys(changes) },
+  });
+  return c.json({ id: row.id, title: row.title, note: row.note, spec: row.spec as CohortSpec, createdAt: row.createdAt });
 });
 
 cohortRoutes.delete("/:id", async (c) => {
