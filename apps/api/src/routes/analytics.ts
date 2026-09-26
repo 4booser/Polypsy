@@ -1,4 +1,12 @@
-import { comparableScores, dateRangeQuery, guttmanErrorsNormed, itemContribution, t } from "@quizzy/shared";
+import {
+  MIN_RCI_SAMPLE,
+  comparableScores,
+  dateRangeQuery,
+  guttmanErrorsNormed,
+  itemContribution,
+  measurementError,
+  t,
+} from "@quizzy/shared";
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type {
@@ -17,9 +25,10 @@ import { langOf, notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { assertGroupAccess, assertSurveyAccess, surveyScopeFilter } from "../lib/scope";
+import { cell } from "../lib/privacy";
 import { decryptField } from "../lib/crypto";
-import { average, distribution, median, percent, quantile, round, timelineByDay } from "../lib/stats";
-import { TOO_FAST_MS, qualityOf, reliabilityOf } from "../lib/psychometrics";
+import { average, distribution, median, percent, quantile, round, stdev, timelineByDay } from "../lib/stats";
+import { TOO_FAST_MS, floorCeiling, qualityOf, reliabilityOf, scaleShape } from "../lib/psychometrics";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -661,13 +670,57 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       return base;
     });
 
-  // на каком вопросе теряются респонденты
+  /*
+   * На каком пункте прохождение ОБРЫВАЕТСЯ — последний отвеченный пункт.
+   *
+   * Это не то же, что «сколько человек досюда дошло»: воронка reached/lost
+   * падает и когда пункт пропустили по логике показа, и когда его просто
+   * пролистали дальше. Уход виден только по последнему отвеченному: если
+   * двадцать прохождений из ста кончаются на семнадцатом пункте, дело в
+   * семнадцатом пункте, а не в длине методики.
+   *
+   * Порядок — по позиции вопроса в методике, а не по времени ответа: человек
+   * может вернуться назад и поправить ответ, и «последний по времени» показал
+   * бы пункт, к которому он вернулся, а не тот, на котором ушёл.
+   */
+  const positionOf = new Map(survey.questions.map((q) => [q.id, q.position]));
+  const lastOfResponse = new Map<string, { questionId: string; position: number }>();
+  for (const a of answerRows) {
+    if (a.skipped) continue;
+    const position = positionOf.get(a.questionId);
+    if (position === undefined) continue;
+    const seen = lastOfResponse.get(a.responseId);
+    if (!seen || position > seen.position) {
+      lastOfResponse.set(a.responseId, { questionId: a.questionId, position });
+    }
+  }
+  const lastAnsweredCount = new Map<string, number>();
+  for (const { questionId } of lastOfResponse.values()) {
+    lastAnsweredCount.set(questionId, (lastAnsweredCount.get(questionId) ?? 0) + 1);
+  }
+
   let previousReached = responseRows.length;
   const dropOff = questionStats.map((q) => {
     const reached = q.shown;
     const lost = Math.max(0, previousReached - reached);
     previousReached = reached;
-    return { questionId: q.questionId, title: q.title, position: q.position, reached, lost };
+    /*
+     * Число обрывов проходит через порог малых ячеек вместе со своей долей.
+     * Один человек, бросивший методику на пункте про суицидальные мысли, —
+     * это сведение о конкретном человеке, а не о методике, и в отделении из
+     * шести обследуемых его узнают.
+     */
+    const ended = cell(lastAnsweredCount.get(q.questionId) ?? 0, responseRows.length);
+    return {
+      questionId: q.questionId,
+      title: q.title,
+      position: q.position,
+      reached,
+      lost,
+      endedHere: ended.count,
+      endedHerePercent: ended.percent,
+      avgDurationMs: q.avgDurationMs,
+    };
   });
 
   const scoresByScale = new Map<string, typeof scoreRows>();
@@ -714,6 +767,40 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     return matrix;
   };
 
+  /**
+   * Пол и потолок — по СЫРОМУ баллу, а не по итоговому значению.
+   *
+   * У сырого балла границы известны и постоянны: ноль и maxScore, записанный
+   * вместе с баллом на момент сдачи. У итогового значения их нет — T-балл не
+   * упирается ни во что, и «доля на потолке» по нему считалась бы от
+   * случайного максимума выборки, то есть показывала бы, что потолок есть
+   * всегда. Отрицательный сырой балл означал бы схему подсчёта, где ноль не
+   * нижняя граница, — в таком случае честнее не считать вовсе.
+   */
+  const floorCeilingOf = (rows: typeof scoreRows) => {
+    if (!rows.length) return null;
+    const raw = rows.map((r) => r.rawScore);
+    if (raw.some((v) => v < 0)) return null;
+    const maxPossible = rows[0]!.maxScore;
+    return floorCeiling(raw, 0, maxPossible);
+  };
+
+  /**
+   * SEM и MDC95 по накопленной выборке учреждения.
+   *
+   * SD берётся по той же выборке, по которой посчитана альфа, — иначе в
+   * формуле SEM = SD·√(1−α) сходятся два числа из разных популяций, и
+   * результат не относится ни к одной. Порог MIN_RCI_SAMPLE общий с RCI: это
+   * одна и та же ошибка измерения, и расходиться этим двум числам нельзя.
+   */
+  const measurementOf = (values: number[], alpha: number | null) => {
+    if (alpha === null || values.length < MIN_RCI_SAMPLE) return null;
+    const sd = stdev(values);
+    const err = measurementError(sd, alpha);
+    if (!err) return null;
+    return { ...err, basis: { sd: round(sd), alpha, sampleN: values.length } };
+  };
+
   const scaleStats: ScaleAnalytics[] = survey.scales.map((scale) => {
     const own = scoresByScale.get(scale.id) ?? [];
     /*
@@ -724,6 +811,13 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
      * перестал что-либо значить.
      */
     const { values, kept } = comparableScores(own);
+
+    const reliability = reliabilityOf(
+      scale.items
+        .map((i) => questionById.get(i.questionId))
+        .filter((q): q is NonNullable<typeof q> => !!q),
+      contributionsFor(scale),
+    );
 
     // порядок берём из определения шкалы, а не из порядка появления в данных:
     // нормы должны идти по возрастанию тяжести, и пустые тоже видны
@@ -750,12 +844,10 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         count: counts.get(band.label) ?? 0,
         percent: percent(counts.get(band.label) ?? 0, own.length),
       })),
-      reliability: reliabilityOf(
-        scale.items
-          .map((i) => questionById.get(i.questionId))
-          .filter((q): q is NonNullable<typeof q> => !!q),
-        contributionsFor(scale),
-      ),
+      reliability,
+      shape: scaleShape(values),
+      floorCeiling: floorCeilingOf(own),
+      measurement: measurementOf(values, reliability?.alpha ?? null),
     };
   });
 

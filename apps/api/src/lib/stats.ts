@@ -119,3 +119,73 @@ export function cronbachAlpha(matrix: number[][]): number | null {
   const sumItemVariance = itemVariances.reduce((a, b) => a + b, 0);
   return (k / (k - 1)) * (1 - sumItemVariance / totalVariance);
 }
+
+/** Стандартное отклонение выборки (корень из несмещённой дисперсии) */
+export function stdev(values: number[]): number {
+  return Math.sqrt(variance(values));
+}
+
+/**
+ * Асимметрия распределения, несмещённая оценка G1 (Fisher–Pearson).
+ *
+ *   G1 = √(n(n−1))/(n−2) · m₃ / m₂^1.5,  где mₖ — центральные моменты
+ *
+ * Источник: Joanes & Gill (1998), The Statistician 47(1), 183–189 — это
+ * формула, которую считают SPSS и SAS, и брать «простую» g1 нельзя: на
+ * выборках поликлинического размера она занижает асимметрию на десятки
+ * процентов, и хвост, из-за которого норму нельзя считать по среднему,
+ * выглядит безобидно.
+ *
+ * Врёт при n < 50: стандартная ошибка G1 равна примерно √(6/n) — на тридцати
+ * наблюдениях это 0.45, то есть «сильная асимметрия» и «симметрично»
+ * неразличимы. Порог применяет вызывающий код (MIN_N_SHAPE), здесь null
+ * отдаётся только там, где величина не определена вовсе.
+ */
+export function skewness(values: number[]): number | null {
+  const n = values.length;
+  if (n < 3) return null;
+  const mean = average(values);
+  let m2 = 0;
+  let m3 = 0;
+  for (const v of values) {
+    const d = v - mean;
+    m2 += d * d;
+    m3 += d * d * d;
+  }
+  m2 /= n;
+  m3 /= n;
+  if (m2 === 0) return null; // нулевой разброс: асимметрии нет, а не «ноль»
+  const g1 = m3 / m2 ** 1.5;
+  return (Math.sqrt(n * (n - 1)) / (n - 2)) * g1;
+}
+
+/**
+ * Эксцесс сверх нормального, несмещённая оценка G2 (Joanes & Gill, 1998).
+ *
+ *   G2 = (n−1)/((n−2)(n−3)) · ((n+1)·g2 + 6),  g2 = m₄/m₂² − 3
+ *
+ * Ноль означает «хвосты как у нормального»: именно на это допущение опирается
+ * перевод сырого балла в T-балл, и большой положительный эксцесс — причина
+ * не верить T-баллам на краях шкалы.
+ *
+ * Врёт при n < 50 сильнее, чем асимметрия: SE(G2) ≈ √(24/n), на пятидесяти
+ * это 0.69. Порог — у вызывающего кода; null здесь только при n < 4 или
+ * нулевом разбросе.
+ */
+export function kurtosisExcess(values: number[]): number | null {
+  const n = values.length;
+  if (n < 4) return null;
+  const mean = average(values);
+  let m2 = 0;
+  let m4 = 0;
+  for (const v of values) {
+    const d = v - mean;
+    m2 += d * d;
+    m4 += d * d * d * d;
+  }
+  m2 /= n;
+  m4 /= n;
+  if (m2 === 0) return null;
+  const g2 = m4 / (m2 * m2) - 3;
+  return ((n - 1) / ((n - 2) * (n - 3))) * ((n + 1) * g2 + 6);
+}

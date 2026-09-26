@@ -1364,6 +1364,18 @@ export interface ItemStat {
    */
   alphaIfDeleted: number | null;
   variance: number;
+  /**
+   * Доля прохождений, где пункт сработал (вклад выше собственного минимума).
+   * null — прохождений меньше тридцати: доля на такой выборке шумит сильнее,
+   * чем различия, ради которых её смотрят. Доли по каждому варианту ответа —
+   * в разборе вопроса, questions[].options.
+   */
+  endorsement: number | null;
+  /**
+   * Пункт различает людей: корреляция с суммой остальных не ниже 0.2.
+   * null — выборки не хватает, чтобы отличить 0.2 от нуля.
+   */
+  discriminating: boolean | null;
 }
 
 /** Надёжность субшкалы */
@@ -1372,6 +1384,21 @@ export interface Reliability {
   alpha: number;
   itemCount: number;
   items: ItemStat[];
+  /** Сколько полных профилей легло в расчёт — без этого числа альфа не читается */
+  sampleN: number;
+  /**
+   * Омега Макдональда по однофакторной модели — ВЕРХНЯЯ оценка надёжности.
+   *
+   * Стоит рядом с альфой, потому что альфа занижает надёжность разновесных
+   * пунктов, и по ней списывают годные шкалы. Нагрузки взяты из главной
+   * компоненты, а не из факторного анализа, поэтому ω завышена; верить ей
+   * стоит, когда она подтверждает альфу, и не стоит, когда она одна
+   * вытягивает шкалу выше порога. null — пунктов меньше трёх или
+   * прохождений меньше пятидесяти.
+   */
+  omega: number | null;
+  /** Сколько пунктов не различают людей; null — выборки не хватает для решения */
+  weakItems: number | null;
 }
 
 /** Признаки небрежного заполнения у одного прохождения */
@@ -1392,6 +1419,46 @@ export interface QualityFlags {
   personFit: number | null;
   flagged: boolean;
   reasons: string[];
+}
+
+/** Пол и потолок шкалы: сколько прохождений упёрлось в её края */
+export interface FloorCeiling {
+  n: number;
+  /** null — прохождений меньше пятидесяти, доля на такой выборке шумит на 6 п.п. */
+  floorPercent: number | null;
+  ceilingPercent: number | null;
+  /** Край не различает людей: доля выше 15% (Terwee, 2007) */
+  floorProblem: boolean | null;
+  ceilingProblem: boolean | null;
+}
+
+/** Форма распределения шкалы по накопленной выборке */
+export interface ScaleShape {
+  /** Число прохождений — единственное, что отдаётся при выборке ниже порога малых ячеек */
+  n: number;
+  mean: number | null;
+  median: number | null;
+  sd: number | null;
+  /** null при n < 50: на меньшей выборке величина не отличима от нуля */
+  skewness: number | null;
+  kurtosis: number | null;
+  /** null при n < 20: хвосты были бы одним наблюдением, выданным за квантиль */
+  percentiles: { p5: number; p10: number; p25: number; p50: number; p75: number; p90: number; p95: number } | null;
+}
+
+/**
+ * Ошибка измерения шкалы в её собственных единицах.
+ *
+ * Отдаётся рядом с распределением, чтобы специалист видел, какая разница
+ * вообще что-то значит: mdc95 — минимальная перемена, которую нельзя
+ * объяснить погрешностью инструмента.
+ */
+export interface ScaleMeasurement {
+  sem: number;
+  sdiff: number;
+  mdc95: number;
+  /** На чём посчитано: SD накопленной выборки и фактическая альфа */
+  basis: { sd: number; alpha: number; sampleN: number };
 }
 
 export interface ScaleAnalytics {
@@ -1417,6 +1484,12 @@ export interface ScaleAnalytics {
   bands: { label: string; severity: Severity; count: number; percent: number }[];
   /** null, если пунктов меньше двух или нет разброса ответов */
   reliability: Reliability | null;
+  /** Форма распределения по накопленной выборке; при малой выборке — только n */
+  shape: ScaleShape;
+  /** Доля упёршихся в края шкалы; null — границы шкалы неизвестны */
+  floorCeiling: FloorCeiling | null;
+  /** SEM и MDC95; null — нечем посчитать: мала выборка или не считается альфа */
+  measurement: ScaleMeasurement | null;
 }
 
 export interface SurveyAnalytics {
@@ -1438,8 +1511,26 @@ export interface SurveyAnalytics {
   avgDurationMs: number;
   medianDurationMs: number;
 
-  /** На каком вопросе люди бросают прохождение */
-  dropOff: { questionId: string; title: string; position: number; reached: number; lost: number }[];
+  /**
+   * На каком вопросе люди бросают прохождение.
+   *
+   * reached/lost — воронка «сколько досюда дошло»; endedHere — сколько
+   * прохождений этим пунктом ЗАКОНЧИЛОСЬ, то есть он был последним
+   * отвеченным. Второе находит пункт, с которого уходят: воронка проседает и
+   * от логики показа, а обрыв — только от пункта. null у endedHere и его
+   * доли — порог малых ячеек: один ушедший опознаётся в малой группе.
+   */
+  dropOff: {
+    questionId: string;
+    title: string;
+    position: number;
+    reached: number;
+    lost: number;
+    endedHere: number | null;
+    endedHerePercent: number | null;
+    /** Среднее время на пункте — рядом с обрывом: длинный пункт и есть причина */
+    avgDurationMs: number;
+  }[];
 
   questions: QuestionAnalytics[];
   scales: ScaleAnalytics[];
