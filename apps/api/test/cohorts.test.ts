@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { adminA, adminB, api, db, eq, makeUser, root, submitSurvey, surveyInA, surveyInB, users } from "./fixtures";
+import { adminA, adminB, api, db, eq, makeUser, root, sql, submitSurvey, surveyInA, surveyInB, users } from "./fixtures";
 
 /**
  * Конструктор когорт.
@@ -234,5 +234,180 @@ describe("название подразделения с кавычкой", () =
       body: JSON.stringify({}),
     });
     expect(still.body.size).toBeGreaterThan(0);
+  });
+
+  test("як і назва населеного пункту", async () => {
+    const odd = await preview({ localities: ["Село 'Б'; --"] });
+    expect(odd.status).toBe(200);
+    expect(odd.body.size).toBe(0);
+  });
+});
+
+/* ─────────── волна 9: адекватные фильтры подбора ─────────── */
+
+/**
+ * Шестеро с датой рождения ровно «тридцать лет и десять дней назад», пятеро
+ * из них в одном населённом пункте, один — в другом. Своё подразделение,
+ * чтобы соседние проверки не зависели от того, кто ещё успел сдать методику.
+ */
+let aged: string;
+const KYIV = `Київ-${crypto.randomUUID().slice(0, 6)}`;
+const LVIV = `Львів-${crypto.randomUUID().slice(0, 6)}`;
+
+beforeAll(async () => {
+  aged = `Рота-В-${crypto.randomUUID().slice(0, 6)}`;
+  const born = new Date();
+  born.setUTCFullYear(born.getUTCFullYear() - 30);
+  born.setUTCDate(born.getUTCDate() - 10);
+  const birthDate = born.toISOString().slice(0, 10);
+  for (let i = 0; i < 6; i++) {
+    const person = await makeUser("user", `cohort-aged-${crypto.randomUUID()}@test`, {
+      birthDate,
+      sex: "male",
+      unit: aged,
+      locality: i === 5 ? LVIV : KYIV,
+    });
+    await submitSurvey(surveyInA, person.token);
+  }
+});
+
+describe("населений пункт", () => {
+  test("кілька пунктів і без урахування регістру", async () => {
+    const both = await preview({ units: [aged], localities: [KYIV.toUpperCase(), LVIV.toLowerCase()] });
+    expect(both.body.size).toBe(6);
+    const one = await preview({ units: [aged], localities: [KYIV] });
+    expect(one.body.size).toBe(5);
+  });
+
+  /*
+   * Мутация: вернуть в разбивках `suppress` по одной ячейке — «Київ: 5» при
+   * «у вибірці 6» называет единственного во Львове вычитанием, и проверка
+   * падает на показанном Киеве.
+   */
+  test("одна прихована клітинка не відновлюється відніманням від розміру", async () => {
+    const res = await preview({ units: [aged] });
+    expect(res.body.size).toBe(6);
+    const cells = res.body.byLocality as { key: string; count: number | null }[];
+    expect(cells.map((c) => c.key).sort()).toEqual([KYIV, LVIV].sort());
+    for (const cell of cells) expect(cell.count, `${cell.key} показано`).toBeNull();
+  });
+
+  test("підбір знає пункти й підрозділи лише своєї зони", async () => {
+    const mine = await api("/api/cohorts/options", adminA.token);
+    expect(mine.status).toBe(200);
+    expect(mine.body.units).toContain(aged);
+    expect(mine.body.localities).toContain(KYIV);
+
+    const foreign = await api("/api/cohorts/options", adminB.token);
+    expect(foreign.body.units).not.toContain(aged);
+    expect(foreign.body.localities).not.toContain(KYIV);
+  });
+});
+
+describe("вік — повних років на момент проходження", () => {
+  /*
+   * Мутация: вернуть перевод возраста в полосы снимка — «від 25 до 29»
+   * отвечает всей полосой «25–34», то есть шестью тридцатилетними, и
+   * проверка падает на них.
+   */
+  test("діапазон рахується роками, а не віковою смугою", async () => {
+    expect((await preview({ units: [aged], ageMin: 30, ageMax: 30 })).body.size).toBe(6);
+    expect((await preview({ units: [aged], ageMin: 25, ageMax: 29 })).body.size).toBe(0);
+    expect((await preview({ units: [aged], ageMin: 31 })).body.size).toBe(0);
+    expect((await preview({ units: [aged], ageMax: 30 })).body.size).toBe(6);
+  });
+
+  test("перевернутий діапазон — помилка набору, а не порожня когорта", async () => {
+    const res = await preview({ units: [aged], ageMin: 40, ageMax: 30 });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("період проходження", () => {
+  test("кінець періоду — увесь день включно", async () => {
+    const [row] = await db.execute<{ today: string; yesterday: string }>(
+      sql`select current_date::text as today, (current_date - 1)::text as yesterday`,
+    );
+    /* мутация: сравнивать `submitted_at <= to` — сданное сегодня после полуночи выпадает */
+    expect((await preview({ units: [aged], from: row!.today, to: row!.today })).body.size).toBe(6);
+    expect((await preview({ units: [aged], to: row!.yesterday })).body.size).toBe(0);
+  });
+
+  test("дата — лише РРРР-ММ-ДД, початок не пізніше кінця", async () => {
+    expect((await preview({ from: "вчора" })).status).toBe(400);
+    expect((await preview({ from: "2026-09-30", to: "2026-09-01" })).status).toBe(400);
+  });
+});
+
+describe("вираженість", () => {
+  /*
+   * Мутация: считать человека в каждой ступени, где у него есть хоть одна
+   * шкала (как было), — у шестерых с одинаковыми ответами ступеней
+   * становится несколько, и строки перестают складываться в когорту.
+   */
+  test("кожна людина — в одній ступені, найтяжчій", async () => {
+    const res = await preview({ units: [aged] });
+    const cells = res.body.bySeverity as { key: string; count: number | null }[];
+    expect(cells).toHaveLength(1);
+    expect(cells[0]!.count).toBe(6);
+  });
+
+  test("«не нижче» відбирає ту саму ступінь і відсікає вищу", async () => {
+    const order = ["none", "mild", "moderate", "severe"];
+    const res = await preview({ units: [aged] });
+    const top = (res.body.bySeverity as { key: string }[])[0]!.key;
+    const at = order.indexOf(top);
+    expect(at, `ступінь «${top}»`).toBeGreaterThanOrEqual(0);
+    if (at >= 1) expect((await preview({ units: [aged], minSeverity: top })).body.size).toBe(6);
+    if (at < 3) expect((await preview({ units: [aged], minSeverity: order[at + 1] })).body.size).toBe(0);
+  });
+});
+
+describe("поіменний список", () => {
+  test("рядок несе пошту, рік і останнє проходження вибірки", async () => {
+    const named = await api("/api/cohorts/members", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ units: [aged] }),
+    });
+    expect(named.body.suppressed).toBe(false);
+    expect(named.body.truncated).toBe(false);
+    expect(named.body.items).toHaveLength(6);
+    const first = named.body.items[0];
+    expect(first.email).toContain("@test");
+    expect(first.birthYear).toBeGreaterThan(1900);
+    expect(first.locality === KYIV || first.locality === LVIV).toBe(true);
+    expect(first.last.surveyId).toBe(surveyInA);
+    expect(typeof first.last.submittedAt).toBe("string");
+    // телефона в подборе нет: см. CohortMember
+    expect("phone" in first).toBe(false);
+  });
+});
+
+describe("збережені: перейменування", () => {
+  test("своя — перейменовується, правило замінюється цілком", async () => {
+    const saved = await api("/api/cohorts", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Стара назва", spec: { units: [aged], sex: "male" } }),
+    });
+    const renamed = await api(`/api/cohorts/${saved.body.id}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ title: "Нова назва", spec: { units: [aged] } }),
+    });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.title).toBe("Нова назва");
+    // слитое правило вернуло бы снятый пол
+    expect(renamed.body.spec).toEqual({ units: [aged] });
+  });
+
+  test("чужа — «не знайдено»", async () => {
+    const saved = await api("/api/cohorts", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: "Моя", spec: {} }),
+    });
+    const theirs = await api(`/api/cohorts/${saved.body.id}`, adminB.token, {
+      method: "PATCH",
+      body: JSON.stringify({ title: "Чужа" }),
+    });
+    expect(theirs.status).toBe(404);
   });
 });

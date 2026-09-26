@@ -69,6 +69,7 @@ export type AuditAction =
   | "cohort.preview"
   | "cohort.members"
   | "cohort.save"
+  | "cohort.update"
   | "cohort.delete"
   /*
    * Раздел «Статистика»: пресеты фильтров и модели. Имена с filter_preset

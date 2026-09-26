@@ -10,13 +10,13 @@ import type {
 } from "@quizzy/shared";
 import { api } from "../../api";
 import { useLang } from "../../lang";
-import { Loading, useAction } from "../../ui";
+import { Loading, useAction, useToast } from "../../ui";
 import { cx } from "../../ui/cx";
 import { IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { Button } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { useSurveyAt } from "./data";
+import { useLocalityHints, useSurveyAt } from "./data";
 import {
   MAX_SAMPLES,
   STATS_LIST,
@@ -24,6 +24,7 @@ import {
   columnInput,
   columnsChanged,
   diffText,
+  filterErrors,
   statEditHref,
 } from "./model";
 import {
@@ -100,6 +101,7 @@ export default function StatModelPage() {
 function ModelScreen({ id }: { id: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
+  const toast = useToast();
   const model = useResource(() => api.statModel(id), [id]);
   const groups = useResource(() => api.patientGroups(), []);
   const presets = useResource(() => api.filterPresets(), []);
@@ -149,15 +151,28 @@ function ModelScreen({ id }: { id: string }) {
 
   const dirty = columnsChanged(saved, work);
   const presetOf = (c: StatModelColumn) => (c.presetId ? presets.data?.find((p) => p.id === c.presetId) : undefined);
+  const filtersOf = (c: StatModelColumn): SampleFilters => (c.presetId ? (presetOf(c)?.criteria ?? {}) : (c.filters ?? {}));
+
+  /*
+   * Перевёрнутый диапазон в любой выборке — причина тостом, без запроса:
+   * сервер отказал бы строкой схемы, а поле уже красное и подписано.
+   */
+  const problem = (): boolean => {
+    const key = work.flatMap((c) => filterErrors(filtersOf(c)))[0];
+    if (key) toast(ut(key), "err");
+    return !!key;
+  };
 
   const compare = () =>
     void run(async () => {
+      if (problem()) return false;
       /* правленая выборка — превью; нетронутая — расчёт сохранённой модели, с её id в журнале */
       setResult(dirty ? await api.previewStatModel(work.map(columnInput), model.data!.title) : await api.runStatModel(id));
     });
 
   const save = () =>
     void run(async () => {
+      if (problem()) return false;
       const next = await api.updateStatModel(id, { columns: work.map(columnInput) });
       setSaved(next.columns);
       setWork(next.columns);
@@ -196,7 +211,6 @@ function ModelScreen({ id }: { id: string }) {
   };
 
   const two = work.length > 1;
-  const filtersOf = (c: StatModelColumn): SampleFilters => (c.presetId ? (presetOf(c)?.criteria ?? {}) : (c.filters ?? {}));
 
   return (
     <Page
@@ -251,8 +265,15 @@ function ModelScreen({ id }: { id: string }) {
       <div
         className={cx(
           "mt-[30px] flex items-start justify-end gap-[15px]",
-          /* под парой — правым краем по второй колонке (1224); под одной — по строкам 698 (1147) */
-          two ? "w-[1025px] max-w-full" : "mx-auto w-[698px] max-w-full -translate-x-px",
+          /*
+           * Под парой — правым краем по второй колонке (1224); под одной — по
+           * строкам 698 (1147). Сетка пары резиновая (см. Samples): правый край
+           * второй колонки — 50% + 425 при просветах шире 24 и 100% − 86 при
+           * просветах 24; на 1200 обе формулы дают кадровые 1025.
+           */
+          two
+            ? "w-[min(1025px,calc(50%+425px),calc(100%-86px))]"
+            : "mx-auto w-[698px] max-w-full -translate-x-px",
         )}
       >
         {dirty ? (
@@ -403,13 +424,20 @@ function Single({
           <SingleRow key={r.key} row={r} onRisk={onRisk} />
         ))}
       </div>
-      {result ? (
-        <div className="mt-[15px] w-[698px] max-w-full">
-          <Summary res={result} />
-        </div>
-      ) : null}
+      <div className="mt-[15px] w-[698px] max-w-full">
+        {result ? <Summary res={result} /> : <PendingNote />}
+      </div>
     </div>
   );
+}
+
+/**
+ * Одна строка вместо подписей в пустых плашках долей — что сделать, чтобы
+ * они заполнились. См. Readout, `pending`.
+ */
+function PendingNote() {
+  const { ut } = useLang();
+  return <p className="m-0 text-[13px] leading-[19px] text-muted">{ut("st.percentPending")}</p>;
 }
 
 /** Строка отчёта одной выборки — ширины f09: 700 у теста, 698 у остальных */
@@ -424,7 +452,13 @@ function SingleRow({ row, onRisk }: { row: Row; onRisk: (questionId: string, opt
       return (
         <div className="flex w-[698px] max-w-full gap-[15px]">
           <Readout look={L} label={`${ut("st.band")} ${row.n}`} text={row.text} className="w-[338px] shrink-0" />
-          <Readout look={L} label={`${ut("st.percent")} ${row.n}`} text={cellNode(row.cell)} className="min-w-0 flex-1" />
+          <Readout
+            look={L}
+            label={`${ut("st.percent")} ${row.n}`}
+            text={cellNode(row.cell)}
+            pending={!row.cell}
+            className="min-w-0 flex-1"
+          />
         </div>
       );
     case "question":
@@ -434,7 +468,13 @@ function SingleRow({ row, onRisk }: { row: Row; onRisk: (questionId: string, opt
       return (
         <div className="flex w-[698px] max-w-full gap-[15px]">
           <Readout look={L} label={`${ut("st.answer")} ${row.n}`} text={row.text} className="w-[255px] shrink-0" />
-          <Readout look={L} label={`${ut("st.percent")} ${row.n}`} text={cellNode(row.cell)} className="min-w-0 flex-1" />
+          <Readout
+            look={L}
+            label={`${ut("st.percent")} ${row.n}`}
+            text={cellNode(row.cell)}
+            pending={!row.cell}
+            className="min-w-0 flex-1"
+          />
           <VshrToggle
             look={L}
             pressed={row.highRisk}
@@ -520,10 +560,15 @@ function FilterFields({
   wide?: boolean;
 }) {
   const { ut } = useLang();
+  const hints = useLocalityHints();
+  const listId = useId();
+  const errs = filterErrors(filters);
+  const badAge = errs.includes("coh.errAge");
+  const badDate = errs.includes("coh.errPeriod");
   return (
     <div className="flex flex-col">
       <div className="mb-[18px] flex">
-        <DateField look={look} from={filters.from} to={filters.to} onChange={(p) => onChange(p)} />
+        <DateField look={look} from={filters.from} to={filters.to} onChange={(p) => onChange(p)} invalid={badDate} />
       </div>
       <div className="mb-[15px] flex">
         <PatientField look={look} value={filters.patientId} onChange={(patientId) => onChange({ patientId })} />
@@ -536,8 +581,20 @@ function FilterFields({
           onChange={(p) => onChange(p)}
           dash={wide ? 25 : 17}
           gap={wide ? 10 : 6}
+          invalid={badAge}
         />
       </div>
+      {/*
+        Решение заказчика 2026-09-26: адекватные фильтры. Строка ошибки
+        появляется только при перевёрнутом диапазоне и сдвигает строки
+        карточки на свою высоту — на время, пока набор неверен; красный
+        цвет значения без слов не объяснял бы, что не так.
+      */}
+      {errs.length ? (
+        <p role="alert" className="m-0 -mt-[8px] mb-[12px] text-[13px] leading-[18px] text-danger">
+          {errs.map((k) => ut(k)).join(" · ")}
+        </p>
+      ) : null}
       {filters.patientGroupId ? (
         <div className="mb-[15px] flex">
           <GroupSelect
@@ -560,8 +617,17 @@ function FilterFields({
           label={ut("st.locality")}
           value={filters.locality ?? ""}
           maxLength={160}
+          list={hints.length ? listId : undefined}
+          autoComplete="off"
           onChange={(e) => onChange({ locality: e.target.value })}
         />
+        {hints.length ? (
+          <datalist id={listId}>
+            {hints.map((h) => (
+              <option key={h} value={h} />
+            ))}
+          </datalist>
+        ) : null}
       </div>
     </div>
   );
@@ -621,9 +687,22 @@ function Samples({
 
   return (
     <div className="mt-[22px] overflow-x-auto">
+      {/*
+        Пара — резиновой сеткой: колонки до 456, плашки 62, просветы от 24 и
+        растягиваются `justify-between` до кадровых 113 ровно на 1200.
+        Прежде сетка была жёсткой (456 + 113 + 456 + 113 + 62 = 1200), а
+        колонка содержимого у́же 1200 уже при рельсе слева — и колонку
+        разностей срезал край прокрутки: от плашек оставалась кромка в 8px
+        (замечание со стенда 2026-09-26). Третья и дальше — прежним шагом с
+        прокруткой: для них кадра нет, а сжимать восемь колонок в 1200
+        значило бы нечитаемые поля.
+      */}
       <div
-        className="grid gap-x-[113px] gap-y-[15px]"
-        style={{ gridTemplateColumns: pair ? "456px 456px 62px" : `repeat(${columns.length}, 456px)` }}
+        className={cx(
+          "grid gap-y-[15px]",
+          pair ? "grid-cols-[minmax(0,456px)_minmax(0,456px)_62px] justify-between gap-x-[24px]" : "gap-x-[113px]",
+        )}
+        style={pair ? undefined : { gridTemplateColumns: `repeat(${columns.length}, 456px)` }}
       >
         {columns.map((c, i) => (
           /*
@@ -655,6 +734,11 @@ function Samples({
 
         {result ? columns.map((_, i) => <Summary key={`s${i}`} res={result.columns[i]} />) : null}
         {result && pair ? <div aria-hidden /> : null}
+        {result ? null : (
+          <div className="col-span-full">
+            <PendingNote />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -702,7 +786,13 @@ function RowCells({
         return (
           <div key={i} className="flex gap-[15px]">
             <Readout look={L} label={`${ut("st.band")} ${row.n}`} text={row.text} className="w-[215px] shrink-0" />
-            <Readout look={L} label={`${ut("st.percent")} ${row.n}`} text={cellNode(row.cell)} className="min-w-0 flex-1" />
+            <Readout
+              look={L}
+              label={`${ut("st.percent")} ${row.n}`}
+              text={cellNode(row.cell)}
+              pending={!row.cell}
+              className="min-w-0 flex-1"
+            />
           </div>
         );
       case "question":
@@ -716,6 +806,7 @@ function RowCells({
               look={L}
               label={`${ut("st.percent")} ${row.n}`}
               text={cellNode(row.cell)}
+              pending={!row.cell}
               className="ml-[16px] min-w-0 flex-1"
             />
             <VshrToggle

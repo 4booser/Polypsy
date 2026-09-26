@@ -10,9 +10,11 @@ import {
   columnsChanged,
   columnsFromDraft,
   criteriaOf,
+  criterionValue,
   describeSample,
   diffText,
   emptyStructure,
+  filterErrors,
   newBandRow,
   sameFilters,
   structureFromModel,
@@ -108,6 +110,27 @@ describe("строки-критерии выборки", () => {
     ]);
     expect(withoutCriteria({ ageMin: 25, ageMax: 45, sex: "male" }, ["age"])).toEqual({ sex: "male" });
     expect(withoutCriteria({ from: "2026-01-01", to: "2026-02-01" }, ["date"])).toEqual({});
+  });
+
+  /*
+   * Решение заказчика 2026-09-26: адекватные фильтры. Мутация: сравнивать
+   * границы строками («100» < «25») — «від 100 до 25» проходит молча.
+   */
+  test("перевёрнутый диапазон называется до запроса", () => {
+    expect(filterErrors({ ageMin: 100, ageMax: 25 })).toEqual(["coh.errAge"]);
+    expect(filterErrors({ from: "2026-09-30", to: "2026-09-01" })).toEqual(["coh.errPeriod"]);
+    expect(filterErrors({ ageMin: 25, ageMax: 25, from: "2026-09-01", to: "2026-09-01" })).toEqual([]);
+  });
+
+  test("чип несёт значение, а группа и человек — только имя критерия", () => {
+    const t = (k: string) =>
+      ({ "nm.menCap": "Чоловіки", "coh.fromWord": "від", "coh.ageTo": "до" })[k] ?? k;
+    const f = { sex: "male" as const, ageMin: 25, from: "2026-09-01", to: "2026-09-30", patientGroupId: "g1", patientId: "p1" };
+    expect(criterionValue("sex", f, t as never)).toBe("Чоловіки");
+    expect(criterionValue("age", f, t as never)).toBe("від 25");
+    expect(criterionValue("date", f, t as never)).toBe("01.09.2026 – 30.09.2026");
+    expect(criterionValue("group", f, t as never), "имя группы в чипе читают через плечо").toBe("");
+    expect(criterionValue("patient", f, t as never)).toBe("");
   });
 
   test("выборка словами — для легенды диаграммы", () => {
