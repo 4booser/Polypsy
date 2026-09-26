@@ -504,7 +504,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ folderId }),
     }),
-  survey: (id: string) => request<SurveyFull>(`/api/surveys/${id}`),
+  /**
+   * Методика; с `version` — содержимое той версии, которую человек проходил
+   * (графики прохождения считают вклад пунктов по её ключу, а не по
+   * действующему). Без номера — действующая, как и раньше.
+   */
+  survey: (id: string, version?: number) =>
+    request<SurveyFull>(`/api/surveys/${id}${version ? `?version=${version}` : ""}`),
   /** Методика в редактируемом виде: локализованные объекты вместо строк */
   keySheet: (id: string) => request<KeySheet>(`/api/surveys/${id}/key?lang=ru`),
   surveyRaw: (id: string) => request<SurveyFull>(`/api/surveys/${id}?raw=1`),
@@ -992,7 +998,11 @@ export const api = {
     for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
     return request<Page<Respondent>>(`/api/dynamics/respondents?${qs}`);
   },
-  dynamics: (userId: string) => request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`),
+  /** Динамика человека; с `surveyId` — только по одной методике (сервер не считает альфу по остальным) */
+  dynamics: (userId: string, surveyId?: string) =>
+    request<RespondentDynamics>(
+      `/api/dynamics/respondents/${userId}${surveyId ? `?survey=${encodeURIComponent(surveyId)}` : ""}`,
+    ),
 
   alerts: (all = false) => unwrap(request<Items<RiskAlert>>(`/api/alerts${all ? "?all=1" : ""}`)),
 
