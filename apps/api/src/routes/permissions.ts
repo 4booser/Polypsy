@@ -10,14 +10,18 @@ import {
   SUPERADMIN_RANK,
   canAssignRole,
   roleRank,
+  staffDirectoryQuery,
+  type AssignableStaff,
   type Permission,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { permissionExceptions, rolePermissions, roles, staffRoles, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf, toPublicUser } from "../lib/auth";
-import { badRequest, forbidden, notFound, parseBody } from "../lib/http";
+import { decryptField } from "../lib/crypto";
+import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { ladderRankOf, permissionsOf } from "../lib/permissions";
+import { placementsOf } from "../lib/staffDirectory";
 import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
 /**
@@ -210,19 +214,50 @@ permissionRoutes.put("/roles/:id/permissions", requireSuperadmin, async (c) => {
  * выдавать ему ради этого управление учётными записями значило бы отдать
  * заодно заведение, блокировку и смену почты.
  */
+/*
+ * Подразделение и посада из анкеты приходят всегда: это рабочие сведения, они
+ * лежат в той же строке таблицы и ничего не стоят. Режим справочника
+ * (`?directory=1`, раздел «Лікарі» у заведующего) добавляет профиль приёма и
+ * расшифрованный телефон — и тогда чтение пишется в журнал с пометкой
+ * `phones`, тем же действием user.list, что и справочник у суперадмина: на
+ * вопрос «кто листал коллег с номерами» журнал отвечает одной выборкой,
+ * каким бы маршрутом ни листали. Круг людей режим не расширяет — правило
+ * лестницы (visibleTo) то же, что без него. Экран прав зовёт маршрут без
+ * флага: номера ему не нужны, а отдавать наружу ненужное незачем.
+ */
 permissionRoutes.get("/staff", requireStaff, async (c) => {
   const rank = await assignerRank(c);
+  const { directory } = parseQuery(c, staffDirectoryQuery);
   const rows = await db.select().from(users).where(ne(users.role, "user"));
 
-  const items = [];
+  const visible = [];
   for (const row of rows) {
     const person = toPublicUser(row);
     const theirRank = await ladderRankOf(person);
     if (!visibleTo(rank, theirRank, row.role)) continue;
-    items.push({ id: row.id, email: row.email, role: row.role, fullName: fullNameOf(row as never) });
+    visible.push(row);
   }
 
-  return c.json({ items });
+  const base = (row: (typeof rows)[number]): AssignableStaff => ({
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    fullName: fullNameOf(row as never),
+    unit: row.unit,
+    position: row.position,
+  });
+  if (!directory) return c.json({ items: visible.map(base) });
+
+  const placed = await placementsOf(
+    visible.map((r) => r.id),
+    langOf(c),
+  );
+  await audit(c, { action: "user.list", details: { count: visible.length, directory: true, assignable: true, phones: true } });
+  return c.json({
+    items: visible.map(
+      (row): AssignableStaff => ({ ...base(row), placement: placed.get(row.id) ?? null, phone: decryptField(row.phoneEnc) }),
+    ),
+  });
 });
 
 permissionRoutes.get("/users/:id", requireStaff, async (c) => {

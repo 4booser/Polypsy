@@ -236,6 +236,51 @@ export interface User {
   canInvite?: boolean;
 }
 
+/**
+ * Где сотрудник принимает — профиль приёма (specialist_profiles):
+ * відділення из справочника отделений и посада в нём.
+ *
+ * Отдельным объектом, а не ещё двумя полями User: у пациента профиля не
+ * бывает, у сотрудника без расписания — тоже, и «нет профиля» (null) — не то
+ * же, что «профиль без посады» (position: null). Название отделения уже на
+ * языке запроса: справочник хранит его парой {uk, ru}, а списку нужна строка.
+ */
+export interface StaffPlacement {
+  department: string;
+  position: string | null;
+}
+
+/**
+ * Строка справочника сотрудников (GET /api/users?directory=1): учётная
+ * запись и то, что нужно разделу «Лікарі» сверх неё, — телефон и профиль
+ * приёма. Телефон расшифрован; чтение такого списка пишется в журнал с
+ * пометкой `phones` (см. docs/REWRITE-PLAN.md §14).
+ */
+export interface StaffDirectoryUser extends User {
+  phone: string | null;
+  placement: StaffPlacement | null;
+}
+
+/**
+ * Строка «кого я вправе назначать» (GET /api/permissions/staff).
+ *
+ * Без анкеты — пола, даты рождения, специальности: заведующему список коллег
+ * нужен, а полного реестра ему не положено. Подразделение и посада из
+ * анкеты — рабочие сведения, а не личные, и лежат в той же строке таблицы,
+ * поэтому приходят всегда. Профиль приёма (второй запрос) и телефон — только
+ * в режиме справочника (`?directory=1`), и тогда чтение пишется в журнал.
+ */
+export interface AssignableStaff {
+  id: string;
+  email: string;
+  role: string;
+  fullName: string;
+  unit?: string | null;
+  position?: string | null;
+  placement?: StaffPlacement | null;
+  phone?: string | null;
+}
+
 export type Sex = "male" | "female";
 
 /** Возраст на конкретную дату — считается на момент обследования */

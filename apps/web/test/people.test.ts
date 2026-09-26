@@ -1,21 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { User } from "@quizzy/shared";
+import type { StaffDirectoryUser, User } from "@quizzy/shared";
 import { type DirectorySource, loadDirectory, loadMember } from "../src/pages/people/data";
 import { barKind, barSection } from "../src/shell/Topbar";
 import {
   type StaffRow,
   birthYear,
   cardTitleRole,
+  facetChoice,
+  facetValues,
+  filterStaff,
   fromAssignable,
+  fromUser,
+  groupStaff,
   isAdministrator,
   isDoctor,
   matchesQuery,
   metaSegments,
   ownGroups,
   pageSlice,
+  parseSort,
+  peopleLists,
+  phoneMatches,
   sortByName,
+  staffMeta,
+  workplaceOf,
 } from "../src/pages/people/model";
 
 /**
@@ -41,6 +51,9 @@ const row = (over: Partial<StaffRow> = {}): StaffRow => ({
   birthDate: "1986-04-12",
   specialty: null,
   unit: null,
+  department: null,
+  position: null,
+  phone: null,
   ...over,
 });
 
@@ -142,6 +155,224 @@ describe("отбор и порядок", () => {
 });
 
 /**
+ * Поиск раздела — решение заказчика 2026-09-26: «фильтр по имени, номеру
+ * телефона и логину».
+ *
+ * Проверяется здесь, потому что на живом экране каждое из правил ломается
+ * молча: поиск, не нашедший человека, выглядит ровно как поиск, которому
+ * некого найти. Больше всего это касается номера: одна и та же цифра
+ * записывается пятью способами, и нормализация обязана быть той же, по
+ * которой сервер считает слепой индекс (normalizePhone из общего пакета).
+ */
+describe("поиск по имени, логину и телефону", () => {
+  const withPhone = row({ fullName: "Петренко Іван Іванович", email: "petrenko@clinic.ua", phone: "+380501112233" });
+
+  test("ФИО — в любом порядке слов, и каждое слово обязано найтись", () => {
+    expect(matchesQuery(withPhone, "Іван Петренко")).toBe(true);
+    expect(matchesQuery(withPhone, "іванович петр")).toBe(true);
+    /* «Іван Коваль» не показывает всех Иванов: слово, не нашедшееся нигде, отсекает строку */
+    expect(matchesQuery(withPhone, "Іван Коваль")).toBe(false);
+  });
+
+  test("логин — почта целиком или кусок", () => {
+    expect(matchesQuery(withPhone, "petrenko@")).toBe(true);
+    expect(matchesQuery(withPhone, "clinic.ua")).toBe(true);
+  });
+
+  test("апостроф любым из трёх знаков — один апостроф", () => {
+    const mariana = row({ fullName: "Мар’яненко Мар’яна", email: "m@x.y" });
+    expect(matchesQuery(mariana, "Мар'яна")).toBe(true);
+    expect(matchesQuery(mariana, "марʼяна")).toBe(true);
+  });
+
+  test("номер целиком — в любой записи, как у слепого индекса", () => {
+    for (const q of ["+380501112233", "380501112233", "0501112233", "80501112233", "+38 (050) 111-22-33", "050 111 22 33"]) {
+      expect(matchesQuery(withPhone, q), q).toBe(true);
+    }
+    expect(matchesQuery(withPhone, "0501112234")).toBe(false);
+  });
+
+  test("кусок номера от трёх цифр — и в международной, и во внутренней записи", () => {
+    expect(phoneMatches("+380501112233", "050111")).toBe(true);
+    expect(phoneMatches("+380501112233", "38050")).toBe(true);
+    expect(phoneMatches("+380501112233", "2233")).toBe(true);
+    expect(phoneMatches("+380501112233", "999")).toBe(false);
+  });
+
+  test("меньше трёх цифр — не поиск по номеру: «5» нашлось бы у каждого", () => {
+    expect(phoneMatches("+380501112233", "50")).toBe(false);
+    expect(matchesQuery(withPhone, "50")).toBe(false);
+  });
+
+  test("имя и кусок номера в одном запросе", () => {
+    expect(matchesQuery(withPhone, "Петренко 2233")).toBe(true);
+    expect(matchesQuery(withPhone, "Петренко 9999")).toBe(false);
+  });
+
+  test("без номера цифры ищутся в логине, а не находят всех подряд", () => {
+    const noPhone = row({ email: "doc123@clinic.ua", phone: null });
+    expect(matchesQuery(noPhone, "123")).toBe(true);
+    expect(matchesQuery(noPhone, "456")).toBe(false);
+    expect(phoneMatches(null, "123")).toBe(false);
+  });
+
+  test("номер, который не нормализуется (старая запись), сравнивается цифрами", () => {
+    expect(phoneMatches("12-34-56", "3456")).toBe(true);
+  });
+});
+
+/**
+ * Відділення, посада, порядок и группы — вторая половина того же решения
+ * заказчика («сортировка по отделениям, должностям»).
+ */
+describe("відділення, посада и группы", () => {
+  const people = [
+    row({ id: "a", fullName: "Яценко", department: "Психологічне відділення", position: "Психолог" }),
+    row({ id: "b", fullName: "Бондар", department: null, unit: "Штаб", position: "психолог " }),
+    row({ id: "c", fullName: "Антонюк", department: "Психологічне відділення", position: "Завідувач" }),
+    row({ id: "d", fullName: "Ґудзь", department: null, unit: null, position: null }),
+  ];
+
+  test("відділення — из профиля приёма, без него — подразделение анкеты", () => {
+    expect(workplaceOf({ department: "Психологічне відділення", unit: "Штаб" })).toBe("Психологічне відділення");
+    expect(workplaceOf({ department: null, unit: "Штаб" })).toBe("Штаб");
+    expect(workplaceOf({ department: "  ", unit: "" })).toBeNull();
+  });
+
+  test("строка справочника: посада профиля главнее анкетной, пустая строка — не значение", () => {
+    const base = {
+      id: "u",
+      email: "u@x.y",
+      role: "admin",
+      fullName: "У",
+      firstName: "",
+      lastName: "",
+      middleName: null,
+      sex: null,
+      birthDate: null,
+      specialty: null,
+      unit: " ",
+      position: "Лікар",
+      phone: " +380501112233 ",
+    } as unknown as StaffDirectoryUser;
+    const placed = fromUser({ ...base, placement: { department: "Психологічне відділення", position: "Психолог" } });
+    expect(placed).toMatchObject({ department: "Психологічне відділення", position: "Психолог", unit: null, phone: "+380501112233" });
+    const bare = fromUser({ ...base, placement: null });
+    expect(bare).toMatchObject({ department: null, position: "Лікар" });
+  });
+
+  test("профиль без телефона (своя карточка из /auth/me) — телефона нет, а не undefined", () => {
+    const me = fromUser({ id: "m", email: "m@x.y", role: "admin", fullName: "М", firstName: "", lastName: "", middleName: null, sex: null, birthDate: null, specialty: null, unit: null, position: null } as unknown as User);
+    expect(me.phone).toBeNull();
+    expect(me.department).toBeNull();
+  });
+
+  test("строка «кого я вправе назначать» несёт рабочие сведения и номер справочника", () => {
+    const r = fromAssignable({
+      id: "u2",
+      email: "x@y.z",
+      role: "admin",
+      fullName: "Іванов Іван",
+      unit: "Штаб",
+      position: null,
+      placement: { department: "Приймальне відділення", position: "Психолог" },
+      phone: "+380671234567",
+    });
+    expect(r).toMatchObject({ unit: "Штаб", department: "Приймальне відділення", position: "Психолог", phone: "+380671234567", sex: null });
+  });
+
+  test("значения фильтра — из данных, одно написание на значение, по алфавиту", () => {
+    expect(facetValues(people, "unit")).toEqual(["Психологічне відділення", "Штаб"]);
+    /* «Психолог» и «психолог » — одна посада, подписанная первым по алфавиту имён (Бондар) */
+    expect(facetValues(people, "position")).toEqual(["Завідувач", "психолог"]);
+  });
+
+  test("выбранное из адреса: иное написание — пункт списка, пропавшее — отдельный пункт", () => {
+    const values = ["Завідувач", "Психолог"];
+    expect(facetChoice(values, "")).toEqual({ value: "", options: values });
+    expect(facetChoice(values, "психолог")).toEqual({ value: "Психолог", options: values });
+    /* пропавшее значение не прячется за «Усі»: иначе поле и пустой список противоречили бы друг другу */
+    expect(facetChoice(values, "Логопед")).toEqual({ value: "Логопед", options: [...values, "Логопед"] });
+  });
+
+  test("отбор: відділення и посада без учёта регистра, вместе с поиском", () => {
+    expect(filterStaff(people, { q: "", unit: "психологічне ВІДДІЛЕННЯ", position: "" }).map((r) => r.id)).toEqual(["a", "c"]);
+    expect(filterStaff(people, { q: "", unit: "", position: "Психолог" }).map((r) => r.id)).toEqual(["a", "b"]);
+    expect(filterStaff(people, { q: "Ярема", unit: "", position: "Психолог" })).toEqual([]);
+    expect(filterStaff(people, { q: "", unit: "", position: "" })).toHaveLength(4);
+  });
+
+  test("группы по алфавиту, люди внутри — по имени, «без відділення» — последней", () => {
+    const g = groupStaff(people, "unit");
+    expect(g.map((x) => x.title)).toEqual(["Психологічне відділення", "Штаб", null]);
+    expect(g[0]!.rows.map((r) => r.fullName)).toEqual(["Антонюк", "Яценко"]);
+    expect(g[2]!.rows.map((r) => r.id)).toEqual(["d"]);
+  });
+
+  test("группы по посаде сводят написания в одну", () => {
+    const g = groupStaff(people, "position");
+    expect(g.map((x) => [x.title, x.rows.length])).toEqual([
+      ["Завідувач", 1],
+      ["психолог", 2],
+      [null, 1],
+    ]);
+  });
+
+  test("порядок из адреса: незнакомое значение — по имени", () => {
+    expect(parseSort("unit")).toBe("unit");
+    expect(parseSort("position")).toBe("position");
+    expect(parseSort("date")).toBe("name");
+    expect(parseSort(null)).toBe("name");
+  });
+
+  test("строка списка: логін · телефон · відділення · посада, стать и рік в конце", () => {
+    const full = row({ phone: "+380501112233", department: "Психологічне відділення", position: "Психолог" });
+    expect(staffMeta(full, T)).toEqual(["noga@gmail.com", "+380501112233", "Психологічне відділення", "Психолог", "чол.", "1986р."]);
+    /* пустое не печатается вовсе — ни местом, ни лишней точкой */
+    expect(staffMeta(row({ sex: null, birthDate: null }), T)).toEqual(["noga@gmail.com"]);
+  });
+
+  test("под заголовком группы её значение в строке не повторяется", () => {
+    const full = row({ department: "Психологічне відділення", position: "Психолог" });
+    expect(staffMeta(full, T, "unit")).not.toContain("Психологічне відділення");
+    expect(staffMeta(full, T, "position")).not.toContain("Психолог");
+  });
+});
+
+/**
+ * Вкладки «Лікарі | Адміністратори» — решение заказчика 2026-09-26: полоса
+ * наверху всегда полная, а переключение между списками — на самой странице.
+ *
+ * Правило «кому открыт какой список» одно на маршруты и на вкладки: вкладка
+ * на адрес, которого у человека нет, увела бы его на сводку молча.
+ */
+describe("вкладки списков", () => {
+  const src = (f: string) => readFileSync(resolve(import.meta.dir, "../src", f), "utf8");
+
+  test("оба списка — суперадмину и тому, кому есть кого назначать; специалисту — ни одного", () => {
+    expect(peopleLists({ role: "superadmin" })).toEqual({ doctors: true, admins: true });
+    expect(peopleLists({ role: "admin", ladderRank: 2 })).toEqual({ doctors: true, admins: true });
+    expect(peopleLists({ role: "admin", ladderRank: 1 })).toEqual({ doctors: false, admins: false });
+    expect(peopleLists(null)).toEqual({ doctors: false, admins: false });
+  });
+
+  test("маршруты и вкладки решаются одним правилом", () => {
+    const app = src("App.tsx");
+    expect(app).toMatch(/peopleLists\(user\)\.doctors \? <Route path="\/staff"/);
+    expect(app).toMatch(/peopleLists\(user\)\.admins \? <Route path="\/admins"/);
+    const list = src("pages/people/StaffList.tsx");
+    expect(list).toContain("lists.doctors && lists.admins");
+  });
+
+  test("поиск, отбор и порядок — в адресе", () => {
+    const list = src("pages/people/StaffList.tsx");
+    for (const key of ["q", "unit", "position", "sort"]) {
+      expect(list, `нет ?${key} в адресе`).toContain(`useUrlState("${key}"`);
+    }
+  });
+});
+
+/**
  * Разделы людей объявлены в приложении и в меню одними и теми же адресами.
  *
  * Бургер (Rail.tsx) и полоса (Topbar.tsx) держат свои списки ссылок; если
@@ -161,7 +392,8 @@ describe("адреса разделов людей", () => {
   });
 
   test("меню ведёт на объявленные адреса", () => {
-    const menu = `${src("shell/Rail.tsx")}\n${src("shell/Topbar.tsx")}`;
+    /* и вкладки над самими списками (решение заказчика 2026-09-26): они тоже ссылки на эти адреса */
+    const menu = `${src("shell/Rail.tsx")}\n${src("shell/Topbar.tsx")}\n${src("pages/people/StaffList.tsx")}`;
     const links = [...menu.matchAll(/\bto[:=]\s*"(\/(?:staff|admins)[^"]*)"/g)].map((m) => m[1]!);
     expect(links.length).toBeGreaterThan(1);
     expect(links.filter((to) => !declared.has(to))).toEqual([]);
@@ -180,17 +412,37 @@ describe("адреса разделов людей", () => {
  * с расшифрованными ФИО пациентов и запись user.list в журнале.
  */
 describe("справочник сотрудников", () => {
-  const person = (id: string, role: User["role"], fullName: string): User =>
-    ({ id, role, fullName, firstName: "", lastName: "", middleName: null, email: `${id}@x.y`, sex: null, birthDate: null, specialty: null, unit: null }) as User;
+  const person = (id: string, role: User["role"], fullName: string): StaffDirectoryUser =>
+    ({
+      id,
+      role,
+      fullName,
+      firstName: "",
+      lastName: "",
+      middleName: null,
+      email: `${id}@x.y`,
+      sex: null,
+      birthDate: null,
+      specialty: null,
+      unit: null,
+      position: null,
+      phone: null,
+      placement: null,
+    }) as unknown as StaffDirectoryUser;
 
+  /*
+   * Счётчики названы по маршрутам, а не по методам: вопрос проверки —
+   * «ходили ли в реестр», и имя метода клиента тут вторично.
+   */
   const fake = () => {
     const calls = { users: 0, staff: 0, me: 0 };
     const src: DirectorySource & { me: () => Promise<User> } = {
-      users: async () => {
+      staffDirectory: async () => {
         calls.users++;
+        /* пациент здесь — страховка клиента от старого сервера, отдававшего весь реестр */
         return [person("u1", "admin", "Іванов"), person("u2", "admin", "Петренко"), person("p1", "user", "Пацієнт")];
       },
-      assignableStaff: async () => {
+      assignableDirectory: async () => {
         calls.staff++;
         return [{ id: "u2", email: "u2@x.y", role: "admin", fullName: "Петренко" }];
       },

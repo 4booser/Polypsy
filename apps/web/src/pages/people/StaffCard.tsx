@@ -78,8 +78,9 @@ import { gridClass, metaClass, nameClass, rowClass } from "./StaffList";
  * Убрана; возврат в список не потерян — он в верхней полосе и в бургере.
  *
  * Чего сервер не даёт (см. api_gaps): чужую карточку править нельзя (PATCH
- * /api/auth/me пишет только в себя), сбросить чужой пароль нельзя, телефон
- * наружу не отдаётся, города в модели нет, связи «этот администратор → его
+ * /api/auth/me пишет только в себя), сбросить чужой пароль нельзя, свой
+ * телефон не задать (чужой приходит справочником, см. поле phone ниже),
+ * города в модели нет, связи «этот администратор → его
  * лікарі» не существует. На кадрах f31/f43/f50 все три пункта меню нарисованы
  * одинаково нажимаемыми — здесь два из них в чужой карточке погашены с
  * подсказкой: пункт, ведущий к отказу после заполнения формы, хуже
@@ -416,8 +417,14 @@ export function StaffProfile() {
     unit: { key: "unit", label: ut("ppl.organization"), value: row.unit },
     birthDate: { key: "birthDate", label: ut("person.birthDate"), value: row.birthDate ? day(row.birthDate) : null },
     email: { key: "email", label: ut("ppl.email"), value: row.email },
-    /* телефон и населённый пункт сервер не отдаёт — поля стоят пустыми, как на кадре */
-    phone: { key: "phone", label: ut("ppl.phone"), value: null },
+    /*
+     * Телефон — из справочника сотрудников, откуда и сама строка: с 2026-09-26
+     * он приходит там расшифрованным, и чтение уже записано в журнал списком
+     * (см. data.ts), так что карточка второго пути к номеру не открывает.
+     * Своя карточка берётся из профиля (/api/auth/me), номера там нет — поле
+     * пустое, как на кадре. Населённого пункта сервер не отдаёт вовсе.
+     */
+    phone: { key: "phone", label: ut("ppl.phone"), value: row.phone },
     city: { key: "city", label: ut("ppl.city"), value: null },
     role: { key: "role", label: ut("adm.role"), value: roleText || null },
   } satisfies Record<string, FieldSpec>;
