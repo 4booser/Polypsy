@@ -5,6 +5,7 @@ import type {
   SafetyPlan,
   AnswerEvent,
   AuthPayload,
+  LoginResult,
   CreateSurveyInput,
   GroupInput,
   OverviewAnalytics,
@@ -203,8 +204,11 @@ export const api = {
     inviteCode?: string | null;
   }) =>
     request<AuthPayload>("/api/auth/register", { method: "POST", body: JSON.stringify(input) }),
+  /* при включённом втором факторе вместо пары — просьба о коде (people2) */
   login: (input: { email: string; password: string }) =>
-    request<AuthPayload>("/api/auth/login", { method: "POST", body: JSON.stringify(input) }),
+    request<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify(input) }),
+  loginMfa: (input: { mfaToken: string; code: string }) =>
+    request<AuthPayload>("/api/auth/mfa/login", { method: "POST", body: JSON.stringify(input) }),
   me: () =>
     request<User>("/api/auth/me").then((u) => {
       cache.saveMe(u);

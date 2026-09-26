@@ -7,6 +7,7 @@ import { Button, Field, Input, Select } from "../ui/primitives";
 import { LangSwitch, useLang } from "../lang";
 import { ALWAYS_VISIBLE_RAIL } from "@quizzy/shared";
 import { railGroups } from "../shell/Rail";
+import { SecondFactorSettings } from "./ops/people2/SecondFactor";
 
 /**
  * Учётная запись сотрудника.
@@ -132,6 +133,17 @@ export default function Account() {
                 {ut("acct.changePassword")}
               </Button>
             </div>
+          </div>
+        </Panel>
+
+        {/*
+          Второй фактор (техпанель, people2): включить, подтвердить кодом,
+          коды восстановления один раз, выключить паролем и кодом. Рядом с
+          паролем — это тот же разговор о ключах от учётной записи.
+        */}
+        <Panel title={ut("acct.mfa.title")}>
+          <div className="p-4">
+            <SecondFactorSettings onEnabled={refreshUser} />
           </div>
         </Panel>
 

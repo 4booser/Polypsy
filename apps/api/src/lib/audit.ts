@@ -114,6 +114,35 @@ export type AuditAction =
   | "session.revoke"
   /* выгрузка журнала — сама строка журнала: журнал уезжает за пределы системы */
   | "audit.export"
+  /*
+   * Люди и безопасность (волна 10, участок people2).
+   *
+   * Вход «от имени»: начало и конец — своими именами, а каждый просмотр под
+   * ним — impersonation.view (склеенный по пять минут, lib/impersonation.ts).
+   * Второй фактор: включение, выключение и чужой сброс ищут разными
+   * вопросами. Вход, ждущий кода, — auth.mfa_challenge; неверный код пишется
+   * как auth.login_failed (с причиной mfa_*) — для счётчика неудачных входов
+   * и правил подозрительной активности это одна и та же неудача.
+   */
+  | "impersonation.start"
+  | "impersonation.end"
+  | "impersonation.view"
+  | "auth.mfa_challenge"
+  | "mfa.setup"
+  | "mfa.enable"
+  | "mfa.disable"
+  | "mfa.reset"
+  | "security.policy_update"
+  | "suspicious.read"
+  | "suspicious.resolve"
+  | "suspicious.scan"
+  | "permission.exception_list"
+  | "permission.exception_extend"
+  /* массовое действие — сводкой; каждая затронутая учётка пишется ещё и своей строкой */
+  | "user.bulk"
+  | "user.import"
+  /* отчёт «хто переглядав картку» — сам отчёт тоже чтение о пациенте */
+  | "audit.subject_report"
   | "profile.update"
   | "survey.create"
   | "survey.catalog_update"
@@ -386,7 +415,21 @@ async function emit(input: AuditInput, actorId: string | null): Promise<void> {
 
 export async function audit(c: Context, input: AuditInput): Promise<void> {
   try {
-    const actor = input.actor ?? (c.get("user") as User | undefined) ?? null;
+    const ctxUser = c.get("user") as User | undefined;
+    /*
+     * Вход «от имени» (lib/impersonation.ts): в контексте запроса лежит тот,
+     * ПОД КЕМ смотрят, а действующее лицо журнала — суперадмин, который
+     * смотрит. «От чьего имени» — плоскими полями details (asUserId,
+     * impersonation): вложенный объект канонизация хэша проверяла бы не
+     * целиком (см. canonical выше и пояснение в lib/impersonation.ts).
+     * Если у действия своего субъекта нет, субъект — тот, под кем смотрят.
+     */
+    const imp = !input.actor && ctxUser?.impersonation ? ctxUser.impersonation : null;
+    const actor = input.actor ?? (imp ? { id: imp.actorId, email: imp.actorEmail, role: "superadmin" as const } : ctxUser) ?? null;
+    const details = imp
+      ? { ...(input.details ?? {}), asUserId: ctxUser!.id, asEmail: ctxUser!.email, impersonation: imp.sessionId }
+      : input.details;
+    const subjectUserId = input.subjectUserId ?? (imp ? ctxUser!.id : null);
     await writeChained({
       id: crypto.randomUUID(),
       actorId: actor?.id ?? null,
@@ -395,7 +438,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
       action: input.action,
       resourceType: input.resourceType ?? null,
       resourceId: input.resourceId ?? null,
-      subjectUserId: input.subjectUserId ?? null,
+      subjectUserId,
       outcome: input.outcome ?? "success",
       ip: clientIp(c),
       userAgent: c.req.header("User-Agent") ?? null,
@@ -405,7 +448,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
        * все прежние записи перестали бы проверяться. Цепочка важнее удобства
        * запроса — а найти по details Postgres умеет.
        */
-      details: withRequestId(input.details),
+      details: withRequestId(details),
     });
 
     /*

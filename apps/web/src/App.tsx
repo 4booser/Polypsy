@@ -14,6 +14,7 @@ import { peopleLists } from "./pages/people/model";
 import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
 import { canOpenOps, opsHome } from "./pages/ops/model";
+import { ImpersonationBanner } from "./pages/ops/people2/ImpersonationBanner";
 
 /*
  * Экраны догружаются по требованию.
@@ -40,6 +41,13 @@ const OpsJobs = lazy(() => import("./pages/ops/Jobs"));
 const OpsUsers = lazy(() => import("./pages/ops/Users"));
 const OpsSessions = lazy(() => import("./pages/ops/Sessions"));
 const OpsAuditLog = lazy(() => import("./pages/ops/AuditLog"));
+/* люди и безопасность (people2): подозрительное, временные доступы, «хто переглядав», второй фактор */
+const OpsSuspicious = lazy(() => import("./pages/ops/people2/Suspicious"));
+const OpsGrants = lazy(() => import("./pages/ops/people2/Grants"));
+const OpsWhoViewed = lazy(() => import("./pages/ops/people2/WhoViewed"));
+const OpsMfaPolicy = lazy(() => import("./pages/ops/people2/MfaPolicy"));
+/* обязательная настройка второго фактора — вместо рабочего места, как смена временного пароля */
+const MfaSetupGate = lazy(() => import("./pages/ops/people2/SecondFactor").then((m) => ({ default: m.MfaSetupGate })));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -375,7 +383,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    /*
+     * Пока обязательный второй фактор не настроен (people2), сервер отвечает
+     * отказом на всё, кроме настройки, — и каждый такт счётчиков писал бы в
+     * журнал access.denied. Опрос начнётся, когда профиль перечитается.
+     */
+    if (!user || user.mfaSetupRequired) return;
     /*
      * Тревоги — единственное в консоли, что должно догонять само: пока
      * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
@@ -475,10 +488,32 @@ export default function App() {
    * он сам, и это одинаково плохо и для врача, и для пациента. Экран один
    * на обоих — ни консоли, ни кабинета до смены.
    */
+  /*
+   * Вход «от имени» (техпанель, people2): янтарная полоса над каждым
+   * экраном — и консоли, и кабинета пациента. Забыть, что смотришь чужими
+   * глазами, нельзя ни на одном экране (решение заказчика 2026-09-26).
+   */
+  const banner = user.impersonation ? <ImpersonationBanner user={user} info={user.impersonation} /> : null;
+
   if (user.mustChangePassword) {
     return (
       <Suspense fallback={<Loading rows={3} />}>
+        {banner}
         <ForcePassword />
+      </Suspense>
+    );
+  }
+
+  /*
+   * Второй фактор обязателен по политике и не настроен (people2): мягкий
+   * переход — вход есть, а вместо рабочего места одно дело: настроить. Сервер
+   * и так отказывает во всём, кроме настройки (err.mfaSetupRequired); экран
+   * нужен, чтобы человек видел не консоль из отказов, а что сделать.
+   */
+  if (user.mfaSetupRequired) {
+    return (
+      <Suspense fallback={<Loading rows={3} />}>
+        <MfaSetupGate />
       </Suspense>
     );
   }
@@ -494,6 +529,7 @@ export default function App() {
   if (user.role === "user") {
     return (
       <Suspense fallback={<Loading rows={4} />}>
+        {banner}
         <Routes>
           <Route path="/me" element={<PatientApp />}>
             <Route index element={<PatientHome />} />
@@ -617,6 +653,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      {banner}
       <Topbar
         counts={{ today: todayLeft, worklist: worklistCount, alerts: openAlerts, referrals: openReferrals }}
         isSuper={isSuper}
@@ -883,6 +920,11 @@ export default function App() {
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}
+              {/* люди и безопасность (people2) — каждый раздел по своему праву, как в sections.ts */}
+              {can("audit.read") ? <Route path="suspicious" element={<OpsSuspicious />} /> : null}
+              {can("users.manage") ? <Route path="grants" element={<OpsGrants />} /> : null}
+              {can("audit.read") ? <Route path="who-viewed" element={<OpsWhoViewed />} /> : null}
+              {can("ops.manage") ? <Route path="mfa" element={<OpsMfaPolicy />} /> : null}
             </Route>
           ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />

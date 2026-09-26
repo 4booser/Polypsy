@@ -136,6 +136,12 @@ const NOT_TEXT: [string, string][] = [
    */
   ["mailings", "options"],
   ["mailings", "patient_ids"],
+  /*
+   * Срабатывание правила подозрительной активности (people2): числа, коды
+   * правил, почты и адреса серии. Слова к ним экран берёт из словаря на языке
+   * читателя (ops.rule.*, ops.ruleWhy.*), хранить здесь перевод нечего.
+   */
+  ["suspicious_findings", "details"],
 ];
 
 describe("двуязычность содержимого", () => {

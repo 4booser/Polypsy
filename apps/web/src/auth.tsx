@@ -5,7 +5,17 @@ import { api, tokenStore } from "./api";
 interface AuthState {
   user: User | null;
   loading: boolean;
+  /**
+   * Вход: пара токенов — и человек внутри; или, если у него включён второй
+   * фактор, ждём код (mfa ниже) — экран входа показывает второй шаг.
+   */
   login: (email: string, password: string) => Promise<void>;
+  /** Второй шаг входа ждёт кода (people2); null — не ждёт */
+  mfa: { token: string } | null;
+  /** Принять просьбу о коде, пришедшую не с формы входа — возврат от Google */
+  beginMfa: (token: string) => void;
+  completeMfa: (code: string) => Promise<void>;
+  cancelMfa: () => void;
   logout: () => void;
   /** Перечитать профиль — после правки настроек рабочего места */
   refreshUser: () => void;
@@ -24,6 +34,9 @@ interface AuthState {
 }
 
 const Ctx = createContext<AuthState | null>(null);
+
+/** Права техпанели и журнала — под входом «от имени» их нет (см. can) */
+const OPS_ONLY: ReadonlySet<Permission> = new Set<Permission>(["ops.read", "ops.manage", "users.manage", "audit.read"]);
 
 /**
  * Мои действующие права — с карточки прав, вместе с профилем.
@@ -63,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [perms, setPerms] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [mfa, setMfa] = useState<{ token: string } | null>(null);
 
   /*
    * Профиль и права принимаются парой и в этом порядке: сперва права, потом
@@ -132,7 +146,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * доступ и не давала войти вовсе. Куда его пустить, решает App по классу
      * учётной записи.
      */
-    await adopt(await api.login(email, password));
+    const res = await api.login(email, password);
+    /*
+     * Второй фактор включён — пары нет, есть знак «пароль верный». Человек,
+     * который уже был внутри (смена временного пароля на ForcePassword входит
+     * заново сама), выходит на экран входа со вторым шагом: его прежняя
+     * сессия погашена сменой пароля, и держать на экране её профиль нечем.
+     */
+    if ("mfaRequired" in res) {
+      tokenStore.clear();
+      setUser(null);
+      setPerms(new Set());
+      setMfa({ token: res.mfaToken });
+      return;
+    }
+    await adopt(res);
+  }
+
+  async function completeMfa(code: string) {
+    if (!mfa) return;
+    await adopt(await api.loginMfa(mfa.token, code));
+    setMfa(null);
   }
 
   function logout() {
@@ -162,10 +196,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * иначе суперадмин, случайно отнявший у себя право, не смог бы вернуть
    * его обратно — консоль спрятала бы от него экран, на котором это делается.
    */
-  const can = (permission: Permission) => user?.role === "superadmin" || perms.has(permission);
+  /*
+   * Под входом «от имени» (people2) техпанель закрыта на сервере целиком —
+   * и консоль её не обещает: права панели и журнала отвечают «нет», как бы
+   * ни были выданы тому, под кем смотрят. Иначе пункт бургера и вкладки
+   * вели бы в отказ.
+   */
+  const can = (permission: Permission) => {
+    if (user?.impersonation && OPS_ONLY.has(permission)) return false;
+    return user?.role === "superadmin" || perms.has(permission);
+  };
 
   return (
-    <Ctx.Provider value={{ user, loading, login, logout, refreshUser, adopt, can }}>{children}</Ctx.Provider>
+    <Ctx.Provider
+      value={{
+        user,
+        loading,
+        login,
+        mfa,
+        beginMfa: (token: string) => setMfa({ token }),
+        completeMfa,
+        cancelMfa: () => setMfa(null),
+        logout,
+        refreshUser,
+        adopt,
+        can,
+      }}
+    >
+      {children}
+    </Ctx.Provider>
   );
 }
 

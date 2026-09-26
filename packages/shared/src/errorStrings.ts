@@ -366,6 +366,106 @@ export const ERRORS = {
     ru: "Сессия не найдена или уже завершена",
     en: "The session wasn’t found or has already ended",
   },
+  /*
+   * Люди й безпека (волна 10, участок people2). Вход «от имени» отказывает
+   * своими словами: человек под чужим именем должен понять, что кнопка не
+   * сломана, а запись под таким входом запрещена по правилу.
+   */
+  "err.impersonationReadOnly": {
+    uk: "Ви переглядаєте систему від імені іншої людини — зміни в цьому режимі заборонені",
+    ru: "Вы смотрите систему от имени другого человека — изменения в этом режиме запрещены",
+    en: "You’re viewing the system as another person — changes are not allowed in this mode",
+  },
+  "err.impersonationNoOps": {
+    uk: "Технічна панель і журнал недоступні під час перегляду від імені іншої людини",
+    ru: "Техническая панель и журнал недоступны при просмотре от имени другого человека",
+    en: "The technical panel and the audit log are unavailable while viewing as another person",
+  },
+  "err.impersonationEnded": {
+    uk: "Перегляд від імені завершено або його строк минув",
+    ru: "Просмотр от имени завершён или его срок истёк",
+    en: "Viewing as another person has ended or expired",
+  },
+  "err.impersonateSelf": {
+    uk: "Переглядати від власного імені немає сенсу",
+    ru: "Смотреть от собственного имени незачем",
+    en: "There’s no point viewing as yourself",
+  },
+  "err.impersonateSuperadmin": {
+    uk: "Від імені іншого суперадміністратора переглядати не можна",
+    ru: "Смотреть от имени другого суперадминистратора нельзя",
+    en: "You can’t view as another super administrator",
+  },
+  "err.impersonateDisabled": {
+    uk: "Обліковий запис вимкнено — переглядати від його імені нема чого",
+    ru: "Учётная запись отключена — смотреть от её имени нечего",
+    en: "This account is disabled — there’s nothing to view as it",
+  },
+  "err.mfaSetupRequired": {
+    uk: "Для вашого облікового запису обов’язковий другий фактор. Налаштуйте його в розділі «Обліковий запис» веб-консолі",
+    ru: "Для вашей учётной записи обязателен второй фактор. Настройте его в разделе «Учётная запись» веб-консоли",
+    en: "A second factor is required for your account. Set it up under “Account” in the web console",
+  },
+  "err.mfaInvalidCode": {
+    uk: "Код не підходить. Введіть свіжий код із застосунку або код відновлення",
+    ru: "Код не подходит. Введите свежий код из приложения или код восстановления",
+    en: "The code doesn’t match. Enter a fresh code from the app or a recovery code",
+  },
+  "err.mfaAlreadyEnabled": {
+    uk: "Другий фактор вже ввімкнено. Щоб налаштувати заново, спершу вимкніть його",
+    ru: "Второй фактор уже включён. Чтобы настроить заново, сначала выключите его",
+    en: "The second factor is already on. To set it up again, turn it off first",
+  },
+  "err.mfaNoPending": {
+    uk: "Налаштування не розпочато — почніть його ще раз",
+    ru: "Настройка не начата — начните её ещё раз",
+    en: "Setup hasn’t been started — start it again",
+  },
+  "err.mfaTokenInvalid": {
+    uk: "Час на введення коду минув — увійдіть ще раз",
+    ru: "Время на ввод кода истекло — войдите ещё раз",
+    en: "The time to enter the code has run out — sign in again",
+  },
+  "err.mfaRequiredByPolicy": {
+    uk: "Другий фактор обов’язковий для вашого облікового запису — вимкнути його не можна",
+    ru: "Второй фактор обязателен для вашей учётной записи — выключить его нельзя",
+    en: "The second factor is required for your account — it can’t be turned off",
+  },
+  "err.mfaResetOwn": {
+    uk: "Власний другий фактор вимикають у розділі «Обліковий запис» — паролем і кодом",
+    ru: "Собственный второй фактор выключают в разделе «Учётная запись» — паролем и кодом",
+    en: "Turn off your own second factor under “Account” — with your password and a code",
+  },
+  "err.findingNotFound": {
+    uk: "Спрацювання не знайдено",
+    ru: "Срабатывание не найдено",
+    en: "Alert not found",
+  },
+  "err.findingResolved": {
+    uk: "Спрацювання вже розібрано",
+    ru: "Срабатывание уже разобрано",
+    en: "This alert has already been reviewed",
+  },
+  "err.exceptionPermanent": {
+    uk: "Безстроковий виняток не продовжують — у нього немає строку",
+    ru: "Бессрочное исключение не продлевают — у него нет срока",
+    en: "A permanent exception can’t be extended — it has no end date",
+  },
+  "err.importTooMany": {
+    uk: "За один раз можна завести не більше {max} людей — розділіть файл",
+    ru: "За один раз можно завести не больше {max} человек — разделите файл",
+    en: "At most {max} people can be imported at once — split the file",
+  },
+  "err.importInvalid": {
+    uk: "У файлі є рядки з помилками — нікого не створено. Виправте їх і завантажте знову",
+    ru: "В файле есть строки с ошибками — никто не создан. Исправьте их и загрузите снова",
+    en: "The file has rows with errors — nobody was created. Fix them and upload again",
+  },
+  "err.periodReversed": {
+    uk: "Кінець періоду раніше за початок",
+    ru: "Конец периода раньше начала",
+    en: "The period ends before it starts",
+  },
   "err.caseAlreadyHandled": {
     uk: "Випадок вже розібрано",
     ru: "Случай уже разобран",

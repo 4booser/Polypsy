@@ -363,6 +363,31 @@ export interface User {
    * чтобы вкладка не обещала того, чего сервер не даст.
    */
   canInvite?: boolean;
+  /**
+   * Вход «от имени» (техпанель, участок people2): суперадмин смотрит систему
+   * глазами этого человека. Сам профиль — того, под кем смотрят (так консоль
+   * рисует его меню и его данные), а здесь — кто смотрит, зачем и до когда.
+   * Консоль по этому полю ставит янтарный баннер на всех экранах. Сервер при
+   * этом отказывает в любой записи и в техпанели (middleware/auth.ts).
+   */
+  impersonation?: ImpersonationInfo | null;
+  /**
+   * Второй фактор обязателен (политика техпанели), но не настроен: сервер
+   * пускает только в настройку второго фактора, выход и профиль, а консоль
+   * вместо рабочего места открывает настройку. Мягкий переход — войти можно,
+   * работать нельзя, пока не настроишь.
+   */
+  mfaSetupRequired?: boolean;
+}
+
+/** Кто смотрит «от имени» — см. User.impersonation */
+export interface ImpersonationInfo {
+  sessionId: string;
+  actorId: string;
+  actorEmail: string;
+  actorName: string;
+  reason: string;
+  expiresAt: string;
 }
 
 /**
@@ -503,6 +528,261 @@ export interface OpsSessionPage {
   total: number;
   page: number;
   per: number;
+}
+
+/* ─────────── техпанель: люди и безопасность (волна 10, участок people2) ─────────── */
+
+/** Ответ на вход, когда после пароля нужен второй шаг — код из приложения */
+export interface MfaChallenge {
+  mfaRequired: true;
+  /** Короткоживущий знак «пароль верный»; access-токеном не является */
+  mfaToken: string;
+}
+
+/** Вход: либо пара токенов, либо просьба о втором шаге */
+export type LoginResult = AuthPayload | MfaChallenge;
+
+/** Состояние второго фактора своей учётки (GET /api/auth/mfa) */
+export interface MfaStatus {
+  enabled: boolean;
+  /** Начата настройка, но не подтверждена кодом */
+  pending: boolean;
+  confirmedAt: string | null;
+  /** Сколько неиспользованных кодов восстановления осталось */
+  recoveryLeft: number;
+  /** Обязателен ли второй фактор этой учётке по политике */
+  required: boolean;
+}
+
+/** Начало настройки: секрет показывается один раз — QR и строкой */
+export interface MfaSetup {
+  secret: string;
+  otpauthUrl: string;
+}
+
+/** Политика второго фактора (одна строка) */
+export interface MfaPolicy {
+  superadmins: boolean;
+  ops: boolean;
+  updatedAt: string | null;
+  updatedByEmail: string | null;
+}
+
+/** Кому по политике нужен второй фактор — и есть ли он */
+export interface MfaCoverageRow {
+  id: string;
+  email: string;
+  fullName: string;
+  role: Role;
+  /** Почему нужен: суперадмин или держатель ops.read / ops.manage */
+  because: "superadmin" | "ops";
+  enabled: boolean;
+  confirmedAt: string | null;
+  disabled: boolean;
+}
+
+export interface MfaPolicyView {
+  policy: MfaPolicy;
+  coverage: MfaCoverageRow[];
+}
+
+/** Выдача токена «от имени» (POST /api/ops/people/impersonate/:id) */
+export interface ImpersonationStart {
+  token: string;
+  sessionId: string;
+  expiresAt: string;
+  subject: { id: string; email: string; fullName: string; role: Role };
+}
+
+/** Правила подозрительной активности — lib/suspicious.ts на сервере */
+export type SuspiciousRule =
+  | "failedLoginsAccount"
+  | "failedLoginsIp"
+  | "newDevice"
+  | "massReads"
+  | "nightActivity"
+  | "namedExport"
+  | "impersonation";
+
+export interface SuspiciousFinding {
+  id: string;
+  rule: SuspiciousRule;
+  actorId: string | null;
+  actorEmail: string | null;
+  /** Имя действующего лица, если учётка известна */
+  actorName: string | null;
+  subjectId: string | null;
+  subjectName: string | null;
+  ip: string | null;
+  windowFrom: string;
+  windowTo: string;
+  /** Сколько записей журнала дали срабатывание */
+  hits: number;
+  details: Record<string, unknown> | null;
+  detectedAt: string;
+  /** Оповещение ещё не отправлено — признак «новое» для оповещений */
+  notified: boolean;
+  resolvedAt: string | null;
+  resolvedByEmail: string | null;
+  resolution: string | null;
+}
+
+export interface SuspiciousPage {
+  items: SuspiciousFinding[];
+  total: number;
+  open: number;
+  /** Когда проверка шла последний раз в этом процессе; null — ещё не шла */
+  lastScanAt: string | null;
+  /** Пороги правил — экран объясняет правило числами, а не словами «много» */
+  thresholds: SuspiciousThresholds;
+}
+
+export interface SuspiciousThresholds {
+  failedPerAccount: number;
+  failedPerIp: number;
+  failedIpAccounts: number;
+  failedWindowMin: number;
+  massReadPatients: number;
+  massReadWindowMin: number;
+  nightFrom: string;
+  nightTo: string;
+  nightMinReads: number;
+  timezone: string;
+  /** Откуда взяты рабочие часы: из расписаний отделения или константой */
+  hoursSource: "schedule" | "default";
+}
+
+/** Личное исключение со сроком — раздел «Тимчасові доступи» */
+export interface TemporaryGrant {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  permission: string;
+  mode: "grant" | "revoke";
+  reason: string;
+  grantedAt: string;
+  grantedByEmail: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+}
+
+export interface TemporaryGrants {
+  /** Действующие со сроком — ближайшее окончание сверху */
+  active: TemporaryGrant[];
+  /** Истёкшие за последние 30 дней — недавние сверху */
+  expired: TemporaryGrant[];
+  /** Бессрочных действующих — числом: их разбирают на экране прав */
+  permanent: number;
+}
+
+/** Массовые действия над учётками */
+export type BulkUserAction = "disable" | "enable" | "revoke-sessions" | "assign-role";
+
+/** Почему строка пропущена — ключ словаря ops.skip.* */
+export type BulkSkipReason =
+  | "notFound"
+  | "self"
+  | "superadminOnly"
+  | "lastSuperadmin"
+  | "alreadyDisabled"
+  | "notDisabled"
+  | "patient"
+  | "superadminTarget"
+  | "alreadyHasRole"
+  | "roleNotInChain"
+  | "roleAboveYours"
+  | "roleGrantsMore";
+
+export interface BulkResult {
+  action: BulkUserAction;
+  done: { id: string; email: string }[];
+  skipped: { id: string; email: string | null; reason: BulkSkipReason }[];
+}
+
+/** Ошибка строки импорта — ключ словаря ops.import.err.* */
+export type ImportRowError =
+  | "lastNameRequired"
+  | "firstNameRequired"
+  | "emailRequired"
+  | "emailInvalid"
+  | "emailTaken"
+  | "emailDuplicate"
+  | "roleUnknown"
+  | "roleNotAllowed"
+  | "roleTemplateUnknown"
+  | "roleTemplateAboveYours";
+
+export interface ImportRow {
+  /** Номер строки файла, с единицы, считая заголовок */
+  line: number;
+  lastName: string;
+  firstName: string;
+  middleName: string;
+  email: string;
+  role: string;
+  roleTemplate: string;
+  position: string;
+  unit: string;
+  errors: ImportRowError[];
+}
+
+export interface ImportPreview {
+  rows: ImportRow[];
+  /** Сколько строк без ошибок */
+  valid: number;
+  /** Колонки файла, которых шаблон не знает, — названы, а не молча брошены */
+  unknownColumns: string[];
+  /** Обязательные колонки, которых в файле нет */
+  missingColumns: string[];
+}
+
+export interface ImportCreated {
+  created: { id: string; email: string; fullName: string; role: Role; password: string }[];
+}
+
+/** Отчёт «хто переглядав» — один сотрудник, его дни и действия */
+export interface WhoViewedAction {
+  action: string;
+  count: number;
+  first: string;
+  last: string;
+  /**
+   * Смотрели под входом «от имени» — от чьего (почта). Действующее лицо
+   * строки при этом — суперадмин, который смотрел на самом деле.
+   */
+  asUserEmail: string | null;
+}
+
+export interface WhoViewedDay {
+  day: string;
+  actions: WhoViewedAction[];
+}
+
+export interface WhoViewedActor {
+  actorId: string;
+  actorEmail: string | null;
+  actorName: string | null;
+  actorRole: string | null;
+  total: number;
+  days: WhoViewedDay[];
+}
+
+export interface WhoViewedReport {
+  patient: { id: string; fullName: string; email: string };
+  from: string;
+  to: string;
+  total: number;
+  actors: WhoViewedActor[];
+  generatedAt: string;
+}
+
+/** Найденный пациент для отчёта — только то, чтобы узнать человека */
+export interface PatientPick {
+  id: string;
+  fullName: string;
+  email: string;
+  birthYear: string | null;
 }
 
 /**

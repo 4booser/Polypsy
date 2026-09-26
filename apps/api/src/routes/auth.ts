@@ -7,12 +7,14 @@ import {
   registerSchema,
   updateProfileSchema,
   workspacePrefsSchema,
+  type MfaChallenge,
 } from "@quizzy/shared";
+import { factorEnabled } from "../lib/secondFactor";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { hashPassword, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
+import { hashPassword, issueMfaToken, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
 import { issuePair, revokeAllFor, revokeByToken, rotateRefresh, type IssuedPair } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { touchLastSeen } from "../lib/accounts";
@@ -321,6 +323,27 @@ async function loginHandler(c: Context<AppEnv>): Promise<Response | LoginRefusal
       details: { email, reason: "disabled" },
     });
     return "err.accountDisabled";
+  }
+
+  /*
+   * Второй фактор включён — пара токенов не выдаётся, выдаётся знак «пароль
+   * верный» и просьба о коде (routes/secondFactor.ts, POST /mfa/login).
+   *
+   * Счётчик неудачных попыток здесь НЕ сбрасывается, и это главное в
+   * развилке. Сбрось его верный пароль — знающий пароль чередовал бы «пароль,
+   * четыре неверных кода, снова пароль» и перебирал бы коды без предела.
+   * Сбрасывает только полный вход — после кода.
+   */
+  if (await factorEnabled(row.id)) {
+    await audit(c, {
+      action: "auth.mfa_challenge",
+      resourceType: "user",
+      resourceId: row.id,
+      actor: toPublicUser(row),
+      details: { via: "password" },
+    });
+    const challenge: MfaChallenge = { mfaRequired: true, mfaToken: await issueMfaToken(row.id, "password") };
+    return c.json(challenge);
   }
 
   await clearFailures(email);
@@ -705,9 +728,13 @@ function newVerifier(): string {
  * как и состояние входа: запись нужна на один переход браузера, и хранить
  * её в базе значило бы копить там мусор ради секунд.
  */
-const handoffs = new Map<string, { pair: IssuedPair; at: number }>();
+/*
+ * Передаётся либо пара, либо просьба о втором шаге (people2): вход через
+ * Google не обходит второй фактор — иначе он защищал бы одну дверь из двух.
+ */
+const handoffs = new Map<string, { pair: IssuedPair | MfaChallenge; at: number }>();
 
-function handoff(pair: IssuedPair): string {
+function handoff(pair: IssuedPair | MfaChallenge): string {
   const code = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
   for (const [key, value] of handoffs) if (Date.now() - value.at > 30_000) handoffs.delete(key);
   handoffs.set(code, { pair, at: Date.now() });
@@ -903,16 +930,20 @@ async function googleCallback(
     return "err.accountDisabled";
   }
 
+  /* второй фактор включён — консоль получит просьбу о коде вместо пары (см. handoff) */
+  const factor = await factorEnabled(row.id);
   await audit(c, {
-    action: "auth.login",
+    action: factor ? "auth.mfa_challenge" : "auth.login",
     resourceType: "user",
     resourceId: row.id,
     actor: toPublicUser(row),
     details: { via: "google" },
   });
 
-  await touchLastSeen(row.id);
-  const pair = await issuePair(row);
+  if (!factor) await touchLastSeen(row.id);
+  const pair: IssuedPair | MfaChallenge = factor
+    ? { mfaRequired: true, mfaToken: await issueMfaToken(row.id, "google") }
+    : await issuePair(row);
   /*
    * В адресе — одноразовый код, а не сама пара токенов.
    *
