@@ -17,7 +17,8 @@ import { Button, type ButtonProps } from "./primitives";
  * Меню на кадрах трёх видов, и это не три компонента, а один параметр
  * `align`:
  *  - «left» — меню списка (f07: «+», «⋯», «▾» у крошки): плашка с рамкой
- *    шириной от 220, пункты 13/400 у левого края, как в бургере шапки;
+ *    шириной от 220, пункты 13/400 у левого края (бургер шапки с 2026-09-26
+ *    набирает свои пункты 16/400 — у него двадцать строк, а не три);
  *  - «right» — меню карточки (f15, f38 и весь раздел людей — f04, f30, f31,
  *    f40, f41, f43, f47, f48, f50: шестерёнка справа от заголовка): плашка
  *    142×94 с рамкой #999999 и тенью, пункты 15/400 серым прижаты к правому
@@ -161,6 +162,27 @@ function plateClass(align: MenuAlign, plateClassName?: string): string {
 }
 
 /**
+ * Что получает раскрывающий элемент, нарисованный экраном сам (`trigger`):
+ * обещания диктору и открытие. Имени среди них нет — его даёт тот, кто
+ * рисует, потому что видимая подпись обязана в имя войти (WCAG 2.5.3).
+ */
+export interface MenuTriggerProps {
+  "aria-haspopup": "menu";
+  "aria-expanded": boolean;
+  "aria-controls": string | undefined;
+  onClick: () => void;
+}
+
+/*
+ * Пункт меню — любая из трёх ролей: обычный, флажок, выбор одного из
+ * нескольких. Стрелки и первый фокус ищут все три: меню языка (shell/
+ * LangMenu.tsx) отмечает текущий язык ролью menuitemradio с aria-checked —
+ * у простого menuitem состояния «выбран» в ARIA нет, — и поиск одного
+ * `[role="menuitem"]` оставил бы такое меню без стрелок.
+ */
+const ITEM = '[role^="menuitem"]';
+
+/**
  * Глиф, раскрывающий меню; содержимое — через функцию, чтобы пункт мог
  * закрыть меню сам, а между пунктами могла стоять черта (<hr>).
  *
@@ -176,11 +198,12 @@ export function MenuButton({
   plateClassName,
   triggerClassName,
   triggerSize = "glyph",
+  trigger,
   children,
 }: {
   /** Имя меню для диктора: у глифа подписи нет */
   label: string;
-  glyph: ReactNode;
+  glyph?: ReactNode;
   align?: MenuAlign;
   className?: string;
   /** Размеры плашки, если кадр экрана даёт свои: см. plateClass */
@@ -195,6 +218,19 @@ export function MenuButton({
    */
   triggerClassName?: string;
   triggerSize?: ButtonProps["size"];
+  /*
+   * Раскрывающий элемент целиком свой — когда он не кнопка консоли вовсе.
+   *
+   * Язык в верхней полосе — подпись 20/700 цветом полосы, без коробки и
+   * заливки, с площадкой нажатия накладкой (shell/LangMenu.tsx). Button
+   * принёс бы высоту, поля, заливку наведения и токенный цвет, и снять их
+   * `triggerClassName` не может: два `h-*` или два `text-*` в одной строке
+   * классов спорят, и кто победит, решает собранный CSS. Второй компонент
+   * меню рядом принёс бы вторую копию ловушки и стрелок — ради одной копии
+   * этот файл и написан. Поэтому наружу отдаётся только сама кнопка, а
+   * ловушка, стрелки, Esc и подложка остаются здесь.
+   */
+  trigger?: (props: MenuTriggerProps) => ReactNode;
   children: (close: () => void) => ReactNode;
 }) {
   const id = useId();
@@ -210,7 +246,7 @@ export function MenuButton({
      * «меню» без пункта под курсором. Ловушка сама пункт не выбирает — она
      * общая на все слои и не знает, что внутри меню.
      */
-    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    ref.current?.querySelector<HTMLElement>(ITEM)?.focus();
     const onKey = (e: KeyboardEvent) => {
       /* только верхний слой: окно поверх меню не должно гасить оба и не должно листать меню под собой */
       if (!isTopLayer(ref)) return;
@@ -224,7 +260,7 @@ export function MenuButton({
        * вниз — и до этого обработчика на стрелку не отвечал никто.
        */
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
-      const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+      const items = Array.from(ref.current?.querySelectorAll<HTMLElement>(ITEM) ?? []);
       if (!items.length) return;
       e.preventDefault();
       const at = items.indexOf(document.activeElement as HTMLElement);
@@ -246,18 +282,27 @@ export function MenuButton({
 
   return (
     <div className={cx("relative inline-flex", className)}>
-      <Button
-        size={triggerSize}
-        variant="ghost"
-        className={triggerClassName}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? id : undefined}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {glyph}
-      </Button>
+      {trigger ? (
+        trigger({
+          "aria-haspopup": "menu",
+          "aria-expanded": open,
+          "aria-controls": open ? id : undefined,
+          onClick: () => setOpen((v) => !v),
+        })
+      ) : (
+        <Button
+          size={triggerSize}
+          variant="ghost"
+          className={triggerClassName}
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? id : undefined}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {glyph}
+        </Button>
+      )}
       {open ? (
         <>
           <div aria-hidden onClick={close} className="fixed inset-0 z-40" />

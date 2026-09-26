@@ -101,7 +101,8 @@ export function LangSwitch() {
       aria-label={LANG_SELF_LABEL}
       className="flex items-center overflow-hidden rounded-md border border-hairline"
     >
-      {(["uk", "ru"] as const).map((code) => (
+      {/* языки — ключи LANG_NAMES, а не два литерала: третий встаёт сюда сам (см. shell/LangMenu.tsx) */}
+      {(Object.keys(LANG_NAMES) as Lang[]).map((code) => (
         <button
           key={code}
           type="button"

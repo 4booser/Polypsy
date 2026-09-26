@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { LangProvider } from "../src/lang";
-import { LangToggle } from "../src/shell/Topbar";
+import { LangMenu } from "../src/shell/LangMenu";
 import { Button, ButtonLink } from "../src/ui/primitives";
 
 /**
@@ -23,6 +23,8 @@ const render = (node: ReactElement) =>
   );
 
 const classes = (html: string) => new Set(html.match(/class="([^"]*)"/)![1].split(/\s+/));
+/* классы самой кнопки: у меню языка первой в разметке стоит обёртка MenuButton */
+const buttonClasses = (html: string) => new Set(html.match(/<button[^>]*class="([^"]*)"/)![1].split(/\s+/));
 
 describe("ButtonLink — близнец Button", () => {
   test("без свойств обе рисуют одну кнопку", () => {
@@ -52,9 +54,11 @@ describe("«Укр» в полосе", () => {
      * с замеренного места на всех экранах консоли разом. Накладке расти
      * некуда: она вне потока.
      */
-    const cls = classes(render(<LangToggle />));
-    expect(cls.has("after:size-[44px]"), "площадки нажатия 44×44 не стало").toBe(true);
-    const box = [...cls].filter((c) => /^-?(min-)?[wh]-\[/.test(c));
-    expect(box, "коробка «Укр» получила свой размер — слово уедет влево").toEqual([]);
+    for (const node of [<LangMenu />, <LangMenu tone="token" side="start" />]) {
+      const cls = buttonClasses(render(node));
+      expect(cls.has("after:size-[44px]"), "площадки нажатия 44×44 не стало").toBe(true);
+      const box = [...cls].filter((c) => /^-?(min-)?[wh]-\[/.test(c));
+      expect(box, "коробка «Укр» получила свой размер — слово уедет влево").toEqual([]);
+    }
   });
 });
