@@ -225,8 +225,13 @@ test("бланк вводится с клавиатуры и строкой це
     .first()
     .click();
   await page.waitForTimeout(800);
-  const url = page.url();
-  const surveyId = url.split("/surveys/")[1]!.split(/[/?#]/)[0]!;
+  /*
+   * Аналитика методики переехала во вкладку «Тести» раздела «Аналітика»:
+   * прежний /surveys/:id перенаправляет на /analytics/tests?survey=:id.
+   * Идентификатор берётся из любого из двух видов адреса.
+   */
+  const url = new URL(page.url());
+  const surveyId = url.searchParams.get("survey") ?? url.pathname.split("/surveys/")[1]!.split("/")[0]!;
   await page.goto(`/surveys/${surveyId}/administer`);
   await page.getByRole("button", { name: "Быстрый ввод" }).click();
 

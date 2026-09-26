@@ -126,6 +126,7 @@ const StaffGroups = lazy(() => import("./pages/people/StaffCard").then((m) => ({
  * срабатываниями. Свой экран у них появился по кадрам f08/f15/f27.
  */
 const AnalyticsList = lazy(() => import("./pages/analytics/List"));
+const TestsAnalytics = lazy(() => import("./pages/analytics/tests"));
 const AnalyticsModel = lazy(() => import("./pages/analytics/Editor"));
 /*
  * Раздел «Статистика» — кадры f08, f09, f17, f18, f23, f24, f29: перечень
@@ -707,6 +708,13 @@ export default function App() {
             точный сегмент выше параметра, а идентификаторы правил — UUID.
           */}
           <Route path="/analytics" element={<AnalyticsList />} />
+          {/*
+            Вкладка «Тести» — полная аналитика методики (pages/analytics/tests).
+            Статичный сегмент не спорит с `:id` модели: маршрутизатор ставит
+            точный сегмент выше параметра, а идентификаторы правил — UUID.
+            Прежний /surveys/:id перенаправляет сюда (SurveyAnalytics.tsx).
+          */}
+          <Route path="/analytics/tests" element={<TestsAnalytics />} />
           <Route path="/analytics/new" element={<AnalyticsModel />} />
           <Route path="/analytics/:id" element={<AnalyticsModel />} />
           {/*
