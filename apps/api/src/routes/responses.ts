@@ -11,9 +11,11 @@ import {
   type User,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import {
   answerEvents,
   answers,
+  auditLog,
   questions,
   riskAlerts,
   responseScores,
@@ -169,6 +171,41 @@ async function assertMayFillFor(c: Context<AppEnv>, user: User, patientId: strin
   forbidden("err.onBehalfPatientOutOfScope");
 }
 
+/**
+ * Повтор той же попытки — или чужой идентификатор (волна 12, участок submit).
+ *
+ * Идемпотентный повтор искал прохождение по одному clientRequestId и
+ * отдавал найденное, не спрашивая, чьё оно: баллы, достоверность, план
+ * безопасности — любому, кто пришлёт тот же идентификатор. Идентификатор
+ * случайный, но он живёт в офлайн-очереди устройства и в логах клиента, и
+ * «знать строку» не должно значить «читать чужой результат».
+ *
+ * Своё — это та же методика и тот же обследуемый; а кто сдавал, если строка
+ * этого не говорит (заполнение за пациента, анонимная методика), записано
+ * только в журнале сдачи — там его и сверяем.
+ */
+async function isOwnAttempt(
+  existing: typeof responses.$inferSelect,
+  surveyId: string,
+  user: User,
+  onBehalfOf: string | null,
+): Promise<boolean> {
+  if (existing.surveyId !== surveyId) return false;
+  if (existing.userId !== null && existing.userId !== (onBehalfOf ?? user.id)) return false;
+  if (!onBehalfOf && existing.userId === user.id) return true;
+  // журнал закрыт пациенту политикой строк — сверка идёт системной ролью и отдаёт только «да/нет»
+  const [entry] = await asSystem(() =>
+    db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.action, "response.submit"), eq(auditLog.resourceId, existing.id), eq(auditLog.actorId, user.id)),
+      )
+      .limit(1),
+  );
+  return Boolean(entry);
+}
+
 /** Отправка прохождения вместе с телеметрией по каждому вопросу */
 responseRoutes.post("/surveys/:id/responses", async (c) => {
   const user = c.get("user");
@@ -181,9 +218,29 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
    * существующее прохождение вместо создания дубля.
    */
   if (input.clientRequestId) {
-    const existing = await db.query.responses.findFirst({
-      where: eq(responses.clientRequestId, input.clientRequestId),
-    });
+    /*
+     * Ищем мимо политик строк: чужая попытка, невидимая пациенту, иначе
+     * дошла бы до вставки и упала на уникальном индексе пятисоткой.
+     */
+    const requestId = input.clientRequestId;
+    const existing = await asSystem(() =>
+      db.query.responses.findFirst({ where: eq(responses.clientRequestId, requestId) }),
+    );
+    if (existing && !(await isOwnAttempt(existing, surveyId, user, input.onBehalfOf ?? null))) {
+      /*
+       * Отказ без подробностей: ни чьё прохождение, ни какой методики — всё
+       * это и есть то, чего спрашивающему знать не положено. В журнал —
+       * полностью: совпадение чужого идентификатора случайно не бывает.
+       */
+      await audit(c, {
+        action: "access.denied",
+        outcome: "denied",
+        resourceType: "survey",
+        resourceId: surveyId,
+        details: { method: c.req.method, reason: "client_request_foreign", responseId: existing.id },
+      });
+      conflict("err.clientRequestForeign");
+    }
     if (existing) {
       /*
        * Повтор отдаёт СОХРАНЁННЫЙ результат, а не пустой.

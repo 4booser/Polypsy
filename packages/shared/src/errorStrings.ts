@@ -239,6 +239,11 @@ export const ERRORS = {
     ru: "Ответы отправлены к версии, которой у этой методики нет",
     en: "The answers were sent for a version this assessment doesn’t have",
   },
+  "err.clientRequestForeign": {
+    uk: "Ця спроба не збігається з отриманою раніше — відповіді не прийнято",
+    ru: "Эта попытка не совпадает с уже полученной — ответы не приняты",
+    en: "This attempt doesn’t match the one already received — the answers weren’t accepted",
+  },
   "err.surveyGrantEnded": {
     uk: "Доступ до методики закрито: призначення відкликали або його строк минув. Відповіді не прийнято",
     ru: "Доступ к методике закрыт: назначение отозвали или его срок истёк. Ответы не приняты",
