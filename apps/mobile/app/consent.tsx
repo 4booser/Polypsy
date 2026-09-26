@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
+import { isPasswordGate } from "@/auth/passwordGate";
 import { Body, Button, ErrorText, Loader, Title } from "@/components/ui";
 import { actionsOf, viewOfLoadError, viewOfStatus, type ConsentAction, type ConsentView } from "@/consent/model";
 import { useLang } from "@/lang";
@@ -40,7 +41,15 @@ export default function ConsentScreen() {
         if (next.kind === "read") setText(next.text);
         setView(next);
       })
-      .catch((e) => setView(viewOfLoadError((e as { status?: number }).status)));
+      .catch((e) => {
+        /*
+         * «Сначала смените пароль» — не «текст не загрузился»: корневая
+         * раскладка уже уводит на смену пароля (auth/passwordGate.ts), и
+         * показывать тем временем «не вдалося отримати текст» незачем.
+         */
+        if (isPasswordGate(e)) return;
+        setView(viewOfLoadError((e as { status?: number }).status));
+      });
   }, []);
 
   useEffect(load, [load]);

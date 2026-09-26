@@ -1,5 +1,6 @@
 import { isTransientStatus, uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
+import { isPasswordGate } from "../auth/passwordGate";
 import { isOwnerChanged } from "./owner";
 import { store } from "./store";
 import { StoreWriteError } from "./writeError";
@@ -170,6 +171,12 @@ export async function flush(
         sent++;
       } catch (error) {
         if (isOwnerChanged(error)) break; // токен уже чужой — ни эта, ни следующие от его имени не уйдут
+        /*
+         * «Сначала смените пароль» — не отказ по существу: сдача цела и уйдёт,
+         * как только пароль будет сменён. Пометить её отвергнутой значило бы
+         * отправить человека разбирать очередь из-за временного пароля.
+         */
+        if (isPasswordGate(error)) break;
         const status = (error as { status?: number }).status ?? 0;
         if (isTransientStatus(status)) break; // сети нет или идут работы — остальные тоже не уйдут
         // сервер отказал по существу: фиксируем причину, не блокируем остальных
