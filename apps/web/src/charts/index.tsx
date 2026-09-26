@@ -295,6 +295,18 @@ export function LineChart({
   const at = hover ?? -1;
   const label = series[0]?.points[at]?.x;
 
+  /*
+   * Одиночный ряд — фиолетовым макета, а не первым категориальным слотом.
+   *
+   * Слот --s1 синий: он нужен там, где рядов несколько и их надо различать.
+   * У одного ряда различать не с чем, и синяя линия на белом листе макета
+   * выглядела чужой — дизайн-система прямо говорит «графики: тонкие линии
+   * primary». С двумя рядами и больше порядок слотов прежний: цвет следует
+   * за рядом, а не за его номером на экране.
+   */
+  const colorOf = (s: { color?: string }, i: number) =>
+    s.color ?? (series.length === 1 ? "var(--primary)" : SERIES[i % SERIES.length]!);
+
   return (
     <div className="chart-wrap" ref={boxRef}>
       <svg
@@ -336,7 +348,7 @@ export function LineChart({
         ) : null}
 
         {series.map((s, si) => {
-          const color = s.color ?? SERIES[si % SERIES.length];
+          const color = colorOf(s, si);
           const d = s.points.map((p, i) => `${i ? "L" : "M"}${xAt(i)},${yAt(p.y)}`).join(" ");
 
           /*
@@ -462,7 +474,7 @@ export function LineChart({
             const [a, b] = bandOf(point);
             return (
               <span key={s.label} className="chart-tip-row">
-                <i style={{ background: s.color ?? SERIES[si % SERIES.length] }} />
+                <i style={{ background: colorOf(s, si) }} />
                 {series.length > 1 ? <span className="grow">{s.label}</span> : null}
                 <b>{fmt(point.y)}</b>
                 {b > a ? (
@@ -476,7 +488,7 @@ export function LineChart({
         </div>
       ) : null}
 
-      <Legend items={series.map((s, i) => ({ label: s.label, color: s.color ?? SERIES[i % SERIES.length]! }))} />
+      <Legend items={series.map((s, i) => ({ label: s.label, color: colorOf(s, i) }))} />
       <AxisNote axis={axis} lo={lo} hi={hi} fullRange={fullRange} unit={unit} />
     </div>
   );

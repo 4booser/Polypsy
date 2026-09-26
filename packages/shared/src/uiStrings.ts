@@ -1946,6 +1946,8 @@ export const UI = {
   /* ── wave9:content ── */
 
   /* ── wave9:kit ── */
+  "kit.thisOne": { uk: "це проходження", ru: "это прохождение", en: "this completion" },
+  "kit.hidden": { uk: "приховано: замало людей", ru: "скрыто: слишком мало людей", en: "hidden: too few people" },
 
   /* ── wave9:dashboard ── */
 
