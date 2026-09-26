@@ -11,6 +11,9 @@ import { respondentFor } from "../src/offline/respondent";
  * применяются при офлайн-подсчёте.
  */
 
+// специалист, чей кэш обхода проверяется: кэш лежит под владельцем (offline/cache.ts)
+const S = "specialist-1";
+
 beforeEach(() => {
   resetStore();
 });
@@ -22,30 +25,30 @@ describe("кэш обхода", () => {
      * как по сегодняшнему, и молча показанный старый список хуже пустого
      * экрана — по нему ходят как по актуальному.
      */
-    cache.saveRounds({ items: [{ id: "a" }] });
-    const saved = cache.rounds();
+    cache.saveRounds(S, { items: [{ id: "a" }] });
+    const saved = cache.rounds(S);
 
     expect(saved?.rows).toEqual({ items: [{ id: "a" }] });
     expect(saved?.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
   test("карты пациентов лежат раздельно", () => {
-    cache.savePatientCard("p1", { fullName: "Первый" });
-    cache.savePatientCard("p2", { fullName: "Второй" });
+    cache.savePatientCard(S, "p1", { fullName: "Первый" });
+    cache.savePatientCard(S, "p2", { fullName: "Второй" });
 
-    expect((cache.patientCard("p1")?.card as { fullName: string }).fullName).toBe("Первый");
-    expect((cache.patientCard("p2")?.card as { fullName: string }).fullName).toBe("Второй");
-    expect(cache.patientCard("p3")).toBeNull();
+    expect((cache.patientCard(S, "p1")?.card as { fullName: string }).fullName).toBe("Первый");
+    expect((cache.patientCard(S, "p2")?.card as { fullName: string }).fullName).toBe("Второй");
+    expect(cache.patientCard(S, "p3")).toBeNull();
   });
 
   test("повторное сохранение обновляет отметку", () => {
-    cache.saveRounds({ items: [] });
-    const first = cache.rounds()!.at;
-    memoryStore.write("rounds:list", { at: "2020-01-01T00:00:00.000Z", rows: { items: [] } });
-    expect(cache.rounds()!.at).not.toBe(first);
+    cache.saveRounds(S, { items: [] });
+    const first = cache.rounds(S)!.at;
+    memoryStore.write(`u:${S}:rounds:list`, { at: "2020-01-01T00:00:00.000Z", rows: { items: [] } });
+    expect(cache.rounds(S)!.at).not.toBe(first);
 
-    cache.saveRounds({ items: [{ id: "b" }] });
-    expect(cache.rounds()!.at > "2020-01-01T00:00:00.000Z").toBe(true);
+    cache.saveRounds(S, { items: [{ id: "b" }] });
+    expect(cache.rounds(S)!.at > "2020-01-01T00:00:00.000Z").toBe(true);
   });
 });
 
@@ -90,18 +93,18 @@ describe("стирание локальных данных", () => {
     const { wipeLocalData, deviceId } = await import("../src/offline/device");
     const { enqueue } = await import("../src/offline/queue");
 
-    cache.saveRounds({ items: [{ id: "a" }] });
-    cache.savePatientCard("p1", { fullName: "Петров" });
-    cache.saveSafetyPlan({ content: {} } as never);
-    enqueue("s1", { answers: [] });
+    cache.saveRounds(S, { items: [{ id: "a" }] });
+    cache.savePatientCard(S, "p1", { fullName: "Петров" });
+    cache.saveSafetyPlan(S, { content: {} } as never);
+    enqueue(S, "s1", { answers: [] });
     const before = deviceId();
 
     const removed = wipeLocalData();
 
     expect(removed).toBeGreaterThan(3);
-    expect(cache.rounds()).toBeNull();
-    expect(cache.patientCard("p1")).toBeNull();
-    expect(cache.safetyPlan()).toBeNull();
+    expect(cache.rounds(S)).toBeNull();
+    expect(cache.patientCard(S, "p1")).toBeNull();
+    expect(cache.safetyPlan(S)).toBeNull();
 
     /*
      * Идентификатор устройства тоже уходит: после стирания планшет должен

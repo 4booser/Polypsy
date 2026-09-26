@@ -34,7 +34,8 @@ import type {
   ScreenViewsInput,
 } from "@quizzy/shared";
 import { API_URL } from "../config";
-import { tokenStorage } from "../storage";
+import { revokeStorage, tokenStorage } from "../storage";
+import { flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
 import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 
@@ -53,7 +54,20 @@ function netText(key: "net.offline" | "net.failed"): string {
 import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName, wipeLocalData } from "../offline/device";
-import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
+import {
+  claim,
+  deviceCounts,
+  enqueue,
+  flush,
+  ownerless,
+  pending,
+  pendingCount,
+  rejectedItems,
+  retryRejected,
+  type QueuedSubmission,
+} from "../offline/queue";
+import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offline/owner";
+import { draftLaneKey, draftLanes } from "../offline/draftLane";
 import { computeProfile, isTransientStatus } from "@quizzy/shared";
 
 export class ApiError extends Error {
@@ -81,6 +95,11 @@ async function tryRefresh(): Promise<boolean> {
       });
       if (!res.ok) return false;
       const pair = (await res.json()) as { token: string; refreshToken: string };
+      /*
+       * Пока шёл обмен, человек мог выйти. Записать новую пару тогда значило
+       * бы молча вернуть ему сессию, из которой он только что вышел.
+       */
+      if ((await tokenStorage.getRefresh()) !== raw) return false;
       await tokenStorage.set(pair.token);
       await tokenStorage.setRefresh(pair.refreshToken);
       return true;
@@ -95,8 +114,31 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
-async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+interface RequestOptions {
+  retried?: boolean;
+  /**
+   * От чьего имени запросу положено уйти (offline/owner.ts).
+   *
+   * Задан — токен, который сейчас уйдёт в заголовке, обязан принадлежать
+   * ровно этому владельцу; иначе OwnerChanged, и запрос не уходит вовсе.
+   * Так устроены отправка очереди и чтения, которые кладут ответ в кэш:
+   * сдача пациента А не может уехать с токеном пациента Б, а список методик,
+   * запрошенный для А, — лечь в кэш Б, даже если учётная запись сменилась
+   * между «решили отправить» и «отправили».
+   */
+  owner?: string | null;
+}
+
+/** Владелец токена, с которым уйдёт ближайший запрос */
+async function ownerNow(): Promise<string | null> {
+  return ownerOfToken(await tokenStorage.get());
+}
+
+async function request<T>(path: string, init: RequestInit = {}, opts: RequestOptions = {}): Promise<T> {
   const token = await tokenStorage.get();
+  if (opts.owner !== undefined && ownerOfToken(token) !== opts.owner) {
+    throw new OwnerChanged(uiText("common.error", currentLang));
+  }
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     // язык интерфейса определяет и язык контента методик
@@ -113,8 +155,10 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
 
   // истёкший access продлеваем молча и повторяем запрос один раз
-  if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
-    if (await tryRefresh()) return request<T>(path, init, true);
+  // продлевается всё, кроме маршрутов, где токен выдают или гасят (auth/session.ts)
+  if (res.status === 401 && !opts.retried && refreshOnUnauthorized(path)) {
+    // повтор — с той же проверкой владельца: обмен refresh выдаёт токен той же учётной записи
+    if (await tryRefresh()) return request<T>(path, init, { ...opts, retried: true });
   }
 
   if (res.status === 204) return undefined as T;
@@ -166,12 +210,13 @@ function offlineFallback<T>(error: unknown, cached: T | null): T {
   throw error;
 }
 
-/** Фоновая догрузка контента методик в кэш; ошибки не мешают основному пути */
-async function prefetchSurveys(ids: string[]): Promise<void> {
+/** Фоновая догрузка контента методик в кэш владельца; ошибки не мешают основному пути */
+async function prefetchSurveys(owner: string | null, ids: string[]): Promise<void> {
+  if (!owner) return;
   for (const id of ids) {
-    if (cache.survey(id)) continue;
+    if (cache.survey(owner, id)) continue;
     try {
-      cache.saveSurvey(await request<SurveyFull>(`/api/surveys/${id}`));
+      cache.saveSurvey(owner, await request<SurveyFull>(`/api/surveys/${id}`, {}, { owner }));
     } catch {
       return; // сеть пропала — дозакачаем в следующий раз
     }
@@ -210,6 +255,23 @@ export const api = {
     request<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify(input) }),
   loginMfa: (input: { mfaToken: string; code: string }) =>
     request<AuthPayload>("/api/auth/mfa/login", { method: "POST", body: JSON.stringify(input) }),
+  /**
+   * Отозвать сессию на сервере при выходе — не задерживая выход
+   * (auth/session.ts): refresh встаёт в список «отозвать» и уходит сейчас
+   * или при первой связи.
+   */
+  revokeSession: async (refreshToken: string) => {
+    await queueRevocation(revokeStorage, refreshToken).catch(() => {});
+    await api.flushRevocations();
+  },
+  /** Дослать отзывы, не дошедшие при выходе; зовётся при старте и возвращении приложения */
+  flushRevocations: () =>
+    flushRevocations(revokeStorage, (refreshToken) =>
+      request<{ ok: true }>("/api/auth/logout", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken }),
+      }).then(() => undefined),
+    ).catch(() => 0),
   me: () =>
     request<User>("/api/auth/me").then((u) => {
       cache.saveMe(u);
@@ -218,14 +280,16 @@ export const api = {
   updateProfile: (input: UpdateProfileInput) =>
     request<User>("/api/auth/me", { method: "PATCH", body: JSON.stringify(input) }),
 
-  listGroups: () =>
-    request<Items<SurveyGroupWithCounts>>("/api/groups").then(
+  listGroups: async () => {
+    const owner = await ownerNow();
+    return request<Items<SurveyGroupWithCounts>>("/api/groups", {}, { owner }).then(
       ({ items: rows }) => {
-        cache.saveGroups(rows);
+        cache.saveGroups(owner, rows);
         return rows;
       },
-      (error) => offlineFallback(error, cache.groups()),
-    ),
+      (error) => offlineFallback(error, cache.groups(owner)),
+    );
+  },
   groupAdmins: (groupId: string) => unwrap(request<Items<GroupAdmin>>(`/api/groups/${groupId}/admins`)),
   assignGroupAdmin: (groupId: string, userId: string) =>
     request<{ groupId: string; userId: string }>(`/api/groups/${groupId}/admins`, {
@@ -240,14 +304,16 @@ export const api = {
     request<SurveyGroup>(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   deleteGroup: (id: string) => request<void>(`/api/groups/${id}`, { method: "DELETE" }),
 
-  myBatteries: () =>
-    request<Items<BatteryAssignment>>("/api/batteries/mine").then(
+  myBatteries: async () => {
+    const owner = await ownerNow();
+    return request<Items<BatteryAssignment>>("/api/batteries/mine", {}, { owner }).then(
       ({ items: rows }) => {
-        cache.saveBatteries(rows);
+        cache.saveBatteries(owner, rows);
         return rows;
       },
-      (error) => offlineFallback(error, cache.batteries()),
-    ),
+      (error) => offlineFallback(error, cache.batteries(owner)),
+    );
+  },
   myDynamics: () => request<MyDynamics>("/api/me/dynamics"),
 
   /**
@@ -358,42 +424,55 @@ export const api = {
    * кризис не спрашивает, есть ли сеть. Это единственный документ, который
    * приложение обязано показать даже в самолётном режиме.
    */
-  mySafetyPlan: () =>
-    request<{ plan: SafetyPlan | null }>("/api/safety/me").then(
+  mySafetyPlan: async () => {
+    const owner = await ownerNow();
+    return request<{ plan: SafetyPlan | null }>("/api/safety/me", {}, { owner }).then(
       (res) => {
-        cache.saveSafetyPlan(res.plan);
+        cache.saveSafetyPlan(owner, res.plan);
         return res;
       },
-      (error) => offlineFallback(error, { plan: cache.safetyPlan() }),
-    ),
+      (error) => offlineFallback(error, { plan: cache.safetyPlan(owner) }),
+    );
+  },
   consentStatus: () =>
     request<{ required: boolean; accepted: boolean; version: number | null; text: string | null }>(
       "/api/consents/me",
     ),
   acceptConsent: () => request<{ ok: true }>("/api/consents/me/accept", { method: "POST" }),
+  /**
+   * Отказ от согласия (или отзыв принятого) — на сервере, с версией текста.
+   * Раньше отказ был только выходом из учётной записи, и учреждение не
+   * отличало «отказался» от «не дошёл до экрана».
+   */
+  declineConsent: () =>
+    request<{ ok: true; withdrawn: boolean }>("/api/consents/me/decline", { method: "POST" }),
 
-  listSurveys: (groupId?: string) =>
-    request<Items<SurveyListItem>>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`).then(
+  listSurveys: async (groupId?: string) => {
+    const owner = await ownerNow();
+    return request<Items<SurveyListItem>>(`/api/surveys${groupId ? `?groupId=${groupId}` : ""}`, {}, { owner }).then(
       ({ items: rows }) => {
         // кэшируем только полный список: срез по группе не должен затирать общий
         if (!groupId) {
-          cache.saveSurveyList(rows);
+          cache.saveSurveyList(owner, rows);
           // контент методик подтягиваем в кэш заранее — офлайн начнётся не
           // с открытия методики, а раньше, и к этому моменту она уже на диске
-          void prefetchSurveys(rows.map((r) => r.id));
+          void prefetchSurveys(owner, rows.map((r) => r.id));
         }
         return rows;
       },
-      (error) => offlineFallback(error, groupId ? null : cache.surveyList()),
-    ),
-  getSurvey: (id: string) =>
-    request<SurveyFull>(`/api/surveys/${id}`).then(
+      (error) => offlineFallback(error, groupId ? null : cache.surveyList(owner)),
+    );
+  },
+  getSurvey: async (id: string) => {
+    const owner = await ownerNow();
+    return request<SurveyFull>(`/api/surveys/${id}`, {}, { owner }).then(
       (survey) => {
-        cache.saveSurvey(survey);
+        cache.saveSurvey(owner, survey);
         return survey;
       },
-      (error) => offlineFallback(error, cache.survey(id)),
-    ),
+      (error) => offlineFallback(error, cache.survey(owner, id)),
+    );
+  },
   createSurvey: (input: CreateSurveyInput) =>
     request<SurveyFull>("/api/surveys", { method: "POST", body: JSON.stringify(input) }),
   updateSurvey: (id: string, input: UpdateSurveyInput) =>
@@ -402,7 +481,7 @@ export const api = {
     request<SurveyFull>(`/api/surveys/${id}/duplicate`, { method: "POST" }),
   deleteSurvey: (id: string) => request<void>(`/api/surveys/${id}`, { method: "DELETE" }),
 
-  submitResponse: (
+  submitResponse: async (
     surveyId: string,
     payload: {
       answers: Answer[];
@@ -429,10 +508,12 @@ export const api = {
      * обязан быть узнан как дубль (см. enqueue).
      */
     const body = { ...payload, clientRequestId: crypto.randomUUID() };
+    // от чьего имени сдача уходит сейчас — от того же ляжет в очередь (offline/owner.ts)
+    const owner = await ownerNow();
     return request<SubmitResult>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",
       body: JSON.stringify(body),
-    }).catch((error) => {
+    }, { owner }).catch((error) => {
       if (!isTransientStatus((error as ApiError).status)) throw error;
       /*
        * Сети нет или сервер временно не принимает запись (режим
@@ -441,11 +522,17 @@ export const api = {
        * идемпотентным id) и считаем баллы локально тем же движком, что на
        * сервере, — computeProfile общий, расхождений быть не может по
        * построению.
+       *
+       * Очередь — владельца, и её запись подтверждена (queue.ts, enqueue):
+       * не легла — StoreWriteError летит к экрану, а не превращается в
+       * «сохранено», и экран не стирает черновик (runner/finish.ts). Класть
+       * не от чьего имени (никто не вошёл) — всплывает исходная ошибка.
        */
-      const item = enqueue(surveyId, body);
-      const survey = cache.survey(surveyId);
+      if (!owner) throw error;
+      const item = enqueue(owner, surveyId, body);
+      const survey = cache.survey(owner, surveyId);
       // чей пол и возраст берём для норм — см. respondentFor
-      const respondent = respondentFor(payload.subject, cache.me());
+      const respondent = respondentFor(payload.subject, cache.me(owner));
       const profile =
         survey && survey.scoringEnabled
           ? computeProfile(survey, payload.answers, {
@@ -480,58 +567,117 @@ export const api = {
    * собственными ошибками.
    */
   flushQueue: async () => {
-    const result = await flush((item: QueuedSubmission) =>
-      request<SubmitResult>(`/api/surveys/${item.surveyId}/responses`, {
-        method: "POST",
-        body: JSON.stringify(item.payload),
-      }).then(() => undefined),
+    /*
+     * Только своё: владелец — тот, чей токен уйдёт в запросах. Чужие сдачи и
+     * черновики лежат и ждут своего хозяина (offline/queue.ts), а каждый
+     * запрос ещё раз сверяет токен с владельцем записи — на случай, если
+     * учётная запись сменится посреди прогона.
+     */
+    const owner = await ownerNow();
+    const result = await flush(owner, (item: QueuedSubmission) =>
+      request<SubmitResult>(
+        `/api/surveys/${item.surveyId}/responses`,
+        { method: "POST", body: JSON.stringify(item.payload) },
+        { owner: item.ownerId ?? null },
+      ).then(() => undefined),
     );
 
-    for (const draft of drafts.unsynced()) {
+    for (const draft of drafts.unsynced(owner)) {
+      const revision = draft.revision ?? 0;
+      let sent;
       try {
-        await request(`/api/surveys/${draft.surveyId}/draft`, {
-          method: "PUT",
-          body: JSON.stringify({
-            answers: draft.answers,
-            startedAt: draft.startedAt,
-            durationMs: draft.durationMs,
-            events: draft.events,
-          }),
-        });
-        drafts.save({ ...draft, synced: true });
+        // та же дорожка, что у экрана прохождения: правки уходят по порядку (offline/draftLane.ts)
+        sent = await draftLanes.submit(draftLaneKey(owner!, draft.surveyId), revision, () =>
+          request<{ lastSavedAt: string | null }>(
+            `/api/surveys/${draft.surveyId}/draft`,
+            {
+              method: "PUT",
+              body: JSON.stringify({
+                answers: draft.answers,
+                startedAt: draft.startedAt,
+                durationMs: draft.durationMs,
+                events: draft.events,
+              }),
+            },
+            { owner },
+          ),
+        );
       } catch (error) {
-        // сети по-прежнему нет или идут работы — остальные тоже не уйдут
-        if (isTransientStatus((error as { status?: number }).status ?? 0)) break;
+        // сети по-прежнему нет, идут работы или токен уже чужой — остальные тоже не уйдут
+        if (isOwnerChanged(error) || isTransientStatus((error as { status?: number }).status ?? 0)) break;
         /*
          * Отказ по существу черновик не роняет: он всё равно лежит на
          * устройстве, а прохождение можно продолжить и сдать целиком.
          */
+        continue;
+      }
+      if (sent.status === "superseded") continue; // экран уже отправляет правку новее
+      try {
+        drafts.confirm(owner, draft.surveyId, revision, sent.value?.lastSavedAt ?? null);
+      } catch {
+        // отметка не легла — черновик уйдёт ещё раз, сервер просто перезапишет свой
       }
     }
 
     return result;
   },
 
-  pendingCount,
+  /*
+   * Счётчики и содержимое очереди — владельца «сейчас» (offline/owner.ts):
+   * полоса очереди опрашивает их раз в три секунды и не должна ради этого
+   * читать защищённое хранилище. Чужих записей здесь не видно вовсе.
+   */
+  pendingCount: () => pendingCount(activeOwner()),
   /**
    * Содержимое очереди для экрана «что не ушло».
    *
    * Название методики берётся из офлайн-кэша: без сети запросить его негде,
    * а показывать человеку идентификатор — то же, что не показывать ничего.
    */
-  queueItems: () =>
-    pending().map((i) => ({
+  queueItems: () => {
+    const owner = activeOwner();
+    return pending(owner).map((i) => ({
       id: i.id,
       surveyId: i.surveyId,
-      surveyTitle: cache.surveyTitle(i.surveyId),
+      surveyTitle: cache.surveyTitle(owner, i.surveyId),
       queuedAt: i.queuedAt,
       attempts: i.attempts,
       rejectedReason: i.rejectedReason,
-    })),
+    }));
+  },
   /** Вернуть отвергнутую сдачу в очередь: решение принимает человек, а не код */
-  retryQueued: retryRejected,
+  retryQueued: (id: string) => retryRejected(activeOwner(), id),
   /** Сколько отправок сервер отверг — их надо разбирать руками */
-  rejectedCount: () => rejectedItems().length,
+  rejectedCount: () => rejectedItems(activeOwner()).length,
+  /**
+   * Сдачи, положенные до появления владельца (offline/queue.ts, ownerless).
+   * Показываются вошедшему отдельным списком — без ответов, только методика
+   * и время: этого достаточно, чтобы узнать своё, и недостаточно, чтобы
+   * прочитать чужое.
+   */
+  ownerlessItems: () => {
+    const owner = activeOwner();
+    return ownerless().map((i) => ({
+      id: i.id,
+      surveyId: i.surveyId,
+      // название — из своего же кэша: если методика знакома вошедшему, он её узнает
+      surveyTitle: cache.surveyTitle(owner, i.surveyId),
+      queuedAt: i.queuedAt,
+    }));
+  },
+  /** Сколько безхозных сдач: по нему полоса очереди зовёт их разобрать */
+  ownerlessCount: () => ownerless().length,
+  /** «Це мої відповіді»: безхозная сдача переходит к вошедшему и уходит обычным порядком */
+  claimQueued: (id: string) => claim(activeOwner(), id),
+  /**
+   * Что останется на устройстве, если выйти сейчас (profile.tsx,
+   * offline/logout.ts): сданное, но не ушедшее, и незавершённое, не
+   * дошедшее до сервера.
+   */
+  unsentOfMine: () => {
+    const owner = activeOwner();
+    return { submissions: pending(owner).length, drafts: drafts.unsynced(owner).length };
+  },
 
   surveyVersions: (surveyId: string) =>
     unwrap(request<Items<SurveyVersion>>(`/api/surveys/${surveyId}/versions`)),
@@ -614,7 +760,8 @@ export const api = {
           label,
           platform: platformName(),
           ...appBuildInfo(),
-          queue: { pending: pendingCount(), rejected: rejectedItems().length },
+          // по всем владельцам: техпанели важно, сколько застряло на устройстве, а не чьё
+          queue: deviceCounts(),
         }),
       });
       if (!res.wipe) return false;
@@ -641,12 +788,13 @@ export const api = {
   },
 
   rounds: async (): Promise<{ list: Worklist; cachedAt: string | null }> => {
+    const owner = await ownerNow();
     try {
-      const list = await request<Worklist>("/api/worklist");
-      cache.saveRounds(list);
+      const list = await request<Worklist>("/api/worklist", {}, { owner });
+      cache.saveRounds(owner, list);
       return { list, cachedAt: null };
     } catch (error) {
-      const saved = cache.rounds();
+      const saved = cache.rounds(owner);
       if (!saved) throw error;
       return { list: saved.rows as Worklist, cachedAt: saved.at };
     }
@@ -656,12 +804,13 @@ export const api = {
   roundsCard: async (
     userId: string,
   ): Promise<{ card: RespondentDynamics; cachedAt: string | null }> => {
+    const owner = await ownerNow();
     try {
-      const card = await request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`);
-      cache.savePatientCard(userId, card);
+      const card = await request<RespondentDynamics>(`/api/dynamics/respondents/${userId}`, {}, { owner });
+      cache.savePatientCard(owner, userId, card);
       return { card, cachedAt: null };
     } catch (error) {
-      const saved = cache.patientCard(userId);
+      const saved = cache.patientCard(owner, userId);
       if (!saved) throw error;
       return { card: saved.card as RespondentDynamics, cachedAt: saved.at };
     }

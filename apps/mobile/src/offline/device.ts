@@ -24,7 +24,15 @@ export function deviceId(): string {
   const saved = store.read<{ id: string }>(DEVICE_KEY);
   if (saved?.id) return saved.id;
   const id = crypto.randomUUID();
-  store.write(DEVICE_KEY, { id });
+  try {
+    store.write(DEVICE_KEY, { id });
+  } catch {
+    /*
+     * Не записалось — устройство в этот раз представится этим id, а в
+     * следующий новым. Для учёта устройств это шум, а не потеря: ронять из-за
+     * него отметку и прогон очереди нельзя.
+     */
+  }
   return id;
 }
 
