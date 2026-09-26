@@ -117,6 +117,15 @@ docker compose --env-file .env.docker up -d --build
 docker compose --env-file .env.docker exec api bun apps/api/src/install.ts
 ```
 
+Ещё один суперадминистратор — на уже работающем экземпляре (установщик его
+не заведёт: он создаёт только первого). Пароль рождается на сервере и
+печатается один раз в этом терминале:
+
+```sh
+docker compose --env-file .env.docker exec api \
+  bun apps/api/src/addSuperadmin.ts --email you@example.com --first Имя --last Фамилия
+```
+
 ## Домен и TLS
 
 До покупки домена всё работает по IP на `:80`. После — впишите домен в
