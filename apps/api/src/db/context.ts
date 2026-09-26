@@ -133,6 +133,13 @@ interface RequestScope {
   tx: Tx | null;
   /** Записи, которые повторяются после отката (см. durable) */
   survivors: (() => Promise<unknown>)[];
+  /** Транзакция только на чтение (вход «от имени») */
+  readOnly: boolean;
+  /**
+   * Служебные записи, отложенные до конца read-only транзакции: писать в неё
+   * нельзя по определению. always — писать и при откате (отказ, сбой).
+   */
+  deferred: { write: () => Promise<unknown>; always: boolean }[];
 }
 
 const requestScope = new AsyncLocalStorage<RequestScope>();
@@ -142,12 +149,26 @@ export async function withRequestContext(
   identity: RlsIdentity,
   run: () => Promise<void>,
   failed: () => boolean,
+  options: { readOnly?: boolean } = {},
 ): Promise<void> {
-  const scope: RequestScope = { tx: null, survivors: [] };
+  const scope: RequestScope = { tx: null, survivors: [], readOnly: options.readOnly ?? false, deferred: [] };
+  let rolledBack = false;
+  let foreign: unknown = null;
   try {
     await requestScope.run(scope, () =>
       withDbContext(base, identity, async () => {
         scope.tx = dbContext.getStore() ?? null;
+        /*
+         * Вход «от имени» — только чтение, и держит это база, а не список
+         * методов. Сторож guardImpersonated режет по методу, но GET тоже
+         * бывает пишущим (отметка «прочитано» у сообщений, ленивое заведение
+         * разговора или записи приёма): суперадмин, открыв переписку
+         * глазами врача, помечал её прочитанной за врача. Под READ ONLY
+         * любая забытая запись падает в базе, а не проходит молча.
+         * Включается после set_config: перейти в «только чтение» Postgres
+         * разрешает в любой момент транзакции, обратно — нет.
+         */
+        if (scope.readOnly) await scope.tx!.execute(sql`set transaction read only`);
         await run();
         if (failed()) throw new RequestFailed();
       }),
@@ -158,10 +179,16 @@ export async function withRequestContext(
      * мимо onError, сбой фиксации) — одинаково уносит и записи отказа.
      * Повторяем их в любом случае, а пробрасываем только чужое.
      */
+    rolledBack = true;
     await replaySurvivors(base, scope.survivors);
-    if (err instanceof RequestFailed) return;
-    throw err;
+    if (!(err instanceof RequestFailed)) foreign = err;
   }
+  // журнал read-only запроса — своей транзакцией, когда его транзакция закрыта
+  await replaySurvivors(
+    base,
+    scope.deferred.filter((d) => d.always || !rolledBack).map((d) => d.write),
+  );
+  if (foreign) throw foreign;
 }
 
 /**
@@ -199,15 +226,54 @@ export async function withRequestContext(
  * Внутри чужой транзакции (systemContext входа) — просто выполняется: там
  * отказ возвращается наружу и транзакция фиксируется.
  */
-export async function durable<T>(write: () => Promise<T>): Promise<T> {
+/**
+ * Идёт ли запрос в транзакции «только чтение» (вход «от имени», учётка
+ * «только просмотр»).
+ *
+ * Для обработчиков, у которых чтение по дороге что-то дописывает: ленивое
+ * заведение строки, отметка «видел». Под READ ONLY такая запись уронила бы
+ * запрос пятисоткой; обработчик спрашивает здесь и отдаёт данные без
+ * побочного действия.
+ */
+export function requestIsReadOnly(): boolean {
+  return requestScope.getStore()?.readOnly ?? false;
+}
+
+export function durable(write: () => Promise<unknown>): Promise<void> {
+  return bookkeep(write, true);
+}
+
+/**
+ * Служебная запись о запросе (строка журнала «сделано», «прочитано»), не
+ * обязанная пережить откат: откатившийся запрос ничего не сделал.
+ *
+ * Отличие от обычной записи — в двух случаях. Вне всякого контекста (вход
+ * «от имени» пишет impersonation.view до транзакции запроса) — своей
+ * системной транзакцией: без роли политика журнала строку не пропустила бы,
+ * и под боевой ролью базы след просмотра «от имени» терялся молча. В
+ * read-only транзакции запроса — откладывается до её конца: писать в неё
+ * нельзя, а журнал чтений обязателен именно там, где смотрят чужими глазами.
+ */
+export function bookkeeping(write: () => Promise<unknown>): Promise<void> {
+  return bookkeep(write, false);
+}
+
+async function bookkeep(write: () => Promise<unknown>, survivesRollback: boolean): Promise<void> {
   const tx = dbContext.getStore();
   if (!tx) {
     const { baseDb } = await import("./index");
-    return systemContext(baseDb, write);
+    await systemContext(baseDb, write);
+    return;
   }
   const scope = requestScope.getStore();
-  if (scope && scope.tx === tx) scope.survivors.push(write);
-  return write();
+  if (scope && scope.tx === tx) {
+    if (scope.readOnly) {
+      scope.deferred.push({ write, always: survivesRollback });
+      return;
+    }
+    if (survivesRollback) scope.survivors.push(write);
+  }
+  await write();
 }
 
 async function replaySurvivors(base: typeof DbType, survivors: (() => Promise<unknown>)[]): Promise<void> {

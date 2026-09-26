@@ -171,6 +171,10 @@ probe.post("/durable/:email", async (c) => {
   await durable(() => mark(`kept-${email}`));
   badRequest("err.internal");
 });
+probe.get("/write/:email", async (c) => {
+  await mark(c.req.param("email"));
+  return c.json({ ok: true });
+});
 probe.onError((err, c) =>
   err instanceof HTTPException ? c.json({ error: err.message }, err.status) : c.json({ error: "internal" }, 500),
 );
@@ -548,6 +552,63 @@ describe("повтор по clientRequestId", () => {
     const byColleague = await submit(surveyId, colleague.token, body);
     expect(byColleague.status).toBe(409);
   });
+});
+
+/* ─────────── «от имени» и «только просмотр» — только чтение, и держит это база ─────────── */
+
+async function impersonate(targetId: string): Promise<{ token: string; sessionId: string }> {
+  const start = await api(`/api/ops/people/impersonate/${targetId}`, root.token, {
+    method: "POST",
+    body: JSON.stringify({ reason: "Проверка режима только чтения" }),
+  });
+  if (start.status !== 201) throw new Error(`вход «от имени» не выдан: ${start.status} ${JSON.stringify(start.body)}`);
+  return { token: start.body.token, sessionId: start.body.sessionId };
+}
+
+describe("транзакция «только чтение»", () => {
+  test("GET, который пишет, под входом «от имени» падает в базе, и записи нет", async () => {
+    const person = await makeUser("user", `ro-imp-${tag()}@test.dev`);
+    const { token, sessionId } = await impersonate(person.id);
+    const email = `imp-${tag()}@probe`;
+    const res = await probe.request(`/write/${email}`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(res.status, "запись прошла мимо «только чтение»").toBe(500);
+    expect(await marked(email)).toBe(0);
+    await api(`/api/ops/people/impersonate/${sessionId}/end`, root.token, { method: "POST" });
+  });
+
+  test("то же для учётки «только просмотр»", async () => {
+    const viewer = await makeUser("user", `ro-flag-${tag()}@test.dev`, { readOnly: true });
+    const email = `ro-${tag()}@probe`;
+    const res = await probe.request(`/write/${email}`, { headers: { Authorization: `Bearer ${viewer.token}` } });
+    expect(res.status).toBe(500);
+    expect(await marked(email)).toBe(0);
+  });
+
+  test("обычная учётка тем же GET пишет — дело не в маршруте", async () => {
+    const person = await makeUser("user", `rw-${tag()}@test.dev`);
+    const email = `rw-${tag()}@probe`;
+    const res = await probe.request(`/write/${email}`, { headers: { Authorization: `Bearer ${person.token}` } });
+    expect(res.status).toBe(200);
+    expect(await marked(email)).toBe(1);
+  });
+
+  test("под боевой ролью базы: просмотр «от имени» оставляет impersonation.view", async () => {
+    const person = await makeUser("user", `imp-view-${tag()}@test.dev`);
+    const { token, sessionId } = await impersonate(person.id);
+    const out = await underAppRole<{ me: number }>(`
+      const me = await app.request("/api/auth/me", { headers: { Authorization: ${JSON.stringify(`Bearer ${token}`)} } });
+      out.me = me.status;
+    `);
+    expect(out.error, out.error).toBeUndefined();
+    expect(out.rlsActive).toBe(true);
+    expect(out.me).toBe(200);
+    const views = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "impersonation.view"), sql`${auditLog.details}->>'impersonation' = ${sessionId}`));
+    expect(views.length, "след просмотра «от имени» потерян под боевой ролью").toBeGreaterThan(0);
+    await api(`/api/ops/people/impersonate/${sessionId}/end`, root.token, { method: "POST" });
+  }, 60_000);
 });
 
 /* строки проб в login_attempts — свои, с почтой-меткой; уходят после файла */

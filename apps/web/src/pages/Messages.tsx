@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { day } from "../format";
@@ -24,6 +24,31 @@ export default function MessagesPage() {
 
   const list = useResource(() => api.threads(), []);
   const thread = useResource(() => (id ? api.thread(id) : Promise.resolve(null)), [id]);
+  /*
+   * Более ранние письма, подгруженные «Показати ще». Сервер отдаёт последние
+   * письма и курсор назад (до волны 12 — первые пятьсот, и с пятьсот первого
+   * новые письма пропадали с экрана).
+   */
+  type Item = NonNullable<typeof thread.data>["items"][number];
+  const [older, setOlder] = useState<{ threadId: string; items: Item[]; before: string | null } | null>(null);
+  const earlier = older && older.threadId === id ? older : null;
+  const shown = [...(earlier?.items ?? []), ...(thread.data?.items ?? [])];
+  const before = earlier ? earlier.before : (thread.data?.hasMore ? thread.data.nextBefore : null);
+
+  /*
+   * «Прочитано» — отдельным запросом и только по показанным письмам
+   * собеседника: открытие разговора ничего не помечает само.
+   */
+  const unreadShown = shown.filter((m) => !m.mine && !m.readAt).map((m) => m.id);
+  const unreadKey = unreadShown.join(",");
+  useEffect(() => {
+    if (!id || !unreadKey) return;
+    void api
+      .markRead(id, unreadKey.split(","))
+      .then(() => list.reload())
+      .catch(() => {});
+    // перезапуск — только по набору непрочитанных показанных писем
+  }, [id, unreadKey]);
 
   return (
     <Screen res={list} rows={4}>
@@ -100,10 +125,30 @@ export default function MessagesPage() {
                 ) : (
                   <>
                     <div className="flex flex-col gap-2 px-4">
-                      {(thread.data?.items ?? []).length === 0 ? (
+                      {before ? (
+                        <Button
+                          size="sm"
+                          variant="quiet"
+                          className="self-center"
+                          disabled={busy}
+                          onClick={() =>
+                            run(async () => {
+                              const page = await api.thread(id, before);
+                              setOlder({
+                                threadId: id,
+                                items: [...page.items, ...(earlier?.items ?? [])],
+                                before: page.hasMore ? page.nextBefore : null,
+                              });
+                            })
+                          }
+                        >
+                          {ut("ui.loadMore")}
+                        </Button>
+                      ) : null}
+                      {shown.length === 0 ? (
                         <Empty title={ut("ms.empty")} />
                       ) : (
-                        thread.data!.items.map((m) => (
+                        shown.map((m) => (
                           <div
                             key={m.id}
                             className={`max-w-[70ch] rounded-md border border-hairline p-2 ${

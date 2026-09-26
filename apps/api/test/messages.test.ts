@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { adminA, api, db, makeUser } from "./fixtures";
-import { messages, threads, users } from "../src/db/schema";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { adminA, api, db, makeUser, root } from "./fixtures";
+import { auditLog, messages, threads, users } from "../src/db/schema";
+import { encryptField } from "../src/lib/crypto";
 
 /**
  * Переписка с границами.
@@ -18,6 +19,22 @@ async function pair(tag: string) {
   const patient = await makeUser("user", `ms-p-${tag}-${crypto.randomUUID()}@test`);
   await db.update(users).set({ leadSpecialistId: specialist.id }).where(eq(users.id, patient.id));
   return { specialist, patient };
+}
+
+/**
+ * Открыть разговор так, как это делает клиент: прочитать страницу и
+ * отметить прочитанными показанные письма собеседника. С волны 12 чтение
+ * само ничего не помечает — «прочитано» отдельный POST.
+ */
+async function openThread(threadId: string, token: string) {
+  const page = await api(`/api/messages/${threadId}`, token);
+  const ids = (page.body.items as { id: string; mine: boolean; readAt: string | null }[])
+    .filter((m) => !m.mine && !m.readAt)
+    .map((m) => m.id);
+  if (ids.length) {
+    await api(`/api/messages/${threadId}/read`, token, { method: "POST", body: JSON.stringify({ ids }) });
+  }
+  return page;
 }
 
 describe("кто с кем переписывается", () => {
@@ -93,7 +110,7 @@ describe("прочитано", () => {
     const beforeRows = await db.select().from(messages).where(eq(messages.id, sent.body.id));
     expect(beforeRows[0]!.readAt).toBeNull();
 
-    await api(`/api/messages/${sent.body.threadId}`, specialist.token);
+    await openThread(sent.body.threadId, specialist.token);
 
     const afterRows = await db.select().from(messages).where(eq(messages.id, sent.body.id));
     expect(afterRows[0]!.readAt).not.toBeNull();
@@ -105,7 +122,13 @@ describe("прочитано", () => {
       method: "POST",
       body: JSON.stringify({ text: "Своё" }),
     });
-    await api(`/api/messages/${sent.body.threadId}`, patient.token);
+    await openThread(sent.body.threadId, patient.token);
+    // и прямой просьбой своё не помечается
+    const direct = await api(`/api/messages/${sent.body.threadId}/read`, patient.token, {
+      method: "POST",
+      body: JSON.stringify({ ids: [sent.body.id] }),
+    });
+    expect(direct.body.marked).toBe(0);
 
     const [row] = await db.select().from(messages).where(eq(messages.id, sent.body.id));
     expect(row!.readAt).toBeNull();
@@ -139,7 +162,7 @@ describe("очередь работы", () => {
       method: "POST",
       body: JSON.stringify({ text: "Прочитай" }),
     });
-    await api(`/api/messages/${sent.body.threadId}`, specialist.token);
+    await openThread(sent.body.threadId, specialist.token);
 
     const work = await api("/api/worklist", specialist.token);
     expect(
@@ -162,5 +185,153 @@ describe("очередь работы", () => {
         (i: { kind: string; userId: string }) => i.kind === "message" && i.userId === patient.id,
       ),
     ).toBe(false);
+  });
+});
+
+/* ─────────── волна 12: длинный разговор, чтение без побочных записей ─────────── */
+
+/** Разговор из n писем пациента, положенных прямо в базу — через API это минуты */
+async function longThread(tag: string, n: number) {
+  const { specialist, patient } = await pair(tag);
+  const first = await api("/api/messages", patient.token, { method: "POST", body: JSON.stringify({ text: "Лист 0" }) });
+  const threadId = first.body.threadId as string;
+  const start = Date.now() - n * 60_000;
+  const rows = Array.from({ length: n - 1 }, (_, i) => ({
+    id: crypto.randomUUID(),
+    threadId,
+    authorId: patient.id,
+    textEnc: encryptField(`Лист ${i + 1}`)!,
+    sentAt: new Date(start + (i + 1) * 1000).toISOString(),
+  }));
+  // первое письмо — самое раннее, остальные по секунде после него
+  await db.update(messages).set({ sentAt: new Date(start).toISOString() }).where(eq(messages.id, first.body.id));
+  for (let i = 0; i < rows.length; i += 200) await db.insert(messages).values(rows.slice(i, i + 200));
+  return { specialist, patient, threadId };
+}
+
+describe("длинный разговор", () => {
+  test("после пятисот писем видны последние, и назад можно дойти до первого", async () => {
+    const { specialist, threadId } = await longThread("long", 501);
+    const page = await api(`/api/messages/${threadId}`, specialist.token);
+    expect(page.status).toBe(200);
+    expect(page.body.hasMore).toBe(true);
+    // последнее письмо — на экране; внутри страницы — по возрастанию
+    expect(page.body.items.at(-1).text).toBe("Лист 500");
+    const times = page.body.items.map((m: { sentAt: string }) => Date.parse(m.sentAt));
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+
+    const seen = new Set<string>(page.body.items.map((m: { id: string }) => m.id));
+    let before: string | null = page.body.nextBefore;
+    let texts: string[] = page.body.items.map((m: { text: string }) => m.text);
+    while (before) {
+      const older = await api(`/api/messages/${threadId}?before=${encodeURIComponent(before)}`, specialist.token);
+      for (const m of older.body.items as { id: string }[]) {
+        expect(seen.has(m.id), "письмо повторилось на соседней странице").toBe(false);
+        seen.add(m.id);
+      }
+      texts = [...older.body.items.map((m: { text: string }) => m.text), ...texts];
+      before = older.body.hasMore ? older.body.nextBefore : null;
+    }
+    expect(seen.size).toBe(501);
+    expect(texts[0]).toBe("Лист 0");
+  });
+
+  test("чтение не помечает ничего; «прочитано» — только показанные", async () => {
+    const { specialist, threadId } = await longThread("marks", 501);
+    const page = await api(`/api/messages/${threadId}`, specialist.token);
+    const unreadAfterGet = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(and(eq(messages.threadId, threadId), isNull(messages.readAt)));
+    expect(unreadAfterGet[0]!.n, "открытие пометило письма само").toBe(501);
+
+    const shown = page.body.items.map((m: { id: string }) => m.id);
+    const read = await api(`/api/messages/${threadId}/read`, specialist.token, {
+      method: "POST",
+      body: JSON.stringify({ ids: shown }),
+    });
+    expect(read.body.marked).toBe(shown.length);
+    const unread = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(and(eq(messages.threadId, threadId), isNull(messages.readAt)));
+    expect(unread[0]!.n, "помечены письма за пределами показанного").toBe(501 - shown.length);
+  });
+
+  test("отметить в чужом разговоре нельзя", async () => {
+    const { threadId } = await longThread("foreign-read", 3);
+    const stranger = await makeUser("admin", `ms-x-${crypto.randomUUID()}@test`);
+    const page = await db.select({ id: messages.id }).from(messages).where(eq(messages.threadId, threadId));
+    const res = await api(`/api/messages/${threadId}/read`, stranger.token, {
+      method: "POST",
+      body: JSON.stringify({ ids: page.map((m) => m.id) }),
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("чтение без записи: «от имени» и «только просмотр»", () => {
+  test("суперадмин «от имени» врача читает переписку — 200, «прочитано» не ставится, след в журнале", async () => {
+    const { specialist, patient } = await pair("imp");
+    const sent = await api("/api/messages", patient.token, { method: "POST", body: JSON.stringify({ text: "Для врача" }) });
+    const start = await api(`/api/ops/people/impersonate/${specialist.id}`, root.token, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Разбор жалобы на переписку" }),
+    });
+    expect(start.status, JSON.stringify(start.body)).toBe(201);
+    const token = start.body.token as string;
+
+    const list = await api("/api/messages", token);
+    expect(list.status).toBe(200);
+    const page = await api(`/api/messages/${sent.body.threadId}`, token);
+    expect(page.status).toBe(200);
+    expect(page.body.items.map((m: { text: string }) => m.text)).toContain("Для врача");
+    // отметка — запись, а запись «от имени» закрыта
+    const mark = await api(`/api/messages/${sent.body.threadId}/read`, token, {
+      method: "POST",
+      body: JSON.stringify({ ids: [sent.body.id] }),
+    });
+    expect(mark.status).toBe(403);
+
+    const [row] = await db.select().from(messages).where(eq(messages.id, sent.body.id));
+    expect(row!.readAt, "суперадмин пометил прочитанным за врача").toBeNull();
+
+    const views = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "impersonation.view"), sql`${auditLog.details}->>'impersonation' = ${start.body.sessionId}`));
+    expect(views.length).toBeGreaterThan(0);
+
+    await api(`/api/ops/people/impersonate/${start.body.sessionId}/end`, root.token, { method: "POST" });
+  });
+
+  test("учётка «только просмотр»: переписка читается, разговор не заводится, отметки нет", async () => {
+    const specialist = await makeUser("admin", `ms-ro-s-${crypto.randomUUID()}@test`);
+    const viewer = await makeUser("user", `ms-ro-p-${crypto.randomUUID()}@test`, { readOnly: true });
+    await db.update(users).set({ leadSpecialistId: specialist.id }).where(eq(users.id, viewer.id));
+
+    // разговора ещё нет: список пуст, и открытие его не заводит
+    const empty = await api("/api/messages", viewer.token);
+    expect(empty.status).toBe(200);
+    expect(empty.body.items).toEqual([]);
+    expect(await db.select().from(threads).where(eq(threads.patientId, viewer.id))).toEqual([]);
+
+    // разговор есть (специалист написал) — читается, но не помечается
+    const threadId = crypto.randomUUID();
+    await db.insert(threads).values({ id: threadId, patientId: viewer.id, specialistId: specialist.id });
+    await db
+      .insert(messages)
+      .values({ id: crypto.randomUUID(), threadId, authorId: specialist.id, textEnc: encryptField("Вітаю")! });
+
+    const page = await api(`/api/messages/${threadId}`, viewer.token);
+    expect(page.status).toBe(200);
+    expect(page.body.items.length).toBe(1);
+    const mark = await api(`/api/messages/${threadId}/read`, viewer.token, {
+      method: "POST",
+      body: JSON.stringify({ ids: [page.body.items[0].id] }),
+    });
+    expect(mark.status).toBe(403);
+    const unread = await db.select().from(messages).where(and(eq(messages.threadId, threadId), isNull(messages.readAt)));
+    expect(unread.length).toBe(1);
   });
 });

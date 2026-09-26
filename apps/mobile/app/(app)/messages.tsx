@@ -17,11 +17,19 @@ type Message = { id: string; mine: boolean; text: string; sentAt: string; readAt
  * психологическом отделе опаснее отсутствия переписки вовсе: человек напишет
  * и будет ждать вместо того, чтобы позвонить.
  */
+/** «Прочитано» — отдельным запросом и только по показанным письмам собеседника */
+function markShown(threadId: string, shown: Message[]) {
+  const ids = shown.filter((m) => !m.mine && !m.readAt).map((m) => m.id);
+  if (ids.length) void api.markRead(threadId, ids).catch(() => {});
+}
+
 export default function MessagesScreen() {
   const c = useColors();
   const { ut, locale } = useLang();
   const [threadId, setThreadId] = useState<string | null | undefined>(undefined);
   const [items, setItems] = useState<Message[]>([]);
+  /* курсор к более ранним письмам: сервер отдаёт последние, а не первые пятьсот */
+  const [before, setBefore] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,6 +43,8 @@ export default function MessagesScreen() {
     setThreadId(first.id);
     const t = await api.thread(first.id).catch(() => null);
     setItems(t?.items ?? []);
+    setBefore(t?.hasMore ? t.nextBefore : null);
+    markShown(first.id, t?.items ?? []);
   }, []);
 
   useFocusEffect(
@@ -67,6 +77,21 @@ export default function MessagesScreen() {
           </Card>
         ) : (
           <>
+            {before ? (
+              <Button
+                title={ut("ui.loadMore")}
+                variant="secondary"
+                disabled={busy}
+                onPress={async () => {
+                  if (!threadId) return;
+                  const page = await api.thread(threadId, before).catch(() => null);
+                  if (!page) return;
+                  setItems((prev) => [...page.items, ...prev]);
+                  setBefore(page.hasMore ? page.nextBefore : null);
+                  markShown(threadId, page.items);
+                }}
+              />
+            ) : null}
             {items.length === 0 ? (
               <Card>
                 <Body muted>{ut("ms.empty")}</Body>
