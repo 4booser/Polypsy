@@ -4,6 +4,7 @@ import { systemContext } from "../db/context";
 import { env } from "../env";
 import { auditSystem } from "./audit";
 import { log } from "./log";
+import { registerJob, trackJob } from "./opsJobs";
 
 /**
  * Ретенция сырого потока событий.
@@ -72,8 +73,12 @@ export async function runRetentionOnce(now = new Date()): Promise<number> {
 
 /** Суточный тик: ретенция меряется месяцами, чаще нет смысла */
 export function startRetention(intervalMs = 24 * 3_600_000): () => void {
+  /* суточный такт — в реестр техпанели (opsJobs.ts): «чистка вообще идёт?» */
+  registerJob("retention", intervalMs);
   const tick = () => {
-    runRetentionOnce().catch((error) => log.error("retention.failed", { error: String(error) }));
+    trackJob("retention", () => runRetentionOnce()).catch((error) =>
+      log.error("retention.failed", { error: String(error) }),
+    );
   };
   tick();
   const timer = setInterval(tick, intervalMs);

@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { log, withRequestId } from "../lib/log";
 import { inc, observe } from "../lib/metrics";
+import { recordRequest } from "../lib/opsBuffer";
 
 /**
  * Сквозной идентификатор запроса.
@@ -43,4 +44,13 @@ export const requestId = createMiddleware(async (c, next) => {
 
   inc("quizzy_http_requests", { method: c.req.method, route, status });
   observe("quizzy_http_duration_ms", ms, { route });
+  /*
+   * Та же точка — для техпанели (lib/opsBuffer.ts): поминутные корзины,
+   * сводка по маршрутам, медленные запросы. Одно наблюдение на два
+   * потребителя, чтобы Prometheus и экран не могли насчитать разное.
+   * Роль — из учётки, если запрос её дождался; ни почты, ни идентификатора
+   * человека сюда не кладётся.
+   */
+  const who = (c.get("user") as { role?: "superadmin" | "admin" | "user" } | undefined)?.role ?? null;
+  recordRequest({ method: c.req.method, route, code: status, ms, role: who, requestId: id });
 });

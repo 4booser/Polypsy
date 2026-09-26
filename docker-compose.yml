@@ -87,6 +87,11 @@ services:
       # роль приложения, а не владелец: см. пояснение вверху файла
       DATABASE_URL: postgres://quizzy_app:${APP_DB_PASSWORD}@postgres:5432/quizzy
       NODE_ENV: production
+      # Версия и сборка выкатки — для техпанели (/ops, блок «Збірка»): тег
+      # образа сам в контейнер не попадает, и без этих строк панель честно
+      # говорила бы «не задано». Коммит CI кладёт в QUIZZY_BUILD, если хочет.
+      QUIZZY_VERSION: ${QUIZZY_VERSION:-local}
+      QUIZZY_BUILD: ${QUIZZY_BUILD:-}
       JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (32+ символов)}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       # Пустой ключ не принимается: установка без него пишет ФИО, телефоны,
