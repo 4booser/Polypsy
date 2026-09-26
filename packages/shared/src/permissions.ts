@@ -459,7 +459,7 @@ export function effectsOf(permissions: Iterable<Permission>): UnlockedEffect[] {
  * означать то же самое — иначе переход на права начнётся с того, что у людей
  * пропадут возможности, которыми они пользовались вчера.
  *
- * Техпанель (ops.read) в набор тоже не входит. Набор собран вычитанием из
+ * Техпанель (ops.read и ops.manage) в набор тоже не входит. Набор собран вычитанием из
  * всех прав, и новое право попадало в него само: каждый клинический
  * администратор получил бы логи, ошибки и состояние базы, которых вчера не
  * видел, — ровно обратное «ничего не меняется». Панель выдаётся
@@ -467,9 +467,15 @@ export function effectsOf(permissions: Iterable<Permission>): UnlockedEffect[] {
  */
 export const PSYCHOLOGIST_PERMISSIONS: readonly Permission[] = ALL_PERMISSIONS.filter(
   (p) =>
-    !["users.manage", "groups.manage", "audit.read", "decisions.manage", "departments.manage", "ops.read"].includes(
-      p,
-    ),
+    ![
+      "users.manage",
+      "groups.manage",
+      "audit.read",
+      "decisions.manage",
+      "departments.manage",
+      "ops.read",
+      "ops.manage",
+    ].includes(p),
 );
 
 /**
