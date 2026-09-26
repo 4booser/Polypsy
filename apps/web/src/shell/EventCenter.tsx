@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { onAppEvent, type AppEvent, type AppEventKind } from "../events";
 import type { UiKey } from "@quizzy/shared";
@@ -6,7 +6,9 @@ import { useLang } from "../lang";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useResource } from "../useResource";
-import { dateTime, severityColor } from "../format";
+import { dateTime, severityKey } from "../format";
+import { cx } from "../ui/cx";
+import { Button, SeverityTag } from "../ui/primitives";
 
 /**
  * Центр событий.
@@ -44,6 +46,8 @@ export function EventCenter() {
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const bell = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
 
   /*
    * Точка отсчёта: когда человек в прошлый раз сказал «прочитано». Если такой
@@ -84,12 +88,32 @@ export function EventCenter() {
     const onDown = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    /*
+     * Esc гасит панель, и только её, — если человек в ней или на
+     * колокольчике.
+     *
+     * Панель живёт внутри бургера, и Esc слышат оба: бургер вешает свой
+     * обработчик на документ раньше, и одно нажатие закрывало сразу и
+     * панель, и весь список — человек, хотевший убрать ленту событий,
+     * оставался без меню. Поэтому здесь перехват на фазе погружения и
+     * остановка: до обработчика бургера нажатие не доходит. Если фокус не
+     * здесь (человек ушёл Tab-ом к разделам), Esc принадлежит бургеру —
+     * он закрывается целиком и уносит панель с собой.
+     *
+     * Фокус возвращается на колокольчик: панель исчезает из-под курсора, и
+     * без возврата он упал бы в body, мимо ловушки бургера.
+     */
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !ref.current?.contains(document.activeElement)) return;
+      e.stopPropagation();
+      setOpen(false);
+      bell.current?.focus();
+    };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
     };
   }, [open]);
 
@@ -113,59 +137,89 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
   action: "ev.action",
 } as const;
 
+  const total = unread + missedCount;
+
   return (
-    <div className="events" ref={ref}>
-      <button
-        className="ghost icon-btn"
+    /*
+      Обёртка без `relative`, и это не упущение: панель раскрывается под
+      строкой поиска бургера во всю её ширину, а не свисает от колокольчика.
+      Прежде она стояла шириной 340 справа от колокольчика, то есть шире
+      бургера и левее его края, — на телефоне её левая кромка уходила за
+      стекло. Отсчёт она берёт от строки бургера (там `relative`, Topbar.tsx).
+    */
+    <div ref={ref} className="shrink-0">
+      {/*
+        Колокольчик — глиф консоли (27 видимых, 44 нажимаемых), тот же, что у
+        темы рядом с ним: две кнопки одной строки одного размера.
+      */}
+      <Button
+        ref={bell}
+        size="glyph"
+        variant="ghost"
         aria-label={ut("ev.title")}
         title={ut("ev.title")}
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        className="[&>svg]:size-[22px]"
         onClick={() => {
           setOpen((v) => !v);
           setUnread(0);
         }}
       >
         <IconBell />
-        {/* счётчик считает и пропущенное, и пришедшее при открытой вкладке */}
-        {unread + missedCount > 0 ? (
-          <span className="events-dot">{unread + missedCount > 9 ? "9+" : unread + missedCount}</span>
+        {/*
+          Счётчик считает и пропущенное, и пришедшее при открытой вкладке.
+          Фиолетовый, а не янтарный: это новости, а не тревога. Случаи риска
+          среди них есть, но их число и так стоит янтарём у «Випадки ризику»
+          в том же бургере, а «спрацював розклад» и «дія в журналі» внимания
+          не требуют — янтарь на общей сумме кричал бы о них тем же голосом.
+        */}
+        {total > 0 ? (
+          <span
+            aria-hidden
+            className="absolute -right-2 -top-1.5 min-w-[16px] rounded-full bg-primary px-1 text-center font-mono text-[10px] font-bold leading-[16px] text-primary-text tabular-nums"
+          >
+            {total > 9 ? "9+" : total}
+          </span>
         ) : null}
-      </button>
+      </Button>
 
       {open ? (
-        <div className="events-panel" role="dialog" aria-label={ut("ev.title")}>
-          <div className="events-head">
-            <strong>{ut("ec.missed")}</strong>
-            <span className="hint">
-              {ut("ec.since")} {dateTime(since)}
-            </span>
-          </div>
+        <div
+          id={panelId}
+          role="dialog"
+          aria-label={ut("ev.title")}
+          /*
+            Плашка всплывающего слоя консоли: рамка #999999, радиус 5, тень.
+            Прокручивается она сама, целиком, — выступать из неё нечему, а
+            две ленты с прокруткой каждая внутри одной плашки читались бы как
+            два окна.
+          */
+          className={cx(
+            "absolute inset-x-2 top-[calc(100%+4px)] z-10 flex flex-col overflow-y-auto overscroll-contain",
+            "max-h-[min(440px,calc(100dvh-200px))] [scrollbar-width:thin]",
+            "rounded-[5px] border border-border-strong bg-[var(--bg)] shadow-pop",
+          )}
+        >
+          <PanelHead title={ut("ec.missed")} note={`${ut("ec.since")} ${dateTime(since)}`} />
 
           {missedCount === 0 ? (
-            <p className="events-empty">{ut("ec.nothing")}</p>
+            <Empty>{ut("ec.nothing")}</Empty>
           ) : (
-            <div className="events-list">
+            <div className="flex flex-col">
               {(missed.data?.groups ?? []).map((g) => (
-                <div key={g.kind}>
-                  <div className="events-group">
-                    {ut(GROUP_KEY[g.kind])} · {g.count}
+                <div key={g.kind} className="flex flex-col">
+                  {/* подпись группы — как заголовки групп бургера: 13/700 серым, без капители */}
+                  <div className="px-3 pb-1 pt-2 text-[13px] font-bold leading-[18px] text-muted">
+                    {ut(GROUP_KEY[g.kind])} · <span className="font-mono tabular-nums">{g.count}</span>
                   </div>
                   {g.items.slice(0, 5).map((item) => (
-                    <Link
-                      key={item.id}
-                      to={item.href}
-                      className="events-row"
-                      onClick={() => setOpen(false)}
-                    >
-                      <i
-                        className="events-mark"
-                        style={{
-                          background: item.severity
-                            ? severityColor[item.severity]
-                            : "var(--border-strong)",
-                        }}
-                      />
-                      <span className="grow">{item.title}</span>
-                      <span className="muted">{dateTime(item.at).slice(5, 16)}</span>
+                    <Link key={item.id} to={item.href} className={ROW} onClick={() => setOpen(false)}>
+                      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                      {item.severity ? <SevMark level={item.severity} /> : null}
+                      <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">
+                        {dateTime(item.at).slice(5, 16)}
+                      </span>
                     </Link>
                   ))}
                 </div>
@@ -174,47 +228,40 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
           )}
 
           {missedCount > 0 ? (
-            <button
-              className="ghost"
-              style={{ width: "100%" }}
-              onClick={() => {
-                /*
-                 * «Прочитано» сдвигает точку отсчёта на сейчас. Отдельной
-                 * отметки на каждое событие нет намеренно: человек читает
-                 * сводку целиком, и учёт по одному пункту создавал бы работу
-                 * там, где её нет.
-                 */
-                void api
-                  .saveWorkspace({ eventsSeenAt: new Date().toISOString() })
-                  .then(refreshUser)
-                  .catch(() => {});
-              }}
-            >
-              {ut("ec.markRead")}
-            </button>
+            <div className="border-t border-hairline p-2">
+              <Button
+                variant="quiet"
+                className="w-full"
+                onClick={() => {
+                  /*
+                   * «Прочитано» сдвигает точку отсчёта на сейчас. Отдельной
+                   * отметки на каждое событие нет намеренно: человек читает
+                   * сводку целиком, и учёт по одному пункту создавал бы работу
+                   * там, где её нет.
+                   */
+                  void api
+                    .saveWorkspace({ eventsSeenAt: new Date().toISOString() })
+                    .then(refreshUser)
+                    .catch(() => {});
+                }}
+              >
+                {ut("ec.markRead")}
+              </Button>
+            </div>
           ) : null}
 
-          <div className="events-head">
-            <strong>{ut("ec.live")}</strong>
-            <span className="hint">{ut("ev.sessionOnly")}</span>
-          </div>
+          <PanelHead title={ut("ec.live")} note={ut("ev.sessionOnly")} ruled />
           {events.length === 0 ? (
-            <p className="events-empty">{ut("ev.empty")}</p>
+            <Empty>{ut("ev.empty")}</Empty>
           ) : (
-            <div className="events-list">
+            <div className="flex flex-col">
               {events.map((e, i) => (
-                <Link
-                  key={`${e.at}-${i}`}
-                  to="/alerts"
-                  className="events-row"
-                  onClick={() => setOpen(false)}
-                >
-                  <i
-                    className="events-mark"
-                    style={{ background: e.severity ? severityColor[e.severity] : "var(--border-strong)" }}
-                  />
-                  <span className="grow">{ut(EVENT_KEY[e.kind])}</span>
-                  <span className="muted">{dateTime(e.at).slice(11)}</span>
+                <Link key={`${e.at}-${i}`} to="/alerts" className={ROW} onClick={() => setOpen(false)}>
+                  <span className="min-w-0 flex-1 truncate">{ut(EVENT_KEY[e.kind])}</span>
+                  {e.severity ? <SevMark level={e.severity} /> : null}
+                  <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">
+                    {dateTime(e.at).slice(11)}
+                  </span>
                 </Link>
               ))}
             </div>
@@ -225,9 +272,50 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
   );
 }
 
+/* строка ленты: текст 13 тоном второго текста, подложка наведения — как у пунктов бургера */
+const ROW = cx(
+  "flex items-center gap-2.5 border-b border-hairline px-3 py-2 last:border-b-0",
+  "text-[13px] leading-[18px] text-text-2 no-underline hover:bg-primary-tint hover:text-text hover:no-underline",
+  "outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--focus)]",
+);
+
+/** Шапка ленты: название 13/700 серым и пояснение 11 справа */
+function PanelHead({ title, note, ruled }: { title: string; note: string; ruled?: boolean }) {
+  return (
+    <div
+      className={cx(
+        "flex items-baseline justify-between gap-3 border-b border-hairline px-3 pb-2 pt-3",
+        ruled && "border-t",
+      )}
+    >
+      <span className="text-[13px] font-bold leading-[18px] text-muted">{title}</span>
+      <span className="text-[11px] text-muted">{note}</span>
+    </div>
+  );
+}
+
+function Empty({ children }: { children: ReactNode }) {
+  return <p className="m-0 px-3 py-5 text-center text-[13px] text-muted">{children}</p>;
+}
+
+/*
+ * Выраженность — меткой со словом и формой точки (SeverityTag), а не голой
+ * цветной точкой. Прежде у строки стояла точка 6 px цветом тяжести, и только
+ * цветом: «умеренная» и «выраженная» различались оттенком оранжевого, то есть
+ * для того, кто их не различает, не различались вовсе.
+ */
+function SevMark({ level }: { level: "moderate" | "severe" }) {
+  const { ut } = useLang();
+  return (
+    <SeverityTag level={level} className="shrink-0">
+      {ut(severityKey[level])}
+    </SeverityTag>
+  );
+}
+
 function IconBell() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
       <path d="M10.3 20a2 2 0 0 0 3.4 0" />
     </svg>
