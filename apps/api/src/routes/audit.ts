@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { z } from "zod";
 import { and, desc, eq, gte, ilike, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { auditQuery, type AuditDaily, type AuditPage } from "@quizzy/shared";
+import { csvCell } from "../lib/csv";
 import { parseQuery } from "../lib/http";
 import { db } from "../db";
 import { env } from "../env";
@@ -185,15 +186,10 @@ auditRoutes.get("/", async (c) => {
  * Ячейки, начинающиеся с «=», «+», «-», «@», экранируются апострофом:
  * подробности журнала несут свободный текст (причины, названия), и
  * табличный редактор выполнил бы такую ячейку как формулу у того, кто
- * откроет файл.
+ * откроет файл. Помощник общий для всех выгрузок — lib/csv.ts (волна 12:
+ * до этого так делал только журнал).
  */
 export const AUDIT_EXPORT_MAX = 10_000;
-
-function csvCell(value: unknown): string {
-  let text = value === null || value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\n\r;]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
 
 auditRoutes.get("/export.csv", async (c) => {
   const query = parseQuery(c, auditQuery);

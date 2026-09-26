@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { aliasedTable, and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { ageAt, t } from "@quizzy/shared";
+import { ageAt, queryDate, t } from "@quizzy/shared";
 import { db } from "../db";
 import { conclusions, responseScores, responses, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
-import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { badRequest, conflict, isUniqueViolation, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 
@@ -19,8 +19,9 @@ const authorTable = aliasedTable(users, "conclusion_author");
 
 const batchQuery = z.object({
   unit: z.string().max(200).optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  /* дата, а не «любая строка»: `?from=вчора` уходило в сравнение с меткой подписи пятисоткой */
+  from: queryDate.optional(),
+  to: queryDate.optional(),
 });
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
@@ -46,11 +47,30 @@ const saveSchema = z.object({
    * необязательное: без него работает прежнее «последний победил».
    */
   baseVersion: z.number().int().min(0).optional(),
+  /**
+   * Ревизия текста внутри baseVersion, которую редактор показывал.
+   *
+   * Одной версии мало: черновик правится на месте, и номер у него тот же,
+   * сколько бы раз его ни переписали. Без ревизии второй из двух, открывших
+   * один черновик, молча затирал правку первого — версия ведь совпадала.
+   * Необязательна по той же причине, что и baseVersion.
+   */
+  baseRevision: z.number().int().min(1).optional(),
 });
 
 const signSchema = z.object({
   /** Подписывают конкретную версию, а не «последнюю» — см. lockConclusion */
   version: z.number().int().min(1),
+  /**
+   * И конкретную редакцию её текста.
+   *
+   * Обязательна, в отличие от baseRevision при сохранении: подпись — это
+   * утверждение «я прочёл и согласен», и клиент, который не может сказать,
+   * какой текст был у человека перед глазами, подписывать не должен вовсе.
+   * Старая вкладка без поля получит 400 и перечитает экран — лучше так, чем
+   * подпись вслепую, ради которой поле и заведено.
+   */
+  revision: z.number().int().min(1),
 });
 
 /**
@@ -75,6 +95,22 @@ async function assertResponse(user: User, responseId: string) {
   return response;
 }
 
+/**
+ * Заключение пишется только по завершённому прохождению (клиническое ревью,
+ * P1).
+ *
+ * Черновик прохождения — ещё не результат: человек может поменять ответы, и
+ * вывод по ним — вывод о том, чего не было. Хуже того, черновик живёт своей
+ * жизнью: сдача заменяет его строку, и неподписанное заключение уходило
+ * каскадом молча, а подписанное (его строку менять и удалять нельзя) ломало
+ * сдачу пятисоткой на каждой попытке — человек не мог закончить методику
+ * из-за документа, которого не должно было быть. Отказ — 409: прохождение
+ * есть и доступно, не то его состояние.
+ */
+function assertCompleted(response: { status: string }) {
+  if (response.status !== "completed") conflict("err.conclusionResponseNotCompleted");
+}
+
 async function history(responseId: string) {
   const rows = await db
     .select({ row: conclusions, author: users })
@@ -85,6 +121,7 @@ async function history(responseId: string) {
   return rows.map(({ row, author }) => ({
     id: row.id,
     version: row.version,
+    revision: row.revision,
     text: decryptField(row.text) ?? "",
     status: row.status,
     createdAt: row.createdAt,
@@ -206,7 +243,7 @@ conclusionRoutes.get(
 conclusionRoutes.put("/responses/:id/conclusion", requirePermission("conclusions.write"), async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
-  await assertResponse(c.get("user"), responseId);
+  assertCompleted(await assertResponse(c.get("user"), responseId));
   const input = await parseBody(c.req.raw, saveSchema);
   await lockConclusion(responseId);
 
@@ -225,20 +262,46 @@ conclusionRoutes.put("/responses/:id/conclusion", requirePermission("conclusions
   if (input.baseVersion !== undefined && input.baseVersion !== (latest?.version ?? 0)) {
     conflict("err.conclusionChanged", { current: latest?.version ?? 0, base: input.baseVersion });
   }
+  /*
+   * Версия та же — а текст мог смениться: черновик правится на месте.
+   * Ревизия ловит именно это — «открыли одну и ту же версию двое».
+   */
+  if (input.baseRevision !== undefined && latest && latest.revision !== input.baseRevision) {
+    conflict("err.conclusionRevisionChanged", { version: latest.version });
+  }
 
-  if (latest && latest.status === "draft") {
-    await db
-      .update(conclusions)
-      .set({ text: encryptField(input.text)!, createdBy: user.id, createdAt: new Date().toISOString() })
-      .where(eq(conclusions.id, latest.id));
-  } else {
-    await db.insert(conclusions).values({
-      id: crypto.randomUUID(),
-      responseId,
-      version: (latest?.version ?? 0) + 1,
-      text: encryptField(input.text)!,
-      createdBy: user.id,
-    });
+  try {
+    if (latest && latest.status === "draft") {
+      await db
+        .update(conclusions)
+        .set({
+          text: encryptField(input.text)!,
+          revision: latest.revision + 1,
+          createdBy: user.id,
+          createdAt: new Date().toISOString(),
+        })
+        .where(eq(conclusions.id, latest.id));
+    } else {
+      await db.insert(conclusions).values({
+        id: crypto.randomUUID(),
+        responseId,
+        version: (latest?.version ?? 0) + 1,
+        revision: 1,
+        text: encryptField(input.text)!,
+        createdBy: user.id,
+      });
+    }
+  } catch (err) {
+    /*
+     * Вторая линия — на случай, если блокировка не сработала (маршрут позвали
+     * вне транзакции, и консультативная блокировка отпустилась сразу).
+     * Уникальный индекс по номеру версии тогда остаётся последним сторожем, и
+     * его отказ — это «заключение изменилось», а не внутренняя ошибка.
+     */
+    if (isUniqueViolation(err)) {
+      conflict("err.conclusionChanged", { current: (latest?.version ?? 0) + 1, base: latest?.version ?? 0 });
+    }
+    throw err;
   }
 
   await audit(c, {
@@ -258,7 +321,7 @@ conclusionRoutes.put("/responses/:id/conclusion", requirePermission("conclusions
 conclusionRoutes.post("/responses/:id/conclusion/sign", requirePermission("conclusions.sign"), async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
-  await assertResponse(c.get("user"), responseId);
+  assertCompleted(await assertResponse(c.get("user"), responseId));
   const input = await parseBody(c.req.raw, signSchema);
   await lockConclusion(responseId);
 
@@ -278,6 +341,14 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", requirePermission("concl
   if (latest.version !== input.version) {
     conflict("err.conclusionTextChangedAfterOpen", { current: latest.version, signing: input.version });
   }
+  /*
+   * Номера версии мало: черновик переписывается на месте, и версия у
+   * переписанного та же. Ревизия — то, что отличает «текст, который я
+   * читал» от «текста, который туда положили после» (миграция 0096).
+   */
+  if (latest.revision !== input.revision) {
+    conflict("err.conclusionRevisionChanged", { version: latest.version });
+  }
 
   await db
     .update(conclusions)
@@ -288,7 +359,8 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", requirePermission("concl
     action: "conclusion.sign",
     resourceType: "response",
     resourceId: responseId,
-    details: { version: latest.version },
+    // редакция — в журнал: «что именно подписано» должно читаться и оттуда
+    details: { version: latest.version, revision: latest.revision },
   });
   const versions = await history(responseId);
   return c.json({ current: versions[0], versions });

@@ -410,6 +410,13 @@ export interface ConclusionVersion {
   id: string;
   version: number;
   /**
+   * Редакция текста внутри версии: растёт с каждым сохранением черновика.
+   * Подпись и сохранение возвращают её серверу вместе с версией — номер
+   * версии у переписанного на месте черновика тот же, и одной версией
+   * «тот ли это текст, что я читал» не проверить.
+   */
+  revision: number;
+  /**
    * Название документа с экрана «Заключення» (кадр f38, поле «Назва
    * заключення»). Столбца title в таблице conclusions пока нет, поэтому поле
    * необязательное: пока сервер его не отдаёт, экран держит набранное
@@ -502,6 +509,8 @@ export type OpenApiSpec = {
 export interface NoteVersion {
   id: string;
   version: number;
+  /** Редакция текста внутри версии — как ConclusionVersion.revision */
+  revision: number;
   kind: "intake" | "session" | "observation" | "consult";
   text: string;
   status: "draft" | "signed";
@@ -749,13 +758,13 @@ export const api = {
     );
   },
   exportUrl: (id: string) => `/api/analytics/surveys/${id}/export`,
-  spssDataUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/data.csv?profile=${profile}`,
-  spssSyntaxUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/syntax.sps?profile=${profile}`,
-  codebookUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/codebook.csv?profile=${profile}`,
-  longUrl: (id: string, profile = "full") => `/api/spss/surveys/${id}/long.csv?profile=${profile}`,
-  manifestUrl: (id: string, profile = "full", purpose = "") =>
+  spssDataUrl: (id: string, profile = "deidentified") => `/api/spss/surveys/${id}/data.csv?profile=${profile}`,
+  spssSyntaxUrl: (id: string, profile = "deidentified") => `/api/spss/surveys/${id}/syntax.sps?profile=${profile}`,
+  codebookUrl: (id: string, profile = "deidentified") => `/api/spss/surveys/${id}/codebook.csv?profile=${profile}`,
+  longUrl: (id: string, profile = "deidentified") => `/api/spss/surveys/${id}/long.csv?profile=${profile}`,
+  manifestUrl: (id: string, profile = "deidentified", purpose = "") =>
     `/api/spss/surveys/${id}/manifest.json?profile=${profile}${purpose ? `&purpose=${encodeURIComponent(purpose)}` : ""}`,
-  loadScriptUrl: (id: string, ext: "r" | "py", profile = "full") =>
+  loadScriptUrl: (id: string, ext: "r" | "py", profile = "deidentified") =>
     `/api/spss/surveys/${id}/load/${ext}?profile=${profile}`,
   methodologyUrl: (id: string) => `/api/surveys/${id}/export`,
   reportUrl: (responseId: string) => `/api/reports/responses/${responseId}`,
@@ -992,21 +1001,22 @@ export const api = {
     }),
 
   notes: (userId: string) => request<NoteState>(`/api/notes/patients/${userId}`),
+  /** base — версия, что была на экране (null — заметок ещё нет): сервер сверит и номер, и редакцию */
   saveNote: (
     userId: string,
     text: string,
-    baseVersion: number,
+    base: Pick<NoteVersion, "version" | "revision"> | null,
     kind?: string,
     appointmentId?: string,
   ) =>
     request<NoteState>(`/api/notes/patients/${userId}`, {
       method: "PUT",
-      body: JSON.stringify({ text, baseVersion, kind, appointmentId }),
+      body: JSON.stringify({ text, baseVersion: base?.version ?? 0, baseRevision: base?.revision, kind, appointmentId }),
     }),
-  signNote: (userId: string, version: number) =>
+  signNote: (userId: string, seen: Pick<NoteVersion, "version" | "revision">) =>
     request<NoteState>(`/api/notes/patients/${userId}/sign`, {
       method: "POST",
-      body: JSON.stringify({ version }),
+      body: JSON.stringify({ version: seen.version, revision: seen.revision }),
     }),
 
   /* ── права ── */
@@ -1282,8 +1292,16 @@ export const api = {
       }[];
       previousAt: string | null;
     }>(`/api/conclusions/responses/${responseId}/conclusion/draft`),
-  /** baseVersion — версия, поверх которой правили: сервер не даст затереть чужую работу */
-  saveConclusion: (responseId: string, text: string, baseVersion: number, title?: string) =>
+  /**
+   * base — версия, поверх которой правили (null — заключения ещё нет): сервер
+   * сверит номер и редакцию текста и не даст затереть чужую работу.
+   */
+  saveConclusion: (
+    responseId: string,
+    text: string,
+    base: Pick<ConclusionVersion, "version" | "revision"> | null,
+    title?: string,
+  ) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion`, {
       method: "PUT",
       /*
@@ -1292,13 +1310,18 @@ export const api = {
        * разборе тела — запрос от этого не ломается, а в день, когда столбец
        * появится, клиент править не придётся.
        */
-      body: JSON.stringify({ text, baseVersion, ...(title !== undefined ? { title } : {}) }),
+      body: JSON.stringify({
+        text,
+        baseVersion: base?.version ?? 0,
+        baseRevision: base?.revision,
+        ...(title !== undefined ? { title } : {}),
+      }),
     }),
-  /** Подписывается конкретная версия — та, что была на экране */
-  signConclusion: (responseId: string, version: number) =>
+  /** Подписывается конкретная версия и конкретная редакция её текста — та, что была на экране */
+  signConclusion: (responseId: string, seen: Pick<ConclusionVersion, "version" | "revision">) =>
     request<ConclusionState>(`/api/conclusions/responses/${responseId}/conclusion/sign`, {
       method: "POST",
-      body: JSON.stringify({ version }),
+      body: JSON.stringify({ version: seen.version, revision: seen.revision }),
     }),
 
   respondents: (params: { search?: string; cursor?: string; limit?: string } = {}) => {

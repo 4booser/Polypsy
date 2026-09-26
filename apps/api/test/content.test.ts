@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
-import { adminA, api, db, patient, surveyInA } from "./fixtures";
+import { adminA, api, db, makeUser, surveyInA, type Person } from "./fixtures";
 import { ADMIN_DATABASE_URL, TEST_DATABASE_NAME } from "./preload";
 import { sql } from "drizzle-orm";
 
@@ -269,17 +269,36 @@ describe("язык содержимого следует за читателем
    */
   const ask = (path: string, token: string, lang: string) =>
     api(path, token, { headers: { "Accept-Language": lang } });
+  /** Свой человек: пару «методика × фиксированный пациент» делят с этим файлом ещё пять */
+  let own: Person;
+  let ownCase: string;
+
+  /*
+   * Случай без сигналов не остаётся открытым в общей очереди: очередь
+   * сортирует тяжёлые вперёд, и чужие тесты, берущие «первый случай»,
+   * получали бы его вместо своего.
+   */
+  afterAll(async () => {
+    const { alertCases } = await import("../src/db/schema");
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(alertCases)
+      .set({ acknowledgedAt: new Date().toISOString(), acknowledgedBy: adminA.id })
+      .where(eq(alertCases.id, ownCase));
+  });
 
   beforeAll(async () => {
+    own = await makeUser("user", `content-lang-${crypto.randomUUID()}@test`);
     /*
      * Свой случай, а не одолженный у соседей: занятый в общей базе случай
      * делает проверку зависимой от порядка файлов, и падать она начинает
      * не там, где сломано.
      */
     const { alertCases, surveyAccess } = await import("../src/db/schema");
+    ownCase = crypto.randomUUID();
     await db.insert(alertCases).values({
-      id: crypto.randomUUID(),
-      userId: patient.id,
+      id: ownCase,
+      userId: own.id,
       surveyId: surveyInA,
       severity: "severe",
     });
@@ -296,34 +315,24 @@ describe("язык содержимого следует за читателем
      */
     const past = new Date(Date.now() - 3 * 86_400_000).toISOString();
     /*
-     * Выдача ставится upsert-ом, а не простой вставкой.
+     * Выдача — своему человеку, а не фиксированному пациенту.
      *
-     * Ключ survey_access — пара «методика и человек», и эта пара в общей базе
-     * не только наша: любой файл, назначивший surveyInA пациенту (через
-     * группу, набор или маршрут выдачи), занимает её раньше. Порядок файлов
-     * задаёт файловая система — на macOS он алфавитный, на Linux нет, — и
-     * простая вставка роняла проверку языка отказом ключа на CI, оставаясь
-     * зелёной у всех локально. Падало при этом не там, где сломано: сообщение
-     * говорило про survey_access, а речь шла про порядок файлов.
-     *
-     * Отвергнуто onConflictDoNothing: ему нечего сказать, если строка уже
-     * есть, а проверке нужен ПРОСРОЧЕННЫЙ повтор — с чужим сроком в будущем
-     * очередь работы этой строки не покажет, и тест молча проверял бы пустой
-     * список. Здесь важно не «строка есть», а «строка такая, как нужно».
+     * Пару «surveyInA × patient» занимают и другие файлы (alerts, batteries,
+     * расписания), и прежний upsert на ней менял срок и заметку, но не
+     * момент выдачи: повтор считается просроченным, только если после
+     * выдачи не было сдачи, а фиксированный пациент сдаёт surveyInA в
+     * десятке файлов. Строка то попадала в очередь, то нет — в зависимости
+     * от порядка файлов и секунд между ними (волна 12, integrity). У своего
+     * человека сдач нет вовсе, и выдача вставляется простой вставкой.
      */
-    await db
-      .insert(surveyAccess)
-      .values({
-        surveyId: surveyInA,
-        userId: patient.id,
-        grantedBy: adminA.id,
-        expiresAt: past,
-        note: "Протокол наблюдения · проверка языка",
-      } as never)
-      .onConflictDoUpdate({
-        target: [surveyAccess.surveyId, surveyAccess.userId],
-        set: { grantedBy: adminA.id, expiresAt: past, note: "Протокол наблюдения · проверка языка" },
-      });
+    await db.insert(surveyAccess).values({
+      surveyId: surveyInA,
+      userId: own.id,
+      grantedBy: adminA.id,
+      grantedAt: new Date().toISOString(),
+      expiresAt: past,
+      note: "Протокол наблюдения · проверка языка",
+    } as never);
   });
 
   test("очередь работы отдаёт названия на языке запроса", async () => {
@@ -333,8 +342,8 @@ describe("язык содержимого следует за читателем
     expect(ru.status).toBe(200);
 
     const titles = (r: typeof uk) =>
-      (r.body.items as { kind: string; title: string }[])
-        .filter((i) => i.kind === "followup")
+      (r.body.items as { kind: string; title: string; userId: string }[])
+        .filter((i) => i.kind === "followup" && i.userId === own.id)
         .map((i) => i.title);
 
     const inUk = titles(uk);

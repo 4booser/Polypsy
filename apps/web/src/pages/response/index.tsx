@@ -187,12 +187,19 @@ export default function ResponseView() {
             класс .btn из styles/legacy.css: своя высота, свой кегль, своя
             заливка — ничего из этого с макетом не совпадало.
           */}
-          <Link
-            to={`/responses/${detail.id}/conclusion`}
-            className="inline-flex h-[45px] items-center rounded-[5px] bg-primary-soft px-[22px] text-[22px] font-bold text-primary no-underline"
-          >
-            {ut("rsp.createConclusion")}
-          </Link>
+          {/*
+            Только по завершённому: заключение по черновику сервер отклоняет
+            (409, routes/conclusions.ts) — кнопка, ведущая к отказу, хуже её
+            отсутствия (клиническое ревью, волна 12).
+          */}
+          {detail.status === "completed" ? (
+            <Link
+              to={`/responses/${detail.id}/conclusion`}
+              className="inline-flex h-[45px] items-center rounded-[5px] bg-primary-soft px-[22px] text-[22px] font-bold text-primary no-underline"
+            >
+              {ut("rsp.createConclusion")}
+            </Link>
+          ) : null}
         </div>
       </div>
     </Page>

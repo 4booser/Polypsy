@@ -447,7 +447,7 @@ describe("реальное время", () => {
   test("сдача с риском публикует событие", async () => {
     const { subscribe } = await import("../src/lib/events");
     const { questions, options } = await import("../src/db/schema");
-    const { and: andOp } = await import("drizzle-orm");
+    const { and: andOp, inArray: inArrayOp } = await import("drizzle-orm");
 
     const received: { kind: string }[] = [];
     const unsubscribe = await subscribe((e) => received.push(e as { kind: string }));
@@ -456,12 +456,20 @@ describe("реальное время", () => {
     // транзакции, что и сама тревога
     const person = await makeUser("user", `sse-${crypto.randomUUID()}@test`);
     const survey = await api(`/api/surveys/${surveyInA}`, person.token);
+    /*
+     * Рискованный вариант — из вопросов ЭТОЙ методики в её действующей
+     * версии. Прежде бралась первая строка с riskFlag во всей базе: копии
+     * СР-45 и методики каталога из других файлов делали её чужой, ответ
+     * уходил без риска, и событие не рождалось (волна 12, integrity).
+     */
+    const ownQuestions = (survey.body.questions as { id: string }[]).map((q) => q.id);
     const risky = await db
       .select({ questionId: options.questionId, id: options.id })
       .from(options)
       .innerJoin(questions, eq(questions.id, options.questionId))
-      .where(eq(options.riskFlag, true))
+      .where(andOp(eq(options.riskFlag, true), inArrayOp(options.questionId, ownQuestions)))
       .limit(1);
+    expect(risky.length, "у СР-45 нет рискованных вариантов — проверять нечего").toBe(1);
 
     if (risky.length) {
       const answers = survey.body.questions
