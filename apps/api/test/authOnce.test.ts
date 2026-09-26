@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { sql } from "drizzle-orm";
-import { app, root, surveyInA } from "./fixtures";
+import { eq, sql } from "drizzle-orm";
+import { adminA, app, db, makeUser, root, surveyInA } from "./fixtures";
 import { dbContext } from "../src/db/context";
+import { mailingRecipients, mailings } from "../src/db/schema";
+import { encryptField } from "../src/lib/crypto";
 import { currentRequestId } from "../src/lib/log";
 
 /**
@@ -62,12 +64,12 @@ afterAll(() => {
   dbContext.run = originalRun;
 });
 
-async function call(method: string, path: string, body?: unknown) {
+async function call(method: string, path: string, body?: unknown, token = root.token) {
   const requestId = crypto.randomUUID();
   const res = await app.request(path, {
     method,
     headers: {
-      Authorization: `Bearer ${root.token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "x-request-id": requestId,
     },
@@ -110,6 +112,36 @@ describe("одна транзакция запроса", () => {
     const res = await call("GET", "/api/ops/data/usage?days=7");
     expect(res.status).toBe(200);
     expect(res.tx).toBe(1);
+  });
+
+  test("ящик рассылок получателя — имена авторов без второй транзакции", async () => {
+    /*
+     * Ветка, которую обход суперадмином не открывает: имена авторов
+     * читаются системной ролью, только когда у получателя есть
+     * отправленные рассылки. Раньше — systemContext поверх транзакции
+     * запроса, то есть второе соединение пула на каждый просмотр ящика
+     * (routes/mailings.ts, authorNames).
+     */
+    const person = await makeUser("user", `tx-inbox-${crypto.randomUUID()}@test`);
+    const mailingId = crypto.randomUUID();
+    await db.insert(mailings).values({
+      id: mailingId,
+      authorId: adminA.id,
+      titleEnc: encryptField("Нагадування")!,
+      bodyEnc: encryptField("Завтра прийом о 10:00")!,
+      status: "sent",
+      sentAt: new Date().toISOString(),
+      patientIds: [person.id],
+    } as never);
+    await db.insert(mailingRecipients).values({ mailingId, userId: person.id });
+    try {
+      const res = await call("GET", "/api/mailings/inbox", undefined, person.token);
+      expect(res.status).toBe(200);
+      expect(res.tx).toBe(1);
+      expect(res.nested, "имена авторов читались второй транзакцией поверх транзакции запроса").toBe(0);
+    } finally {
+      await db.delete(mailings).where(eq(mailings.id, mailingId));
+    }
   });
 
   test("сдача прохождения — одна транзакция", async () => {
