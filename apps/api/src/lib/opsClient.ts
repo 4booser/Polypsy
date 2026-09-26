@@ -38,6 +38,7 @@ import {
   type OpsVitals,
   type VitalInput,
   type VitalMetric,
+  type VitalRating,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { opsClientErrors, opsVitals } from "../db/schema";
@@ -350,6 +351,22 @@ export function periodDays(now: Date, days = VITAL_DAYS): string[] {
   return [...new Set(out)];
 }
 
+/**
+ * Замеры корзин по оценке. Корзина i — значения до bounds[i] включительно,
+ * последняя — всё выше последней границы; пороги оценки стоят среди границ,
+ * поэтому оценка верхнего края корзины и есть оценка каждого замера в ней.
+ * Приблизительного здесь нет — в отличие от p75, который интерполируется
+ * внутри корзины.
+ */
+export function ratingsOf(metric: VitalMetric, hist: readonly number[]): Record<VitalRating, number> {
+  const bounds = VITAL_BOUNDS[metric];
+  const out: Record<VitalRating, number> = { good: 0, needs: 0, poor: 0 };
+  hist.forEach((n, i) => {
+    if (n) out[vitalRating(metric, bounds[i] ?? Number.POSITIVE_INFINITY)] += n;
+  });
+  return out;
+}
+
 const roundVital = (m: VitalMetric, v: number | null) =>
   v === null ? null : m === "CLS" ? Math.round(v * 1000) / 1000 : Math.round(v);
 
@@ -397,6 +414,7 @@ export async function vitalsReport(now = new Date(), days = VITAL_DAYS): Promise
         n,
         rating: p75 === null ? null : vitalRating(metric, p75),
         daily: acc.perDay.map((h) => roundVital(metric, histQuantile(h, 0.75, bounds))),
+        ratings: ratingsOf(metric, acc.total),
       };
     }
     return { route, metrics, samples };

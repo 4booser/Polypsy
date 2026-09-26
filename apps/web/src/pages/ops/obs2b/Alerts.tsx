@@ -1,10 +1,20 @@
 import { useState } from "react";
-import { OPS_REPEAT_LIMITS, OPS_RULE_LIMITS, type OpsAlertChannel, type OpsAlertEvent, type OpsAlertRule, type OpsAlerts } from "@quizzy/shared";
+import {
+  OPS_REPEAT_LIMITS,
+  OPS_RULE_LIMITS,
+  type OpsAlertChannel,
+  type OpsAlertEvent,
+  type OpsAlertHistory,
+  type OpsAlertRule,
+  type OpsAlerts,
+} from "@quizzy/shared";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
-import { dateTime, locale } from "../../../format";
+import { Figure, HBars } from "../../../charts/clinical";
+import { dateTime, day, locale } from "../../../format";
 import { useLang } from "../../../lang";
 import { Loading, useAction, useToast } from "../../../ui";
+import { cx } from "../../../ui/cx";
 import { Button, Field, Input, Num } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
 import { fill } from "../../dashboard/model";
@@ -12,6 +22,7 @@ import { PeriodSwitch } from "../../dashboard/parts";
 import { fmtAgo, fmtUptime } from "../model";
 import { Cell, GridRow, GridTable, Quiet, Stamp, StatusMark, useOpsResource } from "../parts";
 import {
+  ALERT_SERIES,
   CHANNEL_KEY,
   DELIVERY_KEY,
   EVENT_KEY,
@@ -22,6 +33,8 @@ import {
   RULE_UNIT,
   STATE_KEY,
   STATE_TONE,
+  alertGroups,
+  anyAlerts,
   draftOf,
   fmtRuleValue,
   hasThreshold,
@@ -32,6 +45,7 @@ import {
   type DraftError,
   type RuleDraft,
 } from "./model";
+import { FIG_GRID, GroupedColumns } from "./charts";
 import { FIELD_LABEL, Meta, ToggleSet } from "./parts";
 
 /*
@@ -95,16 +109,19 @@ export default function OpsAlertsPage() {
         ) : hist.data.items.length === 0 ? (
           <Quiet>{ut("o2b.alerts.historyEmpty")}</Quiet>
         ) : (
-          <GridTable
-            label={ut("o2b.alerts.history")}
-            cols={HISTORY_COLS}
-            minW="min-w-[900px]"
-            head={[ut("ops.col.time"), ut("o2b.col.rule"), ut("o2b.col.event"), ut("o2b.col.value"), ut("o2b.col.deliveries")]}
-          >
-            {hist.data.items.map((e) => (
-              <HistoryRow key={e.id} e={e} />
-            ))}
-          </GridTable>
+          <>
+            <HistoryShape h={hist.data} />
+            <GridTable
+              label={ut("o2b.alerts.history")}
+              cols={HISTORY_COLS}
+              minW="min-w-[900px]"
+              head={[ut("ops.col.time"), ut("o2b.col.rule"), ut("o2b.col.event"), ut("o2b.col.value"), ut("o2b.col.deliveries")]}
+            >
+              {hist.data.items.map((e) => (
+                <HistoryRow key={e.id} e={e} />
+              ))}
+            </GridTable>
+          </>
         )}
       </RuleSection>
     </div>
@@ -392,6 +409,43 @@ function Channels({ d, manage, onTested }: { d: OpsAlerts; manage: boolean; onTe
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Форма истории над списком (волна 11): когда срабатывало и что чаще.
+ *
+ * Текущее состояние правил здесь не рисуется — оно словами выше, в строке
+ * каждого правила, и второй раз графиком было бы тем же самым. Здесь —
+ * месяц: «збій» и «відновлено» по дням парой столбцов (янтарь — сбой, он
+ * требует внимания; фиолетовый — восстановление) и правила по числу сбоев.
+ * Ряды считает сервер по всей таблице: список ниже — сто последних
+ * событий, и ночь повторов съела бы его целиком.
+ */
+export function HistoryShape({ h }: { h: OpsAlertHistory }) {
+  const { ut } = useLang();
+  if (!anyAlerts(h.daily)) return <Quiet>{fill(ut("sig.al.quiet"), { days: h.days })}</Quiet>;
+  const series = ALERT_SERIES.map((s) => ({ key: s.key, label: ut(s.label), tone: s.tone }));
+  return (
+    <div className={cx(FIG_GRID, "mb-[24px]")}>
+      <Figure title={ut("sig.al.byDay")} caption={fill(ut("sig.al.byDayCaption"), { days: h.days })}>
+        <GroupedColumns groups={alertGroups(h.daily, day)} series={series} label={ut("sig.al.byDay")} />
+      </Figure>
+      <Figure title={ut("sig.al.byRule")} caption={fill(ut("sig.al.byRuleCaption"), { days: h.days })}>
+        {h.byRule.length ? (
+          <HBars
+            items={h.byRule.map((r) => ({
+              key: r.rule,
+              label: ut(RULE_NAME[r.rule]),
+              value: r.fired,
+              text: r.repeat ? fill(ut("sig.al.firedRepeat"), { n: r.fired, r: r.repeat }) : String(r.fired),
+            }))}
+          />
+        ) : (
+          <Quiet>{ut("sig.al.noFired")}</Quiet>
+        )}
+      </Figure>
+    </div>
   );
 }
 

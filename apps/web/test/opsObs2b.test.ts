@@ -154,16 +154,26 @@ describe("помилки клієнта: фильтры", () => {
 });
 
 describe("швидкість екранів", () => {
-  const cell: OpsVitalCell = { p75: 1800, n: 40, rating: "good", daily: [null, 1600, null, 2100] };
+  const cell: OpsVitalCell = {
+    p75: 1800,
+    n: 40,
+    rating: "good",
+    daily: [null, 1600, null, 2100],
+    ratings: { good: 30, needs: 8, poor: 2 },
+  };
 
-  test("ход — только дни с замерами; пустой день — не ноль", () => {
+  test("ход — все дни периода; пустой день — разрыв (null), а не ноль и не пропуск", () => {
     const pts = vitalSeries(cell, ["2026-09-23", "2026-09-24", "2026-09-25", "2026-09-26"], (d) => d.slice(5));
     expect(pts).toEqual([
-      { x: "09-24", y: 1600 },
-      { x: "09-26", y: 2100 },
+      { key: "2026-09-23", label: "09-23", value: null },
+      { key: "2026-09-24", label: "09-24", value: 1600 },
+      { key: "2026-09-25", label: "09-25", value: null },
+      { key: "2026-09-26", label: "09-26", value: 2100 },
     ]);
     expect(sparkOf(cell)).toEqual([1600, 2100]);
     expect(vitalSeries(undefined, [], String)).toEqual([]);
+    // замеров не было ни в один день — ряда нет, экран скажет словами
+    expect(vitalSeries({ ...cell, daily: [null, null] }, ["a", "b"], String)).toEqual([]);
   });
 
   test("значения мер: CLS без единицы, секунды от тысячи, оценка словом и формой", () => {

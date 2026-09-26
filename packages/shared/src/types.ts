@@ -3123,6 +3123,19 @@ export interface OpsAlertEvent {
 
 export interface OpsAlertHistory {
   items: OpsAlertEvent[];
+  /**
+   * Форма истории за `days` дней — для графиков над списком (волна 11).
+   *
+   * Считается на сервере по всей таблице, а не из `items`: список — сто
+   * последних событий, и одна ночь с повторами каждые пять минут съела бы
+   * его целиком, а график за месяц нарисовал бы одну эту ночь. Тестовые
+   * сообщения не входят: это проверка канала, а не срабатывание.
+   */
+  days: number;
+  /** По дню периода (пояс учреждения), старые первыми; пустой день — нули, а не пропуск */
+  daily: { date: string; fired: number; repeat: number; resolved: number }[];
+  /** Правила, которые срабатывали за период, — по убыванию «збій» */
+  byRule: { rule: OpsAlertRuleKey; fired: number; repeat: number }[];
 }
 
 export interface OpsAlertRuleInput {
@@ -3215,6 +3228,14 @@ export interface OpsVitalCell {
   rating: VitalRating | null;
   /** p75 по дням периода, по порядку `days`; null — в этот день замеров нет */
   daily: (number | null)[];
+  /**
+   * Замеры периода по оценке — сколько показов было «добре», «потребує
+   * уваги», «погано». Точно, а не приблизительно: пороги оценки стоят среди
+   * границ корзин (VITAL_BOUNDS), и корзина целиком лежит по одну сторону
+   * порога. p75 говорит о типичном показе, доли — о том, сколько людей
+   * ждали дольше порога.
+   */
+  ratings: Record<VitalRating, number>;
 }
 
 export interface OpsVitalRoute {
@@ -3774,6 +3795,14 @@ export interface OpsIntegrityState {
   scheduleHours: number;
   /** Раньше этого планировщик сверять не станет */
   nextScheduledAfter: string;
+  /**
+   * Все сверки цепочки за `historyDays` дней, старые первыми — отметками
+   * на оси времени (волна 11). Без отчёта и без автора: график отвечает
+   * «была ли цепочка цела в тот день», а кто и что именно проверил —
+   * последняя сверка выше.
+   */
+  historyDays: number;
+  auditHistory: { at: string; ok: boolean; trigger: "manual" | "schedule" }[];
 }
 
 /** Почему консоль отказалась выполнять запрос, не отправив его в базу */

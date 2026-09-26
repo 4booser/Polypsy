@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import {
   VITAL_BOUNDS,
   histQuantile,
+  vitalRating,
   type OpsAlertHistory,
   type OpsAlerts,
   type OpsClientErrors,
@@ -35,7 +36,8 @@ import {
   setAuditChainSource,
   type SignalInputs,
 } from "../src/lib/opsAlerts";
-import { cleanClientError, resetClientLimits, WindowLimiter } from "../src/lib/opsClient";
+import { cleanClientError, ratingsOf, resetClientLimits, WindowLimiter } from "../src/lib/opsClient";
+import { dayOf } from "../src/lib/day";
 import { jobsSnapshot, registerRunnable } from "../src/lib/opsJobs";
 import { cleanFailure } from "../src/lib/opsRecordings";
 import { resetClientErrorsReadCoalescing } from "../src/routes/opsSignals";
@@ -336,6 +338,65 @@ describe("правило: сработало, затихло, повторило
   });
 });
 
+/* ═══════════ форма истории (волна 11: графики над списком) ═══════════ */
+
+describe("форма истории оповещений: по дням и по правилам", () => {
+  const event = (at: number, kind: "fired" | "repeat" | "resolved" | "test", rule: string | null) => ({
+    id: crypto.randomUUID(),
+    at: new Date(at).toISOString(),
+    ruleKey: rule,
+    kind,
+    value: null,
+    threshold: null,
+    deliveries: [],
+  });
+
+  test("месяц по всей таблице: пустые дни — нули, тестовое и старое не считаются", async () => {
+    const now = Date.now();
+    const DAY = 86_400_000;
+    await db.insert(opsAlertEvents).values([
+      event(now - 60_000, "fired", "errors5xx"),
+      event(now - 120_000, "fired", "errors5xx"),
+      event(now - 30_000, "resolved", "errors5xx"),
+      event(now - 3 * DAY, "fired", "p95"),
+      event(now - 3 * DAY + 3_600_000, "repeat", "p95"),
+      // проверка канала — не срабатывание
+      event(now - 90_000, "test", null),
+      // за пределами месяца
+      event(now - 40 * DAY, "fired", "diskFree"),
+    ]);
+
+    const res = await api<OpsAlertHistory>("/api/ops/alerts/history", root.token);
+    expect(res.status).toBe(200);
+    const { daily, byRule, days } = res.body;
+    expect(days).toBe(30);
+    expect(daily).toHaveLength(30);
+    // сегодня — последним, по поясу учреждения
+    expect(daily.at(-1)!.date).toBe(dayOf(new Date(now).toISOString())!);
+    expect(daily.at(-1)).toMatchObject({ fired: 2, resolved: 1, repeat: 0 });
+    const threeAgo = daily.find((d) => d.date === dayOf(new Date(now - 3 * DAY).toISOString()))!;
+    expect(threeAgo).toMatchObject({ fired: 1, repeat: 1 });
+    // сплошной ряд: всего событий ровно столько, сколько вставлено в окно без тестового
+    const sum = daily.reduce((s, d) => s + d.fired + d.repeat + d.resolved, 0);
+    expect(sum).toBe(5);
+    // чаще всего — 5xx; «відновлено» в счёт правила не идёт
+    expect(byRule).toEqual([
+      { rule: "errors5xx", fired: 2, repeat: 0 },
+      { rule: "p95", fired: 1, repeat: 1 },
+    ]);
+    // список при этом прежний: сто последних, тестовое в нём есть
+    expect(res.body.items.some((e) => e.kind === "test")).toBe(true);
+  });
+
+  test("истории нет — ряд из нулей, правил нет", async () => {
+    const res = await api<OpsAlertHistory>("/api/ops/alerts/history", root.token);
+    expect(res.body.items).toEqual([]);
+    expect(res.body.daily).toHaveLength(30);
+    expect(res.body.daily.every((d) => d.fired === 0 && d.repeat === 0 && d.resolved === 0)).toBe(true);
+    expect(res.body.byRule).toEqual([]);
+  });
+});
+
 /* ═══════════ каналы и секреты ═══════════ */
 
 describe("каналы: наружу только «задано»", () => {
@@ -567,6 +628,39 @@ describe("скорость экранов", () => {
     expect(row.metrics.CLS!.rating).toBe("good");
     expect(row.metrics.NAV!.rating).toBe("poor");
     expect(row.metrics.TTFB).toBeUndefined();
+  });
+
+  test("замеры по оценке — точно по корзинам: пороги стоят среди границ", async () => {
+    const route = `/o2b-${crypto.randomUUID().slice(0, 6)}/ratings`;
+    const items = [
+      // LCP: порог «добре» 2,5 с — ровно на нём ещё «добре», на 4 с ещё «потребує уваги»
+      ...[900, 2500, 2600, 4000, 4001, 9000].map((value) => ({ metric: "LCP", route, value })),
+      ...[80, 200, 201, 700].map((value) => ({ metric: "INP", route, value })),
+    ];
+    await api("/api/ops/vitals", root.token, { method: "POST", body: JSON.stringify({ items }) });
+    const report = await api<OpsVitals>("/api/ops/vitals?days=7", root.token);
+    const row = report.body.routes.find((r) => r.route === route)!;
+    expect(row.metrics.LCP!.ratings).toEqual({ good: 2, needs: 2, poor: 2 });
+    expect(row.metrics.INP!.ratings).toEqual({ good: 2, needs: 1, poor: 1 });
+    // сумма долей — все замеры, ни одного потерянного
+    expect(row.metrics.LCP!.ratings.good + row.metrics.LCP!.ratings.needs + row.metrics.LCP!.ratings.poor).toBe(row.metrics.LCP!.n);
+  });
+
+  test("оценка корзины совпадает с оценкой любого замера в ней — для каждой меры", () => {
+    for (const metric of ["LCP", "INP", "CLS", "TTFB", "NAV"] as const) {
+      const bounds = VITAL_BOUNDS[metric];
+      for (let b = 0; b <= bounds.length; b++) {
+        const lo = b === 0 ? 0 : bounds[b - 1]!;
+        const hi = bounds[b] ?? lo * 3;
+        const hist = new Array(bounds.length + 1).fill(0);
+        hist[b] = 1;
+        const got = ratingsOf(metric, hist);
+        // середина корзины и её верхний край оцениваются одинаково
+        for (const v of [lo + (hi - lo) / 2, hi]) {
+          expect(got[vitalRating(metric, v)]).toBe(1);
+        }
+      }
+    }
   });
 
   test("лишнее поле и неизвестная мера — 400", async () => {
