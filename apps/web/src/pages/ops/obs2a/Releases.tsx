@@ -10,6 +10,7 @@ import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
 import { fmtInt, fmtMs, fmtShare } from "../model";
 import { Cell, GridRow, GridTable, NumHead, Quiet, StatusMark } from "../parts";
+import { ReleaseCharts } from "./charts";
 import {
   SHIFT_KEY,
   SHIFT_TONE,
@@ -40,6 +41,12 @@ import {
  * внимания), «краще» — фиолетовым, «без змін» и «замало запитів» — тихо.
  * Где запросов меньше порога, процентов нет вовсе: «+300 %» от трёх
  * запросов — шум, и экран не должен выдавать его за вывод.
+ *
+ * Над таблицей (волна 11) — пары полос «було / стало»: p95 восьми
+ * маршрутов с самым большим сдвигом и доля пятисоток там, где они были.
+ * Графики — по всей паре окон, как на остальных вкладках панели: поиск и
+ * «лише погіршення» сужают таблицу, а «первые восемь из найденного»
+ * читались бы как первые восемь всего сравнения.
  */
 
 const COLS = "grid-cols-[minmax(240px,1fr)_96px_80px_80px_150px_72px_72px_150px]";
@@ -187,6 +194,12 @@ function CompareTable({ c, rows, worse }: { c: OpsReleaseCompare; rows: OpsRoute
   return (
     <>
       <Windows c={c} />
+      {/* графики — по всей паре окон, как на других вкладках: поиск и «лише погіршення» сужают таблицу */}
+      {c.items.length ? (
+        <div className="mb-[28px] mt-[20px]">
+          <ReleaseCharts items={c.items} />
+        </div>
+      ) : null}
       {c.items.length === 0 ? (
         <Quiet>{ut("ops.rel.empty")}</Quiet>
       ) : rows.length === 0 ? (

@@ -1,24 +1,27 @@
 import type {
   ClinicalTrace,
   ClinicalTraceKey,
+  OpsConnections,
   OpsConnState,
   OpsErrorGroup,
   OpsErrorWindow,
   OpsHealthCheck,
+  OpsJob,
   OpsJobResult,
   OpsLevel,
   OpsLogLine,
   OpsLogWindow,
   OpsRouteStat,
   OpsStoreState,
+  OpsTableStat,
   OpsTrafficBucket,
   OpsUserRow,
+  OpsWindow,
   Permission,
   Role,
   UiKey,
 } from "@quizzy/shared";
-import type { Column } from "../../charts/clinical";
-import type { LinePoint } from "../../charts";
+import type { Column, StackColumn } from "../../charts/clinical";
 import { OPS_GROUPS, type OpsGroup, type OpsSection } from "./sections";
 
 /**
@@ -42,6 +45,13 @@ export function parseLevel(v: string | null): OpsLevel | null {
  */
 export type OverviewWindow = "1h" | "24h";
 export const parseWindow = (v: string | null): OverviewWindow => (v === "24h" ? "24h" : "1h");
+
+/*
+ * На «Запитах» (волна 11) окон три: там смотрят, когда именно пошла
+ * нагрузка на маршруты, и шесть часов — «с утра» — отвечают на это лучше
+ * суток по пятнадцать минут.
+ */
+export const parseTrafficWindow = (v: string | null): OpsWindow => (v === "6h" || v === "24h" ? v : "1h");
 
 /*
  * Периоды истории из базы (участок obs2a). Логи — от часа: лента открывается
@@ -182,25 +192,327 @@ export function fieldsText(fields: Record<string, unknown>): string {
 /** Номер запроса укороченным — так его печатает лог разработки; полный — в подсказке */
 export const shortId = (id: string) => (id.length > 8 ? id.slice(0, 8) : id);
 
-/* ─────────── графики ─────────── */
+/* ═══════════ графики техпанели (волна 11) ═══════════ */
 
-/** Столбцы нагрузки: подпись — время начала корзины */
-export function trafficColumns(buckets: readonly OpsTrafficBucket[], label: (iso: string) => string): Column[] {
-  return buckets.map((b) => ({ key: b.at, label: label(b.at), value: b.requests }));
+/*
+ * Решение заказчика 2026-09-26: «должны быть графики в админ панеле». Каждый
+ * раздел наблюдаемости, где у данных есть форма (время, доли, рейтинг),
+ * показывает её графиком над таблицей; таблица остаётся — это и есть
+ * «табличный вид» графика для чтения и для диктора.
+ *
+ * Здесь — только ряды: чистые функции без React и без «сейчас» внутри
+ * (время и локаль — аргументами), покрытые apps/web/test/opsCharts.test.ts.
+ * Рисуют их pages/ops/charts.tsx и pages/ops/obs2a/charts.tsx.
+ */
+
+/**
+ * Цвета рядов — токенами, в постоянном порядке. Основной ряд — фиолетовый
+ * действия, как одиночный ряд везде; первый дополнительный — --cat-1;
+ * янтарь — только тому, что требует внимания (пятисотки, строки «помилка»).
+ * --cat-2 не берётся нигде: он оранжевый и рядом с янтарём читался бы как
+ * второе «внимание».
+ */
+export const CLASS_COLOR = { ok: "var(--primary)", c4: "var(--cat-1)", c5: "var(--accent)" } as const;
+export const LEVEL_COLOR = { warn: "var(--cat-1)", error: "var(--accent)" } as const;
+/* p95 — число плиток и порогов, поэтому основной ряд; p50 и p99 — по краям */
+export const PCT_COLOR = { p50: "var(--cat-1)", p95: "var(--primary)", p99: "var(--cat-4)" } as const;
+/** Вторая часть пары, которая сама ничего не требует: «пропущено» у расписаний */
+export const QUIET_COLOR = "var(--cat-1)";
+
+/**
+ * Порог доли пятисоток на графике — тот же, что у плитки «Частка 5xx», у
+ * проверки здоровья и у оповещения в RUNBOOK: больше процента.
+ */
+export const SHARE_5XX_LIMIT = 0.01;
+
+/* ─────────── нагрузка по корзинам сервера ─────────── */
+
+/** Подсказка корзины нагрузки: «14:15–14:30» — начало и конец, а не одна точка */
+export function trafficTip(at: string, stepSec: number, loc: string): string {
+  return `${hhmm(at, loc)}–${hhmm(new Date(Date.parse(at) + stepSec * 1000).toISOString(), loc)}`;
 }
 
 /**
- * Линия p95 с полосой от p50 до p99.
- *
- * Только корзины, где запросы были: пустая минута — не «ноль миллисекунд»,
- * а отсутствие замера, и линия, падающая в ноль на каждой тихой минуте,
- * рисовала бы скорость, которой не было. Подпись под графиком об этом
- * говорит.
+ * Была ли у процесса эта корзина. Корзины окна строятся всегда (ровная
+ * сетка времени), но до запуска процесса памяти нет: там не «ноль запросов»,
+ * а «не знаем», и столбца там нет. Корзина, в которой процесс запустился,
+ * своя — в ней уже есть счёт.
  */
-export function latencySeries(buckets: readonly OpsTrafficBucket[], label: (iso: string) => string): LinePoint[] {
-  return buckets
-    .filter((b) => b.requests > 0 && b.p95 !== null)
-    .map((b) => ({ x: label(b.at), y: b.p95!, lo: b.p50, hi: b.p99 }));
+export function bucketKnown(at: string, stepSec: number, since: string): boolean {
+  return Date.parse(at) + stepSec * 1000 > Date.parse(since);
+}
+
+/**
+ * Запросы по классам ответа: [успешные и перенаправления, 4xx, 5xx] —
+ * снизу вверх, в порядке CLASS_COLOR. «Успешные» — остаток: сервер считает
+ * 4xx и 5xx, а всё прочее (2xx и 3xx) для нагрузки одно и то же.
+ */
+export function trafficStack(
+  buckets: readonly OpsTrafficBucket[],
+  stepSec: number,
+  since: string,
+  label: (iso: string) => string,
+  tip: (iso: string) => string,
+): StackColumn[] {
+  return buckets.map((b) => ({
+    key: b.at,
+    label: label(b.at),
+    tip: tip(b.at),
+    values: bucketKnown(b.at, stepSec, since) ? [Math.max(0, b.requests - b.errors4xx - b.errors5xx), b.errors4xx, b.errors5xx] : null,
+  }));
+}
+
+/**
+ * p50, p95 и p99 по корзинам. Пустая корзина — null, и линия рвётся:
+ * «ноль миллисекунд» нарисовал бы скорость, которой не было (см. TimeLines).
+ */
+export function latencyLines(buckets: readonly OpsTrafficBucket[]): Record<"p50" | "p95" | "p99", (number | null)[]> {
+  const of = (k: "p50" | "p95" | "p99") => buckets.map((b) => (b.requests > 0 ? b[k] : null));
+  return { p50: of("p50"), p95: of("p95"), p99: of("p99") };
+}
+
+/** Доля пятисоток по корзинам; без запросов — null: делить не на что */
+export function share5xxLine(buckets: readonly OpsTrafficBucket[]): (number | null)[] {
+  return buckets.map((b) => (b.requests > 0 ? b.errors5xx / b.requests : null));
+}
+
+/** Итог окна по классам — для полосы долей рядом со столбцами */
+export function trafficTotals(buckets: readonly OpsTrafficBucket[]): { ok: number; c4: number; c5: number } {
+  let ok = 0;
+  let c4 = 0;
+  let c5 = 0;
+  for (const b of buckets) {
+    ok += Math.max(0, b.requests - b.errors4xx - b.errors5xx);
+    c4 += b.errors4xx;
+    c5 += b.errors5xx;
+  }
+  return { ok, c4, c5 };
+}
+
+/* ─────────── корзины по местному календарю ─────────── */
+
+/**
+ * Шаг столбцов по периоду. Сервер отдаёт часы UTC (минуты — для часа), а
+ * «сутки» и «шесть часов» — местные: полночь того, кто смотрит, а не
+ * Гринвича. Для Киева это разница в три часа, и «вчерашние» ошибки
+ * оказались бы наполовину сегодняшними.
+ */
+export type TimeStep = "minute" | "hour" | "6h" | "day";
+
+/*
+ * Неделя — шестичасовками, а не днями: семь столбцов не показывают ни
+ * ночного затишья, ни дневного пика, а двадцать восемь — показывают. От
+ * месяца — днями: там вопрос «в какой день», а не «в какое время суток».
+ */
+export const LOG_STEP: Record<OpsLogWindow, TimeStep> = { "1h": "minute", "24h": "hour", "7d": "6h", "14d": "day" };
+export const ERROR_STEP: Record<OpsErrorWindow, TimeStep> = { "24h": "hour", "7d": "6h", "30d": "day", "90d": "day" };
+
+/** «Стовпець — година» — подпись шага под заголовком фигуры */
+export const STEP_KEY: Record<TimeStep, UiKey> = {
+  minute: "ops.ch.step.minute",
+  hour: "ops.ch.step.hour",
+  "6h": "ops.ch.step.6h",
+  day: "ops.ch.step.day",
+};
+
+/** Начало корзины, в которую попадает момент, — по местным часам */
+export function stepStart(ms: number, step: TimeStep): number {
+  const d = new Date(ms);
+  if (step === "minute") {
+    d.setSeconds(0, 0);
+    return d.getTime();
+  }
+  d.setMinutes(0, 0, 0);
+  if (step === "hour") return d.getTime();
+  if (step === "6h") {
+    d.setHours(d.getHours() - (d.getHours() % 6));
+    return d.getTime();
+  }
+  d.setHours(0);
+  return d.getTime();
+}
+
+/**
+ * Начало следующей корзины. Сутки и шестичасовки — календарём, а не
+ * прибавлением миллисекунд: в день перевода часов сутки длятся 23 или 25
+ * часов, и прибавленные 24 часа уехали бы с полуночи.
+ */
+export function stepNext(start: number, step: TimeStep): number {
+  if (step === "minute") return start + 60_000;
+  if (step === "hour") return start + 3_600_000;
+  const d = new Date(start);
+  if (step === "6h") d.setHours(d.getHours() + 6);
+  else d.setDate(d.getDate() + 1);
+  return stepStart(d.getTime(), step);
+}
+
+/** Больше столбцов не бывает ни в одном периоде; это страховка от ошибки в границах, а не предел данных */
+const MAX_BINS = 2000;
+
+export interface Bin<K extends string> {
+  start: number;
+  values: Record<K, number>;
+}
+
+/**
+ * Разреженные точки сервера (только корзины, где что-то было) — в сплошной
+ * ряд корзин от `from` до `to`. Пустая корзина здесь — честный ноль: история
+ * пишется непрерывно, и «ничего не было» — это ответ, а не пропуск. Где
+ * запись не шла, это говорит строка о периоде над графиком (HistoryNote).
+ */
+export function binSeries<T extends { at: string }, K extends Exclude<keyof T, "at"> & string>(
+  points: readonly T[],
+  keys: readonly K[],
+  from: number,
+  to: number,
+  step: TimeStep,
+): Bin<K>[] {
+  const zero = () => Object.fromEntries(keys.map((k) => [k, 0])) as Record<K, number>;
+  const bins: Bin<K>[] = [];
+  const index = new Map<number, Bin<K>>();
+  for (let s = stepStart(from, step); s <= to && bins.length < MAX_BINS; s = stepNext(s, step)) {
+    const bin = { start: s, values: zero() };
+    bins.push(bin);
+    index.set(s, bin);
+  }
+  for (const p of points) {
+    const bin = index.get(stepStart(Date.parse(p.at), step));
+    if (!bin) continue;
+    for (const k of keys) bin.values[k] += Number(p[k]) || 0;
+  }
+  return bins;
+}
+
+/** Подпись под столбцом: время — для минут и часов, дата — для шестичасовок и дней */
+export function stepTick(start: number, step: TimeStep, loc: string): string {
+  if (step === "minute" || step === "hour") return hhmm(new Date(start).toISOString(), loc);
+  return new Date(start).toLocaleDateString(loc, { day: "numeric", month: "short" });
+}
+
+/** Подсказка столбца: полностью, с датой и концом корзины */
+export function stepTip(start: number, step: TimeStep, loc: string): string {
+  const d = new Date(start);
+  if (step === "day") return d.toLocaleDateString(loc, { weekday: "short", day: "numeric", month: "long" });
+  const date = d.toLocaleDateString(loc, { day: "numeric", month: "short" });
+  const from = hhmm(d.toISOString(), loc);
+  if (step === "minute") return `${date}, ${from}`;
+  return `${date}, ${from}–${hhmm(new Date(stepNext(start, step)).toISOString(), loc)}`;
+}
+
+/** Корзины — в столбцы одного ряда */
+export function binColumns<K extends string>(bins: readonly Bin<K>[], key: K, step: TimeStep, loc: string): Column[] {
+  return bins.map((b) => ({ key: String(b.start), label: stepTick(b.start, step, loc), tip: stepTip(b.start, step, loc), value: b.values[key] }));
+}
+
+/** Корзины — в столбцы с разбивкой: ряды в порядке `keys`, снизу вверх */
+export function binStack<K extends string>(bins: readonly Bin<K>[], keys: readonly K[], step: TimeStep, loc: string): StackColumn[] {
+  return bins.map((b) => ({
+    key: String(b.start),
+    label: stepTick(b.start, step, loc),
+    tip: stepTip(b.start, step, loc),
+    values: keys.map((k) => b.values[k]),
+  }));
+}
+
+/* ─────────── рейтинги: первые N и «інші» ─────────── */
+
+/**
+ * Первые `n` по величине и остаток одной строкой. Больше восьми-десяти
+ * полос глаз не сравнивает — он их считает, и рейтинг превращается в
+ * таблицу, которая уже есть ниже.
+ */
+export interface TopRest<T> {
+  top: T[];
+  /** Сколько строк не вошло */
+  rest: number;
+  /** Их сумма — для величин, которые складываются (запросы, байты, случаи) */
+  restSum: number;
+}
+
+export function topRest<T>(items: readonly T[], n: number, value: (t: T) => number): TopRest<T> {
+  const sorted = items.slice().sort((a, b) => value(b) - value(a));
+  const tail = sorted.slice(n);
+  return { top: sorted.slice(0, n), rest: tail.length, restSum: tail.reduce((s, t) => s + value(t), 0) };
+}
+
+/**
+ * Меньше стольких запросов — p95 маршрута в рейтинг не идёт. Тот же порог,
+ * что у сравнения выкаток (lib/opsReleases.ts, MIN_SAMPLE): p95 из десятка
+ * запросов — это почти максимум, и один медленный запрос поставил бы
+ * маршрут первым.
+ */
+export const ROUTE_P95_MIN = 30;
+
+export const routesByCount = (items: readonly OpsRouteStat[], n = 8) => topRest(items, n, (r) => r.requests);
+
+export function routesByP95(items: readonly OpsRouteStat[], n = 8): TopRest<OpsRouteStat> & { few: number } {
+  const known = items.filter((r) => r.p95 !== null && r.requests >= ROUTE_P95_MIN);
+  return { ...topRest(known, n, (r) => r.p95!), few: items.length - known.length };
+}
+
+/**
+ * Маршруты с пятисотками — по доле, при равенстве — по числу. Доля одного
+ * запроса из одного — 100 %, поэтому рядом с долей всегда «N з M»: экран
+ * не выдаёт единичный сбой за поломку всего маршрута.
+ */
+export function routes5xx(items: readonly OpsRouteStat[], n = 8): TopRest<OpsRouteStat> {
+  const hit = items
+    .filter((r) => r.errors5xx > 0 && r.requests > 0)
+    .sort((a, b) => b.errors5xx / b.requests - a.errors5xx / a.requests || b.errors5xx - a.errors5xx);
+  const tail = hit.slice(n);
+  return { top: hit.slice(0, n), rest: tail.length, restSum: tail.reduce((s, r) => s + r.errors5xx, 0) };
+}
+
+/* ─────────── ошибки, задачи, база ─────────── */
+
+export const errorGroupsTop = (items: readonly OpsErrorGroup[], n = 8) => topRest(items, n, (g) => g.count);
+
+/** Задачи по числу проходов с момента запуска */
+export const jobsByRuns = (items: readonly OpsJob[], n = 8) => topRest(items, n, (j) => j.runs);
+
+/** Задачи со сбоями — только они: ноль сбоев полосой не рисуется, он строка «збоїв немає» */
+export function jobsByFailures(items: readonly OpsJob[]): OpsJob[] {
+  return items.filter((j) => j.failures > 0).sort((a, b) => b.failures - a.failures || a.name.localeCompare(b.name));
+}
+
+/** Длительность последнего прохода; задача, которая ещё не ходила, в рейтинг не идёт */
+export function jobsByDuration(items: readonly OpsJob[], n = 8): TopRest<OpsJob> {
+  return topRest(
+    items.filter((j) => j.lastDurationMs !== null),
+    n,
+    (j) => j.lastDurationMs!,
+  );
+}
+
+export const tablesBySize = (tables: readonly OpsTableStat[], n = 10) => topRest(tables, n, (t) => t.totalBytes);
+
+/**
+ * Мёртвых строк больше тысячи и больше пятой части живых — автоочистка не
+ * успевает: таблица пухнет, выборки медленнеют. Правило одно на таблицу и
+ * график (Database.tsx).
+ */
+export function deadRowsAlarm(t: Pick<OpsTableStat, "deadRows" | "liveRows">): boolean {
+  return t.deadRows !== null && t.liveRows !== null && t.deadRows > 1000 && t.deadRows > t.liveRows * 0.2;
+}
+
+/** Таблицы с мёртвыми строками, больше всего — первыми */
+export function tablesByDead(tables: readonly OpsTableStat[], n = 8): TopRest<OpsTableStat> {
+  return topRest(
+    tables.filter((t) => (t.deadRows ?? 0) > 0),
+    n,
+    (t) => t.deadRows ?? 0,
+  );
+}
+
+/**
+ * Подключения по состояниям и свободные до max_connections. Свободные —
+ * отдельной частью в конце: полоса тогда отвечает и «из чего состоит», и
+ * «сколько осталось до потолка». Без max_connections свободных нет.
+ */
+export function connectionShares(c: OpsConnections): { state: OpsConnState | "free"; count: number }[] {
+  const parts: { state: OpsConnState | "free"; count: number }[] = c.byState.map((s) => ({ state: s.state, count: s.count }));
+  if (c.max !== null && c.max > c.total) parts.push({ state: "free", count: c.max - c.total });
+  return parts;
 }
 
 /* ─────────── коды → ключи словаря ─────────── */

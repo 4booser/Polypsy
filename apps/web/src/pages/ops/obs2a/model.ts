@@ -5,8 +5,10 @@ import type {
   OpsRelease,
   OpsRouteCompare,
   OpsShift,
+  OpsStatement,
   OpsStatementSort,
   OpsStatementsState,
+  OpsTraceSummary,
   UiKey,
 } from "@quizzy/shared";
 import type { Tone } from "../parts";
@@ -163,4 +165,68 @@ export function enableSteps(state: OpsStatementsState): ("preload" | "create" | 
 /** Величина, по которой отсортировано и нарисована полоска строки */
 export function statementMetric(s: { calls: number; totalMs: number; meanMs: number }, sort: OpsStatementSort): number {
   return sort === "calls" ? s.calls : sort === "mean" ? s.meanMs : s.totalMs;
+}
+
+/* ─────────── графики (волна 11) ─────────── */
+
+/*
+ * Ряды графиков сравнения выкаток, медленных SQL и трассы. Чистые функции,
+ * как всё в этом файле (apps/web/test/opsCharts.test.ts).
+ */
+
+/**
+ * Маршруты для пар «p95 було / стало»: только те, где сравнивать есть что
+ * (обе стороны известны и запросов не меньше порога — «замало» на график
+ * не идёт, как и в проценты), по величине сдвига — в любую сторону: заметно
+ * ускорившийся маршрут — тоже новость выкатки.
+ */
+export function latencyPairs(items: readonly OpsRouteCompare[], n = 8): OpsRouteCompare[] {
+  return items
+    .filter((i) => i.latency !== "few" && i.before?.p95 != null && i.after?.p95 != null)
+    .sort((a, b) => Math.abs(p95Delta(b.before, b.after)!) - Math.abs(p95Delta(a.before, a.after)!) || a.route.localeCompare(b.route))
+    .slice(0, n);
+}
+
+/**
+ * Маршруты для пар «частка 5xx було / стало»: только где пятисотки были хоть
+ * в одном окне. Маршрут без единой пятисотки до и после — ноль рядом с
+ * нулём, и восемь таких строк спрятали бы одну настоящую.
+ */
+export function errorPairs(items: readonly OpsRouteCompare[], n = 8): OpsRouteCompare[] {
+  return items
+    .filter((i) => i.errors !== "few" && i.before?.share5xx != null && i.after?.share5xx != null)
+    .filter((i) => i.before!.errors5xx + i.after!.errors5xx > 0)
+    .sort((a, b) => b.after!.share5xx! - a.after!.share5xx! || Math.abs(shareDelta(b.before, b.after)!) - Math.abs(shareDelta(a.before, a.after)!))
+    .slice(0, n);
+}
+
+/** Первые N запросов по текущему порядку и сколько ещё в списке */
+export function statementsTop(items: readonly OpsStatement[], sort: OpsStatementSort, n = 8): { top: OpsStatement[]; rest: number } {
+  const sorted = items.slice().sort((a, b) => statementMetric(b, sort) - statementMetric(a, sort));
+  return { top: sorted.slice(0, n), rest: Math.max(0, sorted.length - n) };
+}
+
+/**
+ * Доля суммарного времени базы: первые N запросов и «решта». Остаток —
+ * от единицы, а не от списка: в `share` доля от ВСЕХ запросов своей базы,
+ * и то, что в список не попало, — тоже время базы. null — долей нет
+ * (статистика без общего времени), и полосу не из чего строить.
+ */
+export function statementShares(items: readonly OpsStatement[], n = 5): { top: OpsStatement[]; rest: number } | null {
+  const known = items.filter((s) => s.share !== null).sort((a, b) => b.share! - a.share!);
+  if (!known.length) return null;
+  const top = known.slice(0, n);
+  return { top, rest: Math.max(0, 1 - top.reduce((s, x) => s + x.share!, 0)) };
+}
+
+/**
+ * Куда ушло время запроса: SQL и всё остальное. Запросы к базе внутри
+ * одного обращения идут по очереди, но драйвер меряет их со своей
+ * стороны, и сумма может на миллисекунду перерасти итог — тогда «решта»
+ * ноль, а не минус.
+ */
+export function traceTime(s: OpsTraceSummary | null): { sql: number; other: number } | null {
+  if (!s || s.ms === null || s.sqlMs === null || s.ms <= 0) return null;
+  const sqlMs = Math.min(s.sqlMs, s.ms);
+  return { sql: sqlMs, other: s.ms - sqlMs };
 }

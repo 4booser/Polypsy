@@ -11,6 +11,7 @@ import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
 import { LEVEL_KEY, ROLE_KEY, clock, fieldsText, fmtInt, fmtMs } from "../model";
 import { Cell, Facts, GridRow, GridTable, NumHead, Quiet, RequestId, StatusMark } from "../parts";
+import { TraceTime } from "./charts";
 import { OUTCOME_KEY, offsets } from "./model";
 import { TraceSearch } from "./parts";
 
@@ -114,34 +115,38 @@ function TraceBody({ t, onReload }: { t: OpsTrace; onReload: () => void }) {
         }
       >
         {s ? (
-          <Facts
-            items={[
-              [
-                ut("ops.col.route"),
-                <span key="r" className="break-all font-mono text-[12px]">
-                  {s.method ?? "—"} {s.route ?? "—"}
-                </span>,
-              ],
-              [
-                ut("ops.col.code"),
-                <Num key="c" className={cx(s.status !== null && s.status >= 500 && "font-bold text-accent")}>
-                  {s.status ?? "—"}
-                </Num>,
-              ],
-              [ut("ops.trace.duration"), <Num key="d">{fmtMs(s.ms, loc)}</Num>],
-              [ut("adm.role"), s.role ? ut(ROLE_KEY[s.role]) : "—"],
-              [
-                ut("ops.trace.sql"),
-                s.sqlCount !== null ? (
-                  <Num key="s">{fill(ut("ops.trace.sqlSummary"), { n: fmtInt(s.sqlCount, loc), ms: fmtMs(s.sqlMs, loc) })}</Num>
-                ) : (
-                  "—"
-                ),
-              ],
-              [ut("ops.col.time"), dateTime(s.at)],
-              [ut("ops.col.requestId"), <RequestId key="id" id={t.requestId} linked={false} />],
-            ]}
-          />
+          <>
+            <Facts
+              items={[
+                [
+                  ut("ops.col.route"),
+                  <span key="r" className="break-all font-mono text-[12px]">
+                    {s.method ?? "—"} {s.route ?? "—"}
+                  </span>,
+                ],
+                [
+                  ut("ops.col.code"),
+                  <Num key="c" className={cx(s.status !== null && s.status >= 500 && "font-bold text-accent")}>
+                    {s.status ?? "—"}
+                  </Num>,
+                ],
+                [ut("ops.trace.duration"), <Num key="d">{fmtMs(s.ms, loc)}</Num>],
+                [ut("adm.role"), s.role ? ut(ROLE_KEY[s.role]) : "—"],
+                [
+                  ut("ops.trace.sql"),
+                  s.sqlCount !== null ? (
+                    <Num key="s">{fill(ut("ops.trace.sqlSummary"), { n: fmtInt(s.sqlCount, loc), ms: fmtMs(s.sqlMs, loc) })}</Num>
+                  ) : (
+                    "—"
+                  ),
+                ],
+                [ut("ops.col.time"), dateTime(s.at)],
+                [ut("ops.col.requestId"), <RequestId key="id" id={t.requestId} linked={false} />],
+              ]}
+            />
+            {/* волна 11: время запроса — база и всё остальное одной полосой; без SQL-замера полосы нет */}
+            <TraceTime summary={s} />
+          </>
         ) : (
           <Quiet>{ut("ops.trace.noSummary")}</Quiet>
         )}

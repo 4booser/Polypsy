@@ -11,6 +11,7 @@ import { fill } from "../../dashboard/model";
 import { PeriodSwitch } from "../../dashboard/parts";
 import { fmtInt, fmtMs, fmtShare } from "../model";
 import { Quiet, Stamp, StatusMark, useOpsResource } from "../parts";
+import { StatementCharts } from "./charts";
 import { PLAN_STATE_KEY, STATEMENTS_STATE_KEY, enableSteps, parseStatementSort, statementMetric } from "./model";
 
 /*
@@ -28,6 +29,10 @@ import { PLAN_STATE_KEY, STATEMENTS_STATE_KEY, enableSteps, parseStatementSort, 
  * Расширение может быть не включено — раздел говорит об этом и как
  * включить, по шагам, кодом, который копируют в терминал. Включение стоит
  * перезапуска базы — это написано рядом, а не спрятано в RUNBOOK.
+ *
+ * Над списком (волна 11) — первые восемь по выбранному порядку полосами и
+ * доля каждого из первых пяти в общем времени базы. Номер у полосы — тот
+ * же, что у строки списка: текст запроса в подписи виден только началом.
  */
 
 const POLL_MS = 60_000;
@@ -75,19 +80,24 @@ export default function OpsStatementsPage() {
         ) : d.items.length === 0 ? (
           <Quiet>{ut("ops.sql.empty")}</Quiet>
         ) : (
-          <ol aria-label={ut("ops.sql.title")} className="m-0 list-none p-0">
-            {d.items.map((s, i) => (
-              <StatementRow
-                key={s.id}
-                s={s}
-                n={i + 1}
-                sort={sort}
-                top={Math.max(...d.items.map((x) => statementMetric(x, sort)), 0)}
-                open={plan === s.id}
-                onToggle={() => setPlan(plan === s.id ? "" : s.id)}
-              />
-            ))}
-          </ol>
+          <>
+            <div className="mb-[28px]">
+              <StatementCharts items={d.items} sort={sort} />
+            </div>
+            <ol aria-label={ut("ops.sql.title")} className="m-0 list-none p-0">
+              {d.items.map((s, i) => (
+                <StatementRow
+                  key={s.id}
+                  s={s}
+                  n={i + 1}
+                  sort={sort}
+                  top={Math.max(...d.items.map((x) => statementMetric(x, sort)), 0)}
+                  open={plan === s.id}
+                  onToggle={() => setPlan(plan === s.id ? "" : s.id)}
+                />
+              ))}
+            </ol>
+          </>
         )}
         {d.state === "ok" && d.hidden > 0 ? (
           <Quiet>
