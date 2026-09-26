@@ -1,7 +1,8 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { ScoreResult } from "@quizzy/shared";
 import { db } from "../db";
-import { FOLLOWUP_NOTE } from "./followup";
+import { endOfDayAfter } from "./day";
+import { planFollowUps } from "./followup";
 import { grantAccess } from "./grantAccess";
 import {
   batteries,
@@ -128,7 +129,8 @@ async function assignCascade(
   }
 
   const [source] = await db.select({ title: surveys.title }).from(surveys).where(eq(surveys.id, fromSurveyId));
-  const dueAt = dueDays ? new Date(Date.now() + dueDays * 86_400_000).toISOString() : null;
+  // срок — конец дня по поясу учреждения, а не минута сдачи скрининга (lib/day.ts, endOfDay)
+  const dueAt = dueDays ? endOfDayAfter(new Date(), dueDays) : null;
 
   await db.transaction(async (tx) => {
     await tx.insert(batteryAssignments).values({
@@ -148,6 +150,8 @@ async function assignCascade(
         expiresAt: dueAt,
         note: "Каскад по результату скрининга",
       })),
+      // назначение набора поверх более долгого доступа его не укорачивает
+      { extendOnly: true },
     );
   });
 
@@ -162,9 +166,18 @@ async function assignCascade(
 }
 
 /**
- * Повторные замеры той же методики. Реализованы как персональные доступы с
- * отложенным сроком: полноценное расписание здесь избыточно — интервалы
- * привязаны к конкретному прохождению конкретного человека.
+ * Повторные замеры той же методики. Интервалы привязаны к конкретному
+ * прохождению конкретного человека, поэтому это не расписание, а окна
+ * повторов от этого замера (lib/followup.ts).
+ *
+ * Прежде доступ открывался сразу и держался до последнего повтора плюс две
+ * недели: «7, 30» давали доступ на 44 дня с этой минуты, и перевыдача
+ * сбрасывала счётчик попыток — замер «через неделю» проходился в тот же
+ * день, «через месяц» — на десятый, а пропуск недельного всплывал в очереди
+ * работы только на 44-й день. Решение «закрывать и переоткрывать — значит
+ * плодить фоновые задания» оказалось дороже, чем задание: теперь у каждого
+ * повтора своё окно, его открывает часовой тик планировщика, и пропуск
+ * видно в день закрытия ЭТОГО окна.
  */
 async function scheduleFollowUps(
   surveyId: string,
@@ -177,19 +190,7 @@ async function scheduleFollowUps(
     .filter((d) => Number.isFinite(d) && d > 0 && d <= 365);
   if (!days.length) return 0;
 
-  // доступ открывается сразу и держится до последнего повтора: закрывать и
-  // переоткрывать по расписанию значило бы плодить фоновые задания там, где
-  // достаточно одного срока
-  const maxDay = Math.max(...days);
-  await grantAccess(db, [
-    {
-      surveyId,
-      userId,
-      grantedBy: userId,
-      expiresAt: new Date(Date.now() + (maxDay + 14) * 86_400_000).toISOString(),
-      note: `${FOLLOWUP_NOTE}: повтор через ${days.join(", ")} дн.`,
-    },
-  ]);
+  const planned = await planFollowUps(surveyId, userId, days);
 
   await auditSystem({
     action: "cascade.followup",
@@ -198,5 +199,5 @@ async function scheduleFollowUps(
     subjectUserId: userId,
     details: { days },
   });
-  return days.length;
+  return planned;
 }

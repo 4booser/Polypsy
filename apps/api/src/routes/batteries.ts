@@ -17,14 +17,15 @@ import {
   batteryAssignments,
   batteryItems,
   responses,
-  surveyAccess,
   surveyGroups,
   surveys,
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, forbidden, langOf, notFound, parseBody } from "../lib/http";
+import { dayOf, deadlineOf } from "../lib/day";
+import { grantAccess } from "../lib/grantAccess";
+import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, assertBatteryInUse, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { parseTs } from "../lib/time";
@@ -399,29 +400,69 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
   if (!items.length) badRequest("err.batteryEmpty");
 
+  // срок из поля даты — «до конца этого дня» по поясу учреждения, а не полночь по Гринвичу (lib/day.ts)
+  const dueAt = deadlineOf(input.dueAt);
+
+  /*
+   * Повторное назначение при открытом первом.
+   *
+   * Уникальный индекс держит одно активное назначение набора на человека, и
+   * вставка второго падала нарушением индекса — сотрудник видел 500.
+   * Открытое и не просроченное — это «уже назначено», 409 со сроком.
+   * Просроченное — это пропуск: оно закрывается с отметкой (как у
+   * расписания, lib/scheduler.ts), и назначение выдаётся заново.
+   */
+  const [open] = await db
+    .select()
+    .from(batteryAssignments)
+    .where(
+      and(
+        eq(batteryAssignments.batteryId, batteryId),
+        eq(batteryAssignments.userId, input.userId),
+        isNull(batteryAssignments.completedAt),
+        isNull(batteryAssignments.cancelledAt),
+      ),
+    );
+  const overdue = !!open?.dueAt && parseTs(open.dueAt) < Date.now();
+  if (open && !overdue) conflict("err.batteryAlreadyAssigned", { due: open.dueAt ? (dayOf(open.dueAt) ?? "—") : "—" });
+
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
+    if (open) {
+      await tx
+        .update(batteryAssignments)
+        .set({
+          cancelledAt: new Date().toISOString(),
+          note: sql`concat_ws(' · ', ${batteryAssignments.note}, 'пропущено: срок истёк, назначено заново')`,
+        })
+        .where(eq(batteryAssignments.id, open.id));
+    }
     await tx.insert(batteryAssignments).values({
       id,
       batteryId,
       userId: input.userId,
       assignedBy: user.id,
-      dueAt: input.dueAt ?? null,
+      dueAt,
       note: input.note ?? null,
     });
-    await tx
-      .insert(surveyAccess)
-      .values(
-        items.map((item) => ({
-          surveyId: item.surveyId,
-          userId: input.userId,
-          grantedBy: user.id,
-          expiresAt: input.dueAt ?? null,
-          note: `Батарея «${battery.title}»`,
-        })),
-      )
-      // назначение поверх существующего доступа не должно его отзывать
-      .onConflictDoNothing();
+    /*
+     * Доступ — через grantAccess с extendOnly: истёкший продлевается,
+     * более долгий не укорачивается. Прежде стояло onConflictDoNothing
+     * («назначение поверх существующего доступа не должно его отзывать»), и
+     * истёкший доступ оставался истёкшим: набор назначен, а методика из него
+     * пациенту не открывается.
+     */
+    await grantAccess(
+      tx as never,
+      items.map((item) => ({
+        surveyId: item.surveyId,
+        userId: input.userId,
+        grantedBy: user.id,
+        expiresAt: dueAt,
+        note: `Батарея «${battery.title}»`,
+      })),
+      { extendOnly: true },
+    );
   });
 
   await audit(c, {
@@ -429,7 +470,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
     resourceType: "battery",
     resourceId: batteryId,
     subjectUserId: input.userId,
-    details: { surveys: items.length, dueAt: input.dueAt ?? null },
+    details: { surveys: items.length, dueAt, ...(open ? { replacedOverdue: open.id } : {}) },
   });
   return c.json({ id }, 201);
 });

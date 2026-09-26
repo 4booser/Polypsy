@@ -28,29 +28,61 @@ import { langsOfPatients } from "./remind";
  * как непрочитанная.
  */
 const DAY_MS = 24 * 3600_000;
+/** Сколько получателей берёт один проход */
+const BATCH = 500;
 
-export async function pushMailings(now = new Date()): Promise<number> {
+/**
+ * Где остановилась прошлая пачка — (рассылка, получатель). Та же причина,
+ * что у напоминаний (remind.ts, reminderCursor): получатели, которым не
+ * удалось отправить, остаются кандидатами, и без продвижения по очереди
+ * пачка вечно брала бы их же.
+ */
+let mailingCursor: { mailingId: string; userId: string } | null = null;
+
+/** `batch` — размер пачки; тестам, чтобы проверить очередь без пятисот строк */
+export async function pushMailings(now = new Date(), batch = BATCH): Promise<number> {
   /*
    * Снимок — одной транзакцией, отправка — вне её, по одному человеку на
    * короткую транзакцию: тот же порядок, что в remindAppointments, и по той
    * же причине (пул и сеть).
    */
   const { rows, langs } = await systemContext(baseDb, async () => {
-    const rows = await db
-      .select({ mailingId: mailingRecipients.mailingId, userId: mailingRecipients.userId })
-      .from(mailingRecipients)
-      .innerJoin(mailings, eq(mailings.id, mailingRecipients.mailingId))
-      .where(
-        and(
-          eq(mailings.status, "sent"),
-          gt(mailings.sentAt, new Date(now.getTime() - DAY_MS).toISOString()),
-          // кому ещё не уходило — по той же таблице, по которой pushToUser отсекает повтор
-          sql`not exists (select 1 from push_deliveries pd
-            where pd.user_id = ${mailingRecipients.userId}
-              and pd.event_key = 'mailing:' || ${mailingRecipients.mailingId})`,
-        ),
-      )
-      .limit(500);
+    /*
+     * Кандидат — только тот, у кого есть устройство, и отсеивается это ДО
+     * лимита пачки. Прежде первые пятьсот без устройств (заявки у них не
+     * появляется — слать некуда) оставались кандидатами и занимали каждую
+     * следующую пачку снова: при рассылке на группу, где приложение стоит
+     * у немногих, до этих немногих очередь не доходила никогда.
+     */
+    const select = (after: { mailingId: string; userId: string } | null) =>
+      db
+        .select({ mailingId: mailingRecipients.mailingId, userId: mailingRecipients.userId })
+        .from(mailingRecipients)
+        .innerJoin(mailings, eq(mailings.id, mailingRecipients.mailingId))
+        .where(
+          and(
+            eq(mailings.status, "sent"),
+            gt(mailings.sentAt, new Date(now.getTime() - DAY_MS).toISOString()),
+            sql`exists (select 1 from push_tokens pt where pt.user_id = ${mailingRecipients.userId})`,
+            // выключенная учётка (0088): человека в учреждении больше нет — телефон его, а не наш
+            sql`not exists (select 1 from users u
+              where u.id = ${mailingRecipients.userId} and u.disabled_at is not null)`,
+            // кому ещё не уходило — по той же таблице, по которой pushToUser отсекает повтор
+            sql`not exists (select 1 from push_deliveries pd
+              where pd.user_id = ${mailingRecipients.userId}
+                and pd.event_key = 'mailing:' || ${mailingRecipients.mailingId})`,
+            after
+              ? sql`(${mailingRecipients.mailingId}, ${mailingRecipients.userId}) > (${after.mailingId}, ${after.userId})`
+              : undefined,
+          ),
+        )
+        .orderBy(mailingRecipients.mailingId, mailingRecipients.userId)
+        .limit(batch);
+    let rows = await select(mailingCursor);
+    // хвост после прошлой пачки пуст — очередь сначала
+    if (!rows.length && mailingCursor) rows = await select(null);
+    const last = rows.at(-1);
+    mailingCursor = rows.length >= batch && last ? { mailingId: last.mailingId, userId: last.userId } : null;
     const langs = await langsOfPatients([...new Set(rows.map((r) => r.userId))]);
     return { rows, langs };
   });

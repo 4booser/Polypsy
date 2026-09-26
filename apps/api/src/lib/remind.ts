@@ -75,15 +75,52 @@ function dateOf(iso: string, timezone: string, lang: Lang): string {
   });
 }
 
+/** Сколько приёмов берёт один проход */
+const BATCH = 500;
+
+/**
+ * Где остановилась прошлая пачка: (начало слота, приём). Следующий проход
+ * продолжает отсюда, а дойдя до конца очереди, начинает сначала.
+ *
+ * Без этого пачка топталась на месте. Кандидаты, которым не удалось
+ * отправить (отказ провайдера снимает заявку — см. lib/push.ts), остаются
+ * кандидатами, и если их набиралось на целую пачку, каждый проход брал их
+ * же, а до остальных не доходил. В памяти процесса, а не в базе: после
+ * перезапуска очередь просто начнётся сначала, и это никому не вредит.
+ */
+let reminderCursor: { at: string; id: string } | null = null;
+
 /**
  * Разослать напоминания.
  *
  * Повторов не боится: `pushToUser` отсекает по ключу события, и ключ здесь
- * привязан к приёму и сроку — `appointment:<id>:day`. Тик рассыльщика
- * минутный, и без этой защиты человек получал бы напоминание каждую минуту
- * последних суток.
+ * привязан к приёму, ВРЕМЕНИ его слота и сроку —
+ * `appointment:<id>:<время слота UTC>:day`. Тик рассыльщика минутный, и без
+ * этой защиты человек получал бы напоминание каждую минуту последних суток.
+ *
+ * Время слота в ключе — ради переноса. Перенос сохраняет номер приёма, и с
+ * ключом `appointment:<id>:day` напоминание о НОВОМ времени считалось уже
+ * отправленным: человек помнил старое время, а о новом ему не напоминал
+ * никто.
+ *
+ * `batch` — размер пачки; тестам, чтобы проверить очередь без пятисот строк.
  */
-export async function remindAppointments(now = new Date()): Promise<{ day: number; hour: number }> {
+export async function remindAppointments(
+  now = new Date(),
+  batch = BATCH,
+): Promise<{ day: number; hour: number }> {
+  const hourAhead = new Date(now.getTime() + HOUR_AHEAD_MS).toISOString();
+  /** Какое напоминание сейчас положено: «через час» или «за сутки» */
+  const due = sql<"hour" | "day">`(case when ${slots.startsAt} <= ${hourAhead} then 'hour' else 'day' end)`;
+  const eventKey = sql<string>`('appointment:' || ${appointments.id} || ':'
+    || to_char(${slots.startsAt} at time zone 'UTC', 'YYYYMMDD"T"HH24MISS') || ':' || ${due})`;
+  /*
+   * Ключи, записанные до времени в ключе (`appointment:<id>:day`), тоже
+   * считаются: иначе в день выкатки все приёмы ближайших суток получили бы
+   * напоминание второй раз. Через сутки после выкатки таких ключей у
+   * будущих приёмов не останется, и условие можно убрать.
+   */
+  const legacyKey = sql<string>`('appointment:' || ${appointments.id} || ':' || ${due})`;
   /*
    * Чтение — одной транзакцией, отправка — вне её.
    *
@@ -98,19 +135,43 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
    * сетевых вызовов.
    */
   const { rows, tz, langs } = await systemContext(baseDb, async () => {
-    const rows = await db
-      .select({ a: appointments, slot: slots, room: specialistProfiles.room })
-      .from(appointments)
-      .innerJoin(slots, eq(slots.id, appointments.slotId))
-      .leftJoin(specialistProfiles, eq(specialistProfiles.userId, appointments.specialistId))
-      .where(
-        and(
-          inArray(appointments.status, ["booked", "confirmed"]),
-          gt(slots.startsAt, now.toISOString()),
-          lte(slots.startsAt, new Date(now.getTime() + DAY_AHEAD_MS).toISOString()),
-        ),
-      )
-      .limit(500);
+    /*
+     * Кандидат — только тот, кому есть куда слать и кому положенное сейчас
+     * напоминание ещё не ушло. Оба условия — ДО лимита пачки.
+     *
+     * Прежде лимит резал выборку раньше: в пятьсот попадали приёмы, чьё
+     * напоминание уже ушло, и люди без устройства (заявки у них не
+     * появляется — слать некуда), и в следующую минуту пачку занимали они
+     * же. В отделении, где на сутки вперёд больше пятисот приёмов, остальные
+     * не получали напоминаний вовсе — в том числе «через час».
+     *
+     * Порядок — по началу приёма: ближайшие первыми.
+     */
+    const select = (after: { at: string; id: string } | null) =>
+      db
+        .select({ a: appointments, slot: slots, room: specialistProfiles.room, due, eventKey })
+        .from(appointments)
+        .innerJoin(slots, eq(slots.id, appointments.slotId))
+        .leftJoin(specialistProfiles, eq(specialistProfiles.userId, appointments.specialistId))
+        .where(
+          and(
+            inArray(appointments.status, ["booked", "confirmed"]),
+            gt(slots.startsAt, now.toISOString()),
+            lte(slots.startsAt, new Date(now.getTime() + DAY_AHEAD_MS).toISOString()),
+            sql`exists (select 1 from push_tokens pt where pt.user_id = ${appointments.patientId})`,
+            sql`not exists (select 1 from push_deliveries pd
+                  where pd.user_id = ${appointments.patientId}
+                    and pd.event_key in (${eventKey}, ${legacyKey}))`,
+            after ? sql`(${slots.startsAt}, ${appointments.id}) > (${after.at}::timestamptz, ${after.id})` : undefined,
+          ),
+        )
+        .orderBy(slots.startsAt, appointments.id)
+        .limit(batch);
+    let rows = await select(reminderCursor);
+    // хвост после прошлой пачки пуст — очередь сначала
+    if (!rows.length && reminderCursor) rows = await select(null);
+    const last = rows.at(-1);
+    reminderCursor = rows.length >= batch && last ? { at: last.slot.startsAt, id: last.a.id } : null;
     if (!rows.length) return { rows, tz: new Map<string, string>(), langs: new Map<string, Lang>() };
 
     // часовые пояса отделений — одним запросом, а не по запросу на отделение
@@ -130,7 +191,6 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
   let day = 0;
   let hour = 0;
   for (const r of rows) {
-    const left = new Date(r.slot.startsAt).getTime() - now.getTime();
     // для устройств без своего языка; не проходил ничего — украинский
     const fallback = langs.get(r.a.patientId) ?? "uk";
     const tzName = tz.get(r.slot.departmentId) ?? "Europe/Kyiv";
@@ -143,12 +203,13 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
     const date = (lang: Lang) => dateOf(r.slot.startsAt, tzName, lang);
     const room = (lang: Lang) => (r.room ? renderPush("push.room", lang, { room: r.room }) : "");
 
-    if (left <= HOUR_AHEAD_MS) {
+    // какое напоминание и под каким ключом — посчитано в запросе, тем же выражением, что отсеивает ушедшие
+    if (r.due === "hour") {
       const sent = await systemContext(baseDb, () =>
         pushToUser(
           r.a.patientId,
           {
-            eventKey: `appointment:${r.a.id}:hour`,
+            eventKey: r.eventKey,
             kind: "appointment",
             title: (lang) => renderPush("push.appointmentSoonTitle", lang),
             body: (lang) => renderPush("push.appointmentSoonBody", lang, { time: time(lang), room: room(lang) }),
@@ -170,7 +231,7 @@ export async function remindAppointments(now = new Date()): Promise<{ day: numbe
       pushToUser(
         r.a.patientId,
         {
-          eventKey: `appointment:${r.a.id}:day`,
+          eventKey: r.eventKey,
           kind: "appointment",
           title: (lang) => renderPush("push.appointmentDayTitle", lang),
           body: (lang) =>

@@ -7257,6 +7257,14 @@ export const UI = {
     en: "one of the protocols failed the validity scales — the change is not assessed",
   },
 
+  /* ── w12:delivery ── */
+  // имя фоновой задачи в техпанели: открывает окна повторов протокола наблюдения (lib/followup.ts)
+  "ops.job.followups": {
+    uk: "Вікна повторних замірів",
+    ru: "Окна повторных замеров",
+    en: "Follow-up windows",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

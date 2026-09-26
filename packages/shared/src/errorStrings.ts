@@ -94,6 +94,11 @@ export const ERRORS = {
     en: "You don’t have access to this battery",
   },
   "err.batteryArchived": { uk: "Набір в архіві", ru: "Набор в архиве", en: "This battery is archived" },
+  "err.batteryAlreadyAssigned": {
+    uk: "Цей набір вже призначено, строк — {due}. Повторне призначення можливе після завершення, скасування або закінчення строку",
+    ru: "Этот набор уже назначен, срок — {due}. Повторное назначение возможно после завершения, отмены или истечения срока",
+    en: "This battery is already assigned, due {due}. It can be assigned again once completed, cancelled or overdue",
+  },
   "err.batteryNotFound": { uk: "Набір не знайдено", ru: "Набор не найден", en: "Battery not found" },
   /* каскад полосы указывает на набор, которого нет или который не виден редактору (волна 12, engine) */
   "err.cascadeBatteryNotFound": {
