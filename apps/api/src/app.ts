@@ -74,6 +74,8 @@ import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
 import { requestId } from "./middleware/requestId";
 import { currentRequestId, log } from "./lib/log";
 import { reportError } from "./lib/errorReport";
+import { recordError } from "./lib/opsBuffer";
+import { opsRoutes } from "./routes/ops";
 
 const app = new Hono<AppEnv>();
 
@@ -208,6 +210,11 @@ app.route("/api/safety", safetyRoutes);
 app.route("/api/push", pushRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);
+/*
+ * Техпанель для разработчиков: то же состояние, что в /metrics и логе, но
+ * для человека в консоли — под правом ops.read, а не под общим секретом.
+ */
+app.route("/api/ops", opsRoutes);
 
 /**
  * Описание API. За логином сотрудника: перечень эндпоинтов вместе с
@@ -285,6 +292,18 @@ app.onError((err, c) => {
     route: c.req.routePath ?? c.req.path,
     method: c.req.method,
     role: (c.get("user") as { role?: string } | undefined)?.role,
+  });
+  /*
+   * Та же ошибка — в группы техпанели (lib/opsBuffer.ts): сборщик ошибок
+   * включается SENTRY_DSN и на маленькой установке часто не настроен, а
+   * смотреть, что падает, нужно и там. Маршрут — шаблоном, как в сборщик.
+   */
+  recordError({
+    error: err,
+    method: c.req.method,
+    route: c.req.routePath ?? null,
+    code: 500,
+    requestId: id,
   });
   log.error("unhandled", {
     path: c.req.path,

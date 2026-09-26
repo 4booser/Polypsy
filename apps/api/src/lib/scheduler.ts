@@ -17,6 +17,7 @@ import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
+import { registerJob, trackJob } from "./opsJobs";
 import { pushToUser } from "./push";
 import { langsOfPatients } from "./remind";
 
@@ -324,8 +325,17 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
 
 /** Периодический запуск. Часа достаточно: расписания меряются днями. */
 export function startScheduler(intervalMs = 3_600_000): () => void {
+  /*
+   * Каждый проход отмечается в реестре техпанели (opsJobs.ts): когда шёл,
+   * сколько занял, чем кончился. Без этого «планировщик встал» и «сегодня
+   * никому не пора» выглядели одинаково — schedule_runs пишет строку, только
+   * когда расписание сработало.
+   */
+  registerJob("schedules", intervalMs);
+  registerJob("presence.sweep", intervalMs);
+  registerJob("clinic.noShows", intervalMs);
   const tick = () => {
-    runDueSchedules().catch((error) =>
+    trackJob("schedules", () => runDueSchedules()).catch((error) =>
       log.error("scheduler.tick_failed", { error: String(error) }),
     );
     /*
@@ -333,14 +343,14 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      * заслуживает: строки безвредны, а раз в час их не наберётся столько,
      * чтобы это кого-то беспокоило.
      */
-    void systemContext(baseDb, () => sweepPresence()).catch((error) =>
+    void trackJob("presence.sweep", () => systemContext(baseDb, () => sweepPresence())).catch((error) =>
       log.warn("presence.sweep_failed", { error: String(error) }),
     );
     /*
      * И разводим истёкшие приёмы по неявкам. Раз в час — подходящий шаг:
      * задержка сигнала выходит меньше половины рабочего дня, а чаще незачем.
      */
-    void systemContext(baseDb, () => sweepNoShows()).catch((error) =>
+    void trackJob("clinic.noShows", () => systemContext(baseDb, () => sweepNoShows())).catch((error) =>
       log.warn("clinic.no_show_sweep_failed", { error: String(error) }),
     );
     /*

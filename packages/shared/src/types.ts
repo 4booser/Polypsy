@@ -2148,6 +2148,306 @@ export interface AuthPayload {
   user: User;
 }
 
+/* ─────────── техпанель: наблюдаемость (/api/ops) ─────────── */
+
+/*
+ * Всё, что ниже, живёт в памяти одного процесса API и обнуляется при его
+ * перезапуске (apps/api/src/lib/opsBuffer.ts). Поэтому почти у каждого
+ * ответа есть `since` — момент запуска процесса: экран обязан говорить «с
+ * такого-то времени», а не выдавать короткую память за полную историю.
+ *
+ * Перечисления приходят кодами, а не фразами: фразу собирает консоль из
+ * словаря на языке того, кто смотрит.
+ */
+
+export type OpsLevel = "debug" | "info" | "warn" | "error";
+
+/** Окно графика нагрузки */
+export type OpsWindow = "1h" | "6h" | "24h";
+
+/** Состояние подключения к базе — коды pg_stat_activity.state без пробелов */
+export type OpsConnState =
+  | "active"
+  | "idle"
+  | "idle_in_transaction"
+  | "idle_in_transaction_aborted"
+  | "fastpath"
+  | "disabled"
+  /** Сессия чужой роли: без pg_read_all_stats её состояние не видно */
+  | "hidden";
+
+export interface OpsConnections {
+  total: number;
+  byState: { state: OpsConnState; count: number }[];
+  /** max_connections сервера базы */
+  max: number | null;
+}
+
+/** Сводка запросов за окно: число, ошибки, время ответа */
+export interface OpsWindowStats {
+  requests: number;
+  errors4xx: number;
+  errors5xx: number;
+  /** Доля 5xx от 0 до 1; null — запросов не было, делить не на что */
+  share5xx: number | null;
+  avgMs: number | null;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+  maxMs: number | null;
+}
+
+export type OpsHealthStatus = "ok" | "warn" | "fail";
+
+export type OpsHealthKey =
+  | "db"
+  | "rls"
+  | "migrations"
+  | "scheduler"
+  | "encryption"
+  | "errorReport"
+  | "metricsToken"
+  | "errorRate";
+
+/**
+ * Проверка здоровья: статус и код причины, по которому консоль берёт фразу.
+ * `value` — число для подстановки (мс, минуты, штуки, проценты). Значения
+ * секретов сюда не попадают никогда: про ключи отвечается только «задан /
+ * не задан».
+ */
+export interface OpsHealthCheck {
+  key: OpsHealthKey;
+  status: OpsHealthStatus;
+  reason: string;
+  value?: number | null;
+}
+
+export interface OpsOverview {
+  since: string;
+  build: {
+    /** QUIZZY_VERSION выкатки; null — переменная не задана (сборка на месте) */
+    version: string | null;
+    /** QUIZZY_BUILD — коммит или номер сборки CI */
+    commit: string | null;
+    packageVersion: string;
+    env: "production" | "development";
+    runtime: string;
+    startedAt: string;
+  };
+  process: {
+    uptimeSec: number;
+    rssBytes: number;
+    heapUsedBytes: number;
+    heapTotalBytes: number;
+    /** Средняя нагрузка ОС за 1, 5 и 15 минут */
+    loadAvg: [number, number, number];
+    cpus: number;
+    /** Задержка цикла событий за последнюю минуту; null — замеров ещё нет */
+    eventLoopLagMs: { mean: number | null; max: number | null };
+  };
+  db: {
+    bytes: number | null;
+    latencyMs: number | null;
+    connections: OpsConnections | null;
+    lastMigration: { tag: string | null; idx: number | null } | null;
+    pendingMigrations: number | null;
+  };
+  scheduler: { enabled: boolean; lastTickAt: string | null };
+  openCases: number | null;
+  /** Учётки по ролям — только числа */
+  accounts: { superadmin: number; admin: number; user: number } | null;
+  traffic: { m5: OpsWindowStats; h1: OpsWindowStats; h24: OpsWindowStats };
+  health: OpsHealthCheck[];
+}
+
+export interface OpsTrafficBucket {
+  /** Начало корзины */
+  at: string;
+  requests: number;
+  errors4xx: number;
+  errors5xx: number;
+  avgMs: number | null;
+  maxMs: number | null;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+
+export interface OpsTraffic {
+  since: string;
+  window: OpsWindow;
+  /** Ширина корзины, секунды */
+  stepSec: number;
+  buckets: OpsTrafficBucket[];
+}
+
+/** Маршрут шаблоном («GET /api/responses/:id»), а не конкретный адрес */
+export interface OpsRouteStat extends OpsWindowStats {
+  method: string;
+  route: string;
+}
+
+export interface OpsRoutes {
+  since: string;
+  items: OpsRouteStat[];
+}
+
+export interface OpsSlowRequest {
+  at: string;
+  method: string;
+  route: string;
+  /** HTTP-код ответа */
+  code: number;
+  ms: number;
+  role: Role | null;
+  requestId: string;
+}
+
+export interface OpsSlow {
+  since: string;
+  thresholdMs: number;
+  capacity: number;
+  items: OpsSlowRequest[];
+}
+
+export interface OpsErrorGroup {
+  fingerprint: string;
+  /** request — необработанное исключение запроса; log — запись log.error вне него */
+  origin: "request" | "log";
+  name: string;
+  /** Сообщение без данных: литералы, идентификаторы, почта и телефоны вычищены */
+  message: string;
+  method: string | null;
+  route: string | null;
+  code: number | null;
+  count: number;
+  firstAt: string;
+  lastAt: string;
+  lastRequestId: string | null;
+  /** Кадры стека: файл, строка, функция — без сообщения и без данных */
+  frames: string[];
+}
+
+export interface OpsErrors {
+  since: string;
+  capacity: number;
+  /** Сколько групп вытеснено, когда их стало больше вместимости */
+  dropped: number;
+  items: OpsErrorGroup[];
+}
+
+export interface OpsLogLine {
+  seq: number;
+  at: string;
+  level: OpsLevel;
+  message: string;
+  requestId: string | null;
+  fields: Record<string, unknown>;
+}
+
+export interface OpsLogs {
+  since: string;
+  capacity: number;
+  /** С какого уровня процесс вообще пишет (LOG_LEVEL) */
+  threshold: OpsLevel;
+  /** Номер последней записи буфера: его клиент присылает в `after` */
+  cursor: number;
+  /** Самая старая запись, ещё лежащая в буфере; null — буфер пуст */
+  oldestSeq: number | null;
+  /** Курсор клиента выпал из буфера: часть строк вытеснена, пока лента стояла */
+  gap: boolean;
+  /** Совпавших строк было больше, чем отдано */
+  truncated: boolean;
+  items: OpsLogLine[];
+}
+
+export interface OpsTableStat {
+  table: string;
+  totalBytes: number;
+  tableBytes: number;
+  indexBytes: number;
+  liveRows: number | null;
+  deadRows: number | null;
+  seqScan: number | null;
+  idxScan: number | null;
+  lastAutovacuum: string | null;
+  lastAutoanalyze: string | null;
+}
+
+export interface OpsLongQuery {
+  pid: number;
+  seconds: number;
+  state: OpsConnState | null;
+  waitEvent: string | null;
+  /** Обрезан до 200 знаков, литералы в кавычках заменены на «?» */
+  query: string;
+}
+
+export interface OpsLockWait {
+  pid: number;
+  seconds: number;
+  lockType: string;
+  lockMode: string;
+  relation: string | null;
+  blockedBy: number[];
+  query: string;
+}
+
+export interface OpsMigration {
+  idx: number | null;
+  tag: string | null;
+  /** Метка миграции из журнала (`when`), а не момент применения: его drizzle не хранит */
+  at: string;
+}
+
+/**
+ * Почему раздел пуст: не хватило прав роли приложения или запрос не
+ * прошёл. Коды, а не фразы — фразу берёт консоль.
+ */
+export type OpsDbNote =
+  | "activityDenied"
+  | "activityPartial"
+  | "tablesFailed"
+  | "locksFailed"
+  | "migrationsDenied"
+  | "sizeFailed";
+
+export interface OpsDb {
+  bytes: number | null;
+  tables: OpsTableStat[] | null;
+  connections: OpsConnections | null;
+  longQueries: OpsLongQuery[] | null;
+  locks: OpsLockWait[] | null;
+  migrations: { applied: OpsMigration[]; appliedCount: number; known: number; pending: number } | null;
+  notes: OpsDbNote[];
+}
+
+export type OpsJobResult = "ok" | "error" | "skipped" | "running";
+
+export interface OpsJob {
+  name: string;
+  intervalSec: number;
+  runs: number;
+  failures: number;
+  skipped: number;
+  lastStartAt: string | null;
+  lastEndAt: string | null;
+  lastDurationMs: number | null;
+  lastResult: OpsJobResult | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  nextAt: string | null;
+}
+
+export interface OpsJobs {
+  since: string;
+  /** SCHEDULER_ENABLED: на этом экземпляре фоновые задачи вообще идут */
+  schedulerEnabled: boolean;
+  items: OpsJob[];
+  /** Последние срабатывания расписаний из базы — они переживают перезапуск */
+  scheduleRuns: { at: string; assigned: number; skipped: number; note: string | null }[] | null;
+}
+
 /** Запись журнала доступа */
 export interface AuditEntry {
   id: string;

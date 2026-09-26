@@ -10,6 +10,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "../env";
+import { captureLog } from "./opsBuffer";
 
 const store = new AsyncLocalStorage<{ requestId: string }>();
 
@@ -27,6 +28,11 @@ type Level = "debug" | "info" | "warn" | "error";
 const LEVELS: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 const threshold = LEVELS[(process.env.LOG_LEVEL as Level) ?? (env.isProduction ? "info" : "debug")] ?? 20;
 
+/** С какого уровня процесс пишет — техпанель говорит об этом над лентой */
+export function logThreshold(): Level {
+  return (Object.keys(LEVELS) as Level[]).find((l) => LEVELS[l] === threshold) ?? "info";
+}
+
 /**
  * Запись в лог.
  *
@@ -38,6 +44,17 @@ function write(level: Level, message: string, fields: Record<string, unknown> = 
   if (LEVELS[level] < threshold) return;
   const requestId = currentRequestId();
   const entry = { level, message, ...(requestId ? { requestId } : {}), ...fields };
+
+  /*
+   * Копия — в кольцевой буфер техпанели (opsBuffer.ts), после порога: панель
+   * показывает ровно то, что ушло в stdout, и ничего сверх. Отказ буфера не
+   * должен стоить строки лога — поэтому он отдельно и под защитой.
+   */
+  try {
+    captureLog(level, message, fields, requestId);
+  } catch {
+    // буфер — удобство; лог важнее
+  }
 
   if (env.isProduction) {
     console.log(JSON.stringify({ time: new Date().toISOString(), ...entry }));
