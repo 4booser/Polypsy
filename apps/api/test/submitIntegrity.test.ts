@@ -17,7 +17,17 @@ import {
   surveyInA,
   surveys,
 } from "./fixtures";
-import { auditLog, loginAttempts, responseScores, responses, surveyAccess, surveyVersions } from "../src/db/schema";
+import {
+  alertCases,
+  auditLog,
+  loginAttempts,
+  referrals,
+  responseScores,
+  responses,
+  riskAlerts,
+  surveyAccess,
+  surveyVersions,
+} from "../src/db/schema";
 import { requireAuth, type AppEnv } from "../src/middleware/auth";
 import { durable } from "../src/db/context";
 import { audit } from "../src/lib/audit";
@@ -609,6 +619,135 @@ describe("транзакция «только чтение»", () => {
     expect(views.length, "след просмотра «от имени» потерян под боевой ролью").toBeGreaterThan(0);
     await api(`/api/ops/people/impersonate/${sessionId}/end`, root.token, { method: "POST" });
   }, 60_000);
+});
+
+/* ─────────── тревоги автосохранения переживают сдачу ─────────── */
+
+/** Методика, где «Так» на первом пункте — критический ответ */
+async function makeRiskySurvey(): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.insert(surveys).values({
+    id,
+    groupId: groupA,
+    title: { uk: `Ризик ${tag()}`, ru: "Риск" },
+    administration: "self",
+    status: "published",
+    publishedAt: new Date().toISOString(),
+    visibility: "public",
+    scoringEnabled: true,
+    allowRetake: true,
+    createdBy: adminA.id,
+  } as never);
+  const draft = content(1);
+  draft.questions[0]!.options[0] = {
+    ...draft.questions[0]!.options[0]!,
+    riskFlag: true,
+    riskLabel: { uk: "Думки про небажання жити", ru: "Мысли о нежелании жить" },
+    riskSeverity: "moderate",
+  };
+  await createVersion(id, draft, adminA.id, "v1");
+  return id;
+}
+
+describe("тревоги черновика при сдаче", () => {
+  test("автосохранение подняло тревогу → сдача → тревога, случай и направление на месте", async () => {
+    const surveyId = await makeRiskySurvey();
+    const person = await makeUser("user", `draft-alert-${tag()}@test.dev`, { sex: "male", birthDate: "1990-01-01" });
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+
+    const saved = await saveDraft(surveyId, person.token, { versionId: v1.versionId, answers: yesAnswers(v1).slice(0, 1) });
+    expect(saved.status).toBe(200);
+    const [early] = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, saved.body.id));
+    expect(early, "автосохранение не подняло тревогу").toBeTruthy();
+
+    // дежурный успел выписать направление по ранней тревоге
+    const referralId = crypto.randomUUID();
+    await db.insert(referrals).values({
+      id: referralId,
+      userId: person.id,
+      responseId: saved.body.id,
+      alertId: early!.id,
+      destination: "psychiatrist",
+      urgency: "urgent",
+      createdBy: adminA.id,
+    } as never);
+
+    const res = await submit(surveyId, person.token, { versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+
+    const [kept] = await db.select().from(riskAlerts).where(eq(riskAlerts.id, early!.id));
+    expect(kept, "сдача унесла тревогу автосохранения").toBeTruthy();
+    expect(kept!.responseId).toBe(res.body.id);
+    // один сигнал на пункт: повторный от сдачи слит с ранним, а не лежит рядом
+    const onFinal = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, res.body.id));
+    expect(onFinal.filter((a) => a.questionId === early!.questionId).length).toBe(1);
+
+    const [caseRow] = await db.select().from(alertCases).where(eq(alertCases.id, kept!.caseId!));
+    expect(caseRow, "случай без сигнала").toBeTruthy();
+    const [ref] = await db.select().from(referrals).where(eq(referrals.id, referralId));
+    expect(ref!.alertId, "направление потеряло тревогу").toBe(early!.id);
+    expect(ref!.responseId).toBe(res.body.id);
+    // черновика больше нет — он стал сдачей
+    const draftsLeft = await db
+      .select()
+      .from(responses)
+      .where(and(eq(responses.userId, person.id), eq(responses.status, "in_progress")));
+    expect(draftsLeft).toEqual([]);
+  });
+
+  test("под боевой ролью базы: тревога черновика переезжает на сдачу", async () => {
+    const surveyId = await makeRiskySurvey();
+    const email = `draft-alert-rls-${tag()}@test.dev`;
+    const person = await makeUser("user", email, { sex: "female", birthDate: "1992-02-02" });
+    const out = await underAppRole<{ draft: number; submit: number; draftId: string; finalId: string }>(`
+      const login = await app.request("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: ${JSON.stringify(email)}, password: "secret12345" }),
+      });
+      const auth = { Authorization: "Bearer " + (await login.json()).token, "Content-Type": "application/json" };
+      const survey = await (await app.request(${JSON.stringify(`/api/surveys/${surveyId}`)}, { headers: auth })).json();
+      const answers = survey.questions.map((q) => ({ questionId: q.id, optionIds: [q.options[0].id], durationMs: 1000, changeCount: 0, visitCount: 1 }));
+      const common = { startedAt: new Date(Date.now() - 60000).toISOString(), durationMs: 60000, versionId: survey.versionId };
+      const draft = await app.request(${JSON.stringify(`/api/surveys/${surveyId}/draft`)}, {
+        method: "PUT", headers: auth, body: JSON.stringify({ ...common, answers: answers.slice(0, 1) }),
+      });
+      out.draft = draft.status;
+      out.draftId = (await draft.json()).id;
+      const submit = await app.request(${JSON.stringify(`/api/surveys/${surveyId}/responses`)}, {
+        method: "POST", headers: auth, body: JSON.stringify({ ...common, events: [], answers }),
+      });
+      out.submit = submit.status;
+      out.finalId = (await submit.json()).id;
+    `);
+    expect(out.error, out.error).toBeUndefined();
+    expect(out.rlsActive).toBe(true);
+    expect(out.draft).toBe(200);
+    expect(out.submit).toBe(201);
+    const alerts = await db.select().from(riskAlerts).where(eq(riskAlerts.userId, person.id));
+    expect(alerts.length).toBe(1);
+    expect(alerts[0]!.responseId).toBe(out.finalId!);
+  }, 60_000);
+
+  test("удалить прохождение с тревогой база не даёт, а удаление методики целиком проходит", async () => {
+    const surveyId = await makeRiskySurvey();
+    const person = await makeUser("user", `restrict-${tag()}@test.dev`);
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const res = await submit(surveyId, person.token, { versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(res.status).toBe(201);
+
+    const refused = await db
+      .delete(responses)
+      .where(eq(responses.id, res.body.id))
+      .then(
+        () => false,
+        () => true,
+      );
+    expect(refused, "прохождение с тревогой удалилось вместе с ней").toBe(true);
+    // survey:purge — тревоги уходят каскадом по методике в том же операторе
+    await db.delete(surveys).where(eq(surveys.id, surveyId));
+    expect(await db.select().from(riskAlerts).where(eq(riskAlerts.surveyId, surveyId))).toEqual([]);
+  });
 });
 
 /* строки проб в login_attempts — свои, с почтой-меткой; уходят после файла */

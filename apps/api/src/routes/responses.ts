@@ -17,6 +17,7 @@ import {
   answers,
   auditLog,
   questions,
+  referrals,
   riskAlerts,
   responseScores,
   responses,
@@ -206,6 +207,65 @@ async function isOwnAttempt(
   return Boolean(entry);
 }
 
+/**
+ * Тревоги черновика переезжают на сданное прохождение (волна 12, клиническое
+ * ревью).
+ *
+ * Автосохранение поднимает тревогу раньше сдачи — в этом весь смысл раннего
+ * сохранения: дежурный видит критический ответ, пока человек ещё отвечает,
+ * и может успеть выписать направление. Сдача же удаляла черновик, а
+ * risk_alerts.response_id стоял на каскадном удалении: сигнал исчезал из
+ * случая, у направления alertId становился NULL. Теперь внешний ключ не
+ * каскадный (миграция 0106), а сигналы черновика перед его удалением
+ * переносятся на итоговое прохождение.
+ *
+ * Если сдача подняла тот же сигнал заново (тот же пункт — в рамках
+ * прохождения он один, уникальный индекс), остаётся строка ЧЕРНОВИКА: на
+ * неё уже могли сослаться направление, уведомление, отметка «разобрано».
+ * Тяжесть берётся большая (понижать нельзя — как и при автосохранении),
+ * случай — тот, к которому сигнал привязала сдача: он открыт сейчас, и
+ * дежурный работает в нём. Направления, выписанные на черновик, тоже
+ * переходят на итоговое прохождение.
+ *
+ * Системной ролью: строки чужих таблиц (направления, уведомления) пациенту
+ * закрыты политиками, а переносит их автоматика поверх его отправки.
+ */
+async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<void> {
+  const moved = await db.select().from(riskAlerts).where(inArray(riskAlerts.responseId, draftIds));
+  await db.update(referrals).set({ responseId: finalId }).where(inArray(referrals.responseId, draftIds));
+  if (!moved.length) return;
+
+  const current = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, finalId));
+  const byQuestion = new Map(current.filter((a) => a.questionId).map((a) => [a.questionId!, a]));
+
+  for (const alert of moved.sort((a, b) => a.at.localeCompare(b.at))) {
+    const fresh = alert.questionId ? byQuestion.get(alert.questionId) : undefined;
+    if (!fresh) {
+      await db.update(riskAlerts).set({ responseId: finalId }).where(eq(riskAlerts.id, alert.id));
+      if (alert.questionId) byQuestion.set(alert.questionId, { ...alert, responseId: finalId });
+      continue;
+    }
+    const severe = alert.severity === "severe" || fresh.severity === "severe";
+    // ссылки на уходящую строку — на остающуюся: направления и уже отправленные уведомления
+    await db.update(referrals).set({ alertId: alert.id }).where(eq(referrals.alertId, fresh.id));
+    await db.execute(sql`
+      update alert_notifications set alert_id = ${alert.id}
+       where alert_id = ${fresh.id}
+         and kind not in (select kind from alert_notifications where alert_id = ${alert.id})`);
+    await db.delete(riskAlerts).where(eq(riskAlerts.id, fresh.id));
+    await db
+      .update(riskAlerts)
+      .set({
+        responseId: finalId,
+        caseId: fresh.caseId ?? alert.caseId,
+        severity: severe ? "severe" : "moderate",
+        label: alert.severity === "severe" || fresh.severity !== "severe" ? alert.label : fresh.label,
+      })
+      .where(eq(riskAlerts.id, alert.id));
+    byQuestion.set(alert.questionId!, { ...alert, responseId: finalId });
+  }
+}
+
 /** Отправка прохождения вместе с телеметрией по каждому вопросу */
 responseRoutes.post("/surveys/:id/responses", async (c) => {
   const user = c.get("user");
@@ -366,19 +426,26 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     if (existing) conflict("err.alreadyTaken");
   }
 
-  // незавершённый черновик того же пользователя убираем: иначе он остался бы
-  // висеть как брошенное прохождение и портил статистику доходимости
-  if (!survey.anonymous) {
-    await db
-      .delete(responses)
-      .where(
-        and(
-          eq(responses.surveyId, surveyId),
-          eq(responses.userId, subjectId),
-          eq(responses.status, "in_progress"),
-        ),
-      );
-  }
+  /*
+   * Незавершённый черновик того же человека убирается — иначе он висел бы
+   * брошенным прохождением и портил статистику доходимости. Но ПОСЛЕ
+   * записи сдачи и после того, как его тревоги переехали на неё (см.
+   * adoptDraftAlerts): раньше черновик удалялся первым, и каскад уносил
+   * тревоги, поднятые автосохранением, — случай оставался без сигналов, а
+   * направление, выписанное по такой тревоге, теряло ссылку на неё.
+   */
+  const drafts = survey.anonymous
+    ? []
+    : await db
+        .select({ id: responses.id })
+        .from(responses)
+        .where(
+          and(
+            eq(responses.surveyId, surveyId),
+            eq(responses.userId, subjectId),
+            eq(responses.status, "in_progress"),
+          ),
+        );
 
   const subject =
     subjectId === user.id
@@ -399,6 +466,12 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
      */
     { filledBySelf: subjectId === user.id, lang: survey.contentLang ?? langOf(c) },
   );
+
+  if (drafts.length) {
+    const draftIds = drafts.map((d) => d.id);
+    await asSystem(() => adoptDraftAlerts(draftIds, responseId));
+    await db.delete(responses).where(inArray(responses.id, draftIds));
+  }
 
   await audit(c, {
     action: "response.submit",
@@ -525,7 +598,15 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
         severity: risk.severity,
         at: now,
       });
-      await tx.insert(riskAlerts)
+      /*
+       * Системной ролью, как и случай выше (attachToCase) и тревоги сдачи.
+       * Пациенту политика risk_alerts разрешает вставку, но не чтение и не
+       * правку, а вставка с ON CONFLICT DO UPDATE требует обоих: под боевой
+       * ролью базы автосохранение с критическим ответом падало пятисоткой —
+       * черновик не сохранялся вовсе, а ранняя тревога не поднималась
+       * никогда (волна 12, найдено тестом под боевой ролью).
+       */
+      await asSystem(() => tx.insert(riskAlerts)
         .values({
           id: crypto.randomUUID(),
           responseId,
@@ -553,7 +634,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           target: [riskAlerts.responseId, riskAlerts.questionId],
           set: { label: risk.label, severity: risk.severity, at: now },
           setWhere: sql`${riskAlerts.severity} <> 'severe'`,
-        });
+        }));
     }
   });
 
