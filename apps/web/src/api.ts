@@ -74,7 +74,7 @@ import type {
   StatModelUpdateInput,
   StatRunResult,
 } from "@quizzy/shared";
-import { UI } from "@quizzy/shared";
+import { uiText } from "@quizzy/shared";
 import { currentLang } from "./lang";
 
 /*
@@ -85,7 +85,8 @@ import { currentLang } from "./lang";
  * по-русски и показывались на украинском экране при каждом обрыве связи.
  */
 function netText(key: "net.offline" | "net.failed" | "net.request"): string {
-  return UI[key][currentLang];
+  // через uiText, а не UI[key][lang]: у записи без английского поля en нет, и прямое чтение отдало бы undefined
+  return uiText(key, currentLang);
 }
 
 const TOKEN_KEY = "quizzy.web.token";

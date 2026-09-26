@@ -20,6 +20,13 @@ import { join, resolve } from "node:path";
 
 const WEB = resolve(import.meta.dir, "../src");
 const STRINGS = resolve(import.meta.dir, "../../../packages/shared/src/uiStrings.ts");
+/*
+ * Тексты отказов тоже рисует консоль — сервер отдаёт их готовыми, и они
+ * встают в ту же разметку, что и словарь. С английским в них появились
+ * типографские кавычки и апостроф (“ ” ’): проверяется, что и они в
+ * подмножестве, а не у системного запасного шрифта.
+ */
+const ERROR_STRINGS = resolve(import.meta.dir, "../../../packages/shared/src/errorStrings.ts");
 
 /** Диапазоны из fonts.css: «U+0400-045F, U+2116» → [[0x400, 0x45f], [0x2116, 0x2116]] */
 function coveredRanges(): Array<[number, number]> {
@@ -73,7 +80,7 @@ describe("символы интерфейса покрыты локальным�
 
   test("вне диапазонов fonts.css — только известный долг", () => {
     const offenders = new Map<string, string[]>();
-    for (const file of [...sourceFiles(WEB), STRINGS]) {
+    for (const file of [...sourceFiles(WEB), STRINGS, ERROR_STRINGS]) {
       const src = stripComments(readFileSync(file, "utf8"));
       src.split("\n").forEach((line, i) => {
         for (const ch of line) {

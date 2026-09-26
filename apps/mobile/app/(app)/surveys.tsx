@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import type { BatteryAssignment, BatteryStep, SurveyGroupWithCounts, SurveyListItem } from "@quizzy/shared";
+import { LOCALE_OF } from "@quizzy/shared";
+import type { BatteryAssignment, BatteryStep, Lang, SurveyGroupWithCounts, SurveyListItem } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { Body, Card, Chip, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
@@ -20,7 +21,7 @@ export default function SurveysScreen() {
   }, []);
 
   const c = useColors();
-  const { ut } = useLang();
+  const { ut, locale } = useLang();
   const router = useRouter();
   const { isAdmin } = useAuth();
 
@@ -152,7 +153,7 @@ export default function SurveysScreen() {
                     >
                       {new Date(item.dueAt) < new Date()
                         ? ut("sv.overdue")
-                        : `${ut("sv.due")} ${new Date(item.dueAt).toLocaleDateString()}`}
+                        : `${ut("sv.due")} ${new Date(item.dueAt).toLocaleDateString(locale)}`}
                     </Text>
                   ) : null}
                 </Row>
@@ -358,9 +359,10 @@ const STEP_KEY = {
   locked: "battery.step.locked",
 } as const;
 
-function formatDay(iso: string | null, lang: "uk" | "ru"): string {
+function formatDay(iso: string | null, lang: Lang): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString(lang === "uk" ? "uk-UA" : "ru-RU", {
+  // локаль — общей записью: у английского en-GB, день первым (см. LOCALE_OF)
+  return new Date(iso).toLocaleDateString(LOCALE_OF[lang], {
     day: "numeric",
     month: "long",
   });

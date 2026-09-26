@@ -1,4 +1,4 @@
-import { UI, type Administration, type SurveyFull, type SurveyGroupWithCounts, type UiKey } from "@quizzy/shared";
+import { UI, type Administration, type Lang, type SurveyFull, type SurveyGroupWithCounts, type UiKey } from "@quizzy/shared";
 
 /*
  * Вид теста по макету: «Конкретний тест» и «Комплексний тест».
@@ -528,7 +528,7 @@ export function normalizeDraft(draft: Draft): Draft {
  * по номеру. Номер и становится идентификатором — ровно так же, как это делает
  * сервер при сохранении версии.
  */
-export function draftToSurvey(source: Draft, lang: "uk" | "ru"): SurveyFull {
+export function draftToSurvey(source: Draft, lang: Lang): SurveyFull {
   const draft = withTotalKey(source);
   const text = (value: Record<string, string> | null | undefined): string =>
     value?.[lang] || value?.uk || value?.ru || "";

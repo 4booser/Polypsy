@@ -596,6 +596,13 @@
       "when": 1788473109043,
       "tag": "0086_user_locality",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1788473169043,
+      "tag": "0087_push_token_lang",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { Lang } from "@quizzy/shared";
+import type { ContentLang } from "@quizzy/shared";
 import { Field, Input, Textarea } from "../../ui/primitives";
 
 /*
@@ -15,7 +15,12 @@ import { Field, Input, Textarea } from "../../ui/primitives";
  * Контекст, а не проп через десять уровней: переключатель один на экран, а
  * полей — десятки, и пропс забыли бы на первом же новом поле.
  */
-const EditLang = createContext<Lang>("uk");
+/*
+ * Язык СОДЕРЖИМОГО, а не интерфейса: английского текста у методик нет
+ * намеренно (CONTENT_LANGS в shared/types.ts), и поле, которое правило бы
+ * ключ en, писало бы в пустоту — схема записи его отбрасывает.
+ */
+const EditLang = createContext<ContentLang>("uk");
 export const EditLangProvider = EditLang.Provider;
 export const useEditLang = () => useContext(EditLang);
 

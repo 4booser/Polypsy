@@ -1,4 +1,4 @@
-import { formatDuration, type Severity, type UiKey } from "@quizzy/shared";
+import { LOCALE_OF, formatDuration, isLang, type Lang, type Severity, type UiKey } from "@quizzy/shared";
 
 /**
  * Цвет заливки: метки на графиках, полоски, доли кольца.
@@ -27,8 +27,15 @@ export const severityKey = {
 
 export const SERIES = ["var(--s1)", "var(--s2)", "var(--s3)", "var(--s4)"];
 
-/** Длительность — из общего пакета: у мобилки была своя копия, и они бы разошлись */
-export const duration = formatDuration;
+/**
+ * Длительность — из общего пакета: у мобилки была своя копия, и они бы разошлись.
+ *
+ * Язык — тот же, что у дат ниже (атрибут документа): «4 хв 12 с» на
+ * украинской консоли, «4 min 12 s» на английской.
+ */
+export function duration(ms: number): string {
+  return formatDuration(ms, pageLang());
+}
 
 /**
  * Язык форматирования дат — тот же, на котором написана страница.
@@ -39,9 +46,18 @@ export const duration = formatDuration;
  * читает браузер и программа чтения с экрана: второго источника истины не
  * появляется.
  */
-function locale(): string {
+function pageLang(): Lang {
   const lang = typeof document === "undefined" ? "ru" : document.documentElement.lang;
-  return lang === "uk" ? "uk-UA" : lang === "en" ? "en-GB" : "ru-RU";
+  // вне браузера и до первой установки атрибута — русский, как было всегда
+  return isLang(lang) ? lang : "ru";
+}
+
+/*
+ * Локаль Intl — из общей записи (LOCALE_OF в shared/format.ts): там же
+ * обосновано, почему английский — en-GB (день первым, 24 часа), а не en-US.
+ */
+export function locale(): string {
+  return LOCALE_OF[pageLang()];
 }
 
 /**

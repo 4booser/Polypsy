@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import {
+  contentLangNotice,
   isAnswered,
   isQuestionVisible,
   type Answer,
@@ -31,7 +32,7 @@ interface Telemetry {
 export default function TakeSurveyScreen() {
   const c = useColors();
   const { scale, cycle, fs } = useTextScale();
-  const { ut } = useLang();
+  const { ut, lang } = useLang();
   const router = useRouter();
   const navigation = useNavigation();
   const { id, onBehalfOf } = useLocalSearchParams<{ id: string; onBehalfOf?: string }>();
@@ -420,12 +421,20 @@ export default function TakeSurveyScreen() {
 
   /* ─── экран инструкции ─── */
   if (step === -1) {
+    /*
+     * Английский интерфейс, а пункты — на украинском: английского текста у
+     * методик нет (CONTENT_LANGS в shared/types.ts). Одной строкой на экране
+     * инструкции — до первого пункта, а не над каждым: дальше человек уже
+     * знает.
+     */
+    const foreign = contentLangNotice(lang, survey.contentLang);
     return (
       <ScrollView
         style={{ backgroundColor: c.bg }}
         contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
       >
         <Title>{survey.title}</Title>
+        {foreign ? <Body muted>{ut(`contentLang.${foreign}`)}</Body> : null}
         {onBehalfOf ? (
           /*
            * За кого заполняем — самой заметной строкой на экране. У койки

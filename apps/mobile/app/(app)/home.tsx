@@ -195,7 +195,7 @@ function NextVisit({
   onReschedule: () => void;
 }) {
   const c = useColors();
-  const { ut } = useLang();
+  const { ut, locale } = useLang();
   const when = new Date(visit.startsAt);
 
   return (
@@ -205,9 +205,9 @@ function NextVisit({
         первое, что ему нужно, — во сколько и куда, а не кто и зачем.
       */}
       <Text style={{ ...type.display, color: c.text }}>
-        {when.toLocaleDateString([], { day: "2-digit", month: "long" })}
+        {when.toLocaleDateString(locale, { day: "2-digit", month: "long" })}
         {", "}
-        {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        {when.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
       </Text>
       <Body>{visit.specialistName}</Body>
       {visit.mode === "remote" ? (

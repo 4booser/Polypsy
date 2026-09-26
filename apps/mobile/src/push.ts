@@ -47,6 +47,23 @@ export async function ensurePushRegistered(): Promise<boolean> {
   }
 }
 
+/**
+ * Сообщить серверу, что язык приложения сменился.
+ *
+ * Уведомления сервер пишет на языке устройства, а язык узнаёт из заголовка
+ * регистрации (push_tokens.lang). Сменил человек язык — устройство
+ * регистрируется заново, и следующее напоминание придёт уже на новом.
+ *
+ * Только если устройство уже зарегистрировано: разрешение на уведомления
+ * спрашивается по делу (см. выше), а не при смене языка. Не
+ * регистрировалось — язык уйдёт с первой регистрацией сам.
+ */
+export async function refreshPushLang(): Promise<void> {
+  if (!registered) return;
+  registered = false;
+  await ensurePushRegistered();
+}
+
 /** При выходе токен отвязывается: на общем планшете это обязательно */
 export async function forgetPush(): Promise<void> {
   registered = false;
