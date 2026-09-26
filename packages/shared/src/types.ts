@@ -2601,6 +2601,11 @@ export interface OpsErrorGroup {
   lastRequestId: string | null;
   /** Кадры стека: файл, строка, функция — без сообщения и без данных */
   frames: string[];
+  /**
+   * Режим истории (`?window=`): всего случаев с первого раза в пределах
+   * срока хранения; `count` тогда — случаи за выбранный период.
+   */
+  totalCount?: number;
 }
 
 export interface OpsErrors {
@@ -2609,6 +2614,12 @@ export interface OpsErrors {
   /** Сколько групп вытеснено, когда их стало больше вместимости */
   dropped: number;
   items: OpsErrorGroup[];
+  /** Режим истории: начало периода, срок хранения групп, состояние записи в базу */
+  from?: string;
+  retentionDays?: number;
+  store?: OpsStoreState;
+  /** История из базы не прочиталась — показана только память процесса */
+  historyUnavailable?: boolean;
 }
 
 export interface OpsLogLine {
@@ -2618,6 +2629,14 @@ export interface OpsLogLine {
   message: string;
   requestId: string | null;
   fields: Record<string, unknown>;
+  /**
+   * Экземпляр процесса, написавшего строку. `seq` сквозной только внутри
+   * процесса: после перезапуска счёт начинается заново, и строки истории
+   * различаются парой «экземпляр + номер».
+   */
+  instance?: string;
+  /** Группа ошибок, заведённая этой строкой (у строк уровня error) */
+  fingerprint?: string | null;
 }
 
 export interface OpsLogs {
@@ -2634,6 +2653,14 @@ export interface OpsLogs {
   /** Совпавших строк было больше, чем отдано */
   truncated: boolean;
   items: OpsLogLine[];
+  /** Режим истории (`?window=`): начало периода и срок хранения строк */
+  from?: string;
+  retentionDays?: number;
+  /** Курсор следующей, более старой страницы истории; null — старше в периоде нет */
+  older?: string | null;
+  store?: OpsStoreState;
+  /** История из базы не прочиталась — показана только память процесса */
+  historyUnavailable?: boolean;
 }
 
 export interface OpsTableStat {
@@ -2964,6 +2991,199 @@ export interface OpsRecordings {
   failed: { id: string; ageSec: number | null; error: string | null; retryable: boolean }[];
   /** Настроена ли расшифровка в ЭТОМ процессе; воркер — отдельный, его отсюда не видно */
   transcriberHere: boolean;
+}
+
+/* ─────────── техпанель: история, выкатки, трасса, медленный SQL ─────────── */
+
+/*
+ * Вторая половина техпанели (волна 10, участок obs2a): то же, что выше, но
+ * из базы — переживает перезапуск и выкатку (apps/api/src/lib/opsStore.ts).
+ * Персональных данных нет и здесь: строки лога вычищены до записи,
+ * маршруты — шаблонами, SQL — параметризованным текстом без значений.
+ */
+
+/** Период истории логов: строки хранятся 14 дней */
+export type OpsLogWindow = "1h" | "24h" | "7d" | "14d";
+/** Период истории ошибок: группы хранятся 90 дней */
+export type OpsErrorWindow = "24h" | "7d" | "30d" | "90d";
+
+/**
+ * Как у этого процесса идёт запись истории в базу. Экран говорит об этом
+ * рядом с периодом: «база недоступна, N строк ждут записи» — иначе провал в
+ * истории выглядел бы как тишина.
+ */
+export interface OpsStoreState {
+  /** Фоновая запись заведена (процесс API; в сценариях и тестах — нет) */
+  running: boolean;
+  lastFlushAt: string | null;
+  /** Последний отказ записи — вычищенный текст */
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** Строк лога ждут записи */
+  pendingLogs: number;
+  /** Строк лога отброшено: база была недоступна дольше, чем держит очередь */
+  droppedLogs: number;
+}
+
+/** Итог запроса в трассе — из строки «request» его лога */
+export interface OpsTraceSummary {
+  at: string;
+  method: string | null;
+  route: string | null;
+  status: number | null;
+  ms: number | null;
+  role: Role | null;
+  sqlCount: number | null;
+  sqlMs: number | null;
+}
+
+/** Строка журнала аудита в трассе — без людей: ни почты, ни адресатов, ни подробностей */
+export interface OpsTraceAudit {
+  at: string;
+  action: string;
+  outcome: string;
+  resourceType: string | null;
+  actorRole: string | null;
+}
+
+/** Один текст SQL внутри запроса: параметризованный, без значений */
+export interface OpsSqlTop {
+  query: string;
+  calls: number;
+  totalMs: number;
+  maxMs: number;
+}
+
+export interface OpsTraceSql {
+  count: number;
+  totalMs: number;
+  /** Разных текстов запросов */
+  distinct: number;
+  /** Самые долгие по суммарному времени, до десяти */
+  top: OpsSqlTop[];
+  /** memory — из памяти процесса (последние запросы); stored — сохранено со строкой лога */
+  source: "memory" | "stored";
+}
+
+export interface OpsTrace {
+  requestId: string;
+  /** Номер задан началом и подходит к нескольким запросам — выбор за человеком */
+  candidates: string[];
+  summary: OpsTraceSummary | null;
+  /** Все строки лога запроса, по порядку */
+  lines: OpsLogLine[];
+  /** Группы ошибок, заведённые строками этого запроса */
+  errors: OpsErrorGroup[];
+  /** null — журнал прочитать не удалось */
+  audit: OpsTraceAudit[] | null;
+  sql: OpsTraceSql | null;
+  /** Сколько дней хранятся строки лога: старше трассу не собрать */
+  retentionDays: number;
+}
+
+/** Версия выкатки в суммах запросов: когда появилась и когда была последний раз */
+export interface OpsRelease {
+  version: string;
+  firstAt: string;
+  lastAt: string;
+  requests: number;
+}
+
+export interface OpsReleases {
+  /** Версия этого процесса */
+  current: string;
+  /** Новые первыми */
+  items: OpsRelease[];
+  retentionDays: number;
+}
+
+export interface OpsCompareStats {
+  requests: number;
+  errors5xx: number;
+  /** Доля 5xx; null — запросов не было */
+  share5xx: number | null;
+  p50: number | null;
+  p95: number | null;
+}
+
+/**
+ * Сдвиг величины между версиями. few — запросов меньше порога, и сравнивать
+ * нечего: «+300 %» от трёх запросов — шум, а не вывод.
+ */
+export type OpsShift = "worse" | "better" | "same" | "few";
+
+export interface OpsRouteCompare {
+  method: string;
+  route: string;
+  /** null — маршрута в этом окне не было */
+  before: OpsCompareStats | null;
+  after: OpsCompareStats | null;
+  latency: OpsShift;
+  errors: OpsShift;
+}
+
+export interface OpsReleaseSide {
+  version: string;
+  from: string;
+  to: string;
+  requests: number;
+}
+
+export interface OpsReleaseCompare {
+  before: OpsReleaseSide | null;
+  after: OpsReleaseSide | null;
+  /** minute — окно точное; hour — минутные суммы уже удалены, окно по часовым корзинам */
+  grain: "minute" | "hour";
+  windowMin: number;
+  /** Пороги, по которым выставлен сдвиг: экран называет их, а не прячет */
+  thresholds: { minSample: number; p95Ratio: number; p95MinMs: number; errorPp: number; errorMin: number };
+  items: OpsRouteCompare[];
+}
+
+/**
+ * Состояние pg_stat_statements. notInstalled — расширения нет в базе;
+ * notLoaded — есть, но сервер запущен без shared_preload_libraries;
+ * denied — у роли приложения нет прав на представление.
+ */
+export type OpsStatementsState = "ok" | "notInstalled" | "notLoaded" | "denied" | "failed";
+export type OpsStatementSort = "total" | "calls" | "mean";
+
+export interface OpsStatement {
+  /** queryid строкой: bigint в JSON не помещается */
+  id: string;
+  calls: number;
+  totalMs: number;
+  meanMs: number;
+  rows: number;
+  /** Доля суммарного времени от всех запросов своей базы; null — не посчитать */
+  share: number | null;
+  /** Нормализованный текст: константы — $1, литералы — «?», до 500 знаков */
+  query: string;
+}
+
+export interface OpsStatements {
+  state: OpsStatementsState;
+  sort: OpsStatementSort;
+  /** Запросы чужих ролей без pg_read_all_stats — их текста не видно */
+  hidden: number;
+  /** Когда статистику последний раз сбрасывали (PostgreSQL 14+) */
+  statsSince: string | null;
+  items: OpsStatement[];
+}
+
+/**
+ * План запроса. refused — текст не похож на один SELECT/INSERT/UPDATE/DELETE
+ * и объяснять его не станем; needsPg16 — в тексте есть $1, а план без
+ * значений (GENERIC_PLAN) умеет только PostgreSQL 16+.
+ */
+export type OpsPlanState = "ok" | "notFound" | "refused" | "needsPg16" | "denied" | "failed" | "unavailable";
+
+export interface OpsStatementPlan {
+  state: OpsPlanState;
+  /** План общий, без подстановки значений (EXPLAIN (GENERIC_PLAN)) */
+  generic: boolean;
+  plan: string[] | null;
+  query: string | null;
 }
 
 /** Запись журнала доступа */

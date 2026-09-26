@@ -5,6 +5,7 @@ import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
 import { setAuditChainSource, startOpsAlerts } from "./lib/opsAlerts";
 import { lastAuditChainCheck } from "./lib/integrity";
+import { startOpsRotation, startOpsStore } from "./lib/opsStore";
 import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
 import { log } from "./lib/log";
@@ -91,6 +92,14 @@ setAuditChainSource(async () => {
   return last ? { ok: last.ok, checkedAt: last.at } : null;
 });
 const stopOpsAlerts = env.schedulerEnabled ? startOpsAlerts() : null;
+/*
+ * История техпанели (lib/opsStore.ts): запись пачками — на каждой реплике,
+ * у каждой свои буферы; ротация по сроку — одна на всех, там, где
+ * планировщик. Заводится здесь, на верхнем уровне, а не при первом
+ * запросе: таймер унёс бы хранилище того запроса во все свои такты.
+ */
+const stopOpsStore = startOpsStore();
+const stopOpsRotation = env.schedulerEnabled ? startOpsRotation() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -106,6 +115,9 @@ async function shutdown(signal: string) {
   stopNotifier?.();
   stopRetention?.();
   stopOpsAlerts?.();
+  stopOpsRotation?.();
+  /* последний такт записи истории — до закрытия пула, не дольше трёх секунд */
+  await stopOpsStore();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }

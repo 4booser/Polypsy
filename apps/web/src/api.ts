@@ -5,11 +5,19 @@ import type {
   LocalizedText,
   OpsDb,
   OpsErrors,
+  OpsErrorWindow,
   OpsJobs,
   OpsLogs,
+  OpsLogWindow,
   OpsOverview,
+  OpsReleaseCompare,
+  OpsReleases,
   OpsRoutes,
   OpsSlow,
+  OpsStatementPlan,
+  OpsStatementSort,
+  OpsStatements,
+  OpsTrace,
   OpsTraffic,
   OpsWindow,
   PermissionEffectKind,
@@ -1084,17 +1092,44 @@ export const api = {
   opsTraffic: (window: OpsWindow) => request<OpsTraffic>(`/api/ops/traffic?window=${window}`),
   opsRoutes: () => request<OpsRoutes>("/api/ops/routes"),
   opsSlow: () => request<OpsSlow>("/api/ops/slow"),
-  opsErrors: () => request<OpsErrors>("/api/ops/errors"),
-  /** Лента логов: без `after` — последние строки, с `after` — только новее курсора */
-  opsLogs: (params: { level?: string; q?: string; requestId?: string; after?: number; limit?: number }) => {
+  /** Группы ошибок: без `window` — память процесса, с ним — история из базы за период */
+  opsErrors: (window?: OpsErrorWindow) => request<OpsErrors>(`/api/ops/errors${window ? `?window=${window}` : ""}`),
+  /**
+   * Лента логов: без `after` — последние строки, с `after` — только новее
+   * курсора. `window` — история из базы за период (первая страница),
+   * `before` — её более старая страница.
+   */
+  opsLogs: (params: {
+    level?: string;
+    q?: string;
+    requestId?: string;
+    after?: number;
+    limit?: number;
+    window?: OpsLogWindow;
+    before?: string;
+  }) => {
     const q = new URLSearchParams();
     if (params.level) q.set("level", params.level);
     if (params.q) q.set("q", params.q);
     if (params.requestId) q.set("requestId", params.requestId);
     if (params.after !== undefined) q.set("after", String(params.after));
     if (params.limit !== undefined) q.set("limit", String(params.limit));
+    if (params.window) q.set("window", params.window);
+    if (params.before) q.set("before", params.before);
     return request<OpsLogs>(`/api/ops/logs?${q}`);
   },
+  /* трасса запроса, сравнение выкаток, медленные SQL — история из базы (участок obs2a) */
+  opsTrace: (requestId: string) => request<OpsTrace>(`/api/ops/trace/${encodeURIComponent(requestId)}`),
+  /* версии в истории запросов — для выбора пары в «Порівнянні випусків» (не путать с историей выкаток opsReleases ниже) */
+  opsReleaseVersions: () => request<OpsReleases>("/api/ops/releases"),
+  opsReleaseCompare: (before?: string, after?: string) => {
+    const q = new URLSearchParams();
+    if (before) q.set("before", before);
+    if (after) q.set("after", after);
+    return request<OpsReleaseCompare>(`/api/ops/releases/compare?${q}`);
+  },
+  opsStatements: (sort: OpsStatementSort) => request<OpsStatements>(`/api/ops/statements?sort=${sort}`),
+  opsStatementPlan: (id: string) => request<OpsStatementPlan>(`/api/ops/statements/${encodeURIComponent(id)}/plan`),
   opsDb: () => request<OpsDb>("/api/ops/db"),
   opsJobs: () => request<OpsJobs>("/api/ops/jobs"),
   /*

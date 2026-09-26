@@ -124,6 +124,12 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/ops/logs": { summary: "Кольцевой буфер лога: `?level=&q=&requestId=&after=&limit=`, курсор `after` для живой ленты; чтение в журнал (ops.logs.read)", access: "staff", permission: "ops.read" },
   "GET /api/ops/db": { summary: "База: размеры таблиц, подключения, долгие запросы, ожидания блокировок, миграции; без прав роли — null с пояснением", access: "staff", permission: "ops.read" },
   "GET /api/ops/jobs": { summary: "Фоновые задачи процесса: последний проход, длительность, результат, ошибка, следующий такт", access: "staff", permission: "ops.read" },
+  /* ── техпанель: история, трасса, выкатки, медленный SQL (obs2a; /logs и /errors — `?window=` для истории из базы) ── */
+  "GET /api/ops/trace/:requestId": { summary: "Трасса запроса по номеру: строки лога по порядку, группа ошибки, записи журнала (без людей), SQL — число, время, самые долгие тексты; чтение в журнал (ops.trace.read)", access: "staff", permission: "ops.read" },
+  "GET /api/ops/releases": { summary: "Версии выкаток по суммам запросов: когда появилась, когда была последний раз, сколько запросов", access: "staff", permission: "ops.read" },
+  "GET /api/ops/releases/compare": { summary: "Час до и час после выкатки `?before=&after=`: по маршрутам p50/p95 и доля 5xx, сдвиг с порогами; малые выборки — «замало»", access: "staff", permission: "ops.read" },
+  "GET /api/ops/statements": { summary: "pg_stat_statements своей базы `?sort=total|calls|mean`: топ запросов; без расширения или прав — состояние и пустой список", access: "staff", permission: "ops.read" },
+  "GET /api/ops/statements/:id/plan": { summary: "План запроса из pg_stat_statements: EXPLAIN без ANALYZE (GENERIC_PLAN для $1) в транзакции READ ONLY; в журнал (ops.statements.explain)", access: "staff", permission: "ops.read" },
 
   /* ── техпанель: сигналы и клиент (участок obs2b; в базе, миграция 0095) ── */
   "POST /api/ops/client-errors": { summary: "Приём ошибок клиента пачкой (консоль, кабинет, мобилка): маршрут шаблоном, текст вычищен, лишнее поле — 400; без входа — жёсткий лимит по адресу", access: "public" },

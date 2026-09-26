@@ -3,11 +3,14 @@ import type {
   ClinicalTraceKey,
   OpsConnState,
   OpsErrorGroup,
+  OpsErrorWindow,
   OpsHealthCheck,
   OpsJobResult,
   OpsLevel,
   OpsLogLine,
+  OpsLogWindow,
   OpsRouteStat,
+  OpsStoreState,
   OpsTrafficBucket,
   OpsUserRow,
   Permission,
@@ -39,6 +42,46 @@ export function parseLevel(v: string | null): OpsLevel | null {
  */
 export type OverviewWindow = "1h" | "24h";
 export const parseWindow = (v: string | null): OverviewWindow => (v === "24h" ? "24h" : "1h");
+
+/*
+ * Периоды истории из базы (участок obs2a). Логи — от часа: лента открывается
+ * смотреть «что сейчас», и час — это уже больше пяти тысяч строк памяти на
+ * нагруженной установке. Ошибки — от суток: их смотрят «что сломалось со
+ * вчера». Верхняя граница — срок хранения, дальше базе нечего отдать.
+ */
+export const LOG_WINDOWS: readonly OpsLogWindow[] = ["1h", "24h", "7d", "14d"];
+export const ERROR_WINDOWS: readonly OpsErrorWindow[] = ["24h", "7d", "30d", "90d"];
+
+export const parseLogWindow = (v: string | null): OpsLogWindow =>
+  (LOG_WINDOWS as readonly string[]).includes(v ?? "") ? (v as OpsLogWindow) : "1h";
+export const parseErrorWindow = (v: string | null): OpsErrorWindow =>
+  (ERROR_WINDOWS as readonly string[]).includes(v ?? "") ? (v as OpsErrorWindow) : "24h";
+
+export const PERIOD_KEY: Record<OpsLogWindow | OpsErrorWindow, UiKey> = {
+  "1h": "ops.period.1h",
+  "24h": "ops.period.24h",
+  "7d": "ops.period.7d",
+  "14d": "ops.period.14d",
+  "30d": "ops.period.30d",
+  "90d": "ops.period.90d",
+};
+
+/**
+ * Что сказать о записи истории рядом с периодом. Молчать можно, только
+ * когда всё пишется: отказ записи, отброшенные строки и процесс без записи
+ * меняют смысл того, что на экране, — «тихо» может значить «не дошло».
+ */
+export type StoreNote = { kind: "ok" } | { kind: "off" } | { kind: "failing"; since: string; pending: number } | { kind: "dropped"; n: number };
+
+export function storeNote(s: OpsStoreState | undefined): StoreNote {
+  if (!s) return { kind: "ok" };
+  if (s.lastError && s.lastErrorAt && (!s.lastFlushAt || s.lastErrorAt > s.lastFlushAt)) {
+    return { kind: "failing", since: s.lastErrorAt, pending: s.pendingLogs };
+  }
+  if (s.droppedLogs > 0) return { kind: "dropped", n: s.droppedLogs };
+  if (!s.running) return { kind: "off" };
+  return { kind: "ok" };
+}
 
 export type RouteSort = "count" | "p95" | "errors";
 export const parseSort = (v: string | null): RouteSort => (v === "p95" || v === "errors" ? v : "count");
@@ -89,16 +132,44 @@ export function filterErrors(items: readonly OpsErrorGroup[], q: string): OpsErr
 export const FEED_CAP = 1000;
 
 /**
- * Новые строки поверх старых, без повторов, новые первыми.
+ * Потолок ленты, когда человек сам листает историю кнопкой «старіші»:
+ * дальше — уже не лента, а выгрузка, и её место — узкий фильтр или период.
+ */
+export const HISTORY_CAP = 5000;
+
+/**
+ * Имя строки ленты. Номер (seq) сквозной только внутри процесса: история из
+ * базы (участок obs2a) несёт строки разных процессов и разных запусков, и
+ * различает их пара «экземпляр + номер».
+ */
+export const lineKey = (l: OpsLogLine) => `${l.instance ?? ""}:${l.seq}`;
+
+/*
+ * Новее — раньше: по моменту строки, при равенстве — по экземпляру и номеру
+ * побайтно, как сортирует сервер. Строки одного процесса идут по номеру.
+ */
+function newerFirst(a: OpsLogLine, b: OpsLogLine): number {
+  if (a.at !== b.at) return a.at < b.at ? 1 : -1;
+  const ai = a.instance ?? "";
+  const bi = b.instance ?? "";
+  if (ai !== bi) return ai < bi ? 1 : -1;
+  return b.seq - a.seq;
+}
+
+/**
+ * Новые строки к прежним, без повторов, новые первыми.
  *
  * Повторы возможны на стыке: опрос с курсором и перезагрузка по смене
  * фильтра могут вернуть одну строку дважды, если ответы пришли в обратном
- * порядке. Номер строки (seq) у буфера сквозной, по нему и отсекаем.
+ * порядке; история из базы и живой хвост из памяти пересекаются по
+ * построению. Отсекаем по имени строки (lineKey). Тот же вызов добавляет и
+ * более старую страницу истории — порядок всё равно наводится заново.
  */
 export function mergeFeed(prev: readonly OpsLogLine[], incoming: readonly OpsLogLine[], cap = FEED_CAP): OpsLogLine[] {
-  const seen = new Set(prev.map((l) => l.seq));
-  const fresh = incoming.filter((l) => !seen.has(l.seq)).sort((a, b) => b.seq - a.seq);
-  return [...fresh, ...prev].slice(0, cap);
+  const seen = new Set(prev.map(lineKey));
+  const fresh = incoming.filter((l) => !seen.has(lineKey(l)));
+  if (!fresh.length) return prev.slice(0, cap);
+  return [...fresh, ...prev].sort(newerFirst).slice(0, cap);
 }
 
 /** Поля строки лога одной строкой «ключ=значение», как их пишет лог разработки */
@@ -180,6 +251,9 @@ export const JOB_KEY: Record<string, UiKey> = {
   "search.reindex": "o2b.job.searchReindex",
   "catalog.install": "o2b.job.catalogInstall",
   "ops.alerts": "o2b.job.alerts",
+  /* история техпанели (участок obs2a): запись пачками и ротация по сроку */
+  "ops.flush": "ops.job.flush",
+  "ops.rotate": "ops.job.rotate",
 };
 
 export const STATUS_KEY: Record<OpsHealthCheck["status"], UiKey> = {

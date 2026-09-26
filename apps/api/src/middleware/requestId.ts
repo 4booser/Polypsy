@@ -1,7 +1,8 @@
 import { createMiddleware } from "hono/factory";
-import { log, withRequestId } from "../lib/log";
+import { log, withRequestId, type RequestScope } from "../lib/log";
 import { inc, observe } from "../lib/metrics";
 import { recordRequest } from "../lib/opsBuffer";
+import { rememberRequestSql, summarizeSql } from "../lib/opsSql";
 
 /**
  * Сквозной идентификатор запроса.
@@ -28,7 +29,9 @@ export const requestId = createMiddleware(async (c, next) => {
   c.set("requestId", id);
 
   const started = Date.now();
-  await withRequestId(id, () => next());
+  /* хранилище запроса — своё, чтобы после next() прочесть счёт SQL (lib/opsSql.ts) */
+  const scope: RequestScope = { requestId: id };
+  await withRequestId(id, () => next(), scope);
 
   const ms = Date.now() - started;
   const status = c.res.status;
@@ -40,7 +43,25 @@ export const requestId = createMiddleware(async (c, next) => {
    * росло бы вместе с числом пациентов.
    */
   const route = c.req.routePath ?? "unknown";
-  log[level]("request", { method: c.req.method, path: route, status, ms });
+  const who = (c.get("user") as { role?: "superadmin" | "admin" | "user" } | undefined)?.role ?? null;
+  /*
+   * Роль и счёт SQL — в ту же строку лога (техпанель, трасса запроса):
+   * строка «request» переживает перезапуск в истории, и итог запроса в
+   * трассе — это она. Роль, а не человек; число и время SQL, а не тексты:
+   * тексты — в памяти последних запросов (lib/opsSql.ts).
+   */
+  const sql = summarizeSql(scope.sql);
+  rememberRequestSql(id, sql);
+  /*
+   * Строка пишется в том же хранилище запроса: до этого она уходила уже
+   * после выхода из него и оставалась без номера — ровно та строка, по
+   * которой запрос ищут, находилась по номеру последней.
+   */
+  withRequestId(
+    id,
+    () => log[level]("request", { method: c.req.method, path: route, status, ms, role: who, sql: sql.count, sqlMs: sql.totalMs }),
+    scope,
+  );
 
   inc("quizzy_http_requests", { method: c.req.method, route, status });
   observe("quizzy_http_duration_ms", ms, { route });
@@ -51,6 +72,5 @@ export const requestId = createMiddleware(async (c, next) => {
    * Роль — из учётки, если запрос её дождался; ни почты, ни идентификатора
    * человека сюда не кладётся.
    */
-  const who = (c.get("user") as { role?: "superadmin" | "admin" | "user" } | undefined)?.role ?? null;
   recordRequest({ method: c.req.method, route, code: status, ms, role: who, requestId: id });
 });

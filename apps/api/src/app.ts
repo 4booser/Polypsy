@@ -347,8 +347,10 @@ app.onError((err, c) => {
    * Та же ошибка — в группы техпанели (lib/opsBuffer.ts): сборщик ошибок
    * включается SENTRY_DSN и на маленькой установке часто не настроен, а
    * смотреть, что падает, нужно и там. Маршрут — шаблоном, как в сборщик.
+   * Отпечаток группы — в строку лога: по нему трасса запроса находит
+   * группу, а grep по stdout — все случаи той же ошибки.
    */
-  recordError({
+  const fingerprint = recordError({
     error: err,
     method: c.req.method,
     route: c.req.routePath ?? null,
@@ -359,6 +361,7 @@ app.onError((err, c) => {
     path: c.req.path,
     method: c.req.method,
     name: err.name,
+    fingerprint,
     // сообщение и стек — в лог, наружу не отдаём: там бывают имена таблиц
     message: err.message,
     stack: err.stack?.split("\n").slice(0, 6).join(" | "),

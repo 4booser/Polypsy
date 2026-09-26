@@ -41,6 +41,10 @@ const OpsErrors = lazy(() => import("./pages/ops/Errors"));
 const OpsLogs = lazy(() => import("./pages/ops/Logs"));
 const OpsDatabase = lazy(() => import("./pages/ops/Database"));
 const OpsJobs = lazy(() => import("./pages/ops/Jobs"));
+/* история техпанели (obs2a): трасса запроса, сравнение выкаток, медленный SQL */
+const OpsTrace = lazy(() => import("./pages/ops/obs2a/Trace"));
+const OpsReleaseCompare = lazy(() => import("./pages/ops/obs2a/Releases"));
+const OpsStatements = lazy(() => import("./pages/ops/obs2a/Statements"));
 const OpsUsers = lazy(() => import("./pages/ops/Users"));
 const OpsSessions = lazy(() => import("./pages/ops/Sessions"));
 const OpsAuditLog = lazy(() => import("./pages/ops/AuditLog"));
@@ -927,6 +931,10 @@ export default function App() {
               {can("ops.read") ? <Route path="logs" element={<OpsLogs />} /> : null}
               {can("ops.read") ? <Route path="db" element={<OpsDatabase />} /> : null}
               {can("ops.read") ? <Route path="jobs" element={<OpsJobs />} /> : null}
+              {/* участок obs2a: трасса запроса, сравнение выпусков (история выкаток — /ops/releases, maint), медленный SQL */}
+              {can("ops.read") ? <Route path="trace/:requestId" element={<OpsTrace />} /> : null}
+              {can("ops.read") ? <Route path="compare" element={<OpsReleaseCompare />} /> : null}
+              {can("ops.read") ? <Route path="statements" element={<OpsStatements />} /> : null}
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}

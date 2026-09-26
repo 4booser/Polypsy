@@ -1,18 +1,42 @@
 import { useEffect, useRef, useState } from "react";
-import type { OpsLevel, OpsLogLine, OpsLogs } from "@quizzy/shared";
+import type { OpsLevel, OpsLogLine, OpsLogs, OpsLogWindow } from "@quizzy/shared";
 import { api } from "../../api";
 import { locale } from "../../format";
 import { useLang } from "../../lang";
 import { Loading, useUrlState } from "../../ui";
 import { cx } from "../../ui/cx";
-import { Button, Input, Select } from "../../ui/primitives";
+import { Button, ButtonLink, Input, Select } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { fill } from "../dashboard/model";
-import { LEVELS, LEVEL_KEY, clock, fieldsText, fmtInt, mergeFeed, parseLevel, shortId } from "./model";
+import { PeriodSwitch } from "../dashboard/parts";
+import {
+  FEED_CAP,
+  HISTORY_CAP,
+  LEVELS,
+  LEVEL_KEY,
+  LOG_WINDOWS,
+  PERIOD_KEY,
+  clock,
+  fieldsText,
+  fmtInt,
+  lineKey,
+  mergeFeed,
+  parseLevel,
+  parseLogWindow,
+  shortId,
+} from "./model";
+import { HistoryNote } from "./obs2a/parts";
 import { Quiet, Stamp, StatusMark } from "./parts";
 
 /*
- * Логи: живая лента кольцевого буфера процесса.
+ * Логи: история из базы за период и живой хвост процесса поверх неё.
+ *
+ * Решение заказчика 2026-09-26 (участок obs2a): история переживает
+ * перезапуск и выкатку. Первая страница — строки за период (?window=1h|24h|
+ * 7d|14d) из базы, склеенные сервером с памятью процесса без дублей; дальше
+ * лента, как и прежде, опрашивает только живой хвост памяти по курсору.
+ * «Старіші» дочитывает историю назад страницами — до потолка HISTORY_CAP:
+ * дальше это уже выгрузка, и её место — узкий фильтр или короткий период.
  *
  * Опрос раз в четыре секунды с курсором: сервер отдаёт только строки новее
  * последней увиденной, и лента не перекачивает одно и то же. «Пауза»
@@ -33,6 +57,8 @@ const POLL_MS = 4_000;
 /* первая выборка — побольше: человек открывает ленту, чтобы увидеть, что было */
 const FIRST_LIMIT = 300;
 const NEXT_LIMIT = 500;
+/* страница истории назад — та же, что первая: читается одним взглядом прокрутки */
+const OLDER_LIMIT = 300;
 
 const LEVEL_TEXT: Record<OpsLevel, string> = {
   error: "text-danger",
@@ -41,7 +67,7 @@ const LEVEL_TEXT: Record<OpsLevel, string> = {
   debug: "text-muted",
 };
 
-type Meta = Pick<OpsLogs, "since" | "capacity" | "threshold">;
+type Meta = Pick<OpsLogs, "since" | "capacity" | "threshold" | "from" | "retentionDays" | "store" | "historyUnavailable">;
 
 export default function OpsLogs() {
   const { ut } = useLang();
@@ -49,7 +75,9 @@ export default function OpsLogs() {
   const [rawLevel, setLevel] = useUrlState("level", "");
   const [q, setQ] = useUrlState("q", "");
   const [rid, setRid] = useUrlState("rid", "");
+  const [rawWindow, setWindow] = useUrlState("window", "1h");
   const level = parseLevel(rawLevel);
+  const win: OpsLogWindow = parseLogWindow(rawWindow);
 
   /* поиск печатается в поле сразу, а в адрес и на сервер уходит после паузы в наборе */
   const [draft, setDraft] = useState(q);
@@ -70,6 +98,11 @@ export default function OpsLogs() {
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
+  /* курсор более старой страницы истории; null — старше в периоде ничего нет */
+  const [older, setOlder] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  /* поколение фильтров: страница «старіші», пришедшая от прежних фильтров, отбрасывается */
+  const generation = useRef(0);
 
   useEffect(() => {
     /*
@@ -81,9 +114,11 @@ export default function OpsLogs() {
     let alive = true;
     let cursor: number | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    generation.current++;
     setLines([]);
     setGap(false);
     setLoaded(false);
+    setOlder(null);
 
     const tick = async () => {
       if (!alive) return;
@@ -96,11 +131,25 @@ export default function OpsLogs() {
             requestId: rid || undefined,
             after: first ? undefined : cursor!,
             limit: first ? FIRST_LIMIT : NEXT_LIMIT,
+            /* период — только у первой страницы: дальше лента берёт живой хвост памяти */
+            window: first ? win : undefined,
           });
           if (!alive) return;
           cursor = page.cursor;
-          setLines((prev) => mergeFeed(first ? [] : prev, page.items));
-          setMeta({ since: page.since, capacity: page.capacity, threshold: page.threshold });
+          /* ленту, дочитанную вручную назад, живой хвост не обрезает до обычного потолка */
+          setLines((prev) => mergeFeed(first ? [] : prev, page.items, Math.min(HISTORY_CAP, Math.max(FEED_CAP, prev.length))));
+          if (first) {
+            setMeta({
+              since: page.since,
+              capacity: page.capacity,
+              threshold: page.threshold,
+              from: page.from,
+              retentionDays: page.retentionDays,
+              store: page.store,
+              historyUnavailable: page.historyUnavailable,
+            });
+            setOlder(page.older ?? null);
+          }
           if (!first && (page.gap || page.truncated)) setGap(true);
           setUpdatedAt(Date.now());
           setLoaded(true);
@@ -116,13 +165,50 @@ export default function OpsLogs() {
       alive = false;
       clearTimeout(timer);
     };
-  }, [level, q, rid, ut]);
+  }, [level, q, rid, win, ut]);
 
   const filtered = Boolean(level || q || rid);
+  const capped = lines.length >= HISTORY_CAP;
+
+  const loadOlder = async () => {
+    if (!older || loadingOlder || capped) return;
+    const gen = generation.current;
+    setLoadingOlder(true);
+    try {
+      const page = await api.opsLogs({
+        level: level ?? undefined,
+        q: q || undefined,
+        requestId: rid || undefined,
+        window: win,
+        before: older,
+        limit: OLDER_LIMIT,
+      });
+      if (gen !== generation.current) return;
+      setLines((prev) => mergeFeed(prev, page.items, HISTORY_CAP));
+      setOlder(page.older ?? null);
+    } catch (e) {
+      if (gen === generation.current) setError(e instanceof Error ? e.message : ut("common.error"));
+    } finally {
+      if (gen === generation.current) setLoadingOlder(false);
+    }
+  };
 
   return (
     <div>
-      <Stamp since={meta?.since} updatedAt={updatedAt} />
+      <Stamp
+        updatedAt={updatedAt}
+        note={
+          meta ? (
+            <HistoryNote
+              window={win}
+              from={meta.from}
+              retentionDays={meta.retentionDays}
+              store={meta.store}
+              unavailable={meta.historyUnavailable}
+            />
+          ) : undefined
+        }
+      />
 
       <RuleSection
         className="mt-[16px]"
@@ -134,6 +220,12 @@ export default function OpsLogs() {
         }
         actions={
           <>
+            <PeriodSwitch<OpsLogWindow>
+              label={ut("ops.history.periodLabel")}
+              value={win}
+              onChange={(v) => setWindow(v)}
+              options={LOG_WINDOWS.map((w) => [w, ut(PERIOD_KEY[w])] as const)}
+            />
             {paused ? <StatusMark tone="warn">{ut("ops.logs.pausedNote")}</StatusMark> : null}
             <Button variant={paused ? "primary" : "ghost"} aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
               {paused ? ut("ops.logs.resume") : ut("ops.logs.pause")}
@@ -177,6 +269,12 @@ export default function OpsLogs() {
             autoComplete="off"
             maxLength={64}
           />
+          {/* номер задан — одна кнопка до трассы: те же строки плюс итог, ошибка, журнал и SQL */}
+          {rid ? (
+            <ButtonLink variant="ghost" to={`/ops/trace/${encodeURIComponent(rid)}`}>
+              {ut("ops.trace.open")}
+            </ButtonLink>
+          ) : null}
           {filtered ? (
             <Button
               variant="quiet"
@@ -209,7 +307,7 @@ export default function OpsLogs() {
           <ol aria-label={ut("ops.logs.title")} className="m-0 list-none overflow-x-auto p-0 font-mono text-[12px] leading-[18px]">
             {lines.map((l) => (
               <li
-                key={l.seq}
+                key={lineKey(l)}
                 className="grid grid-cols-[76px_104px_84px_minmax(0,1fr)] gap-x-[12px] border-b border-hairline py-[4px] max-[700px]:grid-cols-[76px_minmax(0,1fr)]"
               >
                 <span className="text-muted tabular-nums">{clock(l.at, loc)}</span>
@@ -239,6 +337,19 @@ export default function OpsLogs() {
             ))}
           </ol>
         )}
+
+        {loaded && older ? (
+          <div className="flex flex-wrap items-center gap-x-[14px] gap-y-[6px] pt-[12px]">
+            {capped ? (
+              <Quiet>{fill(ut("ops.history.capped"), { n: fmtInt(HISTORY_CAP, loc) })}</Quiet>
+            ) : (
+              <Button variant="ghost" onClick={() => void loadOlder()} disabled={loadingOlder}>
+                {ut("ops.history.older")}
+              </Button>
+            )}
+            <span className="text-[13px] text-muted">{fill(ut("ops.history.shown"), { n: fmtInt(lines.length, loc) })}</span>
+          </div>
+        ) : null}
       </RuleSection>
     </div>
   );
