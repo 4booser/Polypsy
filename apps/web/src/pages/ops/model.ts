@@ -694,11 +694,23 @@ export function fmtUptime(sec: number, loc: string): string {
 export function fmtAgo(iso: string | null, now: number, loc: string): string {
   if (!iso) return "—";
   const diff = (new Date(iso).getTime() - now) / 1000;
+  // неразборчивая дата — прочерк, а не «NaN днів тому»
+  if (!Number.isFinite(diff)) return "—";
   const rtf = new Intl.RelativeTimeFormat(loc, { numeric: "auto" });
-  const abs = Math.abs(diff);
-  if (abs < 60) return rtf.format(Math.round(diff), "second");
-  if (abs < 3600) return rtf.format(Math.round(diff / 60), "minute");
-  if (abs < 86_400) return rtf.format(Math.round(diff / 3600), "hour");
+  /*
+   * Единица выбирается по ОКРУГЛЁННОМУ числу, а не по сырой разнице.
+   *
+   * Прежде порог сравнивался с сырым значением, а печаталось округлённое:
+   * 59,6 с проходили как «меньше минуты» и выходили «60 секунд тому»,
+   * 59 мин 40 с — «60 хвилин тому» вместо «1 годину тому». Знак («тому» или
+   * «через») остаётся за Intl — он верен в обе стороны.
+   */
+  const sec = Math.round(diff);
+  if (Math.abs(sec) < 60) return rtf.format(sec, "second");
+  const min = Math.round(diff / 60);
+  if (Math.abs(min) < 60) return rtf.format(min, "minute");
+  const hours = Math.round(diff / 3600);
+  if (Math.abs(hours) < 24) return rtf.format(hours, "hour");
   return rtf.format(Math.round(diff / 86_400), "day");
 }
 

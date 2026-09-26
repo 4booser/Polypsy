@@ -686,7 +686,8 @@ export default function Constructor() {
  */
 function Results({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   const { ut } = useLang();
-  const batteries = (useResource(() => api.batteries(), []).data ?? []).filter((b) => !b.archived);
+  /* все, с архивными: выбранный каскад на архивную батарею остаётся виден с пометкой (Bands) */
+  const batteries = useResource(() => api.batteries(), []).data ?? [];
   const [details, setDetails] = useState(false);
   const bands = draft.scales[0]?.bands ?? [];
   return (

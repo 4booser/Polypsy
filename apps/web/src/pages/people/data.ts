@@ -91,12 +91,41 @@ export async function loadDirectory(viewer: Viewer, src: DirectorySource = api):
  * положены. Сотрудников в учреждении десятки, не тысячи; маршрут отдаёт
  * карточку без записи в журнал, поэтому это дёшево и с обеих сторон.
  */
-export async function withLadder(rows: StaffRow[]): Promise<StaffRow[]> {
-  const cards = await Promise.allSettled(rows.map((r) => api.userPermissions(r.id)));
-  return rows.map((r, i) => {
-    const c = cards[i];
+export async function withLadder(
+  rows: StaffRow[],
+  viewer: LadderViewer,
+  card: (id: string) => Promise<{ roles: { code: string }[] }> = api.userPermissions,
+): Promise<StaffRow[]> {
+  const asked = rows.filter((r) => ladderReadable(viewer, r));
+  const cards = await Promise.allSettled(asked.map((r) => card(r.id)));
+  const ladders = new Map(asked.map((r, i) => [r.id, cards[i]]));
+  return rows.map((r) => {
+    const c = ladders.get(r.id);
     return c?.status === "fulfilled" ? { ...r, ladder: c.value.roles.map((x) => x.code) } : r;
   });
+}
+
+/** Кто спрашивает ступени: свой id и суперадмин ли он */
+export interface LadderViewer {
+  id: string;
+  isSuper: boolean;
+}
+
+/**
+ * Можно ли спрашивать карточку прав этого человека — решается ДО запроса.
+ *
+ * Волна 12, разбор кода: «справочник сотрудников регулярно обращался к
+ * запрещённому маршруту». Реестр администраторов спрашивал карточку прав
+ * у каждого в списке, и на суперадмина GET /api/permissions/users/:id
+ * отвечает отказом всем, кроме суперадмина: его ступень выше любой
+ * (err.roleAboveYours). Такой отказ приходил на каждом открытии списка, на
+ * каждого суперадмина — штатный, заранее известный. Суперадмин и без
+ * лестницы стоит в реестре администраторов (isAdministrator), так что
+ * спрашивать о нём незачем. Ступени остальных клиент не знает — их отказ
+ * остаётся исключением, как и задумано выше.
+ */
+export function ladderReadable(viewer: LadderViewer, row: Pick<StaffRow, "id" | "role">): boolean {
+  return viewer.isSuper || row.id === viewer.id || row.role !== "superadmin";
 }
 
 /**

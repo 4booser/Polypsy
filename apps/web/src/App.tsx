@@ -5,13 +5,9 @@ import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
 import { Topbar, barKind, type BurgerAccount } from "./shell/Topbar";
-import { CommandPalette } from "./shell/CommandPalette";
 import { onAppEvent } from "./events";
 import type { WorkspacePrefs } from "@quizzy/shared";
-import Dashboard from "./pages/Dashboard";
-import { PatientDynamics, PatientList } from "./pages/Patients";
 import { peopleLists } from "./pages/people/model";
-import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
 import { canOpenOps, opsHome } from "./pages/ops/model";
 import { TrackedRoutes } from "./telemetry/screens";
@@ -30,7 +26,49 @@ import { ImpersonationBanner } from "./pages/ops/people2/ImpersonationBanner";
  * Сразу грузятся только вход, сводка, случаи и пациенты: по ним заходят
  * каждый день, и подгрузка на них была бы заметной задержкой, а не
  * экономией.
+ *
+ * Решение заказчика 2026-09-26 (волна 12, разбор кода: «весь бандл консоли
+ * загружался одним файлом»): сводка, случаи и пациенты — тоже по
+ * требованию, в начальном куске остаётся только вход. Держать их «сразу»
+ * стоило начальному куску сводки со всеми её графиками (charts/clinical),
+ * очереди случаев и списка пациентов с диалогами — их тянул и человек на
+ * экране входа, и пациент, открывший ссылку-приглашение.
+ * Задержки, ради которой их держали в начальном куске, не появляется: сразу
+ * после входа они догружаются в простое браузера (warmDaily ниже), и к
+ * первому переходу уже лежат в кэше. Сторож — apps/web/test/bundle.test.ts.
  */
+const loadDashboard = () => import("./pages/Dashboard");
+const loadAlerts = () => import("./pages/Alerts");
+const loadPatients = () => import("./pages/Patients");
+const Dashboard = lazy(loadDashboard);
+const Alerts = lazy(loadAlerts);
+const PatientList = lazy(() => loadPatients().then((m) => ({ default: m.PatientList })));
+const PatientDynamics = lazy(() => loadPatients().then((m) => ({ default: m.PatientDynamics })));
+/*
+ * Палитра команд — вместе с cmdk — по первому ⌘K: закрытая палитра ничего
+ * не рисует, а библиотека нужна только открытой.
+ */
+const CommandPalette = lazy(() => import("./shell/CommandPalette").then((m) => ({ default: m.CommandPalette })));
+
+/**
+ * Догрузить ежедневные экраны, когда браузер свободен.
+ *
+ * Не сразу по входу: первым делом консоль рисует свой экран и зовёт
+ * счётчики полосы, и три лишних запроса в этот момент спорили бы с ними.
+ * Отказ глушится — это предзагрузка, а не экран: не доехавший кусок
+ * запросится ещё раз при переходе, и там его ошибку покажет граница ошибок.
+ */
+function warmDaily(): () => void {
+  const warm = () => {
+    for (const load of [loadDashboard, loadAlerts, loadPatients]) void load().catch(() => {});
+  };
+  if (typeof requestIdleCallback === "function") {
+    const id = requestIdleCallback(warm, { timeout: 4000 });
+    return () => cancelIdleCallback(id);
+  }
+  const id = setTimeout(warm, 1500);
+  return () => clearTimeout(id);
+}
 const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
 const Access = lazy(() => import("./pages/Access"));
 const Permissions = lazy(() => import("./pages/Permissions"));
@@ -464,6 +502,10 @@ export default function App() {
   useEffect(() => {
     paintFavicon(openAlerts);
   }, [openAlerts]);
+
+  /* ежедневные экраны — в кэш после входа (см. warmDaily); пациенту и на входе они не нужны */
+  const staffIn = !!user && user.role !== "user" && !user.mfaSetupRequired;
+  useEffect(() => (staffIn ? warmDaily() : undefined), [staffIn]);
 
   /*
    * Публичные страницы живут вне auth-гейта: по приглашению входят без входа.
@@ -1010,12 +1052,17 @@ export default function App() {
         </ErrorBoundary>
       </main>
 
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
-        onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
-      />
+      {/* закрытая палитра не монтируется вовсе: её кусок (cmdk) приезжает по первому ⌘K */}
+      {paletteOpen ? (
+        <Suspense fallback={null}>
+          <CommandPalette
+            open
+            onClose={() => setPaletteOpen(false)}
+            onToggleTheme={() => chooseTheme(theme === "dark" ? "light" : "dark")}
+            onToggleDensity={() => setDensity(density === "compact" ? "cozy" : "compact")}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

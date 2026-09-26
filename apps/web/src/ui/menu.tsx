@@ -328,6 +328,12 @@ export function MenuButton({
  * «Редагувати» в чужой карточке, решил бы, что меню сломано.
  */
 export interface MenuEntry {
+  /**
+   * Ключ строки, когда подписи могут совпасть: пункты из данных (сохранённые
+   * виды двух людей с одним именем) по подписи неразличимы. Молчание —
+   * подпись, как было.
+   */
+  key?: string;
   label: string;
   /** Ссылка — переход; без неё пункт — действие */
   to?: string;
@@ -382,14 +388,14 @@ export function ActionMenu({
           const cls = menuItemClass("right", disabled ? "disabled" : it.danger ? "danger" : "normal", itemSize);
           if (it.to && !disabled) {
             return (
-              <Link key={it.label} role="menuitem" to={it.to} className={cls} onClick={close}>
+              <Link key={it.key ?? it.label} role="menuitem" to={it.to} className={cls} onClick={close}>
                 {it.label}
               </Link>
             );
           }
           return (
             <button
-              key={it.label}
+              key={it.key ?? it.label}
               type="button"
               role="menuitem"
               aria-disabled={disabled || undefined}

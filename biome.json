@@ -43,6 +43,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["apps/web/src/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } }
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "globals": [
       "Bun"

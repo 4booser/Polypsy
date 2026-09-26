@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { ScreenViewsInput } from "./wireSchemas";
 
 /**
  * Телеметрия открытия экранов — общая часть клиента и сервера.
@@ -20,7 +20,7 @@ export const SCREEN_APPS = ["console", "patient", "mobile"] as const;
 export type ScreenApp = (typeof SCREEN_APPS)[number];
 
 /** Самый длинный шаблон консоли — /surveys/:id/responses/:rid/charts, 35 знаков; 120 с запасом */
-const ROUTE_MAX = 120;
+export const SCREEN_ROUTE_MAX = 120;
 
 /*
  * Сегмент шаблона — одно из трёх:
@@ -48,7 +48,7 @@ const HEXISH = /^[a-f-]{8,}$/;
  * адреса бывают.
  */
 export function isRouteTemplate(route: string): boolean {
-  if (typeof route !== "string" || route.length === 0 || route.length > ROUTE_MAX) return false;
+  if (typeof route !== "string" || route.length === 0 || route.length > SCREEN_ROUTE_MAX) return false;
   if (route === "/") return true;
   if (!route.startsWith("/") || route.endsWith("/")) return false;
   const parts = route.slice(1).split("/");
@@ -59,35 +59,11 @@ export function isRouteTemplate(route: string): boolean {
   });
 }
 
-/**
- * Пачка счётчиков от клиента.
- *
- * `.strict()` на обоих уровнях — не педантизм. Лишнее поле в телеметрии —
- * это место, куда однажды положат «заодно» адрес, имя экрана с фамилией или
- * текст поиска. Отказ на лишнем поле делает такую правку громкой: она падает
- * в первом же прогоне, а не тихо копит персональные данные в таблице, которую
- * никто не читает глазами.
+/*
+ * Схема пачки (screenViewsSchema) — в wireSchemas.ts: модуль с правилом
+ * шаблона нужен консоли при загрузке, а zod ей не нужен вовсе (волна 12,
+ * см. там же).
  */
-export const screenViewsSchema = z
-  .object({
-    views: z
-      .array(
-        z
-          .object({
-            app: z.enum(SCREEN_APPS),
-            route: z.string().max(ROUTE_MAX).refine(isRouteTemplate, {
-              message: "route must be a route template (/patients/:userId), not an address",
-            }),
-            count: z.number().int().min(1).max(1000),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(50),
-  })
-  .strict();
-
-export type ScreenViewsInput = z.infer<typeof screenViewsSchema>;
 
 /** Больше полусотни строк сервер в одной пачке не примет (screenViewsSchema) */
 const BATCH_ROWS = 50;
