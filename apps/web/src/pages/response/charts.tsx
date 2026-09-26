@@ -367,15 +367,27 @@ function ShiftText({ shift }: { shift: Shift }) {
     within: ut("rch.within"),
     noSem: ut("rch.noSem"),
     versions: ut("rch.versions"),
+    units: ut("rch.units"),
+    unreliable: ut("rch.unreliable"),
   }[shift.verdict];
   const moved = shift.from && shift.to && shift.from.label !== shift.to.label;
+  /*
+   * Сырой балл минус T-балл — не число, а артефакт: «+32» с таким
+   * вердиктом всё равно читается как огромный сдвиг. Поэтому при разных
+   * единицах разность не печатается, остаётся только дата и объяснение.
+   */
+  const showDelta = shift.verdict !== "units";
   return (
     <span className="inline-flex flex-wrap items-center gap-x-[8px] gap-y-[2px]">
       <span>
-        <b className="font-mono text-text tabular-nums">
-          {sign}
-          {num(Math.abs(shift.delta))}
-        </b>{" "}
+        {showDelta ? (
+          <>
+            <b className="font-mono text-text tabular-nums">
+              {sign}
+              {num(Math.abs(shift.delta))}
+            </b>{" "}
+          </>
+        ) : null}
         {ut("rch.since")} {day(shift.prevAt)}
       </span>
       {shift.to ? (

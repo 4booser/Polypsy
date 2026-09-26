@@ -1,8 +1,10 @@
 import {
   TOO_FAST_MS,
+  comparability,
   itemContribution,
   itemMaxContribution,
   quantile,
+  rciForDisplay,
   type Answer,
   type RespondentDynamics,
   type ResponseDetail,
@@ -370,7 +372,7 @@ function rungsOf(sc: ResponseDetailScore): Rung[] {
  *   noSem    — ошибка измерения неизвестна: мала выборка или не посчитана альфа;
  *   versions — замеры сделаны на разных версиях методики, баллы несравнимы.
  */
-export type ShiftVerdict = "reliable" | "within" | "noSem" | "versions";
+export type ShiftVerdict = "reliable" | "within" | "noSem" | "versions" | "units" | "unreliable";
 
 export interface Shift {
   /** Этот замер минус предыдущий, в единицах полос */
@@ -392,6 +394,14 @@ export interface TrendPointView {
   /** Замер этого экрана */
   focus: boolean;
   versionNo: number | null;
+  /**
+   * Единицы и достоверность замера (DynamicsPoint): без них сырой балл без
+   * норм вычитался из T-балла той же версии, и экран писал «більше за
+   * похибку» там, где изменились единицы. Нет поля — считается «да».
+   */
+  normalized?: boolean;
+  normalization?: ScaleNormalization;
+  reliable?: boolean;
 }
 
 export interface TrendScale {
@@ -438,20 +448,35 @@ const round2 = (v: number) => Math.round(v * 100) / 100;
  * измерения при этом та же — она свойство шкалы, а не пары замеров, — и
  * RCI = Δ / (√2·SEM) (packages/shared/src/rci.ts: Sdiff = √2·SEM).
  *
- * Разные версии методики — вердикт «versions», а не RCI: ошибка измерения
- * посчитана в единицах последней версии, а правка ключа одного пункта
- * сдвигает средний балл сама по себе. Неизвестная версия у обоих замеров
+ * Сравнимы ли два замера — то же правило, что у сервера (comparability в
+ * shared/rci.ts): разные версии — «versions» (приведение сервер считает
+ * только к последней версии, а здесь пара соседних); нормированный против
+ * сырого — «units», и разность таких чисел не показывается вовсе;
+ * недостоверный протокол — «unreliable». Неизвестная версия у обоих замеров
  * (прохождения до версионирования) считается одной и той же: так их всё это
  * время и сравнивали.
+ *
+ * RCI для показа — rciForDisplay: вердикт решает точное число, и показанное
+ * не должно перескакивать через критерий (1,964 не становится 1,96).
  */
 export function shiftOf(prev: TrendPointView, cur: TrendPointView, sem: number | null): Shift {
   const delta = round2(cur.value - prev.value);
   const base = { delta, prevAt: prev.at, from: prev.band, to: cur.band };
-  if ((prev.versionNo ?? null) !== (cur.versionNo ?? null)) return { ...base, verdict: "versions", rci: null };
+  const why = comparability(markOf(prev), markOf(cur));
+  if (why === "version") return { ...base, verdict: "versions", rci: null };
+  if (why === "units") return { ...base, verdict: "units", rci: null };
+  if (why === "unreliable") return { ...base, verdict: "unreliable", rci: null };
   if (!(sem !== null && Number.isFinite(sem) && sem > 0)) return { ...base, verdict: "noSem", rci: null };
   const rci = delta / (Math.SQRT2 * sem);
-  return { ...base, verdict: Math.abs(rci) > RCI_CRITERION ? "reliable" : "within", rci: round2(rci) };
+  return { ...base, verdict: Math.abs(rci) > RCI_CRITERION ? "reliable" : "within", rci: rciForDisplay(rci) };
 }
+
+const markOf = (p: TrendPointView) => ({
+  version: p.versionNo ?? null,
+  normalized: p.normalized,
+  normalization: p.normalization ?? null,
+  reliable: p.reliable,
+});
 
 /**
  * Ряды по шкалам этого прохождения из динамики человека.
@@ -479,17 +504,27 @@ export function buildTrends(detail: ResponseDetail, dyn: RespondentDynamics): Tr
         band: p.bandLabel && p.severity ? { label: p.bandLabel, severity: p.severity } : null,
         focus: p.responseId === detail.id,
         versionNo: p.versionNo ?? null,
+        normalized: p.normalized,
+        normalization: p.normalization,
+        reliable: p.reliable,
       }));
     if (!points.length) continue;
     const i = points.findIndex((p) => p.focus);
     const sem = series.sem != null && Number.isFinite(series.sem) && series.sem > 0 ? series.sem : null;
+    /*
+     * SEM сервер считает в единицах ПОСЛЕДНЕГО замера ряда (версия и
+     * нормировка последнего). К паре из другой версии или других единиц она
+     * не относится: ошибка измерения — свойство шкалы в этих единицах.
+     */
+    const lastPoint = points[points.length - 1]!;
+    const semFor = (p: TrendPointView) => (comparability(markOf(p), markOf(lastPoint)) === null ? sem : null);
     scales.push({
       code: sc.scaleCode,
       title: sc.scaleTitle,
       rungs: rungsOf(sc),
       sem,
       points,
-      shift: i > 0 ? shiftOf(points[i - 1]!, points[i]!, sem) : null,
+      shift: i > 0 ? shiftOf(points[i - 1]!, points[i]!, semFor(points[i]!)) : null,
       first: i === 0,
       mixedVersions: new Set(points.map((p) => p.versionNo)).size > 1,
     });
