@@ -191,6 +191,8 @@ export async function login(page: Page, who: keyof typeof ACCOUNTS) {
    * пациент — на «/me».
    */
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  // кабинет пациента с волны 12 начинается с согласия (patient/ConsentGate.tsx)
+  if (new URL(page.url()).pathname.startsWith("/me")) await acceptConsentIfAsked(page);
   /*
    * Признак входа — оболочка, а не конкретный раздел. У сотрудника это
    * бургер: полоса с шестью пунктами на телефоне спрятана, и ждать её значило
@@ -350,7 +352,37 @@ export async function rowTexts(page: Page): Promise<string[]> {
 export async function apiToken(page: Page, who: keyof typeof ACCOUNTS): Promise<string> {
   const res = await page.request.post("/api/auth/login", { data: ACCOUNTS[who] });
   expect(res.ok(), `не удалось войти по API как ${who}`).toBe(true);
-  return (await res.json()).token as string;
+  const token = (await res.json()).token as string;
+  // сдачи пациента без принятого согласия сервер не примет (волна 12)
+  if (who === "patient") await acceptConsentIfAsked(page, token);
+  return token;
+}
+
+/**
+ * Принять согласие вошедшего пациента, если посев завёл текст, а человек
+ * его ещё не принимал.
+ *
+ * С волны 12 без принятой редакции сервер не принимает ответов, а кабинет
+ * сначала показывает текст (patient/ConsentGate.tsx). Сценариям, которые
+ * проверяют не согласие, а то, что за ним, согласие даётся запросом — тем
+ * же, что шлёт кнопка, с редакцией, которую показали. Сам экран согласия
+ * проходит кнопкой patient.e2e.
+ */
+export async function acceptConsentIfAsked(page: Page, token?: string): Promise<void> {
+  const bearer = token ?? (await page.evaluate(() => localStorage.getItem("quizzy.web.token")));
+  if (!bearer) return;
+  const status = (await (await page.request.get("/api/consents/me", { headers: auth(bearer) })).json()) as {
+    required?: boolean;
+    accepted?: boolean;
+    textId?: string | null;
+  };
+  if (!status?.required || status.accepted) return;
+  const res = await page.request.post("/api/consents/me/accept", {
+    headers: auth(bearer),
+    data: { textId: status.textId },
+  });
+  expect(res.ok(), `согласие не принято: ${res.status()}`).toBeTruthy();
+  if (!token) await page.reload();
 }
 
 /** Заголовок с токеном — чтобы не переписывать его в каждом запросе */
@@ -411,6 +443,8 @@ export async function createOwnPatient(page: Page, tag: string): Promise<OwnPati
     throw new Error(`не удалось завести своего пациента (${tag}): ${res.status()} ${await res.text()}`);
   }
   const body = (await res.json()) as { token: string; user: { id: string } };
+  // сдачи своего пациента идут запросами — без принятого согласия сервер их не примет
+  await acceptConsentIfAsked(page, body.token);
   return { id: body.user.id, token: body.token, lastName };
 }
 

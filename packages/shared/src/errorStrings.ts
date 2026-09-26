@@ -100,6 +100,16 @@ export const ERRORS = {
     ru: "Текст согласия не настроен",
     en: "The consent text hasn’t been set up",
   },
+  "err.consentTextChanged": {
+    uk: "Текст згоди змінився, поки ви його читали. Прочитайте нову редакцію",
+    ru: "Текст согласия изменился, пока вы его читали. Прочитайте новую редакцию",
+    en: "The consent text changed while you were reading it. Please read the new version",
+  },
+  "err.consentRequired": {
+    uk: "Спершу прийміть інформовану згоду — без неї відповіді не приймаються",
+    ru: "Сначала примите информированное согласие — без него ответы не принимаются",
+    en: "Please accept the informed consent first — answers can’t be accepted without it",
+  },
   "err.deviceNotFound": { uk: "Пристрій не знайдено", ru: "Устройство не найдено", en: "Device not found" },
   "err.deviceNotFoundOrWiped": {
     uk: "Пристрій не знайдено або вже стерто",

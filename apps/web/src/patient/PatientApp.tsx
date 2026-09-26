@@ -8,6 +8,7 @@ import { cx } from "../ui/cx";
 import { Button, TouchArea } from "../ui/primitives";
 import { IconCalendar, IconHome, IconPerson, IconTest } from "./icons";
 import { outbox, type OutboxItem } from "./outbox";
+import { ConsentGate } from "./ConsentGate";
 
 /**
  * Кабинет пациента.
@@ -27,6 +28,15 @@ import { outbox, type OutboxItem } from "./outbox";
  * нужно.
  */
 export default function PatientApp() {
+  // сначала согласие: без принятой редакции сервер ответов не примет (ConsentGate)
+  return (
+    <ConsentGate>
+      <PatientShell />
+    </ConsentGate>
+  );
+}
+
+function PatientShell() {
   const { ut } = useLang();
   const { user } = useAuth();
   const { pathname } = useLocation();

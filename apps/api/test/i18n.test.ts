@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, eq } from "drizzle-orm";
 import { renderPush } from "@quizzy/shared";
-import { consentTexts, pushTokens } from "../src/db/schema";
+import { consentTexts, consents, pushTokens } from "../src/db/schema";
 import { pushToUser, setPushSenderForTests } from "../src/lib/push";
 import {
   adminA,
@@ -244,6 +244,12 @@ describe("уведомления на языке устройства", () => {
 });
 
 describe("согласие по-английски", () => {
+  /* текст согласия общий на всю базу и запирает сдачи без принятия — после проверки его не остаётся */
+  afterAll(async () => {
+    await db.delete(consents);
+    await db.delete(consentTexts);
+  });
+
   test("необязательный английский текст отдаётся английскому интерфейсу, без него — украинский", async () => {
     const uk = "Я погоджуюся на обробку даних для обстеження.";
     const ru = "Я согласен на обработку данных для обследования.";
