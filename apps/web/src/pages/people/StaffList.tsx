@@ -1,15 +1,28 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { IconSearchGlass, Loading, useUrlState } from "../../ui";
 import { Page } from "../../ui/layout";
-import { IconPlusThick } from "../../ui/glyphs";
-import { Button, Input } from "../../ui/primitives";
+import { IconCaret, IconPlusThick } from "../../ui/glyphs";
+import { Button, Input, Tabs } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
 import { useLang } from "../../lang";
 import { useResource } from "../../useResource";
 import { loadDirectory, withLadder } from "./data";
-import { isAdministrator, isDoctor, matchesQuery, metaSegments } from "./model";
+import {
+  type StaffGroupBy,
+  type StaffRow,
+  facetChoice,
+  facetValues,
+  filterStaff,
+  groupStaff,
+  isAdministrator,
+  isDoctor,
+  parseSort,
+  peopleLists,
+  sortByName,
+  staffMeta,
+} from "./model";
 
 /*
  * Списки «Лікарі» (кадр f42) и «Адміністратори» (кадр f49) — один экран в
@@ -20,8 +33,8 @@ import { isAdministrator, isDoctor, matchesQuery, metaSegments } from "./model";
  *   заголовок · поле поиска с лупой · «+»   → строка над списком (Page),
  *                                              поиск в адресе (?q), «+» — ссылка
  *                                              на «Додати лікаря/адміністратора»
- *   сетка 3 колонки, строка 58px:            → grid; имя 13/700 фиолетовым,
- *   имя + мета-строка                           мета 13/400 серым
+ *   сетка 3 колонки, строка 58px:            → grid; имя фиолетовым,
+ *   имя + мета-строка                           мета серым
  *
  * Кадр f49 нарисован без лупы в поле поиска, f42 — с лупой; взят f42: та же
  * лупа стоит в строке над списком групп (f34/f35) и в секции «Лікарі»
@@ -34,12 +47,31 @@ import { isAdministrator, isDoctor, matchesQuery, metaSegments } from "./model";
  * строку для диктора под полем поиска: число списку нужно не глазу (список
  * виден целиком), а тому, кто его не видит.
  *
- * Чего в строке нет, хотя на кадре есть: телефона и города. Телефон сервер
- * наружу не отдаёт вовсе — он зашифрован и у пациентов открывается отдельным
- * действием с записью в журнал; города в модели нет. Пустое место не
- * заполняется прочерками (см. metaSegments); обе дыры записаны в api_gaps, и
- * когда сервер их отдаст, части встанут в model.ts между почтой и полом — в
- * порядке кадра «пошта · телефон · місто · стать · рік».
+ * ОТСТУПЛЕНИЯ ОТ КАДРОВ — решение заказчика 2026-09-26: «тут должна быть
+ * сортировка по отделениям, должностям, фильтр по имени, номеру телефону и
+ * логину», и тогда же — «полоса наверху теперь всегда полная, а переключение
+ * „Лікарі | Адміністратори“ переезжает во вкладки на самой странице».
+ * Отсюда то, чего на f42/f49 нет:
+ *
+ *   вкладки «Лікарі | Адміністратори»   → под строкой заголовка, ссылками;
+ *                                          только тому, кому открыты оба
+ *                                          списка (peopleLists)
+ *   «Відділення», «Посада», «Сортування» → строка залитых выборов над
+ *                                          сеткой, по колонке сетки каждый;
+ *                                          всё — в адресе (?unit, ?position,
+ *                                          ?sort), как поиск
+ *   группы по відділенню / посаді        → заголовок раздела 20/700 над
+ *                                          линией 2px, как у карточки
+ *                                          пациента, и число людей в группе
+ *   строка человека                      → имя 17/700, под ним «логін ·
+ *                                          телефон · відділення · посада» —
+ *                                          и стать с роком в конце, как было
+ *                                          (почему — staffMeta в model.ts)
+ *
+ * Поиск ищет по ФИО (в любом порядке слов), логину и телефону — на клиенте:
+ * сотрудников десятки, справочник приходит целиком, и значения выпадающих
+ * фильтров всё равно берутся из него же. Телефон в ответе есть; чтение
+ * справочника с номерами сервер пишет в журнал (см. data.ts).
  *
  * Кто «лікар», а кто «адміністратор» — в model.ts: класс учётной записи и
  * ступень лестницы должностей, а не два разных списка на сервере.
@@ -66,6 +98,10 @@ export type StaffKind = "doctors" | "admins";
  * 570, f11 — ровно 1200 во всю колонку, а f04 (636…1038 = 403) и f35
  * (215…814 = 600) не совпадают ни с одной вертикалью сетки — их
  * прямоугольники нарисованы от руки. Свеса нет ни на одном.
+ *
+ * Имя и мета ниже (nameClass, metaClass) — кадровые 13/700 и 13/400: ими
+ * пользуется карточка человека (f04, f30, f50). Сам список раздела печатает
+ * строку крупнее — см. listNameClass.
  */
 export const rowClass = cx(
   "block py-[10px] no-underline",
@@ -78,6 +114,138 @@ export const metaClass = "flex flex-wrap gap-x-[10px] text-[13px] leading-[19px]
 /** Три колонки, как на кадре; на узком окне — одна: три колонки по 300px нечитаемы */
 export const gridClass = "grid grid-cols-3 gap-x-[45px] max-[900px]:grid-cols-1";
 
+/*
+ * Строка списка раздела — решение заказчика 2026-09-26, а не кадр f42.
+ *
+ * Имя 17/700 — ступень «имя строки» консоли (как у строк карточки пациента):
+ * на кадровых 13 имя терялось рядом с мета-строкой, которая выросла вдвое.
+ * Имя переносится, а не режется многоточием: в колонке 370 полное ФИО
+ * помещается почти всегда, а обрезанное «Ковальчук Ярослав Бог…» — ровно
+ * та часть, по которой человека различают.
+ *
+ * Мета 15 muted: четыре-шесть частей в колонку 370 на кадровых 13 уходили в
+ * серую кашу. Части разделены точкой, нарисованной разметкой между
+ * значениями, — пустое поле не оставляет ни места, ни лишней точки; диктору
+ * точка не читается. Длинная почта ломается где угодно
+ * (`overflow-wrap:anywhere`), а не вылезает из колонки.
+ */
+const listNameClass = "block text-[17px] font-bold leading-[22px] text-primary [overflow-wrap:anywhere]";
+const listMetaClass = "mt-[2px] block text-[15px] leading-[20px] text-muted [overflow-wrap:anywhere]";
+
+/**
+ * Выбор-фильтр в залитом силуэте поля (look="fill": заливка #f0ecff, без
+ * рамки, высота 36, радиус 5) — как фильтры «Статистики» (f23/f29).
+ *
+ * Своим элементом, а не общим Select: у того два вида — штатный с рамкой
+ * #cccccc и «bare» в силуэте контурного поля, — и залитого нет, а
+ * переопределять рамку и заливку снаружи классом нельзя: в Tailwind две
+ * утилиты одного свойства в строке классов спорят, и побеждает не
+ * последняя, а та, что ниже в собранном CSS (см. пояснение к полям в
+ * primitives.tsx). Каретка — знаком (IconCaret), а не фоном: фон
+ * стилем — это инлайновый style, которого в новой разметке нет.
+ *
+ * Пустой выбор («Усі відділення») набран подписью поля — 17/700
+ * фиолетовым, выбранный — начертанием данных: заполненный фильтр обязан
+ * отличаться от незаполненного с первого взгляда. Какие пункты стоят в
+ * списке, когда значение из адреса в данных не встречается, — facetChoice
+ * в model.ts.
+ */
+function FillSelect({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+}) {
+  const empty = !value || value === options[0]?.value;
+  return (
+    <span className="relative block min-w-0">
+      <select
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className={cx(
+          "h-9 w-full min-w-0 appearance-none truncate rounded-[5px] border-0 bg-primary-soft pl-[10px] pr-[30px] text-[17px]",
+          empty ? "font-bold text-primary" : "font-normal text-text",
+          "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)] disabled:opacity-45",
+        )}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+      <span aria-hidden className="pointer-events-none absolute right-[11px] top-1/2 flex -translate-y-1/2 text-primary">
+        <IconCaret />
+      </span>
+    </span>
+  );
+}
+
+/** Фильтр по значениям из данных: «усі» первым пунктом, выбранное — см. facetChoice */
+function FacetSelect({
+  label,
+  all,
+  values,
+  current,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  all: string;
+  values: string[];
+  current: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const choice = facetChoice(values, current);
+  return (
+    <FillSelect
+      label={label}
+      value={choice.value}
+      onChange={onChange}
+      disabled={disabled}
+      options={[{ value: "", label: all }, ...choice.options.map((v) => ({ value: v, label: v }))]}
+    />
+  );
+}
+
+/** Сетка людей — одна на плоский список и на каждую группу */
+function StaffGrid({ rows, omit, meta }: { rows: StaffRow[]; omit?: StaffGroupBy; meta: { male: string; female: string; year: string } }) {
+  return (
+    <ul className={cx("m-0 list-none p-0", gridClass)}>
+      {rows.map((r) => (
+        <li key={r.id} className="min-w-0">
+          <Link to={`/staff/${r.id}`} className={rowClass}>
+            <span className={listNameClass}>{r.fullName}</span>
+            <span className={listMetaClass}>
+              {staffMeta(r, meta, omit).map((s, i) => (
+                /* ключ — место в строке: части не переставляются, а значения могут совпасть (відділення и посада) */
+                <Fragment key={i}>
+                  {i > 0 ? (
+                    <span aria-hidden className="px-[6px]">
+                      ·
+                    </span>
+                  ) : null}
+                  <span>{s}</span>
+                </Fragment>
+              ))}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function StaffList({ kind }: { kind: StaffKind }) {
   const { ut } = useLang();
   const { user, can } = useAuth();
@@ -89,8 +257,24 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
    */
   const canManage = can("users.manage");
   const viewerId = user?.id ?? "";
-  /* поиск в адресе: «вот эти люди» пересылаются ссылкой, как и в списке пациентов */
+  /*
+   * Поиск, отбор и порядок — в адресе: «вот эти люди» пересылаются ссылкой,
+   * как и в списке пациентов, каталоге тестов и перечне аналитики. Пишется
+   * через replace (useUrlState): «назад» уводит со страницы, а не отматывает
+   * набранное по букве.
+   */
   const [q, setQ] = useUrlState("q");
+  const [unit, setUnit] = useUrlState("unit");
+  const [position, setPosition] = useUrlState("position");
+  const [sortParam, setSort] = useUrlState("sort", "name");
+  const sort = parseSort(sortParam);
+
+  /*
+   * Вкладки — тем, кому открыты оба списка: вкладка на адрес, которого у
+   * человека нет, увела бы его на сводку. Правило одно с маршрутами App.tsx.
+   */
+  const lists = peopleLists(user);
+  const bothLists = lists.doctors && lists.admins;
 
   /*
    * Реестру администраторов нужны ступени лестницы — они догружаются
@@ -106,11 +290,17 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
     { enabled: !!user },
   );
 
-  const shown = useMemo(() => {
-    const rows = res.data?.rows ?? [];
+  /* люди этого списка — от них и значения фильтров, чтобы выбор одного не выкидывал пункты другого */
+  const ofKind = useMemo(() => {
     const pick = kind === "admins" ? isAdministrator : isDoctor;
-    return rows.filter((r) => pick(r) && matchesQuery(r, q));
-  }, [res.data, kind, q]);
+    return (res.data?.rows ?? []).filter(pick);
+  }, [res.data, kind]);
+  const departments = useMemo(() => facetValues(ofKind, "unit"), [ofKind]);
+  const positions = useMemo(() => facetValues(ofKind, "position"), [ofKind]);
+
+  const shown = useMemo(() => filterStaff(ofKind, { q, unit, position }), [ofKind, q, unit, position]);
+  const groups = useMemo(() => (sort === "name" ? null : groupStaff(shown, sort)), [shown, sort]);
+  const flat = useMemo(() => (sort === "name" ? sortByName(shown) : []), [shown, sort]);
 
   const isAdmins = kind === "admins";
   const meta = { male: ut("adm.male"), female: ut("adm.female"), year: ut("ppl.yearShort") };
@@ -132,10 +322,13 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
             подписи-плейсхолдера. Лупа — украшение, поиск идёт по мере набора.
             Отступ лупы 6 от внутренней кромки поля — замер f42 (чернила
             1290…1311 при кромке 1316).
+
+            Имя поля говорит, по чему ищут, — ФИО, логин, телефон: поиск по
+            номеру глазом не угадывается, а диктор иначе не узнает о нём вовсе.
           */}
           <Input
             look="outline"
-            aria-label={ut("adm.searchPlaceholder")}
+            aria-label={ut("ppl.searchStaff")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="pr-[34px]"
@@ -173,27 +366,87 @@ export default function StaffList({ kind }: { kind: StaffKind }) {
         {res.data?.partial ? ` · ${ut("ppl.directoryPartial")}` : ""}
       </p>
 
+      {/*
+        Вкладки — ссылками на адреса списков, а не переключателем: «Лікарі»
+        и «Адміністратори» — два экрана со своими адресами, их пересылают и
+        кладут в закладки. Отбор при переходе не переносится: відділення и
+        посады у двух списков свои, и перенесённый фильтр показал бы пустоту.
+        24 до строки фильтров — «вкладки → сетка» дизайн-системы.
+      */}
+      {bothLists ? (
+        <div className="mb-[24px]">
+          <Tabs
+            label={ut("ppl.listsLabel")}
+            items={[
+              { to: "/staff", label: ut("ppl.staff"), end: true },
+              { to: "/admins", label: ut("adm.admins"), end: true },
+            ]}
+          />
+        </div>
+      ) : null}
+
+      {/*
+        Фильтры и порядок — по колонкам сетки ниже (три по 370 с зазором 45):
+        выбор стоит над своей колонкой, и строка фильтров читается как шапка
+        списка, а не как отдельная панель. На узком окне — столбиком, как и
+        сама сетка. До ответа сервера выборы погашены: пунктов в них ещё нет.
+      */}
+      <div className={cx(gridClass, "mb-[24px] gap-y-[12px]")}>
+        <FacetSelect
+          label={ut("ppl.department")}
+          all={ut("ppl.allDepartments")}
+          values={departments}
+          current={unit}
+          onChange={setUnit}
+          disabled={!res.data}
+        />
+        <FacetSelect
+          label={ut("mp.position")}
+          all={ut("ppl.allPositions")}
+          values={positions}
+          current={position}
+          onChange={setPosition}
+          disabled={!res.data}
+        />
+        <FillSelect
+          label={ut("ppl.sort")}
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: "name", label: ut("ppl.sortByName") },
+            { value: "unit", label: ut("ppl.sortByDepartment") },
+            { value: "position", label: ut("ppl.sortByPosition") },
+          ]}
+        />
+      </div>
+
       {res.error ? (
         <Loading error={res.error} onRetry={res.reload} />
       ) : !res.data ? (
         <Loading rows={6} />
       ) : shown.length === 0 ? (
         <p className="m-0 py-[24px] text-[13px] text-muted">{ut("pt.nobodyFound")}</p>
+      ) : groups ? (
+        groups.map((g) => (
+          /*
+           * Раздел группы — как раздел карточки пациента (Section в
+           * PatientCard.tsx): 20/700 фиолетовым над линией 2px #b299cc. Число
+           * людей — рядом с заголовком, моноширинным серым, как число у
+           * заголовка экрана (Page, count): название группы — имя, число —
+           * сведения о её содержимом. «Без відділення» — последней.
+           */
+          <section key={g.title ?? ""} className="border-t-2 border-primary-rule pb-[16px] pt-[32px]">
+            <div className="mb-[14px] flex items-baseline gap-[10px]">
+              <h2 className="m-0 text-[20px] font-bold leading-[24px] text-primary">
+                {g.title ?? (sort === "unit" ? ut("ppl.noDepartment") : ut("ppl.noPosition"))}
+              </h2>
+              <span className="font-mono text-[13px] tabular-nums text-muted">{g.rows.length}</span>
+            </div>
+            <StaffGrid rows={g.rows} omit={sort === "name" ? undefined : sort} meta={meta} />
+          </section>
+        ))
       ) : (
-        <ul className={cx("m-0 list-none p-0", gridClass)}>
-          {shown.map((r) => (
-            <li key={r.id} className="min-w-0">
-              <Link to={`/staff/${r.id}`} className={rowClass}>
-                <span className={nameClass}>{r.fullName}</span>
-                <span className={metaClass}>
-                  {metaSegments(r, meta).map((s) => (
-                    <span key={s}>{s}</span>
-                  ))}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <StaffGrid rows={flat} meta={meta} />
       )}
     </Page>
   );

@@ -2,6 +2,7 @@ export * from "./types";
 export * from "./schemas";
 export * from "./scoring";
 export * from "./validate";
+export * from "./phone";
 export * from "./uiStrings";
 export * from "./errorStrings";
 export * from "./pushStrings";

@@ -1,4 +1,4 @@
-import type { User } from "@quizzy/shared";
+import type { AssignableStaff, StaffDirectoryUser, User } from "@quizzy/shared";
 import { api } from "../../api";
 import { type StaffRow, fromAssignable, fromUser, isStaff, sortByName } from "./model";
 
@@ -6,10 +6,14 @@ import { type StaffRow, fromAssignable, fromUser, isStaff, sortByName } from "./
  * Справочник сотрудников — из того, что сервер уже отдаёт.
  *
  * Своего маршрута «список лікарів» у сервера нет (см. api_gaps). Есть два
- * соседних: GET /api/users — весь реестр, закрытый правом users.manage, и
+ * соседних: GET /api/users — реестр, закрытый правом users.manage, и
  * GET /api/permissions/staff — «кого я вправе назначать», открытый
  * заведующему. Первый полнее (пол, дата рождения, специальность), второй
- * доступнее.
+ * доступнее. Оба зовутся с `?directory=1`: так в строке есть телефон и
+ * профиль приёма (відділення, посада), по которым раздел ищет, фильтрует и
+ * группирует (решение заказчика 2026-09-26), а реестр отдаёт одних
+ * сотрудников — без пациентов, которых прежде качал целиком ради отбора в
+ * браузере. Чтение справочника сервер пишет в журнал с пометкой `phones`.
  *
  * По какому идти, решается ДО запроса — по праву из карточки прав (useAuth
  * → can), а не пробой реестра с откатом по отказу. Проба стоила дорого не
@@ -38,28 +42,29 @@ export interface Viewer {
  * цены, и проверять их живым сервером значило бы проверять случайно.
  */
 export interface DirectorySource {
-  users: () => Promise<User[]>;
-  assignableStaff: () => Promise<{ id: string; email: string; role: string; fullName: string }[]>;
+  staffDirectory: () => Promise<StaffDirectoryUser[]>;
+  assignableDirectory: () => Promise<AssignableStaff[]>;
 }
 
 async function fetchDirectory(viewer: Viewer, src: DirectorySource): Promise<Directory> {
   if (viewer.canManageUsers) {
-    const users = await src.users();
+    /* пациентов сервер в этом режиме не отдаёт; отбор остаётся страховкой от старого сервера */
+    const users = await src.staffDirectory();
     return { rows: sortByName(users.filter(isStaff).map(fromUser)), partial: false };
   }
-  const staff = await src.assignableStaff();
+  const staff = await src.assignableDirectory();
   return { rows: sortByName(staff.map(fromAssignable)), partial: true };
 }
 
 /*
  * Последний загруженный справочник — на время сеанса, для карточки.
  *
- * Полный реестр — дорогой ответ не по байтам, а по существу: сервер выбирает
- * всю таблицу users вместе с пациентами, расшифровывает ФИО и даты рождения
- * каждого и пишет user.list в журнал. Качать его ради одной строки при
- * каждом открытии карточки значило бы возить персональные данные всех
- * пациентов в браузер за каждым щелчком по фамилии коллеги. Список этот
- * ответ и так получает — карточка берёт строку из него.
+ * Справочник — дорогой ответ не по байтам, а по существу: сервер
+ * расшифровывает ФИО, даты рождения и телефоны каждого сотрудника и пишет
+ * user.list в журнал. Качать его ради одной строки при каждом открытии
+ * карточки значило бы возить номера всех коллег в браузер и в журнал за
+ * каждым щелчком по фамилии. Список этот ответ и так получает — карточка
+ * берёт строку из него.
  *
  * Кеш привязан к тому, кто смотрит: вышел суперадмин, вошёл заведующий —
  * ему достаётся не чужой реестр, а свой ответ. Срока годности нет: список
