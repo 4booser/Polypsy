@@ -744,6 +744,36 @@ export const surveyAccess = pgTable(
   }),
 );
 
+/**
+ * Окно повторного замера по протоколу наблюдения (миграция 0103).
+ *
+ * У каждого повтора своё окно: открывается в свой день, закрывается через
+ * две недели или к открытию следующего. Открывает окно тик планировщика
+ * (lib/followup.ts, openFollowUps) — выдачей доступа до closesAt.
+ */
+export const surveyFollowups = pgTable(
+  "survey_followups",
+  {
+    id: text("id").primaryKey(),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** «Через сколько дней» из протокола — для примечания к доступу */
+    afterDays: integer("after_days").notNull(),
+    opensAt: timestampCol("opens_at").notNull(),
+    closesAt: timestampCol("closes_at").notNull(),
+    /** Когда окно открыто, то есть выдан доступ; null — ещё впереди */
+    openedAt: timestampCol("opened_at"),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({
+    userIdx: index("survey_followups_user_idx").on(t.userId, t.surveyId),
+  }),
+);
+
 export const surveyVersions = pgTable(
   "survey_versions",
   {
@@ -1543,6 +1573,14 @@ export const schedules = pgTable(
     active: boolean("active").notNull().default(true),
     lastRunAt: timestampCol("last_run_at"),
     nextRunAt: timestampCol("next_run_at").notNull(),
+    /**
+     * Повторная попытка после сбоя (миграция 0103) — отдельно от планового
+     * срока: сбой больше не сдвигает nextRunAt на следующий период, а
+     * назначает попытку через 15 минут, 30, час… (lib/scheduler.ts).
+     */
+    retryAt: timestampCol("retry_at"),
+    /** Сбоев подряд: от него растёт пауза до повторной попытки */
+    failures: integer("failures").notNull().default(0),
     createdBy: text("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -1839,11 +1877,51 @@ export const alertNotifications = pgTable(
     sentAt: timestampCol("sent_at").notNull().default(sql`now()`),
     /** Кому ушло: email-адреса через запятую (для разбора инцидентов) */
     recipients: text("recipients").notNull(),
-    /** none — SMTP не настроен, уведомление только в журнале */
-    channel: text("channel", { enum: ["email", "none"] }).notNull(),
+    /**
+     * Чем дошло: email — письмо принял почтовый сервер (пуш мог уйти тоже),
+     * push — дошёл только пуш. none рассыльщик больше не пишет (миграция
+     * 0103): строка здесь значит «дошло», а «не дошло» живёт в
+     * alert_deliveries. Старые строки с none остаются как были.
+     */
+    channel: text("channel", { enum: ["email", "push", "none"] }).notNull(),
   },
   (t) => ({
     alertKindIdx: uniqueIndex("alert_notifications_alert_kind_idx").on(t.alertId, t.kind),
+  }),
+);
+
+/**
+ * Состояние доставки уведомления о тревоге (миграция 0103): захват
+ * рассыльщиком, попытки, исход по каналам. Смысл состояний и счётчика
+ * mails — в миграции и в lib/notify.ts.
+ */
+export const alertDeliveries = pgTable(
+  "alert_deliveries",
+  {
+    alertId: text("alert_id")
+      .notNull()
+      .references(() => riskAlerts.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["initial", "escalation"] }).notNull(),
+    state: text("state", { enum: ["sending", "delivered", "undelivered", "abandoned"] }).notNull(),
+    /** Проход рассыльщика, держащий захват */
+    owner: text("owner"),
+    leaseUntil: timestampCol("lease_until"),
+    /** Сколько раз задание брали */
+    attempts: integer("attempts").notNull().default(0),
+    /** Сколько раз письмо ушло на почтовый сервер — или могло уйти */
+    mails: integer("mails").notNull().default(0),
+    /** Исход последней попытки по почте */
+    email: text("email", { enum: ["sent", "none", "failed"] }),
+    /** Скольким дежурным ушёл пуш по этой тревоге */
+    pushed: integer("pushed").notNull().default(0),
+    /** Код отказа — без текста исключения: в нём бывают адреса */
+    error: text("error"),
+    firstAt: timestampCol("first_at").notNull().default(sql`now()`),
+    lastAt: timestampCol("last_at").notNull().default(sql`now()`),
+    deliveredAt: timestampCol("delivered_at"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.alertId, t.kind] }),
   }),
 );
 
@@ -3069,6 +3147,19 @@ export const visitRecordings = pgTable(
       .notNull()
       .default("consent_pending"),
     failure: text("failure"),
+
+    /**
+     * Захват расшифровки (миграция 0103): чей он и до какого времени.
+     *
+     * Захват коммитится сразу, а модель работает вне транзакции, — поэтому
+     * упавший воркер больше не «отпускает» строку откатом, и её держит
+     * аренда: воркер продлевает её, пока работает, а просроченную берёт
+     * следующий. Метка захвата отличает «мою» расшифровку от чужой: итог
+     * пишется, только если строка всё ещё захвачена этой самой меткой (см.
+     * lib/recordings.ts, transcribeNext).
+     */
+    transcribeClaim: text("transcribe_claim"),
+    transcribeLeaseUntil: timestampCol("transcribe_lease_until"),
 
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     /**

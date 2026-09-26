@@ -300,6 +300,9 @@ export type AuditAction =
   | "invite.use"
   | "alert.notified"
   | "alert.escalated"
+  /* уведомление о тревоге не дошло ни одним каналом / брошено после трёх писем без подтверждения (lib/notify.ts) */
+  | "alert.undelivered"
+  | "alert.notify_abandoned"
   | "conclusion.save"
   | "conclusion.sign"
   | "consent.accept"

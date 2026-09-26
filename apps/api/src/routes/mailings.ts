@@ -151,11 +151,12 @@ async function expandRecipients(user: User, row: MailingRow): Promise<string[]> 
   const inZone = [...candidates].filter((id) => visible === null || visible.has(id));
   if (!inZone.length) return [];
 
-  // сотрудник мог попасть в состав группы только в обход, но обход — не повод писать ему
+  // сотрудник мог попасть в состав группы только в обход, но обход — не повод писать ему;
+  // выключенная учётка (0088) — человек ушёл из учреждения, писать ему некуда и незачем
   const patients = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(inArray(users.id, inZone), eq(users.role, "user")));
+    .where(and(inArray(users.id, inZone), eq(users.role, "user"), isNull(users.disabledAt)));
   return patients.map((p) => p.id);
 }
 

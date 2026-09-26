@@ -22,6 +22,7 @@ import {
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
+import { deadlineOf } from "../lib/day";
 import { badRequest, notFound, parseBody } from "../lib/http";
 import { grantAccess } from "../lib/grantAccess";
 import { birthYearOf } from "../lib/privacy";
@@ -552,6 +553,8 @@ patientGroupRoutes.post(
     await assertPatientGroupAccess(user, groupId);
 
     const input = await parseBody(c.req.raw, assignSurveyToPatientGroupSchema);
+    // срок из поля даты — до конца этого дня по поясу учреждения (lib/day.ts, endOfDay)
+    input.expiresAt = deadlineOf(input.expiresAt);
     await assertSurveyAccess(user, input.surveyId);
     await assertSurveysInUse([input.surveyId]);
 

@@ -52,8 +52,50 @@ export interface Grant {
  * Поэтому перевыдача сдвигает всё сразу: срок, дату выдачи и счётчик. Новое
  * назначение — это новое разрешение пройти, а не воспоминание о старом.
  */
-export async function grantAccess(tx: typeof Db, grants: Grant[]): Promise<void> {
-  if (!grants.length) return;
+export interface GrantOptions {
+  /**
+   * Не укорачивать уже выданный доступ: срок становится поздним из двух, а
+   * бессрочный остаётся бессрочным.
+   *
+   * Для назначения набора поверх методики, доступ к которой у человека уже
+   * есть. Ручное назначение набора писало доступ через onConflictDoNothing
+   * («назначение поверх существующего доступа не должно его отзывать») — и
+   * тем самым не продлевало ИСТЁКШИЙ доступ: набор назначен, а методика из
+   * него пациенту не открывается (404). Здесь — оба требования сразу:
+   * истёкший продлевается, более долгий не укорачивается.
+   */
+  extendOnly?: boolean;
+}
+
+export async function grantAccess(tx: typeof Db, grants: Grant[], options: GrantOptions = {}): Promise<void> {
+  /*
+   * Две вставки, а не одна: с лимитом и без.
+   *
+   * «Не указан» и «не ограничивать» — разные вещи (см. attemptsAllowed в
+   * Grant), а в одной вставке их не различить. Колонку, которой нет в
+   * VALUES, PostgreSQL заполняет умолчанием, и `excluded.attempts_allowed`
+   * у выдачи без лимита — это null, то есть «не ограничивать». Так и было:
+   * планировщик, каскад и протокол наблюдения лимита не знают и не
+   * указывают, и методика, назначенная на одну попытку, после планового
+   * повтора становилась проходимой сколько угодно раз — ровно то, от чего
+   * лимит защищает (вторая попытка портит измерение: человек помнит
+   * вопросы).
+   *
+   * Поэтому выдачи без лимита перевыдаются без колонки в SET: старый лимит
+   * остаётся на месте. Новая выдача без лимита по-прежнему получает
+   * умолчание — ей нечего сохранять.
+   */
+  const withLimit = grants.filter((g) => g.attemptsAllowed !== undefined);
+  const keepLimit = grants.filter((g) => g.attemptsAllowed === undefined);
+  if (withLimit.length) await upsertGrants(tx, withLimit, true, options);
+  if (keepLimit.length) await upsertGrants(tx, keepLimit, false, options);
+}
+
+async function upsertGrants(tx: typeof Db, grants: Grant[], setLimit: boolean, options: GrantOptions): Promise<void> {
+  const expiresAt = options.extendOnly
+    ? sql`case when ${surveyAccess.expiresAt} is null or excluded.expires_at is null then null
+               else greatest(${surveyAccess.expiresAt}, excluded.expires_at) end`
+    : sql`excluded.expires_at`;
   await tx
     .insert(surveyAccess)
     .values(
@@ -64,16 +106,16 @@ export async function grantAccess(tx: typeof Db, grants: Grant[]): Promise<void>
         expiresAt: g.expiresAt,
         note: g.note,
         viaPatientGroupId: g.viaPatientGroupId ?? null,
-        ...(g.attemptsAllowed === undefined ? {} : { attemptsAllowed: g.attemptsAllowed }),
+        ...(setLimit ? { attemptsAllowed: g.attemptsAllowed ?? null } : {}),
       })),
     )
     .onConflictDoUpdate({
       target: [surveyAccess.surveyId, surveyAccess.userId],
       set: {
         grantedBy: sql`excluded.granted_by`,
-        expiresAt: sql`excluded.expires_at`,
+        expiresAt,
         note: sql`excluded.note`,
-        attemptsAllowed: sql`excluded.attempts_allowed`,
+        ...(setLimit ? { attemptsAllowed: sql`excluded.attempts_allowed` } : {}),
         /* пометка «через группу» переписывается вместе со всем остальным —
            см. поле viaPatientGroupId в интерфейсе выше */
         viaPatientGroupId: sql`excluded.via_patient_group_id`,

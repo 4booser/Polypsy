@@ -1,11 +1,12 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../db";
+import { eq, inArray, sql } from "drizzle-orm";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import { visitRecordings } from "../db/schema";
 import { env } from "../env";
-import { activeKey, keyById, loadedKeyIds } from "./crypto";
+import { activeKey, encryptField, keyById, loadedKeyIds } from "./crypto";
 import { log } from "./log";
 
 /**
@@ -159,7 +160,15 @@ export async function eraseAudio(path: string | null): Promise<void> {
 export interface Transcriber {
   /** Имя движка и версия — попадают в базу рядом со стенограммой */
   name: string;
-  run(audio: Buffer, lang: "uk" | "ru"): Promise<string>;
+  /**
+   * Расшифровать. `signal` срабатывает, если запись удалили или отозвали
+   * согласие, пока модель работает: жечь процессор дальше на разговор,
+   * который просили убрать, незачем — а у whisper.cpp этот разговор всё это
+   * время лежит открытым временным файлом. Движок вправе сигнал не слушать
+   * (вызов whisper пока не слушает — он на участке recordings): итог всё
+   * равно отбросит запись результата.
+   */
+  run(audio: Buffer, lang: "uk" | "ru", signal?: AbortSignal): Promise<string>;
 }
 
 /**
@@ -212,6 +221,214 @@ export function transcriptionAvailable(): boolean {
   return transcriber !== null || localWhisper() !== null;
 }
 
+/*
+ * ─── захват, работа модели, запись итога ───
+ *
+ * Три шага, и транзакция только у крайних.
+ *
+ * Прежде воркер звал расшифровку внутри systemContext — одной транзакцией на
+ * всё: захват строки, чтение файла, минуты работы модели, запись итога. Это
+ * значило три вещи сразу. Строчный замок захвата держался, пока работает
+ * модель, — и человек, нажавший «удалить» или «отозвать согласие», ждал
+ * конца расшифровки (запрос висел минутами, а то и падал по таймауту
+ * прокси). Статус «розшифровується» не видел никто до самого коммита: экран
+ * приёма показывал «в очереди», пока всё уже шло. И соединение из пула было
+ * занято на всё это время одним воркером. Тест этого не замечал: он звал
+ * функцию без транзакции вокруг — не так, как воркер.
+ *
+ * Теперь захват — короткой транзакцией, коммит сразу: статус виден, замка
+ * нет. Модель работает вне транзакции вовсе. Итог пишется второй короткой
+ * транзакцией, и она заново смотрит на строку: не удалили ли запись, не
+ * отозвали ли согласие, не перехватил ли её другой воркер. Любое «да» —
+ * итог отбрасывается. Всё это верно, в какой бы транзакции расшифровку ни
+ * позвали: шаги берут свои транзакции от baseDb и чужую не трогают.
+ *
+ * Цена короткого захвата — упавший воркер больше не «отпускает» строку
+ * откатом: коммит уже был. Поэтому у захвата есть аренда. Пока модель
+ * работает, воркер её продлевает; просроченную берёт следующий проход.
+ * Метка захвата отличает свою аренду от чужой: опоздавший воркер, чью
+ * аренду уже перехватили, своё не запишет.
+ */
+
+/** Аренда захвата: столько строка остаётся за воркером без продления */
+const LEASE_MS = 10 * 60_000;
+/**
+ * Как часто воркер продлевает аренду — и заодно смотрит, жива ли запись.
+ * Десять продлений на одну аренду: воркер, у которого моргнула база,
+ * не теряет запись с первого же пропуска.
+ */
+const HEARTBEAT_MS = 60_000;
+
+let timing = { leaseMs: LEASE_MS, heartbeatMs: HEARTBEAT_MS };
+
+/** Тестам — короткие аренда и продление; null — как в бою */
+export function setTranscribeTimingForTests(next: Partial<typeof timing> | null): void {
+  timing = { leaseMs: next?.leaseMs ?? LEASE_MS, heartbeatMs: next?.heartbeatMs ?? HEARTBEAT_MS };
+}
+
+interface TranscribeJob {
+  id: string;
+  audioPath: string;
+  /** Метка этого захвата: итог пишется, только пока строка захвачена ею */
+  claim: string;
+}
+
+/**
+ * Взять запись: самую старую ждущую — или брошенную упавшим воркером.
+ *
+ * Одним оператором, а не «выбрать, потом пометить». Два действия порознь
+ * означают, что второй воркер видит ту же строку ещё не помеченной и
+ * берётся за неё тоже: двойная нагрузка на процессор и затёртая
+ * стенограмма. `for update skip locked` пропускает занятые строки вместо
+ * ожидания, поэтому второй воркер сразу берёт следующую.
+ *
+ * Условия на согласие и файл — прямо здесь. Строка без файла, взятая в
+ * работу, прежде оставалась в «розшифровується» навсегда (воркер брал её и
+ * тут же бросал), а без согласия расшифровывать нечего по определению.
+ *
+ * Захват без срока (transcribe_lease_until пуст) считается брошенным: такие
+ * строки остаются от расшифровки, позванной без транзакции до миграции 0103.
+ */
+async function claimRecording(): Promise<TranscribeJob | null> {
+  const claim = crypto.randomUUID();
+  const [row] = await db.execute<{ id: string; audio_path: string }>(sql`
+    update visit_recordings
+       set status = 'transcribing',
+           transcribe_claim = ${claim},
+           transcribe_lease_until = now() + make_interval(secs => ${timing.leaseMs / 1000})
+     where id = (
+       select id from visit_recordings
+        where audio_path is not null
+          and consent_at is not null
+          and (status = 'uploaded'
+               or (status = 'transcribing'
+                   and (transcribe_lease_until is null or transcribe_lease_until < now())))
+        order by created_at
+        for update skip locked
+        limit 1
+     )
+    returning id, audio_path
+  `);
+  return row ? { id: String(row.id), audioPath: String(row.audio_path), claim } : null;
+}
+
+/**
+ * Продлить аренду. Ложь — запись больше не наша: удалена, согласие
+ * отозвано или захват перехвачен.
+ */
+async function extendLease(job: TranscribeJob): Promise<boolean> {
+  const rows = await db.execute(sql`
+    update visit_recordings
+       set transcribe_lease_until = now() + make_interval(secs => ${timing.leaseMs / 1000})
+     where id = ${job.id}
+       and transcribe_claim = ${job.claim}
+       and status = 'transcribing'
+       and consent_at is not null
+    returning id
+  `);
+  return rows.length > 0;
+}
+
+/**
+ * Продлевать аренду, пока модель работает; запись пропала — сказать модели
+ * остановиться. Возвращает «хватит»: ждёт продление, если оно в пути, чтобы
+ * оно не легло поверх уже записанного итога.
+ */
+function keepLease(job: TranscribeJob, stop: AbortController): () => Promise<void> {
+  let inFlight: Promise<void> | null = null;
+  const timer = setInterval(() => {
+    if (inFlight || stop.signal.aborted) return;
+    inFlight = systemContext(baseDb, () => extendLease(job))
+      .then((ours) => {
+        if (ours) return;
+        log.info("recording.transcribe_stopped", { id: job.id });
+        stop.abort();
+      })
+      // база моргнула — не повод бросать работу: аренда рассчитана на десять пропусков
+      .catch((error) => log.warn("recording.lease_extend_failed", { id: job.id, error: String(error) }))
+      .finally(() => {
+        inFlight = null;
+      });
+  }, timing.heartbeatMs);
+  return async () => {
+    clearInterval(timer);
+    if (inFlight) await inFlight;
+  };
+}
+
+type TranscribeResult = { text: string } | { error: unknown };
+
+/**
+ * Записать итог — если запись всё ещё наша.
+ *
+ * Строка перечитывается под замком, и итог ложится, только если она по-
+ * прежнему расшифровывается ЭТИМ захватом и согласие на месте. Модель
+ * работала минутами, и за это время человек мог:
+ *   — удалить запись: безусловный UPDATE клал бы текст разговора в базу
+ *     ПОСЛЕ просьбы удалить — и он там оставался, потому что удаление уже
+ *     отработало; неудачу — поднимал бы удалённую строку в «не вдалося», с
+ *     кнопкой «повторить» и без следа того, что человек просил её убрать;
+ *   — отозвать согласие: стенограмма разговора, хранить который больше нет
+ *     основания;
+ *   — отозвать и дать согласие снова, записать приём заново: статус опять
+ *     дойдёт до «розшифровується», но захват будет уже другой, и старый итог
+ *     лёг бы на новую запись.
+ *
+ * Отброшенный итог уносит и файл — если строка на него больше не ссылается,
+ * а запись удалена или без согласия (или строки нет вовсе). Иначе файл не
+ * трогается: при повторной записи путь тот же (`<id>.enc`), и стереть его
+ * значило бы стереть НОВЫЙ разговор. Стирается под тем же замком: пока он
+ * держится, запись не перейдёт ни в «іде запис», ни дальше.
+ */
+async function settleRecording(
+  job: TranscribeJob,
+  engine: string,
+  result: TranscribeResult,
+): Promise<"done" | "failed" | "discarded"> {
+  const [row] = await db.execute<{
+    status: string;
+    consent_at: string | null;
+    audio_path: string | null;
+    transcribe_claim: string | null;
+  }>(sql`
+    select status, consent_at, audio_path, transcribe_claim
+      from visit_recordings
+     where id = ${job.id}
+       for update
+  `);
+  const ours = row?.status === "transcribing" && row.transcribe_claim === job.claim && row.consent_at != null;
+  if (!ours) {
+    const gone = !row || ((row.status === "discarded" || row.status === "consent_pending") && !row.audio_path);
+    if (gone) await eraseAudio(job.audioPath);
+    return "discarded";
+  }
+
+  const released = { transcribeClaim: null, transcribeLeaseUntil: null };
+  if ("text" in result) {
+    await db
+      .update(visitRecordings)
+      .set({
+        status: "done",
+        transcriptEnc: encryptField(result.text),
+        transcriptEngine: engine,
+        transcriptAt: new Date().toISOString(),
+        ...released,
+      })
+      .where(eq(visitRecordings.id, job.id));
+    return "done";
+  }
+  /*
+   * Отказ записывается словами и остаётся видимым. Молчаливый провал
+   * означал бы запись, которая «обрабатывается» третью неделю, и человека,
+   * который ждёт стенограммы, не подозревая, что её не будет.
+   */
+  await db
+    .update(visitRecordings)
+    .set({ status: "failed", failure: String(result.error).slice(0, 500), ...released })
+    .where(eq(visitRecordings.id, job.id));
+  return "failed";
+}
+
 /**
  * Расшифровать одну запись.
  *
@@ -223,87 +440,32 @@ export async function transcribeNext(): Promise<boolean> {
   const engine = transcriber ?? localWhisper();
   if (!engine) return false;
 
-  /*
-   * Запись забирается одним оператором, а не «выбрать, потом пометить».
-   *
-   * Два действия порознь означают, что второй воркер видит ту же строку
-   * ещё не помеченной и берётся за неё тоже: расшифровка идёт двадцать
-   * минут, всё это время его UPDATE ждёт на строчном замке, а потом
-   * перезаписывает уже готовый результат — двойная нагрузка на процессор и
-   * затёртая стенограмма.
-   *
-   * `for update skip locked` вдобавок пропускает занятые строки вместо
-   * ожидания, поэтому второй воркер сразу берёт следующую.
-   */
-  const [claimed] = await db.execute<{ id: string; audio_path: string | null }>(sql`
-    update visit_recordings
-       set status = 'transcribing'
-     where id = (
-       select id from visit_recordings
-        where status = 'uploaded'
-        order by created_at
-        for update skip locked
-        limit 1
-     )
-    returning id, audio_path
-  `);
-  if (!claimed?.audio_path) return false;
-  const row = { id: String(claimed.id), audioPath: String(claimed.audio_path) };
+  const job = await systemContext(baseDb, () => claimRecording());
+  if (!job) return false;
 
+  const stop = new AbortController();
+  const release = keepLease(job, stop);
+  let result: TranscribeResult;
   try {
-    const audio = await readAudio(row.audioPath);
-    const { encryptField } = await import("./crypto");
-    const text = await engine.run(audio, "uk");
-    /*
-     * Пишем только если запись всё ещё расшифровывается.
-     *
-     * Расшифровка идёт минутами, и за это время человек может попросить её
-     * удалить. Без условия в самом UPDATE текст разговора ложился бы в базу
-     * ПОСЛЕ просьбы удалить — и оставался там, потому что удаление уже
-     * отработало.
-     */
-    const written = await db
-      .update(visitRecordings)
-      .set({
-        status: "done",
-        transcriptEnc: encryptField(text),
-        transcriptEngine: engine.name,
-        transcriptAt: new Date().toISOString(),
-      })
-      .where(and(eq(visitRecordings.id, row.id), eq(visitRecordings.status, "transcribing")))
-      .returning({ id: visitRecordings.id });
-    if (!written.length) {
-      log.info("recording.transcribe_discarded", { id: row.id });
-      return true;
-    }
-    log.info("recording.transcribed", { id: row.id, chars: text.length });
-    return true;
+    const audio = await readAudio(job.audioPath);
+    result = { text: await engine.run(audio, "uk", stop.signal) };
   } catch (error) {
-    /*
-     * Отказ записывается словами и остаётся видимым. Молчаливый провал
-     * означал бы запись, которая «обрабатывается» третью неделю, и человека,
-     * который ждёт стенограммы, не подозревая, что её не будет.
-     */
-    const marked = await db
-      .update(visitRecordings)
-      .set({ status: "failed", failure: String(error).slice(0, 500) })
-      /*
-       * Условие то же, что у успешной ветки, и по той же причине.
-       * Расшифровка идёт минутами, за это время запись могли удалить — и
-       * безусловный UPDATE поднимал удалённую строку обратно в «не
-       * получилось». На экране приёма она снова числилась записью: с
-       * текстом ошибки, кнопкой «повторить» и без всякого следа того, что
-       * человек попросил её убрать.
-       */
-      .where(and(eq(visitRecordings.id, row.id), eq(visitRecordings.status, "transcribing")))
-      .returning({ id: visitRecordings.id });
-    if (!marked.length) {
-      log.info("recording.transcribe_failed_discarded", { id: row.id });
-      return true;
-    }
-    log.error("recording.transcribe_failed", { id: row.id, error: String(error) });
-    return true;
+    result = { error };
+  } finally {
+    await release();
   }
+
+  const outcome = await systemContext(baseDb, () => settleRecording(job, engine.name, result));
+  if (outcome === "done") {
+    log.info("recording.transcribed", { id: job.id, chars: "text" in result ? result.text.length : 0 });
+  } else if (outcome === "failed") {
+    log.error("recording.transcribe_failed", { id: job.id, error: String("error" in result ? result.error : "") });
+  } else {
+    log.info("error" in result ? "recording.transcribe_failed_discarded" : "recording.transcribe_discarded", {
+      id: job.id,
+    });
+  }
+  return true;
 }
 
 /** Сколько записей ждёт расшифровки — для честной подписи на экране */

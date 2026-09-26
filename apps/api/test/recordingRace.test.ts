@@ -1,10 +1,18 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { api, app, client, db, makeUser } from "./fixtures";
 import { appointments, departments, slots, specialistProfiles, visitRecordings } from "../src/db/schema";
-import { setTranscriberForTests, storeAudio, transcribeNext } from "../src/lib/recordings";
+import {
+  eraseAudio,
+  setTranscribeTimingForTests,
+  setTranscriberForTests,
+  storeAudio,
+  transcribeNext,
+} from "../src/lib/recordings";
+import { baseDb } from "../src/db";
+import { systemContext } from "../src/db/context";
 import { env } from "../src/env";
 
 /**
@@ -206,5 +214,301 @@ describe("удаление во время расшифровки", () => {
 
     const state = await api(`/api/recordings/${id}`, specialist.token);
     expect(state.body.status).toBe("discarded");
+  });
+});
+
+/* ═══════════ расшифровка так, как её ведёт воркер ═══════════ */
+
+/**
+ * Обещание — или «не дождались» за отведённый срок.
+ *
+ * Срок здесь потолок, а не пауза: исправный путь отвечает за миллисекунды,
+ * и тест ждёт ровно столько. Потолок нужен неисправному: удаление, стоящее
+ * на замке воркера, ждало бы конца расшифровки, а расшифровка — конца
+ * удаления, и тест висел бы до общего таймаута, ничего не сказав.
+ */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | "timeout"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<"timeout">((r) => {
+    timer = setTimeout(() => r("timeout"), ms);
+  });
+  try {
+    return await Promise.race([promise, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Записи, поставленные в очередь этим блоком: закрываются в afterAll */
+const queuedHere: { recordingId: string; path: string }[] = [];
+
+/**
+ * Запись приёма с настоящим файлом по настоящему пути — первой в очереди.
+ *
+ * Путь тот же, что даёт остановка (`<id записи>.enc`): от этого зависит,
+ * какой файл и когда стирать, и подставной путь проверял бы не то. Дата
+ * заведения — в прошлом веке: очередь общая на все файлы сюиты, и чужая
+ * строка в «uploaded» (соседи её оставляют) иначе ушла бы первой.
+ */
+async function queued(tag: string) {
+  const v = await visit(tag);
+  await api(`/api/recordings/${v.id}/consent`, v.patient.token, { method: "POST" });
+  const rec = await rowOf(v.id);
+  const path = await storeAudio(rec!.id, new Uint8Array([3, 1, 4, 1, 5]));
+  await db
+    .update(visitRecordings)
+    .set({ status: "uploaded", audioPath: path, audioBytes: 5, createdAt: "1999-01-01T00:00:00.000Z" })
+    .where(eq(visitRecordings.id, rec!.id));
+  queuedHere.push({ recordingId: rec!.id, path });
+  return { ...v, recordingId: rec!.id, path };
+}
+
+/**
+ * Снять свою запись с очереди сразу, а не в afterAll.
+ *
+ * Следующий тест ставит свою запись тем же прошлым веком, и оставленная
+ * живой соседка ушла бы в работу вместо неё — тест проверял бы чужую строку.
+ */
+async function closeQueued(q: { recordingId: string; path: string }) {
+  await db
+    .update(visitRecordings)
+    .set({ status: "discarded", audioPath: null, audioBytes: null })
+    .where(eq(visitRecordings.id, q.recordingId));
+  await eraseAudio(q.path);
+}
+
+/**
+ * Два способа позвать расшифровку.
+ *
+ * Первый — как воркер зовёт её теперь. Второй — как звал до правки: весь
+ * проход внутри systemContext, то есть внутри одной транзакции. Прежний тест
+ * звал функцию голой, без транзакции вокруг, — и потому не видел главного:
+ * в воркере захват строки держался до конца работы модели, удаление и отзыв
+ * согласия ждали на её замке минутами, а статус «розшифровується» не был
+ * виден никому, пока всё не закончится. Второй способ оставлен нарочно:
+ * расшифровка обязана вести себя одинаково, в какой бы транзакции её ни
+ * позвали.
+ */
+const shapes: [string, () => Promise<boolean>][] = [
+  ["как зовёт воркер", () => transcribeNext()],
+  ["внутри внешней транзакции", () => systemContext(baseDb, () => transcribeNext())],
+];
+
+describe("расшифровка вне транзакции", () => {
+  afterAll(async () => {
+    setTranscriberForTests(null);
+    setTranscribeTimingForTests(null);
+    // ничего живого в общей очереди: соседние файлы берут из неё САМУЮ старую
+    const ids = queuedHere.map((q) => q.recordingId);
+    if (ids.length) {
+      await db
+        .update(visitRecordings)
+        .set({ status: "discarded", audioPath: null, audioBytes: null })
+        .where(and(inArray(visitRecordings.id, ids), inArray(visitRecordings.status, ["uploaded", "transcribing"])));
+    }
+    for (const q of queuedHere) await eraseAudio(q.path);
+  });
+
+  const actions = [
+    { name: "удаление", path: "discard", status: "discarded" },
+    { name: "отзыв согласия", path: "consent/revoke", status: "consent_pending" },
+  ] as const;
+
+  for (const [shape, runWorker] of shapes) {
+    for (const action of actions) {
+      test(`${action.name} во время работы модели не ждёт её, и её итог не ложится в карту — ${shape}`, async () => {
+        const q = await queued(`${action.path}-${shape}`);
+
+        let during: { seen: string | null; answer: number | "timeout" } | null = null;
+        setTranscriberForTests({
+          name: "тест",
+          run: async () => {
+            /*
+             * Смотрим ЧУЖИМ соединением, вне транзакции воркера: так видит
+             * запись экран приёма. «Розшифровується» должно быть видно
+             * сразу, а не после того, как всё кончится.
+             */
+            const [row] = await client`select status from visit_recordings where id = ${q.recordingId}`;
+            const res = await within(
+              api(`/api/recordings/${q.id}/${action.path}`, q.patient.token, { method: "POST" }),
+              3000,
+            );
+            during = { seen: row?.status ?? null, answer: res === "timeout" ? "timeout" : res.status };
+            return "Пацієнт сказав зайве і попросив це прибрати.";
+          },
+        });
+
+        expect(await runWorker()).toBe(true);
+        expect(during!, "удаление/отзыв ждали конца расшифровки на замке воркера").toEqual({
+          seen: "transcribing",
+          answer: 200,
+        });
+
+        const row = await rowOf(q.id);
+        expect(row!.status).toBe(action.status);
+        expect(row!.transcriptEnc, "стенограмма разговора, который просили убрать").toBeNull();
+        expect(row!.audioPath).toBeNull();
+        expect(existsSync(q.path), "файл разговора остался на диске").toBe(false);
+      });
+    }
+  }
+
+  test("отзыв, заставший «розшифровується», уносит и стенограмму, дописанную за это время", async () => {
+    /*
+     * Обратный порядок той же гонки. Отзыв прочитал строку, когда модель
+     * ещё работала, а записать своё успел уже ПОСЛЕ того, как воркер
+     * положил стенограмму. Отзыв обнулял аудио и согласие, но не текст — и
+     * разговор, на хранение которого согласия больше нет, оставался в базе
+     * буквами (на экране его не видно только потому, что статус уже не
+     * «готово»).
+     *
+     * Промежуток ставится строчным замком, как в тесте загрузки выше:
+     * UPDATE отзыва доходит до строки и встаёт, тест той же транзакцией
+     * пишет итог «воркера» и коммитит.
+     */
+    const q = await queued("revoke-late");
+    await db.update(visitRecordings).set({ status: "transcribing" }).where(eq(visitRecordings.id, q.recordingId));
+    const { encryptField } = await import("../src/lib/crypto");
+
+    let revoking!: Promise<{ status: number }>;
+    await client.begin(async (tx) => {
+      await tx`select id from visit_recordings where id = ${q.recordingId} for update`;
+      revoking = api(`/api/recordings/${q.id}/consent/revoke`, q.patient.token, { method: "POST" });
+      await untilBlocked();
+      await tx`update visit_recordings
+                  set status = 'done', transcript_enc = ${encryptField("Пацієнт розповів про безсоння.")},
+                      transcript_engine = 'тест', transcript_at = now()
+                where id = ${q.recordingId}`;
+    });
+
+    expect((await revoking).status).toBe(200);
+    const row = await rowOf(q.id);
+    expect(row!.status).toBe("consent_pending");
+    expect(row!.transcriptEnc).toBeNull();
+    expect(row!.transcriptEngine).toBeNull();
+  });
+
+  test("брошенный упавшим воркером захват подбирается, когда истекла аренда", async () => {
+    /*
+     * Обратная сторона короткого захвата: коммит уже был, и упавший посреди
+     * работы воркер строку откатом не отпускает. Без аренды запись осталась
+     * бы в «розшифровується» навсегда — ровно то, от чего предостерегают
+     * комментарии про «обрабатывается третью неделю».
+     */
+    const q = await queued("orphan");
+    await db
+      .update(visitRecordings)
+      .set({
+        status: "transcribing",
+        transcribeClaim: "упавший-воркер",
+        transcribeLeaseUntil: new Date(Date.now() - 60_000).toISOString(),
+      })
+      .where(eq(visitRecordings.id, q.recordingId));
+
+    setTranscriberForTests({ name: "тест", run: async () => "Пацієнт говорить про сон." });
+    expect(await transcribeNext()).toBe(true);
+
+    const row = await rowOf(q.id);
+    expect(row!.status).toBe("done");
+    expect(row!.transcribeClaim).toBeNull();
+    expect(row!.transcribeLeaseUntil).toBeNull();
+  });
+
+  test("опоздавший воркер не пишет поверх чужого захвата", async () => {
+    /*
+     * Воркер завис дольше аренды (или моргнула база, и продления не
+     * дошли), строку взял другой — у неё теперь другая метка захвата. Итог
+     * опоздавшего отбрасывается: иначе две расшифровки одной записи писали
+     * бы по очереди, и в карте осталась бы та, что закончилась позже, — а не
+     * та, что расшифровывает запись сейчас.
+     */
+    const q = await queued("taken");
+    setTranscriberForTests({
+      name: "тест",
+      run: async () => {
+        await client`update visit_recordings set transcribe_claim = 'другой-воркер' where id = ${q.recordingId}`;
+        return "Старий підсумок, який уже нікому не належить.";
+      },
+    });
+    expect(await transcribeNext()).toBe(true);
+
+    const row = await rowOf(q.id);
+    expect(row!.status, "итог опоздавшего воркера лёг поверх чужого захвата").toBe("transcribing");
+    expect(row!.transcriptEnc).toBeNull();
+    expect(row!.transcribeClaim).toBe("другой-воркер");
+    // файл на месте: его расшифровывает тот, другой
+    expect(existsSync(q.path)).toBe(true);
+    await closeQueued(q);
+  });
+
+  test("удалили и записали заново, пока работала модель: старый итог не ложится, новый файл цел", async () => {
+    /*
+     * После удаления согласие остаётся, и специалист вправе начать запись
+     * снова. Путь у файла тот же (`<id записи>.enc`). Отбрасывая итог,
+     * расшифровка стирает файл удалённой записи — и если бы она не
+     * смотрела, что строка уже снова ссылается на файл, она стёрла бы
+     * НОВЫЙ разговор.
+     */
+    const q = await queued("again");
+    setTranscriberForTests({
+      name: "тест",
+      run: async () => {
+        expect((await api(`/api/recordings/${q.id}/discard`, q.patient.token, { method: "POST" })).status).toBe(200);
+        expect((await api(`/api/recordings/${q.id}/start`, q.specialist.token, { method: "POST" })).status).toBe(200);
+        const form = new FormData();
+        form.append("audio", new File([new Uint8Array(64).fill(2)], "visit.wav", { type: "audio/wav" }));
+        const stopped = await app.request(`/api/recordings/${q.id}/stop`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${q.specialist.token}` },
+          body: form,
+        });
+        expect(stopped.status).toBe(200);
+        return "Підсумок видаленої розмови.";
+      },
+    });
+    expect(await transcribeNext()).toBe(true);
+
+    const row = await rowOf(q.id);
+    expect(row!.status).toBe("uploaded");
+    expect(row!.transcriptEnc).toBeNull();
+    expect(row!.audioPath).toBe(q.path);
+    expect(existsSync(q.path), "стёрт файл новой записи").toBe(true);
+    await closeQueued(q);
+  });
+
+  test("пока модель работает, аренда продлевается; удалили — модель просят остановиться", async () => {
+    setTranscribeTimingForTests({ leaseMs: 60_000, heartbeatMs: 20 });
+    try {
+      const q = await queued("beat");
+      let extended = false;
+      let stopped: boolean | "timeout" = false;
+      setTranscriberForTests({
+        name: "тест",
+        run: async (_audio, _lang, signal) => {
+          const lease = async () =>
+            String((await client`select transcribe_lease_until::text as l from visit_recordings where id = ${q.recordingId}`)[0]?.l);
+          const first = await lease();
+          for (let i = 0; i < 100 && !extended; i++) {
+            await new Promise((r) => setTimeout(r, 20));
+            extended = (await lease()) > first;
+          }
+          await api(`/api/recordings/${q.id}/discard`, q.patient.token, { method: "POST" });
+          stopped = await within(
+            new Promise<boolean>((r) => {
+              if (signal?.aborted) r(true);
+              signal?.addEventListener("abort", () => r(true), { once: true });
+            }),
+            3000,
+          );
+          return "Не мало б записатися.";
+        },
+      });
+      expect(await transcribeNext()).toBe(true);
+      expect(extended, "аренда не продлевалась — её перехватили бы у живого воркера").toBe(true);
+      expect(stopped, "удаление не остановило модель").toBe(true);
+      expect((await rowOf(q.id))!.status).toBe("discarded");
+    } finally {
+      setTranscribeTimingForTests(null);
+    }
   });
 });

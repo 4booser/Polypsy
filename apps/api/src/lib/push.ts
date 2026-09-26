@@ -200,7 +200,64 @@ export async function pushToUser(
   await forgetDeadTokens(
     devices.filter((_, i) => (tickets ?? [])[i]?.details?.error === "DeviceNotRegistered").map((d) => d.token),
   );
-  return true;
+
+  /*
+   * Билет с ошибкой — отказ, а не доставка.
+   *
+   * Expo отвечает 200 на весь запрос, а отказ по каждому устройству лежит
+   * внутри его билета. Прежде любой ответ без исключения читался как успех:
+   * заявка оставалась, и уведомление, которое Expo отверг (сработал лимит
+   * частоты — MessageRateExceeded), числилось отправленным и не повторялось
+   * никогда.
+   *
+   * Теперь: приняло хотя бы одно устройство — доставлено (человек его
+   * увидит). Не приняло ни одно — смотрим, почему. Отказ, который повтор не
+   * исправит (MessageTooBig: тот же текст короче не станет), заявку
+   * оставляет с пометкой ok = false — второй раз не шлём, но и доставкой не
+   * числим. Остальное — временное или починимое (лимит частоты, ключи
+   * провайдера, удалённое приложение — токен выше уже забыт, и новое
+   * устройство должно получить своё), и заявка снимается, как при сетевом
+   * сбое: следующий проход попробует снова.
+   */
+  const verdict = ticketVerdict(tickets, devices.length);
+  if (verdict.accepted) return true;
+  if (verdict.permanent) {
+    await db
+      .update(pushDeliveries)
+      .set({ ok: false, error: verdict.code })
+      .where(eq(pushDeliveries.id, claimed.id));
+    log.warn("push.rejected", { userId, kind: message.kind, error: verdict.code });
+    return false;
+  }
+  await db.delete(pushDeliveries).where(eq(pushDeliveries.id, claimed.id));
+  log.warn("push.rejected_retry", { userId, kind: message.kind, error: verdict.code });
+  return false;
+}
+
+/** Отказы Expo, которые повтор того же сообщения не исправит */
+const PERMANENT_TICKET_ERRORS = new Set(["MessageTooBig"]);
+
+/**
+ * Что сказали билеты: принято ли хоть одним устройством, а если нет —
+ * постоянный ли отказ. Билета нет вовсе (отправитель ничего не вернул) —
+ * «принято без билета», как и в разбивке исходов выше.
+ */
+function ticketVerdict(
+  tickets: PushTicket[] | void,
+  devices: number,
+): { accepted: true } | { accepted: false; permanent: boolean; code: string } {
+  if (!tickets) return { accepted: true };
+  const codes: string[] = [];
+  for (let i = 0; i < devices; i++) {
+    const ticket = tickets[i];
+    if (!ticket || ticket.status !== "error") return { accepted: true };
+    codes.push(ticket.details?.error ?? "unknown");
+  }
+  return {
+    accepted: false,
+    permanent: codes.every((c) => PERMANENT_TICKET_ERRORS.has(c)),
+    code: codes[0] ?? "unknown",
+  };
 }
 
 /** Уведомить нескольких: используется для дежурных по группе */
