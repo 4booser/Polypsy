@@ -1762,6 +1762,156 @@ export interface QualityFlags {
   reasons: string[];
 }
 
+/* ─────────── техпанель: «Дані й продукт» (/ops/quality, usage, mobile, push) ─────────── */
+
+/**
+ * Проверки целостности данных техпанели.
+ *
+ * Рядом с QualityFlags, но о другом: там — как человек заполнял бланк, здесь —
+ * не разошлись ли сами записи между собой (прохождение без версии, балл по
+ * шкале чужой версии, методика с подсчётом, но без полос). Первое решает
+ * психолог, второе — тот, кто держит систему.
+ */
+export type DataCheckKey =
+  | "responses.stale"
+  | "scoring.noBands"
+  | "scoring.noScores"
+  | "orphans.responseNoVersion"
+  | "orphans.responseForeignVersion"
+  | "orphans.answerForeignQuestion"
+  | "orphans.scoreForeignScale"
+  | "orphans.surveyDanglingVersion"
+  | "orphans.keyAcrossVersions"
+  | "scores.unnormalized"
+  | "answers.missing"
+  | "responses.duplicates";
+
+/**
+ * Пример срабатывания: голый идентификатор и методика, из которых экран
+ * собирает адрес. Ни имени, ни ответа — техпанель не открывает клинических
+ * записей, а по ссылке человек придёт туда, где его права проверят заново.
+ */
+export interface DataCheckExample {
+  id: string;
+  kind: "response" | "survey";
+  surveyId: string;
+}
+
+export interface DataCheck {
+  key: DataCheckKey;
+  /** error — данные уже врут; warning — начнут врать; info — стоит знать */
+  level: "error" | "warning" | "info";
+  /** Сколько сработало: прохождений или методик — см. kind у примеров */
+  count: number;
+  examples: DataCheckExample[];
+  /** Разбивка по методикам — самые большие первыми, не больше восьми */
+  bySurvey: { surveyId: string; title: string; count: number }[];
+  /** Числа сверх основного: корзины давности, число пунктов, баллов */
+  extra: Record<string, number>;
+}
+
+export interface DataQualityReport {
+  checkedAt: string;
+  checks: DataCheck[];
+}
+
+/** Строка «какой экран открывали» — шаблон маршрута, не адрес */
+export interface ScreenUsageRow {
+  app: "console" | "patient" | "mobile";
+  route: string;
+  views: number;
+  /** В скольких днях окна экран открывали хоть раз */
+  days: number;
+}
+
+export interface UsageReport {
+  days: number;
+  smallCellFloor: number;
+  screens: {
+    total: number;
+    top: ScreenUsageRow[];
+    byDay: { date: string; views: number }[];
+  };
+  /**
+   * Уникальные люди по дням. Специалисты — числом всегда, пациенты — через
+   * порог малых ячеек: null значит «меньше порога», а не «никого».
+   */
+  active: {
+    byDay: { date: string; staff: number; patients: number | null }[];
+    staff7: number;
+    staff30: number;
+    patients7: number | null;
+    patients30: number | null;
+  };
+  funnel: {
+    days: number;
+    /** Приглашений выписано — документы, не люди: порогу не подлежит */
+    invites: number;
+    /** Люди по ступеням; null — ступень скрыта порогом (см. funnelCells на сервере) */
+    registered: number | null;
+    firstResponse: number | null;
+    repeatResponse: number | null;
+    /** Зарегистрировались без приглашения за то же окно */
+    selfRegistered: number | null;
+  };
+}
+
+export interface MobileVersionRow {
+  platform: string | null;
+  version: string | null;
+  build: string | null;
+  devices: number;
+  /** Версия ниже самой новой из замеченных за окно */
+  old: boolean;
+  lastSeenAt: string;
+}
+
+export interface MobileReport {
+  days: number;
+  devices: { total: number; known: number; unknown: number };
+  newest: string | null;
+  versions: MobileVersionRow[];
+  old: { devices: number; percent: number | null };
+  /** Что устройства сообщили о своей очереди при последней отметке */
+  queue: {
+    devicesReporting: number;
+    pending: number;
+    rejected: number;
+    devicesWithPending: number;
+    devicesWithRejected: number;
+  };
+  /** Сдачи из офлайн-очереди: пришли позже, чем были заполнены */
+  late: {
+    total: number;
+    submitted: number;
+    buckets: { key: "lt1h" | "lt1d" | "lt7d" | "gte7d"; count: number }[];
+    medianLagMs: number | null;
+    p90LagMs: number | null;
+    byDay: { date: string; count: number }[];
+  };
+}
+
+export interface PushReport {
+  days: number;
+  /** С какого момента пишутся исходы (миграция 0091); null — ещё ни одного */
+  since: string | null;
+  totals: {
+    sent: number;
+    accepted: number;
+    rejected: number;
+    failed: number;
+    delivered: number;
+    receiptErrors: number;
+    awaitingReceipt: number;
+  };
+  byDay: { date: string; sent: number; errors: number }[];
+  byKind: { kind: string; sent: number; errors: number; delivered: number }[];
+  errors: { code: string; count: number; tokens: number }[];
+  tokens: { registered: number; stale: number; byPlatform: { platform: string; count: number }[] };
+  /** События из push_deliveries за окно — «кому решили отправить», по типам */
+  events: { kind: string; count: number }[];
+}
+
 /** Пол и потолок шкалы: сколько прохождений упёрлось в её края */
 export interface FloorCeiling {
   n: number;
