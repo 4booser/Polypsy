@@ -325,6 +325,16 @@ export interface User {
   /** Учётная запись работает только на просмотр: любые изменения запрещены */
   readOnly: boolean;
   /**
+   * Пароль временный — выдан при заведении или сбросе в техпанели.
+   *
+   * Консоль с таким флагом открывает не рабочее место, а смену пароля:
+   * временный пароль видел тот, кто его выдал. Сервер вход не запрещает —
+   * мобильное приложение этого шага не знает, и запереть пациента в нём
+   * значило бы отнять у него доступ к назначенному. Снимается успешной
+   * сменой пароля (POST /api/auth/password).
+   */
+  mustChangePassword?: boolean;
+  /**
    * Связана ли учётная запись с Google.
    *
    * Только факт, без идентификатора: экрану нужно решить, показывать
@@ -378,6 +388,121 @@ export interface StaffPlacement {
 export interface StaffDirectoryUser extends User {
   phone: string | null;
   placement: StaffPlacement | null;
+}
+
+/* ─────────── техпанель: учётные записи и сессии (волна 10) ─────────── */
+
+/**
+ * Клинический след учётной записи — числом по каждому источнику.
+ *
+ * Держит учётку от удаления: всё перечисленное уходило бы вместе с ней
+ * каскадом по внешним ключам или осталось бы без автора (docs/ARCHITECTURE.md,
+ * «Клинические данные не удаляются»). Ноль означает «нет», а не «не считали»:
+ * каждый источник считается всегда.
+ */
+export interface ClinicalTrace {
+  /** прохождения, где человек — обследуемый */
+  responses: number;
+  /** заключения по его прохождениям, написанные или подписанные им */
+  conclusions: number;
+  /** записи приёма о нём, написанные или подписанные им */
+  notes: number;
+  /** случаи риска о нём */
+  cases: number;
+  /** методики, заведённые им */
+  surveys: number;
+  /** направления о нём или выписанные им */
+  referrals: number;
+  /** приёмы: пациентом или специалистом */
+  appointments: number;
+  /** обращения (эпизоды помощи) */
+  episodes: number;
+  /** планы безопасности — о нём или составленные им */
+  safetyPlans: number;
+  /** записи приёма (аудио): пациентом или специалистом */
+  recordings: number;
+  /** принятые согласия — юридический след, а не только клинический */
+  consents: number;
+  /** переписка пациент — специалист */
+  threads: number;
+  /** диспансерный учёт */
+  dispensary: number;
+}
+
+export type ClinicalTraceKey = keyof ClinicalTrace;
+
+/** Строка списка учётных записей техпанели (GET /api/ops/users) */
+export interface OpsUserRow {
+  id: string;
+  email: string;
+  fullName: string;
+  role: Role;
+  anonymous: boolean;
+  /** Роли-шаблоны сотрудника на языке запроса; у пациента пусто */
+  roleTitles: string[];
+  /** Ступень лестницы должностей: 0 — вне лестницы */
+  ladderRank: number;
+  /** Действующие личные исключения прав */
+  exceptions: number;
+  createdAt: string;
+  /** Последний вход или обновление токена; null — ни разу с появления отметки */
+  lastSeenAt: string | null;
+  disabledAt: string | null;
+  disabledReason: string | null;
+  /** Кто выключил — почтой: имя выключившего списку ни к чему */
+  disabledByEmail: string | null;
+  mustChangePassword: boolean;
+  /** Неотозванные и неистёкшие сессии (семьи refresh-токенов) */
+  sessions: number;
+  trace: ClinicalTrace;
+  /**
+   * Записей журнала, где учётка — действующее лицо. Журнал не переписывается
+   * (actor_id под RESTRICT и в хэше записи), поэтому любая такая запись
+   * держит учётку так же, как клинический след.
+   */
+  journalEntries: number;
+}
+
+export interface OpsUserPage {
+  items: OpsUserRow[];
+  total: number;
+  page: number;
+  per: number;
+}
+
+/** Что держит учётку от удаления: ответ 409 на DELETE /api/ops/users/:id */
+export interface OpsDeleteRefusal {
+  error: string;
+  holds: { key: ClinicalTraceKey | "journal"; count: number }[];
+}
+
+/**
+ * Активная сессия — семья refresh-токенов, в которой есть неотозванный,
+ * непогашенный и неистёкший токен.
+ *
+ * Идентификатор — семья, а не токен: токен меняется при каждом обновлении,
+ * семья живёт от входа до выхода. Устройства и адреса здесь нет: у
+ * refresh-токена они не хранятся, а выдумывать их из соседних таблиц значило
+ * бы показывать догадку как факт.
+ */
+export interface OpsSession {
+  id: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  /** Вход — первый токен семьи */
+  startedAt: string;
+  /** Последнее обновление токена — выдача текущего */
+  lastUsedAt: string;
+  expiresAt: string;
+}
+
+export interface OpsSessionPage {
+  items: OpsSession[];
+  total: number;
+  page: number;
+  per: number;
 }
 
 /**
@@ -2171,6 +2296,23 @@ export interface AuditPage {
   /** Сколько записей пропущено — для постраничной выдачи */
   offset: number;
   limit: number;
+  /**
+   * Курсор следующей страницы (`?cursor=`); null — дальше записей нет.
+   * Курсор, а не смещение: журнал растёт сверху, и смещение на второй
+   * странице повторяло бы строки, записанные за время чтения первой.
+   */
+  nextCursor?: string | null;
+}
+
+/** Проверка хэш-цепочки журнала (GET /api/audit/verify) */
+export interface AuditChainReport {
+  ok: boolean;
+  checked: number;
+  /** Записи до внедрения цепочки — без хэшей, их целостность не доказуема */
+  legacy: number;
+  brokenAtSeq: number | null;
+  headSeq: number | null;
+  headHash: string | null;
 }
 
 

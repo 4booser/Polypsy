@@ -67,6 +67,13 @@ async function staffDirectory(c: Context<AppEnv>): Promise<StaffDirectoryUser[]>
 userRoutes.post("/", async (c) => {
   const input = await parseBody(c.req.raw, createUserSchema);
   const email = input.email.toLowerCase();
+  /*
+   * Суперадминистратора заводит только суперадминистратор (техпанель,
+   * волна 10). users.manage выдаётся и заведующему; без этой строки он
+   * завёл бы суперадмина с паролем, который сам же и придумал, и вошёл бы
+   * под ним — право вести учётки стало бы правом раздать себе всё.
+   */
+  if (input.role === "superadmin" && c.get("user").role !== "superadmin") forbidden("err.superadminOnly");
 
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (existing) conflict("err.emailExists");
@@ -83,6 +90,8 @@ userRoutes.post("/", async (c) => {
       }),
       passwordHash: await hashPassword(input.password),
       role: input.role,
+      /* пароль, сгенерированный техпанелью и показанный один раз, человек сменит при первом входе */
+      mustChangePassword: input.mustChangePassword ?? false,
     })
     .returning();
   // администратор получает встроенную роль сразу: иначе он остался бы без
@@ -95,7 +104,7 @@ userRoutes.post("/", async (c) => {
     resourceType: "user",
     resourceId: row!.id,
     subjectUserId: row!.id,
-    details: { role: row!.role, email },
+    details: { role: row!.role, email, mustChangePassword: row!.mustChangePassword },
   });
 
   return c.json(toPublicUser(row!), 201);
@@ -109,6 +118,16 @@ userRoutes.patch("/:id/role", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const role = body?.role;
   if (!["superadmin", "admin", "user"].includes(role)) forbidden("err.invalidRole");
+
+  /*
+   * Роль суперадминистратора выдаёт и снимает только суперадминистратор —
+   * по той же причине, что и при заведении (см. POST выше): иначе
+   * users.manage у заведующего превращалось бы в право стать кем угодно.
+   */
+  if (actor.role !== "superadmin") {
+    const current = await db.query.users.findFirst({ where: eq(users.id, id) });
+    if (role === "superadmin" || current?.role === "superadmin") forbidden("err.superadminOnly");
+  }
 
   const [row] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
   // повышение до администратора — тот же случай, что и создание

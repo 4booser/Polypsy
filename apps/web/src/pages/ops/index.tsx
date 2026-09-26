@@ -3,6 +3,7 @@ import { useAuth } from "../../auth";
 import { useLang } from "../../lang";
 import { Page } from "../../ui/layout";
 import { Tabs, type TabItem } from "../../ui/primitives";
+import { opsTabs } from "./model";
 
 /*
  * Техпанель — экран для разработчиков и того, кто держит сервер.
@@ -12,12 +13,18 @@ import { Tabs, type TabItem } from "../../ui/primitives";
  * ответа, все пользователи с выдачей доступа, созданием и удалением учёток,
  * полный аудит действий.
  *
- * Открывается по праву ops.read (packages/shared/src/permissions.ts, группа
- * «Технічна служба»): суперадмину оно достаётся вместе со всеми, разработчику
- * его выдают личным исключением. Вкладки о людях — по своим правам:
- * «Користувачі» и «Сесії» по users.manage, «Аудит» по audit.read. Право
- * смотреть, как работает система, не должно открывать ни людей, ни журнал
- * их чтений — это разные работы и выдаются разным людям.
+ * Открывается, если есть хоть одно из трёх прав: ops.read (наблюдаемость,
+ * группа «Технічна служба» в packages/shared/src/permissions.ts),
+ * users.manage («Користувачі» и «Сесії»), audit.read («Аудит»). Вкладки —
+ * каждая по своему праву, пустых нет (opsTabs в model.ts): право смотреть,
+ * как работает система, не открывает ни людей, ни журнал их чтений, а право
+ * вести учётки не открывает логов сервера. Это разные работы, и выдаются
+ * они разным людям. Суперадмину сервер отвечает «да» на всё — у него все
+ * вкладки.
+ *
+ * Прежние экраны «Облікові записи» (/users) и «Журнал доступу» (/audit)
+ * сняты в пользу вкладок: два экрана одного назначения расходились бы в том,
+ * что умеют. Старые адреса перенаправляют сюда (App.tsx).
  *
  * Вкладки — адресами (/ops, /ops/requests, …), а не состоянием: ссылку на
  * «ошибки за последний час» пересылают коллеге.
@@ -26,21 +33,7 @@ export default function OpsPanel() {
   const { ut } = useLang();
   const { can } = useAuth();
 
-  const items: TabItem[] = [
-    { to: "/ops", label: ut("ops.tab.overview"), end: true },
-    { to: "/ops/requests", label: ut("ops.tab.requests") },
-    { to: "/ops/errors", label: ut("ops.tab.errors") },
-    { to: "/ops/logs", label: ut("ops.tab.logs") },
-    { to: "/ops/db", label: ut("ops.tab.db") },
-    { to: "/ops/jobs", label: ut("ops.tab.jobs") },
-    ...(can("users.manage")
-      ? [
-          { to: "/ops/users", label: ut("ops.tab.users") },
-          { to: "/ops/sessions", label: ut("ops.tab.sessions") },
-        ]
-      : []),
-    ...(can("audit.read") ? [{ to: "/ops/audit", label: ut("ops.tab.audit") }] : []),
-  ];
+  const items: TabItem[] = opsTabs(can).map((t) => ({ to: t.to, label: ut(t.key), end: t.end }));
 
   return (
     <Page title={ut("ops.title")} crumbs={<Tabs items={items} label={ut("ops.title")} />}>

@@ -15,6 +15,7 @@ import { audit } from "../lib/audit";
 import { hashPassword, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
 import { issuePair, revokeAllFor, revokeByToken, rotateRefresh, type IssuedPair } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
+import { touchLastSeen } from "../lib/accounts";
 import { badRequest, conflict, notFound, parseBody, unauthorized } from "../lib/http";
 import { normalizePhone, phoneFingerprint } from "../lib/phone";
 import { consumeInvite, findUsableInvite } from "../lib/invites";
@@ -248,7 +249,7 @@ async function registerHandler(c: Context<AppEnv>) {
  * причину отказа, а бросает её вызывающий — когда транзакция уже
  * зафиксирована.
  */
-type LoginRefusal = "err.tooManyAttempts" | "err.invalidCredentials";
+type LoginRefusal = "err.tooManyAttempts" | "err.invalidCredentials" | "err.accountDisabled";
 
 authRoutes.post("/login", async (c) => {
   const outcome = await systemContext(baseDb, () => loginHandler(c));
@@ -299,6 +300,29 @@ async function loginHandler(c: Context<AppEnv>): Promise<Response | LoginRefusal
     return "err.invalidCredentials";
   }
 
+  /*
+   * Выключенная учётка (техпанель, миграция 0088) — отказ своими словами, и
+   * только ПОСЛЕ проверки пароля.
+   *
+   * До проверки отказ выдавал бы любому, кто знает адрес, что такая учётка
+   * есть и её выключили, — то есть ровно то, что на входе прячут
+   * выравниванием времени ответа. После — его прочтёт только тот, кто знает
+   * пароль, то есть сам человек; ему и надо понять, что пароль верный, а
+   * дверь закрыта, и идти к администратору, а не пробовать ещё пять раз.
+   * Неудачей для счётчика попыток это не считается: пароль был верный.
+   */
+  if (row.disabledAt) {
+    await audit(c, {
+      action: "auth.login_failed",
+      outcome: "denied",
+      resourceType: "user",
+      resourceId: row.id,
+      actor: toPublicUser(row),
+      details: { email, reason: "disabled" },
+    });
+    return "err.accountDisabled";
+  }
+
   await clearFailures(email);
 
   await audit(c, {
@@ -308,6 +332,7 @@ async function loginHandler(c: Context<AppEnv>): Promise<Response | LoginRefusal
     actor: toPublicUser(row),
   });
 
+  await touchLastSeen(row.id);
   const pair = await issuePair(row);
   return c.json({ ...pair, user: toPublicUser(row) });
 }
@@ -436,9 +461,14 @@ authRoutes.post("/password", requireAuth, async (c) => {
     badRequest("err.samePassword");
   }
 
+  /*
+   * Смена пароля снимает и отметку «пароль временный» (техпанель, 0088):
+   * пароль, выданный администратором, заменён своим — консоль больше не
+   * должна требовать смены при входе.
+   */
   await db
     .update(users)
-    .set({ passwordHash: await hashPassword(input.newPassword) })
+    .set({ passwordHash: await hashPassword(input.newPassword), mustChangePassword: false })
     .where(eq(users.id, user.id));
 
   // угнанная сессия не должна переживать смену пароля
@@ -449,7 +479,7 @@ authRoutes.post("/password", requireAuth, async (c) => {
     resourceType: "user",
     resourceId: user.id,
     subjectUserId: user.id,
-    details: { revokedSessions: revoked },
+    details: { revokedSessions: revoked, wasTemporary: row.mustChangePassword },
   });
   return c.json({ ok: true });
 });
@@ -473,7 +503,7 @@ authRoutes.post("/refresh", async (c) => {
 
 async function refreshHandler(
   c: Context<AppEnv>,
-): Promise<Response | "err.noRefreshToken" | "err.sessionExpired"> {
+): Promise<Response | "err.noRefreshToken" | "err.sessionExpired" | "err.accountDisabled"> {
   const body = await c.req.json().catch(() => ({}));
   const raw = typeof body?.refreshToken === "string" ? body.refreshToken : "";
   if (!raw) return "err.noRefreshToken";
@@ -488,8 +518,11 @@ async function refreshHandler(
       subjectUserId: outcome.userId ?? null,
       details: { reason: outcome.reason },
     });
-    return "err.sessionExpired";
+    /* выключенной учётке — тот же текст, что на входе и на живом токене (см. rotateRefresh) */
+    return outcome.reason === "disabled" ? "err.accountDisabled" : "err.sessionExpired";
   }
+  /* обмен пары — и есть «был в системе»: раз в полчаса работы, не на каждый запрос */
+  await touchLastSeen(outcome.userId);
   return c.json(outcome.pair);
 }
 
@@ -780,7 +813,9 @@ authRoutes.get("/google/callback", async (c) => {
   return outcome;
 });
 
-async function googleCallback(c: Context<AppEnv>): Promise<Response | "err.googleNotLinked"> {
+async function googleCallback(
+  c: Context<AppEnv>,
+): Promise<Response | "err.googleNotLinked" | "err.accountDisabled"> {
   if (!googleEnabled()) notFound("err.googleDisabled");
 
   const code = c.req.query("code");
@@ -851,6 +886,22 @@ async function googleCallback(c: Context<AppEnv>): Promise<Response | "err.googl
     return "err.googleNotLinked";
   }
   if (row.anonymous) unauthorized("err.googleAnonymous");
+  /*
+   * Выключенная учётка не входит и через Google: вторая дверь, открытая мимо
+   * выключения, сделала бы его декоративным. Отказ — после записи в журнал,
+   * поэтому возвращается, а не бросается (см. ниже про системную транзакцию).
+   */
+  if (row.disabledAt) {
+    await audit(c, {
+      action: "auth.login_failed",
+      outcome: "denied",
+      resourceType: "user",
+      resourceId: row.id,
+      actor: toPublicUser(row),
+      details: { via: "google", reason: "disabled" },
+    });
+    return "err.accountDisabled";
+  }
 
   await audit(c, {
     action: "auth.login",
@@ -860,6 +911,7 @@ async function googleCallback(c: Context<AppEnv>): Promise<Response | "err.googl
     details: { via: "google" },
   });
 
+  await touchLastSeen(row.id);
   const pair = await issuePair(row);
   /*
    * В адресе — одноразовый код, а не сама пара токенов.
