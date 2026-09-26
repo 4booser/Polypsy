@@ -485,6 +485,7 @@ export function Topbar({
               counts={counts}
               isSuper={isSuper}
               canAssign={canAssign}
+              canOps={can?.("ops.read") ?? false}
               hidden={hidden}
               opener={burgerRef}
               onSearch={onSearch}
@@ -673,10 +674,13 @@ function MoreMenu({
   onClose,
   items,
   account,
+  canOps = false,
 }: {
   counts: RailCounts;
   isSuper: boolean;
   canAssign: boolean;
+  /** Право ops.read: пункт «Техпанель» в администрировании */
+  canOps?: boolean;
   hidden?: string[];
   /** Пункты полосы — те же, что показаны вверху: на узком экране они повторяются здесь */
   items: TopItem[];
@@ -698,8 +702,8 @@ function MoreMenu({
   const { ut } = useLang();
   const { pathname } = useLocation();
   const groups = useMemo(
-    () => railGroups(counts, isSuper, canAssign, hidden ?? []),
-    [counts, isSuper, canAssign, hidden],
+    () => railGroups(counts, isSuper, canAssign, hidden ?? [], canOps),
+    [counts, isSuper, canAssign, hidden, canOps],
   );
   const caseLinks = useMemo(() => clinicalLinks(pathname), [pathname]);
   const tools = useMemo(() => screenTools(pathname), [pathname]);

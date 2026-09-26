@@ -2610,6 +2610,28 @@ export const UI = {
   /* ── wave9:shell ── */
 
   /* ── wave9:staff ── */
+
+  /*
+   * Якоря волны 10 (техпанель для разработчиков, /ops): оболочка — у
+   * координатора, наблюдаемость и учётные записи — у своих сборщиков.
+   */
+  /* ── wave10:ops-shell ── */
+  "nav.ops": { uk: "Техпанель", ru: "Техпанель", en: "Tech panel" },
+  "ops.title": { uk: "Техпанель", ru: "Техпанель", en: "Tech panel" },
+  "ops.tab.overview": { uk: "Огляд", ru: "Обзор", en: "Overview" },
+  "ops.tab.requests": { uk: "Запити", ru: "Запросы", en: "Requests" },
+  "ops.tab.errors": { uk: "Помилки", ru: "Ошибки", en: "Errors" },
+  "ops.tab.logs": { uk: "Логи", ru: "Логи", en: "Logs" },
+  "ops.tab.db": { uk: "База", ru: "База", en: "Database" },
+  "ops.tab.jobs": { uk: "Фонові задачі", ru: "Фоновые задачи", en: "Background jobs" },
+  "ops.tab.users": { uk: "Користувачі", ru: "Пользователи", en: "Users" },
+  "ops.tab.sessions": { uk: "Сесії", ru: "Сессии", en: "Sessions" },
+  "ops.tab.audit": { uk: "Аудит", ru: "Аудит", en: "Audit" },
+  "ops.soon": { uk: "Розділ збирається", ru: "Раздел собирается", en: "This section is being built" },
+
+  /* ── wave10:ops ── */
+
+  /* ── wave10:accounts ── */
   "ppl.listsLabel": { uk: "Списки співробітників", ru: "Списки сотрудников", en: "Staff lists" },
   "ppl.searchStaff": { uk: "Пошук за ПІБ, логіном або телефоном", ru: "Поиск по ФИО, логину или телефону", en: "Search by name, login or phone" },
   "ppl.department": { uk: "Відділення", ru: "Отделение", en: "Department" },

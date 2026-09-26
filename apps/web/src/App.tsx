@@ -29,6 +29,17 @@ const SurveyAnalyticsPage = lazy(() => import("./pages/SurveyAnalytics"));
 const Access = lazy(() => import("./pages/Access"));
 const Permissions = lazy(() => import("./pages/Permissions"));
 const Audit = lazy(() => import("./pages/Audit"));
+/* техпанель: оболочка и вкладки — каждая своим куском, панель тяжёлая и нужна немногим */
+const OpsPanel = lazy(() => import("./pages/ops"));
+const OpsOverview = lazy(() => import("./pages/ops/Overview"));
+const OpsRequests = lazy(() => import("./pages/ops/Requests"));
+const OpsErrors = lazy(() => import("./pages/ops/Errors"));
+const OpsLogs = lazy(() => import("./pages/ops/Logs"));
+const OpsDatabase = lazy(() => import("./pages/ops/Database"));
+const OpsJobs = lazy(() => import("./pages/ops/Jobs"));
+const OpsUsers = lazy(() => import("./pages/ops/Users"));
+const OpsSessions = lazy(() => import("./pages/ops/Sessions"));
+const OpsAuditLog = lazy(() => import("./pages/ops/AuditLog"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -830,6 +841,23 @@ export default function App() {
           <Route path="/permissions" element={<Permissions />} />
           {isSuper ? <Route path="/consent-text" element={<ConsentText />} /> : null}
           {isSuper ? <Route path="/audit" element={<Audit />} /> : null}
+          {/*
+            Техпанель — по праву ops.read (суперадмину оно есть всегда); вкладки
+            о людях — по своим правам, как и их пункты во вкладках панели.
+          */}
+          {can("ops.read") ? (
+            <Route path="/ops" element={<OpsPanel />}>
+              <Route index element={<OpsOverview />} />
+              <Route path="requests" element={<OpsRequests />} />
+              <Route path="errors" element={<OpsErrors />} />
+              <Route path="logs" element={<OpsLogs />} />
+              <Route path="db" element={<OpsDatabase />} />
+              <Route path="jobs" element={<OpsJobs />} />
+              {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
+              {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
+              {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}
+            </Route>
+          ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
