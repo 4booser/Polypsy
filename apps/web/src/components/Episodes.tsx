@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api, openInTab } from "../api";
+import { ApiError, api, openInTab } from "../api";
 import { day } from "../format";
 import { Empty, useAction } from "../ui";
 import { Panel } from "../ui/layout";
@@ -41,6 +41,14 @@ export function Episodes({
   const [closing, setClosing] = useState<string | null>(null);
   const [outcomeKind, setOutcomeKind] = useState("improved");
   const [outcome, setOutcome] = useState("");
+  /*
+   * Объяснение, почему обращение закрывается при незакрытых направлениях.
+   * Поле появляется только после отказа сервера: пока направлений нет,
+   * спрашивать не о чем, а спросить заранее значило бы приучить отвечать
+   * не читая.
+   */
+  const [needsNote, setNeedsNote] = useState(false);
+  const [referralsNote, setReferralsNote] = useState("");
 
   const items = res.data?.items ?? [];
   const open = items.find((e) => !e.closedAt) ?? null;
@@ -172,14 +180,38 @@ export function Episodes({
                 <Field label={ut("ep.outcomeWords")}>
                   <Input value={outcome} onChange={(ev) => setOutcome(ev.target.value)} />
                 </Field>
+                {needsNote ? (
+                  <Field label={ut("ep.openReferralsNote")} hint={ut("ep.openReferralsNoteHint")}>
+                    <Input value={referralsNote} onChange={(ev) => setReferralsNote(ev.target.value)} />
+                  </Field>
+                ) : null}
                 <Button
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || (needsNote && referralsNote.trim().length < 3)}
                   onClick={() =>
                     run(async () => {
-                      await api.closeEpisode(e.id, outcomeKind, outcome.trim() || null);
+                      try {
+                        await api.closeEpisode(
+                          e.id,
+                          outcomeKind,
+                          outcome.trim() || null,
+                          needsNote ? referralsNote.trim() : undefined,
+                        );
+                      } catch (err) {
+                        // незакрытые направления снимаются объяснением; случай риска — только разбором
+                        if (
+                          err instanceof ApiError &&
+                          err.status === 409 &&
+                          (err.body as { overridable?: boolean } | undefined)?.overridable
+                        ) {
+                          setNeedsNote(true);
+                        }
+                        throw err;
+                      }
                       setClosing(null);
                       setOutcome("");
+                      setNeedsNote(false);
+                      setReferralsNote("");
                       await reload();
                     })
                   }

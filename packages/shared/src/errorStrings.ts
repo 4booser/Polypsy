@@ -897,6 +897,16 @@ export const ERRORS = {
     ru: "Обращение уже закрыто",
     en: "The episode of care is already closed",
   },
+  "err.episodeOpenRiskCase": {
+    uk: "У людини нерозібраний випадок ризику ({n}). Розберіть його, перш ніж закривати звернення",
+    ru: "У человека неразобранный случай риска ({n}). Разберите его, прежде чем закрывать обращение",
+    en: "This person has an unreviewed risk case ({n}). Review it before closing the episode of care",
+  },
+  "err.episodeOpenReferrals": {
+    uk: "Незакриті направлення: {n}. Закрийте їх або поясніть, чому звернення закривається без них",
+    ru: "Незакрытые направления: {n}. Закройте их или объясните, почему обращение закрывается без них",
+    en: "Open referrals: {n}. Close them or explain why the episode is being closed without them",
+  },
   "err.episodeOtherPatient": {
     uk: "Прийом належить іншій людині",
     ru: "Приём принадлежит другому человеку",

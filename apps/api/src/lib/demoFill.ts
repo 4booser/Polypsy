@@ -772,12 +772,37 @@ async function bookDemoAppointments(specialistId: string): Promise<number> {
 }
 
 /**
+ * Уборка отказала, ничего не тронув: вымышленный автор держит то, чем уже
+ * пользуются настоящие люди.
+ */
+export class DemoPurgeRefused extends Error {}
+
+/**
  * Убрать всех вымышленных.
  *
- * Одним условием по домену почты. Всё, что к ним привязано — прохождения,
- * тревоги, случаи, приёмы, обращения, — уходит каскадом по внешним ключам:
- * это и есть причина, по которой их можно заводить в живой системе, не боясь
- * оставить хвосты.
+ * Одним условием по домену почты — и явным удалением того, что каскад не
+ * уносит (клиническое ревью волны 12). Прежде здесь стояло одно
+ * `delete from users`, и два хвоста оставались:
+ *
+ *   · прохождения. responses.user_id объявлен SET NULL — обезличенное
+ *     прохождение не должно пропадать вместе с учётной записью. Для
+ *     вымышленных это правило работало против нас: их прохождения
+ *     оставались безымянными строками и считались в живой статистике и
+ *     аналитике методик (на стенде ревью — 84 выдуманных прохождения после
+ *     «убрать всех вымышленных»). Теперь они удаляются первыми, а с ними
+ *     ответы, баллы, тревоги и срабатывания правил;
+ *   · то, что вымышленный сотрудник написал сам: набор «Первинний скринінг»,
+ *     приглашения, направления. Их авторство объявлено RESTRICT, и уборка
+ *     падала на первом же наборе, если наполнение шло от demo-specialist
+ *     (так бывает, когда в учреждении ещё нет специалиста с расписанием).
+ *     Теперь это убирается до людей — если только настоящие люди этим не
+ *     пользуются: набор, назначенный настоящему человеку, и направление на
+ *     настоящего человека остаются, а уборка отказывает, ничего не удалив,
+ *     и говорит, что передать настоящему сотруднику.
+ *
+ * Всё — одним куском: скрипт (src/demoFill.ts) зовёт уборку в системном
+ * контексте, то есть в одной транзакции, и отказ посреди пути откатывает
+ * сделанное.
  */
 export async function purgeDemoData(): Promise<number> {
   const rows = await db
@@ -785,19 +810,44 @@ export async function purgeDemoData(): Promise<number> {
     .from(users)
     .where(like(users.email, `%@${DEMO_DOMAIN}`));
   if (!rows.length) return 0;
-  await db.delete(users).where(
-    inArray(
-      users.id,
-      rows.map((x) => x.id),
-    ),
-  );
-  /*
-   * Ссылки выписаны от настоящего сотрудника, а не от вымышленного человека,
-   * и удаление людей их не задевает. Без этой строки «убрать всех
-   * вымышленных» оставляло бы работающие приглашения в живой картотеке.
-   */
-  await db.delete(invites).where(like(invites.note, `${DEMO_NOTE}%`));
+  const ids = rows.map((x) => x.id);
+  const demo = sql`(select id from users where email like ${`%@${DEMO_DOMAIN}`})`;
 
-  log.info("demo.purged", { removed: rows.length });
+  /* сначала — не держит ли вымышленный автор настоящих людей */
+  const held = (await db.execute(sql`
+    select 'battery' as kind, b.title as what, count(ba.*)::int as n
+      from batteries b join battery_assignments ba on ba.battery_id = b.id
+      where b.created_by in ${demo} and ba.user_id not in ${demo}
+      group by b.id, b.title
+    union all
+    select 'referral', r.destination, count(*)::int
+      from referrals r
+      where r.created_by in ${demo} and r.user_id not in ${demo}
+      group by r.destination`)) as unknown as { kind: string; what: string; n: number }[];
+  if (held.length) {
+    const list = held.map((h) => `${h.kind === "battery" ? "набор" : "направление"} «${h.what}»: ${h.n}`).join("; ");
+    throw new DemoPurgeRefused(
+      `Вымышленный сотрудник — автор того, чем пользуются настоящие люди (${list}). ` +
+        "Передайте это настоящему сотруднику; уборка не начата.",
+    );
+  }
+
+  /*
+   * Приглашения — по пометке (их выписывает и настоящий сотрудник от имени
+   * наполнения) и по вымышленному автору: без второго условия RESTRICT на
+   * invites.created_by уронил бы удаление людей ниже.
+   */
+  await db.delete(invites).where(sql`${invites.note} like ${`${DEMO_NOTE}%`} or ${invites.createdBy} in ${demo}`);
+  await db.delete(referrals).where(sql`${referrals.userId} in ${demo} or ${referrals.createdBy} in ${demo}`);
+  // наборы вымышленного автора — проверено выше, что назначены они только вымышленным
+  await db.delete(batteries).where(sql`${batteries.createdBy} in ${demo}`);
+  const removedResponses = await db
+    .delete(responses)
+    .where(inArray(responses.userId, ids))
+    .returning({ id: responses.id });
+
+  await db.delete(users).where(inArray(users.id, ids));
+
+  log.info("demo.purged", { removed: rows.length, responses: removedResponses.length });
   return rows.length;
 }
