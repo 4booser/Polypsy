@@ -72,7 +72,11 @@ type Profile = "full" | "deidentified" | "anonymous";
 function Exports({ surveyId }: { surveyId: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const [profile, setProfile] = useState<Profile>("full");
+  /*
+   * Обезличенная — по умолчанию, как и на сервере (exportQuery, волна 12):
+   * с фамилиями файл уезжает только по выбору «повна», сделанному руками.
+   */
+  const [profile, setProfile] = useState<Profile>("deidentified");
   const [purpose, setPurpose] = useState("");
 
   const files: { label: string; hint?: string; go: () => Promise<unknown>; done: string }[] = [

@@ -132,7 +132,7 @@ export default function VisitPage() {
                             .saveNote(
                               data.patient.id,
                               text ?? "",
-                              notes.data?.current?.version ?? 0,
+                              notes.data?.current ?? null,
                               data.appointment.kind === "primary" ? "intake" : "session",
                               data.appointment.id,
                             )

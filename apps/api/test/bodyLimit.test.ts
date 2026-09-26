@@ -55,7 +55,7 @@ async function recordingInProgress() {
 
 describe("размер тела запроса", () => {
   test("запись приёма на два мегабайта загружается", async () => {
-    const { id, specialist } = await recordingInProgress();
+    const { id, specialist, patient } = await recordingInProgress();
 
     const form = new FormData();
     form.append("audio", new File([new Uint8Array(TWO_MIB).fill(3)], "visit.wav", { type: "audio/wav" }));
@@ -74,6 +74,13 @@ describe("размер тела запроса", () => {
       .where(eq(visitRecordings.appointmentId, id));
     expect(row!.status).toBe("uploaded");
     expect(row!.audioBytes).toBe(TWO_MIB);
+
+    /*
+     * Запись не остаётся в очереди расшифровки: очередь общая на всю
+     * тестовую базу, и «uploaded» отсюда подхватывали расшифровки других
+     * файлов (волна 12, integrity: recordingRace проверял чужую запись).
+     */
+    expect((await api(`/api/recordings/${id}/discard`, patient.token, { method: "POST" })).status).toBe(200);
   });
 
   test("двухмегабайтное тело на обычный маршрут по-прежнему отвергается", async () => {

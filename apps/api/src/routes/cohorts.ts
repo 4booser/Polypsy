@@ -3,6 +3,7 @@ import { desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import {
   ageAt,
+  calendarDay,
   type CohortCell,
   type CohortMember,
   type CohortMembers,
@@ -58,8 +59,10 @@ const scaleCond = z.object({
  * вида «вчера» или «2026-9-1» в сравнение уйти не должна. Раньше период
  * принимался любой строкой и сравнивался с моментом сдачи как есть:
  * «по 2026-09-30» отсекало всё, что сдано 30-го после полуночи.
+ *
+ * И не регулярка: «2026-02-31» ей соответствует, а базе — нет (dates.ts).
  */
-const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const day = calendarDay;
 
 const specSchema = z
   .object({

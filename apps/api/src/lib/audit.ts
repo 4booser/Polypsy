@@ -368,25 +368,80 @@ interface AuditInput {
  * seq и prevHash берутся под advisory-локом транзакции: без него две
  * параллельные записи взяли бы один prevHash и цепочка раздвоилась бы.
  * Канонизация — фиксированный порядок полей; details сериализуются с
- * отсортированными ключами, иначе один и тот же объект давал бы разные хэши.
+ * отсортированными ключами, иначе один и тот же объект давал бы разные хэши:
+ * jsonb хранит ключи в своём порядке, а не в том, в каком их записали.
  */
 const AUDIT_CHAIN_LOCK = 7_154_301;
 
-function canonical(row: Record<string, unknown>): string {
-  const ordered = [
+/**
+ * Версия канонизации новых строк (колонка hash_version, миграция 0096).
+ *
+ * 1 — прежняя. В ней details сериализовались как
+ * JSON.stringify(details, ключи верхнего уровня), а список ключей у
+ * JSON.stringify — фильтр ВСЕХ уровней: вложенные объекты теряли всё, чьё
+ * имя не совпало с ключом верхнего уровня. { columns: [{ scale: "A" }] } и
+ * { columns: [{ scale: "B" }] } давали одно и то же { "columns": [{}] }, и
+ * правка вложенного не меняла хэш (полное ревью заказчика, P2).
+ *
+ * 2 — ключи упорядочены на всех уровнях, и строка помечена "v2". Метка —
+ * чтобы строку версии 2 нельзя было выдать за строку версии 1, сменив
+ * колонку: хэш версии 1 от той же строки с записанным не совпадёт.
+ *
+ * Строки версии 1 проверяются версией 1: пересчитать их нельзя — пересчёт
+ * хэшей и есть переписывание журнала. Их вложенное содержимое как не было
+ * под хэшем, так и не будет; это честная граница, а не недосмотр.
+ */
+export const AUDIT_HASH_VERSION = 2;
+
+/** Поля строки в фиксированном порядке — общие для обеих версий */
+function orderedFields(row: Record<string, unknown>): unknown[] {
+  return [
     row.id,
     // при чтении из БД метка приходит в другом текстовом виде — нормализуем
     row.at ? new Date(row.at as string).toISOString() : null,
     row.actorId, row.actorEmail, row.actorRole, row.action,
     row.resourceType, row.resourceId, row.subjectUserId, row.outcome,
     row.ip, row.userAgent,
-    row.details ? JSON.stringify(row.details, Object.keys(row.details as object).sort()) : null,
   ];
-  return JSON.stringify(ordered);
 }
 
-export function chainHash(prevHash: string | null, row: Record<string, unknown>): string {
-  return new Bun.CryptoHasher("sha256").update((prevHash ?? "genesis") + canonical(row)).digest("hex");
+/** Версия 1 — как считались строки до миграции 0096. Не менять: по ней проверяются старые строки */
+function canonicalV1(row: Record<string, unknown>): string {
+  return JSON.stringify([
+    ...orderedFields(row),
+    row.details ? JSON.stringify(row.details, Object.keys(row.details as object).sort()) : null,
+  ]);
+}
+
+/**
+ * JSON с ключами, упорядоченными на всех уровнях.
+ *
+ * На входе — значение после круга через JSON (см. canonicalV2): без
+ * undefined, дат и прочего, чего jsonb не хранит, — то есть ровно то, что
+ * прочтётся из базы при проверке. Строка собирается напрямую, а не через
+ * пересобранный объект: у объекта JavaScript ключи-числа идут вперёд
+ * независимо от порядка вставки, и «упорядочили» было бы неправдой.
+ */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function canonicalV2(row: Record<string, unknown>): string {
+  const details = row.details == null ? null : stableJson(JSON.parse(JSON.stringify(row.details)));
+  return JSON.stringify(["v2", ...orderedFields(row), details]);
+}
+
+export function chainHash(prevHash: string | null, row: Record<string, unknown>, version: number = AUDIT_HASH_VERSION): string {
+  const canonical = version >= 2 ? canonicalV2(row) : canonicalV1(row);
+  return new Bun.CryptoHasher("sha256").update((prevHash ?? "genesis") + canonical).digest("hex");
 }
 
 async function writeChained(values: Record<string, unknown>): Promise<void> {
@@ -417,7 +472,8 @@ async function writeChained(values: Record<string, unknown>): Promise<void> {
       ...(row as object),
       seq,
       prevHash,
-      entryHash: chainHash(prevHash, row),
+      entryHash: chainHash(prevHash, row, AUDIT_HASH_VERSION),
+      hashVersion: AUDIT_HASH_VERSION,
     } as never);
   });
 }
@@ -470,8 +526,9 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
      * Вход «от имени» (lib/impersonation.ts): в контексте запроса лежит тот,
      * ПОД КЕМ смотрят, а действующее лицо журнала — суперадмин, который
      * смотрит. «От чьего имени» — плоскими полями details (asUserId,
-     * impersonation): вложенный объект канонизация хэша проверяла бы не
-     * целиком (см. canonical выше и пояснение в lib/impersonation.ts).
+     * impersonation): вложенный объект канонизация версии 1 проверяла бы не
+     * целиком (см. AUDIT_HASH_VERSION выше и пояснение в lib/impersonation.ts);
+     * с версии 2 вложенное под хэшем, но плоские поля удобнее искать.
      * Если у действия своего субъекта нет, субъект — тот, под кем смотрят.
      */
     const imp = !input.actor && ctxUser?.impersonation ? ctxUser.impersonation : null;

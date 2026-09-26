@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type NoteVersion } from "../api";
+import { api, ApiError, type NoteVersion } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
 import { usePresence } from "../events";
@@ -51,6 +51,12 @@ export function NotesEditor({ userId }: { userId: string }) {
    * начал — сервер в него больше не пишет.
    */
   const touched = useRef(false);
+  /*
+   * Отказ 409 — запись переписали, пока она была открыта (сменилась версия
+   * или редакция черновика). Строкой у кнопок, с кнопкой «перечитать»: так
+   * же, как в редакторе заключения (ConclusionEditor, `stale`).
+   */
+  const [stale, setStale] = useState<string | null>(null);
 
   const res = useResource(() => api.notes(userId), [userId]);
   const state = res.data;
@@ -135,12 +141,38 @@ export function NotesEditor({ userId }: { userId: string }) {
         placeholder={signed ? ut("note.placeholderNext") : ut("note.placeholder")}
       />
 
+      {stale ? (
+        <div role="alert" className="mt-2 rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
+          <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
+          <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("integrity.rereadHint")}</p>
+          <Button
+            variant="quiet"
+            className="mt-[8px]"
+            onClick={() => {
+              setStale(null);
+              // перечитанное должно встать в поле: признак «тронуто» его бы не пустил
+              touched.current = false;
+              res.reload();
+            }}
+          >
+            {ut("integrity.reread")}
+          </Button>
+        </div>
+      ) : null}
+
       <div className="row mt-2">
         <Button
           disabled={busy || (!text.trim())}
           onClick={() =>
             void run(async () => {
-              res.patch(await api.saveNote(userId, text, state.current?.version ?? 0, kind));
+              try {
+                res.patch(await api.saveNote(userId, text, state.current, kind));
+                setStale(null);
+              } catch (e) {
+                if (!(e instanceof ApiError) || e.status !== 409) throw e;
+                setStale(e.message);
+                return false;
+              }
             }, ut("cn.draftSaved"))
           }
         >
@@ -151,16 +183,23 @@ export function NotesEditor({ userId }: { userId: string }) {
           disabled={busy || (!draft && !text.trim())}
           onClick={() =>
             void run(async () => {
-              let latest = state;
-              if (text.trim() && text !== draft?.text) {
-                latest = await api.saveNote(userId, text, state.current?.version ?? 0, kind);
+              try {
+                let latest = state;
+                if (text.trim() && text !== draft?.text) {
+                  latest = await api.saveNote(userId, text, state.current, kind);
+                }
+                // подписываем ровно ту версию и ту редакцию, что вернуло сохранение
+                res.patch(await api.signNote(userId, latest.current!));
+                // подписано — набранного больше нет, и поле снова следует за
+                // сервером: иначе следующий протокол начинался бы с прежнего
+                touched.current = false;
+                setText("");
+                setStale(null);
+              } catch (e) {
+                if (!(e instanceof ApiError) || e.status !== 409) throw e;
+                setStale(e.message);
+                return false;
               }
-              // подписываем ровно ту версию, что вернуло сохранение
-              res.patch(await api.signNote(userId, latest.current!.version));
-              // подписано — набранного больше нет, и поле снова следует за
-              // сервером: иначе следующий протокол начинался бы с прежнего
-              touched.current = false;
-              setText("");
             }, ut("note.signed"))
           }
         >

@@ -1,5 +1,6 @@
 import {
   MIN_RCI_SAMPLE,
+  analyticsExportQuery,
   comparableScores,
   guttmanErrorsNormed,
   itemContribution,
@@ -22,6 +23,7 @@ import type {
 import { db } from "../db";
 import { env } from "../env";
 import { answerEvents, answers, responseScores, responses, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
+import { csvCell } from "../lib/csv";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
@@ -1129,6 +1131,8 @@ function matrixOf(
  */
 analyticsRoutes.get("/surveys/:id/export", requirePermission("export.full"), async (c) => {
   const surveyId = c.req.param("id");
+  /* «?profile=deidentified» здесь — не обезличивание, а отказ: см. analyticsExportQuery */
+  const { purpose } = parseQuery(c, analyticsExportQuery);
   await assertSurveyAccess(c.get("user"), surveyId);
   const survey = await getSurvey(surveyId);
   if (!survey) notFound("err.surveyNotFound");
@@ -1190,6 +1194,7 @@ analyticsRoutes.get("/surveys/:id/export", requirePermission("export.full"), asy
       rows: responseRows.length,
       subjects: [...new Set(responseRows.map((r) => r.userId).filter(Boolean))].length,
       includesUserIds: true,
+      purpose: purpose ?? null,
     },
   });
 
@@ -1226,8 +1231,4 @@ function formatAnswer(
    * исследования и отчётности терялись молча.
    */
   return a.text ? (decryptField(a.text) ?? "") : "";
-}
-
-function csvCell(value: string): string {
-  return /[",\n;]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }

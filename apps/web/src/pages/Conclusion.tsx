@@ -166,6 +166,7 @@ export default function ConclusionPage() {
             state={conclusion.data}
             error={conclusion.error}
             onState={conclusion.patch}
+            onReload={conclusion.reload}
             title={title}
             text={text}
             setText={setText}
@@ -350,7 +351,7 @@ export function DocumentMenu({
                 onClick={() => {
                   setOpen(false);
                   void run(async () => {
-                    onState?.(await api.saveConclusion(responseId, text ?? "", state.current?.version ?? 0, title ?? ""));
+                    onState?.(await api.saveConclusion(responseId, text ?? "", state.current, title ?? ""));
                   }, ut("cn.draftSaved"));
                 }}
               >

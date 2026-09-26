@@ -10,6 +10,7 @@ import {
   scheduleExceptionSchema,
   scheduleTemplateSchema,
   specialistProfileSchema,
+  queryDate,
   t,
   type AppointmentView,
   type FreeSlot,
@@ -35,6 +36,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { requireDateParam } from "../lib/dates";
 import { HORIZON_WEEKS, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -380,8 +382,9 @@ clinicRoutes.delete(
 const slotQuery = z.object({
   specialistId: z.string().optional(),
   departmentId: z.string().optional(),
-  from: z.string().optional(),
-  to: z.string().optional(),
+  /* границы окна уходят в сравнение с началом слота: строка без проверки давала пятисотку */
+  from: queryDate.optional(),
+  to: queryDate.optional(),
 });
 
 /** К каким отделениям человек прикреплён */
@@ -865,7 +868,9 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
   const nowLocal = await db.execute<{ today: string }>(
     sql`select to_char(now() at time zone ${tz}, 'YYYY-MM-DD') as today`,
   );
-  const date = c.req.query("date") ?? nowLocal[0]!.today;
+  /* день, а не что угодно: строка склеивается в «${date} 00:00»::timestamp, и «вчора» было пятисоткой */
+  const asked = c.req.query("date");
+  const date = asked ? requireDateParam(asked, "date", { dayOnly: true }) : nowLocal[0]!.today;
 
   const items = await loadAppointments(
     and(

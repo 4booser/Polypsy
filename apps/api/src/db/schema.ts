@@ -1286,6 +1286,13 @@ export const auditLog = pgTable(
     seq: integer("seq"),
     prevHash: text("prev_hash"),
     entryHash: text("entry_hash"),
+    /**
+     * Версия канонизации, которой посчитан entryHash (миграция 0096).
+     * 1 — прежняя: вложенное в details под хэш не попадало; 2 — ключи
+     * упорядочены на всех уровнях. Умолчание 1 — для строк, записанных до
+     * миграции, и для старого процесса, пишущего во время выкатки.
+     */
+    hashVersion: integer("hash_version").notNull().default(1),
   },
   (t) => ({
     atIdx: index("audit_at_idx").on(t.at),
@@ -1970,6 +1977,8 @@ export const patientNotes = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
+    /** Ревизия текста внутри версии — то же, что у conclusions.revision (миграция 0096) */
+    revision: integer("revision").notNull().default(1),
     /** Приём, наблюдение, разбор случая, консультация */
     kind: text("kind", { enum: ["intake", "session", "observation", "consult"] })
       .notNull()
@@ -2029,6 +2038,14 @@ export const conclusions = pgTable(
       .notNull()
       .references(() => responses.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
+    /**
+     * Ревизия текста внутри версии (миграция 0096): 1 при рождении версии,
+     * +1 на каждое сохранение черновика на месте. Номер версии растёт только
+     * поверх подписанного, и сверки по нему одному не хватало: подпись ложилась
+     * под черновик, переписанный коллегой после того, как подписывающий его
+     * открыл. Подпись и сохранение сверяют пару «версия + ревизия».
+     */
+    revision: integer("revision").notNull().default(1),
     text: text("text").notNull(),
     status: text("status", { enum: ["draft", "signed"] }).notNull().default("draft"),
     // автор и подписавший — часть самого документа, стереть их нельзя

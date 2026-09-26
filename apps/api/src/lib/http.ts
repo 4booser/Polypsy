@@ -77,6 +77,36 @@ export function conflict(key: ErrorKey, params?: ErrorParams): never {
   fail(409, key, params);
 }
 
+/**
+ * Нарушение уникального индекса (код Postgres 23505).
+ *
+ * Драйвер кладёт код в саму ошибку, drizzle иногда — в cause; смотрим оба,
+ * как isForeignKeyViolation в routes/opsAccounts.ts. Нужен там, где гонку
+ * за номер уже закрывает блокировка, а индекс — последний сторож: его отказ
+ * должен становиться понятным 409, а не пятисоткой.
+ */
+export function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } } | null;
+  return e?.code === "23505" || e?.cause?.code === "23505";
+}
+
+/**
+ * Проблема разбора, у которой есть свой ключ отказа.
+ *
+ * Схема может приложить к проблеме `params.errorKey` (так делают даты —
+ * packages/shared/src/dates.ts), и тогда ответ — переводимый отказ с именем
+ * поля: кривую дату в фильтре читает человек на экране, а не только тот, кто
+ * пишет клиент. Остальные проблемы идут прежним текстом разбора.
+ */
+function failKeyedIssue(issues: z.ZodIssue[], fallbackPath: string): void {
+  for (const issue of issues) {
+    const key = (issue as { params?: { errorKey?: unknown } }).params?.errorKey;
+    if (issue.code === "custom" && typeof key === "string") {
+      badRequest(key as ErrorKey, { field: issue.path.join(".") || fallbackPath });
+    }
+  }
+}
+
 /** Разбор тела запроса по zod-схеме с осмысленной 400-й ошибкой */
 export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): Promise<z.output<S>> {
   let raw: unknown;
@@ -87,6 +117,7 @@ export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): 
   }
   const result = schema.safeParse(raw);
   if (!result.success) {
+    failKeyedIssue(result.error.issues, "body");
     const detail = result.error.issues
       .map((i) => `${i.path.join(".") || "body"}: ${i.message}`)
       .join("; ");
@@ -105,6 +136,7 @@ export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): 
 export function parseQuery<S extends ZodTypeAny>(c: Context, schema: S): z.output<S> {
   const result = schema.safeParse(c.req.query());
   if (!result.success) {
+    failKeyedIssue(result.error.issues, "query");
     const detail = result.error.issues
       .map((i) => `${i.path.join(".") || "query"}: ${i.message}`)
       .join("; ");

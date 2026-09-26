@@ -152,6 +152,14 @@ describe("порядок батареи и методики клинициста
 
 describe("планировщик", () => {
   test("два прогона подряд не плодят назначений", async () => {
+    /*
+     * Своё подразделение со своим человеком. Прежде бралась «Рота А»
+     * фиксированного пациента — и «ровно одно назначение» держалось на том,
+     * что никакой другой файл не заведёт человека в эту роту (волна 12,
+     * integrity).
+     */
+    const unit = `Рота-${crypto.randomUUID().slice(0, 8)}`;
+    await makeUser("user", `sched-${crypto.randomUUID()}@test`, { unit });
     const scheduleId = crypto.randomUUID();
     const batteryId = crypto.randomUUID();
     await db.insert(batteries).values({
@@ -167,7 +175,7 @@ describe("планировщик", () => {
       title: "Тестовое расписание",
       batteryId,
       scope: "unit",
-      unit: "Рота А",
+      unit,
       intervalDays: 30,
       dueDays: 7,
       startsAt: new Date(Date.now() - 1000).toISOString(),

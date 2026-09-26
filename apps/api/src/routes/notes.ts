@@ -7,7 +7,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { indexOf } from "../lib/searchIndex";
-import { badRequest, conflict, notFound, parseBody } from "../lib/http";
+import { badRequest, conflict, isUniqueViolation, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
@@ -51,9 +51,16 @@ const saveSchema = z.object({
   appointmentId: z.string().nullable().optional(),
   /** Версия, поверх которой правили; 0 — заметок ещё не было */
   baseVersion: z.number().int().min(0).optional(),
+  /** Ревизия текста внутри неё — черновик правится на месте, см. conclusions.ts */
+  baseRevision: z.number().int().min(1).optional(),
 });
 
-const signSchema = z.object({ version: z.number().int().min(1) });
+/*
+ * Подпись несёт версию И ревизию, и ревизия обязательна — по той же
+ * причине, что у заключения (routes/conclusions.ts, signSchema): подписать
+ * можно только тот текст, который был перед глазами.
+ */
+const signSchema = z.object({ version: z.number().int().min(1), revision: z.number().int().min(1) });
 
 async function assertPatient(staff: User, userId: string) {
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -79,6 +86,7 @@ async function history(userId: string) {
   return rows.map(({ row, author }) => ({
     id: row.id,
     version: row.version,
+    revision: row.revision,
     kind: row.kind,
     text: decryptField(row.text) ?? "",
     status: row.status,
@@ -123,6 +131,10 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
   if (input.baseVersion !== undefined && input.baseVersion !== (latest?.version ?? 0)) {
     conflict("err.notesChanged", { current: latest?.version ?? 0, base: input.baseVersion });
   }
+  // версия та же, текст другой: черновик переписали после того, как его открыли
+  if (input.baseRevision !== undefined && latest && latest.revision !== input.baseRevision) {
+    conflict("err.noteRevisionChanged", { version: latest.version });
+  }
 
   /*
    * Слепой индекс переписывается целиком на каждое сохранение: правка меняет
@@ -140,6 +152,7 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
       .update(patientNotes)
       .set({
         text: encryptField(input.text)!,
+        revision: latest.revision + 1,
         kind: input.kind ?? latest.kind,
         appointmentId: input.appointmentId ?? latest.appointmentId,
         createdBy: staff.id,
@@ -149,15 +162,24 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
     await reindex(latest.id);
   } else {
     const id = crypto.randomUUID();
-    await db.insert(patientNotes).values({
-      id,
-      userId,
-      version: (latest?.version ?? 0) + 1,
-      kind: input.kind ?? "session",
-      text: encryptField(input.text)!,
-      appointmentId: input.appointmentId ?? null,
-      createdBy: staff.id,
-    });
+    try {
+      await db.insert(patientNotes).values({
+        id,
+        userId,
+        version: (latest?.version ?? 0) + 1,
+        revision: 1,
+        kind: input.kind ?? "session",
+        text: encryptField(input.text)!,
+        appointmentId: input.appointmentId ?? null,
+        createdBy: staff.id,
+      });
+    } catch (err) {
+      // последний сторож гонки за номер версии — индекс; его отказ — конфликт, а не 500
+      if (isUniqueViolation(err)) {
+        conflict("err.notesChanged", { current: (latest?.version ?? 0) + 1, base: latest?.version ?? 0 });
+      }
+      throw err;
+    }
     await reindex(id);
   }
 
@@ -191,6 +213,9 @@ noteRoutes.post("/patients/:userId/sign", requirePermission("notes.write"), asyn
   if (latest.version !== input.version) {
     conflict("err.noteTextChangedAfterOpen", { current: latest.version, signing: input.version });
   }
+  if (latest.revision !== input.revision) {
+    conflict("err.noteRevisionChanged", { version: latest.version });
+  }
 
   await db
     .update(patientNotes)
@@ -202,7 +227,7 @@ noteRoutes.post("/patients/:userId/sign", requirePermission("notes.write"), asyn
     resourceType: "user",
     resourceId: userId,
     subjectUserId: userId,
-    details: { version: latest.version },
+    details: { version: latest.version, revision: latest.revision },
   });
 
   const versions = await history(userId);
