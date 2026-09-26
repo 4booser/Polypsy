@@ -95,8 +95,17 @@ import type {
   MobileReport,
   PushReport,
   ScreenViewsInput,
+  PublicServiceStatus,
+  OpsServiceStatus,
+  OpsFlagsView,
+  FlagChange,
+  FlagAudienceOptions,
+  FeatureFlagKey,
+  FeatureFlagUpdate,
+  ReleasesView,
+  ServiceStatusInput,
 } from "@quizzy/shared";
-import { uiText } from "@quizzy/shared";
+import { MAINTENANCE_CODE, uiText } from "@quizzy/shared";
 import { currentLang } from "./lang";
 
 /*
@@ -172,6 +181,18 @@ async function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
+/**
+ * Событие окна «сервер закрыл запись на обслуживание».
+ *
+ * Отказ 503 с кодом `maintenance` может прийти на любом экране, а баннер
+ * живёт в оболочке и опрашивает состояние раз в пару минут. Событие будит
+ * его сразу: человек, нажавший «Зберегти» во время работ, видит баннер
+ * вместе с отказом, а не через две минуты. Событием, а не вызовом модуля
+ * баннера: тот сам ходит сюда за состоянием, и прямой вызов замкнул бы
+ * импорты в круг.
+ */
+export const MAINTENANCE_EVENT = "quizzy:maintenance";
+
 async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const token = tokenStore.get();
 
@@ -213,6 +234,9 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
+  if (res.status === 503 && body?.code === MAINTENANCE_CODE && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(MAINTENANCE_EVENT));
+  }
   if (!res.ok) {
     /*
      * Номер запроса приходит и в заголовке, и в теле. Он приклеивается к
@@ -1250,6 +1274,32 @@ export const api = {
       body: JSON.stringify({ line }),
     }),
 
+  /* ── техпанель, эксплуатация: состояние системы, флаги функций, выкатки ── */
+  /** Состояние системы: открыто без входа — баннер нужен и на экране входа */
+  serviceStatus: () => request<PublicServiceStatus>("/api/status"),
+  /** Флаги, включённые мне: только ключи (см. service/flags.ts) */
+  myFlags: () => request<{ flags: FeatureFlagKey[] }>("/api/flags"),
+  opsStatus: () => request<OpsServiceStatus>("/api/ops/maint/status"),
+  opsAnnounce: (input: ServiceStatusInput) =>
+    request<{ current: PublicServiceStatus }>("/api/ops/maint/status", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  opsFlags: () => request<OpsFlagsView>("/api/ops/maint/flags"),
+  opsFlagChanges: () => request<{ items: FlagChange[] }>("/api/ops/maint/flags/changes?limit=50"),
+  opsFlagAudience: () => request<FlagAudienceOptions>("/api/ops/maint/flags/audience"),
+  opsSaveFlag: (key: string, input: FeatureFlagUpdate) =>
+    request<Pick<FlagChange, "before" | "after">>(`/api/ops/maint/flags/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  opsReleases: () => request<ReleasesView>("/api/ops/maint/releases"),
+  opsRollback: (version: string) =>
+    request<{ ok: true; workflowUrl: string | null }>("/api/ops/maint/releases/rollback", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
+
   /* ── поликлиника ── */
   threads: () =>
     request<{
@@ -1541,7 +1591,12 @@ export const api = {
   /* ── кабинет пациента ── */
   submitResponse: (
     surveyId: string,
-    body: { startedAt: string; durationMs: number; answers: unknown[]; events: unknown[] },
+    /*
+     * clientRequestId — с первой попытки: сдача, отложенная до конца работ,
+     * уходит с тем же id, и сервер узнает дубль, если первая попытка всё же
+     * успела записаться (patient/outbox.ts).
+     */
+    body: { startedAt: string; durationMs: number; answers: unknown[]; events: unknown[]; clientRequestId?: string },
   ) =>
     request<{ id: string; safetyPlan: string | null }>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",

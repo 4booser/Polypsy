@@ -136,6 +136,15 @@ const NOT_TEXT: [string, string][] = [
    */
   ["mailings", "options"],
   ["mailings", "patient_ids"],
+  /*
+   * Техпанель, эксплуатация (миграция 0090): аудитория флага и её история —
+   * идентификаторы и коды ролей, подписи к ним экран берёт из справочников
+   * на языке читателя; миграции выпуска — теги файлов миграций.
+   */
+  ["feature_flags", "audience"],
+  ["feature_flag_changes", "before"],
+  ["feature_flag_changes", "after"],
+  ["releases", "migrations"],
 ];
 
 describe("двуязычность содержимого", () => {

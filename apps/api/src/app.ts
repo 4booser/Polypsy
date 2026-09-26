@@ -70,6 +70,8 @@ import { opsDataRoutes, usageRoutes } from "./routes/opsData";
 import { facetRoutes } from "./routes/facets";
 import { referralRoutes } from "./routes/referrals";
 import { templateRoutes } from "./routes/templates";
+import { featureFlagRoutes, opsMaintRoutes, serviceStatusRoutes } from "./routes/opsMaint";
+import { maintenanceGate } from "./lib/serviceStatus";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
@@ -125,6 +127,13 @@ app.use(
     origin: (origin) => (env.corsOrigins.includes(origin) ? origin : null),
   }),
 );
+/*
+ * Режим обслуживания: изменяющие запросы к API получают 503, пока он
+ * включён, — кроме техпанели и входа (lib/serviceStatus.ts). Раньше всех
+ * маршрутов и после CORS: предварительный запрос браузера (OPTIONS)
+ * отвечается выше и сюда не доходит, а отказ 503 уходит с заголовками CORS.
+ */
+app.use("/api/*", maintenanceGate);
 
 /**
  * Liveness: процесс жив. Readiness: жив И база отвечает — балансировщику
@@ -221,6 +230,13 @@ app.route("/api/views", viewRoutes);
 app.route("/api/notes", noteRoutes);
 app.route("/api/safety", safetyRoutes);
 app.route("/api/push", pushRoutes);
+/*
+ * Техпанель, эксплуатация: состояние системы (без входа), мои флаги
+ * функций и маршруты техпанели — режим обслуживания, флаги, выкатки.
+ */
+app.route("/api/status", serviceStatusRoutes);
+app.route("/api/flags", featureFlagRoutes);
+app.route("/api/ops/maint", opsMaintRoutes);
 // метрики вне /api: их снимает сборщик, а не консоль
 app.route("/metrics", metricsRoutes);
 /*

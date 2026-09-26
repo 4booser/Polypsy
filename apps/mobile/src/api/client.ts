@@ -53,7 +53,7 @@ import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName, wipeLocalData } from "../offline/device";
 import { enqueue, flush, pending, pendingCount, rejectedItems, retryRejected, type QueuedSubmission } from "../offline/queue";
-import { computeProfile } from "@quizzy/shared";
+import { computeProfile, isTransientStatus } from "@quizzy/shared";
 
 export class ApiError extends Error {
   constructor(
@@ -418,19 +418,27 @@ export const api = {
       /** Пол и возраст пациента — для офлайн-подсчёта в режиме обхода */
       subject?: { sex: "male" | "female" | null; age: number | null } | null;
     },
-  ) =>
-    request<SubmitResult>(`/api/surveys/${surveyId}/responses`, {
+  ) => {
+    /*
+     * Идентификатор сдачи — с первой же попытки, а не только в очереди:
+     * 502/504 приходят и тогда, когда сервер сдачу уже записал, и повтор
+     * обязан быть узнан как дубль (см. enqueue).
+     */
+    const body = { ...payload, clientRequestId: crypto.randomUUID() };
+    return request<SubmitResult>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     }).catch((error) => {
-      if ((error as ApiError).status !== 0) throw error;
+      if (!isTransientStatus((error as ApiError).status)) throw error;
       /*
-       * Сети нет. Ответы — клинические данные, терять их нельзя: кладём в
-       * очередь (уйдёт при первой возможности, с идемпотентным id) и считаем
-       * баллы локально тем же движком, что на сервере, — computeProfile общий,
-       * расхождений быть не может по построению.
+       * Сети нет или сервер временно не принимает запись (режим
+       * обслуживания, перезапуск при выкатке). Ответы — клинические данные,
+       * терять их нельзя: кладём в очередь (уйдёт при первой возможности, с
+       * идемпотентным id) и считаем баллы локально тем же движком, что на
+       * сервере, — computeProfile общий, расхождений быть не может по
+       * построению.
        */
-      const item = enqueue(surveyId, { ...payload });
+      const item = enqueue(surveyId, body);
       const survey = cache.survey(surveyId);
       // чей пол и возраст берём для норм — см. respondentFor
       const respondent = respondentFor(payload.subject, cache.me());
@@ -456,7 +464,8 @@ export const api = {
         queued: true,
       };
       return offline;
-    }),
+    });
+  },
 
   /**
    * Прогон офлайн-очереди; вызывается при старте, из тика и по возвращению сети.
@@ -487,8 +496,8 @@ export const api = {
         });
         drafts.save({ ...draft, synced: true });
       } catch (error) {
-        // сети по-прежнему нет — остальные тоже не уйдут
-        if (((error as { status?: number }).status ?? 0) === 0) break;
+        // сети по-прежнему нет или идут работы — остальные тоже не уйдут
+        if (isTransientStatus((error as { status?: number }).status ?? 0)) break;
         /*
          * Отказ по существу черновик не роняет: он всё равно лежит на
          * устройстве, а прохождение можно продолжить и сдать целиком.

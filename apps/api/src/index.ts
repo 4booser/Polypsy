@@ -7,6 +7,7 @@ import { client } from "./db";
 import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
 import { checkRls, rlsRefusal } from "./lib/rlsGuard";
+import { recordRelease } from "./lib/releases";
 
 // расписания меряются днями, поэтому часового тика достаточно; первый проход
 // идёт сразу при старте, чтобы простой сервера не сдвигал выдачу заданий.
@@ -58,6 +59,13 @@ if (process.env.NODE_ENV === "production") {
 await syncBuiltinRole().catch((error) =>
   log.error("builtin role sync failed", { error: String(error) }),
 );
+
+/*
+ * Выкатка — в историю, если версия новая (lib/releases.ts). Отказ запуск
+ * не роняет: без строки истории система работает так же, а не поднявшийся
+ * из-за неё сервер не работает вовсе.
+ */
+await recordRelease().catch((error) => log.error("release record failed", { error: String(error) }));
 
 const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
