@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ALWAYS_VISIBLE_RAIL } from "./permissions";
 import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
+import { calendarDay, dateInput } from "./dates";
 
 export const roleSchema = z.enum(["superadmin", "admin", "user"]);
 
@@ -347,8 +348,9 @@ export const importUsersSchema = z.object({
 /** Отчёт «хто переглядав»: пациент и период (даты включительно) */
 export const whoViewedQuery = z.object({
   patientId: z.string().min(1),
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /* день, а не регулярка: «2026-13-01» формату соответствовал и уходил в базу пятисоткой */
+  from: calendarDay,
+  to: calendarDay,
 });
 
 export const patientPickQuery = z.object({
@@ -358,7 +360,8 @@ export const patientPickQuery = z.object({
 /** Назначение методики конкретному пациенту */
 export const grantAccessSchema = z.object({
   userId: z.string().min(1),
-  expiresAt: z.string().nullish(),
+  /* срок уходит в колонку метки времени: строка без проверки доезжала до базы пятисоткой */
+  expiresAt: dateInput.nullish(),
   note: z.string().max(500).nullish(),
   /**
    * Сколько раз можно пройти. Одна попытка по умолчанию — не потому, что так
@@ -385,7 +388,7 @@ export const batteryInputSchema = z.object({
 
 export const assignBatterySchema = z.object({
   userId: z.string().min(1),
-  dueAt: z.string().nullish(),
+  dueAt: dateInput.nullish(),
   note: z.string().max(500).nullish(),
 });
 
@@ -454,8 +457,14 @@ export const groupInputSchema = z.object({
  * заведении и дальше не правится, см. surveyFolderUpdateSchema.
  */
 
-/** Дата папки хранится колонкой date: только ГГГГ-ММ-ДД, без времени и пояса */
-const plainDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в виде ГГГГ-ММ-ДД");
+/**
+ * Дата папки хранится колонкой date: только ГГГГ-ММ-ДД, без времени и пояса.
+ *
+ * Прежде — регулярным выражением, и «2026-02-31» проходило его, а колонка
+ * date — нет: пятисотка на сохранении папки, а у пресета фильтров хуже —
+ * кривая дата сохранялась в jsonb и роняла каждый следующий расчёт модели.
+ */
+const plainDate = calendarDay;
 
 export const surveyFolderInputSchema = z.object({
   groupId: z.string().min(1),
@@ -539,7 +548,7 @@ export const patientGroupMembersRemoveSchema = z.object({
  */
 export const assignSurveyToPatientGroupSchema = z.object({
   surveyId: z.string().min(1),
-  expiresAt: z.string().nullish(),
+  expiresAt: dateInput.nullish(),
   note: z.string().max(500).nullish(),
   attemptsAllowed: z.number().int().min(1).max(10).default(1),
 });
@@ -990,7 +999,8 @@ export const answerSchema = z.object({
 /** Автосохранение черновика прохождения */
 export const draftSchema = z.object({
   answers: z.array(answerSchema),
-  startedAt: z.string(),
+  /* метка уходит в колонку времени: «вчора» или 31 лютого давали пятисотку (волна 12) */
+  startedAt: dateInput,
   durationMs: z.number().int().min(0).max(86_400_000),
   events: z.array(z.unknown()).max(5000).default([]),
 });
@@ -1001,7 +1011,7 @@ export const answerEventSchema = z.object({
   sequence: z.number().int().min(0),
   kind: z.enum(["shown", "set", "change", "clear", "leave"]),
   elapsedMs: z.number().int().min(0).max(86_400_000),
-  at: z.string(),
+  at: dateInput,
   value: z.unknown().optional(),
 });
 
@@ -1009,7 +1019,8 @@ export const submitResponseSchema = z.object({
   /** Ид попытки для идемпотентного повтора из офлайн-очереди */
   clientRequestId: z.string().max(64).nullish(),
   answers: z.array(answerSchema),
-  startedAt: z.string(),
+  /* см. draftSchema: до базы доходит только дата, которую она примет */
+  startedAt: dateInput,
   durationMs: z.number().int().min(0).max(86_400_000),
   status: z.enum(["completed", "abandoned"]).default("completed"),
   /** Полная лента событий — из неё восстанавливается процесс ответа */
@@ -1079,21 +1090,14 @@ export type ScaleDraft = z.input<typeof scaleInputSchema>;
  * Проверяется не только формат, но и существование даты: «2026-02-31»
  * формату соответствует, а в сравнении с меткой времени ведёт себя
  * непредсказуемо.
+ *
+ * Сама проверка — в dates.ts (isDateInput). Прежняя, через new Date() и
+ * обратную сверку дня, пропускала «0000-01-01» (в JavaScript год ноль есть,
+ * в PostgreSQL — нет: журнал, аналитика и «хто переглядав» отвечали на него
+ * пятисоткой) и отвергала законный момент со смещением у полуночи:
+ * «2026-01-01T23:00:00-05:00» по Гринвичу уже второе число.
  */
-export const queryDate = z.string().refine(
-  (v) => {
-    if (!/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(v)) return false;
-    const parsed = new Date(v);
-    if (Number.isNaN(parsed.getTime())) return false;
-    /*
-     * Обратная сверка обязательна: Date.parse("2026-02-31") не падает, а
-     * молча превращает дату в 3 марта. Отчёт «с 31 февраля» построился бы
-     * по чужому периоду, и никто бы этого не заметил.
-     */
-    return parsed.toISOString().slice(0, 10) === v.slice(0, 10);
-  },
-  { message: "ожидается существующая дата ГГГГ-ММ-ДД" },
-);
+export const queryDate = dateInput;
 
 /** Числовой параметр из строки запроса с границами */
 export const queryInt = (min: number, max: number, fallback: number) =>
@@ -1165,23 +1169,61 @@ export const auditQuery = dateRangeQuery.extend({
   cursor: z.string().max(400).optional(),
 });
 
-export const exportQuery = z.object({
-  profile: queryEnum(["full", "deidentified", "anonymous"], "full"),
-  /*
-   * Язык подписей в выгрузке — язык СОДЕРЖИМОГО (названия пунктов и
-   * вариантов), поэтому из CONTENT_LANGS: английских подписей у методик нет,
-   * и «?lang=en» честнее отвергнуть, чем молча отдать украинские.
-   */
-  lang: queryEnum(CONTENT_LANGS, "ru"),
-  /**
-   * Зачем выгружают.
-   *
-   * Необязательно для машины и обязательно по смыслу: выгрузка клинических
-   * данных — это событие, которое через год кто-то будет разбирать, и «кто и
-   * когда» без «зачем» не отвечает ни на один вопрос разбора.
-   */
-  purpose: z.string().max(300).optional(),
-});
+/**
+ * Параметры выгрузки для исследования (routes/spss.ts).
+ *
+ * Умолчание — «deidentified», а не «full» (внешний разбор кода 2026-09-26).
+ * Опечатку в ЗНАЧЕНИИ профиля queryEnum уже отвергал, но опечатка в ИМЕНИ
+ * (`?profil=deidentified`, `?Profile=…`) просто не находила параметра и
+ * давала умолчание — то есть файл с фамилиями. Теперь с именами уходит
+ * только то, что попросили словом «full» и на что есть право export.full;
+ * всё прочее — обезличено или отказ.
+ *
+ * `.strict()` — по той же причине: неизвестный параметр в выгрузке — это
+ * почти всегда чей-то неправильно понятый фильтр, и молча выгрузить «как
+ * обычно» хуже, чем сказать «такого параметра нет».
+ */
+export const exportQuery = z
+  .object({
+    profile: queryEnum(["full", "deidentified", "anonymous"], "deidentified"),
+    /*
+     * Язык подписей в выгрузке — язык СОДЕРЖИМОГО (названия пунктов и
+     * вариантов), поэтому из CONTENT_LANGS: английских подписей у методик нет,
+     * и «?lang=en» честнее отвергнуть, чем молча отдать украинские.
+     */
+    lang: queryEnum(CONTENT_LANGS, "ru"),
+    /**
+     * Зачем выгружают.
+     *
+     * Необязательно для машины и обязательно по смыслу: выгрузка клинических
+     * данных — это событие, которое через год кто-то будет разбирать, и «кто и
+     * когда» без «зачем» не отвечает ни на один вопрос разбора.
+     */
+    purpose: z.string().max(300).optional(),
+  })
+  .strict();
+
+/**
+ * Параметры сырой выгрузки аналитики (GET /api/analytics/surveys/:id/export).
+ *
+ * Эта выгрузка обезличенной не бывает: в ней user_id, и закрыта она правом
+ * export.full. Прежде она не читала параметров вовсе, и запрос с
+ * `?profile=deidentified` — вполне разумная догадка того, кто видел SPSS
+ * рядом, — молча отдавал файл с идентификаторами. Теперь профиль, если он
+ * назван, может быть только «full», а незнакомый параметр — отказ.
+ */
+export const analyticsExportQuery = z
+  .object({
+    profile: z
+      .string()
+      .optional()
+      .refine((v) => v === undefined || v === "full", {
+        message: "эта выгрузка всегда с идентификаторами; обезличенная — /api/spss/surveys/:id/data.csv?profile=deidentified",
+      }),
+    purpose: z.string().max(300).optional(),
+    lang: z.string().max(8).optional(),
+  })
+  .strict();
 
 export const facetQuery = z.object({
   facet: queryEnum(["sex", "age", "sexAge", "lang", "unit"], "sexAge"),
@@ -1421,7 +1463,8 @@ export const workspacePrefsSchema = z.object({
       message: "этот раздел нельзя убрать: рядом с ним стоит число неразобранного",
     })
     .optional(),
-  eventsSeenAt: z.string().nullable().optional(),
+  /* метка «прочитано до» сравнивается с временем событий — кривая строка в ней ломала бы ленту */
+  eventsSeenAt: dateInput.nullable().optional(),
 });
 
 /* ── Поликлиника: расписание и приёмы ── */
@@ -1442,7 +1485,7 @@ export const scheduleTemplateSchema = z
 
 export const scheduleExceptionSchema = z
   .object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    date: calendarDay,
     kind: z.enum(["off", "extra"]),
     startsAt: timeOfDay.nullish(),
     endsAt: timeOfDay.nullish(),

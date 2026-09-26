@@ -354,14 +354,29 @@ describe("форма истории оповещений: по дням и по 
   test("месяц по всей таблице: пустые дни — нули, тестовое и старое не считаются", async () => {
     const now = Date.now();
     const DAY = 86_400_000;
+    /*
+     * Сдвиги — внутри тех же суток по поясу учреждения, что и опорная точка.
+     *
+     * Было «+1 час» от «трое суток назад» и «−2 минуты» от «сейчас»: в
+     * 23:30 по Киеву повтор уезжал в следующие сутки, а в 00:01 сегодняшние
+     * события — во вчера, и тест падал от часа прогона (волна 12, integrity:
+     * CI гоняет сюиту в любое время суток). Сдвиг, выходящий за сутки,
+     * берётся в другую сторону; сегодняшние — в прошлое всегда, но на
+     * миллисекунды, если минуты назад были ещё вчера: будущих событий в
+     * истории не бывает.
+     */
+    const dayAt = (at: number) => dayOf(new Date(at).toISOString());
+    const sameDay = (at: number, shift: number) => (dayAt(at + shift) === dayAt(at) ? at + shift : at - shift);
+    const today = (ago: number) => (dayAt(now - ago) === dayAt(now) ? now - ago : now - Math.floor(ago / 1000));
+    const threeDays = now - 3 * DAY;
     await db.insert(opsAlertEvents).values([
-      event(now - 60_000, "fired", "errors5xx"),
-      event(now - 120_000, "fired", "errors5xx"),
-      event(now - 30_000, "resolved", "errors5xx"),
-      event(now - 3 * DAY, "fired", "p95"),
-      event(now - 3 * DAY + 3_600_000, "repeat", "p95"),
+      event(today(60_000), "fired", "errors5xx"),
+      event(today(120_000), "fired", "errors5xx"),
+      event(today(30_000), "resolved", "errors5xx"),
+      event(threeDays, "fired", "p95"),
+      event(sameDay(threeDays, 3_600_000), "repeat", "p95"),
       // проверка канала — не срабатывание
-      event(now - 90_000, "test", null),
+      event(today(90_000), "test", null),
       // за пределами месяца
       event(now - 40 * DAY, "fired", "diskFree"),
     ]);

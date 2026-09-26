@@ -224,6 +224,8 @@ describe("расшифровка", () => {
     expect(String(state.body.failure)).toContain("модель не загружена");
     const rivalState = await api(`/api/recordings/${rival.id}`, rival.specialist.token);
     expect(rivalState.body.status, "чужая запись очереди тронута").toBe("uploaded");
+    // своя «чужая» из очереди убирается: иначе её подхватит расшифровка другого файла
+    await api(`/api/recordings/${rival.id}/discard`, rival.patient.token, { method: "POST" });
   });
 
   test("успешная расшифровка кладёт текст и называет движок", async () => {

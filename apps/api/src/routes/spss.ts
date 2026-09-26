@@ -1,12 +1,13 @@
 import { Hono, type Context } from "hono";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { ageAt, applyQuasi, exportQuery, generalizeQuasi } from "@quizzy/shared";
 import type { AgeBand, ContentLang, Generalization } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
-import { answers, responseScores, responses, surveyVersions, users } from "../db/schema";
+import { answers, options, questions, responseScores, responses, scales, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
+import { csvCell } from "../lib/csv";
 import { forbidden, notFound, parseQuery } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
@@ -35,11 +36,29 @@ interface Variable {
   value: (ctx: RowContext) => string;
 }
 
+/**
+ * Строка выгрузки — одно прохождение, приведённое к схеме действующей версии.
+ *
+ * Ключи — не идентификаторы, а то, что у версий общее (клиническое ревью,
+ * P1). Вопросы, варианты и шкалы у каждой версии методики — свои строки со
+ * своими id, а схема выгрузки строится по действующей. Сопоставление по id
+ * превращало всю историю до последней правки методики в «пропущено»:
+ * GAD-7 первой версии с 14 баллами выгружался строкой из -99. Теперь ответ
+ * находится по позиции пункта в СВОЕЙ версии, вариант — по порядковому
+ * номеру в своём пункте, балл — по коду шкалы; номер версии прохождения —
+ * отдельной колонкой, чтобы расхождения версий было видно в самих данных.
+ */
 interface RowContext {
   response: typeof responses.$inferSelect;
   user: typeof users.$inferSelect | null;
-  answer: Map<string, typeof answers.$inferSelect>;
+  /** Ответы по позиции пункта в версии прохождения */
+  answer: Map<number, typeof answers.$inferSelect>;
+  /** Баллы по коду шкалы */
   score: Map<string, typeof responseScores.$inferSelect>;
+  /** Номер версии методики, которой проходили */
+  version: number | null;
+  /** id варианта или строки матрицы любой версии → порядковый номер в своём пункте (с нуля) */
+  optionIndex: Map<string, number>;
 }
 
 /**
@@ -61,9 +80,6 @@ function sq(text: string): string {
   return `'${text.replace(/'/g, "''").replace(/[\r\n]+/g, " ").slice(0, 250)}'`;
 }
 
-function csvCell(value: string): string {
-  return /[",\n;]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-}
 
 /**
  * Схема выгрузки. Данные и синтаксис строятся из одного описания, иначе они
@@ -313,60 +329,247 @@ async function buildSchema(
       label: "Длительность прохождения, минут",
       value: (c) => (c.response.durationMs ? (c.response.durationMs / 60000).toFixed(2) : String(MISSING)),
     },
+    {
+      /*
+       * Версия, которой проходили: пункты сопоставлены по позиции, и если
+       * правка методики сдвинула смысл пункта, исследователь должен видеть,
+       * какие строки из какой версии.
+       */
+      name: unique("version"),
+      spec: "F3.0",
+      label: "Версия методики, которой проходили",
+      value: (c) => String(c.version ?? MISSING),
+    },
   );
 
-  // Пункты: числовой код варианта (порядковый номер), время и число переключений
+  /*
+   * Пункты: переменные по типу вопроса, время и число переключений.
+   *
+   * Раньше на любой вопрос с вариантами приходилась одна переменная с кодом
+   * ПЕРВОГО выбранного варианта (optionIds[0]): у множественного выбора из
+   * двух отмеченных в файл попадал один, матрица и ранжирование сводились к
+   * «код 1» или пропуску (третье ревью заказчика, P2). Теперь форма — по
+   * типу, и словарь переменных строится из той же схемы, поэтому совпадает
+   * с данными сам собой:
+   *
+   *   single / yesno  — одна переменная, код варианта 1…N;
+   *   multiple        — переменная на вариант: 1 выбран, 0 нет;
+   *   matrix          — переменная на строку: код варианта-столбца;
+   *   ranking         — переменная на место: код варианта на этом месте;
+   *   scale / slider / number — число как есть;
+   *   text / longtext / date — строка, и только в полном профиле (ниже).
+   *
+   * Пропуск (пункт не отвечен или пропущен) — -99 во всех числовых
+   * переменных пункта: «не выбран ни один» у множественного выбора — это
+   * нули, а не пропуск, и различать их исследователю нужно.
+   */
   for (const q of asked) {
     const base = unique(varName(`q${q.position + 1}`, "q"));
-    const codes: [number, string][] = q.options.map((o, i) => [i + 1, o.text]);
-    vars.push({
-      name: base,
-      spec: q.options.length ? "F3.0" : "A200",
-      label: `${q.position + 1}. ${q.title}`,
-      values: q.options.length ? codes : undefined,
-      value: (c) => {
-        const a = c.answer.get(q.id);
-        if (!a || a.skipped) return q.options.length ? String(MISSING) : "";
-        if (q.options.length) {
-          const idx = q.options.findIndex((o) => a.optionIds?.[0] === o.id);
-          return idx >= 0 ? String(idx + 1) : String(MISSING);
-        }
-        if (a.number !== null && a.number !== undefined) return String(a.number);
-        return decryptField(a.text) ?? "";
-      },
-    });
+    vars.push(...itemVariables(q, base, unique, profile));
     vars.push({
       name: unique(`${base}_ms`),
       spec: "F8.0",
       label: `Время ответа на пункт ${q.position + 1}, мс`,
-      value: (c) => String(c.answer.get(q.id)?.durationMs ?? MISSING),
+      value: (c) => String(c.answer.get(q.position)?.durationMs ?? MISSING),
     });
     vars.push({
       name: unique(`${base}_chg`),
       spec: "F3.0",
       label: `Число переключений ответа, пункт ${q.position + 1}`,
-      value: (c) => String(c.answer.get(q.id)?.changeCount ?? MISSING),
+      value: (c) => String(c.answer.get(q.position)?.changeCount ?? MISSING),
     });
   }
 
-  // Шкалы: сырой балл и итоговое значение в единицах нормализации
+  /*
+   * Шкалы: сырой балл, итоговое значение в единицах нормализации и признак,
+   * что нормировка применилась.
+   *
+   * Балл ищется по коду шкалы, а не по id: у каждой версии шкалы свои строки.
+   * Нормированное — только там, где нормировка действительно применилась
+   * (клиническое ревью, P2): если норм для пола и возраста человека не
+   * нашлось, в value лежит СЫРОЙ балл (response_scores.normalized = false), и
+   * под подписью «T-балл» он читался бы как T-балл. Такая ячейка — пропуск,
+   * а признак _nf говорит, почему.
+   */
   for (const scale of survey.scales) {
     const base = unique(varName(scale.code, "sc"));
     vars.push({
       name: base,
       spec: "F8.2",
       label: `${scale.title} — сырой балл`,
-      value: (c) => String(c.score.get(scale.id)?.rawScore ?? MISSING),
+      value: (c) => String(c.score.get(scale.code)?.rawScore ?? MISSING),
     });
     vars.push({
       name: unique(`${base}_n`),
       spec: "F8.3",
       label: `${scale.title} — ${normalizationLabel(scale.normalization)}`,
-      value: (c) => String(c.score.get(scale.id)?.value ?? MISSING),
+      value: (c) => {
+        const score = c.score.get(scale.code);
+        return score && score.normalized ? String(score.value) : String(MISSING);
+      },
+    });
+    vars.push({
+      name: unique(`${base}_nf`),
+      spec: "F1.0",
+      label: `${scale.title} — нормировка применена`,
+      values: [
+        [0, "нет: норм для человека не нашлось, есть только сырой балл"],
+        [1, "да"],
+      ],
+      value: (c) => {
+        const score = c.score.get(scale.code);
+        return score ? (score.normalized ? "1" : "0") : String(MISSING);
+      },
     });
   }
 
   return { survey, vars };
+}
+
+type SurveyQuestion = NonNullable<Awaited<ReturnType<typeof getSurvey>>>["questions"][number];
+
+/**
+ * Свободный ввод: то, что человек написал сам, а не выбрал.
+ *
+ * В обезличенную и анонимную выгрузку он не идёт (третье ревью заказчика,
+ * P1: имя и телефон из текстового ответа целиком попадали в CSV обоих
+ * профилей). Убрать идентификатор пользователя — не значит обезличить
+ * содержание: «я, Петренко, 3-я рота, телефон …» остаётся тем, чем было, и
+ * никакое обобщение квазиидентификаторов его не касается. Дата — туда же:
+ * «дата народження» или день ранения опознают не хуже фамилии.
+ *
+ * Отдельного профиля «обезличенный, но с текстом» нет намеренно: текст
+ * нельзя обезличить механически, а выгрузка, в которой он есть, по сути
+ * поимённая — значит, это профиль full, с правом export.full и отметкой
+ * freeText в журнале. Безопасное умолчание — без текста; кому текст нужен
+ * для исследования, берёт полную выгрузку и отвечает за неё как за полную.
+ */
+const FREE_INPUT = new Set(["text", "longtext", "date"]);
+
+function isFreeInput(type: string): boolean {
+  return FREE_INPUT.has(type);
+}
+
+/** Переменные одного пункта по его типу — см. пояснение у цикла пунктов в buildSchema */
+function itemVariables(
+  q: SurveyQuestion,
+  base: string,
+  unique: (name: string) => string,
+  profile: ExportProfile,
+): Variable[] {
+  const choices = q.options.filter((o) => o.kind !== "row");
+  const rows = q.options.filter((o) => o.kind === "row");
+  const codes: [number, string][] = choices.map((o, i) => [i + 1, o.text]);
+  /*
+   * Код варианта — по его порядковому номеру в своём пункте, а не по id:
+   * у прохождения прежней версии id другие (см. RowContext).
+   */
+  const codeOf = (c: RowContext, optionId: string | undefined) => {
+    const idx = optionId === undefined ? undefined : c.optionIndex.get(optionId);
+    return idx !== undefined && idx < choices.length ? String(idx + 1) : String(MISSING);
+  };
+  const title = `${q.position + 1}. ${q.title}`;
+  /** Ответ, если он есть и не пропущен; иначе null — пропуск для всех переменных пункта */
+  const given = (c: RowContext) => {
+    const a = c.answer.get(q.position);
+    return a && !a.skipped ? a : null;
+  };
+
+  switch (q.type) {
+    case "single":
+    case "yesno":
+      return [
+        {
+          name: base,
+          spec: "F3.0",
+          label: title,
+          values: codes,
+          value: (c) => {
+            const a = given(c);
+            return a ? codeOf(c, a.optionIds?.[0]) : String(MISSING);
+          },
+        },
+      ];
+
+    case "multiple":
+      return choices.map((o, i) => ({
+        name: unique(`${base}_${i + 1}`),
+        spec: "F1.0",
+        label: `${title}: ${o.text}`,
+        values: [
+          [0, "не выбрано"],
+          [1, "выбрано"],
+        ] as [number, string][],
+        value: (c: RowContext) => {
+          const a = given(c);
+          if (!a) return String(MISSING);
+          return (a.optionIds ?? []).some((id) => c.optionIndex.get(id) === i) ? "1" : "0";
+        },
+      }));
+
+    case "matrix":
+      return rows.map((row, j) => ({
+        name: unique(`${base}_r${j + 1}`),
+        spec: "F3.0",
+        label: `${title}: ${row.text}`,
+        values: codes,
+        value: (c: RowContext) => {
+          const a = given(c);
+          if (!a) return String(MISSING);
+          // строка — тоже по порядковому номеру среди строк своего пункта
+          const key = Object.keys(a.matrix ?? {}).find((rowId) => c.optionIndex.get(rowId) === j);
+          return key === undefined ? String(MISSING) : codeOf(c, a.matrix![key]);
+        },
+      }));
+
+    case "ranking":
+      return choices.map((_, k) => ({
+        name: unique(`${base}_p${k + 1}`),
+        spec: "F3.0",
+        label: `${title}: место ${k + 1}`,
+        values: codes,
+        value: (c: RowContext) => {
+          const a = given(c);
+          return a ? codeOf(c, a.ranking?.[k]) : String(MISSING);
+        },
+      }));
+
+    case "scale":
+    case "slider":
+    case "number":
+      return [
+        {
+          name: base,
+          spec: "F8.2",
+          label: title,
+          value: (c) => {
+            const a = given(c);
+            return a && a.number !== null && a.number !== undefined ? String(a.number) : String(MISSING);
+          },
+        },
+      ];
+
+    case "text":
+    case "longtext":
+    case "date":
+      // свободный ввод — только в полном профиле: см. FREE_INPUT
+      if (profile !== "full") return [];
+      return [
+        {
+          name: base,
+          spec: q.type === "date" ? "A10" : "A200",
+          label: title,
+          value: (c) => {
+            const a = given(c);
+            if (!a) return "";
+            return q.type === "date" ? (a.date ?? "") : (decryptField(a.text) ?? "");
+          },
+        },
+      ];
+
+    default:
+      return [];
+  }
 }
 
 function normalizationLabel(n: string): string {
@@ -397,12 +600,56 @@ async function loadRows(surveyId: string): Promise<RowContext[]> {
     ? await db.select().from(responseScores).where(inArray(responseScores.responseId, ids))
     : [];
 
-  return rows.map((r) => ({
-    response: r.response,
-    user: r.user,
-    answer: new Map(answerRows.filter((a) => a.responseId === r.response.id).map((a) => [a.questionId, a])),
-    score: new Map(scoreRows.filter((s) => s.responseId === r.response.id).map((s) => [s.scaleId, s])),
-  }));
+  /*
+   * Словари всех версий методики сразу: позиция пункта, порядковый номер
+   * варианта в пункте, код шкалы, номер версии. См. RowContext.
+   */
+  const [versionRows, questionRows, optionRows, scaleRows] = await Promise.all([
+    db.select({ id: surveyVersions.id, version: surveyVersions.version }).from(surveyVersions).where(eq(surveyVersions.surveyId, surveyId)),
+    db.select({ id: questions.id, position: questions.position }).from(questions).where(eq(questions.surveyId, surveyId)),
+    db
+      .select({ id: options.id, questionId: options.questionId, kind: options.kind })
+      .from(options)
+      .innerJoin(questions, eq(questions.id, options.questionId))
+      .where(eq(questions.surveyId, surveyId))
+      .orderBy(asc(options.questionId), asc(options.position), asc(options.id)),
+    db.select({ id: scales.id, code: scales.code }).from(scales).where(eq(scales.surveyId, surveyId)),
+  ]);
+  const versionNo = new Map(versionRows.map((v) => [v.id, v.version]));
+  const positionOf = new Map(questionRows.map((q) => [q.id, q.position]));
+  const codeOf = new Map(scaleRows.map((s) => [s.id, s.code]));
+  const optionIndex = new Map<string, number>();
+  const seen = new Map<string, number>();
+  for (const o of optionRows) {
+    // варианты и строки матрицы нумеруются раздельно — как в схеме пункта
+    const key = `${o.questionId}:${o.kind === "row" ? "row" : "option"}`;
+    const n = seen.get(key) ?? 0;
+    optionIndex.set(o.id, n);
+    seen.set(key, n + 1);
+  }
+
+  return rows.map((r) => {
+    const answer = new Map<number, (typeof answerRows)[number]>();
+    for (const a of answerRows) {
+      if (a.responseId !== r.response.id) continue;
+      const position = positionOf.get(a.questionId);
+      if (position !== undefined) answer.set(position, a);
+    }
+    const score = new Map<string, (typeof scoreRows)[number]>();
+    for (const s of scoreRows) {
+      if (s.responseId !== r.response.id) continue;
+      const code = codeOf.get(s.scaleId);
+      if (code !== undefined) score.set(code, s);
+    }
+    return {
+      response: r.response,
+      user: r.user,
+      answer,
+      score,
+      version: r.response.versionId ? (versionNo.get(r.response.versionId) ?? null) : null,
+      optionIndex,
+    };
+  });
 }
 
 /**
@@ -410,7 +657,9 @@ async function loadRows(surveyId: string): Promise<RowContext[]> {
  *
  * Раньше неизвестный профиль молча становился «full»: опечатка в
  * `?profile=deidentifed` отдавала выгрузку с фамилиями тому, кто был уверен,
- * что забирает обезличенную. Теперь — отказ.
+ * что забирает обезличенную. Теперь — отказ. А без профиля вовсе (или с
+ * опечаткой в имени параметра — её ловит `.strict()` схемы) — обезличенная:
+ * фамилии уезжают только по слову «full», сказанному явно (волна 12).
  *
  * Здесь же проверяется право на выгрузку с именами. Проверка стоит в разборе
  * параметров, а не строкой middleware, потому что маршрут один, а выгрузок
@@ -457,6 +706,8 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
       rows: rows.length,
       subjects: [...new Set(rows.map((r) => r.response.userId).filter(Boolean))].length,
       includesUserIds: profile === "full",
+      // свободный ввод (текст, даты) уходит только с полным профилем — см. FREE_INPUT
+      freeText: profile === "full",
       datasetSha256: datasetHash,
       purpose: purpose ?? null,
       /*
@@ -596,13 +847,21 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
   const { profile, purpose } = await exportOptions(c);
 
   const { sql } = await import("drizzle-orm");
+  /*
+   * Признак нормировки берётся из response_scores: в витрине response_facts
+   * его нет (клиническое ревью, P2), а без него сырой балл выгружался в
+   * колонку value под именем «T-балл». Витрину саму не трогаем — её правит
+   * участок stats; здесь достаточно соединения по паре «прохождение × шкала».
+   */
   const rows = await db.execute(sql`
-    select response_id, user_id, submitted_at, submitted_month, lang,
-           respondent_sex, respondent_age_band, unit,
-           scale_code, normalization, raw_score, value, band_label, severity, is_risk
-    from response_facts
-    where survey_id = ${surveyId} and status = 'completed'
-    order by submitted_at, response_id, scale_code`);
+    select f.response_id, f.user_id, f.submitted_at, f.submitted_month, f.lang,
+           f.respondent_sex, f.respondent_age_band, f.unit,
+           f.scale_code, f.normalization, f.raw_score, f.value, f.band_label, f.severity, f.is_risk,
+           s.normalized
+    from response_facts f
+    join response_scores s on s.response_id = f.response_id and s.scale_id = f.scale_id
+    where f.survey_id = ${surveyId} and f.status = 'completed'
+    order by f.submitted_at, f.response_id, f.scale_code`);
 
   type Row = Record<string, unknown>;
   // тот же код наблюдения, что и в широкой выгрузке: см. caseCoder
@@ -619,6 +878,7 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
     "normalization",
     "raw_score",
     "value",
+    "normalized",
     "band",
     "severity",
     "is_risk",
@@ -642,7 +902,9 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
       String(r.scale_code),
       String(r.normalization ?? ""),
       String(r.raw_score ?? ""),
-      String(r.value ?? ""),
+      // нормированное — только если нормировка применилась; иначе пусто, а не сырой балл
+      r.normalized ? String(r.value ?? "") : "",
+      r.normalized ? "1" : "0",
       String(r.band_label ?? ""),
       String(r.severity ?? ""),
       r.is_risk ? "1" : "0",
@@ -726,6 +988,19 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
       responses: countByVersion.get(v.id) ?? 0,
     })),
     variables: vars.map((v) => v.name),
+    /*
+     * Свободный ввод в обезличенных профилях не выгружается (FREE_INPUT).
+     * Сказано прямо, с номерами пунктов: иначе исследователь решит, что на
+     * текстовые вопросы никто не ответил.
+     */
+    freeText:
+      profile === "full"
+        ? { included: true, excludedItems: [] }
+        : {
+            included: false,
+            excludedItems: survey.questions.filter((q) => isFreeInput(q.type)).map((q) => q.position + 1),
+            note: "Свободные ответы и даты в обезличенных профилях не выгружаются: удаление идентификатора не обезличивает то, что человек написал сам.",
+          },
     /*
      * Что сделано ради k-анонимности. Без этого раздела исследователь увидит
      * пропуски в поле «пол» и посчитает их случайными — а они не случайные:

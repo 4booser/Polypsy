@@ -108,10 +108,18 @@ describe("RLS-политики (роль без прав владельца)", (
   });
 
   test("админ видит только свою группу", async () => {
-    const a = await as({ userId: adminA.id, role: "admin" }, countResponses);
-    const b = await as({ userId: adminB.id, role: "admin" }, countResponses);
-    expect(a).toBeGreaterThan(0); // группа А — все прохождения теста в ней
-    expect(b).toBe(0); // у группы Б прохождений нет — и чужих ей не видно
+    /*
+     * Своё прохождение и счёт по его id. Прежде считались ВСЕ прохождения,
+     * видимые adminB, с ожиданием нуля — «у группы Б прохождений нет»; это
+     * верно, пока ни один файл сюиты не сдал методику группы Б, и падало бы
+     * не там, где сломано (волна 12, integrity).
+     */
+    const person = await makeUser("user", `rls-zone-${crypto.randomUUID()}@test`);
+    const done = await submitSurvey(surveyInA, person.token);
+    expect(done.status).toBe(201);
+    const mine = `select count(*)::int n from responses where id = '${done.body.id}'`;
+    expect(await as({ userId: adminA.id, role: "admin" }, mine)).toBe(1); // группа А — прохождение её методики
+    expect(await as({ userId: adminB.id, role: "admin" }, mine)).toBe(0); // чужой группе не видно
   });
 
   test("пациент видит только свои прохождения и ответы", async () => {
@@ -361,12 +369,25 @@ describe("RLS покрывает все клинические таблицы", 
   });
 
   test("политика случаев видит группу, а не всё подряд", async () => {
+    /*
+     * Свой случай: прежде брался первый попавшийся, и на macOS, где этот
+     * файл идёт первым, случаев ещё не было — тест выходил, ничего не
+     * проверив (волна 12, integrity).
+     */
     const { alertCases } = await import("../src/db/schema");
-    const [row] = await db.select().from(alertCases).limit(1);
-    if (!row) return;
-    // чужой админ не получает случай ни по API, ни по прямому чтению в его контексте
-    const res = await api(`/api/alert-cases/${row.id}/history`, adminB.token);
-    expect(res.status).toBe(404);
+    const person = await makeUser("user", `rls-case-${crypto.randomUUID()}@test`);
+    const id = crypto.randomUUID();
+    await db.insert(alertCases).values({ id, userId: person.id, surveyId: surveyInA, severity: "moderate" });
+    try {
+      // свой админ случай видит — иначе 404 ниже ничего бы не доказывал
+      expect((await api(`/api/alert-cases/${id}/history`, adminA.token)).status).toBe(200);
+      // чужой админ не получает случай ни по API, ни по прямому чтению в его контексте
+      const res = await api(`/api/alert-cases/${id}/history`, adminB.token);
+      expect(res.status).toBe(404);
+    } finally {
+      // без сигналов в общей очереди не оставляем: соседние проверки берут случаи из неё
+      await db.delete(alertCases).where(eq(alertCases.id, id));
+    }
   });
 });
 
@@ -521,22 +542,33 @@ describe("удаление учётной записи не уносит кли�
 
 describe("информированное согласие", () => {
   test("новая версия текста сбрасывает принятие; след с версией", async () => {
-    // текста ещё нет — согласие не требуется
-    const empty = await api("/api/consents/me", patient.token);
-    expect(empty.body.required).toBe(false);
+    /*
+     * Текст согласия один на всю систему, а база у файлов общая: i18n.test.ts
+     * заводит свой текст, и если он прошёл раньше, «текста ещё нет» и
+     * «версия 1» здесь неверны (волна 12, integrity: падало в зависимости
+     * от порядка файлов). Поэтому отсчёт — от того, что есть сейчас, а
+     * «текста нет — согласие не требуется» проверяется, только пока его
+     * действительно нет.
+     */
+    const was = (await api("/api/consents/text", root.token)).body as { version: number } | null;
+    if (!was) {
+      const empty = await api("/api/consents/me", patient.token);
+      expect(empty.body.required).toBe(false);
+    }
+    const mark = crypto.randomUUID().slice(0, 8);
 
     // суперадмин задаёт текст
     const put = await api("/api/consents/text", root.token, {
       method: "PUT",
-      body: JSON.stringify({ body: { uk: "Текст згоди, версія перша", ru: "Текст согласия, версия первая" } }),
+      body: JSON.stringify({ body: { uk: `Текст згоди, версія перша ${mark}`, ru: `Текст согласия, версия первая ${mark}` } }),
     });
-    expect(put.body.version).toBe(1);
+    expect(put.body.version).toBe((was?.version ?? 0) + 1);
 
     const before = await api("/api/consents/me", patient.token);
     expect(before.body.required).toBe(true);
     expect(before.body.accepted).toBe(false);
     // без Accept-Language сервер отдаёт украинский — это дефолт госпиталя
-    expect(before.body.text).toContain("версія перша");
+    expect(before.body.text).toContain(`версія перша ${mark}`);
 
     await api("/api/consents/me/accept", patient.token, { method: "POST" });
     const after = await api("/api/consents/me", patient.token);
@@ -549,7 +581,7 @@ describe("информированное согласие", () => {
     });
     const reset = await api("/api/consents/me", patient.token);
     expect(reset.body.accepted).toBe(false);
-    expect(reset.body.version).toBe(2);
+    expect(reset.body.version).toBe(put.body.version + 1);
   });
 
   test("правка текста — только суперадмину", async () => {

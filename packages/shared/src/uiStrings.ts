@@ -7221,6 +7221,20 @@ export const UI = {
     ru: "Показаны первые {shown} — самые свежие. Остальные открывает «Показать ещё» под списком.",
     en: "Showing the first {shown} — the most recent. “Show more” below the list opens the rest.",
   },
+  /* ── w12:integrity ── */
+  /*
+   * Заключение или заметку переписали, пока они были открыты (409 от
+   * сохранения или подписи). Сама причина приходит текстом отказа сервера;
+   * здесь — кнопка перечитать и честное предупреждение, что станет с
+   * набранным: поле после перечитывания показывает сохранённый текст.
+   */
+  "integrity.reread": { uk: "Перечитати", ru: "Перечитать", en: "Reload" },
+  "integrity.rereadHint": {
+    uk: "Після перечитування в полі буде збережений текст. Якщо ваш варіант потрібен — скопіюйте його спершу.",
+    ru: "После перечитывания в поле будет сохранённый текст. Если ваш вариант нужен — сначала скопируйте его.",
+    en: "After reloading, the field will show the saved text. If you need your version, copy it first.",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

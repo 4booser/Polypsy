@@ -31,14 +31,14 @@ describe("заключение специалиста", () => {
 
     const signed = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 2 }),
     });
     expect(signed.body.current.status).toBe("signed");
 
     // повторная подпись — отказ
     const again = await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 2 }),
     });
     expect(again.status).toBe(400);
   });
@@ -68,7 +68,7 @@ describe("заключение специалиста", () => {
     // подпишем v2 — теперь она в отчёте
     await api(`/api/conclusions/responses/${responseId}/conclusion/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 2 }),
+      body: JSON.stringify({ version: 2, revision: 1 }),
     });
     const res2 = await app.request(`/api/reports/responses/${responseId}`, {
       headers: { Authorization: `Bearer ${adminA.token}` },
@@ -117,7 +117,7 @@ describe("заключение специалиста", () => {
     });
     await api(`/api/conclusions/responses/${rid}/conclusion/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 1 }),
     });
     // поверх подписанной легла новая версия — её специалист не видел
     await api(`/api/conclusions/responses/${rid}/conclusion`, adminA.token, {
@@ -127,7 +127,7 @@ describe("заключение специалиста", () => {
 
     const blind = await api(`/api/conclusions/responses/${rid}/conclusion/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 1 }),
     });
     expect(blind.status).toBe(409);
 
@@ -349,7 +349,7 @@ describe("заметка приёма", () => {
 
     const signed = await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 2 }),
     });
     expect(signed.body.current.status).toBe("signed");
 
@@ -380,7 +380,7 @@ describe("заметка приёма", () => {
     });
     await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 1 }),
     });
 
     const [row] = await db.select().from(patientNotes).where(eq(patientNotes.userId, person.id));
@@ -401,7 +401,7 @@ describe("заметка приёма", () => {
     });
     await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 1 }),
     });
     await api(`/api/notes/patients/${person.id}`, adminA.token, {
       method: "PUT",
@@ -410,7 +410,7 @@ describe("заметка приёма", () => {
 
     const blind = await api(`/api/notes/patients/${person.id}/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 1 }),
     });
     expect(blind.status).toBe(409);
   });

@@ -113,6 +113,16 @@ export const ERRORS = {
     en: "Couldn’t read the file: {path}: {message}",
   },
   "err.invalidDate": { uk: "Некоректна дата: {title}", ru: "Некорректная дата: {title}", en: "Invalid date: {title}" },
+  /*
+   * Дата в параметре или поле тела, которую база не приняла бы (dates.ts):
+   * «2026-02-31», нулевой год, «вчора». Раньше такая доезжала до PostgreSQL
+   * и возвращалась пятисоткой.
+   */
+  "err.invalidDateParam": {
+    uk: "Некоректна дата в полі «{field}»: потрібна дійсна дата РРРР-ММ-ДД або момент ISO 8601",
+    ru: "Некорректная дата в поле «{field}»: нужна существующая дата ГГГГ-ММ-ДД или момент ISO 8601",
+    en: "Invalid date in “{field}”: expected an existing date YYYY-MM-DD or an ISO 8601 timestamp",
+  },
   "err.invalidMatrixOption": {
     uk: "Неприпустимий варіант у матриці: {title}",
     ru: "Недопустимый вариант в матрице: {title}",
@@ -494,6 +504,21 @@ export const ERRORS = {
     en: "The conclusion has changed: it’s now at version {current}, but you were editing version {base}. Refresh the text.",
   },
   "err.conclusionNotYet": { uk: "Висновку ще немає", ru: "Заключения ещё нет", en: "There’s no conclusion yet" },
+  /*
+   * Та же версия, другой текст: черновик правится на месте, и номер версии
+   * у него не меняется. Подставлять номер «было/стало» здесь бессмысленно —
+   * он один и тот же, — поэтому фраза говорит, что именно случилось.
+   */
+  "err.conclusionResponseNotCompleted": {
+    uk: "Проходження ще не завершене — висновок пишуть за результатами, а не за чернеткою",
+    ru: "Прохождение ещё не завершено — заключение пишут по результатам, а не по черновику",
+    en: "The assessment isn’t finished yet — a conclusion is written on results, not on a draft",
+  },
+  "err.conclusionRevisionChanged": {
+    uk: "Чернетку версії {version} змінили вже після того, як ви її відкрили. Перечитайте висновок.",
+    ru: "Черновик версии {version} изменили уже после того, как вы его открыли. Перечитайте заключение.",
+    en: "Draft version {version} was changed after you opened it. Read the conclusion again.",
+  },
   "err.conclusionTextChangedAfterOpen": {
     uk: "Текст змінився після відкриття: зараз версія {current}, підписувалася {signing}. Перечитайте висновок.",
     ru: "Текст изменился после открытия: сейчас версия {current}, подписывалась {signing}. Перечитайте заключение.",
@@ -733,6 +758,11 @@ export const ERRORS = {
   },
   "err.noRefreshToken": { uk: "Немає refresh-токена", ru: "Нет refresh-токена", en: "No refresh token" },
   "err.noteNotYet": { uk: "Запису ще немає", ru: "Заметки ещё нет", en: "There’s no note yet" },
+  "err.noteRevisionChanged": {
+    uk: "Чернетку запису версії {version} змінили вже після того, як ви її відкрили. Перечитайте запис.",
+    ru: "Черновик заметки версии {version} изменили уже после того, как вы его открыли. Перечитайте запись.",
+    en: "Draft note version {version} was changed after you opened it. Read the note again.",
+  },
   "err.noteTextChangedAfterOpen": {
     uk: "Текст змінився після відкриття: зараз версія {current}, підписувалася {signing}. Перечитайте запис.",
     ru: "Текст изменился после открытия: сейчас версия {current}, подписывалась {signing}. Перечитайте запись.",

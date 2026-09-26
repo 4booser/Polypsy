@@ -1,7 +1,7 @@
 
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { UiKey } from "@quizzy/shared";
-import { api, type ConclusionState } from "../api";
+import { api, ApiError, type ConclusionState } from "../api";
 import { cx } from "../ui/cx";
 import { day } from "../format";
 import { useAction } from "../ui";
@@ -61,12 +61,15 @@ export function ConclusionEditor({
   areaRef,
   tool,
   setTool,
+  onReload,
 }: {
   responseId: string;
   state: ConclusionState | null;
   error: string | null;
   /** Сохранение и подпись возвращают новое состояние целиком — сюда */
   onState: (next: ConclusionState) => void;
+  /** Перечитать заключение с сервера — после отказа 409, см. `stale` ниже */
+  onReload: () => void;
   /** Название документа с поля вверху экрана: уходит на сервер вместе с текстом */
   title: string;
   /**
@@ -83,6 +86,13 @@ export function ConclusionEditor({
 }) {
   const { ut } = useLang();
   const { run } = useAction();
+  /*
+   * Отказ 409: заключение переписали, пока оно было открыто, — сменилась
+   * версия или редакция черновика (сервер, миграция 0096). Показывается
+   * строкой у кнопки, а не всплывашкой: всплывашка гаснет сама, а человеку
+   * нужно действие — перечитать, — и знать, что станет с набранным.
+   */
+  const [stale, setStale] = useState<string | null>(null);
 
   if (!state) {
     // отказ загрузки — не повод прятать редактор: заключение можно написать заново
@@ -97,7 +107,8 @@ export function ConclusionEditor({
 
   const signed = state.versions.find((v) => v.status === "signed");
   const draft = state.current?.status === "draft" ? state.current : null;
-  const save = () => api.saveConclusion(responseId, text, state.current?.version ?? 0, title);
+  /* версия и редакция — те, что на экране: сервер сверит обе */
+  const save = () => api.saveConclusion(responseId, text, state.current, title);
 
   return (
     <section aria-labelledby="cn-verdicts" className="mt-[50px]">
@@ -170,6 +181,23 @@ export function ConclusionEditor({
         78, а не 64: нижняя рамка поля текста на кадре стоит на 680, верх
         плашки кнопки — на 758 (вырезка хвоста экрана, 1500×320 от 10600).
       */}
+      {stale ? (
+        <div role="alert" className="mt-[14px] rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
+          <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
+          <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("integrity.rereadHint")}</p>
+          <Button
+            variant="quiet"
+            className="mt-[8px]"
+            onClick={() => {
+              setStale(null);
+              onReload();
+            }}
+          >
+            {ut("integrity.reread")}
+          </Button>
+        </div>
+      ) : null}
+
       <div className="mt-[78px] flex justify-end">
         <Button
           size="md"
@@ -177,17 +205,24 @@ export function ConclusionEditor({
           disabled={!draft && !text.trim()}
           onClick={() =>
             run(async () => {
-              // подпись всегда фиксирует последний сохранённый текст
-              let latest = state;
-              if (text.trim() && text !== draft?.text) latest = await save();
-              /*
-               * Подписываем именно ту версию, которую вернуло сохранение.
-               * Если между открытием экрана и подписью успел сохранить кто-то
-               * другой, сервер откажет — лучше отказ, чем подпись под чужим
-               * текстом.
-               */
-              onState(await api.signConclusion(responseId, latest.current!.version));
-              setText("");
+              try {
+                // подпись всегда фиксирует последний сохранённый текст
+                let latest = state;
+                if (text.trim() && text !== draft?.text) latest = await save();
+                /*
+                 * Подписываем именно ту версию и ту редакцию, которую вернуло
+                 * сохранение (или которая была на экране). Если между открытием
+                 * экрана и подписью текст переписал кто-то другой, сервер
+                 * откажет — лучше отказ, чем подпись под чужим текстом.
+                 */
+                onState(await api.signConclusion(responseId, latest.current!));
+                setText("");
+                setStale(null);
+              } catch (e) {
+                if (!(e instanceof ApiError) || e.status !== 409) throw e;
+                setStale(e.message);
+                return false;
+              }
             }, ut("cn.signed"))
           }
         >

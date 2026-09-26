@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DATE_ERROR_KEY, isDateInput } from "./dates";
 import { SERVICE_STATUSES } from "./serviceStatus";
 import { SCREEN_APPS, SCREEN_ROUTE_MAX, isRouteTemplate } from "./usage";
 
@@ -30,7 +31,16 @@ import { SCREEN_APPS, SCREEN_ROUTE_MAX, isRouteTemplate } from "./usage";
 export const serviceStatusInputSchema = z.object({
   status: z.enum(SERVICE_STATUSES),
   message: z.string().trim().max(500).nullish(),
-  expectedEnd: z.string().datetime({ offset: true }).nullish(),
+  /*
+   * datetime() zod пропускает нулевой год, а PostgreSQL его не знает:
+   * «0000-01-01T00:00:00Z» доезжало до колонки пятисоткой. Вторая проверка —
+   * та же, что у всех дат снаружи (dates.ts).
+   */
+  expectedEnd: z
+    .string()
+    .datetime({ offset: true })
+    .refine((v) => isDateInput(v), { message: "ожидается существующий момент ISO 8601", params: { errorKey: DATE_ERROR_KEY } })
+    .nullish(),
 });
 
 export type ServiceStatusInput = z.output<typeof serviceStatusInputSchema>;

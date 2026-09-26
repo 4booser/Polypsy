@@ -60,7 +60,8 @@ describe("рассыльщик тревог", () => {
      * Прохождение создаётся здесь же: раньше тест брал первое попавшееся из
      * базы и работал только потому, что соседний файл успел его положить.
      */
-    await submitSurvey(surveyInA, patient.token);
+    const done = await submitSurvey(surveyInA, patient.token);
+    expect(done.status).toBe(201);
 
     /*
      * Все ранее накопленные тревоги помечаются как уже разосланные.
@@ -92,17 +93,19 @@ describe("рассыльщик тревог", () => {
 
     // тревога 40-минутной давности, не подтверждена
     const alertId = crypto.randomUUID();
-    const responseRow = await db.query.responses.findFirst({
-      where: eq(
-        (await import("../src/db/schema")).responses.surveyId,
-        surveyInA,
-      ),
-    });
+    /*
+     * Своё прохождение и вопрос своей методики. Прежде бралось первое
+     * прохождение surveyInA в базе (чужого человека из другого файла) и
+     * первый вопрос во всей базе — тревога связывала несвязанное
+     * (волна 12, integrity).
+     */
+    const { questions: questionsTable } = await import("../src/db/schema");
+    const ownQuestion = await db.query.questions.findFirst({ where: eq(questionsTable.surveyId, surveyInA) });
     await db.insert(riskAlerts).values({
       id: alertId,
-      responseId: responseRow!.id,
+      responseId: done.body.id,
       surveyId: surveyInA,
-      questionId: (await db.query.questions.findFirst({}))!.id,
+      questionId: ownQuestion!.id,
       userId: patient.id,
       label: "Тестовая тревога",
       severity: "severe",
@@ -203,58 +206,61 @@ describe("safety-план", () => {
   });
 });
 
+/**
+ * Свой неразобранный случай.
+ *
+ * На уровне модуля (волна 12, integrity): им пользуются и проверки
+ * очереди случаев ниже, которые брали «первый случай в очереди».
+ *
+ * Прежняя редакция брала любой открытый случай из общей базы — и это
+ * держалось на порядке файлов: стоило появиться новому тестовому файлу
+ * раньше по алфавиту, как случаев не оставалось и проверка падала, ничего
+ * не сломав. Тест, зависящий от того, что делали до него, проверяет не то,
+ * что написано в его названии.
+ */
+async function ownOpenCase() {
+  const person = await makeUser(
+    "user",
+    `outcome-${crypto.randomUUID()}@test`,
+  );
+  const surveyRes = await api(`/api/surveys/${surveyInA}`, person.token);
+  const yesAnswers = surveyRes.body.questions
+    .filter((q: { type: string }) => q.type !== "info")
+    .map(
+      (q: { id: string; options: { id: string; keyCode?: string }[] }) => ({
+        questionId: q.id,
+        optionIds: [
+          (q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!).id,
+        ],
+        durationMs: 2000,
+        changeCount: 0,
+        visitCount: 1,
+      }),
+    );
+  const submitted = await api(
+    `/api/surveys/${surveyInA}/responses`,
+    person.token,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        durationMs: 60_000,
+        events: [],
+        answers: yesAnswers,
+      }),
+    },
+  );
+  expect(submitted.status).toBe(201);
+
+  const { alertCases: casesTable } = await import("../src/db/schema");
+  const open = await db.query.alertCases.findFirst({
+    where: (t, { eq: eqOp }) => eqOp(t.userId, person.id),
+  });
+  expect(open).toBeDefined();
+  return { open: open!, casesTable };
+}
+
 describe("исход разбора", () => {
-  /**
-   * Свой неразобранный случай.
-   *
-   * Прежняя редакция брала любой открытый случай из общей базы — и это
-   * держалось на порядке файлов: стоило появиться новому тестовому файлу
-   * раньше по алфавиту, как случаев не оставалось и проверка падала, ничего
-   * не сломав. Тест, зависящий от того, что делали до него, проверяет не то,
-   * что написано в его названии.
-   */
-  async function ownOpenCase() {
-    const person = await makeUser(
-      "user",
-      `outcome-${crypto.randomUUID()}@test`,
-    );
-    const surveyRes = await api(`/api/surveys/${surveyInA}`, person.token);
-    const yesAnswers = surveyRes.body.questions
-      .filter((q: { type: string }) => q.type !== "info")
-      .map(
-        (q: { id: string; options: { id: string; keyCode?: string }[] }) => ({
-          questionId: q.id,
-          optionIds: [
-            (q.options.find((o) => o.keyCode === "yes") ?? q.options[0]!).id,
-          ],
-          durationMs: 2000,
-          changeCount: 0,
-          visitCount: 1,
-        }),
-      );
-    const submitted = await api(
-      `/api/surveys/${surveyInA}/responses`,
-      person.token,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          startedAt: new Date(Date.now() - 60_000).toISOString(),
-          durationMs: 60_000,
-          events: [],
-          answers: yesAnswers,
-        }),
-      },
-    );
-    expect(submitted.status).toBe(201);
-
-    const { alertCases: casesTable } = await import("../src/db/schema");
-    const open = await db.query.alertCases.findFirst({
-      where: (t, { eq: eqOp }) => eqOp(t.userId, person.id),
-    });
-    expect(open).toBeDefined();
-    return { open: open!, casesTable };
-  }
-
   test("исход ставится на случай и виден в списке", async () => {
     /*
      * Раньше исход ставился на отдельную тревогу. Тот путь убран: решение
@@ -650,12 +656,12 @@ describe("случаи риска", () => {
   });
 
   test("случай берётся на себя и не перехватывается", async () => {
-    const list = await api(
-      "/api/alert-cases?limit=1&assigned=none",
-      adminA.token,
-    );
-    const target = list.body.items[0];
-    if (!target) return;
+    /*
+     * Свой случай, а не первый в очереди: первым мог оказаться чужой (без
+     * сигналов, из другого файла) или никакой — и тогда тест молча выходил,
+     * ничего не проверив (волна 12, integrity).
+     */
+    const { open: target } = await ownOpenCase();
 
     expect(
       (
@@ -684,9 +690,7 @@ describe("случаи риска", () => {
   });
 
   test("разбор ставит исход на случай и на все его сигналы", async () => {
-    const list = await api("/api/alert-cases?limit=1", adminA.token);
-    const target = list.body.items[0];
-    if (!target) return;
+    const { open: target } = await ownOpenCase();
 
     const res = await api(`/api/alert-cases/${target.id}`, adminA.token, {
       method: "PATCH",
@@ -712,9 +716,7 @@ describe("случаи риска", () => {
   });
 
   test("разбор без исхода отклоняется", async () => {
-    const list = await api("/api/alert-cases?limit=1&all=1", adminA.token);
-    const target = list.body.items[0];
-    if (!target) return;
+    const { open: target } = await ownOpenCase();
     const res = await api(`/api/alert-cases/${target.id}`, adminA.token, {
       method: "PATCH",
       body: JSON.stringify({ note: "просто заметка" }),
@@ -730,12 +732,7 @@ describe("передача смены и просроченные повторы
      * доступа, и вторая запись о том же означала бы два источника истины о
      * клиническом решении.
      */
-    const list = await api(
-      "/api/alert-cases?limit=1&assigned=none",
-      adminA.token,
-    );
-    const target = list.body.items[0];
-    if (!target) return;
+    const { open: target } = await ownOpenCase();
 
     await api(`/api/alert-cases/${target.id}/assign`, adminA.token, {
       method: "POST",

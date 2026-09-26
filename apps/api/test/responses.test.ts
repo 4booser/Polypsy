@@ -324,7 +324,7 @@ describe("триггеры неизменяемости", () => {
     });
     await api(`/api/conclusions/responses/${done.body.id}/conclusion/sign`, adminA.token, {
       method: "POST",
-      body: JSON.stringify({ version: 1 }),
+      body: JSON.stringify({ version: 1, revision: 1 }),
     });
 
     const signed = await db.query.conclusions.findFirst({
