@@ -1,6 +1,7 @@
 import { useEffect } from "react";
-import { AppState } from "react-native";
-import { Stack } from "expo-router";
+import { AppState, Platform } from "react-native";
+import Constants from "expo-constants";
+import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "@/auth/AuthContext";
@@ -11,8 +12,34 @@ import { api } from "@/api/client";
 import { AppLock } from "@/components/AppLock";
 import { useColors } from "@/theme";
 import { useScreenTelemetry } from "@/telemetry/screens";
+import { API_URL } from "@/config";
+import { tokenStorage } from "@/storage";
+import { createMobileTelemetry, type ErrorUtilsLike } from "@/telemetry";
+
+/*
+ * Ошибки приложения — в «Помилки клієнта» техпанели (src/telemetry.ts).
+ *
+ * Заводится при загрузке модуля, а не в эффекте: падение при самой первой
+ * отрисовке — тоже падение, и эффект до него не доживёт. Экран — адресом
+ * expo-router, приведённым к шаблону; его RootLayout обновляет при каждом
+ * переходе.
+ */
+let currentRoute = "/";
+const telemetry = createMobileTelemetry({
+  apiUrl: API_URL,
+  release: Constants.expoConfig?.version,
+  os: Platform.OS === "ios" ? "iOS" : Platform.OS === "android" ? "Android" : undefined,
+  getToken: () => tokenStorage.get(),
+  currentRoute: () => currentRoute,
+});
+telemetry.install((globalThis as { ErrorUtils?: ErrorUtilsLike }).ErrorUtils);
 
 export default function RootLayout() {
+  const pathname = usePathname();
+  useEffect(() => {
+    currentRoute = pathname;
+  }, [pathname]);
+
   /*
    * Синхронизация: при старте, по возвращению приложения на передний план и
    * раз в 45 секунд, пока очередь непуста. Отдельного NetInfo нет — неудачная

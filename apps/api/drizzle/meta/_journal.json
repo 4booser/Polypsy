@@ -631,6 +631,13 @@
       "when": 1788473469043,
       "tag": "0092_security_panel",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1788473649043,
+      "tag": "0095_ops_signals",
+      "breakpoints": true
     }
   ]
 }

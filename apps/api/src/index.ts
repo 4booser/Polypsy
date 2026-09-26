@@ -3,7 +3,10 @@ import { app } from "./app";
 import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
-import { client } from "./db";
+import { setAuditChainSource, startOpsAlerts } from "./lib/opsAlerts";
+import { lastAuditChainCheck } from "./lib/integrity";
+import { baseDb, client } from "./db";
+import { systemContext } from "./db/context";
 import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
 import { checkRls, rlsRefusal } from "./lib/rlsGuard";
@@ -71,6 +74,23 @@ const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
 const stopNotifier = env.schedulerEnabled ? startNotifier() : null;
 const stopRetention = env.schedulerEnabled ? startRetention() : null;
+/*
+ * Проверка правил оповещений техпанели — там же, где планировщик: правило
+ * «планировщик молчит» имеет смысл только рядом с ним, а две реплики с
+ * проверкой прислали бы один «збій» дважды (замок в базе это ловит, но
+ * лишний проход незачем).
+ */
+/*
+ * Правило «цепочка журнала» читает последнюю сверку участка безопасности
+ * (lib/integrity.ts): плановую раз в сутки или ручную с экрана «Цілісність».
+ * Сверку здесь не запускаем — она проходит журнал целиком, и оповещение не
+ * должно её дублировать; оно только сообщает об уже найденном разрыве.
+ */
+setAuditChainSource(async () => {
+  const last = await systemContext(baseDb, () => lastAuditChainCheck());
+  return last ? { ok: last.ok, checkedAt: last.at } : null;
+});
+const stopOpsAlerts = env.schedulerEnabled ? startOpsAlerts() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -85,6 +105,7 @@ async function shutdown(signal: string) {
   stopScheduler?.();
   stopNotifier?.();
   stopRetention?.();
+  stopOpsAlerts?.();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }
