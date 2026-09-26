@@ -114,6 +114,19 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/ops/db": { summary: "База: размеры таблиц, подключения, долгие запросы, ожидания блокировок, миграции; без прав роли — null с пояснением", access: "staff", permission: "ops.read" },
   "GET /api/ops/jobs": { summary: "Фоновые задачи процесса: последний проход, длительность, результат, ошибка, следующий такт", access: "staff", permission: "ops.read" },
 
+  /* ── техпанель: сигналы и клиент (участок obs2b; в базе, миграция 0095) ── */
+  "POST /api/ops/client-errors": { summary: "Приём ошибок клиента пачкой (консоль, кабинет, мобилка): маршрут шаблоном, текст вычищен, лишнее поле — 400; без входа — жёсткий лимит по адресу", access: "public" },
+  "POST /api/ops/vitals": { summary: "Приём замеров скорости экранов (LCP, INP, CLS, TTFB, переход) пачкой; маршрут шаблоном, лимит на учётку", access: "user" },
+  "GET /api/ops/alerts": { summary: "Правила оповещений с состоянием инцидента, каналы (только «задано / нет»), такт проверки", access: "staff", permission: "ops.read" },
+  "GET /api/ops/alerts/history": { summary: "История оповещений: сработало, повтор, восстановлено, тестовое — с итогом по каждому каналу", access: "staff", permission: "ops.read" },
+  "PUT /api/ops/alerts/rules/:key": { summary: "Правка правила оповещения: порог, окно, повтор, каналы, включено; в журнал", access: "staff", permission: "ops.manage" },
+  "POST /api/ops/alerts/test": { summary: "Тестовое сообщение в канал (Telegram или почта); в историю и журнал", access: "staff", permission: "ops.manage" },
+  "GET /api/ops/client-errors": { summary: "Группы ошибок клиента по отпечатку: платформа, вид, маршрут шаблоном, число, первый и последний раз; чтение в журнал", access: "staff", permission: "ops.read" },
+  "GET /api/ops/vitals": { summary: "Скорость экранов: p75 по маршруту и мере за `?days=7…30`, оценка по порогам Web Vitals, ход по дням", access: "staff", permission: "ops.read" },
+  "GET /api/ops/recordings": { summary: "Хранилище записей приёма числами: по статусам, место, очередь расшифровки, упавшие задания без путей и имён", access: "staff", permission: "ops.read" },
+  "POST /api/ops/recordings/:id/retry": { summary: "Вернуть упавшую расшифровку в очередь (только из «failed» и с файлом на месте); в журнал", access: "staff", permission: "ops.manage" },
+  "POST /api/ops/jobs/:name/run": { summary: "Запустить фоновую задачу руками — фоном, один проход за раз; только безопасные задачи; в журнал", access: "staff", permission: "ops.manage" },
+
   /* ── вход и профиль ── */
   "POST /api/auth/register": { summary: "Регистрация обследуемого", access: "public", body: registerSchema },
   "POST /api/auth/login": { summary: "Вход", access: "public", body: loginSchema },

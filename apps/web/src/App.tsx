@@ -13,6 +13,8 @@ import { PatientDynamics, PatientList } from "./pages/Patients";
 import { peopleLists } from "./pages/people/model";
 import Alerts from "./pages/Alerts";
 import { Loading, useAction } from "./ui";
+import { useTelemetryRoute } from "./telemetry/client";
+import { ErrorBoundary } from "./telemetry/ErrorBoundary";
 
 /*
  * Экраны догружаются по требованию.
@@ -40,6 +42,11 @@ const OpsJobs = lazy(() => import("./pages/ops/Jobs"));
 const OpsUsers = lazy(() => import("./pages/ops/Users"));
 const OpsSessions = lazy(() => import("./pages/ops/Sessions"));
 const OpsAuditLog = lazy(() => import("./pages/ops/AuditLog"));
+/* техпанель, участок obs2b: сигналы и клиент */
+const OpsAlerts = lazy(() => import("./pages/ops/obs2b/Alerts"));
+const OpsRecordings = lazy(() => import("./pages/ops/obs2b/Recordings"));
+const OpsClientErrors = lazy(() => import("./pages/ops/obs2b/ClientErrors"));
+const OpsVitals = lazy(() => import("./pages/ops/obs2b/Vitals"));
 const Constructor = lazy(() => import("./pages/constructor"));
 const SurveyList = lazy(() => import("./pages/constructor/SurveyList").then((m) => ({ default: m.SurveyList })));
 const Administer = lazy(() => import("./pages/Administer"));
@@ -178,6 +185,8 @@ export default function App() {
   const { user, loading, logout, refreshUser, can } = useAuth();
   /* раздел экрана нужен полосе: её состав кадры различают и по нему, не только по должности */
   const { pathname } = useLocation();
+  /* переход между экранами — в «Швидкість екранів» техпанели (telemetry/client.ts) */
+  useTelemetryRoute(pathname);
   /* отказ отвязки должен быть виден: см. кнопку ниже */
   const { run } = useAction();
   /*
@@ -477,6 +486,8 @@ export default function App() {
    */
   if (user.role === "user") {
     return (
+      /* граница ошибок кабинета: упавший экран не снимает кабинет целиком; переход сбрасывает её */
+      <ErrorBoundary resetKey={pathname}>
       <Suspense fallback={<Loading rows={4} />}>
         <Routes>
           <Route path="/me" element={<PatientApp />}>
@@ -489,6 +500,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/me" replace />} />
         </Routes>
       </Suspense>
+      </ErrorBoundary>
     );
   }
 
@@ -639,6 +651,11 @@ export default function App() {
           загрузке данных. Пустой прямоугольник или прыжок содержимого
           выглядели бы поломкой.
         */}
+        {/*
+          Граница ошибок экранов: упавший экран заменяется листом «щось пішло не
+          так», полоса и меню остаются; переход на другой адрес её сбрасывает.
+        */}
+        <ErrorBoundary resetKey={pathname}>
         <Suspense fallback={<Loading rows={5} />}>
           <Routes>
           {/*
@@ -856,11 +873,17 @@ export default function App() {
               {can("users.manage") ? <Route path="users" element={<OpsUsers />} /> : null}
               {can("users.manage") ? <Route path="sessions" element={<OpsSessions />} /> : null}
               {can("audit.read") ? <Route path="audit" element={<OpsAuditLog />} /> : null}
+              {/* участок obs2b: «Сповіщення» и «Записи прийомів» (Експлуатація), «Помилки клієнта» и «Швидкість екранів» (Система) */}
+              <Route path="alerts" element={<OpsAlerts />} />
+              <Route path="recordings" element={<OpsRecordings />} />
+              <Route path="client-errors" element={<OpsClientErrors />} />
+              <Route path="vitals" element={<OpsVitals />} />
             </Route>
           ) : null}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
+        </ErrorBoundary>
       </main>
 
       <CommandPalette

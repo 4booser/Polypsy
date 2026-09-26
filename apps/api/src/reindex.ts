@@ -1,56 +1,16 @@
-import { eq } from "drizzle-orm";
 import { baseDb } from "./db";
 import { systemContext } from "./db/context";
-import { noteSearch, patientNotes } from "./db/schema";
-import { decryptField } from "./lib/crypto";
-import { indexOf } from "./lib/searchIndex";
-import { log } from "./lib/log";
+import { reindexNotes } from "./lib/noteReindex";
 
 /**
- * Пересборка слепого индекса записей.
+ * Пересборка слепого индекса записей — командой.
  *
- * Нужна дважды: при первом развёртывании поиска (записи, сделанные раньше, в
- * индексе отсутствуют, и без этого прохода поиск честно не находит ничего) и
- * после смены секрета — отпечатки считаются на нём, и со старым ключом индекс
- * становится набором чужих строк.
+ *   bun apps/api/src/reindex.ts
  *
- * Отдельной командой, а не при старте приложения: на десятках тысяч записей
- * это минуты работы и расшифровка всего массива, и делать такое неявно при
- * каждом перезапуске нельзя.
+ * Сама работа и её обоснование — в lib/noteReindex.ts: тот же проход
+ * запускается кнопкой «Запустити зараз» в техпанели, и две копии одного
+ * прохода разошлись бы на первой же правке индекса.
  */
-async function reindex(): Promise<void> {
-  const rows = await baseDb.select().from(patientNotes);
-  log.info("reindex.start", { notes: rows.length });
-
-  let indexed = 0;
-  let skipped = 0;
-
-  for (const row of rows) {
-    const text = decryptField(row.text);
-    if (!text) {
-      /*
-       * Запись не расшифровалась — скорее всего зашифрована ключом, которого
-       * сейчас нет. Пропускаем и считаем: молча оставить её без индекса
-       * значит потом гадать, почему поиск её не находит.
-       */
-      skipped++;
-      continue;
-    }
-
-    await baseDb.delete(noteSearch).where(eq(noteSearch.noteId, row.id));
-    const values = indexOf(text).map((fp) => ({
-      noteId: row.id,
-      kind: "note",
-      userId: row.userId,
-      fp,
-    }));
-    if (values.length) await baseDb.insert(noteSearch).values(values).onConflictDoNothing();
-    indexed++;
-  }
-
-  log.info("reindex.done", { indexed, skipped });
-  console.log(`Проиндексировано записей: ${indexed}${skipped ? `, пропущено: ${skipped}` : ""}`);
-}
-
-await systemContext(baseDb, reindex);
+const { indexed, skipped } = await systemContext(baseDb, reindexNotes);
+console.log(`Проиндексировано записей: ${indexed}${skipped ? `, пропущено: ${skipped}` : ""}`);
 process.exit(0);

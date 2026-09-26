@@ -230,6 +230,12 @@ export type AuditAction =
   /* техпанель: чтение логов и групп ошибок процесса — склеено по пять минут (routes/ops.ts) */
   | "ops.logs.read"
   | "ops.errors.read"
+  /* техпанель, участок obs2b: правила оповещений, тестовое сообщение, ручной запуск, повтор расшифровки */
+  | "ops.alerts.rule_update"
+  | "ops.alerts.test"
+  | "ops.job.run"
+  | "ops.recording.retry"
+  | "ops.client_errors.read"
   | "norms.publish"
   | "analytics.data_quality"
   | "analytics.facets"

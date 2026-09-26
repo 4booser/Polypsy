@@ -2889,6 +2889,385 @@ export const UI = {
 
   /* ── wave10:obs2 ── */
 
+  /*
+   * obs2b — техпанель: сигналы и клиент (Сповіщення, Помилки клієнта,
+   * Швидкість екранів, Записи прийомів, «Запустити зараз»). Блок отдельно
+   * от obs2a, начинается пустой строкой и этим комментарием.
+   *
+   * Тексты самих оповещений (Telegram, почта) — не здесь, а в словаре
+   * уведомлений (pushStrings.ts, push.ops.*): их собирает сервер без
+   * запроса, и консоль их не зовёт.
+   *
+   * «Відправити», а не «надіслати», — и в «Відправити тестове» тоже, хотя
+   * заказчик написал «Надіслати тестове»: словарь держит одну форму слова
+   * (uiStrings.test.ts, «отправить»), и форма эта задана кадром f26 — см.
+   * пояснение у блока mail.*.
+   */
+
+  /* разделы техпанели */
+  "o2b.tab.alerts": { uk: "Сповіщення", ru: "Оповещения", en: "Alerts" },
+  "o2b.tab.recordings": { uk: "Записи прийомів", ru: "Записи приёмов", en: "Appointment recordings" },
+  "o2b.tab.clientErrors": { uk: "Помилки клієнта", ru: "Ошибки клиента", en: "Client errors" },
+  "o2b.tab.vitals": { uk: "Швидкість екранів", ru: "Скорость экранов", en: "Screen speed" },
+
+  /* граница ошибок: консоль и кабинет пациента */
+  "o2b.crash.title": { uk: "Щось пішло не так", ru: "Что-то пошло не так", en: "Something went wrong" },
+  "o2b.crash.text": {
+    uk: "Цей екран не вдалося показати. Помилку записано — без ваших даних. Спробуйте ще раз або оновіть сторінку.",
+    ru: "Этот экран не удалось показать. Ошибка записана — без ваших данных. Попробуйте ещё раз или обновите страницу.",
+    en: "This screen couldn’t be shown. The error has been logged — without your data. Try again or reload the page.",
+  },
+  "o2b.crash.retry": { uk: "Спробувати ще раз", ru: "Попробовать ещё раз", en: "Try again" },
+  "o2b.crash.reload": { uk: "Оновити сторінку", ru: "Обновить страницу", en: "Reload the page" },
+
+  /* Сповіщення */
+  "o2b.alerts.stamp": {
+    uk: "Правила та історія зберігаються в базі й переживають перезапуск.",
+    ru: "Правила и история хранятся в базе и переживают перезапуск.",
+    en: "Rules and history are stored in the database and survive restarts.",
+  },
+  "o2b.alerts.rules": { uk: "Правила", ru: "Правила", en: "Rules" },
+  "o2b.alerts.rulesHint": {
+    uk: "Одне сповіщення на інцидент, повтор — не частіше за вказаний інтервал, «відновлено» — коли сигнал зник.",
+    ru: "Одно оповещение на инцидент, повтор — не чаще указанного интервала, «восстановлено» — когда сигнал ушёл.",
+    en: "One alert per incident, repeats no more often than the set interval, and “recovered” once the signal clears.",
+  },
+  "o2b.alerts.checker": {
+    uk: "Правила перевіряються кожні {every} на цьому екземплярі; остання перевірка — {last}.",
+    ru: "Правила проверяются каждые {every} на этом экземпляре; последняя проверка — {last}.",
+    en: "Rules are checked every {every} on this instance; last check {last}.",
+  },
+  "o2b.alerts.checkerOff": {
+    uk: "На цьому екземплярі перевірку вимкнено (SCHEDULER_ENABLED=0) — вона йде там, де працює планувальник.",
+    ru: "На этом экземпляре проверка выключена (SCHEDULER_ENABLED=0) — она идёт там, где работает планировщик.",
+    en: "Checks are off on this instance (SCHEDULER_ENABLED=0) — they run where the scheduler runs.",
+  },
+  "o2b.alerts.diskNote": {
+    uk: "Місце на диску — на томі каталогу записів (RECORDINGS_DIR): це диск контейнера або тому, а не всієї машини. Місця бази звідси не видно.",
+    ru: "Место на диске — на томе каталога записей (RECORDINGS_DIR): это диск контейнера или тома, а не всей машины. Места базы отсюда не видно.",
+    en: "Disk space is measured on the recordings directory volume (RECORDINGS_DIR): the container or volume disk, not the whole machine. The database’s disk isn’t visible from here.",
+  },
+  "o2b.alerts.channels": { uk: "Канали", ru: "Каналы", en: "Channels" },
+  "o2b.alerts.channelsHint": {
+    uk: "Токен бота, чат і сервер пошти задаються лише змінними оточення. Тут видно одне: чи їх задано.",
+    ru: "Токен бота, чат и почтовый сервер задаются только переменными окружения. Здесь видно лишь, заданы ли они.",
+    en: "The bot token, chat and mail server are set only through environment variables. This page shows only whether they are set.",
+  },
+  "o2b.alerts.history": { uk: "Історія", ru: "История", en: "History" },
+  "o2b.alerts.historyHint": {
+    uk: "Останні 100 подій; зберігаються 90 днів. Для кожного каналу — чи пішло.",
+    ru: "Последние 100 событий; хранятся 90 дней. Для каждого канала — ушло ли.",
+    en: "The latest 100 events, kept for 90 days, with the outcome for each channel.",
+  },
+  "o2b.alerts.historyEmpty": { uk: "Сповіщень ще не було", ru: "Оповещений ещё не было", en: "No alerts yet" },
+  "o2b.col.rule": { uk: "Правило", ru: "Правило", en: "Rule" },
+  "o2b.col.event": { uk: "Подія", ru: "Событие", en: "Event" },
+  "o2b.col.value": { uk: "Значення / поріг", ru: "Значение / порог", en: "Value / threshold" },
+  "o2b.col.deliveries": { uk: "Канали", ru: "Каналы", en: "Channels" },
+
+  "o2b.rule.errors5xx": { uk: "Сплеск помилок 5xx", ru: "Всплеск ошибок 5xx", en: "5xx error spike" },
+  "o2b.rule.errors5xx.hint": {
+    uk: "Частка відповідей 5xx за вікно; менше ніж 20 запитів у вікні — тиша, а не сигнал.",
+    ru: "Доля ответов 5xx за окно; меньше 20 запросов в окне — тишина, а не сигнал.",
+    en: "Share of 5xx responses over the window; fewer than 20 requests is quiet, not a signal.",
+  },
+  "o2b.rule.schedulerSilent": { uk: "Планувальник мовчить", ru: "Планировщик молчит", en: "Scheduler silent" },
+  "o2b.rule.schedulerSilent.hint": {
+    uk: "Скільки хвилин від останнього такту розкладів.",
+    ru: "Сколько минут с последнего такта расписаний.",
+    en: "Minutes since the last schedule tick.",
+  },
+  "o2b.rule.p95": { uk: "Зростає p95 відповіді", ru: "Растёт p95 ответа", en: "Response p95 rising" },
+  "o2b.rule.p95.hint": {
+    uk: "p95 часу відповіді за вікно; менше ніж 20 запитів — тиша.",
+    ru: "p95 времени ответа за окно; меньше 20 запросов — тишина.",
+    en: "Response time p95 over the window; fewer than 20 requests is quiet.",
+  },
+  "o2b.rule.diskFree": { uk: "Закінчується місце на диску", ru: "Кончается место на диске", en: "Disk running out" },
+  "o2b.rule.diskFree.hint": {
+    uk: "Вільне місце на томі записів прийомів, у відсотках.",
+    ru: "Свободное место на томе записей приёмов, в процентах.",
+    en: "Free space on the recordings volume, as a percentage.",
+  },
+  "o2b.rule.auditChain": { uk: "Ланцюжок журналу порушено", ru: "Цепочка журнала нарушена", en: "Audit chain broken" },
+  "o2b.rule.auditChain.hint": {
+    uk: "Остання перевірка ланцюжка хешів журналу доступу не пройшла.",
+    ru: "Последняя проверка цепочки хэшей журнала доступа не прошла.",
+    en: "The latest hash-chain check of the access log failed.",
+  },
+  "o2b.rule.backup": { uk: "Бекап не пройшов", ru: "Бэкап не прошёл", en: "Backup failed" },
+  "o2b.rule.backup.hint": {
+    uk: "Бекап знімає cron на хості, а не застосунок.",
+    ru: "Бэкап снимает cron на хосте, а не приложение.",
+    en: "Backups are taken by cron on the host, not by the application.",
+  },
+  "o2b.rule.backup.where": {
+    uk: "Застосунок не бачить каталогу бекапів. Дивіться вивід scripts/backup.sh і scripts/verify-backup.sh на хості (RUNBOOK, «Перевірка відновлюваності бекапу»): ненульовий код повернення має йти в систему сповіщень хоста.",
+    ru: "Приложение не видит каталога бэкапов. Смотрите вывод scripts/backup.sh и scripts/verify-backup.sh на хосте (RUNBOOK, «Проверка восстановимости бэкапа»): ненулевой код возврата должен уходить в систему оповещений хоста.",
+    en: "The application can’t see the backup directory. Check the output of scripts/backup.sh and scripts/verify-backup.sh on the host (RUNBOOK, “Backup restore check”): a non-zero exit code should go to the host’s alerting.",
+  },
+  "o2b.rule.since": { uk: "з {time}", ru: "с {time}", en: "since {time}" },
+  "o2b.rule.checked": { uk: "перевірено {time}", ru: "проверено {time}", en: "checked {time}" },
+  "o2b.rule.now": { uk: "зараз", ru: "сейчас", en: "now" },
+  "o2b.rule.above": { uk: "сигнал, якщо більше", ru: "сигнал, если больше", en: "alert above" },
+  "o2b.rule.below": { uk: "сигнал, якщо менше", ru: "сигнал, если меньше", en: "alert below" },
+  "o2b.rule.window": { uk: "вікно {n} хв", ru: "окно {n} мин", en: "{n}-min window" },
+  "o2b.rule.repeat": { uk: "повтор не частіше ніж раз на {t}", ru: "повтор не чаще раза в {t}", en: "repeat at most once per {t}" },
+  "o2b.rule.noThreshold": { uk: "без порога: так чи ні", ru: "без порога: да или нет", en: "no threshold: pass or fail" },
+  "o2b.rule.noChannels": { uk: "нікуди — лише в історію", ru: "никуда — только в историю", en: "nowhere — history only" },
+  "o2b.rule.edit": { uk: "Змінити", ru: "Изменить", en: "Edit" },
+  "o2b.rule.saved": { uk: "Правило збережено", ru: "Правило сохранено", en: "Rule saved" },
+
+  "o2b.state.ok": { uk: "гаразд", ru: "в порядке", en: "ok" },
+  "o2b.state.firing": { uk: "збій", ru: "сбой", en: "firing" },
+  "o2b.state.unavailable": { uk: "недоступно", ru: "недоступно", en: "unavailable" },
+  "o2b.state.off": { uk: "вимкнено", ru: "выключено", en: "off" },
+  "o2b.state.unknown": { uk: "ще не перевірялося", ru: "ещё не проверялось", en: "not checked yet" },
+  "o2b.state.notFromApp": { uk: "недоступно із застосунку", ru: "недоступно из приложения", en: "not visible to the app" },
+  "o2b.unavail.schedulerOff": {
+    uk: "планувальник на цьому екземплярі вимкнено",
+    ru: "планировщик на этом экземпляре выключен",
+    en: "the scheduler is off on this instance",
+  },
+  "o2b.unavail.diskUnknown": { uk: "місце на диску не прочиталося", ru: "место на диске не прочиталось", en: "disk space couldn’t be read" },
+  "o2b.unavail.noSource": {
+    uk: "джерело не підключено: результат перевірки ланцюжка ще не передається сповіщенням",
+    ru: "источник не подключён: результат проверки цепочки ещё не передаётся оповещениям",
+    en: "no source connected: the chain check result isn’t passed to alerts yet",
+  },
+  "o2b.unavail.neverChecked": { uk: "перевірки ланцюжка ще не було", ru: "проверки цепочки ещё не было", en: "the chain hasn’t been checked yet" },
+  "o2b.unavail.noThreshold": { uk: "поріг не задано", ru: "порог не задан", en: "no threshold set" },
+
+  "o2b.form.enabled": { uk: "Правило", ru: "Правило", en: "Rule" },
+  "o2b.form.on": { uk: "Увімкнено", ru: "Включено", en: "On" },
+  "o2b.form.off": { uk: "Вимкнено", ru: "Выключено", en: "Off" },
+  "o2b.form.threshold": { uk: "Поріг", ru: "Порог", en: "Threshold" },
+  "o2b.form.window": { uk: "Вікно", ru: "Окно", en: "Window" },
+  "o2b.form.repeat": { uk: "Повтор не частіше", ru: "Повтор не чаще", en: "Repeat at most every" },
+  "o2b.form.channels": { uk: "Куди відправляти", ru: "Куда отправлять", en: "Send to" },
+  "o2b.form.range": { uk: "від {min} до {max}", ru: "от {min} до {max}", en: "from {min} to {max}" },
+  "o2b.unit.pct": { uk: "%", ru: "%", en: "%" },
+  "o2b.unit.ms": { uk: "мс", ru: "мс", en: "ms" },
+  "o2b.unit.min": { uk: "хв", ru: "мин", en: "min" },
+
+  "o2b.channel.telegram": { uk: "Telegram", ru: "Telegram", en: "Telegram" },
+  "o2b.channel.email": { uk: "Пошта", ru: "Почта", en: "Email" },
+  "o2b.channel.ready": { uk: "налаштовано", ru: "настроено", en: "configured" },
+  "o2b.channel.notReady": { uk: "не налаштовано", ru: "не настроено", en: "not configured" },
+  "o2b.channel.test": { uk: "Відправити тестове", ru: "Отправить тестовое", en: "Send a test" },
+  "o2b.channel.toEnv": { uk: "одержувачі — OPS_ALERT_EMAIL, адрес: {n}", ru: "получатели — OPS_ALERT_EMAIL, адресов: {n}", en: "recipients — OPS_ALERT_EMAIL, addresses: {n}" },
+  "o2b.channel.toSupers": { uk: "одержувачі — суперадміни: {n}", ru: "получатели — суперадмины: {n}", en: "recipients — super admins: {n}" },
+  "o2b.channel.toNobody": { uk: "одержувачів немає", ru: "получателей нет", en: "no recipients" },
+  "o2b.env.set": { uk: "задано", ru: "задано", en: "set" },
+  "o2b.env.unset": { uk: "не задано", ru: "не задано", en: "not set" },
+  "o2b.test.sent": { uk: "Тестове сповіщення відправлено", ru: "Тестовое оповещение отправлено", en: "Test alert sent" },
+  "o2b.test.unset": { uk: "Канал не налаштовано — нічого не відправлено", ru: "Канал не настроен — ничего не отправлено", en: "The channel isn’t configured — nothing was sent" },
+  "o2b.test.failed": { uk: "Канал відмовив: {error}", ru: "Канал отказал: {error}", en: "The channel refused: {error}" },
+
+  "o2b.event.fired": { uk: "Збій", ru: "Сбой", en: "Failure" },
+  "o2b.event.repeat": { uk: "Досі триває", ru: "Всё ещё идёт", en: "Still ongoing" },
+  "o2b.event.resolved": { uk: "Відновлено", ru: "Восстановлено", en: "Recovered" },
+  "o2b.event.test": { uk: "Тестове", ru: "Тестовое", en: "Test" },
+  "o2b.event.anyRule": { uk: "Перевірка каналу", ru: "Проверка канала", en: "Channel check" },
+  "o2b.delivery.sent": { uk: "відправлено", ru: "отправлено", en: "sent" },
+  "o2b.delivery.failed": { uk: "відмова", ru: "отказ", en: "refused" },
+  "o2b.delivery.unset": { uk: "не налаштовано", ru: "не настроено", en: "not configured" },
+
+  /* Фонові задачі: ручной запуск */
+  "o2b.jobs.runNow": { uk: "Запустити зараз", ru: "Запустить сейчас", en: "Run now" },
+  "o2b.jobs.started": { uk: "Запущено — підсумок з’явиться в рядку задачі", ru: "Запущено — итог появится в строке задачи", en: "Started — the outcome will appear in the job’s row" },
+  "o2b.jobs.byHand": { uk: "запущено вручну", ru: "запущено вручную", en: "run by hand" },
+  "o2b.jobs.manualHint": {
+    uk: "«Запустити зараз» — лише в задач, які безпечно запускати поза тактом: вони не видають людям ні завдань, ні сповіщень. Запуск іде фоном, один прохід за раз; хто й що запустив — у журналі.",
+    ru: "«Запустить сейчас» — только у задач, которые безопасно запускать вне такта: они не выдают людям ни заданий, ни уведомлений. Запуск идёт фоном, один проход за раз; кто и что запустил — в журнале.",
+    en: "“Run now” is offered only for jobs that are safe to run out of turn: they send people no tasks or notifications. Runs go in the background, one at a time; who ran what is in the audit log.",
+  },
+  "o2b.jobs.manualReadOnly": {
+    uk: "Частину задач можна запустити вручну — це робить той, хто має право керувати роботою системи.",
+    ru: "Часть задач можно запустить вручную — это делает тот, у кого есть право управлять работой системы.",
+    en: "Some jobs can be run by hand — by someone with the right to manage the system.",
+  },
+  "o2b.job.analyticsCache": { uk: "Перерахунок аналітики", ru: "Пересчёт аналитики", en: "Analytics recalculation" },
+  "o2b.job.searchReindex": { uk: "Переіндексація пошуку", ru: "Переиндексация поиска", en: "Search reindex" },
+  "o2b.job.catalogInstall": { uk: "Встановлення каталогу методик", ru: "Установка каталога методик", en: "Assessment catalogue install" },
+  "o2b.job.alerts": { uk: "Перевірка правил сповіщень", ru: "Проверка правил оповещений", en: "Alert rule check" },
+
+  /* Помилки клієнта */
+  "o2b.ce.stamp": {
+    uk: "Помилки браузера й телефона — з бази, за {days} днів. Без даних людей: адреса — шаблоном, текст вичищено.",
+    ru: "Ошибки браузера и телефона — из базы, за {days} дней. Без данных людей: адрес — шаблоном, текст вычищен.",
+    en: "Browser and phone errors from the database, last {days} days. No personal data: routes as templates, text scrubbed.",
+  },
+  "o2b.ce.hint": {
+    uk: "Падіння екранів, неперехоплені помилки, мережеві збої консолі (мережа, 5xx) і помилки мобільного застосунку — згруповано за відбитком.",
+    ru: "Падения экранов, неперехваченные ошибки, сетевые сбои консоли (сеть, 5xx) и ошибки мобильного приложения — сгруппированы по отпечатку.",
+    en: "Screen crashes, uncaught errors, console network failures (network, 5xx) and mobile app errors — grouped by fingerprint.",
+  },
+  "o2b.ce.search": { uk: "Пошук за текстом, маршрутом, збіркою", ru: "Поиск по тексту, маршруту, сборке", en: "Search text, route, build" },
+  "o2b.ce.platform": { uk: "Платформа", ru: "Платформа", en: "Platform" },
+  "o2b.ce.kind": { uk: "Вид", ru: "Вид", en: "Kind" },
+  "o2b.ce.all": { uk: "Усі", ru: "Все", en: "All" },
+  "o2b.ce.empty": { uk: "Помилок клієнта немає", ru: "Ошибок клиента нет", en: "No client errors" },
+  "o2b.ce.more": { uk: "Показано {shown} останніх груп із {total}.", ru: "Показаны {shown} последних групп из {total}.", en: "Showing the latest {shown} of {total} groups." },
+  "o2b.ce.full": {
+    uk: "Сховище груп заповнене ({cap}): нові групи не заводяться, наявні рахуються далі.",
+    ru: "Хранилище групп заполнено ({cap}): новые группы не заводятся, существующие считаются дальше.",
+    en: "Group storage is full ({cap}): no new groups are created, existing ones keep counting.",
+  },
+  "o2b.ce.screen": { uk: "Екран, на якому сталася помилка", ru: "Экран, на котором произошла ошибка", en: "Screen where the error happened" },
+  "o2b.ce.noResponse": { uk: "без відповіді", ru: "без ответа", en: "no response" },
+  "o2b.ce.release": { uk: "збірка {v}", ru: "сборка {v}", en: "build {v}" },
+  "o2b.ce.last": { uk: "востаннє {time}", ru: "последний раз {time}", en: "last {time}" },
+  "o2b.kind.react": { uk: "падіння екрана", ru: "падение экрана", en: "screen crash" },
+  "o2b.kind.error": { uk: "помилка", ru: "ошибка", en: "error" },
+  "o2b.kind.rejection": { uk: "відмова промісу", ru: "отказ промиса", en: "promise rejection" },
+  "o2b.kind.network": { uk: "мережа", ru: "сеть", en: "network" },
+  "o2b.platform.web": { uk: "Консоль", ru: "Консоль", en: "Console" },
+  "o2b.platform.mobile": { uk: "Телефон", ru: "Телефон", en: "Mobile app" },
+
+  /* Швидкість екранів */
+  "o2b.v.stamp": {
+    uk: "Міряється {share} сесій консолі; дані — з бази, за {days} днів.",
+    ru: "Измеряется {share} сессий консоли; данные — из базы, за {days} дней.",
+    en: "{share} of console sessions are measured; data from the database, last {days} days.",
+  },
+  "o2b.v.hint": {
+    uk: "p75 — три чверті відкриттів екрана швидші за це число. Оцінка — за порогами Web Vitals; «перехід» — наша міра: від зміни адреси до екрана, що заспокоївся.",
+    ru: "p75 — три четверти открытий экрана быстрее этого числа. Оценка — по порогам Web Vitals; «переход» — наша мера: от смены адреса до успокоившегося экрана.",
+    en: "p75: three quarters of screen visits are faster than this. Ratings use Web Vitals thresholds; “navigation” is our own measure — from the address change to a settled screen.",
+  },
+  "o2b.v.search": { uk: "Пошук маршруту", ru: "Поиск маршрута", en: "Find a route" },
+  "o2b.v.empty": { uk: "Замірів ще немає", ru: "Замеров ещё нет", en: "No measurements yet" },
+  "o2b.v.samples": { uk: "Замірів", ru: "Замеров", en: "Samples" },
+  "o2b.v.few": { uk: "мало: {n}", ru: "мало: {n}", en: "few: {n}" },
+  "o2b.v.pick": { uk: "Показати хід за 30 днів", ru: "Показать ход за 30 дней", en: "Show the 30-day trend" },
+  "o2b.v.pickHint": {
+    uk: "Натисніть маршрут у таблиці, щоб побачити хід p75 за 30 днів.",
+    ru: "Нажмите маршрут в таблице, чтобы увидеть ход p75 за 30 дней.",
+    en: "Select a route in the table to see its p75 over 30 days.",
+  },
+  "o2b.v.metric": { uk: "Міра", ru: "Мера", en: "Metric" },
+  "o2b.v.trend": { uk: "p75 {metric} по днях", ru: "p75 {metric} по дням", en: "{metric} p75 by day" },
+  "o2b.v.trendCaption": {
+    uk: "добре ≤ {good}, погано > {poor}; замірів за період — {n}. Дні без замірів пропущено.",
+    ru: "хорошо ≤ {good}, плохо > {poor}; замеров за период — {n}. Дни без замеров пропущены.",
+    en: "good ≤ {good}, poor > {poor}; {n} samples in the period. Days without samples are skipped.",
+  },
+  "o2b.v.noMetric": { uk: "За цією мірою замірів немає", ru: "По этой мере замеров нет", en: "No samples for this metric" },
+  "o2b.v.thresholds": { uk: "Пороги", ru: "Пороги", en: "Thresholds" },
+  "o2b.v.thresholdsHint": {
+    uk: "Між «добре» і «погано» — «потребує уваги». Оцінка стоїть словом поруч із числом.",
+    ru: "Между «хорошо» и «плохо» — «требует внимания». Оценка стоит словом рядом с числом.",
+    en: "Between “good” and “poor” is “needs attention”. The rating is spelled out next to the number.",
+  },
+  "o2b.v.what": { uk: "Що міряє", ru: "Что измеряет", en: "What it measures" },
+  "o2b.rating.good": { uk: "добре", ru: "хорошо", en: "good" },
+  "o2b.rating.needs": { uk: "потребує уваги", ru: "требует внимания", en: "needs attention" },
+  "o2b.rating.poor": { uk: "погано", ru: "плохо", en: "poor" },
+  "o2b.metric.LCP": { uk: "LCP", ru: "LCP", en: "LCP" },
+  "o2b.metric.INP": { uk: "INP", ru: "INP", en: "INP" },
+  "o2b.metric.CLS": { uk: "CLS", ru: "CLS", en: "CLS" },
+  "o2b.metric.TTFB": { uk: "TTFB", ru: "TTFB", en: "TTFB" },
+  "o2b.metric.NAV": { uk: "Перехід", ru: "Переход", en: "Navigation" },
+  "o2b.metric.LCP.what": {
+    uk: "коли з’явився найбільший елемент першого екрана",
+    ru: "когда появился самый большой элемент первого экрана",
+    en: "when the largest element of the first screen appeared",
+  },
+  "o2b.metric.INP.what": {
+    uk: "як швидко екран відповідає на натискання й клавіші",
+    ru: "как быстро экран отвечает на нажатия и клавиши",
+    en: "how quickly the screen responds to clicks and keys",
+  },
+  "o2b.metric.CLS.what": {
+    uk: "наскільки стрибає розмітка під час показу",
+    ru: "насколько прыгает разметка при показе",
+    en: "how much the layout jumps while showing",
+  },
+  "o2b.metric.TTFB.what": {
+    uk: "коли сервер почав відповідати на завантаження сторінки",
+    ru: "когда сервер начал отвечать на загрузку страницы",
+    en: "when the server started answering the page load",
+  },
+  "o2b.metric.NAV.what": {
+    uk: "від зміни адреси до екрана, що заспокоївся (пів секунди без змін)",
+    ru: "от смены адреса до успокоившегося экрана (полсекунды без изменений)",
+    en: "from the address change to a settled screen (half a second without changes)",
+  },
+
+  /* Записи прийомів */
+  "o2b.rec.stamp": {
+    uk: "Лише числа: жодного імені й жодного шляху до файлу запису.",
+    ru: "Только числа: ни одного имени и ни одного пути к файлу записи.",
+    en: "Numbers only: no names and no paths to recording files.",
+  },
+  "o2b.rec.kpi.stored": { uk: "Записів із файлом", ru: "Записей с файлом", en: "Recordings with a file" },
+  "o2b.rec.kpi.waiting": { uk: "Чекають розшифровки", ru: "Ждут расшифровки", en: "Awaiting transcription" },
+  "o2b.rec.kpi.oldest": { uk: "найдовше чекає {t}", ru: "дольше всех ждёт {t}", en: "oldest waiting {t}" },
+  "o2b.rec.kpi.queueEmpty": { uk: "черга порожня", ru: "очередь пуста", en: "the queue is empty" },
+  "o2b.rec.kpi.transcribing": { uk: "Розшифровується", ru: "Расшифровывается", en: "Transcribing" },
+  "o2b.rec.kpi.stuck": {
+    uk: "довше 6 год: {n} — ймовірно, процес розшифровки впав",
+    ru: "дольше 6 ч: {n} — вероятно, процесс расшифровки упал",
+    en: "over 6 h: {n} — the transcriber has probably crashed",
+  },
+  "o2b.rec.kpi.failed": { uk: "Збоїв розшифровки", ru: "Сбоев расшифровки", en: "Failed transcriptions" },
+  "o2b.rec.kpi.free": { uk: "Вільно на томі", ru: "Свободно на томе", en: "Free on the volume" },
+  "o2b.rec.kpi.of": { uk: "з {total}", ru: "из {total}", en: "of {total}" },
+  "o2b.rec.byStatus": { uk: "За станом", ru: "По состоянию", en: "By status" },
+  "o2b.rec.none": { uk: "Записів ще не було", ru: "Записей ещё не было", en: "No recordings yet" },
+  "o2b.rec.col.status": { uk: "Стан", ru: "Состояние", en: "Status" },
+  "o2b.rec.col.count": { uk: "Записів", ru: "Записей", en: "Recordings" },
+  "o2b.rec.col.bytes": { uk: "Обсяг", ru: "Объём", en: "Size" },
+  "o2b.rec.col.job": { uk: "Завдання", ru: "Задание", en: "Job" },
+  "o2b.rec.col.age": { uk: "Вік", ru: "Возраст", en: "Age" },
+  "o2b.rec.col.error": { uk: "Помилка", ru: "Ошибка", en: "Error" },
+  "o2b.rec.status.consent_pending": { uk: "чекає згоди", ru: "ждёт согласия", en: "awaiting consent" },
+  "o2b.rec.status.ready": { uk: "готово до запису", ru: "готово к записи", en: "ready to record" },
+  "o2b.rec.status.recording": { uk: "іде запис", ru: "идёт запись", en: "recording" },
+  "o2b.rec.status.uploaded": { uk: "чекає розшифровки", ru: "ждёт расшифровки", en: "awaiting transcription" },
+  "o2b.rec.status.transcribing": { uk: "розшифровується", ru: "расшифровывается", en: "transcribing" },
+  "o2b.rec.status.done": { uk: "розшифровано", ru: "расшифровано", en: "transcribed" },
+  "o2b.rec.status.failed": { uk: "збій розшифровки", ru: "сбой расшифровки", en: "transcription failed" },
+  "o2b.rec.status.discarded": { uk: "видалено", ru: "удалено", en: "discarded" },
+  "o2b.rec.disk": { uk: "Диск", ru: "Диск", en: "Disk" },
+  "o2b.rec.disk.files": { uk: "Файлів на томі", ru: "Файлов на томе", en: "Files on the volume" },
+  "o2b.rec.disk.db": { uk: "За базою", ru: "По базе", en: "Per the database" },
+  "o2b.rec.disk.match": { uk: "Звірка", ru: "Сверка", en: "Reconciliation" },
+  "o2b.rec.disk.matches": { uk: "збігається", ru: "совпадает", en: "matches" },
+  "o2b.rec.disk.mismatch": {
+    uk: "зайвих файлів: {orphans}, бракує: {missing}",
+    ru: "лишних файлов: {orphans}, недостаёт: {missing}",
+    en: "extra files: {orphans}, missing: {missing}",
+  },
+  "o2b.rec.disk.noCompare": { uk: "не звірити", ru: "не сверить", en: "can’t reconcile" },
+  "o2b.rec.disk.unread": { uk: "каталог не прочитався", ru: "каталог не прочитался", en: "the directory couldn’t be read" },
+  "o2b.rec.disk.note": {
+    uk: "Том каталогу записів (RECORDINGS_DIR) — це диск контейнера або тому, а не всієї машини.",
+    ru: "Том каталога записей (RECORDINGS_DIR) — это диск контейнера или тома, а не всей машины.",
+    en: "The recordings directory volume (RECORDINGS_DIR) is the container or volume disk, not the whole machine.",
+  },
+  "o2b.rec.transcriber": { uk: "Розшифровка", ru: "Расшифровка", en: "Transcription" },
+  "o2b.rec.transcriber.here": {
+    uk: "налаштована в цьому процесі; сам розшифровувач — окремий процес, його стан звідси видно лише за чергою",
+    ru: "настроена в этом процессе; сам расшифровщик — отдельный процесс, его состояние отсюда видно лишь по очереди",
+    en: "configured in this process; the transcriber itself is a separate process, visible from here only through the queue",
+  },
+  "o2b.rec.transcriber.elsewhere": {
+    uk: "іде окремим процесом (transcriber) — звідси видно лише чергу: якщо «чекають» зростає, а «розшифровується» стоїть, процес зупинився",
+    ru: "идёт отдельным процессом (transcriber) — отсюда видна лишь очередь: если «ждут» растёт, а «расшифровывается» стоит, процесс остановился",
+    en: "runs as a separate process (transcriber) — only the queue is visible from here: if “awaiting” grows while “transcribing” stands still, the process has stopped",
+  },
+  "o2b.rec.failed": { uk: "Збої розшифровки", ru: "Сбои расшифровки", en: "Failed transcriptions" },
+  "o2b.rec.failedHint": {
+    uk: "Номер завдання, вік від кінця прийому й текст помилки без шляхів і даних. «Повторити» повертає запис у чергу.",
+    ru: "Номер задания, возраст от конца приёма и текст ошибки без путей и данных. «Повторить» возвращает запись в очередь.",
+    en: "Job ID, age since the appointment ended and the error text without paths or data. “Retry” puts the recording back in the queue.",
+  },
+  "o2b.rec.failedNone": { uk: "Збоїв немає", ru: "Сбоев нет", en: "No failures" },
+  "o2b.rec.noFile": { uk: "файл стерто", ru: "файл стёрт", en: "file erased" },
+  "o2b.rec.retried": { uk: "Повернуто в чергу розшифровки", ru: "Возвращено в очередь расшифровки", en: "Returned to the transcription queue" },
+
   /* ── wave10:people2 ── */
   "ppl.listsLabel": { uk: "Списки співробітників", ru: "Списки сотрудников", en: "Staff lists" },
   "ppl.searchStaff": { uk: "Пошук за ПІБ, логіном або телефоном", ru: "Поиск по ФИО, логину или телефону", en: "Search by name, login or phone" },
