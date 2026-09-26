@@ -198,6 +198,8 @@ export interface User {
   position: string | null;
   specialty: string | null;
   rank: string | null;
+  /** Населённый пункт — фильтр выборок в «Статистиці»; открытым текстом, см. миграцию 0086 */
+  locality: string | null;
 
   role: Role;
   createdAt: string;
@@ -2047,6 +2049,254 @@ export interface CohortRow {
   note: string | null;
   spec: CohortSpec;
   createdAt: string;
+}
+
+/* ─────────── Раздел «Статистика»: пресеты фильтров и модели ───────────
+ *
+ * Не то же, что когорты выше. Когорта — правило отбора, которое умеет
+ * отдать людей поимённо; статистика имён не отдаёт никогда: только доли
+ * по выборке, и каждая ячейка меньше порога малых чисел подавляется
+ * (см. StatCell). Поэтому и типы свои, а не расширение CohortSpec.
+ */
+
+/**
+ * Строки-критерии выборки с кадра f25. Отсутствующий ключ — отсутствующая
+ * строка формы: «—» на макете убирает критерий, а не обнуляет его.
+ *
+ * Возраст — на момент прохождения, от даты рождения, а не от нынешней даты
+ * и не от полосы: полоса «25–34» ответила бы на «від 27 до 29» всеми
+ * десятью годами.
+ */
+export interface SampleFilters {
+  /** Период сдачи, ГГГГ-ММ-ДД, оба конца включительно, в поясе учреждения */
+  from?: string | null;
+  to?: string | null;
+  ageMin?: number | null;
+  ageMax?: number | null;
+  sex?: Sex | null;
+  /** Населённый пункт из паспортной части, без учёта регистра */
+  locality?: string | null;
+  /** Своя группа пациентов; чужая — «не найдено» */
+  patientGroupId?: string | null;
+  /** Один человек — выборка из одного всегда ниже порога и отдаётся подавленной */
+  patientId?: string | null;
+}
+
+/** Сохранённый пресет фильтров — «Назва пресету фільтрів» */
+export interface FilterPreset {
+  id: string;
+  title: string;
+  criteria: SampleFilters;
+  /** Кто собрал. Чужие пресеты в выдаче не появляются вовсе */
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Строка списка пресетов: сколько моделей на него ссылаются. Экран
+ * показывает это до нажатия «—», а не узнаёт из отказа после.
+ */
+export interface FilterPresetListItem extends FilterPreset {
+  modelCount: number;
+}
+
+/**
+ * Показатель «Варіант результату»: полоса шкалы. `highRisk` — пометка
+ * «ВШР» (високий ступінь ризику) с кадров f07/f14/f21/f28: попадание в этот
+ * показатель аналитик считает признаком риска.
+ */
+export interface StatModelBandIndicator {
+  scaleId: string;
+  bandId: string;
+  highRisk: boolean;
+}
+
+/** Показатель «Текст відповіді» с той же пометкой «ВШР» */
+export interface StatModelOptionIndicator {
+  optionId: string;
+  highRisk: boolean;
+}
+
+/** «Текст питання» с перечнем показываемых вариантов ответа */
+export interface StatModelQuestionIndicator {
+  questionId: string;
+  options: StatModelOptionIndicator[];
+}
+
+/**
+ * Колонка-выборка модели: свои фильтры либо пресет, своя методика и версия,
+ * свои показатели. На кадре f28 таких колонок две, «+» добавляет ещё.
+ *
+ * Версия хранится всегда: идентификаторы полос и вариантов принадлежат ей,
+ * и модель без версии после первой правки методики ссылалась бы в пустоту.
+ * Во входной схеме версию можно не задавать — тогда берётся действующая
+ * на момент сохранения и записывается сюда.
+ */
+export interface StatModelColumn {
+  /** Метка колонки для экрана — «Group 1», «Чоловіки 25–45»; необязательна */
+  title: string | null;
+  /** Пресет или собственные фильтры — одно из двух */
+  presetId: string | null;
+  filters: SampleFilters | null;
+  surveyId: string;
+  versionId: string;
+  bands: StatModelBandIndicator[];
+  questions: StatModelQuestionIndicator[];
+}
+
+export interface StatModel {
+  id: string;
+  title: string;
+  /** «Короткий опис статистичної моделі» из списка на кадре f26 */
+  description: string | null;
+  ownerId: string;
+  columns: StatModelColumn[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Строка перечня моделей (кадр f06): без колонок, они нужны только на экране модели */
+export interface StatModelListItem {
+  id: string;
+  title: string;
+  description: string | null;
+  ownerId: string;
+  columnCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StatModelListPage {
+  items: StatModelListItem[];
+  total: number;
+}
+
+/**
+ * Ячейка отчёта. Подавленная приходит как {suppressed: true} — не ноль и не
+ * пропуск: ноль читался бы как «никого нет», пропуск — как ошибка экрана,
+ * а правда в том, что люди есть, но их слишком мало, чтобы назвать число.
+ *
+ * Доля считается от показанного основания — числа респондентов колонки —
+ * и подавляется вместе с числом: доля рядом со знаменателем восстанавливает
+ * скрытое умножением.
+ */
+export type StatCell =
+  | { suppressed: false; count: number; percent: number }
+  | { suppressed: true };
+
+export interface StatRunBand {
+  scaleId: string;
+  scaleCode: string;
+  scaleTitle: string;
+  bandId: string;
+  label: string;
+  severity: Severity;
+  highRisk: boolean;
+  cell: StatCell;
+}
+
+export interface StatRunScale {
+  scaleId: string;
+  scaleCode: string;
+  scaleTitle: string;
+  bands: StatRunBand[];
+  /**
+   * Все, кто не попал ни в одну из показанных полос: другие полосы и те,
+   * у кого результат не нормирован. Показывается, чтобы полосы и остаток
+   * складывались в основание и остаток был честной ячейкой, а не тем, что
+   * читатель вычислит сам вычитанием — тогда порог его не защитил бы.
+   *
+   * Подавляется наравне с полосами: что из группы можно напечатать, решает
+   * проверка восстановимости по всему ответу, а не правило про группу.
+   */
+  rest: StatCell;
+}
+
+export interface StatRunOption {
+  optionId: string;
+  text: string;
+  highRisk: boolean;
+  cell: StatCell;
+}
+
+export interface StatRunQuestion {
+  questionId: string;
+  title: string;
+  type: QuestionType;
+  options: StatRunOption[];
+  /**
+   * Все, кто не выбрал ни одного из показанных вариантов, включая не
+   * ответивших. У вопроса с несколькими вариантами это дополнение
+   * объединения, и вместе с самими вариантами оно задаёт области диаграммы
+   * Венна: именно в них живут горстки, которые ищет проверка.
+   */
+  rest: StatCell;
+}
+
+/**
+ * Почему колонка закрыта целиком. «small» — респондентов меньше порога;
+ * «recoverable» — проверка восстановимости не нашла безопасного набора
+ * чисел: что бы колонка ни напечатала, вместе с числами соседок это
+ * называет горстку людей поимённо. Экран в обоих случаях рисует строки с
+ * подписью «менше 5»: причина нужна не подписи, а разбору — по ней видно,
+ * почему колонка над порогом всё-таки закрыта.
+ */
+export type StatSuppressReason = "small" | "recoverable";
+
+/** Одна колонка отчёта — «Group 1: Males, age 25-30, 30 users» с кадра f26 */
+export interface StatRunColumn {
+  title: string | null;
+  presetId: string | null;
+  presetTitle: string | null;
+  filters: SampleFilters;
+  surveyId: string;
+  surveyTitle: string;
+  versionId: string;
+  versionNumber: number;
+  /**
+   * Основание: респонденты выборки, по последнему сданному прохождению
+   * каждого. Колонка меньше порога подавляется целиком — и основание, и
+   * все ячейки под ним; то же с колонкой, которую закрыла проверка
+   * восстановимости.
+   */
+  respondents: StatCell;
+  /** Причина закрытия всей колонки; null — колонка открыта */
+  suppressedReason: StatSuppressReason | null;
+  /**
+   * Готовая фраза о том, чего в колонке нет и почему: колонка закрыта
+   * целиком или из неё убраны отдельные показатели, потому что вместе с
+   * остальными числами отчёта они восстанавливают конкретных людей.
+   * null — показано всё, что колонка умеет показать.
+   *
+   * Фраза, а не код: сервер и так переводит отказы (errorStrings.ts), и
+   * второй словарь на клиенте ради одной строки — лишний договор между
+   * двумя приложениями. Экран обязан её показать: молча нарисованные
+   * прочерки читаются как «данных нет», а данные есть.
+   */
+  note: string | null;
+  /** Сколько показателей колонки скрыто; 0 — показаны все */
+  hiddenFigures: number;
+  scales: StatRunScale[];
+  questions: StatRunQuestion[];
+  /**
+   * Респонденты хотя бы с одним попаданием в показатель «ВШР»; null — в
+   * колонке ничего не помечено. Своих правил у него нет: это такое же
+   * число системы, как ячейки, и прячется оно тогда, когда вместе с
+   * остальными числами ответа называет людей. Так, «ВШР: 13» поверх
+   * показанных «Високий: 6» и «Шум: 8» из двадцати называет того
+   * единственного, кто попал в оба показателя.
+   */
+  highRisk: StatCell | null;
+}
+
+export interface StatRunResult {
+  /** null — превью без сохранения */
+  modelId: string | null;
+  title: string;
+  ranAt: string;
+  smallCellFloor: number;
+  columns: StatRunColumn[];
 }
 
 /* ── Поликлиника: расписание и приёмы ── */

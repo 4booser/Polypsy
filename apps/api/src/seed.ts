@@ -15,6 +15,7 @@ import { attachToCase } from "./lib/alertCases";
 import { syncBuiltinRole } from "./lib/permissions";
 import { syncSlots } from "./lib/schedule";
 import { bilingual } from "./seedTranslations";
+import { seedStatModels } from "./seed/statModels";
 import { decryptField, encryptField, encryptPersonFields } from "./lib/crypto";
 import {
   answerEvents,
@@ -1297,6 +1298,9 @@ async function seedConsent() {
   console.log("  текст согласия: версия 1");
 }
 await seedConsent();
+
+// раздел «Статистика»: населённые пункты, прохождения пулом, пресеты и модели — см. seed/statModels.ts
+await seedStatModels();
 
 /*
  * Роли персонала выдаются посевом, а не только при старте сервера.

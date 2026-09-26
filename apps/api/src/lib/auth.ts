@@ -136,6 +136,7 @@ export function toPublicUser(row: UserRow): User {
     position: row.position,
     specialty: row.specialty,
     rank: row.rank,
+    locality: row.locality,
     role: row.role,
     readOnly: row.readOnly,
     workspace: (row.workspace as never) ?? null,
