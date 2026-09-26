@@ -127,6 +127,47 @@ jobs:
           # соединении принимает любой ключ, то есть и подменённый
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
+      # Описание состава уезжает на сервер вместе с образами — и ДО снимка.
+      #
+      # Раньше не уезжало вовсе: на сервере лежала копия, сделанная руками
+      # при первичной настройке, и любая правка docker-compose.yml в
+      # хранилище до продакшена не доходила в принципе. Обнаружилось это
+      # худшим из возможных способов — через выкатку, которая проходила
+      # зелёной и не меняла ничего, дважды подряд.
+      #
+      # До снимка, а не внутри «Выкатки»: снимок снимается через
+      # `docker compose exec postgres`, то есть читает этот файл. Выкатка
+      # v1.11.1 привезла файл с повтором ключа, compose его отверг, и с тех
+      # пор падал сам снимок — раньше, чем следующая выкатка успевала
+      # привезти исправленный файл; заодно молча вставали ночные копии.
+      # Поэтому новый файл сперва разбирается на сервере, рядом с его
+      # .env.docker, и только разобравшийся встаёт на место прежнего;
+      # неразобравшийся не трогает ничего и останавливает выкатку.
+      #
+      # Прежний файл сохраняется рядом с отметкой времени: если на сервере
+      # были правки руками, они не исчезают молча, а остаются под именем,
+      # по которому их видно.
+      - name: Состав на сервер
+        run: |
+          scp -i ~/.ssh/id_ed25519 docker-compose.yml \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/docker-compose.new.yml"
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$TARGET"
+          if ! docker compose --project-directory . -f /tmp/docker-compose.new.yml --env-file .env.docker config -q; then
+            echo "новый состав не разбирается — на сервере остаётся прежний" >&2
+            rm -f /tmp/docker-compose.new.yml
+            exit 1
+          fi
+          if ! cmp -s /tmp/docker-compose.new.yml docker-compose.yml; then
+            cp docker-compose.yml "docker-compose.yml.$(date +%Y%m%d-%H%M%S).bak"
+            cp /tmp/docker-compose.new.yml docker-compose.yml
+            echo "состав обновлён, прежний сохранён рядом"
+          fi
+          rm -f /tmp/docker-compose.new.yml
+          REMOTE
+
       # Снимок базы ДО миграций. Миграции не откатываются переключением тега:
       # схема уже изменена, и старый образ на новую схему не встанет.
       #
@@ -175,30 +216,11 @@ jobs:
           host="${{ secrets.SITE_ADDRESS }}"
           dots=$(printf '%s' "$host" | tr -cd . | wc -c | tr -d ' ')
           if [ "$dots" = "1" ]; then ALIASES="www.$host"; fi
-          # Описание состава уезжает на сервер вместе с образами.
-          #
-          # Раньше не уезжало вовсе: на сервере лежала копия, сделанная руками
-          # при первичной настройке, и любая правка docker-compose.yml в
-          # хранилище до продакшена не доходила в принципе. Обнаружилось это
-          # худшим из возможных способов — через выкатку, которая проходила
-          # зелёной и не меняла ничего, дважды подряд.
-          #
-          # Прежний файл сохраняется рядом с отметкой времени: если на сервере
-          # были правки руками, они не исчезают молча, а остаются под именем,
-          # по которому их видно.
-          scp -i ~/.ssh/id_ed25519 docker-compose.yml \
-            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/docker-compose.new.yml"
+          # состав уже на месте — его привёз шаг «Состав на сервер» до снимка
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "VERSION='$VERSION' PREFIX='$PREFIX' SHA='$SHA' ACTOR='$ACTOR' RUN_URL='$RUN_URL' REPO='$REPO' ALIASES='$ALIASES' MAIL='${{ secrets.ACME_EMAIL }}' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
-
-          if ! cmp -s /tmp/docker-compose.new.yml docker-compose.yml; then
-            cp docker-compose.yml "docker-compose.yml.$(date +%Y%m%d-%H%M%S).bak"
-            cp /tmp/docker-compose.new.yml docker-compose.yml
-            echo "состав обновлён, прежний сохранён рядом"
-          fi
-          rm -f /tmp/docker-compose.new.yml
 
           # версия и адрес образов живут в .env.docker, а не в переменных
           # оболочки: перезапуск сервера не должен откатывать выкатку.
