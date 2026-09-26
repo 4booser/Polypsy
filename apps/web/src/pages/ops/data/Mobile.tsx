@@ -10,8 +10,12 @@ import { Tag } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
 import { useResource } from "../../../useResource";
 import { fill } from "../../dashboard/model";
-import { PLATFORM_LABEL, dayColumns, lagParts, lateParts, type Window } from "./model";
+import { ToneShare } from "../obs2b/charts";
+import { PLATFORM_LABEL, dayColumns, lagParts, lateParts, versionParts, type Window } from "./model";
 import { KPI_GRID, NUM, PAIR_GRID, TD, TH, WindowSwitch } from "./parts";
+
+/** Версий в полосе поимённо; старше — одной частью «старіші» */
+const TOP_VERSIONS = 5;
 
 /**
  * «Мобільний застосунок» — на каких сборках сидят люди, что застряло в
@@ -52,6 +56,27 @@ export function MobileBody({ data, days, onDays }: { data: MobileReport; days: W
           <Kpi label={ut("opsd.m.newest")} value={data.newest} />
           <Kpi label={ut("opsd.m.unknown")} value={data.devices.unknown} hint={ut("opsd.m.unknownHint")} />
         </div>
+        {/*
+          Волна 11: версии полосой над таблицей — от новой к старым. Новая —
+          фиолетовым, старые — янтарём (исправление движка до них не дошло,
+          это «требует внимания»), неизвестная — серым. Слово «застаріла» в
+          легенде — чтобы старое читалось и без цвета.
+        */}
+        {data.versions.length ? (
+          <Figure className="mt-[24px]" title={ut("sig.m.versions")} caption={ut("sig.m.versionsCaption")}>
+            <ToneShare
+              label={ut("sig.m.versions")}
+              parts={versionParts(data.versions, TOP_VERSIONS).map((p, i, all) => ({
+                key: p.key,
+                label: p.rest ? fill(ut("sig.m.older"), { n: p.rest }) : (p.version ?? ut("sig.m.unknownVersion")),
+                value: p.devices,
+                tone: p.version === null && !p.rest ? "quiet" : p.old ? "warn" : "ok",
+                step: p.old ? 1 - i / Math.max(1, all.length) : 1,
+                note: p.old && !p.rest ? ut("opsd.m.oldTag") : undefined,
+              }))}
+            />
+          </Figure>
+        ) : null}
         {data.versions.length ? (
           <div className="mt-[24px] overflow-x-auto">
             <table className="w-full min-w-[620px] border-collapse">

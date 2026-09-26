@@ -5022,6 +5022,124 @@ export const UI = {
   "ppl.sortByDepartment": { uk: "Сортування: за відділенням", ru: "Сортировка: по отделению", en: "Sort: by department" },
   "ppl.sortByPosition": { uk: "Сортування: за посадою", ru: "Сортировка: по должности", en: "Sort: by position" },
 
+  /* ── w11:signals ── */
+  /*
+   * Графики над таблицами разделов сигналов техпанели: «Сповіщення»,
+   * «Помилки клієнта», «Швидкість екранів», «Записи», «Дані й продукт»,
+   * «Випуски», «Цілісність». Подписи фигур называют период и что именно
+   * посчитано — и чего нет (случаев по дням у ошибок клиента не хранится).
+   */
+  "sig.noValue": { uk: "немає даних", ru: "нет данных", en: "no data" },
+  "sig.other": { uk: "інші ({n})", ru: "прочие ({n})", en: "others ({n})" },
+
+  "sig.al.byDay": { uk: "Спрацювання по днях", ru: "Срабатывания по дням", en: "Alerts by day" },
+  "sig.al.byDayCaption": {
+    uk: "{days} днів. Повтори «досі триває» тут не рахуються — вони про той самий збій",
+    ru: "{days} дней. Повторы «всё ещё идёт» здесь не считаются — они о том же сбое",
+    en: "{days} days. “Still ongoing” reminders aren’t counted here — they’re about the same failure",
+  },
+  "sig.al.byRule": { uk: "Які правила спрацьовували", ru: "Какие правила срабатывали", en: "Which rules fired" },
+  "sig.al.byRuleCaption": {
+    uk: "Збоїв за {days} днів; повтори — поруч із числом",
+    ru: "Сбоев за {days} дней; повторы — рядом с числом",
+    en: "Failures in {days} days; reminders next to the number",
+  },
+  "sig.al.firedRepeat": { uk: "{n} · повторів {r}", ru: "{n} · повторов {r}", en: "{n} · {r} reminders" },
+  "sig.al.noFired": {
+    uk: "Нових збоїв за цей час не було — лише відновлення",
+    ru: "Новых сбоев за это время не было — только восстановления",
+    en: "No new failures in this period — only recoveries",
+  },
+  "sig.al.quiet": { uk: "За {days} днів правила не спрацьовували", ru: "За {days} дней правила не срабатывали", en: "No rule fired in the last {days} days" },
+
+  "sig.ce.newByDay": { uk: "Нові групи по днях", ru: "Новые группы по дням", en: "New groups by day" },
+  "sig.ce.newByDayCaption": {
+    uk: "День першої появи, {days} днів. Випадків по днях сервер не зберігає — лише загальний лічильник групи",
+    ru: "День первого появления, {days} дней. Случаев по дням сервер не хранит — только общий счётчик группы",
+    en: "Day first seen, {days} days. The server keeps no per-day counts — only each group’s running total",
+  },
+  "sig.ce.noNew": { uk: "За {days} днів нових груп не з’являлося", ru: "За {days} дней новых групп не появлялось", en: "No new groups in the last {days} days" },
+  "sig.ce.byScreen": { uk: "Екрани з найбільшою кількістю випадків", ru: "Экраны с наибольшим числом случаев", en: "Screens with the most occurrences" },
+  "sig.ce.countsCaption": {
+    uk: "Випадків за весь час групи — до {days} днів",
+    ru: "Случаев за всё время группы — до {days} дней",
+    en: "Occurrences over each group’s lifetime — up to {days} days",
+  },
+  "sig.ce.inGroups": { uk: "{n} · груп {g}", ru: "{n} · групп {g}", en: "{n} · {g} groups" },
+  "sig.ce.topGroups": { uk: "Найчастіші помилки", ru: "Самые частые ошибки", en: "Most frequent errors" },
+  "sig.ce.where": { uk: "Де падає", ru: "Где падает", en: "Where it fails" },
+  "sig.ce.whereCaption": {
+    uk: "Частка випадків за браузером і системою; версії — у рядку групи",
+    ru: "Доля случаев по браузеру и системе; версии — в строке группы",
+    en: "Share of occurrences by browser and OS; versions are in each group’s row",
+  },
+  "sig.ce.browser": { uk: "Браузер", ru: "Браузер", en: "Browser" },
+  "sig.ce.os": { uk: "Система", ru: "Система", en: "Operating system" },
+  "sig.ce.unknown": { uk: "не відомо", ru: "неизвестно", en: "unknown" },
+
+  "sig.v.slowest": { uk: "Найповільніші екрани — {metric}", ru: "Самые медленные экраны — {metric}", en: "Slowest screens — {metric}" },
+  "sig.v.slowestCaption": { uk: "p75 за {days} днів; повільніші вище.", ru: "p75 за {days} дней; медленнее — выше.", en: "p75 over {days} days; slowest first." },
+  "sig.v.more": { uk: "Ще {n} — у таблиці.", ru: "Ещё {n} — в таблице.", en: "{n} more in the table." },
+  "sig.v.ratings": { uk: "Заміри за оцінкою — {metric}", ru: "Замеры по оценке — {metric}", en: "Samples by rating — {metric}" },
+  "sig.v.ratingsCaption": {
+    uk: "Усі екрани разом, за замірами: добре ≤ {good}, погано > {poor}",
+    ru: "Все экраны вместе, по замерам: хорошо ≤ {good}, плохо > {poor}",
+    en: "All screens together, by sample: good ≤ {good}, poor > {poor}",
+  },
+  "sig.v.routeRatingsCaption": {
+    uk: "Лише цей екран, за замірами періоду",
+    ru: "Только этот экран, по замерам периода",
+    en: "This screen only, by sample over the period",
+  },
+
+  "sig.rec.volume": { uk: "Том записів", ru: "Том записей", en: "Recordings volume" },
+  "sig.rec.records": { uk: "записи", ru: "записи", en: "recordings" },
+  "sig.rec.other": { uk: "інше на томі", ru: "прочее на томе", en: "other data on the volume" },
+  "sig.rec.free": { uk: "вільно", ru: "свободно", en: "free" },
+
+  "sig.u.topScreens": { uk: "Найчастіше відкривані екрани", ru: "Чаще всего открываемые экраны", en: "Most opened screens" },
+  "sig.u.topCaption": { uk: "Перші {n} за відкриттями; решта — одним рядком", ru: "Первые {n} по открытиям; остальные — одной строкой", en: "Top {n} by opens; the rest in one row" },
+  "sig.u.otherScreens": { uk: "інші екрани", ru: "прочие экраны", en: "other screens" },
+
+  "sig.p.share": { uk: "Частка помилок по днях", ru: "Доля ошибок по дням", en: "Error rate by day" },
+  "sig.p.shareCaption": {
+    uk: "Помилки від відправленого за день; день без відправок — розрив лінії, а не нуль",
+    ru: "Ошибки от отправленного за день; день без отправок — разрыв линии, а не ноль",
+    en: "Errors as a share of the day’s sends; a day with no sends is a gap, not zero",
+  },
+  "sig.p.codes": { uk: "Коди за кількістю", ru: "Коды по числу", en: "Codes by count" },
+  "sig.p.codesCaption": {
+    uk: "Скільки разів за вікно; що означає код — у таблиці",
+    ru: "Сколько раз за окно; что значит код — в таблице",
+    en: "How many times in the window; what each code means is in the table",
+  },
+
+  "sig.m.versions": { uk: "Пристрої за версією", ru: "Устройства по версии", en: "Devices by version" },
+  "sig.m.versionsCaption": {
+    uk: "Від нової до старих; платформи й збірки однієї версії складено разом — окремо вони в таблиці",
+    ru: "От новой к старым; платформы и сборки одной версии сложены вместе — по отдельности они в таблице",
+    en: "Newest to oldest; platforms and builds of one version are combined — the table lists them separately",
+  },
+  "sig.m.older": { uk: "старіші ({n})", ru: "старше ({n})", en: "older ({n})" },
+  "sig.m.unknownVersion": { uk: "версія не відома", ru: "версия неизвестна", en: "version unknown" },
+
+  "sig.rl.cadence": { uk: "Викладки по тижнях", ru: "Выкладки по неделям", en: "Deploys by week" },
+  "sig.rl.cadenceCaption": {
+    uk: "{weeks} тижн., з понеділка; за останніми {n} записами історії, відкати теж рахуються",
+    ru: "{weeks} нед., с понедельника; по последним {n} записям истории, откаты тоже считаются",
+    en: "{weeks} weeks, starting Monday; from the latest {n} history entries, rollbacks included",
+  },
+  "sig.rl.perWeek": { uk: "у середньому за тиждень", ru: "в среднем за неделю", en: "average per week" },
+
+  "sig.int.history": { uk: "Звірки за {days} днів", ru: "Сверки за {days} дней", en: "Checks over {days} days" },
+  "sig.int.historyCaption": {
+    uk: "Клітинка — день: цілий, розрив чи не звіряли. День із розривом лишається розривом, навіть якщо пізніше звірка пройшла.",
+    ru: "Клетка — день: цела, разрыв или не сверяли. День с разрывом остаётся разрывом, даже если позже сверка прошла.",
+    en: "Each cell is a day: intact, broken or not checked. A day with a break stays broken even if a later check passed.",
+  },
+  "sig.int.notChecked": { uk: "не звіряли", ru: "не сверяли", en: "not checked" },
+  "sig.int.brokenDays": { uk: "Розрив знайдено: {days}", ru: "Разрыв найден: {days}", en: "Break found on: {days}" },
+
   /* ─────────── аналитика методики ─────────── */
   "an.version": { uk: "Версія", ru: "Версия", en: "Version" },
   "an.of": { uk: "з", ru: "из", en: "of" },

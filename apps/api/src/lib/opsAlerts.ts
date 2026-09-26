@@ -28,7 +28,7 @@
  */
 import { statfs, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { desc, eq, lt } from "drizzle-orm";
+import { and, desc, eq, gte, lt, ne } from "drizzle-orm";
 import {
   OPS_REPEAT_LIMITS,
   OPS_RULE_LIMITS,
@@ -38,6 +38,7 @@ import {
   type OpsAlertDelivery,
   type OpsAlertEvent,
   type OpsAlertEventKind,
+  type OpsAlertHistory,
   type OpsAlertRule,
   type OpsAlertRuleInput,
   type OpsAlertRuleKey,
@@ -48,6 +49,7 @@ import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { opsAlertEvents, opsAlertRules, opsClientErrors, opsVitals } from "../db/schema";
 import { env } from "../env";
+import { dayOf } from "./day";
 import { withJobLock } from "./jobLock";
 import { log } from "./log";
 import { mailTransportReady, sendSystemMail, superadminEmails } from "./notify";
@@ -632,6 +634,57 @@ export async function alertHistory(limit = 100): Promise<OpsAlertEvent[]> {
     threshold: r.threshold,
     deliveries: r.deliveries ?? [],
   }));
+}
+
+/** Окно графиков истории: месяц — короче теряет «раз в неделю», длиннее не помещается столбцами по дням */
+export const ALERT_SHAPE_DAYS = 30;
+
+/**
+ * Форма истории для графиков: срабатывания по дням и по правилам.
+ *
+ * Из таблицы целиком за период, а не из ста последних событий списка: ночь
+ * повторов раз в пять минут заняла бы весь список, и график месяца
+ * показал бы только её. Строк за месяц — тысячи в худшем случае (пять
+ * правил, повтор не чаще раза в пять минут), поэтому читаются три узкие
+ * колонки и складываются здесь: день — по поясу учреждения (dayOf), как у
+ * остальных рядов по дням, а не по поясу сессии базы.
+ *
+ * Пустой день — нули: ряд сплошной, и «не срабатывало» видно как ноль, а
+ * не как дыра на оси. Тестовые сообщения не считаются — это проверка
+ * канала, а не событие системы.
+ */
+export async function alertShape(
+  now = new Date(),
+  days = ALERT_SHAPE_DAYS,
+): Promise<Pick<OpsAlertHistory, "days" | "daily" | "byRule">> {
+  const period: string[] = [];
+  for (let i = days - 1; i >= 0; i--) period.push(dayOf(new Date(now.getTime() - i * 86_400_000).toISOString())!);
+  const dates = [...new Set(period)];
+  const idx = new Map(dates.map((d, i) => [d, i]));
+  const daily = dates.map((date) => ({ date, fired: 0, repeat: 0, resolved: 0 }));
+  const perRule = new Map<OpsAlertRuleKey, { fired: number; repeat: number }>();
+
+  /* сутки запаса назад: первый день периода по поясу учреждения начинается раньше UTC-полуночи */
+  const since = new Date(now.getTime() - (days + 1) * 86_400_000).toISOString();
+  const rows = await db
+    .select({ at: opsAlertEvents.at, kind: opsAlertEvents.kind, rule: opsAlertEvents.ruleKey })
+    .from(opsAlertEvents)
+    .where(and(gte(opsAlertEvents.at, since), ne(opsAlertEvents.kind, "test")));
+  for (const r of rows) {
+    if (r.kind === "test") continue;
+    const i = idx.get(dayOf(r.at) ?? "");
+    if (i === undefined) continue;
+    daily[i]![r.kind] += 1;
+    const key = r.rule as OpsAlertRuleKey | null;
+    if (!key || !ALERT_RULE_KEYS.includes(key) || r.kind === "resolved") continue;
+    const acc = perRule.get(key) ?? { fired: 0, repeat: 0 };
+    acc[r.kind] += 1;
+    perRule.set(key, acc);
+  }
+  const byRule = [...perRule.entries()]
+    .map(([rule, v]) => ({ rule, ...v }))
+    .sort((a, b) => b.fired - a.fired || b.repeat - a.repeat || ALERT_RULE_KEYS.indexOf(a.rule) - ALERT_RULE_KEYS.indexOf(b.rule));
+  return { days: dates.length, daily, byRule };
 }
 
 /** Шаг проверки: минута — 5xx и p95 меряются окнами в десять-пятнадцать минут */

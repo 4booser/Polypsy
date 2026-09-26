@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import type { OpsAuditChainReport, OpsIntegrityCheck, OpsIntegrityState, OpsRlsReport } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
@@ -237,6 +237,28 @@ export async function lastAuditChainCheck(): Promise<OpsIntegrityCheck<OpsAuditC
   return asCheck<OpsAuditChainReport>(await lastCheck("audit_chain"));
 }
 
+/** Окно отметок сверки на графике: месяц — тридцать плановых сверок и ручные между ними */
+const HISTORY_DAYS = 30;
+
+/**
+ * Сверки цепочки за окно — только момент, итог и путь (кнопка или
+ * расписание). Отчёт и автор не нужны графику и не уходят: график отвечает
+ * «была ли цепочка цела в тот день», а подробности последней сверки экран
+ * и так показывает выше. Сутки запаса назад — день начала окна по поясу
+ * экрана может начаться раньше, чем по Гринвичу.
+ */
+async function auditChainHistory(now: Date): Promise<OpsIntegrityState["auditHistory"]> {
+  const since = new Date(now.getTime() - (HISTORY_DAYS + 1) * DAY_MS).toISOString();
+  /* свежие — в первую очередь: если кнопку жали тысячу раз, теряются старейшие, а не вчерашний разрыв */
+  const rows = await db
+    .select({ at: integrityChecks.at, ok: integrityChecks.ok, trigger: integrityChecks.trigger })
+    .from(integrityChecks)
+    .where(and(eq(integrityChecks.kind, "audit_chain"), gte(integrityChecks.at, since)))
+    .orderBy(desc(integrityChecks.at))
+    .limit(1000);
+  return rows.reverse();
+}
+
 /** Что показывает раздел: последние результаты обеих проверок и расписание */
 export async function integrityState(now = new Date()): Promise<OpsIntegrityState> {
   const scheduled = asCheck<OpsAuditChainReport>(await lastCheck("audit_chain", "schedule"));
@@ -248,5 +270,7 @@ export async function integrityState(now = new Date()): Promise<OpsIntegrityStat
     nextScheduledAfter: scheduled
       ? new Date(new Date(scheduled.at).getTime() + DAY_MS - SLACK_MS).toISOString()
       : now.toISOString(),
+    historyDays: HISTORY_DAYS,
+    auditHistory: await auditChainHistory(now),
   };
 }

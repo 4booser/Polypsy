@@ -18,6 +18,7 @@ import {
   ALERT_RULE_KEYS,
   alertCheckerInfo,
   alertHistory,
+  alertShape,
   channelsInfo,
   listRules,
   sendTestAlert,
@@ -176,7 +177,8 @@ opsSignalRoutes.get("/alerts", requireAuth, requireStaff, canRead, async (c) => 
 });
 
 opsSignalRoutes.get("/alerts/history", requireAuth, requireStaff, canRead, async (c) => {
-  const body: OpsAlertHistory = { items: await asSystem(() => alertHistory(100)) };
+  /* список — сто последних событий; форма (по дням, по правилам) — за месяц по всей таблице */
+  const body: OpsAlertHistory = await asSystem(async () => ({ items: await alertHistory(100), ...(await alertShape()) }));
   return c.json(body);
 });
 

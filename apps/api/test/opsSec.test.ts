@@ -808,4 +808,44 @@ describe("целостность: цепочка журнала", () => {
     // убрать искусственный провал, чтобы раздел у соседних тестов не показывал его
     await db.delete(integrityChecks).where(eq(integrityChecks.at, broken.at));
   });
+
+  test("отметки за месяц: итог и путь по времени, без отчёта и автора; старое и RLS — мимо", async () => {
+    const DAY = 86_400_000;
+    const base = Date.now() - 5 * 60_000;
+    const row = (at: number, kind: "audit_chain" | "rls", ok: boolean, trigger: "manual" | "schedule") => ({
+      id: crypto.randomUUID(),
+      kind,
+      trigger,
+      at: new Date(at).toISOString(),
+      ok,
+      actorId: trigger === "manual" ? root.id : null,
+      summary: { at: new Date(at).toISOString(), ok, checked: 1, legacy: 0, brokenAtSeq: ok ? null : 7, headSeq: null, headHash: null },
+    });
+    const rows = [
+      row(base - 2 * DAY, "audit_chain", true, "schedule"),
+      row(base - DAY, "audit_chain", false, "manual"),
+      row(base - 40 * DAY, "audit_chain", true, "schedule"),
+      row(base - DAY + 1000, "rls", true, "manual"),
+    ];
+    await db.insert(integrityChecks).values(rows);
+    try {
+      const state = await api("/api/ops/sec/integrity", root.token);
+      expect(state.status).toBe(200);
+      expect(state.body.historyDays).toBe(30);
+      const history = state.body.auditHistory as { at: string; ok: boolean; trigger: string }[];
+      const mine = history.filter((h) => rows.some((r) => r.at === h.at));
+      expect(mine).toEqual([
+        { at: rows[0]!.at, ok: true, trigger: "schedule" },
+        { at: rows[1]!.at, ok: false, trigger: "manual" },
+      ]);
+      // по времени, старые первыми
+      const times = history.map((h) => Date.parse(h.at));
+      expect(times).toEqual([...times].sort((a, b) => a - b));
+      // ни отчёта, ни почты автора в отметках
+      expect(JSON.stringify(history)).not.toContain("root@");
+      expect(JSON.stringify(history)).not.toContain("brokenAtSeq");
+    } finally {
+      for (const r of rows) await db.delete(integrityChecks).where(eq(integrityChecks.id, r.id));
+    }
+  });
 });
