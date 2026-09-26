@@ -17,7 +17,7 @@ import { useLang } from "../lang";
  */
 export default function GoogleReturn() {
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();
+  const { refreshUser, beginMfa } = useAuth();
   const { ut } = useLang();
   const [error, setError] = useState<string | null>(null);
   /*
@@ -51,11 +51,21 @@ export default function GoogleReturn() {
     api
       .googleExchange(code)
       .then((pair) => {
+        /*
+         * Второй фактор включён (people2): вместо пары — просьба о коде.
+         * Вход через Google его не обходит; второй шаг — на экране входа.
+         */
+        if ("mfaRequired" in pair) {
+          beginMfa(pair.mfaToken);
+          navigate("/login", { replace: true });
+          return null;
+        }
         tokenStore.set(pair.token);
         tokenStore.setRefresh(pair.refreshToken);
         return api.me();
       })
       .then((user) => {
+        if (!user) return;
         /*
          * То же правило, что и при входе паролем: консоль — для сотрудников.
          * Проверять надо и здесь: иначе пациент со связанным Google получал
@@ -73,7 +83,7 @@ export default function GoogleReturn() {
         tokenStore.clear();
         setError(ut("lg.googleFailed"));
       });
-  }, [navigate, refreshUser, ut]);
+  }, [navigate, refreshUser, beginMfa, ut]);
 
   return (
     <div className="login">

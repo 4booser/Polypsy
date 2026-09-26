@@ -35,6 +35,21 @@ import type {
   OpsRlsReport,
   OpsSqlInfo,
   OpsSqlResult,
+  AuthPayload,
+  BulkResult,
+  BulkUsersInput,
+  ImpersonationStart,
+  ImportCreated,
+  ImportPreview,
+  LoginResult,
+  MfaChallenge,
+  MfaPolicyView,
+  MfaSetup,
+  MfaStatus,
+  PatientPick,
+  SuspiciousPage,
+  TemporaryGrants,
+  WhoViewedReport,
   OverviewAnalytics,
   RespondentDynamics,
   RiskAlert,
@@ -151,15 +166,59 @@ function netText(key: "net.offline" | "net.failed" | "net.request"): string {
 
 const TOKEN_KEY = "quizzy.web.token";
 const REFRESH_KEY = "quizzy.web.refresh";
+const IMPERSONATION_KEY = "quizzy.web.impersonation";
+
+/**
+ * Вход «от имени» (техпанель, people2) — токен в хранилище ВКЛАДКИ.
+ *
+ * sessionStorage, а не localStorage: суперадмин смотрит чужими глазами в
+ * одной вкладке, а в соседних остаётся собой. В общем хранилище токен «от
+ * имени» подхватили бы все открытые вкладки, и в той, где суперадмин
+ * работает своими правами, запросы вдруг пошли бы под чужим именем — и
+ * отказывали бы в записи без видимой причины. Своя пара токенов при этом не
+ * трогается: «вийти» возвращает к ней без нового входа.
+ */
+export interface ImpersonationSlot {
+  token: string;
+  sessionId: string;
+  expiresAt: string;
+}
+
+export const impersonationStore = {
+  get(): ImpersonationSlot | null {
+    try {
+      const raw = sessionStorage.getItem(IMPERSONATION_KEY);
+      if (!raw) return null;
+      const slot = JSON.parse(raw) as ImpersonationSlot;
+      return activeSlot(slot, Date.now()) ? slot : null;
+    } catch {
+      return null;
+    }
+  },
+  set(slot: ImpersonationSlot): void {
+    sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(slot));
+  },
+  clear(): void {
+    sessionStorage.removeItem(IMPERSONATION_KEY);
+  },
+};
+
+/** Жив ли токен «от имени» — по сроку; погашенный сервером узнаётся по 401 */
+export function activeSlot(slot: ImpersonationSlot | null, now: number): boolean {
+  return Boolean(slot?.token) && new Date(slot!.expiresAt).getTime() > now;
+}
 
 export const tokenStore = {
-  get: () => localStorage.getItem(TOKEN_KEY),
+  /* под входом «от имени» запросы идут его токеном; свой — только для «вийти» */
+  get: () => impersonationStore.get()?.token ?? localStorage.getItem(TOKEN_KEY),
+  own: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
   getRefresh: () => localStorage.getItem(REFRESH_KEY),
   setRefresh: (t: string) => localStorage.setItem(REFRESH_KEY, t),
   clear: () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
+    impersonationStore.clear();
   },
 };
 
@@ -261,7 +320,16 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
   /* пятисотка — тоже сбой, а не бизнес-отказ; 4xx туда не идут — это поведение, не поломка */
   if (res.status >= 500) noteNetworkFailure({ method: init.method ?? "GET", path, status: res.status });
-  if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
+  /*
+   * Вход «от имени» кончился (полчаса прошли, суперадмин нажал «вийти» в
+   * другой вкладке или вышел из своей сессии) — возвращаемся к себе, а не
+   * меняем refresh: у токена «от имени» его нет, а свой обмен ничего бы не
+   * поправил — запросы шли бы тем же погашенным токеном.
+   */
+  if (res.status === 401 && impersonationStore.get()) {
+    impersonationStore.clear();
+    window.location.assign("/ops/users");
+  } else if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
     if (await tryRefresh()) return request<T>(path, init, true);
     tokenStore.clear();
   }
@@ -519,11 +587,22 @@ export interface DecisionRuleInput {
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
 
 export const api = {
+  /** Вход: пара токенов или, если включён второй фактор, просьба о коде (MfaChallenge) */
   login: (email: string, password: string) =>
-    request<{ token: string; refreshToken: string; user: User }>("/api/auth/login", {
+    request<LoginResult>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
+  /* ── второй фактор (people2) ── */
+  loginMfa: (mfaToken: string, code: string) =>
+    request<AuthPayload>("/api/auth/mfa/login", { method: "POST", body: JSON.stringify({ mfaToken, code }) }),
+  mfaStatus: () => request<MfaStatus>("/api/auth/mfa"),
+  mfaSetup: () => request<MfaSetup>("/api/auth/mfa/setup", { method: "POST" }),
+  /** Коды восстановления — в ответе один раз */
+  mfaConfirm: (code: string) =>
+    request<{ recoveryCodes: string[] }>("/api/auth/mfa/confirm", { method: "POST", body: JSON.stringify({ code }) }),
+  mfaDisable: (password: string, code: string) =>
+    request<{ ok: true }>("/api/auth/mfa/disable", { method: "POST", body: JSON.stringify({ password, code }) }),
   logout: (refreshToken: string) =>
     request<{ ok: true }>("/api/auth/logout", {
       method: "POST",
@@ -559,8 +638,9 @@ export const api = {
       body: JSON.stringify({ password }),
     }),
   googleLinkUrl: () => request<{ url: string }>("/api/auth/google/link", { method: "POST" }),
+  /* при включённом втором факторе вместо пары приходит просьба о коде */
   googleExchange: (code: string) =>
-    request<{ token: string; refreshToken: string }>("/api/auth/google/exchange", {
+    request<{ token: string; refreshToken: string } | MfaChallenge>("/api/auth/google/exchange", {
       method: "POST",
       body: JSON.stringify({ code }),
     }),
@@ -1299,6 +1379,45 @@ export const api = {
     return request<OpsSessionPage>(`/api/ops/sessions?${qs}`);
   },
   revokeSession: (id: string) => request<{ ok: true }>(`/api/ops/sessions/${id}/revoke`, { method: "POST" }),
+  /* ── техпанель: люди и безопасность (people2) ── */
+  /** Токен «от имени» — в ответе один раз; экран кладёт его в хранилище вкладки */
+  impersonate: (userId: string, reason: string) =>
+    request<ImpersonationStart>(`/api/ops/people/impersonate/${userId}`, { method: "POST", body: JSON.stringify({ reason }) }),
+  endImpersonation: (sessionId: string) =>
+    request<{ ok: true; ended: boolean }>(`/api/ops/people/impersonate/${sessionId}/end`, { method: "POST" }),
+  mfaPolicy: () => request<MfaPolicyView>("/api/ops/people/mfa"),
+  saveMfaPolicy: (policy: { superadmins: boolean; ops: boolean }) =>
+    request<{ ok: true }>("/api/ops/people/mfa", { method: "PUT", body: JSON.stringify(policy) }),
+  resetUserMfa: (id: string) =>
+    request<{ ok: true; hadFactor: boolean }>(`/api/ops/people/users/${id}/mfa-reset`, { method: "POST" }),
+  suspicious: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<SuspiciousPage>(`/api/ops/people/suspicious?${qs}`);
+  },
+  resolveFinding: (id: string, comment: string) =>
+    request<{ ok: true }>(`/api/ops/people/suspicious/${id}/resolve`, { method: "POST", body: JSON.stringify({ comment }) }),
+  scanSuspicious: () =>
+    request<{ found: number; created: number; updated: number }>("/api/ops/people/suspicious/scan", { method: "POST" }),
+  temporaryGrants: () => request<TemporaryGrants>("/api/ops/people/grants"),
+  extendGrant: (id: string, days: number) =>
+    request<{ ok: true; expiresAt: string }>(`/api/ops/people/grants/${id}/extend`, { method: "POST", body: JSON.stringify({ days }) }),
+  opsUserIds: (params: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v) qs.set(k, v);
+    return request<{ ids: string[]; total: number }>(`/api/ops/people/users/ids?${qs}`);
+  },
+  bulkUsers: (body: BulkUsersInput) =>
+    request<BulkResult>("/api/ops/people/users/bulk", { method: "POST", body: JSON.stringify(body) }),
+  importPreview: (csv: string) =>
+    request<ImportPreview>("/api/ops/people/users/import/preview", { method: "POST", body: JSON.stringify({ csv }) }),
+  /** 400 несёт в теле `preview` — ошибки по строкам; пароли созданных — в ответе один раз */
+  importUsers: (csv: string) =>
+    request<ImportCreated>("/api/ops/people/users/import", { method: "POST", body: JSON.stringify({ csv }) }),
+  patientPick: (q: string) =>
+    request<{ items: PatientPick[] }>(`/api/ops/people/patients?${new URLSearchParams({ q })}`).then((r) => r.items),
+  whoViewed: (patientId: string, from: string, to: string) =>
+    request<WhoViewedReport>(`/api/ops/people/who-viewed?${new URLSearchParams({ patientId, from, to })}`),
   createGroup: (input: GroupInput) =>
     request<SurveyGroup>("/api/groups", { method: "POST", body: JSON.stringify(input) }),
   updateGroup: (id: string, input: Partial<GroupInput>) =>

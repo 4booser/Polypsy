@@ -9,7 +9,14 @@ interface AuthState {
   loading: boolean;
   isAdmin: boolean;
   isSuperadmin: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  /**
+   * Вход. Если у учётки включён второй фактор (техпанель, people2), пары нет:
+   * возвращается знак «пароль верный», и экран входа просит код —
+   * completeMfa. Мобилкой входят и сотрудники, а второй фактор, который
+   * обходится входом с телефона, защищал бы одну дверь из двух.
+   */
+  login: (email: string, password: string) => Promise<{ mfaToken: string } | null>;
+  completeMfa: (mfaToken: string, code: string) => Promise<void>;
   register: (input: {
     email: string;
     password: string;
@@ -50,6 +57,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const payload = await api.login({ email, password });
+    if ("mfaRequired" in payload) return { mfaToken: payload.mfaToken };
+    await tokenStorage.set(payload.token);
+    await tokenStorage.setRefresh(payload.refreshToken);
+    setUser(payload.user);
+    return null;
+  }, []);
+
+  const completeMfa = useCallback(async (mfaToken: string, code: string) => {
+    const payload = await api.loginMfa({ mfaToken, code });
     await tokenStorage.set(payload.token);
     await tokenStorage.setRefresh(payload.refreshToken);
     setUser(payload.user);
@@ -82,11 +98,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: user?.role === "admin" || user?.role === "superadmin",
       isSuperadmin: user?.role === "superadmin",
       login,
+      completeMfa,
       register,
       logout,
       refresh,
     }),
-    [user, loading, login, register, logout, refresh],
+    [user, loading, login, completeMfa, register, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

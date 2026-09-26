@@ -6,6 +6,7 @@ import { startRetention } from "./lib/retention";
 import { setAuditChainSource, startOpsAlerts } from "./lib/opsAlerts";
 import { lastAuditChainCheck } from "./lib/integrity";
 import { startOpsRotation, startOpsStore } from "./lib/opsStore";
+import { startSuspiciousWatch } from "./lib/suspiciousWatch";
 import { baseDb, client } from "./db";
 import { systemContext } from "./db/context";
 import { log } from "./lib/log";
@@ -100,6 +101,8 @@ const stopOpsAlerts = env.schedulerEnabled ? startOpsAlerts() : null;
  */
 const stopOpsStore = startOpsStore();
 const stopOpsRotation = env.schedulerEnabled ? startOpsRotation() : null;
+// подозрительная активность по журналу — раз в пять минут, задачей реестра opsJobs (people2)
+const stopSuspicious = env.schedulerEnabled ? startSuspiciousWatch() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -118,6 +121,7 @@ async function shutdown(signal: string) {
   stopOpsRotation?.();
   /* последний такт записи истории — до закрытия пула, не дольше трёх секунд */
   await stopOpsStore();
+  stopSuspicious?.();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }

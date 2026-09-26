@@ -8,6 +8,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   time,
   uniqueIndex,
@@ -1661,6 +1662,107 @@ export const loginAttempts = pgTable(
   },
   (t) => ({
     emailIdx: index("login_attempts_email_idx").on(t.email, t.at),
+  }),
+);
+
+/* ═══════════ Люди и безопасность в техпанели (миграция 0094) ═══════════ */
+
+/**
+ * Второй фактор (TOTP, RFC 6238). Секрет — шифрованным полем (lib/crypto.ts);
+ * строка без confirmedAt — начатая, но не подтверждённая кодом настройка, и
+ * вход по ней не требуется. lastStep — шаг последнего принятого кода: тот же
+ * код второй раз не входит (см. lib/secondFactor.ts).
+ */
+export const userSecondFactor = pgTable("user_second_factor", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  secretEnc: text("secret_enc").notNull(),
+  confirmedAt: timestampCol("confirmed_at"),
+  lastStep: integer("last_step"),
+  createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+});
+
+/** Одноразовые коды восстановления — хэшами; использованный помечается, а не удаляется */
+export const userRecoveryCodes = pgTable(
+  "user_recovery_codes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestampCol("used_at"),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+  },
+  (t) => ({ userIdx: index("user_recovery_codes_user_idx").on(t.userId) }),
+);
+
+/** Одна строка (id = 1): обязателен ли второй фактор суперадминам и держателям ops.* */
+export const securityPolicy = pgTable("security_policy", {
+  id: smallint("id").primaryKey().default(1),
+  mfaSuperadmins: boolean("mfa_superadmins").notNull().default(false),
+  mfaOps: boolean("mfa_ops").notNull().default(false),
+  updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+  updatedBy: text("updated_by").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
+});
+
+/**
+ * Вход суперадмина «от имени» — только чтение, с причиной и коротким сроком.
+ * Строка нужна, чтобы «вийти» гасило токен сразу, а журнал и подозрительная
+ * активность видели каждую сессию (см. lib/impersonation.ts).
+ */
+export const impersonationSessions = pgTable(
+  "impersonation_sessions",
+  {
+    id: text("id").primaryKey(),
+    actorId: text("actor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    subjectId: text("subject_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    reason: text("reason").notNull(),
+    startedAt: timestampCol("started_at").notNull().default(sql`now()`),
+    expiresAt: timestampCol("expires_at").notNull(),
+    endedAt: timestampCol("ended_at"),
+  },
+  (t) => ({
+    actorIdx: index("impersonation_sessions_actor_idx").on(t.actorId, t.startedAt),
+    subjectIdx: index("impersonation_sessions_subject_idx").on(t.subjectId, t.startedAt),
+  }),
+);
+
+/**
+ * Срабатывания правил подозрительной активности (lib/suspicious.ts).
+ * fingerprint — «то же самое срабатывание» между проходами проверки;
+ * notifiedAt NULL — оповещение ещё не отправлено (крючок для участка
+ * оповещений, см. lib/suspiciousWatch.ts).
+ */
+export const suspiciousFindings = pgTable(
+  "suspicious_findings",
+  {
+    id: text("id").primaryKey(),
+    rule: text("rule").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    actorId: text("actor_id").references(() => users.id, { onDelete: "set null" }),
+    actorEmail: text("actor_email"),
+    subjectId: text("subject_id"),
+    ip: text("ip"),
+    windowFrom: timestampCol("window_from").notNull(),
+    windowTo: timestampCol("window_to").notNull(),
+    hits: integer("hits").notNull(),
+    details: jsonb("details").$type<Record<string, unknown>>(),
+    detectedAt: timestampCol("detected_at").notNull().default(sql`now()`),
+    updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
+    notifiedAt: timestampCol("notified_at"),
+    resolvedAt: timestampCol("resolved_at"),
+    resolvedBy: text("resolved_by").references(() => users.id, { onDelete: "set null" }),
+    resolution: text("resolution"),
+  },
+  (t) => ({
+    fingerprintIdx: uniqueIndex("suspicious_findings_fingerprint_idx").on(t.fingerprint),
+    openIdx: index("suspicious_findings_open_idx").on(t.resolvedAt, t.windowTo),
   }),
 );
 

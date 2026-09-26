@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { OpsUserRow, Role } from "@quizzy/shared";
+import type { BulkUserAction, OpsUserRow, Role } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
 import { dateTime, day } from "../../format";
@@ -16,6 +16,9 @@ import { Cell, ColumnHead, FilterSelect, SearchField, metaClass, nameClass, rowC
 import { ConfirmPlain, ConfirmTyped, OneTimePassword } from "./dialogs";
 import { type Hold, ROLE_KEY, generatePassword, holdKey, holdsOfRow, personHref, traceParts } from "./model";
 import { UserDevices } from "./UserDevices";
+import { toggleId, withPage } from "./people2/model";
+import { RowCheck } from "./people2/parts";
+import { BulkDialog, ImpersonateDialog, ImportDialog, ResetMfaDialog, SelectionBar, useRowExtras } from "./people2/UserTools";
 
 /*
  * Техпанель → «Користувачі»: весь реестр учётных записей и всё, что с ними
@@ -38,8 +41,12 @@ import { UserDevices } from "./UserDevices";
  * нельзя, — и об этом лучше прочитать, чем гадать, куда делся пункт.
  */
 
+/*
+ * Первая колонка — флажок выбора для массовых действий (people2): 44 — зона
+ * нажатия, как у выбора людей в группах.
+ */
 const GRID =
-  "grid grid-cols-[minmax(0,2.3fr)_minmax(0,1.4fr)_minmax(0,1.3fr)_56px_minmax(0,1.6fr)_44px] gap-x-[20px]";
+  "grid grid-cols-[44px_minmax(0,2.3fr)_minmax(0,1.4fr)_minmax(0,1.3fr)_56px_minmax(0,1.6fr)_44px] gap-x-[16px]";
 
 type Dialog =
   | { kind: "create" }
@@ -51,7 +58,12 @@ type Dialog =
   | { kind: "enable"; row: OpsUserRow }
   | { kind: "delete"; row: OpsUserRow }
   | { kind: "held"; row: OpsUserRow; holds: Hold[] }
-  | { kind: "devices"; row: OpsUserRow };
+  | { kind: "devices"; row: OpsUserRow }
+  /* people2: вход «от имени», сброс второго фактора, массовое действие, импорт */
+  | { kind: "impersonate"; row: OpsUserRow }
+  | { kind: "resetMfa"; row: OpsUserRow }
+  | { kind: "bulk"; action: BulkUserAction }
+  | { kind: "import" };
 
 export default function OpsUsers() {
   const { ut } = useLang();
@@ -111,6 +123,18 @@ export default function OpsUsers() {
     res.reload();
   };
 
+  /*
+   * Выбор для массовых действий (people2). Живёт через листание, но не через
+   * смену отбора: «выбрал сорок врачей, сменил фильтр на пациентов и нажал
+   * вимкнути» не должно выключать врачей, которых на экране уже нет.
+   */
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    setSelected(new Set());
+  }, [settledQ, role, status]);
+  const pageIds = res.data?.items.map((r) => r.id) ?? [];
+  const extras = useRowExtras();
+
   function entriesFor(row: OpsUserRow): MenuEntry[] {
     const self = row.id === user?.id;
     /* над суперадмином действует только суперадмин — то же правило стоит на сервере */
@@ -155,6 +179,13 @@ export default function OpsUsers() {
           setDialog(holds.length ? { kind: "held", row, holds } : { kind: "delete", row });
         },
       },
+    );
+    /* people2: «переглянути як ця людина» и сброс второго фактора — оба только суперадмину */
+    entries.push(
+      ...extras(row, {
+        impersonate: () => setDialog({ kind: "impersonate", row }),
+        resetMfa: () => setDialog({ kind: "resetMfa", row }),
+      }),
     );
     return entries;
   }
@@ -219,6 +250,10 @@ export default function OpsUsers() {
               {ut("adm.consentTitle")}
             </ButtonLink>
           ) : null}
+          {/* импорт сотрудников из CSV (people2) — рядом с заведением по одному */}
+          <Button variant="ghost" onClick={() => setDialog({ kind: "import" })}>
+            {ut("ops.import.button")}
+          </Button>
         </div>
         <Pager
           page={page}
@@ -237,13 +272,34 @@ export default function OpsUsers() {
         <p className="m-0 py-[24px] text-[13px] text-muted">{ut("pt.nobodyFound")}</p>
       ) : (
         <>
+          <SelectionBar
+            selected={selected}
+            pageIds={pageIds}
+            total={res.data.total}
+            onPage={(on) => setSelected(withPage(selected, pageIds, on))}
+            onAll={() =>
+              void api
+                .opsUserIds({ q: settledQ, role: role || undefined, status: status || undefined })
+                .then((r) => setSelected(new Set(r.ids)))
+                .catch(() => {})
+            }
+            onClear={() => setSelected(new Set())}
+            onAction={(action) => setDialog({ kind: "bulk", action })}
+            canAssign={isSuper || (user?.ladderRank ?? 0) > 1}
+          />
           <ColumnHead
             grid={GRID}
-            labels={[ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
+            labels={[null, ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
           />
           <ul className="m-0 list-none p-0" aria-label={ut("adm.allAccounts")}>
             {res.data.items.map((row) => (
-              <UserRow key={row.id} row={row} menu={entriesFor(row)} />
+              <UserRow
+                key={row.id}
+                row={row}
+                menu={entriesFor(row)}
+                checked={selected.has(row.id)}
+                onToggle={() => setSelected(toggleId(selected, row.id))}
+              />
             ))}
           </ul>
         </>
@@ -286,17 +342,45 @@ export default function OpsUsers() {
         />
       ) : null}
       {dialog?.kind === "devices" ? <UserDevices userId={dialog.row.id} name={dialog.row.fullName} onClose={close} /> : null}
+      {dialog?.kind === "impersonate" ? <ImpersonateDialog row={dialog.row} onClose={close} /> : null}
+      {dialog?.kind === "resetMfa" ? <ResetMfaDialog id={dialog.row.id} email={dialog.row.email} onClose={close} onDone={done} /> : null}
+      {dialog?.kind === "bulk" ? (
+        <BulkDialog
+          action={dialog.action}
+          ids={[...selected]}
+          onClose={close}
+          onDone={() => {
+            setSelected(new Set());
+            done();
+          }}
+        />
+      ) : null}
+      {dialog?.kind === "import" ? <ImportDialog onClose={close} onDone={done} /> : null}
     </>
   );
 }
 
 /* ─────────── строка ─────────── */
 
-function UserRow({ row, menu }: { row: OpsUserRow; menu: MenuEntry[] }) {
+function UserRow({
+  row,
+  menu,
+  checked,
+  onToggle,
+}: {
+  row: OpsUserRow;
+  menu: MenuEntry[];
+  checked: boolean;
+  onToggle: () => void;
+}) {
   const { ut } = useLang();
   const trace = traceParts(row.trace);
   return (
     <li className={rowClass(GRID)}>
+      {/* зона нажатия 44 выше строки имени (22): поднята на половину разницы, чтобы квадрат стоял вровень с именем */}
+      <div className="-mt-[11px] max-[900px]:mt-0">
+        <RowCheck checked={checked} onChange={onToggle} label={`${ut("ops.bulk.selectRow")}: ${row.fullName || row.email}`} />
+      </div>
       <div className="min-w-0">
         <Link to={personHref(row)} className={nameClass}>
           {row.fullName || row.email}

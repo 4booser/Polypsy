@@ -26,6 +26,18 @@ export interface TokenClaims extends JWTPayload {
    * такой выход не отозвал бы ничего.
    */
   ims: number;
+  /**
+   * Вход «от имени» (техпанель, people2): кто на самом деле держит токен.
+   *
+   * Имя поля — из RFC 8693 («act», actor claim): стандартная пометка
+   * «действует такой-то от имени sub». По ней middleware узнаёт такой токен
+   * и включает его правила — только чтение, без техпанели, строка журнала
+   * на каждое действие (lib/impersonation.ts). `imp` — сессия, которую гасит
+   * «вийти»; `rsn` — причина, чтобы токен сам говорил, зачем выдан.
+   */
+  act?: { sub: string };
+  imp?: string;
+  rsn?: string;
 }
 
 export function hashPassword(password: string): Promise<string> {
@@ -85,6 +97,65 @@ export function issuedAfterRevocation(claims: TokenClaims, tokensValidFrom: stri
 export async function readToken(token: string): Promise<TokenClaims | null> {
   try {
     return (await verify(token, env.jwtSecret, ALG)) as TokenClaims;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Токен «от имени» — тот же access-токен, но с пометкой и своим сроком.
+ *
+ * Срок задаёт вызывающий (lib/impersonation.ts, тридцать минут), а не общий
+ * TOKEN_TTL_SECONDS: совпадение сегодня случайно, и если срок access-токена
+ * однажды вырастет, смотреть чужими глазами дольше получаса стать не должно.
+ * Отметка ims — время выдачи, по ней действует отзыв суперадмина: вышел он
+ * из своей сессии или сменил пароль — гаснет и то, что он смотрит.
+ */
+export function issueImpersonationToken(input: {
+  subjectId: string;
+  subjectRole: TokenClaims["role"];
+  actorId: string;
+  sessionId: string;
+  reason: string;
+  expiresAtMs: number;
+}): Promise<string> {
+  const nowMs = Date.now();
+  const claims: TokenClaims = {
+    sub: input.subjectId,
+    role: input.subjectRole,
+    iat: Math.floor(nowMs / 1000),
+    ims: nowMs,
+    exp: Math.floor(input.expiresAtMs / 1000),
+    act: { sub: input.actorId },
+    imp: input.sessionId,
+    rsn: input.reason,
+  };
+  return sign(claims, env.jwtSecret, ALG);
+}
+
+/*
+ * Знак «пароль верный, ждём код» — между двумя шагами входа.
+ *
+ * Подписан ДРУГИМ ключом, производным от общего, и это главное в нём. Будь
+ * он подписан тем же ключом, что access-токены, readToken принял бы его как
+ * пропуск: в нём есть sub, а большего requireAuth не спрашивает, — и второй
+ * фактор обходился бы тем, чтобы просто предъявить знак вместо токена.
+ * Производный ключ делает такую подмену невозможной по построению, а не по
+ * проверке, которую можно забыть.
+ */
+const MFA_TOKEN_TTL_SECONDS = 5 * 60;
+const mfaKey = () => `${env.jwtSecret}:mfa-step`;
+
+export function issueMfaToken(userId: string, via: "password" | "google"): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ sub: userId, purpose: "mfa", via, iat: now, exp: now + MFA_TOKEN_TTL_SECONDS }, mfaKey(), ALG);
+}
+
+export async function readMfaToken(token: string): Promise<{ sub: string; via: "password" | "google" } | null> {
+  try {
+    const claims = (await verify(token, mfaKey(), ALG)) as { sub?: string; purpose?: string; via?: string };
+    if (claims.purpose !== "mfa" || typeof claims.sub !== "string") return null;
+    return { sub: claims.sub, via: claims.via === "google" ? "google" : "password" };
   } catch {
     return null;
   }

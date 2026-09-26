@@ -82,6 +82,16 @@ export const OPS_GROUPS: OpsGroup[] = [
       { to: "/ops/sessions", label: "ops.tab.sessions", perm: "users.manage" },
       { to: "/ops/audit", label: "ops.tab.audit", perm: "audit.read" },
       /* ── sections:people2 ── */
+      /*
+       * Люди й безпека (people2): подозрительное и «хто переглядав» — чтение
+       * журнала другими словами (audit.read); временные доступы — часть
+       * ведения учёток (users.manage); политика второго фактора меняет
+       * работу системы для всех (ops.manage).
+       */
+      { to: "/ops/suspicious", label: "ops.tab.suspicious", perm: "audit.read" },
+      { to: "/ops/grants", label: "ops.tab.grants", perm: "users.manage" },
+      { to: "/ops/who-viewed", label: "ops.tab.whoViewed", perm: "audit.read" },
+      { to: "/ops/mfa", label: "ops.tab.mfa", perm: "ops.manage" },
       /* ── sections:sec ── */
       { to: "/ops/keys", label: "ops.tab.keys", role: "superadmin" },
       { to: "/ops/sql", label: "ops.tab.sql", role: "superadmin" },
