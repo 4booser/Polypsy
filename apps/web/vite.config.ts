@@ -51,8 +51,10 @@ export default defineConfig({
     port: 5199,
     strictPort: true,
     proxy: {
-      // то же правило, что и в preview: префикс "/api" ловил бы "/api-docs"
-      "^/api/": { target: "http://localhost:3001", changeOrigin: true },
+      // то же правило, что и в preview: префикс "/api" ловил бы "/api-docs";
+      // и тот же адрес снаружи — второй стенд рядом с рабочим (своя база,
+      // свой API) не должен драться с ним за 3001
+      "^/api/": { target: process.env.API_PROXY_TARGET ?? "http://localhost:3001", changeOrigin: true },
     },
   },
 });
