@@ -55,11 +55,18 @@ import { PublicFrame } from "./public/PublicFrame";
  */
 export default function Login() {
   const { ut } = useLang();
-  const { login } = useAuth();
+  const { login, mfa } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  /*
+   * Второй шаг — «код із застосунку» (техпанель, people2): пароль верный, у
+   * учётки включён второй фактор. Тот же лист, те же плашки полей — это
+   * продолжение входа, а не другой экран.
+   */
+  if (mfa) return <MfaStep />;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -162,6 +169,63 @@ export default function Login() {
  * стояла и у Field, и здесь, а связывало их совпадение типа. Третье поле с
  * type="text" молча подписалось бы «Логін».
  */
+/**
+ * Второй шаг входа (people2): одно поле на оба случая — шесть цифр из
+ * приложения и код восстановления. Человек с потерянным телефоном вводит то,
+ * что у него есть; различает их сервер (lib/totp.ts, looksLikeRecovery).
+ * `autocomplete=one-time-code` — телефон сам предложит код.
+ */
+function MfaStep() {
+  const { ut } = useLang();
+  const { completeMfa, cancelMfa } = useAuth();
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ready = code.trim().length >= 6;
+  return (
+    <PublicFrame>
+      <h1 className="m-0 mt-[57px] max-w-[400px] text-[32px] font-bold leading-[44px] text-primary">{ut("lg.mfa.title")}</h1>
+      <form
+        className="mt-[24px] flex flex-col items-start gap-[22px]"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!ready || busy) return;
+          setBusy(true);
+          setError(null);
+          completeMfa(code.trim())
+            .catch((err) => setError(err instanceof Error ? err.message : ut("lg.failed")))
+            .finally(() => setBusy(false));
+        }}
+      >
+        <p className="m-0 max-w-[420px] text-[15px] leading-[21px] text-primary">{ut("lg.mfa.hint")}</p>
+        <Field inline label={ut("lg.mfa.title")} className="w-[215px] [&>label]:mb-0">
+          <PlateInput
+            label={ut("lg.mfa.title")}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="one-time-code"
+            maxLength={12}
+            autoFocus
+            className="font-mono tabular-nums"
+          />
+        </Field>
+        {error ? (
+          <p role="alert" className="m-0 max-w-[510px] text-[14px] leading-[22px] text-danger">
+            {error}
+          </p>
+        ) : null}
+        <Button type="submit" size="md" variant="paper" disabled={busy || !ready} className="w-[215px]">
+          {busy ? ut("lg.signingIn") : ut("lg.signIn")}
+        </Button>
+        <Button variant="quiet" onClick={cancelMfa}>
+          {ut("lg.mfa.back")}
+        </Button>
+      </form>
+    </PublicFrame>
+  );
+}
+
 function PlateInput({
   label,
   className,

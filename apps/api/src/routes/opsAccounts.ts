@@ -27,13 +27,13 @@ import {
   holdsText,
   journalEntriesOf,
   liveTokenCondition,
+  matchRegistry,
   otherActiveSuperadmins,
   sessionCountsOf,
 } from "../lib/accounts";
 import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { clearFailures } from "../lib/loginGuard";
 import { currentRequestId } from "../lib/log";
-import { normalizePhone, phoneFingerprint } from "../lib/phone";
 import { revokeAllFor, revokeFamily } from "../lib/refresh";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -125,52 +125,13 @@ opsUserRoutes.get("/", async (c) => {
   const lang = langOf(c);
   const { q, role, status, sort, page, per } = parseQuery(c, opsUserListQuery);
 
-  const all = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      role: users.role,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      middleName: users.middleName,
-      anonymous: users.anonymous,
-      pseudonym: users.pseudonym,
-      phoneIndex: users.phoneIndex,
-      createdAt: users.createdAt,
-      lastSeenAt: users.lastSeenAt,
-      disabledAt: users.disabledAt,
-      disabledReason: users.disabledReason,
-      disabledBy: users.disabledBy,
-      mustChangePassword: users.mustChangePassword,
-    })
-    .from(users);
-
+  /*
+   * Отбор и порядок — одной функцией (matchRegistry) с «вибрати всіх у
+   * відборі» массовых действий (routes/opsPeople.ts): выбор «всех в отборе»
+   * обязан совпадать с тем, что человек видит в списке, строка в строку.
+   */
+  const { all, matched } = await matchRegistry({ q, role, status, sort }, lang);
   const emailOf = new Map(all.map((u) => [u.id, u.email]));
-  const words = q.split(/\s+/).filter(Boolean);
-  const phone = q ? normalizePhone(q) : null;
-  const phoneKey = phone ? phoneFingerprint(phone) : null;
-
-  const matched = all
-    .filter((u) => !role || u.role === role)
-    .filter((u) => !status || (status === "disabled" ? u.disabledAt !== null : u.disabledAt === null))
-    .map((u) => ({ ...u, fullName: fullNameOf(u) }))
-    .filter((u) => {
-      if (!words.length) return true;
-      if (phoneKey && u.phoneIndex === phoneKey) return true;
-      const hay = `${u.fullName} ${u.email}`.toLowerCase();
-      return words.every((w) => hay.includes(w));
-    });
-
-  const ROLE_ORDER = { superadmin: 0, admin: 1, user: 2 } as const;
-  const byName = (a: { fullName: string }, b: { fullName: string }) => a.fullName.localeCompare(b.fullName, lang);
-  /* «давно» и «никогда» — в конец: сверху те, кто был недавно */
-  const recent = (x: string | null) => (x ? new Date(x).getTime() : Number.NEGATIVE_INFINITY);
-  matched.sort((a, b) => {
-    if (sort === "created") return recent(b.createdAt) - recent(a.createdAt) || byName(a, b);
-    if (sort === "lastSeen") return recent(b.lastSeenAt) - recent(a.lastSeenAt) || byName(a, b);
-    if (sort === "role") return ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byName(a, b);
-    return byName(a, b);
-  });
 
   const slice = matched.slice((page - 1) * per, page * per);
   const ids = slice.map((u) => u.id);

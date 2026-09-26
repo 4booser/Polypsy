@@ -3,6 +3,7 @@ import { app } from "./app";
 import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
+import { startSuspiciousWatch } from "./lib/suspiciousWatch";
 import { client } from "./db";
 import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
@@ -63,6 +64,8 @@ const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
 const stopNotifier = env.schedulerEnabled ? startNotifier() : null;
 const stopRetention = env.schedulerEnabled ? startRetention() : null;
+// подозрительная активность по журналу — раз в пять минут, задачей реестра opsJobs (people2)
+const stopSuspicious = env.schedulerEnabled ? startSuspiciousWatch() : null;
 
 /**
  * Аккуратная остановка: сначала гасим планировщик (чтобы не начать выдачу
@@ -77,6 +80,7 @@ async function shutdown(signal: string) {
   stopScheduler?.();
   stopNotifier?.();
   stopRetention?.();
+  stopSuspicious?.();
   await client.end({ timeout: 5 }).catch(() => {});
   process.exit(0);
 }

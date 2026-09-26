@@ -6,6 +6,8 @@ import { users } from "../db/schema";
 import { issuedAfterRevocation, readToken, toPublicUser } from "../lib/auth";
 import { forbidden, unauthorized } from "../lib/http";
 import { audit } from "../lib/audit";
+import { guardImpersonated, resolveImpersonation } from "../lib/impersonation";
+import { allowedDuringSetup, policyActive, setupRequired } from "../lib/secondFactor";
 import type { Permission, User } from "@quizzy/shared";
 import { hasPermission } from "../lib/permissions";
 
@@ -51,6 +53,25 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   if (row.disabledAt) unauthorized("err.accountDisabled");
 
   /*
+   * Токен «от имени» (техпанель, people2) — своя ветка, и отзыв у неё свой.
+   *
+   * Живёт он, пока жива сессия «от имени» и сессия самого суперадмина
+   * (lib/impersonation.ts, resolveImpersonation). Граница токенов того, ПОД
+   * КЕМ смотрят, здесь не действует: выход врача из своей сессии не должен
+   * обрывать суперадмину разбор его жалобы. Дальше такой запрос проходит
+   * через guardImpersonated: только чтение, без техпанели, строка журнала.
+   */
+  if (claims.act) {
+    const imp = await systemContext(baseDb, () => resolveImpersonation(claims));
+    if (typeof imp === "string") unauthorized(imp);
+    const viewed: User = { ...toPublicUser(row), impersonation: imp };
+    c.set("user", viewed);
+    await guardImpersonated(c, viewed);
+    await withDbContext(baseDb, { userId: row.id, role: row.role }, () => next());
+    return;
+  }
+
+  /*
    * Токен, выданный до отзыва, дальше не идёт.
    *
    * Раньше проверялись только подпись и существование учётной записи —
@@ -65,7 +86,32 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
    */
   if (!issuedAfterRevocation(claims, row.tokensValidFrom)) unauthorized("err.sessionExpired");
 
-  c.set("user", toPublicUser(row));
+  const me = toPublicUser(row);
+  c.set("user", me);
+
+  /*
+   * Второй фактор обязателен по политике, а не настроен (техпанель, people2).
+   *
+   * Мягкий переход: войти можно — иначе включённое требование заперло бы
+   * снаружи ровно тех, кто должен его выполнить, — но дальше настройки
+   * второго фактора запрос не идёт (lib/secondFactor.ts, allowedDuringSetup).
+   * Проверка здесь, а не на входе: токены, выданные до включения
+   * требования, тоже упираются в неё со следующего запроса. Сторож стоит
+   * ничего, пока требование выключено: политика читается из кэша процесса.
+   */
+  if ((await policyActive()) && (await systemContext(baseDb, () => setupRequired(row)))) {
+    me.mfaSetupRequired = true;
+    if (!allowedDuringSetup(c.req.method, c.req.path)) {
+      await audit(c, {
+        action: "access.denied",
+        outcome: "denied",
+        resourceType: "route",
+        resourceId: c.req.path,
+        details: { method: c.req.method, reason: "mfa_setup_required" },
+      });
+      forbidden("err.mfaSetupRequired");
+    }
+  }
 
   /*
    * Учётная запись «только просмотр» останавливается здесь, а не отдельным

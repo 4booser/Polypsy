@@ -12,19 +12,34 @@ export default function LoginScreen() {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, completeMfa } = useAuth();
   const { ut, lang, setLang } = useLang();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /*
+   * Второй шаг — код из приложения (people2): пароль верный, у учётки включён
+   * второй фактор. Тот же экран, одно поле вместо двух: шесть цифр или код
+   * восстановления, различает их сервер.
+   */
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState("");
 
   async function onSubmit() {
     setBusy(true);
     setError(null);
     try {
-      await login(email.trim(), password);
+      if (mfaToken) {
+        await completeMfa(mfaToken, code.trim());
+      } else {
+        const challenge = await login(email.trim(), password);
+        if (challenge) {
+          setMfaToken(challenge.mfaToken);
+          return;
+        }
+      }
       // пациент проходит через экран согласия; тот сам пропустит, если принято
       router.replace("/consent");
     } catch (e) {
@@ -53,19 +68,46 @@ export default function LoginScreen() {
           <Body muted>{ut("ml.subtitle")}</Body>
         </View>
 
-        <Field
-          label={ut("person.email")}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoComplete="email"
-        />
-        <Field label={ut("person.password")} value={password} onChangeText={setPassword} secureTextEntry />
+        {mfaToken ? (
+          <>
+            <Body muted>{ut("lg.mfa.hint")}</Body>
+            <Field
+              label={ut("lg.mfa.title")}
+              value={code}
+              onChangeText={setCode}
+              autoCapitalize="none"
+              autoComplete="one-time-code"
+              autoFocus
+            />
+          </>
+        ) : (
+          <>
+            <Field
+              label={ut("person.email")}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+            />
+            <Field label={ut("person.password")} value={password} onChangeText={setPassword} secureTextEntry />
+          </>
+        )}
 
         <ErrorText>{error}</ErrorText>
 
         <Button title={ut("auth.login")} onPress={onSubmit} loading={busy} />
+        {mfaToken ? (
+          <Button
+            title={ut("lg.mfa.back")}
+            variant="secondary"
+            onPress={() => {
+              setMfaToken(null);
+              setCode("");
+              setError(null);
+            }}
+          />
+        ) : null}
 
         <Button
           title={ut("ml.createAccount")}

@@ -247,6 +247,114 @@ export const staffDirectoryQuery = z.object({
     .transform((v) => v === "1"),
 });
 
+/* ─────────────── техпанель: люди и безопасность (участок people2) ─────────────── */
+
+/**
+ * Вход «от имени» — причина обязательна и словами.
+ *
+ * Та же мерка, что у личного исключения прав (от десяти знаков): через год
+ * «зачем суперадмин смотрел систему глазами врача» разбирают по журналу, и
+ * «проверка» там не отвечает ни на что.
+ */
+export const impersonateSchema = z.object({
+  reason: z.string().trim().min(10).max(500),
+});
+
+/** Код из приложения или код восстановления — как набрал человек */
+export const mfaCodeSchema = z.object({
+  code: z.string().trim().min(6).max(20),
+});
+
+/** Второй шаг входа: знак «пароль верный» и код */
+export const mfaLoginSchema = z.object({
+  mfaToken: z.string().min(10).max(2000),
+  code: z.string().trim().min(6).max(20),
+});
+
+/** Выключение второго фактора — пароль и код: угнанной сессии для этого мало */
+export const mfaDisableSchema = z.object({
+  password: z.string().min(1),
+  code: z.string().trim().min(6).max(20),
+});
+
+/** Политика «второй фактор обязателен для …» */
+export const mfaPolicySchema = z.object({
+  superadmins: z.boolean(),
+  ops: z.boolean(),
+});
+
+/** Отметка «розібрано» — с комментарием словами, как причина выключения */
+export const resolveFindingSchema = z.object({
+  comment: z.string().trim().min(3).max(1000),
+});
+
+export const suspiciousQuery = z.object({
+  status: z.enum(["open", "resolved", "all"]).optional().default("open"),
+  rule: z
+    .enum(["failedLoginsAccount", "failedLoginsIp", "newDevice", "massReads", "nightActivity", "namedExport", "impersonation"])
+    .optional(),
+  limit: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? 100 : Number(v)))
+    .pipe(z.number().int().min(1).max(500)),
+});
+
+/** Продление временного доступа — на сколько дней от сегодняшнего срока */
+export const extendGrantSchema = z.object({
+  days: z.number().int().min(1).max(365),
+});
+
+/**
+ * Массовое действие над учётками.
+ *
+ * Идентификаторы — списком, а не «отбором»: экран сам собирает их (флажками
+ * или «вибрати всіх у відборі»), и сервер действует ровно на то, что человек
+ * видел и подтвердил, а не на то, во что отбор превратился за секунду между
+ * подтверждением и запросом. Потолок — две тысячи: больше за раз не
+ * выключают, а без потолка одно нажатие стоило бы минут транзакции.
+ */
+export const bulkUsersSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("disable"), ids: z.array(z.string()).min(1).max(2000), reason: z.string().trim().min(3).max(500) }),
+  z.object({ action: z.literal("enable"), ids: z.array(z.string()).min(1).max(2000) }),
+  z.object({ action: z.literal("revoke-sessions"), ids: z.array(z.string()).min(1).max(2000) }),
+  z.object({ action: z.literal("assign-role"), ids: z.array(z.string()).min(1).max(2000), roleId: z.string().min(1) }),
+]);
+
+/** Идентификаторы всего отбора «Користувачів» — те же поля, что у списка, без страниц */
+export const opsUserIdsQuery = z.object({
+  q: z
+    .string()
+    .max(120)
+    .optional()
+    .transform((v) => (v ?? "").trim().toLowerCase()),
+  role: z.enum(["superadmin", "admin", "user"]).optional(),
+  status: z.enum(["active", "disabled"]).optional(),
+});
+
+/**
+ * Импорт сотрудников — текст CSV целиком.
+ *
+ * Текстом в JSON, а не файлом multipart: файл читает браузер, а сервер
+ * получает то, что человек видел в предпросмотре. Двести строк — потолок
+ * одной пачки: каждая строка стоит медленного хэша временного пароля, и
+ * отделение больше за раз не заводят.
+ */
+export const importUsersSchema = z.object({
+  csv: z.string().min(1).max(200_000),
+});
+
+/** Отчёт «хто переглядав»: пациент и период (даты включительно) */
+export const whoViewedQuery = z.object({
+  patientId: z.string().min(1),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export const patientPickQuery = z.object({
+  q: z.string().trim().min(2).max(120),
+});
+
 /** Назначение методики конкретному пациенту */
 export const grantAccessSchema = z.object({
   userId: z.string().min(1),
@@ -916,6 +1024,8 @@ export const submitResponseSchema = z.object({
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+/* массовое действие над учётками (техпанель, people2) */
+export type BulkUsersInput = z.infer<typeof bulkUsersSchema>;
 export type GrantAccessInput = z.infer<typeof grantAccessSchema>;
 export type BatteryInput = z.input<typeof batteryInputSchema>;
 export type AssignBatteryInput = z.infer<typeof assignBatterySchema>;

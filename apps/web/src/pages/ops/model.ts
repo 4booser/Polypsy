@@ -543,6 +543,24 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "audit.read": "act.audit_read",
   "audit.export": "ops.act.auditExport",
   "device.wipe_requested": "ops.act.deviceWipe",
+  /* люди и безопасность (people2) */
+  "impersonation.start": "ops.act.impStart",
+  "impersonation.end": "ops.act.impEnd",
+  "impersonation.view": "ops.act.impView",
+  "auth.mfa_challenge": "ops.act.mfaChallenge",
+  "mfa.setup": "ops.act.mfaSetup",
+  "mfa.enable": "ops.act.mfaEnable",
+  "mfa.disable": "ops.act.mfaDisable",
+  "mfa.reset": "ops.act.mfaReset",
+  "security.policy_update": "ops.act.policy",
+  "suspicious.read": "ops.act.suspRead",
+  "suspicious.resolve": "ops.act.suspResolve",
+  "suspicious.scan": "ops.act.suspScan",
+  "permission.exception_list": "ops.act.grantsList",
+  "permission.exception_extend": "ops.act.grantExtend",
+  "user.bulk": "ops.act.bulk",
+  "user.import": "ops.act.import",
+  "audit.subject_report": "ops.act.subjectReport",
   /*
    * Действий ниже код больше не пишет, но журнал вечен: строки с ними лежат
    * в нём с тех времён, когда писал, и читаться они должны словами, как
@@ -579,6 +597,11 @@ export const AUDIT_ACTION_CHOICES: readonly string[] = [
   "user.sessions_revoke",
   "session.revoke",
   "permission.exception",
+  /* people2: вход «от имени» и второй фактор ищут в журнале первыми */
+  "impersonation.start",
+  "impersonation.view",
+  "mfa.reset",
+  "user.bulk",
   "audit.read",
   "audit.export",
 ];
