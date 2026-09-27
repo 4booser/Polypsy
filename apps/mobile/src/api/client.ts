@@ -70,6 +70,7 @@ import {
 import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offline/owner";
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
 import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
+import { reportLinkPath, reportLinkUrl } from "../report/model";
 
 export class ApiError extends Error {
   constructor(
@@ -882,7 +883,22 @@ export const api = {
     }
   },
 
-  reportUrl: (responseId: string) => `${API_URL}/api/reports/responses/${responseId}`,
+  /*
+   * Печатный лист прохождения — одноразовой ссылкой (волна 14).
+   *
+   * Здесь был голый адрес листа, и экраны отдавали его браузеру телефона:
+   * без токена — 401, без языка приложения — лист на языке браузера. Теперь
+   * ссылку выдаёт сервер по этому запросу — с токеном и языком в заголовках,
+   * как всякий запрос отсюда, — а браузер получает только её: минута, одно
+   * открытие, язык приложения. Токен в адрес не кладётся (src/report/model.ts).
+   */
+  reportLink: async (responseId: string): Promise<string> => {
+    const issued = await request<{ path: string; ttlSeconds: number }>(reportLinkPath(responseId), { method: "POST" });
+    const url = reportLinkUrl(API_URL, issued?.path);
+    // ответ не похож на нашу ссылку — сбой сервера или того, кто между нами; браузеру его не отдаём
+    if (!url) throw new ApiError(uiText("common.error", currentLang), 502);
+    return url;
+  },
 
   myResponses: () => unwrap(request<Items<SurveyResponse>>("/api/me/responses")),
   surveyResponses: (surveyId: string) =>
@@ -919,5 +935,4 @@ export const api = {
     request<SurveyAnalytics>(
       `/api/analytics/surveys/${surveyId}${versionId ? `?versionId=${versionId}` : ""}`,
     ),
-  exportUrl: (surveyId: string) => `${API_URL}/api/analytics/surveys/${surveyId}/export`,
 };

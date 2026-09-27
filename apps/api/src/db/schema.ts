@@ -1716,6 +1716,44 @@ export const refreshTokens = pgTable(
 );
 
 /**
+ * Одноразовые ссылки на печатный лист прохождения (волна 14, мобилка).
+ *
+ * Мобилка открывает лист в браузере телефона, а браузер заголовка
+ * Authorization не пошлёт; класть access-токен в адрес нельзя — адрес
+ * оседает в истории браузера, логах прокси и заголовке Referer. Поэтому
+ * приложение авторизованным запросом получает ссылку на ОДИН лист: живёт
+ * она минуту, открывается один раз и только тем, кому выдана. Подробности —
+ * lib/reportLinks.ts и миграция 0109.
+ *
+ * Хранится, как и refresh, ХЕШЕМ: строки таблицы ссылок не дают. Язык листа
+ * запоминается при выдаче — это язык приложения (Accept-Language запроса
+ * выдачи), а не список языков браузера, который откроет ссылку.
+ */
+export const reportLinks = pgTable(
+  "report_links",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull(),
+    /** Кому выдана: открывается лист от его имени и с его зоной видимости */
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => responses.id, { onDelete: "cascade" }),
+    lang: text("lang", { enum: LANGS }).notNull(),
+    createdAt: timestampCol("created_at").notNull().default(sql`now()`),
+    expiresAt: timestampCol("expires_at").notNull(),
+    /** Погашена первым открытием; повтор — отказ и строка журнала */
+    usedAt: timestampCol("used_at"),
+  },
+  (t) => ({
+    hashIdx: uniqueIndex("report_links_hash_idx").on(t.tokenHash),
+    expiresIdx: index("report_links_expires_idx").on(t.expiresAt),
+  }),
+);
+
+/**
  * Неудачные попытки входа — для rate limiting и lockout.
  * Таблица, а не память процесса: переживает рестарт и работает при репликах.
  */

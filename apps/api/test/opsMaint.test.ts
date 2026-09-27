@@ -291,7 +291,7 @@ describe("режим обслуживания", () => {
     await declare("ok");
   });
 
-  test("исключения — ровно техпанель и вход", () => {
+  test("исключения — ровно техпанель, вход и ссылка на печатный лист", () => {
     expect(exemptFromMaintenance("GET", "/api/surveys")).toBe(true);
     expect(exemptFromMaintenance("POST", "/api/ops/maint/status")).toBe(true);
     expect(exemptFromMaintenance("POST", "/api/auth/login")).toBe(true);
@@ -300,6 +300,9 @@ describe("режим обслуживания", () => {
     // похожий путь не проходит заодно
     expect(exemptFromMaintenance("POST", "/api/opsx")).toBe(false);
     expect(exemptFromMaintenance("POST", "/api/surveys/x/responses")).toBe(false);
+    // ссылка на лист — чтение по сути (волна 14); соседние записи по прохождению — нет
+    expect(exemptFromMaintenance("POST", "/api/reports/responses/x/link")).toBe(true);
+    expect(exemptFromMaintenance("POST", "/api/reports/responses/x/link/extra")).toBe(false);
   });
 
   test("Retry-After не обещает ни «сейчас», ни «завтра»", () => {

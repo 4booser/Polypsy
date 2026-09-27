@@ -1,7 +1,8 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { and, asc, desc, eq } from "drizzle-orm";
-import { db } from "../db";
-import { asSystem } from "../db/context";
+import { baseDb, db } from "../db";
+import { asSystem, systemContext, withRequestContext } from "../db/context";
 import {
   answers,
   appointments,
@@ -20,16 +21,18 @@ import {
 } from "../db/schema";
 import { env } from "../env";
 import { audit } from "../lib/audit";
-import { badRequest, forbidden, langOf, notFound } from "../lib/http";
+import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
 import { percentileOf } from "../lib/norms";
 import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
-import { fullNameOf } from "../lib/auth";
+import { fullNameOf, toPublicUser } from "../lib/auth";
+import { claimReportLink, issueReportLink, REPORT_LINK_PREFIX, REPORT_LINK_TTL_MS, type ReportLinkRow } from "../lib/reportLinks";
 import { namesOf } from "../lib/names";
 import { decryptField } from "../lib/crypto";
 import {
   ageAt,
   formatDuration,
   LOCALE_OF,
+  renderError,
   SEVERITY_FILL,
   serverText,
   t,
@@ -39,6 +42,7 @@ import {
   type Severity,
   type TextParams,
   type UiKey,
+  type User,
 } from "@quizzy/shared";
 import { getSurveyForResponse } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -121,23 +125,21 @@ function ageText(lang: Lang, age: number): string {
 }
 
 /**
- * Печатное заключение по прохождению — самостоятельная HTML-страница.
+ * Прохождение, печатный лист которого этот человек вправе открыть, — или отказ.
  *
- * Отдаём разметку, а не готовый PDF: клиент печатает её системным механизмом,
- * и заключение одинаково открывается в мобилке, браузере и на печать,
- * без серверной зависимости на рендер PDF.
+ * Одна проверка на три входа: лист по заголовку (консоль), выдача
+ * одноразовой ссылки на него и открытие этой ссылки браузером (мобилка,
+ * волна 14 — ниже). Копии разошлись бы на первой же правке, а расхождение
+ * здесь означало бы, что ссылкой открывается то, что по заголовку закрыто.
  */
-reportRoutes.get("/responses/:id", async (c) => {
-  const user = c.get("user");
-  const response = await db.query.responses.findFirst({ where: eq(responses.id, c.req.param("id")) });
+async function reportable(user: User, responseId: string, lang: Lang) {
+  const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
   if (!response) notFound("err.responseNotFound");
 
   const own = response.userId === user.id;
   if (!own && !isStaff(user)) forbidden("err.conclusionAccessDenied");
   if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
 
-  const lang = langOf(c);
-  const say = sayer(lang);
   const survey = await getSurveyForResponse(response.id, lang);
   if (!survey) notFound("err.surveyNotFound");
   /*
@@ -149,6 +151,36 @@ reportRoutes.get("/responses/:id", async (c) => {
    * «не найдено» было бы неправдой; результаты он обсудит со специалистом.
    */
   if (!isStaff(user) && !survey.showResultsToPatient) forbidden("err.resultsWithSpecialist");
+  return { response, survey };
+}
+
+/**
+ * Печатное заключение по прохождению — самостоятельная HTML-страница.
+ *
+ * Отдаём разметку, а не готовый PDF: клиент печатает её системным механизмом,
+ * и заключение одинаково открывается в мобилке, браузере и на печать,
+ * без серверной зависимости на рендер PDF.
+ */
+reportRoutes.get("/responses/:id", async (c) =>
+  c.html(await responseReport(c, c.get("user"), c.req.param("id"), langOf(c))),
+);
+
+/**
+ * Лист по прохождению целиком: проверка, сборка, строка журнала.
+ *
+ * `via` — лист открыт одноразовой ссылкой (мобилка): строка журнала та же
+ * report.render — это то же чтение тех же данных, — но с номером ссылки,
+ * по которому её выдача (report.link_issue) и открытие находятся вместе.
+ */
+async function responseReport(
+  c: Context<AppEnv>,
+  user: User,
+  responseId: string,
+  lang: Lang,
+  via?: { linkId: string },
+): Promise<string> {
+  const { response, survey } = await reportable(user, responseId, lang);
+  const say = sayer(lang);
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
   const [signedConclusion] = await db
@@ -211,15 +243,18 @@ reportRoutes.get("/responses/:id", async (c) => {
     resourceType: "response",
     resourceId: response.id,
     subjectUserId: response.userId,
-    details: { surveyId: survey.id, version: survey.versionNumber },
+    details: {
+      surveyId: survey.id,
+      version: survey.versionNumber,
+      ...(via ? { via: "link", linkId: via.linkId } : {}),
+    },
   });
 
   const age = patient ? ageAt(decryptField(patient.birthDate), response.submittedAt) : null;
-  return c.html(
-    renderReport(lang, {
-      surveyTitle: survey.title,
-      versionNumber: survey.versionNumber,
-      patientName: patient ? fullNameOf(patient) : say("print.anonymous"),
+  return renderReport(lang, {
+    surveyTitle: survey.title,
+    versionNumber: survey.versionNumber,
+    patientName: patient ? fullNameOf(patient) : say("print.anonymous"),
     patientMeta: patient
       ? [
           patient.sex ? say(patient.sex === "male" ? "print.sexMale" : "print.sexFemale") : null,
@@ -230,45 +265,195 @@ reportRoutes.get("/responses/:id", async (c) => {
           .filter(Boolean)
           .join(" · ")
       : null,
-      startedAt: response.startedAt,
-      submittedAt: response.submittedAt,
-      durationMs: response.durationMs,
-      scores: scoreRows.map((s) => {
-        const scale = scaleById.get(s.scaleId);
+    startedAt: response.startedAt,
+    submittedAt: response.submittedAt,
+    durationMs: response.durationMs,
+    scores: scoreRows.map((s) => {
+      const scale = scaleById.get(s.scaleId);
+      return {
+        title: scale?.title ?? "—",
+        rawScore: s.rawScore,
+        maxScore: s.maxScore,
+        percent: s.percent,
+        band: s.bandLabel,
+        severity: s.severity,
+        percentile: scale ? percentileOf(s.rawScore, sample.get(scale.code) ?? []) : null,
+      };
+    }),
+    answers: survey.questions
+      .filter((q) => q.type !== "info")
+      .map((q) => {
+        const a = answerByQuestion.get(q.id);
         return {
-          title: scale?.title ?? "—",
-          rawScore: s.rawScore,
-          maxScore: s.maxScore,
-          percent: s.percent,
-          band: s.bandLabel,
-          severity: s.severity,
-          percentile: scale ? percentileOf(s.rawScore, sample.get(scale.code) ?? []) : null,
+          title: q.title,
+          value: formatValue(a, optionText, say("print.notAnswered")),
+          durationMs: a?.durationMs ?? 0,
         };
       }),
-      answers: survey.questions
-        .filter((q) => q.type !== "info")
-        .map((q) => {
-          const a = answerByQuestion.get(q.id);
-          return {
-            title: q.title,
-            value: formatValue(a, optionText, say("print.notAnswered")),
-            durationMs: a?.durationMs ?? 0,
-          };
-        }),
-      conclusion:
-        signedConclusion && signedConclusion.row.status === "signed"
-          ? {
-              text: decryptField(signedConclusion.row.text) ?? "",
-              version: signedConclusion.row.version,
-              signedAt: signedConclusion.row.signedAt,
-              signedBy: signer ?? "—",
-            }
-          : null,
-      printedBy: fullNameOf(user),
-      printedAt: new Date().toISOString(),
-    }),
-  );
+    conclusion:
+      signedConclusion && signedConclusion.row.status === "signed"
+        ? {
+            text: decryptField(signedConclusion.row.text) ?? "",
+            version: signedConclusion.row.version,
+            signedAt: signedConclusion.row.signedAt,
+            signedBy: signer ?? "—",
+          }
+        : null,
+    printedBy: fullNameOf(user),
+    printedAt: new Date().toISOString(),
+  });
+}
+
+/* ─────────── одноразовая ссылка на лист (мобилка, волна 14) ─────────── */
+
+/**
+ * Выдача одноразовой ссылки на лист по прохождению.
+ *
+ * Мобилка открывает лист браузером телефона, а браузер не пошлёт ни
+ * заголовка Authorization, ни языка приложения: прежде приложение отдавало
+ * ему голый адрес листа, и лист не открывался вовсе (401). Токен в адрес не
+ * кладётся никогда — ни access, ни refresh: адрес оседает в истории
+ * браузера, в логах прокси и в заголовке Referer. Вместо этого приложение
+ * этим запросом — с токеном и языком в заголовках — получает ссылку на один
+ * лист: минута жизни, одно открытие, только от имени выдавшего
+ * (lib/reportLinks.ts, миграция 0109). Консоль этим путём не ходит: она
+ * забирает лист запросом и открывает из памяти (apps/web/src/api.ts,
+ * openInTab).
+ *
+ * Проверка — та же, что у самого листа (reportable), и ДО выдачи: пациент,
+ * которому методика результатов не показывает, получает отказ
+ * err.resultsWithSpecialist здесь, в приложении, на своём языке, а не
+ * страницей отказа в браузере. При открытии ссылки проверка повторяется —
+ * за минуту показ могли выключить.
+ *
+ * Язык листа — язык этого запроса (Accept-Language приложения), и он
+ * запоминается в ссылке: список языков браузера, который её откроет, на
+ * лист уже не влияет.
+ *
+ * Вход «от имени» ссылок не получает: он только смотрит (guardImpersonated
+ * режет запись раньше), а ссылка открылась бы уже без пометки «от имени» —
+ * под учёткой того, на кого смотрят. Отказ повторён здесь, чтобы не зависеть
+ * от того, что сторож записи когда-нибудь пропустит этот путь.
+ */
+reportRoutes.post("/responses/:id/link", async (c) => {
+  const user = c.get("user");
+  if (user.impersonation) forbidden("err.impersonationReadOnly");
+  const lang = langOf(c);
+  const { response } = await reportable(user, c.req.param("id"), lang);
+  const link = await issueReportLink({ userId: user.id, responseId: response.id, lang });
+  await audit(c, {
+    action: "report.link_issue",
+    resourceType: "response",
+    resourceId: response.id,
+    subjectUserId: response.userId,
+    details: { linkId: link.id, lang, ttlSeconds: REPORT_LINK_TTL_MS / 1000 },
+  });
+  return c.json({ path: `${REPORT_LINK_PREFIX}${link.raw}`, ttlSeconds: REPORT_LINK_TTL_MS / 1000 }, 201);
 });
+
+/**
+ * Открытие одноразовой ссылки браузером — без входа: ссылка сама и есть
+ * разрешение, на одну минуту и один лист.
+ *
+ * Отдельный набор маршрутов на своём пути (/api/report-links), потому что
+ * весь /api/reports закрыт requireAuth, а браузер приходит без заголовка.
+ *
+ * Порядок:
+ *   1. Гашение — системной ролью и своей транзакцией, ДО сборки листа:
+ *      отказ при сборке (показ результатов выключили, прохождение удалено)
+ *      откатывает транзакцию листа, но не должен оживлять ссылку.
+ *   2. Учётная запись того, кому выдана: выключена или её сессии отозваны
+ *      после выдачи (выход, смена пароля) — ссылка мертва так же, как
+ *      access-токен, выданный до отзыва (middleware/auth.ts).
+ *   3. Лист — той же responseReport, что по заголовку, в транзакции запроса
+ *      от имени выдавшего: политики строк, зона видимости и правило показа
+ *      результатов те же, что при обычном открытии.
+ *
+ * Отказы — страницей на языке ссылки, а не JSON: читает их человек в
+ * браузере телефона. Мёртвая ссылка — 410 одним текстом на все причины
+ * (незнакомая, открытая, просроченная, отозванная): причина нужна журналу,
+ * а не тому, кто держит ссылку. Незнакомая ссылка в журнал не пишется: иначе
+ * любой без входа мог бы заваливать журнал строками, перебирая адреса;
+ * повтор НАСТОЯЩЕЙ ссылки пишется — это признак, что ссылка утекла.
+ *
+ * Ответ не кэшируется (no-store): лист с персональными данными не должен
+ * оставаться в кэше браузера после закрытия вкладки. Referer наружу не
+ * уходит и так — secureHeaders ставит Referrer-Policy: no-referrer всем.
+ */
+export const reportLinkRoutes = new Hono<AppEnv>();
+
+reportLinkRoutes.get("/:token", async (c) => {
+  c.header("Cache-Control", "no-store");
+  /*
+   * HEAD — не открытие: так ссылку трогают чужие роботы (проверка ссылки,
+   * предзагрузка). Hono отвечает на HEAD обработчиком GET, и без этой
+   * строки робот гасил бы ссылку раньше человека.
+   */
+  if (c.req.method === "HEAD") return c.body(null, 200);
+
+  const claimed = await systemContext(baseDb, () => claimReportLink(c.req.param("token")));
+  if (!claimed.ok) {
+    if (claimed.link) await refuseLink(c, claimed.link, claimed.reason);
+    return deadLink(c, claimed.link?.lang ?? langOf(c));
+  }
+  const link = claimed.link;
+
+  const row = await systemContext(baseDb, () => db.query.users.findFirst({ where: eq(users.id, link.userId) }));
+  if (!row || row.disabledAt || Date.parse(row.tokensValidFrom) > Date.parse(link.createdAt)) {
+    await refuseLink(c, link, row && !row.disabledAt ? "revoked" : "disabled");
+    return deadLink(c, link.lang);
+  }
+
+  const user = toPublicUser(row);
+  c.set("user", user);
+  let html = "";
+  try {
+    await withRequestContext(
+      baseDb,
+      { userId: user.id, role: user.role },
+      async () => {
+        html = await responseReport(c, user, link.responseId, link.lang, { linkId: link.id });
+      },
+      () => false,
+      { readOnly: row.readOnly },
+    );
+  } catch (err) {
+    if (!(err instanceof HTTPException)) throw err;
+    const info = err.cause as ErrorInfo | undefined;
+    const text = info?.key ? renderError(info.key, link.lang, info.params) : err.message;
+    return c.html(linkNotice(link.lang, text), err.status);
+  }
+  return c.html(html);
+});
+
+/** Повтор настоящей ссылки — в журнал: ссылка утекла или открыта дважды */
+async function refuseLink(c: Context<AppEnv>, link: ReportLinkRow, reason: string): Promise<void> {
+  await audit(c, {
+    action: "report.link_refused",
+    outcome: "denied",
+    resourceType: "response",
+    resourceId: link.responseId,
+    /*
+     * Действующее лицо неизвестно — ссылку мог открыть кто угодно, в этом и
+     * вопрос, — поэтому не выдавший, а пусто; кому выдана — в подробностях.
+     */
+    details: { linkId: link.id, issuedTo: link.userId, reason },
+  });
+}
+
+function deadLink(c: Context<AppEnv>, lang: Lang) {
+  return c.html(linkNotice(lang, renderError("err.reportLinkGone", lang)), 410);
+}
+
+/** Страница отказа для браузера: одна фраза на языке ссылки */
+function linkNotice(lang: Lang, text: string): string {
+  return `<!doctype html>
+<html lang="${lang}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(text)}</title>
+<style>body { font: 16px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; padding: 24px; max-width: 560px; }</style>
+</head><body><p>${esc(text)}</p></body></html>`;
+}
 
 function formatValue(
   a: { optionIds?: string[] | null; text?: string | null; number?: number | null; date?: string | null; matrix?: Record<string, string> | null; ranking?: string[] | null; skipped?: boolean } | undefined,
@@ -339,6 +524,11 @@ function renderReport(lang: Lang, d: ReportData): string {
    * не CSS-комментарием в <style>: комментарий в разметке уезжал вместе с
    * листом и читался по-русски в исходнике страницы на любом языке (то же
    * правило, что у справки ниже).
+   *
+   * Ширина экрана (viewport) — потому что с волны 14 лист открывает и
+   * браузер телефона (мобилка, одноразовая ссылка): без неё телефон
+   * раскладывал бы лист на 980 точек и показывал мелким шрифтом целиком.
+   * На печать она не влияет — там ширину задаёт @page.
    */
 
   const scoreRows = d.scores
@@ -372,6 +562,7 @@ function renderReport(lang: Lang, d: ReportData): string {
 
   return `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(say("print.reportTitle", { survey: d.surveyTitle }))}</title>
 <style>
   @page { margin: 18mm; }

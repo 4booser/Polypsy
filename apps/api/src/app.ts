@@ -31,7 +31,7 @@ import { opsPeopleRoutes } from "./routes/opsPeople";
 import { mfaRoutes } from "./routes/secondFactor";
 import { alertRoutes } from "./routes/alerts";
 import { dynamicsRoutes } from "./routes/dynamics";
-import { reportRoutes } from "./routes/reports";
+import { reportLinkRoutes, reportRoutes } from "./routes/reports";
 import { accessRoutes } from "./routes/access";
 import { clinicRoutes } from "./routes/clinic";
 import { messageRoutes } from "./routes/messages";
@@ -214,6 +214,15 @@ app.route("/api/ops/sec", opsSecRoutes);
 app.route("/api/alerts", alertRoutes);
 app.route("/api/dynamics", dynamicsRoutes);
 app.route("/api/reports", reportRoutes);
+/*
+ * Одноразовая ссылка на печатный лист (мобилка, волна 14) — своим путём и
+ * без входа: весь /api/reports закрыт requireAuth, а ссылку открывает
+ * браузер телефона, у которого токена нет и быть не должно. Разрешение —
+ * сама ссылка: минута, одно открытие, один лист (routes/reports.ts).
+ * Раньше набора прохождений на /api: тот накрывает всё, что провалилось
+ * мимо своих маршрутов, своим requireAuth.
+ */
+app.route("/api/report-links", reportLinkRoutes);
 app.route("/api/access", accessRoutes);
 // случаи риска — новый контур разбора; /api/alerts оставлен для совместимости
 app.route("/api/alert-cases", alertCaseRoutes);

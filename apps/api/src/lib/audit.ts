@@ -280,6 +280,13 @@ export type AuditAction =
   | "alert.assign"
   | "alert.release"
   | "report.render"
+  /*
+   * Одноразовая ссылка на печатный лист (мобилка, волна 14): выдача — своей
+   * строкой, открытие — строкой report.render с номером ссылки, повтор
+   * погашенной или просроченной ссылки — отказом (ссылка утекла?).
+   */
+  | "report.link_issue"
+  | "report.link_refused"
   | "response.list"
   | "response.read"
   | "analytics.overview"

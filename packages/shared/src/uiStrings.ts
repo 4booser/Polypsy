@@ -7673,6 +7673,20 @@ export const UI = {
     en: "This person has no active sessions",
   },
   "wt.visit.attempts": { uk: "Спроб — від 1 до 10", ru: "Попыток — от 1 до 10", en: "Attempts: from 1 to 10" },
+  /* ── w14:mobreport ── */
+  /* заголовок окна, когда заключение в мобилке не открылось; текст окна — отказ сервера на языке приложения */
+  "mrep.openFailed": { uk: "Висновок не відкрився", ru: "Заключение не открылось", en: "The conclusion didn’t open" },
+  /* журнал техпанели: одноразовая ссылка на печатный лист (мобилка) */
+  "act.report_link_issue": {
+    uk: "Посилання на висновок видано",
+    ru: "Выдана ссылка на заключение",
+    en: "Conclusion link issued",
+  },
+  "act.report_link_refused": {
+    uk: "Відмова за посиланням на висновок",
+    ru: "Отказ по ссылке на заключение",
+    en: "Conclusion link refused",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 
