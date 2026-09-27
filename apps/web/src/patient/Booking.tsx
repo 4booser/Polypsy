@@ -9,6 +9,7 @@ import { useResource } from "../useResource";
 import { cx } from "../ui/cx";
 import { IconStar } from "../ui/glyphs";
 import { IconClock, IconPerson } from "./icons";
+import { chosenSlot, slotsView } from "./slots";
 
 /**
  * Запись на приём в три шага: к кому, когда, с чем.
@@ -38,7 +39,11 @@ export default function PatientBooking() {
   );
 
   const people = specialists.data?.items ?? [];
-  const times = (slots.data?.items ?? []).slice(0, 40);
+  /* грузится, не загрузилось, нет связи и «свободного нет» — разные ответы (slots.ts) */
+  const view = slotsView(slots);
+  const times = view.kind === "list" ? view.times : [];
+  /* выбранным считается только время, которое есть в списке: занятое снимается само */
+  const chosen = chosenSlot(slotId, times);
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -79,7 +84,21 @@ export default function PatientBooking() {
         <h2 className="mb-2 flex items-center gap-1.5 text-caption uppercase tracking-[var(--tracking-label)] text-faint [&>svg]:size-[15px]">
           <IconClock /> {ut("pt.pickTime")}
         </h2>
-        {times.length === 0 ? (
+        {view.kind === "loading" ? (
+          <p className="text-muted">{ut("common.loading")}</p>
+        ) : view.kind === "offline" ? (
+          <p className="text-muted">{ut("conn.lost")}</p>
+        ) : view.kind === "failed" ? (
+          /* отказ загрузки — не «времени нет»: сказать и дать повторить */
+          <div role="alert" className="flex flex-col items-start gap-2">
+            <p className="text-small text-danger">
+              {ut("net.loadFailed")}: {view.error}
+            </p>
+            <Button variant="quiet" onClick={slots.reload}>
+              {ut("common.retry")}
+            </Button>
+          </div>
+        ) : view.kind === "empty" ? (
           <p className="text-muted">{ut("pt.noSlots")}</p>
         ) : (
           <div className="flex flex-col gap-2">
@@ -87,12 +106,12 @@ export default function PatientBooking() {
               <button
                 key={s.id}
                 type="button"
-                aria-pressed={slotId === s.id}
+                aria-pressed={chosen === s.id}
                 onClick={() => setSlotId(s.id)}
                 className={cx(
                   "flex min-h-[52px] items-center justify-between rounded-sm border px-4 py-3 text-left text-small",
                   "outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]",
-                  slotId === s.id
+                  chosen === s.id
                     ? "border-primary bg-surface-3 font-medium"
                     : "border-border bg-surface",
                 )}
@@ -125,13 +144,21 @@ export default function PatientBooking() {
 
       <Button
         variant="primary"
-        disabled={!slotId || busy}
-        onClick={() =>
-          run(async () => {
-            await api.book({ slotId: slotId!, reason: reason.trim() || null });
+        disabled={!chosen || busy}
+        onClick={async () => {
+          const ok = await run(async () => {
+            await api.book({ slotId: chosen!, reason: reason.trim() || null });
             navigate("/me");
-          }, ut("pt.booked"))
-        }
+          }, ut("pt.booked"));
+          /*
+           * Отказ записи почти всегда значит, что список устарел: время
+           * заняли, закрыли или оно прошло, пока человек выбирал. Список
+           * перечитывается, ушедшее время снимается с выбора (chosenSlot),
+           * причина остаётся во всплывающем сообщении, а набранная причина
+           * обращения — в поле: выбрать другое время и нажать ещё раз.
+           */
+          if (!ok) slots.reload();
+        }}
       >
         {ut("pt.bookNow")}
       </Button>

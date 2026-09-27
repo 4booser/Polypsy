@@ -1,11 +1,16 @@
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { dateTime } from "../format";
-import { useAction } from "../ui";
+import { NotLoaded, loadView, useAction } from "../ui";
 import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { useResource, type Resource } from "../useResource";
 import { IconCheck, IconClock, IconPin, IconVideo } from "./icons";
+
+type Visits = Awaited<ReturnType<typeof api.myAppointments>>;
+type Surveys = Awaited<ReturnType<typeof api.surveys>>;
+/** Что блоку нужно от загрузки: данные, отказ, время ответа и «повторить» */
+type Loaded<T> = Pick<Resource<T>, "data" | "error" | "loading" | "reload" | "updatedAt">;
 
 /**
  * Главная кабинета: ближайший приём и что пройти до него.
@@ -21,6 +26,45 @@ export default function PatientHome() {
 
   const visits = useResource(() => api.myAppointments(), []);
   const surveys = useResource(() => api.surveys(), []);
+
+  return (
+    <HomeBody
+      visits={visits}
+      surveys={surveys}
+      busy={busy}
+      onConfirm={(id) => run(() => api.confirmAppointment(id).then(visits.reload), ut("pt.confirmed"))}
+      onCancel={(id) => run(() => api.cancelAppointment(id).then(visits.reload), ut("pt.cancelled"))}
+    />
+  );
+}
+
+/**
+ * Два блока главной — по загрузкам, без запросов внутри (проверяется
+ * разметкой: test/loadStates.test.tsx).
+ *
+ * «Прийомів не заплановано» и «Поки нічого проходити» — ответ сервера, а
+ * не отсутствие ответа. Раньше блоки брали `data ?? []` и говорили это же,
+ * пока список ехал, когда сервер отказал и когда пропала связь: человек,
+ * записанный на завтра, открывал кабинет в метро и читал, что приёма нет, —
+ * с кнопкой «Записатися» под этим. Теперь до ответа — скелет, на отказе —
+ * отказ с «Повторити», и только пустой ответ — «не заплановано».
+ */
+export function HomeBody({
+  visits,
+  surveys,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  visits: Loaded<Visits>;
+  surveys: Loaded<Surveys>;
+  busy: boolean;
+  onConfirm: (id: string) => void;
+  onCancel: (id: string) => void;
+}) {
+  const { ut } = useLang();
+  const visitsView = loadView(visits);
+  const surveysView = loadView(surveys);
 
   const upcoming = (visits.data?.items ?? [])
     .filter((a) => new Date(a.startsAt).getTime() > Date.now() && a.status !== "cancelled")
@@ -46,7 +90,9 @@ export default function PatientHome() {
         <h2 className="mb-2.5 text-micro uppercase tracking-[var(--tracking-label)] text-muted">
           {ut("pt.nextVisit")}
         </h2>
-        {next ? (
+        {visitsView === "wait" || visitsView === "failed" ? (
+          <NotLoaded res={visits} />
+        ) : next ? (
           <div className="rounded-xl bg-surface-2 p-4 shadow-[0_0_0_1px_var(--border)]">
             <div className="flex items-center gap-2.5 font-display text-section font-medium tracking-tight">
               <span className="text-primary [&>svg]:size-[19px]">
@@ -86,7 +132,7 @@ export default function PatientHome() {
                   variant="primary"
                   disabled={busy}
                   className="flex-1"
-                  onClick={() => run(() => api.confirmAppointment(next.id).then(visits.reload), ut("pt.confirmed"))}
+                  onClick={() => onConfirm(next.id)}
                 >
                   {ut("pt.confirm")}
                 </Button>
@@ -104,7 +150,7 @@ export default function PatientHome() {
                 variant="quiet"
                 disabled={busy}
                 className="px-4"
-                onClick={() => run(() => api.cancelAppointment(next.id).then(visits.reload), ut("pt.cancelled"))}
+                onClick={() => onCancel(next.id)}
               >
                 {ut("pt.cancel")}
               </Button>
@@ -124,7 +170,9 @@ export default function PatientHome() {
         <h2 className="mb-2.5 text-micro uppercase tracking-[var(--tracking-label)] text-muted">
           {ut("pt.available")}
         </h2>
-        {todo.length === 0 ? (
+        {surveysView === "wait" || surveysView === "failed" ? (
+          <NotLoaded res={surveys} />
+        ) : todo.length === 0 ? (
           <p className="text-muted">{ut("pt.noTests")}</p>
         ) : (
           <div className="flex flex-col gap-2">

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { UI, type UiKey } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
 import { WeekEdit, nextHours } from "../src/pages/Schedule";
+import { EMPTY_EXCEPTION, afterAdd, exceptionProblem, hoursProblem, weekProblems } from "../src/pages/schedule/model";
 
 /**
  * Обычная неделя: день — заголовок группы, а не значение в строке.
@@ -163,5 +164,72 @@ describe("часы для нового промежутка в дне", () => {
      */
     const next = nextHours([{ weekday: 1, startsAt: "09:00", endsAt: "23:30", slotMinutes: 50 }]);
     expect(next.endsAt > next.startsAt, `${next.startsAt}–${next.endsAt} — не промежуток`).toBe(true);
+  });
+});
+
+/*
+ * Неделя и исключения как состояния формы (w13:uitests).
+ *
+ * Сервер отвергает неверный промежуток строкой разбора тела — по-русски на
+ * любом языке консоли и без номера строки. Форма ловит это сама и говорит у
+ * той строки, где ошибка; исключение, отвергнутое сервером, не стирает
+ * набранного.
+ */
+describe("ошибки недели — у своей строки", () => {
+  test("конец не позже начала и длительность вне 5…480 — ошибки, остальное — нет", () => {
+    expect(hoursProblem({ startsAt: "09:00", endsAt: "13:00", slotMinutes: 50 })).toBeNull();
+    expect(hoursProblem({ startsAt: "13:00", endsAt: "09:00", slotMinutes: 50 })).toBe("order");
+    expect(hoursProblem({ startsAt: "09:00", endsAt: "09:00", slotMinutes: 50 })).toBe("order");
+    expect(hoursProblem({ startsAt: "09:00", endsAt: "", slotMinutes: 50 })).toBe("order");
+    // очищенное числовое поле даёт 0, набор «4» по пути к «45» — 4
+    expect(hoursProblem({ startsAt: "09:00", endsAt: "13:00", slotMinutes: 0 })).toBe("slot");
+    expect(hoursProblem({ startsAt: "09:00", endsAt: "13:00", slotMinutes: 481 })).toBe("slot");
+    expect(hoursProblem({ startsAt: "09:00", endsAt: "13:00", slotMinutes: Number.NaN })).toBe("slot");
+  });
+
+  test("ошибки недели — по месту строки в общем списке", () => {
+    const rows = [...WEEK_WITH_LUNCH, { weekday: 4, startsAt: "18:00", endsAt: "10:00", slotMinutes: 50 }];
+    expect([...weekProblems(rows)]).toEqual([[4, "order"]]);
+    expect(weekProblems(WEEK_WITH_LUNCH).size).toBe(0);
+  });
+
+  test("строка с ошибкой говорит, что не так, прямо под собой", () => {
+    const bad = [...WEEK_WITH_LUNCH, { weekday: 4, startsAt: "18:00", endsAt: "10:00", slotMinutes: 50 }];
+    const text = onScreen(draw(<WeekEdit rows={bad} onChange={() => {}} />));
+    const said = label(text, "uit.form.endBeforeStart");
+    expect(occurrences(text, said), "ошибка одна — и сказано о ней один раз").toBe(1);
+    // четверг назван раньше сообщения: оно стоит в его группе, а не внизу недели
+    expect(text.indexOf(label(text, "sched.thu"))).toBeLessThan(text.indexOf(said));
+    expect(text.indexOf(said)).toBeLessThan(text.indexOf(label(text, "sched.fri")));
+    const html = draw(<WeekEdit rows={bad} onChange={() => {}} />);
+    expect(html).toContain('aria-invalid="true"');
+  });
+
+  test("верная неделя — ни одного сообщения и ни одного поля с ошибкой", () => {
+    const html = draw(<WeekEdit rows={WEEK_WITH_LUNCH} onChange={() => {}} />);
+    const e = UI["uit.form.endBeforeStart"];
+    expect(html.includes(e.uk) || html.includes(e.ru)).toBe(false);
+    expect(html).not.toContain("aria-invalid");
+  });
+});
+
+describe("исключение из расписания", () => {
+  test("без даты и дополнительные часы без часов — кнопка гаснет, как и раньше", () => {
+    expect(exceptionProblem({ date: "", kind: "off", from: "", to: "" })).toBe("date");
+    expect(exceptionProblem({ date: "2026-10-01", kind: "extra", from: "10:00", to: "" })).toBe("hours");
+    expect(exceptionProblem({ date: "2026-10-01", kind: "off", from: "", to: "" })).toBeNull();
+  });
+
+  test("конец раньше начала — не отправляется, об этом сказано", () => {
+    expect(exceptionProblem({ date: "2026-10-01", kind: "extra", from: "15:00", to: "10:00" })).toBe("order");
+    expect(exceptionProblem({ date: "2026-10-01", kind: "off", from: "15:00", to: "15:00" })).toBe("order");
+    expect(exceptionProblem({ date: "2026-10-01", kind: "extra", from: "10:00", to: "15:00" })).toBeNull();
+  });
+
+  test("сервер отказал — набранное остаётся для правки и повтора; принял — форма чистая", () => {
+    const typed = { date: "2026-10-01", kind: "extra" as const, from: "10:00", to: "15:00", note: "замість четверга" };
+    expect(afterAdd(typed, false)).toBe(typed);
+    // вид исключения остаётся: следующее, скорее всего, того же вида
+    expect(afterAdd(typed, true)).toEqual({ ...EMPTY_EXCEPTION, kind: "extra" });
   });
 });

@@ -11,7 +11,16 @@ import { MenuButton, menuItemClass } from "../../ui/menu";
 import { Button } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { useLocalityHints } from "./data";
-import { CRITERION_LABEL, type Criterion, STATS_FILTERS, cleanFilters, filterErrors, presetHref, withoutCriteria } from "./model";
+import {
+  CRITERION_LABEL,
+  type Criterion,
+  STATS_FILTERS,
+  cleanFilters,
+  filterErrors,
+  presetHref,
+  presetProblem,
+  withoutCriteria,
+} from "./model";
 import {
   AgeRow,
   DateField,
@@ -108,12 +117,9 @@ function FiltersScreen({ id }: { id: string | null }) {
 
   const errs = filterErrors(filters);
   const save = () => {
-    if (!title.trim()) {
-      toast(ut("st.errFilterName"), "err");
-      return;
-    }
-    if (errs.length) {
-      toast(ut(errs[0]!), "err");
+    const problem = presetProblem(title, filters);
+    if (problem) {
+      toast(ut(problem), "err");
       return;
     }
     void run(async () => {

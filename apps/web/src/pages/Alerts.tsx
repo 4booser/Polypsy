@@ -15,16 +15,22 @@ import { SavedViews } from "../ui/SavedViews";
 import { onAppEvent } from "../events";
 import { Hint } from "../components/Hint";
 import { usePagedResource, useResource } from "../useResource";
+import { listBody } from "../ui/paging";
+import { patchParams } from "../ui/viewParams";
 import {
+  CLEAR_NARROWING,
+  emptyQueueKey,
   hasNarrowing,
   queueQuery,
   queueSections,
   readFilters,
   rowOverdue,
+  statusPatch,
   subtitleParts,
   uniqueRows,
   waitingMinutes,
   withCount,
+  withOwnGroup,
   type CaseStatus,
 } from "./alerts/model";
 
@@ -139,31 +145,29 @@ export default function Alerts() {
     to,
     q,
   };
-  const filters = readFilters((name) => raw[name] ?? "");
+  /*
+   * Группы пациентов — свои. Права на них может и не быть: разбирать случаи
+   * — одно право, видеть списки пациентов — другое; тогда фильтра нет, а
+   * экран работает. Отказ — null, а не пустой список: «групп нет» и «список
+   * не пришёл» для фильтра значат разное (withOwnGroup).
+   */
+  const groupsRes = useResource(() => api.patientGroups().catch(() => null), []);
+  const groups = groupsRes.data ?? [];
+  const own = groupsRes.data ? groupsRes.data.map((g) => g.id) : null;
+  /* чужая группа из адреса (вид коллеги) не применяется, а не роняет очередь в 404 */
+  const filters = withOwnGroup(readFilters((name) => raw[name] ?? ""), own);
 
   /*
    * Несколько параметров разом — одним переходом. Два вызова useUrlState
    * подряд писали бы каждый поверх адреса, который видел до другого, и
-   * второй затирал бы первый. Смена статуса снимает и прежний `all=1`:
-   * иначе «Відкриті» (статус по умолчанию, в адресе его нет) снова
-   * читались бы как «Усі».
+   * второй затирал бы первый. Смена статуса снимает и прежний `all=1`
+   * (statusPatch в alerts/model.ts).
    */
   const patch = useCallback(
-    (changes: Record<string, string>) =>
-      setParams(
-        (prev) => {
-          const copy = new URLSearchParams(prev);
-          for (const [k, v] of Object.entries(changes)) {
-            if (v) copy.set(k, v);
-            else copy.delete(k);
-          }
-          return copy;
-        },
-        { replace: true },
-      ),
+    (changes: Record<string, string>) => setParams((prev) => patchParams(prev, changes), { replace: true }),
     [setParams],
   );
-  const setStatus = (next: CaseStatus) => patch({ status: next === "open" ? "" : next, all: "" });
+  const setStatus = (next: CaseStatus) => patch(statusPatch(next));
 
   /*
    * Какой случай «под рукой» — по идентификатору, а не по номеру строки.
@@ -188,12 +192,6 @@ export default function Alerts() {
   const grouping = page.head?.grouping ?? (filters.status === "open" && !filters.patient ? "person" : "case");
 
   const units = useResource(() => api.alertCaseUnits(), []).data ?? [];
-  /*
-   * Группы пациентов — свои (чужая в адресе даёт 404, как у списка
-   * пациентов). Права на них может и не быть: разбирать случаи — одно право,
-   * видеть списки пациентов — другое; тогда фильтра нет, а экран работает.
-   */
-  const groups = useResource(() => api.patientGroups().catch(() => []), []).data ?? [];
 
   const rows = uniqueRows(page.items ?? [], grouping);
   const open = rows.filter((c) => !c.acknowledgedAt);
@@ -303,6 +301,7 @@ export default function Alerts() {
     all: ut("cases.allSub"),
   });
   const narrowed = hasNarrowing(filters);
+  const queue = listBody(page.items ? rows : null, page.error);
   const sections = queueSections(rows, facets);
   const now = Date.now();
 
@@ -439,9 +438,7 @@ export default function Alerts() {
           {narrowed ? (
             <Button
               variant="quiet"
-              onClick={() =>
-                patch({ severity: "", assigned: "", unit: "", patientGroup: "", patient: "", from: "", to: "", q: "" })
-              }
+              onClick={() => patch(CLEAR_NARROWING)}
             >
               {ut("cases.clearFilters")}
             </Button>
@@ -466,22 +463,27 @@ export default function Alerts() {
             aria-label={ut("cases.queueLabel")}
             className="flex min-h-0 flex-col overflow-y-auto border-r border-hairline max-[900px]:max-h-[46vh] max-[900px]:shrink-0 max-[900px]:border-b max-[900px]:border-r-0"
           >
-            {!page.items ? (
+            {/*
+              Отказ перечитывания поверх уже показанных строк — строкой с
+              «повторити», а строки остаются (listBody в ui/paging.ts):
+              раньше такой отказ не показывался вовсе, и очередь молча
+              устаревала.
+            */}
+            {queue.stale ? (
+              <div role="alert" className="flex shrink-0 items-center gap-[10px] border-b border-hairline px-[12px] py-[8px]">
+                <p className="m-0 min-w-0 flex-1 text-[13px] text-danger">{queue.stale}</p>
+                <Button variant="quiet" size="sm" onClick={page.reload}>
+                  {ut("common.retry")}
+                </Button>
+              </div>
+            ) : null}
+            {queue.body === "failed" || queue.body === "loading" ? (
               <div className="p-[12px]">
                 <Loading rows={6} error={page.error} onRetry={page.reload} />
               </div>
-            ) : rows.length === 0 ? (
+            ) : queue.body === "empty" ? (
               <div className="p-[12px]">
-                <Empty
-                  title={
-                    narrowed
-                      ? ut("cases.emptyFiltered")
-                      : filters.status === "open"
-                        ? ut("cases.emptyOpen")
-                        : ut("cases.emptyAll")
-                  }
-                  hint={ut("cases.emptyHint")}
-                />
+                <Empty title={ut(emptyQueueKey(filters))} hint={ut("cases.emptyHint")} />
               </div>
             ) : (
               sections.map((s) => (

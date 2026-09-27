@@ -72,6 +72,48 @@ export function presetHref(id: string): string {
   return `/statistics/filters/${id}`;
 }
 
+/* ─────────── адрес экранов ─────────── */
+
+/*
+ * Пределы перечня моделей у сервера (statModelListQuery): поиск ≤ 200,
+ * смещение ≤ 1 000 000. «?page=999999» из руки или закладки давал смещение
+ * за пределом, и перечень открывался отказом «Невірний запит» — вместо того
+ * чтобы вернуть человека на последнюю страницу (это экран делает сам, как
+ * только узнает число моделей).
+ */
+const LIST_SEARCH_MAX = 200;
+const LIST_OFFSET_MAX = 1_000_000;
+
+/** Параметры GET /api/stat-models для перечня f08 */
+export function statListQuery(q: string, page: number, per: number): { q: string; limit: number; offset: number } {
+  return {
+    q: q.trim().slice(0, LIST_SEARCH_MAX),
+    limit: per,
+    offset: Math.min((page - 1) * per, LIST_OFFSET_MAX),
+  };
+}
+
+/**
+ * Какая модель выбрана на экране «Статистика» (f24).
+ *
+ * Перечень приходит целиком (без ?limit сервер отдаёт все модели, что
+ * человеку видны), поэтому модель из адреса, которой в нём нет, — чужая,
+ * удалённая или опечатка. Раньше экран всё равно просил её у сервера,
+ * получал отказ и молчал о нём: ни строк выборок, ни подсвеченной модели,
+ * погашенное «Оновити» — пустой экран без объяснения. Теперь такая ссылка
+ * открывает первую модель, как и адрес без модели: то же правило, что у
+ * списка пациентов с удалённой группой в адресе.
+ *
+ * Пока перечень не приехал, модель из адреса грузится сразу, не дожидаясь
+ * его: у верной ссылки это экономит один круг до сервера.
+ */
+export function pickedModel(raw: string | null, list: readonly { id: string }[] | null): string | null {
+  const wanted = raw?.trim() || null;
+  if (!list) return wanted;
+  if (wanted && list.some((m) => m.id === wanted)) return wanted;
+  return list[0]?.id ?? null;
+}
+
 /* ─────────── строки-критерии ─────────── */
 
 /**
@@ -160,6 +202,19 @@ export function filterErrors(f: SampleFilters | null | undefined): UiKey[] {
 }
 
 /**
+ * Почему пресет фильтра (f23) нельзя сохранить — ключ словаря или null.
+ *
+ * Сначала название: без него пресет не найти в списке, а сервер отказал
+ * бы строкой схемы. Затем перевёрнутый диапазон — теми же словами, что
+ * красное поле. Ответ — одна причина: всплывашка говорит одну вещь, а
+ * остальные видны у полей.
+ */
+export function presetProblem(title: string, f: SampleFilters | null | undefined): UiKey | null {
+  if (!title.trim()) return "st.errFilterName";
+  return filterErrors(f)[0] ?? null;
+}
+
+/**
  * Значение строки-критерия словами — для чипа выборки на экране
  * «Статистика»: «Стать: Чоловіки», «Віковий діапазон: 25–45».
  *
@@ -191,6 +246,48 @@ export function criterionValue(c: Criterion, f: SampleFilters | null | undefined
     case "patient":
       return "";
   }
+}
+
+/**
+ * Возраст из числового поля: пусто и мусор — «границы нет», прочее — целые
+ * годы в пределах схемы сервера (0…120).
+ *
+ * Разбор — числом, а не parseInt: числовое поле пропускает «1e2», и
+ * parseInt читал его как 1 год, хотя в поле написано сто.
+ */
+export function ageFromInput(raw: string): number | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.min(120, Math.trunc(n))) : null;
+}
+
+/**
+ * Правка фильтров одной выборки модели (f09/f29).
+ *
+ * Выборка с пресетом, тронутая правкой, становится выборкой со своими
+ * фильтрами — начиная с критериев пресета, а не с пустого места: колонка на
+ * сервере берёт либо пресет, либо свои фильтры, и править сам пресет
+ * отсюда значило бы молча поменять все модели, что на него ссылаются.
+ * Пустое значение снимает критерий. Остальные выборки не трогаются.
+ */
+export function withColumnFilters(
+  columns: readonly StatModelColumn[],
+  index: number,
+  patch: Partial<SampleFilters>,
+  presetCriteria: (presetId: string) => SampleFilters | undefined,
+): StatModelColumn[] {
+  return columns.map((c, j) => {
+    if (j !== index) return c;
+    const base = c.presetId ? (presetCriteria(c.presetId) ?? {}) : (c.filters ?? {});
+    return { ...c, presetId: null, filters: patchFilters(base, patch) };
+  });
+}
+
+/** Правка ключей фильтра: пустое значение — «ключа нет», а не пустая строка на сервере */
+export function patchFilters(f: SampleFilters, patch: Partial<SampleFilters>): SampleFilters {
+  const next: Record<string, unknown> = { ...f, ...patch };
+  for (const [k, v] of Object.entries(next)) if (v === null || v === undefined || v === "") delete next[k];
+  return next as SampleFilters;
 }
 
 /** Одни и те же ли фильтры — по содержанию, а не по записи */

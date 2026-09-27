@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { BulkUserAction, OpsUserRow, Role } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
@@ -9,13 +9,28 @@ import { Loading, Modal, useAction } from "../../ui";
 import { IconDots, IconPlusThick } from "../../ui/glyphs";
 import { ActionMenu, type MenuEntry } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
-import { pageCount, pageFrom, perFrom } from "../../ui/paging";
+import { pageCount } from "../../ui/paging";
 import { Button, ButtonLink, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { useResource } from "../../useResource";
 import { Cell, ColumnHead, FilterSelect, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
 import { ConfirmPlain, ConfirmTyped, OneTimePassword } from "./dialogs";
 import { type Hold, ROLE_KEY, generatePassword, holdKey, holdsOfRow, personHref, traceParts } from "./model";
+import {
+  type AccountDraft,
+  type AccountEvent,
+  type AccountForm,
+  accountBody,
+  accountProblems,
+  accountReady,
+  accountStep,
+  applyPatch,
+  newAccount,
+  readUsersFilters,
+  usersIdsQuery,
+  usersPatch,
+  usersQuery,
+} from "./usersModel";
 import { UserDevices } from "./UserDevices";
 import { toggleId, withPage } from "./people2/model";
 import { RowCheck } from "./people2/parts";
@@ -73,44 +88,23 @@ export default function OpsUsers() {
   const isSuper = user?.role === "superadmin";
   const [params, setParams] = useSearchParams();
 
-  const q = params.get("q") ?? "";
-  const role = params.get("role") ?? "";
-  const status = params.get("status") ?? "";
-  const sort = params.get("sort") ?? "name";
-  const page = pageFrom(params.get("page"));
-  const per = perFrom(params.get("per"));
+  /*
+   * Отбор — из адреса, но через разбор (usersModel.ts): незнакомая роль,
+   * состояние или порядок из старой закладки значат «фильтра нет», а не
+   * отказ сервера на весь экран.
+   */
+  const filters = readUsersFilters(params);
+  const { q, role, status, sort, page, per } = filters;
   const settledQ = useDebounced(q);
 
-  /* `replace`: каждая буква поиска — не шаг в истории браузера; смена отбора возвращает на первую страницу */
+  /* `replace`: каждая буква поиска — не шаг в истории браузера; смена отбора возвращает на первую страницу (usersPatch) */
   const update = useCallback(
-    (patch: Record<string, string | null>) => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          for (const [k, v] of Object.entries(patch)) {
-            if (v === null || v === "") next.delete(k);
-            else next.set(k, v);
-          }
-          return next;
-        },
-        { replace: true },
-      );
-    },
+    (patch: Record<string, string | null>) => setParams((prev) => applyPatch(prev, patch), { replace: true }),
     [setParams],
   );
 
-  const res = useResource(
-    () =>
-      api.opsUsers({
-        q: settledQ,
-        role: role || undefined,
-        status: status || undefined,
-        sort,
-        page: String(page),
-        per: String(per),
-      }),
-    [settledQ, role, status, sort, page, per],
-  );
+  const query = usersQuery(filters, settledQ);
+  const res = useResource(() => api.opsUsers(query), [query]);
   const pages = pageCount(res.data?.total ?? 0, per);
 
   /* страница за концом списка (сузили отбор) — на последнюю существующую */
@@ -208,11 +202,11 @@ export default function OpsUsers() {
           это отбор, а не форма.
         */}
         <div className="mb-[12px] grid grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))_auto] items-center gap-[12px] max-[900px]:grid-cols-1">
-          <SearchField label={ut("ops.users.search")} value={q} onChange={(v) => update({ q: v, page: null })} />
+          <SearchField label={ut("ops.users.search")} value={q} onChange={(v) => update(usersPatch("q", v))} />
           <FilterSelect
             label={ut("adm.role")}
             value={role}
-            onChange={(v) => update({ role: v, page: null })}
+            onChange={(v) => update(usersPatch("role", v))}
             options={[
               { value: "", label: ut("ops.users.allRoles") },
               { value: "superadmin", label: ut("adm.roleSuper") },
@@ -223,7 +217,7 @@ export default function OpsUsers() {
           <FilterSelect
             label={ut("ops.users.state")}
             value={status}
-            onChange={(v) => update({ status: v, page: null })}
+            onChange={(v) => update(usersPatch("status", v))}
             options={[
               { value: "", label: ut("ops.users.allStates") },
               { value: "active", label: ut("ops.users.active") },
@@ -233,7 +227,7 @@ export default function OpsUsers() {
           <FilterSelect
             label={ut("ppl.sort")}
             value={sort}
-            onChange={(v) => update({ sort: v === "name" ? null : v, page: null })}
+            onChange={(v) => update(usersPatch("sort", v))}
             options={[
               { value: "name", label: ut("ppl.sortByName") },
               { value: "created", label: ut("ops.users.sortCreated") },
@@ -269,7 +263,7 @@ export default function OpsUsers() {
             page={page}
             pages={pages}
             per={per}
-            onPer={(n) => update({ per: String(n), page: null })}
+            onPer={(n) => update(usersPatch("per", String(n)))}
             onPage={(p) => update({ page: p > 1 ? String(p) : null })}
           />
         </div>
@@ -289,7 +283,7 @@ export default function OpsUsers() {
               onPage={(on) => setSelected(withPage(selected, pageIds, on))}
               onAll={() =>
                 void api
-                  .opsUserIds({ q: settledQ, role: role || undefined, status: status || undefined })
+                  .opsUserIds(usersIdsQuery(filters, settledQ))
                   .then((r) => setSelected(new Set(r.ids)))
                   .catch(() => {})
               }
@@ -466,23 +460,41 @@ function errorText(e: unknown, fallback: string): string {
  * последний раз после: окно показывает его вместе с «створено», а закрывшись,
  * забывает. Суперадмина заводит только суперадмин (так решено и на сервере):
  * заведующему с users.manage пункта в выборе нет.
+ *
+ * Состояние окна — шагами (usersModel.ts, accountStep): отказ сервера
+ * снимается правкой поля, вторая отправка не уходит, пока летит первая.
+ * Форма — отдельно (CreateAccountForm): её состояния проверяются без
+ * браузера (test/opsUsersFilters.test.tsx).
  */
 function CreateDialog({ isSuper, onClose, onDone }: { isSuper: boolean; onClose: () => void; onDone: () => void }) {
   const { ut } = useLang();
-  const [form, setForm] = useState({ lastName: "", firstName: "", middleName: "", email: "" });
-  const [role, setRole] = useState<Role>("admin");
-  const [password, setPassword] = useState(() => generatePassword());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(accountStep, undefined, () => newAccount(generatePassword()));
+  /*
+   * Решение «отправлять ли» — по ref, а не по состоянию из замыкания: два
+   * Enter подряд успевают до перерисовки, и оба увидели бы busy = false.
+   */
+  const inFlight = useRef(false);
 
-  if (created) {
+  const send = () => {
+    if (inFlight.current || accountStep(state, { type: "send" }) === state) return;
+    inFlight.current = true;
+    dispatch({ type: "send" });
+    api
+      .createUser(accountBody(state.form))
+      .then((u) => dispatch({ type: "created", email: u.email }))
+      .catch((err) => dispatch({ type: "failed", message: errorText(err, ut("adm.createFailed")) }))
+      .finally(() => {
+        inFlight.current = false;
+      });
+  };
+
+  if (state.created) {
     return (
       <Modal title={ut("adm.newUser")} onClose={onDone}>
         <p className="m-0 mb-[12px] text-[15px] leading-[21px] text-text-2 [overflow-wrap:anywhere]">
-          {created}: {ut("ops.users.createdDone")}
+          {state.created}: {ut("ops.users.createdDone")}
         </p>
-        <OneTimePassword password={password} />
+        <OneTimePassword password={state.form.password} />
         <div className="mt-[20px] flex justify-end">
           <Button onClick={onDone}>{ut("ops.users.gotIt")}</Button>
         </div>
@@ -490,70 +502,99 @@ function CreateDialog({ isSuper, onClose, onDone }: { isSuper: boolean; onClose:
     );
   }
 
-  const ready = form.lastName.trim() && form.firstName.trim() && /\S+@\S+/.test(form.email.trim());
-
   return (
     <Modal title={ut("adm.newUser")} onClose={onClose}>
       <p className="m-0 mb-[15px] text-[13px] leading-[18px] text-muted">{ut("adm.accountsSub")}</p>
-      <form
-        className="flex flex-col"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!ready || busy) return;
-          setBusy(true);
-          setError(null);
-          api
-            .createUser({
-              lastName: form.lastName.trim(),
-              firstName: form.firstName.trim(),
-              middleName: form.middleName.trim() || null,
-              email: form.email.trim(),
-              password,
-              role,
-              mustChangePassword: true,
-            })
-            .then((u) => setCreated(u.email))
-            .catch((err) => setError(errorText(err, ut("adm.createFailed"))))
-            .finally(() => setBusy(false));
-        }}
-      >
-        <Field label={ut("adm.lastName")}>
-          <Input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} autoFocus required maxLength={80} />
-        </Field>
-        <Field label={ut("adm.firstName")}>
-          <Input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} required maxLength={80} />
-        </Field>
-        <Field label={ut("adm.middleName")}>
-          <Input value={form.middleName} onChange={(e) => setForm({ ...form, middleName: e.target.value })} maxLength={80} />
-        </Field>
-        <Field label={ut("person.email")}>
-          <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required autoComplete="off" />
-        </Field>
-        <Field label={ut("adm.role")} labelClassName="mb-[6px] block text-[13px] font-bold text-muted">
-          <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="admin">{ut("adm.roleAdmin")}</option>
-            <option value="user">{ut("adm.rolePatient")}</option>
-            {isSuper ? <option value="superadmin">{ut("adm.roleSuper")}</option> : null}
-          </Select>
-        </Field>
-        <div className="mb-[15px]">
-          <span className="mb-[6px] block text-[13px] font-bold text-muted">{ut("ops.users.tempPassword")}</span>
-          <OneTimePassword password={password} />
-          <Button variant="quiet" className="mt-[6px]" onClick={() => setPassword(generatePassword())}>
-            {ut("ops.users.regenerate")}
-          </Button>
-        </div>
-        {error ? <p className="m-0 mb-[15px] text-[13px] text-danger">{error}</p> : null}
-        <div className="flex justify-end gap-[14px]">
-          <Button variant="ghost" onClick={onClose}>
-            {ut("common.cancel")}
-          </Button>
-          <Button type="submit" disabled={!ready || busy}>
-            {ut("adm.create")}
-          </Button>
-        </div>
-      </form>
+      <CreateAccountForm
+        state={state}
+        isSuper={isSuper}
+        onEvent={dispatch}
+        onRegenerate={() => dispatch({ type: "edit", patch: { password: generatePassword() } })}
+        onSubmit={send}
+        onClose={onClose}
+      />
     </Modal>
+  );
+}
+
+/** Форма окна заведения: всё, что она показывает, — из состояния, без своих решений */
+export function CreateAccountForm({
+  state,
+  isSuper,
+  onEvent,
+  onRegenerate,
+  onSubmit,
+  onClose,
+}: {
+  state: AccountDraft;
+  isSuper: boolean;
+  onEvent: (e: AccountEvent) => void;
+  onRegenerate: () => void;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
+  const { ut } = useLang();
+  const { form, busy, error } = state;
+  const edit = (patch: Partial<AccountForm>) => onEvent({ type: "edit", patch });
+  const problems = accountProblems(form);
+  const ready = accountReady(form);
+
+  return (
+    <form
+      className="flex flex-col"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      <Field label={ut("adm.lastName")}>
+        <Input value={form.lastName} onChange={(e) => edit({ lastName: e.target.value })} autoFocus required maxLength={80} />
+      </Field>
+      <Field label={ut("adm.firstName")}>
+        <Input value={form.firstName} onChange={(e) => edit({ firstName: e.target.value })} required maxLength={80} />
+      </Field>
+      <Field label={ut("adm.middleName")}>
+        <Input value={form.middleName} onChange={(e) => edit({ middleName: e.target.value })} maxLength={80} />
+      </Field>
+      {/* почта с ошибкой называется словами у поля: погашенная кнопка сама не говорит, чего ей не хватает */}
+      <Field label={ut("person.email")} error={problems.email ? ut(problems.email) : null}>
+        <Input
+          type="email"
+          value={form.email}
+          onChange={(e) => edit({ email: e.target.value })}
+          required
+          autoComplete="off"
+          aria-invalid={problems.email ? true : undefined}
+        />
+      </Field>
+      <Field label={ut("adm.role")} labelClassName="mb-[6px] block text-[13px] font-bold text-muted">
+        <Select value={form.role} onChange={(e) => edit({ role: e.target.value as Role })}>
+          <option value="admin">{ut("adm.roleAdmin")}</option>
+          <option value="user">{ut("adm.rolePatient")}</option>
+          {isSuper ? <option value="superadmin">{ut("adm.roleSuper")}</option> : null}
+        </Select>
+      </Field>
+      <div className="mb-[15px]">
+        <span className="mb-[6px] block text-[13px] font-bold text-muted">{ut("ops.users.tempPassword")}</span>
+        <OneTimePassword password={form.password} />
+        <Button variant="quiet" className="mt-[6px]" onClick={onRegenerate}>
+          {ut("ops.users.regenerate")}
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="m-0 mb-[15px] text-[13px] text-danger">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex justify-end gap-[14px]">
+        <Button variant="ghost" onClick={onClose}>
+          {ut("common.cancel")}
+        </Button>
+        <Button type="submit" disabled={!ready || busy}>
+          {ut("adm.create")}
+        </Button>
+      </div>
+    </form>
   );
 }
 

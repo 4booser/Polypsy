@@ -9,26 +9,11 @@ import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { SavedViews } from "../ui/SavedViews";
 import { usePagedResource } from "../useResource";
-import { shownNote } from "../ui/paging";
+import { listBody, shownNote } from "../ui/paging";
+import { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY, closedParam, referralSorts, showClosed } from "./referrals/model";
 
-export const DESTINATION_KEY = {
-  psychiatrist: "dest.psychiatrist",
-  inpatient: "dest.inpatient",
-  outpatient: "dest.outpatient",
-  commander: "dest.commander",
-  other: "dest.other",
-} as const;
-export const URGENCY_KEY = {
-  routine: "urg.routine",
-  urgent: "urg.urgent",
-  immediate: "urg.immediate",
-} as const;
-export const STATUS_KEY = {
-  created: "st.created",
-  accepted: "st.accepted",
-  completed: "st.completed",
-  declined: "st.declined",
-} as const;
+/* подписи значений — в модели (по ним сортируются колонки); карта случая берёт их отсюда, как и раньше */
+export { DESTINATION_KEY, STATUS_KEY, URGENCY_KEY };
 export const NEXT_STATUS = {
   created: [
     { value: "accepted", key: "ref.accepted" },
@@ -51,10 +36,11 @@ export const NEXT_STATUS = {
  */
 export default function ReferralsPage() {
   const [allParam, setAllParam] = useUrlState("all");
-  const all = allParam === "1";
-  const setAll = (v: boolean) => setAllParam(v ? "1" : "");
+  const all = showClosed(allParam);
+  const setAll = (v: boolean) => setAllParam(closedParam(v));
   const { run } = useAction();
   const { ut } = useLang();
+  const sorts = referralSorts(ut);
 
   /*
    * Реестр приезжает страницами (волна 12): раньше он обрывался на двухсотом
@@ -70,13 +56,18 @@ export default function ReferralsPage() {
   const reload = page.reload;
   const rows = page.items;
 
-  /* обрыв связи объявляет строка оболочки (ui/ConnectionLine.tsx); здесь — скелет до первых строк */
+  /*
+   * Обрыв связи объявляет строка оболочки (ui/ConnectionLine.tsx); здесь —
+   * скелет до первых строк, отказ на их месте, отказ поверх уже показанных —
+   * строкой (listBody в ui/paging.ts); пусто — пустое состояние таблицы.
+   */
+  const body = listBody(rows, page.error);
   if (!rows) return <Loading rows={4} error={page.error} onRetry={page.reload} busy={page.loading} />;
   const note = shownNote(ut, rows.length, page.total, page.hasMore);
 
   return (
     <>
-      {page.error ? <p className="m-0 text-caption text-danger">{page.error}</p> : null}
+      {body.stale ? <p className="m-0 text-caption text-danger">{body.stale}</p> : null}
       <Page
         title={ut("ref.title")}
         sub={all ? ut("ref.allSub") : ut("ref.openSub")}
@@ -112,13 +103,13 @@ export default function ReferralsPage() {
                       {r.userName}
                     </Link>
                   ),
-                  sort: (r: Referral) => r.userName,
+                  sort: sorts.userName,
                 },
                 {
                   key: "destination",
                   header: ut("ref.where"),
                   render: (r: Referral) => ut(DESTINATION_KEY[r.destination]),
-                  sort: (r: Referral) => r.destination,
+                  sort: sorts.destination,
                 },
                 {
                   key: "urgency",
@@ -128,19 +119,22 @@ export default function ReferralsPage() {
                       {ut(URGENCY_KEY[r.urgency])}
                     </span>
                   ),
-                  sort: (r: Referral) => r.urgency,
+                  /* порядок — ступенью срочности, в файл — подписью (referrals/model.ts) */
+                  sort: sorts.urgency,
+                  csv: (r: Referral) => ut(URGENCY_KEY[r.urgency]),
                 },
                 {
                   key: "status",
                   header: ut("ref.status"),
                   render: (r: Referral) => ut(STATUS_KEY[r.status]),
-                  sort: (r: Referral) => r.status,
+                  sort: sorts.status,
+                  csv: (r: Referral) => ut(STATUS_KEY[r.status]),
                 },
                 {
                   key: "reason",
                   header: ut("ref.reason"),
                   render: (r: Referral) => <span className="text-muted">{r.reason ?? "—"}</span>,
-                  sort: (r: Referral) => r.reason ?? "",
+                  sort: sorts.reason,
                 },
                 {
                   key: "createdAt",
@@ -150,7 +144,7 @@ export default function ReferralsPage() {
                       {day(r.createdAt)}, {r.createdByName}
                     </span>
                   ),
-                  sort: (r: Referral) => r.createdAt,
+                  sort: sorts.createdAt,
                 },
                 {
                   key: "act",

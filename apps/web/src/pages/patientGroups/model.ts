@@ -89,6 +89,83 @@ export function keepPresent(set: ReadonlySet<string>, present: readonly { userId
   return new Set([...set].filter((id) => ids.has(id)));
 }
 
+/* ─────────── действие над выборкой: по человеку за раз ─────────── */
+
+/**
+ * Что уже сделано в этом окне «Призначити тест»: для какого назначения
+ * (методика и срок) и кому. Живёт, пока открыто окно, — новое окно
+ * начинает с чистого листа (`newProgress`).
+ */
+export interface EachProgress {
+  key: string;
+  done: Set<string>;
+}
+
+export function newProgress(): EachProgress {
+  return { key: "", done: new Set() };
+}
+
+export interface EachOutcome {
+  /** Скольким из выборки назначение уже выдано — в этой попытке и в прежних */
+  done: number;
+  total: number;
+  /** Отказ, на котором попытка остановилась; null — выдано всем */
+  error: unknown;
+}
+
+/**
+ * Назначение выборке — по запросу на человека (маршрута «пачкой» нет), и
+ * отказ может прийти посередине.
+ *
+ * Раньше цикл просто обрывался: окно показывало текст отказа — и только.
+ * Первые трое уже получили методику, остальные пятеро — нет, а экран об
+ * этом молчал: специалист не знал, что часть выборки уже назначена, и
+ * «Призначити» ещё раз выдавало тем же троим заново (сервер перезаписывает
+ * выдачу, но журнал получал по второй записи «назначено» на каждого, а
+ * итог — «Тест призначено — 8» — не говорил о первой попытке ничего).
+ * Теперь выданное помнится между попытками одного окна: повтор идёт только
+ * к тем, кому ещё не выдано, а отказ называет, сколько уже сделано.
+ *
+ * Смена методики или срока в том же окне — другое назначение: память
+ * сбрасывается, и выдаётся всем.
+ */
+export async function grantEach(
+  progress: EachProgress,
+  key: string,
+  ids: readonly string[],
+  act: (id: string) => Promise<unknown>,
+): Promise<EachOutcome> {
+  if (progress.key !== key) {
+    progress.key = key;
+    progress.done = new Set();
+  }
+  const count = () => ids.filter((id) => progress.done.has(id)).length;
+  for (const id of ids) {
+    if (progress.done.has(id)) continue;
+    try {
+      await act(id);
+    } catch (error) {
+      return { done: count(), total: ids.length, error };
+    }
+    progress.done.add(id);
+  }
+  return { done: count(), total: ids.length, error: null };
+}
+
+/**
+ * Текст отказа посередине выборки: причина и сколько уже выдано —
+ * «Немає доступу · Тест призначено: 3 з 8». Если не выдано никому,
+ * добавлять нечего: причина и есть весь ответ.
+ */
+export function partialFailure(
+  outcome: Pick<EachOutcome, "done" | "total">,
+  reason: string,
+  words: { done: string; of: string },
+): string {
+  if (outcome.done === 0) return reason;
+  return `${reason} · ${words.done}: ${outcome.done} ${words.of} ${outcome.total}`;
+}
+
 /* ─────────── «обрана» ─────────── */
 
 /**

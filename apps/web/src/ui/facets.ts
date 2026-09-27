@@ -79,6 +79,20 @@ export function facetOptions<T>(
     .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
 }
 
+/**
+ * Варианты, которые помещаются на панель: самые частые — и все выбранные.
+ *
+ * Панель показывает первые `limit` по счётчику. Выбранный вариант с малым
+ * счётчиком (пришёл из адреса, или соседний фасет его сузил) оказывался за
+ * этой чертой и пропадал с панели: фильтр действует, а какой — не видно, и
+ * снять его можно было только сбросом всех. facetOptions обещает, что
+ * выбранный остаётся в списке, — здесь это обещание доходит до разметки.
+ * Порядок прежний (по счётчику): выбранные из хвоста встают в конец.
+ */
+export function visibleFacetOptions(options: FacetOption[], limit: number): FacetOption[] {
+  return options.filter((o, i) => i < limit || o.selected);
+}
+
 /** Переключение варианта; пустой список ключа выбрасывается, чтобы адрес не рос */
 export function toggleFacet(
   selection: FacetSelection,

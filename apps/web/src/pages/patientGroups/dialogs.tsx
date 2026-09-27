@@ -5,6 +5,7 @@ import { useLang } from "../../lang";
 import { Loading, Modal } from "../../ui";
 import { Button, Field, Input, Select, Textarea } from "../../ui/primitives";
 import { useResource } from "../../useResource";
+import { pastDeadline, today } from "../../components/deadline";
 
 /*
  * Окна раздела «Групи»: завести/переименовать группу, добавить человека,
@@ -227,9 +228,11 @@ export function AssignSurveyDialog({
   const [done, setDone] = useState<string | null>(null);
 
   const usable = (surveys.data ?? []).filter((s: SurveyListItem) => s.status === "published" && !s.archivedAt);
+  /* срок в прошлом не отправляется: доступ истёк бы раньше, чем человек о нём узнал (components/deadline.ts) */
+  const expiresInPast = pastDeadline(expires, today());
 
   async function assign() {
-    if (!surveyId) return;
+    if (!surveyId || expiresInPast) return;
     setBusy(true);
     setError(null);
     try {
@@ -262,8 +265,8 @@ export function AssignSurveyDialog({
               ))}
             </Select>
           </Field>
-          <Field label={ut("acc.until")}>
-            <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+          <Field label={ut("acc.until")} error={expiresInPast ? ut("uit.form.pastDeadline") : undefined}>
+            <Input type="date" value={expires} min={today()} onChange={(e) => setExpires(e.target.value)} />
           </Field>
           {error || surveys.error ? (
             <p className="m-0 mt-[15px] text-[13px] text-danger">{error ?? surveys.error}</p>
@@ -272,7 +275,7 @@ export function AssignSurveyDialog({
             <Button variant="ghost" onClick={onClose}>
               {ut("common.cancel")}
             </Button>
-            <Button onClick={() => void assign()} disabled={!surveyId || busy}>
+            <Button onClick={() => void assign()} disabled={!surveyId || busy || expiresInPast}>
               {busy ? ut("co.saving") : ut("acc.grant")}
             </Button>
           </div>

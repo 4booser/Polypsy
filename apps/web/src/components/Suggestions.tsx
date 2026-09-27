@@ -5,8 +5,8 @@ import { api } from "../api";
 import { dateTime } from "../format";
 import { useLang } from "../lang";
 import type { UiKey } from "@quizzy/shared";
-import { useResource } from "../useResource";
-import { useAction } from "../ui";
+import { useResource, type Resource } from "../useResource";
+import { NotLoaded, useAction } from "../ui";
 import { Panel } from "../ui/layout";
 import { Button, Input } from "../ui/primitives";
 
@@ -24,13 +24,36 @@ import { Button, Input } from "../ui/primitives";
  * проигнорировали, будет не по чему.
  */
 export function Suggestions() {
-  const { ut } = useLang();
   const res = useResource(() => api.ruleHits(), []);
+  return <SuggestionsBody res={res} />;
+}
+
+/**
+ * Панель по загрузке — без запроса внутри (test/loadStates.test.tsx).
+ *
+ * Пустой ответ — панели нет: предложений нет, и говорить не о чем. Отказ
+ * — панель есть и говорит об отказе. Раньше отказ выглядел так же, как
+ * «предложений нет»: панель просто не появлялась, и сработавшие правила
+ * (повод пересмотреть случай) не видел никто, включая того, кто их завёл.
+ */
+export function SuggestionsBody({
+  res,
+}: {
+  res: Pick<Resource<RuleHit[]>, "data" | "error" | "loading" | "reload">;
+}) {
+  const { ut } = useLang();
   const { run, busy } = useAction();
   const [declining, setDeclining] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
-  const items = res.data ?? [];
+  if (res.data === null) {
+    return res.error ? (
+      <Panel title={ut("ds.title")}>
+        <NotLoaded res={res} />
+      </Panel>
+    ) : null;
+  }
+  const items = res.data;
   if (!items.length) return null;
 
   return (

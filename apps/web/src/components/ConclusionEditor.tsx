@@ -1,13 +1,14 @@
 
 import { useId, useState, type ReactNode } from "react";
 import type { UiKey } from "@quizzy/shared";
-import { api, ApiError, type ConclusionState } from "../api";
+import { api, type ConclusionState } from "../api";
 import { cx } from "../ui/cx";
 import { day } from "../format";
 import { useAction } from "../ui";
 import { useLang } from "../lang";
 import { Button, Textarea } from "../ui/primitives";
 import { TemplatePicker } from "./TemplatePicker";
+import { draftOf, saveThenSign, signPlan, staleMessage } from "./versioned";
 
 /**
  * Заключение специалиста поверх автоматической интерпретации — блок
@@ -85,7 +86,12 @@ export function ConclusionEditor({
   setTool: (next: null | "templates" | "history") => void;
 }) {
   const { ut } = useLang();
-  const { run } = useAction();
+  /*
+   * busy — чтобы кнопка гасла на время подписи: второе нажатие useAction и
+   * так не пропустит, но живая кнопка, которая ничего не делает, выглядит
+   * зависшей, и по ней жмут ещё.
+   */
+  const { run, busy } = useAction();
   /*
    * Отказ 409: заключение переписали, пока оно было открыто, — сменилась
    * версия или редакция черновика (сервер, миграция 0096). Показывается
@@ -106,9 +112,11 @@ export function ConclusionEditor({
   }
 
   const signed = state.versions.find((v) => v.status === "signed");
-  const draft = state.current?.status === "draft" ? state.current : null;
+  const draft = draftOf(state);
   /* версия и редакция — те, что на экране: сервер сверит обе */
   const save = () => api.saveConclusion(responseId, text, state.current, title);
+  /* подписывается текст в поле и только он (versioned.ts, signPlan) */
+  const plan = signPlan(text, draft);
 
   return (
     <section aria-labelledby="cn-verdicts" className="mt-[50px]">
@@ -202,25 +210,29 @@ export function ConclusionEditor({
         <Button
           size="md"
           title={ut("cnc.onlySignedInReport")}
-          disabled={!draft && !text.trim()}
+          disabled={busy || !plan.canSign}
           onClick={() =>
             run(async () => {
               try {
-                // подпись всегда фиксирует последний сохранённый текст
-                let latest = state;
-                if (text.trim() && text !== draft?.text) latest = await save();
                 /*
                  * Подписываем именно ту версию и ту редакцию, которую вернуло
                  * сохранение (или которая была на экране). Если между открытием
                  * экрана и подписью текст переписал кто-то другой, сервер
                  * откажет — лучше отказ, чем подпись под чужим текстом.
+                 * Сохранение ложится на экран сразу, не дожидаясь подписи:
+                 * не удалась подпись — повтор не упрётся в свою же правку.
                  */
-                onState(await api.signConclusion(responseId, latest.current!));
+                await saveThenSign(state, plan, {
+                  save,
+                  sign: (seen) => api.signConclusion(responseId, seen),
+                  apply: onState,
+                });
                 setText("");
                 setStale(null);
               } catch (e) {
-                if (!(e instanceof ApiError) || e.status !== 409) throw e;
-                setStale(e.message);
+                const message = staleMessage(e);
+                if (message === null) throw e;
+                setStale(message);
                 return false;
               }
             }, ut("cn.signed"))

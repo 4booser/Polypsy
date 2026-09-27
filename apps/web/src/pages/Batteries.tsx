@@ -14,6 +14,8 @@ import { Button } from "../ui/primitives";
 import { choiceLabel, keepChosen } from "../ui/choices";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { pastDeadline, today } from "../components/deadline";
+import { assignCandidates } from "./batteries/model";
 
 /**
  * Батареи: набор методик, назначаемый целиком.
@@ -158,23 +160,17 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
   const [query, setQuery] = useState("");
   const [due, setDue] = useState("");
   const [note, setNote] = useState("");
-  const { run } = useAction();
+  /* busy гасит строки «+ ПІБ» на время назначения: второе нажатие useAction и так не пропустит */
+  const { run, busy } = useAction();
 
   const res = useResource(() => api.batteryAssignments(battery.id), [battery.id]);
   const rows = res.data;
   const reload = res.reload;
 
-  const assigned = new Set(
-    rows?.filter((r) => !r.cancelledAt && !r.completedAt).map((r) => r.userId) ?? [],
-  );
-  const candidates = useMemo(
-    () =>
-      patients
-        .filter((p) => !assigned.has(p.id))
-        .filter((p) => `${p.fullName} ${p.email}`.toLowerCase().includes(query.toLowerCase()))
-        .slice(0, 8),
-    [patients, query, rows],
-  );
+  /* просроченное назначение — не «уже назначено»: сервер выдаст заново (batteries/model.ts) */
+  const candidates = useMemo(() => assignCandidates(patients, rows ?? [], query), [patients, query, rows]);
+  /* срок в прошлом не отправляется: назначение родилось бы просроченным (components/deadline.ts) */
+  const dueInPast = pastDeadline(due, today());
 
   return (
     <div className="nested">
@@ -237,7 +233,14 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
         <Search value={query} onChange={setQuery} placeholder={ut("ui.findRespondent")} />
         <label className="field">
           <span>{ut("bt.deadline")}</span>
-          <input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+          <input
+            type="date"
+            value={due}
+            min={today()}
+            aria-invalid={dueInPast || undefined}
+            onChange={(e) => setDue(e.target.value)}
+          />
+          {dueInPast ? <span className="text-[13px] text-danger">{ut("uit.form.pastDeadline")}</span> : null}
         </label>
         <label className="field grow">
           <span>{ut("f.note")}</span>
@@ -250,14 +253,23 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
             candidates.map((p) => (
               <button
                 key={p.id}
-                onClick={() =>
-                  run(async () => {
+                disabled={busy || dueInPast}
+                onClick={async () => {
+                  await run(async () => {
                     await api.assignBattery(battery.id, p.id, due || null, note || null);
                     setQuery("");
                     setNote("");
-                    await reload();
-                  }, `${ut("bt.assignedToast")} ${p.fullName}`)
-                }
+                  }, `${ut("bt.assignedToast")} ${p.fullName}`);
+                  /*
+                   * Список перечитывается и после отказа: 409 «вже
+                   * призначено» значит, что таблица на экране устарела —
+                   * набор назначил кто-то другой, — и человек, которого
+                   * сервер только что отказался назначать, не должен
+                   * оставаться в предложениях. Набранные поиск и примечание
+                   * при отказе остаются: повторить можно, не набирая заново.
+                   */
+                  reload();
+                }}
               >
                 + {p.fullName}
               </button>
