@@ -1468,6 +1468,20 @@ export const ERRORS = {
     ru: "{field}: интервал не может кончаться раньше, чем начался",
     en: "{field}: an interval can’t end before it starts",
   },
+
+  /* ── w14:mobreport ── */
+  /*
+   * Одноразовая ссылка на печатный лист (мобилка): одна фраза на все
+   * причины — незнакомая, уже открытая, просроченная, отозванная. Читает её
+   * человек в браузере телефона, и сказать ему нужно одно: откуда открыть
+   * заново. Причину знает журнал (report.link_refused).
+   */
+  "err.reportLinkGone": {
+    uk: "Посилання на висновок вже недійсне: воно відкривається один раз і діє хвилину. Відкрийте висновок у застосунку ще раз.",
+    ru: "Ссылка на заключение уже недействительна: она открывается один раз и действует минуту. Откройте заключение в приложении ещё раз.",
+    en: "This link to the conclusion is no longer valid: it opens once and works for one minute. Open the conclusion from the app again.",
+  },
+
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
