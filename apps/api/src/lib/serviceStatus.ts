@@ -237,14 +237,23 @@ export function retryAfterSeconds(expectedEnd: string | null, now: number): numb
  *   код упирался в 503 — и администратор со вторым фактором, а именно он
  *   выключает обслуживание, войти не мог. Регистрации, смены пароля и
  *   настройки фактора здесь нет — это запись в учётные данные, и она
- *   подождёт.
+ *   подождёт;
+ * - выдача одноразовой ссылки на печатный лист (POST
+ *   /api/reports/responses/:id/link, мобилка, волна 14): по сути это
+ *   чтение — консоль тот же лист получает GET-ом, — а запись в ней
+ *   служебная, как строка журнала при любом чтении. Без исключения лист
+ *   во время работ открывался бы в консоли и не открывался в приложении.
  *
- * Список путей, а не пометка на маршрутах: исключений два, и их полнота
+ * Список путей, а не пометка на маршрутах: исключений три, и их полнота
  * видна одним взглядом. Пометка на маршрутах разнесла бы решение по
  * двадцати файлам — и новое исключение появлялось бы незаметно.
  */
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
-const EXEMPT = [/^\/api\/ops(\/|$)/, /^\/api\/auth\/(login|logout|refresh|google\/exchange|mfa\/login)$/];
+const EXEMPT = [
+  /^\/api\/ops(\/|$)/,
+  /^\/api\/auth\/(login|logout|refresh|google\/exchange|mfa\/login)$/,
+  /^\/api\/reports\/responses\/[^/]+\/link$/,
+];
 
 export function exemptFromMaintenance(method: string, path: string): boolean {
   return READ_METHODS.has(method) || EXEMPT.some((re) => re.test(path));

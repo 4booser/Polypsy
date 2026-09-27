@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Linking, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
 import type { RespondentDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
@@ -9,6 +9,7 @@ import { LineChart, RadarChart } from "@/components/viz";
 import { Body, Button, Card, Divider, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
+import { useOpenReport } from "@/report/useOpenReport";
 
 /** Динамика одного пациента: как менялись баллы от замера к замеру */
 export default function PatientDynamicsScreen() {
@@ -18,6 +19,8 @@ export default function PatientDynamicsScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const [data, setData] = useState<RespondentDynamics | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // заключение по последнему замеру — одноразовой ссылкой в браузере (src/report)
+  const report = useOpenReport();
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -143,7 +146,8 @@ export default function PatientDynamicsScreen() {
                     <Button
                       title={ut("mdy.conclusion")}
                       variant="secondary"
-                      onPress={() => Linking.openURL(api.reportUrl(last.responseId))}
+                      loading={report.opening}
+                      onPress={() => report.open(last.responseId)}
                     />
                   </View>
                 ) : null}
