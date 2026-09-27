@@ -167,6 +167,12 @@ test.describe("экраны с параметром", () => {
      */
     const tab = page.getByRole("link", { name: "Хронология" });
     await tab.waitFor();
+    /*
+     * И дожидаемся ИМЕНИ: пока данные карты в пути, заголовок — заглушка
+     * «Пациент». Экраны с волны 12 грузятся отдельными кусками, и вкладка
+     * успевала появиться раньше имени — тогда сравнивалась заглушка.
+     */
+    await expect(page.locator("h1")).not.toHaveText(/^(Пациент|Пацієнт|Patient)$/);
     const name = (await page.locator("h1").textContent())!.trim();
     await tab.click();
     await expect(page.locator("h1")).toHaveText(name);
