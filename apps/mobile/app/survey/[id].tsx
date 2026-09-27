@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import {
   contentLangNotice,
@@ -19,6 +19,7 @@ import { draftLaneKey, draftLanes } from "@/offline/draftLane";
 import { useExit } from "@/nav/useExit";
 import { finishFailureText, finishSubmission } from "@/runner/finish";
 import { resultView } from "@/runner/resultView";
+import { useOpenReport } from "@/report/useOpenReport";
 import { missedBefore } from "@/runner/progress";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
@@ -40,6 +41,8 @@ export default function TakeSurveyScreen() {
   const { ut, lang } = useLang();
   const router = useRouter();
   const exit = useExit();
+  // «Відкрити висновок» после сдачи — одноразовой ссылкой в браузере (src/report)
+  const report = useOpenReport();
   const navigation = useNavigation();
   const { id, onBehalfOf } = useLocalSearchParams<{ id: string; onBehalfOf?: string }>();
   // чей черновик: локальная копия лежит под владельцем (offline/cache.ts)
@@ -491,7 +494,8 @@ export default function TakeSurveyScreen() {
           <Button
             title={ut("ms.openConclusion")}
             variant="secondary"
-            onPress={() => Linking.openURL(api.reportUrl(responseId))}
+            loading={report.opening}
+            onPress={() => report.open(responseId)}
           />
         ) : null}
         <Button title={ut("msv.toSurveys")} onPress={() => router.replace("/(app)/surveys")} />

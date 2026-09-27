@@ -231,6 +231,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/me/responses": { summary: "Свои прохождения", access: "user" },
   "GET /api/me/dynamics": { summary: "Своя динамика — только по разрешённым методикам", access: "user" },
   "GET /api/reports/responses/:id": { summary: "Отчёт по прохождению для печати", access: "staff", whyNoPermission: "своё прохождение печатает сам обследуемый; персоналу доступ уже ограничен областью ответственности" },
+  "POST /api/reports/responses/:id/link": { summary: "Одноразовая ссылка на тот же лист для браузера телефона (мобилка): минута, одно открытие, язык запроса; проверка доступа и показа результатов — как у самого листа", access: "user", whyNoPermission: "своё прохождение открывает сам обследуемый; персоналу доступ уже ограничен областью ответственности, как у самого листа" },
+  "GET /api/report-links/:token": { summary: "Открытие одноразовой ссылки на лист прохождения: без входа, ссылка сама — разрешение; повтор, просроченная и чужая — 410", access: "public" },
 
   /* ── назначения ── */
   "GET /api/access/surveys/:id/grants": { summary: "Кому назначена методика", access: "staff", permission: "assignments.manage" },

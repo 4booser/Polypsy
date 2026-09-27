@@ -953,6 +953,9 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "analytics.survey": "act.analytics_survey",
   "analytics.export": "act.analytics_export",
   "report.render": "act.report_render",
+  /* одноразовая ссылка на лист для браузера телефона (мобилка, волна 14) */
+  "report.link_issue": "act.report_link_issue",
+  "report.link_refused": "act.report_link_refused",
   "alert.list": "act.alert_list",
   "alert.acknowledge": "act.alert_acknowledge",
   "audit.read": "act.audit_read",
