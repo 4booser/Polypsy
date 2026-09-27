@@ -58,7 +58,10 @@ describe("размер тела запроса", () => {
     const { id, specialist, patient } = await recordingInProgress();
 
     const form = new FormData();
-    form.append("audio", new File([new Uint8Array(TWO_MIB).fill(3)], "visit.wav", { type: "audio/wav" }));
+    // сигнатура WebM в начале: приём файла смотрит в байты и мусор не берёт (волна 12)
+    const audio = new Uint8Array(TWO_MIB).fill(3);
+    audio.set([0x1a, 0x45, 0xdf, 0xa3], 0);
+    form.append("audio", new File([audio], "visit.webm", { type: "audio/webm" }));
     const res = await app.request(`/api/recordings/${id}/stop`, {
       method: "POST",
       headers: { Authorization: `Bearer ${specialist.token}` },

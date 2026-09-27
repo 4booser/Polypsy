@@ -104,6 +104,12 @@ const schema = z.object({
   WHISPER_BIN: z.string().max(400).optional(),
   WHISPER_MODEL: z.string().max(400).optional(),
   /**
+   * ffmpeg для перевода записи браузера (WebM/Opus, Ogg, MP4/AAC) в WAV 16 кГц
+   * моно — единственное, что читает whisper.cpp без своей сборки с FFmpeg.
+   * Пусто — ищется `ffmpeg` в PATH; в образе он лежит в /usr/local/bin.
+   */
+  FFMPEG_BIN: z.string().max(400).optional(),
+  /**
    * Вход через Google. Пусто — способа входа просто нет, и кнопки тоже.
    *
    * Дополнительный способ, а не замена паролю. В учреждении, где по записи
@@ -298,6 +304,7 @@ export const env = {
   githubDispatchToken: raw.GITHUB_DISPATCH_TOKEN.trim(),
   whisperBin: raw.WHISPER_BIN,
   whisperModel: raw.WHISPER_MODEL,
+  ffmpegBin: raw.FFMPEG_BIN ?? "ffmpeg",
   corsOrigins: raw.CORS_ORIGINS
     ? raw.CORS_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
     : isProduction

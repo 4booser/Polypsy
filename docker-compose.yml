@@ -210,11 +210,21 @@ services:
       RECORDINGS_DIR: /data/recordings
       WHISPER_BIN: /usr/local/bin/whisper-cli
       WHISPER_MODEL: /models/ggml-${WHISPER_MODEL_NAME:-small}.bin
+      # запись браузера (WebM/Ogg/MP4) переводится в WAV перед whisper
+      FFMPEG_BIN: /usr/local/bin/ffmpeg
       # планировщик живёт в api: два тика на одну базу выдали бы задания дважды
       SCHEDULER_ENABLED: "0"
     volumes:
       - recordings:/data/recordings
       - models:/models
+    # Открытое аудио на время расшифровки лежит во временном каталоге — и
+    # только в памяти. Прежде временный WAV писался в том записей, а том
+    # уходит в копии: снятая посреди расшифровки копия уносила разговор
+    # открытым. tmpfs вдобавок пустеет сам, если процесс убит посреди
+    # работы и finally не успел убрать за собой. Размер — с запасом на
+    # трёхчасовой приём (WAV 16 кГц моно — около 350 МБ).
+    tmpfs:
+      - /tmp:size=1g,mode=1777
     deploy:
       resources:
         limits:
