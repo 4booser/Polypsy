@@ -74,7 +74,7 @@ export default function BookingScreen() {
         ]);
       } else {
         Alert.alert(ut("bk.booked"), "", [
-          { text: "OK", onPress: () => router.replace("/home") },
+          { text: ut("hint.gotIt"), onPress: () => router.replace("/home") },
         ]);
       }
     } finally {

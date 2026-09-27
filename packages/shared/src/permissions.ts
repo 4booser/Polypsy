@@ -13,10 +13,12 @@
  * а не в коде. Здесь только словарь того, что вообще бывает.
  */
 
+import type { Lang } from "./types";
+
 export const PERMISSION_GROUPS = [
   {
     code: "clinic",
-    title: { uk: "Клінічна робота", ru: "Клиническая работа" },
+    title: { uk: "Клінічна робота", ru: "Клиническая работа", en: "Clinical work" },
     permissions: [
       "patients.read",
       "notes.write",
@@ -29,7 +31,7 @@ export const PERMISSION_GROUPS = [
   },
   {
     code: "reception",
-    title: { uk: "Прийом і розклад", ru: "Приём и расписание" },
+    title: { uk: "Прийом і розклад", ru: "Приём и расписание", en: "Appointments and schedule" },
     permissions: [
       "schedule.own",
       "appointments.manage",
@@ -48,12 +50,12 @@ export const PERMISSION_GROUPS = [
   },
   {
     code: "risk",
-    title: { uk: "Тривоги та чергування", ru: "Тревоги и дежурство" },
+    title: { uk: "Тривоги та чергування", ru: "Тревоги и дежурство", en: "Alerts and on-call duty" },
     permissions: ["alerts.review"],
   },
   {
     code: "measure",
-    title: { uk: "Вимірювання", ru: "Измерения" },
+    title: { uk: "Вимірювання", ru: "Измерения", en: "Measurement" },
     permissions: [
       "surveys.read",
       "surveys.edit",
@@ -67,7 +69,7 @@ export const PERMISSION_GROUPS = [
   },
   {
     code: "analysis",
-    title: { uk: "Розбір і вивантаження", ru: "Разбор и выгрузки" },
+    title: { uk: "Розбір і вивантаження", ru: "Разбор и выгрузки", en: "Analysis and exports" },
     permissions: [
       "analytics.read",
       /*
@@ -87,7 +89,7 @@ export const PERMISSION_GROUPS = [
   },
   {
     code: "admin",
-    title: { uk: "Адміністрування", ru: "Администрирование" },
+    title: { uk: "Адміністрування", ru: "Администрирование", en: "Administration" },
     permissions: ["users.manage", "groups.manage", "audit.read", "decisions.manage", "console.use"],
   },
   /*
@@ -107,7 +109,7 @@ export const PERMISSION_GROUPS = [
    */
   {
     code: "ops",
-    title: { uk: "Технічна служба", ru: "Техническая служба" },
+    title: { uk: "Технічна служба", ru: "Техническая служба", en: "Technical service" },
     /*
      * Смотреть и управлять — разные права. ops.read ничего не меняет в
      * системе; ops.manage включает режим обслуживания, флаги функций и
@@ -117,7 +119,7 @@ export const PERMISSION_GROUPS = [
      */
     permissions: ["ops.read", "ops.manage"],
   },
-] as const;
+] as const satisfies readonly { code: string; title: CatalogText; permissions: readonly string[] }[];
 
 export type PermissionGroupCode = (typeof PERMISSION_GROUPS)[number]["code"];
 export type Permission = (typeof PERMISSION_GROUPS)[number]["permissions"][number];
@@ -153,46 +155,70 @@ export const EXCEPTION_PERMISSIONS: readonly Permission[] = [
   "alerts.review",
 ];
 
-/** Пояснение к праву на двух языках: экран прав объясняет, а не перечисляет. */
-export const PERMISSION_TITLES: Record<Permission, { uk: string; ru: string }> = {
-  "console.use": { uk: "Командна консоль", ru: "Командная консоль" },
-  "ops.read": { uk: "Технічна панель: логи, помилки, навантаження", ru: "Техническая панель: логи, ошибки, нагрузка" },
-  "ops.manage": { uk: "Керувати роботою системи", ru: "Управлять работой системы" },
-  "patients.read": { uk: "Бачити пацієнтів і їхню динаміку", ru: "Видеть пациентов и их динамику" },
-  "notes.write": { uk: "Вести записи прийому", ru: "Вести записи приёма" },
-  "conclusions.write": { uk: "Готувати висновки", ru: "Готовить заключения" },
-  "conclusions.sign": { uk: "Підписувати висновки", ru: "Подписывать заключения" },
-  "referrals.manage": { uk: "Виписувати й вести направлення", ru: "Выписывать и вести направления" },
-  "episodes.manage": { uk: "Вести звернення: відкривати й закривати", ru: "Вести обращения: открывать и закрывать" },
-  "safety.manage": { uk: "Складати план безпеки", ru: "Составлять план безопасности" },
+/**
+ * Текст справочника — на всех трёх языках оболочки, и компилятор это держит.
+ *
+ * Справочник прав жил на двух языках, когда английский уже стал языком
+ * оболочки (волна 9): словарь UI перевели целиком, а этот текст лежит не в
+ * нём, и перевод его обошёл. На английском экране прав названия прав и групп
+ * выходили пустыми — экран читал `title[lang]`, а поля `en` не было, — а в
+ * техпанели на месте названия выданного права стоял украинский. Пустая
+ * строчка у галочки хуже чужого языка: по ней не понять даже, что это за
+ * право.
+ *
+ * Почему не ключи словаря UI. Справочник отдаёт сервер (GET
+ * /api/permissions/catalogue), и та же запись уходит клиенту целиком — как
+ * тексты флагов функций (featureFlags.ts). Перенос в UI дал бы второй
+ * источник: сервер отдавал бы одно, экран показывал бы другое.
+ *
+ * Тип `Record<Lang, string>` вместо `{ uk; ru }` делает то же, что
+ * `satisfies Record<string, UiEntry>` у словаря: запись без английского не
+ * соберётся, и новый язык оболочки потребует перевода здесь же. Буквы языков
+ * (русские в украинском, кириллица в английском) проверяет
+ * apps/web/test/noRawStrings.test.ts.
+ */
+export type CatalogText = Record<Lang, string>;
 
-  "schedule.own": { uk: "Вести свій розклад прийому", ru: "Вести своё расписание приёма" },
-  "appointments.manage": { uk: "Записувати, переносити й скасовувати прийоми", ru: "Записывать, переносить и отменять приёмы" },
-  "departments.manage": { uk: "Вести відділення та профілі фахівців", ru: "Вести отделения и профили специалистов" },
-  "messages.write": { uk: "Листуватися з пацієнтами", ru: "Переписываться с пациентами" },
-  "mailings.manage": { uk: "Відправляти розсилки пацієнтам", ru: "Рассылать сообщения пациентам" },
+/** Пояснение к праву: экран прав объясняет, а не перечисляет. */
+export const PERMISSION_TITLES: Record<Permission, CatalogText> = {
+  "console.use": { uk: "Командна консоль", ru: "Командная консоль", en: "Command console" },
+  "ops.read": { uk: "Технічна панель: логи, помилки, навантаження", ru: "Техническая панель: логи, ошибки, нагрузка", en: "Tech panel: logs, errors, load" },
+  "ops.manage": { uk: "Керувати роботою системи", ru: "Управлять работой системы", en: "Manage how the system runs" },
+  "patients.read": { uk: "Бачити пацієнтів і їхню динаміку", ru: "Видеть пациентов и их динамику", en: "See patients and their progress" },
+  "notes.write": { uk: "Вести записи прийому", ru: "Вести записи приёма", en: "Keep appointment notes" },
+  "conclusions.write": { uk: "Готувати висновки", ru: "Готовить заключения", en: "Prepare conclusions" },
+  "conclusions.sign": { uk: "Підписувати висновки", ru: "Подписывать заключения", en: "Sign conclusions" },
+  "referrals.manage": { uk: "Виписувати й вести направлення", ru: "Выписывать и вести направления", en: "Issue and track referrals" },
+  "episodes.manage": { uk: "Вести звернення: відкривати й закривати", ru: "Вести обращения: открывать и закрывать", en: "Manage episodes of care: open and close them" },
+  "safety.manage": { uk: "Складати план безпеки", ru: "Составлять план безопасности", en: "Draw up safety plans" },
 
-  "alerts.review": { uk: "Розбирати випадки ризику", ru: "Разбирать случаи риска" },
+  "schedule.own": { uk: "Вести свій розклад прийому", ru: "Вести своё расписание приёма", en: "Manage own appointment schedule" },
+  "appointments.manage": { uk: "Записувати, переносити й скасовувати прийоми", ru: "Записывать, переносить и отменять приёмы", en: "Book, reschedule and cancel appointments" },
+  "departments.manage": { uk: "Вести відділення та профілі фахівців", ru: "Вести отделения и профили специалистов", en: "Manage departments and specialist profiles" },
+  "messages.write": { uk: "Листуватися з пацієнтами", ru: "Переписываться с пациентами", en: "Message patients" },
+  "mailings.manage": { uk: "Відправляти розсилки пацієнтам", ru: "Рассылать сообщения пациентам", en: "Send mailings to patients" },
 
-  "surveys.read": { uk: "Бачити методики", ru: "Видеть методики" },
-  "surveys.edit": { uk: "Редагувати методики та ключі підрахунку", ru: "Редактировать методики и ключи подсчёта" },
-  "surveys.publish": { uk: "Публікувати та знімати методики", ru: "Публиковать и снимать методики" },
-  "batteries.manage": { uk: "Складати батареї", ru: "Составлять батареи" },
-  "assignments.manage": { uk: "Призначати методики й давати доступ", ru: "Назначать методики и давать доступ" },
-  "invites.manage": { uk: "Створювати запрошення", ru: "Создавать приглашения" },
-  "administer": { uk: "Заповнювати методику за пацієнта", ru: "Заполнять методику за пациента" },
-  "norms.manage": { uk: "Вести локальні норми", ru: "Вести локальные нормы" },
+  "alerts.review": { uk: "Розбирати випадки ризику", ru: "Разбирать случаи риска", en: "Review risk cases" },
 
-  "analytics.read": { uk: "Дивитися аналітику методик", ru: "Смотреть аналитику методик" },
-  "statistics.read": { uk: "Будувати статистику за вибірками", ru: "Строить статистику по выборкам" },
-  "cohorts.read": { uk: "Збирати когорти", ru: "Собирать когорты" },
-  "export.deidentified": { uk: "Вивантажувати знеособлені дані", ru: "Выгружать обезличенные данные" },
-  "export.full": { uk: "Вивантажувати дані з іменами", ru: "Выгружать данные с именами" },
+  "surveys.read": { uk: "Бачити методики", ru: "Видеть методики", en: "See instruments" },
+  "surveys.edit": { uk: "Редагувати методики та ключі підрахунку", ru: "Редактировать методики и ключи подсчёта", en: "Edit instruments and scoring keys" },
+  "surveys.publish": { uk: "Публікувати та знімати методики", ru: "Публиковать и снимать методики", en: "Publish and retire instruments" },
+  "batteries.manage": { uk: "Складати батареї", ru: "Составлять батареи", en: "Compose batteries" },
+  "assignments.manage": { uk: "Призначати методики й давати доступ", ru: "Назначать методики и давать доступ", en: "Assign instruments and grant access" },
+  "invites.manage": { uk: "Створювати запрошення", ru: "Создавать приглашения", en: "Create invitations" },
+  "administer": { uk: "Заповнювати методику за пацієнта", ru: "Заполнять методику за пациента", en: "Fill in an instrument on a patient’s behalf" },
+  "norms.manage": { uk: "Вести локальні норми", ru: "Вести локальные нормы", en: "Manage local norms" },
 
-  "users.manage": { uk: "Вести облікові записи", ru: "Вести учётные записи" },
-  "groups.manage": { uk: "Вести групи та їхніх адміністраторів", ru: "Вести группы и их администраторов" },
-  "audit.read": { uk: "Читати журнал доступу", ru: "Читать журнал доступа" },
-  "decisions.manage": { uk: "Вмикати кризовий режим", ru: "Включать кризисный режим" },
+  "analytics.read": { uk: "Дивитися аналітику методик", ru: "Смотреть аналитику методик", en: "View instrument analytics" },
+  "statistics.read": { uk: "Будувати статистику за вибірками", ru: "Строить статистику по выборкам", en: "Build statistics on samples" },
+  "cohorts.read": { uk: "Збирати когорти", ru: "Собирать когорты", en: "Build cohorts" },
+  "export.deidentified": { uk: "Вивантажувати знеособлені дані", ru: "Выгружать обезличенные данные", en: "Export de-identified data" },
+  "export.full": { uk: "Вивантажувати дані з іменами", ru: "Выгружать данные с именами", en: "Export data with names" },
+
+  "users.manage": { uk: "Вести облікові записи", ru: "Вести учётные записи", en: "Manage accounts" },
+  "groups.manage": { uk: "Вести групи та їхніх адміністраторів", ru: "Вести группы и их администраторов", en: "Manage groups and their administrators" },
+  "audit.read": { uk: "Читати журнал доступу", ru: "Читать журнал доступа", en: "Read the access log" },
+  "decisions.manage": { uk: "Вмикати кризовий режим", ru: "Включать кризисный режим", en: "Switch on crisis mode" },
 };
 
 /**
@@ -224,7 +250,7 @@ export type PermissionEffectKind = "screen" | "analysis" | "action";
 export interface PermissionEffect {
   kind: PermissionEffectKind;
   /** Что именно появится — теми словами, какими это названо на экране */
-  opens: { uk: string; ru: string };
+  opens: CatalogText;
 }
 
 export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
@@ -233,37 +259,40 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Розділи «Пацієнти», зведення дня і «Що від мене чекають»; хронологія людини й амбулаторна карта",
       ru: "Разделы «Пациенты», сводка дня и «Что от меня ждут»; хронология человека и амбулаторная карта",
+      en: "The “Patients” section, the daily overview and “What is expected of me”; a person’s timeline and outpatient record",
     },
   },
   "notes.write": {
     kind: "action",
-    opens: { uk: "Записи прийому: вести й підписувати", ru: "Записи приёма: вести и подписывать" },
+    opens: { uk: "Записи прийому: вести й підписувати", ru: "Записи приёма: вести и подписывать", en: "Appointment notes: write and sign them" },
   },
   "conclusions.write": {
     kind: "action",
-    opens: { uk: "Чернетка висновку за результатами", ru: "Черновик заключения по результатам" },
+    opens: { uk: "Чернетка висновку за результатами", ru: "Черновик заключения по результатам", en: "A draft conclusion based on the results" },
   },
   "conclusions.sign": {
     kind: "action",
     opens: {
       uk: "Підпис висновку — після нього текст уже не змінюють",
       ru: "Подпись заключения — после неё текст уже не меняют",
+      en: "Signing a conclusion — after that the text is no longer changed",
     },
   },
   "referrals.manage": {
     kind: "screen",
-    opens: { uk: "Розділ «Направлення» і рух їхніх статусів", ru: "Раздел «Направления» и движение их статусов" },
+    opens: { uk: "Розділ «Направлення» і рух їхніх статусів", ru: "Раздел «Направления» и движение их статусов", en: "The “Referrals” section and moving referrals through their statuses" },
   },
   "episodes.manage": {
     kind: "action",
     opens: {
       uk: "Звернення: відкриття, закриття з наслідком — і диспансерний облік",
       ru: "Обращения: открытие, закрытие с исходом — и диспансерный учёт",
+      en: "Episodes of care: opening, closing with an outcome — and the dispensary register",
     },
   },
   "safety.manage": {
     kind: "action",
-    opens: { uk: "План безпеки пацієнта", ru: "План безопасности пациента" },
+    opens: { uk: "План безпеки пацієнта", ru: "План безопасности пациента", en: "The patient’s safety plan" },
   },
 
   "schedule.own": {
@@ -271,6 +300,7 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Розділ «Мій розклад»: звичайний тиждень, відпустки й заміни",
       ru: "Раздел «Моё расписание»: обычная неделя, отпуска и замены",
+      en: "The “My schedule” section: the regular week, leave and cover",
     },
   },
   "appointments.manage": {
@@ -278,6 +308,7 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Запис, перенесення, скасування прийомів і відмітки явки",
       ru: "Запись, перенос, отмена приёмов и отметки явки",
+      en: "Booking, rescheduling and cancelling appointments, and marking attendance",
     },
   },
   "departments.manage": {
@@ -285,17 +316,19 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Відділення та профілі фахівців: кабінети, тривалість прийому, скринінг при записі",
       ru: "Отделения и профили специалистов: кабинеты, длительность приёма, скрининг при записи",
+      en: "Departments and specialist profiles: rooms, appointment length, screening at booking",
     },
   },
   "messages.write": {
     kind: "action",
-    opens: { uk: "Листування з пацієнтами", ru: "Переписка с пациентами" },
+    opens: { uk: "Листування з пацієнтами", ru: "Переписка с пациентами", en: "Messaging with patients" },
   },
   "mailings.manage": {
     kind: "screen",
     opens: {
       uk: "Розділ «Повідомлення»: розсилки групам і спискам пацієнтів, відповіді отримувачів",
       ru: "Раздел «Сообщения»: рассылки группам и спискам пациентов, ответы получателей",
+      en: "The “Messages” section: mailings to groups and patient lists, recipients’ replies",
     },
   },
 
@@ -304,48 +337,52 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Розділ «Випадки ризику», потік тривог і правила підтримки рішень",
       ru: "Раздел «Случаи риска», поток тревог и правила поддержки решений",
+      en: "The “Risk cases” section, the alert stream and decision support rules",
     },
   },
 
   "surveys.read": {
     kind: "screen",
-    opens: { uk: "Розділ «Методики»: склад, версії, ключ для друку", ru: "Раздел «Методики»: состав, версии, ключ для печати" },
+    opens: { uk: "Розділ «Методики»: склад, версії, ключ для друку", ru: "Раздел «Методики»: состав, версии, ключ для печати", en: "The “Instruments” section: contents, versions, printable key" },
   },
   "surveys.edit": {
     kind: "action",
     opens: {
       uk: "Конструктор методик і ключі підрахунку — помилка тут псує ВСІ майбутні вимірювання",
       ru: "Конструктор методик и ключи подсчёта — ошибка здесь портит ВСЕ будущие измерения",
+      en: "The instrument builder and scoring keys — a mistake here spoils ALL future measurements",
     },
   },
   "surveys.publish": {
     kind: "action",
-    opens: { uk: "Публікація методики і зняття її з використання", ru: "Публикация методики и снятие её с использования" },
+    opens: { uk: "Публікація методики і зняття її з використання", ru: "Публикация методики и снятие её с использования", en: "Publishing an instrument and retiring it" },
   },
   "batteries.manage": {
     kind: "screen",
-    opens: { uk: "Розділ «Батареї»", ru: "Раздел «Батареи»" },
+    opens: { uk: "Розділ «Батареї»", ru: "Раздел «Батареи»", en: "The “Batteries” section" },
   },
   "assignments.manage": {
     kind: "action",
     opens: {
       uk: "Призначення методик і доступ пацієнта до них",
       ru: "Назначение методик и доступ пациента к ним",
+      en: "Assigning instruments and the patient’s access to them",
     },
   },
   "invites.manage": {
     kind: "screen",
-    opens: { uk: "Розділ «Запрошення»", ru: "Раздел «Приглашения»" },
+    opens: { uk: "Розділ «Запрошення»", ru: "Раздел «Приглашения»", en: "The “Invitations” section" },
   },
   administer: {
     kind: "action",
-    opens: { uk: "Заповнення методики за пацієнта на прийомі", ru: "Заполнение методики за пациента на приёме" },
+    opens: { uk: "Заповнення методики за пацієнта на прийомі", ru: "Заполнение методики за пациента на приёме", en: "Filling in an instrument for the patient during an appointment" },
   },
   "norms.manage": {
     kind: "analysis",
     opens: {
       uk: "Локальні норми: кандидати за вибіркою, вікові криві, публікація",
       ru: "Локальные нормы: кандидаты по выборке, возрастные кривые, публикация",
+      en: "Local norms: candidates from a sample, age curves, publication",
     },
   },
 
@@ -354,6 +391,7 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Аналітика методики: розподіли, психометрика, зрізи, якість даних",
       ru: "Аналитика методики: распределения, психометрика, срезы, качество данных",
+      en: "Instrument analytics: distributions, psychometrics, breakdowns, data quality",
     },
   },
   "statistics.read": {
@@ -361,38 +399,40 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Розділ «Статистика»: пресети фільтрів, статистичні моделі й порівняння вибірок — лише частки, без імен",
       ru: "Раздел «Статистика»: пресеты фильтров, статистические модели и сравнение выборок — только доли, без имён",
+      en: "The “Statistics” section: filter presets, statistical models and sample comparison — proportions only, no names",
     },
   },
   "cohorts.read": {
     kind: "analysis",
-    opens: { uk: "Розділ «Когорти»: відбір і склад поіменно", ru: "Раздел «Когорты»: отбор и состав поимённо" },
+    opens: { uk: "Розділ «Когорти»: відбір і склад поіменно", ru: "Раздел «Когорты»: отбор и состав поимённо", en: "The “Cohorts” section: selection and membership by name" },
   },
   "export.deidentified": {
     kind: "analysis",
-    opens: { uk: "Вивантаження для SPSS, R і Python — без імен", ru: "Выгрузки для SPSS, R и Python — без имён" },
+    opens: { uk: "Вивантаження для SPSS, R і Python — без імен", ru: "Выгрузки для SPSS, R и Python — без имён", en: "Exports for SPSS, R and Python — without names" },
   },
   "export.full": {
     kind: "analysis",
-    opens: { uk: "Вивантаження проходжень з іменами", ru: "Выгрузка прохождений с именами" },
+    opens: { uk: "Вивантаження проходжень з іменами", ru: "Выгрузка прохождений с именами", en: "Export of completions with names" },
   },
 
   "users.manage": {
     kind: "screen",
-    opens: { uk: "Розділ «Облікові записи»: заведення людей і зміна ролі", ru: "Раздел «Учётные записи»: заведение людей и смена роли" },
+    opens: { uk: "Розділ «Облікові записи»: заведення людей і зміна ролі", ru: "Раздел «Учётные записи»: заведение людей и смена роли", en: "The “Accounts” section: adding people and changing their role" },
   },
   "groups.manage": {
     kind: "screen",
-    opens: { uk: "Групи методик та їхні адміністратори", ru: "Группы методик и их администраторы" },
+    opens: { uk: "Групи методик та їхні адміністратори", ru: "Группы методик и их администраторы", en: "Instrument groups and their administrators" },
   },
   "audit.read": {
     kind: "screen",
-    opens: { uk: "Розділ «Журнал доступу» і перевірка його ланцюжка", ru: "Раздел «Журнал доступа» и проверка его цепочки" },
+    opens: { uk: "Розділ «Журнал доступу» і перевірка його ланцюжка", ru: "Раздел «Журнал доступа» и проверка его цепочки", en: "The “Access log” section and verification of its chain" },
   },
   "decisions.manage": {
     kind: "action",
     opens: {
       uk: "Кризовий режим установи: планові заміри стоп, черга за тяжкістю",
       ru: "Кризисный режим учреждения: плановые замеры стоп, очередь по тяжести",
+      en: "Institution crisis mode: scheduled measurements on hold, queue by severity",
     },
   },
   "ops.manage": {
@@ -400,6 +440,7 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Режим обслуговування, прапорці функцій, ручний запуск фонових задач, правила сповіщень — те, що змінює роботу для всіх",
       ru: "Режим обслуживания, флаги функций, ручной запуск фоновых задач, правила оповещений — то, что меняет работу для всех",
+      en: "Maintenance mode, feature flags, manual runs of background jobs, alert rules — what changes the system for everyone",
     },
   },
   "ops.read": {
@@ -407,6 +448,7 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
     opens: {
       uk: "Технічна панель: стан сервера, запити й час відповіді, помилки, логи, база, фонові задачі. Жодних клінічних записів",
       ru: "Техническая панель: состояние сервера, запросы и время ответа, ошибки, логи, база, фоновые задачи. Никаких клинических записей",
+      en: "Tech panel: server health, requests and response times, errors, logs, database, background jobs. No clinical records",
     },
   },
   "console.use": {
@@ -420,6 +462,7 @@ export const PERMISSION_EFFECTS: Record<Permission, PermissionEffect> = {
        */
       uk: "Розділ «Консоль»: ті самі дії рядком замість екрана; понад свої права не дає нічого",
       ru: "Раздел «Консоль»: те же действия строкой вместо экрана; сверх своих прав не даёт ничего",
+      en: "The “Console” section: the same actions typed as a command instead of a screen; grants nothing beyond your own permissions",
     },
   },
 };
