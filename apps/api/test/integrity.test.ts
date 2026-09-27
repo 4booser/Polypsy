@@ -565,7 +565,8 @@ describe("SPSS: переменные по типу вопроса, свобод�
     expect([row.q4_p1, row.q4_p2, row.q4_p3]).toEqual(["3", "1", "2"]); // В, А, Б
 
     // словарь переменных — в той же форме, что данные
-    const codebook = await read(`/api/spss/surveys/${surveyId}/codebook.csv?profile=deidentified`);
+    // подписи — на языке запроса (волна 13): здесь явно русские, как их и сверяют ниже
+    const codebook = await read(`/api/spss/surveys/${surveyId}/codebook.csv?profile=deidentified&lang=ru`);
     expect(codebook).toContain("q2_3;F1.0;2. Кілька: Біль;0=не выбрано | 1=выбрано");
     expect(codebook).toContain("q3_r2;F3.0;3. Матриця: Вечір;1=Погано | 2=Добре");
     expect(codebook).toContain("q4_p1;F3.0;4. Порядок: место 1;1=А | 2=Б | 3=В");

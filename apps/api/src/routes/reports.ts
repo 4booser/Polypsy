@@ -26,15 +26,99 @@ import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
 import { namesOf } from "../lib/names";
 import { decryptField } from "../lib/crypto";
-import { ageAt } from "@quizzy/shared";
-import { SEVERITY_FILL, type Severity } from "@quizzy/shared";
-import { t } from "@quizzy/shared";
+import {
+  ageAt,
+  formatDuration,
+  LOCALE_OF,
+  SEVERITY_FILL,
+  serverText,
+  t,
+  uiText,
+  type Lang,
+  type ServerTextKey,
+  type Severity,
+  type TextParams,
+  type UiKey,
+} from "@quizzy/shared";
 import { getSurveyForResponse } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const reportRoutes = new Hono<AppEnv>();
 
 reportRoutes.use("*", requireAuth);
+
+/*
+ * Язык документа — язык того, кто его открыл (волна 13).
+ *
+ * Печатное заключение было русским целиком, а справка, выписка и карта —
+ * украинскими целиком, и ни то ни другое от интерфейса не зависело: текст
+ * был набран прямо в разметке. Теперь все четыре листа собираются из
+ * словаря сервера (serverStrings.ts, «print.*») на языке запроса — тот же
+ * langOf, по которому сервер выбирает язык названий методик. Консоль шлёт
+ * язык заголовком и при открытии листа во вкладке (apps/web/src/api.ts,
+ * openInTab); без заголовка — украинский, язык учреждения.
+ */
+function sayer(lang: Lang) {
+  return (key: ServerTextKey, params?: TextParams) => serverText(key, lang, params);
+}
+
+/*
+ * Коды состояний на бумаге — словами, а не «done» и «assigned».
+ *
+ * Слова берутся из словаря оболочки: экраны называют те же состояния, и
+ * лист, называющий их иначе, чем экран, заставлял бы сверять два словаря.
+ * Незнакомый код печатается как есть — новое состояние в базе не должно
+ * ронять печать.
+ */
+const CODE_WORDS: Record<string, Record<string, UiKey>> = {
+  appointment: {
+    booked: "day.statusBooked",
+    confirmed: "day.statusConfirmed",
+    arrived: "day.statusArrived",
+    in_progress: "day.statusInProgress",
+    done: "day.statusDone",
+    no_show: "day.statusNoShow",
+    cancelled: "day.statusCancelled",
+  },
+  visitKind: { primary: "day.primary", repeat: "day.repeat" },
+  referralStatus: { created: "st.created", accepted: "st.accepted", completed: "st.completed", declined: "st.declined" },
+  destination: {
+    psychiatrist: "dest.psychiatrist",
+    inpatient: "dest.inpatient",
+    outpatient: "dest.outpatient",
+    commander: "dest.commander",
+    other: "dest.other",
+  },
+  source: {
+    assigned: "visit.sourceAssigned",
+    self: "visit.sourceSelf",
+    kiosk: "visit.sourceKiosk",
+    clinician: "visit.sourceClinician",
+    informant: "visit.sourceInformant",
+    intake: "visit.sourceIntake",
+  },
+  outcome: {
+    improved: "ep.outImproved",
+    stable: "ep.outStable",
+    worse: "ep.outWorse",
+    referred: "ep.outReferred",
+    dropped: "ep.outDropped",
+    transferred: "ep.outTransferred",
+  },
+};
+
+function codeWord(lang: Lang, table: keyof typeof CODE_WORDS, code: string | null | undefined): string {
+  if (!code) return "—";
+  const key = CODE_WORDS[table]?.[code];
+  return key ? uiText(key, lang) : code;
+}
+
+/** Возраст с согласованным существительным: «21 рік», «22 роки», «25 років» */
+function ageText(lang: Lang, age: number): string {
+  const form = new Intl.PluralRules(LOCALE_OF[lang]).select(age);
+  const key: ServerTextKey = form === "one" ? "print.age.one" : form === "few" ? "print.age.few" : "print.age.many";
+  return serverText(key, lang, { age });
+}
 
 /**
  * Печатное заключение по прохождению — самостоятельная HTML-страница.
@@ -52,7 +136,9 @@ reportRoutes.get("/responses/:id", async (c) => {
   if (!own && !isStaff(user)) forbidden("err.conclusionAccessDenied");
   if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
 
-  const survey = await getSurveyForResponse(response.id, langOf(c));
+  const lang = langOf(c);
+  const say = sayer(lang);
+  const survey = await getSurveyForResponse(response.id, lang);
   if (!survey) notFound("err.surveyNotFound");
   /*
    * Печатный отчёт — это баллы, полосы и нормативная выборка. Обследуемому
@@ -128,17 +214,16 @@ reportRoutes.get("/responses/:id", async (c) => {
     details: { surveyId: survey.id, version: survey.versionNumber },
   });
 
+  const age = patient ? ageAt(decryptField(patient.birthDate), response.submittedAt) : null;
   return c.html(
-    renderReport({
+    renderReport(lang, {
       surveyTitle: survey.title,
       versionNumber: survey.versionNumber,
-      patientName: patient ? fullNameOf(patient) : "Анонимный респондент",
+      patientName: patient ? fullNameOf(patient) : say("print.anonymous"),
     patientMeta: patient
       ? [
-          patient.sex ? (patient.sex === "male" ? "муж." : "жен.") : null,
-          ageAt(decryptField(patient.birthDate), response.submittedAt) !== null
-            ? `${ageAt(decryptField(patient.birthDate), response.submittedAt)} лет на момент обследования`
-            : null,
+          patient.sex ? say(patient.sex === "male" ? "print.sexMale" : "print.sexFemale") : null,
+          age !== null ? ageText(lang, age) : null,
           patient.rank,
           patient.unit,
         ]
@@ -166,7 +251,7 @@ reportRoutes.get("/responses/:id", async (c) => {
           const a = answerByQuestion.get(q.id);
           return {
             title: q.title,
-            value: formatValue(a, optionText),
+            value: formatValue(a, optionText, say("print.notAnswered")),
             durationMs: a?.durationMs ?? 0,
           };
         }),
@@ -188,8 +273,9 @@ reportRoutes.get("/responses/:id", async (c) => {
 function formatValue(
   a: { optionIds?: string[] | null; text?: string | null; number?: number | null; date?: string | null; matrix?: Record<string, string> | null; ranking?: string[] | null; skipped?: boolean } | undefined,
   optionText: Map<string, string>,
+  notAnswered: string,
 ): string {
-  if (!a || a.skipped) return "— не отвечено";
+  if (!a || a.skipped) return notAnswered;
   if (a.optionIds?.length) return a.optionIds.map((id) => optionText.get(id) ?? id).join(", ");
   if (a.matrix)
     return Object.entries(a.matrix)
@@ -242,24 +328,32 @@ function esc(v: string): string {
   return v.replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]!);
 }
 
-function renderReport(d: ReportData): string {
-  const duration = d.durationMs >= 60000
-    ? `${Math.floor(d.durationMs / 60000)} мин ${Math.round((d.durationMs % 60000) / 1000)} с`
-    : `${(d.durationMs / 1000).toFixed(1)} с`;
+function renderReport(lang: Lang, d: ReportData): string {
+  const say = sayer(lang);
+  /* длительность — общим форматом консоли: «4,2 с», «1 хв 12 с», «—» у неизмеренной */
+  const duration = formatDuration(d.durationMs, lang);
+
+  /*
+   * Про стили листа: подпись (.sign) не отрывается от документа переносом
+   * страницы, строки таблиц (tr) не рвутся посередине. Пояснение — здесь, а
+   * не CSS-комментарием в <style>: комментарий в разметке уезжал вместе с
+   * листом и читался по-русски в исходнике страницы на любом языке (то же
+   * правило, что у справки ниже).
+   */
 
   const scoreRows = d.scores
     .map(
       (s) => `
       <tr>
         <td>${esc(s.title)}</td>
-        <td class="num">${s.rawScore} из ${s.maxScore}</td>
+        <td class="num">${esc(say("print.scoreOf", { raw: s.rawScore, max: s.maxScore }))}</td>
         <td class="num">${s.percent}%</td>
         <td>${
           s.band
             ? `<span class="dot" style="background:${severityColor(s.severity)}"></span>${esc(s.band)}`
             : "—"
         }</td>
-        <td class="num">${s.percentile === null ? "—" : `${s.percentile}-й`}</td>
+        <td class="num">${s.percentile === null ? "—" : esc(say("print.percentileN", { n: s.percentile }))}</td>
       </tr>`,
     )
     .join("");
@@ -271,14 +365,14 @@ function renderReport(d: ReportData): string {
         <td class="num">${i + 1}</td>
         <td>${esc(a.title)}</td>
         <td>${esc(a.value)}</td>
-        <td class="num">${(a.durationMs / 1000).toFixed(1)} с</td>
+        <td class="num">${esc(formatDuration(a.durationMs, lang))}</td>
       </tr>`,
     )
     .join("");
 
   return `<!doctype html>
-<html lang="ru"><head><meta charset="utf-8">
-<title>Заключение — ${esc(d.surveyTitle)}</title>
+<html lang="${lang}"><head><meta charset="utf-8">
+<title>${esc(say("print.reportTitle", { survey: d.surveyTitle }))}</title>
 <style>
   @page { margin: 18mm; }
   body { font: 13px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
@@ -297,14 +391,12 @@ function renderReport(d: ReportData): string {
   .letterhead .org { font-size: 14px; font-weight: 700; letter-spacing: .01em; }
   .letterhead .unit { font-size: 12px; color: #555; margin-top: 2px; }
 
-  /* подпись не должна отрываться от документа переносом страницы */
   .sign { margin-top: 26px; break-inside: avoid; display: flex; gap: 32px; flex-wrap: wrap; }
   .sign-line { display: flex; align-items: flex-end; gap: 8px; font-size: 12px; color: #444; }
   .sign-line i { display: inline-block; width: 190px; border-bottom: 1px solid #111; }
   .sign-hint { font-size: 10px; color: #888; }
 
   .footer { margin-top: 18px; border-top: 1px solid #e3e3e3; padding-top: 8px; }
-  /* таблицы не рвутся посреди строки при печати */
   tr { break-inside: avoid; }
   h2 { break-after: avoid; }
 </style></head>
@@ -323,45 +415,40 @@ function renderReport(d: ReportData): string {
   }
   <h1>${esc(d.surveyTitle)}</h1>
   <div class="meta">
-    ${esc(d.patientName)}${d.patientMeta ? ` · ${esc(d.patientMeta)}` : ""} · версия методики ${d.versionNumber} ·
-    ${d.submittedAt ? esc(d.submittedAt.slice(0, 16).replace("T", " ")) : "не завершено"} ·
-    время прохождения ${duration}
+    ${esc(d.patientName)}${d.patientMeta ? ` · ${esc(d.patientMeta)}` : ""} · ${esc(say("print.surveyVersion", { n: d.versionNumber }))} ·
+    ${d.submittedAt ? esc(d.submittedAt.slice(0, 16).replace("T", " ")) : esc(say("print.notFinished"))} ·
+    ${esc(say("print.timeTaken", { duration }))}
   </div>
 
   ${
     d.scores.length
-      ? `<h2>Результаты по субшкалам</h2>
+      ? `<h2>${say("print.scoresTitle")}</h2>
   <table>
-    <tr><th>Субшкала</th><th class="num">Балл</th><th class="num">% от максимума</th><th>Интерпретация</th><th class="num">Перцентиль</th></tr>
+    <tr><th>${say("print.colSubscale")}</th><th class="num">${say("print.colScore")}</th><th class="num">${say("print.colPercent")}</th><th>${say("print.colInterpretation")}</th><th class="num">${say("print.colPercentile")}</th></tr>
     ${scoreRows}
   </table>`
       : ""
   }
 
-  <h2>Ответы</h2>
+  <h2>${say("print.answersTitle")}</h2>
   <table>
-    <tr><th class="num">№</th><th>Вопрос</th><th>Ответ</th><th class="num">Время</th></tr>
+    <tr><th class="num">${say("print.colNo")}</th><th>${say("print.colQuestion")}</th><th>${say("print.colAnswer")}</th><th class="num">${say("print.colTime")}</th></tr>
     ${answerRows}
   </table>
 
   ${
     d.conclusion
-      ? `<h2>Заключение специалиста</h2>
+      ? `<h2>${say("print.conclusionTitle")}</h2>
   <div class="conclusion">${esc(d.conclusion.text).replaceAll("\n", "<br>")}</div>
   <div class="meta" style="margin-top:6px">
-    Подписано: ${esc(d.conclusion.signedBy)}${
+    ${esc(say("print.signedBy", { who: d.conclusion.signedBy }))}${
       d.conclusion.signedAt ? `, ${esc(String(d.conclusion.signedAt).slice(0, 16).replace("T", " "))}` : ""
-    } · версия ${d.conclusion.version}
+    } · ${esc(say("print.version", { n: d.conclusion.version }))}
   </div>`
       : ""
   }
 
-  <div class="note">
-    Результат скринингового обследования не является диагнозом. Интерпретацию
-    выполняет специалист с учётом клинической картины и анамнеза.
-    Перцентиль рассчитан относительно выборки, накопленной в этой системе,
-    и не заменяет популяционные нормы методики.
-  </div>
+  <div class="note">${say("print.disclaimer")}</div>
 
   ${
     /*
@@ -374,19 +461,19 @@ function renderReport(d: ReportData): string {
       ? ""
       : `<div class="sign">
     <div class="sign-line">
-      <span>Специалист</span>
+      <span>${say("print.clinician")}</span>
       <i></i>
-      <span class="sign-hint">подпись</span>
+      <span class="sign-hint">${say("print.signature")}</span>
     </div>
     <div class="sign-line">
-      <span>Дата</span>
+      <span>${say("print.date")}</span>
       <i></i>
     </div>
   </div>`
   }
 
   <div class="meta footer">
-    Распечатано: ${esc(d.printedBy)}, ${esc(d.printedAt.slice(0, 16).replace("T", " "))}
+    ${esc(say("print.printedBy", { who: d.printedBy, at: d.printedAt.slice(0, 16).replace("T", " ") }))}
   </div>
 </body></html>`;
 }
@@ -465,7 +552,7 @@ reportRoutes.get("/visits/:id", async (c) => {
   });
 
   return c.html(
-    visitCertificateHtml({
+    visitCertificateHtml(langOf(c), {
       fullName: fullNameOf(patient),
       unit: patient.unit,
       startsAt: slot!.startsAt,
@@ -491,29 +578,34 @@ reportRoutes.get("/visits/:id", async (c) => {
  * лежало бы в самом документе и читалось бы в исходном коде страницы. Это
  * тоже поймала проверка.
  */
-function visitCertificateHtml(d: {
-  fullName: string;
-  unit: string | null;
-  startsAt: string;
-  endsAt: string;
-  timezone: string;
-  specialistName: string;
-}): string {
-  const date = new Date(d.startsAt).toLocaleDateString("uk-UA", { timeZone: d.timezone });
-  const from = new Date(d.startsAt).toLocaleTimeString("uk-UA", {
+function visitCertificateHtml(
+  lang: Lang,
+  d: {
+    fullName: string;
+    unit: string | null;
+    startsAt: string;
+    endsAt: string;
+    timezone: string;
+    specialistName: string;
+  },
+): string {
+  const say = sayer(lang);
+  const locale = LOCALE_OF[lang];
+  const date = new Date(d.startsAt).toLocaleDateString(locale, { timeZone: d.timezone });
+  const from = new Date(d.startsAt).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: d.timezone,
   });
-  const to = new Date(d.endsAt).toLocaleTimeString("uk-UA", {
+  const to = new Date(d.endsAt).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: d.timezone,
   });
 
   return `<!doctype html>
-<html lang="uk"><head><meta charset="utf-8">
-<title>Довідка про відвідування</title>
+<html lang="${lang}"><head><meta charset="utf-8">
+<title>${say("print.certTitle")}</title>
 <style>
   @page { margin: 20mm; }
   body { font: 14px/1.6 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
@@ -536,16 +628,15 @@ function visitCertificateHtml(d: {
     </div>`
       : ""
   }
-  <h1>Довідка про відвідування</h1>
-  <p>Видана ${esc(d.fullName)}${d.unit ? `, ${esc(d.unit)}` : ""} у тому, що ${esc(date)}
-     з ${esc(from)} до ${esc(to)} він(вона) перебував(ла) на прийомі.</p>
-  <p>Довідка видана для пред’явлення за місцем вимоги.</p>
+  <h1>${say("print.certTitle")}</h1>
+  <p>${esc(say("print.certBody", { name: d.fullName, unit: d.unit ? `, ${d.unit}` : "", date, from, to }))}</p>
+  <p>${say("print.certPurpose")}</p>
 
   <div class="sign">
-    <div class="sign-line">Фахівець <i></i></div>
+    <div class="sign-line">${say("print.clinician")} <i></i></div>
     <div class="sign-line">${esc(d.specialistName)}</div>
   </div>
-  <p class="issued">Дата видачі: ${esc(new Date().toLocaleDateString("uk-UA", { timeZone: d.timezone }))}</p>
+  <p class="issued">${esc(say("print.certIssued", { date: new Date().toLocaleDateString(locale, { timeZone: d.timezone }) }))}</p>
 </body></html>`;
 }
 
@@ -605,7 +696,7 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
   });
 
   return c.html(
-    episodeExtractHtml({
+    episodeExtractHtml(langOf(c), {
       fullName: fullNameOf(patient),
       unit: patient.unit,
       openedAt: episode.openedAt,
@@ -632,24 +723,28 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
   );
 });
 
-function episodeExtractHtml(d: {
-  fullName: string;
-  unit: string | null;
-  openedAt: string;
-  closedAt: string | null;
-  reason: string | null;
-  outcome: string | null;
-  leadName: string | null;
-  visits: { at: string; specialist: string; status: string }[];
-  conclusions: { at: string; author: string; text: string }[];
-  referrals: { at: string; destination: string; status: string }[];
-}): string {
-  const day = (iso: string) => new Date(iso).toLocaleDateString("uk-UA");
+function episodeExtractHtml(
+  lang: Lang,
+  d: {
+    fullName: string;
+    unit: string | null;
+    openedAt: string;
+    closedAt: string | null;
+    reason: string | null;
+    outcome: string | null;
+    leadName: string | null;
+    visits: { at: string; specialist: string; status: string }[];
+    conclusions: { at: string; author: string; text: string }[];
+    referrals: { at: string; destination: string; status: string }[];
+  },
+): string {
+  const say = sayer(lang);
+  const day = (iso: string) => new Date(iso).toLocaleDateString(LOCALE_OF[lang]);
   const rows = (items: string[]) => items.join("");
 
   return `<!doctype html>
-<html lang="uk"><head><meta charset="utf-8">
-<title>Витяг за зверненням</title>
+<html lang="${lang}"><head><meta charset="utf-8">
+<title>${say("print.extractTitle")}</title>
 <style>
   @page { margin: 18mm; }
   body { font: 13px/1.55 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
@@ -674,26 +769,26 @@ function episodeExtractHtml(d: {
       ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
       : ""
   }
-  <h1>Витяг за зверненням</h1>
+  <h1>${say("print.extractTitle")}</h1>
   <p class="meta">${esc(d.fullName)}${d.unit ? `, ${esc(d.unit)}` : ""} ·
-     ${esc(day(d.openedAt))} — ${d.closedAt ? esc(day(d.closedAt)) : "триває"}
-     ${d.leadName ? ` · веде ${esc(d.leadName)}` : ""}</p>
+     ${esc(day(d.openedAt))} — ${d.closedAt ? esc(day(d.closedAt)) : say("print.ongoing")}
+     ${d.leadName ? ` · ${esc(say("print.leadBy", { name: d.leadName }))}` : ""}</p>
 
-  ${d.reason ? `<h2>Привід звернення</h2><p>${esc(d.reason)}</p>` : ""}
+  ${d.reason ? `<h2>${say("print.reasonTitle")}</h2><p>${esc(d.reason)}</p>` : ""}
 
-  <h2>Прийоми</h2>
+  <h2>${say("print.visitsTitle")}</h2>
   ${
     d.visits.length
-      ? `<table><tr><th>Дата</th><th>Фахівець</th><th>Стан</th></tr>${rows(
+      ? `<table><tr><th>${say("print.date")}</th><th>${say("print.clinician")}</th><th>${say("print.colStatus")}</th></tr>${rows(
           d.visits.map(
             (v) =>
-              `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td><td>${esc(v.status)}</td></tr>`,
+              `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
           ),
         )}</table>`
-      : "<p>Прийомів не було.</p>"
+      : `<p>${say("print.noVisits")}</p>`
   }
 
-  <h2>Висновки</h2>
+  <h2>${say("print.conclusionsTitle")}</h2>
   ${
     /*
      * Только подписанные. Черновик — мысль вслух, и попасть в дело он не
@@ -706,24 +801,24 @@ function episodeExtractHtml(d: {
               `<div class="conclusion">${esc(x.text)}<div class="meta">${esc(x.author)}, ${esc(day(x.at))}</div></div>`,
           ),
         )
-      : "<p>Підписаних висновків немає.</p>"
+      : `<p>${say("print.noConclusions")}</p>`
   }
 
   ${
     d.referrals.length
-      ? `<h2>Направлення</h2><table><tr><th>Дата</th><th>Куди</th><th>Стан</th></tr>${rows(
+      ? `<h2>${say("print.referralsTitle")}</h2><table><tr><th>${say("print.date")}</th><th>${say("print.colDestination")}</th><th>${say("print.colStatus")}</th></tr>${rows(
           d.referrals.map(
             (r) =>
-              `<tr><td>${esc(day(r.at))}</td><td>${esc(r.destination)}</td><td>${esc(r.status)}</td></tr>`,
+              `<tr><td>${esc(day(r.at))}</td><td>${esc(codeWord(lang, "destination", r.destination))}</td><td>${esc(codeWord(lang, "referralStatus", r.status))}</td></tr>`,
           ),
         )}</table>`
       : ""
   }
 
-  ${d.outcome ? `<h2>Результат</h2><p>${esc(d.outcome)}</p>` : ""}
+  ${d.outcome ? `<h2>${say("print.outcomeTitle")}</h2><p>${esc(d.outcome)}</p>` : ""}
 
   <div class="sign">
-    <div class="sign-line">Фахівець <i></i></div>
+    <div class="sign-line">${say("print.clinician")} <i></i></div>
     ${d.leadName ? `<div class="sign-line">${esc(d.leadName)}</div>` : ""}
   </div>
 </body></html>`;
@@ -791,7 +886,7 @@ reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("pat
   });
 
   return c.html(
-    chartHtml({
+    chartHtml(lang, {
       fullName: fullNameOf(patient),
       unit: patient.unit,
       rank: patient.rank,
@@ -825,28 +920,32 @@ reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("pat
   );
 });
 
-function chartHtml(d: {
-  fullName: string;
-  unit: string | null;
-  rank: string | null;
-  birthDate: string | null;
-  episodes: {
-    openedAt: string;
-    closedAt: string | null;
-    reason: string | null;
-    outcome: string | null;
-    outcomeKind: string | null;
-    lead: string | null;
-  }[];
-  visits: { at: string; specialist: string; kind: string; status: string }[];
-  notes: { at: string; author: string; kind: string; text: string }[];
-  responses: { at: string; title: string; source: string | null }[];
-}): string {
-  const day = (iso: string) => new Date(iso).toLocaleDateString("uk-UA");
+function chartHtml(
+  lang: Lang,
+  d: {
+    fullName: string;
+    unit: string | null;
+    rank: string | null;
+    birthDate: string | null;
+    episodes: {
+      openedAt: string;
+      closedAt: string | null;
+      reason: string | null;
+      outcome: string | null;
+      outcomeKind: string | null;
+      lead: string | null;
+    }[];
+    visits: { at: string; specialist: string; kind: string; status: string }[];
+    notes: { at: string; author: string; kind: string; text: string }[];
+    responses: { at: string; title: string; source: string | null }[];
+  },
+): string {
+  const say = sayer(lang);
+  const day = (iso: string) => new Date(iso).toLocaleDateString(LOCALE_OF[lang]);
 
   return `<!doctype html>
-<html lang="uk"><head><meta charset="utf-8">
-<title>Амбулаторна карта — ${esc(d.fullName)}</title>
+<html lang="${lang}"><head><meta charset="utf-8">
+<title>${say("print.chartTitle")} — ${esc(d.fullName)}</title>
 <style>
   @page { margin: 16mm; }
   body { font: 12.5px/1.5 system-ui, -apple-system, sans-serif; color: #111; margin: 0; }
@@ -869,55 +968,55 @@ function chartHtml(d: {
       ? `<div class="letterhead"><div class="org">${esc(env.institutionName)}</div></div>`
       : ""
   }
-  <h1>Амбулаторна карта</h1>
-  <p class="meta">${esc(d.fullName)}${d.birthDate ? `, ${esc(day(d.birthDate))} р. н.` : ""}${
+  <h1>${say("print.chartTitle")}</h1>
+  <p class="meta">${esc(d.fullName)}${d.birthDate ? `, ${esc(say("print.bornOn", { date: day(d.birthDate) }))}` : ""}${
     d.unit ? ` · ${esc(d.unit)}` : ""
   }${d.rank ? ` · ${esc(d.rank)}` : ""}</p>
 
-  <h2>Звернення</h2>
+  <h2>${say("print.episodesTitle")}</h2>
   ${
     d.episodes.length
-      ? `<table><tr><th>Період</th><th>Привід</th><th>Веде</th><th>Результат</th></tr>${d.episodes
+      ? `<table><tr><th>${say("print.colPeriod")}</th><th>${say("print.colReason")}</th><th>${say("print.colLead")}</th><th>${say("print.outcomeTitle")}</th></tr>${d.episodes
           .map(
             (e) =>
-              `<tr><td>${esc(day(e.openedAt))} — ${e.closedAt ? esc(day(e.closedAt)) : "триває"}</td>` +
+              `<tr><td>${esc(day(e.openedAt))} — ${e.closedAt ? esc(day(e.closedAt)) : say("print.ongoing")}</td>` +
               `<td>${esc(e.reason ?? "—")}</td><td>${esc(e.lead ?? "—")}</td>` +
-              `<td>${esc(e.outcome ?? e.outcomeKind ?? "—")}</td></tr>`,
+              `<td>${esc(e.outcome ?? codeWord(lang, "outcome", e.outcomeKind))}</td></tr>`,
           )
           .join("")}</table>`
-      : '<p class="empty">Звернень не було.</p>'
+      : `<p class="empty">${say("print.noEpisodes")}</p>`
   }
 
-  <h2>Прийоми</h2>
+  <h2>${say("print.visitsTitle")}</h2>
   ${
     d.visits.length
-      ? `<table><tr><th>Дата</th><th>Фахівець</th><th>Вид</th><th>Стан</th></tr>${d.visits
+      ? `<table><tr><th>${say("print.date")}</th><th>${say("print.clinician")}</th><th>${say("print.colKind")}</th><th>${say("print.colStatus")}</th></tr>${d.visits
           .map(
             (v) =>
               `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td>` +
-              `<td>${v.kind === "primary" ? "перший" : "повторний"}</td><td>${esc(v.status)}</td></tr>`,
+              `<td>${esc(codeWord(lang, "visitKind", v.kind))}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
           )
           .join("")}</table>`
-      : '<p class="empty">Прийомів не було.</p>'
+      : `<p class="empty">${say("print.noVisits")}</p>`
   }
 
-  <h2>Обстеження</h2>
+  <h2>${say("print.assessmentsTitle")}</h2>
   ${
     /*
      * Источник прохождения печатается рядом: «сам» и «за призначенням» — это
      * разные сведения о человеке, и в карте они значат разное.
      */
     d.responses.length
-      ? `<table><tr><th>Дата</th><th>Методика</th><th>Звідки</th></tr>${d.responses
+      ? `<table><tr><th>${say("print.date")}</th><th>${say("print.colAssessment")}</th><th>${say("print.colSource")}</th></tr>${d.responses
           .map(
             (r) =>
-              `<tr><td>${esc(day(r.at))}</td><td>${esc(r.title)}</td><td>${esc(r.source ?? "—")}</td></tr>`,
+              `<tr><td>${esc(day(r.at))}</td><td>${esc(r.title)}</td><td>${esc(codeWord(lang, "source", r.source))}</td></tr>`,
           )
           .join("")}</table>`
-      : '<p class="empty">Обстежень не було.</p>'
+      : `<p class="empty">${say("print.noAssessments")}</p>`
   }
 
-  <h2>Записи прийому</h2>
+  <h2>${say("print.notesTitle")}</h2>
   ${
     /*
      * Только подписанные. Черновик — рабочий текст, и в карте, которую
@@ -930,7 +1029,7 @@ function chartHtml(d: {
               `<div class="note">${esc(n.text)}<div class="meta">${esc(n.author)}, ${esc(day(n.at))}</div></div>`,
           )
           .join("")
-      : '<p class="empty">Підписаних записів немає.</p>'
+      : `<p class="empty">${say("print.noNotes")}</p>`
   }
 </body></html>`;
 }

@@ -1,5 +1,5 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
-import { evaluateRules, type DecisionRule, type RuleInput, type ScoreResult } from "@quizzy/shared";
+import { evaluateRules, type DecisionRule, type RuleInput, type ScoreResult, type StoredExplanation } from "@quizzy/shared";
 import { db } from "../db";
 import { decisionRules, responses, ruleHits, surveys } from "../db/schema";
 import { auditSystem } from "./audit";
@@ -104,7 +104,11 @@ export async function applyRules(params: {
         responseId,
         userId,
         surveyId,
-        explanation: { title: match.title, because: match.because, actions: match.actions },
+        /*
+         * Объяснение — кодами условий, не фразой: текстом его делает маршрут
+         * /api/decisions/hits на языке читающего (волна 13).
+         */
+        explanation: { title: match.title, because: match.because, actions: match.actions } satisfies StoredExplanation,
       });
 
       await auditSystem({

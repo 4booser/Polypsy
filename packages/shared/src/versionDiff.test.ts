@@ -75,7 +75,7 @@ describe("сравнение версий", () => {
       [q1, { ...q2, title: "Я засыпаю с трудом" }],
       [scale([{ questionId: "q1", matchKey: "yes", weight: 1 }])],
     );
-    const d = diffVersions(base, after);
+    const d = diffVersions(base, after, "ru");
     expect(d.comparable).toBe(false);
     expect(d.reasons.join(" ")).toContain("влияющей на балл");
   });
@@ -94,9 +94,10 @@ describe("сравнение версий", () => {
 
   test("правка ключа шкалы видна и запрещает сравнение", () => {
     const after = survey([q1, q2], [scale([{ questionId: "q1", matchKey: "no", weight: 1 }])]);
-    const d = diffVersions(base, after);
+    const d = diffVersions(base, after, "ru");
     const changed = d.scales.find((s) => s.code === "Sr")!;
     expect(changed.changes.map((c) => c.field)).toContain("ключ");
+    expect(changed.changes.map((c) => c.code)).toContain("key");
     expect(d.comparable).toBe(false);
   });
 
@@ -107,7 +108,7 @@ describe("сравнение версий", () => {
         bands: [band(0, 12)],
       })],
     );
-    const d = diffVersions(base, after);
+    const d = diffVersions(base, after, "ru");
     expect(d.scales[0]!.changes.map((c) => c.field)).toContain("полосы интерпретации");
     expect(d.comparable).toBe(false);
   });
@@ -115,10 +116,34 @@ describe("сравнение версий", () => {
   test("удалённый и добавленный пункт названы поимённо", () => {
     const q3 = question("q3", "Новый пункт");
     const after = survey([q1, q3], [scale([{ questionId: "q1", matchKey: "yes", weight: 1 }])]);
-    const d = diffVersions(base, after);
+    const d = diffVersions(base, after, "ru");
     expect(d.questions.find((q) => q.kind === "removed")!.title).toBe("Я легко засыпаю");
     expect(d.questions.find((q) => q.kind === "added")!.title).toBe("Новый пункт");
     expect(d.reasons).toContain("убрано пунктов: 1");
     expect(d.reasons).toContain("добавлено пунктов: 1");
+  });
+
+  test("подписи и резюме — на языке запроса, код поля — один на всех (волна 13)", () => {
+    /*
+     * Раньше подписи были русскими при любом языке: украинский специалист
+     * читал «формулировка» и «убрано пунктов» посреди украинского экрана.
+     */
+    const after = survey(
+      [{ ...q1, title: "Життя іноді гірше за смерть" }],
+      [scale([{ questionId: "q1", matchKey: "no", weight: 1 }])],
+    );
+    const uk = diffVersions(base, after, "uk");
+    const ru = diffVersions(base, after, "ru");
+    const en = diffVersions(base, after, "en");
+    const labels = (d: typeof uk) => d.questions.flatMap((q) => q.changes.map((c) => c.field));
+    expect(labels(uk)).toContain("формулювання");
+    expect(labels(ru)).toContain("формулировка");
+    expect(labels(en)).toContain("wording");
+    expect(uk.reasons).toContain("прибрано пунктів: 1");
+    expect(en.reasons).toContain("items removed: 1");
+    // код — машинное имя, от языка не зависит
+    expect(uk.scales[0]!.changes.map((c) => c.code)).toEqual(en.scales[0]!.changes.map((c) => c.code));
+    // без языка — украинский, как у t()
+    expect(diffVersions(base, after).reasons).toEqual(uk.reasons);
   });
 });

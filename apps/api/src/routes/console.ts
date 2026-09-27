@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { audit } from "../lib/audit";
-import { forbidden, parseBody } from "../lib/http";
+import { serverText } from "@quizzy/shared";
+import { forbidden, langOf, parseBody } from "../lib/http";
 import { hasPermission } from "../lib/permissions";
 import { COMMANDS, COMMAND_BY_NAME, CommandError, parseLine } from "../lib/commands";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -27,12 +28,14 @@ consoleRoutes.use("*", requireAuth, requireStaff, requirePermission("console.use
 /** Список команд — для подсказки и дополнения по Tab на клиенте */
 consoleRoutes.get("/commands", async (c) => {
   const user = c.get("user");
+  const lang = langOf(c);
   const items = [];
   for (const cmd of COMMANDS) {
     items.push({
       name: cmd.name,
       usage: cmd.usage,
-      summary: cmd.summary,
+      // описание — на языке консоли (волна 13); в реестре команд лежит ключ
+      summary: serverText(cmd.summary, lang),
       permission: cmd.permission,
       // недоступные не прячем: список, скрывающий половину себя, заставляет
       // гадать, чего не хватает, вместо того чтобы это назвать
@@ -44,6 +47,7 @@ consoleRoutes.get("/commands", async (c) => {
 
 consoleRoutes.post("/run", async (c) => {
   const user = c.get("user");
+  const lang = langOf(c);
   const input = await parseBody(c.req.raw, z.object({ line: z.string().min(1).max(500) }));
   const { name, args } = parseLine(input.line);
 
@@ -59,7 +63,7 @@ consoleRoutes.post("/run", async (c) => {
       outcome: "denied",
       details: { command: name, known: false },
     });
-    return c.json({ lines: [`нет такой команды: ${name}`, "наберите help"], ok: false });
+    return c.json({ lines: [serverText("cmd.unknown", lang, { name }), serverText("cmd.typeHelp", lang)], ok: false });
   }
 
   if (cmd.permission && !(await hasPermission(user, cmd.permission))) {
@@ -89,11 +93,12 @@ consoleRoutes.post("/run", async (c) => {
   });
 
   try {
-    const result = await cmd.run({ user, args });
+    const result = await cmd.run({ user, args, lang });
     return c.json({ lines: result.lines, ok: true });
   } catch (error) {
     if (error instanceof CommandError) {
-      return c.json({ lines: [error.message], ok: false });
+      // фразу ошибки собираем здесь, на языке набравшего команду (см. CommandError)
+      return c.json({ lines: [error.text(lang)], ok: false });
     }
     throw error;
   }

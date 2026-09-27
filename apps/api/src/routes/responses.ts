@@ -1,4 +1,4 @@
-import { bandFor, t } from "@quizzy/shared";
+import { bandFor, renderCoded, t } from "@quizzy/shared";
 import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -542,7 +542,11 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       submittedAt,
       scores: shown ? scores : [],
       reliable: shown ? profile.reliable : null,
-      warnings: shown ? profile.warnings : [],
+      /*
+       * Движок отдаёт предупреждения кодами; фразой они становятся здесь, на
+       * языке сдающего (волна 13). Прежде — русской фразой на любом экране.
+       */
+      warnings: shown ? profile.warnings.map((w) => renderCoded(w, langOf(c))) : [],
       /*
        * Safety-план показывается тому, кто держит устройство, ровно в момент,
        * когда сдача подняла риск, — и только самому обследуемому.

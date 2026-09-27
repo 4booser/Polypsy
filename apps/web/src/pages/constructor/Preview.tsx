@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { computeProfile, type Answer } from "@quizzy/shared";
+import { computeProfile, renderCoded, type Answer } from "@quizzy/shared";
 import { useLang } from "../../lang";
 import { draftToSurvey, type Draft } from "./model";
 import { Button } from "../../ui/primitives";
@@ -203,8 +203,9 @@ export function Preview({ draft, at: focused }: { draft: Draft; at?: number }) {
           )}
           {profile?.warnings.length ? (
             <ul className="key-warn">
+              {/* движок отдаёт предупреждения кодами — фразу собираем на языке консоли */}
               {profile.warnings.map((w, i) => (
-                <li key={i}>{w}</li>
+                <li key={i}>{renderCoded(w, lang)}</li>
               ))}
             </ul>
           ) : null}

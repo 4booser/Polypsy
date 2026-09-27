@@ -445,7 +445,8 @@ describe("шкала без ответов — не вычислена, а не 
     const res = await submit(survey.id, person.token, []);
     expect(res.status).toBe(201);
     expect(res.body.scores, "пустая шкала дала балл и полосу").toEqual([]);
-    expect(res.body.warnings.some((w: string) => w.includes("0 из 3"))).toBe(true);
+    // предупреждение собирается на языке запроса (волна 13); без заголовка — украинский
+    expect(res.body.warnings.some((w: string) => w.includes("0 з 3"))).toBe(true);
     expect(await db.select().from(responseScores).where(eq(responseScores.responseId, res.body.id))).toEqual([]);
   });
 });
