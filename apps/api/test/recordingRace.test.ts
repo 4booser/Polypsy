@@ -485,10 +485,11 @@ describe("расшифровка вне транзакции", () => {
   test("удалили и записали заново, пока работала модель: старый итог не ложится, новый файл цел", async () => {
     /*
      * После удаления согласие остаётся, и специалист вправе начать запись
-     * снова. Путь у файла тот же (`<id записи>.enc`). Отбрасывая итог,
-     * расшифровка стирает файл удалённой записи — и если бы она не
-     * смотрела, что строка уже снова ссылается на файл, она стёрла бы
-     * НОВЫЙ разговор.
+     * снова. Отбрасывая итог, расшифровка стирает файл удалённой записи — и
+     * если бы она не смотрела, на какой файл строка ссылается теперь, она
+     * стёрла бы НОВЫЙ разговор. С волны 12 у каждой загрузки свой путь
+     * (`<id>.<uuid>.enc`, участок recordings), так что проверяется: новый
+     * файл цел и лежит по своему пути, старый стёрт, итог не лёг.
      */
     const q = await queued("again");
     setTranscriberForTests({
@@ -497,7 +498,11 @@ describe("расшифровка вне транзакции", () => {
         expect((await api(`/api/recordings/${q.id}/discard`, q.patient.token, { method: "POST" })).status).toBe(200);
         expect((await api(`/api/recordings/${q.id}/start`, q.specialist.token, { method: "POST" })).status).toBe(200);
         const form = new FormData();
-        form.append("audio", new File([new Uint8Array(64).fill(2)], "visit.wav", { type: "audio/wav" }));
+        // сигнатура WAV (RIFF…WAVE): без неё сервер отказывает по формату (sniffAudio)
+        const wav = new Uint8Array(64).fill(2);
+        wav.set([0x52, 0x49, 0x46, 0x46], 0);
+        wav.set([0x57, 0x41, 0x56, 0x45], 8);
+        form.append("audio", new File([wav], "visit.wav", { type: "audio/wav" }));
         const stopped = await app.request(`/api/recordings/${q.id}/stop`, {
           method: "POST",
           headers: { Authorization: `Bearer ${q.specialist.token}` },
@@ -512,8 +517,11 @@ describe("расшифровка вне транзакции", () => {
     const row = await rowOf(q.id);
     expect(row!.status).toBe("uploaded");
     expect(row!.transcriptEnc).toBeNull();
-    expect(row!.audioPath).toBe(q.path);
-    expect(existsSync(q.path), "стёрт файл новой записи").toBe(true);
+    expect(row!.audioPath).not.toBeNull();
+    expect(row!.audioPath).not.toBe(q.path);
+    expect(existsSync(row!.audioPath!), "стёрт файл новой записи").toBe(true);
+    expect(existsSync(q.path), "файл удалённой записи остался на диске").toBe(false);
+    await eraseAudio(row!.audioPath);
     await closeQueued(q);
   });
 
