@@ -34,7 +34,7 @@ export function TemplatePicker({
   variant?: ButtonProps["variant"];
 }) {
   const { ut } = useLang();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const [open, setOpen] = useState(false);
   const res = useResource(() => (open ? api.templates() : Promise.resolve(null)), [open]);
 
@@ -123,6 +123,7 @@ export function TemplatePicker({
           пишет, а не когда заполняет справочники.
         */}
         <Button
+          disabled={busy}
           size="sm"
           variant="ghost"
           onClick={() =>

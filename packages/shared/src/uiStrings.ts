@@ -7665,6 +7665,15 @@ export const UI = {
     en: "Fix the selection conditions to get a count",
   },
 
+  /* ── w14:webtails ── */
+  "wt.sess.noneFound": { uk: "За цим пошуком сесій немає", ru: "По этому поиску сессий нет", en: "No sessions match this search" },
+  "wt.sess.noneOfUser": {
+    uk: "У цієї людини активних сесій немає",
+    ru: "У этого человека активных сессий нет",
+    en: "This person has no active sessions",
+  },
+  "wt.visit.attempts": { uk: "Спроб — від 1 до 10", ru: "Попыток — от 1 до 10", en: "Attempts: from 1 to 10" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

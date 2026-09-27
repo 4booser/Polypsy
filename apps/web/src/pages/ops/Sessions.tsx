@@ -1,17 +1,19 @@
 import { useCallback, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import type { OpsSession, OpsSessionPage } from "@quizzy/shared";
 import { api } from "../../api";
 import { dateTime } from "../../format";
 import { useLang } from "../../lang";
-import { Loading, useAction } from "../../ui";
+import { useAction } from "../../ui";
 import { Pager } from "../../ui/pager";
-import { pageCount, pageFrom, perFrom } from "../../ui/paging";
+import { pageCount } from "../../ui/paging";
 import { Button } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
-import { useResource } from "../../useResource";
-import { Cell, ColumnHead, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
+import { type Resource, useResource } from "../../useResource";
+import { Cell, ColumnHead, ListPlace, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
 import { ROLE_KEY, personHref } from "./model";
 import { SessionsOverview } from "./people2/charts";
+import { readSessionsFilters, sessionsEmptyKey, sessionsQuery } from "./sessionsModel";
 
 /*
  * Техпанель → «Сесії»: кто сейчас держит вход в систему.
@@ -37,10 +39,13 @@ export default function OpsSessions() {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
-  const q = params.get("q") ?? "";
-  const userId = params.get("user") ?? "";
-  const page = pageFrom(params.get("page"));
-  const per = perFrom(params.get("per"));
+  /*
+   * Отбор — из адреса, но через разбор (sessionsModel.ts): человек не
+   * идентификатором, страница за пределом сервера, абзац в поиске значат
+   * «условия нет», а не «Невірний запит» на месте списка.
+   */
+  const filters = readSessionsFilters(params);
+  const { q, userId, page, per } = filters;
   const settledQ = useDebounced(q);
 
   const update = useCallback(
@@ -60,10 +65,8 @@ export default function OpsSessions() {
     [setParams],
   );
 
-  const res = useResource(
-    () => api.opsSessions({ q: settledQ, userId: userId || undefined, page: String(page), per: String(per) }),
-    [settledQ, userId, page, per],
-  );
+  const query = sessionsQuery(filters, settledQ);
+  const res = useResource(() => api.opsSessions(query), [query]);
   const pages = pageCount(res.data?.total ?? 0, per);
   useEffect(() => {
     if (res.data && page > pages) update({ page: pages > 1 ? String(pages) : null });
@@ -106,59 +109,84 @@ export default function OpsSessions() {
           <span className="text-[13px] text-muted">{ut("ops.sessions.noDevice")}</span>
         </div>
 
-        {res.error ? (
-          <Loading error={res.error} onRetry={res.reload} />
-        ) : !res.data ? (
-          <Loading rows={6} />
-        ) : res.data.items.length === 0 ? (
-          <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ops.sessions.none")}</p>
-        ) : (
-          <>
-            <ColumnHead
-              grid={GRID}
-              labels={[
-                ut("ops.users.account"),
-                ut("adm.role"),
-                ut("ops.sessions.started"),
-                ut("ops.sessions.lastUsed"),
-                ut("ops.sessions.expires"),
-                null,
-              ]}
-            />
-            <ul className="m-0 list-none p-0">
-              {res.data.items.map((s) => (
-                <li key={s.id} className={rowClass(GRID)}>
-                  <div className="min-w-0">
-                    <Link to={personHref({ id: s.userId, role: s.role })} className={nameClass}>
-                      {s.fullName || s.email}
-                    </Link>
-                    <span className={metaClass}>{s.email}</span>
-                  </div>
-                  <Cell label={ut("adm.role")}>{ut(ROLE_KEY[s.role])}</Cell>
-                  <Cell label={ut("ops.sessions.started")}>{dateTime(s.startedAt)}</Cell>
-                  <Cell label={ut("ops.sessions.lastUsed")}>{dateTime(s.lastUsedAt)}</Cell>
-                  <Cell label={ut("ops.sessions.expires")}>{dateTime(s.expiresAt)}</Cell>
-                  <div className="flex justify-end max-[900px]:justify-start">
-                    <Button
-                      variant="ghost"
-                      disabled={busy}
-                      aria-label={`${ut("ops.sessions.end")}: ${s.fullName || s.email}`}
-                      onClick={() =>
-                        void run(async () => {
-                          await api.revokeSession(s.id);
-                          res.reload();
-                        }, ut("ops.sessions.ended"))
-                      }
-                    >
-                      {ut("ops.sessions.end")}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+        <SessionsList
+          res={res}
+          empty={ut(sessionsEmptyKey({ q: settledQ, userId }))}
+          busy={busy}
+          onEnd={(s) =>
+            void run(async () => {
+              await api.revokeSession(s.id);
+              res.reload();
+            }, ut("ops.sessions.ended"))
+          }
+        />
       </RuleSection>
     </>
+  );
+}
+
+/**
+ * Список сессий — всё, что он показывает, из загрузки и «идёт ли действие»:
+ * без своих решений и без сети, поэтому его состояния проверяются без
+ * браузера (test/opsSessions.test.tsx). Место списка — общее у вкладок
+ * (ListPlace): отказ перечитывания после «Завершити» строки не стирает.
+ */
+export function SessionsList({
+  res,
+  empty,
+  busy,
+  onEnd,
+}: {
+  res: Pick<Resource<OpsSessionPage>, "data" | "error" | "reload">;
+  empty: string;
+  /** Идёт завершение: кнопки «Завершити» погашены у всех строк — вторая сессия не уйдёт, пока не кончилась первая */
+  busy: boolean;
+  onEnd: (s: OpsSession) => void;
+}) {
+  const { ut } = useLang();
+  return (
+    <ListPlace items={res.data?.items ?? null} error={res.error} onRetry={res.reload} empty={empty}>
+      {() => (
+        <>
+          <ColumnHead
+            grid={GRID}
+            labels={[
+              ut("ops.users.account"),
+              ut("adm.role"),
+              ut("ops.sessions.started"),
+              ut("ops.sessions.lastUsed"),
+              ut("ops.sessions.expires"),
+              null,
+            ]}
+          />
+          <ul className="m-0 list-none p-0">
+            {res.data!.items.map((s) => (
+              <li key={s.id} className={rowClass(GRID)}>
+                <div className="min-w-0">
+                  <Link to={personHref({ id: s.userId, role: s.role })} className={nameClass}>
+                    {s.fullName || s.email}
+                  </Link>
+                  <span className={metaClass}>{s.email}</span>
+                </div>
+                <Cell label={ut("adm.role")}>{ut(ROLE_KEY[s.role])}</Cell>
+                <Cell label={ut("ops.sessions.started")}>{dateTime(s.startedAt)}</Cell>
+                <Cell label={ut("ops.sessions.lastUsed")}>{dateTime(s.lastUsedAt)}</Cell>
+                <Cell label={ut("ops.sessions.expires")}>{dateTime(s.expiresAt)}</Cell>
+                <div className="flex justify-end max-[900px]:justify-start">
+                  <Button
+                    variant="ghost"
+                    disabled={busy}
+                    aria-label={`${ut("ops.sessions.end")}: ${s.fullName || s.email}`}
+                    onClick={() => onEnd(s)}
+                  >
+                    {ut("ops.sessions.end")}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </ListPlace>
   );
 }

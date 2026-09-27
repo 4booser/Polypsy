@@ -19,7 +19,7 @@ export default function KeyPrint() {
   const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
   const [showItems, setShowItems] = useState(false);
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const { data: sheet, error } = useResource(() => api.keySheet(id!), [id], { enabled: !!id });
 
   if (error)
@@ -49,7 +49,7 @@ export default function KeyPrint() {
             <Button variant="primary" onClick={() => window.print()}>
               {ut("kp.print")}
             </Button>
-            <Button onClick={() => run(() => download(api.methodologyUrl(sheet.surveyId), "methodology.json"))}>
+            <Button disabled={busy} onClick={() => run(() => download(api.methodologyUrl(sheet.surveyId), "methodology.json"))}>
               {ut("key.exportJson")}
             </Button>
             <Link className="btn" to={`/surveys/${sheet.surveyId}/blank`}>

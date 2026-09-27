@@ -416,6 +416,38 @@ describe("заметка приёма", () => {
     expect(blind.status).toBe(409);
   });
 
+  test("сохранение без базы или по устаревшей редакции не затирает чужой черновик (w14:webtails)", async () => {
+    /*
+     * База null на экране приёма значит «записей о человеке не было»:
+     * клиент шлёт baseVersion 0 без редакции (api.saveNote). Экран приёма
+     * слал её и тогда, когда запись просто не загрузилась, — сервер обязан
+     * такую правку отвергнуть, а не положить поверх существующей. То же с
+     * редакцией: правка поверх увиденной, но уже переписанной коллегой.
+     */
+    const person = await makeUser("user", `note-nobase-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    const url = `/api/notes/patients/${person.id}`;
+    const put = (body: unknown) => api(url, adminA.token, { method: "PUT", body: JSON.stringify(body) });
+
+    // записей не было — база null заводит первую версию
+    const first = await put({ text: "Чернетка колеги", baseVersion: 0 });
+    expect(first.status).toBe(200);
+    expect(first.body.current).toMatchObject({ version: 1, revision: 1 });
+
+    // экран, не видевший записи, — отказ, а не вторая «первая»
+    const blind = await put({ text: "Протокол з нуля", baseVersion: 0 });
+    expect(blind.status).toBe(409);
+
+    // коллега переписал черновик; правка поверх увиденной прежней редакции — отказ
+    expect((await put({ text: "Чернетка колеги, виправлено", baseVersion: 1, baseRevision: 1 })).status).toBe(200);
+    const stale = await put({ text: "Моя правка поверх першої редакції", baseVersion: 1, baseRevision: 1 });
+    expect(stale.status).toBe(409);
+
+    const now = await api(url, adminA.token);
+    expect(now.body.current).toMatchObject({ version: 1, revision: 2, status: "draft", text: "Чернетка колеги, виправлено" });
+    expect(now.body.versions).toHaveLength(1);
+  });
+
   test("текст шифруется в базе и читается через API", async () => {
     const { patientNotes } = await import("../src/db/schema");
     const person = await makeUser("user", `note-enc-${crypto.randomUUID()}@test`);

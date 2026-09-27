@@ -21,6 +21,8 @@ import {
   CLEAR_NARROWING,
   emptyQueueKey,
   hasNarrowing,
+  ownGroupsOf,
+  queueGate,
   queueQuery,
   queueSections,
   readFilters,
@@ -30,7 +32,6 @@ import {
   uniqueRows,
   waitingMinutes,
   withCount,
-  withOwnGroup,
   type CaseStatus,
 } from "./alerts/model";
 
@@ -153,9 +154,13 @@ export default function Alerts() {
    */
   const groupsRes = useResource(() => api.patientGroups().catch(() => null), []);
   const groups = groupsRes.data ?? [];
-  const own = groupsRes.data ? groupsRes.data.map((g) => g.id) : null;
-  /* чужая группа из адреса (вид коллеги) не применяется, а не роняет очередь в 404 */
-  const filters = withOwnGroup(readFilters((name) => raw[name] ?? ""), own);
+  /*
+   * Чужая группа из адреса (вид коллеги) не применяется, а не роняет очередь
+   * в 404; пока свои группы в пути, запрос с группой не уходит вовсе
+   * (queueGate): иначе 404 успевал вспыхнуть до их прихода.
+   */
+  const gate = queueGate(readFilters((name) => raw[name] ?? ""), ownGroupsOf(groupsRes));
+  const filters = gate.filters;
 
   /*
    * Несколько параметров разом — одним переходом. Два вызова useUrlState
@@ -186,7 +191,7 @@ export default function Alerts() {
   const page = usePagedResource<AlertCase, AlertCasePage>(
     (cursor) => api.alertCases(queueQuery(filters, PAGE, cursor)),
     [filterKey],
-    { debounceMs: 300 },
+    { debounceMs: 300, enabled: gate.ready },
   );
   const facets = page.head?.facets;
   const grouping = page.head?.grouping ?? (filters.status === "open" && !filters.patient ? "person" : "case");

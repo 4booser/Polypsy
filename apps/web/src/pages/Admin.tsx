@@ -60,7 +60,7 @@ export function ConsentTextBody({
   // английский необязателен: пустое поле — «не задан», и человеку с английским интерфейсом покажут украинский
   const [en, setEn] = useState("");
   const [version, setVersion] = useState<number | null>(null);
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   const current = res.data;
   const view = loadView(res);
@@ -114,6 +114,7 @@ export function ConsentTextBody({
         <Button
           variant="primary"
           disabled={
+            busy ||
             uk.trim().length < 10 ||
             ru.trim().length < 10 ||
             // начатый английский должен быть текстом, а не парой букв — ту же границу держит сервер

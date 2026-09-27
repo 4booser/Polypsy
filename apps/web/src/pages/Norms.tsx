@@ -25,7 +25,7 @@ export default function Norms() {
   const { id } = useParams<{ id: string }>();
   const [tab, setTab] = useState<NormsTab>("table");
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   const res = useResource(() => api.normCandidates(id!), [id], { enabled: !!id });
   const reload = res.reload;
@@ -44,6 +44,7 @@ export default function Norms() {
       actions={
         picked.size ? (
           <Button
+            disabled={busy}
             variant="primary"
             onClick={() =>
               run(async () => {
