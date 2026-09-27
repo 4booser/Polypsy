@@ -212,7 +212,19 @@ surveyRoutes.get("/", async (c) => {
       // drizzle рендерит surveys.id как "id", а внутри подзапроса это имя перехватила бы
       // одноимённая колонка вложенной таблицы
       questionCount: sql<number>`(select count(*) from questions q where q.survey_id = "surveys"."id")`,
-      responseCount: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.status = 'completed')`,
+      /*
+       * Сколько прохождений — сотруднику по всей методике, обследуемому —
+       * только свои. Прежде обследуемому отдавался счёт по всему учреждению:
+       * сколько человек прошли методику, — сведение о других людях, которое
+       * ему ни к чему, а в маленьком подразделении и вовсе указывает на
+       * конкретных. В бою его и так резала политика responses (человек видит
+       * свои прохождения), и одна и та же методика показывала владельцем
+       * базы «6», а ролью приложения «0» — нашёл обход всех GET под ролью
+       * приложения (волна 13). Правило теперь в коде, а не только в базе.
+       */
+      responseCount: isStaff(user)
+        ? sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.status = 'completed')`
+        : sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.user_id = ${user.id} and r.status = 'completed')`,
       completedByMe: sql<number>`(select count(*) from responses r where r.survey_id = "surveys"."id" and r.user_id = ${user.id} and r.status = 'completed')`,
       /*
        * Назначена лично или доступна всем — это разные вещи для того, кто
@@ -290,6 +302,12 @@ surveyRoutes.get("/:id", async (c) => {
   const query = parseQuery(c, surveyGetQuery);
   // raw=1 отдаёт локализованные объекты целиком — этим живёт конструктор
   const raw = query.raw === "1" && isStaff(user);
+  /*
+   * Сотруднику — сначала зона, потом загрузка. Под ролью приложения чужую
+   * методику прячет политика, и загрузка первой отвечала «не найдено» там,
+   * где сюита владельцем получала «вне зоны» (волна 13).
+   */
+  if (isStaff(user)) await assertSurveyAccess(user, c.req.param("id"));
   const survey = await getSurvey(c.req.param("id"), null, langOf(c), raw);
   if (!survey) notFound("err.surveyNotFound");
   if (!isStaff(user)) {
@@ -298,8 +316,6 @@ surveyRoutes.get("/:id", async (c) => {
     if (survey.visibility === "restricted" && !(await hasGrant(user.id, survey.id))) {
       notFound("err.surveyNotFound");
     }
-  } else {
-    await assertSurveyAccess(user, survey.id);
   }
   if (query.version === undefined || query.version === survey.versionNumber) return c.json(survey);
 

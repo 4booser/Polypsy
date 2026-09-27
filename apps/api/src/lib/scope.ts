@@ -1,6 +1,7 @@
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { User } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import {
   appointments,
   batteryItems,
@@ -144,9 +145,23 @@ export async function canAccessSurvey(user: User, surveyId: string): Promise<boo
   return groupIds?.includes(survey.groupId) ?? false;
 }
 
-/** Бросает 404, если методики нет, и 403, если она вне зоны ответственности */
+/**
+ * Бросает 404, если методики нет, и 403, если она вне зоны ответственности.
+ *
+ * Существование спрашивается системной ролью. Под ролью приложения чужую
+ * методику политика surveys_read прячет, и в бою «вне зоны» не наступало
+ * никогда: администратор чужой группы получал «методику не найдено», а сюита
+ * владельцем — 403, и тесты проверяли ответ, которого в бою не бывает
+ * (волна 13, обход всех GET под ролью приложения). Методика — не
+ * персональные данные: различать «нет такой» и «не ваша» здесь решено
+ * намеренно (см. папки методик ниже), и решение должно держаться в бою, а не
+ * только в сюите. Из строки берётся одно «есть ли» — сама методика
+ * по-прежнему читается под политикой.
+ */
 export async function assertSurveyAccess(user: User, surveyId: string): Promise<void> {
-  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
+  const survey = await asSystem(() =>
+    db.query.surveys.findFirst({ where: eq(surveys.id, surveyId), columns: { id: true } }),
+  );
   if (!survey) notFound("err.surveyNotFound");
   if (!(await canAccessSurvey(user, surveyId))) {
     forbidden("err.surveyOutOfScope");
@@ -184,7 +199,13 @@ export async function assertGroupAccess(user: User, groupId: string): Promise<vo
  * (assertSurveyAccess): сначала 404, затем 403 по группе.
  */
 export async function assertSurveyFolderAccess(user: User, folderId: string): Promise<SurveyFolderRow> {
-  const folder = await db.query.surveyFolders.findFirst({ where: eq(surveyFolders.id, folderId) });
+  /*
+   * Системной ролью — по той же причине, что существование методики в
+   * assertSurveyAccess: чужую папку прячет политика, и в бою вместо «не
+   * управляете группой» отвечало «не найдено» (волна 13). Строка отдаётся
+   * вызывающему только после проверки группы ниже.
+   */
+  const folder = await asSystem(() => db.query.surveyFolders.findFirst({ where: eq(surveyFolders.id, folderId) }));
   if (!folder) notFound("err.surveyFolderNotFound");
   await assertGroupAccess(user, folder.groupId);
   return folder;

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import {
   answers,
   appointments,
@@ -23,6 +24,7 @@ import { badRequest, forbidden, langOf, notFound } from "../lib/http";
 import { percentileOf } from "../lib/norms";
 import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
 import { fullNameOf } from "../lib/auth";
+import { namesOf } from "../lib/names";
 import { decryptField } from "../lib/crypto";
 import { ageAt } from "@quizzy/shared";
 import { SEVERITY_FILL, type Severity } from "@quizzy/shared";
@@ -64,12 +66,19 @@ reportRoutes.get("/responses/:id", async (c) => {
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
   const [signedConclusion] = await db
-    .select({ row: conclusions, author: users })
+    .select({ row: conclusions })
     .from(conclusions)
-    .leftJoin(users, eq(users.id, conclusions.signedBy))
     .where(eq(conclusions.responseId, response.id))
     .orderBy(desc(conclusions.version))
     .limit(1);
+  /*
+   * Кто подписал — системной ролью (lib/names.ts), а не соединением с users:
+   * отчёт открывает и сам обследуемый, а строку специалиста политика ему не
+   * показывает — под ролью приложения в подписи стояло «—» (волна 13).
+   */
+  const signer = signedConclusion?.row.signedBy
+    ? (await namesOf([signedConclusion.row.signedBy])).get(signedConclusion.row.signedBy)
+    : undefined;
 
   const [scoreRows, answerRows] = await Promise.all([
     db.select().from(responseScores).where(eq(responseScores.responseId, response.id)),
@@ -80,15 +89,26 @@ reportRoutes.get("/responses/:id", async (c) => {
     ? await db.query.users.findFirst({ where: eq(users.id, response.userId) })
     : null;
 
-  // нормативная выборка по тем же субшкалам этой методики
+  /*
+   * Нормативная выборка по тем же субшкалам этой методики — системной ролью.
+   *
+   * Выборка — это сырые баллы всех прошедших методику, без людей и дат, и
+   * наружу из неё уходит одно число: перцентиль, да и то только от десяти
+   * наблюдений (MIN_NORM_SAMPLE). Под ролью приложения обследуемый видит
+   * только свои прохождения, и выборка у него была из одного-двух баллов:
+   * перцентиль в его отчёте пропадал, хотя сотрудник по тому же
+   * прохождению его видел (волна 13, обход под ролью приложения).
+   */
   const sample = new Map<string, number[]>();
   if (scoreRows.length) {
-    const rows = await db
-      .select({ score: responseScores, code: scales.code })
-      .from(responseScores)
-      .innerJoin(responses, eq(responses.id, responseScores.responseId))
-      .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-      .where(eq(responses.surveyId, response.surveyId));
+    const rows = await asSystem(() =>
+      db
+        .select({ score: responseScores, code: scales.code })
+        .from(responseScores)
+        .innerJoin(responses, eq(responses.id, responseScores.responseId))
+        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
+        .where(eq(responses.surveyId, response.surveyId)),
+    );
     for (const r of rows) {
       const list = sample.get(r.code) ?? [];
       list.push(r.score.rawScore);
@@ -156,7 +176,7 @@ reportRoutes.get("/responses/:id", async (c) => {
               text: decryptField(signedConclusion.row.text) ?? "",
               version: signedConclusion.row.version,
               signedAt: signedConclusion.row.signedAt,
-              signedBy: signedConclusion.author ? fullNameOf(signedConclusion.author) : "—",
+              signedBy: signer ?? "—",
             }
           : null,
       printedBy: fullNameOf(user),
@@ -420,9 +440,13 @@ reportRoutes.get("/visits/:id", async (c) => {
    */
   if (patient.anonymous) badRequest("err.certificateNeedsName");
 
-  const specialist = (await db.query.users.findFirst({
-    where: eq(users.id, appointment.specialistId),
-  }))!;
+  /*
+   * Имя специалиста — системной ролью (lib/names.ts). Справку берёт и сам
+   * пациент, а строку специалиста политика users ему не показывает: под
+   * ролью приложения выборка отдавала undefined, и справка о посещении
+   * падала пятисоткой (волна 13, обход всех GET под ролью приложения).
+   */
+  const specialistName = (await namesOf([appointment.specialistId])).get(appointment.specialistId) ?? "—";
   const [slot] = await db.select().from(slots).where(eq(slots.id, appointment.slotId));
   const profile = await db.query.specialistProfiles.findFirst({
     where: eq(specialistProfiles.userId, appointment.specialistId),
@@ -447,7 +471,7 @@ reportRoutes.get("/visits/:id", async (c) => {
       startsAt: slot!.startsAt,
       endsAt: slot!.endsAt,
       timezone: tz,
-      specialistName: fullNameOf(specialist),
+      specialistName,
     }),
   );
 });

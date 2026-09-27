@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import type { PoolOverride } from "../src/db";
 
 /**
  * Роль без прав владельца — как в бою.
@@ -14,18 +15,31 @@ import { resolve } from "node:path";
  */
 export const RLS_ROLE = "quizzy_rls_test";
 
-/** Завести роль (если нет), выдать права и вернуть адрес подключения ею к тестовой базе */
+/**
+ * Завести роль (если нет), выдать права и вернуть адрес подключения ею к тестовой базе.
+ *
+ * Права — те же, что выдаёт боевой provision.ts, включая отзыв UPDATE и
+ * DELETE на журнале: иначе проверка под «ролью приложения» пропустила бы
+ * то, что в бою упадёт на привилегиях, а не на политике.
+ *
+ * Роль общая на кластер, а сборщики гоняют сюиты параллельно, каждый своей
+ * базой: два одновременных CREATE ROLE после одной и той же проверки «нет
+ * такой» — и второй падает на уникальности имени. Это не ошибка, а гонка за
+ * общее: роль есть, её и берём.
+ */
 export async function rlsRoleUrl(): Promise<string> {
   const postgres = (await import("postgres")).default;
-  const admin = postgres(process.env.DATABASE_URL!, { max: 1 });
+  const admin = postgres(process.env.DATABASE_URL!, { max: 1, onnotice: () => {} });
   await admin.unsafe(`do $$ begin
     if not exists (select from pg_roles where rolname = '${RLS_ROLE}') then
       create role ${RLS_ROLE} login;
     end if;
+  exception when duplicate_object or unique_violation then null;
   end $$`);
   await admin.unsafe(`grant usage on schema public to ${RLS_ROLE}`);
   await admin.unsafe(`grant select, insert, update, delete on all tables in schema public to ${RLS_ROLE}`);
   await admin.unsafe(`grant usage, select on all sequences in schema public to ${RLS_ROLE}`);
+  await admin.unsafe(`revoke update, delete on audit_log from ${RLS_ROLE}`);
   await admin.end();
 
   const url = new URL(process.env.DATABASE_URL!);
@@ -88,3 +102,61 @@ export async function underAppRole<T extends Record<string, unknown>>(
     error?: string;
   };
 }
+
+/* ─────────── Сценарии целиком под ролью приложения, в том же процессе ─────────── */
+
+let pool: Promise<PoolOverride> | null = null;
+
+/**
+ * Пул приложения под ролью без прав владельца — один на процесс.
+ *
+ * Первым делом проверяется, что политики для этого подключения ДЕЙСТВУЮТ:
+ * не суперпользователь, не BYPASSRLS, ни одной своей таблицы. Без этой
+ * проверки ошибка в настройке роли (или локальная база, где роль вдруг
+ * оказалась владельцем) превратила бы все проверки «под ролью приложения»
+ * в проверки их обхода — и они бы честно зеленели.
+ */
+export function appRolePool(): Promise<PoolOverride> {
+  pool ??= (async () => {
+    const postgres = (await import("postgres")).default;
+    const { drizzle } = await import("drizzle-orm/postgres-js");
+    const schema = await import("../src/db/schema");
+    const { checkRls } = await import("../src/lib/rlsGuard");
+    const url = await rlsRoleUrl();
+    // размер и настройки — как у пула приложения (src/db/index.ts)
+    const client = postgres(url, { max: 10, idle_timeout: 20, transform: undefined, onnotice: () => {} });
+    const db = drizzle(client, { schema });
+    const status = await checkRls((query) => db.execute(query) as never);
+    if (status.bypasses || status.role !== RLS_ROLE) {
+      throw new Error(`пул «роли приложения» обходит политики: ${status.role} — ${status.reason}`);
+    }
+    // пул закрывается вместе с процессом и один раз — как пул владельца в fixtures.ts
+    let closed = false;
+    process.on("beforeExit", () => {
+      if (closed) return;
+      closed = true;
+      void client.end({ timeout: 3 }).catch(() => {});
+    });
+    return { db, url };
+  })();
+  return pool;
+}
+
+/**
+ * Выполнить fn так, чтобы всё обращение приложения к базе шло ролью
+ * приложения — как в бою. Код вокруг (фикстуры, проверки теста) остаётся
+ * владельцем. Механика и почему не SET ROLE — в src/db/index.ts (runOnPool).
+ */
+export async function asAppRole<T>(fn: () => Promise<T>): Promise<T> {
+  const { runOnPool } = await import("../src/db");
+  return runOnPool(await appRolePool(), fn);
+}
+
+/**
+ * Весь процесс сюиты — под ролью приложения (QUIZZY_TEST_APP_ROLE=1).
+ *
+ * Отдельный шаг CI прогоняет часть обычной сюиты так: fixtures.ts
+ * пропускает каждый запрос к приложению через asAppRole. Фикстуры и
+ * проверки остаются владельцем, как и в обычном прогоне.
+ */
+export const APP_ROLE_MODE = process.env.QUIZZY_TEST_APP_ROLE === "1";

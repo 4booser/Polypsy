@@ -715,6 +715,13 @@
       "when": 1788474369043,
       "tag": "0107_case_data_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1788474429043,
+      "tag": "0108_app_role_policies",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import type { OpsSqlRefusal, OpsSqlResult } from "@quizzy/shared";
-import { env } from "../env";
+import { currentDatabaseUrl } from "../db";
 
 /**
  * SQL-консоль техпанели: запрос только на чтение, для суперадмина.
@@ -255,7 +255,7 @@ export interface RunOptions {
   userId: string;
   maxRows?: number;
   timeoutMs?: number;
-  /** Адрес базы; по умолчанию — приложения. Тесту нужно подменить роль */
+  /** Адрес базы; по умолчанию — того пула, которым ходит запрос (роль приложения). Тесту нужно подменить роль */
   url?: string;
 }
 
@@ -272,7 +272,7 @@ export async function runReadOnly(text: string, opts: RunOptions): Promise<OpsSq
   const timeoutMs = opts.timeoutMs ?? SQL_TIMEOUT_MS;
   const utility = /^[\s(]*(explain|show)\b/i.test(stripLiterals(text));
 
-  const sql = postgres(opts.url ?? env.databaseUrl, {
+  const sql = postgres(opts.url ?? currentDatabaseUrl(), {
     max: 1,
     idle_timeout: 1,
     connect_timeout: 5,

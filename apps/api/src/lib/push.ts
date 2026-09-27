@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { isLang, type Lang } from "@quizzy/shared";
 import { baseDb, db } from "../db";
-import { systemContext } from "../db/context";
+import { asSystem, systemContext } from "../db/context";
 import { pushDeliveries, pushOutcomes, pushTokens } from "../db/schema";
 import { log } from "./log";
 
@@ -104,18 +104,32 @@ export async function registerDevice(
   /** Язык приложения на устройстве — из заголовка регистрации */
   lang: Lang | null = null,
 ): Promise<void> {
-  await db
-    .insert(pushTokens)
-    .values({ id: crypto.randomUUID(), userId, token, platform, lang })
-    .onConflictDoUpdate({
-      target: pushTokens.token,
-      /*
-       * Язык обновляется при каждой регистрации: человек переключил язык
-       * в приложении — приложение перерегистрирует устройство, и следующее
-       * уведомление придёт уже на новом.
-       */
-      set: { userId, platform, lang, lastSeenAt: new Date().toISOString() },
-    });
+  /*
+   * Системной ролью, и это не послабление. Токен переезжает к тому, кто
+   * вошёл на устройстве последним, — а строка токена до этой минуты
+   * принадлежит предыдущему. Политика push_tokens (своя строка) не пускала
+   * ON CONFLICT DO UPDATE к чужой строке: под ролью приложения регистрация
+   * падала пятисоткой, новый человек уведомлений не получал, а прежний
+   * продолжал получать свои на телефон, которым теперь пользуется другой
+   * (волна 13, прогон platform.test.ts под ролью приложения). Сам токен —
+   * доказательство владения устройством: его выдаёт устройство, а не
+   * сервер. Привязать токен можно только к себе — userId здесь всегда
+   * вошедший, его подставляет маршрут.
+   */
+  await asSystem(() =>
+    db
+      .insert(pushTokens)
+      .values({ id: crypto.randomUUID(), userId, token, platform, lang })
+      .onConflictDoUpdate({
+        target: pushTokens.token,
+        /*
+         * Язык обновляется при каждой регистрации: человек переключил язык
+         * в приложении — приложение перерегистрирует устройство, и следующее
+         * уведомление придёт уже на новом.
+         */
+        set: { userId, platform, lang, lastSeenAt: new Date().toISOString() },
+      }),
+  );
 }
 
 export async function forgetDevice(token: string): Promise<void> {

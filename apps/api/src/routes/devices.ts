@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import { devices, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
@@ -83,21 +84,32 @@ deviceRoutes.post("/checkin", async (c) => {
       : {}),
   };
 
-  const [row] = await db
-    .insert(devices)
-    .values({
-      id: input.deviceId,
-      userId: user.id,
-      label: input.label ?? null,
-      platform: input.platform ?? null,
-      lastSeenAt: now,
-      ...reported,
-    })
-    .onConflictDoUpdate({
-      target: devices.id,
-      set: { lastSeenAt: now, label: input.label ?? null, platform: input.platform ?? null, ...reported },
-    })
-    .returning();
+  /*
+   * Системной ролью: на общем планшете строка устройства принадлежит тому,
+   * кто вошёл первым, а отмечается каждый. Политика devices (своя строка)
+   * не пускала ON CONFLICT DO UPDATE к чужой строке, и под ролью приложения
+   * второй сотрудник получал пятисотку на каждой отметке — команда стирания
+   * ему не приходила бы, даже будь она его (волна 13, прогон platform.test.ts
+   * под ролью приложения). Владелец строки не меняется (userId в set нет), а
+   * что отдать вошедшему — решает проверка ниже, а не роль.
+   */
+  const [row] = await asSystem(() =>
+    db
+      .insert(devices)
+      .values({
+        id: input.deviceId,
+        userId: user.id,
+        label: input.label ?? null,
+        platform: input.platform ?? null,
+        lastSeenAt: now,
+        ...reported,
+      })
+      .onConflictDoUpdate({
+        target: devices.id,
+        set: { lastSeenAt: now, label: input.label ?? null, platform: input.platform ?? null, ...reported },
+      })
+      .returning(),
+  );
 
   /*
    * Устройство, зарегистрированное на другого человека, стирать по этой
