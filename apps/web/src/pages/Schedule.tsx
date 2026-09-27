@@ -7,6 +7,21 @@ import { Button, Field, Input, Num, Select } from "../ui/primitives";
 import { cx } from "../ui/cx";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import {
+  EMPTY_EXCEPTION,
+  afterAdd,
+  exceptionProblem,
+  hoursProblem,
+  weekProblems,
+  type ExceptionForm,
+  type HoursProblem,
+} from "./schedule/model";
+
+/** Что сказать о промежутке с ошибкой (schedule/model.ts) */
+const PROBLEM_KEY: Record<HoursProblem, UiKey> = {
+  order: "uit.form.endBeforeStart",
+  slot: "uit.sched.slotRange",
+};
 
 /** Короткие подписи дней: срез длинного названия даёт «Че» и «Су» */
 const SHORT_KEY: Record<number, UiKey> = {
@@ -135,6 +150,12 @@ export default function SchedulePage() {
       setRows(res.data.templates.map(({ id: _id, ...rest }) => rest));
     }
   }, [res.data]);
+  /*
+   * Неделя с ошибкой не сохраняется: сервер отверг бы её строкой разбора
+   * тела, не назвав, какой из промежутков виноват. Сами ошибки показывает
+   * WeekEdit — у той строки, где они есть.
+   */
+  const invalid = rows !== null && weekProblems(rows).size > 0;
 
   return (
     <Screen res={res} rows={4}>
@@ -171,7 +192,7 @@ export default function SchedulePage() {
                   */}
                   <Button
                     size="sm"
-                    disabled={busy || rows === null}
+                    disabled={busy || rows === null || invalid}
                     onClick={() =>
                       run(async () => {
                         /*
@@ -249,6 +270,7 @@ export default function SchedulePage() {
             <Exceptions
               items={data.exceptions}
               busy={busy}
+              /* успех или отказ — форма решает, стирать ли набранное (schedule/model.ts, afterAdd) */
               onAdd={(input) => run(() => api.addScheduleException(input).then(reload))}
               onRemove={(id) => run(() => api.removeScheduleException(id).then(reload))}
             />
@@ -289,6 +311,8 @@ function SimpleWeek({ onApply }: { onApply: (rows: Row[]) => void }) {
 
   const toggle = (d: number) =>
     setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].sort()));
+  /* та же проверка, что у строки недели: «с 17 до 9» и приём в 0 минут не раскладываются по дням */
+  const problem = hoursProblem({ startsAt: from, endsAt: to, slotMinutes: minutes });
 
   return (
     <div className="px-4 pb-4">
@@ -333,7 +357,7 @@ function SimpleWeek({ onApply }: { onApply: (rows: Row[]) => void }) {
         </Field>
         <Button
           size="sm"
-          disabled={!days.length || to <= from}
+          disabled={!days.length || problem !== null}
           onClick={() =>
             onApply(days.map((weekday) => ({ weekday, startsAt: from, endsAt: to, slotMinutes: minutes })))
           }
@@ -341,6 +365,7 @@ function SimpleWeek({ onApply }: { onApply: (rows: Row[]) => void }) {
           {ut("sched.apply")}
         </Button>
       </div>
+      {problem ? <p className="pt-2 text-caption text-danger">{ut(PROBLEM_KEY[problem])}</p> : null}
       <p className="pt-2 text-caption text-faint">{ut("sched.applyWarn")}</p>
     </div>
   );
@@ -423,6 +448,8 @@ const INTERVAL_COLUMNS = "116px 116px 92px 1fr";
  */
 export function WeekEdit({ rows, onChange }: { rows: Row[]; onChange: (next: Row[]) => void }) {
   const { ut } = useLang();
+  /* ошибки — у своей строки: «конец раньше начала» без номера строки в неделе из десяти не найти */
+  const problems = weekProblems(rows);
 
   return (
     <>
@@ -466,7 +493,7 @@ export function WeekEdit({ rows, onChange }: { rows: Row[]; onChange: (next: Row
                * правку порядок и так верный; разъезжается он только на время
                * самой правки и выправляется сохранением.
                */
-              day={rows.flatMap((row, at) => (row.weekday === weekday ? [{ row, at }] : []))}
+              day={rows.flatMap((row, at) => (row.weekday === weekday ? [{ row, at, problem: problems.get(at) ?? null }] : []))}
               onChange={(at, next) => onChange(rows.map((r, j) => (j === at ? next : r)))}
               onRemove={(at) => onChange(rows.filter((_, j) => j !== at))}
               onAdd={(hours) => onChange([...rows, { weekday, ...hours }])}
@@ -486,8 +513,8 @@ function DayGroup({
   onAdd,
 }: {
   weekday: number;
-  /** Промежутки дня вместе с их местом в общем списке недели: правка идёт по нему */
-  day: { row: Row; at: number }[];
+  /** Промежутки дня вместе с их местом в общем списке недели (правка идёт по нему) и ошибкой, если есть */
+  day: { row: Row; at: number; problem: HoursProblem | null }[];
   onChange: (at: number, next: Row) => void;
   onRemove: (at: number) => void;
   onAdd: (hours: { startsAt: string; endsAt: string; slotMinutes: number }) => void;
@@ -502,9 +529,9 @@ function DayGroup({
     >
       <span className={cx("py-2 text-small", day.length ? "font-medium" : "text-faint")}>{name}</span>
       <div className="flex flex-col items-start gap-1">
-        {day.map(({ row, at }) => (
+        {day.map(({ row, at, problem }) => (
+          <div key={at} className="flex w-full flex-col gap-0.5">
           <div
-            key={at}
             className="grid w-full items-center gap-2"
             style={{ gridTemplateColumns: INTERVAL_COLUMNS }}
           >
@@ -522,12 +549,14 @@ function DayGroup({
             />
             <Input
               aria-label={`${name} · ${ut("sched.to")}`}
+              aria-invalid={problem === "order" || undefined}
               type="time"
               value={row.endsAt}
               onChange={(e) => onChange(at, { ...row, endsAt: e.target.value })}
             />
             <Input
               aria-label={`${name} · ${ut("sched.slotMinutes")}`}
+              aria-invalid={problem === "slot" || undefined}
               type="number"
               min={5}
               max={480}
@@ -543,6 +572,9 @@ function DayGroup({
             >
               {ut("sched.remove")}
             </Button>
+          </div>
+          {/* что не так — под той строкой, где не так: сохранение недели при этом погашено */}
+          {problem ? <span className="text-caption text-danger">{ut(PROBLEM_KEY[problem])}</span> : null}
           </div>
         ))}
         {day.length === 0 ? (
@@ -569,24 +601,23 @@ function Exceptions({
 }: {
   items: { id: string; date: string; kind: "off" | "extra"; startsAt: string | null; endsAt: string | null; note: string | null }[];
   busy: boolean;
-  onAdd: (input: { date: string; kind: "off" | "extra"; startsAt?: string | null; endsAt?: string | null; note?: string | null }) => void;
+  /** Отправить; true — сервер принял, и только тогда форма очищается */
+  onAdd: (input: { date: string; kind: "off" | "extra"; startsAt?: string | null; endsAt?: string | null; note?: string | null }) => Promise<boolean>;
   onRemove: (id: string) => void;
 }) {
   const { ut } = useLang();
-  const [date, setDate] = useState("");
-  const [kind, setKind] = useState<"off" | "extra">("off");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [note, setNote] = useState("");
+  const [form, setForm] = useState<ExceptionForm>(EMPTY_EXCEPTION);
+  const set = (patch: Partial<ExceptionForm>) => setForm((f) => ({ ...f, ...patch }));
+  const problem = exceptionProblem(form);
 
   return (
     <Panel title={ut("sched.exceptions")}>
       <div className="flex flex-wrap items-end gap-2 px-4 pb-3">
         <Field label={ut("sched.date")}>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input type="date" value={form.date} onChange={(e) => set({ date: e.target.value })} />
         </Field>
         <Field label={ut("sched.kind")}>
-          <Select value={kind} onChange={(e) => setKind(e.target.value as "off" | "extra")}>
+          <Select value={form.kind} onChange={(e) => set({ kind: e.target.value as "off" | "extra" })}>
             <option value="off">{ut("sched.excOff")}</option>
             <option value="extra">{ut("sched.excExtra")}</option>
           </Select>
@@ -597,29 +628,28 @@ function Exceptions({
           добавлять; это же проверяет и сервер.
         */}
         <Field label={ut("sched.from")}>
-          <Input type="time" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <Input type="time" value={form.from} onChange={(e) => set({ from: e.target.value })} />
         </Field>
-        <Field label={ut("sched.to")}>
-          <Input type="time" value={to} onChange={(e) => setTo(e.target.value)} />
+        <Field label={ut("sched.to")} error={problem === "order" ? ut("uit.form.endBeforeStart") : undefined}>
+          <Input type="time" value={form.to} onChange={(e) => set({ to: e.target.value })} />
         </Field>
         <Field label={ut("sched.note")}>
-          <Input value={note} onChange={(e) => setNote(e.target.value)} />
+          <Input value={form.note} onChange={(e) => set({ note: e.target.value })} />
         </Field>
         <Button
           size="sm"
-          disabled={busy || !date || (kind === "extra" && (!from || !to))}
-          onClick={() => {
-            onAdd({
-              date,
-              kind,
-              startsAt: from || null,
-              endsAt: to || null,
-              note: note || null,
+          disabled={busy || problem !== null}
+          onClick={async () => {
+            const sent = form;
+            const ok = await onAdd({
+              date: sent.date,
+              kind: sent.kind,
+              startsAt: sent.from || null,
+              endsAt: sent.to || null,
+              note: sent.note || null,
             });
-            setDate("");
-            setFrom("");
-            setTo("");
-            setNote("");
+            /* стирается только принятое: отказ оставляет набранное для правки и повтора */
+            setForm((f) => (f === sent ? afterAdd(f, ok) : f));
           }}
         >
           {ut("sched.addException")}

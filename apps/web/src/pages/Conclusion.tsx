@@ -12,6 +12,7 @@ import {
 } from "@quizzy/shared";
 import { api, openInTab, type ConclusionState } from "../api";
 import { ConclusionEditor, buildDraft } from "../components/ConclusionEditor";
+import { draftSavable } from "../components/versioned";
 import { useLang } from "../lang";
 import { Loading, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
@@ -348,7 +349,9 @@ export function DocumentMenu({
                   {tool === "history" ? ut("cn.hideHistory") : `${ut("cnc.showHistory")} (${state.versions.length})`}
                 </MenuItem>
               ) : null}
+              {/* пустое поле черновиком не сохраняется: см. draftSavable (components/versioned.ts) */}
               <MenuItem
+                disabled={!draftSavable(text ?? "")}
                 onClick={() => {
                   setOpen(false);
                   void run(async () => {
@@ -366,12 +369,23 @@ export function DocumentMenu({
   );
 }
 
-function MenuItem({ children, onClick, autoFocus }: { children: ReactNode; onClick: () => void; autoFocus?: boolean }) {
+function MenuItem({
+  children,
+  onClick,
+  autoFocus,
+  disabled,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  autoFocus?: boolean;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       role="menuitem"
       autoFocus={autoFocus}
+      disabled={disabled}
       onClick={onClick}
       /* `min-h-0` и `border-0` гасят рамку и высоту глобального правила для button из наследия */
       className={cx(

@@ -4,6 +4,7 @@ import { useResource } from "../../useResource";
 import { Modal } from "../../ui";
 import { Button, Field, Input, Select } from "../../ui/primitives";
 import { useLang } from "../../lang";
+import { pastDeadline, today } from "../../components/deadline";
 
 /**
  * «Призначити групі» — второй значок кадра f17.
@@ -27,10 +28,12 @@ export function AssignGroup({ surveyId, onClose }: { surveyId: string; onClose: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ title: string; recipients: number } | null>(null);
+  /* срок в прошлом не отправляется: доступ всей группы истёк бы сразу (components/deadline.ts) */
+  const expiresInPast = pastDeadline(expires, today());
 
   async function assign() {
     const group = groups.data?.find((g) => g.id === groupId);
-    if (!group) return;
+    if (!group || expiresInPast) return;
     setBusy(true);
     setError(null);
     try {
@@ -73,13 +76,13 @@ export function AssignGroup({ surveyId, onClose }: { surveyId: string; onClose: 
               </Select>
             </Field>
           )}
-          <Field label={ut("acc.until")}>
-            <Input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+          <Field label={ut("acc.until")} error={expiresInPast ? ut("uit.form.pastDeadline") : undefined}>
+            <Input type="date" value={expires} min={today()} onChange={(e) => setExpires(e.target.value)} />
           </Field>
           {error || groups.error ? <p className="m-0 text-[13px] text-danger">{error ?? groups.error}</p> : null}
           <div className="flex justify-end gap-[14px]">
             <Button variant="ghost" onClick={onClose}>{ut("common.cancel")}</Button>
-            <Button onClick={assign} disabled={!groupId || busy}>
+            <Button onClick={assign} disabled={!groupId || busy || expiresInPast}>
               {busy ? ut("co.saving") : ut("acc.grant")}
             </Button>
           </div>

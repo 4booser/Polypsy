@@ -613,6 +613,93 @@ export function switchMode(draft: Draft, mode: Mode): Draft {
 }
 
 /**
+ * Одно сохранение за раз.
+ *
+ * Кнопки «Створити» и «Опублікувати» гаснут на время сохранения, а Ctrl+S —
+ * нет: клавиша не знает о состоянии кнопок, а удержанная клавиша повторяет
+ * нажатие десяток раз в секунду. Каждое нажатие начинало своё сохранение, и
+ * новая методика заводилась столько раз, сколько раз повторилась клавиша.
+ * Признак живёт в объекте, а не в состоянии React: решение принимается в
+ * момент нажатия, до перерисовки. Возвращает, пошло ли действие.
+ */
+export async function oneAtATime(gate: { busy: boolean }, run: () => Promise<void>): Promise<boolean> {
+  if (gate.busy) return false;
+  gate.busy = true;
+  try {
+    await run();
+    return true;
+  } finally {
+    gate.busy = false;
+  }
+}
+
+/*
+ * Правка списка вопросов — удаление, перестановка, копия.
+ *
+ * Ключ шкалы ссылается на пункт НОМЕРОМ (DraftScale.key[].item — номер с
+ * единицы), как у сервера: так его печатает пособие («Так → 3, 5, 7»), и
+ * так его набирают в таблице баллов. Список вопросов при этом правился сам
+ * по себе: удалили третий пункт — четвёртый стал третьим, а ключ остался
+ * «3, 5, 7» и молча начал считать бывшие четвёртый, шестой и восьмой. На
+ * экране это не видно ничем: таблица баллов показывает те же номера, что и
+ * до удаления, и методика продолжает выдавать правдоподобные баллы — не за
+ * те ответы. Условия показа от этого уже вылечены (DraftLogic ссылается на
+ * uid); ключ шкалы остаётся номерным, поэтому номера в нём переписываются
+ * вместе со списком — здесь, одной функцией на каждое действие.
+ */
+
+/** Переписать номера пунктов во всех ключах: `to(n)` — новый номер или null, если пункта больше нет */
+function renumberKeys(scales: DraftScale[], to: (item: number) => number | null): DraftScale[] {
+  return scales.map((sc) => {
+    let changed = false;
+    const key = sc.key.flatMap((k) => {
+      const next = to(k.item);
+      if (next === k.item) return [k];
+      changed = true;
+      return next === null ? [] : [{ ...k, item: next }];
+    });
+    return changed ? { ...sc, key } : sc;
+  });
+}
+
+/** Удалить вопрос `i` (с нуля): его строки ключа уходят, номера после него сдвигаются вверх */
+export function removeQuestion(draft: Draft, i: number): Draft {
+  if (i < 0 || i >= draft.questions.length) return draft;
+  const gone = i + 1;
+  return {
+    ...draft,
+    questions: draft.questions.filter((_, k) => k !== i),
+    scales: renumberKeys(draft.scales, (n) => (n === gone ? null : n > gone ? n - 1 : n)),
+  };
+}
+
+/** Переставить вопрос `i` на `delta` мест: ключ идёт за вопросом, а не остаётся на месте */
+export function moveQuestion(draft: Draft, i: number, delta: number): Draft {
+  const j = i + delta;
+  if (i < 0 || i >= draft.questions.length || j < 0 || j >= draft.questions.length || j === i) return draft;
+  const next = [...draft.questions];
+  [next[i], next[j]] = [next[j]!, next[i]!];
+  const a = i + 1;
+  const b = j + 1;
+  return { ...draft, questions: next, scales: renumberKeys(draft.scales, (n) => (n === a ? b : n === b ? a : n)) };
+}
+
+/**
+ * Копия вопроса `i` встаёт сразу за ним. Копия — новый пункт: в ключ она
+ * не попадает (решать, считать ли её, — автору), а номера пунктов после неё
+ * сдвигаются вниз.
+ */
+export function duplicateQuestion(draft: Draft, i: number): Draft {
+  const source = draft.questions[i];
+  if (!source) return draft;
+  const copy = { ...structuredClone(source), uid: newUid() };
+  const next = [...draft.questions];
+  next.splice(i + 1, 0, copy);
+  const at = i + 1;
+  return { ...draft, questions: next, scales: renumberKeys(draft.scales, (n) => (n > at ? n + 1 : n)) };
+}
+
+/**
  * Куда заводится тест: параметры «+ → Новий тест» из каталога.
  *
  * Каталог ведёт на /constructor?folder=<id>&group=<groupId>; папка без группы

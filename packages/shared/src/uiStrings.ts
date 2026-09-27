@@ -7623,6 +7623,48 @@ export const UI = {
     en: "Connection restored — refreshing the data",
   },
 
+  /* ── w13:uitests ── */
+  "uit.views.loadFailed": {
+    uk: "Збережені вигляди не завантажилися — повторити",
+    ru: "Сохранённые виды не загрузились — повторить",
+    en: "Saved views failed to load — retry",
+  },
+  "uit.co.savedNotPublished": {
+    uk: "Методику збережено, але не опубліковано",
+    ru: "Методика сохранена, но не опубликована",
+    en: "The instrument is saved but not published",
+  },
+  "uit.form.pastDeadline": {
+    uk: "Строк не може бути в минулому",
+    ru: "Срок не может быть в прошлом",
+    en: "The deadline can’t be in the past",
+  },
+  "uit.form.endBeforeStart": {
+    uk: "Кінець має бути пізніше за початок",
+    ru: "Конец должен быть позже начала",
+    en: "The end must be later than the start",
+  },
+  "uit.sched.slotRange": {
+    uk: "Тривалість прийому — від 5 до 480 хвилин",
+    ru: "Длительность приёма — от 5 до 480 минут",
+    en: "An appointment lasts from 5 to 480 minutes",
+  },
+  "uit.users.emailInvalid": {
+    uk: "Пошта — у вигляді ім’я@домен, наприклад ivan@clinic.ua",
+    ru: "Почта — в виде имя@домен, например ivan@clinic.ua",
+    en: "The email should look like name@domain, e.g. ivan@clinic.ua",
+  },
+  "uit.password.same": {
+    uk: "Новий пароль збігається з поточним — придумайте інший",
+    ru: "Новый пароль совпадает с текущим — придумайте другой",
+    en: "The new password is the same as the current one — choose another",
+  },
+  "uit.coh.fixToCount": {
+    uk: "Виправте умови відбору — тоді порахуємо",
+    ru: "Исправьте условия отбора — тогда посчитаем",
+    en: "Fix the selection conditions to get a count",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

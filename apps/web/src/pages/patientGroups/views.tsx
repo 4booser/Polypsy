@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { UiKey } from "@quizzy/shared";
 import { api, type SavedView } from "../../api";
 import { useLang } from "../../lang";
-import { Modal, useAction } from "../../ui";
+import { Modal, loadView, useAction } from "../../ui";
 import type { MenuEntry } from "../../ui/menu";
 import { Button, Field, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
@@ -66,7 +66,7 @@ export function usePatientViews(): { entries: MenuEntry[]; dialog: ReactNode } {
         await api.deleteView(v.id);
         res.reload();
       }, ut("views.removed")),
-  });
+  }, { failed: loadView(res) === "failed", retry: res.reload });
 
   const dialog = naming ? (
     <SaveViewDialog
@@ -91,9 +91,19 @@ export function viewMenu(
   search: string,
   ut: (key: UiKey) => string,
   act: { open: (v: SavedView) => void; save: () => void; share: (v: SavedView) => void; remove: (v: SavedView) => void },
+  /**
+   * Как прошла загрузка видов. Отказ — не «видов нет»: меню, бравшее
+   * `views ?? []`, при отказе выглядело ровно как у человека без видов, и
+   * тот, у кого их десяток, решал, что они пропали. Теперь на их месте
+   * пункт «не завантажилися — повторити».
+   */
+  load?: { failed: boolean; retry: () => void },
 ): MenuEntry[] {
   const current = viewParams(search, PATIENT_VIEW_KEYS);
   const active = activeView(views, search, PATIENT_VIEW_KEYS);
+  const failed: MenuEntry[] = load?.failed
+    ? [{ key: "view:failed", label: ut("uit.views.loadFailed"), onSelect: load.retry }]
+    : [];
   const entries: MenuEntry[] = views.map((v) => ({
     key: `view:${v.id}`,
     /* чужой общий вид подписан хозяином: важно понимать, что срез собрал не ты */
@@ -120,7 +130,7 @@ export function viewMenu(
       { key: "view:remove", label: `${ut("views.remove")}: ${active.name}`, danger: true, onSelect: () => act.remove(active) },
     );
   }
-  return entries;
+  return [...failed, ...entries];
 }
 
 /** «Зберегти відбір»: одно поле имени, как переименование отбора людей (Cohorts, RenameDialog) */

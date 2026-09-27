@@ -8,6 +8,7 @@ import { LangSwitch, useLang } from "../lang";
 import { ALWAYS_VISIBLE_RAIL } from "@quizzy/shared";
 import { railGroups } from "../shell/Rail";
 import { SecondFactorSettings } from "./ops/people2/SecondFactor";
+import { changePassword, passwordProblems, passwordReady } from "./passwordModel";
 
 /**
  * Учётная запись сотрудника.
@@ -25,7 +26,7 @@ import { SecondFactorSettings } from "./ops/people2/SecondFactor";
  */
 export default function Account() {
   const { ut } = useLang();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, login } = useAuth();
   const { run, busy } = useAction();
 
   const [firstName, setFirstName] = useState(user?.firstName ?? "");
@@ -33,6 +34,9 @@ export default function Account() {
   const [middleName, setMiddleName] = useState(user?.middleName ?? "");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
+  /* пароль, который сервер уже принял: повтор после неудачного входа только входит (passwordModel.ts) */
+  const [accepted, setAccepted] = useState<string | null>(null);
+  const passwordIssues = passwordProblems({ current, next });
   // умолчание светлое — как макет; см. пояснение в patient/Profile.tsx
   const theme = user?.workspace?.theme ?? (localStorage.getItem("quizzy.theme.v2") || "light");
   const density = user?.workspace?.density ?? "cozy";
@@ -116,17 +120,27 @@ export default function Account() {
             <Field label={ut("acct.currentPassword")}>
               <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
             </Field>
-            <Field label={ut("acct.newPassword")}>
+            {/* длина и «совпадает с текущим» — словами у поля, до нажатия: граница та же, что у сервера */}
+            <Field label={ut("acct.newPassword")} error={passwordIssues.next ? ut(passwordIssues.next) : null}>
               <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
             </Field>
             <div>
               <Button
-                disabled={busy || !current || next.length < 8}
+                disabled={busy || (accepted === null && !passwordReady({ current, next }))}
                 onClick={() =>
                   run(async () => {
-                    await api.changePassword(current, next);
+                    /*
+                     * Смена гасит все сессии, и эту тоже: без входа заново
+                     * первый же следующий запрос упирался бы в погашенную
+                     * сессию. Вход — тем паролем, который сервер принял.
+                     */
+                    await changePassword({ current, next }, accepted, {
+                      change: (c, n) => api.changePassword(c, n),
+                      relogin: (password) => login(user!.email, password),
+                    }, setAccepted);
                     setCurrent("");
                     setNext("");
+                    setAccepted(null);
                   }, ut("acct.passwordChanged"))
                 }
               >

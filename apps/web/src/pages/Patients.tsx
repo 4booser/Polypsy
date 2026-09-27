@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import type { Incomparable, PatientGroupWithCounts, Respondent, UiKey } from "@quizzy/shared";
 import { api, openInTab } from "../api";
@@ -13,15 +13,17 @@ import { IconGear, IconPlusThick } from "../ui/glyphs";
 import { Page } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
 import { Pager } from "../ui/pager";
-import { DEFAULT_PER, pageCount, pageFrom, pagesOf, perFrom, slicePage } from "../ui/paging";
+import { cursorPagePlan, pageCount, pageFrom, perFrom, refilter, slicePage, toPage, toPer } from "../ui/paging";
 import { Input, Tabs } from "../ui/primitives";
+import { patchParams } from "../ui/viewParams";
 import { PatientContext } from "../components/PatientContext";
 import { useLang } from "../lang";
 import { usePagedResource, useResource } from "../useResource";
 import { AssignSurveyDialog, PickGroupDialog } from "./patientGroups/dialogs";
-import { keepPresent, matchesQuery, toggleIn, type PersonLike } from "./patientGroups/model";
+import { grantEach, keepPresent, matchesQuery, newProgress, partialFailure, toggleIn, type PersonLike } from "./patientGroups/model";
 import { PersonGrid, SelectionBar } from "./patientGroups/PersonGrid";
 import { usePatientViews } from "./patientGroups/views";
+import { allTabBody, groupTab, groupTabBody, searchOf } from "./patients/model";
 
 /*
  * Список пациентов — кадр f05 макета: реестр с вкладками-группами.
@@ -95,7 +97,9 @@ import { usePatientViews } from "./patientGroups/views";
  * строки с (N−1)·per по N·per из того, что уже приехало; если их ещё нет и
  * сервер обещает ещё, следующая порция просится сама (см. эффект в
  * AllPatients). Общее число страниц известно без поиска; с поиском оно
- * растёт по мере листания — честнее, чем выдуманное (см. pagesOf).
+ * растёт по мере листания — честнее, чем выдуманное (см. pagesOf). Сколько
+ * просить и когда вернуть на последнюю страницу — ui/paging.ts
+ * (cursorPagePlan), что стоит на месте сетки — patients/model.ts.
  */
 
 /** Что общего у обеих вкладок: адрес, группы, панель контекста */
@@ -120,17 +124,7 @@ export function PatientList() {
   /* всё состояние — в адресе: «посмотри вечернюю группу» пересылают ссылкой */
   const update = useCallback(
     (patch: Record<string, string | null>) => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          for (const [k, v] of Object.entries(patch)) {
-            if (v === null || v === "") next.delete(k);
-            else next.set(k, v);
-          }
-          return next;
-        },
-        { replace: true },
-      );
+      setParams((prev) => patchParams(prev, patch), { replace: true });
     },
     [setParams],
   );
@@ -141,15 +135,18 @@ export function PatientList() {
    */
   const groups = useResource(() => api.patientGroups(), []);
   const list = groups.data ?? [];
-  /* чужая или удалённая группа в адресе — это «Усі», а не пустой экран */
-  const current = groupId && groups.data ? (list.find((g) => g.id === groupId) ?? null) : null;
   /*
+   * Чужая или удалённая группа в адресе — это «Усі», а не пустой экран.
    * Группа в адресе, а список групп ещё не приехал: ждём его, не рисуя
    * «Усі». Иначе по ссылке на группу экран сперва мигал бы чужой вкладкой
    * с её подписью и запрашивал бы список обследованных, который тут же
-   * выбросит.
+   * выбросит. Правила — в patients/model.ts (groupTab).
    */
-  const pending = groupId !== null && !groups.data && !groups.error;
+  const { current, pending, stale } = groupTab(groupId, groups.data, groups.error);
+  /* мёртвая группа уходит и из адреса: экран показывает «Усі» — адрес и сохранённый вид говорят то же */
+  useEffect(() => {
+    if (stale) update({ group: null });
+  }, [stale, update]);
 
   const frame: FrameState = {
     groups: list,
@@ -209,7 +206,7 @@ function Frame({
   const tabs = groups.map((g) => ({
     label: g.title,
     active: g.id === activeId,
-    onSelect: () => update({ group: g.id, page: null }),
+    onSelect: () => update(refilter({ group: g.id })),
     id: `pg-tab-${g.id}`,
     controls: "patients-panel",
   }));
@@ -236,7 +233,7 @@ function Frame({
               look="outline"
               aria-label={ut("ui.search")}
               value={q}
-              onChange={(e) => update({ q: e.target.value, page: null })}
+              onChange={(e) => update(refilter({ q: e.target.value }))}
               className="pr-[44px]"
               autoComplete="off"
               /* предел сервера (respondentQuery, search ≤ 120) */
@@ -272,8 +269,8 @@ function Frame({
             page={page}
             pages={pages}
             per={per}
-            onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
-            onPage={(n) => update({ page: n > 1 ? String(n) : null })}
+            onPer={(n) => update(toPer(n))}
+            onPage={(n) => update(toPage(n))}
           />
           {/*
             Шестерёнка кадра: глиф 1370…1399 у правого края колонки, правее
@@ -287,7 +284,7 @@ function Frame({
             entries={[
               {
                 label: ut("pg.allTab"),
-                onSelect: () => update({ group: null, page: null }),
+                onSelect: () => update(refilter({ group: null })),
                 /* фильтр уже снят — пункт остаётся на месте, но вести ему некуда */
                 disabled: activeId === null,
               },
@@ -365,13 +362,26 @@ function useSelectionActions(chosen: ReadonlySet<string>, frame: FrameState) {
     frame.reloadGroups();
   };
 
+  /*
+   * Кому уже выдано в этом окне — чтобы повтор после отказа посередине шёл
+   * только к остальным, а отказ называл, сколько сделано
+   * (patientGroups/model.ts, grantEach). Новое окно — с чистого листа.
+   */
+  const progress = useRef(newProgress());
+  const open = (next: "group" | "assign") => {
+    if (next === "assign") progress.current = newProgress();
+    setDialog(next);
+  };
+
   const assign = async (surveyId: string, expiresAt: string | null) => {
-    let done = 0;
-    for (const userId of chosen) {
-      await api.grant(surveyId, userId, undefined, expiresAt);
-      done += 1;
+    const outcome = await grantEach(progress.current, `${surveyId}|${expiresAt ?? ""}`, [...chosen], (userId) =>
+      api.grant(surveyId, userId, undefined, expiresAt),
+    );
+    if (outcome.error) {
+      const reason = outcome.error instanceof Error ? outcome.error.message : ut("acc.grantFailed");
+      throw new Error(partialFailure(outcome, reason, { done: ut("pg.assigned"), of: ut("an.of") }));
     }
-    return `${ut("pg.assigned")} — ${done}`;
+    return `${ut("pg.assigned")} — ${outcome.done}`;
   };
 
   const dialogs = (
@@ -394,7 +404,7 @@ function useSelectionActions(chosen: ReadonlySet<string>, frame: FrameState) {
     </>
   );
 
-  return { dialogs, open: setDialog };
+  return { dialogs, open };
 }
 
 /* ─────────── вкладка «Усі» ─────────── */
@@ -403,25 +413,34 @@ function AllPatients({ frame }: { frame: FrameState }) {
   const { ut } = useLang();
   const { q, page, per, update } = frame;
 
+  /* поиск — как его примет сервер (patients/model.ts): кривой ?q= из ссылки не роняет список в 400 */
+  const search = searchOf(q);
   const list = usePagedResource<Respondent>(
-    (cursor) => api.respondents({ search: q || undefined, cursor: cursor ?? undefined, limit: String(per) }),
-    [q, per],
+    (cursor) => api.respondents({ search: search || undefined, cursor: cursor ?? undefined, limit: String(per) }),
+    [search, per],
     { debounceMs: 300 },
   );
   const loaded = list.items ?? [];
-  const need = page * per;
+  const plan = cursorPagePlan({ page, per, loaded: loaded.length, total: list.total, hasMore: list.hasMore });
+  const { pages } = plan;
 
-  /* страница просит недостающую порцию сама — одна порция за раз, пока сервер обещает ещё */
+  /* страница просит недостающую порцию сама — одна порция за раз и не дальше последней страницы */
   useEffect(() => {
-    if (list.items && loaded.length < need && list.hasMore && !list.loadingMore) list.loadMore();
-  }, [list.items, loaded.length, need, list.hasMore, list.loadingMore, list.loadMore]);
+    if (list.items && plan.loadMore && !list.loadingMore) list.loadMore();
+  }, [list.items, plan.loadMore, list.loadingMore, list.loadMore]);
 
-  const pages = pagesOf(loaded.length, list.total, list.hasMore, per);
   const rows = slicePage(loaded, page, per);
 
   useEffect(() => {
-    if (list.items && !list.hasMore && page > pages) update({ page: pages > 1 ? String(pages) : null });
-  }, [list.items, list.hasMore, page, pages, update]);
+    if (list.items && plan.clampTo !== null) update(toPage(plan.clampTo));
+  }, [list.items, plan.clampTo, update]);
+  const body = allTabBody({
+    items: list.items,
+    error: list.error,
+    rowsOnPage: rows.length,
+    hasMore: list.hasMore,
+    loadingMore: list.loadingMore,
+  });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const chosen = useMemo(() => keepPresent(selected, loaded), [selected, loaded]);
@@ -430,11 +449,11 @@ function AllPatients({ frame }: { frame: FrameState }) {
 
   return (
     <Frame frame={frame} pages={pages} focused={focused}>
-      {list.error ? (
+      {body === "failed" ? (
         <Loading error={list.error} onRetry={list.reload} />
-      ) : !list.items || (rows.length === 0 && list.loadingMore) ? (
+      ) : body === "loading" ? (
         <Loading rows={6} />
-      ) : rows.length === 0 ? (
+      ) : body === "empty" ? (
         <p className="m-0 text-[13px] text-muted">{ut("pt.nobodyFound")}</p>
       ) : (
         <PersonGrid
@@ -474,8 +493,9 @@ function GroupPatients({ group, frame }: { group: PatientGroupWithCounts; frame:
   const rows = slicePage(members, page, per);
 
   useEffect(() => {
-    if (card.data && page > pages) update({ page: pages > 1 ? String(pages) : null });
+    if (card.data && page > pages) update(toPage(pages));
   }, [card.data, page, pages, update]);
+  const body = groupTabBody({ hasCard: !!card.data, error: card.error, rowsOnPage: rows.length, q });
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const chosen = useMemo(() => keepPresent(selected, card.data?.members ?? []), [selected, card.data]);
@@ -495,12 +515,12 @@ function GroupPatients({ group, frame }: { group: PatientGroupWithCounts; frame:
 
   return (
     <Frame frame={frame} pages={pages} focused={focused}>
-      {card.error ? (
+      {body === "failed" ? (
         <Loading error={card.error} onRetry={card.reload} />
-      ) : !card.data ? (
+      ) : body === "loading" ? (
         <Loading rows={6} />
-      ) : rows.length === 0 ? (
-        <p className="m-0 text-[13px] text-muted">{q.trim() ? ut("pt.nobodyFound") : ut("pg.noMembers")}</p>
+      ) : body === "noMatch" || body === "empty" ? (
+        <p className="m-0 text-[13px] text-muted">{body === "noMatch" ? ut("pt.nobodyFound") : ut("pg.noMembers")}</p>
       ) : (
         <PersonGrid
           people={rows}

@@ -1,4 +1,5 @@
 import type { CohortCell, CohortPreview, CohortSpec, SampleFilters, Severity, UiKey } from "@quizzy/shared";
+import { isDateInput } from "@quizzy/shared";
 
 /**
  * Чистая часть «Добору людей»: правило отбора ⇄ адрес страницы, проверка
@@ -50,7 +51,23 @@ export const OPERATORS: readonly ScaleCond["op"][] = [">=", "<=", ">", "<"];
 export const SEVERITY_ORDER: readonly Severity[] = ["none", "mild", "moderate", "severe"];
 export const MIN_SEVERITY: readonly Exclude<Severity, "none">[] = ["mild", "moderate", "severe"];
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/*
+ * Пределы правила — те же, что у схемы маршрута (routes/cohorts.ts,
+ * specSchema): сверх них сервер отвечает 400 на весь предпросмотр.
+ * Адрес — не запрос, а пожелание (ссылка из переписки, обрезанная или
+ * дописанная руками), и лишнее в нём не должно превращать экран в отказ:
+ * значение длиннее предела не применяется, а сверх числа условий — не
+ * читается.
+ */
+const LIMITS = { unit: 120, locality: 160, list: 50, scaleCode: 40, scales: 10 } as const;
+
+/*
+ * День периода — существующий календарный день, а не «похожий на дату».
+ * Здесь стояла регулярка ГГГГ-ММ-ДД: «2026-02-31» ей соответствует, сервер
+ * (calendarDay) его не принимает — и ссылка с такой датой открывала
+ * «Невірний запит» вместо подбора.
+ */
+const isDay = (v: string | null): v is string => !!v && isDateInput(v, { dayOnly: true });
 
 function intOrNull(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") return null;
@@ -74,7 +91,7 @@ function scaleFromParam(raw: string): ScaleCond | null {
   const value = Number(parts.pop());
   const op = parts.pop() as ScaleCond["op"];
   const code = parts.join("~");
-  if (!code || !OPERATORS.includes(op) || !Number.isFinite(value)) return null;
+  if (!code || code.length > LIMITS.scaleCode || !OPERATORS.includes(op) || !Number.isFinite(value)) return null;
   return { code, op, value };
 }
 
@@ -90,22 +107,28 @@ export function specFromParams(p: URLSearchParams): CohortSpec {
   const ageMax = intOrNull(p.get(P.ageMax));
   if (ageMin !== null) spec.ageMin = ageMin;
   if (ageMax !== null) spec.ageMax = ageMax;
-  const units = p.getAll(P.unit).filter((u) => u.trim());
-  if (units.length) spec.units = [...new Set(units)];
-  const localities = p.getAll(P.locality).filter((u) => u.trim());
-  if (localities.length) spec.localities = [...new Set(localities)];
+  const units = p.getAll(P.unit).filter((u) => u.trim() && u.length <= LIMITS.unit);
+  if (units.length) spec.units = [...new Set(units)].slice(0, LIMITS.list);
+  const localities = p.getAll(P.locality).filter((u) => u.trim() && u.trim().length <= LIMITS.locality);
+  if (localities.length) spec.localities = [...new Set(localities)].slice(0, LIMITS.list);
   const survey = p.get(P.survey);
   if (survey) spec.surveyId = survey;
   const from = p.get(P.from);
   const to = p.get(P.to);
-  if (from && DAY.test(from)) spec.from = from;
-  if (to && DAY.test(to)) spec.to = to;
+  if (isDay(from)) spec.from = from;
+  if (isDay(to)) spec.to = to;
   const sev = p.get(P.severity);
   if (sev && (MIN_SEVERITY as readonly string[]).includes(sev)) spec.minSeverity = sev as CohortSpec["minSeverity"];
   if (p.get(P.repeated) === "1") spec.repeatedOnly = true;
   if (p.get(P.risk) === "1") spec.riskOnly = true;
   /* условия по шкалам без методики бессмысленны: коды шкал принадлежат ей */
-  const scales = spec.surveyId ? p.getAll(P.scale).map(scaleFromParam).filter((c): c is ScaleCond => c !== null) : [];
+  const scales = spec.surveyId
+    ? p
+        .getAll(P.scale)
+        .map(scaleFromParam)
+        .filter((c): c is ScaleCond => c !== null)
+        .slice(0, LIMITS.scales)
+    : [];
   if (scales.length) spec.scales = scales;
   return spec;
 }
@@ -140,6 +163,16 @@ export function cleanSpec(spec: CohortSpec): CohortSpec {
   return specFromParams(paramsFromSpec(spec));
 }
 
+/**
+ * Правка правила в адресе — от актуального адреса, а не от замыкания: два
+ * быстрых нажатия не должны терять первое. Чужие параметры (открытая
+ * сохранённая `saved`) остаются: правка условия делает её «зміненою», а не
+ * закрытой.
+ */
+export function withSpec(prev: URLSearchParams, patch: Partial<CohortSpec>): URLSearchParams {
+  return paramsFromSpec({ ...specFromParams(prev), ...patch }, prev);
+}
+
 export function sameSpec(a: CohortSpec, b: CohortSpec): boolean {
   return paramsFromSpec(a).toString() === paramsFromSpec(b).toString();
 }
@@ -161,6 +194,28 @@ export function specErrors(spec: CohortSpec): { age?: UiKey; period?: UiKey } {
   if (spec.ageMin != null && spec.ageMax != null && spec.ageMin > spec.ageMax) out.age = "coh.errAge";
   if (spec.from && spec.to && spec.from > spec.to) out.period = "coh.errPeriod";
   return out;
+}
+
+/**
+ * Что стоит на месте результата.
+ *
+ * Правило с ошибкой набора (перевёрнутый возраст или период) не
+ * считается — сервер отказал бы, — и раньше это место оставалось скелетом
+ * «загружается» навсегда: ссылка с «від 45 до 25» открывала подбор, где
+ * результат грузится и не загрузится никогда. Теперь без прежнего числа
+ * там слова «виправте умови», а с прежним — прежнее, приглушённое (Result,
+ * busy): оно уже не про эти условия, и это видно.
+ *
+ * Обрыв связи — не ошибка: запрос стоит на паузе до возвращения связи, и
+ * об этом говорит строка оболочки (ui/ConnectionLine.tsx). Здесь — скелет,
+ * а прежнее число, если оно было, остаётся на месте.
+ */
+export type ResultView = "invalid" | "error" | "loading" | "result";
+
+export function resultView(s: { invalid: boolean; hasPreview: boolean; error: string | null }): ResultView {
+  if (s.error !== null && !s.invalid) return "error";
+  if (s.hasPreview) return "result";
+  return s.invalid ? "invalid" : "loading";
 }
 
 /* ─────────── слова: метки и описание ─────────── */

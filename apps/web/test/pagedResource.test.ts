@@ -7,6 +7,7 @@ import {
   type InfiniteQueryObserverOptions,
   type QueryClient,
 } from "@tanstack/react-query";
+import { ApiError } from "../src/api";
 import { connection } from "../src/connection";
 import { createQueryClient, wireConnection } from "../src/query";
 import { pagedQuery, pagedState, type Page as ListPage } from "../src/useResource";
@@ -198,5 +199,40 @@ describe("подгрузка страниц", () => {
     w.setOptions(pagedQuery<Counted>(["случаи", "тяжелые"], async () => ({ ...page(["б"]), facets: { total: 140 } })));
     await until(() => head()?.facets.total === 140);
     off();
+  });
+});
+
+describe("список на краях: пусто, отказ, обрыв (w13:uitests)", () => {
+  /*
+   * Список с подгрузкой различает те же состояния, что и обычный экран, и
+   * ошибка здесь та же: «нікого не знайдено» на месте отказа — неправда о
+   * людях. Пустая первая страница — ответ; отказ — ошибка без строк; обрыв
+   * — не ошибка, строк нет, и экран ждёт связи.
+   */
+  test("пустая первая страница — ответ: строк ноль, а не «нет ответа»", async () => {
+    const w = watch(pagedQuery(["пусто"], async () => page([])));
+    await until(() => w.state().items !== null);
+    expect(w.state()).toMatchObject({ items: [], loading: false, error: null, hasMore: false });
+    w.off();
+  });
+
+  test("отказ — ошибка, строк нет, «ещё» не предлагается", async () => {
+    const w = watch(pagedQuery(["отказ"], async () => Promise.reject(new ApiError("Немає доступу", 403))));
+    await until(() => w.state().error !== null);
+    expect(w.state()).toMatchObject({ items: null, error: "Немає доступу", offline: false, loading: false, hasMore: false });
+    w.off();
+  });
+
+  test("обрыв до первой страницы — не ошибка: строк нет, экран ждёт связи", async () => {
+    const w = watch({
+      ...pagedQuery<Page>(["обрыв"], async () => {
+        connection.lost();
+        throw new ApiError("Немає зв’язку з сервером", 0);
+      }),
+      retryDelay: 1,
+    });
+    await until(() => w.state().offline);
+    expect(w.state()).toMatchObject({ items: null, error: null, loading: false, offline: true });
+    w.off();
   });
 });

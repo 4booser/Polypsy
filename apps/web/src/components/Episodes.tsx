@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { ApiError, api, openInTab } from "../api";
 import { day } from "../format";
-import { Empty, useAction } from "../ui";
+import { Empty, NotLoaded, loadView, useAction } from "../ui";
 import { Panel } from "../ui/layout";
 import { Button, Field, Input, Num, Select } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { useResource, type Resource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
 
 const OUTCOME_KEY: Record<string, UiKey> = {
@@ -27,15 +27,39 @@ const OUTCOME_KEY: Record<string, UiKey> = {
  * Счётчики приходят с сервера собранными. Считать их тремя запросами с экрана
  * значило бы вернуть человека к тому же складыванию, только быстрее.
  */
-export function Episodes({
+export function Episodes(props: { patientId: string; appointmentId?: string; className?: string }) {
+  const res = useResource(() => api.episodes(props.patientId), [props.patientId]);
+  return <EpisodesBody {...props} res={res} />;
+}
+
+type Loaded<T> = Pick<Resource<T>, "data" | "error" | "loading" | "reload" | "updatedAt">;
+
+/**
+ * Панель обращений по загрузке — без запроса внутри, чтобы состояния
+ * проверялись разметкой (test/loadStates.test.tsx).
+ *
+ * Пока список не пришёл или сервер отказал, панель не говорит ни «звернень
+ * немає», ни «відкрити звернення». Раньше говорила оба (`data ?? []`): на
+ * отказе специалист читал, что у человека нет обращений, и видел форму
+ * открыть новое — хотя открытое, может быть, есть, и сервер откажет уже
+ * после того, как повод набран.
+ */
+export function EpisodesBody({
   patientId,
   appointmentId,
   className,
-}: { patientId: string; appointmentId?: string; className?: string }) {
+  res,
+}: {
+  patientId: string;
+  appointmentId?: string;
+  className?: string;
+  res: Loaded<Awaited<ReturnType<typeof api.episodes>>>;
+}) {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const res = useResource(() => api.episodes(patientId), [patientId]);
   const reload = res.reload;
+  const view = loadView(res, (d) => d.items.length === 0);
+  const known = view === "ready" || view === "empty";
 
   const [reason, setReason] = useState("");
   const [closing, setClosing] = useState<string | null>(null);
@@ -61,7 +85,7 @@ export function Episodes({
           кнопкой, а не спрятано в отказе сервера: человек должен понимать,
           почему кнопки нет, до того как начнёт её искать.
         */}
-        {!open ? (
+        {!known ? null : !open ? (
           <div className="flex flex-col gap-2">
             <Field label={ut("ep.reason")} hint={ut("ep.reasonHint")}>
               <Input value={reason} onChange={(e) => setReason(e.target.value)} />
@@ -95,7 +119,7 @@ export function Episodes({
 
         <Dispensary patientId={patientId} />
 
-        {items.length === 0 ? <Empty title={ut("ep.none")} /> : null}
+        {!known ? <NotLoaded res={res} /> : items.length === 0 ? <Empty title={ut("ep.none")} /> : null}
 
         {items.map((e) => (
           <div key={e.id} className="rounded-md border border-hairline p-3">
@@ -236,15 +260,31 @@ export function Episodes({
  * человеком, а просрочка попадает в общую очередь работы.
  */
 function Dispensary({ patientId }: { patientId: string }) {
+  const res = useResource(() => api.dispensary(patientId), [patientId]);
+  return <DispensaryBody patientId={patientId} res={res} />;
+}
+
+/*
+ * До ответа блок учёта не рисуется (он второстепенный, и скелет под
+ * формой открытия обращения только мешал бы), но отказ — рисуется: раньше
+ * блок на отказе просто исчезал, и просрочку контрольного осмотра не видел
+ * никто — ровно то, ради чего блок заведён.
+ */
+export function DispensaryBody({
+  patientId,
+  res,
+}: {
+  patientId: string;
+  res: Loaded<Awaited<ReturnType<typeof api.dispensary>>>;
+}) {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const res = useResource(() => api.dispensary(patientId), [patientId]);
   const reload = res.reload;
   const [group, setGroup] = useState("");
   const [months, setMonths] = useState(3);
 
   const d = res.data;
-  if (!d) return null;
+  if (!d) return res.error ? <NotLoaded res={res} /> : null;
 
   if (!d.on) {
     return (

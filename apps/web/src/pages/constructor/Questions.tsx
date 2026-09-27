@@ -1,7 +1,17 @@
 import { useState, type ReactNode } from "react";
 import { BulkPaste } from "./BulkPaste";
 import { Loc, Toggle, useEditLang } from "./fields";
-import { TYPES, newUid, optionKey, type Draft, type DraftOption, type DraftQuestion } from "./model";
+import {
+  TYPES,
+  duplicateQuestion,
+  moveQuestion,
+  newUid,
+  optionKey,
+  removeQuestion,
+  type Draft,
+  type DraftOption,
+  type DraftQuestion,
+} from "./model";
 import { useLang } from "../../lang";
 import { cx } from "../../ui/cx";
 import { IconCopy, IconDisclosure } from "../../ui/glyphs";
@@ -44,22 +54,16 @@ export function Questions({
   const upd = (i: number, q: Partial<DraftQuestion>) =>
     setDraft((d) => ({ ...d, questions: d.questions.map((x, k) => (k === i ? { ...x, ...q } : x)) }));
 
-  const move = (i: number, delta: number) =>
-    setDraft((d) => {
-      const j = i + delta;
-      if (j < 0 || j >= d.questions.length) return d;
-      const next = [...d.questions];
-      [next[i], next[j]] = [next[j]!, next[i]!];
-      return { ...d, questions: next };
-    });
+  /*
+   * Перестановка, копия и удаление — через модель: ключ шкалы ссылается на
+   * пункт номером, и номера в нём переписываются вместе со списком
+   * (model.ts, removeQuestion и соседи). Раньше список правился здесь сам по
+   * себе, и ключ «Так → 3, 5, 7» после удаления третьего пункта молча
+   * считал бывшие четвёртый, шестой и восьмой.
+   */
+  const move = (i: number, delta: number) => setDraft((d) => moveQuestion(d, i, delta));
 
-  const duplicate = (i: number) =>
-    setDraft((d) => {
-      const copy = { ...structuredClone(d.questions[i]!), uid: newUid() };
-      const next = [...d.questions];
-      next.splice(i + 1, 0, copy);
-      return { ...d, questions: next };
-    });
+  const duplicate = (i: number) => setDraft((d) => duplicateQuestion(d, i));
 
   /*
    * Новый вопрос в конкретном тесте получает общий набор ответов, в
@@ -230,7 +234,7 @@ export function Questions({
                         size="sm"
                         onClick={() => {
                           setOpen(null);
-                          setDraft((d) => ({ ...d, questions: d.questions.filter((_, k) => k !== i) }));
+                          setDraft((d) => removeQuestion(d, i));
                         }}
                       >
                         {ut("ui.delete")}

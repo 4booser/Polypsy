@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { api } from "../api";
-import { useAction } from "../ui";
+import { NotLoaded, loadView, useAction } from "../ui";
 import { Button, type ButtonProps } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { useResource, type Resource } from "../useResource";
 
 type Kind = "conclusion" | "note";
 
@@ -75,9 +75,7 @@ export function TemplatePicker({
 
   return (
     <div className="flex w-full flex-col gap-2 rounded-md border border-hairline bg-[var(--bg)] p-2">
-      {all.length === 0 && !res.loading ? (
-        <p className="text-caption text-muted">{ut("tpl.none")}</p>
-      ) : null}
+      <LibraryState res={res} />
 
       {templates.length ? (
         <div>
@@ -154,4 +152,24 @@ export function TemplatePicker({
       </div>
     </div>
   );
+}
+
+/**
+ * Строка состояния библиотеки над кнопками шаблонов.
+ *
+ * «Шаблонів ще немає» — только когда библиотека пришла пустой. Раньше
+ * строка стояла при любом «не загружается» (`!res.loading`): на отказе
+ * сервера специалист читал, что библиотеки у отделения нет, и шёл писать
+ * заключение с нуля. Теперь до ответа — скелет, на отказе — отказ с
+ * «Повторити».
+ */
+export function LibraryState({
+  res,
+}: {
+  res: Pick<Resource<Awaited<ReturnType<typeof api.templates>> | null>, "data" | "error" | "loading" | "reload" | "updatedAt">;
+}) {
+  const { ut } = useLang();
+  const view = loadView(res, (d) => !d || d.items.length === 0);
+  if (view === "wait" || view === "failed") return <NotLoaded res={res} rows={1} />;
+  return view === "empty" ? <p className="text-caption text-muted">{ut("tpl.none")}</p> : null;
 }

@@ -8,7 +8,8 @@ import { Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, Select } from "../ui/primitives";
 import { useLang } from "../lang";
 import { usePagedResource, useResource } from "../useResource";
-import { shownNote } from "../ui/paging";
+import { listBody, shownNote } from "../ui/paging";
+import { inviteState } from "./invites/model";
 
 /** Строка справочника специалистов — ровно то, что нужно выпадающему списку */
 type Specialist = { userId: string; fullName: string };
@@ -36,6 +37,8 @@ export default function Invites() {
   const rows = list.items;
   const reload = list.reload;
   const note = rows ? shownNote(ut, rows.length, list.total, list.hasMore) : null;
+  const body = listBody(rows, list.error);
+  const now = Date.now();
 
   /*
    * Справочники нужны только форме, и каждый падает молча по отдельности:
@@ -81,10 +84,24 @@ export default function Invites() {
 
           {fresh ? <FreshInvite token={fresh.token} code={fresh.code} onClose={() => setFresh(null)} /> : null}
 
-          {!rows ? <Loading error={list.error} onRetry={list.reload} busy={list.loading} /> : null}
-          {rows && !rows.length && !showForm ? (
-            <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} />
+          {body.body === "failed" || body.body === "loading" ? (
+            <Loading error={list.error} onRetry={list.reload} busy={list.loading} />
           ) : null}
+          {/*
+            Отказ поверх уже показанных ссылок — строкой с «повторити»
+            (listBody в ui/paging.ts). Раньше отказ перечитывания после
+            «відкликати» или подгрузки «ще» не показывался вовсе: отозванная
+            ссылка оставалась в списке живой, а «ще» молча ничего не делало.
+          */}
+          {body.stale ? (
+            <div role="alert" className="flex items-center gap-[10px]">
+              <p className="m-0 min-w-0 flex-1 text-caption text-danger">{body.stale}</p>
+              <Button variant="quiet" size="sm" onClick={list.reload}>
+                {ut("common.retry")}
+              </Button>
+            </div>
+          ) : null}
+          {body.body === "empty" && !showForm ? <Empty title={ut("inv.none")} hint={ut("inv.noneHint")} /> : null}
 
           {note ? <p className="m-0 text-caption text-muted">{note}</p> : null}
           {rows?.length ? (
@@ -104,7 +121,7 @@ export default function Invites() {
                   </thead>
                   <tbody>
                     {rows.map((inv) => {
-                      const dead = !!inv.revokedAt || inv.usedCount >= inv.maxUses || inv.expiresAt < new Date().toISOString();
+                      const dead = inviteState(inv, now) !== "live";
                       return (
                         <tr key={inv.id} className={dead ? "muted-row" : undefined}>
                           <td className="font-mono font-semibold">{inv.code}</td>

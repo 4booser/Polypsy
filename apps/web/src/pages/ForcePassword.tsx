@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { Page } from "../ui/layout";
 import { Button, Field, Input } from "../ui/primitives";
+import { type PasswordDraft, changePassword, passwordProblems, passwordReady } from "./passwordModel";
 
 /**
  * Смена временного пароля — вместо рабочего места.
@@ -27,16 +28,78 @@ import { Button, Field, Input } from "../ui/primitives";
 export default function ForcePassword() {
   const { ut } = useLang();
   const { user, login, logout } = useAuth();
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [repeat, setRepeat] = useState("");
+  const [draft, setDraft] = useState<Required<PasswordDraft>>({ current: "", next: "", repeat: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Пароль, который сервер уже принял. Смена гасит сессию, и если вход
+   * новым паролем не удался, повтор только входит — второй смены со старым
+   * паролем не будет (passwordModel.ts, changePassword).
+   */
+  const [accepted, setAccepted] = useState<string | null>(null);
+  /* отправка по ref, а не по busy из замыкания: два Enter подряд успевают до перерисовки */
+  const inFlight = useRef(false);
 
-  /* 10 — граница changePasswordSchema: меньше сервер отвергнет уже после нажатия */
-  const tooShort = next.length > 0 && next.length < 10;
-  const mismatch = repeat.length > 0 && repeat !== next;
-  const ready = current && next.length >= 10 && next === repeat && next !== current;
+  const submit = () => {
+    if (inFlight.current || !user || (accepted === null && !passwordReady(draft))) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    changePassword(
+      draft,
+      accepted,
+      { change: (current, next) => api.changePassword(current, next), relogin: (password) => login(user.email, password) },
+      setAccepted,
+    )
+      .catch((err) => setError(err instanceof Error ? err.message : ut("ui.actionFailed")))
+      .finally(() => {
+        inFlight.current = false;
+        setBusy(false);
+      });
+  };
+
+  return (
+    <ForcePasswordView
+      email={user?.email ?? ""}
+      draft={draft}
+      busy={busy}
+      error={error}
+      accepted={accepted !== null}
+      onEdit={(patch) => {
+        setDraft((d) => ({ ...d, ...patch }));
+        /* отказ относится к отправленному: правка поля его снимает */
+        setError(null);
+      }}
+      onSubmit={submit}
+      onLogout={logout}
+    />
+  );
+}
+
+/** Разметка экрана: всё, что она показывает, — из пропсов (test/passwordChange.test.tsx) */
+export function ForcePasswordView({
+  email,
+  draft,
+  busy,
+  error,
+  accepted,
+  onEdit,
+  onSubmit,
+  onLogout,
+}: {
+  email: string;
+  draft: Required<PasswordDraft>;
+  busy: boolean;
+  error: string | null;
+  /** Пароль уже сменён, не удался только вход: повтор войдёт, поля больше ничего не решают */
+  accepted: boolean;
+  onEdit: (patch: Partial<PasswordDraft>) => void;
+  onSubmit: () => void;
+  onLogout: () => void;
+}) {
+  const { ut } = useLang();
+  const problems = passwordProblems(draft);
+  const ready = accepted || passwordReady(draft);
 
   return (
     <main className="mx-auto w-full max-w-[1200px]">
@@ -45,25 +108,37 @@ export default function ForcePassword() {
           className="flex max-w-[420px] flex-col"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!ready || busy || !user) return;
-            setBusy(true);
-            setError(null);
-            api
-              .changePassword(current, next)
-              .then(() => login(user.email, next))
-              .catch((err) => setError(err instanceof Error ? err.message : ut("ui.actionFailed")))
-              .finally(() => setBusy(false));
+            onSubmit();
           }}
         >
-          <p className="m-0 mb-[15px] text-[15px] text-text-2 [overflow-wrap:anywhere]">{user?.email}</p>
+          <p className="m-0 mb-[15px] text-[15px] text-text-2 [overflow-wrap:anywhere]">{email}</p>
           <Field label={ut("ops.force.temp")}>
-            <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" autoFocus />
+            <Input
+              type="password"
+              value={draft.current}
+              onChange={(e) => onEdit({ current: e.target.value })}
+              autoComplete="current-password"
+              autoFocus
+              disabled={accepted}
+            />
           </Field>
-          <Field label={ut("acct.newPassword")} error={tooShort ? ut("ops.force.short") : null}>
-            <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
+          <Field label={ut("acct.newPassword")} error={problems.next ? ut(problems.next) : null}>
+            <Input
+              type="password"
+              value={draft.next}
+              onChange={(e) => onEdit({ next: e.target.value })}
+              autoComplete="new-password"
+              disabled={accepted}
+            />
           </Field>
-          <Field label={ut("ops.force.repeat")} error={mismatch ? ut("ops.force.mismatch") : null}>
-            <Input type="password" value={repeat} onChange={(e) => setRepeat(e.target.value)} autoComplete="new-password" />
+          <Field label={ut("ops.force.repeat")} error={problems.repeat ? ut(problems.repeat) : null}>
+            <Input
+              type="password"
+              value={draft.repeat}
+              onChange={(e) => onEdit({ repeat: e.target.value })}
+              autoComplete="new-password"
+              disabled={accepted}
+            />
           </Field>
           {error ? (
             <p role="alert" className="m-0 mb-[15px] text-[13px] text-danger">
@@ -74,7 +149,7 @@ export default function ForcePassword() {
             <Button type="submit" size="form" disabled={!ready || busy}>
               {ut("acct.changePassword")}
             </Button>
-            <Button variant="ghost" onClick={logout}>
+            <Button variant="ghost" onClick={onLogout}>
               {ut("nav.logout")}
             </Button>
           </div>
