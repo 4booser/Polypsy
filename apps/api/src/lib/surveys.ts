@@ -172,7 +172,25 @@ export async function attachContent(
   const scaleCodeById = new Map(scaleRows.map((s) => [s.id, s.code]));
 
   const optionsByQuestion = groupBy(optionRows, (o) => o.questionId);
-  const logicByQuestion = groupBy(logicRows, (l) => l.questionId);
+  /*
+   * Порядок правил — по номеру пункта-источника. Своей позиции у правила нет,
+   * а без ORDER BY строки приходят в порядке кучи, и он меняется от прогона
+   * к прогону: «п. 12 > 0 и п. 1 ≥ 1» в одном месте, «п. 1 ≥ 1 и п. 12 > 0»
+   * в другом. На показ это не влияет (правила сходятся через «и»), но
+   * конструктор, выгрузка и листы сверки должны видеть одно и то же.
+   */
+  const questionPosition = new Map(questionRows.map((q) => [q.id, q.position]));
+  const logicKey = (l: (typeof logicRows)[number]) =>
+    `${l.action}\u0000${l.operator}\u0000${JSON.stringify(l.value ?? null)}\u0000${l.id}`;
+  const logicByQuestion = groupBy(
+    [...logicRows].sort(
+      (a, b) =>
+        (questionPosition.get(a.sourceQuestionId) ?? Number.MAX_SAFE_INTEGER) -
+          (questionPosition.get(b.sourceQuestionId) ?? Number.MAX_SAFE_INTEGER) ||
+        (logicKey(a) < logicKey(b) ? -1 : logicKey(a) > logicKey(b) ? 1 : 0),
+    ),
+    (l) => l.questionId,
+  );
   const bandsByScale = groupBy(bandRows, (b) => b.scaleId);
   const itemsByScale = groupBy(itemRows, (i) => i.scaleId);
   const correctionsByScale = groupBy(correctionRows, (c) => c.targetScaleId);
