@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateRules, type DecisionRule, type RuleInput } from "./rules";
+import { evaluateRules, explanationFor, type DecisionRule, type RuleInput, type StoredExplanation } from "./rules";
+import { renderCoded } from "./serverStrings";
+
+/* объяснение хранится кодом (волна 13); тесты ниже читают его по-русски, как читали всегда */
+const ru = (b: Parameters<typeof renderCoded>[0] | undefined) => (b ? renderCoded(b, "ru") : undefined);
 
 /**
  * Правила поддержки решений.
@@ -37,7 +41,7 @@ describe("движок правил", () => {
     const [hit] = evaluateRules([rule()], input());
     expect(hit?.ruleId).toBe("r1");
     expect(hit?.ruleVersion).toBe(3);
-    expect(hit?.because[0]!.text).toBe("Sr: сырой балл 0.72 >= 0.6");
+    expect(ru(hit?.because[0])).toBe("Sr: сырой балл 0.72 >= 0.6");
   });
 
   test("условия соединяются «и»", () => {
@@ -86,7 +90,7 @@ describe("движок правил", () => {
       [rule({ conditions: [{ kind: "scale", surveyId: "s1", scaleCode: "L", metric: "raw", op: ">=", value: 0.1 }] })],
       input(),
     );
-    expect(checked?.because[0]!.text).toBe("L: сырой балл 0.2 >= 0.1");
+    expect(ru(checked?.because[0])).toBe("L: сырой балл 0.2 >= 0.1");
   });
 
   test("условие чужой методики не срабатывает", () => {
@@ -104,7 +108,7 @@ describe("движок правил", () => {
     });
     expect(evaluateRules([repeat], input({ completedCount: 1 }))).toHaveLength(0);
     const [hit] = evaluateRules([repeat], input({ completedCount: 2 }));
-    expect(hit?.because[0]!.text).toBe("прохождений этой методики: 2 (нужно 2)");
+    expect(ru(hit?.because[0])).toBe("прохождений этой методики: 2 (нужно 2)");
   });
 
   test("«умеренный» риск покрывается и тяжёлым", () => {
@@ -114,5 +118,53 @@ describe("движок правил", () => {
     expect(evaluateRules([any], input({ riskSeverity: "severe" }))).toHaveLength(1);
     expect(evaluateRules([any], input({ riskSeverity: "moderate" }))).toHaveLength(1);
     expect(evaluateRules([any], input({ riskSeverity: null }))).toHaveLength(0);
+  });
+});
+
+/*
+ * Объяснение хранится в rule_hits кодом и подстановками, а текстом
+ * становится при отдаче — на языке того, кто читает (волна 13). Прежде
+ * русская фраза собиралась здесь и так и лежала в базе.
+ */
+describe("объяснение правила на языке читающего", () => {
+  test("одно и то же срабатывание — на трёх языках", () => {
+    const [hit] = evaluateRules([rule()], input());
+    const stored: StoredExplanation = { title: hit!.title, because: hit!.because, actions: hit!.actions };
+    // в хранимом виде фразы нет — только код и числа
+    expect(stored.because[0]).toEqual({
+      met: true,
+      code: "rule.raw",
+      params: { scale: "Sr", actual: 0.72, op: ">=", value: 0.6 },
+    });
+    expect(explanationFor(stored, "uk").because[0]!.text).toBe("Sr: сирий бал 0.72 >= 0.6");
+    expect(explanationFor(stored, "ru").because[0]!.text).toBe("Sr: сырой балл 0.72 >= 0.6");
+    expect(explanationFor(stored, "en").because[0]!.text).toBe("Sr: raw score 0.72 >= 0.6");
+  });
+
+  test("уровень риска переводится вместе с фразой, а не остаётся кодом", () => {
+    const [hit] = evaluateRules(
+      [rule({ conditions: [{ kind: "risk", severity: "moderate" }] })],
+      input({ riskSeverity: "severe" }),
+    );
+    const stored: StoredExplanation = { title: hit!.title, because: hit!.because, actions: hit!.actions };
+    expect(explanationFor(stored, "ru").because[0]!.text).toBe("поднят флаг риска (выраженный)");
+    expect(explanationFor(stored, "uk").because[0]!.text).toBe("піднято прапорець ризику (виражений)");
+    expect(explanationFor(stored, "en").because[0]!.text).toBe("risk flag raised (severe)");
+  });
+
+  test("старая запись без кода показывается прежним текстом на любом языке", () => {
+    /*
+     * Срабатывания до волны 13 хранят готовую русскую фразу. Перевести её не
+     * из чего, а переписывать объяснение задним числом нельзя — по нему уже
+     * принимали решение.
+     */
+    const legacy: StoredExplanation = {
+      title: "Высокий риск",
+      because: [{ met: true, text: "Sr: сырой балл 0.72 >= 0.6" }],
+      actions: [{ kind: "notify_duty" }],
+    };
+    for (const lang of ["uk", "ru", "en"] as const) {
+      expect(explanationFor(legacy, lang).because).toEqual([{ met: true, text: "Sr: сырой балл 0.72 >= 0.6" }]);
+    }
   });
 });

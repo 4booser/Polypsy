@@ -70,8 +70,9 @@ describe("заключение специалиста", () => {
       method: "POST",
       body: JSON.stringify({ version: 2, revision: 1 }),
     });
+    // лист — на языке запроса (волна 13); подпись «Распечатано» ниже русская
     const res2 = await app.request(`/api/reports/responses/${responseId}`, {
-      headers: { Authorization: `Bearer ${adminA.token}` },
+      headers: { Authorization: `Bearer ${adminA.token}`, "Accept-Language": "ru" },
     });
     const html2 = await res2.text();
     expect(html2).toContain("Дополнение после подписи");

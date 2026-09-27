@@ -1,4 +1,5 @@
-import type { Question, Scale, SurveyFull } from "./types";
+import { serverText, type ServerTextKey } from "./serverStrings";
+import type { Lang, Question, Scale, SurveyFull } from "./types";
 
 /**
  * Что изменилось между двумя версиями методики.
@@ -16,6 +17,12 @@ import type { Question, Scale, SurveyFull } from "./types";
 export type ChangeKind = "added" | "removed" | "changed";
 
 export interface FieldChange {
+  /**
+   * Что изменилось — устойчивым именем («wording», «key»). По нему поле
+   * узнают программно: подпись ниже переводится и от языка зависит.
+   */
+  code: DiffField;
+  /** Подпись поля на языке запроса */
   field: string;
   before: string | null;
   after: string | null;
@@ -43,24 +50,47 @@ export interface VersionDiff {
   scales: ScaleDiff[];
   /** Сопоставимы ли баллы двух версий напрямую */
   comparable: boolean;
-  /** Короткое человеческое резюме: чем именно версии несопоставимы */
+  /** Короткое человеческое резюме: чем именно версии несопоставимы — на языке запроса */
   reasons: string[];
 }
+
+/** Поля, которые сравниваются, — хвосты ключей diff.field.* словаря сервера */
+export type DiffField =
+  | "wording"
+  | "help"
+  | "type"
+  | "required"
+  | "reverse"
+  | "scale"
+  | "options"
+  | "order"
+  | "title"
+  | "description"
+  | "aggregation"
+  | "normalization"
+  | "denominator"
+  | "key"
+  | "bands"
+  | "validity"
+  | "corrections";
 
 function textOf(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   return typeof v === "string" ? v : JSON.stringify(v);
 }
 
-function field(
-  name: string,
-  before: unknown,
-  after: unknown,
-  scoring: boolean,
-): FieldChange | null {
-  const a = textOf(before);
-  const b = textOf(after);
-  return a === b ? null : { field: name, before: a, after: b, scoring };
+/*
+ * Подпись поля собирается на языке запроса. Раньше здесь стояли русские
+ * слова, и украинский специалист сравнивал версии, читая «формулировка» и
+ * «полосы интерпретации» посреди украинского экрана.
+ */
+function fieldOf(lang: Lang) {
+  return (code: DiffField, before: unknown, after: unknown, scoring: boolean): FieldChange | null => {
+    const a = textOf(before);
+    const b = textOf(after);
+    if (a === b) return null;
+    return { code, field: serverText(`diff.field.${code}` satisfies ServerTextKey, lang), before: a, after: b, scoring };
+  };
 }
 
 /**
@@ -85,38 +115,40 @@ function bandsOf(scale: Scale): string {
     .join(",");
 }
 
-function questionChanges(a: Question, b: Question): FieldChange[] {
+function questionChanges(a: Question, b: Question, lang: Lang): FieldChange[] {
+  const field = fieldOf(lang);
   return [
     // формулировка меняет смысл ответа: человек отвечал на другой вопрос
-    field("формулировка", a.title, b.title, true),
-    field("пояснение", a.help, b.help, false),
-    field("тип", a.type, b.type, true),
-    field("обязательность", a.required, b.required, false),
-    field("обратный ключ", a.reverseScored, b.reverseScored, true),
-    field("шкала", a.scaleId, b.scaleId, true),
+    field("wording", a.title, b.title, true),
+    field("help", a.help, b.help, false),
+    field("type", a.type, b.type, true),
+    field("required", a.required, b.required, false),
+    field("reverse", a.reverseScored, b.reverseScored, true),
+    field("scale", a.scaleId, b.scaleId, true),
     field(
-      "варианты ответа",
+      "options",
       // код и балл варианта важнее его текста: по ним считается шкала
       a.options.map((o) => `${o.text}[${o.keyCode ?? "-"}=${o.score}]`).join(" | "),
       b.options.map((o) => `${o.text}[${o.keyCode ?? "-"}=${o.score}]`).join(" | "),
       true,
     ),
-    field("порядок", a.position, b.position, false),
+    field("order", a.position, b.position, false),
   ].filter((x): x is FieldChange => x !== null);
 }
 
-function scaleChanges(a: Scale, b: Scale): FieldChange[] {
+function scaleChanges(a: Scale, b: Scale, lang: Lang): FieldChange[] {
+  const field = fieldOf(lang);
   return [
-    field("название", a.title, b.title, false),
-    field("описание", a.description, b.description, false),
-    field("подсчёт", a.aggregation, b.aggregation, true),
-    field("нормирование", a.normalization, b.normalization, true),
-    field("знаменатель доли", a.ratioDenominator, b.ratioDenominator, true),
-    field("ключ", keyOf(a), keyOf(b), true),
-    field("полосы интерпретации", bandsOf(a), bandsOf(b), true),
-    field("порог достоверности", a.validityThreshold, b.validityThreshold, true),
+    field("title", a.title, b.title, false),
+    field("description", a.description, b.description, false),
+    field("aggregation", a.aggregation, b.aggregation, true),
+    field("normalization", a.normalization, b.normalization, true),
+    field("denominator", a.ratioDenominator, b.ratioDenominator, true),
+    field("key", keyOf(a), keyOf(b), true),
+    field("bands", bandsOf(a), bandsOf(b), true),
+    field("validity", a.validityThreshold, b.validityThreshold, true),
     field(
-      "поправки",
+      "corrections",
       a.corrections.map((c) => `${c.sourceScaleCode}×${c.coefficient}`).sort().join(","),
       b.corrections.map((c) => `${c.sourceScaleCode}×${c.coefficient}`).sort().join(","),
       true,
@@ -129,7 +161,7 @@ function scaleChanges(a: Scale, b: Scale): FieldChange[] {
  * поэтому id переживает и переформулировку, и перестановку. Сравнение по
  * номеру объявляло бы вставку одного пункта в начало полной заменой методики.
  */
-export function diffVersions(before: SurveyFull, after: SurveyFull): VersionDiff {
+export function diffVersions(before: SurveyFull, after: SurveyFull, lang: Lang = "uk"): VersionDiff {
   const posA = new Map(before.questions.map((q, i) => [q.id, i + 1]));
   const posB = new Map(after.questions.map((q, i) => [q.id, i + 1]));
   const byIdA = new Map(before.questions.map((q) => [q.id, q]));
@@ -147,7 +179,7 @@ export function diffVersions(before: SurveyFull, after: SurveyFull): VersionDiff
       questions.push({ kind: "added", position: posB.get(q.id)!, title: q.title, changes: [] });
       continue;
     }
-    const changes = questionChanges(old, q);
+    const changes = questionChanges(old, q, lang);
     if (changes.length) {
       questions.push({ kind: "changed", position: posB.get(q.id)!, title: q.title, changes });
     }
@@ -167,7 +199,7 @@ export function diffVersions(before: SurveyFull, after: SurveyFull): VersionDiff
       scales.push({ kind: "added", code, title: s.title, changes: [] });
       continue;
     }
-    const changes = scaleChanges(old, s);
+    const changes = scaleChanges(old, s, lang);
     if (changes.length) scales.push({ kind: "changed", code, title: s.title, changes });
   }
   scales.sort((x, y) => x.code.localeCompare(y.code));
@@ -175,16 +207,16 @@ export function diffVersions(before: SurveyFull, after: SurveyFull): VersionDiff
   const reasons: string[] = [];
   const removedQ = questions.filter((q) => q.kind === "removed").length;
   const addedQ = questions.filter((q) => q.kind === "added").length;
-  if (removedQ) reasons.push(`убрано пунктов: ${removedQ}`);
-  if (addedQ) reasons.push(`добавлено пунктов: ${addedQ}`);
+  if (removedQ) reasons.push(serverText("diff.removedItems", lang, { n: removedQ }));
+  if (addedQ) reasons.push(serverText("diff.addedItems", lang, { n: addedQ }));
 
   const scoringQ = questions.filter((q) => q.changes.some((c) => c.scoring)).length;
-  if (scoringQ) reasons.push(`пунктов с правкой, влияющей на балл: ${scoringQ}`);
+  if (scoringQ) reasons.push(serverText("diff.scoringItems", lang, { n: scoringQ }));
 
   const scoringS = scales.filter(
     (s) => s.kind !== "changed" || s.changes.some((c) => c.scoring),
   ).length;
-  if (scoringS) reasons.push(`шкал с изменённым подсчётом: ${scoringS}`);
+  if (scoringS) reasons.push(serverText("diff.scoringScales", lang, { n: scoringS }));
 
   return { questions, scales, comparable: reasons.length === 0, reasons };
 }

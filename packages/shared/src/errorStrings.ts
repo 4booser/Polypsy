@@ -1302,6 +1302,172 @@ export const ERRORS = {
     ru: "Неизвестное право: {permission}",
     en: "Unknown permission: {permission}",
   },
+
+  /* ── w13:srvi18n ── */
+  /*
+   * Подробность разбора запроса (badRequestDetail) — не единственным
+   * текстом: впереди человеческое «не прошёл проверку» на языке экрана,
+   * подробность для разработчика — за ним, как была.
+   */
+  "err.invalidRequest": {
+    uk: "Запит не пройшов перевірку: {detail}",
+    ru: "Запрос не прошёл проверку: {detail}",
+    en: "The request didn’t pass validation: {detail}",
+  },
+  "err.importParseProblem": {
+    uk: "Файл не розібрано: {problem}",
+    ru: "Файл не разобран: {problem}",
+    en: "Couldn’t read the file: {problem}",
+  },
+  /*
+   * Сообщения схем входа (packages/shared/src/schemas.ts). Сообщение схемы —
+   * сам ключ отсюда (см. issueKey в apps/api/src/lib/http.ts); «{field}» —
+   * путь поля, как его и печатал прежний разбор: «questions.3.options: …».
+   * Русские тексты — прежние, дословно: их видели и ищут.
+   */
+  "err.v.dateFormat": {
+    uk: "{field}: Дата у форматі РРРР-ММ-ДД",
+    ru: "{field}: Дата в формате ГГГГ-ММ-ДД",
+    en: "{field}: Date in YYYY-MM-DD format",
+  },
+  "err.v.lastNameRequired": { uk: "{field}: Вкажіть прізвище", ru: "{field}: Укажите фамилию", en: "{field}: Enter the last name" },
+  "err.v.firstNameRequired": { uk: "{field}: Вкажіть ім’я", ru: "{field}: Укажите имя", en: "{field}: Enter the first name" },
+  "err.v.batteryEmpty": {
+    uk: "{field}: У наборі має бути хоча б одна методика",
+    ru: "{field}: В батарее должна быть хотя бы одна методика",
+    en: "{field}: A battery needs at least one assessment",
+  },
+  "err.v.passwordShort": {
+    uk: "{field}: Пароль — щонайменше 10 символів",
+    ru: "{field}: Пароль — минимум 10 символов",
+    en: "{field}: The password must be at least 10 characters",
+  },
+  "err.v.color": {
+    uk: "{field}: Колір задається як #RRGGBB",
+    ru: "{field}: Цвет задаётся как #RRGGBB",
+    en: "{field}: Colour must be given as #RRGGBB",
+  },
+  "err.v.groupMember": {
+    uk: "{field}: Потрібен userId або непорожній userIds",
+    ru: "{field}: Нужен userId или непустой userIds",
+    en: "{field}: userId or a non-empty userIds is required",
+  },
+  /*
+   * Подписи полей — как на экране статистики (st.ageFrom, st.ageTo). В
+   * русском сообщении прежде стояли украинские «Вік від» и «Вік до» — с
+   * кадра макета, — а на русском экране поля подписаны «Возраст от/до».
+   */
+  "err.v.ageRange": {
+    uk: "{field}: «Вік від» не може бути більшим за «Вік до»",
+    ru: "{field}: «Возраст от» не может быть больше «Возраст до»",
+    en: "{field}: “Age from” can’t be greater than “Age to”",
+  },
+  "err.v.periodReversed": {
+    uk: "{field}: Початок періоду пізніше за його кінець",
+    ru: "{field}: Начало периода позже его конца",
+    en: "{field}: The period starts after it ends",
+  },
+  "err.v.presetOrFilters": {
+    uk: "{field}: Колонка бере фільтри або з пресету, або власні — не обидва одразу",
+    ru: "{field}: Колонка берёт фильтры либо из пресета, либо свои — не оба сразу",
+    en: "{field}: A column takes filters either from a preset or its own — not both",
+  },
+  "err.v.followUpDays": {
+    uk: "{field}: Дні повторів — числа через кому, наприклад «7,30»",
+    ru: "{field}: Дни повторов — числа через запятую, например «7,30»",
+    en: "{field}: Follow-up days are comma-separated numbers, e.g. “7,30”",
+  },
+  "err.v.bandBounds": {
+    uk: "{field}: Верхня межа норми не може бути меншою за нижню",
+    ru: "{field}: Верхняя граница нормы не может быть меньше нижней",
+    en: "{field}: A band’s upper bound can’t be below its lower bound",
+  },
+  "err.v.scaleCode": {
+    uk: "{field}: Код субшкали — латиниця, цифри, дефіс, підкреслення",
+    ru: "{field}: Код субшкалы: латиница, цифры, дефис, подчёркивание",
+    en: "{field}: Subscale code — Latin letters, digits, hyphen, underscore",
+  },
+  "err.v.minTwoOptions": {
+    uk: "{field}: Потрібно щонайменше 2 варіанти відповіді",
+    ru: "{field}: Нужно минимум 2 варианта ответа",
+    en: "{field}: At least 2 answer options are needed",
+  },
+  "err.v.matrixRows": {
+    uk: "{field}: Матричному питанню потрібен хоча б один рядок",
+    ru: "{field}: У матричного вопроса нужна хотя бы одна строка",
+    en: "{field}: A matrix question needs at least one row",
+  },
+  "err.v.maxAboveMin": {
+    uk: "{field}: Максимум має бути більшим за мінімум",
+    ru: "{field}: Максимум должен быть больше минимума",
+    en: "{field}: The maximum must be greater than the minimum",
+  },
+  "err.v.infoNotRequired": {
+    uk: "{field}: Інформаційний блок не може бути обов’язковим",
+    ru: "{field}: Информационный блок не может быть обязательным",
+    en: "{field}: An information block can’t be required",
+  },
+  "err.v.reverseNeedsScale": {
+    uk: "{field}: Зворотний ключ має сенс лише для питання, прив’язаного до субшкали",
+    ru: "{field}: Обратный ключ имеет смысл только для вопроса, привязанного к субшкале",
+    en: "{field}: Reverse scoring only makes sense for a question linked to a subscale",
+  },
+  "err.v.sectionKeysUnique": {
+    uk: "{field}: Ключі секцій мають бути унікальними",
+    ru: "{field}: Ключи секций должны быть уникальны",
+    en: "{field}: Section keys must be unique",
+  },
+  "err.v.scaleCodesUnique": {
+    uk: "{field}: Коди субшкал мають бути унікальними",
+    ru: "{field}: Коды субшкал должны быть уникальны",
+    en: "{field}: Subscale codes must be unique",
+  },
+  "err.v.sectionUnknown": {
+    uk: "{field}: Секцію «{section}» не описано в sections",
+    ru: "{field}: Секция «{section}» не описана в sections",
+    en: "{field}: Section “{section}” isn’t described in sections",
+  },
+  "err.v.scaleUnknown": {
+    uk: "{field}: Субшкалу «{scale}» не описано в scales",
+    ru: "{field}: Субшкала «{scale}» не описана в scales",
+    en: "{field}: Subscale “{scale}” isn’t described in scales",
+  },
+  "err.v.logicMissingSource": {
+    uk: "{field}: Умова посилається на питання, якого немає",
+    ru: "{field}: Условие ссылается на несуществующий вопрос",
+    en: "{field}: The condition refers to a question that doesn’t exist",
+  },
+  "err.v.logicForward": {
+    uk: "{field}: Умова може посилатися лише на попереднє питання",
+    ru: "{field}: Условие может ссылаться только на предыдущий вопрос",
+    en: "{field}: A condition can only refer to an earlier question",
+  },
+  "err.v.analyticsExportFull": {
+    uk: "{field}: це вивантаження завжди з ідентифікаторами; знеособлене — /api/spss/surveys/:id/data.csv?profile=deidentified",
+    ru: "{field}: эта выгрузка всегда с идентификаторами; обезличенная — /api/spss/surveys/:id/data.csv?profile=deidentified",
+    en: "{field}: this export always includes identifiers; for a de-identified one use /api/spss/surveys/:id/data.csv?profile=deidentified",
+  },
+  "err.v.railAlwaysVisible": {
+    uk: "{field}: цей розділ не можна прибрати: поруч із ним стоїть число нерозібраного",
+    ru: "{field}: этот раздел нельзя убрать: рядом с ним стоит число неразобранного",
+    en: "{field}: this section can’t be hidden: it carries the count of unreviewed items",
+  },
+  "err.v.timeOfDay": { uk: "{field}: час у вигляді ГГ:ХХ", ru: "{field}: время в виде ЧЧ:ММ", en: "{field}: time as HH:MM" },
+  "err.v.appointmentEndsBeforeStart": {
+    uk: "{field}: прийом не може закінчуватися раніше, ніж почався",
+    ru: "{field}: приём не может кончаться раньше, чем начался",
+    en: "{field}: an appointment can’t end before it starts",
+  },
+  "err.v.extraDayNeedsHours": {
+    uk: "{field}: додатковий день без годин не має сенсу: незрозуміло, що додавати",
+    ru: "{field}: дополнительный день без часов бессмыслен: непонятно, что добавлять",
+    en: "{field}: an extra day without hours makes no sense — there is nothing to add",
+  },
+  "err.v.intervalEndsBeforeStart": {
+    uk: "{field}: інтервал не може закінчуватися раніше, ніж почався",
+    ru: "{field}: интервал не может кончаться раньше, чем начался",
+    en: "{field}: an interval can’t end before it starts",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

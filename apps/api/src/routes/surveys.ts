@@ -13,7 +13,7 @@ import {
 } from "@quizzy/shared";
 import { db } from "../db";
 import { batteries, responses, surveyVersions, surveys } from "../db/schema";
-import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { badRequest, conflict, forbidden, issueKey, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { attachContent, createVersion, getSurvey, surveyToDraft, versionContent, type Content } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -341,7 +341,8 @@ surveyRoutes.get("/:id", async (c) => {
  */
 surveyRoutes.post("/validate", requireStaff, requirePermission("surveys.edit"), async (c) => {
   const input = await parseBody(c.req.raw, createSurveySchema);
-  return c.json({ issues: validateSurvey(input) });
+  // проблемы — на языке конструктора, а не по-русски на любом (волна 13)
+  return c.json({ issues: validateSurvey(input, langOf(c)) });
 });
 
 surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c) => {
@@ -395,7 +396,7 @@ surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c
     details: { title: t(row!.title as never), questions: input.questions.length },
   });
   const [full] = await attachContent([row!]);
-  return c.json({ ...full, issues: validateSurvey(input) satisfies Issue[] }, 201);
+  return c.json({ ...full, issues: validateSurvey(input, langOf(c)) satisfies Issue[] }, 201);
 });
 
 surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), async (c) => {
@@ -523,7 +524,7 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
   const staysLive = (input.status ?? existing.status) === "published";
   if (input.status === "published" || (changesContent && staysLive)) {
     const full = next ?? (current ? versionContent(current) : { questions: [], scales: [] });
-    const errors = validateSurvey(full as never).filter((i) => i.level === "error");
+    const errors = validateSurvey(full as never, langOf(c)).filter((i) => i.level === "error");
     if (errors.length) {
       badRequest("err.surveyPublishErrors", {
         count: errors.length,
@@ -727,7 +728,8 @@ surveyRoutes.get("/:id/versions/:a/diff/:b", requireStaff, requirePermission("su
   return c.json({
     before: { versionId: before.versionId, versionNumber: before.versionNumber },
     after: { versionId: after.versionId, versionNumber: after.versionNumber },
-    ...diffVersions(before, after),
+    // подписи полей и резюме — на языке запроса (волна 13)
+    ...diffVersions(before, after, langOf(c)),
   });
 });
 
@@ -857,11 +859,21 @@ surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), as
   const parsed = createSurveySchema.safeParse(raw);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
+    /*
+     * Сообщение схемы бывает ключом словаря отказов (волна 13, см. issueKey):
+     * тогда в отказ идёт его перевод, уже с именем поля, а не сам ключ.
+     */
+    const keyed = first ? issueKey(first) : null;
+    if (keyed) {
+      badRequest("err.importParseProblem", {
+        problem: renderError(keyed.key, langOf(c), { ...keyed.params, field: first!.path.join(".") || "body" }),
+      });
+    }
     badRequest("err.importParseFailed", { path: first?.path.join(".") ?? "", message: first?.message ?? "" });
   }
   const input = parsed.data;
 
-  const issues = validateSurvey(input);
+  const issues = validateSurvey(input, langOf(c));
   const errors = issues.filter((i) => i.level === "error");
   if (errors.length) {
     // 422 с полным списком: чинить файл, а не половину методики в базе

@@ -7,7 +7,11 @@ import {
   questionScoreRange,
   scaleMaxScore,
 } from "../src/scoring";
+import { renderCoded } from "../src/serverStrings";
 import type { Answer } from "../src/types";
+
+/* предупреждения движок отдаёт кодами (волна 13) — здесь их читают по-русски, как читали всегда */
+const said = (warnings: Parameters<typeof renderCoded>[0][]) => warnings.map((w) => renderCoded(w, "ru"));
 import {
   answerNumber,
   answerYesNo,
@@ -183,7 +187,7 @@ describe("нормирование", () => {
     // пол не указан — мужская норма не подходит
     const { scores, warnings } = computeProfile(makeSurvey([q], [scale]), [answerYesNo(q, true)]);
     expect(scores[0]!.value).toBe(1);
-    expect(warnings.some((w) => w.includes("нет нормы"))).toBe(true);
+    expect(said(warnings).some((w) => w.includes("нет нормы"))).toBe(true);
   });
 
   test("общая норма (sex=null) подхватывается, конкретная — приоритетнее", () => {
@@ -225,7 +229,7 @@ describe("нормирование", () => {
     expect(two.scores[0]!.value).toBe(5);
 
     const out = computeProfile(survey, qs.map((q) => answerYesNo(q, true)));
-    expect(out.warnings.some((w) => w.includes("вне таблицы стенов"))).toBe(true);
+    expect(said(out.warnings).some((w) => w.includes("вне таблицы стенов"))).toBe(true);
   });
 });
 
@@ -272,7 +276,7 @@ describe("полосы и гейт достоверности", () => {
 
     const fake = computeProfile(survey, lq.map((q) => answerYesNo(q, true)));
     expect(fake.reliable).toBe(false); // 1 > 0.6
-    expect(fake.warnings).toContain("Обследуемый приукрашивает себя");
+    expect(said(fake.warnings)).toContain("Обследуемый приукрашивает себя");
     expect(fake.scores[0]!.validityFailed).toBe(true);
   });
 

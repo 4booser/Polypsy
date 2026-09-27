@@ -419,9 +419,11 @@ describe("k-анонимность выгрузки", () => {
      * Иначе исследователь увидит пропуски в поле «пол» и обработает их как
      * случайные — а пропущено ровно то, что было редким.
      */
+    // пояснения манифеста — на языке запроса (волна 13); проверка ниже читает русский
     const res = await api(
       `/api/spss/surveys/${surveyInA}/manifest.json?profile=deidentified`,
       adminA.token,
+      { headers: { "Accept-Language": "ru" } },
     );
     expect(res.body.kanon).toBeTruthy();
     expect(res.body.kanon.note).toContain("не случайны");
