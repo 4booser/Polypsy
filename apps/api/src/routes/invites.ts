@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { desc, eq, inArray } from "drizzle-orm";
 import { createInviteSchema, inviteListQuery, t, type Invite, type InvitePreview, type Page } from "@quizzy/shared";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
 import { batteries, invites, inviteUses, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
@@ -19,10 +20,22 @@ export const inviteRoutes = new Hono<AppEnv>();
  * никаких имён и внутренних id.
  */
 inviteRoutes.get("/preview/:token", async (c) => {
-  const lookup = await findUsableInvite(c.req.param("token"));
-  if (!lookup.ok) {
-    return c.json<InvitePreview>({ valid: false, reason: lookup.reason });
-  }
+  /*
+   * Системным контекстом, как регистрация по той же ссылке (routes/auth.ts):
+   * маршрут публичный, контекста запроса у него нет, а без контекста
+   * политики не дают ничего. Под ролью приложения каждое действующее
+   * приглашение отвечало «ссылка недействительна» (unknown) — ещё до ввода
+   * пароля, то есть человек по ссылке врача не мог даже начать. Сюита этого
+   * не видела: владелец политики обходит (волна 13, прогон части сюиты под
+   * ролью приложения). Что уходит наружу — решает код ниже, а не роль.
+   */
+  const preview = await systemContext(baseDb, () => invitePreview(c.req.param("token"), langOf(c)));
+  return c.json<InvitePreview>(preview);
+});
+
+async function invitePreview(token: string, lang: ReturnType<typeof langOf>): Promise<InvitePreview> {
+  const lookup = await findUsableInvite(token);
+  if (!lookup.ok) return { valid: false, reason: lookup.reason };
   const battery = lookup.invite.batteryId
     ? await db.query.batteries.findFirst({ where: eq(batteries.id, lookup.invite.batteryId) })
     : null;
@@ -37,13 +50,13 @@ inviteRoutes.get("/preview/:token", async (c) => {
   const survey = lookup.invite.surveyId
     ? await db.query.surveys.findFirst({ where: eq(surveys.id, lookup.invite.surveyId) })
     : null;
-  return c.json<InvitePreview>({
+  return {
     valid: true,
     batteryTitle: battery?.title ?? null,
-    surveyTitle: survey ? t(survey.title as never, langOf(c)) : null,
+    surveyTitle: survey ? t(survey.title as never, lang) : null,
     unit: lookup.invite.unit,
-  });
-});
+  };
+}
 
 /*
  * Право вместо «просто персонал». requireStaff остаётся первым: оно отвечает
@@ -67,6 +80,26 @@ async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0]
 }
 
 /**
+ * Приглашение своё, если своё то, к чему оно ведёт: батарея — по её группе,
+ * методика — по её группе.
+ *
+ * Прежде видимость и отзыв спрашивали только батарею, а приглашение с
+ * методикой (без батареи) считалось «ничьим» — и администратор любой группы
+ * видел в своём списке ссылки чужих групп и мог их отозвать. Выписать такую
+ * ссылку он не мог (при создании методика проверяется), а увидеть и
+ * погасить — мог. Нашлось сравнением ответов владельцем и ролью приложения
+ * (волна 13): под ролью у чужой строки пропадало название методики — его
+ * прятала политика surveys, — а сама строка оставалась.
+ */
+async function assertInviteScope(
+  user: Parameters<typeof assertGroupAccess>[0],
+  invite: { batteryId: string | null; surveyId: string | null },
+) {
+  await assertInviteBattery(user, invite.batteryId);
+  if (invite.surveyId) await assertSurveyAccess(user, invite.surveyId);
+}
+
+/**
  * Выписанные приглашения — страницами (`?limit=&cursor=`), свежие сверху.
  *
  * Прежде список отдавался целиком, и видимость проверялась на каждой строке
@@ -74,9 +107,9 @@ async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0]
  * свой поход за батареей и за правом на её группу. Приглашения копятся
  * годами, и экран становился тем медленнее, чем дольше отделение работает.
  *
- * Видимость по-прежнему решает assertInviteBattery — то есть область
+ * Видимость по-прежнему решает проверка области (assertInviteScope) — то есть область
  * ответственности из lib/scope.ts, а не второе правило в SQL рядом с ней, —
- * но вердикт запоминается на батарею: батарей десятки, приглашений тысячи.
+ * но вердикт запоминается на пару «батарея, методика»: их десятки, приглашений тысячи.
  * Страница собирается кусками, пока не наберётся limit видимых и ещё одно —
  * чтобы знать, что за ней есть продолжение.
  */
@@ -86,13 +119,13 @@ inviteRoutes.get("/", async (c) => {
   let scanFrom = decodeExactCursor(rawCursor);
 
   const verdicts = new Map<string, boolean>();
-  const canSee = async (batteryId: string | null): Promise<boolean> => {
-    const key = batteryId ?? "";
+  const canSee = async (row: { batteryId: string | null; surveyId: string | null }): Promise<boolean> => {
+    const key = `${row.batteryId ?? ""}|${row.surveyId ?? ""}`;
     const known = verdicts.get(key);
     if (known !== undefined) return known;
     let ok = true;
     try {
-      await assertInviteBattery(user, batteryId);
+      await assertInviteScope(user, row);
     } catch {
       // чужие приглашения не показываем
       ok = false;
@@ -112,7 +145,7 @@ inviteRoutes.get("/", async (c) => {
       .orderBy(desc(invites.createdAt), desc(invites.id))
       .limit(CHUNK);
     for (const row of chunk) {
-      if (!(await canSee(row.r.batteryId))) continue;
+      if (!(await canSee(row.r))) continue;
       if (picked.length === limit) {
         more = true;
         break;
@@ -256,7 +289,7 @@ inviteRoutes.post("/:id/revoke", async (c) => {
   const user = c.get("user");
   const row = await db.query.invites.findFirst({ where: eq(invites.id, c.req.param("id")) });
   if (!row) notFound("err.inviteNotFound");
-  await assertInviteBattery(user, row.batteryId);
+  await assertInviteScope(user, row);
 
   await db.update(invites).set({ revokedAt: new Date().toISOString() }).where(eq(invites.id, row.id));
   await audit(c, {

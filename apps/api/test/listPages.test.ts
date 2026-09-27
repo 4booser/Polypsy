@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import type { Page } from "@quizzy/shared";
-import { adminA, adminB, api, db, groupA, hashPassword, makeUser, root, users } from "./fixtures";
-import { batteries, invites, referrals } from "../src/db/schema";
+import { adminA, adminB, api, db, groupA, hashPassword, makeUser, root, surveyInA, users } from "./fixtures";
+import { batteries, invites, referrals, surveyAccess } from "../src/db/schema";
 
 /**
  * Списки не отдаются целиком и не теряют строк на границе страницы.
@@ -55,6 +55,13 @@ describe("направления", () => {
 
   beforeAll(async () => {
     const person = await makeUser("user", `ref-page-${crypto.randomUUID()}@test`);
+    /*
+     * Человек — из зоны adminA (назначена методика его группы). Реестр
+     * направлений показывает только людей своей зоны (волна 13); прежде он
+     * зону не спрашивал вовсе, и тест листал направления человека, которого
+     * adminA не видит, — в бою политика строк такие строки прятала.
+     */
+    await db.insert(surveyAccess).values({ surveyId: surveyInA, userId: person.id, grantedBy: adminA.id });
     const rows = Array.from({ length: MANY }, () => ({
       id: crypto.randomUUID(),
       userId: person.id,

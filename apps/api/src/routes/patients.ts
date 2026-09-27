@@ -30,6 +30,7 @@ import { decryptField } from "../lib/crypto";
 import { langOf, notFound, parseQuery } from "../lib/http";
 import { birthYearOf } from "../lib/privacy";
 import {
+  accessibleGroupIds,
   accessiblePatientIds,
   assertPatientGroupAccess,
   isSuperadmin,
@@ -93,6 +94,27 @@ patientRoutes.get("/", async (c) => {
     ids = (ids ?? [...inGroup]).filter((id) => inGroup.has(id));
   }
 
+  /*
+   * «Последняя сдача» — по методикам своей зоны, как и всё о прохождениях.
+   * Прежде подвыборка брала любую методику учреждения: сотрудник видел дату
+   * сдачи методики чужой группы — сведение о прохождении, которого ему не
+   * показывают больше нигде. В бою дату резала политика responses, и один
+   * и тот же человек в списке был «сдавал вчера» владельцем базы и «не
+   * сдавал» ролью приложения (волна 13, обход всех GET под ролью).
+   */
+  const groupIds = await accessibleGroupIds(user);
+  const ownSurvey =
+    groupIds === null
+      ? undefined
+      : groupIds.length
+        ? sql`(s.group_id in ${groupIds} or (s.group_id is null and s.created_by = ${user.id}))`
+        : sql`(s.group_id is null and s.created_by = ${user.id})`;
+  const lastResponse = ownSurvey
+    ? sql<string | null>`(select max(r.submitted_at) from responses r join surveys s on s.id = r.survey_id
+        where r.user_id = "users"."id" and r.status = 'completed' and ${ownSurvey})`
+    : sql<string | null>`(select max(r.submitted_at) from responses r
+        where r.user_id = "users"."id" and r.status = 'completed')`;
+
   const rows =
     ids !== null && !ids.length
       ? []
@@ -115,8 +137,7 @@ patientRoutes.get("/", async (c) => {
              * теми же людьми: список читается на каждое открытие раздела и
              * на каждую букву поиска.
              */
-            lastResponseAt: sql<string | null>`(select max(r.submitted_at) from responses r
-              where r.user_id = "users"."id" and r.status = 'completed')`,
+            lastResponseAt: lastResponse,
           })
           .from(users)
           .where(and(eq(users.role, "user"), ids ? inArray(users.id, ids) : undefined));

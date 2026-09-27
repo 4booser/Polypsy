@@ -16,10 +16,10 @@ import {
   type User,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { asSystem } from "../db/context";
 import { mailingRecipients, mailings, patientGroupMembers, users, type MailingRow } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { namesOf } from "../lib/names";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, notFound, parseBody, parseQuery } from "../lib/http";
 import {
@@ -255,48 +255,12 @@ mailingRoutes.post("/", ...staffOnly, async (c) => {
 /* ═══════════ получатель: «Повідомлення» в приложении пациента ═══════════ */
 
 /**
- * Имена авторов для ящика получателя — системным контекстом, по авторам уже
- * отобранных рассылок.
- *
- * Под политикой users (0075) пациент видит только свою строку. Левое
- * соединение с users в запросе ящика у него всегда пусто, и «—» стояло бы у
- * каждой рассылки на экране — а тесты этого не показывают: они ходят в базу
- * владельцем, для которого политик нет. Внутреннее соединение выбросило бы
- * рассылки целиком. SECURITY DEFINER-функция в базе, как
- * rls_owns_patient_group, тоже не подходит: ФИО шифрованы, расшифровка
- * живёт в приложении, и функция отдавала бы шифртекст — второй путь к
- * колонкам имени ради того же decryptField. Копия имени в самой рассылке
- * при отправке — ещё одна шифрованная колонка с персональным полем, которая
- * расходится с users при смене фамилии.
- *
- * Системная роль здесь — на одну выборку ровно тех колонок, из которых
- * складывается имя, и только по авторам рассылок, которые получателю уже
- * отданы политикой: больше, чем имя автора собственного письма, он не
- * узнаёт.
- *
- * asSystem — в той же транзакции запроса, а не systemContext. Отдельная
- * системная транзакция брала второе соединение пула, пока транзакция
- * запроса держала первое, — на каждый просмотр ящика. Это тот же узор, от
- * которого пул вставал при двойной авторизации (внешний разбор 2026-09-26,
- * сторож — test/authOnce.test.ts).
+ * Имена авторов для ящика получателя — системной ролью, по авторам уже
+ * отобранных рассылок. Почему так, а не соединением с users или политикой, —
+ * в lib/names.ts: тот же приём теперь нужен переписке, плану безопасности и
+ * справке о посещении.
  */
-async function authorNames(ids: string[]): Promise<Map<string, string>> {
-  if (!ids.length) return new Map();
-  const rows = await asSystem(() =>
-    db
-      .select({
-        id: users.id,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        middleName: users.middleName,
-        anonymous: users.anonymous,
-        pseudonym: users.pseudonym,
-      })
-      .from(users)
-      .where(inArray(users.id, ids)),
-  );
-  return new Map(rows.map((r) => [r.id, fullNameOf(r)]));
-}
+const authorNames = namesOf;
 
 /**
  * Свои рассылки — с непрочитанными и счётчиком для меню.
