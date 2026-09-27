@@ -113,8 +113,14 @@ async function fingerprint(entry: CatalogEntry): Promise<string> {
   return [...hash.slice(0, 6)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Поля строки методики, которые берутся из черновика каталога */
-function surveyFields(input: ReturnType<typeof createSurveySchema.parse>) {
+/**
+ * Поля строки методики, которые берутся из черновика каталога.
+ *
+ * Открыты наружу ради листов сверки (instrumentSheets/): лист обязан
+ * описывать методику такой, какой её ставит установщик, и второй список
+ * полей рядом с этим однажды разошёлся бы с ним.
+ */
+export function surveyFields(input: ReturnType<typeof createSurveySchema.parse>) {
   return {
     title: normalizeLocalized(input.title)!,
     description: normalizeLocalized(input.description),
