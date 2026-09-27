@@ -4,9 +4,9 @@ import { join, resolve } from "node:path";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { UI, consentActionsOf, consentViewOfLoadError, type ConsentView } from "@quizzy/shared";
-import { api } from "../src/api";
+import { api, ApiError } from "../src/api";
 import { LangProvider } from "../src/lang";
-import { ConsentScreen } from "../src/patient/ConsentGate";
+import { ConsentScreen, acceptFailure } from "../src/patient/ConsentGate";
 
 /**
  * Согласие в веб-кабинете: отказ — не выход.
@@ -75,6 +75,37 @@ describe("экран согласия кабинета", () => {
     expect(consentViewOfLoadError(503)).toEqual({ kind: "pass" });
     expect(consentViewOfLoadError(500)).toEqual({ kind: "failed" });
     expect(consentViewOfLoadError(403)).toEqual({ kind: "failed" });
+  });
+});
+
+describe("«Погоджуюся» как состояние формы (w13:uitests)", () => {
+  test("409 — редакция сменилась: сказать почему и перечитать текст", () => {
+    const f = acceptFailure(new ApiError("Текст згоди оновився — прочитайте нову редакцію", 409), "запасний");
+    expect(f).toEqual({ error: "Текст згоди оновився — прочитайте нову редакцію", reread: true });
+  });
+
+  test("обрыв и пятисотка — текст остаётся, перечитывать нечего, повтор той же кнопкой", () => {
+    expect(acceptFailure(new ApiError("Немає зв’язку", 0), "x")).toEqual({ error: "Немає зв’язку", reread: false });
+    expect(acceptFailure(new ApiError("Помилка сервера", 500), "x").reread).toBe(false);
+    // отказ без текста — запасная строка, а не пустая красная полоса
+    expect(acceptFailure(new ApiError("", 500), "Помилка").error).toBe("Помилка");
+    expect(acceptFailure("щось", "Помилка").error).toBe("Помилка");
+  });
+
+  const buttons = (html: string) => [...html.matchAll(/<button([^>]*)>/g)].map((m) => /\sdisabled=""/.test(m[1]!));
+
+  test("пока решение уходит, обе кнопки выключены; ошибка видна над ними", () => {
+    const html = draw(
+      <ConsentScreen view={{ kind: "read", text: "Текст" }} busy error="Немає зв’язку" onAction={() => {}} />,
+    );
+    expect(buttons(html)).toEqual([true, true]);
+    expect(html).toMatch(/role="alert"[^>]*>Немає зв’язку</);
+  });
+
+  test("ошибки нет — нет и полосы; кнопки живые", () => {
+    const html = screen({ kind: "read", text: "Текст" });
+    expect(html).not.toContain('role="alert"');
+    expect(buttons(html)).toEqual([false, false]);
   });
 });
 

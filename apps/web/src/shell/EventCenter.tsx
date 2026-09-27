@@ -5,7 +5,8 @@ import type { UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { api } from "../api";
 import { useAuth } from "../auth";
-import { useResource } from "../useResource";
+import { useResource, type Resource } from "../useResource";
+import { loadView } from "../ui";
 import { dateTime, severityKey } from "../format";
 import { cx } from "../ui/cx";
 import { occurrenceKeys } from "../ui/rowKeys";
@@ -207,29 +208,7 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
         >
           <PanelHead title={ut("ec.missed")} note={`${ut("ec.since")} ${dateTime(since)}`} />
 
-          {missedCount === 0 ? (
-            <Empty>{ut("ec.nothing")}</Empty>
-          ) : (
-            <div className="flex flex-col">
-              {(missed.data?.groups ?? []).map((g) => (
-                <div key={g.kind} className="flex flex-col">
-                  {/* подпись группы — как заголовки групп бургера: 13/700 серым, без капители */}
-                  <div className="px-3 pb-1 pt-2 text-[13px] font-bold leading-[18px] text-muted">
-                    {ut(GROUP_KEY[g.kind])} · <span className="font-mono tabular-nums">{g.count}</span>
-                  </div>
-                  {g.items.slice(0, 5).map((item) => (
-                    <Link key={item.id} to={item.href} className={ROW} onClick={() => setOpen(false)}>
-                      <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                      {item.severity ? <SevMark level={item.severity} /> : null}
-                      <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">
-                        {dateTime(item.at).slice(5, 16)}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+          <MissedList res={missed} onGo={() => setOpen(false)} />
 
           {missedCount > 0 ? (
             <div className="border-t border-hairline p-2">
@@ -278,6 +257,60 @@ const EVENT_KEY: Record<AppEventKind, UiKey> = {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Сводка «пока вас не было» по загрузке — без запроса внутри
+ * (test/loadStates.test.tsx).
+ *
+ * «Нічого не пропущено» — ответ сервера, а не отсутствие ответа. Раньше
+ * сводка считала пропущенное по `data ?? []` и на отказе и без связи
+ * говорила «нічого не пропущено» — про смену, за которую могли открыться
+ * случаи риска. Теперь до ответа — «завантаження», на отказе — текст отказа
+ * и «Повторити».
+ */
+export function MissedList({
+  res,
+  onGo,
+}: {
+  res: Pick<Resource<Awaited<ReturnType<typeof api.missed>>>, "data" | "error" | "loading" | "reload" | "updatedAt">;
+  onGo: () => void;
+}) {
+  const { ut } = useLang();
+  const view = loadView(res, (d) => d.groups.every((g) => g.count === 0));
+  if (view === "failed") {
+    return (
+      <div role="alert" className="flex items-center gap-3 px-3 py-4">
+        <p className="m-0 min-w-0 flex-1 text-[13px] leading-[18px] text-danger">{res.error}</p>
+        <Button variant="quiet" size="sm" disabled={res.loading} onClick={res.reload}>
+          {ut("common.retry")}
+        </Button>
+      </div>
+    );
+  }
+  if (view === "wait") return <Empty>{ut("common.loading")}</Empty>;
+  if (view === "empty") return <Empty>{ut("ec.nothing")}</Empty>;
+  return (
+    <div className="flex flex-col">
+      {(res.data?.groups ?? []).map((g) => (
+        <div key={g.kind} className="flex flex-col">
+          {/* подпись группы — как заголовки групп бургера: 13/700 серым, без капители */}
+          <div className="px-3 pb-1 pt-2 text-[13px] font-bold leading-[18px] text-muted">
+            {ut(GROUP_KEY[g.kind])} · <span className="font-mono tabular-nums">{g.count}</span>
+          </div>
+          {g.items.slice(0, 5).map((item) => (
+            <Link key={item.id} to={item.href} className={ROW} onClick={onGo}>
+              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              {item.severity ? <SevMark level={item.severity} /> : null}
+              <span className="shrink-0 font-mono text-[11px] text-muted tabular-nums">
+                {dateTime(item.at).slice(5, 16)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }

@@ -26,6 +26,7 @@ import {
   diffText,
   filterErrors,
   statEditHref,
+  withColumnFilters,
 } from "./model";
 import {
   AgeRow,
@@ -39,7 +40,6 @@ import {
   SexSelect,
   StatInput,
   VshrToggle,
-  patchFilters,
 } from "./parts";
 
 /*
@@ -186,13 +186,7 @@ function ModelScreen({ id }: { id: string }) {
    * все модели, которые на него ссылаются.
    */
   const setFilters = (i: number, patch: Partial<SampleFilters>) =>
-    edit(
-      work.map((c, j) => {
-        if (j !== i) return c;
-        const base = c.presetId ? (presetOf(c)?.criteria ?? {}) : (c.filters ?? {});
-        return { ...c, presetId: null, filters: patchFilters(base, patch) };
-      }),
-    );
+    edit(withColumnFilters(work, i, patch, (presetId) => presets.data?.find((p) => p.id === presetId)?.criteria));
 
   /* «ВШР» — у одного и того же варианта во всех выборках: показатели модели одни на все колонки */
   const toggleRisk = (questionId: string, optionId: string) => {

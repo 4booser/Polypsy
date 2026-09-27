@@ -21,6 +21,7 @@ import {
   parseFacets,
   serializeFacets,
   toggleFacet,
+  visibleFacetOptions,
   type Facet,
   type FacetSelection,
 } from "./facets";
@@ -556,6 +557,48 @@ export function Screen<T>({
   );
 }
 
+/**
+ * Что стоит на месте данных: четыре состояния, которые нельзя путать.
+ *
+ *  - wait   — ответа ещё не было: первая загрузка или ждём связи (о связи
+ *             говорит строка оболочки, ConnectionLine). Место — скелет.
+ *  - failed — сервер отказал, данных нет. Место — отказ с «повторить».
+ *  - empty  — сервер ответил, и ответ пуст: пустой список или «ничего»
+ *             (null, 204 — например, текст согласия ещё не задан). Только
+ *             здесь уместно «нічого немає».
+ *  - ready  — данные есть (может быть, устаревающие: обрыв и неудачный
+ *             повтор их не стирают).
+ *
+ * Внешний разбор (w13:uitests): экраны, которые брали `data ?? []`, на
+ * отказе и на обрыве говорили «звернень немає», «прийомів немає»,
+ * «пропущеного немає» — то есть сообщали о человеке неправду, выглядящую
+ * как правда. «Нет данных» — это ответ сервера, а не отсутствие ответа.
+ *
+ * `updatedAt` отличает «ответ был, и он пуст» от «ответа не было»: у обоих
+ * data — null.
+ */
+export type LoadView = "wait" | "failed" | "empty" | "ready";
+
+export function loadView<T>(
+  res: Pick<Resource<T>, "data" | "error" | "updatedAt">,
+  isEmpty?: (data: T) => boolean,
+): LoadView {
+  if (res.data !== null) return isEmpty?.(res.data) ? "empty" : "ready";
+  if (res.error) return "failed";
+  return res.updatedAt !== null ? "empty" : "wait";
+}
+
+/** Место данных, пока их нет: скелет или отказ с «повторить» — но никогда не «пусто» */
+export function NotLoaded({
+  res,
+  rows = 2,
+}: {
+  res: Pick<Resource<unknown>, "error" | "loading" | "reload">;
+  rows?: number;
+}) {
+  return <Loading rows={rows} error={res.error} onRetry={res.reload} busy={res.loading} />;
+}
+
 export function Loading({
   rows = 4,
   error,
@@ -834,11 +877,15 @@ export interface Column<T> {
   key: string;
   header: string;
   num?: boolean;
-  /** Значение для сортировки; если не задано — колонка не сортируется */
-  sort?: (row: T) => string | number;
+  /**
+   * Значение для сортировки; если не задано — колонка не сортируется.
+   * null (как и пустая строка, NaN) — «значения нет»: такая строка стоит в
+   * конце при любом направлении (sortRows).
+   */
+  sort?: (row: T) => SortValue;
   render: (row: T) => ReactNode;
   /** Текстовое значение для CSV; без него берётся sort, иначе колонка пропускается */
-  csv?: (row: T) => string | number;
+  csv?: (row: T) => SortValue;
   width?: number;
   /**
    * Колонку нельзя скрыть. Ставится там, где без неё строка перестаёт быть
@@ -855,6 +902,45 @@ export interface Column<T> {
  * Разделитель — точка с запятой: русский Excel по умолчанию понимает её,
  * а запятую внутри чисел «1,5» — нет.
  */
+/** Значение ячейки для сортировки и выгрузки; null — значения нет */
+export type SortValue = string | number | null | undefined;
+
+/** Порядок таблицы: ключ колонки и направление */
+export interface TableSort {
+  key: string;
+  desc?: boolean;
+}
+
+/**
+ * «Значения нет»: null, пустая строка, строка из пробелов, нечисло.
+ *
+ * Нечисло сюда попадает не из данных, а из арифметики колонки: доля при
+ * нулевом знаменателе. Сравнение с ним даёт NaN, сортировка читает NaN как
+ * «равны» — и строки вокруг такой ячейки переставали упорядочиваться вовсе.
+ */
+function isBlank(v: SortValue): boolean {
+  if (v === null || v === undefined) return true;
+  if (typeof v === "number") return Number.isNaN(v);
+  return v.trim() === "";
+}
+
+/**
+ * Сравнение двух непустых значений.
+ *
+ * Число с числом — как числа, текст с текстом — по алфавиту языка, а число
+ * с текстом — число впереди. Прежнее «число с числом как числа, остальное
+ * как текст» не было порядком: 2 < 10 числами, «10» < «15» и «15» < «2»
+ * текстом — круг, и итог зависел от того, в каком порядке строки пришли.
+ * Число впереди потому, что в колонке чисел текст — это почти всегда
+ * пометка («н/д», «—»), а не значение.
+ */
+function compareValues(x: string | number, y: string | number): number {
+  if (typeof x === "number" && typeof y === "number") return x === y ? 0 : x < y ? -1 : 1;
+  if (typeof x === "number") return -1;
+  if (typeof y === "number") return 1;
+  return x.localeCompare(y);
+}
+
 /**
  * Сортировка строк таблицы. Вынесена из компонента, чтобы её можно было
  * проверить без React: это логика, а не разметка, и ошибка в ней тихо
@@ -863,12 +949,15 @@ export interface Column<T> {
  * Числа сравниваются как числа, остальное — как текст с учётом языка:
  * «Ялинка» и «Яблуко» должны идти в порядке украинского алфавита, а не по
  * кодам символов.
+ *
+ * Равные остаются в том порядке, в каком пришли, при любом направлении:
+ * обратный порядок — это обратное сравнение, а не перевёрнутый список,
+ * иначе три человека с одинаковым числом замеров менялись бы местами на
+ * каждое нажатие заголовка. Пустые — в конце при любом направлении: «ещё не
+ * проходил» — остаток, а не начало списка (так же «без відділення» в
+ * справочнике людей и пустой p95 в техпанели).
  */
-export function sortRows<T>(
-  rows: T[],
-  columns: Column<T>[],
-  sort: { key: string; desc?: boolean } | null,
-): T[] {
+export function sortRows<T>(rows: T[], columns: Column<T>[], sort: TableSort | null): T[] {
   if (!sort) return rows;
   const col = columns.find((c) => c.key === sort.key);
   if (!col?.sort) return rows;
@@ -876,16 +965,45 @@ export function sortRows<T>(
   return [...rows].sort((a, b) => {
     const x = get(a);
     const y = get(b);
-    const cmp =
-      typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y));
+    const bx = isBlank(x);
+    const by = isBlank(y);
+    if (bx || by) return bx === by ? 0 : bx ? 1 : -1;
+    const cmp = compareValues(x as string | number, y as string | number);
     return sort.desc ? -cmp : cmp;
   });
 }
 
+/**
+ * Порядок из адреса: «ключ» или «ключ:desc».
+ *
+ * Ключ, которого среди сортируемых колонок нет (колонку убрали, ссылка
+ * старая, руками вписана колонка действий), — не порядок, а умолчание
+ * таблицы. Раньше такой ключ принимался как есть: sortRows его не находил
+ * и отдавал строки в порядке сервера, и порядок по умолчанию («свіжі
+ * згори» у направлений) пропадал без следа — ни стрелки, ни объяснения.
+ */
+export function parseTableSort<T>(raw: string, columns: Column<T>[], fallback: TableSort | null): TableSort | null {
+  if (!raw) return fallback;
+  const [key = "", dir] = raw.split(":");
+  if (!columns.some((c) => c.key === key && c.sort)) return fallback;
+  return { key, desc: dir === "desc" };
+}
+
+/** Порядок — в строку адреса; читается глазами и разбирается одним split */
+export function tableSortParam(sort: TableSort | null): string {
+  return sort ? `${sort.key}${sort.desc ? ":desc" : ""}` : "";
+}
+
+/** Нажатие заголовка: та же колонка — обратное направление, другая — по возрастанию */
+export function nextTableSort(current: TableSort | null, key: string): TableSort {
+  return current?.key === key ? { key, desc: !current.desc } : { key, desc: false };
+}
+
 export function tableToCsv<T>(rows: T[], columns: Column<T>[]): string {
   const cols = columns.filter((c) => c.csv ?? c.sort);
-  const cell = (v: string | number) => {
-    const str = String(v);
+  const cell = (v: SortValue) => {
+    // пустое — пустая ячейка, а не слово «null» в файле, который унесут в Excel
+    const str = isBlank(v) ? "" : String(v);
     return /[";\n]/.test(str) ? `"${str.replaceAll('"', '""')}"` : str;
   };
   const head = cols.map((c) => cell(c.header)).join(";");
@@ -963,21 +1081,17 @@ export function DataTable<T>({
   const keyOf = (row: T, i: number): string => rowKeyOf(row, i, rowKey);
 
   const [urlSort, setUrlSort] = useUrlState(stateKey ? `${stateKey}.sort` : "");
-  const [localSort, setLocalSort] = useState(initialSort ?? null);
+  const [localSort, setLocalSort] = useState<TableSort | null>(initialSort ?? null);
 
-  // «ключ» или «ключ:desc» — читаемо в адресной строке и разбирается одним split
-  const sort = stateKey
-    ? urlSort
-      ? { key: urlSort.split(":")[0]!, desc: urlSort.endsWith(":desc") }
-      : (initialSort ?? null)
-    : localSort;
+  // «ключ» или «ключ:desc» — читаемо в адресной строке; чужой ключ — умолчание (parseTableSort)
+  const sort = stateKey ? parseTableSort(urlSort, columns, initialSort ?? null) : localSort;
 
-  const setSort = (next: { key: string; desc?: boolean } | null) => {
+  const setSort = (next: TableSort | null) => {
     if (!stateKey) {
       setLocalSort(next);
       return;
     }
-    setUrlSort(next ? `${next.key}${next.desc ? ":desc" : ""}` : "");
+    setUrlSort(tableSortParam(next));
   };
 
   /*
@@ -1043,10 +1157,7 @@ export function DataTable<T>({
             key={c.key}
             className={`${c.num ? "num" : ""} ${c.sort ? "sortable" : ""}`}
             style={c.width ? { width: c.width } : undefined}
-            onClick={() =>
-              c.sort &&
-              setSort(sort?.key === c.key ? { key: c.key, desc: !sort.desc } : { key: c.key })
-            }
+            onClick={() => c.sort && setSort(nextTableSort(sort, c.key))}
           >
             {c.header}
             {sort?.key === c.key ? <span className="arrow">{sort.desc ? "↓" : "↑"}</span> : null}
@@ -1348,7 +1459,7 @@ function FacetBar<T>({
         return (
           <div key={facet.key} className="facet">
             <span className="facet-label">{facet.label}</span>
-            {options.slice(0, 8).map((o) => (
+            {visibleFacetOptions(options, 8).map((o) => (
               <button
                 key={o.value}
                 className={`chip${o.selected ? " active" : ""}`}

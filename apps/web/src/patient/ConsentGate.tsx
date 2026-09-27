@@ -84,9 +84,10 @@ export function ConsentGate({ children }: { children: ReactNode }) {
         await api.acceptConsent(textId);
         setOverride({ kind: "pass" });
       } catch (e) {
-        setError(e instanceof Error ? e.message : ut("common.error"));
+        const failure = acceptFailure(e, ut("common.error"));
+        setError(failure.error);
         // текст обновился, пока человек читал: встаёт новая редакция, принимать — её
-        if (e instanceof ApiError && e.status === 409) {
+        if (failure.reread) {
           setOverride(null);
           res.reload();
         }
@@ -121,6 +122,23 @@ export function ConsentGate({ children }: { children: ReactNode }) {
   };
 
   return <ConsentScreen view={view} busy={busy} error={error} onAction={(a) => void run[a]()} />;
+}
+
+/**
+ * Отказ на «Погоджуюся»: что сказать и перечитывать ли текст.
+ *
+ * 409 — действующая редакция сменилась, пока человек читал: принимать
+ * показанную нельзя, встаёт новая, и сообщение сервера объясняет, почему
+ * текст на экране поменялся. Прочие отказы (нет связи, пятисотка) текст не
+ * меняют: он остаётся, и «Погоджуюся» можно нажать ещё раз — строка ошибки
+ * при этом снимается с началом повтора. Вынесено из обработчика, чтобы
+ * переход проверялся без браузера (test/consentGate.test.tsx).
+ */
+export function acceptFailure(error: unknown, fallback: string): { error: string; reread: boolean } {
+  return {
+    error: error instanceof Error && error.message ? error.message : fallback,
+    reread: error instanceof ApiError && error.status === 409,
+  };
 }
 
 /** Подпись и вид кнопки каждого выхода: «согласиться» и «повторить» — главные, остальное тише */

@@ -28,13 +28,16 @@ import {
   breakdownLabel,
   describeSpec,
   paramsFromSpec,
+  resultView,
   sameSpec,
   specErrors,
   specFromParams,
   toSampleFilters,
+  withSpec,
 } from "./cohorts/model";
 import { Check, FillSelect, FilterTag, Group, MemberList, MultiPick, Section, Segmented, ShareBars } from "./cohorts/parts";
 import { AssignSurveyDialog, PickGroupDialog } from "./patientGroups/dialogs";
+import { grantEach, newProgress, partialFailure } from "./patientGroups/model";
 import { SelectionBar } from "./patientGroups/PersonGrid";
 import { presetHref } from "./statistics/model";
 import { GlyphButton, IconMinusThick } from "./statistics/parts";
@@ -93,8 +96,7 @@ export default function Cohorts() {
 
   /* правка — от актуального адреса, а не от замыкания: два быстрых нажатия не должны терять первое */
   const patch = useCallback(
-    (p: Partial<CohortSpec>) =>
-      setParams((prev) => paramsFromSpec({ ...specFromParams(prev), ...p }, prev), { replace: true }),
+    (p: Partial<CohortSpec>) => setParams((prev) => withSpec(prev, p), { replace: true }),
     [setParams],
   );
   const setSpec = useCallback(
@@ -142,6 +144,7 @@ export default function Cohorts() {
   const preview = count.data;
   const previewError = count.error;
   const counting = !invalid && (settledKey !== key || count.loading || count.refreshing);
+  const view = resultView({ invalid, hasPreview: !!preview, error: previewError });
 
   /* ─── поимённо ─── */
 
@@ -233,13 +236,22 @@ export default function Cohorts() {
   const [renaming, setRenaming] = useState<CohortRow | null>(null);
   const groups = useResource(() => api.patientGroups(), [dialog === "group"], { enabled: dialog === "group" });
 
+  /* выданное в этом окне помнится: повтор после отказа посередине — только остальным (patientGroups/model.ts) */
+  const progress = useRef(newProgress());
+  const openAssign = () => {
+    progress.current = newProgress();
+    setDialog("assign");
+  };
+
   const assign = async (surveyId: string, expiresAt: string | null) => {
-    let done = 0;
-    for (const userId of selected) {
-      await api.grant(surveyId, userId, undefined, expiresAt);
-      done += 1;
+    const outcome = await grantEach(progress.current, `${surveyId}|${expiresAt ?? ""}`, [...selected], (userId) =>
+      api.grant(surveyId, userId, undefined, expiresAt),
+    );
+    if (outcome.error) {
+      const reason = outcome.error instanceof Error ? outcome.error.message : ut("acc.grantFailed");
+      throw new Error(partialFailure(outcome, reason, { done: ut("pg.assigned"), of: ut("an.of") }));
     }
-    return `${ut("pg.assigned")} — ${done}`;
+    return `${ut("pg.assigned")} — ${outcome.done}`;
   };
 
   const tags = activeFilters(spec, ut, { survey: surveyTitle, scale: scaleTitle });
@@ -428,9 +440,12 @@ export default function Cohorts() {
               )}
             </div>
 
-            {previewError !== null ? (
+            {/* ошибка набора без прежнего числа — слова, а не вечный скелет (cohorts/model.ts, resultView) */}
+            {view === "error" ? (
               <Loading error={previewError || ut("common.error")} onRetry={count.reload} />
-            ) : !preview ? (
+            ) : view === "invalid" ? (
+              <p className="m-0 text-[13px] leading-[18px] text-muted">{ut("uit.coh.fixToCount")}</p>
+            ) : view === "loading" || !preview ? (
               <Loading rows={3} />
             ) : (
               <Result preview={preview} busy={counting || invalid} />
@@ -535,7 +550,7 @@ export default function Cohorts() {
                 <SelectionBar
                   count={selected.size}
                   entries={[
-                    { label: ut("pg.assignTest"), onSelect: () => setDialog("assign") },
+                    { label: ut("pg.assignTest"), onSelect: openAssign },
                     { label: ut("pg.addToGroup"), onSelect: () => setDialog("group") },
                     { label: ut("pg.clearSelection"), onSelect: () => setSelected(new Set()) },
                   ]}

@@ -5,8 +5,8 @@ import { ROLE_LADDER } from "@quizzy/shared";
 import { api } from "../api";
 import { day, daysLeft } from "../format";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
-import { Loading, Search, useAction } from "../ui";
+import { useResource, type Resource } from "../useResource";
+import { Loading, NotLoaded, Search, loadView, useAction } from "../ui";
 import { Grid, Page, Panel, Stack } from "../ui/layout";
 import { Button, Field, Input, SectionLabel, Select, Tag } from "../ui/primitives";
 
@@ -59,6 +59,29 @@ interface RoleItem {
   assignable: boolean;
 }
 
+/**
+ * Экрану нужны две загрузки сразу — справочник прав и роли; что показать,
+ * пока их нет.
+ *
+ * Раньше отказ справочника показывался голой строкой без «повторить», а
+ * отказ ролей не показывался вовсе: экран ждал `rolesRes.data`, которого
+ * после отказа не будет, и стоял скелетом, пока человек не перезагрузит
+ * страницу. Теперь отказ любой из двух — отказ с текстом, и «Повторити»
+ * перечитывает ровно то, что не пришло.
+ */
+export function gateOf(parts: Pick<Resource<unknown>, "data" | "error" | "reload">[]): {
+  view: "wait" | "failed" | "ready";
+  error: string | null;
+  retry: () => void;
+} {
+  const failed = parts.filter((r) => r.data === null && r.error);
+  const retry = () => {
+    for (const r of failed) r.reload();
+  };
+  if (failed.length) return { view: "failed", error: failed[0]!.error, retry };
+  return { view: parts.every((r) => r.data !== null) ? "ready" : "wait", error: null, retry };
+}
+
 export default function Permissions() {
   const { ut, lang } = useLang();
   const { run, busy } = useAction();
@@ -106,20 +129,17 @@ export default function Permissions() {
    * Поймано сторожем доступности после того, как его ожидание перестало
    * засчитывать первую попавшуюся карточку за готовый экран.
    */
-  if (catalogue.error) {
+  const gate = gateOf([catalogue, rolesRes]);
+  if (gate.view !== "ready" || !catalogue.data || !rolesRes.data) {
     return (
       <Page title={ut("perm.title")} sub={ut("perm.sub")}>
-        <p className="text-danger">{catalogue.error}</p>
+        <Loading rows={6} error={gate.error} onRetry={gate.retry} />
       </Page>
     );
   }
-  if (!catalogue.data || !rolesRes.data) {
-    return (
-      <Page title={ut("perm.title")} sub={ut("perm.sub")}>
-        <Loading rows={6} />
-      </Page>
-    );
-  }
+  /* список «кого я вправе назначать» и действующие исключения: «нікого» и «немає» — только по ответу */
+  const staffView = loadView(staff);
+  const activeView = loadView(active, (d) => d.length === 0);
 
   const groups = catalogue.data.groups;
   /* плоский указатель: право по коду — чтобы список не обходился заново на каждую строку */
@@ -213,7 +233,11 @@ export default function Permissions() {
           <Chain roles={rolesRes.data} />
 
           <Panel title={ut("perm.activeAll")} flush>
-            {(active.data ?? []).length === 0 ? (
+            {activeView === "wait" || activeView === "failed" ? (
+              <div className="px-5 pb-5">
+                <NotLoaded res={active} />
+              </div>
+            ) : activeView === "empty" ? (
               <p className="m-0 px-5 pb-5 text-caption text-muted">{ut("perm.noExceptions")}</p>
             ) : (
               <div className="flex flex-col">
@@ -249,6 +273,11 @@ export default function Permissions() {
             flush
           >
             <div className="max-h-[260px] overflow-y-auto">
+              {staffView === "wait" || staffView === "failed" ? (
+                <div className="px-5 pb-5">
+                  <NotLoaded res={staff} />
+                </div>
+              ) : null}
               {people.map((u) => (
                 <button
                   key={u.id}
@@ -267,9 +296,17 @@ export default function Permissions() {
 
           {!picked ? (
             <p className="text-caption text-muted">{ut("perm.pickPerson")}</p>
-          ) : card.loading ? (
-            <Loading rows={4} />
-          ) : card.data ? (
+          ) : card.data?.userId !== picked ? (
+            /*
+             * Карточка — только выбранного человека. Слой загрузки держит
+             * прежний ответ, пока едет новый: после выбора другого человека
+             * здесь стояла карточка предыдущего — с его ролями и живыми
+             * кнопками «видати/зняти виняток», которые меняли права не того,
+             * кто подсвечен в списке. Отказ — отказ с «повторить», а не
+             * пустое место под списком, как было.
+             */
+            <NotLoaded res={card} rows={4} />
+          ) : (
             <PersonCard
               card={card.data}
               roles={rolesRes.data}
@@ -284,7 +321,7 @@ export default function Permissions() {
               }}
               run={run}
             />
-          ) : null}
+          )}
         </Stack>
       </Grid>
     </Page>

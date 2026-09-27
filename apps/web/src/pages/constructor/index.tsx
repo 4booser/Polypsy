@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { CONTENT_LANGS, contentLangFor, makeUiT, type ContentLang, type Issue, type SurveyGroupWithCounts } from "@quizzy/shared";
+import { CONTENT_LANGS, contentLangFor, makeUiT, type ContentLang, type Issue } from "@quizzy/shared";
 import { api } from "../../api";
 import { useResource } from "../../useResource";
 import { AssignGroup } from "./AssignGroup";
@@ -13,6 +13,7 @@ import {
   createTarget,
   defaultAnswers,
   normalizeDraft,
+  oneAtATime,
   switchMode,
   toDraft,
   toPayload,
@@ -21,8 +22,8 @@ import {
   type Mode,
 } from "./model";
 import { Preview } from "./Preview";
-import { VersionConflict, saveFailure } from "./Conflict";
-import { IconGroup, IconPatients, Loading } from "../../ui";
+import { VersionConflict, saveThenPublish } from "./Conflict";
+import { IconGroup, IconPatients, Loading, useToast } from "../../ui";
 import { Page } from "../../ui/layout";
 import { Button, Tabs, Textarea } from "../../ui/primitives";
 import { cx } from "../../ui/cx";
@@ -95,6 +96,7 @@ const draftKey = (id: string | undefined) => `quizzy.constructor.${id ?? "new"}`
 
 export default function Constructor() {
   const { ut, lang } = useLang();
+  const toast = useToast();
   const { id } = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -140,8 +142,12 @@ export default function Constructor() {
       return next;
     });
   }, []);
-  /* группы — для настроек; отказ — пустой список, как и прежде */
-  const groups = useResource(() => api.groups().catch(() => [] as SurveyGroupWithCounts[]), []).data ?? [];
+  /*
+   * Группы — для настроек. Отказ больше не превращается в пустой список:
+   * пустой список показывал группу методики как «Без групи», хотя она в
+   * группе, — просто список не пришёл (Basics.tsx, Settings).
+   */
+  const groups = useResource(() => api.groups(), []);
   const [focused, setFocused] = useState(0);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -302,40 +308,61 @@ export default function Constructor() {
     }
   }
 
-  async function save(publish: boolean) {
-    setBusy(true);
-    setError(null);
-    setConflict(null);
-    try {
-      const payload = toPayload(draft);
-      /*
-       * Папка уходит только при заведении: правка методики папку не меняет,
-       * для переноса есть свой маршрут со своей записью в журнале
-       * (PUT /api/surveys/:id/folder).
-       */
-      /*
-       * baseVersionId — только правке: при заведении сверяться не с чем.
-       * Черновик без неё (старый автосейв) уходит, как прежде, — в очередь.
-       */
-      const { baseVersionId, ...content } = payload;
-      const survey = id
-        ? await api.updateSurvey(id, {
-            ...content,
-            ...(baseVersionId ? { baseVersionId } : {}),
-            versionNote: ut("co.versionNote"),
-          })
-        : await api.createSurvey({ ...content, folderId: draft.folderId ?? undefined });
-      if (publish) await api.updateSurvey(survey.id, { status: "published" });
-      localStorage.removeItem(draftKey(id));
-      setDirty(false);
-      navigate(`/surveys/${survey.id}`);
-    } catch (e) {
-      const failure = saveFailure(e, ut("co.saveFailed"));
-      if (failure.conflict) setConflict(failure.message);
-      else setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
+  /* одно сохранение за раз — и для кнопок, и для Ctrl+S (model.ts, oneAtATime) */
+  const saving = useRef({ busy: false });
+
+  function save(publish: boolean) {
+    return oneAtATime(saving.current, async () => {
+      setBusy(true);
+      setError(null);
+      setConflict(null);
+      try {
+        const payload = toPayload(draft);
+        /*
+         * Папка уходит только при заведении: правка методики папку не меняет,
+         * для переноса есть свой маршрут со своей записью в журнале
+         * (PUT /api/surveys/:id/folder).
+         */
+        /*
+         * baseVersionId — только правке: при заведении сверяться не с чем.
+         * Черновик без неё (старый автосейв) уходит, как прежде, — в очередь.
+         */
+        const { baseVersionId, ...content } = payload;
+        const outcome = await saveThenPublish(
+          () =>
+            id
+              ? api.updateSurvey(id, {
+                  ...content,
+                  ...(baseVersionId ? { baseVersionId } : {}),
+                  versionNote: ut("co.versionNote"),
+                })
+              : api.createSurvey({ ...content, folderId: draft.folderId ?? undefined }),
+          publish ? (surveyId) => api.updateSurvey(surveyId, { status: "published" }) : null,
+          ut("co.saveFailed"),
+        );
+        if (outcome.kind === "conflict") {
+          setConflict(outcome.message);
+          return;
+        }
+        if (outcome.kind === "error") {
+          setError(outcome.message);
+          return;
+        }
+        /*
+         * Записано — значит записано, даже если публикация отказала: автосейв
+         * стирается, экран уходит к методике. Остаться здесь значило бы, что
+         * следующее «Створити» заведёт вторую такую же (Conflict.tsx,
+         * saveThenPublish). Отказ публикации — всплывающим сообщением: оно
+         * переживает переход, а строка ошибки этого экрана — нет.
+         */
+        localStorage.removeItem(draftKey(id));
+        setDirty(false);
+        if (outcome.publishError) toast(`${ut("uit.co.savedNotPublished")}: ${outcome.publishError}`, "err");
+        navigate(`/surveys/${outcome.id}`);
+      } finally {
+        setBusy(false);
+      }
+    });
   }
 
   /*
@@ -707,7 +734,7 @@ export default function Constructor() {
           ) : null}
           {tool === "settings" ? (
             <ToolBlock title={ut("cn.settings")} onClose={() => setTool(null)}>
-              <Settings draft={draft} groups={groups} patch={patch} />
+              <Settings draft={draft} groups={groups.data} groupsError={groups.error} patch={patch} />
             </ToolBlock>
           ) : null}
           {tool === "json" ? (
@@ -750,8 +777,12 @@ export default function Constructor() {
  */
 function Results({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Draft) => Draft) => void }) {
   const { ut } = useLang();
-  /* все, с архивными: выбранный каскад на архивную батарею остаётся виден с пометкой (Bands) */
-  const batteries = useResource(() => api.batteries(), []).data ?? [];
+  /*
+   * Все, с архивными: выбранный каскад на архивную батарею остаётся виден с
+   * пометкой (Bands). Пока список не пришёл — null, а не пустой список:
+   * пустой назвал бы выбранный каскад удалённым.
+   */
+  const batteries = useResource(() => api.batteries(), []).data;
   const [details, setDetails] = useState(false);
   const bands = draft.scales[0]?.bands ?? [];
   return (

@@ -18,10 +18,21 @@ import { useLang } from "../../lang";
 export function Settings({
   draft,
   groups,
+  groupsError,
   patch,
 }: {
   draft: Draft;
-  groups: SurveyGroupWithCounts[];
+  /**
+   * Группы методик; null — список ещё не пришёл или не пришёл вовсе.
+   *
+   * Экран подставлял на это время пустой список, и <select> без пункта
+   * группы методики показывал первый — «Без групи»: человек читал, что
+   * методика ни в какой группе, хотя она в группе и там останется. Пока
+   * списка нет, группа подписана «завантаження», а селект выключен.
+   */
+  groups: SurveyGroupWithCounts[] | null;
+  /** Почему список групп не пришёл — под полем, а не молчанием */
+  groupsError?: string | null;
   patch: (p: Partial<Draft>) => void;
 }) {
   const { ut } = useLang();
@@ -45,12 +56,18 @@ export function Settings({
           каталога новой группы, чем не завести вовсе; пока папка есть, об
           этом сказано под полем.
         */}
-        <Field label={ut("cb.group")} hint={draft.folderId ? ut("cn.folderFollowsGroup") : undefined}>
+        <Field
+          label={ut("cb.group")}
+          hint={draft.folderId ? ut("cn.folderFollowsGroup") : undefined}
+          error={groups === null && groupsError ? `${ut("net.loadFailed")}: ${groupsError}` : undefined}
+        >
           <Select
             value={draft.groupId ?? ""}
+            disabled={groups === null}
             onChange={(e) => patch({ groupId: e.target.value || null, folderId: null })}
           >
             <option value="">{ut("sel.noGroup")}</option>
+            {groups === null && draft.groupId ? <option value={draft.groupId}>{ut("common.loading")}</option> : null}
             {/*
               Снятые с использования группы не предлагаются — кроме той, в
               которой методика уже лежит. Убрать её из списка целиком
@@ -58,7 +75,7 @@ export function Settings({
               вариант, и правка чего угодно на этом экране молча
               переносила бы методику в чужую группу.
             */}
-            {groups
+            {(groups ?? [])
               .filter((g) => !g.archivedAt || g.id === draft.groupId)
               .map((g) => (
                 <option key={g.id} value={g.id}>{g.title}</option>

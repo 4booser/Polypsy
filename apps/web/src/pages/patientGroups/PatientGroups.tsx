@@ -8,7 +8,8 @@ import { cx } from "../../ui/cx";
 import { IconHeart, IconPlusThick } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { Pager } from "../../ui/pager";
-import { DEFAULT_PER, pageCount, pageFrom, perFrom, slicePage } from "../../ui/paging";
+import { pageCount, pageFrom, perFrom, refilter, slicePage, toPage, toPer } from "../../ui/paging";
+import { patchParams } from "../../ui/viewParams";
 import { Button, Input, Tabs } from "../../ui/primitives";
 import { useResource } from "../../useResource";
 import { GroupForm } from "./dialogs";
@@ -69,17 +70,7 @@ export default function PatientGroups() {
   /* состояние — в адресе, как у каталога: ссылку на «страницу 3» пересылают */
   const update = useCallback(
     (patch: Record<string, string | null>) => {
-      setParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          for (const [k, v] of Object.entries(patch)) {
-            if (v === null || v === "") next.delete(k);
-            else next.set(k, v);
-          }
-          return next;
-        },
-        { replace: true },
-      );
+      setParams((prev) => patchParams(prev, patch), { replace: true });
     },
     [setParams],
   );
@@ -96,7 +87,7 @@ export default function PatientGroups() {
 
   /* последняя страница может опустеть после поиска — возвращаемся на ближайшую */
   useEffect(() => {
-    if (groups && page > pages) update({ page: pages > 1 ? String(pages) : null });
+    if (groups && page > pages) update(toPage(pages));
   }, [groups, page, pages, update]);
 
   /*
@@ -139,7 +130,7 @@ export default function PatientGroups() {
               look="outline"
               aria-label={ut("pg.search")}
               value={q}
-              onChange={(e) => update({ q: e.target.value, page: null })}
+              onChange={(e) => update(refilter({ q: e.target.value }))}
               className="pr-[44px]"
               autoComplete="off"
               maxLength={200}
@@ -158,8 +149,8 @@ export default function PatientGroups() {
           page={page}
           pages={pages}
           per={per}
-          onPer={(n) => update({ per: n === DEFAULT_PER ? null : String(n), page: null })}
-          onPage={(n) => update({ page: n > 1 ? String(n) : null })}
+          onPer={(n) => update(toPer(n))}
+          onPage={(n) => update(toPage(n))}
         />
       }
     >

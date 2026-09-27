@@ -2,11 +2,67 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
 import { day } from "../format";
-import { Empty, Screen, useAction } from "../ui";
+import { Empty, NotLoaded, Screen, loadView, useAction, type LoadView } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Button, Num, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { useResource, type Resource } from "../useResource";
+
+type ThreadPage = Awaited<ReturnType<typeof api.thread>>;
+type ThreadItem = ThreadPage["items"][number];
+
+/**
+ * Разговор, открытый по адресу, — только из ответа на ЭТОТ разговор.
+ *
+ * Слой загрузки держит прежний ответ, пока едет новый (keepPreviousData), —
+ * для таблиц это хорошо, для переписки нет: при переходе от одного
+ * пациента к другому письма первого стояли под именем второго, пока не
+ * приедет ответ, и по ним же уходила отметка «прочитано» с адресом чужого
+ * разговора. Ответ несёт свой id; не тот — значит, своего ещё нет.
+ */
+export function ownThread(
+  res: Pick<Resource<ThreadPage | null>, "data" | "error" | "updatedAt">,
+  id: string | undefined,
+): { view: LoadView; data: ThreadPage | null } {
+  const data = id && res.data && res.data.id === id ? res.data : null;
+  const view = loadView({ data, error: res.error, updatedAt: data ? res.updatedAt : null }, (d) => d.items.length === 0);
+  return { view, data };
+}
+
+/**
+ * Лента писем по состоянию загрузки. «Повідомлень ще немає» — только когда
+ * сервер ответил пустым разговором; до ответа — скелет, на отказе — отказ с
+ * «Повторити» (раньше на отказе стояло то же «ще немає»).
+ */
+export function ThreadFeed({
+  view,
+  items,
+  res,
+}: {
+  view: LoadView;
+  items: ThreadItem[];
+  res: Pick<Resource<unknown>, "error" | "loading" | "reload">;
+}) {
+  const { ut } = useLang();
+  if (view === "wait" || view === "failed") return <NotLoaded res={res} />;
+  if (items.length === 0) return <Empty title={ut("ms.empty")} />;
+  return (
+    <>
+      {items.map((m) => (
+        <div
+          key={m.id}
+          className={`max-w-[70ch] rounded-md border border-hairline p-2 ${m.mine ? "self-end bg-surface-3" : "self-start"}`}
+        >
+          <p className="whitespace-pre-wrap text-body">{m.text}</p>
+          <p className="mt-1 text-micro text-faint">
+            {day(m.sentAt)}
+            {m.mine ? ` · ${m.readAt ? ut("ms.read") : ut("ms.sent")}` : ""}
+          </p>
+        </div>
+      ))}
+    </>
+  );
+}
 
 /**
  * Переписка с пациентом.
@@ -29,11 +85,11 @@ export default function MessagesPage() {
    * письма и курсор назад (до волны 12 — первые пятьсот, и с пятьсот первого
    * новые письма пропадали с экрана).
    */
-  type Item = NonNullable<typeof thread.data>["items"][number];
-  const [older, setOlder] = useState<{ threadId: string; items: Item[]; before: string | null } | null>(null);
+  const [older, setOlder] = useState<{ threadId: string; items: ThreadItem[]; before: string | null } | null>(null);
   const earlier = older && older.threadId === id ? older : null;
-  const shown = [...(earlier?.items ?? []), ...(thread.data?.items ?? [])];
-  const before = earlier ? earlier.before : (thread.data?.hasMore ? thread.data.nextBefore : null);
+  const own = ownThread(thread, id);
+  const shown = [...(earlier?.items ?? []), ...(own.data?.items ?? [])];
+  const before = earlier ? earlier.before : (own.data?.hasMore ? own.data.nextBefore : null);
 
   /*
    * «Прочитано» — отдельным запросом и только по показанным письмам
@@ -145,24 +201,7 @@ export default function MessagesPage() {
                           {ut("ui.loadMore")}
                         </Button>
                       ) : null}
-                      {shown.length === 0 ? (
-                        <Empty title={ut("ms.empty")} />
-                      ) : (
-                        shown.map((m) => (
-                          <div
-                            key={m.id}
-                            className={`max-w-[70ch] rounded-md border border-hairline p-2 ${
-                              m.mine ? "self-end bg-surface-3" : "self-start"
-                            }`}
-                          >
-                            <p className="whitespace-pre-wrap text-body">{m.text}</p>
-                            <p className="mt-1 text-micro text-faint">
-                              {day(m.sentAt)}
-                              {m.mine ? ` · ${m.readAt ? ut("ms.read") : ut("ms.sent")}` : ""}
-                            </p>
-                          </div>
-                        ))
-                      )}
+                      <ThreadFeed view={earlier?.items.length ? "ready" : own.view} items={shown} res={thread} />
                     </div>
                     <div className="flex flex-col gap-2 p-4">
                       <Textarea

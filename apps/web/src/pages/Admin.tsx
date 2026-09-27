@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { useResource } from "../useResource";
-import { useAction } from "../ui";
+import { useResource, type Resource } from "../useResource";
+import { NotLoaded, loadView, useAction } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Button, Field, Tag, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
@@ -32,6 +32,28 @@ export { default as Groups } from "./Groups";
  * какую редакцию человек читал.
  */
 export function ConsentText() {
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const res = useResource(() => api.consentText(), [], { manual: true });
+  return <ConsentTextBody res={res} />;
+}
+
+/**
+ * Правка текста — только поверх известного текущего.
+ *
+ * «Не задано» — ответ сервера (текст согласия ещё не заводили), а не
+ * отсутствие ответа. Раньше экран не различал их: пока текст ехал, на
+ * отказе и без связи он показывал пустые поля с меткой «не задано» и живой
+ * кнопкой сохранения. Администратор, поверивший метке, писал текст заново —
+ * и сохранение выпускало новую редакцию поверх настоящей, а все пациенты
+ * снова видели экран согласия. Ещё и набранное до ответа затиралось, когда
+ * ответ всё-таки приезжал. Теперь до ответа полей нет вовсе — скелет, на
+ * отказе — отказ с «Повторити».
+ */
+export function ConsentTextBody({
+  res,
+}: {
+  res: Pick<Resource<Awaited<ReturnType<typeof api.consentText>>>, "data" | "error" | "loading" | "reload" | "updatedAt">;
+}) {
   const { ut } = useLang();
   const [uk, setUk] = useState("");
   const [ru, setRu] = useState("");
@@ -40,8 +62,10 @@ export function ConsentText() {
   const [version, setVersion] = useState<number | null>(null);
   const { run } = useAction();
 
-  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
-  const current = useResource(() => api.consentText(), [], { manual: true }).data;
+  const current = res.data;
+  const view = loadView(res);
+  const known = view === "ready" || view === "empty";
+  const shownVersion = version ?? current?.version ?? null;
   useEffect(() => {
     if (!current) return;
     setVersion(current.version);
@@ -63,12 +87,18 @@ export function ConsentText() {
       title={ut("adm.consentTitle")}
       sub={ut("adm.consentHint")}
       actions={
-        <Tag tone="plain">
-          {version ? `${ut("adm.consentVersion")} ${version}` : ut("adm.consentUnset")}
-        </Tag>
+        known ? (
+          <Tag tone="plain">
+            {shownVersion ? `${ut("adm.consentVersion")} ${shownVersion}` : ut("adm.consentUnset")}
+          </Tag>
+        ) : null
       }
     >
       <Panel>
+      {!known ? (
+        <NotLoaded res={res} rows={5} />
+      ) : (
+      <>
       <div className="grid gap-3 sm:grid-cols-2 min-[900px]:grid-cols-3">
         <Field label={ut("adm.inUkrainian")}>
           <Textarea rows={5} value={uk} onChange={(e) => setUk(e.target.value)} />
@@ -91,14 +121,16 @@ export function ConsentText() {
           }
           onClick={() =>
             run(async () => {
-              const res = await api.saveConsentText({ uk: uk.trim(), ru: ru.trim(), en: en.trim() });
-              setVersion(res.version);
+              const saved = await api.saveConsentText({ uk: uk.trim(), ru: ru.trim(), en: en.trim() });
+              setVersion(saved.version);
             }, ut("adm.consentSaved"))
           }
         >
           {ut("adm.consentSave")}
         </Button>
       </div>
+      </>
+      )}
       </Panel>
     </Page>
   );

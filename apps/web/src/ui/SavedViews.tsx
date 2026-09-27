@@ -3,8 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, type SavedView } from "../api";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
-import { useAction } from "./index";
+import { loadView, useAction } from "./index";
 import { IconClose } from "./glyphs";
+import { Button } from "./primitives";
+import { openView } from "./viewParams";
 
 /**
  * Сохранённые виды экрана.
@@ -28,7 +30,8 @@ export function SavedViews({ scope }: { scope: string }) {
   const res = useResource(() => api.views(scope), [scope]);
   const views = res.data ?? [];
   const current = location.search.replace(/^\?/, "");
-  const active = views.find((v) => v.params === current);
+  /* узнаётся по составу отбора, а не посимвольно: порядок параметров — это порядок, в котором трогали фильтры */
+  const active = openView(views, current);
 
   const apply = (v: SavedView) => navigate({ search: v.params ? `?${v.params}` : "" });
 
@@ -42,6 +45,16 @@ export function SavedViews({ scope }: { scope: string }) {
 
   return (
     <div className="views">
+      {/*
+        Отказ загрузки — не «видов нет»: строка без видов при отказе
+        выглядела ровно как у человека, который их не заводил, и свои виды
+        считались пропавшими. Здесь — сказать и дать повторить.
+      */}
+      {loadView(res) === "failed" ? (
+        <Button variant="quiet" size="sm" onClick={res.reload}>
+          {ut("uit.views.loadFailed")}
+        </Button>
+      ) : null}
       {views.map((v) => (
         <button
           key={v.id}
