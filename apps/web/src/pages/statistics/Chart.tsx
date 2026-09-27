@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { FilterPresetListItem, SampleFilters, StatModelColumn, StatRunResult } from "@quizzy/shared";
 import { api } from "../../api";
@@ -80,13 +80,23 @@ export default function StatChart() {
   const models = useResource(() => api.statModels(), []);
   const presets = useResource(() => api.filterPresets(), []);
   const picked = params.get("model") ?? models.data?.items[0]?.id ?? null;
-  const model = useResource(() => api.statModel(picked!), [picked], { enabled: !!picked });
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const model = useResource(() => api.statModel(picked!), [picked], { enabled: !!picked, manual: true });
 
   const [work, setWork] = useState<StatModelColumn[] | null>(null);
   const [off, setOff] = useState<Criterion[][]>([]);
   const [result, setResult] = useState<StatRunResult | null>(null);
+  /*
+   * Номер расчёта. Расчёт — действие человека («порахувати», выбор модели в
+   * перечне), а не загрузка экрана, и остаётся действием (занятость кнопки,
+   * отказ всплывашкой). Но ответ его применяется только последний (волна 13):
+   * выбрал модель А, не дождался, выбрал Б — расчёт по А, пришедший позже,
+   * вставал на экран под названием Б.
+   */
+  const runNo = useRef(0);
   useEffect(() => {
     if (!model.data) return;
+    runNo.current += 1;
     setWork(model.data.columns);
     setOff(model.data.columns.map(() => []));
     setResult(null);
@@ -113,8 +123,11 @@ export default function StatChart() {
   const refresh = (cols = payload, id = picked, title = model.data?.title) =>
     void run(async () => {
       if (!cols || !id) return false;
+      const ticket = ++runNo.current;
       const same = model.data?.id === id && !columnsChanged(model.data.columns, cols);
-      setResult(same ? await api.runStatModel(id) : await api.previewStatModel(cols.map(columnInput), title));
+      const next = same ? await api.runStatModel(id) : await api.previewStatModel(cols.map(columnInput), title);
+      if (ticket !== runNo.current) return false;
+      setResult(next);
     });
 
   const save = () =>

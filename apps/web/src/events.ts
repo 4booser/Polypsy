@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { api, tokenStore } from "./api";
+import { connection } from "./connection";
+import { useResource } from "./useResource";
 
 /**
  * Подписка консоли на поток событий сервера.
@@ -88,11 +90,30 @@ async function run(): Promise<void> {
     if (!started) return;
     /*
      * Пауза растёт до полуминуты: если сервер перезапускают, сотня открытых
-     * вкладок не должна ломиться в него каждую секунду.
+     * вкладок не должна ломиться в него каждую секунду. Вернулась связь
+     * (connection.ts дождался ответа сервера) — пауза обрывается: экраны
+     * в этот момент перечитываются сами, и канал событий должен встать
+     * вместе с ними, а не через полминуты после.
      */
     attempt = Math.min(attempt + 1, 6);
-    await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, 30_000)));
+    await pause(Math.min(1000 * 2 ** attempt, 30_000));
   }
+}
+
+/** Пауза, которую обрывает возвращение связи */
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const wasOnline = connection.isOnline();
+    const done = () => {
+      clearTimeout(timer);
+      off();
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    const off = connection.subscribe(() => {
+      if (!wasOnline && connection.isOnline()) done();
+    });
+  });
 }
 
 function handle(chunk: string): void {
@@ -116,12 +137,17 @@ function handle(chunk: string): void {
  * человек сдают методику почти одновременно, и десять запросов подряд за одним
  * и тем же списком — это хуже, чем поллинг, который они заменяют.
  */
-export function useLiveReload(kinds: AppEventKind[], reload: () => void): void {
+export function useLiveReload(kinds: AppEventKind[], reload: () => void, enabled = true): void {
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
   const keys = kinds.join(",");
 
   useEffect(() => {
+    /*
+     * Выключено — не подписываемся вовсе: подписка поднимает поток событий,
+     * а без входа (или до настройки второго фактора) он получил бы отказ.
+     */
+    if (!enabled) return;
     const want = new Set(keys.split(","));
     let timer: ReturnType<typeof setTimeout> | null = null;
     const off = onAppEvent((event) => {
@@ -136,7 +162,7 @@ export function useLiveReload(kinds: AppEventKind[], reload: () => void): void {
       off();
       if (timer) clearTimeout(timer);
     };
-  }, [keys]);
+  }, [keys, enabled]);
 }
 
 /**
@@ -148,42 +174,39 @@ export function useLiveReload(kinds: AppEventKind[], reload: () => void): void {
  * проверка версии при сохранении, а это — только предупреждение.
  */
 export function usePresence(resource: string | null): { id: string; name: string }[] {
-  const [others, setOthers] = useState<{ id: string; name: string }[]>([]);
+  /*
+   * Кто здесь — загрузкой (волна 13): раньше голый запрос с флагом alive, и
+   * ответ о прежней карте, пришедший после перехода к следующей, ложился бы
+   * на неё. Отказ — пустой список: присутствие — удобство, его отказ не
+   * должен ничего ломать.
+   */
+  const others = useResource(() => api.presenceOthers(resource!).then((r) => r.others), [resource], {
+    enabled: !!resource,
+    // чужие на прежней карте — не чужие на этой: пока спрашиваем, никого не показываем
+    keep: false,
+  });
+  const reload = others.reload;
 
+  /*
+   * Пульс — действие, а не загрузка: он сообщает серверу «я здесь» и
+   * ответа не ждёт. Поэтому остаётся эффектом (белый список сторожа,
+   * test/dataLayer.test.ts).
+   */
   useEffect(() => {
-    if (!resource) {
-      setOthers([]);
-      return;
-    }
-    let alive = true;
-
-    const refresh = () => {
-      void api
-        .presenceOthers(resource)
-        .then((r) => {
-          if (alive) setOthers(r.others);
-        })
-        .catch(() => {
-          /* присутствие — удобство: его отказ не должен ничего ломать */
-        });
-    };
+    if (!resource) return;
     const beat = () => {
       void api.presenceHere(resource).catch(() => {});
     };
-
     beat();
-    refresh();
     const timer = setInterval(beat, 20_000);
     const off = onAppEvent((event) => {
-      if (event.kind === "presence.changed" && event.resource === resource) refresh();
+      if (event.kind === "presence.changed" && event.resource === resource) reload();
     });
-
     return () => {
-      alive = false;
       clearInterval(timer);
       off();
     };
-  }, [resource]);
+  }, [resource, reload]);
 
-  return others;
+  return resource ? (others.data ?? []) : [];
 }

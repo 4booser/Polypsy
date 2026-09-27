@@ -75,7 +75,8 @@ function FiltersScreen({ id }: { id: string | null }) {
   const { run, busy } = useAction();
 
   const presets = useResource(() => api.filterPresets(), []);
-  const preset = useResource(() => api.filterPreset(id!), [id], { enabled: id !== null });
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const preset = useResource(() => api.filterPreset(id!), [id], { enabled: id !== null, manual: true });
   const groups = useResource(() => api.patientGroups(), []);
   const hints = useLocalityHints();
   const listId = useId();

@@ -58,7 +58,7 @@ export default function Groups() {
   const staff = res.data?.staff ?? [];
   const reload = res.reload;
 
-  if (!groups) return <Loading error={res.error} />;
+  if (!groups) return <Loading error={res.error} onRetry={res.reload} busy={res.loading} />;
 
   const canManage = groups.some((g) => g.manageable);
   const showAll = scope === "all";
@@ -464,7 +464,7 @@ function GroupInsight({ groupId }: { groupId: string }) {
   const res = useResource(() => api.groupAnalytics(groupId), [groupId]);
   const data: GroupAnalytics | null = res.data;
 
-  if (!data) return <Loading rows={3} error={res.error} />;
+  if (!data) return <Loading rows={3} error={res.error} onRetry={res.reload} busy={res.loading} />;
   if (!data.responseCount) {
     return <p className="mt-4 text-caption text-muted">{ut("grp.noResponses")}</p>;
   }

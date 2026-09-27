@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { OpsLevel, OpsLogLine, OpsLogs, OpsLogWindow } from "@quizzy/shared";
-import { api } from "../../api";
+import { api, ApiError, withSignal } from "../../api";
+import { connection } from "../../connection";
 import { locale } from "../../format";
 import { useLang } from "../../lang";
 import { Loading, useUrlState } from "../../ui";
@@ -119,10 +120,18 @@ export default function OpsLogs() {
      * дописывается к ним, и следующий вопрос зависит от предыдущего ответа
      * (курсор). Каждое поколение фильтров — свой цикл: ответ, пришедший от
      * прежних фильтров, отбрасывается по номеру поколения.
+     *
+     * Волна 13 (слой загрузки — TanStack Query): цикл остался своим и
+     * записан в белый список сторожа (test/dataLayer.test.ts) — живой хвост
+     * с курсором вперёд и дочиткой назад в «бесконечный запрос» не ложится
+     * без потерь. Но гарантии у него те же: запрос прежнего поколения
+     * отменяется (сигнал), а без связи лента не стучится в сервер — ждёт,
+     * пока connection.ts не скажет, что связь вернулась.
      */
     let alive = true;
     let cursor: number | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const abort = new AbortController();
     generation.current++;
     setLines([]);
     setGap(false);
@@ -131,10 +140,10 @@ export default function OpsLogs() {
 
     const tick = async () => {
       if (!alive) return;
-      if (document.visibilityState === "visible" && !pausedRef.current) {
+      if (document.visibilityState === "visible" && !pausedRef.current && connection.isOnline()) {
         try {
           const first = cursor === null;
-          const page = await api.opsLogs({
+          const page = await withSignal(abort.signal, () => api.opsLogs({
             level: level ?? undefined,
             q: q || undefined,
             requestId: rid || undefined,
@@ -142,7 +151,7 @@ export default function OpsLogs() {
             limit: first ? FIRST_LIMIT : NEXT_LIMIT,
             /* период — только у первой страницы: дальше лента берёт живой хвост памяти */
             window: first ? win : undefined,
-          });
+          }));
           if (!alive) return;
           cursor = page.cursor;
           /* ленту, дочитанную вручную назад, живой хвост не обрезает до обычного потолка */
@@ -164,7 +173,8 @@ export default function OpsLogs() {
           setLoaded(true);
           setError(null);
         } catch (e) {
-          if (alive) setError(e instanceof Error ? e.message : ut("common.error"));
+          // обрыв связи — не ошибка ленты: о нём говорит строка оболочки, а лента ждёт
+          if (alive && !(e instanceof ApiError && e.status === 0)) setError(e instanceof Error ? e.message : ut("common.error"));
         }
       }
       if (alive) timer = setTimeout(tick, POLL_MS);
@@ -172,6 +182,7 @@ export default function OpsLogs() {
     void tick();
     return () => {
       alive = false;
+      abort.abort();
       clearTimeout(timer);
     };
   }, [level, q, rid, win, ut]);

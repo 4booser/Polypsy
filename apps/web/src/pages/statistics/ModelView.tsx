@@ -102,7 +102,8 @@ function ModelScreen({ id }: { id: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const toast = useToast();
-  const model = useResource(() => api.statModel(id), [id]);
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const model = useResource(() => api.statModel(id), [id], { manual: true });
   const groups = useResource(() => api.patientGroups(), []);
   const presets = useResource(() => api.filterPresets(), []);
 

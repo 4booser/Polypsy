@@ -88,6 +88,7 @@ import type {
   BatteryAssignment,
   BatteryInput,
   Invite,
+  InvitePreview,
   CreateInviteInput,
   Referral,
   CreateReferralInput,
@@ -155,6 +156,7 @@ import type {
 } from "@quizzy/shared";
 import { currentLang } from "./lang";
 import { noteNetworkFailure } from "./telemetry/bus";
+import { connection, serverAnswered } from "./connection";
 import { audioFileName } from "./components/recorder/model";
 
 /*
@@ -363,7 +365,45 @@ export function refreshesOn401(path: string): boolean {
  */
 export const MAINTENANCE_EVENT = "quizzy:maintenance";
 
+/*
+ * Сигнал отмены для запросов, начатых загрузкой экрана (волна 13).
+ *
+ * Слой загрузки (useResource.ts поверх TanStack Query) отменяет запрос,
+ * ответ на который уже никому не нужен: человек сменил фильтр или ушёл с
+ * экрана. Проводить сигнал через каждый из трёх сотен методов клиента
+ * значило бы переписать их все и каждый вызов на экранах; вместо этого
+ * загрузка выполняется «под сигналом» (withSignal), и request() берёт его,
+ * если свой в init не передан.
+ *
+ * Работает для запросов, начатых синхронно внутри загрузки, — а это почти
+ * все: `() => api.patientCard(id)`, `Promise.all([api.a(), api.b()])`.
+ * Запрос после await (второй шаг цепочки) сигнала отсюда уже не увидит —
+ * такой загрузке сигнал передаётся явно: она получает его аргументом
+ * (`(signal) => …`) и может обернуть продолжение в withSignal сама. Не
+ * увидел — не беда: устаревший ответ всё равно не применится (у него свой
+ * ключ запроса), отмена лишь бережёт сеть и сервер.
+ */
+let ambientSignal: AbortSignal | undefined;
+
+/** Выполнить `run` так, что запросы, начатые в нём синхронно, отменяются сигналом */
+export function withSignal<R>(signal: AbortSignal | undefined, run: () => R): R {
+  const outer = ambientSignal;
+  ambientSignal = signal;
+  try {
+    return run();
+  } finally {
+    ambientSignal = outer;
+  }
+}
+
+/** Отказ от отмены — не сбой: его не учитывают как обрыв и не показывают */
+export function isAbort(e: unknown): boolean {
+  return e instanceof DOMException && e.name === "AbortError";
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  // свой сигнал в init важнее внешнего; повтор после обмена токена несёт его в init дальше
+  if (!init.signal && ambientSignal) init = { ...init, signal: ambientSignal };
   const token = tokenStore.get();
 
   /*
@@ -395,11 +435,25 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
         ...(init.headers as Record<string, string>),
       },
     });
-  } catch {
+  } catch (e) {
+    /*
+     * Отменённый запрос — не обрыв связи: его отменили мы сами, потому что
+     * ответ больше не нужен. Считать его сбоем значило бы на каждой смене
+     * фильтра писать в техпанель «клиент потерял сеть» и зажигать строку
+     * «немає зв’язку».
+     */
+    if (init.signal?.aborted || isAbort(e)) throw e;
     /* сбой сети — в «Помилки клієнта» техпанели (telemetry/): шаблоном адреса, без тела */
     noteNetworkFailure({ method: init.method ?? "GET", path, status: 0 });
+    /* и в общее знание о связи: строка в оболочке и перечитывание по возвращении (connection.ts) */
+    connection.lost();
     throw new ApiError(netText("net.offline"), 0);
   }
+  /*
+   * Сервер ответил — значит, связь есть, даже если ответ отказ. Не в счёт
+   * только отказ шлюза (502/504): он значит, что до приложения не дошли.
+   */
+  if (serverAnswered(res.status)) connection.reached();
   /* пятисотка — тоже сбой, а не бизнес-отказ; 4xx туда не идут — это поведение, не поломка */
   if (res.status >= 500) noteNetworkFailure({ method: init.method ?? "GET", path, status: res.status });
   /*
@@ -417,6 +471,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
+  /* отмена посреди чтения тела: пустое тело вместо ответа не должно выглядеть ответом */
+  if (init.signal?.aborted) throw init.signal.reason ?? new DOMException("Aborted", "AbortError");
   if (res.status === 503 && body?.code === MAINTENANCE_CODE && typeof window !== "undefined") {
     window.dispatchEvent(new Event(MAINTENANCE_EVENT));
   }
@@ -870,6 +926,12 @@ export const api = {
    */
   invites: (cursor?: string | null) =>
     request<Page<Invite>>(`/api/invites${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`),
+  /*
+   * Предпросмотр приглашения — без входа (страница /join). Через общий
+   * клиент, а не голым fetch: название методики сервер отдаёт на языке из
+   * Accept-Language, а обрыв связи попадает в общее знание о ней (волна 13).
+   */
+  invitePreview: (token: string) => request<InvitePreview>(`/api/invites/preview/${encodeURIComponent(token)}`),
   createInvite: (input: CreateInviteInput) =>
     request<{ id: string; token: string; code: string }>("/api/invites", {
       method: "POST",

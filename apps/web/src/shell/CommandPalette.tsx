@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Command } from "cmdk";
 import { api } from "../api";
+import { useDebounced, useResource } from "../useResource";
 import { useLang } from "../lang";
 import { IconSearchGlass, useFocusTrap } from "../ui";
 import { IconEnter } from "../ui/glyphs";
@@ -71,23 +72,26 @@ export function CommandPalette({
   const { ut } = useLang();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [people, setPeople] = useState<{ id: string; fullName: string; email: string }[]>([]);
 
-  // поиск людей — на сервере и с задержкой: набор текста не должен
-  // дёргать API на каждую букву
-  useEffect(() => {
-    if (!open || query.trim().length < 2) {
-      setPeople([]);
-      return;
-    }
-    const timer = setTimeout(() => {
+  /*
+   * Поиск людей — на сервере и с задержкой: набор текста не должен дёргать
+   * API на каждую букву. Через слой загрузки (волна 13): раньше ответ на
+   * «Кова» мог прийти после ответа на «Коваль» и подменить список — теперь
+   * ответ ложится под ту строку, которую спрашивали.
+   */
+  const search = useDebounced(query.trim(), 220);
+  const searching = open && search.length >= 2 && query.trim().length >= 2;
+  const found = useResource(
+    () =>
       api
-        .respondents({ search: query.trim(), limit: "6" })
-        .then((page) => setPeople(page.items.map((r) => ({ id: r.userId, fullName: r.fullName, email: r.email }))))
-        .catch(() => setPeople([]));
-    }, 220);
-    return () => clearTimeout(timer);
-  }, [open, query]);
+        .respondents({ search, limit: "6" })
+        .then((page) => page.items.map((r) => ({ id: r.userId, fullName: r.fullName, email: r.email })))
+        // палитра — удобство: отказ поиска людей оставляет в ней команды, а не ошибку
+        .catch(() => []),
+    [search],
+    { enabled: searching },
+  );
+  const people = searching ? (found.data ?? []) : [];
 
   useEffect(() => {
     if (!open) setQuery("");

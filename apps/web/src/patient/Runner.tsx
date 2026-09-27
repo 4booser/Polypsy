@@ -4,6 +4,7 @@ import { contentLangNotice, isAnswered, isQuestionVisible, isTransientStatus, ty
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
+import { ConnectionLine } from "../ui/ConnectionLine";
 import { Screen, useAction } from "../ui";
 import { Button, Input, Textarea, TouchArea } from "../ui/primitives";
 import { useLang } from "../lang";
@@ -233,6 +234,8 @@ export default function Runner() {
             */}
             <div className="-mx-4 -mt-4 mb-4 empty:hidden">
               <MaintenanceBanner place="patient" />
+              {/* связь пропала посреди методики — ответы не теряются (outbox.ts), и человеку это сказано */}
+              <ConnectionLine place="patient" />
             </div>
             {/*
               Полоса прогресса вместо «вопрос 7 из 20»: число впереди пугает.

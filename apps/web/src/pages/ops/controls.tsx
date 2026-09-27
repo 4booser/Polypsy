@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { IconSearchGlass } from "../../ui";
 import { IconCaret } from "../../ui/glyphs";
 import { cx } from "../../ui/cx";
@@ -16,15 +16,8 @@ import { Input } from "../../ui/primitives";
  * появится третий.
  */
 
-/** Значение, которое успокоилось: поиск на сервере не должен уходить на каждую букву */
-export function useDebounced<T>(value: T, ms = 250): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
+/* значение, которое успокоилось, — общее со слоем загрузки (useResource.ts) */
+export { useDebounced } from "../../useResource";
 
 /** Поле поиска фильтра: залитое (look="fill" — фильтр, а не форма), лупа справа */
 export function SearchField({
