@@ -36,7 +36,11 @@ PG_EXEC="${PG_EXEC:-}"
 : "${BACKUP_DIR:?BACKUP_DIR обязателен}"
 : "${BACKUP_PASSPHRASE:?BACKUP_PASSPHRASE обязателен}"
 
-# Самый свежий файл из суточных; если их нет — из недельных и месячных.
+# Самый свежий файл из копий по расписанию — суточных, недельных и
+# месячных вместе, по времени файла. Прежде суточные брались первыми, а
+# недельные — только если суточных нет вовсе: в воскресенье backup.sh кладёт
+# копию в weekly/, и проверка после воскресной выкатки брала субботнюю
+# суточную, не видя свежей (первый прогон, 2026-09-27).
 #
 # Только копии по расписанию и только готовые. Недописанный снимок
 # (backup.sh пишет в *.gpg.part и переименовывает после проверки чтением) —
@@ -47,8 +51,8 @@ PG_EXEC="${PG_EXEC:-}"
 # свежий — от прежней ветки age, restore.sh откажет с объяснением, и это
 # должно стать тревогой, а не пропуском.
 pick() { ls -1t "$@" 2>/dev/null | head -1 || true; }
-latest="$(pick "$BACKUP_DIR"/daily/quizzy_*.gpg "$BACKUP_DIR"/daily/quizzy_*.age)"
-[ -n "$latest" ] || latest="$(pick "$BACKUP_DIR"/weekly/quizzy_*.gpg "$BACKUP_DIR"/weekly/quizzy_*.age \
+latest="$(pick "$BACKUP_DIR"/daily/quizzy_*.gpg "$BACKUP_DIR"/daily/quizzy_*.age \
+  "$BACKUP_DIR"/weekly/quizzy_*.gpg "$BACKUP_DIR"/weekly/quizzy_*.age \
   "$BACKUP_DIR"/monthly/quizzy_*.gpg "$BACKUP_DIR"/monthly/quizzy_*.age)"
 [ -n "$latest" ] || { echo "ПРОВАЛ: в $BACKUP_DIR нет ни одного бэкапа"; exit 1; }
 
@@ -155,14 +159,24 @@ else
   fi
 fi
 
-# 2. Миграции накатаны полностью: восстановленная база должна знать столько же
-#    миграций, сколько рабочая, иначе дамп снят со старой схемы.
-have="$($PG_EXEC psql "$restored_url" -tAc 'select count(*) from drizzle."__drizzle_migrations"' 2>/dev/null || echo 0)"
-want="$($PG_EXEC psql "$DATABASE_URL"  -tAc 'select count(*) from drizzle."__drizzle_migrations"' 2>/dev/null || echo 0)"
-if [ "$have" != "$want" ]; then
-  say_fail "миграций в бэкапе $have, в рабочей базе $want"
+# 2. Миграции копии — начало истории рабочей базы.
+#
+#    Копия, снятая до выкатки, законно знает меньше миграций, чем рабочая
+#    база после неё: требовать равенства значило объявлять непригодной
+#    каждую копию, снятую перед обновлением (первый прогон после выкатки
+#    v1.13, 2026-09-27). Беда — другое: миграция в копии, которой рабочая
+#    база не знает, то есть копия не с этой базы или с будущей версии кода.
+restored_migs="$($PG_EXEC psql "$restored_url" -tAc 'select hash from drizzle."__drizzle_migrations" order by id' 2>/dev/null || true)"
+live_migs="$($PG_EXEC psql "$DATABASE_URL" -tAc 'select hash from drizzle."__drizzle_migrations" order by id' 2>/dev/null || true)"
+have="$(printf '%s\n' "$restored_migs" | grep -c . || true)"
+want="$(printf '%s\n' "$live_migs" | grep -c . || true)"
+unknown="$(printf '%s\n' "$restored_migs" | grep . | grep -vxF -f <(printf '%s\n' "$live_migs" | grep .) | grep -c . || true)"
+if [ "$unknown" != "0" ]; then
+  say_fail "в копии $unknown миграций, которых рабочая база не знает: копия не с этой базы или с другой версии кода"
+elif [ "$have" -gt "$want" ]; then
+  say_fail "миграций в копии $have, в рабочей базе $want"
 else
-  echo "  миграций: $have"
+  echo "  миграций: $have в копии, $want в рабочей базе (копия — начало той же истории)"
 fi
 
 # 3. Цепочка журнала цела. Хэш-цепочка — единственное, что доказывает, что
@@ -222,12 +236,22 @@ mask() { sed -E 's#(://[^:@/[:space:]]*):[^@/[:space:]]*@#\1:***@#g'; }
 # строка приложения о разрыве цепочки.
 if [ -z "$APP_EXEC" ] && [ ! -f apps/api/src/auditReport.ts ]; then
   say_fail "цепочку журнала нечем пересчитать: в $(pwd) нет ни развёртывания (docker-compose.yml, .env.docker), ни рабочей копии с apps/api"
+elif ! mig_out="$(DATABASE_URL="$app_url" $APP_EXEC bun apps/api/src/migrate.ts 2>&1)"; then
+  # Одноразовую базу доводим до схемы нынешнего кода — ровно так пойдёт и
+  # настоящее восстановление: снимок, затем выкатка с миграциями. Иначе код
+  # новой версии пересчитывал бы журнал копии, снятой до неё, по схеме,
+  # которой там ещё нет (колонка hash_version появилась в 0096). Не
+  # накатились миграции — это тоже провал копии: восстановить её этим кодом
+  # нельзя.
+  say_fail "миграции нынешнего кода на копию не накатываются:"
+  printf '%s\n' "$mig_out" | mask | { grep -v '^ *$' || true; } | tail -n 8 | sed 's/^ */    /'
 elif chain_out="$(DATABASE_URL="$app_url" $APP_EXEC bun apps/api/src/auditReport.ts 2>"$chain_err")"; then
   echo "  цепочка журнала: пересчитана кодом приложения"
   printf '%s\n' "$chain_out" | mask | sed 's/^ */    /'
 else
-  say_fail "цепочка журнала не сходится при пересчёте (или пересчёт не запустился):"
-  { cat "$chain_err"; printf '%s\n' "$chain_out"; } | mask | { grep -v '^ *$' || true; } | tail -n 8 | sed 's/^ */    /'
+  code=$?
+  say_fail "цепочка журнала не сходится при пересчёте (или пересчёт не запустился, код выхода $code):"
+  { cat "$chain_err"; printf '%s\n' "$chain_out"; } | mask | { grep -v '^ *$' || true; } | tail -n 12 | sed 's/^ */    /'
 fi
 
 if [ "$fail" != "0" ]; then
