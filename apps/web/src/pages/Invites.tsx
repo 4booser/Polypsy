@@ -25,7 +25,7 @@ export default function Invites() {
   const { ut } = useLang();
   const [fresh, setFresh] = useState<{ token: string; code: string } | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   /*
    * Выписанные ссылки — страницами (волна 12): приглашения копятся годами, и
@@ -154,6 +154,7 @@ export default function Invites() {
                           <td>
                             {!dead ? (
                               <Button
+                                disabled={busy}
                                 variant="danger"
                                 size="sm"
                                 onClick={() =>
@@ -214,7 +215,7 @@ function InviteForm({
   const [note, setNote] = useState("");
   const [maxUses, setMaxUses] = useState(1);
   const [ttlDays, setTtlDays] = useState(14);
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   return (
     <Panel title={ut("inv.new")} actions={<Button variant="quiet" onClick={onClose}>{ut("ui.close")}</Button>}>
@@ -279,6 +280,7 @@ function InviteForm({
       <p className="mt-3 text-caption text-muted">{ut("inv.groupHint")}</p>
       <div className="mt-3">
         <Button
+          disabled={busy}
           variant="primary"
           onClick={() =>
             run(async () => {

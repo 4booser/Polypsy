@@ -5,7 +5,7 @@ import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
 import { dateTime, day } from "../../format";
 import { useLang } from "../../lang";
-import { Loading, Modal, useAction } from "../../ui";
+import { Modal, useAction } from "../../ui";
 import { IconDots, IconPlusThick } from "../../ui/glyphs";
 import { ActionMenu, type MenuEntry } from "../../ui/menu";
 import { Pager } from "../../ui/pager";
@@ -13,7 +13,7 @@ import { pageCount } from "../../ui/paging";
 import { Button, ButtonLink, Field, Input, Select, Tag, Textarea } from "../../ui/primitives";
 import { RuleSection } from "../../ui/section";
 import { useResource } from "../../useResource";
-import { Cell, ColumnHead, FilterSelect, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
+import { Cell, ColumnHead, FilterSelect, ListPlace, SearchField, metaClass, nameClass, rowClass, useDebounced } from "./controls";
 import { ConfirmPlain, ConfirmTyped, OneTimePassword } from "./dialogs";
 import { type Hold, ROLE_KEY, generatePassword, holdKey, holdsOfRow, personHref, traceParts } from "./model";
 import {
@@ -87,6 +87,7 @@ export default function OpsUsers() {
   const { user, can } = useAuth();
   const isSuper = user?.role === "superadmin";
   const [params, setParams] = useSearchParams();
+  const { run } = useAction();
 
   /*
    * Отбор — из адреса, но через разбор (usersModel.ts): незнакомая роль,
@@ -268,46 +269,54 @@ export default function OpsUsers() {
           />
         </div>
 
-        {res.error ? (
-          <Loading error={res.error} onRetry={res.reload} />
-        ) : !res.data ? (
-          <Loading rows={6} />
-        ) : res.data.items.length === 0 ? (
-          <p className="m-0 py-[24px] text-[13px] text-muted">{ut("pt.nobodyFound")}</p>
-        ) : (
-          <>
-            <SelectionBar
-              selected={selected}
-              pageIds={pageIds}
-              total={res.data.total}
-              onPage={(on) => setSelected(withPage(selected, pageIds, on))}
-              onAll={() =>
-                void api
-                  .opsUserIds(usersIdsQuery(filters, settledQ))
-                  .then((r) => setSelected(new Set(r.ids)))
-                  .catch(() => {})
-              }
-              onClear={() => setSelected(new Set())}
-              onAction={(action) => setDialog({ kind: "bulk", action })}
-              canAssign={isSuper || (user?.ladderRank ?? 0) > 1}
-            />
-            <ColumnHead
-              grid={GRID}
-              labels={[null, ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
-            />
-            <ul className="m-0 list-none p-0" aria-label={ut("adm.allAccounts")}>
-              {res.data.items.map((row) => (
-                <UserRow
-                  key={row.id}
-                  row={row}
-                  menu={entriesFor(row)}
-                  checked={selected.has(row.id)}
-                  onToggle={() => setSelected(toggleId(selected, row.id))}
-                />
-              ))}
-            </ul>
-          </>
-        )}
+        {/*
+          Место списка — общее у вкладок (ListPlace): отказ перечитывания после
+          действия над учёткой строкой над списком, а строки остаются. Прежде
+          упавшее перечитывание стирало список, и администратор, только что
+          выключивший учётку, видел вместо реестра одну ошибку.
+        */}
+        <ListPlace items={res.data?.items ?? null} error={res.error} onRetry={res.reload} empty={ut("pt.nobodyFound")}>
+          {() => (
+            <>
+              <SelectionBar
+                selected={selected}
+                pageIds={pageIds}
+                total={res.data!.total}
+                onPage={(on) => setSelected(withPage(selected, pageIds, on))}
+                /*
+                  Отказ «вибрати всіх у відборі» — всплывающим отказом, а не
+                  молчанием (w14:webtails): прежде он глотался, выбор
+                  оставался одной страницей, и человек, уверенный, что выбрал
+                  весь отбор, отправлял массовое действие на её часть.
+                */
+                onAll={() =>
+                  void run(async () => {
+                    const r = await api.opsUserIds(usersIdsQuery(filters, settledQ));
+                    setSelected(new Set(r.ids));
+                  })
+                }
+                onClear={() => setSelected(new Set())}
+                onAction={(action) => setDialog({ kind: "bulk", action })}
+                canAssign={isSuper || (user?.ladderRank ?? 0) > 1}
+              />
+              <ColumnHead
+                grid={GRID}
+                labels={[null, ut("ops.users.account"), ut("adm.role"), ut("ops.users.lastSeen"), ut("ops.tab.sessions"), ut("ops.users.state"), null]}
+              />
+              <ul className="m-0 list-none p-0" aria-label={ut("adm.allAccounts")}>
+                {res.data!.items.map((row) => (
+                  <UserRow
+                    key={row.id}
+                    row={row}
+                    menu={entriesFor(row)}
+                    checked={selected.has(row.id)}
+                    onToggle={() => setSelected(toggleId(selected, row.id))}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+        </ListPlace>
       </RuleSection>
 
       {dialog?.kind === "create" ? <CreateDialog isSuper={isSuper} onClose={close} onDone={done} /> : null}

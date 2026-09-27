@@ -368,6 +368,23 @@ export function pagedState<T, P extends Page<T>>(
 }
 
 /**
+ * «Перечитать список» — отдельно от хука, чтобы проверялось то, что делает
+ * кнопка, а не React (test/pagedResource.test.ts).
+ *
+ * Выключенный список не будится (w14:webtails). refetch у TanStack
+ * выключенности не знает: запрос уходит, даже когда `enabled: false`. А
+ * список выключают ровно тогда, когда его запрос сейчас был бы неправдой:
+ * очередь случаев держит запрос с группой пациентов, пока не пришли свои
+ * группы (чужая из адреса дала бы 404). Событие «новая тревога» в эти доли
+ * секунды звало reload — и отказ всё-таки вспыхивал.
+ */
+export function reloadList(r: { refetch: () => Promise<unknown> }, enabled: boolean): void {
+  if (!enabled) return;
+  if (!connection.isOnline()) void connection.check();
+  void r.refetch();
+}
+
+/**
  * Значение, переставшее меняться на `ms`: поиск на сервере не должен уходить
  * на каждую букву. Первое — сразу (первый показ ждать незачем); `ms = 0` —
  * без задержки вовсе.
@@ -407,8 +424,11 @@ export function useDebounced<T>(value: T, ms = 250): T {
 export function usePagedResource<T, P extends Page<T> = Page<T>>(
   load: (cursor: string | null, signal?: AbortSignal) => Promise<P>,
   deps: readonly unknown[],
-  /** keep — как у useResource: держать прежние строки на экране, пока грузятся новые (по умолчанию да) */
-  options: { debounceMs?: number; keep?: boolean } = {},
+  /**
+   * keep — как у useResource: держать прежние строки на экране, пока грузятся новые (по умолчанию да).
+   * enabled — как у useResource: пока ложь, запроса нет вовсе — ни сам, ни по reload (w14:webtails).
+   */
+  options: { debounceMs?: number; keep?: boolean; enabled?: boolean } = {},
 ): PagedResource<T, P> {
   const scope = useScope(undefined);
   const client = useClient();
@@ -417,9 +437,10 @@ export function usePagedResource<T, P extends Page<T> = Page<T>>(
   const queryKey = [scope, ...deps];
   const hash = hashResourceKey(queryKey);
   const settled = useDebounced(hash, options.debounceMs ?? 0);
+  const enabled = options.enabled ?? true;
   const result = useInfiniteQuery(
     pagedQuery<P>(queryKey, (cursor, signal) => loadRef.current(cursor, signal), {
-      enabled: settled === hash,
+      enabled: enabled && settled === hash,
       keep: options.keep,
     }),
     client,
@@ -429,8 +450,8 @@ export function usePagedResource<T, P extends Page<T> = Page<T>>(
   const items = useMemo(() => (pages ? pages.flatMap((p) => p.items) : null), [pages]);
   const state = pagedState<T, P>(result, items);
 
-  const live = useRef({ result, hash });
-  live.current = { result, hash };
+  const live = useRef({ result, hash, enabled });
+  live.current = { result, hash, enabled };
 
   /*
    * «Ещё», попросленное, пока список перечитывается целиком, не теряется:
@@ -460,8 +481,7 @@ export function usePagedResource<T, P extends Page<T> = Page<T>>(
 
   const reload = useCallback(() => {
     wantMore.current = null;
-    if (!connection.isOnline()) void connection.check();
-    void live.current.result.refetch();
+    reloadList(live.current.result, live.current.enabled);
   }, []);
 
   return { ...state, loadMore, reload };

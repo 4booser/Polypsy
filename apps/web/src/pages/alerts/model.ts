@@ -106,6 +106,42 @@ export function withOwnGroup(f: QueueFilters, own: readonly string[] | null): Qu
   return { ...f, patientGroup: "" };
 }
 
+/**
+ * Свои группы, как их знает экран очереди:
+ *  - список — пришёл;
+ *  - null — не пришёл и уже не придёт (отказ, нет права на группы):
+ *    группа из адреса применяется как есть, решает сервер (withOwnGroup);
+ *  - "pending" — ещё в пути: ответа не было ни с данными, ни без.
+ */
+export type OwnGroups = readonly string[] | null | "pending";
+
+/**
+ * Свои группы из загрузки экрана. Отказ по группам загрузка сама
+ * превращает в null (`.catch(() => null)` в Alerts.tsx), поэтому «ответ
+ * был» — это updatedAt, а не data: у пришедшего null data тоже null.
+ */
+export function ownGroupsOf(res: { data: readonly { id: string }[] | null; updatedAt: number | null }): OwnGroups {
+  if (res.data) return res.data.map((g) => g.id);
+  return res.updatedAt === null ? "pending" : null;
+}
+
+/**
+ * Отбор, с которым очередь идёт на сервер, и можно ли идти сейчас
+ * (w14:webtails).
+ *
+ * withOwnGroup решал «чужая группа не применяется», но лишь когда свои
+ * группы уже известны. До того — в первые доли секунды экрана — чужая
+ * группа из адреса (вид коллеги, ссылка) уходила на сервер как есть, и на
+ * месте очереди вспыхивал отказ 404, пока не приезжал список групп. Теперь
+ * запрос с группой ждёт этого списка (`ready: false` — список выключен,
+ * usePagedResource enabled); запрос без группы не ждёт ничего — ему список
+ * групп не нужен.
+ */
+export function queueGate(f: QueueFilters, own: OwnGroups): { filters: QueueFilters; ready: boolean } {
+  if (own === "pending") return { filters: f, ready: !f.patientGroup };
+  return { filters: withOwnGroup(f, own), ready: true };
+}
+
 /*
  * Правки адреса очереди. Пустая строка снимает параметр (patchParams в
  * ui/viewParams.ts).

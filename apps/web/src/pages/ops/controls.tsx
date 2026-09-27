@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
-import { IconSearchGlass } from "../../ui";
+import { useLang } from "../../lang";
+import { IconSearchGlass, Loading } from "../../ui";
 import { IconCaret } from "../../ui/glyphs";
 import { cx } from "../../ui/cx";
-import { Input } from "../../ui/primitives";
+import { listBody } from "../../ui/paging";
+import { Button, Input } from "../../ui/primitives";
 
 /*
  * Общие детали вкладок «Користувачі», «Сесії», «Аудит»: поле поиска с лупой,
@@ -150,3 +152,57 @@ export const nameClass =
 
 /** Мета под именем: 13–15 серым, длинная почта ломается где угодно, а не вылезает из колонки */
 export const metaClass = "block text-[13px] leading-[18px] text-muted [overflow-wrap:anywhere]";
+
+/**
+ * Место списка вкладки: что стоит вместо строк, пока их нет, и отказ
+ * поверх уже показанных (w14:webtails).
+ *
+ * Три вкладки — «Користувачі», «Сесії», «Аудит» — писали это каждая сама,
+ * одной и той же тернарной лесенкой «отказ → скелет → пусто → строки». В
+ * ней была общая дыра: отказ ПЕРЕЧИТЫВАНИЯ стирал показанные строки. Журнал,
+ * долистанный до пятой сотни записей, на неудачном «Показати ще» исчезал
+ * целиком, и на его месте стоял отказ; список учёток после «вимкнути»
+ * (перечитывание упало) — тоже. Правило консоли для списков другое
+ * (listBody в ui/paging.ts, как у очереди случаев): пока строк нет — отказ
+ * на их месте с «повторити»; когда строки есть — отказ строкой над ними, а
+ * строки остаются: устаревший список с пометкой полезнее пустого.
+ *
+ * «Порожньо» — только по ответу сервера: пока ответа нет (грузится или нет
+ * связи) — скелет, а не «нікого не знайдено».
+ *
+ * Строки — функцией: рисуются только тогда, когда они есть, и экран может
+ * обращаться к данным без проверок на null.
+ */
+export function ListPlace({
+  items,
+  error,
+  onRetry,
+  empty,
+  rows = 6,
+  children,
+}: {
+  items: readonly unknown[] | null;
+  error: string | null;
+  onRetry: () => void;
+  /** Что сказать, когда сервер ответил пустым: по отбору и без него это разные слова */
+  empty: string;
+  rows?: number;
+  children: () => ReactNode;
+}) {
+  const { ut } = useLang();
+  const view = listBody(items, error);
+  if (view.body === "failed" || view.body === "loading") return <Loading rows={rows} error={error} onRetry={onRetry} />;
+  return (
+    <>
+      {view.stale ? (
+        <div role="alert" className="mb-[12px] flex items-center gap-[10px] border-b border-hairline py-[8px]">
+          <p className="m-0 min-w-0 flex-1 text-[13px] text-danger">{view.stale}</p>
+          <Button variant="quiet" size="sm" onClick={onRetry}>
+            {ut("common.retry")}
+          </Button>
+        </div>
+      ) : null}
+      {view.body === "empty" ? <p className="m-0 py-[24px] text-[13px] text-muted">{empty}</p> : children()}
+    </>
+  );
+}

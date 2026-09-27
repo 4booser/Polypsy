@@ -140,7 +140,7 @@ export default function Groups() {
 /** Заведение группы: цвет выбирается из готовых, а не пипеткой — их читают в списках */
 function NewGroup({ onDone, onError }: { onDone: () => void; onError: (e: string) => void }) {
   const { ut } = useLang();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[0]!);
@@ -157,7 +157,7 @@ function NewGroup({ onDone, onError }: { onDone: () => void; onError: (e: string
         <ColorPicker value={color} onChange={setColor} />
         <Button
           variant="primary"
-          disabled={!title.trim()}
+          disabled={busy || !title.trim()}
           onClick={() =>
             run(async () => {
               await api
@@ -216,7 +216,7 @@ function GroupCard({
   onError: (e: string) => void;
 }) {
   const { ut } = useLang();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const [editing, setEditing] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [openAnalytics, setOpenAnalytics] = useState(false);
@@ -246,6 +246,7 @@ function GroupCard({
           {g.manageable ? (
             <>
               <Button
+                disabled={busy}
                 size="sm"
                 variant="ghost"
                 onClick={() =>
@@ -266,6 +267,7 @@ function GroupCard({
                 действие рядом: снять с использования.
               */}
               <Button
+                disabled={busy}
                 size="sm"
                 variant="danger"
                 onClick={() =>
@@ -335,6 +337,7 @@ function GroupCard({
                   <td>
                     {g.manageable ? (
                       <Button
+                        disabled={busy}
                         variant="danger"
                         size="sm"
                         onClick={() =>
@@ -409,7 +412,7 @@ function EditGroup({
   onError: (e: string) => void;
 }) {
   const { ut } = useLang();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const [title, setTitle] = useState(g.title);
   const [description, setDescription] = useState(g.description ?? "");
   const [color, setColor] = useState(g.color ?? PRESET_COLORS[0]!);
@@ -425,7 +428,7 @@ function EditGroup({
       <ColorPicker value={color} onChange={setColor} />
       <Button
         variant="primary"
-        disabled={!title.trim()}
+        disabled={busy || !title.trim()}
         onClick={() =>
           run(async () => {
             await api

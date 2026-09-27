@@ -32,7 +32,7 @@ import { DESTINATION_KEY, NEXT_STATUS, STATUS_KEY, URGENCY_KEY } from "./Referra
  */
 export default function CaseSummaryTab() {
   const { ut } = useLang();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const { data, reload } = useCaseCard();
 
   return (
@@ -166,6 +166,7 @@ export default function CaseSummaryTab() {
                     <div className="row tight no-print">
                       {(NEXT_STATUS[r.status] ?? []).map((n) => (
                         <button
+                          disabled={busy}
                           key={n.value}
                           onClick={() =>
                             run(async () => {
@@ -196,7 +197,7 @@ export function ReferralForm({ userId, onDone }: { userId: string; onDone: () =>
   const [destination, setDestination] = useState<ReferralDestination>("psychiatrist");
   const [urgency, setUrgency] = useState<ReferralUrgency>("routine");
   const [reason, setReason] = useState("");
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   return (
     <div className="card no-print">
@@ -228,6 +229,7 @@ export function ReferralForm({ userId, onDone }: { userId: string; onDone: () =>
       </div>
       <div className="row" style={{ marginTop: 10 }}>
         <button
+          disabled={busy}
           className="primary"
           onClick={() =>
             run(async () => {
