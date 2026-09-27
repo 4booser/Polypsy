@@ -444,7 +444,8 @@ function QuestionBlock({ q }: { q: QuestionAnalytics }) {
           <Body muted>{ut("msv.thoughtBefore")}</Body>
           <View style={{ flex: 1 }} />
           <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-            {formatDuration(q.avgTimeToFirstAnswerMs)}
+            {/* ленту событий чистит срок хранения телеметрии: тогда время неизвестно, а не ноль */}
+            {q.avgTimeToFirstAnswerMs === null ? "—" : formatDuration(q.avgTimeToFirstAnswerMs)}
           </Text>
         </Row>
         <Row>

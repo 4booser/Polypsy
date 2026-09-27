@@ -193,6 +193,7 @@ const data: SurveyAnalytics = {
     { date: "2026-09-04", count: 9 },
   ],
   respondentCount: 10,
+  unreliableCount: 0,
   scaleTimeline: [
     {
       scaleId: "sc1",

@@ -570,6 +570,8 @@ export function MemberList({
                     <SeverityTag level={p.last.severity} className="shrink-0 py-0">
                       {ut(SEVERITY_LABEL[p.last.severity])}
                     </SeverityTag>
+                  ) : !p.last.reliable ? (
+                    <span className="shrink-0">{ut("stats.unreliableCell")}</span>
                   ) : null}
                   <Link
                     to={`/surveys/${p.last.surveyId}/responses/${p.last.responseId}`}

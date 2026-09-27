@@ -398,10 +398,15 @@ export const BREAKDOWN_TITLE: Record<BreakdownKind, UiKey> = {
  * «male», «moderate», «25-34»; показывать их человеку значит показывать
  * устройство таблицы, а не данные. Прочерк сервера — «не указано», у
  * выраженности — «без смуг»: у человека есть прохождения, но ни одна их
- * шкала полос не имеет, и это не «норма».
+ * шкала полос не имеет, и это не «норма». «unreliable» — в выборке у
+ * человека только недостоверные протоколы: о его состоянии сказать нечего,
+ * и это тоже не «норма» и не «без смуг».
  */
 export function breakdownLabel(kind: BreakdownKind, key: string, t: T): string {
-  if (kind === "severity") return key in SEVERITY_LABEL ? t(SEVERITY_LABEL[key as Severity]) : t("coh.noBands");
+  if (kind === "severity") {
+    if (key === "unreliable") return t("stats.unreliableCell");
+    return key in SEVERITY_LABEL ? t(SEVERITY_LABEL[key as Severity]) : t("coh.noBands");
+  }
   if (key === "—") return t("coh.unknown");
   if (kind === "sex") return key === "male" ? t("nm.menCap") : key === "female" ? t("nm.womenCap") : key;
   if (kind === "age") return key === "<25" ? t("coh.ageUnder25") : key.replace("-", "–");

@@ -22,6 +22,7 @@ import { db } from "../db";
 import { answers, responseScores, responses, surveyVersions, surveys, users } from "../db/schema";
 import { decryptField } from "./crypto";
 import { badRequest, notFound } from "./http";
+import { dayEnd, dayStart } from "./population";
 import { canBreakDown, pinnedAreas, suppress, type Reported } from "./privacy";
 import {
   assertFilterPresetAccess,
@@ -182,21 +183,43 @@ interface Respondent {
 
 /**
  * Выборка колонки: по одному прохождению на человека — последнему сданному
- * из тех, что попали под фильтры.
+ * ДОСТОВЕРНОМУ из тех, что попали под фильтры.
  *
  * Считаются прохождения ТОЙ ЖЕ версии, что записана в колонке: полосы и
  * варианты принадлежат версии, и прохождение прежней версии в её полосы
  * не ложится. Анонимные прохождения (user_id пуст) не считаются вовсе —
  * фильтры здесь про людей, а не про бланки.
  *
+ * Недостоверный протокол (reliable = false) в выборку не идёт, и за
+ * человека говорит его последний достоверный. Решено исключением, а не
+ * отдельной строкой, как в сводке: число недостоверных стало бы ещё одним
+ * уравнением в системе проверки восстановимости (keepSafe), и по разности
+ * «все» − «достоверные» читались бы люди, чьи бланки провалили шкалу лжи, —
+ * то есть ровно клиническое сведение, которое порог и прячет. Недостоверному
+ * бланку не верят ни в полосах, ни в ответах: у МЛО «Адаптивність» провал
+ * достоверности значит, что человек отвечал «как надо», и его «сплю добре»
+ * — такой же ответ «как надо».
+ *
  * Возраст — от даты рождения на момент сдачи, а не от полосы-снимка в
  * прохождении: полоса «25–34» ответила бы на «від 27 до 29» всеми десятью
  * годами. Дата рождения зашифрована, поэтому возраст считается в
- * приложении после выборки, а не в SQL. Человек без даты рождения под
- * возрастной фильтр не попадает: «от 25» про него неизвестно.
+ * приложении, а не в SQL. Человек без даты рождения под возрастной фильтр
+ * не попадает: «от 25» про него неизвестно.
  *
- * Границы периода — календарные дни включительно, в поясе базы: макет
- * просит «Дата», а не момент, и «по 30 вересня» означает весь день.
+ * Возраст проверяется у КАЖДОГО прохождения до выбора последнего, как и
+ * остальные фильтры в SQL: выборка — «последнее из прохождений, сданных в
+ * этом возрасте», а не «последнее прохождение, если оно в этом возрасте».
+ * Прежде было второе, и человек, сдававший в 30 и потом в 31, выпадал из
+ * «30–30» целиком: статистика давала 5 там, где подбор людей на том же
+ * фильтре давал 6.
+ *
+ * Пол — снимок на момент сдачи (respondent_sex), а не нынешний пол в
+ * карточке: нормы и полосы прохождения считались по снимку, и подбор людей
+ * отбирает по нему же (routes/cohorts.ts).
+ *
+ * Границы периода — календарные дни включительно, в поясе учреждения
+ * (lib/population.ts): макет просит «Дата», а не момент, и «по 30 вересня»
+ * означает весь день по Киеву, а не по часам сервера базы.
  */
 async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promise<Respondent[]> {
   const rows = await db
@@ -213,13 +236,14 @@ async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promis
         eq(responses.surveyId, column.surveyId),
         eq(responses.versionId, column.versionId),
         eq(responses.status, "completed"),
+        eq(responses.reliable, true),
         isNotNull(responses.submittedAt),
         eq(users.role, "user"),
-        filters.sex ? eq(users.sex, filters.sex) : undefined,
+        filters.sex ? eq(responses.respondentSex, filters.sex) : undefined,
         // без учёта регистра: «київ» и «Київ» — один город, а поле свободное
         filters.locality ? sql`lower(${users.locality}) = lower(${filters.locality})` : undefined,
-        filters.from ? sql`${responses.submittedAt} >= ${filters.from}::date` : undefined,
-        filters.to ? sql`${responses.submittedAt} < (${filters.to}::date + 1)` : undefined,
+        filters.from ? sql`${responses.submittedAt} >= ${dayStart(filters.from)}` : undefined,
+        filters.to ? sql`${responses.submittedAt} < ${dayEnd(filters.to)}` : undefined,
         filters.patientId ? eq(users.id, filters.patientId) : undefined,
         filters.patientGroupId
           ? sql`exists (select 1 from patient_group_members m
@@ -240,13 +264,14 @@ async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promis
   let lastUser: string | null = null;
   for (const r of rows) {
     if (!r.userId || r.userId === lastUser) continue;
-    lastUser = r.userId;
     if (byAge) {
+      // не подошло по возрасту — смотрим следующее, более раннее прохождение того же человека
       const age = ageAt(decryptField(r.birthDate), r.submittedAt);
       if (age === null) continue;
       if (filters.ageMin != null && age < filters.ageMin) continue;
       if (filters.ageMax != null && age > filters.ageMax) continue;
     }
+    lastUser = r.userId;
     sample.push({ responseId: r.id, userId: r.userId });
   }
   return sample;
