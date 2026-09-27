@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import type { InvitePreview } from "@quizzy/shared";
+import { api } from "../api";
+import { useResource } from "../useResource";
 import { LangSwitch, useLang } from "../lang";
 import { Button, Field, Input, Select, Spacer } from "../ui/primitives";
 import { Grid } from "../ui/layout";
@@ -15,7 +17,16 @@ import { Grid } from "../ui/layout";
 export default function Join() {
   const { token } = useParams<{ token: string }>();
   const { ut } = useLang();
-  const [preview, setPreview] = useState<InvitePreview | null>(null);
+  /*
+   * Предпросмотр — загрузкой (волна 13). Голый fetch в эффекте не знал ни
+   * языка страницы, ни об обрыве связи: без сети человек читал «посилання
+   * недійсне», хотя ссылка была в порядке. Теперь обрыв — это «перевіряємо»
+   * до возвращения связи (и проверка повторится сама), а «недійсне з
+   * невідомої причини» остаётся для отказа сервера, как и было.
+   */
+  const previewRes = useResource(() => api.invitePreview(token!), [token], { enabled: !!token });
+  const preview: InvitePreview | null =
+    previewRes.data ?? (previewRes.error ? { valid: false, reason: "unknown" } : null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,14 +40,6 @@ export default function Join() {
   const [birthDate, setBirthDate] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!token) return;
-    fetch(`/api/invites/preview/${token}`)
-      .then((r) => r.json())
-      .then(setPreview)
-      .catch(() => setPreview({ valid: false, reason: "unknown" }));
-  }, [token]);
 
   async function submit() {
     setBusy(true);

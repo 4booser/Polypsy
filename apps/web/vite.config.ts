@@ -40,9 +40,10 @@ export default defineConfig({
          * Решение заказчика 2026-09-26 (волна 12, разбор кода: «весь бандл
          * консоли загружался одним файлом»): начальный кусок делится на три.
          *
-         *  react   — React, React DOM и маршрутизатор: меняются раз в
-         *            полгода, а не с каждой выкаткой, и браузер держит их в
-         *            кэше между версиями консоли;
+         *  react   — React, React DOM, маршрутизатор и слой загрузки
+         *            (TanStack Query, волна 13): меняются раз в полгода, а
+         *            не с каждой выкаткой, и браузер держит их в кэше между
+         *            версиями консоли;
          *  strings — словарь интерфейса на трёх языках, почти половина
          *            начального куска по весу: меняется почти с каждой
          *            выкаткой, и отдельным файлом не тянет за собой
@@ -53,7 +54,7 @@ export default defineConfig({
          * входят вовсе — они в своих кусках по требованию (App.tsx).
          */
         manualChunks(id: string) {
-          if (/\/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom)\//.test(id)) return "react";
+          if (/\/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|@tanstack\/(react-query|query-core))\//.test(id)) return "react";
           if (id.includes("/packages/shared/src/uiStrings.ts")) return "strings";
           return undefined;
         },

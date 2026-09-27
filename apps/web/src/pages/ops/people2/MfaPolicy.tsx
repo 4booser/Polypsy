@@ -34,7 +34,8 @@ export default function OpsMfaPolicy() {
   const { ut } = useLang();
   const { user } = useAuth();
   const isSuper = user?.role === "superadmin";
-  const res = useResource(() => api.mfaPolicy(), []);
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const res = useResource(() => api.mfaPolicy(), [], { manual: true });
   const { run, busy } = useAction();
   const [draft, setDraft] = useState<{ superadmins: boolean; ops: boolean } | null>(null);
   const [resetting, setResetting] = useState<MfaCoverageRow | null>(null);

@@ -45,7 +45,7 @@ export default function Administer() {
   const patients: Patient[] = res.data?.patients ?? [];
 
   // ошибка ниже — про сдачу, а не про загрузку: у них разные состояния
-  if (!survey) return <Loading error={res.error} />;
+  if (!survey) return <Loading error={res.error} onRetry={res.reload} busy={res.loading} />;
 
   const visible = survey.questions.filter((q) => isQuestionVisible(q, survey.questions, answers));
   const unanswered = visible.filter((q) => q.required && q.type !== "info" && !isAnswered(q, answers.get(q.id)));

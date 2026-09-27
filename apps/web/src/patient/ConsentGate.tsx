@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   consentActionsOf,
   consentViewOf,
@@ -9,6 +9,7 @@ import {
   type UiKey,
 } from "@quizzy/shared";
 import { api, ApiError } from "../api";
+import { useResource } from "../useResource";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { Button, TouchArea } from "../ui/primitives";
@@ -43,37 +44,34 @@ import { Button, TouchArea } from "../ui/primitives";
 export function ConsentGate({ children }: { children: ReactNode }) {
   const { ut } = useLang();
   const { logout } = useAuth();
-  const [view, setView] = useState<ConsentView | null>(null);
-  /** Текст держится и после отказа: «повернутися до тексту» возвращает его, а не грузит заново */
-  const [text, setText] = useState<string | null>(null);
-  /** Редакция на экране: принимается именно она — сервер сверит с действующей */
-  const [textId, setTextId] = useState<string | null>(null);
+  /*
+   * Статус — через общий слой загрузки (useResource, w13:data): устаревший
+   * ответ не встанет, при возврате связи перечитается сам. Отказ сервера не
+   * бросается, а превращается в код ответа: «нет связи» и «обслуживание»
+   * пропускают экран (consentViewOfLoadError), и отличить их от настоящего
+   * отказа можно только по коду.
+   */
+  const res = useResource<{ status: ConsentStatus } | { code: number | undefined }>(
+    () =>
+      api
+        .consentStatus()
+        .then((status) => ({ status }))
+        .catch((e: unknown) => ({ code: e instanceof ApiError ? e.status : undefined })),
+    [],
+  );
+  /** Решение на этом экране — принято, отказ — поверх загруженного статуса */
+  const [override, setOverride] = useState<ConsentView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const show = useCallback((status: ConsentStatus) => {
-    const next = consentViewOf(status);
-    if (next.kind === "read") {
-      setText(next.text);
-      setTextId(status.textId ?? null);
-    }
-    setView(next);
-  }, []);
-
-  const load = useCallback(() => {
-    let alive = true;
-    setView(null);
-    setError(null);
-    api
-      .consentStatus()
-      .then((s) => alive && show(s))
-      .catch((e: unknown) => alive && setView(consentViewOfLoadError(e instanceof ApiError ? e.status : undefined)));
-    return () => {
-      alive = false;
-    };
-  }, [show]);
-
-  useEffect(load, [load]);
+  const loaded = res.data;
+  const status = loaded && "status" in loaded ? loaded.status : null;
+  /** Текст держится и после отказа: «повернутися до тексту» возвращает его, а не грузит заново */
+  const text = status?.text?.trim() || null;
+  /** Редакция на экране: принимается именно она — сервер сверит с действующей */
+  const textId = status?.textId ?? null;
+  const view: ConsentView | null =
+    override ?? (loaded === null ? null : status ? consentViewOf(status) : consentViewOfLoadError("code" in loaded ? loaded.code : undefined));
 
   if (view === null) return null;
   if (view.kind === "pass") return <>{children}</>;
@@ -84,13 +82,13 @@ export function ConsentGate({ children }: { children: ReactNode }) {
       setError(null);
       try {
         await api.acceptConsent(textId);
-        setView({ kind: "pass" });
+        setOverride({ kind: "pass" });
       } catch (e) {
         setError(e instanceof Error ? e.message : ut("common.error"));
         // текст обновился, пока человек читал: встаёт новая редакция, принимать — её
         if (e instanceof ApiError && e.status === 409) {
-          const fresh = await api.consentStatus().catch(() => null);
-          if (fresh) show(fresh);
+          setOverride(null);
+          res.reload();
         }
       } finally {
         setBusy(false);
@@ -105,10 +103,12 @@ export function ConsentGate({ children }: { children: ReactNode }) {
     decline: () => {
       setError(null);
       void api.declineConsent().catch(() => {});
-      setView({ kind: "declined" });
+      setOverride({ kind: "declined" });
     },
     retry: () => {
-      load();
+      setError(null);
+      setOverride(null);
+      res.reload();
     },
     signOut: () => {
       setBusy(true);
@@ -116,7 +116,7 @@ export function ConsentGate({ children }: { children: ReactNode }) {
     },
     reconsider: () => {
       setError(null);
-      setView(text ? { kind: "read", text } : { kind: "failed" });
+      setOverride(text ? { kind: "read", text } : { kind: "failed" });
     },
   };
 

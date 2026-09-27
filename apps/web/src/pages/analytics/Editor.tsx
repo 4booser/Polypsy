@@ -9,7 +9,7 @@ import { IconGear } from "../../ui/glyphs";
 import { Page } from "../../ui/layout";
 import { MenuButton, menuItemClass } from "../../ui/menu";
 import { Button, Field, Input, Select, Textarea } from "../../ui/primitives";
-import { useResource } from "../../useResource";
+import { useResource, useResourceMap } from "../../useResource";
 import {
   ANY_TEST,
   OPS,
@@ -139,7 +139,8 @@ function ModelEditor({ id }: { id: string | null }) {
    * нет (см. api_gaps). Список короткий, и второй запрос не стоит того,
    * чтобы заводить маршрут ради него.
    */
-  const rules = useResource(() => api.decisionRules(), [], { enabled: id !== null });
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const rules = useResource(() => api.decisionRules(), [], { enabled: id !== null, manual: true });
 
   const [draft, setDraft] = useState<ModelDraft | null>(id === null ? emptyDraft() : null);
   const [missing, setMissing] = useState(false);
@@ -161,22 +162,11 @@ function ModelEditor({ id }: { id: string | null }) {
    * методику сервер не отдаст и со второго раза, а без записи об отказе она
    * запрашивалась бы заново на каждой перерисовке.
    */
-  const [loaded, setLoaded] = useState<Record<string, LoadedSurvey>>({});
-  const inFlight = useRef(new Set<string>());
-  const wanted = draft && surveys.data ? surveysToLoad(draft, new Set(surveys.data.map((s) => s.id))).join(",") : "";
-  useEffect(() => {
-    for (const surveyId of wanted.split(",").filter(Boolean)) {
-      if (surveyId in loaded || inFlight.current.has(surveyId)) continue;
-      inFlight.current.add(surveyId);
-      void api
-        .survey(surveyId)
-        .then((s) =>
-          setLoaded((prev) => ({ ...prev, [surveyId]: { title: s.title, archivedAt: s.archivedAt ?? null, scales: s.scales } })),
-        )
-        .catch(() => setLoaded((prev) => ({ ...prev, [surveyId]: null })))
-        .finally(() => inFlight.current.delete(surveyId));
-    }
-  }, [wanted, loaded]);
+  /* волна 13: каждая методика — своей загрузкой через слой загрузки, вместо своего учёта «в полёте» */
+  const wanted = draft && surveys.data ? surveysToLoad(draft, new Set(surveys.data.map((s) => s.id))) : [];
+  const loaded: Record<string, LoadedSurvey> = useResourceMap("analytics.surveyMeta", wanted, (surveyId) =>
+    api.survey(surveyId).then((s) => ({ title: s.title, archivedAt: s.archivedAt ?? null, scales: s.scales })),
+  );
 
   /*
    * Ключи словаря, а не готовые строки: переводятся при печати. Готовые

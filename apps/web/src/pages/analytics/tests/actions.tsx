@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { SurveyAnalytics } from "@quizzy/shared";
 import { api, download, type VersionDiffResult } from "../../../api";
 import { useLang } from "../../../lang";
@@ -7,6 +7,7 @@ import { cx } from "../../../ui/cx";
 import { IconGear } from "../../../ui/glyphs";
 import { ActionMenu, type MenuEntry } from "../../../ui/menu";
 import { Button, Field, Input, Select } from "../../../ui/primitives";
+import { useResource } from "../../../useResource";
 import { fill } from "./model";
 
 /*
@@ -145,22 +146,15 @@ function VersionDiff({ surveyId, versions }: { surveyId: string; versions: { id:
   const sorted = [...versions].sort((a, b) => a.version - b.version);
   const [a, setA] = useState(sorted[sorted.length - 2]?.id ?? sorted[0]!.id);
   const [b, setB] = useState(sorted[sorted.length - 1]!.id);
-  const [diff, setDiff] = useState<VersionDiffResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (a === b) return;
-    let live = true;
-    setDiff(null);
-    setError(null);
-    api
-      .versionDiff(surveyId, a, b)
-      .then((d) => live && setDiff(d))
-      .catch((e: Error) => live && setError(e.message));
-    return () => {
-      live = false;
-    };
-  }, [surveyId, a, b]);
+  /*
+   * Загрузкой (волна 13): сравнение прежней пары версий не встанет под
+   * новую, отказ сбросится удачным повтором. Пока новая пара считается,
+   * прежнего сравнения на экране нет (keep: false) — оно было бы ответом
+   * не на тот вопрос.
+   */
+  const res = useResource(() => api.versionDiff(surveyId, a, b), [surveyId, a, b], { enabled: a !== b, keep: false });
+  const diff: VersionDiffResult | null = a !== b ? res.data : null;
+  const error = res.error;
 
   const pick = (label: string, value: string, onChange: (v: string) => void) => (
     /* подпись видима: у выбора версии нет плейсхолдера, и два одинаковых поля без неё не различить */

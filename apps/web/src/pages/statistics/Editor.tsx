@@ -89,7 +89,8 @@ function Editor({ id }: { id: string | null }) {
   const { run, busy } = useAction();
 
   const surveys = useResource(() => api.surveys(), []);
-  const model = useResource(() => api.statModel(id!), [id], { enabled: id !== null });
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const model = useResource(() => api.statModel(id!), [id], { enabled: id !== null, manual: true });
 
   const [draft, setDraft] = useState<StructureDraft | null>(id === null ? emptyStructure() : null);
   const [columns, setColumns] = useState<StatModel["columns"] | null>(null);

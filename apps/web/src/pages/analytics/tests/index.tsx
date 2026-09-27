@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import type { SurveyAnalytics } from "@quizzy/shared";
 import { api, type AnalyticsSlice } from "../../../api";
 import { useLang } from "../../../lang";
-import { Loading, OfflineBar } from "../../../ui";
+import { Loading } from "../../../ui";
 import { Page } from "../../../ui/layout";
 import { Button, Input, Tabs } from "../../../ui/primitives";
 import { useResource } from "../../../useResource";
@@ -227,8 +227,6 @@ export default function TestsAnalytics() {
               {ut("ant.reset")}
             </Button>
           </div>
-
-          {res.offline && known ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
 
           {patientScope && !state.patient ? (
             <p className="m-0 max-w-[640px] py-[12px] text-[15px] leading-[21px] text-muted">{ut("ant.pickPatient")}</p>

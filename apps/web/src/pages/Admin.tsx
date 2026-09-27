@@ -40,7 +40,8 @@ export function ConsentText() {
   const [version, setVersion] = useState<number | null>(null);
   const { run } = useAction();
 
-  const current = useResource(() => api.consentText(), []).data;
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const current = useResource(() => api.consentText(), [], { manual: true }).data;
   useEffect(() => {
     if (!current) return;
     setVersion(current.version);

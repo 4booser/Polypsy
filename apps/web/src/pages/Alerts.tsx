@@ -715,7 +715,7 @@ function PatientContext({ userId }: { userId: string }) {
   const res = useResource(() => api.caseSummary(userId), [userId]);
   const data = res.data;
 
-  if (!data) return <Loading rows={4} error={res.error} />;
+  if (!data) return <Loading rows={4} error={res.error} onRetry={res.reload} busy={res.loading} />;
 
   return (
     <>
@@ -1150,7 +1150,7 @@ function ResponseModal({ id, onClose }: { id: string; onClose: () => void }) {
   return (
     <Modal title={ut("cases.responseTitle")} onClose={onClose} wide>
       {!data ? (
-        <Loading rows={5} error={res.error} />
+        <Loading rows={5} error={res.error} onRetry={res.reload} busy={res.loading} />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-baseline gap-x-3">

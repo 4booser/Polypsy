@@ -140,7 +140,8 @@ export default function Constructor() {
       return next;
     });
   }, []);
-  const [groups, setGroups] = useState<SurveyGroupWithCounts[]>([]);
+  /* группы — для настроек; отказ — пустой список, как и прежде */
+  const groups = useResource(() => api.groups().catch(() => [] as SurveyGroupWithCounts[]), []).data ?? [];
   const [focused, setFocused] = useState(0);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -177,9 +178,39 @@ export default function Constructor() {
   /* куда заводить тест: «+ → Новий тест» из папки каталога */
   const target = useMemo(() => createTarget(location.search), [location.search]);
 
+  /*
+   * Методика с сервера — загрузкой (волна 13), но черновик из неё
+   * заливается только по явной просьбе: при открытии и по «перечитати з
+   * сервера» / «відкинути чернетку». Черновик — живая правка человека, и
+   * перезалить его ответом, пришедшим сам собой, значит стереть работу.
+   * Поэтому ответ сам не перечитывается (manual — вернувшаяся связь его не
+   * тронет), а каждая просьба — свой ключ (`ask`): ответ на неё ложится в
+   * черновик ровно один раз.
+   */
+  const [ask, setAsk] = useState<{ id: string; n: number } | null>(null);
+  const server = useResource(() => api.surveyRaw(ask!.id), [ask?.id, ask?.n], {
+    enabled: !!ask,
+    manual: true,
+    keep: false,
+  });
+  const seeded = useRef<typeof ask>(null);
   useEffect(() => {
-    api.groups().then(setGroups).catch(() => setGroups([]));
+    if (!ask || !server.data || seeded.current === ask) return;
+    seeded.current = ask;
+    setDraftRaw(toDraft(server.data, []));
+    setPublished(server.data.status === "published");
+    setLoaded(true);
+  }, [ask, server.data]);
+  useEffect(() => {
+    if (!server.error) return;
+    setError(server.error);
+    setLoaded(true);
+  }, [server.error]);
+  const askServer = () => {
+    if (id) setAsk((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+  };
 
+  useEffect(() => {
     // сначала автосейв: несохранённая работа важнее серверной версии
     const saved = localStorage.getItem(draftKey(id));
     if (saved) {
@@ -192,6 +223,7 @@ export default function Constructor() {
         setDraftRaw(!id && target.groupId ? { ...kept, groupId: target.groupId, folderId: target.folderId } : kept);
         setRestored(true);
         setLoaded(true);
+        setAsk(null);
         return;
       } catch {
         localStorage.removeItem(draftKey(id));
@@ -200,19 +232,11 @@ export default function Constructor() {
 
     if (!id) {
       setDraftRaw({ ...EMPTY, answers: defaultAnswers(), groupId: target.groupId, folderId: target.folderId });
+      setAsk(null);
       return;
     }
-    api
-      .surveyRaw(id)
-      .then((s) => {
-        setDraftRaw(toDraft(s, []));
-        setPublished(s.status === "published");
-        setLoaded(true);
-      })
-      .catch((e) => {
-        setError(e.message);
-        setLoaded(true);
-      });
+    // номер просьбы растёт и здесь: вернулись к той же методике — спрашиваем заново, а не берём минутный кэш
+    askServer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -326,13 +350,7 @@ export default function Constructor() {
     setDirty(false);
     setConflict(null);
     undoStack.current = [];
-    api
-      .surveyRaw(id)
-      .then((s) => {
-        setDraftRaw(toDraft(s, []));
-        setPublished(s.status === "published");
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : ut("co.saveFailed")));
+    askServer();
   }
 
   function applyJson() {
@@ -583,7 +601,7 @@ export default function Constructor() {
               setDirty(false);
               undoStack.current = [];
               if (id) {
-                api.surveyRaw(id).then((s) => setDraftRaw(toDraft(s, [])));
+                askServer();
               } else {
                 setDraftRaw({ ...EMPTY, answers: defaultAnswers(), groupId: target.groupId, folderId: target.folderId });
               }

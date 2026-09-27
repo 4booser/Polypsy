@@ -53,7 +53,7 @@ export default function Timeline() {
   const res = useResource(() => api.timeline(userId!), [userId], { enabled: !!userId });
   const items = res.data;
 
-  if (!items) return <Loading rows={6} error={res.error} />;
+  if (!items) return <Loading rows={6} error={res.error} onRetry={res.reload} busy={res.loading} />;
 
   // группировка по дню: лента из двухсот строк без неё читается как журнал
   const byDay = groupByDay(items);

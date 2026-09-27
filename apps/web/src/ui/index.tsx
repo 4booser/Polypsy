@@ -522,36 +522,19 @@ export function LoadMore({
  * обработку ошибки заново на каждом экране.
  */
 /**
- * Полоса «нет связи».
- *
- * Отсутствие сети — не поломка экрана, и говорить о нём надо иначе: экран
- * держит последние данные, а сверху появляется полоса с повтором. Раньше
- * консоль показывала техническое «Failed to fetch» и обнуляла содержимое —
- * специалист в кабинете со слабым Wi-Fi видел то же, что при упавшем
- * сервере.
- */
-export function OfflineBar({ onRetry, busy }: { onRetry: () => void; busy?: boolean }) {
-  const { ut } = useLang();
-  return (
-    <div className="offline-bar" role="status">
-      <i className="dot" />
-      <span className="grow">{ut("ui.offline")}</span>
-      <button className="ghost" onClick={onRetry} disabled={busy}>
-        {busy ? ut("ui.retrying") : ut("common.retry")}
-      </button>
-    </div>
-  );
-}
-
-/**
  * Три состояния загрузки в одном месте.
  *
  * Раньше каждый экран писал их сам — и писал по-разному: где-то обрыв связи
  * показывался как ошибка приложения, где-то экран навсегда оставался пустым,
  * где-то при обновлении данные исчезали и появлялись заново. Здесь порядок
  * один: пока данных нет — скелет; если связи нет, но данные уже были —
- * показываем их с полосой предупреждения, потому что устаревшие цифры
- * полезнее пустого экрана, если про их устарелость сказано.
+ * показываем их, потому что устаревшие цифры полезнее пустого экрана, если
+ * про их устарелость сказано.
+ *
+ * Говорит о ней с волны 13 не экран, а оболочка: строка «немає зв’язку» под
+ * верхней полосой (ui/ConnectionLine.tsx) — одна на всю консоль, со временем
+ * обрыва и обещанием обновить самим. Прежняя полоса с «повторить» стояла у
+ * четырёх экранов из сотни, а связь, вернувшись, всё равно никого не будила.
  */
 export function Screen<T>({
   res,
@@ -563,19 +546,10 @@ export function Screen<T>({
   children: (data: T) => ReactNode;
 }) {
   if (res.data === null) {
-    if (res.offline) {
-      return (
-        <>
-          <OfflineBar onRetry={res.reload} busy={res.loading} />
-          <Loading rows={rows} />
-        </>
-      );
-    }
     return <Loading rows={rows} error={res.error} onRetry={res.reload} busy={res.loading} />;
   }
   return (
     <>
-      {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
       {res.error ? <p className="error">{res.error}</p> : null}
       {children(res.data)}
     </>
