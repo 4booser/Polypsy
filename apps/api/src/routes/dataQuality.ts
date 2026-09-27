@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { icc21, psi } from "@quizzy/shared";
+import { icc21, psi, serverText } from "@quizzy/shared";
 import { db } from "../db";
 import { answers, responseScores, responses, scales } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -43,7 +43,12 @@ const PSI_BINS = 5;
 dataQualityRoutes.get("/surveys/:id", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const survey = await getSurvey(surveyId, null, "ru");
+  /*
+   * Язык — запроса: на нём названия шкал в дрейфе и тест-ретесте и слово
+   * вердикта. Прежде методика бралась русской при любом языке интерфейса.
+   */
+  const lang = langOf(c);
+  const survey = await getSurvey(surveyId, null, lang);
   if (!survey) notFound("err.surveyNotFound");
 
   /*
@@ -170,7 +175,11 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
             month: last,
             psi: value,
             n: lastN,
-            verdict: value > 0.2 ? "существенный" : value > 0.1 ? "заметный" : "стабильно",
+            // вердикт — словом на языке запроса: экран показывает его как есть
+            verdict: serverText(
+              value > 0.2 ? "dq.drift.significant" : value > 0.1 ? "dq.drift.noticeable" : "dq.drift.stable",
+              lang,
+            ),
           };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);

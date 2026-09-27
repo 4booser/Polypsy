@@ -1,5 +1,14 @@
 import { desc, eq } from "drizzle-orm";
-import { createSurveySchema, normalizeLocalized, t, type LocalizedText } from "@quizzy/shared";
+import {
+  CONTENT_LANGS,
+  createSurveySchema,
+  normalizeLocalized,
+  noteCode,
+  readNotes,
+  serverText,
+  t,
+  type LocalizedText,
+} from "@quizzy/shared";
 import { db } from "../db";
 import { departments, surveyVersions, surveys, users } from "../db/schema";
 import { CATALOG, type CatalogEntry } from "../instruments/catalog";
@@ -53,10 +62,15 @@ export interface InstallReport {
   notReady: string | null;
 }
 
-const DEPARTMENT_TITLE: LocalizedText = {
-  uk: "Психологічне відділення",
-  ru: "Психологическое отделение",
-};
+/*
+ * Название — содержимое на языках содержимого, из словаря (как название
+ * копии методики): язык выбирает t() при показе. Украинское название —
+ * ещё и признак, по которому отделение находится повторно (ensureDepartment);
+ * переименовать его в словаре значит завести второе отделение на выкате.
+ */
+const DEPARTMENT_TITLE: LocalizedText = Object.fromEntries(
+  CONTENT_LANGS.map((lang) => [lang, serverText("content.defaultDepartment", lang)]),
+);
 
 /** Кем числится установка: первый суперадмин, иначе первый администратор */
 async function installerId(): Promise<string | null> {
@@ -91,7 +105,8 @@ async function ensureDepartment(): Promise<{ id: string; created: boolean }> {
 }
 
 /*
- * Отпечаток редакции каталога — в заметке версии: «Каталог · <отпечаток>».
+ * Отпечаток редакции каталога — в заметке версии: кодом note.catalog с
+ * отпечатком в подстановке (до волны 14 — фразой «Каталог · <отпечаток>»).
  *
  * Раньше установщик узнавал методику по ключу и больше её не трогал. Правка
  * каталога тогда доходила только до новых установок: на проде оставались,
@@ -104,8 +119,22 @@ async function ensureDepartment(): Promise<{ id: string; created: boolean }> {
  * попадает в отчёт. Отвергнуто: сравнивать содержимое версии с черновиком —
  * это второй конвертер из базы в черновик, который однажды разойдётся с
  * createVersion и начнёт «обновлять» каждую методику на каждом выкате.
+ *
+ * Заметка — кодом, а не фразой: её читают в истории версий и в манифесте
+ * выгрузки на любом языке. Узнаётся своя версия по коду — или по прежнему
+ * началу «Каталог» у поставленных до кодов: их отпечаток сравнивается так
+ * же, и первый выкат после перехода не выпускает сорок одинаковых версий.
  */
-const NOTE = "Каталог";
+const LEGACY_NOTE = "Каталог";
+
+/** Отпечаток редакции из заметки версии; null — версию выпустил не каталог */
+function catalogEdition(note: string | null | undefined): string | null {
+  const coded = readNotes(note).find((n) => n.code === "note.catalog");
+  if (coded) return String(coded.params?.edition ?? "");
+  if (!note?.startsWith(LEGACY_NOTE)) return null;
+  // «Каталог · 1a2b3c…»; у самых старых — одно слово, без отпечатка
+  return note.slice(LEGACY_NOTE.length).replace(/^\s*·\s*/, "");
+}
 
 async function fingerprint(entry: CatalogEntry): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(entry.draft));
@@ -139,7 +168,8 @@ type Outcome = "installed" | "updated" | "skipped" | "keptLocal";
 
 async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outcome> {
   const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
-  const note = `${NOTE} · ${await fingerprint(entry)}`;
+  const edition = await fingerprint(entry);
+  const note = noteCode("note.catalog", { edition });
   if (existing) {
     const [head] = await db
       .select({ note: surveyVersions.note })
@@ -147,8 +177,9 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outco
       .where(eq(surveyVersions.surveyId, existing.id))
       .orderBy(desc(surveyVersions.version))
       .limit(1);
-    if (!head?.note?.startsWith(NOTE)) return "keptLocal";
-    if (head.note === note) return "skipped";
+    const headEdition = catalogEdition(head?.note);
+    if (headEdition === null) return "keptLocal";
+    if (headEdition === edition) return "skipped";
 
     const input = createSurveySchema.parse(entry.draft);
     await db
@@ -160,7 +191,7 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outco
       action: "survey.catalog_update",
       resourceType: "survey",
       resourceId: existing.id,
-      details: { catalogKey: entry.key, from: head.note, to: note, source: entry.source },
+      details: { catalogKey: entry.key, from: head!.note, to: note, source: entry.source },
     });
     return "updated";
   }

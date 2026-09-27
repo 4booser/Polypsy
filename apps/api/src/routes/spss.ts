@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { ageAt, applyQuasi, contentLangFor, exportQuery, generalizeQuasi, serverText } from "@quizzy/shared";
+import { ageAt, applyQuasi, contentLangFor, exportQuery, generalizeQuasi, renderNote, serverText } from "@quizzy/shared";
 import type { AgeBand, ContentLang, Generalization, Lang, ServerTextKey, TextParams } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
@@ -1018,7 +1018,8 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
     versions: versionRows.map((v) => ({
       version: v.version,
       createdAt: v.createdAt,
-      note: v.note,
+      // заметка версии, которую писал сервер, — языком подписей манифеста; набранная человеком — как есть
+      note: renderNote(v.note, labels),
       responses: countByVersion.get(v.id) ?? 0,
     })),
     variables: vars.map((v) => v.name),

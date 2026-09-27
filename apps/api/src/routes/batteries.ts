@@ -3,6 +3,8 @@ import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import {
   assignBatterySchema,
   batteryInputSchema,
+  noteCode,
+  renderNote,
   t,
   type Battery,
   type BatteryAssignment,
@@ -348,7 +350,8 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
       dueAt: r.assignment.dueAt,
       completedAt: r.assignment.completedAt,
       cancelledAt: r.assignment.cancelledAt,
-      note: r.assignment.note,
+      // пометку сервера (каскад, расписание, приглашение, пропуск) — фразой на языке запроса
+      note: renderNote(r.assignment.note, lang),
       overdue:
         !!r.assignment.dueAt &&
         !r.assignment.completedAt &&
@@ -432,7 +435,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
 
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
-    if (open) await closeMissed(tx, [open.id], "срок истёк, назначено заново", now);
+    if (open) await closeMissed(tx, [open.id], noteCode("note.missed.reassigned"), now);
     await tx.insert(batteryAssignments).values({
       id,
       batteryId,
@@ -455,7 +458,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
         userId: input.userId,
         grantedBy: user.id,
         expiresAt: dueAt,
-        note: `Батарея «${battery.title}»`,
+        note: noteCode("note.battery", { title: battery.title }),
       })),
       { extendOnly: true },
     );

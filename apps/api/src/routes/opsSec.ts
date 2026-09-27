@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import type { OpsKeysReport, OpsSqlInfo, OpsSqlResult } from "@quizzy/shared";
+import { renderNote, type Lang, type OpsKeysReport, type OpsRlsReport, type OpsSqlInfo, type OpsSqlResult } from "@quizzy/shared";
 import { asSystem, requestIsReadOnly } from "../db/context";
 import { audit } from "../lib/audit";
-import { parseBody } from "../lib/http";
+import { langOf, parseBody } from "../lib/http";
 import { auditChainReport, integrityState, recordCheck, reportChainBroken, rlsReport } from "../lib/integrity";
 import { keyInventory } from "../lib/keyInventory";
 import { latestReencrypt, startReencrypt } from "../lib/keyRotation";
@@ -101,8 +101,23 @@ opsSecRoutes.post("/keys/reindex-phones", async (c) => {
 
 /* ═══════════ Цілісність ═══════════ */
 
+/*
+ * Причина обхода политик хранится в проверке кодом (lib/rlsGuard.ts) и
+ * становится фразой здесь, на языке того, кто смотрит. Проверки, записанные
+ * до кодов, несут русскую фразу — она показывается как была.
+ */
+const rlsForReader = (report: OpsRlsReport, lang: Lang): OpsRlsReport => ({
+  ...report,
+  reason: renderNote(report.reason, lang),
+});
+
 opsSecRoutes.get("/integrity", async (c) => {
-  return c.json(await integrityState());
+  const state = await integrityState();
+  const lang = langOf(c);
+  return c.json({
+    ...state,
+    rls: state.rls ? { ...state.rls, summary: rlsForReader(state.rls.summary, lang) } : null,
+  });
 });
 
 opsSecRoutes.post("/integrity/rls", async (c) => {
@@ -121,7 +136,7 @@ opsSecRoutes.post("/integrity/rls", async (c) => {
       personTablesWithoutRls: report.personTablesWithoutRls.length,
     },
   });
-  return c.json(report);
+  return c.json(rlsForReader(report, langOf(c)));
 });
 
 opsSecRoutes.post("/integrity/audit", async (c) => {
@@ -152,7 +167,7 @@ opsSecRoutes.get("/sql", async (c) => {
   const info: OpsSqlInfo = {
     role: status.role,
     bypassesRls: status.bypasses,
-    rlsReason: status.reason,
+    rlsReason: renderNote(status.reason, langOf(c)),
     maxRows: SQL_MAX_ROWS,
     timeoutMs: SQL_TIMEOUT_MS,
   };

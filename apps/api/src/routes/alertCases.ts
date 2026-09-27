@@ -30,7 +30,7 @@ import { audit } from "../lib/audit";
 import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
 import { periodFrom, periodTo } from "../lib/population";
-import { badRequest, badRequestDetail, conflict, langOf, notFound, parseQuery } from "../lib/http";
+import { badRequest, conflict, langOf, notFound, parseQuery } from "../lib/http";
 import { assertPatientGroupAccess, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { z } from "zod";
@@ -171,7 +171,7 @@ function decodeCursor(raw: string, grouping: Grouping): Cursor {
     !Number.isNaN(Date.parse(at)) &&
     !!id &&
     /^[A-Za-z0-9-]{1,64}$/.test(id);
-  if (!valid) badRequestDetail("cursor: курсор повреждён или относится к другой выборке — начните список заново");
+  if (!valid) badRequest("err.v.cursorForeign", { field: "cursor" });
   return { rank: Number(rank) as 0 | 1, at: at!, id: id! };
 }
 
@@ -254,11 +254,11 @@ alertCaseRoutes.get("/", async (c) => {
   const q = parseQuery(c, listQuery);
 
   if (q.status && q.all && (q.all === "1") !== (q.status === "all")) {
-    badRequestDetail("status: противоречит all — задайте что-то одно");
+    badRequest("err.v.statusVsAll", { field: "status" });
   }
   const status = q.status ?? (q.all === "1" ? "all" : "open");
   if (q.group === "person" && status !== "open") {
-    badRequestDetail("group: по человеку группируется только открытая очередь");
+    badRequest("err.v.personGroupingOpenOnly", { field: "group" });
   }
   const grouping: Grouping = q.group ?? (status === "open" ? "person" : "case");
   if (q.from && q.to && Date.parse(q.from) > Date.parse(q.to)) badRequest("err.periodReversed");
@@ -943,7 +943,7 @@ alertCaseRoutes.patch("/:id", async (c) => {
    */
   const seenRaw: unknown = body?.seenLastAlertAt;
   if (seenRaw !== undefined && seenRaw !== null && (typeof seenRaw !== "string" || Number.isNaN(Date.parse(seenRaw)))) {
-    badRequestDetail("seenLastAlertAt: ожидается метка времени ISO");
+    badRequest("err.v.isoTimestamp", { field: "seenLastAlertAt" });
   }
   const seen = typeof seenRaw === "string" ? seenRaw : null;
 

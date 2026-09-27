@@ -8,6 +8,7 @@
  * Отличить это от исправной работы нельзя ничем, кроме такой проверки, — и
  * спрашивать её надо уметь снаружи приложения, а не только изнутри.
  */
+import { renderNote } from "@quizzy/shared";
 import { client } from "./db";
 import { checkRls } from "./lib/rlsGuard";
 
@@ -15,7 +16,8 @@ const report = await checkRls();
 if (report.bypasses) {
   console.error("  ✗ ПОЛИТИКИ НЕ ДЕЙСТВУЮТ");
   console.error(`    роль: ${report.role}`);
-  console.error(`    причина: ${report.reason ?? "неизвестна"}`);
+  // причина хранится кодом (lib/rlsGuard.ts); терминал — по-русски, как весь вывод скриптов
+  console.error(`    причина: ${renderNote(report.reason, "ru") ?? "неизвестна"}`);
   console.error(`    таблиц с включённой RLS во владении: ${report.ownedWithRls}`);
   await client.end();
   process.exit(1);

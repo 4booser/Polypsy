@@ -1,4 +1,5 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { noteCode } from "@quizzy/shared";
 import { db } from "../db";
 import {
   batteries,
@@ -147,7 +148,7 @@ export async function applyInvite(
           userId,
           grantedBy: invite.createdBy,
           expiresAt: null,
-          note: "По приглашению",
+          note: noteCode("note.invite"),
         },
       ]);
     }
@@ -201,7 +202,7 @@ export async function applyInvite(
           batteryId: battery.id,
           userId,
           assignedBy: invite.createdBy,
-          note: "По приглашению",
+          note: noteCode("note.invite"),
         });
         await grantAccess(
           tx as never,
@@ -210,7 +211,7 @@ export async function applyInvite(
             userId,
             grantedBy: invite.createdBy,
             expiresAt: null,
-            note: "По приглашению",
+            note: noteCode("note.invite"),
           })),
         );
       }

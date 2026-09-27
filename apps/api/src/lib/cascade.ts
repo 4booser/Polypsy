@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import type { ScoreResult } from "@quizzy/shared";
+import { noteCode, type ScoreResult } from "@quizzy/shared";
 import { db } from "../db";
 import { endOfDayAfter } from "./day";
 import { planFollowUps } from "./followup";
@@ -146,14 +146,14 @@ async function assignCascade(
   const dueAt = dueDays ? endOfDayAfter(now, dueDays) : null;
 
   await db.transaction(async (tx) => {
-    await closeMissed(tx, missed, "срок истёк, назначено заново по результату скрининга", now);
+    await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
     await tx.insert(batteryAssignments).values({
       id: crypto.randomUUID(),
       batteryId,
       userId,
       assignedBy: battery.createdBy,
       dueAt,
-      note: "Каскад по результату скрининга",
+      note: noteCode("note.cascade"),
     });
     await grantAccess(
       tx as never,
@@ -162,7 +162,7 @@ async function assignCascade(
         userId,
         grantedBy: battery.createdBy,
         expiresAt: dueAt,
-        note: "Каскад по результату скрининга",
+        note: noteCode("note.cascade"),
       })),
       // назначение набора поверх более долгого доступа его не укорачивает
       { extendOnly: true },

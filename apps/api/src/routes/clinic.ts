@@ -11,6 +11,7 @@ import {
   scheduleTemplateSchema,
   specialistProfileSchema,
   queryDate,
+  serverText,
   t,
   type AppointmentView,
   type FreeSlot,
@@ -38,6 +39,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireDateParam } from "../lib/dates";
+import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -713,8 +715,9 @@ clinicRoutes.post("/appointments", async (c) => {
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
       // без имени пациента: событие попадает в личный календарь и видно на
-      // экране блокировки телефона, в том числе посторонним
-      title: "Приём",
+      // экране блокировки телефона, в том числе посторонним. Язык — отделения:
+      // событие читает специалист, а записывать мог и сам пациент (lib/notify.ts)
+      title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
     });
   }
 

@@ -15,6 +15,7 @@ import {
   sr45,
   surveys,
 } from "./fixtures";
+import { renderNote } from "@quizzy/shared";
 import { surveyAccess } from "../src/db/schema";
 import { addMonths, dayOf, deadlineOf, endOfDay } from "../src/lib/day";
 
@@ -200,7 +201,8 @@ describe("назначение набора поверх существующе�
       .from(batteryAssignments)
       .where(and(eq(batteryAssignments.batteryId, batteryId), eq(batteryAssignments.userId, person.id)));
     expect(rows).toHaveLength(2);
-    expect(rows.find((r) => r.id === first.body.id)!.note).toContain("пропущено");
+    // отметка — кодом (волна 14), фразой при показе; по-русски — прежними словами
+    expect(renderNote(rows.find((r) => r.id === first.body.id)!.note, "ru")).toContain("пропущено");
     expect(rows.find((r) => r.id === again.body.id)!.cancelledAt).toBeNull();
   });
 });

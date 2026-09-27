@@ -1468,6 +1468,57 @@ export const ERRORS = {
     ru: "{field}: интервал не может кончаться раньше, чем начался",
     en: "{field}: an interval can’t end before it starts",
   },
+
+  /* ── w14:srvstrings ── */
+  /*
+   * Проверки параметров, которые маршрут делает сам, а не схемой: курсор,
+   * противоречие двух параметров, номер запроса трассы, пачка ошибок
+   * клиента. Прежде — badRequestDetail с русской подробностью, то есть
+   * «Запит не пройшов перевірку: cursor: курсор повреждён…» на украинском
+   * экране. Теперь — тот же вид, что у сообщений схем («{field}: …»),
+   * целиком на языке запроса. Русские тексты — прежние подробности дословно.
+   */
+  "err.v.cursorForeign": {
+    uk: "{field}: курсор пошкоджено або він належить іншій вибірці — почніть список заново",
+    ru: "{field}: курсор повреждён или относится к другой выборке — начните список заново",
+    en: "{field}: the cursor is damaged or belongs to a different list — start the list again",
+  },
+  "err.v.cursorDamaged": {
+    uk: "{field}: курсор пошкоджено — почніть список заново",
+    ru: "{field}: курсор повреждён — начните список заново",
+    en: "{field}: the cursor is damaged — start the list again",
+  },
+  "err.v.statusVsAll": {
+    uk: "{field}: суперечить all — задайте щось одне",
+    ru: "{field}: противоречит all — задайте что-то одно",
+    en: "{field}: contradicts all — set only one of them",
+  },
+  "err.v.personGroupingOpenOnly": {
+    uk: "{field}: за людиною групується лише відкрита черга",
+    ru: "{field}: по человеку группируется только открытая очередь",
+    en: "{field}: only the open queue can be grouped by person",
+  },
+  "err.v.isoTimestamp": {
+    uk: "{field}: очікується позначка часу ISO",
+    ru: "{field}: ожидается метка времени ISO",
+    en: "{field}: an ISO timestamp is expected",
+  },
+  "err.v.requestId": {
+    uk: "{field}: 4–64 знаки з літер, цифр і «._:-»",
+    ru: "{field}: 4–64 знака из букв, цифр и «._:-»",
+    en: "{field}: 4–64 characters from letters, digits and “._:-”",
+  },
+  "err.v.batchTooLarge": {
+    uk: "{field}: не більше {max} в одній пачці",
+    ru: "{field}: не больше {max} в пачке",
+    en: "{field}: at most {max} per batch",
+  },
+  "err.v.ruleValue": {
+    uk: "{field}: значення поза допустимим для правила {rule}",
+    ru: "{field}: значение вне допустимого для правила {rule}",
+    en: "{field}: the value is outside what rule {rule} allows",
+  },
+  "err.v.range": { uk: "{field}: від {min} до {max}", ru: "{field}: от {min} до {max}", en: "{field}: from {min} to {max}" },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { noteCode, renderNote } from "@quizzy/shared";
 import { db } from "../db";
 
 /**
@@ -25,6 +26,12 @@ export interface RlsStatus {
   role: string;
   /** Роль обходит политики: суперпользователь, BYPASSRLS или владелец таблиц */
   bypasses: boolean;
+  /**
+   * Почему обходит — кодом (noteCode, rls.why.*), а не фразой. Причину
+   * читают консоль, техпанель и сохранённая проверка целостности — каждый на
+   * своём языке; фразой её делает renderNote на месте показа. Прежде здесь
+   * была русская фраза, и украинская техпанель вставляла её в свою.
+   */
   reason: string | null;
   /** Сколько таблиц с включённой RLS принадлежит этой роли */
   ownedWithRls: number;
@@ -65,16 +72,16 @@ export async function checkRls(exec: Exec = defaultExec): Promise<RlsStatus> {
   const owned = Number(row?.owned ?? 0);
 
   if (row?.is_super) {
-    return { role, bypasses: true, reason: "суперпользователь базы", ownedWithRls: owned };
+    return { role, bypasses: true, reason: noteCode("rls.why.superuser"), ownedWithRls: owned };
   }
   if (row?.bypass) {
-    return { role, bypasses: true, reason: "роль с BYPASSRLS", ownedWithRls: owned };
+    return { role, bypasses: true, reason: noteCode("rls.why.bypass"), ownedWithRls: owned };
   }
   if (owned > 0) {
     return {
       role,
       bypasses: true,
-      reason: `владеет ${owned} табл. с включённой RLS`,
+      reason: noteCode("rls.why.owner", { n: owned }),
       ownedWithRls: owned,
     };
   }
@@ -84,10 +91,14 @@ export async function checkRls(exec: Exec = defaultExec): Promise<RlsStatus> {
 /**
  * Текст отказа. Отдельно от проверки, чтобы его можно было показать и в
  * установщике, и при старте, и в тесте — одними словами.
+ *
+ * Русский, как весь вывод командных скриптов (решение участка srv-i18n,
+ * волна 13): его читает в терминале тот, кто выкатывает, до всякого
+ * запроса и языка интерфейса. Причина — тем же словарём, по-русски.
  */
 export function rlsRefusal(status: RlsStatus): string {
   return [
-    `Приложение подключено к базе ролью «${status.role}» — ${status.reason}.`,
+    `Приложение подключено к базе ролью «${status.role}» — ${renderNote(status.reason, "ru")}.`,
     "Для такой роли политики строк не применяются: все сорок семь остаются на месте,",
     "но каждый видит всё. Это не мешает работе и потому не будет замечено.",
     "",
