@@ -109,6 +109,11 @@ jobs:
           set +a
           if [ "$ACTION" = "backup-status" ]; then
             systemctl status quizzy-backup.service --no-pager -n 0 | sed -n '1,4p' || true
+            # что служба делала в последний раз — без этого «прошла, а файла нет» не разобрать
+            echo "журнал службы:"
+            journalctl -u quizzy-backup.service -n 25 --no-pager -o cat 2>/dev/null | sed 's/^/  /' || echo "  журнал недоступен"
+            echo "каталоги копий:"
+            ls -la "${BACKUP_DIR:?}" 2>/dev/null | sed 's/^/  /' || true
             echo "последние копии:"
             ls -1t "${BACKUP_DIR:?каталог копий не найден в окружении службы}"/daily/ 2>/dev/null | head -5 || echo "  нет суточных копий"
             exit 0
