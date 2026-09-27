@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { assessRisk, countedAnswers, evaluateSubmission } from "../src/risk";
 import { computeProfile } from "../src/scoring";
+import { renderCoded } from "../src/serverStrings";
 import type { Scale } from "../src/types";
 import { band, makeScale, makeSurvey, rule, yesNoQuestion } from "./fixtures";
 import { riskCases } from "./riskCases";
@@ -109,7 +110,8 @@ describe("шкала, на которую почти не ответили, не
     const { survey } = optionalScale();
     const profile = computeProfile(survey, []);
     expect(profile.scores).toEqual([]);
-    expect(profile.warnings.some((w) => w.includes("0 из 3"))).toBe(true);
+    // предупреждение — кодом (волна 13); по-русски его собирает показ
+    expect(profile.warnings.some((w) => renderCoded(w, "ru").includes("0 из 3"))).toBe(true);
   });
 
   test("явный пропуск (skipped) — тоже не ответ", () => {

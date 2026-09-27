@@ -1,5 +1,13 @@
 import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
-import type { Permission, User } from "@quizzy/shared";
+import {
+  renderCoded,
+  serverText,
+  type Lang,
+  type Permission,
+  type ServerTextKey,
+  type TextParams,
+  type User,
+} from "@quizzy/shared";
 import { db } from "../db";
 import {
   alertCases,
@@ -43,6 +51,11 @@ import { t } from "@quizzy/shared";
 export interface CommandContext {
   user: User;
   args: string[];
+  /**
+   * Язык вывода — язык запроса (волна 13). Консоль печатала по-русски при
+   * любом языке интерфейса: вывод команд набирался здесь же, литералами.
+   */
+  lang: Lang;
 }
 
 export interface CommandResult {
@@ -56,7 +69,8 @@ export interface Command {
   name: string;
   /** Как вызывать: `user role <email> <admin|user>` */
   usage: string;
-  summary: string;
+  /** Ключ словаря сервера: описание команды переводится при отдаче списка */
+  summary: ServerTextKey;
   /**
    * Право, без которого команда не выполняется.
    *
@@ -70,36 +84,65 @@ export interface Command {
 
 const ok = (lines: string[], mutating = false): CommandResult => ({ lines, mutating });
 
-/** Ошибка команды: сообщение печатается человеку, а не падает пятисоткой */
-export class CommandError extends Error {}
+/**
+ * Ошибка команды: сообщение печатается человеку, а не падает пятисоткой.
+ *
+ * Несёт ключ и подстановки, а не фразу: фразу собирает маршрут на языке
+ * того, кто набрал команду (routes/console.ts) — так же, как отказы
+ * сервера собирает один обработчик.
+ */
+export class CommandError extends Error {
+  constructor(
+    readonly key: ServerTextKey,
+    readonly params?: TextParams,
+  ) {
+    super(key);
+  }
 
-const need = (args: string[], n: number, usage: string) => {
-  if (args.length < n) throw new CommandError(`нужно больше аргументов: ${usage}`);
+  /** Сообщение на языке вывода; подстановка-ключ («как вызывать») переводится тем же языком */
+  text(lang: Lang): string {
+    return renderCoded({ code: this.key, params: this.params }, lang);
+  }
+}
+
+const need = (args: string[], n: number, usage: ServerTextKey) => {
+  if (args.length < n) throw new CommandError("cmd.needArgs", { usage });
 };
 
 /** Человек по адресу почты; отдельной функцией — её просят три команды */
 async function findByEmail(email: string) {
   const [row] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
-  if (!row) throw new CommandError(`не найден: ${email}`);
+  if (!row) throw new CommandError("cmd.notFound", { email });
   return row;
+}
+
+/**
+ * Таблица «подпись: значение» с выровненной колонкой значений.
+ *
+ * Отступ считается по самой длинной подписи на языке вывода: прежде он был
+ * набит пробелами руками под русские слова, и перевод съехал бы.
+ */
+function aligned(rows: [string, string | number][], gap: number): string[] {
+  const width = Math.max(...rows.map(([label]) => label.length + 1)) + gap;
+  return rows.map(([label, value]) => `${`${label}:`.padEnd(width)}${value}`);
 }
 
 export const COMMANDS: Command[] = [
   {
     name: "help",
     usage: "help",
-    summary: "Список команд",
+    summary: "cmd.help.summary",
     permission: null,
-    run: async ({ user }) => {
+    run: async ({ user, lang }) => {
       const lines: string[] = [];
       for (const c of COMMANDS) {
         const allowed = c.permission === null || (await hasPermission(user, c.permission));
         // недоступные показываются, но помечены: список, скрывающий половину
         // себя, заставляет гадать, чего не хватает
-        lines.push(`${allowed ? "  " : "× "}${c.usage.padEnd(34)} ${c.summary}`);
+        lines.push(`${allowed ? "  " : "× "}${c.usage.padEnd(34)} ${serverText(c.summary, lang)}`);
       }
       lines.push("");
-      lines.push("× — команда есть, но у вас нет права на неё");
+      lines.push(serverText("cmd.help.legend", lang));
       return ok(lines);
     },
   },
@@ -107,17 +150,19 @@ export const COMMANDS: Command[] = [
   {
     name: "whoami",
     usage: "whoami",
-    summary: "Кто вы и что вам можно",
+    summary: "cmd.whoami.summary",
     permission: null,
-    run: async ({ user }) => {
+    run: async ({ user, lang }) => {
       const granted: string[] = [];
       for (const c of COMMANDS) {
         if (c.permission && (await hasPermission(user, c.permission))) granted.push(c.permission);
       }
       return ok([
         `${fullNameOf(user as never)} <${user.email}>`,
-        `класс учётной записи: ${user.role}`,
-        `права на команды: ${[...new Set(granted)].sort().join(", ") || "нет"}`,
+        serverText("cmd.whoami.class", lang, { role: user.role }),
+        serverText("cmd.whoami.perms", lang, {
+          list: [...new Set(granted)].sort().join(", ") || serverText("cmd.none", lang),
+        }),
       ]);
     },
   },
@@ -125,9 +170,9 @@ export const COMMANDS: Command[] = [
   {
     name: "stats",
     usage: "stats",
-    summary: "Состояние системы в числах",
+    summary: "cmd.stats.summary",
     permission: "analytics.read",
-    run: async () => {
+    run: async ({ lang }) => {
       const one = async (q: Promise<{ n: number }[]>) => Number((await q)[0]?.n ?? 0);
       const today = new Date().toISOString().slice(0, 10);
 
@@ -146,49 +191,59 @@ export const COMMANDS: Command[] = [
         ),
       ]);
 
-      return ok([
-        `обследуемых:        ${people}`,
-        `сотрудников:        ${staff}`,
-        `методик (опубл.):   ${published}`,
-        `прохождений:        ${done}`,
-        `случаев в разборе:  ${openCases}`,
-        `приёмов с сегодня:  ${todayAppts}`,
-      ]);
+      return ok(
+        aligned(
+          [
+            [serverText("cmd.stats.people", lang), people],
+            [serverText("cmd.stats.staff", lang), staff],
+            [serverText("cmd.stats.published", lang), published],
+            [serverText("cmd.stats.responses", lang), done],
+            [serverText("cmd.stats.openCases", lang), openCases],
+            [serverText("cmd.stats.appointments", lang), todayAppts],
+          ],
+          2,
+        ),
+      );
     },
   },
 
   {
     name: "queue",
     usage: "queue",
-    summary: "Очередь разбора: сколько и как давно висит",
+    summary: "cmd.queue.summary",
     permission: "alerts.review",
-    run: async () => {
+    run: async ({ lang }) => {
       const rows = await db
         .select({ severity: alertCases.severity, openedAt: alertCases.openedAt })
         .from(alertCases)
         .where(isNull(alertCases.acknowledgedAt));
-      if (!rows.length) return ok(["очередь пуста"]);
+      if (!rows.length) return ok([serverText("cmd.queue.empty", lang)]);
 
       const severe = rows.filter((r) => r.severity === "severe").length;
       const oldest = rows
         .map((r) => new Date(r.openedAt).getTime())
         .reduce((a, b) => Math.min(a, b), Date.now());
       const hours = Math.round((Date.now() - oldest) / 3600_000);
-      return ok([
-        `всего:            ${rows.length}`,
-        `из них тяжёлых:   ${severe}`,
-        `самый давний:     ${hours} ч`,
-      ]);
+      return ok(
+        aligned(
+          [
+            [serverText("cmd.queue.total", lang), rows.length],
+            [serverText("cmd.queue.severe", lang), severe],
+            [serverText("cmd.queue.oldest", lang), serverText("cmd.hours", lang, { n: hours })],
+          ],
+          3,
+        ),
+      );
     },
   },
 
   {
     name: "rls",
     usage: "rls check",
-    summary: "Действуют ли политики строк на этом подключении",
+    summary: "cmd.rls.summary",
     permission: "audit.read",
-    run: async ({ args }) => {
-      if (args[0] !== "check") throw new CommandError("единственная форма: rls check");
+    run: async ({ args, lang }) => {
+      if (args[0] !== "check") throw new CommandError("cmd.onlyForm", { form: "rls check" });
       const report = await checkRls();
       /*
        * Именно эту проверку хочется иметь под рукой: подключение владельцем
@@ -199,12 +254,12 @@ export const COMMANDS: Command[] = [
       return ok(
         report.bypasses
           ? [
-              "ПОЛИТИКИ НЕ ДЕЙСТВУЮТ на этом подключении",
-              `роль: ${report.role}`,
-              `причина: ${report.reason ?? "неизвестна"}`,
-              `таблиц с включённой RLS во владении: ${report.ownedWithRls}`,
+              serverText("cmd.rls.bypass", lang),
+              serverText("cmd.rls.role", lang, { role: report.role }),
+              serverText("cmd.rls.reason", lang, { reason: report.reason ?? serverText("cmd.rls.unknownReason", lang) }),
+              serverText("cmd.rls.owned", lang, { n: report.ownedWithRls }),
             ]
-          : [`политики строк действуют; роль: ${report.role}`],
+          : [serverText("cmd.rls.ok", lang, { role: report.role })],
       );
     },
   },
@@ -212,15 +267,21 @@ export const COMMANDS: Command[] = [
   {
     name: "audit",
     usage: "audit verify",
-    summary: "Сверить хеш-цепочку журнала",
+    summary: "cmd.audit.summary",
     permission: "audit.read",
-    run: async ({ args }) => {
-      if (args[0] !== "verify") throw new CommandError("единственная форма: audit verify");
+    run: async ({ args, lang }) => {
+      if (args[0] !== "verify") throw new CommandError("cmd.onlyForm", { form: "audit verify" });
       const result = await verifyChain();
       return ok(
         result.ok
-          ? [`цепочка цела, записей: ${result.checked}`, `головной хэш: ${result.headHash ?? "—"}`]
-          : [`ЦЕПОЧКА НАРУШЕНА на записи ${result.brokenAtSeq ?? "?"}`, `проверено: ${result.checked}`],
+          ? [
+              serverText("cmd.audit.ok", lang, { n: result.checked }),
+              serverText("cmd.audit.head", lang, { hash: result.headHash ?? "—" }),
+            ]
+          : [
+              serverText("cmd.audit.broken", lang, { seq: result.brokenAtSeq ?? "?" }),
+              serverText("cmd.audit.checked", lang, { n: result.checked }),
+            ],
       );
     },
   },
@@ -228,15 +289,16 @@ export const COMMANDS: Command[] = [
   {
     name: "catalog",
     usage: "catalog list|install",
-    summary: "Общий каталог методик",
+    summary: "cmd.catalog.summary",
     permission: "surveys.edit",
-    run: async ({ args }) => {
+    run: async ({ args, lang }) => {
       if (args[0] === "list") {
         const rows = await db.select().from(surveys).where(sql`${surveys.catalogKey} is not null`);
         const installed = new Set(rows.map((r) => r.catalogKey));
         return ok(
           CATALOG.map(
-            (e) => `${installed.has(e.key) ? "✓" : "·"} ${e.key.padEnd(10)} ${t(e.draft.title as never, "uk")}`,
+            // название методики — на языке вывода, как её назовёт и каталог на экране
+            (e) => `${installed.has(e.key) ? "✓" : "·"} ${e.key.padEnd(10)} ${t(e.draft.title as never, lang)}`,
           ),
         );
       }
@@ -244,30 +306,32 @@ export const COMMANDS: Command[] = [
         const report = await installCatalog();
         return ok(
           [
-            report.departmentCreated ? "отделение заведено" : "отделение уже было",
-            report.installed.length ? `поставлено: ${report.installed.join(", ")}` : "новых методик нет",
-            report.skipped.length ? `уже стояли: ${report.skipped.join(", ")}` : "",
+            serverText(report.departmentCreated ? "cmd.catalog.deptCreated" : "cmd.catalog.deptExisted", lang),
+            report.installed.length
+              ? serverText("cmd.catalog.installed", lang, { list: report.installed.join(", ") })
+              : serverText("cmd.catalog.nothingNew", lang),
+            report.skipped.length ? serverText("cmd.catalog.skipped", lang, { list: report.skipped.join(", ") }) : "",
           ].filter(Boolean),
           true,
         );
       }
-      throw new CommandError("формы: catalog list, catalog install");
+      throw new CommandError("cmd.forms", { forms: "catalog list, catalog install" });
     },
   },
 
   {
     name: "dept",
     usage: "dept list",
-    summary: "Отделения",
+    summary: "cmd.dept.summary",
     permission: "departments.manage",
-    run: async ({ args }) => {
-      if (args[0] && args[0] !== "list") throw new CommandError("единственная форма: dept list");
+    run: async ({ args, lang }) => {
+      if (args[0] && args[0] !== "list") throw new CommandError("cmd.onlyForm", { form: "dept list" });
       const rows = await db.select().from(departments);
-      if (!rows.length) return ok(["отделений нет"]);
+      if (!rows.length) return ok([serverText("cmd.dept.none", lang)]);
       return ok(
         rows.map(
           (d) =>
-            `${d.archivedAt ? "×" : " "} ${t(d.title as never, "uk").padEnd(32)} ${d.timezone}`,
+            `${d.archivedAt ? "×" : " "} ${t(d.title as never, lang).padEnd(32)} ${d.timezone}`,
         ),
       );
     },
@@ -276,13 +340,13 @@ export const COMMANDS: Command[] = [
   {
     name: "user",
     usage: "user find|role|readonly …",
-    summary: "Учётные записи: найти, сменить класс, запретить запись",
+    summary: "cmd.user.summary",
     permission: "users.manage",
-    run: async ({ args }) => {
+    run: async ({ args, lang }) => {
       const [sub, ...rest] = args;
 
       if (sub === "find") {
-        need(rest, 1, "user find <часть почты>");
+        need(rest, 1, "cmd.usage.userFind");
         const needle = rest[0]!.toLowerCase();
         /*
          * Ищем ТОЛЬКО по почте. Поиск по фамилии выглядел бы удобнее, но
@@ -295,17 +359,16 @@ export const COMMANDS: Command[] = [
           .from(users)
           .where(sql`${users.email} like ${`%${needle}%`}`)
           .limit(20);
-        if (!rows.length) return ok(["никого"]);
-        return ok(
-          rows.map((u) => `${u.email.padEnd(36)} ${u.role.padEnd(11)} ${u.readOnly ? "только чтение" : ""}`),
-        );
+        if (!rows.length) return ok([serverText("cmd.user.nobody", lang)]);
+        const readOnly = serverText("cmd.user.readOnly", lang);
+        return ok(rows.map((u) => `${u.email.padEnd(36)} ${u.role.padEnd(11)} ${u.readOnly ? readOnly : ""}`));
       }
 
       if (sub === "role") {
-        need(rest, 2, "user role <почта> <superadmin|admin|user>");
+        need(rest, 2, "cmd.usage.userRole");
         const [email, role] = rest as [string, string];
         if (!["superadmin", "admin", "user"].includes(role)) {
-          throw new CommandError("класс: superadmin, admin или user");
+          throw new CommandError("cmd.user.roleValues");
         }
         const target = await findByEmail(email);
         await db.update(users).set({ role: role as never }).where(eq(users.id, target.id));
@@ -313,15 +376,18 @@ export const COMMANDS: Command[] = [
       }
 
       if (sub === "readonly") {
-        need(rest, 2, "user readonly <почта> <on|off>");
+        need(rest, 2, "cmd.usage.userReadonly");
         const [email, mode] = rest as [string, string];
-        if (mode !== "on" && mode !== "off") throw new CommandError("значение: on или off");
+        if (mode !== "on" && mode !== "off") throw new CommandError("cmd.user.onOff");
         const target = await findByEmail(email);
         await db.update(users).set({ readOnly: mode === "on" }).where(eq(users.id, target.id));
-        return ok([`${target.email}: запись ${mode === "on" ? "запрещена" : "разрешена"}`], true);
+        return ok(
+          [serverText(mode === "on" ? "cmd.user.writeBlocked" : "cmd.user.writeAllowed", lang, { email: target.email })],
+          true,
+        );
       }
 
-      throw new CommandError("формы: user find, user role, user readonly");
+      throw new CommandError("cmd.forms", { forms: "user find, user role, user readonly" });
     },
   },
 ];

@@ -10,6 +10,8 @@ export * from "./phone";
 export * from "./uiStrings";
 export * from "./errorStrings";
 export * from "./pushStrings";
+/* тексты, которые собирает сервер или общий пакет, — на языке смотрящего (волна 13, srv-i18n) */
+export * from "./serverStrings";
 export * from "./permissions";
 /* техпанель, эксплуатация: состояние системы и флаги функций */
 export * from "./serviceStatus";

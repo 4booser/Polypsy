@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { computeProfile, createSurveySchema, type Answer, type SurveyFull } from "@quizzy/shared";
+import { computeProfile, createSurveySchema, renderCoded, type Answer, type SurveyFull } from "@quizzy/shared";
 import { minimult } from "../minimult";
 import { sr45 } from "../sr45";
 
@@ -175,7 +175,9 @@ describe("золотой протокол: СР-45", () => {
     expect(l.rawScore).toBe(lYes);
     expect(l.value).toBeGreaterThan(0.6);
     expect(reliable).toBe(false);
-    expect(warnings.some((w) => w.includes("брехн") || w.includes("лжи") || w.includes("прикраш"))).toBe(true);
+    // предупреждения движок отдаёт кодами (волна 13); слова шкалы лжи — её собственные, текстом
+    const said = warnings.map((w) => renderCoded(w, "ru"));
+    expect(said.some((w) => w.includes("брехн") || w.includes("лжи") || w.includes("прикраш"))).toBe(true);
   });
 
   test("граница полос: 0.23 — «Низкий», 0.24 — уже нет", () => {

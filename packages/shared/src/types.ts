@@ -1880,7 +1880,12 @@ export interface ProfileResult {
    * решение об исключении принимает специалист, а не программа.
    */
   reliable: boolean;
-  warnings: string[];
+  /**
+   * Предупреждения подсчёта — кодом и подстановками; фразой их делает тот,
+   * кто показывает, на языке смотрящего (renderCoded в serverStrings.ts).
+   * Строкой здесь они были по-русски на любом экране.
+   */
+  warnings: import("./serverStrings").CodedText[];
 }
 
 export interface SurveyResponse {

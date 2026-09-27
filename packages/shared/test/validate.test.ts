@@ -40,7 +40,8 @@ function run(draft: Record<string, unknown>): Issue[] {
     title: { uk: "Тест", ru: "Тест" },
     ...draft,
   });
-  return validateSurvey(parsed);
+  // по-русски: фрагменты ниже — русские, язык проверки — параметр (волна 13)
+  return validateSurvey(parsed, "ru");
 }
 
 const errorAbout = (issues: Issue[], fragment: string) =>

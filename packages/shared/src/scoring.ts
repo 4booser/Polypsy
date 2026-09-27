@@ -1,3 +1,4 @@
+import type { CodedText, ServerTextKey, TextParams } from "./serverStrings";
 import { t, type Answer, type ProfileResult, type Question, type Scale, type ScaleItem, type ScoreResult, type Sex, type SurveyFull } from "./types";
 
 /** Диапазон баллов, который вопрос может дать субшкале */
@@ -246,7 +247,19 @@ export function computeProfile(
 ): ProfileResult {
   const byQuestion = new Map(answers.map((a) => [a.questionId, a]));
   const questionById = new Map(survey.questions.map((q) => [q.id, q]));
-  const warnings: string[] = [];
+  /*
+   * Предупреждения — кодом и подстановками, а не фразой (волна 13).
+   *
+   * Движок работает везде: на сервере при сдаче, в предпросмотре
+   * конструктора, на устройстве без сети — и языка того, кто прочтёт
+   * предупреждение, не знает. Фраза по-русски, собранная здесь, приезжала
+   * русской на любой экран. Теперь текст собирает тот, кто показывает:
+   * сервер в ответе на сдачу (langOf), конструктор — своим языком
+   * (renderCoded из serverStrings.ts).
+   */
+  const warnings: CodedText[] = [];
+  const warn = (code: ServerTextKey, params: TextParams, text?: string) =>
+    warnings.push(text ? { code, params, text } : { code, params });
 
   /*
    * Шкалы, которые посчитать нельзя: ответов на их пункты слишком мало.
@@ -288,9 +301,12 @@ export function computeProfile(
     const minShare = scale.minAnsweredShare ?? DEFAULT_MIN_ANSWERED_SHARE;
     if (asked > 0 && values.length / asked < minShare - 1e-9) {
       uncomputable.add(scale.code);
-      warnings.push(
-        `Шкала «${t(scale.title)}»: ответы есть на ${values.length} из ${asked} пунктов, нужно не меньше ${Math.round(minShare * 100)} % — балл не вычислен`,
-      );
+      warn("score.tooFewAnswers", {
+        scale: t(scale.title),
+        answered: values.length,
+        asked,
+        min: Math.round(minShare * 100),
+      });
       continue;
     }
 
@@ -313,9 +329,7 @@ export function computeProfile(
     const missingSource = scale.corrections.find((c) => uncomputable.has(c.sourceScaleCode));
     if (missingSource) {
       uncomputable.add(scale.code);
-      warnings.push(
-        `Шкала «${t(scale.title)}»: не вычислена шкала «${missingSource.sourceScaleCode}», от которой идёт поправка, — балл не вычислен`,
-      );
+      warn("score.sourceUncomputed", { scale: t(scale.title), source: missingSource.sourceScaleCode });
       continue;
     }
     let value = raw.get(scale.code) ?? 0;
@@ -335,7 +349,7 @@ export function computeProfile(
   for (const scale of survey.scales) {
     if (scale.kind === "validity" && scale.validityThreshold !== null && uncomputable.has(scale.code)) {
       reliable = false;
-      warnings.push(`Шкалу достоверности «${t(scale.title)}» проверить не удалось: балл не вычислен`);
+      warn("score.validityUncomputed", { scale: t(scale.title) });
     }
   }
 
@@ -370,9 +384,7 @@ export function computeProfile(
         value = Math.round((correctedScore / denominator) * 1000) / 1000;
       } else {
         normalized = false;
-        warnings.push(
-          `Шкала «${t(scale.title)}»: не задан знаменатель доли, показан сырой балл`,
-        );
+        warn("score.noDenominator", { scale: t(scale.title) });
       }
     } else if (scale.normalization === "tscore") {
       const norm = pickNorm(scale.norms, respondent.sex, respondent.age);
@@ -380,11 +392,7 @@ export function computeProfile(
         value = Math.round((50 + (10 * (correctedScore - norm.mean)) / norm.sd) * 10) / 10;
       } else {
         normalized = false;
-        warnings.push(
-          norm
-            ? `Шкала «${t(scale.title)}»: у нормы нулевое стандартное отклонение, показан сырой балл`
-            : `Шкала «${t(scale.title)}»: нет нормы для этого пола и возраста, показан сырой балл`,
-        );
+        warn(norm ? "score.zeroSd" : "score.noNorm", { scale: t(scale.title) });
       }
     } else if (scale.normalization === "sten") {
       const row = scale.stenTable.find(
@@ -398,7 +406,7 @@ export function computeProfile(
       if (row) value = row.sten;
       else {
         normalized = false;
-        warnings.push(`Шкала «${t(scale.title)}»: сырой балл вне таблицы стенов`);
+        warn("score.outsideSten", { scale: t(scale.title) });
       }
     }
 
@@ -419,9 +427,7 @@ export function computeProfile(
     if (scale.kind === "validity" && scale.validityThreshold !== null) {
       if (!normalized) {
         reliable = false;
-        warnings.push(
-          `Шкалу достоверности «${t(scale.title)}» проверить не удалось: результат не нормирован`,
-        );
+        warn("score.validityNotNormalized", { scale: t(scale.title) });
       } else {
         validityFailed =
           scale.validityDirection === "below"
@@ -429,9 +435,15 @@ export function computeProfile(
             : value > scale.validityThreshold;
         if (validityFailed) {
           reliable = false;
-          warnings.push(
-            t(scale.validityMessage) ||
-              `Шкала достоверности «${t(scale.title)}» вышла за порог ${scale.validityThreshold} — результат ненадёжен`,
+          /*
+           * Своё сообщение шкалы — слова методики, контент каталога: оно идёт
+           * текстом и показывается как есть. Код рядом — на случай, если
+           * методика своего сообщения не задала.
+           */
+          warn(
+            "score.validityExceeded",
+            { scale: t(scale.title), threshold: scale.validityThreshold },
+            t(scale.validityMessage) || undefined,
           );
         }
       }

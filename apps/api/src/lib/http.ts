@@ -1,6 +1,6 @@
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { detectLang, isLang, parseAcceptLanguage, type ErrorKey, type ErrorParams, type Lang } from "@quizzy/shared";
+import { detectLang, ERRORS, isLang, parseAcceptLanguage, type ErrorKey, type ErrorParams, type Lang } from "@quizzy/shared";
 import type { z, ZodTypeAny } from "zod";
 
 /**
@@ -49,16 +49,25 @@ export function badRequest(key: ErrorKey, params?: ErrorParams): never {
 }
 
 /**
- * Отказ с текстом, собранным на месте.
+ * Отказ с подробностью, собранной на месте.
  *
  * Единственный законный случай — разбор тела запроса: там подробность
- * («scales.0.code: обязательное поле») ценнее перевода, и читает её тот, кто
- * пишет клиент. Отдельное имя нужно, чтобы обычный badRequest принимал
- * только ключ: тогда забытую фразу находит компилятор, а не смоук через
- * неделю.
+ * («scales.0.code: Required») ценнее перевода, и читает её тот, кто пишет
+ * клиент. Отдельное имя нужно, чтобы обычный badRequest принимал только
+ * ключ: тогда забытую фразу находит компилятор, а не смоук через неделю.
+ *
+ * Подробность не уходит единственным текстом (волна 13). Экран показывает
+ * отказ как есть, и специалист на английском интерфейсе читал одно
+ * «title: Required», а на украинском — русское «курсор повреждён»: чужой
+ * язык и ни слова о том, что вообще произошло. Теперь впереди — переводимое
+ * «запрос не прошёл проверку», подробность — за ним, как была.
  */
 export function badRequestDetail(detail: string): never {
-  throw new HTTPException(400, { message: detail });
+  // сообщением — сама подробность, как прежде: так её видно в логе без словаря
+  throw new HTTPException(400, {
+    message: detail,
+    cause: { key: "err.invalidRequest", params: { detail } } satisfies ErrorInfo,
+  });
 }
 
 export function unauthorized(key: ErrorKey = "err.auth", params?: ErrorParams): never {
@@ -91,19 +100,46 @@ export function isUniqueViolation(err: unknown): boolean {
 }
 
 /**
- * Проблема разбора, у которой есть свой ключ отказа.
+ * Ключ отказа, который несёт проблема разбора, — или null.
  *
- * Схема может приложить к проблеме `params.errorKey` (так делают даты —
- * packages/shared/src/dates.ts), и тогда ответ — переводимый отказ с именем
- * поля: кривую дату в фильтре читает человек на экране, а не только тот, кто
- * пишет клиент. Остальные проблемы идут прежним текстом разбора.
+ * Два способа сказать его, и оба законны:
+ *
+ *  - `params.errorKey` у своей проверки (refine, superRefine) — так делают
+ *    даты (packages/shared/src/dates.ts): сообщение остаётся для
+ *    разработчика, человеку уходит перевод. Прочие поля `params` — подстановки
+ *    («{section}»);
+ *
+ *  - само сообщение — ключ словаря отказов: `.regex(re, "err.v.color")`.
+ *    Иначе у встроенных проверок zod (regex, min) ключ не приложить —
+ *    `params` у них нет. Так сделаны сообщения схем в packages/shared/src/
+ *    schemas.ts (волна 13): прежде они были русскими фразами и уходили
+ *    русскими на любой экран.
+ */
+export function issueKey(issue: z.ZodIssue): { key: ErrorKey; params: ErrorParams } | null {
+  const own = issue.code === "custom" ? ((issue as { params?: Record<string, unknown> }).params ?? {}) : {};
+  const fromParams = typeof own.errorKey === "string" ? own.errorKey : null;
+  const key = fromParams ?? (Object.prototype.hasOwnProperty.call(ERRORS, issue.message) ? issue.message : null);
+  if (!key) return null;
+  const params: ErrorParams = {};
+  for (const [name, value] of Object.entries(own)) {
+    if (name !== "errorKey" && (typeof value === "string" || typeof value === "number")) params[name] = value;
+  }
+  return { key: key as ErrorKey, params };
+}
+
+/**
+ * Проблема разбора, у которой есть свой ключ отказа (см. issueKey).
+ *
+ * Ответ — переводимый отказ с именем поля: кривую дату в фильтре и «нужно
+ * минимум два варианта» в конструкторе читает человек на экране, а не только
+ * тот, кто пишет клиент. Отвечает первая такая проблема: отказ — одна фраза
+ * на одном языке, а склейку переводов разных ключей язык не соберёт.
+ * Остальные проблемы идут подробностью разбора (badRequestDetail).
  */
 function failKeyedIssue(issues: z.ZodIssue[], fallbackPath: string): void {
   for (const issue of issues) {
-    const key = (issue as { params?: { errorKey?: unknown } }).params?.errorKey;
-    if (issue.code === "custom" && typeof key === "string") {
-      badRequest(key as ErrorKey, { field: issue.path.join(".") || fallbackPath });
-    }
+    const found = issueKey(issue);
+    if (found) badRequest(found.key, { ...found.params, field: issue.path.join(".") || fallbackPath });
   }
 }
 
