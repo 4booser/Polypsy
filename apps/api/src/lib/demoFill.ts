@@ -31,7 +31,7 @@ import { hashInviteToken, newInviteCode, newInviteToken } from "./invites";
 import { encryptField, encryptPersonFields } from "./crypto";
 import { normalizePhone, phoneFingerprint } from "./phone";
 import { log } from "./log";
-import { FOLLOWUP_NOTE } from "./followup";
+import { followupNote } from "./followup";
 import { getSurvey } from "./surveys";
 import { persistSubmission } from "./submission";
 import { demoAnswers } from "./demoAnswers";
@@ -256,7 +256,7 @@ async function ensureAssignment(
       userId,
       grantedBy: specialistId,
       expiresAt: dueAt.toISOString(),
-      note: `${FOLLOWUP_NOTE}: повтор через 14 дн.`,
+      note: followupNote(14),
     })
     .onConflictDoNothing();
   return true;

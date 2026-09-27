@@ -26,6 +26,12 @@ import type { Lang } from "./types";
  *    осталось бы на языке того, кто сдал методику, а читает его другой
  *    человек и в другой день.
  *
+ *  - пометки, которые сервер пишет в текстовую колонку рядом с текстом
+ *    человека (заметки версий, примечания доступа и назначений, итоги
+ *    прогонов расписаний; волна 14) — встроенным кодом ⟦ключ{…}⟧ (noteCode
+ *    ниже), тоже фразой при показе. Колонка остаётся текстом: в ней же
+ *    лежит то, что набрал человек, и то, что записано до кодов.
+ *
  * Подстановки — «{имя}», как в ERRORS и PUSH: форматирования сложнее
  * подстановки здесь нет. Все три языка обязательны с первого дня: тексты
  * эти сервер отдаёт готовыми, и непереведённая строка приезжала бы на
@@ -604,6 +610,176 @@ export const SERVER_TEXTS = {
   "cmd.notFound": { uk: "не знайдено: {email}", ru: "не найден: {email}", en: "not found: {email}" },
   "cmd.unknown": { uk: "немає такої команди: {name}", ru: "нет такой команды: {name}", en: "no such command: {name}" },
   "cmd.typeHelp": { uk: "наберіть help", ru: "наберите help", en: "type help" },
+
+  /* ── w14:srvstrings ── */
+
+  /*
+   * ─── пометки, которые сервер сам пишет в базу ───
+   *
+   * Хранятся встроенным кодом (noteCode ниже), фразой становятся при показе —
+   * на языке того, кто смотрит. Заметки версий: routes/surveys.ts,
+   * routes/norms.ts, lib/catalogInstall.ts.
+   */
+  "note.firstVersion": { uk: "Перша версія", ru: "Первая версия", en: "First version" },
+  "note.importFile": { uk: "Імпорт з файлу", ru: "Импорт из файла", en: "Imported from a file" },
+  "note.copyOf": { uk: "Копія «{title}»", ru: "Копия «{title}»", en: "Copy of “{title}”" },
+  "note.localNorms": { uk: "Локальні норми: {scales}", ru: "Локальные нормы: {scales}", en: "Local norms: {scales}" },
+  /* {edition} — отпечаток редакции каталога: по нему установщик узнаёт, что методику надо обновить */
+  "note.catalog": { uk: "Каталог · {edition}", ru: "Каталог · {edition}", en: "Catalogue · {edition}" },
+  /* примечания доступа и назначений: routes/batteries.ts, lib/cascade.ts, lib/scheduler.ts, lib/invites.ts, lib/followup.ts */
+  "note.battery": { uk: "Набір «{title}»", ru: "Батарея «{title}»", en: "Battery “{title}”" },
+  "note.cascade": {
+    uk: "Каскад за результатом скринінгу",
+    ru: "Каскад по результату скрининга",
+    en: "Cascade after a screening result",
+  },
+  "note.schedule": { uk: "Розклад «{title}»", ru: "Расписание «{title}»", en: "Schedule “{title}”" },
+  "note.invite": { uk: "За запрошенням", ru: "По приглашению", en: "By invitation" },
+  "note.followup": {
+    uk: "Протокол спостереження: повтор через {days} дн.",
+    ru: "Протокол наблюдения: повтор через {days} дн.",
+    en: "Follow-up protocol: repeat after {days} days",
+  },
+  /* отметка о пропуске дописывается к примечанию назначения через « · » (lib/batteries.ts, closeMissed) */
+  "note.missed.reassigned": {
+    uk: "пропущено: строк минув, призначено знову",
+    ru: "пропущено: срок истёк, назначено заново",
+    en: "missed: overdue, assigned again",
+  },
+  "note.missed.cascade": {
+    uk: "пропущено: строк минув, призначено знову за результатом скринінгу",
+    ru: "пропущено: срок истёк, назначено заново по результату скрининга",
+    en: "missed: overdue, assigned again after a screening result",
+  },
+  "note.missed.schedule": {
+    uk: "пропущено: строк минув, видано наступне за розкладом «{title}»",
+    ru: "пропущено: срок истёк, выдано следующее по расписанию «{title}»",
+    en: "missed: overdue, the next one issued by schedule “{title}”",
+  },
+  /* итоги прогонов расписаний: lib/scheduler.ts → schedule_runs.note, техпанель «Задачі» */
+  "note.run.archived": {
+    uk: "Набір в архіві — призначення не видаються",
+    ru: "Набор в архиве — назначения не выдаются",
+    en: "The battery is archived — no assignments are issued",
+  },
+  "note.run.missedClosed": { uk: "Пропущено й закрито: {n}", ru: "Пропущено и закрыто: {n}", en: "Missed and closed: {n}" },
+  "note.run.nobody": { uk: "Нема кого охопити", ru: "Некого охватить", en: "Nobody to reach" },
+  "note.run.unknownError": { uk: "Невідома помилка", ru: "Неизвестная ошибка", en: "Unknown error" },
+  /* источник локальной нормы: routes/norms.ts → scale_norms.source; по коду её и не выгружают (lib/surveys.ts) */
+  "note.localSample": {
+    uk: "локальна вибірка, N={n}, {date}",
+    ru: "локальная выборка, N={n}, {date}",
+    en: "local sample, N={n}, {date}",
+  },
+  /* почему роль обходит политики строк: lib/rlsGuard.ts → консоль, техпанель, сохранённая проверка */
+  "rls.why.superuser": { uk: "суперкористувач бази", ru: "суперпользователь базы", en: "database superuser" },
+  "rls.why.bypass": { uk: "роль з BYPASSRLS", ru: "роль с BYPASSRLS", en: "role with BYPASSRLS" },
+  "rls.why.owner": {
+    uk: "володіє {n} табл. з увімкненою RLS",
+    ru: "владеет {n} табл. с включённой RLS",
+    en: "owns {n} tables with RLS enabled",
+  },
+
+  /* ─── собранные на лету — на языке запроса ─── */
+
+  /* что мешает удалить: «{details}» в err.groupNotEmpty / err.surveyFolderNotEmpty */
+  "inside.surveys": { uk: "методик: {n}", ru: "методик: {n}", en: "assessments: {n}" },
+  "inside.folders": { uk: "папок: {n}", ru: "папок: {n}", en: "folders: {n}" },
+  "inside.batteries": { uk: "наборів: {n}", ru: "батарей: {n}", en: "batteries: {n}" },
+  "inside.rules": { uk: "правил підтримки рішень: {n}", ru: "правил поддержки решений: {n}", en: "decision support rules: {n}" },
+  /* очередь работы: routes/worklist.ts */
+  "wl.noShow": { uk: "Не прийшов на прийом", ru: "Не пришёл на приём", en: "Missed the appointment" },
+  "wl.unread": { uk: "Непрочитане повідомлення", ru: "Непрочитанное сообщение", en: "Unread message" },
+  /* лист ключей (routes/surveys.ts, /key): норма без пола — для любого; мужская и женская — print.sexMale/Female */
+  "print.sexAny": { uk: "будь-яка", ru: "любой", en: "any" },
+  /* дрейф шкалы по месяцам: routes/dataQuality.ts */
+  "dq.drift.significant": { uk: "суттєвий", ru: "существенный", en: "significant" },
+  "dq.drift.noticeable": { uk: "помітний", ru: "заметный", en: "noticeable" },
+  "dq.drift.stable": { uk: "стабільно", ru: "стабильно", en: "stable" },
+  /* признаки небрежного заполнения: lib/psychometrics.ts (qualityOf) */
+  "quality.tooFast": {
+    uk: "{share}% відповідей швидше за {ms} мс",
+    ru: "{share}% ответов быстрее {ms} мс",
+    en: "{share}% of answers faster than {ms} ms",
+  },
+  "quality.straightLine": {
+    uk: "серія з {n} однакових відповідей",
+    ru: "серия из {n} одинаковых ответов",
+    en: "a run of {n} identical answers",
+  },
+  "quality.tooShort": {
+    uk: "загальний час менший за мінімально правдоподібний",
+    ru: "общее время меньше минимально правдоподобного",
+    en: "total time below the minimum plausible",
+  },
+  "quality.personFit": {
+    uk: "нетиповий патерн відповідей ({value})",
+    ru: "нетипичный паттерн ответов ({value})",
+    en: "atypical answer pattern ({value})",
+  },
+  /* стирание устройства: routes/devices.ts — ответ говорит, чего команда не делает */
+  "device.wipeNote": {
+    uk: "Дані буде стерто, коли пристрій наступного разу вийде на зв’язок. Пристрій, який більше не ввімкнуть, цією командою не очистити.",
+    ru: "Данные будут стёрты, когда устройство в следующий раз выйдет на связь. Устройство, которое больше не включат, этой командой не очистить.",
+    en: "The data will be erased the next time the device connects. A device that is never switched on again can’t be wiped by this command.",
+  },
+  /* строгий порядок набора: lib/batteries.ts — когда название прежней методики не нашлось */
+  "battery.previousSurvey": { uk: "попередня методика", ru: "предыдущая методика", en: "the previous assessment" },
+
+  /*
+   * ─── содержимое, которое пишет сервер ───
+   *
+   * Поле многоязычное (LocalizedText), поэтому пишется сразу на всех языках
+   * содержимого (CONTENT_LANGS), а язык выбирает t() при показе — как у
+   * любого другого названия. Английский здесь для полноты словаря: у
+   * содержимого его нет намеренно (types.ts).
+   */
+  "content.copySuffix": { uk: "(копія)", ru: "(копия)", en: "(copy)" },
+  /* отделение по умолчанию (lib/catalogInstall.ts); ищется по украинскому названию — не переименовывать молча */
+  "content.defaultDepartment": { uk: "Психологічне відділення", ru: "Психологическое отделение", en: "Psychology department" },
+
+  /*
+   * ─── без запроса: письма и события, которые уходят не тому, кто спросил ───
+   *
+   * Язык — отделения (MAIL_LANG в lib/notify.ts), как у оповещений техпанели
+   * (lib/opsAlerts.ts): языка получателя сервер не знает.
+   */
+  /* событие в календаре специалиста (routes/clinic.ts → lib/meet.ts): без имени пациента намеренно */
+  "meet.eventTitle": { uk: "Прийом", ru: "Приём", en: "Appointment" },
+  /* уровень согласован с «відповідь» / «ответ»: в украинском женский род, в русском мужской */
+  "mail.sev.severe": { uk: "критична", ru: "критический", en: "critical" },
+  "mail.sev.moderate": { uk: "підвищена", ru: "повышенный", en: "elevated" },
+  "mail.alert.subject": {
+    uk: "Тривога: {level} відповідь — {title}",
+    ru: "Тревога: {level} ответ — {title}",
+    en: "Alert: {level} answer — {title}",
+  },
+  "mail.alert.body": {
+    uk: "У методиці «{title}» надійшла {level} відповідь.",
+    ru: "В методике «{title}» получен {level} ответ.",
+    en: "An answer flagged {level} was received in “{title}”.",
+  },
+  "mail.alert.open": {
+    uk: "Відкрийте консоль, щоб побачити, хто і на який пункт відповів:",
+    ru: "Откройте консоль, чтобы увидеть, кто и на какой пункт ответил:",
+    en: "Open the console to see who answered which item:",
+  },
+  "mail.alert.noPersonal": {
+    uk: "Персональні дані в листі не передаються навмисно.",
+    ru: "Персональные данные в письме не передаются намеренно.",
+    en: "Personal data is deliberately left out of this email.",
+  },
+  "mail.escalation.subject": {
+    uk: "ЕСКАЛАЦІЯ: тривогу не розібрано {minutes} хв — {title}",
+    ru: "ЭСКАЛАЦИЯ: тревога не разобрана {minutes} мин — {title}",
+    en: "ESCALATION: alert unreviewed for {minutes} min — {title}",
+  },
+  "mail.escalation.body": {
+    uk: "Тривогу за методикою «{title}» не підтверджено за {limit} хв.",
+    ru: "Тревога по методике «{title}» не подтверждена за {limit} мин.",
+    en: "The alert for “{title}” wasn’t acknowledged within {limit} min.",
+  },
+  "mail.escalation.open": { uk: "Відкрита вже {minutes} хв.", ru: "Открыта уже {minutes} мин.", en: "Open for {minutes} min." },
 } as const satisfies Record<string, ServerTextEntry>;
 
 export type ServerTextKey = keyof typeof SERVER_TEXTS;
@@ -675,4 +851,83 @@ export function renderCoded(item: CodedText | string, lang: Lang): string {
     }
   }
   return serverText(item.code, lang, params);
+}
+
+/*
+ * ─── встроенный код: пометка сервера в текстовой колонке (волна 14) ───
+ *
+ * Заметку версии, примечание доступа, итог прогона расписания сервер пишет
+ * сам — и писал русской фразой. Эти колонки видят потом на любом языке:
+ * «Первая версия» на английском экране истории версий, «Батарея «…»» в
+ * украинском списке назначенных. Записать фразу на языке автора нельзя —
+ * у большинства таких пометок автора нет: их пишут каскад по сданному
+ * скринингу, планировщик, приглашение, установщик каталога. Поэтому — как
+ * у объяснений правил (CodedText): храним код и подстановки, фразу
+ * собирает показ.
+ *
+ * Отдельной колонки под код нет и заводить её ради этого — миграция на
+ * шесть таблиц. Код встраивается в сам текст: ⟦ключ⟧ или ⟦ключ{"имя":…}⟧.
+ * Так в одной колонке спокойно живут три вещи — код сервера, текст, который
+ * набрал человек (примечание к назначению), и русская фраза, записанная до
+ * кодов (её показ оставляет как есть: переписывать историю задним числом
+ * нельзя). И склейка работает, как работала: отметка о пропуске
+ * дописывается к примечанию назначения через « · » (lib/batteries.ts), а
+ * очередь работы находит повторы протокола наблюдения по началу текста.
+ *
+ * Скобки ⟦⟧ выбраны за то, что их не набирают руками и не пишут в названиях;
+ * «⟧» внутри подстановки (в названии набора) экранируется, и код не
+ * закрывается раньше времени.
+ */
+const NOTE_RE = /⟦([A-Za-z][\w.-]*)(\{[^⟧]*\})?⟧/g;
+
+/** Встроенный код пометки — для записи в текстовую колонку */
+export function noteCode(code: ServerTextKey, params?: TextParams): string {
+  if (!params || !Object.keys(params).length) return `⟦${code}⟧`;
+  return `⟦${code}${JSON.stringify(params).replaceAll("⟧", "\\u27e7")}⟧`;
+}
+
+/**
+ * Начало пометки с этим кодом — для поиска по началу текста (LIKE).
+ * Ключ не должен быть началом другого ключа: «note.followup» ищется как
+ * «⟦note.followup%», и «note.followupX» попал бы туда же.
+ */
+export function notePrefix(code: ServerTextKey): string {
+  return `⟦${code}`;
+}
+
+/** Коды, встроенные в хранимый текст, по порядку; текст без кодов — пусто */
+export function readNotes(text: string | null | undefined): CodedText[] {
+  if (!text) return [];
+  const out: CodedText[] = [];
+  for (const m of text.matchAll(NOTE_RE)) {
+    let params: TextParams | undefined;
+    if (m[2]) {
+      try {
+        params = JSON.parse(m[2]) as TextParams;
+      } catch {
+        // испорченная подстановка: код остаётся кодом, без подстановок
+      }
+    }
+    out.push({ code: m[1]!, params });
+  }
+  return out;
+}
+
+/**
+ * Хранимый текст на языке смотрящего: каждый встроенный код — фразой,
+ * остальное — как лежит (текст человека, запись до кодов).
+ */
+export function renderNote(text: string, lang: Lang): string;
+export function renderNote(text: string | null | undefined, lang: Lang): string | null;
+export function renderNote(text: string | null | undefined, lang: Lang): string | null {
+  if (text === null || text === undefined) return null;
+  if (!text.includes("⟦")) return text;
+  return text.replace(NOTE_RE, (whole, code: string, raw?: string) => {
+    if (!raw) return renderCoded({ code }, lang);
+    try {
+      return renderCoded({ code, params: JSON.parse(raw) as TextParams }, lang);
+    } catch {
+      return whole;
+    }
+  });
 }

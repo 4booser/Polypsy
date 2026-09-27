@@ -136,7 +136,7 @@ export async function persistSubmission(
 
   // очерёдность внутри батареи проверяем до записи: отказ после сохранения
   // означал бы прохождение, которого не должно было быть
-  await assertBatteryOrder(subject.id, survey.id, options.filledBySelf);
+  await assertBatteryOrder(subject.id, survey.id, options.filledBySelf, options.lang);
 
   /*
    * Число попыток по назначению — тоже до записи.

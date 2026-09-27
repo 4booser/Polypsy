@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { desc, inArray } from "drizzle-orm";
+import { renderNote } from "@quizzy/shared";
 import {
   adminA,
   and,
@@ -134,8 +135,12 @@ describe("каскад и просроченное назначение", () => 
     expect(old.cancelledAt, "пропуск не закрыт").not.toBeNull();
     expect(old.completedAt).toBeNull();
     // отметка дописана к примечанию, а не вместо него: видно, откуда назначение и чем кончилось
-    expect(old.note).toContain("Каскад по результату скрининга");
-    expect(old.note).toContain("пропущено");
+    // (обе части — кодом, волна 14; по-русски — прежними словами)
+    expect(renderNote(old.note, "ru")).toContain("Каскад по результату скрининга");
+    expect(renderNote(old.note, "ru")).toContain("пропущено");
+    expect(renderNote(old.note, "uk")).toBe(
+      "Каскад за результатом скринінгу · пропущено: строк минув, призначено знову за результатом скринінгу",
+    );
 
     const fresh = rows.find((r) => r.id !== open!.id)!;
     expect(fresh.cancelledAt).toBeNull();

@@ -1,7 +1,9 @@
 import {
+  serverText,
   TOO_FAST_MS,
   type FloorCeiling,
   type ItemStat,
+  type Lang,
   type QualityFlags,
   type Question,
   type Reliability,
@@ -144,6 +146,10 @@ interface AnswerLike {
  * одинаковых выборов подряд. Ни один сам по себе не доказывает недобросовестность,
  * поэтому результат называется флагом и требует взгляда специалиста, а не
  * автоматического исключения из выборки.
+ *
+ * Причины — фразами на языке того, кто смотрит аналитику (`lang`): их
+ * показывают как есть, столбцом «Причини». Не хранятся — собираются на
+ * каждый запрос.
  */
 export function qualityOf(
   responseId: string,
@@ -155,6 +161,7 @@ export function qualityOf(
   tooFastMs: number = TOO_FAST_MS,
   /** Ошибки Гуттмана по ключевой шкале, если её удалось построить */
   personFit: number | null = null,
+  lang: Lang = "uk",
 ): QualityFlags {
   const byId = new Map(questions.map((q) => [q.id, q]));
   const answered = answers.filter((a) => !a.skipped);
@@ -190,10 +197,10 @@ export function qualityOf(
   }
 
   const reasons: string[] = [];
-  if (tooFastShare >= 50) reasons.push(`${tooFastShare}% ответов быстрее ${tooFastMs} мс`);
-  if (longestStraightLine >= 5) reasons.push(`серия из ${longestStraightLine} одинаковых ответов`);
+  if (tooFastShare >= 50) reasons.push(serverText("quality.tooFast", lang, { share: tooFastShare, ms: tooFastMs }));
+  if (longestStraightLine >= 5) reasons.push(serverText("quality.straightLine", lang, { n: longestStraightLine }));
   if (answered.length >= 5 && durationMs > 0 && durationMs < answered.length * tooFastMs) {
-    reasons.push("общее время меньше минимально правдоподобного");
+    reasons.push(serverText("quality.tooShort", lang));
   }
   /*
    * Person-fit: профиль, где трудные пункты сработали, а лёгкие нет, — не
@@ -201,7 +208,7 @@ export function qualityOf(
    * непонятая инструкция. Формулировка нейтральна намеренно.
    */
   if (personFit !== null && personFit >= 0.4) {
-    reasons.push(`нетипичный паттерн ответов (${personFit})`);
+    reasons.push(serverText("quality.personFit", lang, { value: personFit }));
   }
 
   return {

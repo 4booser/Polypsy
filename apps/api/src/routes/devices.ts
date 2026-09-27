@@ -1,12 +1,13 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
+import { serverText } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
 import { devices, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { notFound, parseBody } from "../lib/http";
+import { langOf, notFound, parseBody } from "../lib/http";
 import { isSuperadmin } from "../lib/scope";
 import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
@@ -198,6 +199,6 @@ deviceRoutes.post("/:id/wipe", requireSuperadmin, async (c) => {
      * «стёрли» звучит как свершившийся факт, а на деле это заявка, которая
      * исполнится при следующем выходе устройства на связь.
      */
-    note: "Данные будут стёрты, когда устройство в следующий раз выйдет на связь. Устройство, которое больше не включат, этой командой не очистить.",
+    note: serverText("device.wipeNote", langOf(c)),
   });
 });

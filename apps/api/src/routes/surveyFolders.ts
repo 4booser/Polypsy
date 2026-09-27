@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
+  serverText,
   surveyFolderInputSchema,
   surveyFolderUpdateSchema,
   type SurveyFolderWithCounts,
@@ -8,7 +9,7 @@ import {
 import { db } from "../db";
 import { surveyFolders } from "../db/schema";
 import { audit } from "../lib/audit";
-import { badRequest, parseBody } from "../lib/http";
+import { badRequest, langOf, parseBody } from "../lib/http";
 import { accessibleGroupIds, assertGroupAccess, assertSurveyFolderAccess } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -238,9 +239,11 @@ surveyFolderRoutes.delete("/:id", requirePermission("surveys.edit"), async (c) =
     })
     .from(sql`(select 1) as _`);
 
+  // перечень — на языке отказа: он встаёт в «{details}» фразы, собранной на языке запроса
+  const lang = langOf(c);
   const inside: string[] = [];
-  if (counts?.surveys) inside.push(`методик: ${counts.surveys}`);
-  if (counts?.children) inside.push(`папок: ${counts.children}`);
+  if (counts?.surveys) inside.push(serverText("inside.surveys", lang, { n: counts.surveys }));
+  if (counts?.children) inside.push(serverText("inside.folders", lang, { n: counts.children }));
   if (inside.length) badRequest("err.surveyFolderNotEmpty", { details: inside.join(", ") });
 
   await db.delete(surveyFolders).where(eq(surveyFolders.id, folder.id));

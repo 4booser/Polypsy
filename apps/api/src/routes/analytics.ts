@@ -5,6 +5,7 @@ import {
   guttmanErrorsNormed,
   itemContribution,
   measurementError,
+  renderNote,
   surveyAnalyticsQuery,
   t,
 } from "@quizzy/shared";
@@ -572,7 +573,13 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     .where(eq(surveyVersions.surveyId, surveyId))
     .orderBy(desc(surveyVersions.version));
 
-  const versions = versionRows.map((v) => ({ ...v, responseCount: Number(v.responseCount ?? 0) }));
+  // заметку версии, которую писал сервер, — фразой на языке запроса (renderNote); человеческую — как лежит
+  const readerLang = langOf(c);
+  const versions = versionRows.map((v) => ({
+    ...v,
+    note: renderNote(v.note, readerLang),
+    responseCount: Number(v.responseCount ?? 0),
+  }));
   const requested = query.versionId;
   const ownCount = new Map<string, number>();
   if (query.userId && !requested) {
@@ -1121,6 +1128,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         survey.questions,
         tooFastMs,
         personFitOf(r.id),
+        readerLang,
       ),
     )
     .filter((q) => q.flagged)

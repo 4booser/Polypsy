@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
+import { serverText } from "@quizzy/shared";
 import { client, db, eq, groupAdmins, makeUser, root, submitSurvey, surveyGroups, surveyInA, surveys } from "./fixtures";
 import { alertNotifications, responses, riskAlerts } from "../src/db/schema";
-import { runNotifierOnce, setTransportForTests } from "../src/lib/notify";
+import { runNotifierOnce, setTransportForTests, STAFF_OUTBOUND_LANG } from "../src/lib/notify";
 import { registerDevice, setPushSenderForTests } from "../src/lib/push";
 
 /**
@@ -220,7 +221,9 @@ describe("что считается «дошло»", () => {
 
       const mail = capture();
       await runNotifierOnce();
-      expect(mail.ours().filter((m) => m.subject.startsWith("ЭСКАЛАЦИЯ"))).toHaveLength(1);
+      // тема — из словаря на языке отделения (волна 14); прежде — русское «ЭСКАЛАЦИЯ», набранное в notify.ts
+      const escalation = serverText("mail.escalation.subject", STAFF_OUTBOUND_LANG).split("{")[0]!;
+      expect(mail.ours().filter((m) => m.subject.startsWith(escalation))).toHaveLength(1);
       expect((await notified(id)).map((n) => n.kind).sort()).toEqual(["escalation", "initial"]);
       await closeAlerts([id]);
     } finally {

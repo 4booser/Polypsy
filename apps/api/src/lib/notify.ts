@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import nodemailer, { type Transporter } from "nodemailer";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { renderPush, t } from "@quizzy/shared";
+import { renderPush, serverText, t, type Lang } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import {
@@ -142,10 +142,25 @@ export function mailTransportReady(): boolean {
   return getTransport() !== null;
 }
 
-const SEVERITY_LABEL: Record<string, string> = {
-  severe: "критический",
-  moderate: "повышенный",
-};
+/*
+ * Язык того, что сервер шлёт сотрудникам без их запроса: письма тревог
+ * (ниже) и событие в календаре специалиста (routes/clinic.ts).
+ *
+ * Языка получателя сервер не знает: у учётной записи его нет, а письмо
+ * тревоги одно на всех дежурных. Прежде оно уходило по-русски — набранное
+ * прямо здесь. Теперь — из словаря (serverStrings.ts, mail.*), на языке
+ * отделения, как оповещения техпанели (lib/opsAlerts.ts): учреждение
+ * украинское, и язык у отделения один. Будет у сотрудника свой язык — он
+ * встанет сюда параметром, а тексты уже переведены на все три.
+ */
+export const STAFF_OUTBOUND_LANG: Lang = "uk";
+
+/** Уровень тревоги словом, согласованным с «відповідь» / «ответ» (mail.alert.*) */
+function severityWord(severity: string, lang: Lang): string {
+  if (severity === "severe") return serverText("mail.sev.severe", lang);
+  if (severity === "moderate") return serverText("mail.sev.moderate", lang);
+  return severity;
+}
 
 /*
  * ─── доставка: захват, отправка, итог ───
@@ -330,29 +345,31 @@ function mailFailure(error: unknown): string {
 }
 
 function alertMail(kind: NotifyKind, alert: AlertRow, survey: SurveyRow, to: string[], now: Date): AlertMail {
-  const title = t(survey.title as never, "ru");
-  const level = SEVERITY_LABEL[alert.severity] ?? alert.severity;
+  const lang = STAFF_OUTBOUND_LANG;
+  // название — на том же языке, что и письмо (прежде — русское при любом)
+  const title = t(survey.title as never, lang);
+  const level = severityWord(alert.severity, lang);
   if (kind === "initial") {
     return {
       to,
-      subject: `Тревога: ${level} ответ — ${title}`,
+      subject: serverText("mail.alert.subject", lang, { level, title }),
       text: [
-        `В методике «${title}» получен ${level} ответ.`,
+        serverText("mail.alert.body", lang, { level, title }),
         "",
-        `Откройте консоль, чтобы увидеть, кто и на какой пункт ответил:`,
+        serverText("mail.alert.open", lang),
         `${env.consoleUrl}/alerts`,
         "",
-        "Персональные данные в письме не передаются намеренно.",
+        serverText("mail.alert.noPersonal", lang),
       ].join("\n"),
     };
   }
   const minutes = Math.round((now.getTime() - parseTs(alert.at)) / 60_000);
   return {
     to,
-    subject: `ЭСКАЛАЦИЯ: тревога не разобрана ${minutes} мин — ${title}`,
+    subject: serverText("mail.escalation.subject", lang, { minutes, title }),
     text: [
-      `Тревога по методике «${title}» не подтверждена за ${survey.alertEscalateMinutes} мин.`,
-      `Открыта уже ${minutes} мин.`,
+      serverText("mail.escalation.body", lang, { title, limit: survey.alertEscalateMinutes ?? "—" }),
+      serverText("mail.escalation.open", lang, { minutes }),
       "",
       `${env.consoleUrl}/alerts`,
     ].join("\n"),

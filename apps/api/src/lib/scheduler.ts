@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
-import { renderPush } from "@quizzy/shared";
+import { noteCode, renderPush } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import {
@@ -103,7 +103,7 @@ async function runSchedule(
     .from(batteries)
     .where(eq(batteries.id, schedule.batteryId));
   if (!battery || battery.archived) {
-    return { assigned: 0, skipped: 0, missed: 0, note: "Набор в архиве — назначения не выдаются" };
+    return { assigned: 0, skipped: 0, missed: 0, note: noteCode("note.run.archived") };
   }
 
   const targets = await scheduleReach(schedule);
@@ -171,7 +171,7 @@ async function runSchedule(
     await closeMissed(
       tx,
       missed.map((a) => a.id),
-      `срок истёк, выдано следующее по расписанию «${schedule.title}»`,
+      noteCode("note.missed.schedule", { title: schedule.title }),
       now,
     );
     await tx.insert(batteryAssignments).values(
@@ -181,7 +181,7 @@ async function runSchedule(
         userId,
         assignedBy: schedule.createdBy,
         dueAt,
-        note: `Расписание «${schedule.title}»`,
+        note: noteCode("note.schedule", { title: schedule.title }),
       })),
     );
     await grantAccess(
@@ -192,7 +192,7 @@ async function runSchedule(
           userId,
           grantedBy: schedule.createdBy,
           expiresAt: dueAt,
-          note: `Расписание «${schedule.title}»`,
+          note: noteCode("note.schedule", { title: schedule.title }),
         })),
       ),
       // назначение поверх более долгого доступа его не укорачивает — см. grantAccess
@@ -350,9 +350,9 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
           note:
             note ??
             (missed > 0
-              ? `Пропущено и закрыто: ${missed}`
+              ? noteCode("note.run.missedClosed", { n: missed })
               : assigned === 0 && skipped === 0
-                ? "Некого охватить"
+                ? noteCode("note.run.nobody")
                 : null),
         });
         if (assigned > 0) {
@@ -394,7 +394,7 @@ async function runDueSchedulesLocked(now: Date): Promise<number> {
           note:
             error instanceof Error
               ? error.message.slice(0, 300)
-              : "Неизвестная ошибка",
+              : noteCode("note.run.unknownError"),
         });
         /*
          * Плановый срок НЕ сдвигается — назначается отдельный срок

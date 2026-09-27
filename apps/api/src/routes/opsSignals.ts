@@ -12,7 +12,7 @@ import { baseDb } from "../db";
 import { asSystem, dbContext, systemContext } from "../db/context";
 import { audit } from "../lib/audit";
 import { readToken } from "../lib/auth";
-import { badRequestDetail, conflict, notFound, parseBody } from "../lib/http";
+import { badRequest, conflict, notFound, parseBody } from "../lib/http";
 import { log } from "../lib/log";
 import {
   ALERT_RULE_KEYS,
@@ -114,7 +114,7 @@ opsIntakeRoutes.post("/client-errors", async (c) => {
   const key = who ? `u:${who}` : `ip:${senderIp(c)}`;
   const limiter = who ? LIMITS.user : LIMITS.anon;
   if (items.length > (who ? LIMITS.userBatch : LIMITS.anonBatch)) {
-    badRequestDetail(`items: не больше ${who ? LIMITS.userBatch : LIMITS.anonBatch} в пачке`);
+    badRequest("err.v.batchTooLarge", { field: "items", max: who ? LIMITS.userBatch : LIMITS.anonBatch });
   }
   if (!limiter.take(key, items.length)) return tooMany(c, limiter.retryAfterSec(key));
   if (!LIMITS.global.take("all", items.length)) return tooMany(c, LIMITS.global.retryAfterSec("all"));
@@ -197,7 +197,7 @@ opsSignalRoutes.put("/alerts/rules/:key", requireAuth, requireStaff, canRead, ca
   if (!ALERT_RULE_KEYS.includes(key)) notFound("err.opsRuleNotFound");
   const input = await parseBody(c.req.raw, ruleInput);
   const bad = validateRuleInput(key, input);
-  if (bad) badRequestDetail(`${bad}: значение вне допустимого для правила ${key}`);
+  if (bad) badRequest("err.v.ruleValue", { field: bad, rule: key });
   const rule = await asSystem(() => updateRule(key, input, c.get("user").id));
   if (!rule) notFound("err.opsRuleNotFound");
   await audit(c, { action: "ops.alerts.rule_update", resourceType: "ops_alert_rule", resourceId: key, details: { ...input } });
@@ -225,7 +225,7 @@ const vitalsQuery = z.object({ days: z.coerce.number().int().min(7).max(30).defa
 
 opsSignalRoutes.get("/vitals", requireAuth, requireStaff, canRead, async (c) => {
   const parsed = vitalsQuery.safeParse(c.req.query());
-  if (!parsed.success) badRequestDetail("days: от 7 до 30");
+  if (!parsed.success) badRequest("err.v.range", { field: "days", min: 7, max: 30 });
   const body: OpsVitals = await asSystem(() => vitalsReport(new Date(), parsed.data.days));
   return c.json(body);
 });

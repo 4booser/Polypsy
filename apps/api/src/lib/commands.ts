@@ -1,6 +1,7 @@
 import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
 import {
   renderCoded,
+  renderNote,
   serverText,
   type Lang,
   type Permission,
@@ -256,7 +257,7 @@ export const COMMANDS: Command[] = [
           ? [
               serverText("cmd.rls.bypass", lang),
               serverText("cmd.rls.role", lang, { role: report.role }),
-              serverText("cmd.rls.reason", lang, { reason: report.reason ?? serverText("cmd.rls.unknownReason", lang) }),
+              serverText("cmd.rls.reason", lang, { reason: renderNote(report.reason, lang) ?? serverText("cmd.rls.unknownReason", lang) }),
               serverText("cmd.rls.owned", lang, { n: report.ownedWithRls }),
             ]
           : [serverText("cmd.rls.ok", lang, { role: report.role })],
