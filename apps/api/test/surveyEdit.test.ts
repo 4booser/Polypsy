@@ -215,6 +215,37 @@ describe("условия показа и коды вариантов в ново
     return (await raw(survey.id)).body;
   }
 
+  test("условия пункта приходят по номеру пункта-источника, а не в порядке строк базы", async () => {
+    /*
+     * Своей позиции у правила нет, и без порядка строки приходили как лягут:
+     * на CI лист сверки ASSIST показал «п. 12 > 0 і п. 1 ≥ 1», локально —
+     * наоборот, и выкатка v1.15.0 встала на тесте листов. Здесь правила
+     * записаны задом наперёд — вставка идёт в этом же порядке, — а читаются
+     * по номеру источника.
+     */
+    const survey = await newSurvey();
+    const current = await raw(survey.id);
+    const base = content().questions;
+    const third = { ...base[1]!, title: L("Третій") };
+    const questions = [...base, third].map((q, i) => ({
+      ...q,
+      sectionKey: current.body.sections[0].id,
+      logic:
+        i === 2
+          ? [
+              { sourceIndex: 1, operator: "answered", action: "show" },
+              { sourceIndex: 0, operator: "answered", action: "show" },
+            ]
+          : [],
+    }));
+    expect((await patch(survey.id, { questions })).status).toBe(200);
+    const after = (await raw(survey.id)).body;
+    expect(after.questions[2].logic.map((r: { sourceQuestionId: string }) => r.sourceQuestionId)).toEqual([
+      after.questions[0].id,
+      after.questions[1].id,
+    ]);
+  });
+
   test("ссылка условия на вариант переводится на вариант новой версии", async () => {
     /*
      * Каждая версия заводит варианты с новыми id. Условие «показать, если
