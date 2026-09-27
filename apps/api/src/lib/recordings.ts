@@ -1,5 +1,6 @@
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -127,19 +128,64 @@ export async function rewrapAudio(
  * Без ключа файл не пишется вовсе, а не ложится открытым. Открытая запись
  * приёма на диске — это та же утечка, только медленная: её найдут при
  * следующем разборе бэкапов.
+ *
+ * Имя у каждого файла своё — `<id записи>.<случайное>.enc`, — а не одно на
+ * запись. Прежде две одновременные остановки писали в один путь `<id>.enc`:
+ * вторая перезаписывала файл первой, а проигравшая условное обновление
+ * стирала «свой» файл, который был общим. В базе оставалось «загружено», на
+ * диске — пусто; специалист при этом видел «ок». Теперь каждая загрузка
+ * трогает только свой файл, публикует его строка в базе (условным
+ * обновлением, см. routes/recordings), и проигравший стирает своё и только
+ * своё.
+ *
+ * Тело пишется во временный `.part` и переименовывается целиком: путь,
+ * который попадёт в базу (и который техпанель посчитает как `.enc`), всегда
+ * ведёт к дописанному файлу, а оборванная запись остаётся `.part`.
  */
 export async function storeAudio(id: string, bytes: Uint8Array): Promise<string> {
   const active = activeKey();
   if (!active) throw new Error("шифрование не настроено: запись приёма не сохраняется открытой");
 
-  const path = resolve(join(env.recordingsDir, `${id}.enc`));
+  const path = resolve(join(env.recordingsDir, `${id}.${crypto.randomUUID()}.enc`));
   await mkdir(dirname(path), { recursive: true });
 
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", active.key, iv);
   const body = Buffer.concat([cipher.update(bytes), cipher.final()]);
-  await writeFile(path, Buffer.concat([fileHeader(active.id), iv, cipher.getAuthTag(), body]));
+  const part = `${path}.part`;
+  try {
+    await writeFile(part, Buffer.concat([fileHeader(active.id), iv, cipher.getAuthTag(), body]));
+    await rename(part, path);
+  } catch (error) {
+    await rm(part, { force: true });
+    throw error;
+  }
   return path;
+}
+
+/** Контейнеры, которые пишут браузеры (и WAV — на случай записи не из браузера) */
+export type AudioContainer = "webm" | "ogg" | "mp4" | "wav";
+
+/**
+ * Что за аудио — по первым байтам, а не по имени и типу из формы.
+ *
+ * Имя и Content-Type части формы задаёт клиент, и верить им нельзя: прежде
+ * сервер принимал что угодно, а ошибку формата узнавал только расшифровщик
+ * — часами позже, когда исправить уже нечего. Теперь нечитаемое
+ * отклоняется при приёме, пока у специалиста запись ещё в браузере.
+ *
+ * Сигнатуры: WebM/Matroska — EBML `1A 45 DF A3` (Chrome, Firefox); Ogg —
+ * `OggS` (Firefox); MP4 — коробка `ftyp` с четвёртого байта (Safari); WAV —
+ * `RIFF....WAVE`. Всё это ffmpeg расшифровщика переводит в WAV для whisper.
+ */
+export function sniffAudio(bytes: Uint8Array): AudioContainer | null {
+  if (bytes.length < 12) return null;
+  const at = (offset: number, sig: readonly number[]) => sig.every((b, i) => bytes[offset + i] === b);
+  if (at(0, [0x1a, 0x45, 0xdf, 0xa3])) return "webm";
+  if (at(0, [0x4f, 0x67, 0x67, 0x53])) return "ogg";
+  if (at(4, [0x66, 0x74, 0x79, 0x70])) return "mp4";
+  if (at(0, [0x52, 0x49, 0x46, 0x46]) && at(8, [0x57, 0x41, 0x56, 0x45])) return "wav";
+  return null;
 }
 
 export async function readAudio(path: string): Promise<Buffer> {
@@ -159,7 +205,16 @@ export async function eraseAudio(path: string | null): Promise<void> {
 export interface Transcriber {
   /** Имя движка и версия — попадают в базу рядом со стенограммой */
   name: string;
-  run(audio: Buffer, lang: "uk" | "ru"): Promise<string>;
+  /**
+   * Текст разговора. Пустой строкой whisper не отвечает: нет текста — это
+   * отказ (исключение с причиной), а не успешная пустая стенограмма.
+   *
+   * signal — запись удалили или отозвали согласие, пока работает модель
+   * (воркер видит это при продлении аренды, участок delivery). По сигналу
+   * процесс гасится, временные файлы стираются, обещание отклоняется
+   * ошибкой с name = "AbortError".
+   */
+  run(audio: Buffer, lang: "uk" | "ru", signal?: AbortSignal): Promise<string>;
 }
 
 /**
@@ -175,33 +230,268 @@ export function setTranscriberForTests(next: Transcriber | null): void {
   transcriber = next;
 }
 
-function localWhisper(): Transcriber | null {
-  if (!env.whisperBin || !env.whisperModel) return null;
-  return {
-    name: `whisper.cpp ${env.whisperModel.split("/").pop() ?? ""}`.trim(),
-    async run(audio, lang) {
-      /*
-       * Через временный файл, а не через stdin: whisper.cpp читает файл, и
-       * подсовывать ему поток означало бы держать вторую реализацию ради
-       * экономии одной записи на диск.
-       */
-      const tmp = resolve(join(env.recordingsDir, `tmp-${crypto.randomUUID()}.wav`));
-      await mkdir(dirname(tmp), { recursive: true });
-      await writeFile(tmp, audio);
+/**
+ * Причина отказа расшифровки — кодом в начале текста.
+ *
+ * Текст ложится в visit_recordings.failure, а его показывают и экран приёма,
+ * и техпанель. По коду экран приёма объясняет отказ человеческими словами
+ * (rec.fail.*), подробность после двоеточия остаётся для разбора. Ни в одном
+ * тексте отказа нет вывода whisper в stdout: stdout — это и есть разговор.
+ */
+export type TranscribeFailure =
+  | "audio-unreadable"
+  | "audio-empty"
+  | "converter-missing"
+  | "whisper-exit"
+  | "empty-transcript";
+
+function failure(code: TranscribeFailure, detail: string): Error {
+  return new Error(`${code}: ${detail}`);
+}
+
+/** Префикс рабочих каталогов расшифровки; по нему их находит и уборка */
+const WORK_PREFIX = "quizzy-transcribe-";
+/** Каталог старше этого — остаток убитого процесса: расшифровка столько не идёт */
+const STALE_WORK_MS = 6 * 3600_000;
+/** Заголовок WAV и десятая доля секунды звука (16 кГц, 16 бит, моно): меньше — записи нет */
+const MIN_WAV_BYTES = 44 + 3200;
+
+interface ToolRun {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Расшифровку отменили: запись удалили или отозвали согласие, пока шла работа */
+function aborted(): Error {
+  const error = new Error("aborted: запись удалена или согласие отозвано во время расшифровки");
+  error.name = "AbortError";
+  return error;
+}
+
+const isAbort = (error: unknown) => error instanceof Error && error.name === "AbortError";
+
+/**
+ * Запустить внешний процесс и дочитать оба потока.
+ *
+ * Потоки читаются одновременно. Прежде stdout дочитывался до конца, а stderr
+ * — только после выхода: whisper пишет в stderr килобайты журнала загрузки
+ * модели, и переполненный канал stderr остановил бы процесс, который ждёт,
+ * пока его прочтут, — а мы ждали бы его выхода. Расшифровка висела бы вечно.
+ *
+ * По сигналу отмены процесс убивается (SIGKILL: модель на середине часовой
+ * записи на SIGTERM может отвечать долго, а писать дальше ей нечего), и
+ * обещание отклоняется, когда процесс действительно вышел — только после
+ * этого вызывающий стирает временный каталог, и движок уже не допишет туда
+ * ничего после уборки. Потоков после отмены не ждём: их могли унаследовать
+ * дочерние процессы.
+ */
+async function runTool(argv: string[], signal?: AbortSignal): Promise<ToolRun> {
+  if (signal?.aborted) throw aborted();
+  const proc = Bun.spawn(argv, { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+  const finished = Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (!signal) {
+    const [stdout, stderr, code] = await finished;
+    return { code, stdout, stderr };
+  }
+  let onAbort = () => {};
+  const cancelled = new Promise<never>((_, reject) => {
+    onAbort = () => {
       try {
-        const proc = Bun.spawn(
-          [env.whisperBin!, "-m", env.whisperModel!, "-f", tmp, "-l", lang, "--output-txt", "--no-timestamps"],
-          { stdout: "pipe", stderr: "pipe" },
-        );
-        const out = await new Response(proc.stdout).text();
-        const code = await proc.exited;
-        if (code !== 0) {
-          const err = await new Response(proc.stderr).text();
-          throw new Error(`whisper вышел с кодом ${code}: ${err.slice(0, 400)}`);
-        }
-        return out.trim();
+        proc.kill("SIGKILL");
+      } catch {
+        // уже вышел
+      }
+      void proc.exited.then(() => reject(aborted()));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    const [stdout, stderr, code] = await Promise.race([finished, cancelled]);
+    if (signal.aborted) throw aborted();
+    return { code, stdout, stderr };
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+    // гонку выиграли потоки — отклонение отмены больше никому не нужно
+    cancelled.catch(() => {});
+  }
+}
+
+/** Строки отказа из stderr — для текста причины; путь рабочего каталога заменён */
+function errorLines(stderr: string, dir: string, fallbackToTail = true): string {
+  const lines = stderr
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const errors = lines.filter((l) => /error|invalid|failed|could not/i.test(l));
+  const picked = errors.length ? errors : fallbackToTail ? lines : [];
+  return picked.slice(-3).join(" | ").replaceAll(dir, "<tmp>").slice(0, 300);
+}
+
+let swept = false;
+
+/**
+ * Убрать рабочие каталоги, брошенные убитым процессом.
+ *
+ * finally не выполняется, если процесс убили посреди расшифровки (выкатка,
+ * нехватка памяти), — и открытое аудио осталось бы лежать. Раз за жизнь
+ * процесса, при первой расшифровке, убирается всё старше шести часов:
+ * свежие каталоги могут принадлежать соседнему процессу на той же машине.
+ * В контейнере /tmp — tmpfs (docker-compose.yml), и после перезапуска там и
+ * так пусто; уборка — для установки без контейнера.
+ */
+async function sweepStaleWork(root: string): Promise<void> {
+  if (swept) return;
+  swept = true;
+  let names: string[];
+  try {
+    names = await readdir(root);
+  } catch {
+    return;
+  }
+  const now = Date.now();
+  for (const name of names) {
+    if (!name.startsWith(WORK_PREFIX)) continue;
+    const path = join(root, name);
+    const info = await stat(path).catch(() => null);
+    if (info && now - info.mtimeMs > STALE_WORK_MS) {
+      await rm(path, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Перевести запись в WAV 16 кГц моно — формат, который whisper.cpp читает сам.
+ *
+ * Браузер пишет WebM/Opus (Chrome, Firefox), Ogg (Firefox) или MP4/AAC
+ * (Safari); whisper.cpp v1.7.4 собран без FFmpeg и читает только WAV, MP3 и
+ * FLAC. Прежде байты WebM сохранялись под именем .wav и уходили в whisper
+ * как есть: тот писал «failed to read» в stderr и выходил с кодом 0 и пустым
+ * выводом — и в карту ложилась успешная пустая стенограмма.
+ *
+ * Почему преобразование на сервере, а не WAV из браузера: WAV 16 кГц — это
+ * 115 МБ на час приёма против 15 МБ Opus, то есть восьмикратная выгрузка по
+ * сети отделения, восьмикратный диск и копии. Браузеры пишут разное, и
+ * сервер всё равно должен понимать всё, что уже лежит в хранилище: записи,
+ * сделанные до этой правки, — WebM, и теперь их можно расшифровать повтором
+ * из техпанели. ffmpeg в образе собран только под эти форматы (Dockerfile) и
+ * на непонятном входе выходит с ненулевым кодом, а не молчит.
+ */
+async function toWav(ffmpeg: string, input: string, output: string, dir: string, signal?: AbortSignal): Promise<void> {
+  let run: ToolRun;
+  try {
+    run = await runTool(
+      [
+        ffmpeg,
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        input,
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        "-y",
+        output,
+      ],
+      signal,
+    );
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    throw failure("converter-missing", `ffmpeg не запустился (${ffmpeg}): ${String(error).slice(0, 200)}`);
+  }
+  if (run.code !== 0) {
+    throw failure("audio-unreadable", `ffmpeg вышел с кодом ${run.code}: ${errorLines(run.stderr, dir)}`);
+  }
+  const size = (await stat(output).catch(() => null))?.size ?? 0;
+  if (size < MIN_WAV_BYTES) throw failure("audio-empty", `после преобразования звука нет (${size} байт)`);
+}
+
+/**
+ * Запустить whisper.cpp и взять текст из stdout.
+ *
+ * Ни одного флага вывода в файл (`--output-txt` и родня). С ним whisper
+ * клал `<вход>.txt` рядом с входом — открытую стенограмму в каталоге
+ * записей, которую не видели ни удаление записи, ни ротация ключей, а
+ * уборка стирала только сам вход. stdout у whisper-cli — ровно текст
+ * сегментов; журнал и ошибки идут в stderr.
+ *
+ * Код 0 ещё не успех: на нечитаемом входе whisper-cli v1.7.4 пишет ошибку
+ * и выходит с нулём. Пустой вывод (или только «[BLANK_AUDIO]») при
+ * непустом аудио — отказ с причиной, а не пустая стенограмма в карте.
+ */
+async function whisper(
+  bin: string,
+  model: string,
+  wav: string,
+  lang: string,
+  dir: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  let run: ToolRun;
+  try {
+    run = await runTool([bin, "-m", model, "-f", wav, "-l", lang, "--no-timestamps"], signal);
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    throw failure("whisper-exit", `whisper не запустился (${bin}): ${String(error).slice(0, 200)}`);
+  }
+  if (run.code !== 0) {
+    throw failure("whisper-exit", `whisper вышел с кодом ${run.code}: ${errorLines(run.stderr, dir)}`);
+  }
+  const text = run.stdout.trim();
+  if (!text.replace(/\[BLANK_AUDIO\]/g, "").trim()) {
+    const why = errorLines(run.stderr, dir, false);
+    throw failure("empty-transcript", `whisper не вернул текста${why ? `: ${why}` : ""}`);
+  }
+  return text;
+}
+
+/**
+ * Свой whisper.cpp (с ffmpeg перед ним). Экспортирован для проверки отмены:
+ * воркер в сюите подменён, а сигнал отмены передаёт только он.
+ */
+export function localWhisper(): Transcriber | null {
+  if (!env.whisperBin || !env.whisperModel) return null;
+  const bin = env.whisperBin;
+  const model = env.whisperModel;
+  const ffmpeg = env.ffmpegBin;
+  return {
+    name: `whisper.cpp ${model.split("/").pop() ?? ""}`.trim(),
+    async run(audio, lang, signal) {
+      /*
+       * Открытое аудио живёт только в своём временном каталоге, и каталог
+       * удаляется целиком в finally — вместе со всем, что движки положили
+       * рядом, с флагом или без (и при отмене тоже: runTool отклоняет
+       * обещание, только когда процесс уже вышел). Прежде временный файл
+       * лежал в каталоге записей (это том, который уходит в копии), и
+       * убирался только он сам.
+       *
+       * Каталог — во временном каталоге системы, а не в хранилище записей: в
+       * контейнере это tmpfs, и открытые данные не касаются диска вовсе.
+       */
+      if (signal?.aborted) throw aborted();
+      const root = tmpdir();
+      await sweepStaleWork(root);
+      const dir = await mkdtemp(join(root, WORK_PREFIX));
+      try {
+        const input = join(dir, "input");
+        const wav = join(dir, "audio.wav");
+        await writeFile(input, audio, { mode: 0o600 });
+        await toWav(ffmpeg, input, wav, dir, signal);
+        return await whisper(bin, model, wav, lang, dir, signal);
       } finally {
-        await rm(tmp, { force: true });
+        await rm(dir, { recursive: true, force: true });
       }
     },
   };

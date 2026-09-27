@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { appointments, visitRecordings } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -8,6 +8,7 @@ import { badRequest, forbidden, notFound, } from "../lib/http";
 import {
   eraseAudio,
   pendingTranscriptions,
+  sniffAudio,
   storeAudio,
   transcriptionAvailable,
 } from "../lib/recordings";
@@ -64,6 +65,68 @@ async function recordingFor(appointmentId: string, patientId: string, specialist
     .from(visitRecordings)
     .where(eq(visitRecordings.appointmentId, appointmentId));
   return created!;
+}
+
+type RecordingRow = typeof visitRecordings.$inferSelect;
+
+/**
+ * Строка записи под замком до конца запроса.
+ *
+ * Запрос идёт одной транзакцией (requireAuth → withDbContext), и замок
+ * держится до её конца. Нужен тем, кто стирает файл: путь берётся из строки
+ * под замком, а не из прочитанной в начале обработчика. Прежде удаление и
+ * отзыв стирали путь, прочитанный до долгой работы, — и загрузка, успевшая
+ * закоммититься в промежутке, оставляла свой файл на диске без ссылки на
+ * него: строка «удалена», разговор лежит.
+ */
+async function lockRecording(id: string): Promise<RecordingRow> {
+  const [row] = await db.select().from(visitRecordings).where(eq(visitRecordings.id, id)).for("update");
+  return row!;
+}
+
+/**
+ * Принимает ли запись аудио прямо сейчас.
+ *
+ * Два случая. Первый — запись идёт. Второй — её остановила вторая сторона
+ * (пациент со своего телефона): строка в «готово», запись начиналась, файла
+ * нет. Аудио при этом у того, кто писал, и прежде дослать его было некуда —
+ * остановка с файлом требовала «идёт запись» и отвечала 400, а разговор,
+ * записанный с согласия до самой остановки, пропадал.
+ *
+ * Условие «начата не раньше согласия» отсекает запись, согласие на которую
+ * отозвали и дали заново: основание хранить ту запись снято вместе с
+ * прежним согласием, и новое согласие его не возвращает.
+ *
+ * Одно и то же условие — в коде (для внятного отказа) и в SQL (решает оно:
+ * см. UPDATE в остановке).
+ */
+function takesAudio(rec: RecordingRow): boolean {
+  if (rec.status === "recording") return true;
+  return (
+    rec.status === "ready" &&
+    !!rec.startedAt &&
+    !!rec.endedAt &&
+    !rec.audioPath &&
+    !!rec.consentAt &&
+    new Date(rec.startedAt).getTime() >= new Date(rec.consentAt).getTime()
+  );
+}
+
+const takesAudioSql = or(
+  eq(visitRecordings.status, "recording"),
+  and(
+    eq(visitRecordings.status, "ready"),
+    isNotNull(visitRecordings.startedAt),
+    isNotNull(visitRecordings.endedAt),
+    isNull(visitRecordings.audioPath),
+    isNotNull(visitRecordings.consentAt),
+    gte(visitRecordings.startedAt, visitRecordings.consentAt),
+  ),
+);
+
+/** Ключ отправки придумывает клиент; берём только то, что похоже на ключ */
+function uploadKey(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9-]{8,64}$/.test(value) ? value : null;
 }
 
 /** Состояние записи: обе стороны смотрят на одно и то же */
@@ -149,10 +212,16 @@ recordingRoutes.post("/:appointmentId/consent", async (c) => {
  */
 recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
-  const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
+  const found = await recordingFor(visit.id, visit.patientId, visit.specialistId);
+  /*
+   * Под замком: начало записи и загрузка аудио ждут, пока отзыв не
+   * закончится, а отзыв видит строку такой, какая она есть сейчас. Иначе
+   * старт, проскочивший между чтением и обновлением, оставлял «идёт
+   * запись» без согласия, а загрузка — файл без ссылки.
+   */
+  const rec = await lockRecording(found.id);
   if (rec.status === "recording") badRequest("err.recordingInProgress");
 
-  await eraseAudio(rec.audioPath);
   await db
     .update(visitRecordings)
     .set({
@@ -175,6 +244,12 @@ recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
     // «отозвал, когда разговор уже лежал на диске» — разные события
     details: { hadAudio: !!rec.audioPath, from: rec.status },
   });
+  /*
+   * Файл — последним, когда строка и журнал уже записаны: сорвись что-то
+   * раньше, транзакция откатится, и строка по-прежнему будет вести к файлу,
+   * а не в пустоту.
+   */
+  await eraseAudio(rec.audioPath);
   return c.json({ ok: true });
 });
 
@@ -201,12 +276,50 @@ recordingRoutes.post("/:appointmentId/start", async (c) => {
    */
   if (!rec.consentAt) forbidden("err.recordingNoConsent");
   if (rec.status === "recording") badRequest("err.recordingInProgress");
-  if (["uploaded", "transcribing", "done"].includes(rec.status)) badRequest("err.recordingAlready");
+  /*
+   * Поверх сохранённого аудио новая запись не начинается. Упавшая
+   * расшифровка хранит файл (её повторяют из техпанели), и старт поверх неё
+   * прежде проходил: следующая загрузка подменяла прежний разговор другим
+   * или оставляла старый файл без ссылки. Одна запись на приём: сначала
+   * удалить, потом записывать заново.
+   */
+  if (["uploaded", "transcribing", "done"].includes(rec.status) || rec.audioPath) {
+    badRequest("err.recordingAlready");
+  }
 
-  await db
+  /*
+   * Проверки выше — для внятного отказа; решает условие в самом UPDATE.
+   *
+   * Строка прочитана в начале обработчика, и отзыв согласия, пришедший
+   * между чтением и записью, отрабатывал полностью — а безусловный UPDATE
+   * всё равно ставил «идёт запись»: 200, status=recording при consent_at =
+   * null. То есть запись разговора без согласия, о которой сервер сам
+   * говорит «можно». Условие в UPDATE перепроверяется на свежей строке
+   * (READ COMMITTED перечитывает её после чужого коммита), и отзыв,
+   * успевший первым, запись не пропускает.
+   *
+   * Конец и ключ прежней отправки сбрасываются: по ним остановка узнаёт,
+   * ждёт ли запись аудио и не повтор ли это (см. takesAudio).
+   */
+  const startedAt = new Date().toISOString();
+  const started = await db
     .update(visitRecordings)
-    .set({ status: "recording", startedAt: new Date().toISOString() })
-    .where(eq(visitRecordings.id, rec.id));
+    .set({ status: "recording", startedAt, endedAt: null, durationMs: null, uploadId: null })
+    .where(
+      and(
+        eq(visitRecordings.id, rec.id),
+        isNotNull(visitRecordings.consentAt),
+        notInArray(visitRecordings.status, ["recording", "uploaded", "transcribing", "done"]),
+        isNull(visitRecordings.audioPath),
+      ),
+    )
+    .returning({ id: visitRecordings.id });
+  if (!started.length) {
+    const [now] = await db.select().from(visitRecordings).where(eq(visitRecordings.id, rec.id));
+    if (!now?.consentAt) forbidden("err.recordingNoConsent");
+    if (now.status === "recording") badRequest("err.recordingInProgress");
+    badRequest("err.recordingAlready");
+  }
 
   await audit(c, {
     action: "recording.start",
@@ -214,7 +327,12 @@ recordingRoutes.post("/:appointmentId/start", async (c) => {
     resourceId: visit.id,
     subjectUserId: visit.patientId,
   });
-  return c.json({ ok: true });
+  /*
+   * Начало возвращается клиенту: по нему браузер узнаёт в опросе состояния
+   * именно ЭТУ запись — остановленную пациентом или удалённую, — а не
+   * устаревший ответ, отправленный ещё до старта.
+   */
+  return c.json({ ok: true, startedAt });
 });
 
 /**
@@ -228,10 +346,17 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
   const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
   const me = c.get("user");
-  if (rec.status !== "recording") badRequest("err.recordingNotRunning");
 
+  /*
+   * Тело разбирается до проверки состояния: от него зависит, какое
+   * состояние годится. Остановка без файла — только идущей записи; с файлом
+   * — ещё и записи, которую остановила вторая сторона (см. takesAudio), и
+   * повтор уже принятой отправки. Тело к этому моменту всё равно вычитано
+   * целиком (общий bodyLimit), так что порядок ничего не стоит.
+   */
   const form = await c.req.formData().catch(() => null);
   const file = form?.get("audio");
+  const hasAudio = file instanceof File && file.size > 0;
 
   /*
    * Файл принимается только от специалиста.
@@ -243,18 +368,42 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
    * и показывалась специалисту как стенограмма ЭТОГО приёма. То есть
    * подделка клинической записи о разговоре, которого не было.
    */
-  if (file instanceof File && file.size > 0 && me.id !== visit.specialistId) {
+  if (hasAudio && me.id !== visit.specialistId) {
     forbidden("err.recordingSpecialistOnly");
   }
 
-  if (file instanceof File && file.size > 0) {
+  if (hasAudio) {
     /*
      * Потолок на размер: три часа приёма в сжатом виде — около сотни
      * мегабайт, и всё, что больше, — это не приём, а ошибка клиента или
      * попытка забить диск.
      */
     if (file.size > 200 * 1024 * 1024) badRequest("err.recordingTooLarge");
+
+    /*
+     * Повтор уже принятой отправки — «принято», а не отказ.
+     *
+     * Сеть рвётся и после того, как сервер всё сохранил: ответ до браузера
+     * не дошёл, и клиент, который держит запись до подтверждения, шлёт её
+     * снова. Прежде он получал 400 «запись не идёт» — специалист видел
+     * отказ при сохранённой записи. Ключ отправки клиент придумывает один
+     * раз на запись; совпал и файл на месте — это та же отправка.
+     */
+    const uploadId = uploadKey(form?.get("uploadId"));
+    if (uploadId && rec.uploadId === uploadId && rec.audioPath) {
+      return c.json({ ok: true, duplicate: true });
+    }
+    if (!takesAudio(rec)) badRequest("err.recordingNotRunning");
+
     const bytes = new Uint8Array(await file.arrayBuffer());
+    /*
+     * Формат — по байтам, при приёме. Прежде сервер брал что угодно, а
+     * нечитаемое обнаруживал расшифровщик — часами позже, когда запись в
+     * браузере уже стёрта. Отказ здесь оставляет запись «идущей»: у
+     * специалиста файл ещё в браузере.
+     */
+    if (!sniffAudio(bytes)) badRequest("err.recordingFormat");
+
     const path = await storeAudio(rec.id, bytes);
     /*
      * Состояние проверяется ещё раз — в самом UPDATE.
@@ -267,29 +416,52 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
      * залитому файлу, дальше расшифровка и стенограмма в карте. То есть
      * разговор, который человек попросил удалить, оказывался в карте
      * текстом, и на экране не было ни следа отказа.
+     *
+     * Путь файла свой у каждой загрузки (storeAudio), поэтому из двух
+     * одновременных остановок публикует файл ровно одна — та, чьё условное
+     * обновление прошло. Проигравшая стирает только свой файл.
+     *
+     * Конец записи — момент остановки: у идущей записи это сейчас, у
+     * остановленной второй стороной — когда её остановили (он уже в
+     * строке). Считается в самом UPDATE по свежей строке, а не по `rec`.
      */
+    const now = new Date().toISOString();
+    const endedAt = sql<string>`case when ${visitRecordings.status} = 'recording' then ${now}::timestamptz else ${visitRecordings.endedAt} end`;
     const written = await db
       .update(visitRecordings)
       .set({
         status: "uploaded",
-        endedAt: new Date().toISOString(),
+        endedAt,
         audioPath: path,
         audioBytes: bytes.byteLength,
-        durationMs: rec.startedAt ? Date.now() - new Date(rec.startedAt).getTime() : null,
+        uploadId,
+        durationMs: sql<number>`round(extract(epoch from (${endedAt}) - ${visitRecordings.startedAt}) * 1000)::int`,
       })
-      .where(and(eq(visitRecordings.id, rec.id), eq(visitRecordings.status, "recording")))
+      .where(and(eq(visitRecordings.id, rec.id), takesAudioSql))
       .returning({ id: visitRecordings.id });
     if (!written.length) {
       // файл уже на диске: без этого от «удалённой» записи оставалось бы
       // на диске всё её содержимое — ровно то, что просили стереть
       await eraseAudio(path);
+      /*
+       * Проиграли гонку своему же повтору (двойное нажатие, повтор после
+       * обрыва, пока первая попытка ещё шла): отправка та же — «принято».
+       * Строка перечитывается: UPDATE выше дождался коммита победителя, и
+       * новый запрос видит его.
+       */
+      const [fresh] = await db.select().from(visitRecordings).where(eq(visitRecordings.id, rec.id));
+      if (uploadId && fresh?.uploadId === uploadId && fresh.audioPath) {
+        return c.json({ ok: true, duplicate: true });
+      }
       badRequest("err.recordingGone");
     }
   } else {
+    if (rec.status !== "recording") badRequest("err.recordingNotRunning");
     /*
      * Остановили, но аудио не прислали — так бывает, когда останавливает
      * вторая сторона. Запись возвращается в «готово», а не пропадает: у
-     * того, кто писал, файл ещё на устройстве, и он его дошлёт.
+     * того, кто писал, файл ещё на устройстве, и он его дошлёт (takesAudio
+     * принимает его и в «готово»).
      */
     const written = await db
       .update(visitRecordings)
@@ -306,7 +478,12 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
     resourceType: "appointment",
     resourceId: visit.id,
     subjectUserId: visit.patientId,
-    details: { byPatient: me.id === visit.patientId, withAudio: file instanceof File },
+    details: {
+      byPatient: me.id === visit.patientId,
+      withAudio: hasAudio,
+      // аудио дослано после того, как запись остановила вторая сторона
+      late: hasAudio && rec.status !== "recording",
+    },
   });
   return c.json({ ok: true });
 });
@@ -322,12 +499,18 @@ recordingRoutes.post("/:appointmentId/stop", async (c) => {
  */
 recordingRoutes.post("/:appointmentId/discard", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
-  const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
+  const found = await recordingFor(visit.id, visit.patientId, visit.specialistId);
   const me = c.get("user");
+  /*
+   * Под замком — по той же причине, что и отзыв согласия: стирается путь из
+   * строки, какой она стала к этому мгновению. Загрузка, закоммиченная
+   * между чтением и обновлением, прежде оставляла свой файл на диске при
+   * строке «удалена».
+   */
+  const rec = await lockRecording(found.id);
 
   if (rec.status === "done") badRequest("err.recordingTranscribed");
 
-  await eraseAudio(rec.audioPath);
   await db
     .update(visitRecordings)
     .set({
@@ -358,5 +541,7 @@ recordingRoutes.post("/:appointmentId/discard", async (c) => {
     subjectUserId: visit.patientId,
     details: { byPatient: me.id === visit.patientId, hadAudio: !!rec.audioPath },
   });
+  // файл — последним, как и при отзыве: откат транзакции не должен оставить строку без файла
+  await eraseAudio(rec.audioPath);
   return c.json({ ok: true });
 });

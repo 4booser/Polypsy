@@ -155,6 +155,7 @@ import type {
 } from "@quizzy/shared";
 import { currentLang } from "./lang";
 import { noteNetworkFailure } from "./telemetry/bus";
+import { audioFileName } from "./components/recorder/model";
 
 /*
  * Текст сетевого отказа.
@@ -1684,29 +1685,50 @@ export const api = {
     request<{ ok: true }>(`/api/recordings/${appointmentId}/consent`, { method: "POST" }),
   recordingRevoke: (appointmentId: string) =>
     request<{ ok: true }>(`/api/recordings/${appointmentId}/consent/revoke`, { method: "POST" }),
+  /** Начать запись; сервер отвечает моментом начала — по нему экран узнаёт свою запись в опросе */
   recordingStart: (appointmentId: string) =>
-    request<{ ok: true }>(`/api/recordings/${appointmentId}/start`, { method: "POST" }),
+    request<{ ok: true; startedAt?: string }>(`/api/recordings/${appointmentId}/start`, { method: "POST" }),
   /**
    * Остановить и передать аудио.
    *
    * Мимо общего request: тот ставит Content-Type: application/json, а
    * multipart требует границы, которую браузер вписывает сам. Подставить
    * заголовок руками значит сломать разбор на сервере.
+   *
+   * Поэтому то, что request делает сам, здесь повторено руками: обрыв сети —
+   * ApiError со статусом 0 (прежде наружу летел голый TypeError, и экран не
+   * мог отличить «нет связи, повторим» от отказа сервера), истёкший вход —
+   * обмен токена и одна повторная попытка. uploadId — ключ отправки, один
+   * на запись: повтор после потерянного ответа сервер узнаёт и подтверждает.
    */
-  recordingStop: async (appointmentId: string, audio: Blob | null) => {
-    const form = new FormData();
-    if (audio) form.append("audio", audio, "visit.webm");
-    const res = await fetch(`/api/recordings/${appointmentId}/stop`, {
-      method: "POST",
-      headers: {
-        "Accept-Language": currentLang,
-        ...(tokenStore.get() ? { Authorization: `Bearer ${tokenStore.get()}` } : {}),
-      },
-      body: form,
-    });
+  recordingStop: async (appointmentId: string, audio: Blob | null, uploadId?: string) => {
+    const path = `/api/recordings/${appointmentId}/stop`;
+    const send = () => {
+      const form = new FormData();
+      if (audio) form.append("audio", audio, audioFileName(audio.type));
+      if (uploadId) form.append("uploadId", uploadId);
+      const token = tokenStore.get();
+      return fetch(path, {
+        method: "POST",
+        headers: {
+          "Accept-Language": currentLang,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: form,
+      });
+    };
+    let res: Response;
+    try {
+      res = await send();
+      if (res.status === 401 && !impersonationStore.get() && (await tryRefresh())) res = await send();
+    } catch {
+      noteNetworkFailure({ method: "POST", path, status: 0 });
+      throw new ApiError(netText("net.offline"), 0);
+    }
+    if (res.status >= 500) noteNetworkFailure({ method: "POST", path, status: res.status });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
-      throw new ApiError(body?.error ?? `HTTP ${res.status}`, res.status);
+      throw new ApiError(body?.error ?? `${netText("net.failed")} ${res.status}`, res.status, body);
     }
   },
   recordingDiscard: (appointmentId: string) =>

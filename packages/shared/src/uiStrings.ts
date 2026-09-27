@@ -7085,6 +7085,51 @@ export const UI = {
   "st.apply": { uk: "Застосувати", ru: "Применить", en: "Apply" },
   /* ── wave7:orgs ── */
   /* ── wave7:placement ── */
+
+  /* ── w12:recordings ── */
+  "rec.sending": { uk: "Запис відправляється…", ru: "Запись отправляется…", en: "Sending the recording…" },
+  "rec.sendFailed": {
+    uk: "Запис не відправлено. Він зберігається в цій вкладці, доки ви її не закриєте",
+    ru: "Запись не отправлена. Она хранится в этой вкладке, пока вы её не закроете",
+    en: "The recording wasn’t sent. It’s kept in this tab until you close it",
+  },
+  "rec.resend": { uk: "Повторити відправлення", ru: "Повторить отправку", en: "Retry sending" },
+  "rec.sendRefused": {
+    uk: "Сервер не прийняв запис, його стерто з вкладки",
+    ru: "Сервер не принял запись, она стёрта из вкладки",
+    en: "The server didn’t accept the recording; it has been erased from this tab",
+  },
+  "rec.stoppedRemotely": {
+    uk: "Запис зупинила інша сторона. Записане до зупинки відправлено",
+    ru: "Запись остановила другая сторона. Записанное до остановки отправлено",
+    en: "The other party stopped the recording. What was recorded before that has been sent",
+  },
+  "rec.withdrawn": {
+    uk: "Запис видалено або згоду відкликано. Записане в цій вкладці стерто",
+    ru: "Запись удалена или согласие отозвано. Записанное в этой вкладке стёрто",
+    en: "The recording was deleted or consent was withdrawn. What this tab recorded has been erased",
+  },
+  "rec.elsewhere": {
+    uk: "Запис іде не з цієї вкладки. Зупинити його можна й звідси",
+    ru: "Запись идёт не из этой вкладки. Остановить её можно и отсюда",
+    en: "The recording is running outside this tab. You can still stop it from here",
+  },
+  "rec.fail.unreadable": {
+    uk: "аудіо не вдалося прочитати",
+    ru: "аудио не удалось прочитать",
+    en: "the audio couldn’t be read",
+  },
+  "rec.fail.silent": {
+    uk: "у записі не розпізнано мовлення — перевірте мікрофон",
+    ru: "в записи не распознана речь — проверьте микрофон",
+    en: "no speech was recognised in the recording — check the microphone",
+  },
+  "rec.fail.engine": {
+    uk: "розпізнавання на сервері не спрацювало — зверніться до адміністратора",
+    ru: "распознавание на сервере не сработало — обратитесь к администратору",
+    en: "speech recognition failed on the server — contact the administrator",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
