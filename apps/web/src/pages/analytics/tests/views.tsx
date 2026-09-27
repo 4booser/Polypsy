@@ -151,6 +151,12 @@ export function ScalesView({ data }: { data: SurveyAnalytics }) {
   return (
     <>
       <p className="m-0 mb-[8px] max-w-[760px] text-[13px] leading-[18px] text-muted">{ut("ant.scalesHint")}</p>
+      {data.unreliableCount ? (
+        <p className="m-0 mb-[8px] max-w-[760px] text-[13px] leading-[18px] text-muted">
+          {ut("stats.unreliableScales")} <span className="font-mono tabular-nums">{data.unreliableCount}</span>.{" "}
+          {ut("stats.unreliableScalesTail")}
+        </p>
+      ) : null}
       {clinical.length > 1 ? (
         <RuleSection title={ut("ant.profileTitle")} hint={ut("ant.profileCaption")}>
           <ScaleProfile

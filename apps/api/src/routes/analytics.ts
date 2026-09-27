@@ -35,6 +35,7 @@ import {
   surveyScopeFilter,
 } from "../lib/scope";
 import { SMALL_CELL_FLOOR, cell, suppress } from "../lib/privacy";
+import { currentWeek, localToMoment, localWeek, patientRespondent, periodFrom, periodTo } from "../lib/population";
 import { decryptField } from "../lib/crypto";
 import {
   average,
@@ -84,40 +85,69 @@ analyticsRoutes.get("/overview", async (c) => {
     return c.json({
       surveyCount: 0, publishedCount: 0, responseCount: 0, respondentCount: 0,
       avgDurationMs: 0, completionRate: 0, topSurveys: [], severityBreakdown: [],
-      timeline: [], inProgress: [],
+      unreliableCount: 0, timeline: [], inProgress: [],
     } satisfies OverviewAnalytics);
   }
 
   const idList = sql`(${sql.join(scopedIds.map((id) => sql`${id}`), sql`, `)})`;
   const liveSince = new Date(Date.now() - LIVE_DRAFT_MS).toISOString();
+  /*
+   * Прохождения пациентов — не сотрудников (lib/population.ts). Бланк, который
+   * врач заполнил на себя, пробуя методику, — не обследование: в сводке он
+   * прибавлял и прохождение, и «человека», и его выдуманные ответы — в
+   * выраженность.
+   */
+  const patients = patientRespondent("r");
 
   const [totals, byS, severities, timelineRows, drafts] = await Promise.all([
-    db.execute<{ completed: number; started: number; respondents: number; avg_ms: number } & Record<string, unknown>>(sql`
+    db.execute<{ completed: number; started: number; respondents: number; avg_ms: number; unreliable: number } & Record<string, unknown>>(sql`
       select
-        count(*) filter (where status = 'completed')::int              as completed,
-        count(*)::int                                                  as started,
-        count(distinct user_id) filter (where status = 'completed')::int as respondents,
-        coalesce(avg(duration_ms) filter (where status = 'completed' and duration_ms > 0), 0)::int as avg_ms
-      from responses where survey_id in ${idList}
+        count(*) filter (where r.status = 'completed')::int              as completed,
+        count(*)::int                                                    as started,
+        count(distinct r.user_id) filter (where r.status = 'completed')::int as respondents,
+        coalesce(avg(r.duration_ms) filter (where r.status = 'completed' and r.duration_ms > 0), 0)::int as avg_ms,
+        count(*) filter (where r.status = 'completed' and not r.reliable)::int as unreliable
+      from responses r where r.survey_id in ${idList} and ${patients}
     `),
     db.execute<{ survey_id: string; n: number; avg_ms: number } & Record<string, unknown>>(sql`
-      select survey_id, count(*)::int as n,
-             coalesce(avg(duration_ms) filter (where duration_ms > 0), 0)::int as avg_ms
-      from responses
-      where survey_id in ${idList} and status = 'completed'
-      group by survey_id order by n desc limit 10
+      select r.survey_id, count(*)::int as n,
+             coalesce(avg(r.duration_ms) filter (where r.duration_ms > 0), 0)::int as avg_ms
+      from responses r
+      where r.survey_id in ${idList} and r.status = 'completed' and ${patients}
+      group by r.survey_id order by n desc limit 10
     `),
+    /*
+     * Выраженность — только содержательные шкалы достоверных протоколов.
+     *
+     * Полоса шкалы достоверности говорит о бланке, а не о человеке: у
+     * Мини-мульта шкала лжи выше 80 T ложилась в «різко виражений пік» и
+     * уходила в кольцо сводки «тяжёлыми» — ровно на число недостоверных
+     * профилей. Группа и ряд по неделям это правило уже держали; сводка —
+     * нет, и три экрана показывали три разных «тяжело».
+     *
+     * Недостоверный протокол (reliable = false) не даёт выраженности вовсе:
+     * его баллы посчитаны, но доверять им нельзя — ровно это и значит флаг.
+     * Прохождением он остаётся (оно было, и время на него ушло), а в
+     * выраженность не идёт; сколько таких — отдельным числом рядом, чтобы
+     * «в норме 6» не читалось как «из шести».
+     */
     db.execute<{ severity: Severity; n: number } & Record<string, unknown>>(sql`
       select rs.severity, count(*)::int as n
       from response_scores rs
       join responses r on r.id = rs.response_id
-      where r.survey_id in ${idList} and rs.severity is not null
+      join scales sc on sc.id = rs.scale_id
+      where r.survey_id in ${idList}
+        and r.status = 'completed'
+        and r.reliable
+        and ${patients}
+        and sc.kind = 'clinical'
+        and rs.severity is not null
       group by rs.severity
     `),
     db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
-      select to_char(submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
-      from responses
-      where survey_id in ${idList} and status = 'completed' and submitted_at is not null
+      select to_char(r.submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
+      from responses r
+      where r.survey_id in ${idList} and r.status = 'completed' and r.submitted_at is not null and ${patients}
       group by 1 order by 1
     `),
     /*
@@ -127,11 +157,12 @@ analyticsRoutes.get("/overview", async (c) => {
      * бы в свалку, где живого человека не найти.
      */
     db.execute<{ id: string; user_id: string | null; survey_id: string; started_at: string; last_saved_at: string | null } & Record<string, unknown>>(sql`
-      select id, user_id, survey_id, started_at, last_saved_at
-      from responses
-      where survey_id in ${idList} and status = 'in_progress'
-        and coalesce(last_saved_at, started_at) > ${liveSince}
-      order by coalesce(last_saved_at, started_at) desc
+      select r.id, r.user_id, r.survey_id, r.started_at, r.last_saved_at
+      from responses r
+      where r.survey_id in ${idList} and r.status = 'in_progress'
+        and coalesce(r.last_saved_at, r.started_at) > ${liveSince}
+        and ${patients}
+      order by coalesce(r.last_saved_at, r.started_at) desc
       limit 20
     `),
   ]);
@@ -160,6 +191,7 @@ analyticsRoutes.get("/overview", async (c) => {
         count: Number([...severities].find((x) => x.severity === severity)?.n ?? 0),
       }))
       .filter((s) => s.count > 0),
+    unreliableCount: Number(total?.unreliable ?? 0),
     timeline: [...timelineRows].map((r) => ({ date: String(r.date), count: Number(r.n) })),
     inProgress: [...drafts].map((r) => ({
       responseId: String(r.id),
@@ -201,11 +233,19 @@ const TREND_WEEKS = 26;
  * 3. Шкалы достоверности не участвуют: их полоса говорит о качестве
  *    протокола, а не о состоянии человека, и завысила бы «тяжёлых» ровно на
  *    число недостоверных профилей.
+ *
+ * 4. Недостоверный протокол — своей строкой (`unreliable`), а не ступенью.
+ *    Его содержательные шкалы посчитаны, но доверять им нельзя: «тяжело» по
+ *    бланку, заполненному наугад, — это не тяжело, а неизвестно. Прятать его
+ *    совсем тоже нельзя: неделя, в которой половина протоколов не прошла
+ *    проверку, — сама по себе новость.
+ *
+ * 5. Сотрудник на себя — не пациент (lib/population.ts).
  */
 analyticsRoutes.get("/severity-trend", async (c) => {
   const scope = await surveyScopeFilter(c.get("user"));
   const scoped = await db.select({ id: surveys.id }).from(surveys).where(scope);
-  if (!scoped.length) return c.json({ weeks: [], unbanded: 0 } satisfies SeverityTrendResult);
+  if (!scoped.length) return c.json({ weeks: [], unbanded: 0, unreliable: 0 } satisfies SeverityTrendResult);
 
   const idList = sql`(${sql.join(scoped.map((s) => sql`${s.id}`), sql`, `)})`;
 
@@ -220,7 +260,13 @@ analyticsRoutes.get("/severity-trend", async (c) => {
    * недели, в которую никто не обследовался, рисует прямую от соседа к
    * соседу — то есть показывает поток там, где его не было. Ноль надо
    * показать нулём.
+   *
+   * Неделя — по поясу учреждения, как у «Зведення» (routes/dashboard.ts), а
+   * не по поясу сессии базы. На сервере база в UTC, и обследование в
+   * понедельник до трёх ночи по Киеву уезжало в прошлую неделю: ряд и
+   * «Зведення» на одних и тех же прохождениях расходились на неделю.
    */
+  const firstWeek = sql`(${currentWeek()} - interval '1 week' * ${TREND_WEEKS - 1})`;
   const rows = await db.execute<{
     week: string;
     none: number;
@@ -228,18 +274,16 @@ analyticsRoutes.get("/severity-trend", async (c) => {
     moderate: number;
     severe: number;
     unbanded: number;
+    unreliable: number;
   } & Record<string, unknown>>(sql`
     with span as (
-      select generate_series(
-        date_trunc('week', now()) - interval '1 week' * ${TREND_WEEKS - 1},
-        date_trunc('week', now()),
-        interval '1 week'
-      ) as week_start
+      select generate_series(${firstWeek}, ${currentWeek()}, interval '1 week') as week_start
     ),
     per_response as (
       select
         r.id,
-        date_trunc('week', r.submitted_at) as week_start,
+        ${localWeek(sql`r.submitted_at`)} as week_start,
+        bool_and(r.reliable) as reliable,
         max(
           case sc.kind when 'clinical' then
             case rs.severity
@@ -254,15 +298,17 @@ analyticsRoutes.get("/severity-trend", async (c) => {
       where r.survey_id in ${idList}
         and r.status = 'completed'
         and r.submitted_at is not null
-        and r.submitted_at >= date_trunc('week', now()) - interval '1 week' * ${TREND_WEEKS - 1}
+        and r.submitted_at >= ${localToMoment(firstWeek)}
+        and ${patientRespondent("r")}
       group by 1, 2
     )
     select to_char(span.week_start, 'YYYY-MM-DD') as week,
-           count(p.id) filter (where p.worst = 1)::int as none,
-           count(p.id) filter (where p.worst = 2)::int as mild,
-           count(p.id) filter (where p.worst = 3)::int as moderate,
-           count(p.id) filter (where p.worst = 4)::int as severe,
-           count(p.id) filter (where p.worst is null)::int as unbanded
+           count(p.id) filter (where p.reliable and p.worst = 1)::int as none,
+           count(p.id) filter (where p.reliable and p.worst = 2)::int as mild,
+           count(p.id) filter (where p.reliable and p.worst = 3)::int as moderate,
+           count(p.id) filter (where p.reliable and p.worst = 4)::int as severe,
+           count(p.id) filter (where p.reliable and p.worst is null)::int as unbanded,
+           count(p.id) filter (where not p.reliable)::int as unreliable
     from span
     left join per_response p on p.week_start = span.week_start
     group by span.week_start
@@ -276,7 +322,7 @@ analyticsRoutes.get("/severity-trend", async (c) => {
    */
   const all = [...rows];
   const total = (r: (typeof all)[number]) =>
-    Number(r.none) + Number(r.mild) + Number(r.moderate) + Number(r.severe) + Number(r.unbanded);
+    Number(r.none) + Number(r.mild) + Number(r.moderate) + Number(r.severe) + Number(r.unbanded) + Number(r.unreliable);
   const firstFilled = all.findIndex((r) => total(r) > 0);
 
   const weeks = firstFilled < 0 ? [] : all.slice(firstFilled);
@@ -289,6 +335,7 @@ analyticsRoutes.get("/severity-trend", async (c) => {
       severe: Number(r.severe),
     })),
     unbanded: weeks.reduce((sum, r) => sum + Number(r.unbanded), 0),
+    unreliable: weeks.reduce((sum, r) => sum + Number(r.unreliable), 0),
   };
 
   await audit(c, { action: "analytics.severityTrend", details: { weeks: result.weeks.length } });
@@ -343,6 +390,7 @@ analyticsRoutes.get("/groups/:id", async (c) => {
     avgDurationMs: 0,
     openCaseCount: 0,
     severityBreakdown: [],
+    unreliableCount: 0,
     surveys: [],
     timeline: [],
   };
@@ -360,15 +408,21 @@ analyticsRoutes.get("/groups/:id", async (c) => {
    * достоверности говорит о качестве протокола, а не о состоянии человека, и
    * в распределении выраженности ей делать нечего: она завысила бы «тяжёлых»
    * ровно на число недостоверных профилей.
+   *
+   * По той же причине в выраженность не идут недостоверные протоколы: их
+   * число — отдельно (unreliableCount), как и в сводке. И как в сводке,
+   * прохождение сотрудника на себя — не прохождение пациента группы.
    */
+  const patients = patientRespondent("r");
   const [totals, severities, perSurvey, perSurveySeverity, timelineRows, openCases] = await Promise.all([
-    db.execute<{ completed: number; started: number; respondents: number; avg_ms: number } & Record<string, unknown>>(sql`
+    db.execute<{ completed: number; started: number; respondents: number; avg_ms: number; unreliable: number } & Record<string, unknown>>(sql`
       select
-        count(*) filter (where status = 'completed')::int                 as completed,
-        count(*)::int                                                     as started,
-        count(distinct user_id) filter (where status = 'completed')::int  as respondents,
-        coalesce(avg(duration_ms) filter (where status = 'completed' and duration_ms > 0), 0)::int as avg_ms
-      from responses where survey_id in ${idList}
+        count(*) filter (where r.status = 'completed')::int                   as completed,
+        count(*)::int                                                         as started,
+        count(distinct r.user_id) filter (where r.status = 'completed')::int  as respondents,
+        coalesce(avg(r.duration_ms) filter (where r.status = 'completed' and r.duration_ms > 0), 0)::int as avg_ms,
+        count(*) filter (where r.status = 'completed' and not r.reliable)::int as unreliable
+      from responses r where r.survey_id in ${idList} and ${patients}
     `),
     db.execute<{ severity: Severity; n: number } & Record<string, unknown>>(sql`
       select rs.severity, count(*)::int as n
@@ -376,15 +430,16 @@ analyticsRoutes.get("/groups/:id", async (c) => {
       join responses r on r.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
       where r.survey_id in ${idList} and rs.severity is not null and sc.kind = 'clinical'
+        and r.status = 'completed' and r.reliable and ${patients}
       group by rs.severity
     `),
     db.execute<{ survey_id: string; n: number; people: number } & Record<string, unknown>>(sql`
-      select survey_id,
+      select r.survey_id,
              count(*)::int as n,
-             count(distinct user_id)::int as people
-      from responses
-      where survey_id in ${idList} and status = 'completed'
-      group by survey_id
+             count(distinct r.user_id)::int as people
+      from responses r
+      where r.survey_id in ${idList} and r.status = 'completed' and ${patients}
+      group by r.survey_id
     `),
     db.execute<{ survey_id: string; severity: Severity; n: number } & Record<string, unknown>>(sql`
       select r.survey_id, rs.severity, count(*)::int as n
@@ -392,12 +447,13 @@ analyticsRoutes.get("/groups/:id", async (c) => {
       join responses r on r.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
       where r.survey_id in ${idList} and rs.severity is not null and sc.kind = 'clinical'
+        and r.status = 'completed' and r.reliable and ${patients}
       group by r.survey_id, rs.severity
     `),
     db.execute<{ date: string; n: number } & Record<string, unknown>>(sql`
-      select to_char(submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
-      from responses
-      where survey_id in ${idList} and status = 'completed' and submitted_at is not null
+      select to_char(r.submitted_at at time zone ${env.institutionTz}, 'YYYY-MM-DD') as date, count(*)::int as n
+      from responses r
+      where r.survey_id in ${idList} and r.status = 'completed' and r.submitted_at is not null and ${patients}
       group by 1 order by 1
     `),
     /*
@@ -439,6 +495,7 @@ analyticsRoutes.get("/groups/:id", async (c) => {
     avgDurationMs: Number(total?.avg_ms ?? 0),
     openCaseCount: Number([...openCases][0]?.n ?? 0),
     severityBreakdown: breakdown([...severities].map((r) => ({ severity: r.severity, n: Number(r.n) }))),
+    unreliableCount: Number(total?.unreliable ?? 0),
     surveys: surveyRows
       .map((s) => ({
         surveyId: s.id,
@@ -547,6 +604,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         eq(responses.surveyId, surveyId),
         eq(responses.status, "in_progress"),
         sql`${responses.lastSavedAt} > now() - interval '30 minutes'`,
+        patientRespondent("responses"),
         ...whose,
       ),
     )
@@ -578,9 +636,21 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       and(
         eq(responses.surveyId, surveyId),
         chosen ? eq(responses.versionId, chosen.id) : undefined,
-        from ? sql`${responses.submittedAt} >= ${from}` : undefined,
-        // верхняя граница включительно: пользователь выбирает день, а не момент
-        to ? sql`${responses.submittedAt} < (${to}::date + 1)` : undefined,
+        /*
+         * Границы — сутки учреждения (lib/population.ts), а не пояса
+         * сессии базы: на сервере она в UTC, и «з 1 вересня» начиналось в
+         * три ночи по Киеву. Верхняя граница включительно: пользователь
+         * выбирает день, а не момент.
+         */
+        from ? sql`${responses.submittedAt} >= ${periodFrom(from)}` : undefined,
+        to ? sql`${responses.submittedAt} < ${periodTo(to)}` : undefined,
+        /*
+         * Сотрудник, заполнивший методику на себя, — не респондент: его
+         * пробный бланк садился в распределения пунктов и шкал наравне с
+         * обследованиями. Заполненное ЗА пациента записано на пациента и
+         * остаётся (lib/population.ts).
+         */
+        patientRespondent("responses"),
         ...whose,
       ),
     );
@@ -621,6 +691,15 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       const given = answersByQuestion.get(question.id) ?? [];
       const real = given.filter((a) => !a.skipped);
       const times = real.map((a) => a.durationMs).filter((d) => d > 0);
+      /*
+       * Время до первого выбора есть только там, где сохранилась лента
+       * событий. Её чистит срок хранения телеметрии (answer_events), и после
+       * чистки здесь стоял ноль — «отвечали мгновенно» вместо «неизвестно».
+       * Невычислимое — null (docs/ARCHITECTURE.md).
+       */
+      const firsts = real
+        .map((a) => firstAnswerByKey.get(`${a.responseId}:${a.questionId}`))
+        .filter((v): v is number => v !== undefined);
 
       const base: QuestionAnalytics = {
         questionId: question.id,
@@ -638,13 +717,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
         p25DurationMs: Math.round(quantile(times, 0.25)),
         p75DurationMs: Math.round(quantile(times, 0.75)),
         avgChangeCount: round(average(real.map((a) => a.changeCount)), 2),
-        avgTimeToFirstAnswerMs: Math.round(
-          average(
-            real
-              .map((a) => firstAnswerByKey.get(`${a.responseId}:${a.questionId}`))
-              .filter((v): v is number => v !== undefined),
-          ),
-        ),
+        avgTimeToFirstAnswerMs: firsts.length ? Math.round(average(firsts)) : null,
         changedShare: percent(
           real.filter((a) => changedKeys.has(`${a.responseId}:${a.questionId}`) || a.changeCount > 0)
             .length,
@@ -810,9 +883,10 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   }
 
   const questionById = new Map(survey.questions.map((q) => [q.id, q]));
-  const contributionsFor = (scale: (typeof survey.scales)[number]) => {
+  const contributionsFor = (scale: (typeof survey.scales)[number], skip: ReadonlySet<string>) => {
     const matrix = new Map<string, Map<string, number>>();
     for (const [responseId, byQuestion] of answersByResponseId) {
+      if (skip.has(responseId)) continue;
       const row = new Map<string, number>();
       for (const item of scale.items) {
         const question = questionById.get(item.questionId);
@@ -870,8 +944,26 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   const submittedAtOf = new Map(responseRows.map((r) => [r.id, r.submittedAt]));
   const timelines: SurveyAnalytics["scaleTimeline"] = [];
 
+  /*
+   * Недостоверные протоколы — вне содержательных шкал.
+   *
+   * reliable = false значит «шкала достоверности вышла за порог или её не
+   * удалось проверить», то есть доверять баллам этого бланка нельзя. В
+   * распределение, средние, полосы, альфу и SEM такие баллы шли наравне с
+   * честными — и один бланк, заполненный «всё — так», сдвигал среднее
+   * отделения. Альфа считается по той же выборке, что и SD: иначе в SEM
+   * снова сошлись бы две разные популяции (см. measurementOf).
+   *
+   * Шкалы достоверности считаются по всем: их распределение и отвечает на
+   * вопрос, сколько протоколов под вопросом. Сколько таких — отдельным
+   * числом (unreliableCount), чтобы «у нормі 6» не читалось как «з шести».
+   */
+  const unreliable = new Set(completed.filter((r) => !r.reliable).map((r) => r.id));
+  const none = new Set<string>();
+
   const scaleStats: ScaleAnalytics[] = survey.scales.map((scale) => {
-    const own = scoresByScale.get(scale.id) ?? [];
+    const skip = scale.kind === "clinical" ? unreliable : none;
+    const own = (scoresByScale.get(scale.id) ?? []).filter((s) => !skip.has(s.responseId));
     /*
      * Распределение считаем по итоговому значению: полосы норм заданы на нём,
      * а не на сыром балле. Но только по ОДНОРОДНЫМ значениям — см.
@@ -885,7 +977,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
       scale.items
         .map((i) => questionById.get(i.questionId))
         .filter((q): q is NonNullable<typeof q> => !!q),
-      contributionsFor(scale),
+      contributionsFor(scale, skip),
     );
 
     // порядок берём из определения шкалы, а не из порядка появления в данных:
@@ -1044,6 +1136,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     quality,
     tooFastThresholdMs: tooFastMs,
     respondentCount: new Set(completed.map((r) => r.userId).filter(Boolean)).size,
+    unreliableCount: unreliable.size,
     scaleTimeline: timelines,
     durationBins: durationBins(durations, suppress),
     answerMatrix,

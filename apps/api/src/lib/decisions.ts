@@ -6,6 +6,28 @@ import { auditSystem } from "./audit";
 import { log } from "./log";
 
 /**
+ * Баллы прохождения — в том виде, в каком их видит движок правил.
+ *
+ * «Нормированный балл» — это T или стен, и только когда норма к человеку
+ * ДЕЙСТВИТЕЛЬНО применилась. Для шкал в сырых баллах и долях нормы нет, и
+ * подсовывать вместо неё сырое значение нельзя: правило «T выше 70»
+ * сработало бы на доле 0.72.
+ *
+ * Та же беда — у T-шкалы без нормы для пола или возраста респондента: в
+ * value движок оставляет сырой балл (normalized = false), и правило «T ≥ 10»
+ * по Мини-мульту срабатывало у каждого, чей пол не указан, — на сыром 11.
+ * Здесь null, и движок честно пишет «нормы не применились, сравнивать не с
+ * чем» (packages/shared/src/rules.ts).
+ */
+export function ruleScores(scores: ScoreResult[]): RuleInput["scores"] {
+  return scores.map((s) => ({
+    scaleCode: s.scaleCode,
+    rawScore: s.rawScore,
+    normedScore: s.normalized && (s.normalization === "tscore" || s.normalization === "sten") ? s.value : null,
+  }));
+}
+
+/**
  * Применение правил поддержки решений к только что сданному прохождению.
  *
  * Ничего не назначает и никого не лечит: пишет строки «предложено» с
@@ -59,16 +81,7 @@ export async function applyRules(params: {
 
     const input: RuleInput = {
       surveyId,
-      scores: scores.map((s) => ({
-        scaleCode: s.scaleCode,
-        rawScore: s.rawScore,
-        /*
-         * «Нормированный балл» — это T или стен. Для шкал в сырых баллах и
-         * долях нормы нет, и подсовывать вместо неё сырое значение нельзя:
-         * правило «T выше 70» сработало бы на доле 0.72.
-         */
-        normedScore: s.normalization === "tscore" || s.normalization === "sten" ? s.value : null,
-      })),
+      scores: ruleScores(scores),
       riskSeverity,
       completedCount: count,
     };

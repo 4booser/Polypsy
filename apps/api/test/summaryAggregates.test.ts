@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import type { ConditionsResult, OverviewAnalytics, Severity } from "@quizzy/shared";
-import { api, db, eq, makeUser, root, sql, type Person } from "./fixtures";
+import { api, db, eq, makeUser, root, sql, users, type Person } from "./fixtures";
 import { responseScores, responses, scales, surveyVersions, surveys } from "../src/db/schema";
 import { installCatalog } from "../src/lib/catalogInstall";
 import {
@@ -163,7 +163,13 @@ afterAll(async () => {
  * последним ключом, как теперь и в маршруте. Без неё «последний» из двух
  * замеров одной шкалы с одинаковым временем база выбирает произвольно — и
  * прежний, и новый запрос, каждый по-своему, — и сверять было бы нечего.
+ *
+ * И с правилом «кого считаем» волны 12 (lib/population.ts): недостоверный
+ * протокол и прохождение сотрудника на себя в «Зведення» не идут. Правило
+ * здесь повторено руками, а не взято из маршрута: сверка с самим собой
+ * ничего бы не проверяла.
  */
+const COUNTED = sql`and r.reliable and not exists (select 1 from users su where su.id = r.user_id and su.role <> 'user')`;
 async function conditionsTheOldWay(since: string): Promise<Pick<ConditionsResult, "domains" | "overall">> {
   const pairs = sql.join(
     allSources().map((s) => sql`(${s.catalogKey}, ${s.code})`),
@@ -189,6 +195,7 @@ async function conditionsTheOldWay(since: string): Promise<Pick<ConditionsResult
       and r.user_id is not null
       and r.submitted_at is not null
       and r.submitted_at >= ${since}
+      ${COUNTED}
       and (s.catalog_key, sc.code) in (${pairs})
     order by r.user_id, r.survey_id, sc.code, r.submitted_at desc, r.id desc
   `);
@@ -219,6 +226,7 @@ async function conditionsTheOldWay(since: string): Promise<Pick<ConditionsResult
         and r.submitted_at is not null
         and r.submitted_at >= ${since}
         and sc.kind = 'clinical'
+        ${COUNTED}
       order by r.user_id, r.survey_id, sc.code, r.submitted_at desc, r.id desc
     )
     select user_id,
@@ -259,12 +267,25 @@ describe("«Зведення»: счёт в базе совпадает с пр�
 /**
  * Прежний способ сводки по методикам — все прохождения и все баллы в память.
  * Так маршрут и работал до переноса в базу (волна 1); здесь — эталон.
+ *
+ * С правилами волны 12, повторёнными руками: прохождение сотрудника на себя —
+ * не прохождение пациента; выраженность — только содержательные шкалы
+ * достоверных протоколов, недостоверные — отдельным числом.
  */
 async function overviewTheOldWay() {
-  const all = await db.select().from(responses);
-  const scores = await db
-    .select({ severity: responseScores.severity, responseId: responseScores.responseId })
-    .from(responseScores);
+  const staff = new Set(
+    (await db.select({ id: users.id }).from(users).where(sql`${users.role} <> 'user'`)).map((u) => u.id),
+  );
+  const clinical = new Set(
+    (await db.select({ id: scales.id }).from(scales).where(eq(scales.kind, "clinical"))).map((s) => s.id),
+  );
+  const all = (await db.select().from(responses)).filter((r) => !r.userId || !staff.has(r.userId));
+  const trusted = new Set(all.filter((r) => r.status === "completed" && r.reliable).map((r) => r.id));
+  const scores = (
+    await db
+      .select({ severity: responseScores.severity, responseId: responseScores.responseId, scaleId: responseScores.scaleId })
+      .from(responseScores)
+  ).filter((s) => trusted.has(s.responseId) && clinical.has(s.scaleId));
   const completed = all.filter((r) => r.status === "completed");
   const timed = completed.filter((r) => (r.durationMs ?? 0) > 0);
   const day = new Intl.DateTimeFormat("en-CA", {
@@ -294,6 +315,7 @@ async function overviewTheOldWay() {
     timeline: [...timeline.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([date, count]) => ({ date, count })),
     bySurvey,
     severities,
+    unreliable: completed.filter((r) => !r.reliable).length,
   };
 }
 
@@ -309,6 +331,7 @@ describe("сводка по методикам: счёт в базе совпа�
     expect(res.body.avgDurationMs).toBe(old.avgDurationMs);
     expect(res.body.completionRate).toBe(percent(old.responseCount, old.started));
     expect(res.body.timeline).toEqual(old.timeline);
+    expect(res.body.unreliableCount).toBe(old.unreliable);
 
     for (const s of res.body.severityBreakdown) expect(s.count).toBe(old.severities.get(s.severity) ?? 0);
     expect(res.body.severityBreakdown.reduce((sum, s) => sum + s.count, 0)).toBe(

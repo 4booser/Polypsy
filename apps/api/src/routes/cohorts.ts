@@ -18,6 +18,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { badRequest, notFound, parseBody } from "../lib/http";
+import { dayEnd, dayStart } from "../lib/population";
 import { SMALL_CELL_FLOOR, birthYearOf, canBreakDown, suppress, suppressedKeys } from "../lib/privacy";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -97,6 +98,30 @@ function severityRank(column: string): SQL {
 }
 
 /**
+ * Самая тяжёлая ступень прохождения — по содержательным шкалам достоверного
+ * протокола; null, если таких полос нет.
+ *
+ * Шкала достоверности не участвует: её полоса говорит о бланке, а не о
+ * человеке. У Мини-мульта шкала лжи выше 80 T — «різко виражений пік», и
+ * подбор «не нижче тяжкої» находил людей, которые всего лишь приукрасили
+ * себя; разбивка «вираженість» записывала их в тяжёлые. Недостоверный
+ * протокол (reliable = false) не даёт ступени вовсе: его баллы посчитаны,
+ * но доверять им нельзя — ровно это флаг и значит.
+ *
+ * Одно определение на три места — условие «не нижче», разбивку и строку
+ * поимённого списка: прежде каждое считало ступень по-своему.
+ */
+function worstOf(alias: string): SQL {
+  const r = sql.raw(alias);
+  return sql`case when ${r}.reliable then (
+    select max(${severityRank("wrs.severity")})
+    from response_scores wrs
+    join scales wsc on wsc.id = wrs.scale_id
+    where wrs.response_id = ${r}.id and wsc.kind = 'clinical'
+  ) end`;
+}
+
+/**
  * Отбор: условие на людей и определение «прохождения выборки».
  *
  * Второе — не мелочь. Период, методика, «повторний замір», «тривога
@@ -137,16 +162,26 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
 
   const surveyIds = spec.surveyId ? [spec.surveyId] : allowed;
   /*
-   * Границы периода — календарные дни включительно, в поясе базы: так же
-   * считает статистика (lib/statModels.ts, sampleOf), и одна и та же дата
-   * в двух разделах не должна означать разные сутки.
+   * Границы периода — календарные дни включительно, в поясе УЧРЕЖДЕНИЯ
+   * (lib/population.ts), так же, как в статистике (lib/statModels.ts,
+   * sampleOf): одна и та же дата в двух разделах не должна означать разные
+   * сутки. Прежде здесь был пояс сессии базы — на сервере UTC, и сданное
+   * первого октября до трёх ночи по Киеву попадало в «по 30 вересня».
+   *
+   * Пол — снимок на момент сдачи (respondent_sex), а не нынешний пол в
+   * карточке, и стоит здесь, в определении прохождения выборки, рядом с
+   * периодом. Карточку правят: человека, сдававшего методику мужчиной,
+   * после исправления поля «стать» подбор «чоловіки» терял. Нормы и полосы
+   * при сдаче считались по снимку, и отбирать по нему — значит отбирать
+   * ровно тех, кого так и посчитали.
    */
   const taken = (alias: string): SQL => {
     const r = sql.raw(alias);
     return sql`${r}.status = 'completed'
       and ${r}.survey_id in ${surveyIds}
-      ${spec.from ? sql`and ${r}.submitted_at >= ${spec.from}::date` : sql``}
-      ${spec.to ? sql`and ${r}.submitted_at < (${spec.to}::date + 1)` : sql``}`;
+      ${spec.from ? sql`and ${r}.submitted_at >= ${dayStart(spec.from)}` : sql``}
+      ${spec.to ? sql`and ${r}.submitted_at < ${dayEnd(spec.to)}` : sql``}
+      ${spec.sex ? sql`and ${r}.respondent_sex = ${spec.sex}` : sql``}`;
   };
 
   const parts: SQL[] = [
@@ -154,7 +189,6 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
     sql`exists (select 1 from responses r where r.user_id = u.id and ${taken("r")})`,
   ];
 
-  if (spec.sex) parts.push(sql`u.sex = ${spec.sex}`);
   if (spec.units?.length) parts.push(sql`u.unit in ${spec.units}`);
 
   /*
@@ -191,12 +225,23 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
      */
     const op =
       cond.op === ">=" ? sql`>=` : cond.op === "<=" ? sql`<=` : cond.op === ">" ? sql`>` : sql`<`;
+    /*
+     * Сравнивается только нормированное значение достоверного протокола.
+     *
+     * Порог на экране задан в единицах шкалы — T-баллах, стенах, долях.
+     * Когда норма к человеку не применилась (нет нормы для его пола), в
+     * value лежит СЫРОЙ балл: у Мини-мульта это 0–20, и условие «Hs ≤ 40»
+     * находило всех без указанного пола — будто у них T-балл ниже нормы.
+     * Недостоверному протоколу не верят и здесь, как и везде в агрегатах.
+     */
     parts.push(sql`exists (
       select 1 from response_scores rs
       join responses r4 on r4.id = rs.response_id
       join scales sc on sc.id = rs.scale_id
       where r4.user_id = u.id
         and ${taken("r4")}
+        and r4.reliable
+        and rs.normalized
         and sc.code = ${cond.code}
         and rs.value ${op} ${cond.value}
     )`);
@@ -205,11 +250,10 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
   if (spec.minSeverity) {
     const floor = SEVERITY_ORDER.indexOf(spec.minSeverity);
     parts.push(sql`exists (
-      select 1 from response_scores rs6
-      join responses r6 on r6.id = rs6.response_id
+      select 1 from responses r6
       where r6.user_id = u.id
         and ${taken("r6")}
-        and ${severityRank("rs6.severity")} >= ${floor}
+        and ${worstOf("r6")} >= ${floor}
     )`);
   }
 
@@ -306,21 +350,24 @@ cohortRoutes.post("/preview", async (c) => {
       : Promise.resolve([]);
 
   /*
-   * Возраст — полоса ПОСЛЕДНЕГО прохождения выборки: человек за два года
-   * наблюдения мог перейти из «25–34» в «35–44», и считать его в обеих
-   * значило бы, что доли не складываются в целое.
+   * Возраст и пол — снимки ПОСЛЕДНЕГО прохождения выборки: человек за два
+   * года наблюдения мог перейти из «25–34» в «35–44», и считать его в обеих
+   * значило бы, что доли не складываются в целое. Пол — тоже снимок, как и в
+   * условии отбора (см. taken): разбивка по нынешней карточке расходилась бы
+   * с тем, по чему только что отбирали.
    */
-  const byAge = allowed
-    ? breakdown(sql`
-        select b.band as key, count(*)::int as n from (
-          select distinct on (u.id) u.id, r.respondent_age_band as band
-          from users u
-          join responses r on r.user_id = u.id and ${taken("r")}
-          where ${where}
-          order by u.id, r.submitted_at desc nulls last, r.id desc
-        ) b group by 1
-      `)
-    : Promise.resolve([]);
+  const lastSnapshot = (column: SQL) =>
+    allowed
+      ? breakdown(sql`
+          select b.v as key, count(*)::int as n from (
+            select distinct on (u.id) u.id, ${column} as v
+            from users u
+            join responses r on r.user_id = u.id and ${taken("r")}
+            where ${where}
+            order by u.id, r.submitted_at desc nulls last, r.id desc
+          ) b group by 1
+        `)
+      : Promise.resolve([]);
 
   /*
    * Выраженность — самая тяжёлая полоса человека среди прохождений выборки.
@@ -330,27 +377,36 @@ cohortRoutes.post("/preview", async (c) => {
    * складывались в когорту, и «помірна: 40» при когорте 60 нельзя было
    * прочесть как долю. Одна ступень на человека — это вопрос, который
    * задают на самом деле: «сколько из них хотя бы где-то в тяжёлой полосе».
+   *
+   * Ступень — по содержательным шкалам достоверных протоколов (worstOf).
+   * У кого в выборке ТОЛЬКО недостоверные протоколы — своя строка
+   * «unreliable»: не «норма» и не «без смуг», а «сказать нечего». Строкой, а
+   * не исключением из когорты: человек методику прошёл, и без него разбивка
+   * перестала бы складываться в размер когорты.
    */
   const bySeverity = allowed
     ? breakdown(sql`
-        select m.rank::text as key, count(*)::int as n from (
-          select u.id, max(${severityRank("rs.severity")}) as rank
+        select m.key, count(*)::int as n from (
+          select u.id,
+                 case when bool_or(r.reliable) then max(${worstOf("r")})::text else 'unreliable' end as key
           from users u
           join responses r on r.user_id = u.id and ${taken("r")}
-          left join response_scores rs on rs.response_id = r.id
           where ${where}
           group by u.id
         ) m group by 1
       `).then((cells) =>
-        cells.map((cell) => ({ ...cell, key: SEVERITY_ORDER[Number(cell.key)] ?? "—" })),
+        cells.map((cell) => ({
+          ...cell,
+          key: cell.key === "unreliable" ? "unreliable" : (SEVERITY_ORDER[Number(cell.key)] ?? "—"),
+        })),
       )
     : Promise.resolve([]);
 
   const [bySex, byUnit, byLocality, ages, severities] = await Promise.all([
-    byColumn(sql`u.sex`),
+    lastSnapshot(sql`r.respondent_sex`),
     byColumn(sql`u.unit`),
     byColumn(sql`u.locality`),
-    byAge,
+    lastSnapshot(sql`r.respondent_age_band`),
     bySeverity,
   ]);
 
@@ -473,11 +529,12 @@ cohortRoutes.post("/members", async (c) => {
     responseId: string;
     surveyId: string;
     submittedAt: string | null;
+    reliable: boolean;
     rank: number | null;
   }>(sql`
     select distinct on (r.user_id)
       r.user_id as "userId", r.id as "responseId", r.survey_id as "surveyId", r.submitted_at as "submittedAt",
-      (select max(${severityRank("rs.severity")}) from response_scores rs where rs.response_id = r.id) as rank
+      r.reliable, ${worstOf("r")} as rank
     from responses r
     where r.user_id in ${ids} and ${taken("r")}
     order by r.user_id, r.submitted_at desc nulls last, r.id desc
@@ -487,6 +544,7 @@ cohortRoutes.post("/members", async (c) => {
       surveyId: r.surveyId,
       submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
       severity: r.rank === null ? null : (SEVERITY_ORDER[Number(r.rank)] ?? null),
+      reliable: r.reliable !== false,
     });
   }
 

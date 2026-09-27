@@ -33,6 +33,7 @@ import { detectRisks } from "../lib/risk";
 import { persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
+import { periodFrom, periodTo } from "../lib/population";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import {
@@ -851,9 +852,10 @@ responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("pa
         patientGroup
           ? sql`${responses.userId} in (select patient_id from patient_group_members where group_id = ${patientGroup})`
           : undefined,
-        from ? sql`${responses.submittedAt} >= ${from}` : undefined,
-        // верхняя граница включительно: выбирают день, а не момент — как в аналитике
-        to ? sql`${responses.submittedAt} < (${to}::date + 1)` : undefined,
+        // сутки учреждения, а не пояса сессии базы — как в аналитике (lib/population.ts);
+        // верхняя граница включительно: выбирают день, а не момент
+        from ? sql`${responses.submittedAt} >= ${periodFrom(from)}` : undefined,
+        to ? sql`${responses.submittedAt} < ${periodTo(to)}` : undefined,
         /*
          * Пара «время и идентификатор», а не одно время.
          *
