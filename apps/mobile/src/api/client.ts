@@ -391,11 +391,17 @@ export const api = {
       items: { id: string; withName: string; lastMessageAt: string; unread: number }[];
       lead: string | null;
     }>("/api/messages"),
-  thread: (id: string) =>
+  /* последние письма и курсор назад; чтение ничего не помечает — см. markRead */
+  thread: (id: string, before?: string | null) =>
     request<{
       id: string;
       items: { id: string; mine: boolean; text: string; sentAt: string; readAt: string | null }[];
-    }>(`/api/messages/${id}`),
+      hasMore: boolean;
+      nextBefore: string | null;
+    }>(`/api/messages/${id}${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  /** «Прочитано» — только показанные письма собеседника */
+  markRead: (id: string, ids: string[]) =>
+    request<{ marked: number }>(`/api/messages/${id}/read`, { method: "POST", body: JSON.stringify({ ids }) }),
   sendMessage: (text: string) =>
     request<{ id: string; threadId: string }>("/api/messages", {
       method: "POST",
@@ -469,10 +475,23 @@ export const api = {
     );
   },
   consentStatus: () =>
-    request<{ required: boolean; accepted: boolean; version: number | null; text: string | null }>(
-      "/api/consents/me",
-    ),
-  acceptConsent: () => request<{ ok: true }>("/api/consents/me/accept", { method: "POST" }),
+    request<{
+      required: boolean;
+      accepted: boolean;
+      version: number | null;
+      /** Редакция, которую показывают, — её и присылают при принятии */
+      textId?: string | null;
+      text: string | null;
+    }>("/api/consents/me"),
+  /**
+   * Принять ту редакцию, которую показали. Текст обновился, пока человек
+   * читал, — сервер отвечает 409, и экран показывает новый (волна 12).
+   */
+  acceptConsent: (textId?: string | null) =>
+    request<{ ok: true }>("/api/consents/me/accept", {
+      method: "POST",
+      body: JSON.stringify(textId ? { textId } : {}),
+    }),
   /**
    * Отказ от согласия (или отзыв принятого) — на сервере, с версией текста.
    * Раньше отказ был только выходом из учётной записи, и учреждение не
@@ -534,6 +553,12 @@ export const api = {
       onBehalfOf?: string | null;
       /** Пол и возраст пациента — для офлайн-подсчёта в режиме обхода */
       subject?: { sex: "male" | "female" | null; age: number | null } | null;
+      /**
+       * Версия, которую показали. Едет и в офлайн-очередь вместе с телом:
+       * сдача, досланная после обновления методики, считается по своей
+       * версии, а не по новой (routes/responses.ts, pinnedVersion).
+       */
+      versionId?: string | null;
     },
   ) => {
     /*
@@ -725,7 +750,7 @@ export const api = {
 
   saveDraft: (
     surveyId: string,
-    payload: { answers: Answer[]; startedAt: string; durationMs: number; events: unknown[] },
+    payload: { answers: Answer[]; startedAt: string; durationMs: number; events: unknown[]; versionId?: string | null },
   ) =>
     request<{ id: string; lastSavedAt: string; answers: number }>(
       `/api/surveys/${surveyId}/draft`,

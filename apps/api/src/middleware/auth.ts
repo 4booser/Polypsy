@@ -1,7 +1,8 @@
+import type { Context, Next } from "hono";
 import { createMiddleware } from "hono/factory";
 import { eq } from "drizzle-orm";
 import { baseDb, db } from "../db";
-import { systemContext, withDbContext } from "../db/context";
+import { systemContext, withRequestContext } from "../db/context";
 import { users } from "../db/schema";
 import { issuedAfterRevocation, readToken, toPublicUser } from "../lib/auth";
 import { forbidden, unauthorized } from "../lib/http";
@@ -96,7 +97,8 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
     c.set("user", viewed);
     authorized.add(c);
     await guardImpersonated(c, viewed);
-    await withDbContext(baseDb, { userId: row.id, role: row.role }, () => next());
+    // только чтение держит база: транзакция запроса — READ ONLY (db/context.ts)
+    await inRequestTransaction(c, { userId: row.id, role: row.role }, next, true);
     return;
   }
 
@@ -185,11 +187,39 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
 
   /*
    * Дальше запрос живёт в транзакции с app.user_id/app.role: RLS-политики
-   * видят, кто работает. Ошибка обработчика откатывает транзакцию целиком —
+   * видят, кто работает. Неудачный ответ откатывает транзакцию целиком —
    * для записи это правильнее прежней семантики, а не опаснее.
+   *
+   * Учётке «только просмотр» транзакция — READ ONLY, как и входу «от
+   * имени»: сторож выше режет по методу, а GET тоже бывает пишущим
+   * (отметка «прочитано», ленивое заведение строк). Держит база.
    */
-  await withDbContext(baseDb, { userId: row.id, role: row.role }, () => next());
+  await inRequestTransaction(c, { userId: row.id, role: row.role }, next, row.readOnly);
 });
+
+/**
+ * Транзакция запроса, которую откатывает неудачный ответ.
+ *
+ * Раньше здесь стояло withDbContext(…, () => next()) и комментарий «ошибка
+ * обработчика откатывает транзакцию целиком». Не откатывала: Hono ловит
+ * исключение обработчика внутри next() и превращает его в ответ onError, так
+ * что до транзакции оно не долетало, и она фиксировалась. Сдача с неверным
+ * ответом получала 400, а черновик, удалённый до проверки, пропадал насовсем
+ * (волна 12). Теперь решает исход: ответ от 400 и выше — или исключение,
+ * которое onError превратил в ответ (c.error), — откат. Что обязано
+ * пережить откат (журнал отказов, счётчик попыток), пишется через durable,
+ * см. db/context.ts.
+ */
+function inRequestTransaction(
+  c: Context<AppEnv>,
+  identity: { userId: string; role: User["role"] },
+  next: Next,
+  readOnly = false,
+): Promise<void> {
+  return withRequestContext(baseDb, identity, () => next(), () => c.error !== undefined || c.res.status >= 400, {
+    readOnly,
+  });
+}
 
 /** Доступ для персонала: администратор группы или суперадмин */
 export const requireStaff = createMiddleware<AppEnv>(async (c, next) => {

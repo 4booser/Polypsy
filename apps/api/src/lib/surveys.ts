@@ -737,6 +737,191 @@ export async function createVersion(
   return versionId;
 }
 
+/** Норма шкалы в том виде, в каком она лежит в scale_norms (без ключей) */
+export interface NormValues {
+  sex: "male" | "female" | null;
+  ageMin: number | null;
+  ageMax: number | null;
+  mean: number;
+  sd: number;
+  source: string | null;
+}
+
+/**
+ * Новая версия — точная копия действующей, с правкой только того, что
+ * просили (волна 12, участок submit).
+ *
+ * Применение локальных норм делало новую версию через surveyToDraft — то
+ * есть через ЭКСПОРТ: преобразование, которое по своему назначению
+ * выбрасывает всё, что не должно уехать в чужое учреждение или не имеет
+ * смысла в файле. Секции, условия показа, обратный ключ пунктов, порядок
+ * вариантов, лимиты времени, привязка пунктов к шкалам, каскады полос,
+ * локальные нормы других шкал — после «обновить нормы шкалы L» методика
+ * теряла всё это разом, и новая версия, по которой дальше считались все
+ * сдачи, была другой методикой. Обратный ключ, потерянный на депрессивной
+ * шкале, переворачивает её: тяжёлое состояние считалось бы лёгким.
+ *
+ * Поэтому копия идёт по строкам базы, а не через формат обмена: каждая
+ * строка содержимого переносится целиком (`...row`), меняются только
+ * собственные идентификаторы и ссылки на них. Новая колонка, добавленная
+ * в таблицу содержимого завтра, переедет сама — перечислять поля здесь
+ * значило бы однажды забыть одно, как забыл экспорт.
+ *
+ * Правка сейчас одна — нормы: `edit.norms(code, текущие)` возвращает новый
+ * полный список норм шкалы или undefined, если шкалу не трогаем.
+ *
+ * Действующая версия читается под замком строки методики: копировать надо
+ * ту, что действует в момент записи, а не ту, что действовала, когда
+ * считали кандидатов, — иначе правка конструктора, сохранённая между ними,
+ * молча откатилась бы.
+ */
+export async function copyVersion(
+  surveyId: string,
+  createdBy: string | null,
+  note: string,
+  edit: { norms?: (scaleCode: string, current: NormValues[]) => NormValues[] | undefined } = {},
+): Promise<string> {
+  const versionId = crypto.randomUUID();
+
+  await db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select({ from: surveys.currentVersionId })
+      .from(surveys)
+      .where(eq(surveys.id, surveyId))
+      .for("update");
+    const from = locked?.from;
+    if (!from) throw new Error(`copyVersion: у методики ${surveyId} нет действующей версии`);
+
+    const [{ next } = { next: 1 }] = await tx
+      .select({ next: sql<number>`coalesce(max(${surveyVersions.version}), 0)::int + 1` })
+      .from(surveyVersions)
+      .where(eq(surveyVersions.surveyId, surveyId));
+    await tx.insert(surveyVersions).values({ id: versionId, surveyId, version: next, note, createdBy });
+
+    const fresh = () => crypto.randomUUID();
+    const remap = (map: Map<string, string>, id: string | null) => (id === null ? null : (map.get(id) ?? null));
+
+    /* секции и шкалы — первыми: на них ссылаются пункты */
+    const sectionRows = await tx.select().from(sections).where(eq(sections.versionId, from));
+    const sectionMap = new Map(sectionRows.map((r) => [r.id, fresh()]));
+    for (const row of sectionRows) {
+      await tx.insert(sections).values({ ...row, id: sectionMap.get(row.id)!, versionId });
+    }
+
+    const scaleRows = await tx.select().from(scales).where(eq(scales.versionId, from));
+    const scaleMap = new Map(scaleRows.map((r) => [r.id, fresh()]));
+    for (const row of scaleRows) {
+      await tx.insert(scales).values({ ...row, id: scaleMap.get(row.id)!, versionId });
+    }
+
+    const questionRows = await tx.select().from(questions).where(eq(questions.versionId, from));
+    const questionMap = new Map(questionRows.map((r) => [r.id, fresh()]));
+    for (const row of questionRows) {
+      await tx.insert(questions).values({
+        ...row,
+        id: questionMap.get(row.id)!,
+        versionId,
+        sectionId: remap(sectionMap, row.sectionId),
+        scaleId: remap(scaleMap, row.scaleId),
+      });
+    }
+
+    const oldQuestionIds = [...questionMap.keys()];
+    const oldScaleIds = [...scaleMap.keys()];
+
+    const optionRows = oldQuestionIds.length
+      ? await tx.select().from(options).where(inArray(options.questionId, oldQuestionIds))
+      : [];
+    const optionMap = new Map(optionRows.map((r) => [r.id, fresh()]));
+    for (const row of optionRows) {
+      await tx.insert(options).values({ ...row, id: optionMap.get(row.id)!, questionId: questionMap.get(row.questionId)! });
+    }
+
+    /*
+     * Условие показа сравнивает ответ с ИДЕНТИФИКАТОРОМ варианта (eq,
+     * contains — lib/scoring, evaluateRule), а варианты в новой версии
+     * получили новые. Значение, указывающее на вариант исходной версии,
+     * переводится на его копию; число и текст остаются как есть.
+     */
+    const remapValue = (value: unknown): unknown => {
+      if (typeof value === "string") return optionMap.get(value) ?? value;
+      if (Array.isArray(value)) return value.map(remapValue);
+      return value;
+    };
+    const logicRows = oldQuestionIds.length
+      ? await tx.select().from(questionLogic).where(inArray(questionLogic.questionId, oldQuestionIds))
+      : [];
+    for (const row of logicRows) {
+      await tx.insert(questionLogic).values({
+        ...row,
+        id: fresh(),
+        questionId: questionMap.get(row.questionId)!,
+        sourceQuestionId: questionMap.get(row.sourceQuestionId) ?? row.sourceQuestionId,
+        value: remapValue(row.value),
+      });
+    }
+
+    if (oldScaleIds.length) {
+      const bandRows = await tx.select().from(scaleBands).where(inArray(scaleBands.scaleId, oldScaleIds));
+      for (const row of bandRows) {
+        // каскад (cascadeBatteryId) — ссылка на батарею этого же учреждения, и она едет как есть
+        await tx.insert(scaleBands).values({ ...row, id: fresh(), scaleId: scaleMap.get(row.scaleId)! });
+      }
+
+      const itemRows = await tx.select().from(scaleItems).where(inArray(scaleItems.scaleId, oldScaleIds));
+      for (const row of itemRows) {
+        const questionId = questionMap.get(row.questionId);
+        if (!questionId) continue;
+        await tx.insert(scaleItems).values({ ...row, scaleId: scaleMap.get(row.scaleId)!, questionId });
+      }
+
+      const correctionRows = await tx
+        .select()
+        .from(scaleCorrections)
+        .where(inArray(scaleCorrections.targetScaleId, oldScaleIds));
+      for (const row of correctionRows) {
+        const sourceScaleId = scaleMap.get(row.sourceScaleId);
+        if (!sourceScaleId) continue;
+        await tx
+          .insert(scaleCorrections)
+          .values({ ...row, targetScaleId: scaleMap.get(row.targetScaleId)!, sourceScaleId });
+      }
+
+      const normRows = await tx.select().from(scaleNorms).where(inArray(scaleNorms.scaleId, oldScaleIds));
+      const codeOf = new Map(scaleRows.map((r) => [r.id, r.code]));
+      for (const scale of scaleRows) {
+        const own = normRows.filter((n) => n.scaleId === scale.id);
+        const replaced = edit.norms?.(
+          codeOf.get(scale.id)!,
+          own.map(({ sex, ageMin, ageMax, mean, sd, source }) => ({ sex, ageMin, ageMax, mean, sd, source })),
+        );
+        if (replaced) {
+          for (const norm of replaced) {
+            await tx.insert(scaleNorms).values({ ...norm, id: fresh(), scaleId: scaleMap.get(scale.id)! });
+          }
+        } else {
+          for (const row of own) {
+            await tx.insert(scaleNorms).values({ ...row, id: fresh(), scaleId: scaleMap.get(scale.id)! });
+          }
+        }
+      }
+
+      const stenTableRows = await tx.select().from(stenRows).where(inArray(stenRows.scaleId, oldScaleIds));
+      for (const row of stenTableRows) {
+        await tx.insert(stenRows).values({ ...row, id: fresh(), scaleId: scaleMap.get(row.scaleId)! });
+      }
+    }
+
+    // действующей — последней операцией, как в createVersion
+    await tx
+      .update(surveys)
+      .set({ currentVersionId: versionId, updatedAt: new Date().toISOString() })
+      .where(eq(surveys.id, surveyId));
+  });
+
+  return versionId;
+}
+
 function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
   for (const item of items) {
@@ -750,9 +935,15 @@ function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
 
 /**
  * Методика → формат файла экспорта (CreateSurveyInput): ключи по номерам
- * пунктов, поправки по кодам. Общая точка для экспорта и для правок вида
- * «прочитать → изменить → сохранить новой версией» (локальные нормы).
- * Ожидает raw-представление (getSurvey(..., raw = true)).
+ * пунктов, поправки по кодам. Ожидает raw-представление
+ * (getSurvey(..., raw = true)).
+ *
+ * ТОЛЬКО для выгрузки наружу. Преобразование по назначению теряет то, что
+ * не должно или не может уехать в файл (локальные нормы, ссылки каскадов,
+ * секции, условия показа, обратный ключ), и «прочитать → изменить →
+ * сохранить новой версией» через него портит методику — так применение
+ * локальных норм и теряло всё это до волны 12. Правка своей же методики
+ * идёт через copyVersion.
  */
 export function surveyToDraft(survey: SurveyFull) {
   const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
@@ -809,6 +1000,13 @@ export function surveyToDraft(survey: SurveyFull) {
       validityThreshold: s.validityThreshold,
       validityDirection: s.validityDirection,
       validityMessage: s.validityMessage,
+      /*
+       * Своя доля ответов шкалы, ниже которой балл не вычисляется (участок
+       * engine, миграция 0101). Правило подсчёта, а не местная настройка:
+       * без него у получателя шкала считалась бы по общей доле. Приведение —
+       * до слияния с веткой engine, где поле есть в Scale.
+       */
+      minAnsweredShare: (s as { minAnsweredShare?: number | null }).minAnsweredShare ?? null,
       /*
        * Ключ выводится по номерам пунктов, а не в том порядке, в каком его
        * вернула база.

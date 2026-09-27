@@ -1347,6 +1347,13 @@ export const api = {
 
   consentText: () =>
     request<{ version: number; body: Record<string, string>; createdAt: string } | null>("/api/consents/text"),
+  /* своё согласие (кабинет): статус и принятие показанной редакции — 409, если текст обновился */
+  consentStatus: () =>
+    request<{ required: boolean; accepted: boolean; version: number | null; textId?: string | null; text: string | null }>(
+      "/api/consents/me",
+    ),
+  acceptConsent: (textId: string | null) =>
+    request<{ ok: true }>("/api/consents/me/accept", { method: "POST", body: JSON.stringify(textId ? { textId } : {}) }),
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
 
@@ -1670,11 +1677,19 @@ export const api = {
       }[];
       lead: string | null;
     }>("/api/messages"),
-  thread: (id: string) =>
+  /*
+   * Последние письма разговора; before — курсор к более ранним (nextBefore).
+   * Чтение ничего не помечает: «прочитано» — markRead по показанным.
+   */
+  thread: (id: string, before?: string | null) =>
     request<{
       id: string;
       items: { id: string; mine: boolean; text: string; sentAt: string; readAt: string | null }[];
-    }>(`/api/messages/${id}`),
+      hasMore: boolean;
+      nextBefore: string | null;
+    }>(`/api/messages/${id}${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  markRead: (id: string, ids: string[]) =>
+    request<{ marked: number }>(`/api/messages/${id}/read`, { method: "POST", body: JSON.stringify({ ids }) }),
   sendMessage: (input: { patientId?: string; text: string }) =>
     request<{ id: string; threadId: string }>("/api/messages", {
       method: "POST",
@@ -1959,7 +1974,19 @@ export const api = {
      * уходит с тем же id, и сервер узнает дубль, если первая попытка всё же
      * успела записаться (patient/outbox.ts).
      */
-    body: { startedAt: string; durationMs: number; answers: unknown[]; events: unknown[]; clientRequestId?: string },
+    /*
+     * versionId — версия, которую показали: ответы проверяются и считаются по
+     * ней, даже если методику обновили, пока человек отвечал или сдача
+     * ждала в очереди (routes/responses.ts, pinnedVersion).
+     */
+    body: {
+      startedAt: string;
+      durationMs: number;
+      answers: unknown[];
+      events: unknown[];
+      clientRequestId?: string;
+      versionId?: string | null;
+    },
   ) =>
     request<{ id: string; safetyPlan: string | null }>(`/api/surveys/${surveyId}/responses`, {
       method: "POST",

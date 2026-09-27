@@ -27,6 +27,7 @@ import {
 } from "../src/db/schema";
 import { setTransportForTests } from "../src/lib/notify";
 import {
+  alertShape,
   decide,
   observe,
   resetAlertPrune,
@@ -352,7 +353,19 @@ describe("форма истории оповещений: по дням и по 
   });
 
   test("месяц по всей таблице: пустые дни — нули, тестовое и старое не считаются", async () => {
-    const now = Date.now();
+    /*
+     * «Сейчас» — фиксированный полдень по Киеву, а не Date.now().
+     *
+     * С настоящим временем тест зависел от часов: в 23:21 по Киеву отметка
+     * «три дня назад плюс час» уезжала в следующие сутки, и счёт дня
+     * расходился с ожидаемым; в первые минуты после полуночи то же случилось
+     * бы с «минуту назад». От полудня до ближайшей границы суток двенадцать
+     * часов в обе стороны — ни одна отметка ниже до неё не дотягивается, и
+     * переход на летнее время (час) тоже. Форму считает alertShape с этим
+     * «сейчас»; маршрут ниже проверяет то, что от часов не зависит: длину
+     * периода и сам список.
+     */
+    const now = Date.UTC(2026, 8, 15, 9, 0); // 12:00 по Киеву (EEST)
     const DAY = 86_400_000;
     /*
      * Сдвиги — внутри тех же суток по поясу учреждения, что и опорная точка.
@@ -383,7 +396,10 @@ describe("форма истории оповещений: по дням и по 
 
     const res = await api<OpsAlertHistory>("/api/ops/alerts/history", root.token);
     expect(res.status).toBe(200);
-    const { daily, byRule, days } = res.body;
+    expect(res.body.days).toBe(30);
+    expect(res.body.daily).toHaveLength(30);
+
+    const { daily, byRule, days } = await alertShape(new Date(now));
     expect(days).toBe(30);
     expect(daily).toHaveLength(30);
     // сегодня — последним, по поясу учреждения

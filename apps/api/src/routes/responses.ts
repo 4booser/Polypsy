@@ -1,15 +1,31 @@
 import { bandFor, t } from "@quizzy/shared";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   submitResponseSchema,
   type Answer,
   type ResponseDetailBand,
   type ScoreResult,
+  type SurveyFull,
   type SurveyResponse,
+  type User,
 } from "@quizzy/shared";
 import { db } from "../db";
-import { answerEvents, answers, riskAlerts, responseScores, responses, scales, surveys, users } from "../db/schema";
+import { asSystem } from "../db/context";
+import {
+  answerEvents,
+  answers,
+  auditLog,
+  questions,
+  referrals,
+  riskAlerts,
+  responseScores,
+  responses,
+  scales,
+  surveyVersions,
+  surveys,
+  users,
+} from "../db/schema";
 import { attachToCase } from "../lib/alertCases";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
@@ -19,13 +35,265 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
-import { assertPatientAccess, assertPatientGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
+import {
+  accessiblePatientIds,
+  assertPatientAccess,
+  assertPatientGroupAccess,
+  assertSurveyAccess,
+  hasGrant,
+  isStaff,
+} from "../lib/scope";
+import { log } from "../lib/log";
+import { hasCurrentConsent } from "../lib/consent";
 import { fullNameOf } from "../lib/auth";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const responseRoutes = new Hono<AppEnv>();
 
 responseRoutes.use("*", requireAuth);
+
+/* ─────────── версия прохождения и право его сдать (волна 12, участок submit) ─────────── */
+
+/**
+ * Откуда известна версия, по которой считается прохождение.
+ *
+ *   client   — клиент прислал ту, что показывал (новые клиенты);
+ *   inferred — не прислал, но все отвеченные пункты принадлежат одной
+ *              версии этой методики: она и была на экране;
+ *   current  — не прислал и вывести не из чего (пусто или пункты разных
+ *              версий): считаем по действующей, как считали всегда;
+ *   invalid  — прислал версию, которой у этой методики нет.
+ */
+type VersionSource = "client" | "inferred" | "current" | "invalid";
+
+/**
+ * Версия методики, которую человек видел, — а не та, что действует сейчас.
+ *
+ * До волны 12 сервер брал действующую версию. Начатое прохождение ни к
+ * чему не было привязано: методику обновили, пока пациент отвечал или пока
+ * сдача ждала сети в офлайн-очереди, — и его ответы проверялись по чужим
+ * вопросам. Каждая версия заводит пункты с НОВЫМИ идентификаторами, поэтому
+ * исход был один из двух, оба плохие: 400 «не отвечен обязательный вопрос»
+ * на честно заполненную методику (и, до правки транзакции, потерянный
+ * черновик) — или, если обязательных нет, прохождение без единого ответа,
+ * посчитанное в нули. Клинический результат, которого человек не давал.
+ *
+ * Клиент без versionId — решение: ПРИНИМАТЬ. Такие клиенты уже стоят на
+ * телефонах, и их офлайн-очередь хранит сдачи, собранные до этой правки;
+ * отказ означал бы потерю ответов, которые человек честно дал. Но и
+ * «по действующей» вслепую не берём: версия выводится по идентификаторам
+ * отвеченных пунктов — они уникальны для версии, и если все они из одной,
+ * на экране была именно она. Только если вывести не из чего, считаем по
+ * действующей, как раньше. Какой путь сработал — в журнале сдачи
+ * (versionSource) и строкой лога: по ней видно, сколько старых клиентов ещё
+ * в ходу и когда подпорку можно снимать.
+ */
+async function pinnedVersion(
+  surveyId: string,
+  input: { versionId?: string | null; answers: { questionId: string }[] },
+): Promise<{ versionId: string | null; source: VersionSource }> {
+  if (input.versionId) {
+    const [own] = await db
+      .select({ id: surveyVersions.id })
+      .from(surveyVersions)
+      .where(and(eq(surveyVersions.id, input.versionId), eq(surveyVersions.surveyId, surveyId)));
+    return own ? { versionId: own.id, source: "client" } : { versionId: null, source: "invalid" };
+  }
+  const ids = [...new Set(input.answers.map((a) => a.questionId))];
+  if (!ids.length) return { versionId: null, source: "current" };
+  const found = await db
+    .selectDistinct({ versionId: questions.versionId })
+    .from(questions)
+    .where(and(eq(questions.surveyId, surveyId), inArray(questions.id, ids)));
+  return found.length === 1 ? { versionId: found[0]!.versionId, source: "inferred" } : { versionId: null, source: "current" };
+}
+
+/**
+ * Вправе ли человек сдавать эту методику — теми же правилами, что открывают её.
+ *
+ * Ограничение доступа проверялось только на чтении (routes/surveys.ts,
+ * GET /:id): закрытую методику пациенту отдают при действующем назначении.
+ * Сдача и черновик назначения не спрашивали. Пациент, сохранивший вопросы
+ * раньше, — открытая вкладка, офлайн-кэш телефона, — мог прислать результат
+ * после того, как назначение отозвали или оно истекло, и результат ложился в
+ * карту как ни в чём не бывало.
+ *
+ * Отказ — 403 с причиной, а не 404, как на чтении. Читающему незачем знать,
+ * что методика существует; сдающий её уже видел, и «не найдено» на
+ * методику, которую он только что заполнял, было бы неправдой. Причина
+ * нужна и очереди отправки: отказ по существу разбирает человек, и «строк
+ * призначення минув» он поймёт, а «не знайдено» — нет. Отказ — в журнал:
+ * сдача после отзыва — ровно то, что стоит найти потом.
+ *
+ * Сотрудник сдаёт то, с чем вправе работать (assertSurveyAccess) — как и
+ * открывает.
+ */
+async function assertMayTake(c: Context<AppEnv>, user: User, survey: SurveyFull): Promise<void> {
+  if (isStaff(user)) {
+    await assertSurveyAccess(user, survey.id);
+    return;
+  }
+  if (survey.visibility === "restricted" && !(await hasGrant(user.id, survey.id))) {
+    await audit(c, {
+      action: "access.denied",
+      outcome: "denied",
+      resourceType: "survey",
+      resourceId: survey.id,
+      subjectUserId: user.id,
+      details: { method: c.req.method, reason: "survey_grant_missing", path: c.req.path },
+    });
+    forbidden("err.surveyGrantEnded");
+  }
+}
+
+/**
+ * Информированное согласие — условие приёма ответов, а не только экран.
+ *
+ * Проверял его один экран приложения: прямой запрос, веб-кабинет (своего
+ * экрана согласия у него не было) и офлайн-очередь, досланная после отзыва
+ * согласия, сдавали ответы без него (волна 12). Ответы методики — ровно те
+ * данные, на обработку которых согласие и берётся, поэтому проверка здесь,
+ * на сдаче и черновике.
+ *
+ * Только для самого пациента. Заполнение за пациента специалистом — работа
+ * у койки по согласию, взятому очно, и у многих таких пациентов нет учётной
+ * записи, где его можно было бы принять; запереть это значило бы
+ * остановить приём. Сотрудник, проходящий методику сам, согласия пациента
+ * не даёт.
+ */
+async function assertConsent(c: Context<AppEnv>, user: User): Promise<void> {
+  if (isStaff(user) || (await hasCurrentConsent(user.id))) return;
+  await audit(c, {
+    action: "access.denied",
+    outcome: "denied",
+    resourceType: "consent",
+    resourceId: user.id,
+    subjectUserId: user.id,
+    details: { method: c.req.method, reason: "consent_missing", path: c.req.path },
+  });
+  forbidden("err.consentRequired");
+}
+
+/**
+ * Пациент в зоне сотрудника — или отказ со строкой журнала.
+ *
+ * Заполнение за пациента проверяло сотрудника, методику и существование
+ * пациента, но не саму зону видимости. А зона считается В ТОМ ЧИСЛЕ по
+ * прохождениям методик группы (lib/scope.ts, accessiblePatientIds): знания
+ * чужого идентификатора хватало, чтобы вписать человеку клинический
+ * результат — и тем самым втянуть его в свою зону, открыв себе карту.
+ *
+ * Проверка идёт ДО поиска пациента, и отказ один на «нет такого» и «не ваш»:
+ * иначе разница 404/403 отвечала бы на вопрос, есть ли в системе человек с
+ * этим идентификатором. Суперадмину (зона — все) ищется как прежде.
+ */
+async function assertMayFillFor(c: Context<AppEnv>, user: User, patientId: string, surveyId: string): Promise<void> {
+  const allowed = await accessiblePatientIds(user);
+  if (allowed === null || allowed.has(patientId)) return;
+  await audit(c, {
+    action: "access.denied",
+    outcome: "denied",
+    resourceType: "user",
+    resourceId: patientId,
+    subjectUserId: null,
+    details: { method: c.req.method, reason: "patient_out_of_scope", surveyId },
+  });
+  forbidden("err.onBehalfPatientOutOfScope");
+}
+
+/**
+ * Повтор той же попытки — или чужой идентификатор (волна 12, участок submit).
+ *
+ * Идемпотентный повтор искал прохождение по одному clientRequestId и
+ * отдавал найденное, не спрашивая, чьё оно: баллы, достоверность, план
+ * безопасности — любому, кто пришлёт тот же идентификатор. Идентификатор
+ * случайный, но он живёт в офлайн-очереди устройства и в логах клиента, и
+ * «знать строку» не должно значить «читать чужой результат».
+ *
+ * Своё — это та же методика и тот же обследуемый; а кто сдавал, если строка
+ * этого не говорит (заполнение за пациента, анонимная методика), записано
+ * только в журнале сдачи — там его и сверяем.
+ */
+async function isOwnAttempt(
+  existing: typeof responses.$inferSelect,
+  surveyId: string,
+  user: User,
+  onBehalfOf: string | null,
+): Promise<boolean> {
+  if (existing.surveyId !== surveyId) return false;
+  if (existing.userId !== null && existing.userId !== (onBehalfOf ?? user.id)) return false;
+  if (!onBehalfOf && existing.userId === user.id) return true;
+  // журнал закрыт пациенту политикой строк — сверка идёт системной ролью и отдаёт только «да/нет»
+  const [entry] = await asSystem(() =>
+    db
+      .select({ id: auditLog.id })
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.action, "response.submit"), eq(auditLog.resourceId, existing.id), eq(auditLog.actorId, user.id)),
+      )
+      .limit(1),
+  );
+  return Boolean(entry);
+}
+
+/**
+ * Тревоги черновика переезжают на сданное прохождение (волна 12, клиническое
+ * ревью).
+ *
+ * Автосохранение поднимает тревогу раньше сдачи — в этом весь смысл раннего
+ * сохранения: дежурный видит критический ответ, пока человек ещё отвечает,
+ * и может успеть выписать направление. Сдача же удаляла черновик, а
+ * risk_alerts.response_id стоял на каскадном удалении: сигнал исчезал из
+ * случая, у направления alertId становился NULL. Теперь внешний ключ не
+ * каскадный (миграция 0106), а сигналы черновика перед его удалением
+ * переносятся на итоговое прохождение.
+ *
+ * Если сдача подняла тот же сигнал заново (тот же пункт — в рамках
+ * прохождения он один, уникальный индекс), остаётся строка ЧЕРНОВИКА: на
+ * неё уже могли сослаться направление, уведомление, отметка «разобрано».
+ * Тяжесть берётся большая (понижать нельзя — как и при автосохранении),
+ * случай — тот, к которому сигнал привязала сдача: он открыт сейчас, и
+ * дежурный работает в нём. Направления, выписанные на черновик, тоже
+ * переходят на итоговое прохождение.
+ *
+ * Системной ролью: строки чужих таблиц (направления, уведомления) пациенту
+ * закрыты политиками, а переносит их автоматика поверх его отправки.
+ */
+async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<void> {
+  const moved = await db.select().from(riskAlerts).where(inArray(riskAlerts.responseId, draftIds));
+  await db.update(referrals).set({ responseId: finalId }).where(inArray(referrals.responseId, draftIds));
+  if (!moved.length) return;
+
+  const current = await db.select().from(riskAlerts).where(eq(riskAlerts.responseId, finalId));
+  const byQuestion = new Map(current.filter((a) => a.questionId).map((a) => [a.questionId!, a]));
+
+  for (const alert of moved.sort((a, b) => a.at.localeCompare(b.at))) {
+    const fresh = alert.questionId ? byQuestion.get(alert.questionId) : undefined;
+    if (!fresh) {
+      await db.update(riskAlerts).set({ responseId: finalId }).where(eq(riskAlerts.id, alert.id));
+      if (alert.questionId) byQuestion.set(alert.questionId, { ...alert, responseId: finalId });
+      continue;
+    }
+    const severe = alert.severity === "severe" || fresh.severity === "severe";
+    // ссылки на уходящую строку — на остающуюся: направления и уже отправленные уведомления
+    await db.update(referrals).set({ alertId: alert.id }).where(eq(referrals.alertId, fresh.id));
+    await db.execute(sql`
+      update alert_notifications set alert_id = ${alert.id}
+       where alert_id = ${fresh.id}
+         and kind not in (select kind from alert_notifications where alert_id = ${alert.id})`);
+    await db.delete(riskAlerts).where(eq(riskAlerts.id, fresh.id));
+    await db
+      .update(riskAlerts)
+      .set({
+        responseId: finalId,
+        caseId: fresh.caseId ?? alert.caseId,
+        severity: severe ? "severe" : "moderate",
+        label: alert.severity === "severe" || fresh.severity !== "severe" ? alert.label : fresh.label,
+      })
+      .where(eq(riskAlerts.id, alert.id));
+    byQuestion.set(alert.questionId!, { ...alert, responseId: finalId });
+  }
+}
 
 /** Отправка прохождения вместе с телеметрией по каждому вопросу */
 responseRoutes.post("/surveys/:id/responses", async (c) => {
@@ -39,9 +307,29 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
    * существующее прохождение вместо создания дубля.
    */
   if (input.clientRequestId) {
-    const existing = await db.query.responses.findFirst({
-      where: eq(responses.clientRequestId, input.clientRequestId),
-    });
+    /*
+     * Ищем мимо политик строк: чужая попытка, невидимая пациенту, иначе
+     * дошла бы до вставки и упала на уникальном индексе пятисоткой.
+     */
+    const requestId = input.clientRequestId;
+    const existing = await asSystem(() =>
+      db.query.responses.findFirst({ where: eq(responses.clientRequestId, requestId) }),
+    );
+    if (existing && !(await isOwnAttempt(existing, surveyId, user, input.onBehalfOf ?? null))) {
+      /*
+       * Отказ без подробностей: ни чьё прохождение, ни какой методики — всё
+       * это и есть то, чего спрашивающему знать не положено. В журнал —
+       * полностью: совпадение чужого идентификатора случайно не бывает.
+       */
+      await audit(c, {
+        action: "access.denied",
+        outcome: "denied",
+        resourceType: "survey",
+        resourceId: surveyId,
+        details: { method: c.req.method, reason: "client_request_foreign", responseId: existing.id },
+      });
+      conflict("err.clientRequestForeign");
+    }
     if (existing) {
       /*
        * Повтор отдаёт СОХРАНЁННЫЙ результат, а не пустой.
@@ -93,7 +381,13 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     }
   }
 
-  const survey = await getSurvey(surveyId, null, langOf(c));
+  /*
+   * Содержимое — той версии, которую человек видел (pinnedVersion);
+   * статус, архив, видимость и настройки — из строки методики как она есть
+   * сейчас: снятую с использования методику не сдают и по старой версии.
+   */
+  const pin = await pinnedVersion(surveyId, input);
+  const survey = await getSurvey(surveyId, pin.versionId, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
   if (survey.status !== "published") badRequest("err.surveyNotAvailableToTake");
   if (survey.archivedAt) badRequest("err.surveyArchived");
@@ -110,12 +404,30 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   if (input.onBehalfOf) {
     if (!isStaff(user)) forbidden("err.onBehalfStaffOnly");
     await assertSurveyAccess(user, surveyId);
+    await assertMayFillFor(c, user, input.onBehalfOf, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
     if (!subject) notFound("err.patientNotFound");
     if (subject.role !== "user") badRequest("err.onBehalfPatientOnly");
     subjectId = subject.id;
   } else if (survey.administration === "clinician") {
     badRequest("err.onBehalfRequired");
+  } else {
+    await assertMayTake(c, user, survey);
+    await assertConsent(c, user);
+  }
+
+  // версию проверяем после прав: иначе ответ «такой версии нет» рассказывал
+  // бы о версиях методики тому, кому её не открывали
+  if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
+  /*
+   * Выведенная версия — обычный путь старого клиента, и считается она верно:
+   * это сведение, а не тревога. Предупреждение — только когда вывести было не
+   * из чего и посчитали по действующей, как до правки.
+   */
+  if (pin.source === "inferred") {
+    log.info("response.version_inferred", { surveyId, versionId: survey.versionId });
+  } else if (pin.source === "current") {
+    log.warn("response.version_unpinned", { surveyId, versionId: survey.versionId });
   }
 
   if (!survey.allowRetake && !survey.anonymous) {
@@ -146,26 +458,33 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
     if (existing) conflict("err.alreadyTaken");
   }
 
-  // незавершённый черновик того же пользователя убираем: иначе он остался бы
-  // висеть как брошенное прохождение и портил статистику доходимости
-  if (!survey.anonymous) {
-    await db
-      .delete(responses)
-      .where(
-        and(
-          eq(responses.surveyId, surveyId),
-          eq(responses.userId, subjectId),
-          eq(responses.status, "in_progress"),
-        ),
-      );
-  }
+  /*
+   * Незавершённый черновик того же человека убирается — иначе он висел бы
+   * брошенным прохождением и портил статистику доходимости. Но ПОСЛЕ
+   * записи сдачи и после того, как его тревоги переехали на неё (см.
+   * adoptDraftAlerts): раньше черновик удалялся первым, и каскад уносил
+   * тревоги, поднятые автосохранением, — случай оставался без сигналов, а
+   * направление, выписанное по такой тревоге, теряло ссылку на неё.
+   */
+  const drafts = survey.anonymous
+    ? []
+    : await db
+        .select({ id: responses.id })
+        .from(responses)
+        .where(
+          and(
+            eq(responses.surveyId, surveyId),
+            eq(responses.userId, subjectId),
+            eq(responses.status, "in_progress"),
+          ),
+        );
 
   const subject =
     subjectId === user.id
       ? { id: user.id, sex: user.sex, birthDate: user.birthDate }
       : (await db.query.users.findFirst({ where: eq(users.id, subjectId) }))!;
 
-  const { responseId, submittedAt, scores, profile, risk, cascade } = await persistSubmission(
+  const persisted = await persistSubmission(
     survey,
     subject,
     input,
@@ -179,6 +498,13 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
      */
     { filledBySelf: subjectId === user.id, lang: survey.contentLang ?? langOf(c) },
   );
+  const { responseId, submittedAt, scores, profile, risk, cascade } = persisted;
+
+  if (drafts.length) {
+    const draftIds = drafts.map((d) => d.id);
+    await asSystem(() => adoptDraftAlerts(draftIds, responseId));
+    await db.delete(responses).where(inArray(responses.id, draftIds));
+  }
 
   await audit(c, {
     action: "response.submit",
@@ -192,6 +518,11 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
       events: input.events.length,
       // кто именно внёс данные, если заполнял специалист
       filledBy: subjectId === user.id ? null : user.email,
+      // по какой версии посчитано и откуда она известна — см. pinnedVersion
+      versionId: survey.versionId,
+      versionSource: pin.source,
+      // сколько ответов на скрытые условием пункты движок отбросил до подсчёта
+      hiddenDropped: persisted.hiddenDropped.length,
     },
   });
 
@@ -244,11 +575,17 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   const surveyId = c.req.param("id");
   const input = await parseBody(c.req.raw, draftSchema);
 
-  const survey = await getSurvey(surveyId, null, langOf(c));
+  // та же версия и те же права, что у сдачи: черновик — начало той же сдачи
+  const pin = await pinnedVersion(surveyId, input);
+  const survey = await getSurvey(surveyId, pin.versionId, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
   if (survey.status !== "published") badRequest("err.surveyNotAvailable");
   if (survey.archivedAt) badRequest("err.surveyArchived");
   if (survey.anonymous) badRequest("err.anonymousNoDraft");
+  if (survey.administration !== "self" && !isStaff(user)) forbidden("err.staffFillsOnly");
+  await assertMayTake(c, user, survey);
+  await assertConsent(c, user);
+  if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
 
   const existing = await db.query.responses.findFirst({
     where: and(
@@ -264,8 +601,13 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
 
   await db.transaction(async (tx) => {
     if (existing) {
+      /*
+       * Версия черновика следует за клиентом: ответы перезаписываются
+       * целиком, и если человек начал заново на новой версии, черновик
+       * обязан помнить новую — иначе продолжение открыло бы старую.
+       */
       await tx.update(responses)
-        .set({ durationMs: input.durationMs, lastSavedAt: now })
+        .set({ durationMs: input.durationMs, lastSavedAt: now, versionId: survey.versionId })
         .where(eq(responses.id, responseId));
       await tx.delete(answers).where(eq(answers.responseId, responseId));
     } else {
@@ -322,10 +664,12 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
        * уникальный ключ, так что вторая тревога не появится, а случай
        * найдёт открытым attachToCase под своей блокировкой.
        */
-      const prior = await tx.query.riskAlerts.findFirst({
-        where: and(eq(riskAlerts.responseId, responseId), eq(riskAlerts.questionId, risk.questionId)),
-        columns: { id: true, severity: true },
-      });
+      const prior = await asSystem(() =>
+        tx.query.riskAlerts.findFirst({
+          where: and(eq(riskAlerts.responseId, responseId), eq(riskAlerts.questionId, risk.questionId)),
+          columns: { id: true, severity: true },
+        }),
+      );
       const upgrade = !!prior && prior.severity !== "severe" && risk.severity === "severe";
       if (prior && !upgrade) {
         /*
@@ -334,7 +678,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
          * уйти в работу. Умеренный остаётся умеренным со свежей подписью.
          */
         if (prior.severity !== "severe") {
-          await tx.update(riskAlerts).set({ label: risk.label, at: now }).where(eq(riskAlerts.id, prior.id));
+          await asSystem(() => tx.update(riskAlerts).set({ label: risk.label, at: now }).where(eq(riskAlerts.id, prior.id)));
         }
         continue;
       }
@@ -346,21 +690,34 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
         at: now,
       });
       if (prior) {
-        await tx
-          .update(riskAlerts)
-          .set({
-            label: risk.label,
-            severity: risk.severity,
-            at: now,
-            caseId,
-            acknowledgedAt: null,
-            acknowledgedBy: null,
-            outcome: null,
-          })
-          .where(eq(riskAlerts.id, prior.id));
+        await asSystem(() =>
+          tx
+            .update(riskAlerts)
+            .set({
+              label: risk.label,
+              severity: risk.severity,
+              at: now,
+              caseId,
+              acknowledgedAt: null,
+              acknowledgedBy: null,
+              outcome: null,
+            })
+            .where(eq(riskAlerts.id, prior.id)),
+        );
         continue;
       }
-      await tx.insert(riskAlerts)
+      /*
+       * Системной ролью, как и случай выше (attachToCase) и тревоги сдачи.
+       * Пациенту политика risk_alerts разрешает вставку, но не чтение и не
+       * правку, а вставка с ON CONFLICT DO UPDATE требует обоих: под боевой
+       * ролью базы автосохранение с критическим ответом падало пятисоткой —
+       * черновик не сохранялся вовсе, а ранняя тревога не поднималась
+       * никогда (волна 12, найдено тестом под боевой ролью). По той же
+       * причине системной ролью читается и прежняя тревога черновика выше:
+       * под ролью пациента она была бы невидима, и повышение до тяжёлой не
+       * срабатывало бы никогда.
+       */
+      await asSystem(() => tx.insert(riskAlerts)
         .values({
           id: crypto.randomUUID(),
           responseId,
@@ -382,7 +739,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           target: [riskAlerts.responseId, riskAlerts.questionId],
           set: { label: risk.label, severity: risk.severity, at: now },
           setWhere: sql`${riskAlerts.severity} <> 'severe'`,
-        });
+        }));
     }
   });
 
@@ -404,6 +761,8 @@ responseRoutes.get("/surveys/:id/draft", async (c) => {
   const rows = await db.select().from(answers).where(eq(answers.responseId, draft.id));
   return c.json({
     id: draft.id,
+    // версия, на которой черновик начат: продолжать и сдавать — по ней
+    versionId: draft.versionId,
     startedAt: draft.startedAt,
     lastSavedAt: draft.lastSavedAt,
     durationMs: draft.durationMs,

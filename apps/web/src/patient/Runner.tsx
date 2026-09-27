@@ -197,6 +197,8 @@ export default function Runner() {
                 visitCount: 1,
               }));
             const body = {
+              // версия, которую показали: очередь может досылать сдачу, когда действует уже другая
+              versionId: survey.versionId,
               startedAt,
               durationMs: Date.now() - new Date(startedAt).getTime(),
               answers: payload as never,

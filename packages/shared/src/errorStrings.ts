@@ -111,6 +111,16 @@ export const ERRORS = {
     ru: "Текст согласия не настроен",
     en: "The consent text hasn’t been set up",
   },
+  "err.consentTextChanged": {
+    uk: "Текст згоди змінився, поки ви його читали. Прочитайте нову редакцію",
+    ru: "Текст согласия изменился, пока вы его читали. Прочитайте новую редакцию",
+    en: "The consent text changed while you were reading it. Please read the new version",
+  },
+  "err.consentRequired": {
+    uk: "Спершу прийміть інформовану згоду — без неї відповіді не приймаються",
+    ru: "Сначала примите информированное согласие — без него ответы не принимаются",
+    en: "Please accept the informed consent first — answers can’t be accepted without it",
+  },
   "err.deviceNotFound": { uk: "Пристрій не знайдено", ru: "Устройство не найдено", en: "Device not found" },
   "err.deviceNotFoundOrWiped": {
     uk: "Пристрій не знайдено або вже стерто",
@@ -173,6 +183,11 @@ export const ERRORS = {
     uk: "Для цієї методики потрібно вказати пацієнта, за якого вона заповнюється",
     ru: "Для этой методики нужно указать пациента, за которого она заполняется",
     en: "This assessment requires you to specify the patient it’s being filled in for",
+  },
+  "err.onBehalfPatientOutOfScope": {
+    uk: "Цей пацієнт поза вашою зоною відповідальності — заповнити за нього не можна",
+    ru: "Этот пациент вне вашей зоны ответственности — заполнить за него нельзя",
+    en: "This patient is outside your area of responsibility — you can’t fill this in for them",
   },
   "err.onBehalfStaffOnly": {
     uk: "Заповнювати за іншу людину може лише співробітник",
@@ -270,6 +285,21 @@ export const ERRORS = {
     en: "The assessment can’t be published: {count} structural errors. {details}",
   },
   "err.surveyVersionNotFound": { uk: "Версію не знайдено", ru: "Версия не найдена", en: "Version not found" },
+  "err.surveyVersionInvalid": {
+    uk: "Відповіді відправлено до версії, якої в цієї методики немає",
+    ru: "Ответы отправлены к версии, которой у этой методики нет",
+    en: "The answers were sent for a version this assessment doesn’t have",
+  },
+  "err.clientRequestForeign": {
+    uk: "Ця спроба не збігається з отриманою раніше — відповіді не прийнято",
+    ru: "Эта попытка не совпадает с уже полученной — ответы не приняты",
+    en: "This attempt doesn’t match the one already received — the answers weren’t accepted",
+  },
+  "err.surveyGrantEnded": {
+    uk: "Доступ до методики закрито: призначення відкликали або його строк минув. Відповіді не прийнято",
+    ru: "Доступ к методике закрыт: назначение отозвали или его срок истёк. Ответы не приняты",
+    en: "Access to this assessment has ended: the assignment was withdrawn or has expired. The answers weren’t accepted",
+  },
   /*
    * Папки методик — полки каталога внутри группы. Отказы названы по папке,
    * а не по группе: «Групу не знайдено» на экране каталога отправило бы
