@@ -3047,6 +3047,12 @@ export const visitRecordings = pgTable(
      */
     audioPath: text("audio_path"),
     audioBytes: integer("audio_bytes"),
+    /**
+     * Ключ отправки аудио: его придумывает клиент один раз на запись и шлёт с
+     * каждой попыткой. По нему повтор после потерянного ответа узнаётся и
+     * подтверждается, а не отклоняется как «запись не идёт» (миграция 0104).
+     */
+    uploadId: text("upload_id"),
 
     /** Расшифровка. Шифруется как остальные клинические записи */
     transcriptEnc: text("transcript_enc"),
