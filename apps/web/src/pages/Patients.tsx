@@ -555,7 +555,7 @@ export function PatientDynamics() {
   const { ut } = useLang();
   const [equating, setEquating] = useState(false);
   const { userId } = useParams<{ userId: string }>();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const { data, error } = useResource(() => api.dynamics(userId!), [userId], { enabled: !!userId });
 
   if (error) return <p className="error">{error}</p>;
@@ -684,7 +684,7 @@ export function PatientDynamics() {
                     </table>
                   ) : null}
                   {last ? (
-                    <button style={{ marginTop: 10 }} onClick={() => run(() => openInTab(api.reportUrl(last.responseId)))}>
+                    <button disabled={busy} style={{ marginTop: 10 }} onClick={() => run(() => openInTab(api.reportUrl(last.responseId)))}>
                       {ut("an.conclusion")}
                     </button>
                   ) : null}

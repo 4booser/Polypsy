@@ -6,6 +6,8 @@ import {
   CLEAR_NARROWING,
   emptyQueueKey,
   hasNarrowing,
+  ownGroupsOf,
+  queueGate,
   queueQuery,
   readFilters,
   statusPatch,
@@ -131,9 +133,43 @@ describe("группа пациентов из чужой ссылки", () => {
     expect(foreign.severity).toBe("severe");
   });
 
-  test("пока свои группы не известны (в пути или не пришли) — группа применяется как есть", () => {
+  test("свои группы не пришли вовсе (отказ, нет права) — группа применяется как есть, решает сервер", () => {
     const f = fromUrl(`patientGroup=${G2}`);
     expect(withOwnGroup(f, null).patientGroup).toBe(G2);
+    expect(queueGate(f, null)).toEqual({ filters: f, ready: true });
+  });
+
+  test("пока свои группы в пути — запрос с группой не уходит (w14:webtails)", () => {
+    /*
+     * Было: до прихода списка групп чужая группа уходила на сервер как есть,
+     * и на месте очереди вспыхивал 404. Теперь список очереди выключен,
+     * пока не станет известно, своя ли группа.
+     */
+    const f = fromUrl(`patientGroup=${G2}&severity=severe`);
+    expect(queueGate(f, "pending")).toEqual({ filters: f, ready: false });
+    // пришли — чужая снята, остальной отбор цел, идти можно
+    const foreign = queueGate(f, [G1]);
+    expect(foreign.ready).toBe(true);
+    expect(foreign.filters.patientGroup).toBe("");
+    expect(foreign.filters.severity).toBe("severe");
+    // своя — применяется
+    expect(queueGate(f, [G1, G2])).toEqual({ filters: f, ready: true });
+  });
+
+  test("без группы в адресе очередь списка групп не ждёт", () => {
+    const f = fromUrl("severity=severe");
+    expect(queueGate(f, "pending")).toEqual({ filters: f, ready: true });
+  });
+
+  test("«в пути» и «не пришли» различаются по времени ответа, а не по данным", () => {
+    // ответа не было — в пути
+    expect(ownGroupsOf({ data: null, updatedAt: null })).toBe("pending");
+    // ответ был, и это отказ, превращённый загрузкой в null
+    expect(ownGroupsOf({ data: null, updatedAt: 1 })).toBeNull();
+    // пришёл список, в том числе пустой: «своих групп нет» — это знание, а не ожидание
+    expect(ownGroupsOf({ data: [{ id: G1 }], updatedAt: 1 })).toEqual([G1]);
+    expect(ownGroupsOf({ data: [], updatedAt: 1 })).toEqual([]);
+    expect(queueGate(fromUrl(`patientGroup=${G2}`), ownGroupsOf({ data: [], updatedAt: 1 })).filters.patientGroup).toBe("");
   });
 
   test("без группы в адресе отбор не меняется вовсе — тот же объект", () => {
@@ -141,9 +177,10 @@ describe("группа пациентов из чужой ссылки", () => {
     expect(withOwnGroup(f, [G1])).toBe(f);
   });
 
-  test("экран проводит отбор через withOwnGroup, а свои группы при отказе — null, а не пустой список", () => {
+  test("экран проводит отбор через queueGate, выключает список до прихода групп, а свои группы при отказе — null", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/pages/Alerts.tsx"), "utf8");
-    expect(src).toMatch(/withOwnGroup\(\s*readFilters\(/);
+    expect(src).toMatch(/queueGate\(\s*readFilters\([^;]*ownGroupsOf\(groupsRes\)\)/);
+    expect(src).toMatch(/usePagedResource<AlertCase, AlertCasePage>\([\s\S]*?enabled: gate\.ready[\s\S]*?\);/);
     expect(src).toContain("api.patientGroups().catch(() => null)");
   });
 });
