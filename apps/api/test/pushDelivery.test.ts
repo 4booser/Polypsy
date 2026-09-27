@@ -166,6 +166,14 @@ async function clinic() {
   await db.insert(specialistProfiles).values({ userId: specialistId, departmentId }).onConflictDoNothing();
 }
 
+/*
+ * Одна отметка «сейчас» на весь файл: слоты считаются от неё, а не от
+ * своего Date.now(). Иначе полчаса «через 21,5 часа», созданные на долю
+ * секунды позже, задевают слот «через 22 часа» из соседнего теста — и
+ * ограничение базы slots_open_no_overlap (участок clinic) их не пускает.
+ */
+const SLOT_BASE = Math.floor(Date.now() / 60_000) * 60_000 + 60_000;
+
 async function slotAt(hoursAhead: number): Promise<string> {
   await clinic();
   const id = crypto.randomUUID();
@@ -173,8 +181,13 @@ async function slotAt(hoursAhead: number): Promise<string> {
     id,
     specialistId,
     departmentId,
-    startsAt: new Date(Date.now() + hoursAhead * 3600_000).toISOString(),
-    endsAt: new Date(Date.now() + (hoursAhead + 1) * 3600_000).toISOString(),
+    startsAt: new Date(SLOT_BASE + hoursAhead * 3600_000).toISOString(),
+    /*
+     * Полчаса, а не час: у специалиста открытые слоты не пересекаются
+     * (ограничение базы slots_open_no_overlap, участок clinic), а тесты ниже
+     * ставят приёмы через полчаса друг от друга.
+     */
+    endsAt: new Date(SLOT_BASE + (hoursAhead + 0.5) * 3600_000).toISOString(),
     kind: "any",
   });
   return id;
@@ -270,7 +283,8 @@ describe("пачка не застревает на тех, кому слать 
         specialistId,
         departmentId,
         startsAt: new Date(r.at).toISOString(),
-        endsAt: new Date(r.at + 30 * 60_000).toISOString(),
+        // встык, по минуте: слоты одного специалиста не пересекаются (slots_open_no_overlap)
+        endsAt: new Date(r.at + 60_000).toISOString(),
         kind: "any" as const,
       })),
     );

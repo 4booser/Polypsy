@@ -170,6 +170,8 @@ for (let i = 0; i < 32; i++) {
     startedAt: at,
     submittedAt: at,
     durationMs: 1000,
+    // пол на момент сдачи: кандидаты норм считаются по нему, а не по карточке (участок stats)
+    respondentSex: "male",
   });
   const common = { value: 0, normalization: "raw" as const, maxScore: 10, percent: 0, normalized: false };
   await db.insert(responseScores).values([

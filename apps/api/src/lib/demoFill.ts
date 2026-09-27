@@ -1,6 +1,7 @@
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
+  alertCases,
   appointments,
   batteries,
   batteryAssignments,
@@ -13,6 +14,7 @@ import {
   messages,
   referrals,
   responses,
+  riskAlerts,
   roles,
   scheduleTemplates,
   slots,
@@ -846,6 +848,19 @@ export async function purgeDemoData(): Promise<number> {
   await db.delete(referrals).where(sql`${referrals.userId} in ${demo} or ${referrals.createdBy} in ${demo}`);
   // наборы вымышленного автора — проверено выше, что назначены они только вымышленным
   await db.delete(batteries).where(sql`${batteries.createdBy} in ${demo}`);
+  /*
+   * Тревоги вымышленных — явно и до их прохождений. С волны 12
+   * risk_alerts.response_id стоит на RESTRICT (0106: тревога не должна
+   * исчезать каскадом вместе с удалённым черновиком), и удаление прохождений
+   * ниже упёрлось бы в неё. Случаи — следом: случай без сигналов в очереди
+   * ни к чему, а risk_alerts.case_id (0107) не даёт снести случай раньше.
+   */
+  await db
+    .delete(riskAlerts)
+    .where(
+      sql`${riskAlerts.userId} in ${demo} or ${riskAlerts.responseId} in (select id from responses where user_id in ${demo})`,
+    );
+  await db.delete(alertCases).where(inArray(alertCases.userId, ids));
   const removedResponses = await db
     .delete(responses)
     .where(inArray(responses.userId, ids))
