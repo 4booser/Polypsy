@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { serverText, t, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
 import { batteries, batteryAssignments, batteryItems, responses, surveys } from "../db/schema";
@@ -37,11 +38,14 @@ export function isOverdue(assignment: { dueAt: string | null }, now: Date): bool
  * результату скрининга · пропущено: …» говорит и откуда назначение взялось,
  * и чем кончилось. Зовётся в той же транзакции, что и выдача нового:
  * уникальный индекс не пустит новое, пока старое открыто.
+ *
+ * `missed` — готовая пометка-код (noteCode, note.missed.*): у каждого пути
+ * своя причина, а фразой её сделает показ, на языке смотрящего.
  */
 export async function closeMissed(
   tx: Pick<typeof Db, "update">,
   ids: readonly string[],
-  reason: string,
+  missed: string,
   now: Date,
 ): Promise<void> {
   if (!ids.length) return;
@@ -49,7 +53,7 @@ export async function closeMissed(
     .update(batteryAssignments)
     .set({
       cancelledAt: now.toISOString(),
-      note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${`пропущено: ${reason}`}::text)`,
+      note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${missed}::text)`,
     })
     .where(inArray(batteryAssignments.id, [...ids]));
 }
@@ -134,11 +138,17 @@ export async function closeCompletedBatteries(userId: string | null, surveyId: s
  * Проверяются только методики, которые обследуемый заполняет сам. Специалист
  * не ограничивается: у него бывают причины идти не по порядку, и он отвечает
  * за это осознанно.
+ *
+ * `lang` — язык содержимого, на котором человек видит методики: на нём и
+ * название той, что надо пройти раньше. Прежде название бралось русским
+ * всегда, и украинский экран отказывал словами «сначала пройдите …» с
+ * русским названием методики, которую человек только что видел по-украински.
  */
 export async function assertBatteryOrder(
   userId: string | null,
   surveyId: string,
   filledBySelf: boolean,
+  lang: Lang = "uk",
 ): Promise<void> {
   if (!userId || !filledBySelf) return;
 
@@ -193,8 +203,8 @@ export async function assertBatteryOrder(
       .select({ title: surveys.title })
       .from(surveys)
       .where(eq(surveys.id, blocking.item.surveyId));
-    const title =
-      typeof row?.title === "string" ? row.title : ((row?.title as { ru?: string })?.ru ?? "предыдущая методика");
+    // названия нет (строки не нашлось) — запасное слово на том же языке, что и название, которое оно заменяет
+    const title = row ? t(row.title as never, lang) : serverText("battery.previousSurvey", lang);
     badRequest("err.batteryStrictOrder", { battery: battery.title, title });
   }
 }

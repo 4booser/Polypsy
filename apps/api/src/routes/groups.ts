@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { groupInputSchema, type GroupAdmin, type SurveyGroupWithCounts } from "@quizzy/shared";
+import { groupInputSchema, serverText, type GroupAdmin, type SurveyGroupWithCounts } from "@quizzy/shared";
 import { db } from "../db";
 import { groupAdmins, surveyGroups, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { hasPermission } from "../lib/permissions";
 import { accessibleGroupIds, assertGroupAccess } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -261,10 +261,12 @@ groupRoutes.delete("/:id", requirePermission("groups.manage"), async (c) => {
     })
     .from(sql`(select 1) as _`);
 
+  // перечень — на языке отказа: он встаёт в «{details}» фразы, собранной на языке запроса
+  const lang = langOf(c);
   const inside: string[] = [];
-  if (counts?.surveys) inside.push(`методик: ${counts.surveys}`);
-  if (counts?.batteries) inside.push(`батарей: ${counts.batteries}`);
-  if (counts?.rules) inside.push(`правил поддержки решений: ${counts.rules}`);
+  if (counts?.surveys) inside.push(serverText("inside.surveys", lang, { n: counts.surveys }));
+  if (counts?.batteries) inside.push(serverText("inside.batteries", lang, { n: counts.batteries }));
+  if (counts?.rules) inside.push(serverText("inside.rules", lang, { n: counts.rules }));
   if (inside.length) {
     badRequest("err.groupNotEmpty", { details: inside.join(", ") });
   }

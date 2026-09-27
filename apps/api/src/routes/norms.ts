@@ -4,12 +4,12 @@ import { MIN_GROUP, normCandidates } from "../lib/normCandidates";
 import { patientRespondent } from "../lib/population";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { ageAt, quantile } from "@quizzy/shared";
+import { ageAt, noteCode, quantile, type Lang } from "@quizzy/shared";
 import { db } from "../db";
 import { responseScores, responses, scales, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { badRequest, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { copyVersion, getSurvey, type NormValues } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -33,21 +33,26 @@ normRoutes.use("*", requireAuth, requireStaff, requirePermission("norms.manage")
  * сдачи, почему без недостоверных протоколов и почему только версии, где
  * сырой балл шкалы считается так же, как в действующей. Здесь — только
  * вход: действующая версия и способ достать прежние.
+ *
+ * Язык — запроса: на нём названия шкал и источники нынешних норм, которые
+ * видит экран «Локальні норми» (источник локальной нормы хранится кодом и
+ * становится фразой в getSurvey). Прежде здесь стоял русский при любом
+ * языке интерфейса. На сами числа язык не влияет.
  */
-async function candidateReport(surveyId: string) {
-  const survey = await getSurvey(surveyId, null, "ru");
+async function candidateReport(surveyId: string, lang: Lang) {
+  const survey = await getSurvey(surveyId, null, lang);
   if (!survey) notFound("err.surveyNotFound");
-  return normCandidates(surveyId, survey, (versionId) => getSurvey(surveyId, versionId, "ru"));
+  return normCandidates(surveyId, survey, (versionId) => getSurvey(surveyId, versionId, lang));
 }
 
-async function candidateStats(surveyId: string) {
-  return (await candidateReport(surveyId)).scales;
+async function candidateStats(surveyId: string, lang: Lang) {
+  return (await candidateReport(surveyId, lang)).scales;
 }
 
 normRoutes.get("/surveys/:id/candidates", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const report = await candidateReport(surveyId);
+  const report = await candidateReport(surveyId, langOf(c));
   return c.json({ minGroup: MIN_GROUP, unreliable: report.unreliable, scales: report.scales });
 });
 
@@ -66,7 +71,7 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
   await assertSurveyAccess(c.get("user"), surveyId);
   const input = await parseBody(c.req.raw, applySchema);
 
-  const stats = await candidateStats(surveyId);
+  const stats = await candidateStats(surveyId, langOf(c));
   const byCode = new Map(stats.map((s) => [s.code, s]));
   for (const code of input.scaleCodes) {
     const stat = byCode.get(code);
@@ -91,7 +96,13 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
    * месте (mergeNorms), а не пропадает вместе с экспортным фильтром.
    */
   const today = new Date().toISOString().slice(0, 10);
-  const versionId = await copyVersion(surveyId, user.id, `Локальные нормы: ${input.scaleCodes.join(", ")}`, {
+  /*
+   * Заметка версии и источник нормы — кодом (noteCode): их читают на любом
+   * языке — история версий, экран норм, словарь выгрузки. Источник к тому же
+   * признак: по коду локальную норму не выгружают в файл методики
+   * (isLocalNormSource, lib/surveys.ts).
+   */
+  const versionId = await copyVersion(surveyId, user.id, noteCode("note.localNorms", { scales: input.scaleCodes.join(", ") }), {
     norms: (code, current) => {
       if (!input.scaleCodes.includes(code)) return undefined;
       const stat = byCode.get(code)!;
@@ -103,7 +114,7 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
           ageMax: null,
           mean: g.mean,
           sd: g.sd,
-          source: `локальная выборка, N=${g.n}, ${today}`,
+          source: noteCode("note.localSample", { n: g.n, date: today }),
         }));
       // локальные нормы дополняют, а не заменяют — см. mergeNorms в lib/norms.ts
       return mergeNorms(current, fresh);
@@ -134,7 +145,7 @@ const PERCENTILES = [0.1, 0.25, 0.5, 0.75, 0.9] as const;
 normRoutes.get("/surveys/:id/age-curves", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const survey = await getSurvey(surveyId, null, "ru");
+  const survey = await getSurvey(surveyId, null, langOf(c));
   if (!survey) notFound("err.surveyNotFound");
 
   const rows = await db

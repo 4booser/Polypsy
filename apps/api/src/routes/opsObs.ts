@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { OpsReleaseCompare, OpsReleases, OpsStatementPlan, OpsStatements, OpsTrace } from "@quizzy/shared";
 import { audit } from "../lib/audit";
-import { badRequestDetail, parseQuery } from "../lib/http";
+import { badRequest, parseQuery } from "../lib/http";
 import { compareReleases, listReleases } from "../lib/opsReleases";
 import { collectStatements, explainStatement } from "../lib/opsStatements";
 import { collectTrace } from "../lib/opsTrace";
@@ -32,7 +32,7 @@ const requestIdParam = z.string().min(4).max(64).regex(/^[A-Za-z0-9._:-]+$/);
 
 opsObsRoutes.get("/trace/:requestId", async (c) => {
   const parsed = requestIdParam.safeParse(c.req.param("requestId"));
-  if (!parsed.success) badRequestDetail("requestId: 4–64 знака из букв, цифр и «._:-»");
+  if (!parsed.success) badRequest("err.v.requestId", { field: "requestId" });
   const body: OpsTrace = await collectTrace(parsed.data);
   /*
    * Чтение трассы — в журнал, каждое, без склейки: это не опрос ленты, а

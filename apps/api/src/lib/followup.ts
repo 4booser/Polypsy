@@ -1,4 +1,5 @@
 import { and, asc, eq, isNull, lte } from "drizzle-orm";
+import { noteCode, notePrefix } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { surveyFollowups, users } from "../db/schema";
@@ -25,8 +26,19 @@ import { parseTs } from "./time";
  * человеку, и однажды его перепишут. Колонка — это миграция и правка
  * каскада; общая константа держит две стороны вместе уже сейчас и не мешает
  * завести колонку потом.
+ *
+ * С волны 14 примечание пишется кодом (noteCode): его читают на любом языке
+ * (список назначенных в «Доступі»), и русская фраза стояла там на
+ * украинском и английском экранах. Узнаётся повтор по началу кода — и по
+ * прежнему русскому началу у выданных до кодов: переписывать их незачем,
+ * а потерять из очереди нельзя.
  */
-export const FOLLOWUP_NOTE = "Протокол наблюдения";
+export function followupNote(days: number): string {
+  return noteCode("note.followup", { days });
+}
+
+/** Начала примечания, по которым очередь работы узнаёт повтор: код и запись до кодов */
+export const FOLLOWUP_NOTE_PREFIXES: readonly string[] = [notePrefix("note.followup"), "Протокол наблюдения"];
 
 /* ─── окна повторов (участок delivery, волна 12, миграция 0103) ─── */
 
@@ -124,7 +136,7 @@ export async function openFollowUps(now = new Date()): Promise<number> {
             userId: f.userId,
             grantedBy: f.userId,
             expiresAt: f.closesAt,
-            note: `${FOLLOWUP_NOTE}: повтор через ${f.afterDays} дн.`,
+            note: followupNote(f.afterDays),
           },
         ]);
         await db

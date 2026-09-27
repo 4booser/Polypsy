@@ -15,6 +15,7 @@ import {
   stenRows,
 } from "../src/db/schema";
 import { inArray } from "drizzle-orm";
+import { renderNote } from "@quizzy/shared";
 import { copyVersion } from "../src/lib/surveys";
 
 /**
@@ -264,7 +265,9 @@ describe("применение локальных норм", () => {
     const afterT = normsOf(after, "T");
 
     // нормы T: мужская — своя выборка, женская — из пособия (выборки нет)
-    expect(afterT.some((n) => n.includes('"sex":"male"') && n.includes("локальная выборка, N=32"))).toBe(true);
+    // источник локальной нормы хранится кодом (волна 14); по-русски — прежними словами
+    const localSource = (n: string) => renderNote((JSON.parse(n) as { source: string | null }).source, "ru") ?? "";
+    expect(afterT.some((n) => n.includes('"sex":"male"') && localSource(n).startsWith("локальная выборка, N=32"))).toBe(true);
     expect(afterT.some((n) => n.includes('"sex":"female"') && n.includes("Посібник"))).toBe(true);
     expect(afterT.some((n) => n.includes('"sex":"male"') && n.includes("Посібник"))).toBe(false);
     expect(afterT).not.toEqual(beforeT);

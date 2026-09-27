@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { t, type WorkKind } from "@quizzy/shared";
+import { serverText, t, type WorkKind } from "@quizzy/shared";
 import { db } from "../db";
 import {
   appointments,
@@ -16,7 +16,7 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
-import { FOLLOWUP_NOTE } from "../lib/followup";
+import { FOLLOWUP_NOTE_PREFIXES } from "../lib/followup";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
 import { langOf } from "../lib/http";
@@ -190,7 +190,7 @@ worklistRoutes.get("/", async (c) => {
       userId: r.a.patientId,
       userName: fullNameOf(r as never),
       unit: r.unit,
-      title: t({ uk: "Не прийшов на прийом", ru: "Не пришёл на приём" } as never, lang),
+      title: serverText("wl.noShow", lang),
       signals: Number(r.streak),
       days: Math.max(0, Math.round((now - new Date(r.slot.startsAt).getTime()) / 86_400_000)),
       /*
@@ -247,7 +247,7 @@ worklistRoutes.get("/", async (c) => {
       userId: r.thread.patientId,
       userName: fullNameOf(r as never),
       unit: r.unit,
-      title: t({ uk: "Непрочитане повідомлення", ru: "Непрочитанное сообщение" } as never, lang),
+      title: serverText("wl.unread", lang),
       signals: Number(r.unread),
       days: waitingDays,
       /*
@@ -464,7 +464,7 @@ worklistRoutes.get("/", async (c) => {
       and(
         isNotNull(surveyAccess.expiresAt),
         lt(surveyAccess.expiresAt, new Date().toISOString()),
-        sql`${surveyAccess.note} like ${`${FOLLOWUP_NOTE}%`}`,
+        or(...FOLLOWUP_NOTE_PREFIXES.map((p) => sql`${surveyAccess.note} like ${`${p}%`}`)),
         followupScope,
         // повтора так и не было: последнее прохождение раньше выдачи доступа
         sql`not exists (

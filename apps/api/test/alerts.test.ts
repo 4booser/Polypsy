@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
+import { serverText } from "@quizzy/shared";
+import { STAFF_OUTBOUND_LANG } from "../src/lib/notify";
 import {
   adminA,
   adminB,
@@ -132,8 +134,11 @@ describe("рассыльщик тревог", () => {
     expect(записи.map((z) => z.kind).sort()).toEqual(["escalation", "initial"]);
 
     // первичное — админу группы А; эскалация — суперадмину
-    const initialMail = sent.find((m) => m.subject.startsWith("Тревога"));
-    const escalationMail = sent.find((m) => m.subject.startsWith("ЭСКАЛАЦИЯ"));
+    // письма — из словаря, на языке отделения (волна 14; прежде — русские, набранные в notify.ts)
+    const head = (key: "mail.alert.subject" | "mail.escalation.subject") =>
+      serverText(key, STAFF_OUTBOUND_LANG).split("{")[0]!;
+    const initialMail = sent.find((m) => m.subject.startsWith(head("mail.alert.subject")));
+    const escalationMail = sent.find((m) => m.subject.startsWith(head("mail.escalation.subject")));
     expect(initialMail!.to).toContain("a@test");
     expect(escalationMail!.to).toContain("root@test");
 

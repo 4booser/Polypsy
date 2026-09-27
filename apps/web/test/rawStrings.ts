@@ -125,6 +125,20 @@ function collapse(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Вызовы, чьи аргументы читает только разработчик. У клиентов это console.*;
+ * у сервера ещё и структурный журнал log.* (apps/api/src/lib/log.ts): его
+ * поля — причина пропуска каскада, подсказка к заблокированному событию —
+ * уходят в лог процесса, а не человеку, и сторож сервера передаёт это
+ * правило сюда (apps/api/test/noRawStrings.test.ts).
+ */
+export const CONSOLE_CALL = /^console\.\w+$/;
+
+export interface RawStringOptions {
+  /** какие вызовы считать выводом разработчику; по умолчанию — console.* */
+  devCalls?: RegExp;
+}
+
 /** Все .ts/.tsx каталога; node_modules пропускается. Нет каталога — пусто. */
 export function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -228,7 +242,8 @@ function insideCodeTag(n: ts.Node): boolean {
  * латиница в исходнике — это код, и разбирать её значило бы получить
  * тысячу ложных тревог.
  */
-export function rawStrings(file: string, source: string): RawString[] {
+export function rawStrings(file: string, source: string, options: RawStringOptions = {}): RawString[] {
+  const devCalls = options.devCalls ?? CONSOLE_CALL;
   const sf = ts.createSourceFile(
     file,
     source,
@@ -244,7 +259,7 @@ export function rawStrings(file: string, source: string): RawString[] {
   const mark = (n: ts.Node): void => {
     if (ts.isCallExpression(n)) {
       const callee = n.expression.getText(sf);
-      if (/^console\.\w+$/.test(callee)) {
+      if (devCalls.test(callee)) {
         const all = (x: ts.Node): void => {
           console_.add(x);
           ts.forEachChild(x, all);
