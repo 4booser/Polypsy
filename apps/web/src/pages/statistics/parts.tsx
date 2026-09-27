@@ -1,12 +1,12 @@
 import { useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
-import type { PatientGroupWithCounts, SampleFilters, Sex, StatCell } from "@quizzy/shared";
+import type { PatientGroupWithCounts, Sex, StatCell } from "@quizzy/shared";
 import { api, type Patient } from "../../api";
 import { useLang } from "../../lang";
 import { isTopLayer, useFocusTrap } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Button } from "../../ui/primitives";
 import { useDebounced, useResource } from "../../useResource";
-import { HIDDEN_MARK, cellText } from "./model";
+import { HIDDEN_MARK, ageFromInput, cellText } from "./model";
 
 /*
  * Детали раздела «Статистика», общие для его экранов, — и только для них.
@@ -679,11 +679,6 @@ export function AgeRow({
   invalid?: boolean;
 }) {
   const { ut } = useLang();
-  const num = (v: string) => {
-    if (v === "") return null;
-    const n = Number.parseInt(v, 10);
-    return Number.isFinite(n) ? Math.max(0, Math.min(120, n)) : null;
-  };
   return (
     <div className={cx("flex min-w-0 flex-1 items-center", gap === 6 ? "gap-[6px]" : "gap-[10px]")}>
       <StatInput
@@ -695,7 +690,7 @@ export function AgeRow({
         max={120}
         invalid={invalid}
         value={min ?? ""}
-        onChange={(e) => onChange({ ageMin: num(e.target.value), ageMax: max ?? null })}
+        onChange={(e) => onChange({ ageMin: ageFromInput(e.target.value), ageMax: max ?? null })}
       />
       {/* тире — рисунок #666666 в 2px, а не символ: на кадре оно длиннее «—» набора */}
       <span aria-hidden className={cx("h-[2px] shrink-0 bg-field-border", dash === 25 ? "w-[25px]" : "w-[17px]")} />
@@ -708,7 +703,7 @@ export function AgeRow({
         max={120}
         invalid={invalid}
         value={max ?? ""}
-        onChange={(e) => onChange({ ageMin: min ?? null, ageMax: num(e.target.value) })}
+        onChange={(e) => onChange({ ageMin: min ?? null, ageMax: ageFromInput(e.target.value) })}
       />
     </div>
   );
@@ -772,9 +767,5 @@ export function GroupSelect({
   );
 }
 
-/** Правка одного ключа фильтра с пустым значением как «ключа нет» */
-export function patchFilters(f: SampleFilters, patch: Partial<SampleFilters>): SampleFilters {
-  const next: Record<string, unknown> = { ...f, ...patch };
-  for (const [k, v] of Object.entries(next)) if (v === null || v === undefined || v === "") delete next[k];
-  return next as SampleFilters;
-}
+/* правка фильтра — чистая функция модели (проверяется без экрана); здесь — прежнее имя для форм раздела */
+export { patchFilters } from "./model";

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type NoteVersion } from "../api";
+import { api, type NoteVersion } from "../api";
 import { day } from "../format";
 import { useAction } from "../ui";
 import { usePresence } from "../events";
@@ -8,6 +8,7 @@ import { useResource } from "../useResource";
 import type { UiKey } from "@quizzy/shared";
 import { cx } from "../ui/cx";
 import { Button, Textarea } from "../ui/primitives";
+import { draftOf, draftSavable, saveThenSign, signPlan, staleMessage } from "./versioned";
 
 /**
  * Заметки приёма.
@@ -83,8 +84,13 @@ export function NotesEditor({ userId }: { userId: string }) {
     );
   }
 
-  const draft = state.current?.status === "draft" ? state.current : null;
+  const draft = draftOf(state);
   const signed = state.versions.find((v) => v.status === "signed");
+  /*
+   * Вид записи сохраняется вместе с текстом: сменили только вид — это тоже
+   * правка, и подпись без сохранения ушла бы с прежним (versioned.ts).
+   */
+  const plan = signPlan(text, draft, !draft || draft.kind === kind);
 
   return (
     <div className="nested">
@@ -162,15 +168,16 @@ export function NotesEditor({ userId }: { userId: string }) {
 
       <div className="row mt-2">
         <Button
-          disabled={busy || (!text.trim())}
+          disabled={busy || !draftSavable(text)}
           onClick={() =>
             void run(async () => {
               try {
                 res.patch(await api.saveNote(userId, text, state.current, kind));
                 setStale(null);
               } catch (e) {
-                if (!(e instanceof ApiError) || e.status !== 409) throw e;
-                setStale(e.message);
+                const message = staleMessage(e);
+                if (message === null) throw e;
+                setStale(message);
                 return false;
               }
             }, ut("cn.draftSaved"))
@@ -180,24 +187,25 @@ export function NotesEditor({ userId }: { userId: string }) {
         </Button>
         <Button
           variant="primary"
-          disabled={busy || (!draft && !text.trim())}
+          disabled={busy || !plan.canSign}
           onClick={() =>
             void run(async () => {
               try {
-                let latest = state;
-                if (text.trim() && text !== draft?.text) {
-                  latest = await api.saveNote(userId, text, state.current, kind);
-                }
                 // подписываем ровно ту версию и ту редакцию, что вернуло сохранение
-                res.patch(await api.signNote(userId, latest.current!));
+                await saveThenSign(state, plan, {
+                  save: () => api.saveNote(userId, text, state.current, kind),
+                  sign: (seen) => api.signNote(userId, seen),
+                  apply: res.patch,
+                });
                 // подписано — набранного больше нет, и поле снова следует за
                 // сервером: иначе следующий протокол начинался бы с прежнего
                 touched.current = false;
                 setText("");
                 setStale(null);
               } catch (e) {
-                if (!(e instanceof ApiError) || e.status !== 409) throw e;
-                setStale(e.message);
+                const message = staleMessage(e);
+                if (message === null) throw e;
+                setStale(message);
                 return false;
               }
             }, ut("note.signed"))

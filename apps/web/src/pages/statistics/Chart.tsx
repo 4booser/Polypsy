@@ -23,6 +23,7 @@ import {
   criterionValue,
   describeSample,
   indicatorsOf,
+  pickedModel,
   withoutCriteria,
 } from "./model";
 import { CellText } from "./parts";
@@ -79,7 +80,8 @@ export default function StatChart() {
 
   const models = useResource(() => api.statModels(), []);
   const presets = useResource(() => api.filterPresets(), []);
-  const picked = params.get("model") ?? models.data?.items[0]?.id ?? null;
+  /* модель из адреса — только из видимых человеку; чужая, удалённая или пустая — первая (model.ts, pickedModel) */
+  const picked = pickedModel(params.get("model"), models.data?.items ?? null);
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const model = useResource(() => api.statModel(picked!), [picked], { enabled: !!picked, manual: true });
 
@@ -207,7 +209,14 @@ export default function StatChart() {
         <>
           {/* строки выборок: чипы 30 высотой с шагом 40, первая строка 34 ниже заголовка (170 → 204) */}
           <div className="mt-[34px] flex flex-col gap-[10px]">
-            {(work ?? []).map((c, i) => (
+            {/*
+              Модель есть в перечне, а сама не загрузилась (удалили между
+              двумя запросами, отозвали доступ) — отказ словами и
+              «повторити», а не пустое место и не строки прежней модели под
+              подсвеченной новой.
+            */}
+            {model.error ? <Loading error={model.error} onRetry={model.reload} /> : null}
+            {(model.error ? [] : (work ?? [])).map((c, i) => (
               <SampleLine
                 key={i}
                 label={presetOf(c)?.title ?? c.title ?? `${ut("st.sample")} ${i + 1}`}
@@ -224,7 +233,7 @@ export default function StatChart() {
           </div>
           {/* «Оновити» 215×45 правым краем по колонке — вплотную под строками (273 → 274) */}
           <div className="mt-[1px] flex justify-end">
-            <Button size="md" className="w-[215px]" disabled={busy || !payload} onClick={() => refresh()}>
+            <Button size="md" className="w-[215px]" disabled={busy || !payload || !!model.error} onClick={() => refresh()}>
               {ut("st.refresh")}
             </Button>
           </div>

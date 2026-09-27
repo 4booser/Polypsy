@@ -28,6 +28,9 @@ export interface QueueFilters {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Пределы сервера (routes/alertCases.ts, caseListQuery): подразделение и поиск — до 120 знаков */
+const TEXT_MAX = 120;
+
 /** Существующая дата ГГГГ-ММ-ДД — та же проверка, что у сервера (queryDate) */
 export function isDay(v: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
@@ -62,18 +65,82 @@ export function readFilters(get: (name: string) => string): QueueFilters {
   const to = get("to");
   const patient = get("patient");
   const patientGroup = get("patientGroup");
+  const unit = get("unit").trim();
   return {
     status,
     severity: severity === "severe" || severity === "moderate" ? severity : "",
     assigned: assigned === "me" || assigned === "none" || assigned === "others" ? assigned : "",
-    unit: get("unit").trim(),
+    /*
+     * Подразделение длиннее предела сервера не применяется, а не режется:
+     * обрезок — это уже другое подразделение, которого нет, а целиком такое
+     * значение сервер отвергает (400), и отказ вставал на месте всей очереди.
+     */
+    unit: unit.length <= TEXT_MAX ? unit : "",
     patientGroup: UUID.test(patientGroup) ? patientGroup : "",
     patient: UUID.test(patient) ? patient : "",
     from: isDay(from) ? from : "",
     // перевёрнутый период не применяется целиком: «с 10-го по 1-е» — это опечатка, а не выборка
     to: isDay(to) && !(isDay(from) && from > to) ? to : "",
-    q: get("q").trim().slice(0, 120),
+    q: get("q").trim().slice(0, TEXT_MAX).trim(),
   };
+}
+
+/**
+ * Группа пациентов из адреса — только своя.
+ *
+ * Сервер на чужую, удалённую или выдуманную группу отвечает 404 (как
+ * список пациентов: «не найдено», а не «нельзя»), и отказ вставал на месте
+ * всей очереди — с «повторити», которое повторяло тот же отказ. Так
+ * открывался общий вид коллеги, сохранённый с его группой: у получателя
+ * такой группы нет. Когда свои группы известны, чужая не применяется, и
+ * поле фильтра это показывает — «усі групи», а не то, что было в адресе;
+ * остальной отбор вида остаётся в силе. Очередь при этом становится шире, а
+ * не уже: для разбора это безопасная сторона — никто не пропадёт из виду.
+ *
+ * `own` — null, пока список групп не приехал или не пришёл вовсе: тогда
+ * группа применяется как есть. Отказ по списку групп — не повод терять
+ * свою группу из отбора; права на группы у разбирающего может и не быть.
+ */
+export function withOwnGroup(f: QueueFilters, own: readonly string[] | null): QueueFilters {
+  if (!f.patientGroup || own === null || own.includes(f.patientGroup)) return f;
+  return { ...f, patientGroup: "" };
+}
+
+/*
+ * Правки адреса очереди. Пустая строка снимает параметр (patchParams в
+ * ui/viewParams.ts).
+ */
+
+/**
+ * Смена статуса. «Відкриті» — умолчание, и в адресе его нет; прежний `all=1`
+ * снимается вместе с любой сменой: иначе «Відкриті», выбранные после вида со
+ * старым `all=1`, снова читались бы как «Усі».
+ */
+export function statusPatch(next: CaseStatus): Record<string, string> {
+  return { status: next === "open" ? "" : next, all: "" };
+}
+
+/**
+ * «Скинути фільтри»: весь отбор, кроме статуса. Статус — вкладка, а не
+ * сужение: человек, смотревший разобранные, после сброса остаётся на
+ * разобранных. Ключи — те же, что проверяет hasNarrowing: кнопка видна
+ * ровно тогда, когда ей есть что снять.
+ */
+export const CLEAR_NARROWING: Readonly<Record<string, string>> = {
+  severity: "",
+  assigned: "",
+  unit: "",
+  patientGroup: "",
+  patient: "",
+  from: "",
+  to: "",
+  q: "",
+};
+
+/** Заголовок пустой очереди: пусто по отбору — не то же, что «открытых нет» */
+export function emptyQueueKey(f: QueueFilters): "cases.emptyFiltered" | "cases.emptyOpen" | "cases.emptyAll" {
+  if (hasNarrowing(f)) return "cases.emptyFiltered";
+  return f.status === "open" ? "cases.emptyOpen" : "cases.emptyAll";
 }
 
 /**

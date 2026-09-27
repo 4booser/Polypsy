@@ -119,7 +119,8 @@ export function Scales({ draft, setDraft }: { draft: Draft; setDraft: SetDraft }
   const lang = useEditLang();
   // батареи нужны для каскадов: попадание в полосу может назначить углублённую;
   // архивные — тоже, чтобы выбранную не подменял «без каскада» (Bands)
-  const batteries = useResource(() => api.batteries(), []).data ?? [];
+  // null — список ещё не пришёл: «не пришёл» и «наборов нет» — разные ответы (Bands)
+  const batteries = useResource(() => api.batteries(), []).data;
   const text = (v: Record<string, string> | null | undefined) => v?.[lang] || v?.uk || v?.ru || "";
 
   const upd = (uid: string, patch: Partial<DraftScale> | ((s: DraftScale) => DraftScale)) =>
@@ -317,7 +318,8 @@ function ScaleCard({
   index: number;
   scale: DraftScale;
   draft: Draft;
-  batteries: { id: string; title: string; archived?: boolean }[];
+  /** null — список наборов ещё не пришёл (Bands) */
+  batteries: { id: string; title: string; archived?: boolean }[] | null;
   scaleName: (code: string) => string;
   onChange: (patch: Partial<DraftScale> | ((s: DraftScale) => DraftScale)) => void;
   onAdd: () => void;
@@ -669,16 +671,30 @@ export function Bands({
   bands: DraftBand[];
   onChange: (b: DraftBand[]) => void;
   details?: boolean;
-  batteries: { id: string; title: string; archived?: boolean }[];
+  /**
+   * Наборы для каскада; null — список ещё не пришёл (или не пришёл вовсе).
+   *
+   * Экран подставлял на это время пустой список, и выбранный каскад
+   * назывался «Недоступна батарея (видалена)» — про набор, который цел и
+   * просто не догрузился. Пока списка нет, выбранное подписано «завантаження»,
+   * а селект выключен: выбирать не из чего, и сменить каскад вслепую нельзя.
+   */
+  batteries: { id: string; title: string; archived?: boolean }[] | null;
 }) {
   const { ut } = useLang();
   const lang = useEditLang();
   const set = (k: number, patch: Partial<DraftBand>) => onChange(bands.map((b, i) => (i === k ? { ...b, ...patch } : b)));
-  const liveBatteries = batteries.filter((x) => !x.archived);
+  const liveBatteries = (batteries ?? []).filter((x) => !x.archived);
   const knownBattery = (id: string) => {
-    const x = batteries.find((y) => y.id === id);
+    const x = batteries?.find((y) => y.id === id);
     return x ? { title: x.title, retired: !!x.archived } : null;
   };
+  const cascadeChoices = (chosen: string): { id: string; label: string }[] =>
+    batteries === null
+      ? chosen
+        ? [{ id: chosen, label: ut("common.loading") }]
+        : []
+      : keepChosen(liveBatteries, chosen, knownBattery).map((c) => ({ id: c.id, label: choiceLabel(c, batteryWords) }));
   const batteryWords = { retired: ut("bt.archived"), unavailable: ut("choice.unavailable"), unknown: ut("choice.batteryGone") };
   const add = () => {
     const last = bands[bands.length - 1];
@@ -746,15 +762,19 @@ export function Bands({
                   <Input type="number" placeholder={ut("cs.grade")} value={b.grade ?? ""} onChange={(e) => set(k, { grade: e.target.value ? Number(e.target.value) : null })} />
                 </Field>
                 <Field label={`${ut("cs.cascade")} ${range}`} hint={ut("cs.cascadeHint")} inline>
-                  <Select value={b.cascadeBatteryId ?? ""} onChange={(e) => set(k, { cascadeBatteryId: e.target.value || null })}>
+                  <Select
+                    value={b.cascadeBatteryId ?? ""}
+                    disabled={batteries === null}
+                    onChange={(e) => set(k, { cascadeBatteryId: e.target.value || null })}
+                  >
                     <option value="">{ut("co.noCascade")}</option>
                     {/*
                       Каскад на архивную батарею — пунктом с пометкой: без него
                       селект показывал «без каскада», а каскад оставался в
                       силе и уходил на сервер при каждом сохранении (ui/choices.ts).
                     */}
-                    {keepChosen(liveBatteries, b.cascadeBatteryId ?? "", knownBattery).map((c) => (
-                      <option key={c.id} value={c.id}>{choiceLabel(c, batteryWords)}</option>
+                    {cascadeChoices(b.cascadeBatteryId ?? "").map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
                     ))}
                   </Select>
                 </Field>

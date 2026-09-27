@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import type { SafetyPlanContent } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { useAction } from "../ui";
+import { NotLoaded, useAction } from "../ui";
 import { IconClose } from "../ui/glyphs";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { useResource, type Resource } from "../useResource";
 import { Panel } from "../ui/layout";
 import { freshKey, withKeys, withoutKeys, type Keyed } from "../ui/rowKeys";
 
@@ -76,10 +76,29 @@ export function rowsToPlan(d: PlanRows): SafetyPlanContent {
 }
 
 export function SafetyPlanEditor({ userId }: { userId: string }) {
-  const { ut } = useLang();
-  const { run, busy } = useAction();
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
   const res = useResource(() => api.safetyPlans(userId), [userId], { manual: true });
+  return <SafetyPlanBody userId={userId} res={res} />;
+}
+
+/**
+ * Блок плана по загрузке — без запроса внутри (test/loadStates.test.tsx).
+ *
+ * До ответа блока нет, как и было (он стоит в карте среди прочих, и скелет
+ * на его месте только двигал бы соседей). Отказ — есть: раньше на отказе
+ * блок исчезал целиком, вместе с янтарной меткой «плану немає», и у
+ * человека из группы риска карта молча выглядела так, будто плана и не
+ * должно быть.
+ */
+export function SafetyPlanBody({
+  userId,
+  res,
+}: {
+  userId: string;
+  res: Pick<Resource<Awaited<ReturnType<typeof api.safetyPlans>>>, "data" | "error" | "loading" | "reload">;
+}) {
+  const { ut } = useLang();
+  const { run, busy } = useAction();
   const [draft, setDraft] = useState<PlanRows>(() => planToRows(EMPTY));
   const [open, setOpen] = useState(false);
 
@@ -113,7 +132,7 @@ export function SafetyPlanEditor({ userId }: { userId: string }) {
       setOpen(false);
     }, ut("sp.saved"));
 
-  if (!res.data) return null;
+  if (!res.data) return res.error ? <NotLoaded res={res} /> : null;
 
   return (
     /*

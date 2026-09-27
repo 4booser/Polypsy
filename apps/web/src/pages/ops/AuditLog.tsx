@@ -14,6 +14,7 @@ import { Button, Input } from "../../ui/primitives";
 import { type Page, usePagedResource, useResource } from "../../useResource";
 import { Cell, ColumnHead, FilterSelect, SearchField, useDebounced } from "./controls";
 import { AUDIT_ACTION_CHOICES, AUDIT_PRESETS, type AuditFilterKey, actionLabel, auditFiltersFrom, prettyDetails } from "./model";
+import { auditPeriodError, auditQueryOf } from "./auditModel";
 import { AuditTimeline } from "./people2/charts";
 
 /*
@@ -57,7 +58,14 @@ export default function OpsAuditLog() {
   const { run, busy } = useAction();
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => auditFiltersFrom(params), [params]);
-  const settled = useDebounced(JSON.stringify(filters), 300);
+  /*
+   * На сервер — разобранный отбор (auditModel.ts): кривая дата или
+   * незнакомый исход из ссылки значат «условия нет», а не отказ всего
+   * экрана. Поля показывают набранное; что не применилось — видно по ним.
+   */
+  const query = useMemo(() => auditQueryOf(filters), [filters]);
+  const periodError = auditPeriodError(filters);
+  const settled = useDebounced(JSON.stringify(query), 300);
 
   const set = useCallback(
     (key: AuditFilterKey, value: string) => {
@@ -99,13 +107,13 @@ export default function OpsAuditLog() {
 
   const actionOptions = [
     { value: "", label: ut("ops.audit.allActions") },
-    ...[...AUDIT_ACTION_CHOICES, ...(filters.action && !AUDIT_ACTION_CHOICES.includes(filters.action) ? [filters.action] : [])].map(
+    ...[...AUDIT_ACTION_CHOICES, ...(query.action && !AUDIT_ACTION_CHOICES.includes(query.action) ? [query.action] : [])].map(
       (a) => ({ value: a, label: actionLabel(a, ut) }),
     ),
   ];
   const typeOptions = [
     { value: "", label: ut("ops.audit.allTypes") },
-    ...[...RESOURCE_TYPES, ...(filters.resourceType && !RESOURCE_TYPES.includes(filters.resourceType) ? [filters.resourceType] : [])].map(
+    ...[...RESOURCE_TYPES, ...(query.resourceType && !RESOURCE_TYPES.includes(query.resourceType) ? [query.resourceType] : [])].map(
       (v) => ({ value: v, label: v }),
     ),
   ];
@@ -120,7 +128,7 @@ export default function OpsAuditLog() {
       */}
       <div className="mb-[12px] flex flex-wrap gap-[8px]" role="group" aria-label={ut("aud.action")}>
         {AUDIT_PRESETS.map((p) => {
-          const on = (filters.action ?? "") === p.action;
+          const on = (query.action ?? "") === p.action;
           return (
             <Button key={p.key} variant={on ? "primary" : "quiet"} aria-pressed={on} onClick={() => set("action", p.action)}>
               {ut(p.key)}
@@ -153,11 +161,12 @@ export default function OpsAuditLog() {
         />
       </div>
       <div className="mb-[12px] grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)] gap-[12px] max-[900px]:grid-cols-1">
-        <FilterSelect label={ut("aud.action")} value={filters.action ?? ""} onChange={(v) => set("action", v)} options={actionOptions} />
-        <FilterSelect label={ut("ops.audit.type")} value={filters.resourceType ?? ""} onChange={(v) => set("resourceType", v)} options={typeOptions} />
+        {/* выборы показывают применённое: незнакомое значение из ссылки не применено — и выбор стоит на «усі» */}
+        <FilterSelect label={ut("aud.action")} value={query.action ?? ""} onChange={(v) => set("action", v)} options={actionOptions} />
+        <FilterSelect label={ut("ops.audit.type")} value={query.resourceType ?? ""} onChange={(v) => set("resourceType", v)} options={typeOptions} />
         <FilterSelect
           label={ut("aud.outcome")}
-          value={filters.outcome ?? ""}
+          value={query.outcome ?? ""}
           onChange={(v) => set("outcome", v)}
           options={[
             { value: "", label: ut("ops.audit.allOutcomes") },
@@ -171,6 +180,7 @@ export default function OpsAuditLog() {
           type="date"
           aria-label={ut("ops.audit.from")}
           title={ut("ops.audit.from")}
+          aria-invalid={periodError ? true : undefined}
           value={filters.from ?? ""}
           onChange={(e) => set("from", e.target.value)}
         />
@@ -179,10 +189,17 @@ export default function OpsAuditLog() {
           type="date"
           aria-label={ut("ops.audit.to")}
           title={ut("ops.audit.to")}
+          aria-invalid={periodError ? true : undefined}
           value={filters.to ?? ""}
           onChange={(e) => set("to", e.target.value)}
         />
       </div>
+      {/* перевёрнутый период — словами у места: конец не применён, и журнал показан от начала */}
+      {periodError ? (
+        <p role="alert" className="m-0 -mt-[4px] mb-[12px] text-[13px] leading-[18px] text-danger">
+          {ut(periodError)}
+        </p>
+      ) : null}
 
       <div className="mb-[18px] flex flex-wrap items-center gap-[12px]">
         <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
@@ -205,7 +222,7 @@ export default function OpsAuditLog() {
         >
           {ut("ops.audit.verify")}
         </Button>
-        <Button variant="ghost" disabled={busy} onClick={() => void run(() => api.auditExport(filters), ut("ops.audit.exported"))}>
+        <Button variant="ghost" disabled={busy} onClick={() => void run(() => api.auditExport(query), ut("ops.audit.exported"))}>
           {ut("ops.audit.export")}
         </Button>
         <Button variant="quiet" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((v) => !v)}>

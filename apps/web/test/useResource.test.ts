@@ -4,6 +4,7 @@ import { ApiError, api, isAbort, tokenStore, withSignal } from "../src/api";
 import { connection } from "../src/connection";
 import { createQueryClient, hashResourceKey, isTransient, retryTransient, wireConnection } from "../src/query";
 import { onNetworkFailure, type NetworkFailure } from "../src/telemetry/bus";
+import { loadView } from "../src/ui";
 import { resourceQuery, resourceState } from "../src/useResource";
 
 /**
@@ -295,6 +296,92 @@ describe("обрыв связи", () => {
     void w.observer.refetch();
     await until(() => w.now().offline);
     expect(w.now()).toMatchObject({ data: "показане", error: null, offline: true });
+    w.off();
+  });
+});
+
+describe("что видит экран на краях (w13:uitests)", () => {
+  /*
+   * Четыре состояния места данных — ожидание, отказ, «пусто», данные — и
+   * то, из чего экран их различает (loadView в ui/index.tsx). Проверяется на
+   * живом клиенте: важно не то, что loadView верно разбирает придуманный
+   * объект, а то, что состояние, которое на деле приходит от TanStack в
+   * каждом случае, разбирается верно.
+   */
+  test("пятисотка после исчерпанных повторов — отказ с текстом, а не обрыв и не вечное ожидание", async () => {
+    let calls = 0;
+    const w = watch(
+      fast(
+        resourceQuery(["лежит"], async () => {
+          calls += 1;
+          throw new ApiError("Внутрішня помилка", 500);
+        }),
+      ),
+    );
+    await until(() => w.now().error !== null);
+    // первый запрос и два повтора (TRANSIENT_RETRIES) — дальше человек видит отказ
+    expect(calls).toBe(3);
+    expect(w.now()).toMatchObject({ data: null, error: "Внутрішня помилка", offline: false, loading: false });
+    expect(loadView(w.now())).toBe("failed");
+    w.off();
+  });
+
+  test("отказ по существу (4xx) — отказ сразу", async () => {
+    const w = watch(resourceQuery(["нет прав"], async () => Promise.reject(new ApiError("Немає доступу", 403))));
+    await until(() => w.now().error !== null);
+    expect(loadView(w.now())).toBe("failed");
+    w.off();
+  });
+
+  test("пока ответа нет — ожидание, а не «пусто»", async () => {
+    const slow = deferred<string[]>();
+    const w = watch(resourceQuery(["ждём"], () => slow.promise));
+    await tick();
+    expect(w.now()).toMatchObject({ data: null, loading: true, updatedAt: null });
+    expect(loadView(w.now(), (d) => d.length === 0)).toBe("wait");
+    slow.resolve([]);
+    await until(() => w.now().updatedAt !== null);
+    // пришёл пустой список — вот теперь «нічого немає»
+    expect(loadView(w.now(), (d) => d.length === 0)).toBe("empty");
+    w.off();
+  });
+
+  test("пустой ответ (204, null) — ответ, а не ожидание: data null, но время ответа стоит", async () => {
+    const w = watch(resourceQuery<{ version: number } | null>(["не задано"], async () => undefined as never));
+    await until(() => w.now().updatedAt !== null);
+    expect(w.now()).toMatchObject({ data: null, loading: false, error: null, offline: false });
+    expect(loadView(w.now())).toBe("empty");
+    w.off();
+  });
+
+  test("обрыв до первого ответа — ожидание (о связи скажет оболочка), а не «пусто» и не отказ", async () => {
+    const w = watch(
+      fast(
+        resourceQuery<string[]>(["обрыв сразу"], async () => {
+          connection.lost();
+          throw new ApiError("Немає зв’язку з сервером", 0);
+        }),
+      ),
+    );
+    await until(() => w.now().offline);
+    expect(loadView(w.now(), (d) => d.length === 0)).toBe("wait");
+    w.off();
+  });
+
+  test("отказ повтора при показанных данных — данные остаются на месте", async () => {
+    let fail = false;
+    const w = watch(
+      resourceQuery(["повтор упал"], async () => {
+        if (fail) throw new ApiError("Не знайдено", 404);
+        return ["рядок"];
+      }),
+    );
+    await until(() => w.now().data !== null);
+    fail = true;
+    await w.observer.refetch();
+    await tick();
+    expect(w.now()).toMatchObject({ data: ["рядок"], error: "Не знайдено" });
+    expect(loadView(w.now(), (d) => d.length === 0)).toBe("ready");
     w.off();
   });
 });

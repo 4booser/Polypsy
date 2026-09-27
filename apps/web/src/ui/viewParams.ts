@@ -49,3 +49,52 @@ export function activeView<T extends { params: string }>(views: readonly T[], se
   const now = viewParams(search, keep);
   return views.find((v) => viewParams(v.params, keep) === now);
 }
+
+/**
+ * Совпадают ли две строки запроса как отбор: порядок параметров не важен,
+ * пустые значения — всё равно что их нет.
+ *
+ * Общий компонент видов (ui/SavedViews.tsx — очередь случаев, направления)
+ * сравнивал адрес с видом посимвольно. А порядок параметров в адресе — это
+ * порядок, в котором человек трогал фильтры: «важкі», потом «на мені» дают
+ * `severity=severe&assigned=me`, наоборот — `assigned=me&severity=severe`.
+ * Вид, сохранённый одним путём и собранный руками другим, переставал
+ * узнаваться как открытый — а удалить его или открыть коллегам можно только
+ * открытый. Та же ошибка, что уже была исправлена у списка пациентов
+ * (viewParams выше), — здесь для видов, которые хранят адрес целиком.
+ */
+export function sameParams(a: string, b: string): boolean {
+  const norm = (raw: string) =>
+    [...new URLSearchParams(raw.replace(/^\?/, "")).entries()]
+      .filter(([, v]) => v !== "")
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+      .sort()
+      .join("&");
+  return norm(a) === norm(b);
+}
+
+/** Открытый вид у видов, хранящих адрес целиком (ui/SavedViews.tsx) */
+export function openView<T extends { params: string }>(views: readonly T[], search: string): T | undefined {
+  return views.find((v) => sameParams(v.params, search));
+}
+
+/** Правка адреса: имя → значение; пустое, null или undefined снимает параметр */
+export type ParamPatch = Record<string, string | null | undefined>;
+
+/**
+ * Применить правку к строке запроса — чистая часть всех `update`/`patch`
+ * экранов со списками.
+ *
+ * Жила копией в каждом экране (пациенты, группы, карточка группы, очередь
+ * случаев). Прочие параметры адреса не трогаются — размер страницы,
+ * сортировка таблицы остаются за человеком; прежний объект не меняется
+ * (React Router отдаёт его и другим читателям).
+ */
+export function patchParams(prev: URLSearchParams | string, patch: ParamPatch): URLSearchParams {
+  const next = new URLSearchParams(typeof prev === "string" ? prev.replace(/^\?/, "") : prev);
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null || v === undefined || v === "") next.delete(k);
+    else next.set(k, v);
+  }
+  return next;
+}

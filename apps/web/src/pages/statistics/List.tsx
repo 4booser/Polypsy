@@ -9,7 +9,7 @@ import { Pager } from "../../ui/pager";
 import { DEFAULT_PER, pageCount, pageFrom, perFrom } from "../../ui/paging";
 import { GlyphLink, Input } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { STATS_CHART, STATS_LIST, STATS_NEW, statHref } from "./model";
+import { STATS_CHART, STATS_LIST, STATS_NEW, statHref, statListQuery } from "./model";
 import { IconViewChart, IconViewList } from "./parts";
 
 /*
@@ -77,7 +77,8 @@ export default function StatList() {
     return () => clearTimeout(timer);
   }, [q]);
 
-  const list = useResource(() => api.statModels({ q: dq, limit: per, offset: (page - 1) * per }), [dq, page, per]);
+  /* пределы сервера — в запросе, а не отказом на весь перечень (model.ts, statListQuery) */
+  const list = useResource(() => api.statModels(statListQuery(dq, page, per)), [dq, page, per]);
   const pages = pageCount(list.data?.total ?? 0, per);
 
   /* страница за концом списка (сузили поиск) — возвращаемся на ближайшую */

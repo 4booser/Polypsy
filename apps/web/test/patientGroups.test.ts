@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   FAVORITES_KEY,
+  grantEach,
   keepPresent,
   matchesQuery,
+  newProgress,
   parseFavorites,
+  partialFailure,
   personMeta,
   serializeFavorites,
   toggleIn,
@@ -135,5 +138,78 @@ describe("навигация раздела «Групи»", () => {
     expect(surveyGroups!.key).toBe("adm.groupsTitle");
     /* и группы пациентов в бургере — под тем же словом, что в полосе */
     expect(items.find((i) => i.to === "/patient-groups")?.key).toBe("nav.groups");
+  });
+});
+
+describe("«Призначити тест» выборке: отказ посередине", () => {
+  /*
+   * Выдача идёт по запросу на человека, и сервер может отказать на
+   * четвёртом из восьми (обрыв, выкатка, методику сняли с публикации).
+   * Проверяется то, что видит и делает специалист дальше: сколько уже
+   * выдано, кому уходит повтор и что происходит, если в том же окне
+   * выбрать другую методику.
+   */
+  const people = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"];
+
+  /** Сервер, который отказывает на указанных людях, пока не «починится» */
+  function server(failOn: Set<string>) {
+    const calls: string[] = [];
+    return {
+      calls,
+      failOn,
+      grant: async (id: string) => {
+        calls.push(id);
+        if (failOn.has(id)) throw new Error("Сервер недоступний");
+      },
+    };
+  }
+
+  test("отказ на четвёртом: трое выданы, и это названо вместе с причиной", async () => {
+    const s = server(new Set(["p4"]));
+    const progress = newProgress();
+    const outcome = await grantEach(progress, "survey-a|", people, s.grant);
+    expect(outcome.done).toBe(3);
+    expect(outcome.total).toBe(8);
+    expect((outcome.error as Error).message).toBe("Сервер недоступний");
+    expect(s.calls, "после отказа цикл не должен идти дальше вслепую").toEqual(["p1", "p2", "p3", "p4"]);
+    expect(partialFailure(outcome, "Сервер недоступний", { done: "Тест призначено", of: "з" })).toBe(
+      "Сервер недоступний · Тест призначено: 3 з 8",
+    );
+  });
+
+  test("повтор в том же окне идёт только к тем, кому ещё не выдано", async () => {
+    const s = server(new Set(["p4"]));
+    const progress = newProgress();
+    await grantEach(progress, "survey-a|", people, s.grant);
+    s.failOn.clear();
+    s.calls.length = 0;
+    const again = await grantEach(progress, "survey-a|", people, s.grant);
+    expect(again.error).toBeNull();
+    expect(again.done).toBe(8);
+    /* первые трое повторно не выдаются: журнал не получает по второй записи «назначено» */
+    expect(s.calls).toEqual(["p4", "p5", "p6", "p7", "p8"]);
+  });
+
+  test("другая методика или другой срок в том же окне — назначение новое, выдаётся всем", async () => {
+    const s = server(new Set(["p4"]));
+    const progress = newProgress();
+    await grantEach(progress, "survey-a|", people, s.grant);
+    s.failOn.clear();
+    s.calls.length = 0;
+    await grantEach(progress, "survey-a|2026-10-01", people, s.grant);
+    expect(s.calls).toEqual(people);
+  });
+
+  test("отказ на первом: добавлять к причине нечего", async () => {
+    const s = server(new Set(["p1"]));
+    const outcome = await grantEach(newProgress(), "survey-a|", people, s.grant);
+    expect(outcome.done).toBe(0);
+    expect(partialFailure(outcome, "Немає доступу", { done: "Тест призначено", of: "з" })).toBe("Немає доступу");
+  });
+
+  test("выдано всем с первого раза — итог по всей выборке", async () => {
+    const s = server(new Set());
+    const outcome = await grantEach(newProgress(), "survey-a|", people, s.grant);
+    expect(outcome).toEqual({ done: 8, total: 8, error: null });
   });
 });

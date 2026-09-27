@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { UI, type UiKey } from "@quizzy/shared";
 import type { SavedView } from "../src/api";
 import { PATIENT_VIEW_KEYS, viewMenu } from "../src/pages/patientGroups/views";
-import { activeView, viewParams, viewSearch } from "../src/ui/viewParams";
+import { refilter, toPage, toPer } from "../src/ui/paging";
+import { activeView, openView, patchParams, sameParams, viewParams, viewSearch } from "../src/ui/viewParams";
 
 /**
  * Сохранённые виды списка пациентов (волна 12, разбор кода: «редизайн удалил
@@ -103,5 +104,96 @@ describe("пункты шестерёнки", () => {
     const screen = readFileSync(resolve(import.meta.dir, "../src/pages/Patients.tsx"), "utf8");
     expect(screen).toContain("...views.entries");
     expect(screen).not.toContain("<SavedViews");
+  });
+});
+
+describe("виды не загрузились — это не «видов нет»", () => {
+  /*
+   * Меню брало `views ?? []`: отказ загрузки видов выглядел ровно как
+   * «сохранённых видов нет» — человек, у которого их десяток, видел пустое
+   * меню и решал, что они пропали, или заводил заново.
+   */
+  const act = { open: () => {}, save: () => {}, share: () => {}, remove: () => {} };
+
+  test("отказ — пунктом «не завантажилися — повторити», и он повторяет загрузку", () => {
+    let retried = 0;
+    const entries = viewMenu([], "?group=g-eve", ut, act, { failed: true, retry: () => retried++ });
+    const failed = entries.find((e) => e.label === ut("uit.views.loadFailed"));
+    expect(failed).toBeDefined();
+    failed!.onSelect!();
+    expect(retried).toBe(1);
+    // сохранить текущий отбор можно и без списка видов
+    expect(entries.some((e) => e.label === ut("views.saveCurrent") && !e.disabled)).toBe(true);
+  });
+
+  test("загрузилось пустым — пункта об отказе нет", () => {
+    const entries = viewMenu([], "", ut, act, { failed: false, retry: () => {} });
+    expect(entries.map((e) => e.label)).toEqual([ut("views.saveCurrent")]);
+  });
+
+  test("список пациентов и строка видов очереди/направлений различают отказ", () => {
+    const menu = readFileSync(resolve(import.meta.dir, "../src/pages/patientGroups/views.tsx"), "utf8");
+    expect(menu).toMatch(/failed: loadView\(res\) === "failed"/);
+    const strip = readFileSync(resolve(import.meta.dir, "../src/ui/SavedViews.tsx"), "utf8");
+    expect(strip).toMatch(/loadView\(res\) === "failed"/);
+    expect(strip).toContain('ut("uit.views.loadFailed")');
+  });
+});
+
+describe("вид и отбор: путь человека по списку пациентов", () => {
+  test("открыл вид → искал → вид больше не открыт; очистил поиск → снова открыт", () => {
+    const views = [view({})];
+    let search = `?${viewSearch("?per=50", "group=g-eve", KEEP)}`;
+    expect(activeView(views, search, KEEP)?.id).toBe("v1");
+    search = `?${patchParams(search, refilter({ q: "Пет" }))}`;
+    expect(activeView(views, search, KEEP)).toBeUndefined();
+    search = `?${patchParams(search, refilter({ q: "" }))}`;
+    expect(activeView(views, search, KEEP)?.id).toBe("v1");
+    // размер страницы, выбранный до вида, пережил и вид, и поиск
+    expect(new URLSearchParams(search).get("per")).toBe("50");
+  });
+
+  test("«Зберегти відбір» после листания и смены размера сохраняет только отбор", () => {
+    const search = `?${patchParams(patchParams("group=g-eve&q=Пет", toPer(20)), toPage(3))}`;
+    expect(viewParams(search, KEEP)).toBe("group=g-eve&q=%D0%9F%D0%B5%D1%82");
+  });
+});
+
+describe("виды очереди случаев и направлений (ui/SavedViews): вид хранит адрес целиком", () => {
+  const alerts = (params: string) => view({ scope: "alerts", params });
+
+  test("вид узнаётся открытым при другом порядке параметров", () => {
+    /*
+     * Порядок параметров — порядок, в котором трогали фильтры. Вид
+     * «важкі, на мені», сохранённый одним путём, после сборки другим не
+     * узнавался — а удалить вид или открыть его коллегам можно только у
+     * открытого.
+     */
+    const saved = [alerts("severity=severe&assigned=me")];
+    expect(openView(saved, "?assigned=me&severity=severe")?.id).toBe("v1");
+    expect(sameParams("a=1&b=2", "b=2&a=1")).toBe(true);
+  });
+
+  test("пустое значение — всё равно что его нет", () => {
+    expect(openView([alerts("severity=severe")], "severity=severe&q=")?.id).toBe("v1");
+  });
+
+  test("другой отбор — другой вид: значение, лишний параметр, повтор параметра", () => {
+    const saved = [alerts("severity=severe")];
+    expect(openView(saved, "severity=moderate")).toBeUndefined();
+    expect(openView(saved, "severity=severe&assigned=me")).toBeUndefined();
+    expect(sameParams("unit=A&unit=B", "unit=A")).toBe(false);
+  });
+
+  test("сортировка таблицы направлений — часть их вида: другая сортировка — другой вид", () => {
+    const saved = [view({ scope: "referrals", params: "all=1&referrals.sort=urgency%3Adesc" })];
+    expect(openView(saved, "referrals.sort=urgency%3Adesc&all=1")?.id).toBe("v1");
+    expect(openView(saved, "all=1&referrals.sort=urgency")).toBeUndefined();
+  });
+
+  test("компонент узнаёт открытый вид через openView, а не посимвольным сравнением", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/ui/SavedViews.tsx"), "utf8");
+    expect(src).toContain("openView(views, current)");
+    expect(src).not.toMatch(/v\.params === current/);
   });
 });
