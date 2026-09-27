@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { createSurveySchema, db } from "./fixtures";
-import { surveyVersions, surveys } from "../src/db/schema";
+import { auditLog, surveyVersions, surveys } from "../src/db/schema";
 import { CATALOG } from "../src/instruments/catalog";
-import { installCatalog } from "../src/lib/catalogInstall";
+import { catalogStatus, installCatalog } from "../src/lib/catalogInstall";
 
 /**
  * Общий каталог методик.
@@ -153,6 +153,28 @@ describe("установка", () => {
     const kept = await installCatalog();
     expect(kept.keptLocal).toContain("pss10");
     expect(kept.updated).not.toContain("pss10");
+
+    /*
+     * Обзор перед решением видит правку учреждения, а --force выкатывает
+     * редакцию каталога поверх неё — с пометкой в журнале. Правка остаётся
+     * прежней версией. Мутация: не передавать force в installOne — второе
+     * ожидание падает («keptLocal» вместо «updated»).
+     */
+    const before = (await catalogStatus()).find((r) => r.key === "pss10")!;
+    expect(before.state).toBe("local");
+    expect(before.versions[0]!.note).toBe("Правка відділення");
+    const forced = await installCatalog({ force: ["pss10"] });
+    expect(forced.updated, "--force не выкатил редакцию каталога").toContain("pss10");
+    expect((await catalogStatus()).find((r) => r.key === "pss10")!.state).toBe("current");
+    const [trail] = await db
+      .select({ details: auditLog.details })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "survey.catalog_update"), eq(auditLog.resourceId, pss!.id)))
+      .orderBy(desc(auditLog.seq))
+      .limit(1);
+    expect((trail!.details as { forced?: boolean }).forced, "в журнале нет пометки о правке поверх учреждения").toBe(true);
+    const versions = await db.select({ note: surveyVersions.note }).from(surveyVersions).where(eq(surveyVersions.surveyId, pss!.id));
+    expect(versions.some((v) => v.note === "Правка відділення"), "правка учреждения пропала из истории").toBe(true);
   });
 
   test("общедоступные методики опубликованы и доступны без назначения", async () => {

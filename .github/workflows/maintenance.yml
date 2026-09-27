@@ -36,10 +36,16 @@ on:
           - backup-verify
           - backup-status
           - slots-resync
+          - catalog-status
+          - catalog-force
       count:
         description: "Сколько вымышленных людей завести (только для demo-fill)"
         required: false
         default: "120"
+      keys:
+        description: "Ключи методик каталога через запятую (только для catalog-force), например who5"
+        required: false
+        default: ""
 
 concurrency:
   group: deploy
@@ -66,6 +72,7 @@ jobs:
           # у запуска по расписанию входных полей нет — это проверка копии
           ACTION: ${{ inputs.action || 'backup-verify' }}
           COUNT: ${{ inputs.count }}
+          KEYS: ${{ inputs.keys }}
         run: |
           # команда собирается ЗДЕСЬ, из выбранного действия, а не приходит
           # строкой снаружи: иначе перечень действий ничего не ограничивает
@@ -82,6 +89,14 @@ jobs:
             # задача slots.horizon раз в сутки; нужна после миграции правил
             # сетки или восстановления из копии, см. slotsResync.ts
             slots-resync)    CMD="bun apps/api/src/slotsResync.ts" ;;
+            # обзор каталога перед решением: что стоит и чьи последние версии
+            catalog-status)  CMD="bun apps/api/src/installCatalog.ts --status" ;;
+            # редакция каталога поверх правки учреждения — только названные
+            # ключи, и только буквы, цифры, запятые: строка снаружи не должна
+            # стать куском команды
+            catalog-force)
+              [[ "$KEYS" =~ ^[a-z0-9_,-]+$ ]] || { echo "ключи: буквы, цифры, запятые — получено: $KEYS"; exit 1; }
+              CMD="bun apps/api/src/installCatalog.ts --force $KEYS" ;;
             # чтение журналов службы — не запуск кода: отдельная ветка, где
             # выполняется docker compose logs, а не команда внутри контейнера
             logs-web|logs-api)

@@ -30,6 +30,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:prod": "EXPO_PUBLIC_API_URL=https://polypsy.ink expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
