@@ -137,7 +137,7 @@ function surveyFields(input: ReturnType<typeof createSurveySchema.parse>) {
 
 type Outcome = "installed" | "updated" | "skipped" | "keptLocal";
 
-async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outcome> {
+async function installOne(entry: CatalogEntry, createdBy: string, force = false): Promise<Outcome> {
   const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
   const note = `${NOTE} · ${await fingerprint(entry)}`;
   if (existing) {
@@ -147,8 +147,17 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outco
       .where(eq(surveyVersions.surveyId, existing.id))
       .orderBy(desc(surveyVersions.version))
       .limit(1);
-    if (!head?.note?.startsWith(NOTE)) return "keptLocal";
-    if (head.note === note) return "skipped";
+    /*
+     * `force` — осознанное решение человека выкатить редакцию каталога поверх
+     * правки учреждения (обслуживание, действие catalog-force): например,
+     * исправленные по источнику пороги должны дойти и до методики, которую
+     * однажды поправили в конструкторе. Правка не исчезает — она остаётся
+     * прежней версией, и прохождения по ней считаются по ней же, — но
+     * действующей становится редакция каталога. В журнал — с пометкой.
+     */
+    const local = !head?.note?.startsWith(NOTE);
+    if (local && !force) return "keptLocal";
+    if (head?.note === note) return "skipped";
 
     const input = createSurveySchema.parse(entry.draft);
     await db
@@ -160,7 +169,7 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outco
       action: "survey.catalog_update",
       resourceType: "survey",
       resourceId: existing.id,
-      details: { catalogKey: entry.key, from: head.note, to: note, source: entry.source },
+      details: { catalogKey: entry.key, from: head?.note ?? null, to: note, source: entry.source, forced: local },
     });
     return "updated";
   }
@@ -195,7 +204,39 @@ async function installOne(entry: CatalogEntry, createdBy: string): Promise<Outco
   return "installed";
 }
 
-export async function installCatalog(): Promise<InstallReport> {
+/** Состояние методики каталога в базе — для обзора перед решением (catalog-status) */
+export interface CatalogStatusRow {
+  key: string;
+  /** missing — не стоит; current — стоит редакция каталога; behind — стоит прежняя редакция каталога; local — последняя версия выпущена в учреждении */
+  state: "missing" | "current" | "behind" | "local";
+  /** Последние версии: номер, заметка, когда — от свежей к старой */
+  versions: { version: number; note: string | null; createdAt: string }[];
+}
+
+export async function catalogStatus(): Promise<CatalogStatusRow[]> {
+  const rows: CatalogStatusRow[] = [];
+  for (const entry of CATALOG) {
+    const [existing] = await db.select({ id: surveys.id }).from(surveys).where(eq(surveys.catalogKey, entry.key));
+    if (!existing) {
+      rows.push({ key: entry.key, state: "missing", versions: [] });
+      continue;
+    }
+    const versions = await db
+      .select({ version: surveyVersions.version, note: surveyVersions.note, createdAt: surveyVersions.createdAt })
+      .from(surveyVersions)
+      .where(eq(surveyVersions.surveyId, existing.id))
+      .orderBy(desc(surveyVersions.version))
+      .limit(5);
+    const head = versions[0]?.note ?? null;
+    const note = `${NOTE} · ${await fingerprint(entry)}`;
+    const state = !head?.startsWith(NOTE) ? "local" : head === note ? "current" : "behind";
+    rows.push({ key: entry.key, state, versions: versions.map((v) => ({ ...v, createdAt: String(v.createdAt) })) });
+  }
+  return rows;
+}
+
+export async function installCatalog(opts: { force?: readonly string[] } = {}): Promise<InstallReport> {
+  const force = new Set(opts.force ?? []);
   const createdBy = await installerId();
   if (!createdBy) {
     return {
@@ -212,7 +253,7 @@ export async function installCatalog(): Promise<InstallReport> {
   const department = await ensureDepartment();
 
   const out: Record<Outcome, string[]> = { installed: [], updated: [], skipped: [], keptLocal: [] };
-  for (const entry of CATALOG) out[await installOne(entry, createdBy)].push(entry.key);
+  for (const entry of CATALOG) out[await installOne(entry, createdBy, force.has(entry.key))].push(entry.key);
   const { installed, updated, skipped, keptLocal } = out;
 
   log.info("catalog.installed", {
