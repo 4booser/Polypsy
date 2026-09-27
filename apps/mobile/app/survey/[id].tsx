@@ -667,6 +667,14 @@ export default function TakeSurveyScreen() {
             {/*
               Укрупнение текста прямо на экране прохождения: лезть в
               настройки телефона посреди обследования никто не будет.
+
+              «A» на кнопке — знак, а не слово: так кнопку размера шрифта
+              рисуют во всех редакторах, на любом языке. Буква латинская, а
+              стояла кириллическая «А» — на глаз они одинаковы, но на
+              английском экране это был единственный символ украинского
+              алфавита, и сторож сырых строк (test/noRawStrings.test.ts)
+              справедливо видел в нём непереведённый текст. Имя кнопки для
+              диктора — msv.textSize, из словаря; знак он не читает.
              */}
             <Pressable
               onPress={cycle}
@@ -676,7 +684,7 @@ export default function TakeSurveyScreen() {
               style={{ paddingLeft: spacing.sm }}
             >
               <Text style={{ color: scale > 1 ? c.primary : c.muted, fontSize: 14, fontWeight: "700" }}>
-                А{scale > 1 ? "+" : ""}
+                A{scale > 1 ? "+" : ""}
               </Text>
             </Pressable>
           </Row>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { LocalizedText, PermissionEffectKind } from "@quizzy/shared";
-import { ROLE_LADDER } from "@quizzy/shared";
+import { ROLE_LADDER, t } from "@quizzy/shared";
 import { api } from "../api";
 import { day, daysLeft } from "../format";
 import { useLang } from "../lang";
@@ -92,9 +92,16 @@ export default function Permissions() {
   const active = useResource(() => api.activeExceptions(), []);
   const card = useResource(() => api.userPermissions(picked!), [picked], { enabled: !!picked });
 
-  /* язык оболочки, с откатом: у методик перевод бывает неполным, у справочника прав — нет,
-     но одна и та же функция ходит по обоим */
-  const t = (v: LocalizedText): string => v[lang] ?? v.uk ?? v.ru ?? "";
+  /*
+   * Все названия на этом экране — через t(…, lang), а не `title[lang]`.
+   *
+   * Экран читал `title[lang]` напрямую, и на английском интерфейсе названия
+   * ролей, групп и прав выходили пустыми строками: справочник прав был
+   * двуязычным, а роли и сейчас лежат в базе как {uk, ru} — их заводит
+   * учреждение, и английского у них может не быть никогда. t() откатывается
+   * на язык, который есть (LANG_FALLBACK), и пустой строчки у галочки больше
+   * не бывает: чужой язык хотя бы читается, пустота — нет.
+   */
 
   /*
    * Отказ и ожидание — внутри страницы, а не вместо неё.
@@ -125,7 +132,7 @@ export default function Permissions() {
   /* плоский указатель: право по коду — чтобы список не обходился заново на каждую строку */
   const index = new Map<string, CataloguePermission>();
   for (const g of groups) for (const p of g.permissions) index.set(p.code, p);
-  const titleOf = (code: string): string => (index.has(code) ? t(index.get(code)!.title) : code);
+  const titleOf = (code: string): string => (index.has(code) ? t(index.get(code)!.title, lang) : code);
 
   /* сервер уже отдал только тех, кого этот человек вправе назначать — здесь остался поиск */
   const people = (staff.data ?? []).filter((u) =>
@@ -323,7 +330,7 @@ function Gives({
             <ul className="m-0 flex list-none flex-col gap-1 p-0">
               {here.map((p) => (
                 <li key={p.code} className="text-caption leading-normal text-text">
-                  {p.effect.opens[lang] ?? p.effect.opens.uk}
+                  {t(p.effect.opens, lang)}
                 </li>
               ))}
             </ul>
@@ -348,7 +355,7 @@ function Chain({ roles }: { roles: RoleItem[] }) {
   const byCode = new Map(roles.map((r) => [r.code, r]));
   /* сверху вниз: назначающий стоит перед тем, кого он назначает */
   const steps = [ut("perm.superadminTitle")].concat(
-    [...ROLE_LADDER].reverse().map((code) => byCode.get(code)?.title[lang] ?? code),
+    [...ROLE_LADDER].reverse().map((code) => (byCode.has(code) ? t(byCode.get(code)!.title, lang) : code)),
   );
 
   return (
@@ -435,7 +442,7 @@ function RoleRow({
   return (
     <div className="border-b border-hairline pb-4 last:border-0 last:pb-0">
       <div className="mb-2 flex flex-wrap items-baseline gap-2">
-        <strong className="text-small font-medium">{role.title[lang]}</strong>
+        <strong className="text-small font-medium">{t(role.title, lang)}</strong>
         {role.isBuiltin ? <Tag>{ut("perm.builtin")}</Tag> : null}
         {inChain ? null : <Tag tone="attention">{ut("perm.outsideChain")}</Tag>}
         <span className="text-caption text-muted">
@@ -460,7 +467,7 @@ function RoleRow({
             return (
               <div key={g.code} className="mb-3">
                 <SectionLabel className="mb-1">
-                  {g.title[lang]} · {here} {ut("common.of")} {g.permissions.length}
+                  {t(g.title, lang)} · {here} {ut("common.of")} {g.permissions.length}
                 </SectionLabel>
                 <div className="flex flex-col gap-1.5">
                   {g.permissions.map((p) => (
@@ -473,10 +480,10 @@ function RoleRow({
                         onChange={() => toggle(p.code)}
                       />
                       <span className="flex flex-col">
-                        <span className="text-small text-text">{p.title[lang]}</span>
+                        <span className="text-small text-text">{t(p.title, lang)}</span>
                         {/* что галочка открывает: по названию права этого не видно */}
                         <span className="text-caption leading-normal text-muted">
-                          {p.effect.opens[lang] ?? p.effect.opens.uk}
+                          {t(p.effect.opens, lang)}
                         </span>
                       </span>
                     </label>
@@ -552,9 +559,9 @@ function PersonCard({
   const [reason, setReason] = useState("");
   const [days, setDays] = useState("");
 
-  const titleOf = (code: string): string => index.get(code)?.title[lang] ?? code;
+  const titleOf = (code: string): string => (index.has(code) ? t(index.get(code)!.title, lang) : code);
   const opensOf = (code: string): string =>
-    index.get(code)?.effect.opens[lang] ?? index.get(code)?.effect.opens.uk ?? code;
+    (index.has(code) ? t(index.get(code)!.effect.opens, lang) : code);
 
   const isSuper = card.role === "superadmin";
   const live = card.exceptions.filter(
@@ -638,7 +645,7 @@ function PersonCard({
                       });
                     }}
                   />
-                  {r.title[lang]}
+                  {t(r.title, lang)}
                   {(ROLE_LADDER as readonly string[]).includes(r.code) ? null : (
                     <span className="text-caption text-muted">{ut("perm.outsideChain")}</span>
                   )}
@@ -730,10 +737,10 @@ function PersonCard({
             >
               <option value="">{ut("perm.pickPermission")}</option>
               {groups.map((g) => (
-                <optgroup key={g.code} label={g.title[lang] ?? g.code}>
+                <optgroup key={g.code} label={t(g.title, lang) || g.code}>
                   {g.permissions.map((p) => (
                     <option key={p.code} value={p.code}>
-                      {p.title[lang]}
+                      {t(p.title, lang)}
                     </option>
                   ))}
                 </optgroup>
