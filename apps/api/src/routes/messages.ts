@@ -6,6 +6,7 @@ import { requestIsReadOnly } from "../db/context";
 import { messages, threads, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { namesOf } from "../lib/names";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, forbidden, notFound, parseBody, parseQuery } from "../lib/http";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
@@ -78,12 +79,17 @@ messageRoutes.get("/", async (c) => {
       ? await existingThread(me.id, me.leadSpecialistId)
       : await threadForPatient(me.id, me.leadSpecialistId);
     if (!thread) return c.json({ items: [], lead: me.leadSpecialistId });
-    const lead = await db.query.users.findFirst({ where: eq(users.id, me.leadSpecialistId) });
+    /*
+     * Имя ведущего — системной ролью (lib/names.ts): строку специалиста
+     * пациенту политика users не показывает, и под ролью приложения вместо
+     * имени стояло «—» (волна 13, обход под ролью приложения).
+     */
+    const lead = (await namesOf([me.leadSpecialistId])).get(me.leadSpecialistId);
     return c.json({
       items: [
         {
           id: thread.id,
-          withName: lead ? fullNameOf(lead) : "—",
+          withName: lead ?? "—",
           lastMessageAt: thread.lastMessageAt,
           unread: await unreadCount(thread.id, me.id),
         },

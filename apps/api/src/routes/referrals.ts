@@ -32,7 +32,7 @@ import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis
 import { decryptField } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round } from "../lib/stats";
-import { accessiblePatientIds, surveyScopeFilterFor } from "../lib/scope";
+import { accessiblePatientIds, assertPatientAccess, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const referralRoutes = new Hono<AppEnv>();
@@ -94,7 +94,18 @@ async function serialize(rows: (typeof referrals.$inferSelect)[]): Promise<Refer
 referralRoutes.get("/", async (c) => {
   const { all, limit, cursor: rawCursor } = parseQuery(c, referralListQuery);
   const cursor = decodeExactCursor(rawCursor);
-  const filter = all ? undefined : ne(referrals.status, "completed");
+  /*
+   * Только люди своей зоны (волна 13, проверка под ролью приложения).
+   * Реестр не спрашивал зону вовсе: в бою его резала политика строк, а
+   * сюита, ходящая владельцем, видела у администратора чужой группы все
+   * направления отделения — и считала это нормой. Правило видимости одно,
+   * и живёт оно в lib/scope.ts; политика — страховка под ним, а не замена.
+   */
+  const zone = await accessiblePatientIds(c.get("user"));
+  const filter = and(
+    all ? undefined : ne(referrals.status, "completed"),
+    zone === null ? undefined : zone.size ? inArray(referrals.userId, [...zone]) : sql`false`,
+  );
 
   const rows = await db
     .select({ r: referrals, at: exactAt(referrals.createdAt) })
@@ -134,6 +145,15 @@ referralRoutes.post("/", async (c) => {
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
   if (!target) notFound("err.patientNotFound");
   if (target.role !== "user") badRequest("err.referralPatientOnly");
+  /*
+   * Направить можно только своего пациента. Проверки не было: владельцем
+   * базы направление на чужого человека заводилось (201, строка в чужой
+   * зоне), а в бою политика строк отвергала вставку, и сотрудник получал
+   * пятисотку «внутренняя ошибка» вместо ответа (найдено прогоном под ролью
+   * приложения, волна 13). Ответ — «не найдено», как везде, где человек вне
+   * зоны: 403 подтвердил бы, что такой пациент есть.
+   */
+  await assertPatientAccess(user, input.userId);
 
   const id = crypto.randomUUID();
   await db.insert(referrals).values({
@@ -162,6 +182,9 @@ referralRoutes.patch("/:id", async (c) => {
   const id = c.req.param("id");
   const existing = await db.query.referrals.findFirst({ where: eq(referrals.id, id) });
   if (!existing) notFound("err.referralNotFound");
+  /* чужое направление — то же «не найдено», что даёт в бою политика строк */
+  const zone = await accessiblePatientIds(c.get("user"));
+  if (zone && !zone.has(existing.userId)) notFound("err.referralNotFound");
 
   const input = await parseBody(c.req.raw, updateReferralSchema);
   if (!ALLOWED_TRANSITIONS[existing.status]?.includes(input.status)) {

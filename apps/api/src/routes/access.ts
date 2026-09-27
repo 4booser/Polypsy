@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { grantAccessSchema, type SurveyGrant } from "@quizzy/shared";
 import { db } from "../db";
 import { patientGroupMembers, surveyAccess, surveys, users } from "../db/schema";
@@ -51,7 +51,14 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
     })
     .from(surveyAccess)
     .innerJoin(users, eq(users.id, surveyAccess.userId))
-    .where(eq(surveyAccess.surveyId, surveyId));
+    .where(eq(surveyAccess.surveyId, surveyId))
+    /*
+     * Порядок задан явно: без него строки шли в порядке плана запроса, а
+     * план под ролью приложения другой (политики добавляют условия) — один
+     * и тот же список владельцем и ролью приходил перемешанным по-разному
+     * (волна 13, обход всех GET под ролью приложения). Свежие — сверху.
+     */
+    .orderBy(desc(surveyAccess.grantedAt), asc(surveyAccess.userId));
 
   const grantorIds = rows.map((r) => r.grantedBy).filter((id): id is string => !!id);
   const grantorNames = new Map<string, string>();

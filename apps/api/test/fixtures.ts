@@ -12,6 +12,7 @@
  */
 import { ADMIN_DATABASE_URL, TEST_DATABASE_NAME } from "./preload";
 import { ensureBuiltinRole, syncBuiltinRole } from "../src/lib/permissions";
+import { APP_ROLE_MODE, asAppRole } from "./appRole";
 
 // пересоздаём тестовую базу через служебное подключение к рабочей
 {
@@ -22,7 +23,28 @@ import { ensureBuiltinRole, syncBuiltinRole } from "../src/lib/permissions";
   await admin.end();
 }
 
-export const { app } = await import("../src/app");
+const { app: ownerApp } = await import("../src/app");
+
+/**
+ * Приложение, в которое ходят тесты.
+ *
+ * В обычном прогоне — само приложение. В прогоне под ролью приложения
+ * (QUIZZY_TEST_APP_ROLE=1, отдельный шаг CI) каждый app.request идёт
+ * пулом роли без прав владельца: так часть сюиты проверяет не только
+ * логику, но и политики строк под ней, не переписывая ни одного теста.
+ */
+export const app: typeof ownerApp = APP_ROLE_MODE
+  ? new Proxy(ownerApp, {
+      get(target, prop) {
+        if (prop === "request") {
+          return (...args: Parameters<typeof ownerApp.request>) =>
+            asAppRole(async () => target.request(...args));
+        }
+        const value = Reflect.get(target, prop, target) as unknown;
+        return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    })
+  : ownerApp;
 export const { db, client } = await import("../src/db");
 export const {
   users,
@@ -120,6 +142,24 @@ export async function api<T = any>(
   });
   const body = (await res.json().catch(() => null)) as T;
   return { status: res.status, headers: res.headers, body };
+}
+
+/**
+ * Тот же запрос, но приложение ходит в базу ролью приложения — с
+ * политиками строк, как в бою (см. appRole.ts, asAppRole). Для сквозных
+ * сценариев и сторожей «владелец и роль отвечают одинаково».
+ */
+export function appApi<T = any>(
+  path: string,
+  token: string,
+  init: RequestInit = {},
+): Promise<{ status: number; headers: Headers; body: T }> {
+  return asAppRole(() => api<T>(path, token, init));
+}
+
+/** app.request под ролью приложения — для запросов без токена (вход, регистрация) */
+export function appRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  return asAppRole(async () => ownerApp.request(path, init));
 }
 
 await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
