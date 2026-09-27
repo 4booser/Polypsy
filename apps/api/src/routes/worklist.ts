@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { t, type WorkKind } from "@quizzy/shared";
 import { db } from "../db";
 import {
@@ -19,7 +20,7 @@ import { FOLLOWUP_NOTE } from "../lib/followup";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
 import { langOf } from "../lib/http";
-import { accessiblePatientIds, } from "../lib/scope";
+import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -278,6 +279,21 @@ worklistRoutes.get("/", async (c) => {
    * времени.
    */
   const allowedPatients = await accessiblePatientIds(user);
+  /*
+   * Условие «человек из моей зоны» — для всех видов работы ниже, а не только
+   * для учёта. Направления, просроченные назначения и повторы по протоколу
+   * зону не спрашивали: в бою их резала политика строк, а владельцем базы
+   * (сюита, развёртывание без роли приложения) администратор чужой группы
+   * видел в своей очереди направления чужих пациентов. Нашлось сравнением
+   * ответов владельцем и ролью приложения (волна 13): очередь обязана быть
+   * одной и той же, а политика — страховкой под правилом, не самим правилом.
+   */
+  const inZone = (column: AnyPgColumn) =>
+    allowedPatients === null
+      ? undefined
+      : allowedPatients.size
+        ? inArray(column, [...allowedPatients])
+        : sql`false`;
   if (allowedPatients === null || allowedPatients.size) {
     const dispRows = await db
       .select({
@@ -336,7 +352,7 @@ worklistRoutes.get("/", async (c) => {
     })
     .from(referrals)
     .innerJoin(users, eq(users.id, referrals.userId))
-    .where(inArray(referrals.status, ["created", "accepted"]))
+    .where(and(inArray(referrals.status, ["created", "accepted"]), inZone(referrals.userId)))
     .limit(200);
 
   for (const r of referralRows) {
@@ -392,6 +408,7 @@ worklistRoutes.get("/", async (c) => {
          */
         isNotNull(batteryAssignments.dueAt),
         lt(batteryAssignments.dueAt, new Date().toISOString()),
+        inZone(batteryAssignments.userId),
       ),
     )
     .limit(200);
@@ -420,6 +437,12 @@ worklistRoutes.get("/", async (c) => {
    * «Протокол наблюдения». Если срок вышел, а повтора нет — человек выпал
    * из наблюдения, и узнать об этом должен специалист, а не никто.
    */
+  /*
+   * Повтор — назначение методики, и видимость у него методики: та же, что у
+   * политики строк на survey_access (зона групп), а не зона людей. Пациент
+   * моего отделения с повтором по методике чужой группы — работа той группы.
+   */
+  const followupScope = await surveyScopeFilter(user);
   const overdueFollowups = await db
     .select({
       userId: surveyAccess.userId,
@@ -442,6 +465,7 @@ worklistRoutes.get("/", async (c) => {
         isNotNull(surveyAccess.expiresAt),
         lt(surveyAccess.expiresAt, new Date().toISOString()),
         sql`${surveyAccess.note} like ${`${FOLLOWUP_NOTE}%`}`,
+        followupScope,
         // повтора так и не было: последнее прохождение раньше выдачи доступа
         sql`not exists (
           select 1 from responses r

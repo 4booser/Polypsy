@@ -640,11 +640,24 @@ clinicRoutes.post("/appointments", async (c) => {
     const seen = await accessiblePatientIds(me);
     outsideScope = seen !== null && !seen.has(input.patientId);
     if (outsideScope) {
-      const [elsewhere] = await db
-        .select({ id: departmentPatients.departmentId })
-        .from(departmentPatients)
-        .where(eq(departmentPatients.patientId, input.patientId))
-        .limit(1);
+      /*
+       * «Прикреплён ли к чужому отделению» — системной ролью. Под ролью
+       * приложения прикрепление чужого пациента сотруднику не видно — ровно
+       * потому, что пациент чужой, — и проверка ослепала: человек выглядел
+       * «ничьим», запись шла дальше. В чужой слот её останавливала политика
+       * (пятисотка вместо 403), а в СВОЙ слот — не останавливало ничто:
+       * после вставки приёма политика соглашалась, что пациент свой, и обход
+       * зоны, закрытый этой проверкой, в бою был открыт (волна 13, прогон
+       * clinic.test.ts под ролью приложения). Наружу из выборки уходит одно
+       * «да/нет», не отделение и не человек.
+       */
+      const [elsewhere] = await asSystem(() =>
+        db
+          .select({ id: departmentPatients.departmentId })
+          .from(departmentPatients)
+          .where(eq(departmentPatients.patientId, input.patientId!))
+          .limit(1),
+      );
       if (elsewhere) forbidden("err.patientOfAnotherDepartment");
     }
     patientId = input.patientId;
@@ -661,8 +674,25 @@ clinicRoutes.post("/appointments", async (c) => {
    * осталось: «первый раз» и «уже был» — разные вещи для того, кто
    * принимает, и они попадают в карту. Но записаться оно больше не мешает.
    */
-  const kind = await appointmentKind(patientId, slot.departmentId);
-  const attached = await attachedDepartments(patientId);
+  /*
+   * Вид приёма и прикрепление — факты о человеке в отделении, а не о том,
+   * кто записывает: системной ролью. Регистратор, которому история человека
+   * не видна, иначе записывал бы повторный приём первичным.
+   */
+  const kind = await asSystem(() => appointmentKind(patientId, slot.departmentId));
+  const attached = await asSystem(() => attachedDepartments(patientId));
+
+  /*
+   * Запись за другого — системной ролью, после всех проверок выше: право
+   * записывать за других, зона или «ничей» человек, свободный слот у
+   * принимающего. Политика appointments пускает вставку, только если
+   * сотрудник уже видит пациента или сам принимает, — а запись нового
+   * человека к другому специалисту (регистратура) законна и задумана:
+   * именно ею человек попадает в отделение. Под ролью приложения такая
+   * запись падала пятисоткой «new row violates row-level security policy»
+   * (волна 13). Себя пациент записывает под своей ролью, как и раньше.
+   */
+  const write = <T,>(fn: () => Promise<T>) => (patientId === me.id ? fn() : asSystem(fn));
 
   /*
    * Ссылка на встречу создаётся сама, если специалист подключил календарь.
@@ -689,17 +719,19 @@ clinicRoutes.post("/appointments", async (c) => {
   }
 
   const id = crypto.randomUUID();
-  await db.insert(appointments).values({
-    id,
-    slotId: slot.id,
-    patientId,
-    specialistId: slot.specialistId,
-    kind,
-    mode: input.mode,
-    meetingUrl,
-    reasonEnc: input.reason ? encryptField(input.reason) : null,
-    bookedBy: me.id,
-  });
+  await write(() =>
+    db.insert(appointments).values({
+      id,
+      slotId: slot.id,
+      patientId,
+      specialistId: slot.specialistId,
+      kind,
+      mode: input.mode,
+      meetingUrl,
+      reasonEnc: input.reason ? encryptField(input.reason) : null,
+      bookedBy: me.id,
+    }),
+  );
 
   /*
    * Прикрепление создаётся первой же записью, какой бы она ни была.
@@ -709,14 +741,16 @@ clinicRoutes.post("/appointments", async (c) => {
    * сотрудника, и ровно ради этого всё затевалось.
    */
   if (!attached.includes(slot.departmentId)) {
-    await db
-      .insert(departmentPatients)
-      .values({
-        departmentId: slot.departmentId,
-        patientId,
-        attachedVia: me.id === patientId ? "visit" : "staff",
-      })
-      .onConflictDoNothing();
+    await write(() =>
+      db
+        .insert(departmentPatients)
+        .values({
+          departmentId: slot.departmentId,
+          patientId,
+          attachedVia: me.id === patientId ? "visit" : "staff",
+        })
+        .onConflictDoNothing(),
+    );
   }
 
   await audit(c, {
@@ -793,8 +827,14 @@ async function loadAppointments(where: ReturnType<typeof and>) {
    * назначено.
    *
    * Отменённые батареи не в счёт: их и не ждали.
+   *
+   * Системной ролью: это счёт по людям уже отобранных приёмов, а не чтение
+   * чужих назначений. Под ролью приложения специалист видит назначения
+   * только методик своих групп, и пометка молча теряла назначенное другой
+   * группой — «пришёл со всем», хотя человек не сдал назначенное (волна 13,
+   * прогон clinic.test.ts под ролью приложения). Наружу уходит одно число.
    */
-  const pendingRows = await db.execute<{ user_id: string; n: number }>(
+  const pendingRows = await asSystem(() => db.execute<{ user_id: string; n: number }>(
     sql`
       select u.id as user_id, (
         (select count(*) from survey_access sa
@@ -813,7 +853,7 @@ async function loadAppointments(where: ReturnType<typeof and>) {
       )::int as n
       from users u where u.id in ${patientIds}
     `,
-  );
+  ));
   const pending = new Map(pendingRows.map((r) => [r.user_id, Number(r.n)]));
 
   /*
@@ -834,17 +874,26 @@ async function loadAppointments(where: ReturnType<typeof and>) {
   const screeningSurveyIds = [...new Set([...screeningOf.values()].filter((x): x is string => !!x))];
   const doneScreenings = new Set<string>();
   if (screeningSurveyIds.length) {
-    const submitted = await db
-      .select({ userId: responses.userId, surveyId: responses.surveyId })
-      .from(responses)
-      .where(
-        and(
-          inArray(responses.userId, patientIds),
-          inArray(responses.surveyId, screeningSurveyIds),
-          eq(responses.status, "completed"),
-          eq(responses.source, "intake"),
+    /*
+     * Тоже системной ролью: скрининг назначает отделение, а не группа
+     * методик, и принимающий специалист не обязан быть её администратором.
+     * Под ролью приложения прохождения чужой группы ему не видны, и
+     * сданный скрининг показывался несданным (волна 13). Наружу — одно
+     * «сдан/нет» по людям уже отобранных приёмов.
+     */
+    const submitted = await asSystem(() =>
+      db
+        .select({ userId: responses.userId, surveyId: responses.surveyId })
+        .from(responses)
+        .where(
+          and(
+            inArray(responses.userId, patientIds),
+            inArray(responses.surveyId, screeningSurveyIds),
+            eq(responses.status, "completed"),
+            eq(responses.source, "intake"),
+          ),
         ),
-      );
+    );
     for (const r of submitted) doneScreenings.add(`${r.userId}:${r.surveyId}`);
   }
 

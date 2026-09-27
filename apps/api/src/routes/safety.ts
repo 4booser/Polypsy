@@ -6,6 +6,7 @@ import { db } from "../db";
 import { safetyPlans, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { namesOf } from "../lib/names";
 import { decryptField, encryptField } from "../lib/crypto";
 import { forbidden, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
@@ -74,16 +75,21 @@ async function assertSafetyStaff(c: Context<AppEnv>, permission: Permission) {
 /** Свой план: пациент открывает его сам, в том числе с телефона */
 safetyRoutes.get("/me", async (c) => {
   const user = c.get("user");
-  const [row] = await db
-    .select({ plan: safetyPlans, author: users })
+  const [plan] = await db
+    .select()
     .from(safetyPlans)
-    .leftJoin(users, eq(users.id, safetyPlans.createdBy))
     .where(eq(safetyPlans.userId, user.id))
     .orderBy(desc(safetyPlans.version))
     .limit(1);
 
-  if (!row) return c.json({ plan: null });
-  return c.json({ plan: readPlan(row.plan, row.author ? fullNameOf(row.author) : "—") });
+  if (!plan) return c.json({ plan: null });
+  /*
+   * Автор — отдельной выборкой системной ролью (lib/names.ts), а не левым
+   * соединением с users: строку специалиста пациенту политика не показывает,
+   * и под ролью приложения вместо автора плана стояло «—» (волна 13).
+   */
+  const author = plan.createdBy ? (await namesOf([plan.createdBy])).get(plan.createdBy) : undefined;
+  return c.json({ plan: readPlan(plan, author ?? "—") });
 });
 
 safetyRoutes.get("/patients/:userId", async (c) => {
