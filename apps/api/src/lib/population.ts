@@ -66,6 +66,18 @@ export function localWeek(moment: SQL): SQL {
   return sql`date_trunc('week', ${moment} at time zone ${tz()})`;
 }
 
+/**
+ * Месяц момента в поясе учреждения — «ГГГГ-ММ».
+ *
+ * Дрейф выборки (routes/dataQuality.ts) делил прохождения по месяцам
+ * срезом строки момента, то есть по Гринвичу: сданное первого числа до трёх
+ * ночи по Киеву уезжало в прошлый месяц — в базовую линию, с которой новый
+ * месяц и сравнивается.
+ */
+export function localMonth(moment: SQL): SQL {
+  return sql`to_char(${moment} at time zone ${tz()}, 'YYYY-MM')`;
+}
+
 /** Понедельник текущей недели учреждения — timestamp без пояса */
 export function currentWeek(): SQL {
   return sql`date_trunc('week', now() at time zone ${tz()})`;

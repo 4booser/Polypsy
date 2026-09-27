@@ -1360,6 +1360,9 @@ export const api = {
     ),
   acceptConsent: (textId: string | null) =>
     request<{ ok: true }>("/api/consents/me/accept", { method: "POST", body: JSON.stringify(textId ? { textId } : {}) }),
+  /* отказ записывается на сервере (с версией; после принятия — отзыв): «отказался» и «не дошёл до экрана» различимы */
+  declineConsent: () =>
+    request<{ ok: true; withdrawn: boolean }>("/api/consents/me/decline", { method: "POST", body: "{}" }),
   saveConsentText: (body: Record<string, string>) =>
     request<{ version: number }>("/api/consents/text", { method: "PUT", body: JSON.stringify({ body }) }),
 

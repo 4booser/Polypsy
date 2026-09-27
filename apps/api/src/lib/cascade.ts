@@ -13,6 +13,7 @@ import {
   surveys,
 } from "../db/schema";
 import { auditSystem } from "./audit";
+import { closeMissed, isOverdue } from "./batteries";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 
@@ -25,8 +26,10 @@ import { log } from "./log";
  *
  * Три правила, которые делают это безопасным:
  *   1. Автоматика назначает, но не интерпретирует — никаких диагнозов.
- *   2. Идемпотентность: если такое назначение уже висит незакрытым,
- *      второе не создаётся — повторная сдача не плодит задания.
+ *   2. Идемпотентность: если такое назначение уже висит незакрытым и срок
+ *      его не вышел, второе не создаётся — повторная сдача не плодит
+ *      задания. Просроченное — пропуск: закрывается с отметкой, выдаётся
+ *      новое (lib/batteries.ts, одно правило с расписанием).
  *   3. Каскад не может назначить методику, из которой сам вызван, —
  *      бесконечная петля «прошёл → назначено то же самое» невозможна.
  *
@@ -106,9 +109,18 @@ async function assignCascade(
     return;
   }
 
-  // идемпотентность: незакрытое назначение той же батареи уже есть
-  const existing = await db
-    .select({ id: batteryAssignments.id })
+  /*
+   * Идемпотентность: незакрытое назначение той же батареи уже есть — второе
+   * не создаётся. Но только пока его срок не вышел: просроченное — пропуск,
+   * а не занятость. Прежде каскад считал его занятостью, и человек, однажды
+   * не прошедший углублённый набор в срок, больше не получал его никогда —
+   * какой бы тяжёлый скрининг ни сдал потом. Пропуск закрывается с отметкой
+   * и выдаётся новое — то же правило, что у расписания и ручного назначения
+   * (lib/batteries.ts).
+   */
+  const now = new Date();
+  const open = await db
+    .select({ id: batteryAssignments.id, dueAt: batteryAssignments.dueAt })
     .from(batteryAssignments)
     .where(
       and(
@@ -118,7 +130,8 @@ async function assignCascade(
         isNull(batteryAssignments.cancelledAt),
       ),
     );
-  if (existing.length) return;
+  if (open.some((a) => !isOverdue(a, now))) return;
+  const missed = open.map((a) => a.id);
 
   // снятые методики каскад не выдаёт; если снята вся батарея — каскада нет
   const inUse = new Set(await batterySurveysInUse(batteryId));
@@ -130,9 +143,10 @@ async function assignCascade(
 
   const [source] = await db.select({ title: surveys.title }).from(surveys).where(eq(surveys.id, fromSurveyId));
   // срок — конец дня по поясу учреждения, а не минута сдачи скрининга (lib/day.ts, endOfDay)
-  const dueAt = dueDays ? endOfDayAfter(new Date(), dueDays) : null;
+  const dueAt = dueDays ? endOfDayAfter(now, dueDays) : null;
 
   await db.transaction(async (tx) => {
+    await closeMissed(tx, missed, "срок истёк, назначено заново по результату скрининга", now);
     await tx.insert(batteryAssignments).values({
       id: crypto.randomUUID(),
       batteryId,
@@ -161,7 +175,7 @@ async function assignCascade(
     resourceType: "battery",
     resourceId: batteryId,
     subjectUserId: userId,
-    details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays },
+    details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays, ...(missed.length ? { missed: missed.length } : {}) },
   });
 }
 

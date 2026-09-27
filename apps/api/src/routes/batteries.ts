@@ -23,6 +23,7 @@ import {
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
+import { closeMissed, isOverdue } from "../lib/batteries";
 import { dayOf, deadlineOf } from "../lib/day";
 import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
@@ -409,8 +410,9 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
    * Уникальный индекс держит одно активное назначение набора на человека, и
    * вставка второго падала нарушением индекса — сотрудник видел 500.
    * Открытое и не просроченное — это «уже назначено», 409 со сроком.
-   * Просроченное — это пропуск: оно закрывается с отметкой (как у
-   * расписания, lib/scheduler.ts), и назначение выдаётся заново.
+   * Просроченное — это пропуск: оно закрывается с отметкой, и назначение
+   * выдаётся заново. Правило одно на расписание, ручное назначение и каскад
+   * (lib/batteries.ts, isOverdue и closeMissed).
    */
   const [open] = await db
     .select()
@@ -423,20 +425,14 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
         isNull(batteryAssignments.cancelledAt),
       ),
     );
-  const overdue = !!open?.dueAt && parseTs(open.dueAt) < Date.now();
-  if (open && !overdue) conflict("err.batteryAlreadyAssigned", { due: open.dueAt ? (dayOf(open.dueAt) ?? "—") : "—" });
+  const now = new Date();
+  if (open && !isOverdue(open, now)) {
+    conflict("err.batteryAlreadyAssigned", { due: open.dueAt ? (dayOf(open.dueAt) ?? "—") : "—" });
+  }
 
   const id = crypto.randomUUID();
   await db.transaction(async (tx) => {
-    if (open) {
-      await tx
-        .update(batteryAssignments)
-        .set({
-          cancelledAt: new Date().toISOString(),
-          note: sql`concat_ws(' · ', ${batteryAssignments.note}, 'пропущено: срок истёк, назначено заново')`,
-        })
-        .where(eq(batteryAssignments.id, open.id));
-    }
+    if (open) await closeMissed(tx, [open.id], "срок истёк, назначено заново", now);
     await tx.insert(batteryAssignments).values({
       id,
       batteryId,

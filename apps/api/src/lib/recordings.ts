@@ -214,8 +214,11 @@ export interface Transcriber {
    * (воркер видит это при продлении аренды, участок delivery). По сигналу
    * процесс гасится, временные файлы стираются, обещание отклоняется
    * ошибкой с name = "AbortError".
+   *
+   * limitMs — сколько звука считать разговором (см. transcribeNext): всё,
+   * что записано дальше, в стенограмму не идёт. null — без обрезки.
    */
-  run(audio: Buffer, lang: "uk" | "ru", signal?: AbortSignal): Promise<string>;
+  run(audio: Buffer, lang: "uk" | "ru", signal?: AbortSignal, limitMs?: number | null): Promise<string>;
 }
 
 /**
@@ -382,7 +385,14 @@ async function sweepStaleWork(root: string): Promise<void> {
  * из техпанели. ffmpeg в образе собран только под эти форматы (Dockerfile) и
  * на непонятном входе выходит с ненулевым кодом, а не молчит.
  */
-async function toWav(ffmpeg: string, input: string, output: string, dir: string, signal?: AbortSignal): Promise<void> {
+async function toWav(
+  ffmpeg: string,
+  input: string,
+  output: string,
+  dir: string,
+  signal?: AbortSignal,
+  limitMs?: number | null,
+): Promise<void> {
   let run: ToolRun;
   try {
     run = await runTool(
@@ -403,6 +413,8 @@ async function toWav(ffmpeg: string, input: string, output: string, dir: string,
         "pcm_s16le",
         "-f",
         "wav",
+        // длительность выхода — параметр вывода, до имени файла; секунды с тысячными
+        ...(limitMs && limitMs > 0 ? ["-t", (limitMs / 1000).toFixed(3)] : []),
         "-y",
         output,
       ],
@@ -469,7 +481,7 @@ export function localWhisper(): Transcriber | null {
   const ffmpeg = env.ffmpegBin;
   return {
     name: `whisper.cpp ${model.split("/").pop() ?? ""}`.trim(),
-    async run(audio, lang, signal) {
+    async run(audio, lang, signal, limitMs) {
       /*
        * Открытое аудио живёт только в своём временном каталоге, и каталог
        * удаляется целиком в finally — вместе со всем, что движки положили
@@ -489,7 +501,7 @@ export function localWhisper(): Transcriber | null {
         const input = join(dir, "input");
         const wav = join(dir, "audio.wav");
         await writeFile(input, audio, { mode: 0o600 });
-        await toWav(ffmpeg, input, wav, dir, signal);
+        await toWav(ffmpeg, input, wav, dir, signal, limitMs);
         return await whisper(bin, model, wav, lang, dir, signal);
       } finally {
         await rm(dir, { recursive: true, force: true });
@@ -553,6 +565,8 @@ interface TranscribeJob {
   audioPath: string;
   /** Метка этого захвата: итог пишется, только пока строка захвачена ею */
   claim: string;
+  /** Длительность записи по строке: от начала до остановки (routes/recordings.ts, /stop) */
+  durationMs: number | null;
 }
 
 /**
@@ -573,7 +587,7 @@ interface TranscribeJob {
  */
 async function claimRecording(): Promise<TranscribeJob | null> {
   const claim = crypto.randomUUID();
-  const [row] = await db.execute<{ id: string; audio_path: string }>(sql`
+  const [row] = await db.execute<{ id: string; audio_path: string; duration_ms: number | null }>(sql`
     update visit_recordings
        set status = 'transcribing',
            transcribe_claim = ${claim},
@@ -589,9 +603,11 @@ async function claimRecording(): Promise<TranscribeJob | null> {
         for update skip locked
         limit 1
      )
-    returning id, audio_path
+    returning id, audio_path, duration_ms
   `);
-  return row ? { id: String(row.id), audioPath: String(row.audio_path), claim } : null;
+  if (!row) return null;
+  const durationMs = row.duration_ms === null || row.duration_ms === undefined ? null : Number(row.duration_ms);
+  return { id: String(row.id), audioPath: String(row.audio_path), claim, durationMs };
 }
 
 /**
@@ -712,6 +728,33 @@ async function settleRecording(
 }
 
 /**
+ * Сколько звука из файла считать разговором.
+ *
+ * Остановить запись вправе обе стороны, а файл пишет браузер специалиста.
+ * Когда останавливает пациент, сервер отмечает конец записи сразу
+ * (routes/recordings.ts, /stop без файла), а браузер специалиста узнаёт об
+ * этом опросом — раз в четыре секунды, а во вкладке на заднем плане, где
+ * браузер душит таймеры, и через минуту. Всё это время микрофон пишет
+ * дальше, и в стенограмму попадало сказанное ПОСЛЕ того, как человек
+ * нажал «зупинити», — ровно то, что он остановкой и отзывал.
+ *
+ * Длительность строки — от начала записи на сервере до остановки. Браузер
+ * начинает писать только после ответа сервера на /start
+ * (apps/web/src/components/recorder/model.ts, start), так что ноль файла
+ * приходится чуть позже начала на сервере, и обрезка по длительности
+ * оставляет лишними разве что эти миллисекунды, но не срезает сказанного
+ * до остановки. Остановил сам специалист — конец отмечается приходом файла,
+ * длительность не меньше звука, и обрезка ничего не меняет.
+ *
+ * Файл в хранилище остаётся целым: слушать его негде (маршрута выдачи аудио
+ * нет), а переписывать зашифрованный файл ради хвоста значило бы ещё одно
+ * место, где открытый звук ложится на диск.
+ */
+function speechLimit(durationMs: number | null): number | null {
+  return durationMs !== null && durationMs > 0 ? durationMs : null;
+}
+
+/**
  * Расшифровать одну запись.
  *
  * По одной, а не пачкой: расшифровка часового приёма занимает минуты, и
@@ -730,7 +773,7 @@ export async function transcribeNext(): Promise<boolean> {
   let result: TranscribeResult;
   try {
     const audio = await readAudio(job.audioPath);
-    result = { text: await engine.run(audio, "uk", stop.signal) };
+    result = { text: await engine.run(audio, "uk", stop.signal, speechLimit(job.durationMs)) };
   } catch (error) {
     result = { error };
   } finally {

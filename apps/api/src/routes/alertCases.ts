@@ -29,6 +29,7 @@ import {
 import { audit } from "../lib/audit";
 import { publish } from "../lib/events";
 import { fullNameOf } from "../lib/auth";
+import { periodFrom, periodTo } from "../lib/population";
 import { badRequest, badRequestDetail, conflict, langOf, notFound, parseQuery } from "../lib/http";
 import { assertPatientGroupAccess, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -317,9 +318,14 @@ alertCaseRoutes.get("/", async (c) => {
    * меняется, и «за вчерашнее дежурство» не расползается оттого, что у
    * человека сегодня пришёл новый сигнал. Верхняя граница включительно:
    * выбирают день, а не момент — как в аналитике и списке прохождений.
+   *
+   * Сутки — учреждения (lib/population.ts), а не пояса сессии базы. Прежде
+   * `${q.from}::date` сравнивался с моментом в поясе сессии: на сервере он
+   * UTC, и случай, открытый в час ночи по Киеву, попадал во «вчера» —
+   * «за вчерашнее дежурство» показывало чужую ночь.
    */
-  if (q.from) base.push(sql`${alertCases.openedAt} >= ${q.from}::date`);
-  if (q.to) base.push(sql`${alertCases.openedAt} < (${q.to}::date + 1)`);
+  if (q.from) base.push(sql`${alertCases.openedAt} >= ${periodFrom(q.from)}`);
+  if (q.to) base.push(sql`${alertCases.openedAt} < ${periodTo(q.to)}`);
 
   const needle = q.search?.toLowerCase() || undefined;
   if (needle) {
