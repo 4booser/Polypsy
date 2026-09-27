@@ -5,6 +5,7 @@ import { useLang } from "../../lang";
 import { isTopLayer, useFocusTrap } from "../../ui";
 import { cx } from "../../ui/cx";
 import { Button } from "../../ui/primitives";
+import { useDebounced, useResource } from "../../useResource";
 import { HIDDEN_MARK, cellText } from "./model";
 
 /*
@@ -517,61 +518,50 @@ export function PatientField({
   const { ut } = useLang();
   const id = useId();
   const [text, setText] = useState("");
-  const [found, setFound] = useState<Patient[] | null>(null);
   const [open, setOpen] = useState(false);
   const known = useRef(new Map<string, string>());
   const listRef = useRef<HTMLDivElement>(null);
 
-  /* имя сохранённого в фильтре человека — один раз, по идентификатору */
+  /*
+   * Имя сохранённого в фильтре человека — один раз, по идентификатору.
+   * Загрузкой (волна 13), а не голым запросом: имя прежнего человека,
+   * приехавшее после смены фильтра, не встанет в поле нового.
+   */
+  const name = useResource(() => api.patientCard(value!).then((p) => p.fullName), [value], {
+    enabled: !!value && !known.current.has(value),
+    keep: false,
+  });
   useEffect(() => {
     if (!value) {
       setText("");
       return;
     }
-    const name = known.current.get(value);
-    if (name) {
-      setText(name);
+    const kept = known.current.get(value);
+    if (kept) {
+      setText(kept);
       return;
     }
-    let live = true;
-    void api
-      .patientCard(value)
-      .then((p) => {
-        known.current.set(value, p.fullName);
-        if (live) setText(p.fullName);
-      })
-      .catch(() => {
-        if (live) setText(ut("st.patientUnavailable"));
-      });
-    return () => {
-      live = false;
-    };
-  }, [value, ut]);
+    if (name.data) {
+      known.current.set(value, name.data);
+      setText(name.data);
+    } else if (name.error) setText(ut("st.patientUnavailable"));
+  }, [value, name.data, name.error, ut]);
 
   /* поиск ждёт паузу в наборе: сервер расшифровывает ФИО на каждый запрос */
-  useEffect(() => {
-    if (!open) return;
-    const q = text.trim();
-    if (q.length < 2) {
-      setFound(null);
-      return;
-    }
-    let live = true;
-    const timer = setTimeout(() => {
-      void api
+  const typed = text.trim();
+  const q = useDebounced(typed, 250);
+  const searching = open && typed.length >= 2 && q.length >= 2;
+  const search = useResource(
+    () =>
+      api
         .patients({ search: q })
-        .then((r) => {
-          if (live) setFound(r.items.slice(0, 8));
-        })
-        .catch(() => {
-          if (live) setFound([]);
-        });
-    }, 250);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-    };
-  }, [text, open]);
+        .then((r) => r.items.slice(0, 8))
+        // отказ поиска — «никого не найдено», а не поломка поля
+        .catch(() => [] as Patient[]),
+    [q],
+    { enabled: searching },
+  );
+  const found = searching ? search.data : null;
 
   const choose = (p: Patient) => {
     known.current.set(p.id, p.fullName);

@@ -753,17 +753,6 @@ kbd, .kbd {
 .end-of-list { text-align: center; color: var(--muted); font-size: var(--fs-caption); padding: 12px; }
 .load-more { width: 100%; justify-content: center; margin-top: 10px; }
 
-.offline-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
-  margin-bottom: var(--gap);
-  border-radius: var(--r-md);
-  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  background: var(--accent-soft);
-  font-size: var(--fs-small);
-}
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 .dot.live, .live-dot { background: var(--sev-none); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
@@ -931,7 +920,7 @@ kbd, .kbd {
 @media print {
   /* печатные значения токенов живут в styles/tokens.css — см. пояснение там */
   body { font-size: 11pt; }
-  .sidebar, .toasts, .offline-bar, .table-tools, .filters, button, .load-more { display: none !important; }
+  .sidebar, .toasts, [data-connection], .table-tools, .filters, button, .load-more { display: none !important; }
   .app { display: block; }
   .main { padding: 0; max-width: none; }
   .print-only { display: block; }

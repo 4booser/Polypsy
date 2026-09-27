@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { api } from "../api";
+import { connection } from "../connection";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { MaintenanceBanner } from "../service/MaintenanceBanner";
+import { ConnectionLine } from "../ui/ConnectionLine";
 import { cx } from "../ui/cx";
 import { Button, TouchArea } from "../ui/primitives";
 import { IconCalendar, IconHome, IconPerson, IconTest } from "./icons";
@@ -90,6 +92,7 @@ function PatientShell() {
         <span className="truncate text-small text-muted">{user?.fullName ?? ""}</span>
       </header>
       <MaintenanceBanner place="patient" />
+      <ConnectionLine place="patient" />
       {pending.waiting || pending.rejected ? (
         /*
           Отложенные сдачи видны, пока не ушли: человек, закрывший методику во
@@ -182,10 +185,21 @@ function useOutbox(userId: string | null) {
   useEffect(() => {
     flush();
     const timer = setInterval(flush, 60_000);
-    window.addEventListener("online", flush);
+    /*
+     * Связь вернулась — досылаем сразу. По знанию вкладки о связи
+     * (connection.ts), а не по событию браузера «online»: браузер молчит,
+     * когда сеть была, а сервера за ней не было (перезапуск, VPN), — а
+     * ответы в очереди ждут как раз этого.
+     */
+    let wasOnline = connection.isOnline();
+    const off = connection.subscribe(() => {
+      const online = connection.isOnline();
+      if (online && !wasOnline) flush();
+      wasOnline = online;
+    });
     return () => {
       clearInterval(timer);
-      window.removeEventListener("online", flush);
+      off();
     };
   }, [flush]);
 

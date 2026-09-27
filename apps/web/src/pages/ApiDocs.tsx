@@ -19,9 +19,9 @@ const METHOD_ORDER = ["get", "post", "put", "patch", "delete"];
 export default function ApiDocs() {
   const { ut } = useLang();
   const [open, setOpen] = useState<string | null>(null);
-  const { data: spec, error } = useResource(() => api.openapi(), []);
+  const { data: spec, error, reload, loading } = useResource(() => api.openapi(), []);
 
-  if (!spec) return <Loading error={error} />;
+  if (!spec) return <Loading error={error} onRetry={reload} busy={loading} />;
 
   const byTag = new Map<string, { path: string; method: string; op: Operation }[]>();
   for (const [path, methods] of Object.entries(spec.paths)) {

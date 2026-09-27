@@ -5,13 +5,15 @@ import { useAuth } from "./auth";
 import { useLang } from "./lang";
 import Login from "./pages/Login";
 import { Topbar, barKind, type BurgerAccount } from "./shell/Topbar";
-import { onAppEvent } from "./events";
+import { useLiveReload } from "./events";
+import { useResource } from "./useResource";
 import type { WorkspacePrefs } from "@quizzy/shared";
 import { peopleLists } from "./pages/people/model";
 import { Loading, useAction } from "./ui";
 import { canOpenOps, opsHome } from "./pages/ops/model";
 import { TrackedRoutes } from "./telemetry/screens";
 import { MaintenanceBanner } from "./service/MaintenanceBanner";
+import { ConnectionLine } from "./ui/ConnectionLine";
 import { useTelemetryRoute } from "./telemetry/client";
 import { ErrorBoundary } from "./telemetry/ErrorBoundary";
 import { ImpersonationBanner } from "./pages/ops/people2/ImpersonationBanner";
@@ -49,6 +51,9 @@ const PatientDynamics = lazy(() => loadPatients().then((m) => ({ default: m.Pati
  * не рисует, а библиотека нужна только открытой.
  */
 const CommandPalette = lazy(() => import("./shell/CommandPalette").then((m) => ({ default: m.CommandPalette })));
+
+/** Такт счётчиков верхней полосы — страховка на случай, если поток событий не проходит прокси */
+const COUNTS_POLL_MS = 60_000;
 
 /**
  * Догрузить ежедневные экраны, когда браузер свободен.
@@ -262,18 +267,9 @@ export default function App() {
    * сборки: образ консоли один на все учреждения, а настроен способ в
    * одном из них.
    */
-  const [googleReady, setGoogleReady] = useState(false);
-  useEffect(() => {
-    void api
-      .googleStatus()
-      .then((r) => setGoogleReady(r.enabled))
-      .catch(() => {});
-  }, []);
+  /* отказ — «не настроен»: кнопки Google просто нет, как и прежде */
+  const googleReady = useResource(() => api.googleStatus().catch(() => ({ enabled: false })), []).data?.enabled ?? false;
   const { ut } = useLang();
-  const [openAlerts, setOpenAlerts] = useState(0);
-  const [openReferrals, setOpenReferrals] = useState(0);
-  const [worklistCount, setWorklistCount] = useState(0);
-  const [todayLeft, setTodayLeft] = useState(0);
   /*
    * Тема хранится явно: тёмная по умолчанию, но в кабинете при дневном свете
    * она неудобна, а системная настройка на рабочей станции часто не отражает
@@ -450,57 +446,63 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  useEffect(() => {
-    /*
-     * Пока обязательный второй фактор не настроен (people2), сервер отвечает
-     * отказом на всё, кроме настройки, — и каждый такт счётчиков писал бы в
-     * журнал access.denied. Опрос начнётся, когда профиль перечитается.
-     * Временный пароль — то же самое: сервер пускает только к смене
-     * (lib/tempPassword.ts), и опрос до неё — строка отказа на каждый такт.
-     */
-    if (!user || user.mfaSetupRequired || user.mustChangePassword) return;
-    /*
-     * Тревоги — единственное в консоли, что должно догонять само: пока
-     * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
-     * дежурный видит новую тревогу, даже сидя в другой вкладке.
-     */
-    const load = () => {
-      // счётчик считает случаи, а не сработавшие пункты: в навигации должно
-      // стоять число людей, которых надо разобрать, а не число сигналов
-      api.alertCases({ limit: "1" }).then((p) => setOpenAlerts(p.total ?? 0)).catch(() => {});
-      // направления в том же такте: незакрытое направление ждёт так же долго
-      // общее число — с первой страницы; длина страницы упёрлась бы в её размер
-      api.referrals().then((r) => setOpenReferrals(r.total ?? r.items.length)).catch(() => {});
-      api.worklist().then((w) => setWorklistCount(w.total)).catch(() => {});
-      /*
-       * В бейдже — сколько ещё не принято, а не сколько записано. Число,
-       * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
-       * же самое, что утром, и смотреть на него перестают.
-       */
-      api
-        .today()
-        .then((d) =>
-          setTodayLeft(
-            d.items.filter((a) => a.status === "booked" || a.status === "confirmed").length,
-          ),
-        )
-        .catch(() => {});
-    };
-    load();
-    /*
-     * Таймер остаётся страховкой: поток событий может не пройти через
-     * корпоративный прокси, и тогда счётчики обновляются как прежде — раз в
-     * минуту. Реальное время здесь ускорение, а не единственный путь.
-     */
-    const timer = setInterval(load, 60_000);
-    const off = onAppEvent((e) => {
-      if (e.kind === "alert.created" || e.kind === "case.changed") load();
-    });
-    return () => {
-      clearInterval(timer);
-      off();
-    };
-  }, [user]);
+  /*
+   * Пока обязательный второй фактор не настроен (people2), сервер отвечает
+   * отказом на всё, кроме настройки, — и каждый такт счётчиков писал бы в
+   * журнал access.denied. Опрос начнётся, когда профиль перечитается.
+   * Временный пароль — то же самое: сервер пускает только к смене
+   * (lib/tempPassword.ts), и опрос до неё — строка отказа на каждый такт.
+   */
+  const counting = !!user && !user.mfaSetupRequired && !user.mustChangePassword;
+  /*
+   * Тревоги — единственное в консоли, что должно догонять само: пока
+   * email-канал не настроен, поллинг раз в минуту + бейдж на favicon —
+   * дежурный видит новую тревогу, даже сидя в другой вкладке.
+   *
+   * Таймер остаётся страховкой: поток событий может не пройти через
+   * корпоративный прокси, и тогда счётчики обновляются как прежде — раз в
+   * минуту. Реальное время здесь ускорение, а не единственный путь.
+   *
+   * Каждый счётчик — своей загрузкой (волна 13: раньше четыре голых запроса
+   * в одном эффекте): отказ одного не трогает остальные, а не ответивший
+   * держит прежнее число, пока следующий такт его не обновит. Ключ — кто
+   * вошёл: смена человека за тем же компьютером не покажет ему чужие числа.
+   */
+  // и в скрытой вкладке: значок с числом тревог на ней ради этого и заведён;
+  // прежние числа под новым вошедшим не держим — это были бы его числа только с виду
+  const tally = { enabled: counting, pollMs: COUNTS_POLL_MS, pollHidden: true, keep: false };
+  // счётчик считает случаи, а не сработавшие пункты: в навигации должно
+  // стоять число людей, которых надо разобрать, а не число сигналов
+  const alertCount = useResource(() => api.alertCases({ limit: "1" }).then((p) => p.total ?? 0), [user?.id], tally);
+  // направления в том же такте: незакрытое направление ждёт так же долго
+  // общее число — с первой страницы; длина страницы упёрлась бы в её размер
+  const referralCount = useResource(() => api.referrals().then((r) => r.total ?? r.items.length), [user?.id], tally);
+  const worklistRes = useResource(() => api.worklist().then((w) => w.total), [user?.id], tally);
+  /*
+   * В бейдже — сколько ещё не принято, а не сколько записано. Число,
+   * которое не убывает по ходу дня, ничего не сообщает: к обеду оно то
+   * же самое, что утром, и смотреть на него перестают.
+   */
+  const todayRes = useResource(
+    () =>
+      api.today().then((d) => d.items.filter((a) => a.status === "booked" || a.status === "confirmed").length),
+    [user?.id],
+    tally,
+  );
+  useLiveReload(
+    ["alert.created", "case.changed"],
+    () => {
+      alertCount.reload();
+      referralCount.reload();
+      worklistRes.reload();
+      todayRes.reload();
+    },
+    counting,
+  );
+  const openAlerts = alertCount.data ?? 0;
+  const openReferrals = referralCount.data ?? 0;
+  const worklistCount = worklistRes.data ?? 0;
+  const todayLeft = todayRes.data ?? 0;
 
   useEffect(() => {
     paintFavicon(openAlerts);
@@ -537,7 +539,15 @@ export default function App() {
     );
   }
 
-  if (loading) return <div style={{ padding: 40 }}><Loading rows={3} /></div>;
+  if (loading) {
+    return (
+      <>
+        {/* сервер не ответил при открытии: сессия цела, ждём связи — и говорим об этом (auth.tsx) */}
+        <ConnectionLine place="console" />
+        <div style={{ padding: 40 }}><Loading rows={3} /></div>
+      </>
+    );
+  }
   /*
    * Гость: корень — лендинг, «/login» — вход, любой другой адрес — тоже вход,
    * с сохранением адреса: после входа консоль откроется на том, что человек
@@ -765,6 +775,12 @@ export default function App() {
         он обязан стоять и тогда, когда экран ещё догружается или упал.
       */}
       <MaintenanceBanner place="console" />
+      {/*
+        Связь с сервером — там же и так же (волна 13): одна строка на всю
+        консоль вместо полос отдельных экранов; вернулась связь — экран
+        перечитывается сам (ui/ConnectionLine.tsx, connection.ts).
+      */}
+      <ConnectionLine place="console" />
       {/*
         Содержимое — колонка в 1200 px по центру, как на макете.
 

@@ -5931,8 +5931,6 @@ export const UI = {
    * отфильтрованный вид, а не вся таблица.
    */
   "ui.exportCsv": { uk: "Вивантажити CSV", ru: "Выгрузить CSV", en: "Export CSV" },
-  "ui.retrying": { uk: "Пробую…", ru: "Пробую…", en: "Retrying…" },
-  "ui.offline": { uk: "Немає зв’язку із сервером. Показано останні завантажені дані.", ru: "Нет связи с сервером. Показаны последние загруженные данные.", en: "No connection to the server. Showing the last loaded data." },
   "cl.editAction": { uk: "Правити", ru: "Править", en: "Edit" },
   "cl.keysAction": { uk: "Ключі", ru: "Ключи", en: "Keys" },
   "cl.accessAction": { uk: "Доступ", ru: "Доступ", en: "Access" },
@@ -7609,6 +7607,21 @@ export const UI = {
   "act.sec_audit_check": { uk: "Звірка ланцюжка журналу", ru: "Сверка цепочки журнала", en: "Audit chain check" },
   "act.sec_audit_chain_broken": { uk: "Розрив ланцюжка журналу", ru: "Разрыв цепочки журнала", en: "Audit chain broken" },
   "act.sec_sql_query": { uk: "Запит SQL-консолі", ru: "Запрос SQL-консоли", en: "SQL console query" },
+  /* ── w13:data ── */
+  "conn.lost": { uk: "Немає зв’язку з сервером", ru: "Нет связи с сервером", en: "No connection to the server" },
+  "conn.since": { uk: "з", ru: "с", en: "since" },
+  "conn.keep": {
+    uk: "На екрані — останні завантажені дані. Щойно зв’язок повернеться, оновимо їх самі.",
+    ru: "На экране — последние загруженные данные. Как только связь вернётся, обновим их сами.",
+    en: "The screen shows the last loaded data. It will refresh by itself once the connection is back.",
+  },
+  "conn.checkNow": { uk: "Перевірити зараз", ru: "Проверить сейчас", en: "Check now" },
+  "conn.checking": { uk: "Перевіряю…", ru: "Проверяю…", en: "Checking…" },
+  "conn.restored": {
+    uk: "Зв’язок відновлено — дані оновлюються",
+    ru: "Связь восстановлена — данные обновляются",
+    en: "Connection restored — refreshing the data",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 

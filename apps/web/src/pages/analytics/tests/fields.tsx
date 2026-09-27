@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from "react";
 import { api, type Patient } from "../../../api";
 import { useLang } from "../../../lang";
 import { cx } from "../../../ui/cx";
 import { IconCaret } from "../../../ui/glyphs";
 import { Input } from "../../../ui/primitives";
+import { useDebounced, useResource } from "../../../useResource";
 import { findSurveys, type Scope, type SurveyChoice } from "./model";
 
 /*
@@ -327,28 +328,24 @@ export function PatientPicker({
 }) {
   const { ut } = useLang();
   const [q, setQ] = useState("");
-  const [found, setFound] = useState<Patient[] | null>(null);
-  const live = useRef(0);
-
-  useEffect(() => {
-    const text = q.trim();
-    if (text.length < 2) {
-      setFound(null);
-      return;
-    }
-    const ticket = ++live.current;
-    const timer = setTimeout(() => {
-      void api
+  /*
+   * Загрузкой по успокоившейся строке (волна 13) вместо своего номера
+   * билета: ответ ложится под ту строку, которую спрашивали, а стёртая до
+   * одной буквы строка больше не получает запоздалый список прежней.
+   */
+  const typed = q.trim();
+  const text = useDebounced(typed, 250);
+  const searching = typed.length >= 2 && text.length >= 2;
+  const search = useResource(
+    () =>
+      api
         .patients({ search: text })
-        .then((r) => {
-          if (live.current === ticket) setFound(r.items.slice(0, 10));
-        })
-        .catch(() => {
-          if (live.current === ticket) setFound([]);
-        });
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [q]);
+        .then((r) => r.items.slice(0, 10))
+        .catch(() => [] as Patient[]),
+    [text],
+    { enabled: searching },
+  );
+  const found = searching ? search.data : null;
 
   return (
     <Combo

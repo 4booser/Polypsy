@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import { Page, Panel } from "../ui/layout";
 import { useLang } from "../lang";
+import { useResource } from "../useResource";
 
 /**
  * Командная консоль.
@@ -36,19 +37,13 @@ export default function Console() {
   ]);
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const [commands, setCommands] = useState<{ usage: string; name: string; allowed: boolean }[]>([]);
+  /* список команд — удобство: без него работает всё, кроме дополнения по Tab */
+  const commands = useResource(() => api.consoleCommands().then((r) => r.items), []).data ?? [];
   /** История введённого; листается стрелками, индекс −1 = «сейчас печатаю» */
   const history = useRef<string[]>([]);
   const cursor = useRef(-1);
   const bottom = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    void api
-      .consoleCommands()
-      .then((r) => setCommands(r.items))
-      .catch(() => setCommands([]));
-  }, []);
 
   // прокрутка к последней строке: терминал, за которым надо тянуться мышью,
   // перестаёт быть терминалом
