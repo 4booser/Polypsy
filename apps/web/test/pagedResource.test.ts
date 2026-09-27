@@ -10,7 +10,8 @@ import {
 import { ApiError } from "../src/api";
 import { connection } from "../src/connection";
 import { createQueryClient, wireConnection } from "../src/query";
-import { pagedQuery, pagedState, type Page as ListPage } from "../src/useResource";
+import { ownGroupsOf, queueGate, queueQuery, readFilters } from "../src/pages/alerts/model";
+import { pagedQuery, pagedState, reloadList, type Page as ListPage } from "../src/useResource";
 
 /**
  * Гонка постраничной подгрузки — на живом клиенте TanStack (волна 13).
@@ -233,6 +234,80 @@ describe("список на краях: пусто, отказ, обрыв (w13:
     });
     await until(() => w.state().offline);
     expect(w.state()).toMatchObject({ items: null, error: null, loading: false, offline: true });
+    w.off();
+  });
+});
+
+describe("выключенный список (w14:webtails)", () => {
+  /*
+   * usePagedResource получил enabled, как у useResource. Проверяется на том
+   * же живом клиенте: выключенный список не спрашивает сервер ни сам, ни по
+   * «перечитать» (reloadList — то, что зовёт reload хука), а включённый —
+   * спрашивает один раз.
+   */
+  test("выключенный — ни запроса, ни «грузится»; «перечитать» его не будит", async () => {
+    let asked = 0;
+    const load = async () => {
+      asked += 1;
+      return page(["а"]);
+    };
+    const w = watch(pagedQuery(["выкл"], load, { enabled: false }));
+    await tick(5);
+    reloadList(w.observer.getCurrentResult(), false);
+    await tick(5);
+    expect(asked).toBe(0);
+    expect(w.state()).toMatchObject({ items: null, loading: false, error: null });
+
+    // без проверки выключенности refetch TanStack ушёл бы и так — ради этого reloadList её и держит
+    w.observer.setOptions(pagedQuery(["выкл"], load));
+    await until(() => w.state().items !== null);
+    expect(asked).toBe(1);
+    reloadList(w.observer.getCurrentResult(), true);
+    await until(() => asked === 2);
+    w.off();
+  });
+
+  test("очередь с чужой группой из адреса: до прихода своих групп — ни одного запроса с ней", async () => {
+    /*
+     * Сценарий дефекта. Вид коллеги открыт по ссылке с его группой. Свои
+     * группы ещё в пути — прежде очередь уже шла на сервер с чужой группой и
+     * получала 404, который стоял на экране, пока не приезжал список групп.
+     * Здесь — ровно путь экрана (Alerts.tsx): отбор из адреса → queueGate →
+     * ключ и enabled наблюдателя.
+     */
+    const OWN = "0b8f6a3e-1c2d-4e5f-8a9b-0c1d2e3f4a5b";
+    const FOREIGN = "1c9f7b4f-2d3e-4f60-9bac-1d2e3f4a5b6c";
+    const url = new URLSearchParams(`patientGroup=${FOREIGN}&severity=severe`);
+    const raw = readFilters((name) => url.get(name) ?? "");
+    const sent: Record<string, string | undefined>[] = [];
+    const server = async (q: Record<string, string | undefined>) => {
+      sent.push(q);
+      if (q.patientGroup && q.patientGroup !== OWN) throw new ApiError("Групу пацієнтів не знайдено", 404);
+      return page(["випадок"]);
+    };
+    const options = (groups: { data: { id: string }[] | null; updatedAt: number | null }) => {
+      const gate = queueGate(raw, ownGroupsOf(groups));
+      return pagedQuery<Page>(["очередь", JSON.stringify(gate.filters)], (cursor) => server(queueQuery(gate.filters, 30, cursor)), {
+        enabled: gate.ready,
+      });
+    };
+
+    // свои группы в пути
+    const w = watch(options({ data: null, updatedAt: null }));
+    await tick(5);
+    // событие «новая тревога» в это время тоже не будит список
+    reloadList(w.observer.getCurrentResult(), queueGate(raw, "pending").ready);
+    await tick(5);
+    expect(sent).toEqual([]);
+    expect(w.state().error).toBeNull();
+
+    // пришли: чужой среди них нет — очередь идёт без группы, но с остальным отбором
+    w.observer.setOptions(options({ data: [{ id: OWN }], updatedAt: 1 }));
+    await until(() => w.state().items !== null);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.patientGroup).toBeUndefined();
+    expect(sent[0]!.severity).toBe("severe");
+    expect(w.state().error).toBeNull();
     w.off();
   });
 });

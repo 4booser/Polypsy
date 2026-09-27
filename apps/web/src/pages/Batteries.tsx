@@ -28,7 +28,7 @@ export default function Batteries() {
   const { ut } = useLang();
   const [editing, setEditing] = useState<Battery | "new" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   /*
    * Батареи — содержание экрана, остальные три списка нужны только редактору
@@ -95,6 +95,7 @@ export default function Batteries() {
                 </button>
                 <button onClick={() => setEditing(b)}>{ut("f.edit")}</button>
                 <Button
+                  disabled={busy}
                   variant="danger"
                   onClick={() =>
                     run(async () => {
@@ -210,6 +211,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                     <span className="good">{ut("mark.passed")}</span>
                   ) : (
                     <button
+                      disabled={busy}
                       onClick={() =>
                         run(async () => {
                           await api.cancelAssignment(a.id);
@@ -330,7 +332,7 @@ function BatteryEditor({
   const [items, setItems] = useState<{ surveyId: string; required: boolean }[]>(
     battery?.items.map((i) => ({ surveyId: i.surveyId, required: i.required })) ?? [],
   );
-  const { run } = useAction();
+  const { run, busy } = useAction();
 
   /*
    * Шаг батареи, методику которого сняли с использования или которая ушла
@@ -469,7 +471,7 @@ function BatteryEditor({
       </div>
 
       <div className="row mt-[18px]">
-        <Button variant="primary" onClick={save} disabled={!title.trim() || !items.length}>
+        <Button variant="primary" onClick={save} disabled={busy || !title.trim() || !items.length}>
           {ut("ui.save")}
         </Button>
         <button onClick={onClose}>{ut("ui.cancel")}</button>

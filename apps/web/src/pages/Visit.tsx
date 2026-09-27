@@ -1,16 +1,32 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useReducer, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import type { UiKey } from "@quizzy/shared";
-import { api, openInTab } from "../api";
+import type { SurveyListItem, UiKey } from "@quizzy/shared";
+import { api, type NoteState, openInTab } from "../api";
 import { day } from "../format";
-import { Screen, useAction } from "../ui";
+import { NotLoaded, Screen, useAction } from "../ui";
 import { Page, Panel } from "../ui/layout";
 import { Button, Field, Input, SectionLabel, Select, Textarea } from "../ui/primitives";
 import { useLang } from "../lang";
-import { useResource } from "../useResource";
+import { type Resource, useResource } from "../useResource";
 import { TemplatePicker } from "../components/TemplatePicker";
 import { VisitRecorder } from "../components/VisitRecorder";
 import { Episodes } from "../components/Episodes";
+import { today } from "../components/deadline";
+import { staleMessage } from "../components/versioned";
+import {
+  ATTEMPTS_MAX,
+  type AssignDraft,
+  EMPTY_PROTOCOL,
+  NEW_ASSIGN,
+  type Protocol,
+  type ProtocolEvent,
+  assignBody,
+  assignProblems,
+  assignReady,
+  assignable,
+  protocolSavable,
+  protocolStep,
+} from "./visitModel";
 
 const SOURCE_KEY: Record<string, UiKey> = {
   self: "visit.sourceSelf",
@@ -41,21 +57,41 @@ const CHANGE_KEY: Record<string, UiKey> = {
  */
 export default function VisitPage() {
   const { id = "" } = useParams();
+  /*
+   * Другой приём — другой экран целиком, а не тот же с новым адресом
+   * (w14:webtails). Переход между приёмами (палитра, «назад» браузера)
+   * оставлял компонент на месте, и с ним — набранный протокол и его базу:
+   * текст о прежнем человеке стоял в поле нового и по «Зберегти» ложился в
+   * его записи. Ключ по приёму начинает всё с чистого листа.
+   */
+  return <VisitScreen key={id} id={id} />;
+}
+
+function VisitScreen({ id }: { id: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
   const res = useResource(() => api.visitContext(id), [id]);
   const reload = res.reload;
 
-  const notes = useResource(
-    () => (res.data ? api.notes(res.data.patient.id) : Promise.resolve(null)),
-    [res.data?.patient.id],
-  );
+  /*
+   * Запись о человеке — только когда известно, о ком: прежде до ответа о
+   * приёме здесь «грузился» null, и он выглядел как «записей нет».
+   */
+  const patientId = res.data?.patient.id ?? "";
+  const notes = useResource(() => api.notes(patientId), [patientId], { enabled: !!patientId });
 
-  const [text, setText] = useState<string | null>(null);
+  /*
+   * Протокол — текст поля вместе с базой, поверх которой он набран
+   * (visitModel.ts): поле открывается только ответом сервера, а база —
+   * то, что видел человек, а не то, что пришло последним.
+   */
+  const [protocol, dispatch] = useReducer(protocolStep, EMPTY_PROTOCOL);
   const areaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
-    if (notes.data && text === null) setText(notes.data.current?.text ?? "");
-  }, [notes.data, text]);
+    if (notes.data) dispatch({ type: "loaded", state: notes.data });
+  }, [notes.data]);
+  /* отказ 409 — запись переписали, пока протокол был открыт: строкой у кнопок, с «перечитати» (как в NotesEditor) */
+  const [stale, setStale] = useState<string | null>(null);
 
   return (
     <Screen res={res} rows={6}>
@@ -83,71 +119,47 @@ export default function VisitPage() {
             <History data={data} />
 
             <Panel title={ut("visit.protocol")} className="h-full">
-              <div className="flex flex-col gap-2 p-4">
-                <Textarea
-                  ref={areaRef}
-                  rows={18}
-                  value={text ?? ""}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder={ut(
-                    data.appointment.kind === "primary" ? "visit.tplIntake" : "visit.tplSession",
-                  )}
-                />
-                <div className="flex flex-wrap gap-2">
-                  {/*
-                    Шаблон подставляется по нажатию, а не сам.
-                    Автоподстановка в пустое поле выглядит удобной ровно до
-                    первого раза, когда специалист начал писать своими
-                    словами и получил поверх заготовку.
-                  */}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!!text}
-                    onClick={() =>
-                      setText(
-                        ut(
-                          data.appointment.kind === "primary"
-                            ? "visit.tplIntake"
-                            : "visit.tplSession",
-                        ),
-                      )
+              <ProtocolBody
+                notes={notes}
+                protocol={protocol}
+                template={ut(data.appointment.kind === "primary" ? "visit.tplIntake" : "visit.tplSession")}
+                busy={busy}
+                stale={stale}
+                areaRef={areaRef}
+                onEvent={dispatch}
+                onSave={() =>
+                  run(async () => {
+                    try {
+                      const saved = await api.saveNote(
+                        data.patient.id,
+                        protocol.text ?? "",
+                        // база — то, поверх чего набран текст (null — записей не было): сервер сверит
+                        protocol.seen,
+                        data.appointment.kind === "primary" ? "intake" : "session",
+                        data.appointment.id,
+                      );
+                      // ответ сервера ложится сразу: следующее «Зберегти» уйдёт с его редакцией, а не с прежней
+                      notes.patch(saved);
+                      dispatch({ type: "saved", state: saved });
+                      setStale(null);
+                      reload();
+                    } catch (e) {
+                      const message = staleMessage(e);
+                      if (message === null) throw e;
+                      setStale(message);
+                      return false;
                     }
-                  >
-                    {ut("visit.template")}
-                  </Button>
-                  <TemplatePicker
-                    kind="note"
-                    value={text ?? ""}
-                    onChange={setText}
-                    textareaRef={areaRef}
-                  />
-                  <Button
-                    size="sm"
-                    disabled={busy || !text}
-                    onClick={() =>
-                      run(
-                        () =>
-                          api
-                            .saveNote(
-                              data.patient.id,
-                              text ?? "",
-                              notes.data?.current ?? null,
-                              data.appointment.kind === "primary" ? "intake" : "session",
-                              data.appointment.id,
-                            )
-                            .then(() => {
-                              notes.reload();
-                              reload();
-                            }),
-                        ut("visit.saved"),
-                      )
-                    }
-                  >
-                    {ut("visit.save")}
-                  </Button>
-                </div>
-              </div>
+                  }, ut("visit.saved"))
+                }
+                onReread={() =>
+                  run(async () => {
+                    const fresh = await api.notes(data.patient.id);
+                    notes.patch(fresh);
+                    dispatch({ type: "reread", state: fresh });
+                    setStale(null);
+                  })
+                }
+              />
             </Panel>
 
             <div className="flex h-full flex-col gap-3">
@@ -168,7 +180,7 @@ export default function VisitPage() {
               */}
               <VisitRecorder
                 appointmentId={data.appointment.id}
-                onTranscript={(t) => setText((prev) => (prev ? `${prev}\n\n${t}` : t))}
+                onTranscript={(t) => dispatch({ type: "append", text: t })}
               />
               <Actions data={data} busy={busy} run={run} reload={reload} />
               {/*
@@ -189,6 +201,79 @@ export default function VisitPage() {
 }
 
 type Ctx = Awaited<ReturnType<typeof api.visitContext>>;
+
+/**
+ * Протокол приёма: поле, шаблоны и «Зберегти» — всё из состояния, без
+ * своих решений и без сети, поэтому проверяется без браузера
+ * (test/visitProtocol.test.tsx).
+ *
+ * Пока ответа о записи нет, поля нет: на его месте скелет, а при отказе —
+ * отказ с «повторити». Прежде здесь стояло пустое поле, и отказ загрузки
+ * выглядел как «записей о человеке нет»: специалист писал протокол с нуля
+ * поверх черновика, которого не видел.
+ */
+export function ProtocolBody({
+  notes,
+  protocol,
+  template,
+  busy,
+  stale,
+  areaRef,
+  onEvent,
+  onSave,
+  onReread,
+}: {
+  notes: Pick<Resource<NoteState>, "error" | "loading" | "reload">;
+  protocol: Protocol;
+  /** Заготовка протокола по виду приёма: плейсхолдер и кнопка «Шаблон» */
+  template: string;
+  busy: boolean;
+  stale: string | null;
+  areaRef: RefObject<HTMLTextAreaElement | null>;
+  onEvent: (e: ProtocolEvent) => void;
+  onSave: () => void;
+  onReread: () => void;
+}) {
+  const { ut } = useLang();
+  if (protocol.text === null) {
+    return (
+      <div className="p-4">
+        <NotLoaded res={notes} rows={6} />
+      </div>
+    );
+  }
+  const text = protocol.text;
+  const edit = (next: string) => onEvent({ type: "edit", text: next });
+  return (
+    <div className="flex flex-col gap-2 p-4">
+      <Textarea ref={areaRef} rows={18} value={text} onChange={(e) => edit(e.target.value)} placeholder={template} />
+      {stale ? (
+        <div role="alert" className="rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
+          <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
+          <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("integrity.rereadHint")}</p>
+          <Button variant="quiet" className="mt-[8px]" disabled={busy} onClick={onReread}>
+            {ut("integrity.reread")}
+          </Button>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {/*
+          Шаблон подставляется по нажатию, а не сам.
+          Автоподстановка в пустое поле выглядит удобной ровно до
+          первого раза, когда специалист начал писать своими
+          словами и получил поверх заготовку.
+        */}
+        <Button size="sm" variant="ghost" disabled={!!text} onClick={() => edit(template)}>
+          {ut("visit.template")}
+        </Button>
+        <TemplatePicker kind="note" value={text} onChange={edit} textareaRef={areaRef} />
+        <Button size="sm" disabled={busy || !protocolSavable(protocol)} onClick={onSave}>
+          {ut("visit.save")}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function History({ data }: { data: Ctx }) {
   const { ut } = useLang();
@@ -357,10 +442,8 @@ function Assign({
 }) {
   const { ut } = useLang();
   const [open, setOpen] = useState(false);
-  const [surveyId, setSurveyId] = useState("");
-  const [due, setDue] = useState("");
-  const [attempts, setAttempts] = useState(1);
-  const surveys = useResource(() => (open ? api.surveys() : Promise.resolve(null)), [open]);
+  const [draft, setDraft] = useState<AssignDraft>(NEW_ASSIGN);
+  const surveys = useResource(() => api.surveys(), [], { enabled: open });
 
   if (!open) {
     return (
@@ -370,49 +453,98 @@ function Assign({
     );
   }
 
+  const todayKey = today();
+  return (
+    <AssignForm
+      surveys={surveys}
+      draft={draft}
+      todayKey={todayKey}
+      busy={busy}
+      onEdit={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+      onSubmit={() => {
+        if (!assignReady(draft, todayKey)) return;
+        const body = assignBody(draft);
+        void run(
+          () =>
+            api.grant(body.surveyId, patientId, undefined, body.expiresAt, body.attempts).then(() => {
+              // следующее назначение начинается с чистой формы: прежняя методика в выборе — путь к повторной выдаче
+              setDraft(NEW_ASSIGN);
+              setOpen(false);
+            }),
+          ut("visit.assigned"),
+        );
+      }}
+      onCancel={() => setOpen(false)}
+    />
+  );
+}
+
+/**
+ * Форма назначения — всё из состояния, проверяется без браузера
+ * (test/visitProtocol.test.tsx). Правила полей — visitModel.ts
+ * (assignProblems): срок в прошлом и попытки вне 1…10 называются у поля и
+ * гасят кнопку, а не уходят на сервер.
+ */
+export function AssignForm({
+  surveys,
+  draft,
+  todayKey,
+  busy,
+  onEdit,
+  onSubmit,
+  onCancel,
+}: {
+  surveys: Pick<Resource<SurveyListItem[]>, "data" | "error" | "loading" | "reload">;
+  draft: AssignDraft;
+  todayKey: string;
+  busy: boolean;
+  onEdit: (patch: Partial<AssignDraft>) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const { ut } = useLang();
+  const problems = assignProblems(draft, todayKey);
   return (
     <div className="flex flex-col gap-2 rounded-md border border-hairline p-2">
-      <Field label={ut("visit.assignPick")}>
-        <Select value={surveyId} onChange={(e) => setSurveyId(e.target.value)}>
-          <option value="" />
-          {(surveys.data ?? [])
-            .filter((s) => s.status === "published")
-            .map((s) => (
+      {/* методики не пришли — отказ с «повторити» на месте выбора, а не пустой выбор, будто назначать нечего */}
+      {surveys.data === null ? (
+        <NotLoaded res={surveys} rows={1} />
+      ) : (
+        <Field label={ut("visit.assignPick")}>
+          <Select value={draft.surveyId} onChange={(e) => onEdit({ surveyId: e.target.value })}>
+            <option value="" />
+            {assignable(surveys.data).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.title}
               </option>
             ))}
-        </Select>
+          </Select>
+        </Field>
+      )}
+      <Field label={ut("visit.assignDue")} error={problems.due ? ut(problems.due) : null}>
+        <Input
+          type="date"
+          value={draft.due}
+          min={todayKey}
+          aria-invalid={problems.due ? true : undefined}
+          onChange={(e) => onEdit({ due: e.target.value })}
+        />
       </Field>
-      <Field label={ut("visit.assignDue")}>
-        <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} />
-      </Field>
-      <Field label={ut("visit.assignAttempts")}>
+      <Field label={ut("visit.assignAttempts")} error={problems.attempts ? ut(problems.attempts) : null}>
         <Input
           type="number"
           min={1}
-          max={10}
-          value={attempts}
-          onChange={(e) => setAttempts(Number(e.target.value))}
+          max={ATTEMPTS_MAX}
+          value={draft.attempts}
+          aria-invalid={problems.attempts ? true : undefined}
+          onChange={(e) => onEdit({ attempts: e.target.value })}
         />
       </Field>
       <div className="flex gap-2">
-        <Button
-          size="sm"
-          disabled={busy || !surveyId}
-          onClick={() =>
-            run(
-              () =>
-                api
-                  .grant(surveyId, patientId, undefined, due || null, attempts)
-                  .then(() => setOpen(false)),
-              ut("visit.assigned"),
-            )
-          }
-        >
+        <Button size="sm" disabled={busy || !assignReady(draft, todayKey)} onClick={onSubmit}>
           {ut("visit.assign")}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        <Button size="sm" variant="ghost" onClick={onCancel}>
           {ut("visit.cancel")}
         </Button>
       </div>

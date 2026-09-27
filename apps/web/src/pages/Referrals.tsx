@@ -38,7 +38,7 @@ export default function ReferralsPage() {
   const [allParam, setAllParam] = useUrlState("all");
   const all = showClosed(allParam);
   const setAll = (v: boolean) => setAllParam(closedParam(v));
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const { ut } = useLang();
   const sorts = referralSorts(ut);
 
@@ -153,6 +153,7 @@ export default function ReferralsPage() {
                     <div className="flex flex-wrap gap-1.5">
                       {(NEXT_STATUS[r.status] ?? []).map((n) => (
                         <Button
+                          disabled={busy}
                           key={n.value}
                           variant="quiet"
                           size="sm"

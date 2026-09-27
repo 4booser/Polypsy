@@ -23,7 +23,7 @@ export function SavedViews({ scope }: { scope: string }) {
   const { ut } = useLang();
   const navigate = useNavigate();
   const location = useLocation();
-  const { run } = useAction();
+  const { run, busy } = useAction();
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
 
@@ -79,7 +79,7 @@ export function SavedViews({ scope }: { scope: string }) {
               if (e.key === "Escape") setNaming(false);
             }}
           />
-          <button className="primary" disabled={!name.trim()} onClick={save}>
+          <button className="primary" disabled={busy || !name.trim()} onClick={save}>
             {ut("common.save")}
           </button>
           <button className="ghost" onClick={() => setNaming(false)}>
@@ -95,6 +95,7 @@ export function SavedViews({ scope }: { scope: string }) {
       {active?.mine ? (
         <>
           <button
+            disabled={busy}
             className="chip"
             onClick={() =>
               void run(async () => {
@@ -106,6 +107,7 @@ export function SavedViews({ scope }: { scope: string }) {
             {active.shared ? ut("views.makePersonal") : ut("views.makeShared")}
           </button>
           <button
+            disabled={busy}
             className="chip-x"
             aria-label={ut("views.remove")}
             title={ut("views.remove")}
