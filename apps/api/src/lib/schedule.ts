@@ -1,6 +1,6 @@
-import { and, asc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { baseDb, db } from "../db";
-import { asSystem, dbContext } from "../db/context";
+import { asSystem, dbContext, systemContext } from "../db/context";
 import {
   appointments,
   departments,
@@ -8,7 +8,9 @@ import {
   scheduleTemplates,
   slots,
   specialistProfiles,
+  users,
 } from "../db/schema";
+import { log } from "./log";
 
 /**
  * Генерация слотов из шаблона недели.
@@ -512,4 +514,86 @@ async function syncWithin(
   }
 
   return { added, removed, flagged };
+}
+
+/* ─────────── горизонт сетки ─────────── */
+
+/** Имя фоновой задачи продления сетки — в реестре тактов и на экране техпанели */
+export const SLOT_HORIZON_JOB = "slots.horizon";
+
+export interface SlotHorizonReport {
+  specialists: number;
+  added: number;
+  removed: number;
+  flagged: number;
+  failed: number;
+}
+
+/**
+ * Продлить сетку слотов всем специалистам на HORIZON_WEEKS вперёд.
+ *
+ * Сетка строилась только правкой расписания: syncSlots звали маршруты
+ * шаблона и исключений, посев и демонстрационные данные — и больше никто.
+ * Окно «восемь недель от сегодня» при этом сдвигалось каждый день, а сетка
+ * стояла: специалист, не трогавший расписание два месяца, оказывался без
+ * единого свободного слота, и запись к нему молча пустела — не «всё
+ * занято», а «приёма нет». Ровно так же после миграции 0105 (запрет
+ * пересечения слотов) сетку надо было пересобрать всем разом, и сделать это
+ * было нечем, кроме как пересохранить каждое расписание руками.
+ *
+ * Теперь это делает фоновая задача раз в сутки (lib/scheduler.ts) и то же
+ * самое — руками, командой slotsResync.ts (действие обслуживания
+ * slots-resync). Путь один: syncSlots, со всеми его правилами — занятый
+ * слот не трогается, выпавший из расписания помечается, а не отменяется, —
+ * и под тем же замком специалиста (lockSchedule), что и правка расписания:
+ * ночная пересборка и правка регистратора встают в очередь, а не
+ * переплетаются.
+ *
+ * Каждый специалист — своей транзакцией (syncSlots открывает её сам, когда
+ * своей у вызывающего нет): одна кривая сетка не откатывает остальные, а
+ * замок специалиста не держится дольше его собственной пересборки. Поэтому
+ * здесь нет общего systemContext вокруг цикла — он сложил бы всё в одну
+ * транзакцию. Упавшие считаются и в конце поднимаются одной ошибкой: задача
+ * в техпанели должна стать «збій», а не «гаразд» с тихой дырой.
+ *
+ * Выключенные учётки не продлеваются: человек ушёл из учреждения, и новые
+ * свободные слоты к нему были бы приглашением записаться к тому, кого нет.
+ */
+export async function extendSlotHorizon(opts: { only?: readonly string[] } = {}): Promise<SlotHorizonReport> {
+  /*
+   * `only` — сузить проход до названных специалистов. Задача и команда его
+   * не передают; нужен проверке, которой незачем пересобирать сетки всей
+   * тестовой базы (и спотыкаться о чужие посевы), чтобы проверить свои.
+   */
+  const specialists = await systemContext(baseDb, () =>
+    db
+      .select({ id: specialistProfiles.userId })
+      .from(specialistProfiles)
+      .innerJoin(users, eq(users.id, specialistProfiles.userId))
+      .where(
+        and(
+          isNull(users.disabledAt),
+          opts.only ? inArray(specialistProfiles.userId, [...opts.only]) : undefined,
+        ),
+      )
+      .orderBy(asc(specialistProfiles.userId)),
+  );
+
+  const report: SlotHorizonReport = { specialists: specialists.length, added: 0, removed: 0, flagged: 0, failed: 0 };
+  for (const { id } of specialists) {
+    try {
+      const result = await syncSlots(id);
+      report.added += result.added;
+      report.removed += result.removed;
+      report.flagged += result.flagged;
+    } catch (error) {
+      report.failed += 1;
+      log.warn("slots.horizon_failed", { specialistId: id, error: String(error) });
+    }
+  }
+  log.info("slots.horizon", { ...report });
+  if (report.failed) {
+    throw new Error(`сетку не удалось продлить ${report.failed} из ${report.specialists} специалистов`);
+  }
+  return report;
 }

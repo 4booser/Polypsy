@@ -1,8 +1,58 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import type { db as Db } from "../db";
 import { db } from "../db";
 import { batteries, batteryAssignments, batteryItems, responses, surveys } from "../db/schema";
 import { badRequest } from "./http";
 import { log } from "./log";
+import { parseTs } from "./time";
+
+/*
+ * ─── пропуск: одно правило на три пути выдачи ───
+ *
+ * Назначение набора выдаётся тремя путями: расписанием (lib/scheduler.ts),
+ * руками (routes/batteries.ts) и каскадом по результату скрининга
+ * (lib/cascade.ts). Уникальный индекс держит одно активное назначение набора
+ * на человека, и каждый путь решал сам, что делать, если такое уже висит.
+ *
+ * Расписание и ручное назначение в волне 12 договорились: открытое с
+ * вышедшим сроком — не «занято», а пропуск. Оно закрывается с отметкой в
+ * примечании (cancelledAt + «пропущено: …» — не молча, см. схему), и
+ * выдаётся новое. Каскад остался на прежнем «незакрытое — значит занято»:
+ * человек, не прошедший углублённый набор в срок, больше не получал его ни
+ * при каком результате скрининга — тяжёлый повторный скрининг через месяц
+ * молча ничего не назначал (внешний разбор, хвосты волны 12).
+ *
+ * Правило теперь записано здесь один раз, и все три пути зовут его.
+ */
+
+/** Открытое назначение с вышедшим сроком — пропуск. Без срока просрочки не бывает */
+export function isOverdue(assignment: { dueAt: string | null }, now: Date): boolean {
+  return assignment.dueAt !== null && parseTs(assignment.dueAt) < now.getTime();
+}
+
+/**
+ * Закрыть пропущенные назначения — с отметкой, почему.
+ *
+ * Отметка дописывается к прежнему примечанию, а не заменяет его: «Каскад по
+ * результату скрининга · пропущено: …» говорит и откуда назначение взялось,
+ * и чем кончилось. Зовётся в той же транзакции, что и выдача нового:
+ * уникальный индекс не пустит новое, пока старое открыто.
+ */
+export async function closeMissed(
+  tx: Pick<typeof Db, "update">,
+  ids: readonly string[],
+  reason: string,
+  now: Date,
+): Promise<void> {
+  if (!ids.length) return;
+  await tx
+    .update(batteryAssignments)
+    .set({
+      cancelledAt: now.toISOString(),
+      note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${`пропущено: ${reason}`}::text)`,
+    })
+    .where(inArray(batteryAssignments.id, [...ids]));
+}
 
 /**
  * Закрытие назначений батареи после сдачи очередной методики.

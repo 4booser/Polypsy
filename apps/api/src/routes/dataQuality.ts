@@ -1,11 +1,12 @@
 import { Hono } from "hono";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { icc21, psi } from "@quizzy/shared";
 import { db } from "../db";
 import { answers, responseScores, responses, scales } from "../db/schema";
 import { audit } from "../lib/audit";
 import { langOf, notFound, parseQuery } from "../lib/http";
+import { localMonth, patientRespondent } from "../lib/population";
 import { percent, round } from "../lib/stats";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
@@ -45,11 +46,35 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
   const survey = await getSurvey(surveyId, null, "ru");
   if (!survey) notFound("err.surveyNotFound");
 
+  /*
+   * Кого считаем — по тем же правилам, что сводка, аналитика методики и
+   * статистика (lib/population.ts).
+   *
+   * Сотрудник, заполнивший методику на себя (проба, обучение), — не
+   * респондент: его бланки садились и в доходимость по стратам, и в дрейф, а
+   * пара «попробовал сегодня, попробовал через неделю» становилась парой
+   * тест-ретеста. Заполненное ЗА пациента записано на пациента и остаётся.
+   *
+   * Месяц — по поясу учреждения, а не срезом строки момента по Гринвичу.
+   */
   const allResponses = await db
-    .select()
+    .select({ row: responses, month: localMonth(sql`${responses.submittedAt}`) })
     .from(responses)
-    .where(eq(responses.surveyId, surveyId));
+    .where(and(eq(responses.surveyId, surveyId), patientRespondent("responses")))
+    .then((rows) => rows.map((r) => ({ ...r.row, month: r.month as string | null })));
   const completed = allResponses.filter((r) => r.status === "completed");
+  /*
+   * Дрейф и тест-ретест — только по достоверным протоколам.
+   *
+   * reliable = false значит «шкала достоверности вышла за порог или её не
+   * удалось проверить»: баллам такого бланка не верят нигде в агрегатах
+   * (routes/analytics.ts, когорты, статистика). Здесь они шли наравне с
+   * честными — и волна бланков «всё — так» читалась как дрейф выборки, а
+   * недостоверная пара занижала или завышала надёжность инструмента.
+   * Доходимость по стратам считается по всем: сданный недостоверный бланк
+   * всё равно сдан.
+   */
+  const trusted = completed.filter((r) => r.reliable);
 
   /* ── 7.3: доходимость и пропуски по стратам ── */
   const answered = completed.length
@@ -100,14 +125,14 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
     .sort((a, b) => `${a.sex}${a.band}`.localeCompare(`${b.sex}${b.band}`));
 
   /* ── 7.2: дрейф выборки (PSI) по месяцам ── */
-  const scoreRows = completed.length
+  const scoreRows = trusted.length
     ? await db
         .select({ score: responseScores, code: scales.code, kind: scales.kind })
         .from(responseScores)
         .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .where(inArray(responseScores.responseId, completed.map((r) => r.id)))
+        .where(inArray(responseScores.responseId, trusted.map((r) => r.id)))
     : [];
-  const monthOf = new Map(completed.map((r) => [r.id, (r.submittedAt ?? "").slice(0, 7)]));
+  const monthOf = new Map(trusted.map((r) => [r.id, r.month ?? ""]));
 
   const drift = survey.scales
     .filter((s) => s.kind === "clinical")
@@ -151,8 +176,8 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
   /* ── 7.5: тест-ретест ICC(2,1) ── */
-  const byUser = new Map<string, typeof completed>();
-  for (const r of completed) {
+  const byUser = new Map<string, typeof trusted>();
+  for (const r of trusted) {
     if (!r.userId || !r.submittedAt) continue;
     const list = byUser.get(r.userId) ?? [];
     list.push(r);
@@ -235,10 +260,16 @@ dataQualityRoutes.get("/surveys/:id/items", async (c) => {
   const asked = survey.questions.filter((q) => q.type !== "info");
   const position = new Map(asked.map((q, i) => [q.id, i]));
 
+  /*
+   * Бланки сотрудников на себя — мимо (lib/population.ts), как и в разделе
+   * выше: проба методики — не заполнение, и медиана пункта по ней не
+   * меряется. Недостоверные протоколы, наоборот, остаются: карта для того и
+   * существует, чтобы небрежное заполнение было видно.
+   */
   const done = await db
     .select({ id: responses.id, submittedAt: responses.submittedAt, durationMs: responses.durationMs })
     .from(responses)
-    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")))
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed"), patientRespondent("responses")))
     .orderBy(desc(responses.submittedAt))
     .limit(limit);
   if (!done.length) return c.json({ questions: [], rows: [], medians: [] });

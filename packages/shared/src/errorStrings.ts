@@ -559,6 +559,12 @@ export const ERRORS = {
     en: "Another clinician has already taken this case",
   },
   "err.cohortNotFound": { uk: "Когорту не знайдено", ru: "Когорта не найдена", en: "Cohort not found" },
+  /* код шкалы — имя внутри методики: без неё порог сравнивал бы разные величины (routes/cohorts.ts) */
+  "err.cohortScaleNeedsSurvey": {
+    uk: "Умову за шкалою можна задати лише для вибраної методики: однаковий код шкали в різних методиках означає різне (L у СР-45 — частка, у Міні-мульта — T-бал)",
+    ru: "Условие по шкале можно задать только для выбранной методики: одинаковый код шкалы в разных методиках означает разное (L у СР-45 — доля, у Мини-мульта — T-балл)",
+    en: "A scale condition needs a chosen instrument: the same scale code means different things in different instruments (L in SR-45 is a proportion, in Mini-Mult a T-score)",
+  },
   "err.conclusionAccessDenied": {
     uk: "Висновок доступний пацієнту або співробітнику",
     ru: "Заключение доступно пациенту или сотруднику",
