@@ -1,6 +1,6 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { AuditChainReport, AuditEntry } from "@quizzy/shared";
+import type { AuditChainReport, AuditEntry, AuditPage } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
 import { HBars, Kpi } from "../../charts/clinical";
@@ -11,7 +11,7 @@ import { IconDisclosure } from "../../ui/glyphs";
 import { cx } from "../../ui/cx";
 import { RuleSection } from "../../ui/section";
 import { Button, Input } from "../../ui/primitives";
-import { useResource } from "../../useResource";
+import { type Page, usePagedResource, useResource } from "../../useResource";
 import { Cell, ColumnHead, FilterSelect, SearchField, useDebounced } from "./controls";
 import { AUDIT_ACTION_CHOICES, AUDIT_PRESETS, type AuditFilterKey, actionLabel, auditFiltersFrom, prettyDetails } from "./model";
 import { AuditTimeline } from "./people2/charts";
@@ -74,34 +74,25 @@ export default function OpsAuditLog() {
     [setParams],
   );
 
-  const [list, setList] = useState<{ entries: AuditEntry[]; next: string | null; total: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    setList(null);
-    setError(null);
-    api
-      .auditPage({ ...(JSON.parse(settled) as Record<string, string>), limit: PAGE })
-      .then((p) => alive && setList({ entries: p.entries, next: p.nextCursor ?? null, total: p.total }))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : ut("ui.actionFailed")));
-    return () => {
-      alive = false;
-    };
-  }, [settled, tick, ut]);
-
-  const more = () => {
-    if (!list?.next) return;
-    setLoadingMore(true);
-    api
-      .auditPage({ ...(JSON.parse(settled) as Record<string, string>), limit: PAGE, cursor: list.next })
-      .then((p) => setList((s) => (s ? { entries: [...s.entries, ...p.entries], next: p.nextCursor ?? null, total: p.total } : s)))
-      .catch((e) => setError(e instanceof Error ? e.message : ut("ui.actionFailed")))
-      .finally(() => setLoadingMore(false));
-  };
+  /*
+   * Журнал — страницами через слой загрузки (волна 13). Раньше «Показати
+   * ще» дописывал ответ к тому, что на экране в момент ответа: сменил отбор,
+   * пока летела страница, — и хвост прежней выборки вставал под новую, с
+   * чужим «Знайдено». Теперь страницы лежат под ключом отбора. Прежние
+   * строки под новым отбором не показываются (keep: false): в журнале
+   * строка, не отвечающая отбору, — неправда, а не «обновляется».
+   */
+  const list = usePagedResource<AuditEntry, AuditPage & Page<AuditEntry>>(
+    (cursor) =>
+      api
+        .auditPage({ ...(JSON.parse(settled) as Record<string, string>), limit: PAGE, cursor: cursor ?? undefined })
+        .then((p) => ({ ...p, items: p.entries, nextCursor: p.nextCursor ?? null })),
+    [settled],
+    { keep: false },
+  );
+  const error = list.error;
 
   const [chain, setChain] = useState<AuditChainReport | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -195,7 +186,7 @@ export default function OpsAuditLog() {
 
       <div className="mb-[18px] flex flex-wrap items-center gap-[12px]">
         <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
-          {list ? `${ut("ppl.found")} ${list.total.toLocaleString(locale())}` : ""}
+          {list.total !== null ? `${ut("ppl.found")} ${list.total.toLocaleString(locale())}` : ""}
         </span>
         <span className="flex-1" />
         <Button
@@ -234,16 +225,16 @@ export default function OpsAuditLog() {
       <RuleSection title={ut("opsp.audit.section")}>
         <AuditTimeline query={settled} />
         {error ? (
-          <Loading error={error} onRetry={() => setTick((t) => t + 1)} />
-        ) : !list ? (
+          <Loading error={error} onRetry={list.reload} />
+        ) : !list.items ? (
           <Loading rows={8} />
-        ) : list.entries.length === 0 ? (
+        ) : list.items.length === 0 ? (
           <p className="m-0 py-[24px] text-[13px] text-muted">{ut("ops.audit.none")}</p>
         ) : (
           <>
             <ColumnHead grid={GRID} labels={[ut("aud.when"), ut("aud.who"), ut("aud.action"), ut("ops.audit.subjectCol"), ut("aud.outcome"), null]} />
             <ul className="m-0 list-none p-0" aria-label={ut("aud.title")}>
-              {list.entries.map((e) => (
+              {list.items.map((e) => (
                 <Fragment key={e.id}>
                   <li className={cx(GRID, "items-start border-b border-hairline py-[10px] max-[900px]:grid-cols-1 max-[900px]:gap-y-[4px]", open === e.id && "bg-primary-tint")}>
                     <Cell label={ut("aud.when")} className="font-mono text-[13px] tabular-nums">
@@ -307,9 +298,9 @@ export default function OpsAuditLog() {
                 </Fragment>
               ))}
             </ul>
-            {list.next ? (
+            {list.hasMore ? (
               <div className="mt-[18px] flex justify-center">
-                <Button variant="ghost" disabled={loadingMore} onClick={more}>
+                <Button variant="ghost" disabled={list.loadingMore} onClick={list.loadMore}>
                   {ut("ui.loadMore")}
                 </Button>
               </div>

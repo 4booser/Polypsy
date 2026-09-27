@@ -11,7 +11,7 @@ import { IconDots, IconPlusThick } from "../ui/glyphs";
 import { Page } from "../ui/layout";
 import { ActionMenu } from "../ui/menu";
 import { Button, Field, Input, Num, Stat } from "../ui/primitives";
-import { useResource } from "../useResource";
+import { useDebounced, useResource } from "../useResource";
 import {
   BREAKDOWNS,
   BREAKDOWN_TITLE,
@@ -123,38 +123,25 @@ export default function Cohorts() {
 
   const errors = specErrors(spec);
   const invalid = !!(errors.age || errors.period);
-  const [preview, setPreview] = useState<CohortPreview | null>(null);
-  const [previewError, setPreviewError] = useState<string | null>(null);
-  const [counting, setCounting] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    if (invalid) {
-      setCounting(false);
-      return;
-    }
-    let alive = true;
-    setCounting(true);
-    const timer = setTimeout(() => {
-      void api
-        .cohortPreview(specFromParams(new URLSearchParams(key)))
-        .then((p) => {
-          if (!alive) return;
-          setPreview(p);
-          setPreviewError(null);
-        })
-        .catch((e: unknown) => {
-          if (alive) setPreviewError(e instanceof Error ? e.message : "");
-        })
-        .finally(() => {
-          if (alive) setCounting(false);
-        });
-    }, 350);
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-    };
-  }, [key, invalid, attempt]);
+  /*
+   * Счёт — по условиям, которые перестали меняться на 350 мс: каждое
+   * нажатие в поле возраста не должно гонять расчёт на сервере.
+   *
+   * Загрузкой (волна 13), а не голым запросом с флагом alive: ответ ложится
+   * под условия, по которым его спрашивали, отказ не висит после удачного
+   * повтора, обрыв связи — не отказ, а по возвращении связи счёт
+   * повторяется сам. «Считаю» стоит с первой правки, а не с ухода запроса:
+   * число на экране уже не про эти условия.
+   */
+  const settledKey = useDebounced(key, 350);
+  const count = useResource(
+    () => api.cohortPreview(specFromParams(new URLSearchParams(settledKey))),
+    [settledKey],
+    { enabled: !invalid },
+  );
+  const preview = count.data;
+  const previewError = count.error;
+  const counting = !invalid && (settledKey !== key || count.loading || count.refreshing);
 
   /* ─── поимённо ─── */
 
@@ -442,7 +429,7 @@ export default function Cohorts() {
             </div>
 
             {previewError !== null ? (
-              <Loading error={previewError || ut("common.error")} onRetry={() => setAttempt((n) => n + 1)} />
+              <Loading error={previewError || ut("common.error")} onRetry={count.reload} />
             ) : !preview ? (
               <Loading rows={3} />
             ) : (

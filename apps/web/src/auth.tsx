@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Permission, User } from "@quizzy/shared";
 import { api, tokenStore } from "./api";
+import { queryClient } from "./query";
+import { useResource } from "./useResource";
 
 interface AuthState {
   user: User | null;
@@ -75,7 +77,6 @@ async function permissionsFor(user: User): Promise<ReadonlySet<string>> {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [perms, setPerms] = useState<ReadonlySet<string>>(new Set());
-  const [loading, setLoading] = useState(true);
   const [mfa, setMfa] = useState<{ token: string } | null>(null);
 
   /*
@@ -90,17 +91,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(next);
   }
 
+  /*
+   * Восстановление сессии при открытии — через слой загрузки (волна 13).
+   *
+   * Здесь стоял голый запрос с `.catch(() => tokenStore.clear())`: любой
+   * отказ /me чистил сессию. В том числе обрыв связи — консоль, открытая
+   * во время перезапуска сервера или в кабинете со слабым Wi-Fi, выкидывала
+   * человека на вход, хотя его refresh жив ещё месяц; а на входе без связи
+   * делать нечего. Теперь обрыв — не отказ: загрузка ждёт связи (строка
+   * «немає зв’язку» стоит над заглушкой, App.tsx) и по её возвращении
+   * повторяется сама. Пятисотка сначала повторяется дважды (query.ts) и
+   * только потом, как и раньше, закрывает сессию; так же — отказ по
+   * существу: 401, когда обмен refresh уже не помог (api.ts), и прочие 4xx.
+   *
+   * Без токена спрашивать нечего: гость видит вход с первого кадра, а не
+   * после пустого прохода эффектов.
+   */
+  const [hadToken] = useState(() => !!tokenStore.get());
+  const [settled, setSettled] = useState(!hadToken);
+  const boot = useResource(
+    async () => {
+      const me = await api.me();
+      return { me, perms: await permissionsFor(me) };
+    },
+    [],
+    { enabled: hadToken && !settled },
+  );
   useEffect(() => {
-    if (!tokenStore.get()) {
-      setLoading(false);
-      return;
+    if (settled) return;
+    if (boot.data) {
+      // права и профиль — одним проходом отрисовки, права не позже профиля (см. accept)
+      setPerms(boot.data.perms);
+      setUser(boot.data.me);
+      setSettled(true);
+    } else if (boot.error) {
+      tokenStore.clear();
+      setSettled(true);
     }
-    api
-      .me()
-      .then(accept)
-      .catch(() => tokenStore.clear())
-      .finally(() => setLoading(false));
-  }, []);
+  }, [boot.data, boot.error, settled]);
+  const loading = !settled;
 
   /*
    * Принять уже выданную пару токенов.
@@ -130,6 +159,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * перезагрузка их довезёт.
    */
   async function adopt(res: { token: string; refreshToken: string; user: User }) {
+    /*
+     * Новый человек — чистый кэш загрузок (волна 13). Экраны прежнего уже
+     * сняты, но ответы им живут в слое загрузки ещё минуту (query.ts); за
+     * общим компьютером в кабинете следующий вошедший не должен получить
+     * ни одного из них даже заглушкой «пока грузится».
+     */
+    queryClient.clear();
     tokenStore.set(res.token);
     tokenStore.setRefresh(res.refreshToken);
     await accept(await api.me().catch(() => res.user));
@@ -176,6 +212,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenStore.clear();
     setUser(null);
     setPerms(new Set());
+    /* кэш — после того, как экраны сняты: иначе они успели бы перечитать себя уже без токена */
+    setTimeout(() => queryClient.clear(), 0);
   }
 
   /*

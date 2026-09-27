@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { locale } from "../../format";
 import { useLang } from "../../lang";
@@ -31,13 +31,17 @@ export function useOpsResource<T>(
   load: () => Promise<T>,
   deps: readonly unknown[],
   pollMs: number,
-): Resource<T> & { updatedAt: number | null } {
+): Resource<T> {
   const res = useResource(load, deps, { pollMs });
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
-  useEffect(() => {
-    if (res.data !== null) setUpdatedAt(Date.now());
-  }, [res.data]);
-  return { ...res, updatedAt };
+  /*
+   * Момент ответа — от слоя загрузки (волна 13), а не по смене data: ответ,
+   * совпавший с прежним, данные не меняет, и «оновлено о …» стояло бы на
+   * месте, хотя опрос шёл. Пока грузится новый период, остаётся прежний
+   * момент — как и было.
+   */
+  const last = useRef<number | null>(null);
+  if (res.updatedAt !== null) last.current = res.updatedAt;
+  return { ...res, updatedAt: last.current };
 }
 
 /**

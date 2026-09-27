@@ -1,8 +1,9 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { useLang } from "../lang";
 import { Button } from "../ui/primitives";
+import { useResource } from "../useResource";
 
 type Status = Awaited<ReturnType<typeof api.consentStatus>>;
 
@@ -27,20 +28,11 @@ type Status = Awaited<ReturnType<typeof api.consentStatus>>;
 export function ConsentGate({ children }: { children: ReactNode }) {
   const { ut } = useLang();
   const { logout } = useAuth();
-  const [status, setStatus] = useState<Status | null | "unknown">(null);
+  // отказ — «не знаю», а не ошибка: без связи кабинет не запирается (см. выше)
+  const res = useResource<Status | "unknown">(() => api.consentStatus().catch(() => "unknown" as const), []);
+  const status = res.data;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    api
-      .consentStatus()
-      .then((s) => alive && setStatus(s))
-      .catch(() => alive && setStatus("unknown"));
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   if (status === null) return null;
   if (status === "unknown" || !status.required || status.accepted) return <>{children}</>;
@@ -58,14 +50,11 @@ export function ConsentGate({ children }: { children: ReactNode }) {
           setError(null);
           try {
             await api.acceptConsent(status.textId ?? null);
-            setStatus({ ...status, accepted: true });
+            res.patch({ ...status, accepted: true });
           } catch (e) {
             setError(e instanceof Error ? e.message : ut("common.error"));
             // текст обновился, пока человек читал: встаёт новая редакция, принимать — её
-            if (e instanceof ApiError && e.status === 409) {
-              const fresh = await api.consentStatus().catch(() => null);
-              if (fresh) setStatus(fresh);
-            }
+            if (e instanceof ApiError && e.status === 409) res.reload();
           } finally {
             setBusy(false);
           }

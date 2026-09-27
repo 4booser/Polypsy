@@ -78,7 +78,8 @@ export function rowsToPlan(d: PlanRows): SafetyPlanContent {
 export function SafetyPlanEditor({ userId }: { userId: string }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const res = useResource(() => api.safetyPlans(userId), [userId]);
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const res = useResource(() => api.safetyPlans(userId), [userId], { manual: true });
   const [draft, setDraft] = useState<PlanRows>(() => planToRows(EMPTY));
   const [open, setOpen] = useState(false);
 

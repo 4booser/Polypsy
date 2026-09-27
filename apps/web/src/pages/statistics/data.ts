@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
 import type { SurveyFull } from "@quizzy/shared";
-import { api } from "../../api";
+import { api, withSignal } from "../../api";
+import { useResource } from "../../useResource";
 
 /**
  * Содержимое методики в той версии, что записана в колонке модели.
@@ -21,31 +21,30 @@ import { api } from "../../api";
  * расчёт скажет причину своим отказом.
  */
 export function useSurveyAt(surveyId: string | null, versionId: string | null): SurveyFull | null | undefined {
-  const key = surveyId ? `${surveyId}@${versionId ?? ""}` : "";
-  const [state, setState] = useState<{ key: string; survey: SurveyFull | null } | null>(null);
-  useEffect(() => {
-    if (!surveyId) return;
-    let live = true;
-    const done = (survey: SurveyFull | null) => {
-      if (live) setState({ key, survey });
-    };
-    void (async () => {
-      try {
-        const current = await api.survey(surveyId);
-        if (!versionId || current.versionId === versionId) return done(current);
-        const versions = await api.versions(surveyId);
-        const at = versions.find((v) => v.id === versionId);
-        done(at ? await api.surveyAtVersion(surveyId, at.version) : null);
-      } catch {
-        done(null);
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [key, surveyId, versionId]);
+  /*
+   * Через слой загрузки (волна 13), под общим именем: одну и ту же версию
+   * на экране двух выборок спрашивают несколько колонок разом, и запрос в
+   * полёте у них теперь один. Ответ обёрнут: «версии нет» (null) не должно
+   * читаться как «ещё не пришло».
+   */
+  const res = useResource(
+    async (signal) => {
+      const id = surveyId!;
+      const current = await api.survey(id);
+      if (!versionId || current.versionId === versionId) return { survey: current };
+      // шаги после await идут под тем же сигналом явно: сам он до них не доходит (api.ts, withSignal)
+      const versions = await withSignal(signal, () => api.versions(id));
+      const at = versions.find((v) => v.id === versionId);
+      return { survey: at ? await withSignal(signal, () => api.surveyAtVersion(id, at.version)) : null };
+    },
+    [surveyId, versionId],
+    // подписи прежней методики под новой колонкой — неправда: пока грузится, подписей нет
+    { enabled: !!surveyId, keep: false, key: "statistics.surveyAt" },
+  );
   if (!surveyId) return null;
-  return state?.key === key ? state.survey : undefined;
+  if (res.data) return res.data.survey;
+  // отказ — null (подписи с кадра), обрыв — «ещё грузится»: связь вернётся, и загрузка повторится
+  return res.error ? null : undefined;
 }
 
 /**
@@ -62,29 +61,17 @@ export function useSurveyAt(surveyId: string | null, versionId: string | null): 
  * тот получает отказ — и поле без подсказок, как раньше, а не ошибку.
  */
 export function useLocalityHints(): string[] {
-  const [items, setItems] = useState<string[]>([]);
-  useEffect(() => {
-    let live = true;
-    void localityHints().then((list) => {
-      if (live) setItems(list);
-    });
-    return () => {
-      live = false;
-    };
-  }, []);
-  return items;
-}
-
-/*
- * Один запрос на страницу, а не на поле: на экране двух выборок полей
- * «Населений пункт» два (и до восьми), а список у них один. Отказ
- * запоминается пустым списком — повторять его на каждой колонке незачем.
- */
-let hints: Promise<string[]> | null = null;
-function localityHints(): Promise<string[]> {
-  hints ??= api
-    .cohortOptions()
-    .then((o) => o.localities)
-    .catch(() => []);
-  return hints;
+  /*
+   * Один запрос на страницу, а не на поле: на экране двух выборок полей
+   * «Населений пункт» два (и до восьми), а список у них один — общий кэш
+   * по имени, свежий до конца сеанса (кэш чистится при входе и выходе,
+   * auth.tsx: зона видимости у другого человека другая). Отказ запоминается
+   * пустым списком — повторять его на каждой колонке незачем.
+   */
+  return (
+    useResource(() => api.cohortOptions().then((o) => o.localities).catch(() => [] as string[]), [], {
+      key: "statistics.localities",
+      staleMs: Number.POSITIVE_INFINITY,
+    }).data ?? []
+  );
 }

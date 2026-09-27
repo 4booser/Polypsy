@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { Referral, UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
-import { Avatar, DataTable, Empty, Loading, OfflineBar, useAction, useUrlState } from "../ui";
+import { Avatar, DataTable, Empty, Loading, useAction, useUrlState } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
 import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
@@ -70,21 +70,12 @@ export default function ReferralsPage() {
   const reload = page.reload;
   const rows = page.items;
 
-  if (!rows) {
-    return page.offline ? (
-      <>
-        <OfflineBar onRetry={page.reload} busy={page.loading} />
-        <Loading rows={4} />
-      </>
-    ) : (
-      <Loading rows={4} error={page.error} onRetry={page.reload} busy={page.loading} />
-    );
-  }
+  /* обрыв связи объявляет строка оболочки (ui/ConnectionLine.tsx); здесь — скелет до первых строк */
+  if (!rows) return <Loading rows={4} error={page.error} onRetry={page.reload} busy={page.loading} />;
   const note = shownNote(ut, rows.length, page.total, page.hasMore);
 
   return (
     <>
-      {page.offline ? <OfflineBar onRetry={page.reload} busy={page.loadingMore} /> : null}
       {page.error ? <p className="m-0 text-caption text-danger">{page.error}</p> : null}
       <Page
         title={ut("ref.title")}

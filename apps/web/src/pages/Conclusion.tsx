@@ -13,7 +13,7 @@ import {
 import { api, openInTab, type ConclusionState } from "../api";
 import { ConclusionEditor, buildDraft } from "../components/ConclusionEditor";
 import { useLang } from "../lang";
-import { Loading, OfflineBar, useAction, useToast } from "../ui";
+import { Loading, useAction, useToast } from "../ui";
 import { cx } from "../ui/cx";
 import { IconGear } from "../ui/glyphs";
 import { Page } from "../ui/layout";
@@ -74,7 +74,8 @@ export default function ConclusionPage() {
     return { detail, survey };
   }, [responseId]);
 
-  const conclusion = useResource(() => api.conclusion(responseId), [responseId]);
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const conclusion = useResource(() => api.conclusion(responseId), [responseId], { manual: true });
 
   /*
    * Название документа — поле «Назва заключення» с кадра f36.
@@ -144,7 +145,6 @@ export default function ConclusionPage() {
         />
       }
     >
-      {res.offline ? <OfflineBar onRetry={res.reload} busy={res.refreshing} /> : null}
       {!res.data ? (
         <Loading rows={8} error={res.error} onRetry={res.reload} />
       ) : (

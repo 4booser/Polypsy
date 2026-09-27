@@ -15,7 +15,7 @@ import { IconDots } from "../../../ui/glyphs";
 import { ActionMenu } from "../../../ui/menu";
 import { Button, NoData, SeverityTag } from "../../../ui/primitives";
 import { RuleSection } from "../../../ui/section";
-import { useResource } from "../../../useResource";
+import { usePagedResource } from "../../../useResource";
 import { FillSelect } from "./fields";
 import {
   SMALL_CELL,
@@ -597,33 +597,30 @@ export interface ResponsePages {
 /**
  * Страницы списка прохождений под срезом экрана.
  *
- * Первая страница — через useResource (смена среза не даёт старому ответу
- * затереть новый), следующие — дописываются к ней по курсору и забываются
- * при смене среза: ключ среза хранится вместе с дописанным.
+ * Через usePagedResource (волна 13). Прежде первая страница шла через
+ * useResource, а следующие дописывались своим состоянием с ключом среза:
+ * смену среза это переживало, а перечитывание — нет. После «перечитати»
+ * первая страница приходила свежей, а дописанные к ней оставались
+ * прежними — с удалёнными и задвоенными строками. Теперь страницы лежат
+ * под ключом среза вместе и перечитываются вместе.
  */
 export function useResponsePages(surveyId: string, slice: AnalyticsSlice & { versionId?: string }): ResponsePages {
   const key = JSON.stringify([surveyId, slice]);
-  const first = useResource(() => api.responses(surveyId, null, slice), [key]);
-  const [more, setMore] = useState<{ key: string; rows: SurveyResponse[]; next: string | null } | null>(null);
-  const { run, busy } = useAction();
-  const mine = more?.key === key ? more : null;
-  const next = mine ? mine.next : first.data?.hasMore ? first.data.nextBefore : null;
+  const pages = usePagedResource<SurveyResponse>(
+    (cursor) =>
+      api
+        .responses(surveyId, cursor, slice)
+        .then((p) => ({ items: p.rows, nextCursor: p.hasMore ? p.nextBefore : null })),
+    [key],
+  );
   return {
-    rows: [...(first.data?.rows ?? []), ...(mine?.rows ?? [])],
-    hasMore: !!next,
-    loading: !first.data && !first.error,
-    error: first.error,
-    reload: first.reload,
-    busy,
-    loadMore: () =>
-      void run(async () => {
-        const page = await api.responses(surveyId, next, slice);
-        setMore((prev) => ({
-          key,
-          rows: [...(prev?.key === key ? prev.rows : []), ...page.rows],
-          next: page.hasMore ? page.nextBefore : null,
-        }));
-      }),
+    rows: pages.items ?? [],
+    hasMore: pages.hasMore,
+    loading: !pages.items && !pages.error,
+    error: pages.error,
+    reload: pages.reload,
+    busy: pages.loadingMore,
+    loadMore: pages.loadMore,
   };
 }
 
@@ -724,6 +721,8 @@ export function ResponsesList({ pages, surveyId, showName = true }: { pages: Res
           );
         })}
       </ul>
+      {/* отказ дозагрузки — под списком, а не вместо него: показанные строки верны */}
+      {pages.error ? <p className="m-0 mt-[12px] text-[13px] text-danger">{pages.error}</p> : null}
       {pages.hasMore ? (
         <Button variant="ghost" className="mt-[16px]" disabled={pages.busy} onClick={pages.loadMore}>
           {pages.busy ? ut("ui.loadingMore") : ut("ui.loadMore")}

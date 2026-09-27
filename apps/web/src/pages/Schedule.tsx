@@ -89,7 +89,8 @@ export function nextHours(day: Row[]): { startsAt: string; endsAt: string; slotM
 export default function SchedulePage() {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const res = useResource(() => api.schedule(), []);
+  /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
+  const res = useResource(() => api.schedule(), [], { manual: true });
   const reload = res.reload;
 
   const [rows, setRows] = useState<Row[] | null>(null);
