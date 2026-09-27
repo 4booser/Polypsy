@@ -14,15 +14,17 @@ import {
 import { auditSystem } from "./audit";
 import { dayOf, endOfDayAfter } from "./day";
 import { openFollowUps } from "./followup";
-import { parseTs } from "./time";
 import { grantAccess } from "./grantAccess";
 import { publish } from "./events";
 import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
 import { securityTick } from "./integrity";
 import { batterySurveysInUse } from "./scope";
+import { closeMissed, isOverdue } from "./batteries";
 import { log } from "./log";
+import { JobLocked, withJobLock } from "./jobLock";
 import { registerJob, trackJob } from "./opsJobs";
+import { SLOT_HORIZON_JOB, extendSlotHorizon } from "./schedule";
 import { checkPushReceipts, pushToUser } from "./push";
 import { langsOfPatients } from "./remind";
 
@@ -133,7 +135,7 @@ async function runSchedule(
         isNull(batteryAssignments.cancelledAt),
       ),
     );
-  const overdue = open.filter((a) => a.dueAt !== null && parseTs(a.dueAt) < now.getTime());
+  const overdue = open.filter((a) => isOverdue(a, now));
   const busyIds = new Set(open.filter((a) => !overdue.includes(a)).map((b) => b.userId));
   const fresh = targets.filter((id) => !busyIds.has(id));
   if (!fresh.length) return { assigned: 0, skipped: targets.length, missed: 0 };
@@ -166,15 +168,12 @@ async function runSchedule(
   const missed = overdue.filter((a) => fresh.includes(a.userId));
 
   await db.transaction(async (tx) => {
-    if (missed.length) {
-      await tx
-        .update(batteryAssignments)
-        .set({
-          cancelledAt: now.toISOString(),
-          note: sql`concat_ws(' · ', ${batteryAssignments.note}, ${`пропущено: срок истёк, выдано следующее по расписанию «${schedule.title}»`}::text)`,
-        })
-        .where(inArray(batteryAssignments.id, missed.map((a) => a.id)));
-    }
+    await closeMissed(
+      tx,
+      missed.map((a) => a.id),
+      `срок истёк, выдано следующее по расписанию «${schedule.title}»`,
+      now,
+    );
     await tx.insert(batteryAssignments).values(
       fresh.map((userId) => ({
         id: crypto.randomUUID(),
@@ -449,6 +448,7 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
   registerJob("push.receipts", intervalMs);
   registerJob("security", intervalMs);
   registerJob("followups.open", intervalMs);
+  registerJob(SLOT_HORIZON_JOB, DAY_MS);
   const tick = () => {
     trackJob("schedules", () => runDueSchedules()).catch((error) =>
       log.error("scheduler.tick_failed", { error: String(error) }),
@@ -507,5 +507,31 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
   };
   tick();
   const timer = setInterval(tick, intervalMs);
-  return () => clearInterval(timer);
+
+  /*
+   * Горизонт сетки слотов (lib/schedule.ts, extendSlotHorizon): раз в
+   * сутки, своим таймером, а не часовым тиком — окно сдвигается на день в
+   * сутки, и чаще пересобирать нечего. Первый проход — сразу при запуске:
+   * он же пересобирает сетку после выкатки (так миграция 0105 и доходит до
+   * тех, чьё расписание с тех пор никто не трогал). Несколько реплик — один
+   * проход (замок в базе, jobLock.ts); проигравшая реплика не считает это
+   * сбоем: сетку в эти минуты продлевает соседняя.
+   */
+  const horizon = () => {
+    void trackJob(SLOT_HORIZON_JOB, async () => {
+      try {
+        return await withJobLock(SLOT_HORIZON_JOB, () => extendSlotHorizon());
+      } catch (error) {
+        if (error instanceof JobLocked) return null;
+        throw error;
+      }
+    }).catch((error) => log.warn("slots.horizon_tick_failed", { error: String(error) }));
+  };
+  horizon();
+  const horizonTimer = setInterval(horizon, DAY_MS);
+
+  return () => {
+    clearInterval(timer);
+    clearInterval(horizonTimer);
+  };
 }
