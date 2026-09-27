@@ -5,7 +5,7 @@ import type { RiskAlert } from "@quizzy/shared";
 import { db } from "../db";
 import { questions, riskAlerts, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { badRequestDetail, langOf, parseQuery } from "../lib/http";
+import { badRequest, langOf, parseQuery } from "../lib/http";
 import { fullNameOf } from "../lib/auth";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -42,7 +42,7 @@ function decodeAlertCursor(raw: string): { at: string; id: string } {
   const parts = Buffer.from(raw, "base64url").toString("utf8").split("|");
   const [at, id] = parts;
   if (parts.length !== 2 || !at || Number.isNaN(Date.parse(at)) || !id || !/^[A-Za-z0-9-]{1,64}$/.test(id)) {
-    badRequestDetail("cursor: курсор повреждён — начните список заново");
+    badRequest("err.v.cursorDamaged", { field: "cursor" });
   }
   return { at: at!, id: id! };
 }

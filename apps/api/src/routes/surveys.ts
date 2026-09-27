@@ -1,6 +1,17 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { diffVersions, normalizeLocalized, t, validateSurvey, type Issue, renderError } from "@quizzy/shared";
+import {
+  CONTENT_LANGS,
+  diffVersions,
+  normalizeLocalized,
+  noteCode,
+  renderNote,
+  serverText,
+  t,
+  validateSurvey,
+  type Issue,
+  renderError,
+} from "@quizzy/shared";
 import {
   createSurveySchema,
   moveSurveySchema,
@@ -388,7 +399,7 @@ surveyRoutes.post("/", requireStaff, requirePermission("surveys.edit"), async (c
     })
     .returning();
 
-  await createVersion(row!.id, input, c.get("user").id, "Первая версия");
+  await createVersion(row!.id, input, c.get("user").id, noteCode("note.firstVersion"));
   await audit(c, {
     action: "survey.create",
     resourceType: "survey",
@@ -593,6 +604,15 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
   const source = await getSurvey(c.req.param("id"), null, "uk", true);
   if (!source) notFound("err.surveyNotFound");
   const titleIn = (lang: "uk" | "ru") => t(source.title as never, lang);
+  /*
+   * Название копии — содержимое, как и название исходника: пишется сразу на
+   * обоих языках содержимого, язык выбирает t() при показе. Пометка
+   * «(копія)» — из словаря, а не набрана здесь; английского у содержимого нет
+   * намеренно (CONTENT_LANGS), и английский экран покажет украинское название.
+   */
+  const copyTitle = Object.fromEntries(
+    CONTENT_LANGS.map((lang) => [lang, `${titleIn(lang)} ${serverText("content.copySuffix", lang)}`]),
+  );
 
   const [row] = await db
     .insert(surveys)
@@ -601,7 +621,7 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
       groupId: source.groupId,
       // копия ложится рядом с оригиналом: искать её в корне каталога незачем
       folderId: source.folderId,
-      title: { uk: `${titleIn("uk")} (копія)`, ru: `${titleIn("ru")} (копия)` } as Record<string, string>,
+      title: copyTitle,
       description: normalizeLocalized(source.description as never),
       instructions: normalizeLocalized(source.instructions as never),
       status: "draft",
@@ -634,7 +654,14 @@ surveyRoutes.post("/:id/duplicate", requireStaff, requirePermission("surveys.edi
    * показа на вариантах исходника, где они не срабатывают никогда. Исходник
    * идёт источником: ссылки условий переводятся на варианты копии.
    */
-  await createVersion(row!.id, versionContent(source), c.get("user").id, `Копия «${titleIn("uk")}»`, source);
+  await createVersion(
+    row!.id,
+    versionContent(source),
+    c.get("user").id,
+    // заметка версии — кодом: её читают на любом языке; название исходника — каким было, украинским
+    noteCode("note.copyOf", { title: titleIn("uk") }),
+    source,
+  );
 
   await audit(c, {
     action: "survey.duplicate",
@@ -705,7 +732,15 @@ surveyRoutes.get("/:id/versions", requireStaff, requirePermission("surveys.read"
     .where(eq(surveyVersions.surveyId, id))
     .orderBy(desc(surveyVersions.version));
 
-  return c.json({ items: rows.map((r) => ({ ...r, responseCount: Number(r.responseCount ?? 0) })) });
+  /*
+   * Заметку версии, которую писал сам сервер («Первая версия», копия, импорт,
+   * локальные нормы, каталог), — фразой на языке запроса; набранную человеком
+   * и записанную до кодов — как лежит (renderNote).
+   */
+  const lang = langOf(c);
+  return c.json({
+    items: rows.map((r) => ({ ...r, note: renderNote(r.note, lang), responseCount: Number(r.responseCount ?? 0) })),
+  });
 });
 
 /**
@@ -749,6 +784,20 @@ surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), as
 
   const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
   const compress = (nums: number[]) => nums.sort((a, b) => a - b).join(", ");
+  /*
+   * Пол нормы — словом листа на языке запроса, как на печатных листах
+   * (routes/reports.ts): прежде здесь стояли код «male» и русское «любой» на
+   * любом экране.
+   */
+  const lang = langOf(c);
+  const sexLabel = (sex: string | null) =>
+    sex === "male"
+      ? serverText("print.sexMale", lang)
+      : sex === "female"
+        ? serverText("print.sexFemale", lang)
+        : sex
+          ? sex
+          : serverText("print.sexAny", lang);
 
   /*
    * Колонки ключа — по кодам ответов, которые встречаются в вариантах
@@ -800,7 +849,7 @@ surveyRoutes.get("/:id/key", requireStaff, requirePermission("surveys.read"), as
       no: itemsFor("no"),
       scored: itemsFor(null),
       corrections: scale.corrections.map((x) => `${x.sourceScaleCode} × ${x.coefficient}`).join(", "),
-      norms: scale.norms.map((n) => `${n.sex ?? "любой"}: M=${n.mean}, δ=${n.sd}`).join("; "),
+      norms: scale.norms.map((n) => `${sexLabel(n.sex)}: M=${n.mean}, δ=${n.sd}`).join("; "),
       stens: scale.stenTable
         .sort((a, b) => a.sten - b.sten)
         .map((r) => `${r.sten}: ${r.rawMin}–${r.rawMax >= 999 ? "∞" : r.rawMax}`)
@@ -910,7 +959,7 @@ surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), as
     safetyPlan: normalizeLocalized(input.safetyPlan),
     createdBy: user.id,
   } as never);
-  await createVersion(id, input, user.id, "Импорт из файла");
+  await createVersion(id, input, user.id, noteCode("note.importFile"));
 
   await audit(c, {
     action: "survey.import",

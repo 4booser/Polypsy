@@ -201,7 +201,8 @@ describe("качество данных", () => {
     });
     expect(oddRes.status).toBe(201);
 
-    const analytics = await api(`/api/analytics/surveys/${sid}`, adminA.token);
+    // причины — на языке запроса (волна 14); здесь русский, прежними словами
+    const analytics = await api(`/api/analytics/surveys/${sid}`, adminA.token, { headers: { "Accept-Language": "ru" } });
     const flagged = analytics.body.quality.find(
       (q: { responseId: string }) => q.responseId === oddRes.body.id,
     );

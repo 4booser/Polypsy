@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import os from "node:os";
 import { sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
+import { renderNote } from "@quizzy/shared";
 import type {
   OpsErrors,
   OpsHealthCheck,
@@ -19,7 +20,7 @@ import { db } from "../db";
 import { asSystem } from "../db/context";
 import { env } from "../env";
 import { audit, type AuditAction } from "../lib/audit";
-import { parseQuery } from "../lib/http";
+import { langOf, parseQuery } from "../lib/http";
 import { logThreshold } from "../lib/log";
 import {
   ERROR_CAPACITY,
@@ -467,7 +468,8 @@ opsRoutes.get("/jobs", async (c) => {
           at: new Date(r.ran_at as string).toISOString(),
           assigned: Number(r.assigned),
           skipped: Number(r.skipped),
-          note: r.note ? normalizeMessage(String(r.note)) : null,
+          // итог прогона, который писал сервер, — кодом (lib/scheduler.ts), фразой — здесь; текст ошибки — как был
+          note: r.note ? normalizeMessage(renderNote(String(r.note), langOf(c))) : null,
         }))
       : null,
     scheduleActivity: activity.ok

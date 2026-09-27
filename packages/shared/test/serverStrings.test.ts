@@ -3,7 +3,16 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createSurveySchema } from "../src/schemas";
 import { computeProfile } from "../src/scoring";
-import { renderCoded, SERVER_TEXTS, serverText, type CodedText } from "../src/serverStrings";
+import {
+  noteCode,
+  notePrefix,
+  readNotes,
+  renderCoded,
+  renderNote,
+  SERVER_TEXTS,
+  serverText,
+  type CodedText,
+} from "../src/serverStrings";
 import { validateSurvey } from "../src/validate";
 import { makeScale, makeSurvey, yesNoQuestion } from "./fixtures";
 
@@ -177,5 +186,81 @@ describe("проблемы методики — на языке того, кто
 
   test("без языка — украинский, язык учреждения", () => {
     expect(validateSurvey(draft).map((i) => i.message)).toEqual(validateSurvey(draft, "uk").map((i) => i.message));
+  });
+});
+
+describe("пометка сервера в текстовой колонке: код хранится, фраза — при показе (волна 14)", () => {
+  /*
+   * Заметки версий, примечания доступа и назначений, итоги прогонов
+   * расписаний сервер писал русской фразой, и её читали на любом языке.
+   * Теперь — встроенным кодом; в той же колонке лежат текст человека и
+   * записи до кодов, и они показываются как лежат.
+   */
+  test("код без подстановок и с ними — на трёх языках", () => {
+    expect(noteCode("note.firstVersion")).toBe("⟦note.firstVersion⟧");
+    const first = noteCode("note.firstVersion");
+    expect(renderNote(first, "uk")).toBe("Перша версія");
+    expect(renderNote(first, "ru")).toBe("Первая версия");
+    expect(renderNote(first, "en")).toBe("First version");
+
+    const battery = noteCode("note.battery", { title: "Скринінг ПТСР" });
+    expect(renderNote(battery, "uk")).toBe("Набір «Скринінг ПТСР»");
+    expect(renderNote(battery, "ru")).toBe("Батарея «Скринінг ПТСР»");
+    expect(renderNote(battery, "en")).toBe("Battery “Скринінг ПТСР”");
+    expect(readNotes(battery)).toEqual([{ code: "note.battery", params: { title: "Скринінг ПТСР" } }]);
+  });
+
+  test("текст человека и запись до кодов — как лежат", () => {
+    for (const lang of ["uk", "ru", "en"] as const) {
+      expect(renderNote("на тиждень, після виписки", lang)).toBe("на тиждень, після виписки");
+      expect(renderNote("Первая версия", lang)).toBe("Первая версия");
+      expect(renderNote(null, lang)).toBeNull();
+      expect(renderNote(undefined, lang)).toBeNull();
+    }
+    expect(readNotes("Первая версия")).toEqual([]);
+  });
+
+  test("склейка через « · » переводит каждую часть и не трогает остальное", () => {
+    // так closeMissed дописывает отметку о пропуске к примечанию назначения
+    const note = [noteCode("note.cascade"), noteCode("note.missed.cascade")].join(" · ");
+    expect(renderNote(note, "ru")).toBe("Каскад по результату скрининга · пропущено: срок истёк, назначено заново по результату скрининга");
+    expect(renderNote(`після наради · ${noteCode("note.missed.reassigned")}`, "en")).toBe(
+      "після наради · missed: overdue, assigned again",
+    );
+  });
+
+  test("«⟧» в названии не закрывает код раньше времени", () => {
+    const title = "Набір ⟦А⟧ {б} «в» \"г\"";
+    const note = noteCode("note.schedule", { title });
+    expect(note.indexOf("⟧")).toBe(note.length - 1);
+    expect(renderNote(note, "uk")).toBe(`Розклад «${title}»`);
+    expect(readNotes(note)[0]?.params).toEqual({ title });
+  });
+
+  test("подстановка-ключ переводится тем же языком, испорченная — не роняет показ", () => {
+    // как у объяснений правил: код внутри подстановки не остаётся английским словом в украинской фразе
+    expect(renderNote(noteCode("note.localNorms", { scales: "note.firstVersion" }), "uk")).toBe("Локальні норми: Перша версія");
+    const broken = "⟦note.battery{\"title\":}⟧";
+    expect(renderNote(broken, "en")).toBe(broken);
+    // неизвестный ключ показывается сам — его называют в заявке и находят поиском
+    expect(renderNote("⟦note.nope⟧", "uk")).toBe("note.nope");
+  });
+
+  test("начало пометки для поиска LIKE: ключ не начало другого ключа", () => {
+    expect(noteCode("note.followup", { days: 7 }).startsWith(notePrefix("note.followup"))).toBe(true);
+    /*
+     * Очередь работы ищет повтор протокола наблюдения по «⟦note.followup%».
+     * Ключ, который начинался бы так же, попал бы в очередь чужим.
+     */
+    const keys = Object.keys(SERVER_TEXTS);
+    expect(keys.filter((k) => k !== "note.followup" && k.startsWith("note.followup"))).toEqual([]);
+  });
+
+  test("любая пометка по коду показывается записью словаря на каждом языке", () => {
+    for (const [key, v] of ENTRIES.filter(([k]) => k.startsWith("note."))) {
+      for (const lang of ["uk", "ru", "en"] as const) {
+        expect(renderNote(noteCode(key as never), lang), key).toBe(v[lang]);
+      }
+    }
   });
 });

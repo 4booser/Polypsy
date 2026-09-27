@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { eq, inArray, sql } from "drizzle-orm";
+import { renderNote } from "@quizzy/shared";
 import { adminA, db, groupA, makeUser, runDueSchedules, surveyInA } from "./fixtures";
 import { batteries, batteryAssignments, batteryItems, pushTokens, scheduleRuns, schedules } from "../src/db/schema";
 import { dayOf, endOfDay } from "../src/lib/day";
@@ -136,7 +137,8 @@ describe("пропуск", () => {
     const rows = await assignmentsOf(s.batteryId);
     expect(rows, "после пропуска расписание не выдало следующее").toHaveLength(2);
     const missed = rows.find((r) => r.cancelledAt);
-    expect(missed?.note).toContain("пропущено");
+    // отметка — кодом (волна 14), фразой при показе; по-русски — прежними словами
+    expect(renderNote(missed?.note, "ru")).toContain("пропущено");
     expect(rows.filter((r) => !r.cancelledAt && !r.completedAt)).toHaveLength(1);
   });
 
@@ -165,7 +167,7 @@ describe("кого расписание не охватывает", () => {
     await runDueSchedules();
     expect(await assignmentsOf(s.batteryId)).toHaveLength(0);
     const [run] = await runsOf(s.id);
-    expect(run?.note).toContain("архив");
+    expect(renderNote(run?.note, "ru")).toContain("архив");
   });
 });
 

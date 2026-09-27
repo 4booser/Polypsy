@@ -1,5 +1,5 @@
 import { asc, eq, inArray, sql } from "drizzle-orm";
-import { normalizeLocalized, presentedLang, t, type Lang } from "@quizzy/shared";
+import { normalizeLocalized, presentedLang, readNotes, renderNote, t, type Lang } from "@quizzy/shared";
 import type {
   CreateSurveyInput,
   LogicRule,
@@ -218,7 +218,13 @@ export async function attachContent(
           coefficient: c.coefficient,
         })),
         norms: (normsByScale.get(s.id) ?? []).map((n) => ({
-          source: n.source,
+          /*
+           * Источник локальной нормы сервер пишет кодом (routes/norms.ts):
+           * фразой он становится здесь, на языке выдачи. Сырой вид — тот, что
+           * правит конструктор, — отдаёт код как есть: сохранится он тем же
+           * кодом, и признак локальной нормы не потеряется.
+           */
+          source: raw ? n.source : renderNote(n.source, lang),
           sex: n.sex,
           ageMin: n.ageMin,
           ageMax: n.ageMax,
@@ -945,6 +951,18 @@ function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
  * локальных норм и теряло всё это до волны 12. Правка своей же методики
  * идёт через copyVersion.
  */
+/*
+ * Локальная ли норма — по источнику. Код пишет публикация локальных норм
+ * (routes/norms.ts); русское начало — у опубликованных до кодов: они в базе
+ * так и лежат, и уехать с методикой в другое учреждение им нельзя так же.
+ */
+const LEGACY_LOCAL_SOURCE = "локальная выборка";
+
+export function isLocalNormSource(source: string | null | undefined): boolean {
+  if (!source) return false;
+  return source.startsWith(LEGACY_LOCAL_SOURCE) || readNotes(source).some((n) => n.code === "note.localSample");
+}
+
 export function surveyToDraft(survey: SurveyFull) {
   const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
   const draft = {
@@ -1033,11 +1051,12 @@ export function surveyToDraft(survey: SurveyFull) {
        * своих людей по чужой популяции и об этом не знает. Норма из пособия
        * общая для всех — она и едет.
        *
-       * Различает их поле source: локальные помечены «локальная выборка,
-       * N=…». Отбрасываем по нему, а не по флагу: флаг пришлось бы
-       * проставлять руками, и однажды его забыли бы.
+       * Различает их поле source: локальные помечены кодом note.localSample
+       * (до волны 14 — фразой «локальная выборка, N=…»). Отбрасываем по нему,
+       * а не по флагу: флаг пришлось бы проставлять руками, и однажды его
+       * забыли бы.
        */
-      norms: s.norms.filter((n) => !String(n.source ?? "").startsWith("локальная выборка")),
+      norms: s.norms.filter((n) => !isLocalNormSource(n.source)),
       stenTable: s.stenTable,
       bands: s.bands.map((b) => ({
         minScore: b.minScore,

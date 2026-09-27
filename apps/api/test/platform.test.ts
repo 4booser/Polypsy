@@ -1061,7 +1061,8 @@ describe("устройства и удалённое стирание", () => {
       body: JSON.stringify({ deviceId: id }),
     });
 
-    const asked = await api(`/api/devices/${id}/wipe`, root.token, { method: "POST" });
+    // пояснение — на языке запроса (волна 14); по-русски — прежними словами
+    const asked = await api(`/api/devices/${id}/wipe`, root.token, { method: "POST", headers: { "Accept-Language": "ru" } });
     expect(asked.status).toBe(200);
     // ответ обязан сказать, чего команда НЕ делает
     expect(asked.body.note).toContain("следующий раз");

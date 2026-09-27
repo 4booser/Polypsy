@@ -9,7 +9,17 @@
  * согласовав нормы и формулировки с правообладателем.
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { ageAt, answerScore, computeProfile, computeScores, createSurveySchema, normalizeLocalized, t, type Answer } from "@quizzy/shared";
+import {
+  ageAt,
+  answerScore,
+  computeProfile,
+  computeScores,
+  createSurveySchema,
+  normalizeLocalized,
+  noteCode,
+  t,
+  type Answer,
+} from "@quizzy/shared";
 import { client, db } from "./db";
 import { attachToCase } from "./lib/alertCases";
 import { syncBuiltinRole } from "./lib/permissions";
@@ -533,7 +543,8 @@ async function upsertSurvey(draft: CreateSurveyDraft, status: "published" | "dra
     })
     .returning();
 
-  const versionId = await createVersion(row!.id, input, psy!.id, "Первая версия");
+  // заметка — кодом, как у методики из конструктора (routes/surveys.ts): её читают на любом языке
+  const versionId = await createVersion(row!.id, input, psy!.id, noteCode("note.firstVersion"));
   console.log(`  методика: ${t(input.title as never)}`);
   return { ...row!, currentVersionId: versionId };
 }

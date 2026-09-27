@@ -101,7 +101,8 @@ describe("локальные нормы", () => {
     expect(applied.status).toBe(201);
 
     // новая версия действует: нормы Hs — локальные, остальных шкал — из пособия
-    const after = await api(`/api/surveys/${sid}`, adminA.token);
+    // (источник локальной нормы хранится кодом и выдаётся на языке запроса — здесь русском, волна 14)
+    const after = await api(`/api/surveys/${sid}`, adminA.token, { headers: { "Accept-Language": "ru" } });
     expect(after.body.versionNumber).toBe(2);
     const hsScale = after.body.scales.find((s: { code: string }) => s.code === "Hs");
     expect(hsScale.norms.some((n: { source: string | null }) => n.source?.includes("локальная выборка, N=35"))).toBe(true);

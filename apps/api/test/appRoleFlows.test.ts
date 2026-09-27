@@ -17,7 +17,7 @@ import {
   staffRoles,
   surveyAccess,
 } from "../src/db/schema";
-import { FOLLOWUP_NOTE } from "../src/lib/followup";
+import { followupNote } from "../src/lib/followup";
 import { api, app, appApi, appRequest, db, makeUser, responsesTable, root, submitSurvey, surveyInA } from "./fixtures";
 import { dedupe } from "../src/lib/openapi";
 import { asAppRole, RLS_ROLE } from "./appRole";
@@ -1134,7 +1134,7 @@ describe("сторож: владелец и роль приложения", () =
     });
     await db
       .update(surveyAccess)
-      .set({ note: `${FOLLOWUP_NOTE} · ${w.tag}`, expiresAt: past, grantedAt: new Date().toISOString() })
+      .set({ note: `${followupNote(7)} · ${w.tag}`, expiresAt: past, grantedAt: new Date().toISOString() })
       .where(and(eq(surveyAccess.userId, w.patient.id), eq(surveyAccess.surveyId, w.surveyHidden)));
     const work = await appApi("/api/worklist", w.admin.token);
     const kinds = (work.body.items as { kind: string; userId: string }[])

@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { grantAccessSchema, type SurveyGrant } from "@quizzy/shared";
+import { grantAccessSchema, renderNote, type SurveyGrant } from "@quizzy/shared";
 import { db } from "../db";
 import { patientGroupMembers, surveyAccess, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { deadlineOf } from "../lib/day";
-import { badRequest, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import {
   accessibleGroupIds,
   accessiblePatientIds,
@@ -67,6 +67,13 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
     for (const g of grantors) grantorNames.set(g.id, fullNameOf(g));
   }
 
+  /*
+   * Примечание к доступу бывает двух родов: набранное тем, кто выдавал, и
+   * пометка сервера — набор, каскад, расписание, приглашение, протокол
+   * наблюдения. Вторая хранится кодом и становится фразой здесь, на языке
+   * запроса (renderNote); первая и записанные до кодов — как лежат.
+   */
+  const lang = langOf(c);
   const result: SurveyGrant[] = rows.map((r) => ({
     userId: r.userId,
     fullName: fullNameOf(r),
@@ -75,7 +82,7 @@ accessRoutes.get("/surveys/:id/grants", async (c) => {
     grantedByName: r.grantedBy ? (grantorNames.get(r.grantedBy) ?? null) : null,
     grantedAt: r.grantedAt,
     expiresAt: r.expiresAt,
-    note: r.note,
+    note: renderNote(r.note, lang),
     attemptsAllowed: r.attemptsAllowed,
     attemptsUsed: Number(r.completed ?? 0),
     completed: Number(r.completed ?? 0) > 0,
