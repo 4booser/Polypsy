@@ -41,6 +41,41 @@ RUN git clone --depth 1 --branch ${WHISPER_REF} https://github.com/ggerganov/whi
  && cmake --build /src/build --config Release -j"$(nproc)" \
  && mkdir -p /out && cp /src/build/bin/whisper-cli /out/whisper-cli
 
+# ── ffmpeg только для звука ────────────────────────────────────────────────
+# Браузер пишет приём в WebM/Opus (Chrome, Firefox), Ogg (Firefox) или
+# MP4/AAC (Safari), а whisper.cpp без своей сборки с FFmpeg читает только
+# WAV. Прежде байты WebM уходили в whisper как есть: он писал «failed to read»
+# в stderr, выходил с кодом 0 — и в карту ложилась пустая «успешная»
+# стенограмма. Расшифровщик теперь переводит запись в WAV 16 кГц моно
+# (lib/recordings.ts, toWav).
+#
+# Своя сборка, а не пакет Debian: пакет ffmpeg тянет за собой видеокодеки,
+# X11 и звуковые серверы — образ вырос бы с 332 до 903 МБ (проверено). Здесь
+# — только разбор этих четырёх контейнеров, их аудиокодеки, пересчёт частоты
+# и WAV на выходе: статический бинарник на ~4 МБ. Сети, устройств и
+# видео в нём нет вовсе, так что и разбирать чужой файл ему почти нечем.
+#
+# nasm — ассемблерные вставки под x86 (CI собирает amd64); без него
+# configure падает. Проверено на amd64 и arm64: WebM/Opus, Ogg/Opus,
+# MP4/AAC, WebM/Vorbis и WAV переводятся, мусор — отказ с кодом 183.
+FROM debian:bookworm-slim AS ffmpeg
+ARG FFMPEG_REF=n7.1.1
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git build-essential ca-certificates nasm \
+ && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch ${FFMPEG_REF} https://github.com/FFmpeg/FFmpeg /src \
+ && cd /src \
+ && ./configure --disable-everything --disable-autodetect --disable-doc --disable-debug \
+      --disable-network --disable-ffplay --disable-ffprobe --disable-shared --enable-static \
+      --enable-protocol=file \
+      --enable-demuxer=matroska,ogg,mov,wav \
+      --enable-decoder=opus,vorbis,aac,pcm_s16le,pcm_s24le,pcm_f32le \
+      --enable-parser=opus,vorbis,aac \
+      --enable-encoder=pcm_s16le --enable-muxer=wav \
+      --enable-filter=aresample,aformat,anull,atrim \
+ && make -j"$(nproc)" ffmpeg \
+ && mkdir -p /out && cp ffmpeg /out/ffmpeg
+
 # ── Рантайм ────────────────────────────────────────────────────────────────
 FROM oven/bun:1.4-slim
 WORKDIR /app
@@ -52,6 +87,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=whisper /out/whisper-cli /usr/local/bin/whisper-cli
+COPY --from=ffmpeg /out/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=build /app /app
 
 # non-root: у образа bun уже есть пользователь bun

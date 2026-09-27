@@ -1077,6 +1077,11 @@ export const ERRORS = {
     en: "The recording is no longer running: it was stopped or deleted",
   },
   "err.recordingTooLarge": { uk: "Файл завеликий", ru: "Файл слишком большой", en: "The file is too large" },
+  "err.recordingFormat": {
+    uk: "Непідтримуваний формат запису: це не аудіо, яке записує браузер (WebM, Ogg, MP4 або WAV)",
+    ru: "Неподдерживаемый формат записи: это не аудио, которое пишет браузер (WebM, Ogg, MP4 или WAV)",
+    en: "Unsupported recording format: this isn’t audio a browser records (WebM, Ogg, MP4 or WAV)",
+  },
   "err.recordingTranscribed": {
     uk: "Розшифровку вже зроблено: видаляти запис пізно, текст у картці",
     ru: "Расшифровка уже сделана: удалять запись поздно, текст в карте",

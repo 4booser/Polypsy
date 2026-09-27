@@ -140,7 +140,15 @@ bash ./models/download-ggml-model.sh large-v3
 # в .env приложения
 WHISPER_BIN=/opt/whisper.cpp/main
 WHISPER_MODEL=/opt/whisper.cpp/models/ggml-large-v3.bin
+# ffmpeg переводит запись браузера (WebM/Ogg/MP4) в WAV 16 кГц — whisper
+# читает только WAV; пусто — берётся `ffmpeg` из PATH
+FFMPEG_BIN=/usr/bin/ffmpeg
 ```
+
+Без ffmpeg каждая расшифровка падает с причиной `converter-missing` — видно
+на экране приёма и в техпанели. В образе Docker ffmpeg свой (только звук,
+см. `apps/api/Dockerfile`), и временные файлы расшифровщика лежат в tmpfs:
+открытое аудио не касается диска.
 
 Облачные сервисы распознавания сюда не подставляются — ни Web Speech API, ни
 чужой STT. Отправить запись психотерапевтической сессии наружу значит раскрыть

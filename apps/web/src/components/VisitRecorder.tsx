@@ -1,10 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { api } from "../api";
 import { useAction } from "../ui";
 import { Panel } from "../ui/layout";
 import { Button, Num } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import {
+  failureKey,
+  pickMimeType,
+  RecorderRegistry,
+  type RecorderDeps,
+  type RecorderLike,
+  type RecorderNotice,
+} from "./recorder/model";
 
 /**
  * Запись приёма.
@@ -16,69 +24,121 @@ import { useResource } from "../useResource";
  * Кнопка «Начать» не появляется, пока нет согласия на запись ИМЕННО ЭТОГО
  * приёма. Сервер проверяет то же самое — на спрятанную кнопку здесь
  * полагаться нельзя.
+ *
+ * Микрофон, рекордер и отправка — в recorder/model.ts: там каждая ветка
+ * освобождает микрофон, а аудио живёт до подтверждения сервера (волна 12).
  */
+
+/**
+ * Сессии записи живут дольше экрана: неотправленная запись не пропадает,
+ * когда специалист уходит в карту пациента, а закрытие вкладки с ней
+ * спрашивает подтверждения.
+ */
+const recorders = new RecorderRegistry(typeof window === "undefined" ? null : window);
+
+/** Опрос состояния, пока здесь пишется: остановку или удаление второй стороной надо заметить за секунды */
+const LIVE_POLL_MS = 4000;
+
+/** MediaRecorder под интерфейс модели */
+function mediaRecorder(stream: MediaStream): RecorderLike {
+  const mimeType = pickMimeType((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t));
+  const rec = new MediaRecorder(stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 32_000 });
+  return {
+    get mimeType() {
+      return rec.mimeType || mimeType || "";
+    },
+    start(timesliceMs, onChunk) {
+      rec.ondataavailable = (e) => onChunk(e.data);
+      rec.start(timesliceMs);
+    },
+    stop() {
+      return new Promise<void>((resolve) => {
+        if (rec.state === "inactive") {
+          resolve();
+          return;
+        }
+        // «stop» приходит после последнего куска; страховка — если событие не придёт вовсе
+        const timer = setTimeout(resolve, 3000);
+        rec.onstop = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        rec.stop();
+      });
+    },
+  };
+}
+
+function browserDeps(appointmentId: string): RecorderDeps<MediaStream> {
+  return {
+    getMic: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+    makeRecorder: mediaRecorder,
+    startOnServer: () => api.recordingStart(appointmentId),
+    sendAudio: (audio, uploadId) => api.recordingStop(appointmentId, audio, uploadId),
+    stopOnServer: () => api.recordingStop(appointmentId, null),
+    newId: () => crypto.randomUUID(),
+  };
+}
+
 export function VisitRecorder({ appointmentId, onTranscript }: {
   appointmentId: string;
   onTranscript: (text: string) => void;
 }) {
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const res = useResource(() => api.recording(appointmentId), [appointmentId]);
+  const session = useMemo(
+    () => recorders.session(appointmentId, () => browserDeps(appointmentId)),
+    [appointmentId],
+  );
+  const view = useSyncExternalStore(session.subscribe, session.snapshot, session.snapshot);
+  const here = view.phase;
+  const recordingHere = here === "live";
+
+  const res = useResource(() => api.recording(appointmentId), [appointmentId], {
+    pollMs: recordingHere ? LIVE_POLL_MS : 0,
+  });
   const reload = res.reload;
-
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const [elapsed, setElapsed] = useState(0);
-  const [micError, setMicError] = useState<string | null>(null);
-
   const state = res.data;
-  const live = state?.status === "recording";
+  const [elapsed, setElapsed] = useState(0);
+
+  /*
+   * Уход с экрана: идущая запись останавливается и уходит на сервер, а
+   * микрофон освобождается. Прежде рекордер и дорожки никто не
+   * останавливал — индикатор исчезал вместе с экраном, а микрофон писал.
+   */
+  useEffect(() => {
+    session.attach();
+    return () => {
+      void session.leave();
+    };
+  }, [session]);
+
+  /* ответ опроса: вторая сторона остановила или удалила запись, пока здесь пишется */
+  useEffect(() => {
+    if (!state || !recordingHere) return;
+    void session.remote(state.status, state.startedAt).then((acted) => {
+      if (acted) reload();
+    });
+  }, [state, recordingHere, session, reload]);
+
+  const serverLive = state?.status === "recording";
+  const elsewhere = serverLive && !recordingHere;
+  const from = recordingHere ? (view.startedAt ?? state?.startedAt) : elsewhere ? state?.startedAt : null;
 
   /* секундомер: человеку надо видеть, что запись идёт и сколько уже длится */
   useEffect(() => {
-    if (!live || !state?.startedAt) return;
-    const from = new Date(state.startedAt).getTime();
-    const id = setInterval(() => setElapsed(Math.floor((Date.now() - from) / 1000)), 1000);
+    if (!from) return;
+    const t0 = new Date(from).getTime();
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - t0) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [live, state?.startedAt]);
-
-  const start = useCallback(async () => {
-    setMicError(null);
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setMicError(ut("rec.micDenied"));
-      return;
-    }
-    await api.recordingStart(appointmentId);
-    chunksRef.current = [];
-    const rec = new MediaRecorder(stream);
-    rec.ondataavailable = (e) => {
-      if (e.data.size) chunksRef.current.push(e.data);
-    };
-    rec.start(5000);
-    recorderRef.current = rec;
-    await reload();
-  }, [appointmentId, reload, ut]);
-
-  const stop = useCallback(async () => {
-    const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") {
-      await new Promise<void>((resolve) => {
-        rec.onstop = () => resolve();
-        rec.stop();
-      });
-      rec.stream.getTracks().forEach((t) => t.stop());
-    }
-    const blob = chunksRef.current.length ? new Blob(chunksRef.current, { type: "audio/webm" }) : null;
-    recorderRef.current = null;
-    chunksRef.current = [];
-    await api.recordingStop(appointmentId, blob);
-    await reload();
-  }, [appointmentId, reload]);
+  }, [from]);
 
   if (!state) return null;
+
+  const idle = here === "idle";
+  const inFlight = here === "stopping" || here === "sending" || here === "acquiring";
 
   return (
     <Panel title={ut("rec.title")}>
@@ -108,12 +168,12 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
           </p>
         )}
 
-        {micError ? <p className="text-caption text-bad">{micError}</p> : null}
+        {view.notice ? <Notice notice={view.notice} /> : null}
 
         {/* ── ход записи ── */}
-        {state.consentAt && !live && ["ready", "consent_pending"].includes(state.status) ? (
+        {state.consentAt && idle && ["ready", "consent_pending"].includes(state.status) ? (
           <div className="flex gap-2">
-            <Button size="sm" disabled={busy} onClick={() => void start()}>
+            <Button size="sm" disabled={busy} onClick={() => void session.start().then(reload)}>
               {ut("rec.start")}
             </Button>
             <Button
@@ -127,19 +187,49 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
           </div>
         ) : null}
 
-        {live ? (
+        {recordingHere || elsewhere ? (
           <div className="flex items-center gap-3">
             {/*
               Индикатор — не украшение: человек напротив должен видеть, что
-              запись идёт, не спрашивая. Точка мигает, время растёт.
+              запись идёт, не спрашивая. Точка мигает, время растёт. Цвет —
+              токеном danger: прежний bg-bad не существовал в теме, и точка
+              была невидимой.
             */}
-            <span className="inline-block size-2 animate-pulse rounded-full bg-bad" />
+            <span className="inline-block size-2 animate-pulse rounded-full bg-danger" />
             <span className="text-caption">{ut("rec.recording")}</span>
             <Num className="text-caption text-muted">
               {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
             </Num>
-            <Button size="sm" className="ml-auto" disabled={busy} onClick={() => void stop()}>
-              {ut("rec.stop")}
+            {recordingHere ? (
+              <Button size="sm" className="ml-auto" onClick={() => void session.stop().then(reload)}>
+                {ut("rec.stop")}
+              </Button>
+            ) : (
+              /*
+                Запись идёт не отсюда (другая вкладка, перезагруженная
+                страница). Аудио здесь нет, но остановить её вправе и
+                отсюда — сервер переведёт её в ожидание аудио от того, кто
+                писал.
+              */
+              <Button
+                size="sm"
+                className="ml-auto"
+                disabled={busy}
+                onClick={() => run(() => api.recordingStop(appointmentId, null).then(reload))}
+              >
+                {ut("rec.stop")}
+              </Button>
+            )}
+          </div>
+        ) : null}
+        {elsewhere ? <p className="text-caption text-muted">{ut("rec.elsewhere")}</p> : null}
+
+        {/* ── неотправленное ── */}
+        {inFlight && here !== "acquiring" ? <p className="text-caption text-muted">{ut("rec.sending")}</p> : null}
+        {here === "unsent" ? (
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => void session.send().then(reload)}>
+              {ut("rec.resend")}
             </Button>
           </div>
         ) : null}
@@ -161,9 +251,10 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
         ) : null}
 
         {state.status === "failed" ? (
-          <p className="text-caption text-bad">
+          <p className="text-caption text-danger">
             {ut("rec.failed")}
-            {state.failure ? `: ${state.failure}` : ""}
+            {/* код причины — человеческими словами; неизвестное — как есть, для разбора */}
+            {state.failure ? `: ${failureKey(state.failure) ? ut(failureKey(state.failure)!) : state.failure}` : ""}
           </p>
         ) : null}
 
@@ -183,10 +274,18 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
           <Button
             size="sm"
             variant="ghost"
-            disabled={busy}
+            disabled={busy || inFlight}
             onClick={() => {
               if (!window.confirm(ut("rec.discardSure"))) return;
-              void run(() => api.recordingDiscard(appointmentId).then(reload), ut("rec.discarded"));
+              /*
+                Сначала — своё: микрофон и неотправленное аудио стираются в
+                этой вкладке, потом запись удаляется на сервере. Удалённое по
+                просьбе человека не должно дожить даже до повтора отправки.
+              */
+              void run(
+                () => session.abandon().then(() => api.recordingDiscard(appointmentId)).then(reload),
+                ut("rec.discarded"),
+              );
             }}
           >
             {ut("rec.discard")}
@@ -195,4 +294,31 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
       </div>
     </Panel>
   );
+}
+
+/** Сообщение о ходе записи: отказ — danger, «требует действия» — accent, справка — muted */
+function Notice({ notice }: { notice: RecorderNotice }) {
+  const { ut } = useLang();
+  switch (notice.kind) {
+    case "micDenied":
+      return <p className="text-caption text-danger">{ut("rec.micDenied")}</p>;
+    case "failed":
+      return <p className="text-caption text-danger">{notice.message}</p>;
+    case "sendFailed":
+      return (
+        <p className="text-caption text-accent">
+          {ut("rec.sendFailed")} · {notice.message}
+        </p>
+      );
+    case "sendRefused":
+      return (
+        <p className="text-caption text-danger">
+          {ut("rec.sendRefused")} · {notice.message}
+        </p>
+      );
+    case "stoppedRemotely":
+      return <p className="text-caption text-muted">{ut("rec.stoppedRemotely")}</p>;
+    case "withdrawn":
+      return <p className="text-caption text-muted">{ut("rec.withdrawn")}</p>;
+  }
 }
