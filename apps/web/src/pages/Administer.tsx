@@ -59,12 +59,14 @@ export default function Administer() {
   }
 
   async function submit() {
-    if (!id) return;
+    if (!id || !survey) return;
     setBusy(true);
     setError(null);
     try {
       const res = await api.submitFor(id, {
         onBehalfOf: subject,
+        // считается по той версии, пункты которой на экране, а не по действующей на момент нажатия
+        versionId: survey.versionId,
         startedAt: started,
         durationMs: Date.now() - new Date(started).getTime(),
         status: "completed",

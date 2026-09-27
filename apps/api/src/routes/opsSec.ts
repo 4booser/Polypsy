@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import type { OpsKeysReport, OpsSqlInfo, OpsSqlResult } from "@quizzy/shared";
-import { asSystem } from "../db/context";
+import { asSystem, requestIsReadOnly } from "../db/context";
 import { audit } from "../lib/audit";
 import { parseBody } from "../lib/http";
 import { auditChainReport, integrityState, recordCheck, reportChainBroken, rlsReport } from "../lib/integrity";
@@ -40,8 +40,9 @@ opsSecRoutes.use("*", requireAuth, requireSuperadmin);
  */
 opsSecRoutes.get("/keys", async (c) => {
   const report = await asSystem(async (): Promise<OpsKeysReport> => {
-    // отметить смену секрета, если планировщик её ещё не видел (dev без планировщика)
-    await observeSecrets();
+    // отметить смену секрета, если планировщик её ещё не видел (dev без планировщика);
+    // в транзакции «только чтение» (учётка «только просмотр») — не отмечаем, только смотрим
+    if (!requestIsReadOnly()) await observeSecrets();
     const inventory = await keyInventory();
     return {
       ...inventory,

@@ -28,6 +28,8 @@ export default function ConsentScreen() {
   const [view, setView] = useState<ConsentView | null>(null);
   /** Текст держится и после отказа: «повернутися до тексту» возвращает его, а не грузит заново */
   const [text, setText] = useState<string | null>(null);
+  /** Редакция на экране: принимается именно она — сервер сверит с действующей (участок submit) */
+  const [textId, setTextId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +40,10 @@ export default function ConsentScreen() {
       .consentStatus()
       .then((s) => {
         const next = viewOfStatus(s);
-        if (next.kind === "read") setText(next.text);
+        if (next.kind === "read") {
+          setText(next.text);
+          setTextId(s.textId ?? null);
+        }
         setView(next);
       })
       .catch((e) => {
@@ -65,10 +70,22 @@ export default function ConsentScreen() {
       setBusy(true);
       setError(null);
       try {
-        await api.acceptConsent();
+        await api.acceptConsent(textId);
         router.replace("/(app)/home");
       } catch (e) {
         setError(e instanceof Error ? e.message : ut("common.error"));
+        // текст обновился, пока человек читал (409): показываем новую редакцию — принимать её
+        if ((e as { status?: number }).status === 409) {
+          const fresh = await api.consentStatus().catch(() => null);
+          if (fresh) {
+            const next = viewOfStatus(fresh);
+            if (next.kind === "read") {
+              setText(next.text);
+              setTextId(fresh.textId ?? null);
+            }
+            setView(next);
+          }
+        }
       } finally {
         setBusy(false);
       }

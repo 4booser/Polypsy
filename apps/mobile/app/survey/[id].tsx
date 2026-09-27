@@ -267,6 +267,8 @@ export default function TakeSurveyScreen() {
        */
       const sent = await draftLanes.submit(draftLaneKey(owner, survey.id), revision, () =>
         api.saveDraft(survey.id, {
+          // версия на экране — черновик продолжают и сдают по ней (участок submit)
+          versionId: survey.versionId,
           answers: payload,
           startedAt: local.startedAt,
           durationMs: local.durationMs,
@@ -369,6 +371,8 @@ export default function TakeSurveyScreen() {
       const outcome = await finishSubmission({
         submit: () =>
           api.submitResponse(survey.id, {
+            // версия на экране — по ней сервер проверит и посчитает, даже если методику уже обновили
+            versionId: survey.versionId,
             answers: payload,
             startedAt: startedAt.current,
             durationMs: Date.now() - sessionStart.current,

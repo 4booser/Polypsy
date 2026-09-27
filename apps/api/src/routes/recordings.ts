@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
+import { requestIsReadOnly } from "../db/context";
 import { appointments, visitRecordings } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
@@ -66,10 +67,35 @@ async function recordingFor(appointmentId: string, patientId: string, specialist
   return created!;
 }
 
+/** Начальное состояние записи, которой ещё нет в базе (см. GET ниже) */
+function unsavedRecording(patientId: string) {
+  return {
+    id: null,
+    status: "consent_pending" as const,
+    consentAt: null,
+    consentBy: null,
+    patientId,
+    startedAt: null,
+    durationMs: null,
+    transcriptEnc: null,
+    transcriptEngine: null,
+    failure: null,
+  };
+}
+
 /** Состояние записи: обе стороны смотрят на одно и то же */
 recordingRoutes.get("/:appointmentId", async (c) => {
   const visit = await visitOf(c, c.req.param("appointmentId"));
-  const rec = await recordingFor(visit.id, visit.patientId, visit.specialistId);
+  /*
+   * Строка записи заводится при первом обращении — но не в транзакции
+   * «только чтение» (вход «от имени», учётка «только просмотр», волна 12):
+   * там вставка упала бы в базе. Строки ещё нет — отдаём её начальное
+   * состояние, ничего не записав.
+   */
+  const rec = requestIsReadOnly()
+    ? ((await db.query.visitRecordings.findFirst({ where: eq(visitRecordings.appointmentId, visit.id) })) ??
+      unsavedRecording(visit.patientId))
+    : await recordingFor(visit.id, visit.patientId, visit.specialistId);
   const me = c.get("user");
 
   return c.json({

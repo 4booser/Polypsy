@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import postgres from "postgres";
 import { checkRls, rlsRefusal } from "../src/lib/rlsGuard";
+import { consentTexts, consents } from "../src/db/schema";
 import { adminA, adminB, and, api, app, batteries, batteryAssignments, batteryItems, db, eq, groupA, groupAdmins, makeUser, patient, root, surveyGroups, submitSurvey, surveyInA, surveys, users, type Person } from "./fixtures";
 
 /* Права доступа: кто что видит и чего не может */
@@ -541,6 +542,18 @@ describe("удаление учётной записи не уносит кли�
 /* ── согласия ── */
 
 describe("информированное согласие", () => {
+  /*
+   * Текст согласия — общий на всю базу, и с волны 12 без его принятия сдача
+   * не проходит (routes/responses.ts, assertConsent). Оставленный здесь
+   * текст запер бы сдачи пациентов во всех файлах, идущих следом, — и
+   * порядок файлов на CI другой, чем на macOS. Тест начинает с «текста нет»
+   * и к этому же возвращает.
+   */
+  afterAll(async () => {
+    await db.delete(consents);
+    await db.delete(consentTexts);
+  });
+
   test("новая версия текста сбрасывает принятие; след с версией", async () => {
     /*
      * Текст согласия один на всю систему, а база у файлов общая: i18n.test.ts

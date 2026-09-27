@@ -204,6 +204,13 @@ describe("отправка прохождения под боевой ролью
     const staff = await makeUser("admin", staffEmail);
     await db.insert(groupAdmins).values({ groupId, userId: staff.id, addedBy: root.id });
     const subject = await makeUser("user", `rls-subject-${tail}@test.dev`, { sex: "female", birthDate: "1985-05-05" });
+    /*
+     * Пациент — в зоне сотрудника: ему назначена методика группы. С волны 12
+     * за человека вне зоны заполнить нельзя (routes/responses.ts,
+     * assertMayFillFor), и тест про роль базы не должен держаться на дыре в
+     * правах.
+     */
+    await db.insert(surveyAccess).values({ surveyId, userId: subject.id, grantedBy: staff.id });
 
     const out = await underAppRole<Submitted>(
       submitScript(staffEmail, `onBehalfOf: ${JSON.stringify(subject.id)}, status: "completed",`),

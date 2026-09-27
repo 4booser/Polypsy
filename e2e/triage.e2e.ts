@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createVisiblePatient, goMenu, login, openMenu } from "./helpers";
+import { acceptConsentIfAsked, createVisiblePatient, goMenu, login, openMenu } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -161,6 +161,8 @@ test("новая тревога догоняет открытый экран б�
   });
   if (!login.ok()) test.skip(true, "нет учётной записи пациента в посеве");
   const { token } = (await login.json()) as { token: string };
+  // без принятого согласия сдачу сервер не примет (волна 12)
+  await acceptConsentIfAsked(page, token);
   const auth = { Authorization: `Bearer ${token}` };
 
   const surveys = await page.request.get("/api/surveys", { headers: auth });

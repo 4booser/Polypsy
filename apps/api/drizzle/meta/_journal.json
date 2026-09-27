@@ -696,6 +696,13 @@
       "breakpoints": true
     },
     {
+      "idx": 106,
+      "version": "7",
+      "when": 1788474309043,
+      "tag": "0106_risk_alerts_keep",
+      "breakpoints": true
+    },
+    {
       "idx": 107,
       "version": "7",
       "when": 1788474369043,

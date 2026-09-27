@@ -59,6 +59,12 @@ test("человек заводит учётную запись и проход�
   await page.getByRole("button", { name: /^(Войти|Увійти)$/ }).click();
 
   await page.waitForURL(/\/me/);
+  /*
+   * Новый человек сначала видит согласие (волна 12, patient/ConsentGate.tsx):
+   * без принятой редакции сервер ответов не примет. Проходим его кнопкой —
+   * так, как пройдёт человек.
+   */
+  await page.getByRole("button", { name: /^(Погоджуюся|Соглашаюсь|I agree)$/ }).click();
   await expect(menuButton(page)).toHaveCount(0);
 
   await page.getByRole("link", { name: "Тесты" }).click();
