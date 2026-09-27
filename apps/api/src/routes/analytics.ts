@@ -677,9 +677,26 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   const completed = responseRows.filter((r) => r.status === "completed");
   const abandoned = responseRows.filter((r) => r.status === "abandoned");
   const durations = completed.map((r) => r.durationMs).filter((d) => d > 0);
+  /* недостоверные протоколы — см. ниже у шкал и у пунктов */
+  const unreliable = new Set(completed.filter((r) => !r.reliable).map((r) => r.id));
 
+  /*
+   * Статистика пунктов — без недостоверных протоколов.
+   *
+   * Время на пункте и доли вариантов считались по всем бланкам, и протокол
+   * «всё — так», проваливший шкалу лжи, садился в «як відповідали» наравне
+   * с честными: сдвигал доли вариантов и тянул время к нулю (такие бланки и
+   * заполняют быстро). Шкалы недостоверным не верили давно (ниже), пункты —
+   * нет; теперь правило одно. Сколько протоколов отложено — unreliableCount.
+   *
+   * Воронка обрывов (dropOff) считается по всем: сданный недостоверный
+   * бланк прошёл методику до конца, и из воронки он выпадать не должен.
+   */
   const answersByQuestion = new Map<string, typeof answerRows>();
+  const shownAll = new Map<string, number>();
   for (const a of answerRows) {
+    shownAll.set(a.questionId, (shownAll.get(a.questionId) ?? 0) + 1);
+    if (unreliable.has(a.responseId)) continue;
     const list = answersByQuestion.get(a.questionId) ?? [];
     list.push(a);
     answersByQuestion.set(a.questionId, list);
@@ -839,7 +856,7 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
 
   let previousReached = responseRows.length;
   const dropOff = questionStats.map((q) => {
-    const reached = q.shown;
+    const reached = shownAll.get(q.questionId) ?? 0;
     const lost = Math.max(0, previousReached - reached);
     previousReached = reached;
     /*
@@ -958,7 +975,6 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
    * вопрос, сколько протоколов под вопросом. Сколько таких — отдельным
    * числом (unreliableCount), чтобы «у нормі 6» не читалось как «з шести».
    */
-  const unreliable = new Set(completed.filter((r) => !r.reliable).map((r) => r.id));
   const none = new Set<string>();
 
   const scaleStats: ScaleAnalytics[] = survey.scales.map((scale) => {
