@@ -22,7 +22,8 @@
     "db:simulate": "bun src/simulate.ts",
     "content:check": "bun src/contentCheck.ts",
     "search:reindex": "bun src/reindex.ts",
-    "install:instance": "bun src/install.ts"
+    "install:instance": "bun src/install.ts",
+    "docs:instruments": "SHEETS_WRITE=1 bun test test/instrumentSheets.test.ts"
   },
   "dependencies": {
     "@quizzy/shared": "workspace:*",
