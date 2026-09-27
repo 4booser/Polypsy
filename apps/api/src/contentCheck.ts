@@ -54,7 +54,12 @@ for (const row of published) {
       }),
       corrections: s.corrections.map((c) => ({ from: c.sourceScaleCode, coefficient: c.coefficient })),
     })),
-  } as never);
+    /*
+     * По-русски, как и весь остальной вывод этой проверки: её читает тот, кто
+     * выкатывает, в терминале, и строка отчёта не должна быть наполовину
+     * украинской. Экран конструктора получает свой язык (langOf в маршруте).
+     */
+  } as never, "ru");
 
   const errs = issues.filter((i) => i.level === "error");
   const warns = issues.filter((i) => i.level === "warning");

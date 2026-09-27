@@ -62,7 +62,15 @@ describe("тексты отказов", () => {
   });
 
   test("в словаре отказов нет ключей, которых никто не зовёт", () => {
-    const code = files.map((f) => readFileSync(f, "utf8")).join("\n");
+    /*
+     * Зовут и схемы общего пакета: сообщение проверки там — ключ отказа
+     * (packages/shared/src/schemas.ts, волна 13), и сервер отвечает его
+     * переводом. Искать только в apps/api значило бы объявить их мёртвыми.
+     */
+    const shared = sources(resolve(import.meta.dir, "../../../packages/shared/src")).filter(
+      (f) => !f.endsWith("errorStrings.ts") && !f.endsWith(".test.ts"),
+    );
+    const code = [...files, ...shared].map((f) => readFileSync(f, "utf8")).join("\n");
     const unused = Object.keys(ERRORS).filter((key) => !code.includes(`"${key}"`));
     expect(unused).toEqual([]);
   });

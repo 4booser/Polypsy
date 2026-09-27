@@ -3,6 +3,20 @@ import { ALWAYS_VISIBLE_RAIL } from "./permissions";
 import { CONTENT_LANGS, LANGS, type ContentLang } from "./types";
 import { calendarDay, dateInput } from "./dates";
 
+/*
+ * Сообщения проверок в этом файле — ключи словаря отказов («err.v.color»),
+ * а не фразы (волна 13).
+ *
+ * Разбор тела отдавал сообщение схемы человеку как есть — и фраза, набранная
+ * здесь по-русски, приезжала русской на украинский и английский экран:
+ * «Нужно минимум 2 варианта ответа» в конструкторе, «Пароль — минимум 10
+ * символов» в профиле. Сервер узнаёт ключ (apps/api/src/lib/http.ts,
+ * issueKey) и отвечает переводом с именем поля; подстановки — в `params`
+ * своей проверки. Клиенты эти схемы не выполняют, и ключ до экрана
+ * не доходит. Новая русская фраза здесь уронит сторож
+ * apps/api/test/noRawStrings.test.ts.
+ */
+
 export const roleSchema = z.enum(["superadmin", "admin", "user"]);
 
 /**
@@ -83,7 +97,7 @@ const personNameSchema = {
 /** Паспортная часть — её требуют регистрационные бланки всех методик */
 const profileFields = {
   sex: sexSchema.nullish(),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в формате ГГГГ-ММ-ДД").nullish(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "err.v.dateFormat").nullish(),
   unit: z.string().max(160).nullish(),
   position: z.string().max(160).nullish(),
   specialty: z.string().max(160).nullish(),
@@ -94,7 +108,7 @@ const profileFields = {
 
 export const profileSchema = z.object({
   sex: sexSchema.nullish(),
-  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Дата в формате ГГГГ-ММ-ДД").nullish(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "err.v.dateFormat").nullish(),
   unit: z.string().max(160).nullish(),
   position: z.string().max(160).nullish(),
   specialty: z.string().max(160).nullish(),
@@ -143,9 +157,9 @@ export const registerSchema = z
   .superRefine((v, ctx) => {
     if (!v.anonymous) {
       if (!v.lastName?.trim())
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lastName"], message: "Укажите фамилию" });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["lastName"], message: "err.v.lastNameRequired" });
       if (!v.firstName?.trim())
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["firstName"], message: "Укажите имя" });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["firstName"], message: "err.v.firstNameRequired" });
     }
   });
 
@@ -383,7 +397,7 @@ export const batteryInputSchema = z.object({
         required: z.boolean().default(true),
       }),
     )
-    .min(1, "В батарее должна быть хотя бы одна методика"),
+    .min(1, "err.v.batteryEmpty"),
 });
 
 export const assignBatterySchema = z.object({
@@ -430,7 +444,7 @@ export const createInviteSchema = z.object({
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(10, "Пароль — минимум 10 символов").max(200),
+  newPassword: z.string().min(10, "err.v.passwordShort").max(200),
 });
 
 export const loginSchema = z.object({
@@ -445,7 +459,7 @@ export const groupInputSchema = z.object({
   description: z.string().max(2000).nullish(),
   color: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Цвет задаётся как #RRGGBB")
+    .regex(/^#[0-9a-fA-F]{6}$/, "err.v.color")
     .nullish(),
   position: z.number().int().min(0).optional(),
 });
@@ -510,7 +524,7 @@ export const patientGroupInputSchema = z.object({
   description: z.string().max(4000).nullish(),
   color: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Цвет задаётся как #RRGGBB")
+    .regex(/^#[0-9a-fA-F]{6}$/, "err.v.color")
     .nullish(),
   position: z.number().int().min(0).optional(),
 });
@@ -530,7 +544,7 @@ export const patientGroupMemberSchema = z
     userIds: z.array(z.string().min(1)).min(1).max(200).optional(),
   })
   .refine((v) => Boolean(v.userId) || Boolean(v.userIds?.length), {
-    message: "Нужен userId или непустой userIds",
+    message: "err.v.groupMember",
   });
 
 /** Кого убираем из группы — пакетом, по тем же причинам, что и добавление */
@@ -574,11 +588,11 @@ export const sampleFiltersSchema = z
     patientId: z.string().min(1).nullish(),
   })
   .refine((v) => v.ageMin == null || v.ageMax == null || v.ageMin <= v.ageMax, {
-    message: "«Вік від» не может быть больше «Вік до»",
+    message: "err.v.ageRange",
     path: ["ageMax"],
   })
   .refine((v) => !v.from || !v.to || v.from <= v.to, {
-    message: "Начало периода позже его конца",
+    message: "err.v.periodReversed",
     path: ["to"],
   });
 
@@ -625,7 +639,7 @@ export const statModelColumnSchema = z
     questions: z.array(statModelQuestionSchema).max(50).default([]),
   })
   .refine((c) => !(c.presetId && c.filters), {
-    message: "Колонка берёт фильтры либо из пресета, либо свои — не оба сразу",
+    message: "err.v.presetOrFilters",
     path: ["filters"],
   });
 
@@ -720,11 +734,11 @@ export const bandInputSchema = z
       .nullish()
       .refine(
         (v) => !v || v.split(",").every((x) => /^\s*\d{1,3}\s*$/.test(x)),
-        "Дни повторов — числа через запятую, например «7,30»",
+        "err.v.followUpDays",
       ),
   })
   .refine((b) => b.maxScore >= b.minScore, {
-    message: "Верхняя граница нормы не может быть меньше нижней",
+    message: "err.v.bandBounds",
     path: ["maxScore"],
   });
 
@@ -734,7 +748,7 @@ export const scaleInputSchema = z.object({
     .string()
     .min(1)
     .max(40)
-    .regex(/^[a-zA-Z0-9_-]+$/, "Код субшкалы: латиница, цифры, дефис, подчёркивание"),
+    .regex(/^[a-zA-Z0-9_-]+$/, "err.v.scaleCode"),
   title: localizedSchema,
   description: localizedSchema.nullish(),
   aggregation: scaleAggregationSchema.default("sum"),
@@ -851,14 +865,14 @@ export const questionInputSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["options"],
-          message: "Нужно минимум 2 варианта ответа",
+          message: "err.v.minTwoOptions",
         });
       }
       if (q.type === "matrix" && q.options.filter((o) => o.kind === "row").length < 1) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["options"],
-          message: "У матричного вопроса нужна хотя бы одна строка",
+          message: "err.v.matrixRows",
         });
       }
     }
@@ -870,7 +884,7 @@ export const questionInputSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["maxValue"],
-          message: "Максимум должен быть больше минимума",
+          message: "err.v.maxAboveMin",
         });
       }
     }
@@ -879,7 +893,7 @@ export const questionInputSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["required"],
-        message: "Информационный блок не может быть обязательным",
+        message: "err.v.infoNotRequired",
       });
     }
 
@@ -887,7 +901,7 @@ export const questionInputSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["reverseScored"],
-        message: "Обратный ключ имеет смысл только для вопроса, привязанного к субшкале",
+        message: "err.v.reverseNeedsScale",
       });
     }
   });
@@ -929,12 +943,12 @@ export const createSurveySchema = z
   .superRefine((s, ctx) => {
     const sectionKeys = new Set(s.sections.map((x) => x.key));
     if (sectionKeys.size !== s.sections.length) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["sections"], message: "Ключи секций должны быть уникальны" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["sections"], message: "err.v.sectionKeysUnique" });
     }
 
     const scaleCodes = new Set(s.scales.map((x) => x.code));
     if (scaleCodes.size !== s.scales.length) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scales"], message: "Коды субшкал должны быть уникальны" });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scales"], message: "err.v.scaleCodesUnique" });
     }
 
     s.questions.forEach((q, i) => {
@@ -942,14 +956,16 @@ export const createSurveySchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["questions", i, "sectionKey"],
-          message: `Секция «${q.sectionKey}» не описана в sections`,
+          message: "err.v.sectionUnknown",
+          params: { section: q.sectionKey },
         });
       }
       if (q.scaleCode && !scaleCodes.has(q.scaleCode)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["questions", i, "scaleCode"],
-          message: `Субшкала «${q.scaleCode}» не описана в scales`,
+          message: "err.v.scaleUnknown",
+          params: { scale: q.scaleCode },
         });
       }
       q.logic.forEach((rule, j) => {
@@ -957,14 +973,14 @@ export const createSurveySchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ["questions", i, "logic", j, "sourceIndex"],
-            message: "Условие ссылается на несуществующий вопрос",
+            message: "err.v.logicMissingSource",
           });
         }
         if (rule.sourceIndex >= i) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ["questions", i, "logic", j, "sourceIndex"],
-            message: "Условие может ссылаться только на предыдущий вопрос",
+            message: "err.v.logicForward",
           });
         }
       });
@@ -1214,8 +1230,17 @@ export const exportQuery = z
      * Язык подписей в выгрузке — язык СОДЕРЖИМОГО (названия пунктов и
      * вариантов), поэтому из CONTENT_LANGS: английских подписей у методик нет,
      * и «?lang=en» честнее отвергнуть, чем молча отдать украинские.
+     *
+     * Без параметра — язык запроса, а не русский (волна 13): консоль
+     * параметра не шлёт, и выгрузка была русской при любом языке экрана.
+     * Умолчание решает маршрут (apps/api/src/routes/spss.ts, exportOptions):
+     * здесь запроса не видно. Пустое значение — то же, что его отсутствие.
      */
-    lang: queryEnum(CONTENT_LANGS, "ru"),
+    lang: z
+      .string()
+      .optional()
+      .transform((v) => (v === undefined || v === "" ? undefined : v))
+      .pipe(z.enum(CONTENT_LANGS).optional()),
     /**
      * Зачем выгружают.
      *
@@ -1242,7 +1267,7 @@ export const analyticsExportQuery = z
       .string()
       .optional()
       .refine((v) => v === undefined || v === "full", {
-        message: "эта выгрузка всегда с идентификаторами; обезличенная — /api/spss/surveys/:id/data.csv?profile=deidentified",
+        message: "err.v.analyticsExportFull",
       }),
     purpose: z.string().max(300).optional(),
     lang: z.string().max(8).optional(),
@@ -1484,7 +1509,7 @@ export const workspacePrefsSchema = z.object({
     .array(z.string().max(60))
     .max(40)
     .refine((keys) => !keys.some((k) => (ALWAYS_VISIBLE_RAIL as readonly string[]).includes(k)), {
-      message: "этот раздел нельзя убрать: рядом с ним стоит число неразобранного",
+      message: "err.v.railAlwaysVisible",
     })
     .optional(),
   /* метка «прочитано до» сравнивается с временем событий — кривая строка в ней ломала бы ленту */
@@ -1493,7 +1518,7 @@ export const workspacePrefsSchema = z.object({
 
 /* ── Поликлиника: расписание и приёмы ── */
 
-const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "время в виде ЧЧ:ММ");
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "err.v.timeOfDay");
 
 export const scheduleTemplateSchema = z
   .object({
@@ -1503,7 +1528,7 @@ export const scheduleTemplateSchema = z
     slotMinutes: z.number().int().min(5).max(480),
   })
   .refine((v) => v.endsAt > v.startsAt, {
-    message: "приём не может кончаться раньше, чем начался",
+    message: "err.v.appointmentEndsBeforeStart",
     path: ["endsAt"],
   });
 
@@ -1517,11 +1542,11 @@ export const scheduleExceptionSchema = z
     note: z.string().max(500).nullish(),
   })
   .refine((v) => v.kind !== "extra" || (v.startsAt && v.endsAt), {
-    message: "дополнительный день без часов бессмыслен: непонятно, что добавлять",
+    message: "err.v.extraDayNeedsHours",
     path: ["startsAt"],
   })
   .refine((v) => !v.startsAt || !v.endsAt || v.endsAt > v.startsAt, {
-    message: "интервал не может кончаться раньше, чем начался",
+    message: "err.v.intervalEndsBeforeStart",
     path: ["endsAt"],
   });
 

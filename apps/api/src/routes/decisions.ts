@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { z } from "zod";
+import { explanationFor, type StoredExplanation } from "@quizzy/shared";
 import { db } from "../db";
 import { decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, notFound, parseBody } from "../lib/http";
+import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -155,6 +156,12 @@ decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
     .orderBy(desc(ruleHits.createdAt))
     .limit(100);
 
+  /*
+   * Объяснение хранится кодами и становится текстом здесь — на языке того,
+   * кто читает предложение (волна 13). Записи, сделанные до кодов, несут
+   * готовый русский текст и показываются как есть: см. explanationFor.
+   */
+  const lang = langOf(c);
   return c.json({
     items: rows.map((r) => ({
       id: r.hit.id,
@@ -165,7 +172,7 @@ decisionRoutes.get("/hits", requirePermission("alerts.review"), async (c) => {
       surveyId: r.hit.surveyId,
       responseId: r.hit.responseId,
       status: r.hit.status,
-      explanation: r.hit.explanation,
+      explanation: explanationFor(r.hit.explanation as StoredExplanation, lang),
       createdAt: r.hit.createdAt,
     })),
   });

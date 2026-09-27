@@ -36,6 +36,8 @@ describe("границы консоли", () => {
       const res = await api("/api/console/run", root.token, {
         method: "POST",
         body: JSON.stringify({ line }),
+        // вывод консоли — на языке запроса (волна 13); проверка ниже читает русский
+        headers: { "Accept-Language": "ru" },
       });
       expect(res.status, `«${line}» не отвергнута реестром`).toBe(200);
       expect(res.body.ok).toBe(false);

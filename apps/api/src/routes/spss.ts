@@ -1,14 +1,14 @@
 import { Hono, type Context } from "hono";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { ageAt, applyQuasi, exportQuery, generalizeQuasi } from "@quizzy/shared";
-import type { AgeBand, ContentLang, Generalization } from "@quizzy/shared";
+import { ageAt, applyQuasi, contentLangFor, exportQuery, generalizeQuasi, serverText } from "@quizzy/shared";
+import type { AgeBand, ContentLang, Generalization, Lang, ServerTextKey, TextParams } from "@quizzy/shared";
 import { db } from "../db";
 import { env } from "../env";
 import { answers, options, questions, responseScores, responses, scales, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { csvCell } from "../lib/csv";
-import { forbidden, notFound, parseQuery } from "../lib/http";
+import { forbidden, langOf, notFound, parseQuery } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -188,13 +188,29 @@ function bandName(age: number | null): AgeBand | null {
   return "45+";
 }
 
+/**
+ * Подписи выгрузки — на языке запроса (волна 13).
+ *
+ * Имена переменных (sex, age_band, q3_ms) — машинные и не переводятся: по
+ * ним склеиваются выгрузки разных лет и пишутся скрипты анализа. Подписи
+ * к ним («Стать», «чоловіча», «Час відповіді на пункт 3, мс») — то, что
+ * исследователь читает в SPSS и в словаре переменных; раньше они были
+ * русскими при любом языке и любом ?lang.
+ */
+function sayer(lang: Lang) {
+  return (key: ServerTextKey, params?: TextParams) => serverText(key, lang, params);
+}
+
 async function buildSchema(
   surveyId: string,
-  /* язык подписей — язык содержимого: схема выгрузки (exportQuery) других не пропускает */
+  /* язык содержимого — названия пунктов и вариантов: схема выгрузки (exportQuery) других не пропускает */
   lang: ContentLang,
   profile: ExportProfile = "full",
   kanon: Generalization | null = null,
+  /* язык подписей системы: «Стать», «сирий бал»; английский — законный, в отличие от содержимого */
+  labels: Lang = lang,
 ) {
+  const say = sayer(labels);
   const survey = await getSurvey(surveyId, null, lang);
   if (!survey) notFound("err.surveyNotFound");
 
@@ -215,8 +231,7 @@ async function buildSchema(
     {
       name: unique("case_id"),
       spec: "A36",
-      label:
-        profile === "full" ? "Идентификатор прохождения" : "Код наблюдения (в карту не ведёт)",
+      label: say(profile === "full" ? "spss.caseIdFull" : "spss.caseIdCode"),
       value: (c) => caseOf(c.response.id),
     },
   ];
@@ -225,14 +240,14 @@ async function buildSchema(
     vars.push({
       name: unique("subject"),
       spec: "A36",
-      label: "Идентификатор обследуемого",
+      label: say("spss.subjectFull"),
       value: (c) => c.response.userId ?? "",
     });
   } else if (profile === "deidentified") {
     vars.push({
       name: unique("subject"),
       spec: "A12",
-      label: "Код субъекта (необратимый, стабильный между выгрузками)",
+      label: say("spss.subjectCode"),
       value: (c) => (c.response.userId ? subjectCode(c.response.userId) : ""),
     });
   }
@@ -242,10 +257,10 @@ async function buildSchema(
     {
       name: unique("sex"),
       spec: "F1.0",
-      label: "Пол",
+      label: say("spss.sex"),
       values: [
-        [1, "мужской"],
-        [2, "женский"],
+        [1, say("spss.male")],
+        [2, say("spss.female")],
       ],
       /*
        * В обезличенном профиле пол проходит через обобщение: у редкой ячейки
@@ -269,15 +284,15 @@ async function buildSchema(
           {
             name: unique("age"),
             spec: "F3.0",
-            label: "Возраст на момент обследования, полных лет",
+            label: say("spss.age"),
             value: (c: RowContext) => String(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt) ?? MISSING),
           },
-          { name: unique("unit"), spec: "A80", label: "Подразделение", value: (c: RowContext) => c.user?.unit ?? "" },
-          { name: unique("mil_rank"), spec: "A80", label: "Звание", value: (c: RowContext) => c.user?.rank ?? "" },
+          { name: unique("unit"), spec: "A80", label: say("spss.unit"), value: (c: RowContext) => c.user?.unit ?? "" },
+          { name: unique("mil_rank"), spec: "A80", label: say("spss.rank"), value: (c: RowContext) => c.user?.rank ?? "" },
           {
             name: unique("sub_date"),
             spec: "A32",
-            label: "Дата и время завершения",
+            label: say("spss.submittedAt"),
             value: (c: RowContext) => c.response.submittedAt ?? "",
           },
         ]
@@ -285,12 +300,12 @@ async function buildSchema(
           {
             name: unique("age_band"),
             spec: "F1.0",
-            label: "Возрастная полоса",
+            label: say("spss.ageBand"),
             values: [
-              [1, "до 25"],
+              [1, say("spss.ageUnder25")],
               [2, "25–34"],
               [3, "35–44"],
-              [4, "45 и старше"],
+              [4, say("spss.age45plus")],
             ] as [number, string][],
             value: (c: RowContext) => {
               const age = ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt);
@@ -319,14 +334,14 @@ async function buildSchema(
           {
             name: unique("sub_month"),
             spec: "A7",
-            label: "Месяц завершения",
+            label: say("spss.submittedMonth"),
             value: (c: RowContext) => c.response.submittedAt?.slice(0, 7) ?? "",
           },
         ]),
     {
       name: unique("dur_min"),
       spec: "F8.2",
-      label: "Длительность прохождения, минут",
+      label: say("spss.durationMin"),
       value: (c) => (c.response.durationMs ? (c.response.durationMs / 60000).toFixed(2) : String(MISSING)),
     },
     {
@@ -337,7 +352,7 @@ async function buildSchema(
        */
       name: unique("version"),
       spec: "F3.0",
-      label: "Версия методики, которой проходили",
+      label: say("spss.version"),
       value: (c) => String(c.version ?? MISSING),
     },
   );
@@ -365,17 +380,17 @@ async function buildSchema(
    */
   for (const q of asked) {
     const base = unique(varName(`q${q.position + 1}`, "q"));
-    vars.push(...itemVariables(q, base, unique, profile));
+    vars.push(...itemVariables(q, base, unique, profile, labels));
     vars.push({
       name: unique(`${base}_ms`),
       spec: "F8.0",
-      label: `Время ответа на пункт ${q.position + 1}, мс`,
+      label: say("spss.itemMs", { n: q.position + 1 }),
       value: (c) => String(c.answer.get(q.position)?.durationMs ?? MISSING),
     });
     vars.push({
       name: unique(`${base}_chg`),
       spec: "F3.0",
-      label: `Число переключений ответа, пункт ${q.position + 1}`,
+      label: say("spss.itemChanges", { n: q.position + 1 }),
       value: (c) => String(c.answer.get(q.position)?.changeCount ?? MISSING),
     });
   }
@@ -396,13 +411,13 @@ async function buildSchema(
     vars.push({
       name: base,
       spec: "F8.2",
-      label: `${scale.title} — сырой балл`,
+      label: say("spss.scaleRaw", { scale: scale.title }),
       value: (c) => String(c.score.get(scale.code)?.rawScore ?? MISSING),
     });
     vars.push({
       name: unique(`${base}_n`),
       spec: "F8.3",
-      label: `${scale.title} — ${normalizationLabel(scale.normalization)}`,
+      label: say(normalizationLabel(scale.normalization), { scale: scale.title }),
       value: (c) => {
         const score = c.score.get(scale.code);
         return score && score.normalized ? String(score.value) : String(MISSING);
@@ -411,10 +426,10 @@ async function buildSchema(
     vars.push({
       name: unique(`${base}_nf`),
       spec: "F1.0",
-      label: `${scale.title} — нормировка применена`,
+      label: say("spss.scaleNormed", { scale: scale.title }),
       values: [
-        [0, "нет: норм для человека не нашлось, есть только сырой балл"],
-        [1, "да"],
+        [0, say("spss.normedNo")],
+        [1, say("spss.yes")],
       ],
       value: (c) => {
         const score = c.score.get(scale.code);
@@ -456,7 +471,9 @@ function itemVariables(
   base: string,
   unique: (name: string) => string,
   profile: ExportProfile,
+  labels: Lang,
 ): Variable[] {
+  const say = sayer(labels);
   const choices = q.options.filter((o) => o.kind !== "row");
   const rows = q.options.filter((o) => o.kind === "row");
   const codes: [number, string][] = choices.map((o, i) => [i + 1, o.text]);
@@ -497,8 +514,8 @@ function itemVariables(
         spec: "F1.0",
         label: `${title}: ${o.text}`,
         values: [
-          [0, "не выбрано"],
-          [1, "выбрано"],
+          [0, say("spss.notChosen")],
+          [1, say("spss.chosen")],
         ] as [number, string][],
         value: (c: RowContext) => {
           const a = given(c);
@@ -526,7 +543,7 @@ function itemVariables(
       return choices.map((_, k) => ({
         name: unique(`${base}_p${k + 1}`),
         spec: "F3.0",
-        label: `${title}: место ${k + 1}`,
+        label: say("spss.rankPlace", { title, k: k + 1 }),
         values: codes,
         value: (c: RowContext) => {
           const a = given(c);
@@ -572,16 +589,16 @@ function itemVariables(
   }
 }
 
-function normalizationLabel(n: string): string {
+function normalizationLabel(n: string): ServerTextKey {
   switch (n) {
     case "tscore":
-      return "T-балл";
+      return "spss.scaleT";
     case "sten":
-      return "стен";
+      return "spss.scaleSten";
     case "ratio":
-      return "доля от максимума";
+      return "spss.scaleRatio";
     default:
-      return "итоговое значение";
+      return "spss.scaleFinal";
   }
 }
 
@@ -676,16 +693,29 @@ async function exportOptions(c: Context<AppEnv>) {
   if (options.profile === "full" && !(await hasPermission(c.get("user"), "export.full"))) {
     forbidden("err.permissionRequired", { permission: "export.full" });
   }
-  return options;
+  /*
+   * Два языка, и они разные (волна 13).
+   *
+   * Подписи системы — язык запроса: явный ?lang или заголовок, как у
+   * любого другого ответа сервера. Содержимое — названия пунктов и
+   * вариантов — язык методики: явный ?lang (только uk и ru, английского
+   * текста у методик нет) или тот, что t() покажет этому интерфейсу первым
+   * (contentLangFor: английскому — украинский).
+   *
+   * Прежде без ?lang выгрузка была русской целиком — и подписи, и пункты, —
+   * какой бы язык ни стоял в консоли.
+   */
+  const labels = langOf(c);
+  return { ...options, lang: options.lang ?? contentLangFor(labels), labels };
 }
 
 /** Числовая матрица: варианты закодированы порядковыми номерами */
 spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang, purpose } = await exportOptions(c);
+  const { profile, lang, labels, purpose } = await exportOptions(c);
   const kanon = await quasiPlan(surveyId, profile);
-  const { vars } = await buildSchema(surveyId, lang, profile, kanon);
+  const { vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
   const rows = await loadRows(surveyId);
 
   const body = [
@@ -731,14 +761,15 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
 spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang } = await exportOptions(c);
-  const { survey, vars } = await buildSchema(surveyId, lang, profile);
+  const { profile, lang, labels } = await exportOptions(c);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile, null, labels);
   const dataFile = `quizzy-${surveyId}-data.csv`;
+  const say = sayer(labels);
 
   const lines: string[] = [
-    `* Синтаксис выгружен из Quizzy: ${survey.title}.`,
-    `* Файл данных положите рядом с этим синтаксисом и подставьте путь в FILE.`,
-    `* Пропущенные значения закодированы как ${MISSING}.`,
+    `* ${say("spss.syntaxFrom", { title: survey.title })}`,
+    `* ${say("spss.syntaxDataFile")}`,
+    `* ${say("spss.syntaxMissing", { missing: MISSING })}`,
     "",
     "GET DATA",
     "  /TYPE=TXT",
@@ -797,8 +828,8 @@ spssRoutes.get("/surveys/:id/syntax.sps", async (c) => {
 spssRoutes.get("/surveys/:id/codebook.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang } = await exportOptions(c);
-  const { survey, vars } = await buildSchema(surveyId, lang, profile);
+  const { profile, lang, labels } = await exportOptions(c);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile, null, labels);
 
   const lines = [["variable", "type", "label", "values"].join(";")];
   for (const v of vars) {
@@ -953,9 +984,10 @@ spssRoutes.get("/surveys/:id/long.csv", async (c) => {
 spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
-  const { profile, lang, purpose } = await exportOptions(c);
+  const { profile, lang, labels, purpose } = await exportOptions(c);
   const kanon = await quasiPlan(surveyId, profile);
-  const { survey, vars } = await buildSchema(surveyId, lang, profile, kanon);
+  const { survey, vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
+  const say = sayer(labels);
 
   const versionRows = await db
     .select({ id: surveyVersions.id, version: surveyVersions.version, createdAt: surveyVersions.createdAt, note: surveyVersions.note })
@@ -975,6 +1007,8 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
     exportedAt: new Date().toISOString(),
     profile,
     lang,
+    /* язык подписей и пояснений — отдельно от языка содержимого (см. exportOptions) */
+    labels,
     purpose: purpose ?? null,
     /*
      * Версии перечислены все, а не только использованные: отсутствие
@@ -999,7 +1033,7 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
         : {
             included: false,
             excludedItems: survey.questions.filter((q) => isFreeInput(q.type)).map((q) => q.position + 1),
-            note: "Свободные ответы и даты в обезличенных профилях не выгружаются: удаление идентификатора не обезличивает то, что человек написал сам.",
+            note: say("spss.freeTextNote"),
           },
     /*
      * Что сделано ради k-анонимности. Без этого раздела исследователь увидит
@@ -1012,7 +1046,7 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
           merges: kanon.merges,
           bandMap: kanon.bandMap,
           blankedRows: kanon.blankedRows,
-          note: "Возрастные полосы слиты до наполнения k; у оставшихся редких сочетаний пол и возраст стёрты. Пропуски в этих полях не случайны.",
+          note: say("spss.kanonNote"),
         }
       : null,
     /*
@@ -1053,8 +1087,9 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
   await assertSurveyAccess(c.get("user"), surveyId);
   const ext = c.req.param("ext");
   if (ext !== "r" && ext !== "py") notFound("err.scriptNotFound");
-  const { profile, lang } = await exportOptions(c);
-  const { vars } = await buildSchema(surveyId, lang, profile);
+  const { profile, lang, labels } = await exportOptions(c);
+  const { vars } = await buildSchema(surveyId, lang, profile, null, labels);
+  const say = sayer(labels);
 
   const dataFile = `quizzy-${surveyId}-data.csv`;
   const codeFile = `quizzy-${surveyId}-codebook.csv`;
@@ -1063,30 +1098,27 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
   const script =
     ext === "r"
       ? [
-          "# Загрузка выгрузки Quizzy в R.",
-          "# Кодировка UTF-8 с BOM, разделитель — запятая, пропуски — пустая строка.",
+          ...comment(say("spss.loadTitle", { tool: "R" })),
+          ...comment(say("spss.loadFormat")),
           "",
           `data <- read.csv("${dataFile}", fileEncoding = "UTF-8-BOM", na.strings = c(""))`,
           `codebook <- read.csv("${codeFile}", fileEncoding = "UTF-8-BOM")`,
           "",
-          "# Категориальные переменные объявлены факторами: иначе порядковые коды",
-          "# вариантов попадут в модель как числа, и «вариант 3» окажется втрое",
-          "# больше «варианта 1».",
+          ...comment(say("spss.loadFactorsR")),
           ...factors.map((name) => `data$${name} <- factor(data$${name})`),
           "",
           "str(data)",
         ].join("\n")
       : [
-          "# Загрузка выгрузки Quizzy в Python.",
-          "# Кодировка UTF-8 с BOM, разделитель — запятая, пропуски — пустая строка.",
+          ...comment(say("spss.loadTitle", { tool: "Python" })),
+          ...comment(say("spss.loadFormat")),
           "",
           "import pandas as pd",
           "",
           `data = pd.read_csv("${dataFile}", encoding="utf-8-sig", keep_default_na=False, na_values=[""])`,
           `codebook = pd.read_csv("${codeFile}", encoding="utf-8-sig")`,
           "",
-          "# Категориальные переменные объявлены категориями: иначе порядковые",
-          "# коды вариантов попадут в модель как числа.",
+          ...comment(say("spss.loadFactorsPy")),
           ...factors.map((name) => `data["${name}"] = data["${name}"].astype("category")`),
           "",
           "print(data.dtypes)",
@@ -1099,3 +1131,24 @@ spssRoutes.get("/surveys/:id/load/:ext", async (c) => {
     },
   });
 });
+
+/**
+ * Комментарий скрипта: «# » и перенос по словам на 72 знаках.
+ *
+ * Прежде фразы были разрезаны на строки руками — по-русски. Перевод длиннее
+ * или короче, и ручной разрез в нём лёг бы посреди слова или оставил бы
+ * строку в двести знаков; режем по словам после перевода.
+ */
+function comment(text: string, width = 72): string[] {
+  const lines: string[] = [];
+  let line = "#";
+  for (const word of text.split(/\s+/)) {
+    if (line.length > 1 && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = "#";
+    }
+    line += ` ${word}`;
+  }
+  if (line.length > 1) lines.push(line);
+  return lines;
+}

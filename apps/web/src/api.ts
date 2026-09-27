@@ -505,7 +505,12 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
 export async function download(path: string, fallbackName: string): Promise<void> {
   const token = tokenStore.get();
   const res = await fetch(path, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    /*
+     * Язык консоли — и здесь (волна 13): подписи выгрузки SPSS и словаря
+     * переменных сервер собирает на языке запроса. Без заголовка браузер
+     * слал бы свой список языков, и файл выходил бы не на языке экрана.
+     */
+    headers: { "Accept-Language": currentLang, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -528,7 +533,8 @@ export async function download(path: string, fallbackName: string): Promise<void
 export async function openInTab(path: string): Promise<void> {
   const token = tokenStore.get();
   const res = await fetch(path, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    // печатный лист — на языке консоли, как и всё остальное (см. download)
+    headers: { "Accept-Language": currentLang, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
