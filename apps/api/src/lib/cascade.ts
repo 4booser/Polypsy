@@ -165,7 +165,7 @@ async function assignCascade(
         note: noteCode("note.cascade"),
       })),
       // назначение набора поверх более долгого доступа его не укорачивает
-      { extendOnly: true },
+      { term: "extend" },
     );
   });
 

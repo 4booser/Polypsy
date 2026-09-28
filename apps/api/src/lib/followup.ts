@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { noteCode, notePrefix } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
@@ -80,7 +80,9 @@ export function followUpWindows(from: Date, days: number[]): FollowUpWindow[] {
  *
  * Новый замер в той же полосе начинает протокол заново — от себя: окна,
  * которые ещё не открылись, заменяются. Уже открытое окно не трогается —
- * по нему человек, возможно, как раз проходит.
+ * по нему человек, возможно, как раз проходит. Пропущенные (missed_at) не
+ * открывались и тоже уходят: новый замер и есть тот повтор, которого не
+ * было, и в очереди работы пропуск больше не висит.
  */
 export async function planFollowUps(surveyId: string, userId: string, days: number[], from = new Date()): Promise<number> {
   const windows = followUpWindows(from, days);
@@ -102,15 +104,33 @@ export async function planFollowUps(surveyId: string, userId: string, days: numb
 }
 
 /**
- * Открыть наступившие окна: выдать доступ до закрытия окна.
+ * Разобрать наступившие окна: идущие открыть, пропущенные отметить.
  *
- * Выдача — через grantAccess, то есть как перевыдача: срок, дата выдачи и
- * счётчик попыток сдвигаются вместе, лимит попыток сохраняется. Каждое окно —
- * своей короткой транзакцией: одно неудачное не отменяет остальные.
- * Выключенной учётке окно не открывается — выдавать доступ человеку,
- * которого нет, незачем; окно останется неоткрытым.
+ * Это два разных события, и путь у каждого свой (внешний разбор
+ * 2026-09-28, P2). Прежде тик выбирал окна по opens_at, не глядя на
+ * closes_at, и выдавал доступ перевыдачей до закрытия окна:
+ *   — окно идёт (opens_at ≤ сейчас < closes_at) — доступ до его закрытия.
+ *     Срок — только вперёд (term "extend", lib/grantAccess.ts): окно поверх
+ *     более долгого доступа — ручного, по набору — его не укорачивает, а
+ *     истёкший продлевает. Счётчик попыток сдвигается и лимит сохраняется:
+ *     повтор — новое разрешение пройти;
+ *   — окно закрылось, так и не открывшись (тик стоял, учётка была
+ *     выключена), — пропуск: отмечается missed_at, доступ не трогается.
+ *     Выдача по такому окну давала срок, истёкший до выдачи, и перевыдачей
+ *     переписывала им действующий доступ — ручной, ещё на месяц, —
+ *     отзывая его задним числом. Пропуск виден в очереди работы
+ *     (routes/worklist.ts) — там же, где просроченный повтор.
+ * Выключенной учётке окно не открывается и пропуском не отмечается: её
+ * окна ждут, а включат учётку — первый же тик разберёт их тем же правилом.
+ *
+ * Переход окна — условием самого UPDATE (opened_at и missed_at ещё пусты),
+ * а не проверкой прочитанного: два тика одно окно дважды не откроют —
+ * второй получит ноль строк и доступа не тронет. Захват окна и выдача —
+ * одной короткой транзакцией на окно: сорвалась выдача — окно осталось
+ * неоткрытым, а одно неудачное не отменяет остальные.
  */
 export async function openFollowUps(now = new Date()): Promise<number> {
+  const at = now.toISOString();
   const due = await systemContext(baseDb, () =>
     db
       .select({ f: surveyFollowups })
@@ -119,32 +139,64 @@ export async function openFollowUps(now = new Date()): Promise<number> {
       .where(
         and(
           isNull(surveyFollowups.openedAt),
-          lte(surveyFollowups.opensAt, now.toISOString()),
+          isNull(surveyFollowups.missedAt),
+          lte(surveyFollowups.opensAt, at),
           isNull(users.disabledAt),
         ),
       )
-      .orderBy(asc(surveyFollowups.opensAt))
+      .orderBy(asc(surveyFollowups.opensAt), asc(surveyFollowups.id))
       .limit(500),
   );
+  const closed = (f: { closesAt: string }) => parseTs(f.closesAt) <= now.getTime();
+
+  const missed = due.filter(({ f }) => closed(f)).map(({ f }) => f.id);
+  if (missed.length) {
+    const marked = await systemContext(baseDb, () =>
+      db
+        .update(surveyFollowups)
+        .set({ missedAt: at })
+        .where(
+          and(
+            inArray(surveyFollowups.id, missed),
+            isNull(surveyFollowups.openedAt),
+            isNull(surveyFollowups.missedAt),
+            lte(surveyFollowups.closesAt, at),
+          ),
+        )
+        .returning({ id: surveyFollowups.id }),
+    );
+    if (marked.length) log.warn("followup.missed", { missed: marked.length });
+  }
+
   let opened = 0;
   for (const { f } of due) {
+    if (closed(f)) continue;
     try {
-      await systemContext(baseDb, async () => {
-        await grantAccess(db, [
-          {
-            surveyId: f.surveyId,
-            userId: f.userId,
-            grantedBy: f.userId,
-            expiresAt: f.closesAt,
-            note: followupNote(f.afterDays),
-          },
-        ]);
-        await db
+      const claimed = await systemContext(baseDb, async () => {
+        const [won] = await db
           .update(surveyFollowups)
-          .set({ openedAt: now.toISOString() })
-          .where(and(eq(surveyFollowups.id, f.id), isNull(surveyFollowups.openedAt)));
+          .set({ openedAt: at })
+          .where(
+            and(eq(surveyFollowups.id, f.id), isNull(surveyFollowups.openedAt), isNull(surveyFollowups.missedAt)),
+          )
+          .returning({ id: surveyFollowups.id });
+        if (!won) return false;
+        await grantAccess(
+          db,
+          [
+            {
+              surveyId: f.surveyId,
+              userId: f.userId,
+              grantedBy: f.userId,
+              expiresAt: f.closesAt,
+              note: followupNote(f.afterDays),
+            },
+          ],
+          { term: "extend" },
+        );
+        return true;
       });
-      opened++;
+      if (claimed) opened++;
     } catch (error) {
       log.warn("followup.open_failed", { id: f.id, error: String(error) });
     }

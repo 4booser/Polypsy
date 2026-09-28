@@ -38,10 +38,10 @@ describe("перевыдача: лимит попыток", () => {
      * проходимой сколько угодно раз.
      */
     const person = await makeUser("user", `grant-limit-${crypto.randomUUID()}@test`);
-    await grantAccess(db, [{ ...base(person.id), attemptsAllowed: 2 }]);
+    await grantAccess(db, [{ ...base(person.id), attemptsAllowed: 2 }], { term: "set" });
     await db.update(surveyAccess).set({ attemptsUsed: 2 }).where(eq(surveyAccess.userId, person.id));
 
-    await grantAccess(db, [{ ...base(person.id), grantedBy: null, note: "повтор за розкладом" }]);
+    await grantAccess(db, [{ ...base(person.id), grantedBy: null, note: "повтор за розкладом" }], { term: "set" });
     let row = await grantOf(person.id);
     expect(row!.attemptsAllowed, "перевыдача без лимита сняла ограничение").toBe(2);
     // всё остальное перевыдача по-прежнему переписывает — это новое разрешение пройти
@@ -49,11 +49,11 @@ describe("перевыдача: лимит попыток", () => {
     expect(row!.note).toBe("повтор за розкладом");
     expect(row!.grantedBy).toBeNull();
 
-    await grantAccess(db, [{ ...base(person.id), attemptsAllowed: null }]);
+    await grantAccess(db, [{ ...base(person.id), attemptsAllowed: null }], { term: "set" });
     row = await grantOf(person.id);
     expect(row!.attemptsAllowed, "явный null — «не ограничивать»").toBeNull();
 
-    await grantAccess(db, [{ ...base(person.id), attemptsAllowed: 3 }]);
+    await grantAccess(db, [{ ...base(person.id), attemptsAllowed: 3 }], { term: "set" });
     expect((await grantOf(person.id))!.attemptsAllowed).toBe(3);
   });
 
@@ -65,9 +65,9 @@ describe("перевыдача: лимит попыток", () => {
     await grantAccess(db, [
       { ...base(kept.id), attemptsAllowed: 1 },
       { ...base(changed.id), attemptsAllowed: 1 },
-    ]);
+    ], { term: "set" });
 
-    await grantAccess(db, [base(kept.id), { ...base(changed.id), attemptsAllowed: 4 }, base(fresh.id)]);
+    await grantAccess(db, [base(kept.id), { ...base(changed.id), attemptsAllowed: 4 }, base(fresh.id)], { term: "set" });
 
     expect((await grantOf(kept.id))!.attemptsAllowed).toBe(1);
     expect((await grantOf(changed.id))!.attemptsAllowed).toBe(4);
@@ -86,7 +86,7 @@ describe("перевыдача: лимит попыток", () => {
     expect((await submitSurvey(surveyInA, person.token)).status).toBe(400);
 
     // плановый повтор: новая попытка — одна, как и была назначена
-    await grantAccess(db, [{ ...base(person.id), grantedBy: null }]);
+    await grantAccess(db, [{ ...base(person.id), grantedBy: null }], { term: "set" });
     expect((await submitSurvey(surveyInA, person.token)).status).toBe(201);
     const extra = await submitSurvey(surveyInA, person.token);
     expect(extra.status, "лишнее прохождение принято: лимит снят перевыдачей").toBe(400);

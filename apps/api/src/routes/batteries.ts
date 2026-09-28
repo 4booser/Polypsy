@@ -445,7 +445,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
       note: input.note ?? null,
     });
     /*
-     * Доступ — через grantAccess с extendOnly: истёкший продлевается,
+     * Доступ — через grantAccess с term "extend": истёкший продлевается,
      * более долгий не укорачивается. Прежде стояло onConflictDoNothing
      * («назначение поверх существующего доступа не должно его отзывать»), и
      * истёкший доступ оставался истёкшим: набор назначен, а методика из него
@@ -460,7 +460,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
         expiresAt: dueAt,
         note: noteCode("note.battery", { title: battery.title }),
       })),
-      { extendOnly: true },
+      { term: "extend" },
     );
   });
 

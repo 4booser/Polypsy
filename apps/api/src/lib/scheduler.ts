@@ -196,7 +196,7 @@ async function runSchedule(
         })),
       ),
       // назначение поверх более долгого доступа его не укорачивает — см. grantAccess
-      { extendOnly: true },
+      { term: "extend" },
     );
   });
 
