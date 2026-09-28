@@ -143,10 +143,16 @@ async function srScaleOf(versionId: string): Promise<string> {
 }
 
 let seqAt = 0;
-/** Завершённое прохождение с одним баллом Sr — как его оставляет сдача */
+/**
+ * Завершённое прохождение с одним баллом Sr — как его оставляет сдача.
+ *
+ * Дата — два года назад, а не «сейчас»: сводки по последним неделям
+ * (analytics.test, ряд выраженности) считают все прохождения базы, и сотня
+ * синтетических без полос в их окне меняла бы чужие счёты.
+ */
 async function observe(o: { userId: string | null; version: keyof typeof versionOf; value: number; reliable?: boolean; at?: string }) {
   const id = crypto.randomUUID();
-  const at = o.at ?? new Date(Date.UTC(2026, 5, 1, 0, 0, ++seqAt)).toISOString();
+  const at = o.at ?? new Date(Date.UTC(2024, 5, 1, 0, 0, ++seqAt)).toISOString();
   await db.insert(responses).values({
     id,
     surveyId,
@@ -229,7 +235,7 @@ beforeAll(async () => {
   /* один человек, сорок раз: сначала «другим» баллом, последним — тем же */
   const repeater = await person();
   for (let i = 0; i < 39; i++) await observe({ userId: repeater, version: "current", value: other });
-  await observe({ userId: repeater, version: "current", value: raw, at: new Date(Date.UTC(2026, 8, 1)).toISOString() });
+  await observe({ userId: repeater, version: "current", value: raw, at: new Date(Date.UTC(2024, 8, 1)).toISOString() });
 }, 120_000);
 
 afterAll(async () => {
