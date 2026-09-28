@@ -2,7 +2,7 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { baseDb, db } from "../db";
-import { asSystem, systemContext, withRequestContext } from "../db/context";
+import { systemContext, withRequestContext } from "../db/context";
 import {
   answers,
   appointments,
@@ -13,7 +13,6 @@ import {
   referrals,
   responseScores,
   responses,
-  scales,
   slots,
   specialistProfiles,
   surveys,
@@ -22,7 +21,7 @@ import {
 import { env } from "../env";
 import { audit } from "../lib/audit";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
-import { percentileOf } from "../lib/norms";
+import { referencePercentile, reportReferenceSamples } from "../lib/referenceSample";
 import { assertResponseRead } from "../lib/clinicalRead";
 import { assertPatientAccess, isStaff } from "../lib/scope";
 import { fullNameOf, toPublicUser } from "../lib/auth";
@@ -214,31 +213,16 @@ async function responseReport(
     : null;
 
   /*
-   * Нормативная выборка по тем же субшкалам этой методики — системной ролью.
-   *
-   * Выборка — это сырые баллы всех прошедших методику, без людей и дат, и
-   * наружу из неё уходит одно число: перцентиль, да и то только от десяти
-   * наблюдений (MIN_NORM_SAMPLE). Под ролью приложения обследуемый видит
-   * только свои прохождения, и выборка у него была из одного-двух баллов:
-   * перцентиль в его отчёте пропадал, хотя сотрудник по тому же
-   * прохождению его видел (волна 13, обход под ролью приложения).
+   * Референтная выборка для перцентиля — lib/referenceSample.ts: совместимые
+   * версии (та же или доказанно тот же ключ и размах), только достоверные,
+   * только обследуемые, по одному значению на человека, от десяти людей.
+   * Прежде здесь были все сырые баллы методики с тем же кодом шкалы — вместе
+   * со старыми версиями другого размаха, проваленными протоколами и каждым
+   * повтором одного человека (волна 15, внешний разбор). Системной ролью, как
+   * и прежде: пациенту под ролью приложения видны только свои прохождения
+   * (волна 13).
    */
-  const sample = new Map<string, number[]>();
-  if (scoreRows.length) {
-    const rows = await asSystem(() =>
-      db
-        .select({ score: responseScores, code: scales.code })
-        .from(responseScores)
-        .innerJoin(responses, eq(responses.id, responseScores.responseId))
-        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .where(eq(responses.surveyId, response.surveyId)),
-    );
-    for (const r of rows) {
-      const list = sample.get(r.code) ?? [];
-      list.push(r.score.rawScore);
-      sample.set(r.code, list);
-    }
-  }
+  const sample = await reportReferenceSamples(response, survey, scoreRows);
 
   const scaleById = new Map(survey.scales.map((s) => [s.id, s]));
   const answerByQuestion = new Map(answerRows.map((a) => [a.questionId, a]));
@@ -283,7 +267,7 @@ async function responseReport(
         percent: s.percent,
         band: s.bandLabel,
         severity: s.severity,
-        percentile: scale ? percentileOf(s.rawScore, sample.get(scale.code) ?? []) : null,
+        percentile: referencePercentile(s.rawScore, sample.get(s.scaleId) ?? []),
       };
     }),
     answers: survey.questions
