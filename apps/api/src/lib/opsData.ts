@@ -244,15 +244,28 @@ const LAG = { hour: 3_600_000, day: DAY_MS, week: 7 * DAY_MS };
 export async function mobileReport(days: number): Promise<MobileReport> {
   const since = sql`now() - make_interval(days => ${days}::int)`;
   /*
-   * Устройства — те, что отмечались за окно и не стёрты: стёртое устройство
-   * после стирания представляется новым (offline/device.ts), и старая строка
-   * о нём больше ничего не говорит.
+   * Устройства — установки, что отмечались за окно и не стёрты: стёртое
+   * устройство после стирания представляется новым (offline/device.ts), и
+   * старая строка о нём больше ничего не говорит.
+   *
+   * Строка devices — привязка человека к установке (миграция 0113): двое на
+   * одном планшете — две строки об одной установке. Счёт идёт по
+   * установкам, а сведения о ней (платформа, версия, очередь) — с её
+   * последней отметки, кто бы ни отмечался: иначе общий планшет считался бы
+   * дважды, а его очередь — удвоенной.
    */
+  const installations = sql`
+    select distinct on (d.id) d.id, d.platform, d.app_version, d.app_build,
+           d.queue_pending, d.queue_rejected, d.last_seen_at
+      from devices d
+     where d.last_seen_at >= ${since}
+       and not exists (select 1 from devices w where w.id = d.id and w.wiped_at is not null)
+     order by d.id, d.last_seen_at desc, d.user_id
+  `;
   const groups = await rowsOf<{ platform: string | null; version: string | null; build: string | null; n: number; last_seen: string }>(sql`
     select platform, app_version as version, app_build as build, count(*)::int as n,
            to_char(max(last_seen_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as last_seen
-      from devices
-     where last_seen_at >= ${since} and wiped_at is null
+      from (${installations}) i
      group by 1, 2, 3
   `);
   const known = groups.filter((g) => g.version);
@@ -283,8 +296,7 @@ export async function mobileReport(days: number): Promise<MobileReport> {
            coalesce(sum(queue_rejected), 0)::int as rejected,
            count(*) filter (where queue_pending > 0)::int as "devicesWithPending",
            count(*) filter (where queue_rejected > 0)::int as "devicesWithRejected"
-      from devices
-     where last_seen_at >= ${since} and wiped_at is null
+      from (${installations}) i
   `);
 
   /*

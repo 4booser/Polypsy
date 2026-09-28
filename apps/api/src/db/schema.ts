@@ -2434,10 +2434,19 @@ export const ruleHits = pgTable(
   }),
 );
 
+/**
+ * Привязка учётной записи к установке приложения (миграция 0113).
+ *
+ * id — идентификатор установки, который приложение хранит у себя
+ * (offline/device.ts); строка — пара «установка + учётная запись». Двое на
+ * одном планшете — две строки: у каждого свой список устройств, своя команда
+ * стирания и её подтверждение. Платформа, версия и очередь — сведения об
+ * установке; свежие — с её последней отметки (lib/opsData.ts).
+ */
 export const devices = pgTable(
   "devices",
   {
-    id: text("id").primaryKey(),
+    id: text("id").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -2462,6 +2471,7 @@ export const devices = pgTable(
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({
+    pk: primaryKey({ name: "devices_pkey", columns: [t.id, t.userId] }),
     userIdx: index("devices_user_idx").on(t.userId, t.lastSeenAt),
   }),
 );

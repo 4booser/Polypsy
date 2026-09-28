@@ -54,7 +54,8 @@ function netText(key: "net.offline" | "net.failed"): string {
 }
 import { cache, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
-import { appBuildInfo, deviceId, platformName, wipeLocalData } from "../offline/device";
+import { appBuildInfo, deviceId, platformName } from "../offline/device";
+import { carryOutWipe, resumeWipe, type WipeDeps } from "../offline/wipe";
 import {
   claim,
   deviceCounts,
@@ -252,6 +253,25 @@ interface Items<T> {
 }
 
 const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items);
+
+/**
+ * Что нужно стиранию устройства от клиента (offline/wipe.ts).
+ *
+ * Подтверждение идёт токеном, который модуль запомнил ДО снятия сессии: к
+ * этому моменту хранилище токенов уже пусто, и request сам заголовка не
+ * поставит. Refresh тоже снят — 401 здесь окончателен, и след ждёт входа того
+ * же человека.
+ */
+const wipeDeps: WipeDeps = {
+  token: () => tokenStorage.get(),
+  clearTokens: () => tokenStorage.clear(),
+  confirm: (deviceId, token) =>
+    request<{ ok: true }>("/api/devices/wiped", {
+      method: "POST",
+      body: JSON.stringify({ deviceId }),
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(() => undefined),
+};
 
 export const api = {
   // роль в регистрации не передаётся: её назначает только администратор
@@ -807,12 +827,20 @@ export const api = {
   /**
    * Отметка устройства. Вызывается при запуске и при возвращении сети.
    *
-   * Если сервер просит стереть данные — стираем и подтверждаем. Подтверждение
-   * отправляется ДО очистки идентификатора: после стирания устройство
-   * представится новым, и подтвердить будет нечем.
+   * Если сервер просит стереть данные — стираем, снимаем сессию и только
+   * ПОТОМ подтверждаем (offline/wipe.ts). Прежде подтверждение уходило до
+   * очистки, и сбой хранилища посреди неё оставлял на планшете кэш и сессию
+   * при «стёрто» в консоли (внешний разбор, волна 15, п. 3).
    */
   deviceCheckin: async (label: string | null): Promise<boolean> => {
+    /*
+     * Незавершённое стирание с прошлого запуска — первым и без сети:
+     * очистка локальная, а подтверждение уйдёт, когда снова войдёт тот, чья
+     * была команда.
+     */
+    await resumeWipe(wipeDeps).catch(() => null);
     const id = deviceId();
+    let res: { wipe: boolean };
     try {
       /*
        * С отметкой уходят версия сборки и счёт очереди (техпанель,
@@ -820,7 +848,7 @@ export const api = {
        * на старой сборке, и не видит сдач, застрявших на телефоне. Только
        * числа — содержимое очереди остаётся на устройстве.
        */
-      const res = await request<{ wipe: boolean }>("/api/devices/checkin", {
+      res = await request<{ wipe: boolean }>("/api/devices/checkin", {
         method: "POST",
         body: JSON.stringify({
           deviceId: id,
@@ -831,27 +859,18 @@ export const api = {
           queue: deviceCounts(),
         }),
       });
-      if (!res.wipe) return false;
-
-      await request("/api/devices/wiped", {
-        method: "POST",
-        body: JSON.stringify({ deviceId: id }),
-      }).catch(() => {
-        /* подтверждение не дошло — стираем всё равно: это важнее отчётности */
-      });
-      wipeLocalData();
-      /*
-       * Токены тоже. Стёртое устройство, оставшееся в системе залогиненным, —
-       * это ровно та ситуация, ради которой команду и отдавали: нашедший
-       * планшет открывает приложение и снова видит отделение, просто без
-       * кэша.
-       */
-      await tokenStorage.clear().catch(() => {});
-      return true;
     } catch {
       // нет сети — не повод ничего стирать
       return false;
     }
+    if (!res.wipe) return false;
+    /*
+     * Токены снимаются тоже, и даже при неудачной очистке. Стёртое
+     * устройство, оставшееся в системе залогиненным, — это ровно та
+     * ситуация, ради которой команду и отдавали: нашедший планшет открывает
+     * приложение и снова видит отделение, просто без кэша.
+     */
+    return (await carryOutWipe(id, wipeDeps)).erased;
   },
 
   rounds: async (): Promise<{ list: Worklist; cachedAt: string | null }> => {

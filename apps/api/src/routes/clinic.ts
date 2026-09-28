@@ -40,6 +40,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireDateParam } from "../lib/dates";
+import type { MeetOutcome } from "../lib/meet";
 import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
@@ -712,12 +713,22 @@ clinicRoutes.post("/appointments", async (c) => {
    * назначенное время стучится в закрытую дверь и решает, что его не приняли.
    *
    * Отказ Google запись не срывает: приём назначается, ссылка добавляется
-   * потом.
+   * потом. Отказ — любой, включая обрыв связи на обмене токена: он выходил
+   * из записи пятисоткой (внешний разбор, волна 15, п. 11). Чем кончилась
+   * попытка, пишется в журнал записи (meet) — по нему видно, почему у
+   * дистанционного приёма нет ссылки, а человек получает обычный ответ
+   * «записан».
+   *
+   * Здесь, после takeSlot: право записи на этот слот уже проверено, и
+   * специалист взят из слота, а не из запроса. Только поэтому разрешение
+   * специалиста на календарь можно прочитать системной ролью — пациенту,
+   * записывающемуся сам, оно под своей ролью не видно (п. 10).
    */
   let meetingUrl = input.meetingUrl ?? null;
+  let meet: MeetOutcome | null = null;
   if (input.mode === "remote" && !meetingUrl) {
     const { createMeetLink } = await import("../lib/meet");
-    meetingUrl = await createMeetLink({
+    const created = await createMeetLink({
       specialistId: slot.specialistId,
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
@@ -726,6 +737,8 @@ clinicRoutes.post("/appointments", async (c) => {
       // событие читает специалист, а записывать мог и сам пациент (lib/notify.ts)
       title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
     });
+    meetingUrl = created.url;
+    meet = created.outcome;
   }
 
   const id = crypto.randomUUID();
@@ -779,6 +792,8 @@ clinicRoutes.post("/appointments", async (c) => {
        * событие обязано быть отличимым от рядовой записи.
        */
       ...(outsideScope ? { widenedOwnScope: true } : {}),
+      // дистанционный приём без ссылки — почему: не подключено, отозвано, Google не ответил
+      ...(meet ? { meet } : {}),
     },
   });
 
