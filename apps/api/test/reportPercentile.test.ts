@@ -48,6 +48,7 @@ describe("политика референтной выборки — функц�
     submittedAt: "2026-09-01T10:00:00.000Z",
     value: 5,
     maxScore: 10,
+    unit: "raw",
     ...o,
   });
 
@@ -62,12 +63,12 @@ describe("политика референтной выборки — функц�
         obs({ userId: "u-1", value: 8, submittedAt: "2026-05-01T00:00:00.000Z", versionId: "v-old-key" }),
         obs({ userId: "u-2", value: 7, versionId: "v-same-key" }),
       ],
-      { versions: V, maxScore: 10 },
+      { versions: V, maxScore: 10, unit: "raw" },
     );
     expect(sample.sort()).toEqual([2, 7]);
   });
 
-  test("не идут: другой ключ, другой размах, без версии, анонимные, недостоверные", () => {
+  test("не идут: другой ключ, другой размах, другие единицы, без версии, анонимные, недостоверные", () => {
     const sample = referenceSample(
       [
         obs({ userId: "a", versionId: "v-old-key" }),
@@ -75,9 +76,11 @@ describe("политика референтной выборки — функц�
         obs({ userId: "c", versionId: null }),
         obs({ userId: null }),
         obs({ userId: "d", reliable: false }),
+        /* T-балл среди сырых — другие единицы, хоть версия и та */
+        obs({ userId: "f", unit: "tscore" }),
         obs({ userId: "e" }),
       ],
-      { versions: V, maxScore: 10 },
+      { versions: V, maxScore: 10, unit: "raw" },
     );
     expect(sample).toEqual([5]);
   });
@@ -86,22 +89,22 @@ describe("политика референтной выборки — функц�
     const at = "2026-09-01T10:00:00.000Z";
     const a = obs({ responseId: "r-a", userId: "u", value: 1, submittedAt: at });
     const b = obs({ responseId: "r-b", userId: "u", value: 2, submittedAt: at });
-    expect(referenceSample([a, b], { versions: V, maxScore: 10 })).toEqual([2]);
-    expect(referenceSample([b, a], { versions: V, maxScore: 10 })).toEqual([2]);
+    expect(referenceSample([a, b], { versions: V, maxScore: 10, unit: "raw" })).toEqual([2]);
+    expect(referenceSample([b, a], { versions: V, maxScore: 10, unit: "raw" })).toEqual([2]);
   });
 
   test("перцентиль — от MIN_NORM_SAMPLE людей; меньше — прочерк, а не видимость точности", () => {
     const people = (n: number) =>
       referenceSample(
         Array.from({ length: n }, (_, i) => obs({ userId: `p-${i}`, value: i })),
-        { versions: V, maxScore: 10 },
+        { versions: V, maxScore: 10, unit: "raw" },
       );
     expect(referencePercentile(3, people(MIN_NORM_SAMPLE - 1))).toBeNull();
     expect(referencePercentile(3, people(MIN_NORM_SAMPLE))).not.toBeNull();
     /* повторы одного человека людей не добавляют */
     const one = referenceSample(
       Array.from({ length: 50 }, (_, i) => obs({ userId: "same", value: i % 10, submittedAt: new Date(Date.UTC(2026, 0, i + 1)).toISOString() })),
-      { versions: V, maxScore: 10 },
+      { versions: V, maxScore: 10, unit: "raw" },
     );
     expect(one.length).toBe(1);
     expect(referencePercentile(3, one)).toBeNull();
@@ -115,6 +118,8 @@ let patient: Person;
 let responseId = "";
 let raw = 0;
 let max = 0;
+/** Приведённое значение Sr у пациента (доля) — то, что сравнивает динамика */
+let norm = 0;
 /** Балл примеси: заметно другой, чтобы любая утечка сдвинула перцентиль */
 let other = 0;
 const versionOf: Record<"oldKey" | "sameKey" | "current", string> = { oldKey: "", sameKey: "", current: "" };
@@ -168,7 +173,8 @@ async function observe(o: { userId: string | null; version: keyof typeof version
     responseId: id,
     scaleId: await srScaleOf(versionOf[o.version]),
     rawScore: o.value,
-    value: o.value / max,
+    /* то же приведённое значение, что у пациента, — у того же сырого балла; иначе заметно другое */
+    value: o.value === raw ? norm : o.value / max,
     normalization: "ratio",
     maxScore: max,
     percent: Math.round((o.value / max) * 1000) / 10,
@@ -217,11 +223,12 @@ beforeAll(async () => {
   expect(done.status, JSON.stringify(done.body)).toBe(201);
   responseId = done.body.id;
   const [score] = await db
-    .select({ raw: responseScores.rawScore, max: responseScores.maxScore })
+    .select({ raw: responseScores.rawScore, max: responseScores.maxScore, value: responseScores.value })
     .from(responseScores)
     .where(and(eq(responseScores.responseId, responseId), eq(responseScores.scaleId, await srScaleOf(versionOf.current))));
   raw = score!.raw;
   max = score!.max;
+  norm = score!.value;
   other = raw + 3 <= max ? raw + 3 : raw - 3;
 
   /* выборка: одиннадцать человек с тем же баллом — на совместимой версии, не на той же */
@@ -256,5 +263,28 @@ describe("печатный лист", () => {
     const html = await res.text();
     expect(res.status, html.slice(0, 300)).toBe(200);
     expect(percentileCell(html)).toBe("50-й");
+  });
+});
+
+describe("динамика человека", () => {
+  test("перцентиль точки — по той же выборке: примесь недостоверных, повторов и другого ключа его не сдвигает", async () => {
+    /*
+     * Было: выборка динамики — все нормированные значения той же версии,
+     * по прохождениям, с недостоверными: сорок сдач одного человека и
+     * тридцать проваленных шкалой лжи сдвигали перцентиль, а одиннадцать
+     * человек на совместимой версии в выборку не шли вовсе. Теперь — та же
+     * политика, что у листа (lib/referenceSample.ts), по приведённому
+     * значению: все в выборке с тем же значением, перцентиль ровно 50-й.
+     */
+    const res = await appRequest(`/api/dynamics/respondents/${patient.id}?survey=${surveyId}`, {
+      headers: { Authorization: `Bearer ${adminA.token}`, "Accept-Language": "uk" },
+    });
+    const body = (await res.json()) as {
+      surveys: { surveyId: string; scales: { code: string; points: { responseId: string; percentile: number | null }[] }[] }[];
+    };
+    expect(res.status, JSON.stringify(body).slice(0, 300)).toBe(200);
+    const sr = body.surveys.find((s) => s.surveyId === surveyId)?.scales.find((s) => s.code === "Sr");
+    const point = sr?.points.find((p) => p.responseId === responseId);
+    expect(point?.percentile).toBe(50);
   });
 });
