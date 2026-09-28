@@ -25,7 +25,15 @@ export const storeFaults: {
    * чём не бывало. Очередь обязана поймать и это (enqueue читает запись назад).
    */
   swallowWrite: ((name: string) => boolean) | null;
-} = { failWrite: null, swallowWrite: null };
+  /*
+   * Отказ удаления. Бросающее — web-хранилище (localStorage.removeItem при
+   * сбое браузера); молчащее — нативное: store.ts глотает отказ удаления
+   * («останется целой, повтор удалит»), и запись просто остаётся на месте.
+   * Стирание устройства обязано отличить оба случая от удачи (offline/wipe.ts).
+   */
+  failRemove: ((name: string) => boolean) | null;
+  swallowRemove: ((name: string) => boolean) | null;
+} = { failWrite: null, swallowWrite: null, failRemove: null, swallowRemove: null };
 
 export const memoryStore = {
   read<T>(name: string): T | null {
@@ -40,6 +48,8 @@ export const memoryStore = {
     data.set(name, JSON.stringify(value));
   },
   remove(name: string): void {
+    if (storeFaults.failRemove?.(name)) throw new Error(`simulated storage failure: ${name}`);
+    if (storeFaults.swallowRemove?.(name)) return;
     data.delete(name);
   },
   keys(prefix: string): string[] {
@@ -51,6 +61,8 @@ export function resetStore(): void {
   data.clear();
   storeFaults.failWrite = null;
   storeFaults.swallowWrite = null;
+  storeFaults.failRemove = null;
+  storeFaults.swallowRemove = null;
 }
 
 mock.module("../src/offline/store", () => ({ store: memoryStore }));

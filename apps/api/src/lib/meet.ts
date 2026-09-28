@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import { googleCalendarTokens } from "../db/schema";
 import { env } from "../env";
 import { decryptField, encryptField } from "./crypto";
@@ -23,6 +24,16 @@ import { log } from "./log";
 const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+const EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1";
+
+/*
+ * Сколько ждать Google при записи на приём. Встреча создаётся внутри
+ * транзакции записи, пока слот удержан блокировкой (routes/clinic.ts,
+ * takeSlot): зависший Google держал бы и запрос человека, и всех, кто в эту
+ * минуту записывается в тот же слот. Не уложился — запись идёт без ссылки,
+ * как при любом другом отказе Google.
+ */
+const GOOGLE_TIMEOUT_MS = 8_000;
 
 export function meetConfigured(): boolean {
   return Boolean(env.googleClientId && env.googleClientSecret && env.googleRedirectUri);
@@ -96,40 +107,83 @@ export async function disconnectCalendar(userId: string): Promise<void> {
   await db.delete(googleCalendarTokens).where(eq(googleCalendarTokens.userId, userId));
 }
 
-/** Свежий токен доступа по сохранённому разрешению */
-async function accessToken(userId: string): Promise<string | null> {
-  const [row] = await db
-    .select()
-    .from(googleCalendarTokens)
-    .where(eq(googleCalendarTokens.userId, userId));
-  if (!row) return null;
-  const refresh = decryptField(row.refreshTokenEnc);
-  if (!refresh) return null;
+/**
+ * Разрешение специалиста на календарь — для записи на приём к нему.
+ *
+ * Системной ролью, узко: одна строка, этого специалиста, и только
+ * расшифрованный refresh-токен наружу, который тут же уходит в Google и
+ * дальше этого модуля не идёт. Под ролью того, кто записывается, строка не
+ * видна (google_calendar_tokens — своя строка или система, 0070): пациент,
+ * записавшийся сам, ссылки не получал никогда, а специалист получал её
+ * только на приёмы, которые записал сам (внешний разбор, волна 15, п. 10).
+ *
+ * Звать можно только после проверки права записи на выбранный слот —
+ * createMeetLink зовётся из записи на приём после takeSlot, и специалист
+ * берётся из занятого слота, а не из запроса.
+ */
+async function calendarGrant(specialistId: string): Promise<string | null> {
+  const [row] = await asSystem(() =>
+    db
+      .select({ refreshTokenEnc: googleCalendarTokens.refreshTokenEnc })
+      .from(googleCalendarTokens)
+      .where(eq(googleCalendarTokens.userId, specialistId)),
+  );
+  return row ? decryptField(row.refreshTokenEnc) : null;
+}
 
-  const res = await fetch(TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      refresh_token: refresh,
-      client_id: env.googleClientId!,
-      client_secret: env.googleClientSecret!,
-      grant_type: "refresh_token",
-    }),
-  });
+type TokenResult = { token: string } | { outcome: "not_connected" | "revoked" | "failed" };
+
+/**
+ * Свежий токен доступа по сохранённому разрешению.
+ *
+ * Отказ сети здесь — обычный исход, а не исключение: обмен стоял до
+ * try/catch, и обрыв связи с Google выходил из записи на приём пятисоткой —
+ * приём не назначался вовсе (внешний разбор, волна 15, п. 11).
+ */
+async function accessToken(specialistId: string): Promise<TokenResult> {
+  const refresh = await calendarGrant(specialistId);
+  if (!refresh) return { outcome: "not_connected" };
+
+  let res: Response;
+  try {
+    res = await fetch(TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        refresh_token: refresh,
+        client_id: env.googleClientId!,
+        client_secret: env.googleClientSecret!,
+        grant_type: "refresh_token",
+      }),
+      signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    log.warn("meet.token_error", { error: String(error) });
+    return { outcome: "failed" };
+  }
   if (!res.ok) {
     /*
      * Разрешение отозвано или просрочено. Убираем запись: связь, которая
      * молча не работает, хуже отсутствующей — специалист будет считать
      * календарь подключённым и удивляться пустым ссылкам.
+     *
+     * Системной ролью, как и чтение: записывается обычно не сам специалист,
+     * и в контексте пациента удаление чужой строки политика тихо пропускала.
      */
     if (res.status === 400 || res.status === 401) {
-      await disconnectCalendar(userId);
-      log.warn("meet.grant_revoked", { userId });
+      await asSystem(() => disconnectCalendar(specialistId));
+      log.warn("meet.grant_revoked", { userId: specialistId });
+      return { outcome: "revoked" };
     }
-    return null;
+    log.warn("meet.token_failed", { status: res.status });
+    return { outcome: "failed" };
   }
-  const body = (await res.json()) as { access_token?: string };
-  return body.access_token ?? null;
+  const body = (await res.json().catch(() => null)) as { access_token?: string } | null;
+  if (!body?.access_token) {
+    log.warn("meet.token_failed", { status: res.status });
+    return { outcome: "failed" };
+  }
+  return { token: body.access_token };
 }
 
 export interface MeetRequest {
@@ -141,11 +195,26 @@ export interface MeetRequest {
 }
 
 /**
+ * Чем кончилась попытка создать встречу — для журнала записи на приём.
+ *
+ * not_configured — Google на сервере не настроен; not_connected —
+ * специалист календарь не подключал; revoked — разрешение отозвано и
+ * снято; failed — Google не ответил или ответил отказом. Во всех случаях,
+ * кроме created, ссылки нет, и специалист вписывает свою.
+ */
+export type MeetOutcome = "created" | "not_configured" | "not_connected" | "revoked" | "failed";
+
+/**
  * Создать встречу и вернуть ссылку.
  *
- * `null` — не настроено или не подключено; вызывающий оставляет ссылку
- * пустой, а специалист вписывает свою. Отказ Google тоже даёт `null`:
- * запись на приём не должна срываться из-за чужого сервиса.
+ * Ссылка `null` — не настроено, не подключено или Google отказал; вызывающий
+ * оставляет ссылку пустой, а специалист вписывает свою. Исключений отсюда
+ * не бывает: запись на приём не должна срываться из-за чужого сервиса, и
+ * под обработкой вся внешняя операция — обмен refresh-токена тоже.
+ *
+ * Специалист, время и конец — из занятого слота (routes/clinic.ts), после
+ * проверки права записи на него: разрешение на календарь читается
+ * системной ролью (calendarGrant), и звать это с чем-то другим нельзя.
  *
  * В заголовок события НЕ идёт имя пациента. Событие попадает в личный
  * календарь специалиста, который синхронизируется с его телефоном и виден
@@ -153,38 +222,37 @@ export interface MeetRequest {
  * разглашение того самого факта, ради сокрытия которого в системе есть коды
  * вместо имён.
  */
-export async function createMeetLink(req: MeetRequest): Promise<string | null> {
-  if (!meetConfigured()) return null;
-  const token = await accessToken(req.specialistId);
-  if (!token) return null;
-
+export async function createMeetLink(req: MeetRequest): Promise<{ url: string | null; outcome: MeetOutcome }> {
+  if (!meetConfigured()) return { url: null, outcome: "not_configured" };
   try {
-    const res = await fetch(
-      "https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          summary: req.title,
-          start: { dateTime: req.startsAt },
-          end: { dateTime: req.endsAt },
-          conferenceData: {
-            createRequest: {
-              requestId: crypto.randomUUID(),
-              conferenceSolutionKey: { type: "hangoutsMeet" },
-            },
+    const access = await accessToken(req.specialistId);
+    if (!("token" in access)) return { url: null, outcome: access.outcome };
+
+    const res = await fetch(EVENTS_ENDPOINT, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${access.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        summary: req.title,
+        start: { dateTime: req.startsAt },
+        end: { dateTime: req.endsAt },
+        conferenceData: {
+          createRequest: {
+            requestId: crypto.randomUUID(),
+            conferenceSolutionKey: { type: "hangoutsMeet" },
           },
-        }),
-      },
-    );
+        },
+      }),
+      signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
+    });
     if (!res.ok) {
       log.warn("meet.create_failed", { status: res.status });
-      return null;
+      return { url: null, outcome: "failed" };
     }
-    const body = (await res.json()) as { hangoutLink?: string };
-    return body.hangoutLink ?? null;
+    const body = (await res.json().catch(() => null)) as { hangoutLink?: string } | null;
+    return body?.hangoutLink ? { url: body.hangoutLink, outcome: "created" } : { url: null, outcome: "failed" };
   } catch (error) {
+    /* что угодно сверх ожидаемого — тоже не повод срывать запись: приём важнее ссылки */
     log.warn("meet.create_error", { error: String(error) });
-    return null;
+    return { url: null, outcome: "failed" };
   }
 }

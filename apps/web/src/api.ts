@@ -1084,8 +1084,12 @@ export const api = {
         wipedAt: string | null;
       }[];
     }>(`/api/devices${userId ? `?userId=${userId}` : ""}`).then((r) => r.items),
-  wipeDevice: (id: string) =>
-    request<{ ok: true; note: string }>(`/api/devices/${id}/wipe`, { method: "POST" }),
+  /* стирание — для пары «установка + учётная запись» (миграция 0113): на общем планшете привязок несколько */
+  wipeDevice: (id: string, userId: string) =>
+    request<{ ok: true; note: string }>(`/api/devices/${id}/wipe`, {
+      method: "POST",
+      body: JSON.stringify({ userId }),
+    }),
 
   saveWorkspace: (prefs: WorkspacePrefs) =>
     request<WorkspacePrefs>("/api/auth/me/workspace", {

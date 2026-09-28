@@ -23,6 +23,10 @@ const GRID = "grid grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] 
  *
  * Стирание подтверждается перепечатыванием имени устройства: команда
  * необратима, а строки различаются одним словом.
+ *
+ * Строка списка — привязка этого человека к установке (миграция 0113), и
+ * команда уходит этой привязке: на общем планшете у других вошедших свои
+ * строки и свои команды.
  */
 export function UserDevices({ userId, name, onClose }: { userId: string; name: string; onClose: () => void }) {
   const { ut } = useLang();
@@ -41,7 +45,7 @@ export function UserDevices({ userId, name, onClose }: { userId: string; name: s
         onClose={() => setWiping(null)}
         onConfirm={() =>
           void run(async () => {
-            await api.wipeDevice(wiping.id);
+            await api.wipeDevice(wiping.id, userId);
             setWiping(null);
             res.reload();
           }, ut("dev.requested"))

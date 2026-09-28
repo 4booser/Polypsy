@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { serverText } from "@quizzy/shared";
 import { db } from "../db";
@@ -86,53 +86,87 @@ deviceRoutes.post("/checkin", async (c) => {
   };
 
   /*
-   * Системной ролью: на общем планшете строка устройства принадлежит тому,
-   * кто вошёл первым, а отмечается каждый. Политика devices (своя строка)
-   * не пускала ON CONFLICT DO UPDATE к чужой строке, и под ролью приложения
-   * второй сотрудник получал пятисотку на каждой отметке — команда стирания
-   * ему не приходила бы, даже будь она его (волна 13, прогон platform.test.ts
-   * под ролью приложения). Владелец строки не меняется (userId в set нет), а
-   * что отдать вошедшему — решает проверка ниже, а не роль.
+   * Строка — пара «установка + учётная запись» (миграция 0113), и каждый
+   * отмечается в СВОЮ. До неё строка была одна на установку и принадлежала
+   * тому, кто вошёл первым: второй сотрудник на общем планшете обновлял
+   * чужую строку (волна 13: сначала пятисотка под ролью приложения, потом
+   * системная роль и владелец, который не меняется), своей не получал, и его
+   * устройство не попадало ни в его список, ни под стирание (внешний разбор,
+   * волна 15, п. 12). Теперь отметка пишет только свою строку — политика
+   * devices это и разрешает, системная роль не нужна.
    */
-  const [row] = await asSystem(() =>
-    db
-      .insert(devices)
-      .values({
-        id: input.deviceId,
-        userId: user.id,
-        label: input.label ?? null,
-        platform: input.platform ?? null,
-        lastSeenAt: now,
-        ...reported,
-      })
-      .onConflictDoUpdate({
-        target: devices.id,
-        set: { lastSeenAt: now, label: input.label ?? null, platform: input.platform ?? null, ...reported },
-      })
-      .returning(),
-  );
+  const [row] = await db
+    .insert(devices)
+    .values({
+      id: input.deviceId,
+      userId: user.id,
+      label: input.label ?? null,
+      platform: input.platform ?? null,
+      lastSeenAt: now,
+      ...reported,
+    })
+    .onConflictDoUpdate({
+      target: [devices.id, devices.userId],
+      set: { lastSeenAt: now, label: input.label ?? null, platform: input.platform ?? null, ...reported },
+    })
+    .returning();
 
   /*
-   * Устройство, зарегистрированное на другого человека, стирать по этой
-   * команде нельзя: два сотрудника могли по очереди войти на одном планшете, и
-   * стирание по чужому запросу выглядело бы как случайная потеря работы.
+   * Команда — у привязки: стирание, запрошенное для одного человека, другому
+   * на том же планшете не приходит. Два сотрудника могли по очереди войти на
+   * одном планшете, и стирание по чужому запросу выглядело бы как случайная
+   * потеря работы.
    */
-  const wipe = !!row && row.userId === user.id && !!row.wipeRequestedAt && !row.wipedAt;
+  const wipe = !!row && !!row.wipeRequestedAt && !row.wipedAt;
 
   return c.json({ wipe });
 });
 
-/** Подтверждение стирания — приходит от устройства после очистки */
+/**
+ * Подтверждение стирания — приходит от устройства ПОСЛЕ проверенной очистки
+ * (мобилка, offline/wipe.ts).
+ *
+ * Принимается только от привязки, которой команда была дана и ещё не
+ * исполнена: «стёрто» без команды — не сведение, а шум, и мобилка на 404
+ * снимает свой след («подтверждения не ждут»).
+ */
 deviceRoutes.post("/wiped", async (c) => {
   const user = c.get("user");
   const input = await parseBody(c.req.raw, z.object({ deviceId: z.string() }));
+  const now = new Date().toISOString();
 
   const [row] = await db
     .update(devices)
-    .set({ wipedAt: new Date().toISOString() })
-    .where(and(eq(devices.id, input.deviceId), eq(devices.userId, user.id)))
+    .set({ wipedAt: now })
+    .where(
+      and(
+        eq(devices.id, input.deviceId),
+        eq(devices.userId, user.id),
+        isNotNull(devices.wipeRequestedAt),
+        isNull(devices.wipedAt),
+      ),
+    )
     .returning();
   if (!row) notFound("err.deviceNotFound");
+
+  /*
+   * Команда — у привязки, а очистка — у установки: приложение стирает всё
+   * своё хранилище, вместе с офлайн-данными других людей, входивших на этот
+   * планшет. Их привязки отмечаются стёртыми тем же моментом — это правда о
+   * том, что на установке больше ничего нет, и без неё в их списках
+   * устройство висело бы «активным» навсегда (после стирания приложение
+   * представляется новым идентификатором). Команд им это не приписывает:
+   * wipe_requested_* не трогаются.
+   *
+   * Системной ролью, потому что строки чужие; узко — только эта установка и
+   * только после того, как своя команда найдена и закрыта условием выше.
+   */
+  await asSystem(() =>
+    db
+      .update(devices)
+      .set({ wipedAt: now })
+      .where(and(eq(devices.id, input.deviceId), ne(devices.userId, user.id), isNull(devices.wipedAt))),
+  );
 
   await audit(c, {
     action: "device.wiped",
@@ -159,7 +193,7 @@ deviceRoutes.get("/", async (c) => {
     .from(devices)
     .innerJoin(users, eq(users.id, devices.userId))
     .where(eq(devices.userId, forUser ?? user.id))
-    .orderBy(desc(devices.lastSeenAt));
+    .orderBy(desc(devices.lastSeenAt), asc(devices.id));
 
   return c.json({
     items: rows.map((r) => ({
@@ -174,14 +208,25 @@ deviceRoutes.get("/", async (c) => {
   });
 });
 
+/**
+ * Запросить стирание для привязки «установка + учётная запись».
+ *
+ * Учётная запись называется явно: на общем планшете у установки несколько
+ * привязок, и команда без адресата либо досталась бы всем (стирание по
+ * чужому запросу), либо первой попавшейся. Консоль открывает список
+ * устройств по человеку (pages/ops/UserDevices.tsx) и знает, чьё стирает.
+ */
+const wipeSchema = z.object({ userId: z.string().min(1).max(64) });
+
 deviceRoutes.post("/:id/wipe", requireSuperadmin, async (c) => {
   const user = c.get("user");
   const id = c.req.param("id");
+  const input = await parseBody(c.req.raw, wipeSchema);
 
   const [row] = await db
     .update(devices)
     .set({ wipeRequestedAt: new Date().toISOString(), wipeRequestedBy: user.id, wipedAt: null })
-    .where(and(eq(devices.id, id), isNull(devices.wipedAt)))
+    .where(and(eq(devices.id, id), eq(devices.userId, input.userId), isNull(devices.wipedAt)))
     .returning();
   if (!row) notFound("err.deviceNotFoundOrWiped");
 
