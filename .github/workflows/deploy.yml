@@ -253,6 +253,20 @@ jobs:
           set -euo pipefail
           cd "$TARGET"
 
+          # Предпроверка: новый образ разбирает окружение этого сервера ДО
+          # подмены (apps/api/src/envCheck.ts). Версия образа — переменной
+          # оболочки: у compose она сильнее .env.docker, а сам .env.docker
+          # ещё не тронут. Упала — выкатка встаёт здесь, прежние контейнеры и
+          # прежняя версия в .env.docker остаются, и перезагрузка сервера
+          # поднимет то, что работало.
+          QUIZZY_IMAGE_PREFIX="$PREFIX" QUIZZY_VERSION="$VERSION" \
+            docker compose --env-file .env.docker pull api
+          if ! QUIZZY_IMAGE_PREFIX="$PREFIX" QUIZZY_VERSION="$VERSION" \
+            docker compose --env-file .env.docker run --rm --no-deps api bun apps/api/src/envCheck.ts; then
+            echo "новый образ не принял окружение сервера — выкатка остановлена, работает прежняя версия" >&2
+            exit 1
+          fi
+
           # версия и адрес образов живут в .env.docker, а не в переменных
           # оболочки: перезапуск сервера не должен откатывать выкатку.
           #
