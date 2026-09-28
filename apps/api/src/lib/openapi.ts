@@ -438,8 +438,8 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
 
   /* ── администрирование ── */
   "GET /api/users": { summary: "Учётные записи, свежие сверху — страница `{items, nextCursor}`: `?limit=` (100, не больше 500), `?cursor=`, `?staff=1` — без пациентов; `?directory=1` — только сотрудники целиком, с профилем приёма и телефоном, чтение в журнал (user.list, phones)", access: "superadmin", permission: "users.manage" },
-  "POST /api/users": { summary: "Создание учётной записи", access: "superadmin", permission: "users.manage", body: createUserSchema },
-  "PATCH /api/users/:id/role": { summary: "Смена роли", access: "superadmin", permission: "users.manage" },
+  "POST /api/users": { summary: "Создание учётной записи; класс — только ниже своего положения, суперадмина заводит только суперадмин (lib/accountClass.ts)", access: "superadmin", permission: "users.manage", body: createUserSchema },
+  "PATCH /api/users/:id/role": { summary: "Смена класса учётной записи: не себе, суперадмина — только суперадмин, учётку на своей ступени и выше — нет, класс — только ниже своего положения; обрывает сессии человека. Правило — lib/accountClass.ts, то же у команды консоли user role", access: "superadmin", permission: "users.manage" },
   "GET /api/audit": { summary: "Журнал доступа: отбор по тому, кто, над кем, действию, типу ресурса, исходу, периоду и тексту; страницы курсором или смещением", access: "superadmin", permission: "audit.read" },
   "GET /api/audit/export.csv": { summary: "Выгрузка текущего отбора журнала в CSV, до 10 000 строк; сама выгрузка — строка журнала (audit.export)", access: "superadmin", permission: "audit.read" },
   "GET /api/audit/summary": { summary: "Сводка по журналу", access: "superadmin", permission: "audit.read" },
@@ -525,7 +525,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/meet/connect": { summary: "Адрес согласия Google на создание встреч в календаре специалиста", access: "staff", permission: "appointments.manage" },
   "POST /api/meet/callback": { summary: "Возврат от Google: сохранить разрешение", access: "staff", permission: "appointments.manage" },
   "POST /api/meet/disconnect": { summary: "Отключить календарь", access: "staff", permission: "appointments.manage" },
-  "POST /api/console/run": { summary: "Выполнить команду консоли; право проверяется отдельно на каждую команду", access: "staff", permission: "console.use" },
+  "POST /api/console/run": { summary: "Выполнить команду консоли; право проверяется отдельно на каждую команду и её форму — то же, что у её HTTP-двойника; изменяющие команды зовут те же сервисы, что маршруты", access: "staff", permission: "console.use" },
 
   /* ── техпанель, эксплуатация: состояние системы, флаги функций, выкатки ── */
   "GET /api/status": { summary: "Состояние системы для людей: працює / обслуговування / збої, текст объявления и история; без входа и без чувствительного", access: "public" },
@@ -545,7 +545,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "GET /api/safety/patients/:userId": { summary: "План безопасности пациента по версиям", access: "staff", permission: "patients.read" },
   "PUT /api/safety/patients/:userId": { summary: "Сохранить план безопасности новой версией", access: "staff", permission: "safety.manage" },
   "GET /api/notes/patients/:userId": { summary: "Заметки приёма по пациенту", access: "staff", permission: "patients.read" },
-  "PUT /api/notes/patients/:userId": { summary: "Сохранить заметку приёма", access: "staff", permission: "notes.write" },
+  "PUT /api/notes/patients/:userId": { summary: "Сохранить заметку приёма; приём (appointmentId) — только этого же человека, иначе 400, несуществующий — 404", access: "staff", permission: "notes.write" },
   "POST /api/notes/patients/:userId/sign": { summary: "Подписать заметку приёма", access: "staff", permission: "notes.write" },
   "GET /api/templates": { summary: "Библиотека формулировок: своё отделение и общие", access: "staff", whyNoPermission: "справочник оборотов речи, а не данные о людях; им пользуется каждый, кто пишет заключение или заметку, и отдельное право отсекало бы ровно тех, кому он нужен" },
   "POST /api/templates": { summary: "Пополнить библиотеку формулировкой", access: "staff", permission: "notes.write" },

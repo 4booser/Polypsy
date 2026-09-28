@@ -1459,11 +1459,18 @@ clinicRoutes.get(
     const since = previous ? previous.slot.startsAt : null;
     const changes = since ? await changesSince(row.patientId, since) : [];
 
-    /* Черновик протокола этого приёма, если он уже начат */
+    /*
+     * Черновик протокола этого приёма, если он уже начат.
+     *
+     * И по приёму, и по человеку: заметка другого пациента, привязанная к
+     * этому приёму до волны 15 (маршрут заметок тогда принадлежность не
+     * сверял, а ключ 0110 на такие старые строки не распространяется),
+     * протоколом этого приёма не становится.
+     */
     const [note] = await db
       .select()
       .from(patientNotes)
-      .where(eq(patientNotes.appointmentId, row.id))
+      .where(and(eq(patientNotes.appointmentId, row.id), eq(patientNotes.userId, row.patientId)))
       .orderBy(desc(patientNotes.version))
       .limit(1);
 
