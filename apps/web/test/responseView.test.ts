@@ -41,7 +41,7 @@ const detail: ResponseDetail = {
       normalization: "raw",
       maxScore: 30,
       percent: 50,
-      band: { label: "Середній", severity: "mild", description: null, grade: null, recommendation: null },
+      band: { id: null, label: "Середній", severity: "mild", description: null, grade: null, recommendation: null },
       bands: [],
     },
   ],

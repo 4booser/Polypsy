@@ -863,6 +863,7 @@ export async function seedDemoGroupsRules(): Promise<DemoGroupsRulesReport> {
             attemptsAllowed: s.attemptsAllowed,
             viaPatientGroupId: g.id,
           })),
+          { term: "set" },
         );
         report.grants += targets.length;
       });

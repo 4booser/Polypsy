@@ -767,6 +767,13 @@ export const surveyFollowups = pgTable(
     closesAt: timestampCol("closes_at").notNull(),
     /** Когда окно открыто, то есть выдан доступ; null — ещё впереди */
     openedAt: timestampCol("opened_at"),
+    /**
+     * Окно закрылось, так и не открывшись (миграция 0112): тик планировщика
+     * не успел — стоял или учётка была выключена. Доступ по такому окну не
+     * выдаётся — он отозвал бы действующий задним числом, — а пропуск виден
+     * в очереди работы (routes/worklist.ts).
+     */
+    missedAt: timestampCol("missed_at"),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
   },
   (t) => ({

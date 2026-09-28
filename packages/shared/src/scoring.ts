@@ -463,6 +463,7 @@ export function computeProfile(
       percent: maxScore > 0 ? Math.round((correctedScore / maxScore) * 1000) / 10 : 0,
       band: band
         ? {
+            id: band.id,
             label: t(band.label),
             severity: band.severity,
             description: band.description ? t(band.description) : null,

@@ -16,14 +16,27 @@
  * Скрипт идемпотентен: повторный прогон обновляет пароль и права, ничего не
  * ломая.
  */
-import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { sql } from "drizzle-orm";
 import { client, db } from "./db";
+import { MigrationLedgerError, runMigrations } from "./db/migrations";
 
 const APP_ROLE = "quizzy_app";
 const password = process.env.APP_DB_PASSWORD ?? "";
 
-await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
+/*
+ * Миграции со сверкой журнала (db/migrations.ts). Пропущенная миграция —
+ * выход с кодом 1: api ждёт успешного завершения provision
+ * (service_completed_successfully в docker-compose.yml), поэтому выкатка
+ * встаёт на этом шаге, а прежние контейнеры api продолжают работать.
+ */
+try {
+  await runMigrations(db);
+} catch (error) {
+  if (!(error instanceof MigrationLedgerError)) throw error;
+  console.error(error.message);
+  await client.end();
+  process.exit(1);
+}
 console.log("  ✓ схема приведена к миграциям");
 
 if (!password) {

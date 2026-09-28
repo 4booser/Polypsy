@@ -247,7 +247,7 @@ function BatteryCard({
   // проходить свои методики, но человек должен знать, что батарея не
   // закроется, пока психолог не внесёт свою часть
   const waiting = assignment.steps.find(
-    (s) => s.state !== "done" && s.administration === "clinician" && s.required,
+    (s) => s.state !== "done" && s.state !== "retired" && s.administration === "clinician" && s.required,
   );
 
   return (
@@ -296,6 +296,8 @@ function StepRow({
   // методику клинициста обследуемый открыть не может ни в каком состоянии
   const byClinician = step.administration === "clinician";
   const openable = !byClinician && (step.state === "current" || step.state === "available");
+  // заперт до своей очереди или снят с использования — пройти сейчас нельзя
+  const dimmed = step.state === "locked" || step.state === "retired";
   const done = severityColor.none;
   const tone = step.state === "done" ? done : openable ? c.primary : c.muted;
 
@@ -322,7 +324,7 @@ function StepRow({
       <View style={{ flex: 1 }}>
         <Text
           style={{
-            color: step.state === "locked" ? c.muted : c.text,
+            color: dimmed ? c.muted : c.text,
             fontSize: 14,
             fontWeight: openable ? "600" : "400",
           }}
@@ -330,7 +332,9 @@ function StepRow({
           {step.title}
         </Text>
         <Text style={{ color: c.muted, fontSize: 12 }}>
-          {byClinician && step.state !== "done" ? ut("battery.step.clinician") : ut(STEP_KEY[step.state])}
+          {byClinician && step.state !== "done" && step.state !== "retired"
+            ? ut("battery.step.clinician")
+            : ut(STEP_KEY[step.state])}
           {step.required ? "" : ` · ${ut("battery.step.optional")}`}
           {step.medianMinutes !== null ? ` · ${ut("battery.step.usually")} ${step.medianMinutes} ${ut("battery.minutes")}` : ""}
         </Text>
@@ -339,7 +343,7 @@ function StepRow({
   );
 
   if (!openable)
-    return <View style={{ opacity: step.state === "locked" ? 0.55 : 1 }}>{row}</View>;
+    return <View style={{ opacity: dimmed ? 0.55 : 1 }}>{row}</View>;
   return (
     <Pressable
       onPress={() => onOpen(step.surveyId)}
@@ -357,6 +361,8 @@ const STEP_KEY = {
   current: "battery.step.current",
   available: "battery.step.available",
   locked: "battery.step.locked",
+  // методику шага сняли с использования или с публикации: пройти нельзя, и её не ждут
+  retired: "mark.retired",
 } as const;
 
 function formatDay(iso: string | null, lang: Lang): string {

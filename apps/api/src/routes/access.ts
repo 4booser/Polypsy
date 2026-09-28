@@ -148,7 +148,8 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
       note: input.note ?? null,
       attemptsAllowed: input.attemptsAllowed,
     },
-  ]);
+    // решение специалиста об этом человеке: срок ставится как выбран, в том числе короче прежнего
+  ], { term: "set" });
 
   await audit(c, {
     action: "access.grant",
