@@ -61,6 +61,7 @@ import { sr45 } from "./instruments/sr45";
 import { sadPersons } from "./instruments/sadPersons";
 import { minimult } from "./instruments/minimult";
 import { mlo } from "./instruments/mlo";
+import { env } from "./env";
 
 /** Пациенты генерируются пачкой: без объёма аналитику не на чем смотреть */
 const PATIENT_POOL: {
@@ -822,7 +823,7 @@ async function generateKeyed(surveyId: string, respondents: string[], perPatient
       const person = people.get(userId);
       const profile = computeProfile(survey, generated, {
         sex: person?.sex ?? null,
-        age: ageAt(decryptField(person?.birthDate ?? null), startedAt.toISOString()),
+        age: ageAt(decryptField(person?.birthDate ?? null), startedAt.toISOString(), env.institutionTz),
       });
       const responseId = crypto.randomUUID();
       const durationMs = generated.reduce((sum, a) => sum + (a.durationMs ?? 0), 0);

@@ -13,6 +13,7 @@ import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import { assertSurveyAccess } from "../lib/scope";
 import { copyVersion, getSurvey, type NormValues } from "../lib/surveys";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { env } from "../env";
 
 export const normRoutes = new Hono<AppEnv>();
 
@@ -170,7 +171,7 @@ normRoutes.get("/surveys/:id/age-curves", async (c) => {
   const ageOf = new Map<string, number>();
   const sexOf = new Map<string, "male" | "female">();
   for (const r of rows) {
-    const age = ageAt(decryptField(r.birthDate), r.submittedAt);
+    const age = ageAt(decryptField(r.birthDate), r.submittedAt, env.institutionTz);
     if (age === null || !r.sex) continue;
     ageOf.set(r.responseId, age);
     sexOf.set(r.responseId, r.sex);

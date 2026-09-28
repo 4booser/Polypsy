@@ -16,7 +16,8 @@ import {
 import { appointments, departments, episodes, patientNotes, responses, slots } from "../src/db/schema";
 import { encryptField } from "../src/lib/crypto";
 import { chartHistory } from "../src/lib/chartHistory";
-import { ageOnDay, printCalendarDay, printDay, printStamp } from "../src/lib/printDates";
+import { ageAt } from "@quizzy/shared";
+import { printCalendarDay, printDay, printStamp } from "../src/lib/printDates";
 import { env } from "../src/env";
 
 /**
@@ -317,7 +318,7 @@ describe("даты карты — в поясе учреждения, а не п
 
   test("лист прохождения — возраст по календарю, а не по часам процесса", async () => {
     /*
-     * Накануне дня рождения — ещё 33. Общий ageAt по часам Нью-Йорка
+     * Накануне дня рождения — ещё 33. Прежний ageAt по часам Нью-Йорка
      * превращал «1990-05-01» в 30 апреля и печатал 34.
      */
     const report = await sheet(`/api/reports/responses/${eveResponseId}`, patient.token);
@@ -342,12 +343,13 @@ describe("даты листа — функциями", () => {
   });
 
   test("возраст — по календарю дня учреждения", () => {
-    expect(ageOnDay("1990-05-01", EVE_OF_BIRTHDAY_UTC, "Europe/Kyiv")).toBe(33);
-    expect(ageOnDay("1990-05-01", "2026-04-30T21:30:00.000Z", "Europe/Kyiv")).toBe(36);
-    expect(ageOnDay("1990-05-01", "2026-04-30T21:30:00.000Z", "UTC")).toBe(35);
-    expect(ageOnDay("1992-02-29", "2026-02-28T12:00:00.000Z", "Europe/Kyiv")).toBe(33);
-    expect(ageOnDay("1992-02-29", "2026-03-01T12:00:00.000Z", "Europe/Kyiv")).toBe(34);
-    expect(ageOnDay(null, EVE_OF_BIRTHDAY_UTC)).toBeNull();
-    expect(ageOnDay("2030-01-01", EVE_OF_BIRTHDAY_UTC)).toBeNull();
+    /* общий ageAt (packages/shared) с поясом учреждения — тем же, что передаёт лист */
+    expect(ageAt("1990-05-01", EVE_OF_BIRTHDAY_UTC, "Europe/Kyiv")).toBe(33);
+    expect(ageAt("1990-05-01", "2026-04-30T21:30:00.000Z", "Europe/Kyiv")).toBe(36);
+    expect(ageAt("1990-05-01", "2026-04-30T21:30:00.000Z", "UTC")).toBe(35);
+    expect(ageAt("1992-02-29", "2026-02-28T12:00:00.000Z", "Europe/Kyiv")).toBe(33);
+    expect(ageAt("1992-02-29", "2026-03-01T12:00:00.000Z", "Europe/Kyiv")).toBe(34);
+    expect(ageAt(null, EVE_OF_BIRTHDAY_UTC, "Europe/Kyiv")).toBeNull();
+    expect(ageAt("2030-01-01", EVE_OF_BIRTHDAY_UTC, "Europe/Kyiv")).toBeNull();
   });
 });

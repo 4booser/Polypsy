@@ -22,6 +22,7 @@ import { dayEnd, dayStart } from "../lib/population";
 import { SMALL_CELL_FLOOR, birthYearOf, canBreakDown, suppress, suppressedKeys } from "../lib/privacy";
 import { surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { env } from "../env";
 
 export const cohortRoutes = new Hono<AppEnv>();
 /*
@@ -306,7 +307,7 @@ async function cohortSelection(user: Parameters<typeof surveyScopeFilter>[0], sp
     for (const row of rows) {
       if (fits.has(row.id) || !row.at) continue;
       if (!born.has(row.id)) born.set(row.id, decryptField(row.birth));
-      const age = ageAt(born.get(row.id) ?? null, new Date(row.at).toISOString());
+      const age = ageAt(born.get(row.id) ?? null, new Date(row.at).toISOString(), env.institutionTz);
       if (age === null) continue;
       if (spec.ageMin != null && age < spec.ageMin) continue;
       if (spec.ageMax != null && age > spec.ageMax) continue;

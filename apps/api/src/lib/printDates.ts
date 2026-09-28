@@ -1,6 +1,5 @@
-import { ageAt, LOCALE_OF, type Lang } from "@quizzy/shared";
+import { LOCALE_OF, type Lang } from "@quizzy/shared";
 import { env } from "../env";
-import { dayOf } from "./day";
 
 /**
  * Даты на печатных листах (волна 15, внешний разбор, п. 21).
@@ -68,31 +67,4 @@ export function printStamp(iso: string, tz: string = env.institutionTz): string 
       .map((p) => [p.type, p.value]),
   );
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
-}
-
-/**
- * Полных лет на день момента — день по поясу учреждения, рождение — по
- * календарю.
- *
- * Общий ageAt (shared/types.ts) берёт числа месяца по часам процесса и у
- * рождения, и у момента: на сервере западнее Гринвича «1990-05-01» — это
- * 30 апреля, и накануне дня рождения на листе стоял уже следующий возраст;
- * на сервере в UTC сдача в 00:30 по Киеву в день рождения давала прежний.
- * Здесь обе даты — числами календаря, без часов процесса вовсе. null — то
- * же, что у ageAt: нет даты, не разбирается или возраст невозможный.
- * Рождение не в виде ГГГГ-ММ-ДД (схемы его другим не пускают, но старая
- * запись могла прийти мимо них) считается прежним ageAt: лист не падает и
- * не теряет возраст из-за вида строки.
- */
-export function ageOnDay(birthDate: string | null, at: string | null, tz: string = env.institutionTz): number | null {
-  if (!birthDate || !at) return null;
-  const born = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate.trim());
-  if (!born) return ageAt(birthDate, at);
-  const day = dayOf(at, tz);
-  if (!day) return null;
-  const [y, m, d] = day.split("-").map(Number) as [number, number, number];
-  const [by, bm, bd] = [Number(born[1]), Number(born[2]), Number(born[3])];
-  let age = y - by;
-  if (m < bm || (m === bm && d < bd)) age--;
-  return age >= 0 && age < 130 ? age : null;
 }
