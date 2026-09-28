@@ -53,3 +53,29 @@ WHERE NOT EXISTS (
   WHERE hash = '962d0265b55d9502db7978d0b44d3241f72ac62d675e71e752d25ced15fbeff9'
      OR created_at = 1788473709043
 );
+--> statement-breakpoint
+
+-- ═══ 2. survey_followups.missed_at: окно, закрывшееся неоткрытым ═══
+--
+-- Внешний разбор 2026-09-28 (P2). Тик планировщика (lib/followup.ts)
+-- выбирал окна по opens_at, не глядя на closes_at, и выдавал доступ до
+-- закрытия окна перевыдачей. Окно, которое закрылось, так и не открывшись
+-- (планировщик стоял, учётка была выключена), при следующем тике
+-- переписывало действующий доступ — ручной, ещё на месяц — прошедшей датой,
+-- то есть отзывало его задним числом.
+--
+-- Теперь пропущенное окно разбирается отдельно от открытия: тик отмечает
+-- его здесь и доступа не трогает, а пропуск виден в очереди работы — там
+-- же, где просроченный повтор (routes/worklist.ts). Отметка, а не вывод
+-- «opened_at пуст и closes_at прошёл» при каждом чтении: пропуск — событие
+-- тика, и частичный индекс очереди тика не должен копить такие окна вечно.
+--
+-- Уже закрывшиеся неоткрытыми окна отметит первый тик после выкатки — тем
+-- же путём, без отдельного заполнения.
+
+ALTER TABLE survey_followups ADD COLUMN IF NOT EXISTS missed_at timestamp with time zone;
+--> statement-breakpoint
+DROP INDEX IF EXISTS survey_followups_due_idx;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS survey_followups_due_idx ON survey_followups (opens_at)
+  WHERE opened_at IS NULL AND missed_at IS NULL;

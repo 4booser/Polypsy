@@ -616,7 +616,7 @@ patientGroupRoutes.post(
         note: input.note ?? null,
         attemptsAllowed: input.attemptsAllowed,
         viaPatientGroupId: groupId,
-      })));
+      })), { term: "set" });
     });
 
     await audit(c, {

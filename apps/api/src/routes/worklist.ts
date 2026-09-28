@@ -12,6 +12,7 @@ import {
   slots,
   threads,
   surveyAccess,
+  surveyFollowups,
   surveys,
   users,
 } from "../db/schema";
@@ -491,6 +492,71 @@ worklistRoutes.get("/", async (c) => {
       overdue: true,
       assignedTo: null,
       since: r.expiresAt!,
+      href: `/patients/${r.userId}/summary`,
+    });
+  }
+
+  /*
+   * 4б. Окна повторов, прошедшие неоткрытыми (missed_at, lib/followup.ts).
+   *
+   * Прежде такое окно тик всё-таки «открывал» — выдачей доступа с уже
+   * прошедшим сроком, — и пропуск попадал сюда через истёкшую выдачу выше,
+   * попутно отзывая действующий доступ человека (внешний разбор
+   * 2026-09-28). Теперь доступ не трогается, и пропуск берётся из самого
+   * окна: закрылось неоткрытым, а замера с его открытия так и не было.
+   * Видимость — та же, что у повтора выше: зона методики. Один человек и
+   * одна методика — одна строка: при двух источниках остаётся первый.
+   */
+  const shown = new Set(items.filter((i) => i.kind === "followup").map((i) => i.id));
+  const missedWindows = await db
+    .select({
+      userId: surveyFollowups.userId,
+      surveyId: surveyFollowups.surveyId,
+      closesAt: surveyFollowups.closesAt,
+      surveyTitle: surveys.title,
+      unit: users.unit,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+    })
+    .from(surveyFollowups)
+    .innerJoin(surveys, eq(surveys.id, surveyFollowups.surveyId))
+    .innerJoin(users, eq(users.id, surveyFollowups.userId))
+    .where(
+      and(
+        isNotNull(surveyFollowups.missedAt),
+        isNull(users.disabledAt),
+        followupScope,
+        sql`not exists (
+          select 1 from responses r
+          where r.user_id = ${surveyFollowups.userId}
+            and r.survey_id = ${surveyFollowups.surveyId}
+            and r.status = 'completed'
+            and r.submitted_at >= ${surveyFollowups.opensAt}
+        )`,
+      ),
+    )
+    // самый ранний пропуск человека по методике — от него и считается просрочка
+    .orderBy(surveyFollowups.closesAt, surveyFollowups.id)
+    .limit(200);
+
+  for (const r of missedWindows) {
+    const id = `${r.userId}:${r.surveyId}`;
+    if (shown.has(id)) continue;
+    shown.add(id);
+    items.push({
+      kind: "followup",
+      id,
+      userId: r.userId,
+      userName: fullNameOf(r as never),
+      unit: r.unit,
+      title: t(r.surveyTitle as never, lang),
+      days: Math.floor((now - new Date(r.closesAt).getTime()) / 86_400_000),
+      overdue: true,
+      assignedTo: null,
+      since: r.closesAt,
       href: `/patients/${r.userId}/summary`,
     });
   }
