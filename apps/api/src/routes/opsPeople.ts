@@ -53,6 +53,7 @@ import { currentRequestId } from "../lib/log";
 import { bulkSkip, groupWhoViewed, roleFrom, validateImport, type BulkActor, type BulkRole, type BulkTarget } from "../lib/people";
 import { grantStats, suspiciousStats } from "../lib/peopleStats";
 import { ensureBuiltinRole, ladderRankOf, permissionsOf } from "../lib/permissions";
+import { guardAccountAction, standingOf } from "../lib/accountClass";
 import { revokeAllFor } from "../lib/refresh";
 import { readPolicy, removeFactor, writePolicy } from "../lib/secondFactor";
 import { thresholdsOf } from "../lib/suspicious";
@@ -115,6 +116,19 @@ opsPeopleRoutes.post("/impersonate/:id", requireSuperadmin, async (c) => {
   const actor = c.get("user");
   const { reason } = await parseBody(c.req.raw, impersonateSchema);
   const targetId = c.req.param("id");
+  /*
+   * Общее правило действий над чужой учёткой (lib/accountClass.ts) — первым:
+   * для суперадмина оно сводится к «не себе». Вход «от имени» строже
+   * правила — под другим суперадмином и под выключенной учёткой не смотрят
+   * (lib/impersonation.ts), — и эти запреты остаются своими. Замок строки
+   * не нужен: вход ничего в учётке не меняет.
+   */
+  await guardAccountAction(c, targetId, {
+    permission: null,
+    self: "err.impersonateSelf",
+    action: "impersonation.start",
+    lock: false,
+  });
   const started = await startImpersonation(actor, targetId, reason);
   if (!started.ok) {
     await audit(c, {
@@ -245,11 +259,9 @@ opsPeopleRoutes.put("/mfa", requirePermission("ops.manage"), async (c) => {
  * чтобы снять с него второй замок.
  */
 opsPeopleRoutes.post("/users/:id/mfa-reset", requireSuperadmin, async (c) => {
-  const actor = c.get("user");
   const id = c.req.param("id");
-  if (id === actor.id) return refuse(c, 403, "err.mfaResetOwn");
-  const target = await db.query.users.findFirst({ where: eq(users.id, id) });
-  if (!target) notFound("err.userNotFound");
+  // общее правило (lib/accountClass.ts); свой фактор — только своим маршрутом, паролем и кодом
+  await guardAccountAction(c, id, { permission: null, self: "err.mfaResetOwn", action: "mfa.reset" });
   const removed = await asSystem(() => removeFactor(id));
   await audit(c, {
     action: "mfa.reset",
@@ -420,6 +432,8 @@ opsPeopleRoutes.post("/grants/:id/extend", requireSuperadmin, async (c) => {
   const id = c.req.param("id");
   const row = await db.query.permissionExceptions.findFirst({ where: eq(permissionExceptions.id, id) });
   if (!row) notFound("err.exceptionNotFound");
+  // продление — выдача на новый срок: правило то же, что у выдачи (routes/permissions.ts)
+  await guardAccountAction(c, row.userId, { permission: null, action: "permission.exception_extend" });
   if (row.revokedAt) badRequest("err.exceptionAlreadyRevoked");
   if (!row.expiresAt) badRequest("err.exceptionPermanent");
   const base = Math.max(Date.now(), new Date(row.expiresAt).getTime());
@@ -573,6 +587,8 @@ async function importContext(me: AppEnv["Variables"]["user"], emails: string[]) 
   const isSuper = me.role === "superadmin";
   const myRank = isSuper ? 0 : await ladderRankOf(me);
   const mine = isSuper ? null : await permissionsOf(me);
+  /* класс строки — только ниже своего положения, как у одиночного заведения (lib/accountClass.ts) */
+  const actorStanding = await standingOf(me);
   const templates = new Map<string, { allowed: boolean; id: string }>();
   for (const r of allRoles) {
     const granted = perms.filter((p) => p.roleId === r.id).map((p) => p.permission);
@@ -581,7 +597,7 @@ async function importContext(me: AppEnv["Variables"]["user"], emails: string[]) 
       (roleRank(r.code) > 0 && canAssignRole(myRank, r.code) && granted.every((p) => mine!.has(p as Permission)));
     templates.set(r.code, { allowed, id: r.id });
   }
-  return { takenEmails: new Set(taken.map((t) => t.email.toLowerCase())), templates, actorIsSuper: isSuper };
+  return { takenEmails: new Set(taken.map((t) => t.email.toLowerCase())), templates, actorIsSuper: isSuper, actorStanding };
 }
 
 function emailsIn(csv: string): string[] {

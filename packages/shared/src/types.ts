@@ -774,7 +774,9 @@ export type BulkSkipReason =
   | "alreadyHasRole"
   | "roleNotInChain"
   | "roleAboveYours"
-  | "roleGrantsMore";
+  | "roleGrantsMore"
+  /** Учётка на своей ступени или выше — общее правило действий над чужой учёткой (волна 15) */
+  | "aboveYours";
 
 export interface BulkResult {
   action: BulkUserAction;

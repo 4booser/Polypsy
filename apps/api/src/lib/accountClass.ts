@@ -1,17 +1,20 @@
 import type { Context } from "hono";
 import { eq } from "drizzle-orm";
-import { SUPERADMIN_RANK, type ErrorKey, type ErrorParams, type User } from "@quizzy/shared";
+import type { ErrorKey, ErrorParams, Permission, User } from "@quizzy/shared";
 import { db } from "../db";
 import { users, type UserRow } from "../db/schema";
 import type { AppEnv } from "../middleware/auth";
-import { audit } from "./audit";
-import { forbidden, notFound } from "./http";
+import { otherActiveSuperadmins } from "./accounts";
+import { accountRefusal, classGrantRefusal, standingFromRank, type AccountClass } from "./accountRule";
+import { audit, type AuditAction } from "./audit";
+import { conflict, forbidden, notFound } from "./http";
 import { ensureBuiltinRole, hasPermission, ladderRankOf } from "./permissions";
 import { revokeAllFor } from "./refresh";
 
+export type { AccountClass } from "./accountRule";
+
 /**
- * Класс учётной записи (superadmin · admin · user) и «только чтение» — одним
- * правилом для всех входов.
+ * Действия над чужой учётной записью — одним правилом для всех входов.
  *
  * Внешний разбор 2026-09-27 (п. 1, P1): команда консоли `user role` меняла
  * класс, проверив только право users.manage. Сотрудник с console.use и
@@ -20,28 +23,27 @@ import { revokeAllFor } from "./refresh";
  * (PATCH /api/users/:id/role) держал «не себе» и «суперадмина — только
  * суперадмин», но лестницы должностей не знал вовсе, а консоль не знала и
  * этого: одно правило, записанное в обработчике, обходилось соседним входом.
- * Теперь правило живёт здесь, и маршрут и команда консоли только разбирают
- * ввод и зовут эти функции — проверки в них нельзя забыть, потому что их там
- * нет.
  *
- * Правило:
- *  - нужно право users.manage — функция проверяет его сама, а не надеется
- *    на заслон входа;
- *  - себе класс не меняют и себя в «только чтение» не переводят;
- *  - суперадмина трогает и назначает только суперадмин (защищённая учётка);
- *  - учётку на своей ступени или выше не трогают — как снятие ролей на
- *    экране прав (routes/permissions.ts): заведующий не разжалует главного
- *    врача в пациенты;
- *  - класс выдаётся только ниже собственного положения — «строго ниже», как
- *    canAssignRole у лестницы: равный назначает себе подобного, и лестница
- *    перестаёт быть лестницей на втором шаге.
- *
- * Положение (standingOf) — одна шкала для класса и лестницы: пациент 0,
- * сотрудник 1 + ступень должности, суперадмин выше всех. Сотрудник вне
- * лестницы (встроенный «психолог») стоит на 1 — и потому, получив
- * делегированный users.manage, сотрудников не заводит: это была бы выдача
- * класса, равного своему. Суперадмин стоит над всеми и действует над кем
- * угодно, кроме себя.
+ * Решение заказчика 2026-09-28: та же дыра — в каждом действии над чужой
+ * учёткой, а не только в смене класса. Сброс пароля главному врачу
+ * заведующим с users.manage — захват учётки выше себя: временный пароль
+ * приходит в ответе, и заведующий входит главным врачом. Поэтому все такие
+ * действия — сброс пароля, выключение и включение, удаление, обрыв сессий,
+ * сброс второго фактора, вход «от имени», роли и личные исключения, профиль
+ * приёма, массовые действия, смена класса и «только чтения» — идут через
+ * guardAccountAction, а правило живёт в lib/accountRule.ts:
+ *  - нужно право действия — функция проверяет его сама, а не надеется на
+ *    заслон входа;
+ *  - не себе (своё меняют своими маршрутами; где действие над собой законно и
+ *    другого пути к нему нет — свои сессии, своё устройство, — вызывающий
+ *    говорит это явно: self: "allow");
+ *  - суперадмина трогает только суперадмин;
+ *  - цель строго ниже своего положения (пациент 0, сотрудник 1 + ступень
+ *    лестницы, суперадмин выше всех).
+ * Смена класса и заведение учётки сверх того выдают класс только ниже
+ * своего положения (classGrantRefusal): сотрудник вне лестницы (встроенный
+ * «психолог») стоит на 1 и, получив делегированный users.manage, сотрудников
+ * не заводит — это выдача класса, равного своему.
  *
  * Проверка и запись — под одним замком строки (SELECT … FOR UPDATE в
  * транзакции запроса): иначе заведующий, прочитавший цель администратором,
@@ -49,7 +51,6 @@ import { revokeAllFor } from "./refresh";
  */
 
 export const ACCOUNT_CLASSES = ["superadmin", "admin", "user"] as const;
-export type AccountClass = User["role"];
 
 export function isAccountClass(value: unknown): value is AccountClass {
   return typeof value === "string" && (ACCOUNT_CLASSES as readonly string[]).includes(value);
@@ -58,48 +59,87 @@ export function isAccountClass(value: unknown): value is AccountClass {
 /** Откуда пришло действие — пометка журнала, а не ветка правила */
 export type AccountEntry = "http" | "console";
 
-/**
- * Положение учётной записи на одной шкале с классом.
- *
- * Ступень лестницы считается и у пациента, если должность у него осталась
- * (класс её гасит, но не стирает): вернуть такого человека в сотрудники —
- * значит вернуть и должность, и решает это тот, кто выше неё.
- */
+/** Положение учётной записи (lib/accountRule.ts, standingFromRank) по её строке в базе */
 export async function standingOf(person: { id: string; role: AccountClass }): Promise<number> {
-  if (person.role === "superadmin") return SUPERADMIN_RANK + 1;
-  if (person.role === "user") return 0;
-  return 1 + (await ladderRankOf(person as User));
+  if (person.role !== "admin") return standingFromRank(person.role, 0);
+  return standingFromRank("admin", await ladderRankOf(person as User));
 }
 
-interface Refusal {
-  key: ErrorKey;
-  params?: ErrorParams;
+const REFUSAL_KEYS: Record<"superadminOnly" | "aboveYours", ErrorKey> = {
+  superadminOnly: "err.superadminOnly",
+  aboveYours: "err.accountAtOrAboveYours",
+};
+
+export interface AccountActionOptions {
+  /** Право действия; null — вход уже закрыт суперадмину (requireSuperadmin) или прав у действия нет вовсе */
+  permission: Permission | null;
+  /**
+   * Действие над собой: ключ отказа (по умолчанию err.ownAccount) — или
+   * "allow", если оно над собой законно и другого пути к нему нет.
+   */
+  self?: ErrorKey | "allow";
+  /**
+   * Действие журнала для строки отказа: попытка тронуть старшего должна быть
+   * видна. null — отказ пишет сам вход (консоль пишет его строкой console.run).
+   */
+  action: AuditAction | null;
+  /**
+   * Последнего действующего суперадмина не трогать (выключение, удаление).
+   * Проверяется раньше «себя»: суперадмин, выключающий себя последним,
+   * должен услышать настоящую причину — системой станет некому управлять.
+   */
+  lastSuperadmin?: boolean;
+  /** Запереть строку цели до конца транзакции (по умолчанию — да; чтению «от имени» замок не нужен) */
+  lock?: boolean;
 }
 
-/** Почему нельзя — или null. Без записи в базу и журнал: одна логика на оба действия ниже */
-async function refusalFor(actor: User, target: UserRow, next: AccountClass | null): Promise<Refusal | null> {
-  if (target.id === actor.id) return { key: next ? "err.cannotChangeOwnRole" : "err.ownAccount" };
-  if (actor.role === "superadmin") return null;
-  if (target.role === "superadmin" || next === "superadmin") return { key: "err.superadminOnly" };
-
-  const mine = await standingOf(actor);
-  if ((await standingOf(target)) >= mine) return { key: "err.accountAtOrAboveYours" };
-  if (next && (await standingOf({ id: target.id, role: next })) >= mine) {
-    return { key: "err.roleAboveYours", params: { role: next } };
+/**
+ * Проверить, что вызывающий вправе действовать над этой учёткой, и вернуть
+ * её строку (под замком). Отказ — 403 (последний суперадмин — 409) и строка
+ * журнала с исходом denied; отказ журнала переживает откат запроса.
+ */
+export async function guardAccountAction(c: Context<AppEnv>, targetId: string, opts: AccountActionOptions): Promise<UserRow> {
+  const actor = c.get("user");
+  if (opts.permission && !(await hasPermission(actor, opts.permission))) {
+    forbidden("err.permissionRequired", { permission: opts.permission });
   }
-  return null;
-}
 
-/** users.manage — проверкой здесь, а не только заслоном маршрута или реестром команд */
-async function demandUsersManage(actor: User): Promise<void> {
-  if (!(await hasPermission(actor, "users.manage"))) forbidden("err.permissionRequired", { permission: "users.manage" });
-}
+  const query = db.select().from(users).where(eq(users.id, targetId));
+  const [target] = opts.lock === false ? await query : await query.for("update");
+  if (!target) notFound("err.userNotFound");
 
-/** Строка цели под замком до конца транзакции запроса */
-async function lockTarget(id: string): Promise<UserRow> {
-  const [row] = await db.select().from(users).where(eq(users.id, id)).for("update");
-  if (!row) notFound("err.userNotFound");
-  return row;
+  const deny = async (key: ErrorKey, status: 403 | 409 = 403, params?: ErrorParams): Promise<never> => {
+    if (opts.action) {
+      await audit(c, {
+        action: opts.action,
+        outcome: "denied",
+        resourceType: "user",
+        resourceId: target.id,
+        subjectUserId: target.id,
+        details: { reason: key, targetRole: target.role },
+      });
+    }
+    return status === 409 ? conflict(key, params) : forbidden(key, params);
+  };
+
+  const reason = accountRefusal(
+    { id: actor.id, role: actor.role, standing: await standingOf(actor) },
+    { id: target.id, role: target.role, standing: await standingOf(target) },
+  );
+  if (
+    opts.lastSuperadmin &&
+    reason !== "superadminOnly" &&
+    target.role === "superadmin" &&
+    (await otherActiveSuperadmins(target.id)) === 0
+  ) {
+    await deny("err.lastSuperadmin", 409);
+  }
+  if (reason === "self") {
+    if (opts.self !== "allow") await deny(opts.self ?? "err.ownAccount");
+  } else if (reason) {
+    await deny(REFUSAL_KEYS[reason]);
+  }
+  return target;
 }
 
 /**
@@ -120,21 +160,30 @@ export async function changeAccountClass(
 ): Promise<{ before: AccountClass; row: UserRow }> {
   const actor = c.get("user");
   if (!isAccountClass(next)) forbidden("err.invalidRole");
-  await demandUsersManage(actor);
 
-  const target = await lockTarget(targetId);
-  const refusal = await refusalFor(actor, target, next);
-  if (refusal) {
-    // отказ — в журнал: попытка раздать себе больше, чем положено, должна быть видна
+  const target = await guardAccountAction(c, targetId, {
+    permission: "users.manage",
+    self: "err.cannotChangeOwnRole",
+    action: "user.role_change",
+  });
+  /* должность, оставшаяся у цели, вернётся вместе с классом — она и считается */
+  const grant = classGrantRefusal(
+    { role: actor.role, standing: await standingOf(actor) },
+    next,
+    next === "admin" ? await ladderRankOf({ id: target.id, role: "admin" } as User) : 0,
+  );
+  if (grant) {
+    // отказ — в журнал: попытка раздать больше, чем положено, должна быть видна
     await audit(c, {
       action: "user.role_change",
       outcome: "denied",
       resourceType: "user",
       resourceId: target.id,
       subjectUserId: target.id,
-      details: { newRole: next, currentRole: target.role, reason: refusal.key, via },
+      details: { newRole: next, currentRole: target.role, reason: grant, via },
     });
-    forbidden(refusal.key, refusal.params);
+    if (grant === "superadminOnly") forbidden("err.superadminOnly");
+    forbidden("err.roleAboveYours", { role: next });
   }
   // тот же класс — не смена: сессии человека обрывать не за что
   if (target.role === next) return { before: target.role, row: target };
@@ -164,41 +213,33 @@ export async function changeAccountClass(
  */
 export async function assertMayCreateClass(c: Context<AppEnv>, next: AccountClass): Promise<void> {
   const actor = c.get("user");
-  await demandUsersManage(actor);
-  if (actor.role === "superadmin") return;
-
-  const refusal: Refusal | null =
-    next === "superadmin"
-      ? { key: "err.superadminOnly" }
-      : (next === "admin" ? 1 : 0) >= (await standingOf(actor))
-        ? { key: "err.roleAboveYours", params: { role: next } }
-        : null;
+  if (!(await hasPermission(actor, "users.manage"))) forbidden("err.permissionRequired", { permission: "users.manage" });
+  const refusal = classGrantRefusal({ role: actor.role, standing: await standingOf(actor) }, next);
   if (!refusal) return;
   await audit(c, {
     action: "user.create",
     outcome: "denied",
     resourceType: "user",
-    details: { role: next, reason: refusal.key },
+    details: { role: next, reason: refusal },
   });
-  forbidden(refusal.key, refusal.params);
+  if (refusal === "superadminOnly") forbidden("err.superadminOnly");
+  forbidden("err.roleAboveYours", { role: next });
 }
 
 /**
  * «Только чтение» чужой учётке.
  *
  * HTTP-двойника у действия нет — оно есть только в консоли, — и тем важнее,
- * чтобы правило было то же, что у смены класса: запереть суперадмина в
- * «только чтение» — значит отнять у системы того, кто её чинит, а консоль
- * (POST) ему после этого уже недоступна, и снять замок сам он не сможет.
- * Сессий не обрывает: «только чтение» читается из строки пользователя на
- * каждый запрос (middleware/auth.ts) и действует со следующего же.
+ * чтобы правило было то же, что у остальных действий над чужой учёткой:
+ * запереть суперадмина в «только чтение» — значит отнять у системы того, кто
+ * её чинит, а консоль (POST) ему после этого уже недоступна, и снять замок
+ * сам он не сможет. Сессий не обрывает: «только чтение» читается из строки
+ * пользователя на каждый запрос (middleware/auth.ts) и действует со
+ * следующего же.
  */
 export async function setAccountReadOnly(c: Context<AppEnv>, targetId: string, readOnly: boolean): Promise<UserRow> {
-  const actor = c.get("user");
-  await demandUsersManage(actor);
-  const target = await lockTarget(targetId);
-  const refusal = await refusalFor(actor, target, null);
-  if (refusal) forbidden(refusal.key, refusal.params);
+  // отказ пишет консоль (routes/console.ts) — своей строкой console.run с причиной
+  const target = await guardAccountAction(c, targetId, { permission: "users.manage", action: null });
   const [row] = await db.update(users).set({ readOnly }).where(eq(users.id, target.id)).returning();
   return row!;
 }

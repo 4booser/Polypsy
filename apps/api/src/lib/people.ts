@@ -10,6 +10,7 @@ import {
   type Role,
   type WhoViewedActor,
 } from "@quizzy/shared";
+import { accountRefusal, classGrantRefusal, standingFromRank } from "./accountRule";
 import { localClock } from "./suspicious";
 
 /**
@@ -67,6 +68,13 @@ export interface BulkRole {
  * «Последний суперадмин» здесь не проверяется: это состояние базы, которое
  * меняется по ходу пачки (выключили одного — второй стал последним), и
  * решает его маршрут под замком (lib/accounts.ts, otherActiveSuperadmins).
+ *
+ * С волны 15 первой идёт общая часть правила — та же функция, что у
+ * одиночных действий (lib/accountRule.ts, accountRefusal): не себя, над
+ * суперадмином только суперадмин, и цель строго ниже своего положения
+ * (aboveYours). Прежде пачка пропускала «ровню и старших»: заведующий с
+ * users.manage выключал главного врача пачкой, раз одиночное действие
+ * этого не проверяло (решение заказчика 2026-09-28).
  */
 export function bulkSkip(
   action: BulkUserAction,
@@ -76,26 +84,30 @@ export function bulkSkip(
 ): BulkSkipReason | null {
   if (!target) return "notFound";
   const isSuper = actor.role === "superadmin";
-  const locked = target.role === "superadmin" && !isSuper;
+  if (action === "assign-role" && !role) return "notFound";
+  const general = accountRefusal(
+    { id: actor.id, role: actor.role, standing: standingFromRank(actor.role, actor.rank) },
+    {
+      id: target.id,
+      role: target.role,
+      standing: standingFromRank(target.role, Math.max(0, ...target.roleCodes.map(roleRank))),
+    },
+  );
+  if (general) return general;
   switch (action) {
     case "disable":
-      if (target.id === actor.id) return "self";
-      if (locked) return "superadminOnly";
       if (target.disabledAt) return "alreadyDisabled";
       return null;
     case "enable":
-      if (locked) return "superadminOnly";
       if (!target.disabledAt) return "notDisabled";
       return null;
     case "revoke-sessions":
-      if (target.id === actor.id) return "self";
-      if (locked) return "superadminOnly";
+      // свои сессии пачкой — нет (общее правило выше): «вибрати всіх» задевает и себя
       return null;
     case "assign-role": {
       if (!role) return "notFound";
-      if (target.id === actor.id) return "self";
       if (target.role === "user") return "patient";
-      if (target.role === "superadmin") return isSuper ? "superadminTarget" : "superadminOnly";
+      if (target.role === "superadmin") return "superadminTarget";
       if (target.roleCodes.includes(role.code)) return "alreadyHasRole";
       if (!isSuper) {
         if (roleRank(role.code) === 0) return "roleNotInChain";
@@ -246,6 +258,12 @@ export interface ImportContext {
   /** Коды ролей-шаблонов: есть ли такая и вправе ли импортирующий её выдать */
   templates: ReadonlyMap<string, { allowed: boolean }>;
   actorIsSuper: boolean;
+  /**
+   * Положение импортирующего (lib/accountRule.ts): класс строки — только ниже
+   * его, как у одиночного заведения. Сотрудник вне лестницы с делегированным
+   * users.manage сотрудников не заводит — ни по одному, ни файлом.
+   */
+  actorStanding: number;
 }
 
 /**
@@ -295,7 +313,12 @@ export function validateImport(
 
     const role = roleFrom(row.role);
     if (role === null) errors.push("roleUnknown");
-    else if (role === "patient" || (role === "superadmin" && !ctx.actorIsSuper)) errors.push("roleNotAllowed");
+    else if (
+      role === "patient" ||
+      classGrantRefusal({ role: ctx.actorIsSuper ? "superadmin" : "admin", standing: ctx.actorStanding }, role)
+    ) {
+      errors.push("roleNotAllowed");
+    }
 
     if (row.roleTemplate) {
       const tpl = ctx.templates.get(row.roleTemplate);
