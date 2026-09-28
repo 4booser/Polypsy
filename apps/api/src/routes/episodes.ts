@@ -305,6 +305,35 @@ function dueAfter(months: number, from = new Date()): string {
   return addMonths(from, months).toISOString();
 }
 
+/**
+ * От чего считается срок действующей записи.
+ *
+ * Срок — «через N месяцев после X», и X — последнее из двух событий:
+ * постановки на учёт (addedAt; возврат после снятия — тоже постановка, см.
+ * PUT) и отмеченного осмотра (lastSeenAt, POST …/seen). Ровно так срок и
+ * выставляют оба действия, поэтому пересчёт по этому основанию при смене
+ * периодичности даёт тот же срок, какой дали бы они сами при новом
+ * интервале, — а не «от сегодня», которое стирает пропущенное.
+ */
+function dueBasis(row: { addedAt: string; lastSeenAt: string | null }): Date {
+  const added = new Date(row.addedAt).getTime();
+  const seen = row.lastSeenAt ? new Date(row.lastSeenAt).getTime() : Number.NEGATIVE_INFINITY;
+  return new Date(Math.max(added, seen));
+}
+
+/**
+ * Строка учёта под замком до конца транзакции запроса.
+ *
+ * Правка, отметка осмотра и снятие решают по прочитанной строке (интервал,
+ * основание срока, снят ли) и пишут потом. Без замка отметка осмотра,
+ * пришедшая между чтением и записью правки, затиралась бы сроком,
+ * посчитанным от прежнего основания.
+ */
+async function lockDispensary(patientId: string) {
+  const [row] = await db.select().from(dispensary).where(eq(dispensary.patientId, patientId)).for("update");
+  return row ?? null;
+}
+
 /** Состоит ли человек на учёте и когда следующий осмотр */
 episodeRoutes.get("/dispensary/:userId", requirePermission("patients.read"), async (c) => {
   const patientId = c.req.param("userId");
@@ -334,37 +363,86 @@ episodeRoutes.get("/dispensary/:userId", requirePermission("patients.read"), asy
   });
 });
 
-/** Поставить на учёт или изменить периодичность */
+/**
+ * Поставить на учёт или изменить периодичность.
+ *
+ * Два разных действия на одном маршруте, и различаются они состоянием
+ * записи, а не телом запроса.
+ *
+ * Действующая запись — это правка: группа, заметка, периодичность. Срок при
+ * ней НЕ сдвигается от сегодня (внешний разбор 2026-09-27, п. 14): прежде
+ * любая правка — даже одной заметки — пересчитывала срок от текущего дня,
+ * и просрочка в десять дней становилась нулём при неизменном последнем
+ * осмотре; человек, которого не смотрели, пропадал из очереди работы. Та
+ * же периодичность — срок прежний; другая — срок от того же основания
+ * (dueBasis), с новым интервалом.
+ *
+ * Перенести срок как таковой этим маршрутом нельзя, и это намеренно:
+ * отодвигает срок только отмеченный осмотр (POST …/seen) — событие, которое
+ * можно проверить, — или снятие и новая постановка, решение с именем в
+ * журнале. Отдельного «перенести срок» в интерфейсе нет.
+ *
+ * Новая постановка и возврат после снятия — срок от даты решения, а не от
+ * последнего осмотра, которого могло не быть годы; и основание срока с
+ * этого дня — сама постановка (addedAt), иначе следующая смена
+ * периодичности отсчитала бы от осмотра, бывшего до снятия.
+ */
 episodeRoutes.put("/dispensary", requirePermission("episodes.manage"), async (c) => {
   const input = await parseBody(c.req.raw, dispensarySchema);
   const me = c.get("user");
   await assertPatientAccess(me, input.patientId);
 
+  const current = await lockDispensary(input.patientId);
+  const fields = {
+    groupLabel: input.groupLabel,
+    intervalMonths: input.intervalMonths,
+    note: input.note ?? null,
+  };
+
+  if (current && !current.removedAt) {
+    const nextDueAt =
+      current.intervalMonths === input.intervalMonths
+        ? current.nextDueAt
+        : dueAfter(input.intervalMonths, dueBasis(current));
+    await db
+      .update(dispensary)
+      .set({ ...fields, nextDueAt })
+      .where(eq(dispensary.patientId, input.patientId));
+
+    await audit(c, {
+      action: "dispensary.set",
+      resourceType: "user",
+      resourceId: input.patientId,
+      subjectUserId: input.patientId,
+      details: {
+        group: input.groupLabel,
+        months: input.intervalMonths,
+        // правка, а не постановка: по журналу видно, сдвигался ли срок
+        edit: true,
+        dueChanged: nextDueAt !== current.nextDueAt,
+      },
+    });
+    return c.json({ ok: true });
+  }
+
+  const now = new Date();
+  const placement = {
+    ...fields,
+    nextDueAt: dueAfter(input.intervalMonths, now),
+    addedAt: now.toISOString(),
+    addedBy: me.id,
+  };
   await db
     .insert(dispensary)
-    .values({
-      patientId: input.patientId,
-      groupLabel: input.groupLabel,
-      intervalMonths: input.intervalMonths,
-      nextDueAt: dueAfter(input.intervalMonths),
-      note: input.note ?? null,
-      addedBy: me.id,
-    })
+    .values({ patientId: input.patientId, ...placement })
     .onConflictDoUpdate({
       target: dispensary.patientId,
-      set: {
-        groupLabel: input.groupLabel,
-        intervalMonths: input.intervalMonths,
-        note: input.note ?? null,
-        /*
-         * Постановка заново снимает прежнее снятие: человека вернули на учёт,
-         * а не завели вторую запись. Срок считается от сегодня — от даты
-         * решения, а не от последнего осмотра, которого могло не быть годы.
-         */
-        removedAt: null,
-        removedBy: null,
-        nextDueAt: dueAfter(input.intervalMonths),
-      },
+      /*
+       * Постановка заново снимает прежнее снятие: человека вернули на учёт,
+       * а не завели вторую запись. Последний осмотр остаётся — это правда о
+       * прошлом, — но основанием срока становится возврат.
+       */
+      set: { ...placement, removedAt: null, removedBy: null },
     });
 
   await audit(c, {
@@ -372,7 +450,7 @@ episodeRoutes.put("/dispensary", requirePermission("episodes.manage"), async (c)
     resourceType: "user",
     resourceId: input.patientId,
     subjectUserId: input.patientId,
-    details: { group: input.groupLabel, months: input.intervalMonths },
+    details: { group: input.groupLabel, months: input.intervalMonths, returned: current !== null },
   });
   return c.json({ ok: true });
 });
@@ -388,10 +466,9 @@ episodeRoutes.post("/dispensary/:userId/seen", requirePermission("episodes.manag
   const patientId = c.req.param("userId");
   await assertPatientAccess(c.get("user"), patientId);
 
-  const row = await db.query.dispensary.findFirst({
-    where: and(eq(dispensary.patientId, patientId), isNull(dispensary.removedAt)),
-  });
-  if (!row) notFound("err.dispensaryNotFound");
+  // интервал — из строки под замком: одновременная правка периодичности ждёт
+  const row = await lockDispensary(patientId);
+  if (!row || row.removedAt) notFound("err.dispensaryNotFound");
 
   const now = new Date();
   await db

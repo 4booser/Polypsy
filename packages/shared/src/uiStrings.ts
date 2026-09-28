@@ -7688,6 +7688,25 @@ export const UI = {
     en: "Conclusion link refused",
   },
 
+  /* ── w15:transitions ── */
+  /*
+   * Под отказом 409 «запись изменили, пока она была открыта» (волна 15).
+   * Сам отказ — фраза сервера на языке экрана; здесь — что будет после
+   * кнопки «Перечитати» (integrity.reread): набранное пропадёт, и человеку
+   * надо успеть его забрать. Общая integrity.rereadHint говорит про одно
+   * поле, а у повідомлення и плана безпеки полей много.
+   */
+  "mail.rereadHint": {
+    uk: "Після перечитування у формі буде чернетка, яка зараз на сервері, — набране тут зникне. Якщо воно потрібне, спершу скопіюйте текст.",
+    ru: "После перечитывания в форме будет черновик, который сейчас на сервере, — набранное здесь пропадёт. Если оно нужно, сначала скопируйте текст.",
+    en: "After reloading, the form will show the draft as it is on the server now — what you typed here will be gone. If you need it, copy the text first.",
+  },
+  "sp.rereadHint": {
+    uk: "Після перечитування в редакторі буде чинна версія плану — набране тут зникне. Якщо воно потрібне, спершу скопіюйте його.",
+    ru: "После перечитывания в редакторе будет действующая версия плана — набранное здесь пропадёт. Если оно нужно, сначала скопируйте его.",
+    en: "After reloading, the editor will show the current version of the plan — what you typed here will be gone. If you need it, copy it first.",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

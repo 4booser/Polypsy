@@ -1140,10 +1140,11 @@ export const api = {
   caseSummary: (userId: string) => request<CaseSummary>(`/api/referrals/summary/${userId}`),
   safetyPlans: (userId: string) =>
     request<{ versions: SafetyPlan[] }>(`/api/safety/patients/${userId}`),
-  saveSafetyPlan: (userId: string, content: SafetyPlanContent) =>
+  /** baseVersion — версия, что была в редакторе (0 — плана не было): поверх чужой сервер ответит 409 */
+  saveSafetyPlan: (userId: string, content: SafetyPlanContent, baseVersion: number) =>
     request<{ id: string; version: number }>(`/api/safety/patients/${userId}`, {
       method: "PUT",
-      body: JSON.stringify(content),
+      body: JSON.stringify({ ...content, baseVersion }),
     }),
 
   notes: (userId: string) => request<NoteState>(`/api/notes/patients/${userId}`),
@@ -1795,9 +1796,11 @@ export const api = {
   /** «Зберегти»: только черновик, отправленная отвечает 409 */
   updateMailing: (id: string, patch: MailingUpdateInput) =>
     request<Mailing>(`/api/mailings/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
-  sendMailing: (id: string) =>
+  /** revision — редакция, которую человек видел: черновик успели переписать — 409, ничего не уходит */
+  sendMailing: (id: string, revision: number) =>
     request<{ id: string; status: "sent"; sentAt: string; recipients: number }>(`/api/mailings/${id}/send`, {
       method: "POST",
+      body: JSON.stringify({ revision }),
     }),
   /** «Видалити» — черновик; отправленную сервер не удаляет (409), её скрывают */
   deleteMailing: (id: string) => request<void>(`/api/mailings/${id}`, { method: "DELETE" }),

@@ -9,7 +9,17 @@ import { Page } from "../../ui/layout";
 import { ActionMenu, type MenuEntry } from "../../ui/menu";
 import { Button, Field, Input, Readout, Select, Textarea } from "../../ui/primitives";
 import { useResource } from "../../useResource";
-import { MAX_OPTIONS, type MailingDraft, draftFromMailing, draftToInput, isFilled, mailingHref } from "./model";
+import { staleMessage } from "../../components/versioned";
+import {
+  MAX_OPTIONS,
+  type MailingDraft,
+  draftFromMailing,
+  draftToInput,
+  draftToUpdate,
+  isFilled,
+  mailingHref,
+  saveThenSend,
+} from "./model";
 
 /*
  * Повідомлення (розсилка) — кадры f20 и f26 макета, один экран.
@@ -161,8 +171,16 @@ function MailingEditor({ id }: { id: string | null }) {
    * вписаны заранее, автор их правит или добавляет третий.
    */
   const [draft, setDraft] = useState<MailingDraft | null>(() =>
-    id === null ? { title: "", body: "", options: [ut("mail.yes"), ut("mail.no")], patientGroupId: "" } : null,
+    id === null
+      ? { title: "", body: "", options: [ut("mail.yes"), ut("mail.no")], patientGroupId: "", revision: null }
+      : null,
   );
+  /*
+   * Отказ 409 — черновик переписали (или отправили), пока он был открыт:
+   * фраза сервера на языке экрана. Пока она стоит, набранное не трогается —
+   * человек решает сам, забрать ли текст перед «Перечитати».
+   */
+  const [stale, setStale] = useState<string | null>(null);
   /* черновик заполняется из карточки один раз: перечитывание карточки набранное не затирает */
   useEffect(() => {
     if (card.data && draft === null) setDraft(draftFromMailing(card.data));
@@ -185,12 +203,33 @@ function MailingEditor({ id }: { id: string | null }) {
     }, ut("mail.created"));
   };
 
+  /*
+   * 409 из правки или отправки: показать фразу сервера и перечитать карточку
+   * в фоне — если повідомлення успели отправить, экран сам перейдёт к
+   * отправленному. Поля формы при этом не трогаются (черновик заливается из
+   * карточки один раз), их заменит только «Перечитати». Прочие отказы —
+   * всплывающим сообщением действия, как любая ошибка.
+   */
+  const onStale = (e: unknown) => {
+    const message = staleMessage(e);
+    if (message === null) throw e;
+    setStale(message);
+    setSending(false);
+    card.reload();
+    return false;
+  };
+
   const save = () => {
     if (!draft || id === null) return;
     void run(async () => {
-      const updated = await api.updateMailing(id, draftToInput(draft));
-      /* сервер вернул вычищенные варианты (без пустых) — форма показывает их, а не набранное */
-      setDraft(draftFromMailing(updated));
+      try {
+        const updated = await api.updateMailing(id, draftToUpdate(draft));
+        /* сервер вернул вычищенные варианты (без пустых) — форма показывает их, а не набранное */
+        setDraft(draftFromMailing(updated));
+        setStale(null);
+      } catch (e) {
+        return onStale(e);
+      }
     }, ut("mail.saved"));
   };
 
@@ -199,16 +238,36 @@ function MailingEditor({ id }: { id: string | null }) {
    * нажимая «Зберегти», — уйти должно то, что он видит, а не то, что лежало
    * на сервере с прошлого раза. Группа адресатов уходит тем же сохранением:
    * поля на экране нет, и выбранное в окне надо донести до сервера до
-   * api.sendMailing, иначе он ответит err.mailingNoRecipients.
+   * api.sendMailing, иначе он ответит err.mailingNoRecipients. Отправляется
+   * ровно сохранённая редакция (model.ts, saveThenSend).
    */
   const send = () => {
     if (!draft || id === null) return;
     void run(async () => {
-      await api.updateMailing(id, draftToInput(draft));
-      await api.sendMailing(id);
+      try {
+        await saveThenSend(draft, {
+          save: (input) => api.updateMailing(id, input),
+          send: (revision) => api.sendMailing(id, revision),
+          apply: (saved) => setDraft(draftFromMailing(saved)),
+        });
+      } catch (e) {
+        return onStale(e);
+      }
       setSending(false);
+      setStale(null);
       card.reload();
     }, ut("mail.sent"));
+  };
+
+  /* «Перечитати»: черновик с сервера целиком — набранное пропадает, о чём сказано под отказом */
+  const reread = () => {
+    if (id === null) return;
+    void run(async () => {
+      const fresh = await api.mailing(id);
+      card.patch(fresh);
+      setDraft(draftFromMailing(fresh));
+      setStale(null);
+    });
   };
 
   /*
@@ -415,6 +474,24 @@ function MailingEditor({ id }: { id: string | null }) {
             ) : null}
           </>
         )}
+        {/*
+          Отказ «черновик изменили» — под формой, на месте, где на f20
+          стоит «Створити»: у существующего повідомлення там пусто, и блок
+          не сдвигает поля, которые человек сейчас читает. Стоит и под
+          отправленным: если черновик успели отправить из другой вкладки,
+          экран перейдёт к отправленному, и фраза объяснит почему. Янтарь —
+          «требует внимания»: решать человеку. Того же вида блок стоит под
+          заключением (ConclusionEditor).
+        */}
+        {stale ? (
+          <div role="alert" className="mt-[18px] rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
+            <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
+            <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("mail.rereadHint")}</p>
+            <Button variant="quiet" className="mt-[8px]" disabled={busy} onClick={reread}>
+              {ut("integrity.reread")}
+            </Button>
+          </div>
+        ) : null}
       </form>
       {sending ? (
         <SendDialog

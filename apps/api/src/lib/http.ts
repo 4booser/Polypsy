@@ -143,14 +143,8 @@ function failKeyedIssue(issues: z.ZodIssue[], fallbackPath: string): void {
   }
 }
 
-/** Разбор тела запроса по zod-схеме с осмысленной 400-й ошибкой */
-export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): Promise<z.output<S>> {
-  let raw: unknown;
-  try {
-    raw = await req.json();
-  } catch {
-    badRequest("err.jsonExpected");
-  }
+/** Разобранное тело — по схеме, с осмысленной 400-й ошибкой */
+function checkBody<S extends ZodTypeAny>(raw: unknown, schema: S): z.output<S> {
   const result = schema.safeParse(raw);
   if (!result.success) {
     failKeyedIssue(result.error.issues, "body");
@@ -160,6 +154,39 @@ export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): 
     badRequestDetail(detail);
   }
   return result.data;
+}
+
+/** Разбор тела запроса по zod-схеме с осмысленной 400-й ошибкой */
+export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): Promise<z.output<S>> {
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    badRequest("err.jsonExpected");
+  }
+  return checkBody(raw, schema);
+}
+
+/**
+ * Тело, которого может не быть вовсе.
+ *
+ * Для действий, у которых тело появилось позже самого маршрута: «Відправити»
+ * рассылки шло пустым POST, а теперь может назвать редакцию, которую
+ * отправляет (волна 15). Пустое тело — это «ничего не уточняю», и
+ * разбирается как `{}` той же схемой; присланное — как обычно, с теми же
+ * отказами, что у parseBody. Иначе прежний вызов без тела получал бы
+ * «ожидается JSON» на действии, которое вчера проходило.
+ */
+export async function parseOptionalBody<S extends ZodTypeAny>(req: Request, schema: S): Promise<z.output<S>> {
+  const text = await req.text();
+  if (!text.trim()) return checkBody({}, schema);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    badRequest("err.jsonExpected");
+  }
+  return checkBody(raw, schema);
 }
 
 /**

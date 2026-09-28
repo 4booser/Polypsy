@@ -1,4 +1,4 @@
-import type { Mailing, MailingInput } from "@quizzy/shared";
+import type { Mailing, MailingInput, MailingUpdateInput } from "@quizzy/shared";
 
 /**
  * Чистая часть раздела «Повідомлення» (розсилки): что лежит в черновике
@@ -17,6 +17,12 @@ export interface MailingDraft {
   options: string[];
   /** Пустая строка — адресат не выбран: селект не умеет null */
   patientGroupId: string;
+  /**
+   * Редакция, с которой черновик открыт (Mailing.revision); null — повідомлення
+   * ещё не заведено. Уходит в правку и отправку: сервер сверяет её с тем, что
+   * лежит у него, и поверх чужой правки отвечает 409 (волна 15).
+   */
+  revision: number | null;
 }
 
 export const mailingHref = (id: string) => `/mailings/${id}`;
@@ -38,7 +44,13 @@ export function cleanOptions(options: readonly string[]): string[] {
 }
 
 export function draftFromMailing(m: Mailing): MailingDraft {
-  return { title: m.title, body: m.body, options: [...m.options], patientGroupId: m.patientGroupId ?? "" };
+  return {
+    title: m.title,
+    body: m.body,
+    options: [...m.options],
+    patientGroupId: m.patientGroupId ?? "",
+    revision: m.revision,
+  };
 }
 
 /**
@@ -57,3 +69,41 @@ export function draftToInput(d: MailingDraft): MailingInput {
 
 /** Есть ли что сохранять: сервер требует непустые название и текст (min(1)) */
 export const isFilled = (d: MailingDraft) => d.title.trim().length > 0 && d.body.trim().length > 0;
+
+/**
+ * Тело «Зберегти»: то, что на экране, и редакция, поверх которой правили.
+ *
+ * Без редакции две вкладки (или автор и суперадмин) молча затирали правки
+ * друг друга: побеждал нажавший вторым. С ней сервер отвечает 409, и экран
+ * предлагает перечитать.
+ */
+export function draftToUpdate(d: MailingDraft): MailingUpdateInput {
+  return { ...draftToInput(d), ...(d.revision !== null && { baseRevision: d.revision }) };
+}
+
+export interface SendIo {
+  /** «Зберегти» — ответ: сохранённая рассылка с новой редакцией */
+  save: (input: MailingUpdateInput) => Promise<Mailing>;
+  /** «Відправити» ровно эту редакцию */
+  send: (revision: number) => Promise<unknown>;
+  /** Положить сохранённое на экран */
+  apply: (saved: Mailing) => void;
+}
+
+/**
+ * «Відправити» с экрана: сохранить то, что видно, и отправить ровно
+ * сохранённую редакцию.
+ *
+ * Сохранение нужно, потому что человек мог править и не нажать «Зберегти»:
+ * уйти должно то, что он видит. Отправка называет редакцию, которую вернуло
+ * сохранение, — если между двумя запросами черновик переписал кто-то
+ * другой (внешний разбор 2026-09-28, п. 1: иначе уходил чужой текст, да ещё
+ * прежним адресатам), сервер откажет 409, и не уйдёт ничего. Сохранённое
+ * ложится на экран сразу, до отправки: не удалась отправка — повтор не
+ * упрётся в конфликт с собственной правкой.
+ */
+export async function saveThenSend(d: MailingDraft, io: SendIo): Promise<void> {
+  const saved = await io.save(draftToUpdate(d));
+  io.apply(saved);
+  await io.send(saved.revision);
+}
