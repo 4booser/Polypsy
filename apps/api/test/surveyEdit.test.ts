@@ -246,6 +246,24 @@ describe("условия показа и коды вариантов в ново
     ]);
   });
 
+  test("ключ шкалы приходит по номеру пункта, а не в порядке строк базы", async () => {
+    /*
+     * Та же причина, что у условий показа, — и v1.16.0 встала на ней же: лист
+     * сверки МЛО брал в пример пропусков «первые» пункты шкалы, а на CI они
+     * пришли в другом порядке. Ключ записан задом наперёд — вставка идёт в
+     * этом же порядке, — а читается по номеру пункта.
+     */
+    const survey = await newSurvey();
+    const scales = content().scales;
+    scales[0]!.key = [...scales[0]!.key].reverse();
+    expect((await patch(survey.id, { scales })).status).toBe(200);
+    const after = (await raw(survey.id)).body;
+    expect(after.scales[0].items.map((i: { questionId: string }) => i.questionId)).toEqual([
+      after.questions[0].id,
+      after.questions[1].id,
+    ]);
+  });
+
   test("ссылка условия на вариант переводится на вариант новой версии", async () => {
     /*
      * Каждая версия заводит варианты с новыми id. Условие «показать, если

@@ -218,9 +218,29 @@ function pickNorm<T extends { sex: Sex | null; ageMin: number | null; ageMax: nu
     (r.sex === null || r.sex === sex) &&
     (r.ageMin === null || (age !== null && age >= r.ageMin)) &&
     (r.ageMax === null || (age !== null && age <= r.ageMax));
-  // сначала ищем самую конкретную норму, потом общую
+  return mostSpecific(rows.filter(fits));
+}
+
+/**
+ * Самая конкретная из подошедших строк нормы или таблицы стенов: сначала по
+ * полу, потом по возрасту, потом — более узкий возрастной интервал.
+ *
+ * Прежде сортировка смотрела только на пол, и из двух подошедших строк без
+ * пола (общая «все возрасты» и возрастная «18–29») побеждала та, что пришла
+ * первой, — то есть порядок строк в базе, который от прогона к прогону разный.
+ * Равные по конкретности строки остаются в порядке загрузки (сортировка
+ * устойчива, а загрузка упорядочена — lib/surveys.ts).
+ */
+function mostSpecific<T extends { sex: Sex | null; ageMin: number | null; ageMax: number | null }>(rows: T[]): T | null {
+  // ширина возрастного интервала; открытая граница — как 0 или 200 лет
+  const span = (r: T) => (r.ageMax ?? 200) - (r.ageMin ?? 0);
   return (
-    rows.filter(fits).sort((a, b) => Number(b.sex !== null) - Number(a.sex !== null))[0] ?? null
+    [...rows].sort(
+      (a, b) =>
+        Number(b.sex !== null) - Number(a.sex !== null) ||
+        Number(b.ageMin !== null || b.ageMax !== null) - Number(a.ageMin !== null || a.ageMax !== null) ||
+        span(a) - span(b),
+    )[0] ?? null
   );
 }
 
@@ -395,13 +415,15 @@ export function computeProfile(
         warn(norm ? "score.zeroSd" : "score.noNorm", { scale: t(scale.title) });
       }
     } else if (scale.normalization === "sten") {
-      const row = scale.stenTable.find(
-        (r) =>
-          (r.sex === null || r.sex === respondent.sex) &&
-          (r.ageMin === null || (respondent.age !== null && respondent.age >= r.ageMin)) &&
-          (r.ageMax === null || (respondent.age !== null && respondent.age <= r.ageMax)) &&
-          correctedScore >= r.rawMin &&
-          correctedScore <= r.rawMax,
+      const row = mostSpecific(
+        scale.stenTable.filter(
+          (r) =>
+            (r.sex === null || r.sex === respondent.sex) &&
+            (r.ageMin === null || (respondent.age !== null && respondent.age >= r.ageMin)) &&
+            (r.ageMax === null || (respondent.age !== null && respondent.age <= r.ageMax)) &&
+            correctedScore >= r.rawMin &&
+            correctedScore <= r.rawMax,
+        ),
       );
       if (row) value = row.sten;
       else {

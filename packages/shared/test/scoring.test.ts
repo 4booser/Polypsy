@@ -231,6 +231,51 @@ describe("нормирование", () => {
     const out = computeProfile(survey, qs.map((q) => answerYesNo(q, true)));
     expect(said(out.warnings).some((w) => w.includes("вне таблицы стенов"))).toBe(true);
   });
+
+  test("из подошедших норм и строк стенов берётся самая конкретная — в любом порядке строк", () => {
+    /*
+     * Прежде порядок решал только пол: из общей нормы «все возрасты» и
+     * возрастной «18–29» (обе без пола) побеждала первая в списке, а список
+     * приходил в порядке кучи базы. Теперь: пол, затем возраст, затем более
+     * узкий интервал — и одинаково при любом порядке.
+     */
+    const q = yesNoQuestion(0);
+    const norms = [
+      { id: "all", scaleId: "x", sex: null, ageMin: null, ageMax: null, mean: 0, sd: 1 },
+      { id: "wide", scaleId: "x", sex: null, ageMin: 18, ageMax: 64, mean: 0.5, sd: 1 },
+      { id: "young", scaleId: "x", sex: null, ageMin: 18, ageMax: 29, mean: 1, sd: 1 },
+    ];
+    const sten = [
+      { id: "s-all", scaleId: "x", sex: null, ageMin: null, ageMax: null, rawMin: 0, rawMax: 1, sten: 3 },
+      { id: "s-young", scaleId: "x", sex: null, ageMin: 18, ageMax: 29, rawMin: 0, rawMax: 1, sten: 7 },
+      { id: "s-male", scaleId: "x", sex: "male" as const, ageMin: null, ageMax: null, rawMin: 0, rawMax: 1, sten: 9 },
+    ];
+    for (const order of [(a: unknown[]) => a, (a: unknown[]) => [...a].reverse()]) {
+      const t = makeScale({
+        code: "T",
+        normalization: "tscore",
+        items: [{ questionId: q.id, matchKey: "yes", weight: 1 }],
+        norms: order(norms) as typeof norms,
+      });
+      const s = makeScale({
+        code: "S",
+        normalization: "sten",
+        items: [{ questionId: q.id, matchKey: "yes", weight: 1 }],
+        stenTable: order(sten) as typeof sten,
+      });
+      const survey = makeSurvey([q], [t, s]);
+      const at = (sex: "male" | "female", age: number | null) =>
+        computeProfile(survey, [answerYesNo(q, true)], { sex, age }).scores.map((x) => x.value);
+      // 25 лет: «18–29» уже «18–64» и конкретнее «все возрасты» — T = 50 + 10(1-1)/1; стен — возрастной
+      expect(at("female", 25)).toEqual([50, 7]);
+      // 40 лет: «18–64» — T = 50 + 10(1-0.5)/1
+      expect(at("female", 40)).toEqual([55, 3]);
+      // возраст неизвестен: только «все возрасты»
+      expect(at("female", null)).toEqual([60, 3]);
+      // мужчине стен по мужской строке — пол конкретнее возраста
+      expect(at("male", 25)[1]).toBe(9);
+    }
+  });
 });
 
 /* ── Интерпретация и достоверность ────────────────────────────────────────── */
