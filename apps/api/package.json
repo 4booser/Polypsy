@@ -28,8 +28,8 @@
   "dependencies": {
     "@quizzy/shared": "workspace:*",
     "drizzle-orm": "^0.38.3",
-    "hono": "^4.6.16",
-    "nodemailer": "^9.0.5",
+    "hono": "^4.13.5",
+    "nodemailer": "^9.1.1",
     "postgres": "^3.4.9",
     "zod": "^3.24.1",
     "zod-to-json-schema": "^3.25.2"
