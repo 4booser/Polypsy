@@ -1062,7 +1062,12 @@ describe("устройства и удалённое стирание", () => {
     });
 
     // пояснение — на языке запроса (волна 14); по-русски — прежними словами
-    const asked = await api(`/api/devices/${id}/wipe`, root.token, { method: "POST", headers: { "Accept-Language": "ru" } });
+    // стирание — для пары «установка + учётная запись» (миграция 0113): чьё — называется явно
+    const asked = await api(`/api/devices/${id}/wipe`, root.token, {
+      method: "POST",
+      headers: { "Accept-Language": "ru" },
+      body: JSON.stringify({ userId: adminA.id }),
+    });
     expect(asked.status).toBe(200);
     // ответ обязан сказать, чего команда НЕ делает
     expect(asked.body.note).toContain("следующий раз");
@@ -1092,7 +1097,10 @@ describe("устройства и удалённое стирание", () => {
       body: JSON.stringify({ deviceId: id }),
     });
 
-    const denied = await api(`/api/devices/${id}/wipe`, adminB.token, { method: "POST" });
+    const denied = await api(`/api/devices/${id}/wipe`, adminB.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: adminA.id }),
+    });
     expect(denied.status).toBe(403);
   });
 
@@ -1100,14 +1108,15 @@ describe("устройства и удалённое стирание", () => {
     /*
      * Два сотрудника могли по очереди войти на одном планшете. Стирание по
      * чужому запросу выглядело бы как случайная потеря работы, поэтому
-     * команда действует только для того, за кем устройство закреплено сейчас.
+     * команда действует только для той привязки «установка + учётная
+     * запись», которой её дали (миграция 0113, test/devices.test.ts).
      */
     const id = deviceOf("d");
     await api("/api/devices/checkin", adminA.token, {
       method: "POST",
       body: JSON.stringify({ deviceId: id }),
     });
-    await api(`/api/devices/${id}/wipe`, root.token, { method: "POST" });
+    await api(`/api/devices/${id}/wipe`, root.token, { method: "POST", body: JSON.stringify({ userId: adminA.id }) });
 
     // тот же планшет, но вошёл другой сотрудник
     const other = await api("/api/devices/checkin", adminB.token, {
