@@ -5,6 +5,7 @@ import {
   mailingInboxQuery,
   mailingInputSchema,
   mailingListQuery,
+  mailingSendSchema,
   mailingUpdateSchema,
   type Mailing,
   type MailingCard,
@@ -21,7 +22,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { namesOf } from "../lib/names";
 import { decryptField, encryptField } from "../lib/crypto";
-import { badRequest, conflict, notFound, parseBody, parseQuery } from "../lib/http";
+import { badRequest, conflict, notFound, parseBody, parseOptionalBody, parseQuery } from "../lib/http";
 import {
   accessiblePatientIds,
   assertMailingAccess,
@@ -66,6 +67,7 @@ function toMailing(row: MailingRow): Mailing {
     status: row.status,
     patientGroupId: row.patientGroupId,
     patientIds: row.patientIds ?? [],
+    revision: row.revision,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     sentAt: row.sentAt,
@@ -158,6 +160,42 @@ async function expandRecipients(user: User, row: MailingRow): Promise<string[]> 
     .from(users)
     .where(and(inArray(users.id, inZone), eq(users.role, "user"), isNull(users.disabledAt)));
   return patients.map((p) => p.id);
+}
+
+/**
+ * Строка рассылки под замком — до конца транзакции запроса.
+ *
+ * Правка и отправка решают по тому, что прочитали, и пишут потом: правка —
+ * поверх какой редакции, отправка — кому и что. Прежде отправка читала
+ * черновик и разворачивала адресатов ДО того, как брала строку, а условие
+ * `status = 'draft'` в её UPDATE пропускало правку, успевшую записаться в
+ * промежутке: черновик оставался черновиком. Уходил новый текст прежним
+ * адресатам (внешний разбор 2026-09-28, п. 1).
+ *
+ * Под FOR UPDATE второй из двух одновременных запросов ждёт, пока первый
+ * закоммитит, и читает уже его результат: отправка после правки уходит
+ * новым адресатам с новым текстом, правка после отправки получает «уже
+ * отправлено». Замок берётся ПОСЛЕ assertMailingAccess, а не вместо него:
+ * чужая рассылка отвечает «не найдено» без ожидания в очереди за чужим
+ * замком. Каждый запрос и так идёт одной транзакцией (её открывает
+ * контекст запроса), поэтому замок живёт до ответа.
+ */
+async function lockMailing(id: string): Promise<MailingRow> {
+  const [row] = await db.select().from(mailings).where(eq(mailings.id, id)).for("update");
+  // удалили, пока ждали замка: для правки и отправки это то же «не найдено»
+  if (!row) notFound("err.mailingNotFound");
+  return row;
+}
+
+/**
+ * Сверка редакции: экран назвал, поверх какой правил или какую отправляет.
+ *
+ * Не названа — сверять не с чем (внешний вызов, старая вкладка): остаётся
+ * сериализация на строке, согласованная, но без вопроса «то ли человек
+ * видел». Названа и разошлась — 409, и ничего не записано и не разослано.
+ */
+function assertRevision(row: MailingRow, seen: number | undefined) {
+  if (seen !== undefined && seen !== row.revision) conflict("err.mailingChanged");
 }
 
 /* ═══════════ автор: список, форма, меню-шестерня ═══════════ */
@@ -482,14 +520,23 @@ mailingRoutes.get("/:id", ...staffOnly, async (c) => {
  * «Так» одних относится к одному вопросу, а «Так» других — к другому, и
  * счётчик по вариантам складывал бы ответы на разные вопросы. Отказ — 409,
  * состояние, а не форма: текст в запросе может быть безупречен.
+ *
+ * Черновик правят и вдвоём (две вкладки, автор и суперадмин): правка
+ * называет редакцию, поверх которой велась (`baseRevision`), и поверх чужой
+ * получает 409 err.mailingChanged, а не затирает её молча.
  */
 mailingRoutes.patch("/:id", ...staffOnly, async (c) => {
   const user = c.get("user");
-  const row = await assertMailingAccess(user, c.req.param("id"));
-  if (row.status === "sent") conflict("err.mailingAlreadySent");
+  const seen = await assertMailingAccess(user, c.req.param("id"));
+  if (seen.status === "sent") conflict("err.mailingAlreadySent");
 
   const input = await parseBody(c.req.raw, mailingUpdateSchema);
   await assertAddressees(user, input);
+
+  // решаем по строке под замком, а не по прочитанной до очереди (см. lockMailing)
+  const row = await lockMailing(seen.id);
+  if (row.status === "sent") conflict("err.mailingAlreadySent");
+  assertRevision(row, input.baseRevision);
 
   const changes = {
     ...(input.title !== undefined && { titleEnc: encryptField(input.title)! }),
@@ -501,19 +548,23 @@ mailingRoutes.patch("/:id", ...staffOnly, async (c) => {
   // пустое тело — не ошибка и не пустой UPDATE (drizzle на нём падает)
   if (Object.keys(changes).length === 0) return c.json(toMailing(row));
 
+  /*
+   * Каждая правка — новая редакция. Условия по состоянию и редакции в самом
+   * UPDATE — вторая линия под замком: если маршрут когда-нибудь позовут вне
+   * транзакции запроса, замок отпустится сразу, и сторожем останется запись.
+   */
   const [updated] = await db
     .update(mailings)
-    .set({ ...changes, updatedAt: new Date().toISOString() })
-    .where(and(eq(mailings.id, row.id), eq(mailings.status, "draft")))
+    .set({ ...changes, revision: row.revision + 1, updatedAt: new Date().toISOString() })
+    .where(and(eq(mailings.id, row.id), eq(mailings.status, "draft"), eq(mailings.revision, row.revision)))
     .returning();
-  // между проверкой и записью рассылку успели отправить — тот же отказ
-  if (!updated) conflict("err.mailingAlreadySent");
+  if (!updated) conflict("err.mailingChanged");
 
   await audit(c, {
     action: "mailing.update",
     resourceType: "mailing",
     resourceId: row.id,
-    details: { fields: Object.keys(changes) },
+    details: { fields: Object.keys(changes), revision: updated.revision },
   });
   return c.json(toMailing(updated));
 });
@@ -530,6 +581,12 @@ mailingRoutes.patch("/:id", ...staffOnly, async (c) => {
  * половины выглядят рабочими по отдельности. Условие `status = 'draft'` в
  * самом UPDATE закрывает двойное нажатие: второй запрос увидит ноль строк.
  *
+ * Правка, пришедшая одновременно, стоит в очереди на строке (lockMailing):
+ * адресаты и текст уходят из одной редакции. Какой — решает отправитель:
+ * тело `{ revision }` называет редакцию, которую он видел, и если черновик
+ * успели переписать, ответ 409 и не уходит ничего (волна 15). Без тела
+ * уходит нынешняя редакция, как прежде.
+ *
  * В журнал — дважды: сводкой с числом адресатов и поимённо, как у назначения
  * на группу. Пуш уходит фоновым проходом (lib/mailingPush.ts), не отсюда:
  * маршрут живёт в транзакции запроса, и сеть внутри неё держала бы
@@ -537,8 +594,18 @@ mailingRoutes.patch("/:id", ...staffOnly, async (c) => {
  */
 mailingRoutes.post("/:id/send", ...staffOnly, async (c) => {
   const user = c.get("user");
-  const row = await assertMailingAccess(user, c.req.param("id"));
+  const seen = await assertMailingAccess(user, c.req.param("id"));
+  if (seen.status === "sent") conflict("err.mailingAlreadySent");
+  const input = await parseOptionalBody(c.req.raw, mailingSendSchema);
+
+  /*
+   * Адресаты разворачиваются из строки под замком: пока отправка их
+   * считает и записывает, правка ждёт, и текст с адресатами уходят из одной
+   * редакции (см. lockMailing).
+   */
+  const row = await lockMailing(seen.id);
   if (row.status === "sent") conflict("err.mailingAlreadySent");
+  assertRevision(row, input.revision);
 
   const targets = await expandRecipients(user, row);
   if (!targets.length) badRequest("err.mailingNoRecipients");
@@ -548,7 +615,7 @@ mailingRoutes.post("/:id/send", ...staffOnly, async (c) => {
     const [updated] = await tx
       .update(mailings)
       .set({ status: "sent", sentAt, updatedAt: sentAt })
-      .where(and(eq(mailings.id, row.id), eq(mailings.status, "draft")))
+      .where(and(eq(mailings.id, row.id), eq(mailings.status, "draft"), eq(mailings.revision, row.revision)))
       .returning({ id: mailings.id });
     if (!updated) return false;
     await tx
@@ -562,7 +629,12 @@ mailingRoutes.post("/:id/send", ...staffOnly, async (c) => {
     action: "mailing.send",
     resourceType: "mailing",
     resourceId: row.id,
-    details: { recipients: targets.length, patientGroupId: row.patientGroupId, options: (row.options ?? []).length },
+    details: {
+      recipients: targets.length,
+      patientGroupId: row.patientGroupId,
+      options: (row.options ?? []).length,
+      revision: row.revision,
+    },
   });
   for (const userId of targets) {
     await audit(c, {

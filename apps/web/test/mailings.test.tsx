@@ -3,9 +3,18 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { MailingListItem } from "@quizzy/shared";
+import type { Mailing, MailingListItem, MailingUpdateInput } from "@quizzy/shared";
 import { LangProvider } from "../src/lang";
-import { cleanOptions, draftToInput, isFilled, MAX_OPTIONS } from "../src/pages/messages/model";
+import {
+  cleanOptions,
+  draftFromMailing,
+  draftToInput,
+  draftToUpdate,
+  isFilled,
+  MAX_OPTIONS,
+  type MailingDraft,
+  saveThenSend,
+} from "../src/pages/messages/model";
 import { Row } from "../src/pages/messages/MailingList";
 import { railGroups } from "../src/shell/Rail";
 import { TOP } from "../src/shell/Topbar";
@@ -68,17 +77,88 @@ describe("черновик повідомлення", () => {
 
   test("невыбранная группа уходит null, а не пустой строкой", () => {
     /* селект не умеет null — пустая строка живёт только на экране; сервер ждёт nullish */
-    const input = draftToInput({ title: " Тема ", body: "Текст", options: ["Так"], patientGroupId: "" });
+    const input = draftToInput({
+      title: " Тема ",
+      body: "Текст",
+      options: ["Так"],
+      patientGroupId: "",
+      revision: 3,
+    });
     expect(input.patientGroupId).toBeNull();
     expect(input.title).toBe("Тема");
     /* поимённого списка экран не ведёт и не должен стирать его пустым массивом */
     expect("patientIds" in input).toBe(false);
+    /* заведение нового — не правка: редакции у него ещё нет, и в POST она не уходит */
+    expect("baseRevision" in input).toBe(false);
   });
 
   test("сохранять нечего без названия и текста", () => {
-    expect(isFilled({ title: " ", body: "Текст", options: [], patientGroupId: "" })).toBe(false);
-    expect(isFilled({ title: "Тема", body: "", options: [], patientGroupId: "" })).toBe(false);
-    expect(isFilled({ title: "Тема", body: "Текст", options: [], patientGroupId: "" })).toBe(true);
+    expect(isFilled({ title: " ", body: "Текст", options: [], patientGroupId: "", revision: null })).toBe(false);
+    expect(isFilled({ title: "Тема", body: "", options: [], patientGroupId: "", revision: null })).toBe(false);
+    expect(isFilled({ title: "Тема", body: "Текст", options: [], patientGroupId: "", revision: null })).toBe(true);
+  });
+});
+
+/**
+ * Редакция черновика (волна 15, внешний разбор 2026-09-28, п. 1).
+ *
+ * Правка и отправка, пришедшие одновременно, отправляли новый текст прежним
+ * адресатам. Сервер теперь сверяет редакцию; здесь — что экран её называет,
+ * и называет ту, что надо: правка — ту, с которой открыт черновик; отправка
+ * — ту, что вернуло её собственное сохранение, а не ту, что была на экране
+ * до него (иначе человек упирался бы в 409 от своей же правки).
+ */
+describe("редакция черновика", () => {
+  const MAILING: Mailing = {
+    id: "m1",
+    authorId: "a1",
+    title: "Тема",
+    body: "Текст",
+    options: ["Так", "Ні"],
+    status: "draft",
+    patientGroupId: "g1",
+    patientIds: [],
+    revision: 4,
+    createdAt: "2026-09-28T08:00:00.000Z",
+    updatedAt: "2026-09-28T08:00:00.000Z",
+    sentAt: null,
+    hiddenAt: null,
+  };
+
+  test("черновик открывается с редакцией карточки, правка уходит поверх неё", () => {
+    const d = draftFromMailing(MAILING);
+    expect(d.revision).toBe(4);
+    expect(draftToUpdate({ ...d, body: "Новий текст" })).toMatchObject({ body: "Новий текст", baseRevision: 4 });
+  });
+
+  test("отправляется ровно сохранённая редакция, и сохранённое ложится на экран до отправки", async () => {
+    const calls: string[] = [];
+    const draft: MailingDraft = { ...draftFromMailing(MAILING), body: "Правка перед відправленням" };
+    await saveThenSend(draft, {
+      save: async (input: MailingUpdateInput) => {
+        calls.push(`save:${input.baseRevision}:${input.body}`);
+        return { ...MAILING, body: input.body!, revision: 5 };
+      },
+      apply: (saved) => calls.push(`apply:${saved.revision}`),
+      send: async (revision) => calls.push(`send:${revision}`),
+    });
+    expect(calls).toEqual(["save:4:Правка перед відправленням", "apply:5", "send:5"]);
+  });
+
+  test("сохранение отклонено — отправки нет вовсе", async () => {
+    /* 409 на сохранении значит, что черновик переписали: отправлять нечего, пока человек не перечитал */
+    let sent = false;
+    const refused = saveThenSend(draftFromMailing(MAILING), {
+      save: async () => {
+        throw new Error("409");
+      },
+      apply: () => {},
+      send: async () => {
+        sent = true;
+      },
+    });
+    await expect(refused).rejects.toThrow("409");
+    expect(sent).toBe(false);
   });
 });
 

@@ -1242,6 +1242,12 @@ export interface Mailing {
   /** Адресаты черновика: группа пациентов и/или поимённый список */
   patientGroupId: string | null;
   patientIds: string[];
+  /**
+   * Редакция черновика: растёт с каждой правкой. Экран возвращает её в
+   * правке (`baseRevision`) и отправке (`revision`): поверх чужой правки
+   * сервер ответит 409, а не сохранит или разошлёт то, чего человек не видел.
+   */
+  revision: number;
   createdAt: string;
   updatedAt: string;
   sentAt: string | null;

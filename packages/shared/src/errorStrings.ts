@@ -1549,6 +1549,30 @@ export const ERRORS = {
     ru: "Учётная запись на вашей ступени или выше — изменить её может только старший по должности",
     en: "This account is at your level or above — only someone senior to you can change it",
   },
+
+  /* ── w15:transitions ── */
+  /*
+   * Отказы проигравшему в гонке за одну строку (волна 15). Запрос верный,
+   * не сходится состояние: пока человек смотрел на экран, запись изменил
+   * кто-то другой. Поэтому все три фразы говорят, что НИЧЕГО не записано,
+   * и что делать — перечитать: экран без этого знания повторил бы попытку
+   * с тем же устаревшим основанием.
+   */
+  "err.referralChanged": {
+    uk: "Направлення щойно змінили, а ваша дія стосувалася попереднього стану, тож її не записано. Перегляньте поточний стан і повторіть, якщо потрібно",
+    ru: "Направление только что изменили, а ваше действие относилось к прежнему состоянию, поэтому оно не записано. Посмотрите текущее состояние и повторите, если нужно",
+    en: "The referral was just changed and your action was based on its previous state, so it wasn’t recorded. Check its current state and try again if needed",
+  },
+  "err.mailingChanged": {
+    uk: "Чернетку змінили вже після того, як ви її відкрили, тож нічого не збережено й не відправлено. Перечитайте повідомлення",
+    ru: "Черновик изменили уже после того, как вы его открыли, поэтому ничего не сохранено и не отправлено. Перечитайте сообщение",
+    en: "The draft was changed after you opened it, so nothing was saved or sent. Read the message again",
+  },
+  "err.safetyPlanChanged": {
+    uk: "План безпеки змінився: зараз версія {current}, а правка велася поверх {base}. Вашу редакцію не збережено — перечитайте план",
+    ru: "План безопасности изменился: сейчас версия {current}, а правка велась поверх {base}. Ваша редакция не сохранена — перечитайте план",
+    en: "The safety plan has changed: it’s now at version {current}, but you were editing version {base}. Your edit wasn’t saved — read the plan again",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
