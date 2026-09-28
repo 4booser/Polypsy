@@ -25,7 +25,7 @@ import {
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { closeMissed, isOverdue } from "../lib/batteries";
+import { batteryProgress, closeMissed, isExecutable, isOverdue } from "../lib/batteries";
 import { dayOf, deadlineOf } from "../lib/day";
 import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
@@ -55,9 +55,25 @@ async function assertBatteryAccess(user: Parameters<typeof accessibleGroupIds>[0
   return row;
 }
 
+/** Шаг набора и можно ли его методику сейчас пройти — для расчёта прогресса (lib/batteries.ts) */
+type LoadedItem = BatteryItem & { executable: boolean };
+
+/** Шаг набора наружу — без служебного признака расчёта */
+function toBatteryItem(i: LoadedItem): BatteryItem {
+  return {
+    surveyId: i.surveyId,
+    title: i.title,
+    position: i.position,
+    required: i.required,
+    administration: i.administration,
+    questionCount: i.questionCount,
+    medianMinutes: i.medianMinutes,
+  };
+}
+
 /** Состав батарей одним запросом: без него список из десяти батарей — это 10 запросов */
-async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, BatteryItem[]>> {
-  const result = new Map<string, BatteryItem[]>();
+async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, LoadedItem[]>> {
+  const result = new Map<string, LoadedItem[]>();
   if (!batteryIds.length) return result;
 
   const rows = await db
@@ -68,6 +84,8 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
       required: batteryItems.required,
       title: surveys.title,
       administration: surveys.administration,
+      status: surveys.status,
+      archivedAt: surveys.archivedAt,
       questionCount: sql<number>`(select count(*) from questions q
         where q.version_id = "surveys"."current_version_id" and q.type <> 'info')`,
       // ориентир длительности берём из фактических прохождений, а не из
@@ -78,7 +96,7 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
     .from(batteryItems)
     .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
     .where(inArray(batteryItems.batteryId, batteryIds))
-    .orderBy(batteryItems.position);
+    .orderBy(batteryItems.batteryId, batteryItems.position);
 
   for (const r of rows) {
     const list = result.get(r.batteryId) ?? [];
@@ -90,6 +108,7 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
       administration: r.administration as Administration,
       questionCount: Number(r.questionCount ?? 0),
       medianMinutes: r.medianMs ? Math.round((Number(r.medianMs) / 60000) * 10) / 10 : null,
+      executable: isExecutable(r),
     });
     result.set(r.batteryId, list);
   }
@@ -146,7 +165,7 @@ batteryRoutes.get("/", requireStaff, requirePermission("batteries.manage"), asyn
     strictOrder: r.battery.strictOrder,
     archived: r.battery.archived,
     createdAt: r.battery.createdAt,
-    items: items.get(r.battery.id) ?? [],
+    items: (items.get(r.battery.id) ?? []).map(toBatteryItem),
     activeAssignments: Number(r.activeAssignments ?? 0),
   }));
   return c.json({ items: result });
@@ -261,49 +280,6 @@ batteryRoutes.delete("/:id", requireStaff, requirePermission("batteries.manage")
   return c.body(null, 204);
 });
 
-/**
- * Прогресс по назначению.
- *
- * Засчитываются только прохождения, завершённые после назначения: старое
- * обследование той же методикой не закрывает новое назначение, иначе повторный
- * замер закрывался бы сам собой в момент выдачи.
- */
-function buildSteps(
-  items: BatteryItem[],
-  strictOrder: boolean,
-  assignedAt: string,
-  completions: { surveyId: string; responseId: string; submittedAt: string }[],
-): BatteryStep[] {
-  const done = new Map<string, { responseId: string; submittedAt: string }>();
-  for (const r of completions) {
-    if (r.submittedAt < assignedAt) continue;
-    const prev = done.get(r.surveyId);
-    if (!prev || r.submittedAt > prev.submittedAt) done.set(r.surveyId, r);
-  }
-
-  let blocked = false;
-  return items.map((item) => {
-    const hit = done.get(item.surveyId);
-    let state: BatteryStep["state"];
-    if (hit) state = "done";
-    else if (item.administration === "clinician") {
-      // параллельная дорожка специалиста: не занимает очередь и не блокирует её
-      state = "available";
-    } else if (blocked) state = "locked";
-    else {
-      state = "current";
-      if (strictOrder) blocked = true;
-    }
-    if (!strictOrder && state === "current") state = "available";
-    return {
-      ...item,
-      state,
-      responseId: hit?.responseId ?? null,
-      submittedAt: hit?.submittedAt ?? null,
-    };
-  });
-}
-
 async function loadAssignments(where: SQL | undefined, lang: Lang) {
   const rows = await db
     .select({
@@ -337,9 +313,19 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
     const mine = completions
       .filter((x) => x.userId === r.user.id && x.submittedAt)
       .map((x) => ({ surveyId: x.surveyId, responseId: x.responseId, submittedAt: x.submittedAt! }));
-    const steps = buildSteps(list, r.battery.strictOrder, r.assignment.assignedAt, mine);
-    const required = steps.filter((s) => s.required);
-    const doneRequired = required.filter((s) => s.state === "done").length;
+    /*
+     * Прогресс — тем же расчётом, что допуск к сдаче и завершение
+     * назначения (lib/batteries.ts, batteryProgress): экран не может
+     * показать «откроется позже» там, где сервер пустит, или «пройдено» там,
+     * где назначение не закроется.
+     */
+    const progress = batteryProgress(list, r.battery.strictOrder, r.assignment.assignedAt, mine);
+    const steps: BatteryStep[] = progress.steps.map((s) => ({
+      ...toBatteryItem(s),
+      state: s.state,
+      responseId: s.responseId,
+      submittedAt: s.submittedAt,
+    }));
     return {
       id: r.assignment.id,
       batteryId: r.battery.id,
@@ -357,8 +343,8 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
         !r.assignment.completedAt &&
         !r.assignment.cancelledAt &&
         parseTs(r.assignment.dueAt) < nowMs,
-      doneRequired,
-      totalRequired: required.length,
+      doneRequired: progress.doneRequired,
+      totalRequired: progress.totalRequired,
       steps,
     };
   });
@@ -445,7 +431,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
       note: input.note ?? null,
     });
     /*
-     * Доступ — через grantAccess с extendOnly: истёкший продлевается,
+     * Доступ — через grantAccess с term "extend": истёкший продлевается,
      * более долгий не укорачивается. Прежде стояло onConflictDoNothing
      * («назначение поверх существующего доступа не должно его отзывать»), и
      * истёкший доступ оставался истёкшим: набор назначен, а методика из него
@@ -460,7 +446,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
         expiresAt: dueAt,
         note: noteCode("note.battery", { title: battery.title }),
       })),
-      { extendOnly: true },
+      { term: "extend" },
     );
   });
 

@@ -207,7 +207,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
                 <td>
                   {a.cancelledAt ? (
                     <span className="text-muted">{ut("bt.cancelledOn")} {day(a.cancelledAt)}</span>
-                  ) : a.doneRequired === a.totalRequired ? (
+                  ) : a.completedAt || (a.totalRequired > 0 && a.doneRequired === a.totalRequired) ? (
                     <span className="good">{ut("mark.passed")}</span>
                   ) : (
                     <button
@@ -296,6 +296,7 @@ function StepTrack({ steps }: { steps: BatteryStep[] }) {
     current: ut("bt.stepCurrent"),
     available: ut("bt.stepAvailable"),
     locked: ut("bt.stepLocked"),
+    retired: ut("mark.retired"),
   };
   return (
     <span

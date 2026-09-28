@@ -66,7 +66,8 @@ export const { createSurveySchema } = await import("@quizzy/shared");
 export const { sr45 } = await import("../src/instruments/sr45");
 export const { eq, and, isNull, sql } = await import("drizzle-orm");
 
-const { migrate } = await import("drizzle-orm/postgres-js/migrator");
+/* миграции — тем же входом, что выкатка: со сверкой журнала (src/db/migrations.ts) */
+const { runMigrations } = await import("../src/db/migrations");
 
 export interface Person {
   id: string;
@@ -162,7 +163,7 @@ export function appRequest(path: string, init: RequestInit = {}): Promise<Respon
   return asAppRole(async () => ownerApp.request(path, init));
 }
 
-await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
+await runMigrations(db);
 /*
  * Набор встроенной роли приводится к справочнику до создания учётных
  * записей: миграция заводит саму роль, а её права задаёт код.

@@ -23,7 +23,9 @@ import {
   type SurveyListPage,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import { batteries, responses, surveyVersions, surveys } from "../db/schema";
+import { closeCompletedForSurvey } from "../lib/batteries";
 import { badRequest, conflict, forbidden, issueKey, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { attachContent, createVersion, getSurvey, surveyToDraft, versionContent, type Content } from "../lib/surveys";
 import { audit } from "../lib/audit";
@@ -579,6 +581,15 @@ surveyRoutes.patch("/:id", requireStaff, requirePermission("surveys.edit"), asyn
     await createVersion(id, next, c.get("user").id, input.versionNote, current ?? undefined);
   }
 
+  /*
+   * Снята с публикации — пройти её больше нельзя, и в наборах она больше не
+   * держит завершение (lib/batteries.ts, closeCompletedForSurvey). Под
+   * системной ролью: назначения — автоматика поверх решения человека.
+   */
+  if (existing.status === "published" && row!.status !== "published") {
+    await asSystem(() => closeCompletedForSurvey(id));
+  }
+
   await audit(c, {
     action: goingLive ? "survey.publish" : "survey.update",
     resourceType: "survey",
@@ -1005,6 +1016,8 @@ surveyRoutes.delete("/:id", requireStaff, requirePermission("surveys.publish"), 
     .update(surveys)
     .set({ archivedAt: new Date().toISOString(), archivedBy: user.id })
     .where(eq(surveys.id, id));
+  // снятую нельзя пройти — в наборах она больше не держит завершение (lib/batteries.ts)
+  await asSystem(() => closeCompletedForSurvey(id));
 
   await audit(c, {
     action: "survey.archive",

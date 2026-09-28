@@ -150,7 +150,7 @@ export async function applyInvite(
           expiresAt: null,
           note: noteCode("note.invite"),
         },
-      ]);
+      ], { term: "set" });
     }
   }
 
@@ -213,6 +213,7 @@ export async function applyInvite(
             expiresAt: null,
             note: noteCode("note.invite"),
           })),
+          { term: "set" },
         );
       }
     }

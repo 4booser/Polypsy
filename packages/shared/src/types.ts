@@ -1869,6 +1869,16 @@ export interface ScoreResult {
   /** Процент от максимума, 0–100 */
   percent: number;
   band: {
+    /**
+     * id полосы версии (scale_bands.id) — устойчивая связь с полосой, по
+     * которой автоматика (каскад, lib/cascade.ts) находит, что на ней
+     * прописано. Подпись для этого не годится: это отображаемая строка, и у
+     * двух полос шкалы она может совпасть — тогда срабатывали обе (внешний
+     * разбор 2026-09-28). null — результат собран из сохранённого балла
+     * (response_scores хранит подпись и тяжесть, но не полосу): такому
+     * результату автоматика не верит и ничего по нему не назначает.
+     */
+    id: string | null;
     label: string;
     severity: Severity;
     description: string | null;
@@ -2594,7 +2604,14 @@ export interface Battery {
   activeAssignments: number;
 }
 
-export type BatteryProgressState = "done" | "current" | "locked" | "available";
+/**
+ * Состояние шага назначения (считает сервер, lib/batteries.ts, batteryProgress).
+ *
+ * "retired" — методику шага сейчас пройти нельзя: снята с использования или
+ * с публикации. Такой шаг не запирает следующие и не входит в обязательные
+ * (doneRequired / totalRequired); пройденный до снятия остаётся "done".
+ */
+export type BatteryProgressState = "done" | "current" | "locked" | "available" | "retired";
 
 export interface BatteryStep extends BatteryItem {
   state: BatteryProgressState;
@@ -2615,6 +2632,12 @@ export interface BatteryAssignment {
   note: string | null;
   /** Просрочено: срок прошёл, а обязательные методики не пройдены */
   overdue: boolean;
+  /**
+   * Обязательные шаги — те, что можно пройти или уже пройдены: снятая с
+   * использования непройденная методика в счёт не входит (state "retired").
+   * doneRequired === totalRequired — то же условие, по которому сервер
+   * закрывает назначение.
+   */
   doneRequired: number;
   totalRequired: number;
   steps: BatteryStep[];
