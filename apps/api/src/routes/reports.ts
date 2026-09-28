@@ -23,7 +23,8 @@ import { env } from "../env";
 import { audit } from "../lib/audit";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
 import { percentileOf } from "../lib/norms";
-import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
+import { assertResponseRead } from "../lib/clinicalRead";
+import { assertPatientAccess, isStaff } from "../lib/scope";
 import { fullNameOf, toPublicUser } from "../lib/auth";
 import { claimReportLink, issueReportLink, REPORT_LINK_PREFIX, REPORT_LINK_TTL_MS, type ReportLinkRow } from "../lib/reportLinks";
 import { namesOf } from "../lib/names";
@@ -131,14 +132,19 @@ function ageText(lang: Lang, age: number): string {
  * одноразовой ссылки на него и открытие этой ссылки браузером (мобилка,
  * волна 14 — ниже). Копии разошлись бы на первой же правке, а расхождение
  * здесь означало бы, что ссылкой открывается то, что по заголовку закрыто.
+ *
+ * Кто вправе — решает не этот файл, а lib/clinicalRead.ts: своё прохождение
+ * — сам обследуемый, чужое — сотрудник с правом читать данные пациентов в
+ * зоне методики. Прежде здесь стояли роль и зона, без права, и сотрудник,
+ * которому patients.read отняли исключением, печатал лист с ФИО и
+ * подписанным заключением и выдавал на него ссылку — при том что само
+ * заключение ему отвечало 403 (волна 15, внешний разбор, P1).
  */
-async function reportable(user: User, responseId: string, lang: Lang) {
+async function reportable(c: Context<AppEnv>, user: User, responseId: string, lang: Lang) {
   const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
   if (!response) notFound("err.responseNotFound");
 
-  const own = response.userId === user.id;
-  if (!own && !isStaff(user)) forbidden("err.conclusionAccessDenied");
-  if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
+  await assertResponseRead(c, user, response);
 
   const survey = await getSurveyForResponse(response.id, lang);
   if (!survey) notFound("err.surveyNotFound");
@@ -179,7 +185,7 @@ async function responseReport(
   lang: Lang,
   via?: { linkId: string },
 ): Promise<string> {
-  const { response, survey } = await reportable(user, responseId, lang);
+  const { response, survey } = await reportable(c, user, responseId, lang);
   const say = sayer(lang);
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
@@ -339,7 +345,7 @@ reportRoutes.post("/responses/:id/link", async (c) => {
   const user = c.get("user");
   if (user.impersonation) forbidden("err.impersonationReadOnly");
   const lang = langOf(c);
-  const { response } = await reportable(user, c.req.param("id"), lang);
+  const { response } = await reportable(c, user, c.req.param("id"), lang);
   const link = await issueReportLink({ userId: user.id, responseId: response.id, lang });
   await audit(c, {
     action: "report.link_issue",
