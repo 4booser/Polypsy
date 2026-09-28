@@ -48,7 +48,7 @@ export function score(over: Partial<ResponseDetailScore> = {}): ResponseDetailSc
     normalization: "raw",
     maxScore: 27,
     percent: 44,
-    band: { label: "Помірна", severity: "moderate", description: null, grade: null, recommendation: null },
+    band: { id: "b3", label: "Помірна", severity: "moderate", description: null, grade: null, recommendation: null },
     bands: [
       band("b3", 10, 14, "Помірна", "moderate", true),
       band("b1", 0, 4, "Мінімальна", "none"),

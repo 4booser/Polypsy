@@ -1062,7 +1062,7 @@ responseRoutes.get("/responses/:id", async (c) => {
     scores: (resultsShownTo(user, survey) ? scoreRows : []).map((s) => {
       const scale = scaleTitles.get(s.scaleId);
       const band = s.bandLabel
-        ? { label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
+        ? { id: null, label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
         : null;
       /*
        * Лестница полос — все ступени шкалы той версии, которую человек
@@ -1202,7 +1202,7 @@ async function withScores(
       maxScore: s.maxScore,
       percent: s.percent,
       band: s.bandLabel
-        ? { label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
+        ? { id: null, label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
         : null,
     });
     byResponse.set(s.responseId, list);

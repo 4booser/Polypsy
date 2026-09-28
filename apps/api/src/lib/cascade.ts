@@ -9,7 +9,6 @@ import {
   batteryAssignments,
   batteryItems,
   scaleBands,
-  scales,
   surveys,
 } from "../db/schema";
 import { auditSystem } from "./audit";
@@ -51,28 +50,31 @@ export async function runCascades(
   if (!userId || scores.length === 0) return outcome;
 
   try {
-    // полосы, в которые фактически попали баллы
-    const bandLabels = scores.filter((s) => s.band).map((s) => ({ scaleId: s.scaleId, label: s.band!.label }));
-    if (!bandLabels.length) return outcome;
+    /*
+     * Полосы, в которые фактически попали баллы, — по id полосы версии,
+     * который кладёт подсчёт (ScoreResult.band.id).
+     *
+     * Прежде здесь сравнивалась подпись: полоса из результата (подпись уже
+     * на языке запроса) искалась среди полос шкалы с такой подписью на
+     * любом языке. Подпись — отображаемая строка, и у двух полос одной
+     * шкалы она может совпасть: срабатывали обе, и при балле в нижней
+     * полосе назначалось то, что прописано на верхней (внешний разбор
+     * 2026-09-28). Шкала сверяется тоже: полоса должна быть той шкалы, чей
+     * это балл.
+     */
+    const scaleOfBand = new Map<string, string>();
+    for (const s of scores) if (s.band?.id) scaleOfBand.set(s.band.id, s.scaleId);
+    if (!scaleOfBand.size) return outcome;
 
-    const bandRows = await db
-      .select({ band: scaleBands, scaleId: scales.id })
-      .from(scaleBands)
-      .innerJoin(scales, eq(scales.id, scaleBands.scaleId))
-      .where(inArray(scaleBands.scaleId, [...new Set(bandLabels.map((b) => b.scaleId))]));
+    const hit = (
+      await db
+        .select()
+        .from(scaleBands)
+        .where(inArray(scaleBands.id, [...scaleOfBand.keys()]))
+        .orderBy(scaleBands.scaleId, scaleBands.position)
+    ).filter((band) => scaleOfBand.get(band.id) === band.scaleId);
 
-    const hit = bandRows.filter((r) =>
-      bandLabels.some(
-        (b) =>
-          b.scaleId === r.scaleId &&
-          // label в базе локализован, у ScoreResult уже разрешён — сравниваем по обоим
-          (typeof r.band.label === "string"
-            ? r.band.label === b.label
-            : Object.values(r.band.label as Record<string, string>).includes(b.label)),
-      ),
-    );
-
-    for (const { band } of hit) {
+    for (const band of hit) {
       if (band.cascadeBatteryId) {
         await assignCascade(band.cascadeBatteryId, userId, surveyId, band.cascadeDueDays, outcome);
       }
