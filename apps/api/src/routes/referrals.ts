@@ -34,6 +34,7 @@ import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from ".
 import { round } from "../lib/stats";
 import { accessiblePatientIds, assertPatientAccess, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { env } from "../env";
 
 export const referralRoutes = new Hono<AppEnv>();
 
@@ -415,7 +416,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
     userId,
     fullName: fullNameOf(patient),
     sex: patient.sex as Sex | null,
-    age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+    age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
     unit: patient.unit,
     surveys: summarySurveys,
     openAlerts: alertRows

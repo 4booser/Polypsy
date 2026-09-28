@@ -31,6 +31,7 @@ import {
   assertSurveyAccess,
 } from "./scope";
 import { getSurvey } from "./surveys";
+import { env } from "../env";
 
 /**
  * Статистические модели: проверка колонок при сохранении и расчёт.
@@ -266,7 +267,7 @@ async function sampleOf(column: StatModelColumn, filters: SampleFilters): Promis
     if (!r.userId || r.userId === lastUser) continue;
     if (byAge) {
       // не подошло по возрасту — смотрим следующее, более раннее прохождение того же человека
-      const age = ageAt(decryptField(r.birthDate), r.submittedAt);
+      const age = ageAt(decryptField(r.birthDate), r.submittedAt, env.institutionTz);
       if (age === null) continue;
       if (filters.ageMin != null && age < filters.ageMin) continue;
       if (filters.ageMax != null && age > filters.ageMax) continue;

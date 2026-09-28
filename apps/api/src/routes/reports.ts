@@ -2,28 +2,28 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { baseDb, db } from "../db";
-import { asSystem, systemContext, withRequestContext } from "../db/context";
+import { systemContext, withRequestContext } from "../db/context";
 import {
   answers,
   appointments,
   conclusions,
   departments,
   episodes,
-  patientNotes,
   referrals,
   responseScores,
   responses,
-  scales,
   slots,
   specialistProfiles,
-  surveys,
   users,
 } from "../db/schema";
 import { env } from "../env";
 import { audit } from "../lib/audit";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
-import { percentileOf } from "../lib/norms";
-import { assertPatientAccess, canAccessSurvey, isStaff } from "../lib/scope";
+import { referencePercentile, reportReferenceSamples } from "../lib/referenceSample";
+import { chartHistory } from "../lib/chartHistory";
+import { printCalendarDay, printDay, printStamp } from "../lib/printDates";
+import { assertResponseRead } from "../lib/clinicalRead";
+import { assertPatientAccess, isStaff } from "../lib/scope";
 import { fullNameOf, toPublicUser } from "../lib/auth";
 import { claimReportLink, issueReportLink, REPORT_LINK_PREFIX, REPORT_LINK_TTL_MS, type ReportLinkRow } from "../lib/reportLinks";
 import { namesOf } from "../lib/names";
@@ -131,14 +131,19 @@ function ageText(lang: Lang, age: number): string {
  * одноразовой ссылки на него и открытие этой ссылки браузером (мобилка,
  * волна 14 — ниже). Копии разошлись бы на первой же правке, а расхождение
  * здесь означало бы, что ссылкой открывается то, что по заголовку закрыто.
+ *
+ * Кто вправе — решает не этот файл, а lib/clinicalRead.ts: своё прохождение
+ * — сам обследуемый, чужое — сотрудник с правом читать данные пациентов в
+ * зоне методики. Прежде здесь стояли роль и зона, без права, и сотрудник,
+ * которому patients.read отняли исключением, печатал лист с ФИО и
+ * подписанным заключением и выдавал на него ссылку — при том что само
+ * заключение ему отвечало 403 (волна 15, внешний разбор, P1).
  */
-async function reportable(user: User, responseId: string, lang: Lang) {
+async function reportable(c: Context<AppEnv>, user: User, responseId: string, lang: Lang) {
   const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
   if (!response) notFound("err.responseNotFound");
 
-  const own = response.userId === user.id;
-  if (!own && !isStaff(user)) forbidden("err.conclusionAccessDenied");
-  if (!own && !(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
+  await assertResponseRead(c, user, response);
 
   const survey = await getSurveyForResponse(response.id, lang);
   if (!survey) notFound("err.surveyNotFound");
@@ -179,7 +184,7 @@ async function responseReport(
   lang: Lang,
   via?: { linkId: string },
 ): Promise<string> {
-  const { response, survey } = await reportable(user, responseId, lang);
+  const { response, survey } = await reportable(c, user, responseId, lang);
   const say = sayer(lang);
 
   // в отчёт идёт только ПОДПИСАННОЕ заключение: черновик — рабочий текст
@@ -208,31 +213,16 @@ async function responseReport(
     : null;
 
   /*
-   * Нормативная выборка по тем же субшкалам этой методики — системной ролью.
-   *
-   * Выборка — это сырые баллы всех прошедших методику, без людей и дат, и
-   * наружу из неё уходит одно число: перцентиль, да и то только от десяти
-   * наблюдений (MIN_NORM_SAMPLE). Под ролью приложения обследуемый видит
-   * только свои прохождения, и выборка у него была из одного-двух баллов:
-   * перцентиль в его отчёте пропадал, хотя сотрудник по тому же
-   * прохождению его видел (волна 13, обход под ролью приложения).
+   * Референтная выборка для перцентиля — lib/referenceSample.ts: совместимые
+   * версии (та же или доказанно тот же ключ и размах), только достоверные,
+   * только обследуемые, по одному значению на человека, от десяти людей.
+   * Прежде здесь были все сырые баллы методики с тем же кодом шкалы — вместе
+   * со старыми версиями другого размаха, проваленными протоколами и каждым
+   * повтором одного человека (волна 15, внешний разбор). Системной ролью, как
+   * и прежде: пациенту под ролью приложения видны только свои прохождения
+   * (волна 13).
    */
-  const sample = new Map<string, number[]>();
-  if (scoreRows.length) {
-    const rows = await asSystem(() =>
-      db
-        .select({ score: responseScores, code: scales.code })
-        .from(responseScores)
-        .innerJoin(responses, eq(responses.id, responseScores.responseId))
-        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .where(eq(responses.surveyId, response.surveyId)),
-    );
-    for (const r of rows) {
-      const list = sample.get(r.code) ?? [];
-      list.push(r.score.rawScore);
-      sample.set(r.code, list);
-    }
-  }
+  const sample = await reportReferenceSamples(response, survey, scoreRows);
 
   const scaleById = new Map(survey.scales.map((s) => [s.id, s]));
   const answerByQuestion = new Map(answerRows.map((a) => [a.questionId, a]));
@@ -250,7 +240,8 @@ async function responseReport(
     },
   });
 
-  const age = patient ? ageAt(decryptField(patient.birthDate), response.submittedAt) : null;
+  /* возраст на день сдачи по календарю учреждения, а не по часам процесса (shared ageAt) */
+  const age = patient ? ageAt(decryptField(patient.birthDate), response.submittedAt, env.institutionTz) : null;
   return renderReport(lang, {
     surveyTitle: survey.title,
     versionNumber: survey.versionNumber,
@@ -277,7 +268,7 @@ async function responseReport(
         percent: s.percent,
         band: s.bandLabel,
         severity: s.severity,
-        percentile: scale ? percentileOf(s.rawScore, sample.get(scale.code) ?? []) : null,
+        percentile: referencePercentile(s.rawScore, sample.get(s.scaleId) ?? []),
       };
     }),
     answers: survey.questions
@@ -339,7 +330,7 @@ reportRoutes.post("/responses/:id/link", async (c) => {
   const user = c.get("user");
   if (user.impersonation) forbidden("err.impersonationReadOnly");
   const lang = langOf(c);
-  const { response } = await reportable(user, c.req.param("id"), lang);
+  const { response } = await reportable(c, user, c.req.param("id"), lang);
   const link = await issueReportLink({ userId: user.id, responseId: response.id, lang });
   await audit(c, {
     action: "report.link_issue",
@@ -607,7 +598,7 @@ function renderReport(lang: Lang, d: ReportData): string {
   <h1>${esc(d.surveyTitle)}</h1>
   <div class="meta">
     ${esc(d.patientName)}${d.patientMeta ? ` · ${esc(d.patientMeta)}` : ""} · ${esc(say("print.surveyVersion", { n: d.versionNumber }))} ·
-    ${d.submittedAt ? esc(d.submittedAt.slice(0, 16).replace("T", " ")) : esc(say("print.notFinished"))} ·
+    ${d.submittedAt ? esc(printStamp(d.submittedAt)) : esc(say("print.notFinished"))} ·
     ${esc(say("print.timeTaken", { duration }))}
   </div>
 
@@ -633,7 +624,7 @@ function renderReport(lang: Lang, d: ReportData): string {
   <div class="conclusion">${esc(d.conclusion.text).replaceAll("\n", "<br>")}</div>
   <div class="meta" style="margin-top:6px">
     ${esc(say("print.signedBy", { who: d.conclusion.signedBy }))}${
-      d.conclusion.signedAt ? `, ${esc(String(d.conclusion.signedAt).slice(0, 16).replace("T", " "))}` : ""
+      d.conclusion.signedAt ? `, ${esc(printStamp(d.conclusion.signedAt))}` : ""
     } · ${esc(say("print.version", { n: d.conclusion.version }))}
   </div>`
       : ""
@@ -664,7 +655,7 @@ function renderReport(lang: Lang, d: ReportData): string {
   }
 
   <div class="meta footer">
-    ${esc(say("print.printedBy", { who: d.printedBy, at: d.printedAt.slice(0, 16).replace("T", " ") }))}
+    ${esc(say("print.printedBy", { who: d.printedBy, at: printStamp(d.printedAt) }))}
   </div>
 </body></html>`;
 }
@@ -733,7 +724,8 @@ reportRoutes.get("/visits/:id", async (c) => {
   const department = profile
     ? await db.query.departments.findFirst({ where: eq(departments.id, profile.departmentId) })
     : null;
-  const tz = department?.timezone ?? "Europe/Kyiv";
+  /* без отделения — пояс учреждения (INSTITUTION_TZ), а не зашитый Киев: тот же, что у остальных листов */
+  const tz = department?.timezone ?? env.institutionTz;
 
   await audit(c, {
     action: "report.visit_certificate",
@@ -859,12 +851,13 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
     : null;
 
   const visits = await db
-    .select({ a: appointments, slot: slots, specialist: users })
+    .select({ a: appointments, slot: slots, specialist: users, timezone: departments.timezone })
     .from(appointments)
     .innerJoin(slots, eq(slots.id, appointments.slotId))
     .innerJoin(users, eq(users.id, appointments.specialistId))
+    .leftJoin(departments, eq(departments.id, slots.departmentId))
     .where(eq(appointments.episodeId, episode.id))
-    .orderBy(asc(slots.startsAt));
+    .orderBy(asc(slots.startsAt), asc(appointments.id));
 
   const signed = await db
     .select({ row: conclusions, author: users })
@@ -897,6 +890,7 @@ reportRoutes.get("/episodes/:id", requireStaff, requirePermission("patients.read
       leadName: lead ? fullNameOf(lead) : null,
       visits: visits.map((v) => ({
         at: v.slot.startsAt,
+        timezone: v.timezone ?? env.institutionTz,
         specialist: fullNameOf(v.specialist),
         status: v.a.status,
       })),
@@ -924,13 +918,14 @@ function episodeExtractHtml(
     reason: string | null;
     outcome: string | null;
     leadName: string | null;
-    visits: { at: string; specialist: string; status: string }[];
+    visits: { at: string; timezone: string; specialist: string; status: string }[];
     conclusions: { at: string; author: string; text: string }[];
     referrals: { at: string; destination: string; status: string }[];
   },
 ): string {
   const say = sayer(lang);
-  const day = (iso: string) => new Date(iso).toLocaleDateString(LOCALE_OF[lang]);
+  /* моменты — днём учреждения, приём — днём своего отделения (lib/printDates.ts), как в карте */
+  const day = (iso: string) => printDay(iso, lang);
   const rows = (items: string[]) => items.join("");
 
   return `<!doctype html>
@@ -973,7 +968,7 @@ function episodeExtractHtml(
       ? `<table><tr><th>${say("print.date")}</th><th>${say("print.clinician")}</th><th>${say("print.colStatus")}</th></tr>${rows(
           d.visits.map(
             (v) =>
-              `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
+              `<tr><td>${esc(printDay(v.at, lang, v.timezone))}</td><td>${esc(v.specialist)}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
           ),
         )}</table>`
       : `<p>${say("print.noVisits")}</p>`
@@ -1037,37 +1032,13 @@ reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("pat
 
   const lang = langOf(c);
 
-  const eps = await db
-    .select({ e: episodes, lead: users })
-    .from(episodes)
-    .leftJoin(users, eq(users.id, episodes.leadSpecialistId))
-    .where(eq(episodes.patientId, userId))
-    .orderBy(desc(episodes.openedAt));
-
-  const visits = await db
-    .select({ a: appointments, slot: slots, specialist: users })
-    .from(appointments)
-    .innerJoin(slots, eq(slots.id, appointments.slotId))
-    .innerJoin(users, eq(users.id, appointments.specialistId))
-    .where(eq(appointments.patientId, userId))
-    .orderBy(desc(slots.startsAt))
-    .limit(200);
-
-  const signedNotes = await db
-    .select({ n: patientNotes, author: users })
-    .from(patientNotes)
-    .leftJoin(users, eq(users.id, patientNotes.signedBy))
-    .where(and(eq(patientNotes.userId, userId), eq(patientNotes.status, "signed")))
-    .orderBy(desc(patientNotes.createdAt))
-    .limit(100);
-
-  const done = await db
-    .select({ r: responses, title: surveys.title })
-    .from(responses)
-    .innerJoin(surveys, eq(surveys.id, responses.surveyId))
-    .where(and(eq(responses.userId, userId), eq(responses.status, "completed")))
-    .orderBy(desc(responses.submittedAt))
-    .limit(200);
+  /*
+   * История целиком, порциями (lib/chartHistory.ts). Прежде здесь стояли
+   * лимиты — 200 приёмов, 100 подписанных записей, 200 обследований, — и
+   * карта молча теряла начало истории, оставаясь на вид полной (волна 15,
+   * внешний разбор, п. 20).
+   */
+  const { episodes: eps, visits, notes: signedNotes, responses: done } = await chartHistory(userId);
 
   await audit(c, {
     action: "report.patient_chart",
@@ -1092,6 +1063,7 @@ reportRoutes.get("/patients/:userId/chart", requireStaff, requirePermission("pat
       })),
       visits: visits.map((v) => ({
         at: v.slot.startsAt,
+        timezone: v.timezone ?? env.institutionTz,
         specialist: fullNameOf(v.specialist),
         kind: v.a.kind,
         status: v.a.status,
@@ -1126,13 +1098,18 @@ function chartHtml(
       outcomeKind: string | null;
       lead: string | null;
     }[];
-    visits: { at: string; specialist: string; kind: string; status: string }[];
+    visits: { at: string; timezone: string; specialist: string; kind: string; status: string }[];
     notes: { at: string; author: string; kind: string; text: string }[];
     responses: { at: string; title: string; source: string | null }[];
   },
 ): string {
   const say = sayer(lang);
-  const day = (iso: string) => new Date(iso).toLocaleDateString(LOCALE_OF[lang]);
+  /*
+   * Моменты — днём учреждения, приём — днём своего отделения, рождение — как
+   * записано (lib/printDates.ts). Прежде всё шло через toLocaleDateString без
+   * пояса, то есть по часам процесса (волна 15, внешний разбор, п. 21).
+   */
+  const day = (iso: string) => printDay(iso, lang);
 
   return `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
@@ -1160,7 +1137,7 @@ function chartHtml(
       : ""
   }
   <h1>${say("print.chartTitle")}</h1>
-  <p class="meta">${esc(d.fullName)}${d.birthDate ? `, ${esc(say("print.bornOn", { date: day(d.birthDate) }))}` : ""}${
+  <p class="meta">${esc(d.fullName)}${d.birthDate ? `, ${esc(say("print.bornOn", { date: printCalendarDay(d.birthDate, lang) }))}` : ""}${
     d.unit ? ` · ${esc(d.unit)}` : ""
   }${d.rank ? ` · ${esc(d.rank)}` : ""}</p>
 
@@ -1184,7 +1161,7 @@ function chartHtml(
       ? `<table><tr><th>${say("print.date")}</th><th>${say("print.clinician")}</th><th>${say("print.colKind")}</th><th>${say("print.colStatus")}</th></tr>${d.visits
           .map(
             (v) =>
-              `<tr><td>${esc(day(v.at))}</td><td>${esc(v.specialist)}</td>` +
+              `<tr><td>${esc(printDay(v.at, lang, v.timezone))}</td><td>${esc(v.specialist)}</td>` +
               `<td>${esc(codeWord(lang, "visitKind", v.kind))}</td><td>${esc(codeWord(lang, "appointment", v.status))}</td></tr>`,
           )
           .join("")}</table>`

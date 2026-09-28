@@ -901,15 +901,69 @@ export function ageBandOf(age: number | null): string | null {
   return "45+";
 }
 
-export function ageAt(birthDate: string | null, at: string | null): number | null {
+/** «ГГГГ-ММ-ДД» числами — день без времени, как записан */
+const CALENDAR_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Календарный день строки: день без времени — как есть, момент — днём в поясе `timeZone` */
+function calendarDayOf(value: string, timeZone: string): [number, number, number] | null {
+  const plain = CALENDAR_DAY.exec(value.trim());
+  if (plain) return [Number(plain[1]), Number(plain[2]), Number(plain[3])];
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+    .formatToParts(at)
+    .reduce<Record<string, number>>((acc, p) => (p.type === "literal" ? acc : { ...acc, [p.type]: Number(p.value) }), {});
+  return [parts.year!, parts.month!, parts.day!];
+}
+
+/**
+ * Полных лет на календарный день (волна 15, доработка участка reports).
+ *
+ * По этому возрасту при сдаче выбираются нормы (T-балл, полоса) и пишется
+ * возрастная полоса прохождения, по нему SPSS выгружает возраст, а лист и
+ * заключение печатают его. Прежде числа месяца брались локальными геттерами
+ * Date — по поясу ПРОЦЕССА — и у момента, и у даты рождения: «2001-09-28»
+ * читалась как полночь по Гринвичу, западнее Гринвича это уже 27-е. На
+ * сервере в UTC человек, сдавший в свой день рождения в 01:30 по Киеву,
+ * получал нормы прежнего возраста; на сервере в Нью-Йорке накануне дня
+ * рождения — уже следующего. Возраст зависел от стенда, а не от человека.
+ *
+ * Теперь:
+ *  - дата рождения — день календаря, числами, без перевода между поясами;
+ *    строка с временем (старая запись мимо схем) — днём по Гринвичу, как
+ *    записана;
+ *  - `at` — день без времени берётся как есть, момент переводится в
+ *    календарный день пояса `timeZone`;
+ *  - `timeZone` обязателен: чей это день, решает вызывающий, а не машина, на
+ *    которой запущен код. Сервер передаёт пояс учреждения (INSTITUTION_TZ),
+ *    устройство пациента — свой пояс.
+ *
+ * null — нет даты, строка не разбирается или возраст невозможный.
+ */
+export function ageAt(birthDate: string | null, at: string | null, timeZone: string): number | null {
   if (!birthDate || !at) return null;
-  const born = new Date(birthDate);
-  const when = new Date(at);
-  if (Number.isNaN(born.getTime()) || Number.isNaN(when.getTime())) return null;
-  let age = when.getFullYear() - born.getFullYear();
-  const monthDiff = when.getMonth() - born.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && when.getDate() < born.getDate())) age--;
+  const born = calendarDayOf(birthDate, "UTC");
+  const on = calendarDayOf(at, timeZone);
+  if (!born || !on) return null;
+  const [by, bm, bd] = born;
+  const [y, m, d] = on;
+  let age = y - by;
+  if (m < bm || (m === bm && d < bd)) age--;
   return age >= 0 && age < 130 ? age : null;
+}
+
+/**
+ * Пояс устройства — для ageAt на телефоне и в веб-кабинете пациента.
+ *
+ * Пояса учреждения клиент не знает: сервер его не отдаёт. На устройстве
+ * возраст считается для предварительного подсчёта без сети (памятка
+ * безопасности, режим обхода) и для строки профиля — это день самого
+ * человека, и его календарь — календарь его устройства. Окончательный
+ * возраст — тот, что посчитал сервер при сдаче, днём учреждения. Названо
+ * функцией, а не спрятано умолчанием ageAt: «чей день» решает вызывающий.
+ */
+export function deviceTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 /** Кому выдан доступ к методике */
