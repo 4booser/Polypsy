@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { aliasedTable, and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { ageAt, queryDate, t } from "@quizzy/shared";
@@ -8,7 +8,8 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, isUniqueViolation, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { canAccessSurvey, surveyScopeFilter } from "../lib/scope";
+import { assertClinicalRead, CLINICAL_READ } from "../lib/clinicalRead";
+import { surveyScopeFilter } from "../lib/scope";
 import { getSurvey } from "../lib/surveys";
 
 /*
@@ -24,7 +25,6 @@ const batchQuery = z.object({
   to: queryDate.optional(),
 });
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
-import type { User } from "@quizzy/shared";
 
 export const conclusionRoutes = new Hono<AppEnv>();
 
@@ -88,10 +88,22 @@ async function lockConclusion(responseId: string) {
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`conclusion:${responseId}`}))`);
 }
 
-async function assertResponse(user: User, responseId: string) {
+/**
+ * Прохождение, с заключением по которому сотрудник вправе работать.
+ *
+ * Проверка — та же, что у прохождения по id и печатного листа
+ * (lib/clinicalRead.ts): сотрудник, право читать данные пациентов, методика
+ * в зоне. Все четыре маршрута заключения идут через неё, включая пишущие:
+ * черновик из результатов — это ФИО, возраст и баллы человека, а сохранение
+ * и подпись отвечают историей версий с текстами. Прежде здесь стояла одна
+ * зона методики, и право на чужие данные проверял только GET заключения —
+ * своим requirePermission; сотрудник без patients.read, но с правом готовить
+ * заключения, читал то же самое черновиком (волна 15, внешний разбор, P1).
+ */
+async function assertResponse(c: Context<AppEnv>, responseId: string) {
   const response = await db.query.responses.findFirst({ where: eq(responses.id, responseId) });
   if (!response) notFound("err.responseNotFound");
-  if (!(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
+  await assertClinicalRead(c, c.get("user"), response);
   return response;
 }
 
@@ -130,8 +142,8 @@ async function history(responseId: string) {
   }));
 }
 
-conclusionRoutes.get("/responses/:id/conclusion", requirePermission("patients.read"), async (c) => {
-  await assertResponse(c.get("user"), c.req.param("id"));
+conclusionRoutes.get("/responses/:id/conclusion", requirePermission(CLINICAL_READ), async (c) => {
+  await assertResponse(c, c.req.param("id"));
   const versions = await history(c.req.param("id"));
   return c.json({ current: versions[0] ?? null, versions });
 });
@@ -156,7 +168,7 @@ conclusionRoutes.get(
   requirePermission("conclusions.write"),
   async (c) => {
     const responseId = c.req.param("id");
-    await assertResponse(c.get("user"), responseId);
+    await assertResponse(c, responseId);
     const lang = langOf(c);
 
     const response = (await db.query.responses.findFirst({
@@ -243,7 +255,7 @@ conclusionRoutes.get(
 conclusionRoutes.put("/responses/:id/conclusion", requirePermission("conclusions.write"), async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
-  assertCompleted(await assertResponse(c.get("user"), responseId));
+  assertCompleted(await assertResponse(c, responseId));
   const input = await parseBody(c.req.raw, saveSchema);
   await lockConclusion(responseId);
 
@@ -321,7 +333,7 @@ conclusionRoutes.put("/responses/:id/conclusion", requirePermission("conclusions
 conclusionRoutes.post("/responses/:id/conclusion/sign", requirePermission("conclusions.sign"), async (c) => {
   const user = c.get("user");
   const responseId = c.req.param("id");
-  assertCompleted(await assertResponse(c.get("user"), responseId));
+  assertCompleted(await assertResponse(c, responseId));
   const input = await parseBody(c.req.raw, signSchema);
   await lockConclusion(responseId);
 
@@ -376,7 +388,7 @@ conclusionRoutes.post("/responses/:id/conclusion/sign", requirePermission("concl
  * Только подписанные. Черновик заключения — это мысль вслух, и попасть в дело
  * он не должен: подшитый черновик потом не отличить от решения.
  */
-conclusionRoutes.get("/batch", requirePermission("patients.read"), async (c) => {
+conclusionRoutes.get("/batch", requirePermission(CLINICAL_READ), async (c) => {
   const user = c.get("user");
   const { unit, from, to } = parseQuery(c, batchQuery);
   const lang = langOf(c);

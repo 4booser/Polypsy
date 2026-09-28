@@ -1210,7 +1210,11 @@ describe("сторож: владелец и роль приложения", () =
       [`/api/timeline/${w.patient.id}`, w.otherAdmin.token, 404],
       [`/api/referrals/summary/${w.patient.id}`, w.otherAdmin.token, 404],
       [`/api/conclusions/responses/${openResponseId}/conclusion`, w.otherAdmin.token, 404],
-      /* владельцем тут 403 (строка видна, отказывает зона методики); под ролью её прячет политика — 404 */
+      /*
+       * Чужая методика — «не найдено» и владельцем, и ролью: с волны 15 зону
+       * проверяет lib/clinicalRead.ts, как у заключения и печати (прежде
+       * владельцем здесь был 403 «вне зоны»)
+       */
       [`/api/responses/${openResponseId}`, w.otherAdmin.token, 404],
       ["/api/patients", patientToken, 403],
       ["/api/alert-cases", patientToken, 403],
@@ -1284,7 +1288,6 @@ const KNOWN_DIVERGENCE: Record<string, string> = {
    * контракт маршрутов. Расхождение признано и закреплено здесь.
    */
   "stranger /api/responses/:id": "403→404",
-  "otherAdmin /api/responses/:id": "403→404",
   "stranger /api/reports/responses/:id": "403→404",
   "stranger /api/reports/visits/:id": "403→404",
 };
