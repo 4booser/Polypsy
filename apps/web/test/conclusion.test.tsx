@@ -165,7 +165,7 @@ describe("лестница результатов", () => {
 
   test("попавшая полоса выбирается по значению и помечена не только заливкой", () => {
     const html = render(
-      <ResultLadder scores={[score(15, { label: "помірний", severity: "mild", description: null, grade: null, recommendation: null })]} scales={[ladder]} />,
+      <ResultLadder scores={[score(15, { id: null, label: "помірний", severity: "mild", description: null, grade: null, recommendation: null })]} scales={[ladder]} />,
     );
     const lines = rows(html, "data-hit");
     expect(lines.map((l) => l.on), "полос три, попала средняя").toEqual([false, true, false]);
