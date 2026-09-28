@@ -10,6 +10,9 @@
  *
  * Запускается из bootstrap.test.ts; DATABASE_URL на свежую базу передаёт он.
  */
+// статически можно: модуль миграций не трогает ни базу, ни окружение при загрузке
+import { runMigrations } from "../src/db/migrations";
+
 process.env.SCHEDULER_ENABLED = "0";
 process.env.JWT_SECRET ??= "test-secret-not-for-production-0123456789";
 process.env.ENCRYPTION_KEY ??= `v1:${Buffer.alloc(32, 9).toString("base64")}`;
@@ -17,9 +20,8 @@ process.env.ENCRYPTION_KEY ??= `v1:${Buffer.alloc(32, 9).toString("base64")}`;
 const { app } = await import("../src/app");
 const { db, client } = await import("../src/db");
 const { users } = await import("../src/db/schema");
-const { migrate } = await import("drizzle-orm/postgres-js/migrator");
 
-await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
+await runMigrations(db);
 
 function register(tag: string) {
   return app.request("/api/auth/register", {
