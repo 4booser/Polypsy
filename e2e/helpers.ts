@@ -1,4 +1,5 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { kyivNow, pickSlotToday, WINDOW_MINUTES } from "./slotWindow";
 
 /** Учётки посева — те же, что печатает `db:seed` */
 export const ACCOUNTS = {
@@ -523,23 +524,11 @@ export async function createVisiblePatient(
   return patient;
 }
 
-/** Сегодняшняя дата в часах отделения, а не машины: день приёма строится по ним */
-function todayInKyiv(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date());
-}
-
-/** Стенное время в Киеве через N минут, HH:MM */
-function kyivClock(plusMinutes: number): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Kyiv",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(Date.now() + plusMinutes * 60_000));
-}
-
-/** Счётчик дополнительных окон: каждому вызову своё время, см. ниже */
-let extraWindowSeq = 0;
+/**
+ * Окна дополнительного времени, уже заведённые этим процессом: второй вызов
+ * в ту же минуту не просит занятое время (e2e/slotWindow.ts, windowKey).
+ */
+const triedWindows = new Set<string>();
 
 /**
  * Свободное время психолога на СЕГОДНЯ.
@@ -549,59 +538,49 @@ let extraWindowSeq = 0;
  * свободный, а если сетка на сегодня уже разобрана, заводится дополнительное
  * время тем же способом, каким его заводит специалист: исключением
  * расписания. Это существующий путь продукта, а не лазейка мимо него.
+ *
+ * Какое окно заводить и когда сдаться — чистая логика в e2e/slotWindow.ts,
+ * проверенная на подменённых часах. Окно поверх занятого слота не
+ * раскладывается (с волны 12 открытые слоты одного специалиста не
+ * пересекаются, миграция 0105) — тогда берётся следующее, как поступил бы
+ * специалист, которому система не дала добавить время поверх приёма.
+ *
+ * До конца суток в Киеве места нет — сценарий пропускается явно (test.skip
+ * с причиной), а не падает: раньше в 23:58 заводилось окно «сегодня
+ * 00:02–00:07», уже в прошлом, и сценарии приёма падали на подготовке каждый
+ * вечер (внешний разбор, волна 15, п. 15). Сервер часами не подменяется.
  */
 async function freeSlotToday(page: Page, staffToken: string, specialistId: string): Promise<string> {
   const headers = auth(staffToken);
-  const today = todayInKyiv();
-  const dayOf = (iso: string) =>
-    new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date(iso));
-  const open = async () => {
-    const res = await page.request.get(`/api/clinic/slots?specialistId=${specialistId}`, { headers });
-    if (!res.ok()) throw new Error(`свободное время не отдано: ${res.status()} ${await res.text()}`);
-    const body = (await res.json()) as { items: { id: string; startsAt: string }[] };
-    return body.items.filter((s) => dayOf(s.startsAt) === today);
-  };
+  const dayOf = (iso: string) => kyivNow(Date.parse(iso)).date;
 
-  const first = await open();
-  if (first.length) return first[0]!.id;
-
-  /*
-   * Окно ровно в один слот, и каждому вызову своё.
-   *
-   * Слоты уникальны парой «специалист + начало» (см. syncSlots), и два вызова
-   * в одну минуту просили бы один и тот же слот: второй получил бы `on
-   * conflict do nothing`, то есть уже занятое время, — и проверка падала бы
-   * на «свободного слота не появилось». Поэтому окна расходятся по пять
-   * минут вперёд, а не берутся «через минуту от сейчас».
-   *
-   * Окно может лечь и поверх сетки дня: свободного впереди нет, а текущий
-   * слот ещё идёт или следующие разобраны. С волны 12 открытые слоты одного
-   * специалиста не пересекаются (миграция 0105, lib/schedule.ts layOutDay):
-   * дополнительное время поверх занятого не заводится, и свободного слота
-   * не появляется. Тогда окно сдвигается дальше, пока не найдёт свободное
-   * место, — так же поступил бы специалист, которому система не дала
-   * добавить время поверх приёма. Прежде такое окно создавало второй
-   * открытый слот на то же время, и сценарий проходил на двойной записи.
-   */
-  for (let attempt = 0; attempt < 60; attempt += 1) {
-    extraWindowSeq += 1;
-    const start = 4 + (extraWindowSeq - 1) * 5;
-    const from = kyivClock(start);
-    const to = kyivClock(start + 5);
-    if (to <= from) {
-      throw new Error("до конца суток в Киеве не осталось места под своё время приёма");
-    }
-    const created = await page.request.post("/api/clinic/schedule/exceptions", {
-      headers,
-      data: { date: today, kind: "extra", startsAt: from, endsAt: to, slotMinutes: 5, note: "Смоук" },
-    });
-    if (!created.ok()) {
-      throw new Error(`не удалось добавить время приёма: ${created.status()} ${await created.text()}`);
-    }
-    const again = await open();
-    if (again.length) return again[0]!.id;
+  const pick = await pickSlotToday(
+    {
+      now: () => Date.now(),
+      freeToday: async (date) => {
+        const res = await page.request.get(`/api/clinic/slots?specialistId=${specialistId}`, { headers });
+        if (!res.ok()) throw new Error(`свободное время не отдано: ${res.status()} ${await res.text()}`);
+        const body = (await res.json()) as { items: { id: string; startsAt: string }[] };
+        return body.items.find((s) => dayOf(s.startsAt) === date)?.id ?? null;
+      },
+      addWindow: async (window) => {
+        const created = await page.request.post("/api/clinic/schedule/exceptions", {
+          headers,
+          data: { ...window, kind: "extra", slotMinutes: WINDOW_MINUTES, note: "Смоук" },
+        });
+        if (!created.ok()) {
+          throw new Error(`не удалось добавить время приёма: ${created.status()} ${await created.text()}`);
+        }
+      },
+    },
+    triedWindows,
+  );
+  if ("skip" in pick) {
+    test.skip(true, pick.skip);
+    // test.skip прерывает сценарий сам; строка — для читателя и для типов
+    throw new Error(pick.skip);
   }
-  throw new Error("дополнительное время заводилось пять часов подряд, а свободного слота не появилось");
+  return pick.slotId;
 }
 
 export interface OwnAppointment {
