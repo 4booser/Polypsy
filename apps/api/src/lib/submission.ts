@@ -35,7 +35,7 @@ import { applyRules } from "./decisions";
 import { publish } from "./events";
 import { log } from "./log";
 import { assertAttemptsLeft, consumeAttempt } from "./attempts";
-import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
+import { assertBatteryOrder, closeCompletedBatteries, holdCompletable } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
 import { env } from "../env";
 
@@ -197,6 +197,16 @@ export async function persistSubmission(
     });
   }
 
+  /*
+   * Назначения наборов, которые эта сдача может завершить, — под замок
+   * строки ДО первой записи (списания попытки). Иначе две последние
+   * методики набора, сданные одновременно, не видят друг друга и оставляют
+   * назначение открытым навсегда; почему именно до записи — см.
+   * lib/batteries.ts, holdCompletable. Под системной ролью, как и само
+   * закрытие ниже: строку назначения пациент не пишет.
+   */
+  const completable = await asSystem(() => holdCompletable(subject.id, survey.id));
+
   await db.transaction(async (tx) => {
     if (linkedUserId && options.filledBySelf) {
       const left = await consumeAttempt(tx as never, linkedUserId, survey.id);
@@ -347,7 +357,7 @@ export async function persistSubmission(
    * таблицы, которые ему закрыты. Сам случай тревоги переключается внутри
    * attachToCase — у него есть и другие вызывающие.
    */
-  await asSystem(() => closeCompletedBatteries(subject.id, survey.id));
+  await asSystem(() => closeCompletedBatteries(completable));
 
   // каскады и протоколы наблюдения — после закрытия батарей: иначе каскадное
   // назначение могло бы закрыться тем же проходом, которым было создано

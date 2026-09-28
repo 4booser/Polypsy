@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { serverText, t, type BatteryProgressState, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
@@ -228,11 +228,93 @@ async function completionsOf(userIds: readonly string[]): Promise<Map<string, Co
   return result;
 }
 
+/*
+ * ─── завершение: проверка под замком строки назначения ───
+ *
+ * Завершённость считалась в транзакции сдачи, до её коммита. Две сдачи
+ * последних методик набора, ушедшие одновременно, — офлайн-очередь,
+ * досылающая пачку, два устройства, — видели каждая своё прохождение и не
+ * видели соседнее: оно ещё не зафиксировано. Обе решали «пройдено не всё»,
+ * обе коммитились, и пересчитывать было уже некому: «2 из 2», а назначение
+ * открыто, после срока — «просрочено» в очереди работы, и повторно этот
+ * набор человеку не назначить (внешний разбор 2026-09-28, P2). Условие на
+ * итоговом UPDATE тут не помогает: до UPDATE не доходит ни одна.
+ *
+ * Выбрана сериализация, а не пересчёт после коммита. Пересчёт «после»
+ * требует крючка на коммит у каждого входа сдачи (обычная, киоск, заполнение
+ * специалистом) и всё равно теряет завершение, если процесс упал между
+ * коммитом и пересчётом, — пришлось бы добавлять ещё и подметание.
+ * Блокировка же решает дело внутри той транзакции, что пишет прохождение:
+ *
+ *   — сдача ДО первой записи берёт замок строк открытых назначений человека,
+ *     в которые входит методика (holdCompletable), по порядку id;
+ *   — вторая сдача того же набора ждёт на этом замке, пока первая не
+ *     зафиксируется, и проверяет завершение уже новым снимком (READ
+ *     COMMITTED: каждый оператор видит всё, что зафиксировано к его началу),
+ *     где прохождение первой есть. Последняя из сдач видит все.
+ *
+ * Почему замок берётся до первой записи, а не перед проверкой: сдача
+ * списывает попытку (строка survey_access) раньше, чем доходит до
+ * завершения, а отмена назначения и расписание идут в обратном порядке —
+ * сначала строка назначения, потом доступы по нему. Взятый позже, замок
+ * назначения замкнул бы круг «сдача держит доступ и ждёт назначение, отмена
+ * держит назначение и ждёт доступ». Порядок «назначение → его доступы»
+ * теперь один у всех, кто их трогает.
+ *
+ * Назначения, выданные уже во время сдачи (каскад по её же результату),
+ * она не закрывает: проверяется ровно то, что было взято под замок, — как и
+ * прежде требовал порядок «сначала закрытие, потом каскады».
+ */
+
+/**
+ * Открытые назначения человека, которые может завершить сдача этой
+ * методики, — под замком строки до конца транзакции сдачи. Зовётся до
+ * первой записи сдачи; возвращает то, что потом проверит
+ * closeCompletedBatteries.
+ */
+export async function holdCompletable(userId: string | null, surveyId: string): Promise<string[]> {
+  if (!userId) return [];
+  const rows = await db
+    .select({ id: batteryAssignments.id })
+    .from(batteryAssignments)
+    .where(
+      and(
+        eq(batteryAssignments.userId, userId),
+        isNull(batteryAssignments.completedAt),
+        isNull(batteryAssignments.cancelledAt),
+        sql`exists (select 1 from battery_items bi
+                    where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
+      ),
+    )
+    // один порядок у всех, кто берёт несколько строк назначений, — иначе две сдачи замкнули бы круг
+    .orderBy(batteryAssignments.id)
+    .for("update");
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Назначения по id — открытые, под замком строки, по порядку id.
+ *
+ * Замок, а не просто чтение: проверку завершённости делает тот, кто держит
+ * строку, и следующий ждёт, пока он зафиксируется (см. выше). Строка,
+ * которую за время ожидания завершили или сняли, в выборку не попадёт —
+ * PostgreSQL перепроверяет условие по её новой версии.
+ */
+async function lockOpen(where: SQL) {
+  return db
+    .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
+    .from(batteryAssignments)
+    .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
+    .where(and(where, isNull(batteryAssignments.completedAt), isNull(batteryAssignments.cancelledAt)))
+    .orderBy(batteryAssignments.id)
+    .for("update", { of: batteryAssignments });
+}
+
 /**
  * Отметить завершёнными назначения, у которых пройдены все исполнимые
- * обязательные шаги. Отметка — условием самого UPDATE (ещё не завершено и
- * не снято): назначение, снятое специалистом в ту же минуту, завершённым
- * не станет.
+ * обязательные шаги. Строки назначений уже под замком вызывающего (lockOpen),
+ * прохождения читаются после него — новым снимком. Отметка — ещё и условием
+ * самого UPDATE (не завершено и не снято).
  */
 async function closeIfComplete(
   active: { assignment: typeof batteryAssignments.$inferSelect; strictOrder: boolean }[],
@@ -275,26 +357,19 @@ async function closeIfComplete(
  * раз заново означало бы, что «активность» назначения зависит от того, кто и
  * когда открыл экран.
  *
- * Вызывается после успешной сдачи; ошибки не пробрасываются — сданное
- * прохождение не должно откатываться из-за учёта батарей.
+ * Вызывается после записи сдачи с тем, что сдача взяла под замок до
+ * записи (holdCompletable). Ошибки не пробрасываются — сданное прохождение
+ * не должно откатываться из-за учёта батарей; и чтобы это было правдой, а
+ * не пожеланием, учёт идёт точкой сохранения: сбой оператора в PostgreSQL
+ * обрывает всю транзакцию, и перехваченное исключение без точки сохранения
+ * всё равно уносило бы прохождение.
  */
-export async function closeCompletedBatteries(userId: string | null, surveyId: string): Promise<void> {
-  if (!userId) return;
+export async function closeCompletedBatteries(assignmentIds: readonly string[]): Promise<void> {
+  if (!assignmentIds.length) return;
   try {
-    const active = await db
-      .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
-      .from(batteryAssignments)
-      .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
-      .where(
-        and(
-          eq(batteryAssignments.userId, userId),
-          isNull(batteryAssignments.completedAt),
-          isNull(batteryAssignments.cancelledAt),
-          sql`exists (select 1 from battery_items bi
-                      where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
-        ),
-      );
-    await closeIfComplete(active);
+    await db.transaction(async () => {
+      await closeIfComplete(await lockOpen(inArray(batteryAssignments.id, [...assignmentIds])));
+    });
   } catch (error) {
     log.error("battery.assignments_update_failed", { error: String(error) });
   }
@@ -316,18 +391,11 @@ export async function closeCompletedBatteries(userId: string | null, surveyId: s
  * методику.
  */
 export async function closeCompletedForSurvey(surveyId: string): Promise<number> {
-  const active = await db
-    .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
-    .from(batteryAssignments)
-    .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
-    .where(
-      and(
-        isNull(batteryAssignments.completedAt),
-        isNull(batteryAssignments.cancelledAt),
-        sql`exists (select 1 from battery_items bi
-                    where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
-      ),
-    );
+  // под тем же замком строки, что и сдача: снятие шага и сдача последнего шага одновременно — та же гонка
+  const active = await lockOpen(
+    sql`exists (select 1 from battery_items bi
+                where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
+  );
   const closed = await closeIfComplete(active);
   if (closed) log.info("battery.closed_on_retire", { surveyId, closed });
   return closed;
