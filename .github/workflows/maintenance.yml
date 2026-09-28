@@ -139,7 +139,9 @@ jobs:
             exit 0
           fi
           trap 'rm -rf /tmp/quizzy-verify' EXIT
-          bash /tmp/quizzy-verify/verify-backup.sh
+          # </dev/null: скрипт пришёл через stdin, и всё, что читает stdin внутри
+          # проверки (compose exec), не должно дотянуться до него
+          bash /tmp/quizzy-verify/verify-backup.sh </dev/null
           REMOTE
               exit 0 ;;
             *) echo "неизвестное действие: $ACTION"; exit 1 ;;

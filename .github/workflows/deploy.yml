@@ -261,8 +261,14 @@ jobs:
           # поднимет то, что работало.
           QUIZZY_IMAGE_PREFIX="$PREFIX" QUIZZY_VERSION="$VERSION" \
             docker compose --env-file .env.docker pull api
+          #
+          # -T и </dev/null обязательны: этот скрипт приходит на сервер через
+          # stdin (`bash -s <<REMOTE`), а `compose run` без них подключает
+          # stdin к контейнеру и съедает остаток скрипта. v1.16.1 так и
+          # «выкатилась»: предпроверка прошла, bash дочитал пустоту и вышел с
+          # кодом 0, до смены версии и `up -d` дело не дошло.
           if ! QUIZZY_IMAGE_PREFIX="$PREFIX" QUIZZY_VERSION="$VERSION" \
-            docker compose --env-file .env.docker run --rm --no-deps api bun apps/api/src/envCheck.ts; then
+            docker compose --env-file .env.docker run --rm --no-deps -T api bun apps/api/src/envCheck.ts </dev/null; then
             echo "новый образ не принял окружение сервера — выкатка остановлена, работает прежняя версия" >&2
             exit 1
           fi
@@ -369,19 +375,24 @@ jobs:
             "WANT_A='$host' WANT_L='$ALIASES' WANT_V='$VERSION' WANT_C='$SHA' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$TARGET"
-          got_a=$(docker compose --env-file .env.docker exec -T web printenv SITE_ADDRESS 2>/dev/null || true)
-          got_l=$(docker compose --env-file .env.docker exec -T web printenv SITE_ALIASES 2>/dev/null || true)
+          got_a=$(docker compose --env-file .env.docker exec -T web printenv SITE_ADDRESS 2>/dev/null </dev/null || true)
+          got_l=$(docker compose --env-file .env.docker exec -T web printenv SITE_ALIASES 2>/dev/null </dev/null || true)
           [ "$(printf '%s' "$got_a" | tr -d '\r')" = "$WANT_A" ] && echo "адрес: совпал" || echo "адрес: НЕ ДОЕХАЛ"
           [ "$(printf '%s' "$got_l" | tr -d '\r')" = "$WANT_L" ] && echo "имена: совпали" || echo "имена: НЕ ДОЕХАЛИ"
-          got_v=$(docker compose --env-file .env.docker exec -T api printenv QUIZZY_VERSION 2>/dev/null || true)
-          got_c=$(docker compose --env-file .env.docker exec -T api printenv QUIZZY_COMMIT 2>/dev/null || true)
+          got_v=$(docker compose --env-file .env.docker exec -T api printenv QUIZZY_VERSION 2>/dev/null </dev/null || true)
+          got_c=$(docker compose --env-file .env.docker exec -T api printenv QUIZZY_COMMIT 2>/dev/null </dev/null || true)
           [ "$(printf '%s' "$got_v" | tr -d '\r')" = "$WANT_V" ] && echo "версия: совпала" || echo "версия: НЕ ДОЕХАЛА"
           [ "$(printf '%s' "$got_c" | tr -d '\r')" = "$WANT_C" ] && echo "коммит: совпал" || echo "коммит: НЕ ДОЕХАЛ"
           REMOTE
           )
           echo "$out"
-          echo "$out" | grep -q "НЕ ДОЕХАЛ" && { echo "настройка не дошла до контейнера — смотрите docker-compose.yml на сервере"; exit 1; }
-          exit 0
+          # Успех — только когда сказаны все четыре «совпал(и/а)». Прежде шаг
+          # падал лишь на «НЕ ДОЕХАЛ», и пустой вывод считался успехом: exec без
+          # </dev/null съедал остаток скрипта, и с сентября шаг не проверял
+          # ничего — в том числе того, что v1.16.1 до сервера не дошла.
+          for want in "адрес: совпал" "имена: совпали" "версия: совпала" "коммит: совпал"; do
+            printf '%s\n' "$out" | grep -qx "$want" || { echo "нет «$want» — настройка или версия не дошли до контейнера"; exit 1; }
+          done
 
       - name: Проверка приложения
         run: |
