@@ -79,6 +79,17 @@ async function mfaLogin(mfaToken: string, code: string) {
 const post = (body: unknown = {}) => ({ method: "POST", body: JSON.stringify(body) });
 
 /** Сотрудник с личным исключением — как такие права и выдают */
+/**
+ * Заведующий отделением: ступень лестницы «head». С волны 15 действия над
+ * чужой учёткой — только ниже своего положения (lib/accountRule.ts), и
+ * сотрудник вне лестницы с делегированным users.manage других сотрудников
+ * не трогает; сценарии «выключить сотрудника пачкой», «импортировать
+ * сотрудников» ведёт тот, кто выше них.
+ */
+async function asHead(person: Person): Promise<void> {
+  await db.insert(staffRoles).values({ userId: person.id, roleId: "role-head", grantedBy: root.id });
+}
+
 async function staffWith(tag: string, ...permissions: string[]): Promise<Person & { email: string }> {
   const email = `pp-${tag}-${crypto.randomUUID()}@test.dev`;
   const person = await makeUser("admin", email);
@@ -657,10 +668,19 @@ describe("массовые действия", () => {
     expect(bulkSkip("assign-role", admin, t("x", "admin"), { ...specialist, permissions: ["users.manage"] })).toBe("roleGrantsMore");
     expect(bulkSkip("assign-role", admin, t("x", "admin"), { id: "b", code: "psychologist", permissions: [] })).toBe("roleNotInChain");
     expect(bulkSkip("assign-role", admin, t("x", "admin"), specialist)).toBeNull();
+    // волна 15: ровня и старшие — пропуск при любом действии (lib/accountRule.ts)
+    const headActor = actor("admin", 2, ["patients.read"]);
+    expect(bulkSkip("disable", headActor, t("c", "admin", null, ["chief"]))).toBe("aboveYours");
+    expect(bulkSkip("revoke-sessions", headActor, t("h", "admin", null, ["head"]))).toBe("aboveYours");
+    expect(bulkSkip("assign-role", headActor, t("c", "admin", null, ["chief"]), specialist)).toBe("aboveYours");
+    expect(bulkSkip("disable", headActor, t("s", "admin", null, ["specialist"]))).toBeNull();
+    expect(bulkSkip("disable", actor("admin", 0), t("x", "admin"))).toBe("aboveYours");
+    expect(bulkSkip("disable", actor("admin", 0), t("p", "user"))).toBeNull();
   });
 
   test("выключить пачкой: себя, суперадмина и уже выключенного — пропустить с причиной, остальных — сделать", async () => {
     const mgr = await staffWith("bulk-mgr", "users.manage");
+    await asHead(mgr);
     const a = await makeUser("admin", `pp-bulk-a-${crypto.randomUUID()}@test.dev`);
     const b = await makeUser("user", `pp-bulk-b-${crypto.randomUUID()}@test.dev`);
     const off = await makeUser("user", `pp-bulk-off-${crypto.randomUUID()}@test.dev`, { disabledAt: new Date().toISOString() });
@@ -733,6 +753,8 @@ describe("импорт сотрудников из CSV", () => {
       takenEmails: new Set(),
       templates: new Map(),
       actorIsSuper: false,
+      // главный врач: сотрудник (1) ниже его положения (4)
+      actorStanding: 4,
     });
     expect(missingColumns).toEqual([]);
     expect(checked[0]!.errors).toEqual([]);
@@ -756,6 +778,7 @@ describe("импорт сотрудников из CSV", () => {
     ].join("\n");
 
     const mgr = await staffWith("import-mgr", "users.manage");
+    await asHead(mgr);
     const preview = await api("/api/ops/people/users/import/preview", mgr.token, post({ csv }));
     expect(preview.status).toBe(200);
     const errs = Object.fromEntries(preview.body.rows.map((r: { line: number; errors: string[] }) => [r.line, r.errors]));

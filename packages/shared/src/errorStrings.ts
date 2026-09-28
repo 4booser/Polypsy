@@ -1532,6 +1532,23 @@ export const ERRORS = {
     en: "{field}: the value is outside what rule {rule} allows",
   },
   "err.v.range": { uk: "{field}: від {min} до {max}", ru: "{field}: от {min} до {max}", en: "{field}: from {min} to {max}" },
+
+  /* ── w15:access ── */
+  /*
+   * Действия над чужой учётной записью — одним правилом для HTTP и консоли
+   * (lib/accountClass.ts). «Не себе» у смены класса — прежний
+   * err.cannotChangeOwnRole; здесь — для остальных действий.
+   */
+  "err.ownAccount": {
+    uk: "Цю дію не можна застосувати до власного облікового запису",
+    ru: "Это действие нельзя применить к собственной учётной записи",
+    en: "This action can’t be applied to your own account",
+  },
+  "err.accountAtOrAboveYours": {
+    uk: "Обліковий запис стоїть на вашій сходинці або вище — змінити його може лише старший за посадою",
+    ru: "Учётная запись на вашей ступени или выше — изменить её может только старший по должности",
+    en: "This account is at your level or above — only someone senior to you can change it",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

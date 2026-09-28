@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { env } from "../env";
+import { env, parseEncryptionKeys } from "../env";
 import { log } from "./log";
 
 /**
@@ -28,20 +28,15 @@ interface LoadedKey {
 }
 
 function loadKeys(spec: string): { active: LoadedKey | null; byId: Map<string, Buffer> } {
-  const byId = new Map<string, Buffer>();
-  let active: LoadedKey | null = null;
-  // формат: "v1:<base64 32 байта>[,v2:<base64>]" — первый ключ активный
-  for (const part of spec.split(",").map((s) => s.trim()).filter(Boolean)) {
-    const [id, b64] = part.split(":");
-    if (!id || !b64) continue;
-    const key = Buffer.from(b64, "base64");
-    if (key.length !== 32) {
-      throw new Error(`ENCRYPTION_KEY ${id}: ожидается 32 байта в base64, получено ${key.length}`);
-    }
-    byId.set(id, key);
-    active ??= { id, key };
-  }
-  return { active, byId };
+  /*
+   * Формат разбирает env.ts (parseEncryptionKeys) — там же отказ при запуске
+   * на повторяющемся id, записи без ключа и ключе не в 32 байта. Здесь —
+   * только раскладка: первый ключ активный, остальные для чтения. Повтор id
+   * сюда не доходит, поэтому «пишет первый, читается последний» больше не
+   * случается (внешний разбор 2026-09-27, п. 13).
+   */
+  const list = parseEncryptionKeys(spec);
+  return { active: list[0] ?? null, byId: new Map(list.map((k) => [k.id, k.key])) };
 }
 
 let keys = loadKeys(env.encryptionKeys);
@@ -57,12 +52,13 @@ export function reloadKeysForTests(spec: string): void {
 /*
  * Проверка повторяет ту, что в env.ts, и это не дублирование.
  *
- * Там проверяется, что переменная не пуста, здесь — что из неё получился
- * хотя бы один ключ. Между этими условиями есть щель: «v1» без ключа,
- * «случайная строка», «ENCRYPTION_KEY=,» — всё это непустые значения, из
- * которых loadKeys не берёт ничего и молча возвращает активный ключ null.
- * Опечатка в ключе — самый вероятный способ получить установку, которая
- * считает себя шифрованной и пишет открытым текстом.
+ * Там проверяется, что переменная не пуста и что каждая запись в ней —
+ * ключ, здесь — что из неё получился хотя бы один ключ. Между этими
+ * условиями остаётся щель: «ENCRYPTION_KEY=,» — непустое значение без единой
+ * записи, из которого не берётся ничего, и активный ключ null. Опечатка в
+ * ключе — самый вероятный способ получить установку, которая считает себя
+ * шифрованной и пишет открытым текстом. («v1» без ключа и случайная строка
+ * с волны 15 отвергаются раньше — разбором в env.ts.)
  */
 if (env.isProduction && !keys.active) {
   throw new Error(

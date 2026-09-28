@@ -12,11 +12,10 @@ import {
   type OpsSessionPage,
   type OpsUserPage,
   type OpsUserRow,
-  type User,
 } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
-import { permissionExceptions, refreshTokens, roles, staffRoles, users, type UserRow } from "../db/schema";
+import { permissionExceptions, refreshTokens, roles, staffRoles, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf, hashPassword } from "../lib/auth";
 import {
@@ -28,7 +27,6 @@ import {
   journalEntriesOf,
   liveTokenCondition,
   matchRegistry,
-  otherActiveSuperadmins,
   sessionCountsOf,
 } from "../lib/accounts";
 import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
@@ -36,6 +34,7 @@ import { clearFailures } from "../lib/loginGuard";
 import { currentRequestId } from "../lib/log";
 import { sessionsSummary, usersSummary } from "../lib/peopleStats";
 import { revokeAllFor, revokeFamily } from "../lib/refresh";
+import { guardAccountAction } from "../lib/accountClass";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -57,6 +56,11 @@ import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../mi
  * бы новый в ответе — и вошёл бы под ним: право вести учётки стало бы правом
  * взять любую, включая ту, что раздаёт права.
  *
+ * С волны 15 правило шире и одно на все входы (lib/accountClass.ts,
+ * guardAccountAction; решение заказчика 2026-09-28): цель — строго ниже
+ * своего положения. Одного «суперадмина — только суперадмин» мало:
+ * заведующий, сбросивший пароль главному врачу, входил главным врачом.
+ *
  * Порядок подключения в app.ts важен: эти наборы стоят раньше /api/ops
  * наблюдаемости, у которой свой заслон по ops.read на весь префикс. Hono
  * собирает обработчики в порядке регистрации, и ответ отсюда уходит раньше,
@@ -72,29 +76,15 @@ opsSessionRoutes.use("*", requireAuth, requireStaff, requirePermission("users.ma
 
 /* ─────────── общее ─────────── */
 
-async function targetOf(id: string): Promise<UserRow> {
-  const row = await db.query.users.findFirst({ where: eq(users.id, id) });
-  if (!row) notFound("err.userNotFound");
-  return row;
-}
-
-/** Над суперадминистратором — только суперадминистратор (см. заголовок файла) */
-function guardSuperadminTarget(actor: User, target: Pick<UserRow, "role">): void {
-  if (target.role === "superadmin" && actor.role !== "superadmin") forbidden("err.superadminOnly");
-}
-
-/**
- * Последний действующий суперадмин — раньше проверки «себя», а не после.
- *
- * Иначе правило было бы недостижимо: действует над суперадмином только
- * суперадмин, и если он не сам, значит, он и есть ещё один действующий. А
- * «себя» — ровно тот случай, когда суперадмин последний: запрет назван
- * причиной, которая важнее, — системой станет некому управлять.
+/*
+ * Кого можно трогать — guardAccountAction (lib/accountClass.ts): право, не
+ * себе, над суперадмином — только суперадмин, цель строго ниже своего
+ * положения. Последний действующий суперадмин проверяется там же и раньше
+ * «себя», а не после: иначе правило было бы недостижимо — действует над
+ * суперадмином только суперадмин, и если он не сам, значит, он и есть ещё
+ * один действующий. А «себя» — ровно тот случай, когда суперадмин последний:
+ * запрет назван причиной, которая важнее, — системой станет некому управлять.
  */
-async function guardLastSuperadmin(target: Pick<UserRow, "id" | "role">): Promise<void> {
-  if (target.role !== "superadmin") return;
-  if ((await otherActiveSuperadmins(target.id)) === 0) conflict("err.lastSuperadmin");
-}
 
 /** Отказ ответом, а не исключением: исключение откатило бы вместе с запросом и запись журнала об отказе */
 function refusal(c: Context<AppEnv>, body: Record<string, unknown>) {
@@ -238,10 +228,12 @@ opsUserRoutes.get("/summary", async (c) => {
 opsUserRoutes.post("/:id/disable", async (c) => {
   const actor = c.get("user");
   const { reason } = await parseBody(c.req.raw, disableUserSchema);
-  const row = await targetOf(c.req.param("id"));
-  guardSuperadminTarget(actor, row);
-  await guardLastSuperadmin(row);
-  if (row.id === actor.id) forbidden("err.cannotDisableSelf");
+  const row = await guardAccountAction(c, c.req.param("id"), {
+    permission: "users.manage",
+    self: "err.cannotDisableSelf",
+    action: "user.disable",
+    lastSuperadmin: true,
+  });
   if (row.disabledAt) conflict("err.userAlreadyDisabled");
 
   const disabledAt = new Date().toISOString();
@@ -260,9 +252,7 @@ opsUserRoutes.post("/:id/disable", async (c) => {
 
 /** Включить обратно. Сессий не возвращает: войти человек должен заново */
 opsUserRoutes.post("/:id/enable", async (c) => {
-  const actor = c.get("user");
-  const row = await targetOf(c.req.param("id"));
-  guardSuperadminTarget(actor, row);
+  const row = await guardAccountAction(c, c.req.param("id"), { permission: "users.manage", action: "user.enable" });
   if (!row.disabledAt) conflict("err.userNotDisabled");
 
   await db
@@ -285,9 +275,17 @@ opsUserRoutes.post("/:id/enable", async (c) => {
 
 /** Завершить все сессии: семьи refresh гасятся, access-токены отсекаются сдвигом границы */
 opsUserRoutes.post("/:id/revoke-sessions", async (c) => {
-  const actor = c.get("user");
-  const row = await targetOf(c.req.param("id"));
-  guardSuperadminTarget(actor, row);
+  /*
+   * Свои сессии завершить можно: это выход на всех устройствах, а не захват
+   * учётки, и другого пути к нему у человека нет (выход гасит одну семью).
+   * Чужие — по общему правилу: завершить сессии главного врача посреди
+   * приёма заведующий не вправе так же, как сбросить ему пароль.
+   */
+  const row = await guardAccountAction(c, c.req.param("id"), {
+    permission: "users.manage",
+    self: "allow",
+    action: "user.sessions_revoke",
+  });
 
   const revokedTokens = await revokeAllFor(row.id);
   await audit(c, {
@@ -320,10 +318,11 @@ opsUserRoutes.post("/:id/revoke-sessions", async (c) => {
  * чтобы забрать учётку насовсем.
  */
 opsUserRoutes.post("/:id/reset-password", async (c) => {
-  const actor = c.get("user");
-  const row = await targetOf(c.req.param("id"));
-  guardSuperadminTarget(actor, row);
-  if (row.id === actor.id) forbidden("err.cannotResetOwnPassword");
+  const row = await guardAccountAction(c, c.req.param("id"), {
+    permission: "users.manage",
+    self: "err.cannotResetOwnPassword",
+    action: "user.password_reset",
+  });
 
   const password = generateTempPassword();
   await db
@@ -384,9 +383,12 @@ opsUserRoutes.delete("/:id", async (c) => {
   const actor = c.get("user");
   const lang = langOf(c);
   if (actor.role !== "superadmin") forbidden("err.superadminOnly");
-  const row = await targetOf(c.req.param("id"));
-  await guardLastSuperadmin(row);
-  if (row.id === actor.id) forbidden("err.cannotDeleteSelf");
+  const row = await guardAccountAction(c, c.req.param("id"), {
+    permission: "users.manage",
+    self: "err.cannotDeleteSelf",
+    action: "user.delete",
+    lastSuperadmin: true,
+  });
 
   const [traces, journal] = await asSystem(() => Promise.all([clinicalTraceOf([row.id]), journalEntriesOf([row.id])]));
   const holds = holdsOf(traces.get(row.id) ?? emptyTrace(), journal.get(row.id) ?? 0);
@@ -492,7 +494,6 @@ opsSessionRoutes.get("/summary", async (c) => {
 
 /** Завершить одну сессию — семью целиком; access-токены человека отсекаются сдвигом границы */
 opsSessionRoutes.post("/:id/revoke", async (c) => {
-  const actor = c.get("user");
   const familyId = c.req.param("id");
 
   const live = await db
@@ -501,8 +502,12 @@ opsSessionRoutes.post("/:id/revoke", async (c) => {
     .where(and(eq(refreshTokens.familyId, familyId), liveTokenCondition()))
     .limit(1);
   if (!live[0]) notFound("err.sessionNotFound");
-  const owner = await targetOf(live[0].userId);
-  guardSuperadminTarget(actor, owner);
+  // свою сессию завершить можно (это выход), чужую — по общему правилу, как revoke-sessions
+  const owner = await guardAccountAction(c, live[0].userId, {
+    permission: "users.manage",
+    self: "allow",
+    action: "session.revoke",
+  });
 
   await revokeFamily(familyId);
   await audit(c, {
