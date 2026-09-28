@@ -36,6 +36,7 @@ import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { periodFrom, periodTo } from "../lib/population";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
+import { assertResponseRead, CLINICAL_READ } from "../lib/clinicalRead";
 import {
   accessiblePatientIds,
   assertPatientAccess,
@@ -813,8 +814,13 @@ responseRoutes.get("/me/responses", async (c) => {
   });
 });
 
-/** Все прохождения методики — админам */
-responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission("patients.read"), async (c) => {
+/**
+ * Все прохождения методики — админам.
+ *
+ * Право — то же CLINICAL_READ, что проверяет каждое прохождение по id
+ * (lib/clinicalRead.ts): список и строка списка закрыты одним запретом.
+ */
+responseRoutes.get("/surveys/:id/responses", requireStaff, requirePermission(CLINICAL_READ), async (c) => {
   const staff = c.get("user");
   await assertSurveyAccess(staff, c.req.param("id"));
 
@@ -992,13 +998,16 @@ responseRoutes.get("/responses/:id", async (c) => {
     where: eq(responses.id, c.req.param("id")),
   });
   if (!response) notFound("err.responseNotFound");
-  if (!isStaff(user) && response.userId !== user.id) {
-    forbidden("err.responseOwnerOrStaffOnly");
-  }
-  // сотрудник видит карту, только если методика в зоне его ответственности
-  if (isStaff(user) && response.userId !== user.id) {
-    await assertSurveyAccess(user, response.surveyId);
-  }
+  /*
+   * Своё — сам обследуемый; чужое — сотрудник с правом читать данные
+   * пациентов в зоне методики (lib/clinicalRead.ts). Прежде здесь были
+   * роль и зона без права: сотрудник, которому patients.read отняли
+   * исключением, получал по известному id баллы и id пациента, хотя список
+   * прохождений той же методики отвечал ему 403 (волна 15, внешний разбор,
+   * P1). Чужая методика теперь — «не найдено», как у заключения и печати и
+   * как в бою под политикой строк, а не «вне зоны».
+   */
+  await assertResponseRead(c, user, response);
 
   // читаем методику той версии, которую респондент реально видел
   const survey = await getSurveyForResponse(response.id, langOf(c));

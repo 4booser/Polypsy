@@ -37,6 +37,7 @@ import { log } from "./log";
 import { assertAttemptsLeft, consumeAttempt } from "./attempts";
 import { assertBatteryOrder, closeCompletedBatteries } from "./batteries";
 import { runCascades, type CascadeOutcome } from "./cascade";
+import { env } from "../env";
 
 /**
  * Ядро сохранения прохождения — общее для обычной сдачи и киоска.
@@ -162,7 +163,7 @@ export async function persistSubmission(
   const respondent = {
     sex: subject.sex,
     // возраст — на момент ответов, а не отправки: нормы стратифицированы по возрасту
-    age: ageAt(decryptField(subject.birthDate), submittedAt),
+    age: ageAt(decryptField(subject.birthDate), submittedAt, env.institutionTz),
   };
   // снэпшоты стратификации на момент сдачи: профиль меняется, история — нет;
   // и это единственный путь SQL-группировки при шифрованной дате рождения

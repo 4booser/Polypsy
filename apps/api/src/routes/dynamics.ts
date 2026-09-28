@@ -8,13 +8,14 @@ import { langOf } from "../lib/http";
 import { responseScores, responses, scales, surveys, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { alphasOf, basisOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
+import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
-import { percentileOf } from "../lib/norms";
+import { referencePercentile, referenceSamples, type SampleTarget } from "../lib/referenceSample";
 import { birthYearOf } from "../lib/privacy";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { env } from "../env";
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
@@ -223,7 +224,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       fullName: fullNameOf(patient),
       email: patient.email,
       sex: (patient.sex as Sex | null) ?? null,
-      age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+      age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
       surveys: [],
     } satisfies RespondentDynamics);
   }
@@ -246,7 +247,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       fullName: fullNameOf(patient),
       email: patient.email,
       sex: (patient.sex as Sex | null) ?? null,
-      age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+      age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
       surveys: [],
     } satisfies RespondentDynamics);
   }
@@ -275,6 +276,8 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
    * к одной версии ради этого незачем: у точки своя версия, и сравнивать её
    * надо со своими. Из этой же выборки считаются моменты для приведения
    * версий друг к другу.
+   *
+   * Перцентиль точки из неё больше не считается — у него своя выборка ниже.
    */
   const sampleByKey = await normativeSamples(surveyIds);
 
@@ -283,6 +286,36 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
     const list = scoresByResponse.get(s.responseId) ?? [];
     list.push(s);
     scoresByResponse.set(s.responseId, list);
+  }
+
+  /*
+   * Выборка для перцентиля точки — та же политика, что у печатного листа
+   * (lib/referenceSample.ts), по приведённому значению (мера "value"):
+   * совместимые версии (та же или доказанно та же величина — ключ, размах,
+   * нормировка, нормы), только достоверные протоколы, только обследуемые,
+   * человек — одно значение (его последнее такое прохождение), от десяти
+   * людей. Прежде перцентиль брался из нормативной выборки выше — все
+   * значения той же версии по прохождениям, вместе с проваленными шкалой
+   * лжи: сорок сдач одного человека весили как сорок людей, а люди на
+   * совместимой соседней версии не шли вовсе (волна 15, внешний разбор).
+   *
+   * Точка без версии (версию удалили) сравнить не с чем — перцентиля у неё
+   * нет. Ненормированная точка — тоже: сырой балл среди T-баллов — то же
+   * сравнение в двух единицах, что и прежде.
+   */
+  const percentileSamples = new Map<string, (target: SampleTarget) => number[]>();
+  for (const surveyId of new Set(responseRows.map((r) => r.surveyId))) {
+    const targets = responseRows
+      .filter((r) => r.surveyId === surveyId && r.versionId)
+      .flatMap((r) =>
+        (scoresByResponse.get(r.id) ?? []).flatMap((score) => {
+          const code = scaleById.get(score.scaleId)?.code;
+          return score.normalized && code
+            ? [{ versionId: r.versionId!, code, maxScore: score.maxScore, unit: score.normalization }]
+            : [];
+        }),
+      );
+    percentileSamples.set(surveyId, await referenceSamples(surveyId, "value", targets));
   }
 
   /*
@@ -332,7 +365,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
      * который носят по отделению, — лишние сведения без единого сценария.
      */
     sex: (patient.sex as Sex | null) ?? null,
-    age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+    age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
     surveys: [...bySurvey.entries()].map(([surveyId, list]) => {
       const survey = scoped.find((s) => s.id === surveyId)!;
 
@@ -342,7 +375,6 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
         for (const score of scoresByResponse.get(response.id) ?? []) {
           const scale = scaleById.get(score.scaleId);
           if (!scale) continue;
-          const basis = basisOf(response.versionId ?? null, score);
           const entry = byCode.get(scale.code) ?? {
             scaleId: scale.id,
             code: scale.code,
@@ -377,13 +409,24 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
              * перцентиль около ста. Худший возможный результат
              * показывался как лучший.
              *
-             * И выборка — той же версии и нормировки (см. basisOf); у
-             * ненормированного балла её нет, и перцентиля тоже: сырой балл
-             * среди T-баллов — то же сравнение в двух единицах.
+             * И выборка — в тех же единицах: совместимые версии по
+             * приведённому значению (valueSignature), только нормированные
+             * строки; у ненормированного балла её нет, и перцентиля тоже:
+             * сырой балл среди T-баллов — то же сравнение в двух единицах.
+             * Кто в выборку идёт — lib/referenceSample.ts (см. выше).
              */
-            percentile: score.normalized
-              ? percentileOf(score.value, sampleByKey.get(`${surveyId}:${scale.code}:${basis}`) ?? [])
-              : null,
+            percentile:
+              score.normalized && response.versionId
+                ? referencePercentile(
+                    score.value,
+                    percentileSamples.get(surveyId)?.({
+                      versionId: response.versionId,
+                      code: scale.code,
+                      maxScore: score.maxScore,
+                      unit: score.normalization,
+                    }) ?? [],
+                  )
+                : null,
             /*
              * Единицы и достоверность точки — наружу: без них экран не
              * отличит сырой балл от T-балла той же шкалы и вычтет одно из

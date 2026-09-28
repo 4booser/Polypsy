@@ -135,6 +135,23 @@ async function bucket(version: 1 | 2 | 3, normalization: "ratio" | "tscore"): Pr
   return rows.map((r) => r.value);
 }
 
+/** Последнее достоверное нормированное значение каждого человека в этих единицах — выборка перцентиля */
+async function lastPerPerson(normalization: "ratio" | "tscore"): Promise<number[]> {
+  const rows = await db.execute<{ value: number } & Record<string, unknown>>(sql`
+    select distinct on (r.user_id) rs.value
+    from response_scores rs
+    join responses r on r.id = rs.response_id
+    where r.survey_id = ${surveyId}
+      and r.status = 'completed'
+      and r.reliable
+      and r.user_id is not null
+      and rs.normalized
+      and rs.normalization = ${normalization}
+    order by r.user_id, r.submitted_at desc, r.id desc
+  `);
+  return [...rows].map((r) => Number(r.value));
+}
+
 const mean = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length;
 const sd = (v: number[]) => Math.sqrt(variance(v));
 
@@ -221,6 +238,20 @@ beforeAll(async () => {
     await measure({ who: pop, version: 3, value: Math.round(30 + 40 * latent), normalization: "tscore", at: at(20 * DAY - i * 60_000), latent });
   }
 
+  /*
+   * Люди для перцентиля. Выше вся выборка — один человек (pop), и с волны 15
+   * перцентиль считает людей, а не прохождения (lib/referenceSample.ts): его
+   * восемьдесят с лишним замеров — одно значение в каждых единицах. Двенадцать
+   * человек — по доле второй версии и T-баллу третьей; для SD и приведения
+   * это ещё двенадцать строк в тех же вёдрах, и ожидания ниже берут вёдра из
+   * базы, а не константами.
+   */
+  for (let i = 0; i < 12; i++) {
+    const who = await makeUser("user", `dyn-crowd-${i}-${crypto.randomUUID()}@test`);
+    await measure({ who, version: 2, value: Math.round((0.2 + 0.6 * rand()) * 100) / 100, at: at(30 * DAY - i * 60_000) });
+    await measure({ who, version: 3, value: Math.round(30 + 40 * rand()), normalization: "tscore", at: at(10 * DAY - i * 60_000) });
+  }
+
   // P: три версии, у первой приведения нет (мала выборка), у второй — есть
   await measure({ who: people.P, version: 1, value: 0.25, at: at(3 * DAY) });
   await measure({ who: people.P, version: 2, value: 0.6, at: at(2 * DAY) });
@@ -272,12 +303,23 @@ describe("изменение считается только между срав
     expect(sc.reliableChange!.basis.sd).toBeCloseTo(sd(v3), 2);
   });
 
-  test("перцентиль — среди своих: T-балл среди T-баллов своей версии, а не среди долей", async () => {
+  test("перцентиль — среди своих: T-балл среди T-баллов, доля среди долей, человек — одно значение", async () => {
+    /*
+     * Ожидание — независимой выборкой из базы: последнее достоверное
+     * нормированное значение каждого человека в тех же единицах (версии
+     * методики одинаковы по содержанию и потому совместимы). Прежде ожидание
+     * было «все значения своей версии»: восемьдесят замеров pop весили как
+     * восемьдесят людей.
+     */
     const sc = await dynamicsOf(people.Q);
+    const tscores = await lastPerPerson("tscore");
+    const ratios = await lastPerPerson("ratio");
+    expect(tscores.length).toBeGreaterThanOrEqual(10);
+    expect(tscores.length).toBeLessThan((await bucket(3, "tscore")).length);
     const last = sc.points[sc.points.length - 1]!;
-    expect(last.percentile).toBe(percentileOf(60, await bucket(3, "tscore")));
+    expect(last.percentile).toBe(percentileOf(60, tscores));
     const first = sc.points[0]!;
-    expect(first.percentile).toBe(percentileOf(0.35, await bucket(2, "ratio")));
+    expect(first.percentile).toBe(percentileOf(0.35, ratios));
   });
 
   test("сырой балл без норм и T-балл той же версии — units, и перцентиля у сырого нет", async () => {

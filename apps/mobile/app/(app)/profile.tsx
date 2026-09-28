@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { LANGS, LANG_NAMES, ageAt, type MyDynamics } from "@quizzy/shared";
+import { LANGS, LANG_NAMES, ageAt, deviceTimeZone, type MyDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { authenticate, isAvailable, isEnabled, setEnabled as setBiometrics } from "@/auth/biometrics";
 import { useAuth } from "@/auth/AuthContext";
@@ -241,8 +241,8 @@ export default function AccountScreen() {
             <ProfileRow
               label={ut("mp.age")}
               value={
-                ageAt(user?.birthDate ?? null, new Date().toISOString()) !== null
-                  ? `${ageAt(user!.birthDate, new Date().toISOString())}`
+                ageAt(user?.birthDate ?? null, new Date().toISOString(), deviceTimeZone()) !== null
+                  ? `${ageAt(user!.birthDate, new Date().toISOString(), deviceTimeZone())}`
                   : "—"
               }
             />
