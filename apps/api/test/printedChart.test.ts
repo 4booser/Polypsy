@@ -42,12 +42,17 @@ import { env } from "../src/env";
 const TAG = crypto.randomUUID().slice(0, 8);
 const NOTE = (i: number) => `NOTE-${TAG}-${String(i).padStart(3, "0")}`;
 const REASON = `TZ-MARKER-${TAG}`;
+/*
+ * Даты — 2024 год, а не последние недели: сводки по последним неделям
+ * (analytics.test, ряд выраженности) считают все прохождения базы, и
+ * синтетические без баллов в их окне меняли бы чужие счёты.
+ */
 /** 28.09 00:30 по Киеву, 27.09 17:30 по Нью-Йорку */
-const LATE_EVENING_UTC = "2026-09-27T21:30:00.000Z";
+const LATE_EVENING_UTC = "2024-09-27T21:30:00.000Z";
 /** 28.09 01:00 в Токио, 27.09 19:00 по Киеву */
-const TOKYO_MORNING_UTC = "2026-09-27T16:00:00.000Z";
+const TOKYO_MORNING_UTC = "2024-09-27T16:00:00.000Z";
 /** 30.04 по Киеву — накануне дня рождения (01.05), в Нью-Йорке тоже 30.04 */
-const EVE_OF_BIRTHDAY_UTC = "2026-04-30T12:00:00.000Z";
+const EVE_OF_BIRTHDAY_UTC = "2024-04-30T12:00:00.000Z";
 
 const VISITS = 205;
 /** Подписанные записи: 1…104 — по дню, 105 — поздним вечером, 106…115 — в одну миллисекунду */
@@ -307,17 +312,17 @@ describe("даты карты — в поясе учреждения, а не п
     const report = await sheet(`/api/reports/responses/${lateResponseId}`, patient.token);
     expect(report.status, report.text.slice(0, 300)).toBe(200);
     expect(report.text).toContain(printStamp(LATE_EVENING_UTC, env.institutionTz));
-    expect(report.text).not.toContain("2026-09-27 21:30");
+    expect(report.text).not.toContain("2024-09-27 21:30");
   });
 
   test("лист прохождения — возраст по календарю, а не по часам процесса", async () => {
     /*
-     * Накануне дня рождения — ещё 35. Общий ageAt по часам Нью-Йорка
-     * превращал «1990-05-01» в 30 апреля и печатал 36.
+     * Накануне дня рождения — ещё 33. Общий ageAt по часам Нью-Йорка
+     * превращал «1990-05-01» в 30 апреля и печатал 34.
      */
     const report = await sheet(`/api/reports/responses/${eveResponseId}`, patient.token);
     expect(report.status).toBe(200);
-    expect(report.text).toContain("35 років на момент обстеження");
+    expect(report.text).toContain("33 роки на момент обстеження");
   });
 });
 
@@ -330,14 +335,14 @@ describe("даты листа — функциями", () => {
   });
 
   test("момент — днём и временем заданного пояса", () => {
-    expect(printDay(LATE_EVENING_UTC, "uk", "Europe/Kyiv")).toBe("28.09.2026");
-    expect(printDay(LATE_EVENING_UTC, "uk", "UTC")).toBe("27.09.2026");
-    expect(printStamp(LATE_EVENING_UTC, "Europe/Kyiv")).toBe("2026-09-28 00:30");
+    expect(printDay(LATE_EVENING_UTC, "uk", "Europe/Kyiv")).toBe("28.09.2024");
+    expect(printDay(LATE_EVENING_UTC, "uk", "UTC")).toBe("27.09.2024");
+    expect(printStamp(LATE_EVENING_UTC, "Europe/Kyiv")).toBe("2024-09-28 00:30");
     expect(printStamp("2026-01-15T22:30:00.000Z", "Europe/Kyiv")).toBe("2026-01-16 00:30");
   });
 
   test("возраст — по календарю дня учреждения", () => {
-    expect(ageOnDay("1990-05-01", EVE_OF_BIRTHDAY_UTC, "Europe/Kyiv")).toBe(35);
+    expect(ageOnDay("1990-05-01", EVE_OF_BIRTHDAY_UTC, "Europe/Kyiv")).toBe(33);
     expect(ageOnDay("1990-05-01", "2026-04-30T21:30:00.000Z", "Europe/Kyiv")).toBe(36);
     expect(ageOnDay("1990-05-01", "2026-04-30T21:30:00.000Z", "UTC")).toBe(35);
     expect(ageOnDay("1992-02-29", "2026-02-28T12:00:00.000Z", "Europe/Kyiv")).toBe(33);
