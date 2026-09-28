@@ -25,6 +25,7 @@ const batchQuery = z.object({
   to: queryDate.optional(),
 });
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { env } from "../env";
 
 export const conclusionRoutes = new Hono<AppEnv>();
 
@@ -220,7 +221,7 @@ conclusionRoutes.get(
       patient: patient
         ? {
             fullName: fullNameOf(patient),
-            age: ageAt(decryptField(patient.birthDate), response.submittedAt ?? response.startedAt),
+            age: ageAt(decryptField(patient.birthDate), response.submittedAt ?? response.startedAt, env.institutionTz),
             unit: patient.unit,
           }
         : null,

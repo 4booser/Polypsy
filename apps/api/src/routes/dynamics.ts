@@ -15,6 +15,7 @@ import { referencePercentile, referenceSamples, type SampleTarget } from "../lib
 import { birthYearOf } from "../lib/privacy";
 import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
+import { env } from "../env";
 
 export const dynamicsRoutes = new Hono<AppEnv>();
 
@@ -223,7 +224,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       fullName: fullNameOf(patient),
       email: patient.email,
       sex: (patient.sex as Sex | null) ?? null,
-      age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+      age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
       surveys: [],
     } satisfies RespondentDynamics);
   }
@@ -246,7 +247,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
       fullName: fullNameOf(patient),
       email: patient.email,
       sex: (patient.sex as Sex | null) ?? null,
-      age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+      age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
       surveys: [],
     } satisfies RespondentDynamics);
   }
@@ -364,7 +365,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
      * который носят по отделению, — лишние сведения без единого сценария.
      */
     sex: (patient.sex as Sex | null) ?? null,
-    age: ageAt(decryptField(patient.birthDate), new Date().toISOString()),
+    age: ageAt(decryptField(patient.birthDate), new Date().toISOString(), env.institutionTz),
     surveys: [...bySurvey.entries()].map(([surveyId, list]) => {
       const survey = scoped.find((s) => s.id === surveyId)!;
 

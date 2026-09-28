@@ -21,7 +21,7 @@ import { audit } from "../lib/audit";
 import { badRequest, forbidden, langOf, notFound, type ErrorInfo } from "../lib/http";
 import { referencePercentile, reportReferenceSamples } from "../lib/referenceSample";
 import { chartHistory } from "../lib/chartHistory";
-import { ageOnDay, printCalendarDay, printDay, printStamp } from "../lib/printDates";
+import { printCalendarDay, printDay, printStamp } from "../lib/printDates";
 import { assertResponseRead } from "../lib/clinicalRead";
 import { assertPatientAccess, isStaff } from "../lib/scope";
 import { fullNameOf, toPublicUser } from "../lib/auth";
@@ -29,6 +29,7 @@ import { claimReportLink, issueReportLink, REPORT_LINK_PREFIX, REPORT_LINK_TTL_M
 import { namesOf } from "../lib/names";
 import { decryptField } from "../lib/crypto";
 import {
+  ageAt,
   formatDuration,
   LOCALE_OF,
   renderError,
@@ -239,8 +240,8 @@ async function responseReport(
     },
   });
 
-  /* возраст на день сдачи по календарю учреждения, а не по часам процесса (lib/printDates.ts) */
-  const age = patient ? ageOnDay(decryptField(patient.birthDate), response.submittedAt) : null;
+  /* возраст на день сдачи по календарю учреждения, а не по часам процесса (shared ageAt) */
+  const age = patient ? ageAt(decryptField(patient.birthDate), response.submittedAt, env.institutionTz) : null;
   return renderReport(lang, {
     surveyTitle: survey.title,
     versionNumber: survey.versionNumber,

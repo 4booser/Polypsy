@@ -4,6 +4,7 @@ import { db } from "../db";
 import { answers, filterPresets, responseScores, responses, statModels, surveys, users } from "../db/schema";
 import { decryptField } from "../lib/crypto";
 import { getSurvey } from "../lib/surveys";
+import { env } from "../env";
 
 /**
  * Посев раздела «Статистика»: населённые пункты пациентам, прохождения
@@ -116,7 +117,7 @@ async function respond(surveyId: string, person: typeof users.$inferSelect, days
   }
 
   const birthDate = decryptField(person.birthDate);
-  const age = ageAt(birthDate, startedAt.toISOString());
+  const age = ageAt(birthDate, startedAt.toISOString(), env.institutionTz);
   const profile = computeProfile(survey, generated, { sex: person.sex, age });
   const responseId = crypto.randomUUID();
   const durationMs = generated.reduce((sum, a) => sum + (a.durationMs ?? 0), 0);

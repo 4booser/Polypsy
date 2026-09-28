@@ -1,4 +1,4 @@
-import { ageAt } from "@quizzy/shared";
+import { ageAt, deviceTimeZone } from "@quizzy/shared";
 
 /**
  * Чьи пол и возраст применять при подсчёте на устройстве.
@@ -23,5 +23,6 @@ export function respondentFor(
   now = new Date().toISOString(),
 ): Respondent {
   if (subject) return { sex: subject.sex, age: subject.age };
-  return { sex: me?.sex ?? null, age: ageAt(me?.birthDate ?? null, now) };
+  /* день — по календарю устройства: пояса учреждения клиент не знает, окончательный возраст считает сервер */
+  return { sex: me?.sex ?? null, age: ageAt(me?.birthDate ?? null, now, deviceTimeZone()) };
 }

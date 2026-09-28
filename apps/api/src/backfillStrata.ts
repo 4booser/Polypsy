@@ -9,6 +9,7 @@ import { ageAt, ageBandOf } from "@quizzy/shared";
 import { client, db } from "./db";
 import { responses, users } from "./db/schema";
 import { decryptField } from "./lib/crypto";
+import { env } from "./env";
 
 const rows = await db
   .select({ response: responses, user: users })
@@ -18,7 +19,7 @@ const rows = await db
 
 let done = 0;
 for (const { response, user } of rows) {
-  const age = ageAt(decryptField(user.birthDate), response.submittedAt ?? response.startedAt);
+  const age = ageAt(decryptField(user.birthDate), response.submittedAt ?? response.startedAt, env.institutionTz);
   await db
     .update(responses)
     .set({

@@ -1,4 +1,4 @@
-import { ageAt, evaluateSubmission, isTransientStatus, type Answer, type SurveyFull } from "@quizzy/shared";
+import { ageAt, deviceTimeZone, evaluateSubmission, isTransientStatus, type Answer, type SurveyFull } from "@quizzy/shared";
 
 /**
  * Несданные ответы веб-кабинета — ждут конца работ или появления сети.
@@ -187,6 +187,7 @@ export function offlineSafetyPlan(
   now = new Date().toISOString(),
 ): string | null {
   if (!survey.safetyPlan) return null;
-  const respondent = { sex: me?.sex ?? null, age: ageAt(me?.birthDate ?? null, now) };
+  /* день — по календарю устройства: пояса учреждения клиент не знает, окончательный возраст считает сервер */
+  const respondent = { sex: me?.sex ?? null, age: ageAt(me?.birthDate ?? null, now, deviceTimeZone()) };
   return evaluateSubmission(survey, answers, respondent).risk.severity ? survey.safetyPlan : null;
 }
