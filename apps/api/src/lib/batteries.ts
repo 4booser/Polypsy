@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { serverText, t, type Lang } from "@quizzy/shared";
+import { serverText, t, type BatteryProgressState, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
 import { batteries, batteryAssignments, batteryItems, responses, surveys } from "../db/schema";
@@ -58,6 +58,214 @@ export async function closeMissed(
     .where(inArray(batteryAssignments.id, [...ids]));
 }
 
+
+/*
+ * ─── исполнимые обязательные шаги: один расчёт на экран, допуск и завершение ───
+ *
+ * Прогресс по назначению считали три места, и каждое по-своему: экран
+ * (routes/batteries.ts) — все шаги по порядку, допуск к сдаче
+ * (assertBatteryOrder) — все предшествующие шаги самоотчёта, завершение
+ * (closeCompletedBatteries) — обязательные. Ни одно не смотрело, можно ли
+ * методику шага вообще пройти. Итог (внешний разбор 2026-09-28, P2): набор
+ * [необязательный A, обязательный B] в строгом порядке не пускал к B, пока
+ * не пройден A; снятая с использования A — пройти её нельзя — запирала B
+ * навсегда, а назначение с ней не завершалось никогда.
+ *
+ * Теперь расчёт один — batteryProgress, — и все три зовут его:
+ *   — шаг, методику которого пройти нельзя (снята с использования или не
+ *     опубликована, isExecutable), — «знято» (retired): не запирает
+ *     следующие и не входит в обязательные. Пройденный до снятия остаётся
+ *     пройденным и засчитывается;
+ *   — в строгом порядке следующие шаги запирает только непройденный
+ *     ОБЯЗАТЕЛЬНЫЙ исполнимый шаг самоотчёта. Необязательный открыт, когда до
+ *     него дошли, и никого не держит;
+ *   — очерёдность — только у самоотчёта: методику заполняет специалист или
+ *     информант — это параллельная дорожка, не часть последовательности
+ *     обследуемого (утомление и настрой между опросниками — причина строгого
+ *     порядка — к ней не относятся). Экран прежде ставил в очередь и
+ *     информанта, допуск — нет; теперь оба — нет;
+ *   — назначение завершено, когда пройдены все исполнимые обязательные шаги
+ *     (и хотя бы один такой есть: набор без обязательных сам не закрывается —
+ *     как и прежде).
+ */
+
+/**
+ * Можно ли методику сейчас пройти: опубликована и не снята с использования.
+ * Ровно те два условия, которыми сдача отказывает (routes/responses.ts:
+ * status !== "published", archivedAt).
+ */
+export function isExecutable(survey: { status: string; archivedAt: string | null }): boolean {
+  return survey.status === "published" && survey.archivedAt === null;
+}
+
+/** Шаг набора для расчёта: методика, место, обязательность, кто заполняет, можно ли пройти */
+export interface StepInput {
+  surveyId: string;
+  position: number;
+  required: boolean;
+  administration: string;
+  executable: boolean;
+}
+
+/** Завершённое прохождение человека */
+export interface Completion {
+  surveyId: string;
+  responseId: string;
+  submittedAt: string;
+}
+
+export interface BatteryProgress<T extends StepInput> {
+  steps: (T & { state: BatteryProgressState; responseId: string | null; submittedAt: string | null })[];
+  /** Пройденные обязательные: исполнимые и пройденные до снятия */
+  doneRequired: number;
+  /** Обязательные, которые можно пройти или уже пройдены */
+  totalRequired: number;
+  complete: boolean;
+}
+
+/**
+ * Прогресс по назначению — чистая функция, одна на экран, допуск и завершение.
+ *
+ * Засчитываются только прохождения, завершённые после назначения: старое
+ * обследование той же методикой не закрывает новое назначение, иначе
+ * повторный замер закрывался бы сам собой в момент выдачи.
+ */
+export function batteryProgress<T extends StepInput>(
+  items: readonly T[],
+  strictOrder: boolean,
+  assignedAt: string,
+  completions: readonly Completion[],
+): BatteryProgress<T> {
+  const done = new Map<string, Completion>();
+  for (const r of completions) {
+    if (r.submittedAt < assignedAt) continue;
+    const prev = done.get(r.surveyId);
+    if (!prev || r.submittedAt > prev.submittedAt) done.set(r.surveyId, r);
+  }
+
+  let gateClosed = false;
+  let nextFree = true;
+  const steps = [...items]
+    .sort((a, b) => a.position - b.position)
+    .map((item) => {
+      const hit = done.get(item.surveyId);
+      let state: BatteryProgressState;
+      if (hit) state = "done";
+      else if (!item.executable) state = "retired";
+      // параллельная дорожка специалиста или информанта: не занимает очередь и не держит её
+      else if (item.administration !== "self") state = "available";
+      else if (!strictOrder) state = "available";
+      else if (gateClosed) state = "locked";
+      else {
+        state = nextFree ? "current" : "available";
+        nextFree = false;
+        if (item.required) gateClosed = true;
+      }
+      return { ...item, state, responseId: hit?.responseId ?? null, submittedAt: hit?.submittedAt ?? null };
+    });
+
+  const counted = steps.filter((s) => s.required && (s.state === "done" || s.executable));
+  const doneRequired = counted.filter((s) => s.state === "done").length;
+  return {
+    steps,
+    doneRequired,
+    totalRequired: counted.length,
+    complete: counted.length > 0 && doneRequired === counted.length,
+  };
+}
+
+/** Шаги наборов для расчёта — одним запросом, по позиции */
+async function stepsOf(batteryIds: readonly string[]): Promise<Map<string, StepInput[]>> {
+  const result = new Map<string, StepInput[]>();
+  if (!batteryIds.length) return result;
+  const rows = await db
+    .select({
+      batteryId: batteryItems.batteryId,
+      surveyId: batteryItems.surveyId,
+      position: batteryItems.position,
+      required: batteryItems.required,
+      administration: surveys.administration,
+      status: surveys.status,
+      archivedAt: surveys.archivedAt,
+    })
+    .from(batteryItems)
+    .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
+    .where(inArray(batteryItems.batteryId, [...batteryIds]))
+    .orderBy(batteryItems.batteryId, batteryItems.position);
+  for (const r of rows) {
+    const list = result.get(r.batteryId) ?? [];
+    list.push({
+      surveyId: r.surveyId,
+      position: r.position,
+      required: r.required,
+      administration: r.administration,
+      executable: isExecutable(r),
+    });
+    result.set(r.batteryId, list);
+  }
+  return result;
+}
+
+/** Завершённые прохождения людей */
+async function completionsOf(userIds: readonly string[]): Promise<Map<string, Completion[]>> {
+  const result = new Map<string, Completion[]>();
+  if (!userIds.length) return result;
+  const rows = await db
+    .select({
+      userId: responses.userId,
+      surveyId: responses.surveyId,
+      responseId: responses.id,
+      submittedAt: responses.submittedAt,
+    })
+    .from(responses)
+    .where(and(inArray(responses.userId, [...userIds]), eq(responses.status, "completed")));
+  for (const r of rows) {
+    if (!r.userId || !r.submittedAt) continue;
+    const list = result.get(r.userId) ?? [];
+    list.push({ surveyId: r.surveyId, responseId: r.responseId, submittedAt: r.submittedAt });
+    result.set(r.userId, list);
+  }
+  return result;
+}
+
+/**
+ * Отметить завершёнными назначения, у которых пройдены все исполнимые
+ * обязательные шаги. Отметка — условием самого UPDATE (ещё не завершено и
+ * не снято): назначение, снятое специалистом в ту же минуту, завершённым
+ * не станет.
+ */
+async function closeIfComplete(
+  active: { assignment: typeof batteryAssignments.$inferSelect; strictOrder: boolean }[],
+): Promise<number> {
+  if (!active.length) return 0;
+  const steps = await stepsOf([...new Set(active.map((a) => a.assignment.batteryId))]);
+  const completions = await completionsOf([...new Set(active.map((a) => a.assignment.userId))]);
+  const now = new Date().toISOString();
+  let closed = 0;
+  for (const { assignment, strictOrder } of active) {
+    const progress = batteryProgress(
+      steps.get(assignment.batteryId) ?? [],
+      strictOrder,
+      assignment.assignedAt,
+      completions.get(assignment.userId) ?? [],
+    );
+    if (!progress.complete) continue;
+    const won = await db
+      .update(batteryAssignments)
+      .set({ completedAt: now })
+      .where(
+        and(
+          eq(batteryAssignments.id, assignment.id),
+          isNull(batteryAssignments.completedAt),
+          isNull(batteryAssignments.cancelledAt),
+        ),
+      )
+      .returning({ id: batteryAssignments.id });
+    closed += won.length;
+  }
+  return closed;
+}
+
 /**
  * Закрытие назначений батареи после сдачи очередной методики.
  *
@@ -82,50 +290,48 @@ export async function closeCompletedBatteries(userId: string | null, surveyId: s
           eq(batteryAssignments.userId, userId),
           isNull(batteryAssignments.completedAt),
           isNull(batteryAssignments.cancelledAt),
+          sql`exists (select 1 from battery_items bi
+                      where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
         ),
       );
-    if (!active.length) return;
-
-    // сданная методика может входить в несколько батарей сразу
-    const relevant = await db
-      .select()
-      .from(batteryItems)
-      .where(
-        and(
-          inArray(batteryItems.batteryId, active.map((a) => a.assignment.batteryId)),
-          eq(batteryItems.required, true),
-        ),
-      );
-
-    const touched = active.filter((a) =>
-      relevant.some((i) => i.batteryId === a.assignment.batteryId && i.surveyId === surveyId),
-    );
-    if (!touched.length) return;
-
-    const done = await db
-      .select({ surveyId: responses.surveyId, submittedAt: responses.submittedAt })
-      .from(responses)
-      .where(and(eq(responses.userId, userId), eq(responses.status, "completed")));
-
-    const now = new Date().toISOString();
-    for (const a of touched) {
-      const required = relevant.filter((i) => i.batteryId === a.assignment.batteryId);
-      // засчитываем только то, что сдано после назначения: старое прохождение
-      // не закрывает новое назначение
-      const complete = required.every((i) =>
-        done.some((d) => d.surveyId === i.surveyId && d.submittedAt && d.submittedAt >= a.assignment.assignedAt),
-      );
-      if (!complete) continue;
-      await db
-        .update(batteryAssignments)
-        .set({ completedAt: now })
-        .where(eq(batteryAssignments.id, a.assignment.id));
-    }
+    await closeIfComplete(active);
   } catch (error) {
     log.error("battery.assignments_update_failed", { error: String(error) });
   }
 }
 
+/**
+ * Методика перестала быть исполнимой (снята с использования или с
+ * публикации) — пересчитать назначения наборов, где она шаг.
+ *
+ * Без этого назначение, у которого снят последний непройденный
+ * обязательный шаг, висело бы открытым до следующей сдачи — а её может не
+ * быть вовсе: экран уже показывает «пройдено», а очередь работы по
+ * наступлении срока — «просрочено», и повторно этот набор человеку не
+ * назначить (одно активное назначение на человека). Вернули методику в
+ * работу — закрытые назначения не открываются: на момент снятия набор был
+ * пройден по тем шагам, что можно было пройти.
+ *
+ * Зовётся под системной ролью (asSystem) из того же запроса, что снимает
+ * методику.
+ */
+export async function closeCompletedForSurvey(surveyId: string): Promise<number> {
+  const active = await db
+    .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
+    .from(batteryAssignments)
+    .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
+    .where(
+      and(
+        isNull(batteryAssignments.completedAt),
+        isNull(batteryAssignments.cancelledAt),
+        sql`exists (select 1 from battery_items bi
+                    where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
+      ),
+    );
+  const closed = await closeIfComplete(active);
+  if (closed) log.info("battery.closed_on_retire", { surveyId, closed });
+  return closed;
+}
 
 /**
  * Проверка очерёдности перед сдачей.
@@ -138,6 +344,10 @@ export async function closeCompletedBatteries(userId: string | null, surveyId: s
  * Проверяются только методики, которые обследуемый заполняет сам. Специалист
  * не ограничивается: у него бывают причины идти не по порядку, и он отвечает
  * за это осознанно.
+ *
+ * Что запирает шаг — решает batteryProgress, тот же расчёт, что у экрана и
+ * завершения: шаг заперт («locked»), если перед ним есть непройденный
+ * обязательный исполнимый шаг самоотчёта. Его и называет отказ.
  *
  * `lang` — язык содержимого, на котором человек видит методики: на нём и
  * название той, что надо пройти раньше. Прежде название бралось русским
@@ -166,43 +376,25 @@ export async function assertBatteryOrder(
     );
   if (!active.length) return;
 
-  const items = await db
-    .select({ item: batteryItems, administration: surveys.administration })
-    .from(batteryItems)
-    .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
-    .where(inArray(batteryItems.batteryId, active.map((a) => a.battery.id)));
-
-  const done = await db
-    .select({ surveyId: responses.surveyId, submittedAt: responses.submittedAt })
-    .from(responses)
-    .where(and(eq(responses.userId, userId), eq(responses.status, "completed")));
+  const steps = await stepsOf(active.map((a) => a.battery.id));
+  const completions = (await completionsOf([userId])).get(userId) ?? [];
 
   for (const { assignment, battery } of active) {
-    // Очерёдность касается только самоотчёта: методика клинициста — не часть
-    // последовательности респондента (утомление и прайминг между опросниками —
-    // причина строгого порядка — к интервью специалиста не относятся), и
-    // непройденное интервью не должно запирать поток — ни в киоске, ни в мобилке
-    const ordered = items
-      .filter((i) => i.item.batteryId === battery.id && i.administration === "self")
-      .sort((a, b) => a.item.position - b.item.position);
-    const index = ordered.findIndex((i) => i.item.surveyId === surveyId);
-    if (index <= 0) continue;
+    const { steps: progress } = batteryProgress(steps.get(battery.id) ?? [], true, assignment.assignedAt, completions);
+    const step = progress.find((s) => s.surveyId === surveyId);
+    if (!step || step.state !== "locked") continue;
 
-    const blocking = ordered.slice(0, index).find(
-      (earlier) =>
-        !done.some(
-          (d) =>
-            d.surveyId === earlier.item.surveyId &&
-            d.submittedAt &&
-            d.submittedAt >= assignment.assignedAt,
-        ),
+    const blocking = progress.find(
+      (s) =>
+        s.position < step.position &&
+        s.administration === "self" &&
+        s.required &&
+        s.executable &&
+        s.state !== "done",
     );
-    if (!blocking) continue;
-
-    const [row] = await db
-      .select({ title: surveys.title })
-      .from(surveys)
-      .where(eq(surveys.id, blocking.item.surveyId));
+    const [row] = blocking
+      ? await db.select({ title: surveys.title }).from(surveys).where(eq(surveys.id, blocking.surveyId))
+      : [];
     // названия нет (строки не нашлось) — запасное слово на том же языке, что и название, которое оно заменяет
     const title = row ? t(row.title as never, lang) : serverText("battery.previousSurvey", lang);
     badRequest("err.batteryStrictOrder", { battery: battery.title, title });
