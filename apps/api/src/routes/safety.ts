@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Permission, SafetyPlanContent } from "@quizzy/shared";
 import { db } from "../db";
@@ -8,7 +8,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { namesOf } from "../lib/names";
 import { decryptField, encryptField } from "../lib/crypto";
-import { forbidden, notFound, parseBody } from "../lib/http";
+import { conflict, forbidden, isUniqueViolation, notFound, parseBody } from "../lib/http";
 import { accessiblePatientIds } from "../lib/scope";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 import { hasPermission } from "../lib/permissions";
@@ -38,6 +38,35 @@ const contentSchema = z.object({
   meansRestriction: z.string().max(1000),
   reasonsToLive: z.array(z.string().max(300)).max(12),
 });
+
+/**
+ * Сохранение — содержимое плана и редакция, поверх которой его правили.
+ *
+ * `baseVersion` — номер версии, которую показывал редактор (0 — плана ещё
+ * не было). Пары «версия + ревизия», как у заключения, здесь не нужно:
+ * план не правится на месте, каждое сохранение — новая версия, и номер
+ * версии и есть редакция. Необязателен, как baseVersion у заключения:
+ * внешний вызов без него теряет сверку, но не согласованность.
+ *
+ * В базу уходит только содержимое: номер редакции — вопрос к серверу, а не
+ * часть плана, и в расшифрованном плане у пациента ему делать нечего.
+ */
+const saveSchema = contentSchema.extend({
+  baseVersion: z.number().int().min(0).optional(),
+});
+
+/**
+ * Очередь сохранений одного плана — до конца транзакции запроса.
+ *
+ * Консультативная блокировка, а не `select … for update`: у первой версии
+ * строки ещё нет, а заводят её наперегонки так же, как следующие. Ключ —
+ * по пациенту: план у человека один, и сохранения чужих планов друг друга
+ * не ждут. Приём тот же, что у заключений (routes/conclusions.ts,
+ * lockConclusion).
+ */
+async function lockPlan(userId: string) {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`safety:${userId}`}))`);
+}
 
 function readPlan(row: typeof safetyPlans.$inferSelect, authorName: string) {
   const raw = decryptField(row.content) ?? "{}";
@@ -128,14 +157,34 @@ safetyRoutes.put("/patients/:userId", async (c) => {
   const allowed = await accessiblePatientIds(staff);
   if (allowed && !allowed.has(userId)) notFound("err.safetyPlanNotFound");
 
-  const content = await parseBody(c.req.raw, contentSchema);
+  const { baseVersion, ...content } = await parseBody(c.req.raw, saveSchema);
 
+  /*
+   * Сначала очередь, потом чтение последней версии (внешний разбор
+   * 2026-09-27, п. 9). Прежде последняя версия читалась без очереди, и
+   * четыре одновременных сохранения прочитали одну и ту же, посчитали
+   * следующей одну и ту же — уникальный индекс пропустил одно, три ушли
+   * пятисоткой «внутренняя ошибка». Под блокировкой второе сохранение читает
+   * уже то, что записало первое.
+   */
+  await lockPlan(userId);
   const [latest] = await db
     .select()
     .from(safetyPlans)
     .where(eq(safetyPlans.userId, userId))
     .orderBy(desc(safetyPlans.version))
     .limit(1);
+  const current = latest?.version ?? 0;
+
+  /*
+   * Правку сверяем с тем, что редактор показывал. Двое, открывших план
+   * одновременно, иначе молча затёрли бы друг друга: действующей стала бы
+   * версия того, кто нажал вторым, а первый не узнал бы, что его разделы
+   * «кому звонить» больше не действуют. Отказ — 409 с обоими номерами.
+   */
+  if (baseVersion !== undefined && baseVersion !== current) {
+    conflict("err.safetyPlanChanged", { current, base: baseVersion });
+  }
 
   /*
    * Каждое сохранение — новая версия, а не правка на месте. План безопасности
@@ -144,28 +193,40 @@ safetyRoutes.put("/patients/:userId", async (c) => {
    * работать.
    */
   const id = crypto.randomUUID();
-  await db.transaction(async (tx) => {
-    if (latest) {
-      await tx.update(safetyPlans).set({ active: false }).where(eq(safetyPlans.userId, userId));
-    }
-    await tx.insert(safetyPlans).values({
-      id,
-      userId,
-      version: (latest?.version ?? 0) + 1,
-      content: encryptField(JSON.stringify(content))!,
-      active: true,
-      createdBy: staff.id,
-      reviewedAt: new Date().toISOString(),
+  const version = current + 1;
+  try {
+    await db.transaction(async (tx) => {
+      if (latest) {
+        await tx.update(safetyPlans).set({ active: false }).where(eq(safetyPlans.userId, userId));
+      }
+      await tx.insert(safetyPlans).values({
+        id,
+        userId,
+        version,
+        content: encryptField(JSON.stringify(content))!,
+        active: true,
+        createdBy: staff.id,
+        reviewedAt: new Date().toISOString(),
+      });
     });
-  });
+  } catch (err) {
+    /*
+     * Вторая линия — если блокировка не сработала (маршрут позвали вне
+     * транзакции запроса, и консультативная блокировка отпустилась сразу).
+     * Уникальный индекс по номеру версии тогда последний сторож, и его отказ
+     * — «план изменился», а не внутренняя ошибка.
+     */
+    if (isUniqueViolation(err)) conflict("err.safetyPlanChanged", { current: version, base: current });
+    throw err;
+  }
 
   await audit(c, {
     action: "safety.save",
     resourceType: "user",
     resourceId: userId,
     subjectUserId: userId,
-    details: { version: (latest?.version ?? 0) + 1 },
+    details: { version },
   });
 
-  return c.json({ id, version: (latest?.version ?? 0) + 1 }, 201);
+  return c.json({ id, version }, 201);
 });

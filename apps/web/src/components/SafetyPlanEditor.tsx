@@ -7,7 +7,9 @@ import { IconClose } from "../ui/glyphs";
 import { useLang } from "../lang";
 import { useResource, type Resource } from "../useResource";
 import { Panel } from "../ui/layout";
+import { Button } from "../ui/primitives";
 import { freshKey, withKeys, withoutKeys, type Keyed } from "../ui/rowKeys";
+import { staleMessage } from "./versioned";
 
 /**
  * Личный план безопасности (Стэнли–Браун).
@@ -101,6 +103,12 @@ export function SafetyPlanBody({
   const { run, busy } = useAction();
   const [draft, setDraft] = useState<PlanRows>(() => planToRows(EMPTY));
   const [open, setOpen] = useState(false);
+  /*
+   * Отказ 409 — план сохранил кто-то другой, пока редактор был открыт
+   * (волна 15): фраза сервера. Набранное не трогается, пока человек сам не
+   * нажмёт «Перечитати», — план перечитывается целиком, и правка пропадёт.
+   */
+  const [stale, setStale] = useState<string | null>(null);
 
   const active = res.data?.versions.find((v) => v.active) ?? null;
 
@@ -125,9 +133,22 @@ export function SafetyPlanBody({
   const dropPerson = (key: PeopleKey, rowKey: string) =>
     setDraft((d) => ({ ...d, [key]: d[key].filter((p) => p.key !== rowKey) }));
 
+  /*
+   * Сохранение называет версию, которую показывал редактор (0 — плана не
+   * было): поверх чужой сервер ответит 409, а не сделает действующей версию
+   * того, кто нажал вторым.
+   */
   const save = () =>
     void run(async () => {
-      await api.saveSafetyPlan(userId, rowsToPlan(draft));
+      try {
+        await api.saveSafetyPlan(userId, rowsToPlan(draft), active?.version ?? 0);
+      } catch (e) {
+        const message = staleMessage(e);
+        if (message === null) throw e;
+        setStale(message);
+        return false;
+      }
+      setStale(null);
       res.reload();
       setOpen(false);
     }, ut("sp.saved"));
@@ -240,6 +261,24 @@ export function SafetyPlanBody({
               onChange={(e) => setDraft((d) => ({ ...d, meansRestriction: e.target.value }))}
             />
           </section>
+
+          {stale ? (
+            <div role="alert" className="rounded-[5px] bg-accent-soft px-[14px] py-[10px]">
+              <p className="m-0 text-[15px] leading-[20px] text-text">{stale}</p>
+              <p className="m-0 mt-[4px] text-[13px] text-muted">{ut("sp.rereadHint")}</p>
+              <Button
+                variant="quiet"
+                className="mt-[8px]"
+                disabled={busy}
+                onClick={() => {
+                  setStale(null);
+                  res.reload();
+                }}
+              >
+                {ut("integrity.reread")}
+              </Button>
+            </div>
+          ) : null}
 
           <div className="row">
             <button className="primary" disabled={busy} onClick={save}>

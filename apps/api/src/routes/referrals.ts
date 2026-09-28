@@ -30,7 +30,7 @@ import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cu
 import { fullNameOf } from "../lib/auth";
 import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis";
 import { decryptField } from "../lib/crypto";
-import { badRequest, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round } from "../lib/stats";
 import { accessiblePatientIds, assertPatientAccess, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -191,14 +191,32 @@ referralRoutes.patch("/:id", async (c) => {
     badRequest("err.referralTransitionInvalid", { from: existing.status, to: input.status });
   }
 
-  await db
+  /*
+   * Переход — одним условием с записью (внешний разбор 2026-09-27, п. 4).
+   *
+   * Разрешённость решалась по прочитанному статусу, а UPDATE искал строку
+   * только по id. Два одновременных PATCH из «створено» — «відхилити» и
+   * «прийняти» — оба проходили проверку, оба записывали, оба получали 200, и
+   * направление, которое только что отклонили, оказывалось принятым: второй
+   * запрос решал по состоянию, которого уже не было.
+   *
+   * Теперь UPDATE записывает, только если статус всё ещё тот, по которому
+   * решали. Второй запрос ждёт замка строки, после чужого коммита видит
+   * новый статус, не находит строки и получает 409 — даже если его переход
+   * из нового состояния формально разрешён: человек нажимал кнопку, глядя
+   * на прежнее состояние, и решать за него по новому нельзя. Экран на 409
+   * перечитывает реестр.
+   */
+  const [moved] = await db
     .update(referrals)
     .set({
       status: input.status,
       outcomeNote: input.outcomeNote ?? existing.outcomeNote,
       updatedAt: new Date().toISOString(),
     })
-    .where(eq(referrals.id, id));
+    .where(and(eq(referrals.id, id), eq(referrals.status, existing.status)))
+    .returning({ id: referrals.id });
+  if (!moved) conflict("err.referralChanged");
 
   await audit(c, {
     action: "referral.update",

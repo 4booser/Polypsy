@@ -159,8 +159,17 @@ export default function ReferralsPage() {
                           size="sm"
                           onClick={() =>
                             run(async () => {
-                              await api.updateReferral(r.id, n.value);
-                              reload();
+                              /*
+                               * Перечитать и на отказе: 409 значит, что направление
+                               * успел сдвинуть кто-то другой (волна 15), и кнопки
+                               * должны встать по его нынешнему состоянию, а не по тому,
+                               * на которое человек смотрел. Фраза отказа — от сервера.
+                               */
+                              try {
+                                await api.updateReferral(r.id, n.value);
+                              } finally {
+                                reload();
+                              }
                             }, ut(n.key))
                           }
                         >
