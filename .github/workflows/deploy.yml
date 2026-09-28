@@ -190,6 +190,13 @@ jobs:
             fi
           done
           rm -rf /tmp/quizzy-scripts.new
+
+          # прежние копии — по три последних на файл: отметка времени в имени
+          # сортируется как время, и каждая выкатка с правкой добавляла бы по
+          # копии навсегда
+          for base in docker-compose.yml scripts/*.sh; do
+            { ls -1 "$base".*.bak 2>/dev/null || true; } | sort -r | tail -n +4 | xargs -r rm -f --
+          done
           REMOTE
 
       # Снимок базы ДО миграций. Миграции не откатываются переключением тега:
