@@ -95,6 +95,28 @@ describe("ключ шифрования обязателен в бою", () => {
     expect(res.out).toContain("ENCRYPTION_KEY");
   });
 
+  test("повторяющийся id ключа — отказ при запуске, в бою и вне боя", async () => {
+    /*
+     * `same:A,same:B`: шифровал бы первый ключ, а читался бы по id последний —
+     * каждое новое значение с момента выката не расшифровывалось бы. Внешний
+     * разбор 2026-09-27, п. 13. Отказ — там же, где соседние проверки
+     * окружения (env.ts), и без поблажки вне боя: данные на стенде тоже
+     * пропали бы.
+     */
+    const a = Buffer.alloc(32, 1).toString("base64");
+    const b = Buffer.alloc(32, 2).toString("base64");
+    for (const NODE_ENV of ["production", "development"]) {
+      const res = await startEnv({ NODE_ENV, ENCRYPTION_KEY: `same:${a},same:${b}` });
+      expect(res.ok, NODE_ENV).toBe(false);
+      expect(res.out).not.toContain("ЗАПУСТИЛСЯ");
+      expect(res.out).toContain("ENCRYPTION_KEY");
+      expect(res.out).toContain("same");
+    }
+    // разные id — стартует
+    const ok = await startEnv({ ENCRYPTION_KEY: `v2:${a},v1:${b}` });
+    expect(ok.out).toContain("ЗАПУСТИЛСЯ");
+  });
+
   test("вне боя ключ не обязателен: dev поднимается без него", async () => {
     const res = await startEnv({ NODE_ENV: "development", ENCRYPTION_KEY: "" });
     expect(res.out).toContain("ЗАПУСТИЛСЯ");

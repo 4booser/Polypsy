@@ -21,6 +21,7 @@ import { fullNameOf, toPublicUser } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { ladderRankOf, permissionsOf } from "../lib/permissions";
+import { guardAccountAction } from "../lib/accountClass";
 import { placementsOf } from "../lib/staffDirectory";
 import { requireAuth, requireStaff, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
@@ -398,6 +399,15 @@ permissionRoutes.put("/users/:id/roles", requireStaff, async (c) => {
     }
   }
 
+  /*
+   * И общее правило действий над чужой учёткой (lib/accountClass.ts) —
+   * после лестницы, чтобы отказ по лестнице назвал свою роль. Лестница
+   * проверяет назначаемые и снимаемые роли, но не того, кому: заведующий
+   * добавлял главному врачу роль специалиста — «ниже своей», — хотя карточку
+   * главного врача ему не открывают вовсе (GET /users/:id, visibleTo).
+   */
+  await guardAccountAction(c, id, { permission: null, action: "user.roles_change" });
+
   await db.transaction(async (tx) => {
     await tx.delete(staffRoles).where(eq(staffRoles.userId, id));
     if (input.roleIds.length) {
@@ -440,6 +450,8 @@ permissionRoutes.post("/users/:id/exceptions", requireSuperadmin, async (c) => {
   if (!ALL_PERMISSIONS.includes(input.permission as Permission)) {
     badRequest("err.unknownPermission", { permission: input.permission });
   }
+  // общее правило (lib/accountClass.ts): для суперадмина — «не себе»; себе исключения ничего не дают
+  await guardAccountAction(c, id, { permission: null, action: "permission.exception" });
 
   const exceptionId = crypto.randomUUID();
   await db.insert(permissionExceptions).values({
@@ -467,6 +479,7 @@ permissionRoutes.post("/exceptions/:id/revoke", requireSuperadmin, async (c) => 
   const id = c.req.param("id");
   const [row] = await db.select().from(permissionExceptions).where(eq(permissionExceptions.id, id));
   if (!row) notFound("err.exceptionNotFound");
+  await guardAccountAction(c, row.userId, { permission: null, action: "permission.exception_revoke" });
   if (row.revokedAt) badRequest("err.exceptionAlreadyRevoked");
 
   await db

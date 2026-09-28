@@ -12,7 +12,7 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "test:app-role": "QUIZZY_TEST_APP_ROLE=1 bun test test/access.test.ts test/alertCaseZones.test.ts test/alerts.test.ts test/analytics.test.ts test/batteries.test.ts test/bookingGate.test.ts test/clinic.test.ts test/clinical.test.ts test/cohorts.test.ts test/deadlines.test.ts test/dynamicsCompare.test.ts test/episodes.test.ts test/grantAccess.test.ts test/keySheet.test.ts test/listPages.test.ts test/mailings.test.ts test/messages.test.ts test/patientCard.test.ts test/patientGroups.test.ts test/platform.test.ts test/reportLinks.test.ts test/respondents.test.ts test/responseDetail.test.ts test/responses.test.ts test/schedule.test.ts test/search.test.ts test/submissionEngine.test.ts test/submitIntegrity.test.ts test/surveyFolders.test.ts",
+    "test:app-role": "QUIZZY_TEST_APP_ROLE=1 bun test test/access.test.ts test/accountActions.test.ts test/accountClass.test.ts test/alertCaseZones.test.ts test/alerts.test.ts test/analytics.test.ts test/batteries.test.ts test/bookingGate.test.ts test/clinic.test.ts test/clinical.test.ts test/cohorts.test.ts test/deadlines.test.ts test/dynamicsCompare.test.ts test/episodes.test.ts test/grantAccess.test.ts test/keySheet.test.ts test/listPages.test.ts test/mailings.test.ts test/messages.test.ts test/noteAppointment.test.ts test/patientCard.test.ts test/patientGroups.test.ts test/platform.test.ts test/reportLinks.test.ts test/respondents.test.ts test/responseDetail.test.ts test/responses.test.ts test/schedule.test.ts test/search.test.ts test/submissionEngine.test.ts test/submitIntegrity.test.ts test/surveyFolders.test.ts",
     "audit:verify": "bun src/auditVerifyCli.ts",
     "db:reset": "bun src/dbReset.ts",
     "db:encrypt": "bun src/encryptBackfill.ts",
@@ -28,8 +28,8 @@
   "dependencies": {
     "@quizzy/shared": "workspace:*",
     "drizzle-orm": "^0.38.3",
-    "hono": "^4.6.16",
-    "nodemailer": "^9.0.5",
+    "hono": "^4.13.5",
+    "nodemailer": "^9.1.1",
     "postgres": "^3.4.9",
     "zod": "^3.24.1",
     "zod-to-json-schema": "^3.25.2"

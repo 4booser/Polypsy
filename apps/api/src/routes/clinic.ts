@@ -35,6 +35,7 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { guardAccountAction } from "../lib/accountClass";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
@@ -224,8 +225,14 @@ clinicRoutes.put(
     const userId = c.req.param("userId");
     const input = await parseBody(c.req.raw, specialistProfileSchema);
 
-    const person = await db.query.users.findFirst({ where: eq(users.id, userId) });
-    if (!person) notFound("err.userNotFound");
+    /*
+     * Отделение, кабинет и приём сотрудника — действие над чужой учёткой, и
+     * правило общее (lib/accountClass.ts): не себе, цель строго ниже своего
+     * положения. Заведующий с departments.manage расставляет специалистов, но
+     * не переводит главного врача в другое отделение (решение заказчика
+     * 2026-09-28).
+     */
+    const person = await guardAccountAction(c, userId, { permission: "departments.manage", action: "clinic.specialist_profile" });
     if (person.role !== "admin" && person.role !== "superadmin") {
       badRequest("err.specialistMustBeStaff");
     }
@@ -1459,11 +1466,18 @@ clinicRoutes.get(
     const since = previous ? previous.slot.startsAt : null;
     const changes = since ? await changesSince(row.patientId, since) : [];
 
-    /* Черновик протокола этого приёма, если он уже начат */
+    /*
+     * Черновик протокола этого приёма, если он уже начат.
+     *
+     * И по приёму, и по человеку: заметка другого пациента, привязанная к
+     * этому приёму до волны 15 (маршрут заметок тогда принадлежность не
+     * сверял, а ключ 0110 на такие старые строки не распространяется),
+     * протоколом этого приёма не становится.
+     */
     const [note] = await db
       .select()
       .from(patientNotes)
-      .where(eq(patientNotes.appointmentId, row.id))
+      .where(and(eq(patientNotes.appointmentId, row.id), eq(patientNotes.userId, row.patientId)))
       .orderBy(desc(patientNotes.version))
       .limit(1);
 

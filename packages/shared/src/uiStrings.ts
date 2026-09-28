@@ -7688,6 +7688,14 @@ export const UI = {
     en: "Conclusion link refused",
   },
 
+  /* ── w15:access ── */
+  /* массовое действие: учётка на ступени того, кто действует, или выше — общее правило действий над чужой учёткой */
+  "ops.skip.aboveYours": {
+    uk: "обліковий запис на вашій сходинці або вище",
+    ru: "учётная запись на вашей ступени или выше",
+    en: "the account is at your level or above",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

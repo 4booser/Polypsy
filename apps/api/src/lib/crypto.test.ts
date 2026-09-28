@@ -48,3 +48,42 @@ describe("шифрование полей", () => {
     expect(decryptField("enc1:v1:битый:мусор")).toBe("«не расшифровано»");
   });
 });
+
+describe("идентификаторы ключей (внешний разбор 2026-09-27, п. 13)", () => {
+  const A = Buffer.alloc(32, 1).toString("base64");
+  const B = Buffer.alloc(32, 2).toString("base64");
+
+  test("повторяющийся id ключа не принимается", () => {
+    /*
+     * Было: `same:A,same:B` принималось молча. Шифровал первый ключ (активный),
+     * а в таблице для чтения по id оставался последний — только что
+     * зашифрованное поле тут же не расшифровывалось: `{ ok: false }`, а на
+     * экране «не расшифровано». Ошибка конфигурации стоила бы данных, записанных
+     * до того, как её заметят.
+     */
+    try {
+      expect(() => reloadKeysForTests(`same:${A},same:${B}`)).toThrow(/same/);
+    } finally {
+      reloadKeysForTests(KEY_SPEC);
+    }
+    // и с разными id — как было: пишет первый, читаются оба
+    reloadKeysForTests(`k2:${A},k1:${B}`);
+    try {
+      const enc = encryptField("новая запись")!;
+      expect(enc.startsWith("enc1:k2:")).toBe(true);
+      expect(decryptField(enc)).toBe("новая запись");
+    } finally {
+      reloadKeysForTests(KEY_SPEC);
+    }
+  });
+
+  test("запись без id или без ключа — тоже отказ, а не молча пропущенный ключ", () => {
+    try {
+      expect(() => reloadKeysForTests(`v1:${A},v2`)).toThrow(/запись 2/);
+      expect(() => reloadKeysForTests(`:${A}`)).toThrow();
+    } finally {
+      reloadKeysForTests(KEY_SPEC);
+    }
+  });
+});
+

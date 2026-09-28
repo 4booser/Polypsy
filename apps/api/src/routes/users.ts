@@ -13,9 +13,9 @@ import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { decryptField, encryptPersonFields } from "../lib/crypto";
-import { revokeAllFor } from "../lib/refresh";
 import { hashPassword, toPublicUser } from "../lib/auth";
-import { conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
+import { conflict, langOf, parseBody, parseQuery } from "../lib/http";
+import { assertMayCreateClass, changeAccountClass } from "../lib/accountClass";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { ensureBuiltinRole } from "../lib/permissions";
 import { placementsOf } from "../lib/staffDirectory";
@@ -103,11 +103,13 @@ userRoutes.post("/", async (c) => {
   const email = input.email.toLowerCase();
   /*
    * Суперадминистратора заводит только суперадминистратор (техпанель,
-   * волна 10). users.manage выдаётся и заведующему; без этой строки он
+   * волна 10). users.manage выдаётся и заведующему; без этой проверки он
    * завёл бы суперадмина с паролем, который сам же и придумал, и вошёл бы
-   * под ним — право вести учётки стало бы правом раздать себе всё.
+   * под ним — право вести учётки стало бы правом раздать себе всё. С волны
+   * 15 правило общее со сменой класса (lib/accountClass.ts): заводят только
+   * класс ниже собственного положения.
    */
-  if (input.role === "superadmin" && c.get("user").role !== "superadmin") forbidden("err.superadminOnly");
+  await assertMayCreateClass(c, input.role);
 
   const existing = await db.query.users.findFirst({ where: eq(users.email, email) });
   if (existing) conflict("err.emailExists");
@@ -144,40 +146,16 @@ userRoutes.post("/", async (c) => {
   return c.json(toPublicUser(row!), 201);
 });
 
+/**
+ * Смена класса учётной записи.
+ *
+ * Правило — полномочия, лестница, защищённые учётки, замок строки, обрыв
+ * сессий, журнал — целиком в lib/accountClass.ts: его же зовёт команда
+ * консоли `user role`. Прежде оно было записано здесь, и консоль его не
+ * знала (внешний разбор 2026-09-27, п. 1): маршрут только разбирает ввод.
+ */
 userRoutes.patch("/:id/role", async (c) => {
-  const id = c.req.param("id");
-  const actor = c.get("user");
-  if (id === actor.id) forbidden("err.cannotChangeOwnRole");
-
   const body = await c.req.json().catch(() => ({}));
-  const role = body?.role;
-  if (!["superadmin", "admin", "user"].includes(role)) forbidden("err.invalidRole");
-
-  /*
-   * Роль суперадминистратора выдаёт и снимает только суперадминистратор —
-   * по той же причине, что и при заведении (см. POST выше): иначе
-   * users.manage у заведующего превращалось бы в право стать кем угодно.
-   */
-  if (actor.role !== "superadmin") {
-    const current = await db.query.users.findFirst({ where: eq(users.id, id) });
-    if (role === "superadmin" || current?.role === "superadmin") forbidden("err.superadminOnly");
-  }
-
-  const [row] = await db.update(users).set({ role }).where(eq(users.id, id)).returning();
-  // повышение до администратора — тот же случай, что и создание
-  if (role === "admin") await ensureBuiltinRole(id);
-  if (!row) notFound("err.userNotFound");
-
-  // старые сессии несут старую роль в токене — обрываем их
-  await revokeAllFor(row.id);
-
-  await audit(c, {
-    action: "user.role_change",
-    resourceType: "user",
-    resourceId: row.id,
-    subjectUserId: row.id,
-    details: { newRole: role, changedBy: actor.email },
-  });
-
+  const { row } = await changeAccountClass(c, c.req.param("id"), body?.role, "http");
   return c.json(toPublicUser(row));
 });
