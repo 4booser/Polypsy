@@ -192,10 +192,41 @@ export async function attachContent(
     (l) => l.questionId,
   );
   const bandsByScale = groupBy(bandRows, (b) => b.scaleId);
-  const itemsByScale = groupBy(itemRows, (i) => i.scaleId);
-  const correctionsByScale = groupBy(correctionRows, (c) => c.targetScaleId);
-  const normsByScale = groupBy(normRows, (n) => n.scaleId);
-  const stenByScale = groupBy(stenTableRows, (r) => r.scaleId);
+  /*
+   * То же для ключа, поправок, норм и таблиц стенов: своего порядка у строк
+   * нет, и без него v1.16.0 встала на выкатке — пример пропусков в листе МЛО
+   * брал «первые» пункты шкалы в порядке кучи. Ключ — по номеру пункта,
+   * поправка — по порядку шкалы-источника, нормы и стены — по полу и
+   * возрасту. У норм и стенов порядок ещё и подстраховка подбора: при
+   * пересекающихся строках раньше побеждала та, что легла в куче первой.
+   */
+  const scalePosition = new Map(scaleRows.map((s) => [s.id, s.position]));
+  const last = Number.MAX_SAFE_INTEGER;
+  const byNum = (a: number | null | undefined, b: number | null | undefined) => (a ?? last) - (b ?? last);
+  const byText = (a: string | null | undefined, b: string | null | undefined) =>
+    (a ?? "￿") < (b ?? "￿") ? -1 : (a ?? "￿") > (b ?? "￿") ? 1 : 0;
+  const bySexAge = (
+    a: { sex: string | null; ageMin: number | null; ageMax: number | null; id: string },
+    b: { sex: string | null; ageMin: number | null; ageMax: number | null; id: string },
+  ) => byText(a.sex, b.sex) || byNum(a.ageMin, b.ageMin) || byNum(a.ageMax, b.ageMax);
+  const itemsByScale = groupBy(
+    [...itemRows].sort((a, b) => byNum(questionPosition.get(a.questionId), questionPosition.get(b.questionId))),
+    (i) => i.scaleId,
+  );
+  const correctionsByScale = groupBy(
+    [...correctionRows].sort(
+      (a, b) => byNum(scalePosition.get(a.sourceScaleId), scalePosition.get(b.sourceScaleId)) || a.coefficient - b.coefficient,
+    ),
+    (c) => c.targetScaleId,
+  );
+  const normsByScale = groupBy(
+    [...normRows].sort((a, b) => bySexAge(a, b) || byText(a.id, b.id)),
+    (n) => n.scaleId,
+  );
+  const stenByScale = groupBy(
+    [...stenTableRows].sort((a, b) => bySexAge(a, b) || a.rawMin - b.rawMin || byText(a.id, b.id)),
+    (r) => r.scaleId,
+  );
 
   const sectionsBySurvey = groupBy(sectionRows, (s) => s.surveyId);
   const scalesBySurvey = groupBy(scaleRows, (s) => s.surveyId);
