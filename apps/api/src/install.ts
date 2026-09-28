@@ -15,7 +15,7 @@
  */
 import { randomBytes } from "node:crypto";
 import postgres from "postgres";
-import { migrate } from "drizzle-orm/postgres-js/migrator";
+import { runMigrations } from "./db/migrations";
 import { eq, sql } from "drizzle-orm";
 
 const steps: string[] = [];
@@ -115,7 +115,8 @@ async function main(): Promise<void> {
   const { users } = await import("./db/schema");
   const { syncBuiltinRole } = await import("./lib/permissions");
 
-  await migrate(db, { migrationsFolder: new URL("../drizzle", import.meta.url).pathname });
+  // со сверкой журнала: пропущенная миграция — отказ с её именем (db/migrations.ts)
+  await runMigrations(db);
   step("миграции применены");
 
   /*
