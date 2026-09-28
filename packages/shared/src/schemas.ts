@@ -689,8 +689,30 @@ export const mailingInputSchema = z.object({
   patientIds: z.array(z.string().min(1)).max(500).default([]),
 });
 
-/** Правка черновика: любое поле по отдельности */
-export const mailingUpdateSchema = mailingInputSchema.partial();
+/**
+ * Правка черновика: любое поле по отдельности.
+ *
+ * `baseRevision` — редакция, которую показывал экран (Mailing.revision).
+ * Необязательна, как baseRevision у заключения: внешний вызов без неё
+ * теряет только сверку, но не согласованность — правка и отправка всё равно
+ * идут по очереди на строке рассылки.
+ */
+export const mailingUpdateSchema = mailingInputSchema.partial().extend({
+  baseRevision: z.number().int().min(1).optional(),
+});
+
+/**
+ * «Відправити» — какую редакцию человек отправляет.
+ *
+ * Сериализация на строке делает отправку согласованной (адресаты и текст из
+ * одной редакции), но не отвечает на вопрос «то ли уходит, что видел
+ * отправитель». Названная редакция отвечает: черновик успели переписать —
+ * 409, и ничего не уходит. Тело можно не присылать вовсе — тогда уходит
+ * нынешняя редакция, как прежде.
+ */
+export const mailingSendSchema = z.object({
+  revision: z.number().int().min(1).optional(),
+});
 
 /** Ответ получателя — номер варианта в `options` */
 export const mailingAnswerSchema = z.object({
@@ -1094,6 +1116,7 @@ export type PatientGroupMemberInput = z.infer<typeof patientGroupMemberSchema>;
 export type PatientGroupMembersRemoveInput = z.infer<typeof patientGroupMembersRemoveSchema>;
 export type MailingInput = z.input<typeof mailingInputSchema>;
 export type MailingUpdateInput = z.input<typeof mailingUpdateSchema>;
+export type MailingSendInput = z.input<typeof mailingSendSchema>;
 export type MailingAnswerInput = z.infer<typeof mailingAnswerSchema>;
 export type AssignSurveyToPatientGroupInput = z.input<typeof assignSurveyToPatientGroupSchema>;
 export type FilterPresetInput = z.input<typeof filterPresetInputSchema>;

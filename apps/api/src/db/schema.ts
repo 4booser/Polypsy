@@ -3136,6 +3136,12 @@ export const mailings = pgTable(
       onDelete: "set null",
     }),
     patientIds: jsonb("patient_ids").$type<string[]>().notNull().default([]),
+    /**
+     * Редакция черновика: растёт с каждой правкой. Экран называет ту, что
+     * показывал, и правка или отправка поверх чужой правки — 409, а не чужой
+     * текст от имени отправителя (миграция 0111).
+     */
+    revision: integer("revision").notNull().default(1),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
     updatedAt: timestampCol("updated_at").notNull().default(sql`now()`),
     sentAt: timestampCol("sent_at"),
