@@ -51,3 +51,32 @@ export function rawSignature(survey: SurveyFull, code: string, seen: ReadonlySet
     .join(",");
   return [scale.aggregation, scale.ratioDenominator ?? "", items, corrections].join("#");
 }
+
+/**
+ * Одинаково ли две версии дают ПРИВЕДЁННОЕ значение шкалы — T-балл, стен,
+ * долю (волна 15, внешний разбор: перцентиль динамики).
+ *
+ * Приведённое значение — это сырой балл, переведённый по правилам шкалы, и
+ * одинаково оно только там, где одинаковы оба шага: сырой балл считается
+ * так же (rawSignature) и переводится по той же нормировке, тем же нормам и
+ * той же таблице стенов. Версия, где поменяли одни нормы (публикация
+ * локальных норм), для сырого балла сравнима, а для T-балла — нет: тот же
+ * ответ даёт в ней другое число. Порядок строк норм и таблицы стенов в
+ * отпечаток не входит — только их содержание.
+ *
+ * null — шкалы с таким кодом в версии нет.
+ */
+export function valueSignature(survey: SurveyFull, code: string): string | null {
+  const raw = rawSignature(survey, code);
+  const scale = survey.scales.find((s) => s.code === code);
+  if (raw === null || !scale) return null;
+  const norms = scale.norms
+    .map((n) => [n.sex ?? "*", n.ageMin ?? "*", n.ageMax ?? "*", n.mean, n.sd].join(":"))
+    .sort()
+    .join(",");
+  const stens = scale.stenTable
+    .map((r) => [r.sex ?? "*", r.ageMin ?? "*", r.ageMax ?? "*", r.rawMin, r.rawMax, r.sten].join(":"))
+    .sort()
+    .join(",");
+  return [raw, scale.normalization, norms, stens].join("|");
+}
