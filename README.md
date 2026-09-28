@@ -1,458 +1,239 @@
-# Quizzy
+# Polypsy (Quizzy)
 
-Мобильное приложение для психодиагностики в стационаре: специалисты собирают методики
-и смотрят аналитику, пациенты проходят тестирование.
+Psychodiagnostics platform for a clinical institution. Specialists assign validated
+questionnaires, patients complete them on a phone or in a browser, and the system
+scores them, raises risk alerts, and keeps the clinical record around the results:
+appointments, conclusions, safety plans, referrals and follow-up.
 
-- **API** — Bun + Hono + Drizzle ORM + PostgreSQL 16 (`apps/api`)
-- **Мобилка** — React Native (Expo SDK 57) + expo-router (`apps/mobile`)
-- **Веб-консоль** — Vite + React + react-router (`apps/web`), только для сотрудников
-- **Общее ядро** — типы, zod-схемы и подсчёт баллов, используются сервером и клиентом (`packages/shared`)
+Production runs at **https://polypsy.ink**. The repository keeps its original name, Quizzy.
 
-### Документация
+| Part | Stack | Path |
+|---|---|---|
+| API | Bun, Hono, Drizzle ORM, PostgreSQL 16 with row-level security | `apps/api` |
+| Web | React 19, Vite, Tailwind v4, TanStack Query | `apps/web` |
+| Mobile app | Expo SDK 57, React Native, expo-router | `apps/mobile` |
+| Shared core | Types, zod schemas, scoring engine, dictionaries | `packages/shared` |
 
-| Файл | О чём |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | схема данных, инварианты, модель угроз |
-| [docs/RUNBOOK.md](docs/RUNBOOK.md) | развёртывание, бэкапы, ключи, разбор инцидентов |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | план развития и что из него сделано |
-| [docs/INSTRUMENTS.md](docs/INSTRUMENTS.md) | происхождение методик и правовой статус |
+The web app has three faces, chosen by role:
+- the **clinical console** for staff;
+- the **patient cabinet**;
+- the **tech panel** (`/ops`) for superadmins.
 
-## Быстрый старт
+The mobile app serves patients and staff on rounds.
+
+## Quick start
+
+Requirements: [Bun](https://bun.sh), PostgreSQL 16. Recording transcription also needs
+ffmpeg and whisper.cpp; everything else works without them.
 
 ```bash
-# нужен запущенный PostgreSQL 16
 createdb quizzy
-cp apps/api/.env.example apps/api/.env   # и вписать свой DATABASE_URL
+cp apps/api/.env.example apps/api/.env   # set DATABASE_URL
 
 bun install
 bun run db:migrate
-bun run db:seed
-bun run api      # :3001
-bun run mobile   # Expo, отдельный терминал
-bun run web      # консоль на :5199
+bun run db:seed        # demo institution, methods, patients and history
+bun run api            # API on :3001
+bun run web            # web on :5199
+bun run mobile         # Expo on :8081, separate terminal
 ```
 
-Порты: API — 3001, консоль — 5199, Expo — 8081 (или 8082 для web-превью).
-5173 занят другим проектом, поэтому консоль на 5199.
+- Outside production the secrets have development defaults. Production refuses to start without them (see `apps/api/src/env.ts`).
+- To point the mobile app at production, run `bun run --cwd apps/mobile start:prod`, or set `EXPO_PUBLIC_API_URL`.
+- To set up a clean instance for a new institution, use `bun run install:instance` instead of the seed. It migrates the database, creates the institution and installs the method catalog.
 
-Язык выдачи переключается параметром `?lang=uk|ru` или заголовком `Accept-Language`.
+### Demo accounts (seed only)
 
-`DATABASE_URL` вида `postgres://user:password@localhost:5432/quizzy`.
-
-| роль                | email               | пароль      | доступ |
-|---------------------|---------------------|-------------|--------|
-| суперадмин          | 4booser@gmail.com   | quizzy12345 | всё (владелец) |
-| суперадмин          | root@quizzy.dev     | root12345   | всё |
-| админ группы        | psy@quizzy.dev    | psy12345    | Приёмное отделение |
-| админ группы        | psy2@quizzy.dev   | psy212345   | Динамическое наблюдение |
-| пациент             | user@quizzy.dev   | user12345   | прохождение |
-| пациент             | user2@quizzy.dev  | user212345  | прохождение |
-| пациенты 1–12       | patient1@quizzy.dev … patient12@quizzy.dev | patient12345 | прохождение |
-
-Сид наполняет базу для реального тестирования: 14 пациентов с паспортной частью,
-5 методик, 128 прохождений, 119 тревог, разброс по всем интерпретационным нормам.
-
-Сид создаёт две группы, три демо-методики и ~70 синтетических прохождений,
-чтобы аналитика не была пустой.
-
-## Где что делается
-
-| | мобильное приложение | веб-консоль |
+| Role | Email | Password |
 |---|---|---|
-| кто | пациенты и сотрудники | только сотрудники (admin и выше) |
-| вкладки / разделы | Опросы · Аналитика · Аккаунт | Сводка · Пациенты · Тревоги · Журнал |
-| задачи | прохождение методик, свои результаты, быстрый взгляд на аналитику | подробные срезы, назначение методик пациентам, разбор тревог, журнал доступа |
+| Superadmin | `root@quizzy.dev` | `root12345` |
+| Staff | `psy@quizzy.dev` | `psy12345` |
+| Staff | `psy2@quizzy.dev` | `psy212345` |
+| Staff, read-only | `demo@quizzy.dev` | `demo12345` |
+| Patient | `user@quizzy.dev`, `user2@quizzy.dev` | `user12345`, `user212345` |
+| Patients 1–12 | `patient1@quizzy.dev` … `patient12@quizzy.dev` | `patient12345` |
 
-Пациента в консоль не пускают: вход отклоняется с объяснением, а не показом пустых
-экранов. Конструктор методик живёт в вебе — на телефоне такую работу делать неудобно.
+### Languages
 
-## Доступ к методикам
+- The interface is available in Ukrainian, Russian and English.
+- Method content (questions, options, band labels) is stored in Ukrainian and Russian.
+- The API answers in the language from `?lang=` or `Accept-Language`, so clients receive plain strings.
+- Server messages, errors and notes are stored as codes and rendered in the reader's language.
+- Tests fail on hard-coded strings in the server, web or mobile code.
 
-У методики есть `visibility`:
+## Roles and permissions
 
-- **public** — видна всем пациентам после публикации;
-- **restricted** — видна только тем, кому назначена персонально.
+- **Patient**: takes assigned methods and sees own results, appointments, messages and safety plan.
+- **Staff**:
+  - positions form a ladder: specialist → head of department → chief;
+  - on top of their role, staff get fine-grained permissions (`patients.read`, `conclusions.sign`, `users.manage`, `ops.read`, …) and personal exceptions;
+  - what a staff member sees is limited to their groups and departments.
+- **Superadmin** runs the institution and the tech panel.
 
-Назначение (`survey_access`) хранит, кто выдал, когда и с каким комментарием, и может
-иметь срок действия. После истечения срока методика снова скрывается. Пациент видит
-изменение сразу — назначение и отзыв проверяются при каждом запросе списка.
+Rules that hold everywhere:
+- Any action on another account follows one rule, whether it comes through the web, the console or a bulk action: you need the permission, the account can't be your own, it must be strictly below your position, and only a superadmin may touch a superadmin. This covers role changes, password reset, disabling or deleting an account, sessions, the second factor, signing in as another user, and roles.
+- Reading a patient's clinical data goes through one check: conclusions, results, printouts and one-time print links all use it.
+- The database enforces the same boundaries with row-level security under a dedicated application role. Tests run the patient and staff flows under that role.
+- TOTP is the second factor. A policy makes it mandatory for superadmins and tech-panel users; other staff can turn it on themselves.
+- Patients join through an invitation link. Open self-registration (`OPEN_REGISTRATION`, meant to be off in production) always creates a patient, never staff.
+- Pseudonymous patient accounts store no name.
 
-## Модель данных
+## What it does
+
+**Assessment**
+- A method constructor with a JSON view for large instruments. Edits create versions, so every result is scored by the version the patient actually saw.
+- Assignment: individually, by patient group, by battery with step order, by schedule, or by cascade (a result band assigns follow-up methods).
+- Patients take methods on the phone (with an offline queue) or in the browser. A clinician can fill in a method on the patient's behalf.
+- Critical answers raise risk alerts on autosave, not at the end. Alerts become cases with an owner and a history.
+
+**Clinical work**
+- Reception and the day screen, appointment booking with Google Calendar / Meet links, and session recordings with local transcription.
+- Conclusions with revisions and signatures, visit notes, safety plans, referrals, and dispensary follow-up with due dates.
+- Messages and mailings to patients, with push notifications.
+- Printouts: a result sheet, answer key sheet, blank form, visit certificate, the full outpatient chart and a case extract. The mobile app prints through a one-time link.
+
+**Analytics**
+- Patient dynamics with the reliable change index (RCI) and percentiles.
+- Psychometrics: Cronbach's alpha and item-total correlations, answer-quality flags (too fast, straight-lining), and local norms.
+- Cohorts, statistical models, a statistics builder, and export to CSV and SPSS with stable subject codes.
+
+**Tech panel (`/ops`)**
+- Requests, errors, logs, traces, database and slow queries, jobs, sessions, the audit log, integrity of the audit chain, and read-only SQL.
+- Releases, feature flags, keys, mobile devices and push, recordings, client errors, web vitals, suspicious activity, grants, "who viewed" and second-factor status.
+- Alerts go to Telegram and email.
+
+## Scoring engine
+
+Built both for the instruments in the manuals of the Research Center for Humanitarian Problems
+of the Armed Forces of Ukraine and for international screeners. The engine lives in `packages/shared/src/scoring.ts`; the
+server and the clients score the same way.
+
+| Mechanism | Example |
+|---|---|
+| Key by item numbers, one item feeding several scales | SR-45, MLO, Mini-mult |
+| Ratio scales (share of keyed answers) | SR-45 `Sr = N/35` |
+| Scale-on-scale corrections | Mini-mult K-correction `Hs + 0.5K` |
+| T-scores by sex and age, sten tables | Mini-mult, MLO |
+| Validity scales that gate interpretation | lie and validity scales |
+| Reversed grading, clinical recommendation per band | SR-45 |
+| Clinician-administered methods | SAD PERSONS |
+| Minimum answered share per scale; items hidden by display logic excluded | ASSIST, PC-PTSD-5 |
+
+Scoring runs in a fixed order:
+1. raw scores for every scale;
+2. corrections, applied only after all raw scores exist;
+3. normalization;
+4. picking the band;
+5. the validity check.
+
+When several norms or sten rows fit a person, the most specific one wins: sex first, then age, then the narrower age range.
+
+`validateSurvey` blocks publishing a method that cannot be scored correctly: items out of range, contradictory keys, overlapping bands, T-scores without norms, and so on. Drafts can still be saved.
+
+### Methods
+
+- **Shared catalog, 27 methods**: WHO-5, GAD-7, PHQ-9/8/4, PSS-10, PCL-5, AUDIT, AUDIT-C, PQ-16, Big Five, CESD-R, SRQ-20, GDS-15, DASS-42, PC-PTSD-5, CES, SBQ-R, MSPSS, OSSS-3, RSES, UCLA-3, Brief COPE, CAGE, ASSIST, ASRS-6 and CBI.
+  - Installed and updated on every deploy by content fingerprint.
+  - If an institution edited a method locally, its edit is kept. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
+- **Seed-only methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200".
+
+**The methods have not been clinically validated yet.** `docs/instruments/` holds the validation package for a clinical psychologist:
+- one sheet per method in Ukrainian and Russian;
+- generated from the live engine, with "answers → result" examples at every band boundary;
+- a test fails whenever a sheet and the engine disagree. To regenerate the sheets, run `bun run --cwd apps/api docs:instruments`.
+
+Licensing and sources are tracked in the dossiers under `docs/instruments/dossiers/` and in `docs/INSTRUMENTS.md`.
+
+## Data and security
+
+- **One server, one institution.** Each institution gets its own database; there are no tenant columns.
+- **Row-level security.** The app connects as `quizzy_app`, and policies limit every table.
+- **Audit log.**
+  - Append-only, and it records reads of patient data, not just changes.
+  - Each row is chained by hash. The chain is verified on a schedule, and from the tech panel or `bun run --cwd apps/api audit:verify`.
+- **Field encryption.** Names, phone numbers, free-text answers and clinical texts are encrypted with `ENCRYPTION_KEY` (`v1:<base64 32 bytes>[,v2:…]`; the first key is the active one). Phone numbers can be searched through a blind index with its own secret.
+- **Separate secrets.** Session signing, the phone index, export subject codes and field encryption each have their own secret, so rotating one does not break the others.
+- **Concurrency.** State changes are atomic: conclusions, referrals, mailings and safety plans check the revision the user saw and answer 409 instead of overwriting someone else's edit.
+
+The architecture, invariants and threat model are in `docs/ARCHITECTURE.md`.
+
+## Tests
+
+```bash
+bun run typecheck
+bun run lint
+bun test                                   # all unit and API tests (API tests need DATABASE_URL)
+bun run --cwd apps/api test:app-role       # patient and staff flows under the application role
+bun run e2e                                # Playwright on its own stand: DB quizzy_e2e, ports 3199/4199
+```
+
+- API tests recreate `<database>_test` on every run, so use your own database when running in parallel.
+- CI runs test files in a different order than macOS does. Tests use unique data and never rely on "only my rows in the table".
+- `migrationJournal.test.ts` walks the history since the last release and fails if a migration was added before one that already existed.
+
+## Deploy and operations
+
+Deploys go through GitHub Actions. A pushed `v*` tag starts `.github/workflows/deploy.yml`:
+1. CI runs typecheck, lint, the API, app-role and client tests, e2e and the Docker build.
+2. Images are built and pushed to GHCR.
+3. The compose file and scripts are uploaded to the server and validated.
+4. A database snapshot is taken.
+5. The new image loads the server's environment as a pre-check. If it fails, the old version keeps running.
+6. `compose up` starts `provision`. It runs the migrations, checks every migration by hash (a skipped one stops the deploy), and grants the application role its rights.
+7. The shared catalog is installed, and the deploy confirms that the running version, commit and site names match the release.
+8. Health checks run inside the server and from outside over HTTPS.
+
+`.github/workflows/maintenance.yml` runs one-off actions on the server:
+- catalog install, status and force;
+- demo data fill and purge;
+- the RLS check;
+- audit chain verification;
+- leftovers;
+- API and web logs;
+- backup status and a restore drill (also runs monthly);
+- slot resync.
+
+Backups:
+- A nightly `pg_dump`, encrypted with gpg and verified by reading it back.
+- Kept as 7 daily, 4 weekly and 12 monthly copies (`scripts/backup.sh`).
+- A weekly timer and the monthly workflow restore the newest copy into a throwaway database and compare it with production (`scripts/verify-backup.sh`).
+
+Server setup, TLS, Google sign-in and incident handling are covered in `docs/DEPLOY.md` and `docs/RUNBOOK.md`.
+
+## Repository map
 
 ```
-survey_groups        батареи методик («Приёмное отделение»)
-  └── surveys        методика + настройки прохождения
-        ├── sections разделы (заголовки по ходу)
-        ├── scales   субшкалы (тревога, депрессия…)
-        │     └── scale_bands  интерпретационные нормы: диапазон → вывод
-        └── questions
-              ├── options        варианты и строки матрицы, у каждого свой балл
-              └── question_logic условный показ по ответу на предыдущий вопрос
-responses            прохождение: статус, время старта, общая длительность
-  ├── answers        ответ + балл + телеметрия (время, правки, возвраты)
-  └── response_scores замороженный результат по субшкалам
+apps/api/src/routes      HTTP routes, one file per area
+apps/api/src/lib         domain logic: access rules, scoring glue, scheduler, notifications
+apps/api/src/db          schema, RLS context, migration runner
+apps/api/drizzle         SQL migrations and their journal
+apps/api/src/instruments method definitions (catalog and seed)
+apps/web/src/pages       console, patient cabinet and /ops screens
+apps/mobile/app          expo-router screens: patient tabs, rounds, surveys, analytics
+packages/shared/src      types, schemas, scoring, dictionaries (uiStrings, errorStrings, serverStrings)
+scripts                  backup, restore, restore check, instance upgrade, VPS setup
+e2e                      Playwright scenarios and API snapshots
+docs                     architecture, deploy, runbook, roadmap, instruments
 ```
 
-### Движок подсчёта
+## Documentation
 
-Методики из пособий НДЦ ГП ЗСУ требуют механики, которой нет в обычных
-опросниках. Реализовано:
+Most documents are in Russian; the validation package is in Ukrainian and Russian.
 
-| механизм | зачем | пример |
-|---|---|---|
-| **Ключ по номерам пунктов** | методика задаётся как «шкала Sr: „Так“ — 1,2,3,5…; „Ні“ — 4,6,8…», а не баллом на каждом варианте | СР-45, МЛО, Міні-мульт |
-| **Пункт → несколько шкал** | в МЛО и Міні-мульті один пункт работает сразу на несколько шкал | связь многие-ко-многим `scale_items` |
-| **Шкала-доля** | Sr = N/35, L = N/10 — отношение, а не сумма | `normalization: "ratio"` |
-| **Шкалы достоверности** | результат не интерпретируется сам по себе, а решает, доверять ли профилю | L ≥ 0,6 → профиль ненадёжен |
-| **Поправка шкалы на шкалу** | Hs + 0,5·K, Pt + 1,0·K в Міні-мульті | `scale_corrections` |
-| **T-баллы и стены** | нормы зависят от пола и возраста | `scale_norms`, `sten_rows` |
-| **Перевёрнутая оценка** | у СР-45 «1» — худший результат, «5» — лучший | `band.grade` отдельно от `severity` |
-| **Клиническая рекомендация** | от амбулаторного наблюдения до обязательной госпитализации | `band.recommendation` |
-| **Режим заполнения** | SAD PERSONS и интервью заполняет специалист, а не респондент | `administration: "clinician"` |
-
-Порядок подсчёта продиктован методиками и обязателен: сырые баллы всех шкал →
-поправки (только после того, как посчитаны все сырые, иначе результат зависел бы
-от порядка) → нормирование → подбор полосы по итоговому значению → проверка
-достоверности.
-
-### Псевдонимизированные аккаунты
-
-При регистрации пациент выбирает тип учётной записи. У псевдонимизированной
-фамилия и имя **не сохраняются в базу вообще** — вместо них система выдаёт код
-вида «Респондент А-4821». Пол и дата рождения остаются: без них не применить
-нормы методик, а сами по себе они человека не опознают.
-
-Это **не анонимность**: email хранится, потому что по нему выполняется вход.
-Называть режим анонимным было бы неточно, поэтому в интерфейсе он назван
-«Без имени» и сопровождён объяснением.
-
-Внести ФИО задним числом псевдонимизированный аккаунт не может — иначе смысл
-режима терялся бы одним запросом.
-
-### Сверка ключей с пособием
-
-`GET /api/surveys/:id/key` и страница `/surveys/:id/key` в консоли выводят ключи
-в том же виде, в каком они напечатаны в пособии: номера пунктов с ответом «Да»,
-с ответом «Нет», поправки, нормы, таблицы стенов.
-
-Зачем отдельно от автоматической проверки: она ловит структуру — выход номера за
-диапазон, противоречия, пересечения норм, — но **перепутанные местами номера
-выглядят для неё совершенно законно**. Единственный способ поймать такое — сесть
-с распечаткой и оригиналом. Страница печатается через `window.print()` с
-отдельными стилями.
-
-### Структурная проверка методики
-
-Ключи, нормы и коэффициенты переносятся из пособий вручную, а ошибка в одном
-номере пункта тихо портит каждый посчитанный балл — по самому результату это
-не заметить. Поэтому есть формальная проверка (`validateSurvey`), которая ловит
-то, что можно поймать, не зная содержания методики:
-
-| проверка | пример |
+| File | Contents |
 |---|---|
-| номер пункта вне методики | «в ключе пункт 9, а в методике их 2» |
-| противоречие в ключе | пункт требует одновременно «Да» и «Нет» |
-| ключ ждёт несуществующий вариант | «ключ ждёт „maybe“, а у пункта коды yes, no» |
-| поправка на несуществующую шкалу | и поправка шкалы на саму себя |
-| взаимные поправки | A правит B, B правит A — результат зависел бы от порядка |
-| нормирование без данных | T-баллы без норм, стены без таблицы |
-| пересечение интерпретационных норм | и пересечение строк таблицы стенов |
-| порог достоверности без направления | не указано, с какой стороны он нарушается |
-
-Ошибки блокируют **публикацию**, но не сохранение: черновик с ошибками —
-нормальное состояние незаконченной работы, а вот методика, которую нельзя
-корректно посчитать, к пациентам попадать не должна.
-
-Кнопка «Проверить структуру» есть в конструкторе, эндпоинт — `POST /api/surveys/validate`.
-
-### Конструктор и режим специалиста
-
-Конструктор живёт в веб-консоли (`/constructor`): вкладки «Основное», «Вопросы»,
-«Шкалы» и **«JSON»**. Последняя — не запасной вход, а основной способ заводить
-реальные методики: для опросника на 200 пунктов форма бессмысленна, а описание
-принимается ровно в том виде, в каком его отдаёт API, с ключами, нормами и
-таблицами стенов.
-
-Правка методики с прохождениями создаёт новую версию — старые данные остаются
-интерпретируемыми.
-
-Методику с `administration: "clinician"` пациент не видит и пройти не может;
-специалист заполняет её на `/surveys/:id/administer`, выбирая пациента. Прохождение
-записывается на пациента, но в журнал уходит, кто именно внёс данные.
-
-### Двуязычность
-
-Контент хранится локализованно (`{ uk, ru }` в jsonb), а API отдаёт его уже
-разрешённым на запрошенном языке. Поэтому мобилка, консоль и заключения работают
-с обычными строками и ничего не знают о языках — мультиязычность живёт в одном
-слое, а не размазана по трём приложениям.
-
-### Заведённые методики
-
-| методика | пунктов | что проверяет в движке |
-|---|---|---|
-| **СР-45** (Юнацкевич) | 45 | ключ по номерам, шкала-доля, шкала лжи как гейт, перевёрнутая оценка |
-| **SAD PERSONS** (Patterson et al., 1983) | 10 | заполняет клиницист, балл → протокол действий |
-| **Мини-мульт** (сокращённый MMPI) | 71 | K-коррекция (Hs+0,5K, Pd+0,4K, Pt+1,0K, Se+1,0K, Ma+0,2K), T-баллы по нормам пола |
-| **МЛО «Адаптивность-200»** | 200 | перевод в стены по таблице, обратная шкала: выше сырой балл — ниже стен; составная шкала ЛАП |
-
-ЛАП (личностный адаптационный потенциал) — интегральный показатель: собственных
-пунктов у него нет, значение набирается из ПР, КП и МН механизмом поправок.
-**Его таблица стенов построена сложением границ трёх шкал и подлежит сверке
-с оригиналом** — в пособии она своя.
-
-Шкала Ma в Мини-мульте осталась без нормы: её нет в таблице пособия. Движок
-предупреждает и показывает сырой балл, а не выдумывает T-балл.
-
-Тексты пунктов приведены в сокращении. Полные формулировки берутся из пособий и
-**подлежат согласованию с правообладателем** перед клиническим использованием.
-
-### Что заложено в методику
-
-- **12 типов вопросов**: один ответ, несколько, шкала Лайкерта, ползунок, матрица,
-  ранжирование, да/нет, число, строка, текст, дата, информационный блок.
-- **Субшкалы** с агрегацией `сумма / среднее / число признаков`.
-- **Обратный ключ** — балл пункта инвертируется внутри его диапазона. Стандартный
-  приём против согласительного смещения: часть пунктов формулируется в
-  противоположную сторону.
-- **Интерпретационные нормы** — диапазон баллов превращается в вывод со степенью
-  выраженности (норма / лёгкая / умеренная / выраженная).
-- **Условная логика** — вопрос показывается по ответу на любой предыдущий.
-- **Настройки прохождения**: лимит времени, возврат назад, прогресс, перемешивание
-  вопросов и вариантов, анонимность, повторные прохождения.
-
-### Телеметрия и лента событий
-
-Прохождение идёт по одному вопросу на экран, поэтому время измеряется точно.
-Кроме итоговых агрегатов пишется **полная лента событий** (`answer_events`):
-каждое переключение ответа с меткой времени.
-
-| событие | когда |
-|---|---|
-| `shown` | вопрос показан |
-| `set` | первый осмысленный ответ |
-| `change` | переключение уже данного ответа |
-| `clear` | ответ сброшен |
-| `leave` | уход с вопроса |
-
-Из ленты считается то, чего не видно в агрегатах: **время до первого выбора**
-(сколько думали, прежде чем ответить) отдельно от общего времени на вопросе —
-человек мог решить быстро, а потом долго сомневаться, и это разные вещи.
-
-| агрегат | смысл |
-|---|---|
-| `durationMs` (ответ) | время на вопросе суммарно по всем заходам |
-| `avgTimeToFirstAnswerMs` | среднее время до первого выбора |
-| `changeCount` / `changedShare` | сколько раз меняли ответ и какая доля респондентов |
-| `visitCount` | сколько раз возвращались к вопросу |
-| `tooFastShare` | доля ответов быстрее порога — признак небрежности |
-
-Таблица событий растёт быстрее остальных — по ней стоит настроить срок хранения.
-
-## API
-
-Все `/api/*`, кроме регистрации и логина, требуют `Authorization: Bearer <token>`.
-
-| метод | путь | кто | что |
-|---|---|---|---|
-| POST | `/api/auth/register`, `/api/auth/login` | все | вход и регистрация (всегда роль «пациент») |
-| GET | `/api/auth/me` | авториз. | текущий пользователь |
-| GET/POST | `/api/users` | суперадмин | учётные записи персонала |
-| GET | `/api/audit`, `/api/audit/summary` | суперадмин | журнал доступа |
-| GET/POST/DELETE | `/api/groups/:id/admins` | суперадмин | администраторы группы |
-| GET/POST/PATCH/DELETE | `/api/groups` | чтение — все, правка — админ | группы методик |
-| GET | `/api/surveys` | авториз. | админ видит все, пациент — только опубликованные |
-| GET | `/api/surveys/:id` | авториз. | методика целиком со шкалами и логикой |
-| POST/PATCH/DELETE | `/api/surveys/:id` | админ | конструктор |
-| POST | `/api/surveys/:id/duplicate` | админ | копия — штатный способ править методику с данными |
-| POST | `/api/surveys/:id/responses` | авториз. | прохождение с телеметрией |
-| GET | `/api/surveys/:id/responses` | админ | прохождения по методике с баллами |
-| GET | `/api/responses/:id` | автор или админ | разбор: ответы, баллы, время по вопросам |
-| GET | `/api/me/responses` | авториз. | свои прохождения |
-| GET | `/api/analytics/overview` | админ | сводка по всем методикам |
-| GET | `/api/analytics/surveys/:id` | админ | полная аналитика методики |
-| GET | `/api/analytics/surveys/:id/export` | админ | выгрузка прохождений в CSV |
-
-## Аналитика
-
-Вынесена в **отдельный полноэкранный раздел** вне вкладок (`app/analytics/`):
-при входе панель вкладок уходит, графики получают всю высоту экрана.
-Навигация: список методик → дашборд → срезы → прохождение.
-
-Срезы по методике: «Общее», «Вопросы», «Шкалы», «Качество».
-
-- **Сводка**: прохождения, респонденты, доходимость, среднее время, динамика по дням,
-  распределение по степеням выраженности, топ методик.
-- **По методике**: доходимость, среднее и медианное время, отвал по вопросам.
-- **По вопросам**: время (среднее, медиана, разброс), среднее число смен ответа,
-  доля пропусков, распределение по вариантам, гистограмма числовых, свободные ответы.
-- **По субшкалам**: среднее, медиана, диапазон, распределение по нормам.
-- **Надёжность шкалы**: альфа Кронбаха, корреляция пункта с остальными
-  (исправленная), альфа без пункта. Показывает, какие пункты ослабляют шкалу —
-  нужно для валидации собственных методик.
-- **Качество заполнения**: слишком быстрые ответы и «прямая линия» (одинаковый
-  вариант во всех строках матрицы или подряд идущие одинаковые оценки). Это флаг
-  для проверки специалистом, а не основание автоматически исключать данные.
-
-Проценты у матричных вопросов считаются от числа заполненных ячеек, а не респондентов —
-респондент отвечает на каждую строку. Для ранжирования вместо доли показывается
-средний ранг.
-
-### Набор диаграмм
-
-Графики собраны на `react-native-svg` в `src/components/viz/`, каждый выбран под
-свою задачу, а не для красоты:
-
-| диаграмма | что показывает |
-|---|---|
-| **LineChart** | динамика во времени; точки соединены, потому что важно направление, а не отдельный замер |
-| **RadarChart** | профиль по субшкалам — в психодиагностике читается форма целиком; оси нормированы к максимуму своей шкалы |
-| **BoxPlot** | разброс, а не только среднее: две шкалы с одинаковым средним ведут себя по-разному |
-| **Scatter** | время прохождения против доли быстрых ответов — небрежное заполнение видно глазами |
-| **Heatmap** | вопрос × вариант ответа, одноцветная шкала насыщенности плюс число в ячейке |
-| **Donut** | доли, складывающиеся в целое; в центре итог, легенда с абсолютными значениями |
-| **DivergingBar** | величины со знаком — корреляции пункта со шкалой, ноль по центру |
-| **Funnel** | отвал по вопросам; сужение и есть потеря |
-
-### Цвет в диаграммах
-
-Одна величина, измеренная у разных объектов, рисуется **одним** цветом:
-разные оттенки означали бы различие в идентичности. Категориальные слоты
-включаются явно (`categorical`) там, где сущности действительно разные.
-
-Степень выраженности использует зарезервированные статусные роли и **всегда**
-сопровождается подписью: на светлой поверхности часть этих цветов не добирает
-контраст 3:1, поэтому цвет никогда не несёт смысл в одиночку. Серии в графиках
-берут категориальные слоты в фиксированном порядке. Значения — в `src/theme.ts`.
-
-## Доступ и журналирование
-
-### Три роли
-
-| роль | что может |
-|---|---|
-| **superadmin** | всё: создаёт группы, назначает их администраторов, ведёт учётные записи, читает журнал доступа. Видит все группы вместе с их администраторами |
-| **admin** | работает только с группами, на которые назначен: методики, прохождения, аналитика, экспорт. Чужие группы для него не существуют |
-| **user** | проходит опубликованные методики и видит свои прохождения |
-
-Ключевое правило: **методика в группе управляется только через группу**. Авторство
-доступа не даёт — иначе создатель сохранял бы доступ к данным отделения после
-перевода методики в чужую группу. Создатель имеет доступ только к методикам
-без группы (личные черновики). Вся проверка живёт в `apps/api/src/lib/scope.ts` —
-роуты обязаны спрашивать разрешение там, а не проверять роль на месте.
-
-Администратор группы видит имя и email пациентов своей группы: это рабочий
-сценарий лечащего врача. Каждое обращение к карте пишется в журнал доступа.
-
-### Регистрация
-
-Самостоятельная регистрация **всегда** создаёт пациента. Поле `role` в запросе
-принимается, но игнорируется, а сама попытка его передать записывается в журнал —
-это сигнал о попытке эскалации. Учётные записи специалистов заводит администратор
-через `POST /api/users` или экран «Учётные записи».
-
-Единственное исключение — первичная инициализация: если в базе нет ни одного
-пользователя, первый зарегистрировавшийся становится администратором, иначе свежую
-установку некому было бы настроить.
-
-Минимальная длина пароля — 8 символов.
-
-### Журнал доступа
-
-Таблица `audit_log`, append-only: методов правки и удаления нет намеренно, иначе
-журнал теряет доказательную силу.
-
-Записываются **и чтения данных пациентов**, а не только изменения — для медицинских
-данных именно факт обращения к чужой карте является событием, которое нужно уметь
-предъявить:
-
-| событие | что фиксируется |
-|---|---|
-| `auth.login` / `auth.login_failed` | вход и неудачные попытки с причиной |
-| `auth.register` | в том числе запрошенная клиентом роль |
-| `response.read` | просмотр карты — с id пациента и признаком «своя ли запись» |
-| `response.list` | просмотр списка прохождений — со счётчиком затронутых пациентов |
-| `analytics.export` | выгрузка CSV: сколько строк, сколько пациентов |
-| `access.denied` | отказ в доступе с маршрутом и причиной |
-| `survey.*` / `group.*` / `user.*` | изменения методик, групп и учётных записей |
-| `audit.read` | чтение самого журнала |
-
-Каждая запись хранит актора (id, email и роль на момент события), затронутого
-пациента, исход, IP, User-Agent и подробности. `actorEmail` денормализован
-намеренно — запись должна оставаться читаемой после удаления учётной записи.
-
-Пароли в журнал не попадают: при неудачном входе пишутся только email и причина.
-Отказ записи в журнал не роняет запрос — ошибка уходит в лог процесса.
-
-## Версионирование методик
-
-Содержимое (разделы, шкалы, вопросы) принадлежит **версии**, а не методике
-напрямую. Правка не удаляет старые строки — создаётся новая версия, и она
-становится действующей последней операцией транзакции, так что проходящие
-до этого момента видят прежнюю.
-
-Благодаря этому методику с собранными данными **можно править**: каждое
-прохождение хранит `versionId` и всегда интерпретируется той версией, которую
-респондент реально видел. `GET /api/surveys/:id/versions` показывает историю
-со счётчиком прохождений на каждой версии.
-
-Субшкалы разных версий сопоставляются **по коду**, а не по id — иначе правка
-методики разрывала бы график динамики пациента пополам.
-
-## Тревоги по критическим пунктам
-
-Вариант ответа можно пометить как критический (`riskFlag`), а числовому вопросу
-задать порог (`riskThreshold`). Совпадение поднимает тревогу **сразу при
-сохранении ответа, в том числе при автосохранении черновика** — если пациент
-отметил пункт про суицидальные мысли на третьем вопросе из сорока, персонал
-узнаёт об этом сразу, а не через двадцать минут.
-
-Тревога уникальна по паре (прохождение, вопрос), поэтому повторные
-автосохранения не плодят дубликаты. Разбор фиксируется: кто, когда и что
-предпринял.
-
-## Черновики прохождения
-
-`PUT /api/surveys/:id/draft` идемпотентно перезаписывает единственное
-незавершённое прохождение пользователя. Клиент сохраняет при каждом переходе
-между вопросами и молча глотает ошибку — потеря автосохранения не повод
-прерывать обследование, ответы остаются в памяти экрана.
-
-При открытии методики черновик подхватывается, кнопка меняется на «Продолжить».
-При успешной отправке черновик удаляется, чтобы не висеть брошенным
-прохождением и не портить статистику доходимости.
-
-## Динамика пациента и нормы
-
-`GET /api/dynamics/respondents/:userId` — как менялись баллы по субшкалам от
-замера к замеру, с интерпретацией каждой точки и перцентилем.
-
-Перцентиль считается как «доля выборки строго ниже плюс половина равных» —
-приём, который не даёт краевым значениям схлопываться в 0 и 100. Если выборка
-меньше 10 наблюдений, возвращается `null`: перцентиль по трём точкам создаёт
-видимость точности, которой нет.
-
-## Печатное заключение
-
-`GET /api/reports/responses/:id` отдаёт самостоятельную HTML-страницу с
-вёрсткой под печать. Не PDF намеренно: клиент печатает системным механизмом,
-и заключение одинаково открывается в мобилке, браузере и на принтере, без
-серверной зависимости на рендер PDF. Доступно пациенту на свои прохождения и
-сотруднику — на прохождения его групп; каждый рендер пишется в журнал.
-
-## Ограничения и что дальше
-
-- **Демо-методики авторские.** Реальные шкалы (PHQ-9, GAD-7, BDI и прочие) защищены
-  авторским правом и требуют лицензии — дословно они не воспроизводятся.
-- **Персональные данные.** Роли и журнал доступа закрыты, но остаётся: шифрование
-  хранилища и соединения (сейчас Postgres локальный, без TLS), срок хранения и ротация журнала,
-  юридическая оценка по 152-ФЗ. Журнал сейчас растёт неограниченно и лежит в той же
-  базе, что и данные, — для доказательности его стоит выносить в отдельное хранилище
-  с защитой от изменения.
-- Нет refresh-токенов, тестов и CI.
-- Редактирование существующей методики есть в API (создаёт версию), но в интерфейсе
-  конструктора пока только создание — правка через UI не выведена.
-- Аналитика открывается на версии, где больше всего прохождений (после правки
-  действующая версия пуста), версию можно переключить — но сравнения «версия
-  против версии» на одном экране нет.
-- Таблицы `answer_events` и `audit_log` растут неограниченно — нужен срок хранения.
+| `docs/ARCHITECTURE.md` | data map, invariants, threat model |
+| `docs/DEPLOY.md` | VPS installation, domain and TLS, deploys, backups, Google sign-in |
+| `docs/RUNBOOK.md` | day-to-day operations and incident handling |
+| `docs/instruments/` | validation package for the clinical psychologist |
+| `docs/INSTRUMENTS.md` | origin and legal status of the methods (older; the validation package is current) |
+| `docs/OMR.md` | feasibility of reading paper forms from a photo |
+| `docs/ROADMAP.md`, `docs/REWRITE-PLAN.md`, `docs/REDESIGN.md` | plans and design migration notes (historical, not kept fully up to date) |
+
+## Known limitations
+
+- The methods have not been clinically validated; the validation package is waiting for a psychologist's review.
+- Several instruments are copyrighted. Check their licensing in the dossiers before clinical use.
+- The mobile app is not published to the App Store or Google Play; builds are run locally through Expo.
+- Backups are stored only on the production server; an off-site copy is not set up yet.
+- One server serves one institution. More institutions mean more instances (`scripts/upgrade-instances.sh`).
