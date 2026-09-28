@@ -35,6 +35,7 @@ import {
   users,
 } from "../db/schema";
 import { audit } from "../lib/audit";
+import { guardAccountAction } from "../lib/accountClass";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
@@ -224,8 +225,14 @@ clinicRoutes.put(
     const userId = c.req.param("userId");
     const input = await parseBody(c.req.raw, specialistProfileSchema);
 
-    const person = await db.query.users.findFirst({ where: eq(users.id, userId) });
-    if (!person) notFound("err.userNotFound");
+    /*
+     * Отделение, кабинет и приём сотрудника — действие над чужой учёткой, и
+     * правило общее (lib/accountClass.ts): не себе, цель строго ниже своего
+     * положения. Заведующий с departments.manage расставляет специалистов, но
+     * не переводит главного врача в другое отделение (решение заказчика
+     * 2026-09-28).
+     */
+    const person = await guardAccountAction(c, userId, { permission: "departments.manage", action: "clinic.specialist_profile" });
     if (person.role !== "admin" && person.role !== "superadmin") {
       badRequest("err.specialistMustBeStaff");
     }
