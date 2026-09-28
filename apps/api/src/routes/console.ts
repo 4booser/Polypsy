@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { audit } from "../lib/audit";
 import { serverText } from "@quizzy/shared";
@@ -66,13 +67,20 @@ consoleRoutes.post("/run", async (c) => {
     return c.json({ lines: [serverText("cmd.unknown", lang, { name }), serverText("cmd.typeHelp", lang)], ok: false });
   }
 
-  if (cmd.permission && !(await hasPermission(user, cmd.permission))) {
+  /*
+   * Право команды и права её формы (Command.forms) — то же, что требует
+   * HTTP-двойник: `catalog install` ставит методики так же, как ручная
+   * задача техпанели, и право у неё то же.
+   */
+  const needed = [...(cmd.permission ? [cmd.permission] : []), ...(cmd.forms?.[args[0] ?? ""] ?? [])];
+  for (const permission of needed) {
+    if (await hasPermission(user, permission)) continue;
     await audit(c, {
       action: "console.run",
       outcome: "denied",
-      details: { command: cmd.name, permission: cmd.permission },
+      details: { command: cmd.name, permission },
     });
-    forbidden("err.permissionRequired", { permission: cmd.permission });
+    forbidden("err.permissionRequired", { permission });
   }
 
   /*
@@ -93,12 +101,25 @@ consoleRoutes.post("/run", async (c) => {
   });
 
   try {
-    const result = await cmd.run({ user, args, lang });
+    const result = await cmd.run({ user, args, lang, c });
     return c.json({ lines: result.lines, ok: true });
   } catch (error) {
     if (error instanceof CommandError) {
       // фразу ошибки собираем здесь, на языке набравшего команду (см. CommandError)
       return c.json({ lines: [error.text(lang)], ok: false });
+    }
+    /*
+     * Отказ общего сервиса (lib/accountClass.ts) уходит тем же ответом, что у
+     * HTTP-двойника, — 403 с тем же текстом. Отказ откатывает транзакцию
+     * запроса, а с ней и строку «вызов» выше; поэтому попытка пишется ещё
+     * раз — отказом, который откат переживает (audit → durable).
+     */
+    if (error instanceof HTTPException && error.status === 403) {
+      await audit(c, {
+        action: "console.run",
+        outcome: "denied",
+        details: { command: cmd.name, args, reason: (error.cause as { key?: string } | undefined)?.key ?? null },
+      });
     }
     throw error;
   }

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { noteSearch, patientNotes, users } from "../db/schema";
+import { appointments, noteSearch, patientNotes, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
@@ -47,8 +47,11 @@ const saveSchema = z.object({
    *
    * Необязателен: запись о человеке бывает и вне приёма — наблюдение, разбор
    * случая, консультация коллеги.
+   *
+   * Пустая строка — не «без приёма», а ошибка клиента: прежде она ложилась
+   * в базу ссылкой в никуда, теперь база такой ссылки не примет (0110).
    */
-  appointmentId: z.string().nullable().optional(),
+  appointmentId: z.string().min(1).nullable().optional(),
   /** Версия, поверх которой правили; 0 — заметок ещё не было */
   baseVersion: z.number().int().min(0).optional(),
   /** Ревизия текста внутри неё — черновик правится на месте, см. conclusions.ts */
@@ -68,6 +71,26 @@ async function assertPatient(staff: User, userId: string) {
   const allowed = await accessiblePatientIds(staff);
   if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
   return patient;
+}
+
+/**
+ * Приём, к которому привязывается заметка, — приём этого же человека.
+ *
+ * Внешний разбор 2026-09-27 (п. 5): appointmentId не сверялся с пациентом,
+ * и заметка A ложилась протоколом приёма B — карточка приёма ищет протокол
+ * по одному appointmentId (routes/clinic.ts, /appointments/:id/context), и
+ * на приёме B открывалась запись о другом человеке. Та же сверка, что у
+ * привязки приёма к эпизоду (routes/episodes.ts), и тот же отказ. База
+ * держит правило составным ключом (миграция 0110) — это последний заслон,
+ * а не первый: отказ ключа был бы пятисоткой без объяснения.
+ *
+ * Приём читается под политиками строк запроса: невидимый сотруднику приём
+ * для него «не найден», как и несуществующий.
+ */
+async function assertOwnAppointment(userId: string, appointmentId: string) {
+  const visit = await db.query.appointments.findFirst({ where: eq(appointments.id, appointmentId) });
+  if (!visit) notFound("err.appointmentNotFound");
+  if (visit.patientId !== userId) badRequest("err.episodeOtherPatient");
 }
 
 /** Блокировка на время транзакции — та же причина, что у заключений */
@@ -119,6 +142,7 @@ noteRoutes.put("/patients/:userId", requirePermission("notes.write"), async (c) 
   const userId = c.req.param("userId");
   await assertPatient(staff, userId);
   const input = await parseBody(c.req.raw, saveSchema);
+  if (input.appointmentId) await assertOwnAppointment(userId, input.appointmentId);
   await lockNotes(userId);
 
   const [latest] = await db

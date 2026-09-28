@@ -1,4 +1,5 @@
-import { and, count, eq, gte, isNull, sql } from "drizzle-orm";
+import type { Context } from "hono";
+import { and, count, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   renderCoded,
   renderNote,
@@ -10,6 +11,8 @@ import {
   type User,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
+import type { AppEnv } from "../middleware/auth";
 import {
   alertCases,
   appointments,
@@ -26,6 +29,8 @@ import { checkRls } from "./rlsGuard";
 import { installCatalog } from "./catalogInstall";
 import { CATALOG } from "../instruments/catalog";
 import { t } from "@quizzy/shared";
+import { changeAccountClass, isAccountClass, setAccountReadOnly } from "./accountClass";
+import { surveyScopeFilter } from "./scope";
 
 /**
  * Командная консоль управления системой.
@@ -47,6 +52,15 @@ import { t } from "@quizzy/shared";
  * Третье: каждый вызов идёт в журнал (и, значит, в поток событий — см.
  * audit.ts). Команда, выполненная в консоли, ничем не отличается в журнале
  * от того же действия, сделанного мышью.
+ *
+ * Четвёртое, и его не хватало (внешний разбор 2026-09-27, п. 1): «то же
+ * право» мало, нужна та же ПРОВЕРКА. `user role` требовал users.manage, как
+ * и маршрут, но правила маршрута — не себе, суперадмина только суперадмин,
+ * лестница — жили в обработчике, и консоль их не знала: сотрудник с
+ * делегированным users.manage делал себя суперадмином. Теперь изменяющие
+ * команды зовут тот же сервис, что HTTP-двойник (lib/accountClass.ts), а
+ * право каждой команды и формы — то, что требует двойник (Command.forms;
+ * сверка по командам — в console.test.ts).
  */
 
 export interface CommandContext {
@@ -57,6 +71,16 @@ export interface CommandContext {
    * любом языке интерфейса: вывод команд набирался здесь же, литералами.
    */
   lang: Lang;
+  /**
+   * Запрос, в котором выполняется команда.
+   *
+   * Изменяющие команды зовут те же сервисы, что и HTTP-двойник
+   * (lib/accountClass.ts), а сервис пишет журнал от имени запроса и сам
+   * проверяет полномочия. Без контекста команде пришлось бы повторять
+   * правило у себя — именно так консоль и разошлась с маршрутом (внешний
+   * разбор 2026-09-27, п. 1).
+   */
+  c: Context<AppEnv>;
 }
 
 export interface CommandResult {
@@ -80,6 +104,17 @@ export interface Command {
    * себе знает.
    */
   permission: Permission | null;
+  /**
+   * Формы команды, которым нужно больше, чем самой команде, — ровно то, чего
+   * требует их HTTP-двойник (волна 15). Проверяет маршрут консоли до
+   * выполнения, как и `permission`.
+   *
+   * `catalog list` — чтение каталога, а `catalog install` — та же установка,
+   * что ручная задача техпанели (POST /api/ops/signals/jobs/catalog.install/run,
+   * ops.read + ops.manage). Одно право на обе формы значило бы, что главный
+   * врач с surveys.edit ставит и обновляет методики мимо техпанели.
+   */
+  forms?: Record<string, Permission[]>;
   run: (ctx: CommandContext) => Promise<CommandResult>;
 }
 
@@ -172,12 +207,20 @@ export const COMMANDS: Command[] = [
     name: "stats",
     usage: "stats",
     summary: "cmd.stats.summary",
-    permission: "analytics.read",
+    /*
+     * ops.read, а не analytics.read (волна 15). Числа здесь — по системе
+     * целиком: все люди, все методики, все случаи. HTTP-двойник с такими
+     * числами — обзор техпанели (GET /api/ops/overview, ops.read), он и
+     * считает их системной ролью. Под analytics.read консоль отдавала
+     * заведующему счётчики всего учреждения, тогда как его сводка
+     * (routes/dashboard.ts) показывает только его зону (lib/scope.ts).
+     */
+    permission: "ops.read",
     run: async ({ lang }) => {
       const one = async (q: Promise<{ n: number }[]>) => Number((await q)[0]?.n ?? 0);
       const today = new Date().toISOString().slice(0, 10);
 
-      const [people, staff, published, done, openCases, todayAppts] = await Promise.all([
+      const [people, staff, published, done, openCases, todayAppts] = await asSystem(() => Promise.all([
         one(db.select({ n: count() }).from(users).where(eq(users.role, "user"))),
         one(db.select({ n: count() }).from(users).where(sql`${users.role} <> 'user'`)),
         one(db.select({ n: count() }).from(surveys).where(eq(surveys.status, "published"))),
@@ -190,7 +233,7 @@ export const COMMANDS: Command[] = [
             .innerJoin(slots, eq(slots.id, appointments.slotId))
             .where(and(gte(slots.startsAt, today), sql`${appointments.status} <> 'cancelled'`)),
         ),
-      ]);
+      ]));
 
       return ok(
         aligned(
@@ -213,11 +256,20 @@ export const COMMANDS: Command[] = [
     usage: "queue",
     summary: "cmd.queue.summary",
     permission: "alerts.review",
-    run: async ({ lang }) => {
+    run: async ({ user, lang }) => {
+      /*
+       * Зона — та же, что у очереди на экране (routes/alertCases.ts): случай
+       * виден по методике, с которой он начался. Прежде консоль считала все
+       * неразобранные случаи учреждения, и заведующий группы узнавал из неё
+       * число тяжёлых случаев чужих отделений (волна 15).
+       */
+      const scoped = await db.select({ id: surveys.id }).from(surveys).where(await surveyScopeFilter(user));
+      const surveyIds = scoped.map((s) => s.id);
+      if (!surveyIds.length) return ok([serverText("cmd.queue.empty", lang)]);
       const rows = await db
         .select({ severity: alertCases.severity, openedAt: alertCases.openedAt })
         .from(alertCases)
-        .where(isNull(alertCases.acknowledgedAt));
+        .where(and(isNull(alertCases.acknowledgedAt), inArray(alertCases.surveyId, surveyIds)));
       if (!rows.length) return ok([serverText("cmd.queue.empty", lang)]);
 
       const severe = rows.filter((r) => r.severity === "severe").length;
@@ -242,7 +294,11 @@ export const COMMANDS: Command[] = [
     name: "rls",
     usage: "rls check",
     summary: "cmd.rls.summary",
-    permission: "audit.read",
+    /*
+     * ops.read, как у проверки политик в обзоре техпанели (GET
+     * /api/ops/overview) — это состояние развёртывания, а не журнал доступа.
+     */
+    permission: "ops.read",
     run: async ({ args, lang }) => {
       if (args[0] !== "check") throw new CommandError("cmd.onlyForm", { form: "rls check" });
       const report = await checkRls();
@@ -292,6 +348,7 @@ export const COMMANDS: Command[] = [
     usage: "catalog list|install",
     summary: "cmd.catalog.summary",
     permission: "surveys.edit",
+    forms: { install: ["ops.read", "ops.manage"] },
     run: async ({ args, lang }) => {
       if (args[0] === "list") {
         const rows = await db.select().from(surveys).where(sql`${surveys.catalogKey} is not null`);
@@ -304,7 +361,12 @@ export const COMMANDS: Command[] = [
         );
       }
       if (args[0] === "install") {
-        const report = await installCatalog();
+        /*
+         * Системной ролью, как ручная задача техпанели (lib/opsManual.ts):
+         * установка пишет методики и отделение от имени учреждения, а не того,
+         * кто набрал команду, и политики строк его зоны тут ни при чём.
+         */
+        const report = await asSystem(() => installCatalog());
         return ok(
           [
             serverText(report.departmentCreated ? "cmd.catalog.deptCreated" : "cmd.catalog.deptExisted", lang),
@@ -343,7 +405,7 @@ export const COMMANDS: Command[] = [
     usage: "user find|role|readonly …",
     summary: "cmd.user.summary",
     permission: "users.manage",
-    run: async ({ args, lang }) => {
+    run: async ({ args, lang, c }) => {
       const [sub, ...rest] = args;
 
       if (sub === "find") {
@@ -368,12 +430,18 @@ export const COMMANDS: Command[] = [
       if (sub === "role") {
         need(rest, 2, "cmd.usage.userRole");
         const [email, role] = rest as [string, string];
-        if (!["superadmin", "admin", "user"].includes(role)) {
-          throw new CommandError("cmd.user.roleValues");
-        }
+        if (!isAccountClass(role)) throw new CommandError("cmd.user.roleValues");
         const target = await findByEmail(email);
-        await db.update(users).set({ role: role as never }).where(eq(users.id, target.id));
-        return ok([`${target.email}: ${target.role} → ${role}`], true);
+        /*
+         * Тот же сервис, что у PATCH /api/users/:id/role: полномочия,
+         * лестница, защищённые учётки, обрыв сессий, журнал. Прежде здесь
+         * стоял голый UPDATE, и `user role <своя почта> superadmin` делал
+         * суперадмином любого, у кого есть users.manage и консоль (внешний
+         * разбор 2026-09-27, п. 1). Отказ сервиса — отказ HTTP (403 с тем же
+         * текстом), а не строка вывода: так он и выглядит у двойника.
+         */
+        const { before } = await changeAccountClass(c, target.id, role, "console");
+        return ok([`${target.email}: ${before} → ${role}`], true);
       }
 
       if (sub === "readonly") {
@@ -381,7 +449,8 @@ export const COMMANDS: Command[] = [
         const [email, mode] = rest as [string, string];
         if (mode !== "on" && mode !== "off") throw new CommandError("cmd.user.onOff");
         const target = await findByEmail(email);
-        await db.update(users).set({ readOnly: mode === "on" }).where(eq(users.id, target.id));
+        // те же границы, что у смены класса: себя и суперадмина — нет, старшего — нет
+        await setAccountReadOnly(c, target.id, mode === "on");
         return ok(
           [serverText(mode === "on" ? "cmd.user.writeBlocked" : "cmd.user.writeAllowed", lang, { email: target.email })],
           true,

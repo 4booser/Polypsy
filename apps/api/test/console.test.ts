@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
-import { adminA, api, db, makeUser, root } from "./fixtures";
-import { auditLog, users } from "../src/db/schema";
+import { afterAll, describe, expect, test } from "bun:test";
+import { eq, inArray } from "drizzle-orm";
+import type { Permission } from "@quizzy/shared";
+import { adminA, adminB, api, db, makeUser, root, surveyInA } from "./fixtures";
+import { alertCases, auditLog, permissionExceptions, users } from "../src/db/schema";
 import { COMMANDS, parseLine } from "../src/lib/commands";
 
 /**
@@ -142,5 +143,103 @@ describe("журнал", () => {
       denied.some((r) => JSON.stringify(r.details ?? {}).includes("users.manage")),
       "отказ по праву не записан — попытки расширить свои возможности не видны",
     ).toBe(true);
+  });
+});
+
+describe("каждая команда — через проверку своего HTTP-двойника (волна 15)", () => {
+  /*
+   * Внешний разбор 2026-09-27, п. 1: `user role` обходил правила смены
+   * класса, записанные в маршруте. Тот же вопрос задан каждой команде —
+   * «чего требует её HTTP-двойник» — и где консоль требовала меньше, она
+   * требует теперь то же (таблица — в отчёте волны 15):
+   *   stats         — обзор техпанели, ops.read (числа по системе целиком);
+   *   rls check     — проверка политик в обзоре техпанели, ops.read;
+   *   catalog install — ручная задача техпанели, ops.read + ops.manage;
+   *   queue         — очередь случаев, alerts.review и зона lib/scope.ts.
+   * Смена класса и «только чтение» — в accountClass.test.ts.
+   */
+  const run = (token: string, line: string) =>
+    api<{ ok: boolean; lines: string[]; error?: string }>("/api/console/run", token, {
+      method: "POST",
+      body: JSON.stringify({ line }),
+      headers: { "Accept-Language": "ru" },
+    });
+
+  /** Сотрудник-«психолог» (есть console.use, analytics.read, surveys.edit) с добавленными правами */
+  async function staffWith(perms: Permission[]) {
+    const person = await makeUser("admin", `console-twin-${crypto.randomUUID()}@test`);
+    for (const permission of perms) {
+      await db.insert(permissionExceptions).values({
+        id: crypto.randomUUID(),
+        userId: person.id,
+        permission,
+        mode: "grant",
+        reason: "Проверка консоли",
+        grantedBy: root.id,
+      });
+    }
+    return person;
+  }
+
+  test("stats — числа по системе целиком, поэтому право обзора техпанели, а не аналитики", async () => {
+    // analytics.read у «психолога» есть: прежде его хватало
+    const analyst = await staffWith([]);
+    const denied = await run(analyst.token, "stats");
+    expect(denied.status).toBe(403);
+    expect(denied.body.error).toContain("ops.read");
+
+    const ops = await staffWith(["ops.read"]);
+    const allowed = await run(ops.token, "stats");
+    expect(allowed.body.ok, allowed.body.lines?.join(" ")).toBe(true);
+  });
+
+  test("rls check — право обзора техпанели, а не журнала", async () => {
+    const auditor = await staffWith(["audit.read"]);
+    expect((await run(auditor.token, "rls check")).status).toBe(403);
+    const ops = await staffWith(["ops.read"]);
+    expect((await run(ops.token, "rls check")).body.ok).toBe(true);
+  });
+
+  test("catalog install — то же право, что у ручной задачи техпанели; catalog list — прежнее", async () => {
+    // surveys.edit у «психолога» есть — на просмотр каталога его хватает
+    const editor = await staffWith([]);
+    expect((await run(editor.token, "catalog list")).body.ok).toBe(true);
+
+    const install = await run(editor.token, "catalog install");
+    expect(install.status).toBe(403);
+    expect(install.body.error).toContain("ops.");
+
+    const onlyRead = await staffWith(["ops.read"]);
+    const half = await run(onlyRead.token, "catalog install");
+    expect(half.status).toBe(403);
+    expect(half.body.error).toContain("ops.manage");
+  });
+
+  describe("queue — только своя зона, как очередь на экране", () => {
+    const made: string[] = [];
+    afterAll(async () => {
+      // живых случаев в общей очереди не оставляем
+      if (made.length) await db.delete(alertCases).where(inArray(alertCases.id, made));
+    });
+
+    const total = async (token: string): Promise<number> => {
+      const res = await run(token, "queue");
+      expect(res.body.ok, res.body.lines?.join(" ")).toBe(true);
+      const line = res.body.lines.find((l) => l.startsWith("всего"));
+      return line ? Number(line.replace(/\D+/g, "")) : 0;
+    };
+
+    test("случай методики группы А не виден в счётчике заведующего группы Б", async () => {
+      const beforeA = await total(adminA.token);
+      const beforeB = await total(adminB.token);
+
+      const person = await makeUser("user", `console-q-${crypto.randomUUID()}@test`);
+      const id = crypto.randomUUID();
+      await db.insert(alertCases).values({ id, userId: person.id, surveyId: surveyInA, severity: "severe" });
+      made.push(id);
+
+      expect(await total(adminA.token)).toBe(beforeA + 1);
+      expect(await total(adminB.token), "консоль показала чужой зоне случай группы А").toBe(beforeB);
+    });
   });
 });
