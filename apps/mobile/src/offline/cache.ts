@@ -68,8 +68,38 @@ export const cache = {
   saveSafetyPlan: (owner: Owner, plan: SafetyPlan | null) => put(owner, "safety:plan", plan),
   safetyPlan: (owner: Owner) => get<SafetyPlan>(owner, "safety:plan"),
 
-  saveSurvey: (owner: Owner, survey: SurveyFull) => put(owner, `survey:${survey.id}`, survey),
+  /*
+   * Действующая версия методики — под `survey:<id>`. Прежняя версия не
+   * пропадает, пока на ней лежит незавершённое прохождение (волна 16):
+   * черновик продолжают в той версии, где даны его ответы, а без сети взять
+   * её содержимое было бы негде — обновление кэша стёрло бы его раньше, чем
+   * человек вернётся к методике.
+   */
+  saveSurvey: (owner: Owner, survey: SurveyFull) => {
+    const previous = get<SurveyFull>(owner, `survey:${survey.id}`);
+    if (previous?.versionId && previous.versionId !== survey.versionId) {
+      const draft = get<LocalDraft>(owner, draftName(survey.id));
+      if (draft?.versionId === previous.versionId) put(owner, pinnedName(survey.id, previous.versionId), previous);
+    }
+    put(owner, `survey:${survey.id}`, survey);
+  },
   survey: (owner: Owner, id: string) => get<SurveyFull>(owner, `survey:${id}`),
+
+  /**
+   * Содержимое определённой версии — той, на которой начат черновик.
+   *
+   * Содержимое версии не меняется (новая правка — новая версия с новыми
+   * пунктами), поэтому копия не устаревает. Живёт она, пока жив черновик:
+   * drafts.drop уносит её вместе с ним.
+   */
+  saveSurveyVersion: (owner: Owner, survey: SurveyFull) => {
+    if (survey.versionId) put(owner, pinnedName(survey.id, survey.versionId), survey);
+  },
+  surveyVersion: (owner: Owner, id: string, versionId: string | null): SurveyFull | null => {
+    const current = get<SurveyFull>(owner, `survey:${id}`);
+    if (!versionId || current?.versionId === versionId) return current;
+    return get<SurveyFull>(owner, pinnedName(id, versionId));
+  },
 
   /**
    * Название методики из того, что уже лежит офлайн.
@@ -156,6 +186,23 @@ export function dropLegacyCache(): number {
  */
 export interface LocalDraft {
   surveyId: string;
+  /**
+   * Версия методики, на пункты которой даны ответы (волна 16).
+   *
+   * Её не было, и продолжение открывало действующую версию, а ответы брало
+   * отсюда: у новой версии свои пункты, и автосохранение слало несовместимую
+   * пару — сервер молча выбрасывал ответы. У черновиков до этой правки
+   * версии нет: для них её выясняет runner/resume.ts по самим пунктам.
+   */
+  versionId?: string | null;
+  /** Номер той же версии: по нему её содержимое открывается с сервера (?version=N) */
+  versionNumber?: number | null;
+  /**
+   * Черновик начат заново поверх незавершённого в другой версии — какой
+   * именно (draftSchema.replacesVersionId). Без этого сервер черновик с
+   * ответами молча не заменяет, и правильно: заменять — решение человека.
+   */
+  replacesVersionId?: string | null;
   answers: unknown[];
   startedAt: string;
   durationMs: number;
@@ -182,6 +229,8 @@ export interface LocalDraft {
 }
 
 const draftName = (surveyId: string) => `draft:${surveyId}`;
+/* копия версии, на которой лежит черновик; `@`, а не `:` — чтобы не совпасть с `survey:<id>` по префиксу другой методики */
+const pinnedName = (surveyId: string, versionId: string) => `survey:${surveyId}@${versionId}`;
 
 export const drafts = {
   /**
@@ -235,7 +284,10 @@ export const drafts = {
   },
   get: (owner: Owner, surveyId: string) => get<LocalDraft>(owner, draftName(surveyId)),
   drop: (owner: Owner, surveyId: string) => {
-    if (owner) store.remove(ownKey(owner, draftName(surveyId)));
+    if (!owner) return;
+    store.remove(ownKey(owner, draftName(surveyId)));
+    // копии версий держались ради этого черновика (cache.saveSurvey) — больше не нужны
+    for (const name of store.keys(ownKey(owner, `survey:${surveyId}@`))) store.remove(name);
   },
   /** Черновики владельца, не дошедшие до сервера, — их досылает тот же проход, что и сдачи */
   unsynced: (owner: Owner): LocalDraft[] =>
@@ -248,10 +300,59 @@ export const drafts = {
 };
 
 export interface ResumableDraft {
+  /** Версия, на которой даны ответы; null — неизвестна (черновик до волны 16) */
+  versionId?: string | null;
+  versionNumber?: number | null;
+  /**
+   * Начатое заново ещё не дошло до сервера — какую версию оно заменяет.
+   * Только у локального: без этого продолжение после перезапуска слало бы
+   * черновик без замены, и сервер отказывал бы ему до самой сдачи.
+   */
+  replacesVersionId?: string | null;
   answers: unknown[];
   startedAt: string;
   durationMs: number;
   lastSavedAt: string | null;
+}
+
+/** Локальный черновик как продолжение — вместе с его версией */
+function resumableOf(local: LocalDraft): ResumableDraft {
+  return {
+    versionId: local.versionId ?? null,
+    versionNumber: local.versionNumber ?? null,
+    replacesVersionId: local.synced ? null : (local.replacesVersionId ?? null),
+    answers: local.answers,
+    startedAt: local.startedAt,
+    durationMs: local.durationMs,
+    lastSavedAt: local.savedAt,
+  };
+}
+
+/**
+ * Тело PUT /surveys/:id/draft из локального черновика — одно на экран и на
+ * досылку (api/client.ts, flushQueue).
+ *
+ * Досылка слала черновик без версии: сервер выводил её по пунктам, и это
+ * работало, но только пока пункты одной версии. Теперь версия едет всегда,
+ * когда известна, а с ней — явная замена черновика другой версии, если
+ * человек начал заново.
+ */
+export function draftRequestBody(draft: LocalDraft): {
+  versionId?: string;
+  replacesVersionId?: string;
+  answers: unknown[];
+  startedAt: string;
+  durationMs: number;
+  events: unknown[];
+} {
+  return {
+    ...(draft.versionId ? { versionId: draft.versionId } : {}),
+    ...(draft.replacesVersionId ? { replacesVersionId: draft.replacesVersionId } : {}),
+    answers: draft.answers,
+    startedAt: draft.startedAt,
+    durationMs: draft.durationMs,
+    events: draft.events,
+  };
 }
 
 /**
@@ -287,29 +388,7 @@ export function pickDraft(
     !!local!.serverSavedAt &&
     !!remote!.lastSavedAt &&
     remote!.lastSavedAt <= local!.serverSavedAt;
-  if (unchangedRemote) {
-    return {
-      answers: local!.answers,
-      startedAt: local!.startedAt,
-      durationMs: local!.durationMs,
-      lastSavedAt: local!.savedAt,
-    };
-  }
-  if (!remoteUsable) {
-    return {
-      answers: local!.answers,
-      startedAt: local!.startedAt,
-      durationMs: local!.durationMs,
-      lastSavedAt: local!.savedAt,
-    };
-  }
+  if (unchangedRemote || !remoteUsable) return resumableOf(local!);
 
-  return local!.savedAt > (remote!.lastSavedAt ?? "")
-    ? {
-        answers: local!.answers,
-        startedAt: local!.startedAt,
-        durationMs: local!.durationMs,
-        lastSavedAt: local!.savedAt,
-      }
-    : remote;
+  return local!.savedAt > (remote!.lastSavedAt ?? "") ? resumableOf(local!) : remote;
 }
