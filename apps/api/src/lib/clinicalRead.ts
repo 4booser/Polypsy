@@ -1,7 +1,10 @@
 import type { Context } from "hono";
+import { eq } from "drizzle-orm";
 import type { Permission, User } from "@quizzy/shared";
+import { db } from "../db";
+import { responses, riskAlerts } from "../db/schema";
 import { audit } from "./audit";
-import { forbidden, notFound } from "./http";
+import { badRequest, forbidden, notFound } from "./http";
 import { hasPermission } from "./permissions";
 import { canAccessSurvey, isStaff } from "./scope";
 
@@ -54,19 +57,99 @@ export interface ResponseRef {
  * на чужие для него ни при чём.
  */
 export async function assertClinicalRead(c: Context, user: User, response: ResponseRef): Promise<void> {
+  await assertClinicalRecordRead(c, user, { ...response, kind: "response" });
+}
+
+/** Что проверке нужно знать о тревоге: чья она и по какой методике */
+export interface AlertRef {
+  id: string;
+  userId: string | null;
+  surveyId: string;
+}
+
+/**
+ * Тревога — тем же правилом, что прохождение, из которого она поднята
+ * (волна 16). Зона тревоги — зона методики: так её режет список тревог
+ * (routes/alerts.ts, surveyScopeFilter) и политика строк risk_alerts. Отказ
+ * «не найдено» — своим словом: читающий журнал должен видеть, во что
+ * упёрлись, а экран — что именно не нашлось.
+ */
+export async function assertAlertRead(c: Context, user: User, alert: AlertRef): Promise<void> {
+  await assertClinicalRecordRead(c, user, { ...alert, kind: "alert" });
+}
+
+async function assertClinicalRecordRead(
+  c: Context,
+  user: User,
+  record: ResponseRef & { kind: "response" | "alert" },
+): Promise<void> {
   if (!isStaff(user)) forbidden("err.responseOwnerOrStaffOnly");
   if (!(await hasPermission(user, CLINICAL_READ))) {
     await audit(c, {
       action: "access.denied",
       outcome: "denied",
-      resourceType: "response",
-      resourceId: response.id,
-      subjectUserId: response.userId,
+      resourceType: record.kind,
+      resourceId: record.id,
+      subjectUserId: record.userId,
       details: { method: c.req.method, reason: "permission_required", permission: CLINICAL_READ },
     });
     forbidden("err.permissionRequired", { permission: CLINICAL_READ });
   }
-  if (!(await canAccessSurvey(user, response.surveyId))) notFound("err.responseNotFound");
+  if (!(await canAccessSurvey(user, record.surveyId))) {
+    notFound(record.kind === "alert" ? "err.alertNotFound" : "err.responseNotFound");
+  }
+}
+
+/**
+ * Ссылки направления — на записи того же пациента, доступные сотруднику и
+ * согласованные между собой (волна 16, внешний разбор, P2).
+ *
+ * POST /referrals проверял пациента и доступ к нему, а responseId и alertId
+ * переносил в строку как есть. Внешние ключи подтверждали лишь, что записи
+ * существуют: направление пациента A заводилось с прохождением и тревогой
+ * пациента B — из группы методик, в которую сотруднику и заглянуть нельзя
+ * (GET /responses/:id отвечал ему 404). Клиническая связь при этом вполне
+ * настоящая: adoptDraftAlerts переносит такую ссылку на итоговую сдачу B, а
+ * карта A показывает направление «по прохождению», которого у A не было.
+ *
+ * Три условия на каждую ссылку, в этом порядке:
+ *  1. Доступность — той же проверкой, что открывает саму запись
+ *     (assertResponseRead / assertAlertRead): недоступное — «не найдено»,
+ *     как при прямом чтении, и несуществующее — тоже оно, а не пятисотка
+ *     внешнего ключа, по которой можно было перебирать идентификаторы.
+ *  2. Владелец — тот же пациент, что у направления. Доступная, но чужая
+ *     запись — 400 с причиной: запрос собран неверно, и сотруднику надо
+ *     понять, какая из ссылок не сходится.
+ *  3. Согласованность — тревога от указанного прохождения, если названы обе.
+ *
+ * Проверяется до вставки, а не ограничением базы: составного ключа
+ * (пациент, прохождение) у responses нет, а тревога без пациента (user_id
+ * NULL у анонимных) на направление и не годится.
+ */
+export async function assertReferralLinks(
+  c: Context,
+  user: User,
+  link: { userId: string; responseId?: string | null; alertId?: string | null },
+): Promise<void> {
+  if (link.responseId) {
+    const response = await db.query.responses.findFirst({
+      where: eq(responses.id, link.responseId),
+      columns: { id: true, userId: true, surveyId: true },
+    });
+    if (!response) notFound("err.responseNotFound");
+    await assertResponseRead(c, user, response);
+    if (response.userId !== link.userId) badRequest("err.referralResponseOtherPatient");
+  }
+  if (link.alertId) {
+    const alert = await db.query.riskAlerts.findFirst({
+      where: eq(riskAlerts.id, link.alertId),
+      columns: { id: true, userId: true, surveyId: true, responseId: true },
+    });
+    if (!alert) notFound("err.alertNotFound");
+    await assertAlertRead(c, user, alert);
+    if (alert.userId !== link.userId) badRequest("err.referralAlertOtherPatient");
+    if (link.responseId && alert.responseId !== link.responseId) badRequest("err.referralAlertOtherResponse");
+  }
 }
 
 /**
