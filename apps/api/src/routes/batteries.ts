@@ -14,6 +14,7 @@ import {
   type Lang,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import {
   batteries,
   batteryAssignmentItems,
@@ -26,7 +27,7 @@ import {
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { batteryProgress, closeMissed, isExecutable, isOverdue, snapshotAssignment } from "../lib/batteries";
+import { batteryProgress, closeMissed, isExecutable, isOverdue, revokeIssuedAccess, snapshotAssignment } from "../lib/batteries";
 import { dayOf, deadlineOf } from "../lib/day";
 import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
@@ -494,6 +495,8 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
         grantedBy: user.id,
         expiresAt: dueAt,
         note: noteCode("note.battery", { title: battery.title }),
+        // происхождение доступа — это назначение: по нему отмена знает, что снимать
+        viaAssignmentId: id,
       })),
       { term: "extend" },
     );
@@ -509,7 +512,20 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
   return c.json({ id }, 201);
 });
 
-/** Снятие назначения: запись сохраняется, проставляется отметка отмены */
+/**
+ * Снятие назначения: запись сохраняется, проставляется отметка отмены — и
+ * снимается доступ, который это назначение выдало (lib/batteries.ts,
+ * revokeIssuedAccess: своё происхождение, нет другого открытого назначения с
+ * той же методикой; ручная выдача и группа не трогаются).
+ *
+ * Отметка — условием UPDATE (ещё не снято, не завершено): повторная отмена
+ * или отмена уже завершённого доступ не трогает — завершённое выдано и
+ * пройдено, его доступ живёт до срока, как и прежде. Порядок «строка
+ * назначения → строки доступа» тот же, что у сдачи (holdCompletable), чтобы
+ * сдача и отмена не ждали друг друга по кругу. Снятие доступа — системной
+ * ролью: это следствие действия над назначением, к которому сотрудник
+ * допущен, а строки доступа методик могут лежать вне его зоны чтения.
+ */
 batteryRoutes.post("/assignments/:assignmentId/cancel", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const assignmentId = c.req.param("assignmentId");
@@ -519,17 +535,27 @@ batteryRoutes.post("/assignments/:assignmentId/cancel", requireStaff, requirePer
   if (!row) notFound("err.assignmentNotFound");
   await assertBatteryAccess(user, row.batteryId);
 
-  await db
+  const cancelled = await db
     .update(batteryAssignments)
     .set({ cancelledAt: new Date().toISOString() })
-    .where(eq(batteryAssignments.id, assignmentId));
+    .where(
+      and(
+        eq(batteryAssignments.id, assignmentId),
+        isNull(batteryAssignments.cancelledAt),
+        isNull(batteryAssignments.completedAt),
+      ),
+    )
+    .returning({ id: batteryAssignments.id });
+  const access = cancelled.length
+    ? await asSystem(() => revokeIssuedAccess({ id: assignmentId, userId: row.userId }))
+    : { revoked: 0, kept: 0 };
 
   await audit(c, {
     action: "battery.cancel",
     resourceType: "battery",
     resourceId: row.batteryId,
     subjectUserId: row.userId,
-    details: { assignmentId },
+    details: { assignmentId, accessRevoked: access.revoked, accessKept: access.kept },
   });
   return c.json({ ok: true });
 });

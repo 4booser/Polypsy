@@ -301,3 +301,73 @@ describe("правка набора не меняет выданных назн�
     expect((await mine(p, assignmentId))!.steps.map((s) => s.state)).toEqual(["done", "done"]);
   }, 60_000);
 });
+
+/* ═══════════ п. 3: отмена назначения снимает выданный им доступ ═══════════ */
+
+describe("отмена назначения и доступ к его методикам", () => {
+  const cancel = (assignmentId: string) =>
+    appApi(`/api/batteries/assignments/${assignmentId}/cancel`, adminA.token, { method: "POST", body: "{}" });
+
+  test("единственное основание — назначение: после отмены методика не открывается и не сдаётся", async () => {
+    /*
+     * Воспроизведение из разбора (п. 4): закрытая методика, доступ только
+     * через набор. Отмена — 200, а затем GET методики 200 и сдача 201.
+     */
+    const p = await person("cancel-sole");
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Скасування ${tag}`);
+    const batteryId = await makeBattery(`Скасування ${tag}`, [s]);
+    const assignmentId = await assign(batteryId, p);
+    const body = await answersFor(s, p);
+
+    const res = await cancel(assignmentId);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    expect(await mine(p, assignmentId)).toBeUndefined();
+    expect((await appApi(`/api/surveys/${s}`, p.token)).status, "методика из снятого набора открывается").toBe(404);
+    const submitted = await submit(s, p, body);
+    expect(submitted.status, "методика из снятого набора сдаётся").toBe(403);
+  }, 60_000);
+
+  test("независимые основания остаются: ручная выдача до назначения и другое открытое назначение", async () => {
+    const p = await person("cancel-keep");
+    const tag = crypto.randomUUID().slice(0, 8);
+    const manual = await restrictedSurvey(`Ручна ${tag}`);
+    const shared = await restrictedSurvey(`Спільна ${tag}`);
+
+    // ручная бессрочная выдача — решение специалиста об этом человеке
+    const granted = await appApi(`/api/access/surveys/${manual}/grants`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: p.id, attemptsAllowed: 3 }),
+    });
+    expect(granted.status, JSON.stringify(granted.body)).toBe(201);
+
+    const first = await assign(await makeBattery(`Перший ${tag}`, [manual, shared]), p);
+    const second = await assign(await makeBattery(`Другий ${tag}`, [shared]), p);
+
+    expect((await cancel(first)).status).toBe(200);
+    // ручная выдача живёт; общая методика — на втором назначении
+    expect((await appApi(`/api/surveys/${manual}`, p.token)).status, "ручная выдача снята отменой набора").toBe(200);
+    expect((await appApi(`/api/surveys/${shared}`, p.token)).status, "доступ второго назначения снят первым").toBe(200);
+
+    expect((await cancel(second)).status).toBe(200);
+    expect((await appApi(`/api/surveys/${shared}`, p.token)).status, "последнее основание снято — доступ остался").toBe(404);
+    expect((await appApi(`/api/surveys/${manual}`, p.token)).status).toBe(200);
+  }, 60_000);
+
+  test("повторная отмена и отмена завершённого доступ не трогают", async () => {
+    const p = await person("cancel-done");
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Завершене ${tag}`);
+    const assignmentId = await assign(await makeBattery(`Завершене ${tag}`, [s]), p);
+    expect((await submit(s, p, await answersFor(s, p))).status).toBe(201);
+    const [row] = await db.select().from(batteryAssignments).where(eq(batteryAssignments.id, assignmentId));
+    expect(row!.completedAt).not.toBeNull();
+
+    expect((await cancel(assignmentId)).status).toBe(200);
+    // завершённое назначение выдано и пройдено: его доступ живёт до срока, как и прежде
+    expect((await appApi(`/api/surveys/${s}`, p.token)).status).toBe(200);
+    const [after] = await db.select().from(batteryAssignments).where(eq(batteryAssignments.id, assignmentId));
+    expect(after!.cancelledAt, "завершённое назначение стало ещё и снятым").toBeNull();
+  }, 60_000);
+});

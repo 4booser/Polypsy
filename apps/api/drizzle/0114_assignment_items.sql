@@ -48,3 +48,40 @@ CREATE POLICY battery_assignment_items_access ON battery_assignment_items FOR AL
 ) WITH CHECK (
   EXISTS (SELECT 1 FROM battery_assignments ba WHERE ba.id = assignment_id)
 );
+--> statement-breakpoint
+-- ═══ survey_access.via_assignment_id: чьё это разрешение ═══
+--
+-- Отмена назначения меняла только cancelled_at (п. 4 того же разбора):
+-- доступ к методикам, выданный назначением, оставался до своего срока или
+-- бессрочно — пациент открывал (200) и сдавал (201) методику из снятого
+-- набора, другого основания не имея. Удалять строку survey_access целиком
+-- нельзя: ключ — пара «методика и человек», и ту же строку могли выдать
+-- руками, группой или другим назначением.
+--
+-- Поэтому у строки доступа появляется происхождение — назначение, которое
+-- её выдало (пишет grantAccess на всех путях выдачи набора). Ручная выдача и
+-- группа его снимают, как и прочие поля перевыдачи; продление набором поверх
+-- действующего независимого основания его не присваивает (lib/grantAccess.ts).
+-- Отмена снимает строки СВОЕГО назначения и только когда ни одно другое
+-- открытое назначение этого человека не выдаёт ту же методику — иначе
+-- переписывает происхождение на него (lib/batteries.ts, revokeIssuedAccess).
+--
+-- Заполнение для существующих строк — один раз и по пометке: до этой
+-- миграции происхождение не записывалось, и у строки с кодом пометки
+-- набора, расписания или каскада, у которой есть открытое назначение с этой
+-- методикой в составе, им и считается самое свежее такое назначение.
+-- Устойчивой связью дальше служит колонка, а не пометка.
+ALTER TABLE survey_access ADD COLUMN IF NOT EXISTS via_assignment_id text
+  REFERENCES battery_assignments(id) ON DELETE SET NULL;
+--> statement-breakpoint
+UPDATE survey_access sa
+SET via_assignment_id = (
+  SELECT ba.id FROM battery_assignments ba
+  JOIN battery_assignment_items ai ON ai.assignment_id = ba.id
+  WHERE ba.user_id = sa.user_id AND ai.survey_id = sa.survey_id
+    AND ba.completed_at IS NULL AND ba.cancelled_at IS NULL
+  ORDER BY ba.assigned_at DESC, ba.id
+  LIMIT 1
+)
+WHERE sa.via_assignment_id IS NULL
+  AND (sa.note LIKE '⟦note.battery%' OR sa.note LIKE '⟦note.schedule%' OR sa.note LIKE '⟦note.cascade%');
