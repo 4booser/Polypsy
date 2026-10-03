@@ -12,7 +12,7 @@ import {
   surveys,
 } from "../db/schema";
 import { auditSystem } from "./audit";
-import { closeMissed, isOverdue } from "./batteries";
+import { closeMissed, isOverdue, snapshotAssignment } from "./batteries";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 
@@ -149,14 +149,17 @@ async function assignCascade(
 
   await db.transaction(async (tx) => {
     await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
+    const assignmentId = crypto.randomUUID();
     await tx.insert(batteryAssignments).values({
-      id: crypto.randomUUID(),
+      id: assignmentId,
       batteryId,
       userId,
       assignedBy: battery.createdBy,
       dueAt,
       note: noteCode("note.cascade"),
     });
+    // состав назначения — то, что выдано: снятые методики в него не входят (lib/batteries.ts)
+    await snapshotAssignment(tx, assignmentId, grantable);
     await grantAccess(
       tx as never,
       grantable.map((item) => ({

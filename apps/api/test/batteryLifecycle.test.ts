@@ -224,3 +224,80 @@ describe("назначение набора: последние методики
     expect(seen!.completedAt).not.toBeNull();
   }, 60_000);
 });
+
+/* ═══════════ п. 2: правка набора и выданные назначения ═══════════ */
+
+async function editBattery(batteryId: string, title: string, surveyIds: string[]) {
+  return appApi(`/api/batteries/${batteryId}`, adminA.token, {
+    method: "PUT",
+    body: JSON.stringify({ title, groupId: groupA, strictOrder: false, items: surveyIds.map((surveyId) => ({ surveyId })) }),
+  });
+}
+
+describe("правка набора не меняет выданных назначений", () => {
+  test("добавленный шаг: у выданного назначения не появляется, у нового — есть вместе с доступом", async () => {
+    /*
+     * Воспроизведение из разбора (п. 3): назначен набор из одной методики;
+     * в набор добавили вторую, закрытую. У пациента в /mine стало два
+     * обязательных шага, новый — «доступна», а открыть её — 404: доступа
+     * назначение не выдавало, и завершить его стало нельзя.
+     */
+    const p = await person("edit-add");
+    const other = await person("edit-add-other");
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s1 = await restrictedSurvey(`Правка A1 ${tag}`);
+    const s2 = await restrictedSurvey(`Правка A2 ${tag}`);
+    const batteryId = await makeBattery(`Правка A ${tag}`, [s1]);
+    const assignmentId = await assign(batteryId, p);
+
+    const edited = await editBattery(batteryId, `Правка A ${tag}`, [s1, s2]);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+
+    const seen = await mine(p, assignmentId);
+    expect(seen!.steps.map((s) => s.surveyId), "выданное назначение получило шаг, которого не выдавали").toEqual([s1]);
+    expect([seen!.doneRequired, seen!.totalRequired]).toEqual([0, 1]);
+    // доступа на новую методику у него нет — и шага тоже; закрытая методика не открывается
+    expect((await appApi(`/api/surveys/${s2}`, p.token)).status).toBe(404);
+
+    // новое назначение — по новому составу, с доступом на оба шага
+    const fresh = await assign(batteryId, other);
+    const freshSeen = await mine(other, fresh);
+    expect(freshSeen!.steps.map((s) => s.surveyId)).toEqual([s1, s2]);
+    expect((await appApi(`/api/surveys/${s2}`, other.token)).status).toBe(200);
+
+    // выданное завершается своим составом
+    expect((await submit(s1, p, await answersFor(s1, p))).status).toBe(201);
+    const [row] = await db.select().from(batteryAssignments).where(eq(batteryAssignments.id, assignmentId));
+    expect(row!.completedAt, "назначение из одного шага не завершилось после его сдачи").not.toBeNull();
+  }, 60_000);
+
+  test("убранный шаг: у выданного назначения остаётся, открывается и завершает его", async () => {
+    /*
+     * Обратное направление: шаг убрали из набора после выдачи. Выданное
+     * назначение — протокол, по которому человека уже обследуют: шаг
+     * остаётся в нём, методика открывается, и назначение завершается по
+     * своему составу, а не по новому шаблону.
+     */
+    const p = await person("edit-remove");
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s1 = await restrictedSurvey(`Правка B1 ${tag}`);
+    const s2 = await restrictedSurvey(`Правка B2 ${tag}`);
+    const batteryId = await makeBattery(`Правка B ${tag}`, [s1, s2]);
+    const assignmentId = await assign(batteryId, p);
+    expect((await submit(s1, p, await answersFor(s1, p))).status).toBe(201);
+
+    const edited = await editBattery(batteryId, `Правка B ${tag}`, [s1]);
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+
+    const seen = await mine(p, assignmentId);
+    expect(seen!.steps.map((s) => s.surveyId), "выданное назначение потеряло шаг").toEqual([s1, s2]);
+    expect([seen!.doneRequired, seen!.totalRequired]).toEqual([1, 2]);
+    expect(seen!.completedAt, "назначение завершилось по новому шаблону, а не по своему составу").toBeNull();
+
+    expect((await appApi(`/api/surveys/${s2}`, p.token)).status).toBe(200);
+    expect((await submit(s2, p, await answersFor(s2, p))).status).toBe(201);
+    const [row] = await db.select().from(batteryAssignments).where(eq(batteryAssignments.id, assignmentId));
+    expect(row!.completedAt).not.toBeNull();
+    expect((await mine(p, assignmentId))!.steps.map((s) => s.state)).toEqual(["done", "done"]);
+  }, 60_000);
+});

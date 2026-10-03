@@ -20,7 +20,7 @@ import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
 import { securityTick } from "./integrity";
 import { batterySurveysInUse } from "./scope";
-import { closeMissed, isOverdue } from "./batteries";
+import { closeMissed, isOverdue, snapshotAssignment } from "./batteries";
 import { log } from "./log";
 import { JobLocked, withJobLock } from "./jobLock";
 import { registerJob, trackJob } from "./opsJobs";
@@ -174,9 +174,10 @@ async function runSchedule(
       noteCode("note.missed.schedule", { title: schedule.title }),
       now,
     );
+    const issued = fresh.map((userId) => ({ id: crypto.randomUUID(), userId }));
     await tx.insert(batteryAssignments).values(
-      fresh.map((userId) => ({
-        id: crypto.randomUUID(),
+      issued.map(({ id, userId }) => ({
+        id,
         batteryId: schedule.batteryId,
         userId,
         assignedBy: schedule.createdBy,
@@ -184,6 +185,8 @@ async function runSchedule(
         note: noteCode("note.schedule", { title: schedule.title }),
       })),
     );
+    // состав каждого назначения — то, что выдано: снятые методики в него не входят (lib/batteries.ts)
+    for (const { id } of issued) await snapshotAssignment(tx, id, grantable);
     await grantAccess(
       tx as never,
       fresh.flatMap((userId) =>

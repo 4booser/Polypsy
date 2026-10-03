@@ -1574,6 +1574,47 @@ export const batteryAssignments = pgTable(
   }),
 );
 
+/**
+ * Состав назначения — те шаги, что были выданы (миграция 0114).
+ *
+ * Назначение держало ссылку на изменяемый набор, и всё, что из него
+ * следует, — шаги на экране пациента, допуск к сдаче, завершение, — читалось
+ * из текущего состава. Правка набора молча меняла выданные назначения:
+ * добавленная методика появлялась у пациента шагом, но доступа на неё
+ * назначение не выдавало (открытие — 404, назначение не завершить), а
+ * завершённое назначение задним числом становилось «1 из 2» (внешний разбор
+ * 2026-09-28, P2).
+ *
+ * Теперь назначение помнит свою редакцию: при выдаче сюда копируются шаги,
+ * которые оно выдало вместе с доступом, и дальше экран, допуск и завершение
+ * читают отсюда. Правка набора действует на новые назначения; выданные
+ * остаются в том составе, в каком их выдали, — это и есть протокол, по
+ * которому человека обследуют, и история, которую потом читают.
+ *
+ * Снимок, а не редакции набора: шаблон (battery_items) остаётся одним
+ * списком, который правит методист, и ни одному его читателю не пришлось
+ * узнавать о версиях. Каскад по методике: снятая с учёта целиком методика
+ * уносит и шаг — так же, как у battery_items.
+ */
+export const batteryAssignmentItems = pgTable(
+  "battery_assignment_items",
+  {
+    assignmentId: text("assignment_id")
+      .notNull()
+      .references(() => batteryAssignments.id, { onDelete: "cascade" }),
+    surveyId: text("survey_id")
+      .notNull()
+      .references(() => surveys.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    required: boolean("required").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.assignmentId, t.surveyId] }),
+    /* «в каких назначениях эта методика» — снятие методики пересчитывает их (closeCompletedForSurvey) */
+    surveyIdx: index("battery_assignment_items_survey_idx").on(t.surveyId),
+  }),
+);
+
 export type BatteryRow = typeof batteries.$inferSelect;
 export type BatteryItemRow = typeof batteryItems.$inferSelect;
 export type BatteryAssignmentRow = typeof batteryAssignments.$inferSelect;
