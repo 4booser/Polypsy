@@ -126,6 +126,24 @@ jobs:
           # отпечаток берётся из секрета, а не с сервера: ssh-keyscan на живом
           # соединении принимает любой ключ, то есть и подменённый
           echo "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          # Одно соединение на весь прогон. Порт 22 сервера забит перебором
+          # паролей, и sshd сбрасывает каждое новое подключение сверх
+          # MaxStartups: так упала выкатка v1.16.2 на пятом ssh подряд. Все
+          # ssh и scp ниже ходят через этот канал; открывается он с повторами.
+          cat > ~/.ssh/config <<'CFG'
+          Host *
+            ControlMaster auto
+            ControlPath ~/.ssh/cm-%C
+            ControlPersist 20m
+            ConnectTimeout 20
+            ServerAliveInterval 30
+          CFG
+          chmod 600 ~/.ssh/config
+          for i in 1 2 3 4 5 6; do
+            ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" true && break
+            [ "$i" = 6 ] && { echo "сервер не принял ssh за шесть попыток" >&2; exit 1; }
+            echo "ssh не прошёл (попытка $i) — пауза"; sleep $((i * 10))
+          done
 
       # Описание состава уезжает на сервер вместе с образами — и ДО снимка.
       #
