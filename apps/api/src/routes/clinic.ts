@@ -870,7 +870,7 @@ async function loadAppointments(where: ReturnType<typeof and>) {
               where r.user_id = u.id and r.survey_id = sa.survey_id and r.status = 'completed'))
         +
         (select count(*) from battery_assignments ba
-          join battery_items bi on bi.battery_id = ba.battery_id
+          join battery_assignment_items bi on bi.assignment_id = ba.id
           where ba.user_id = u.id and ba.cancelled_at is null
             and not exists (
               select 1 from responses r

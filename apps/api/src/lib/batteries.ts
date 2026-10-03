@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { serverText, t, type BatteryProgressState, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
-import { batteries, batteryAssignments, batteryItems, responses, surveys } from "../db/schema";
+import { batteries, batteryAssignmentItems, batteryAssignments, responses, surveys } from "../db/schema";
 import { badRequest } from "./http";
 import { log } from "./log";
 import { parseTs } from "./time";
@@ -174,26 +174,75 @@ export function batteryProgress<T extends StepInput>(
   };
 }
 
-/** Шаги наборов для расчёта — одним запросом, по позиции */
-async function stepsOf(batteryIds: readonly string[]): Promise<Map<string, StepInput[]>> {
+/*
+ * ─── состав назначения: снимок на момент выдачи ───
+ *
+ * Назначение ссылалось на изменяемый набор, и шаги на экране, допуск к сдаче
+ * и завершение читались из текущего battery_items. Правка набора молча
+ * меняла выданные назначения: добавленная обязательная методика появлялась
+ * у пациента шагом, но доступа на неё назначение не выдавало — открытие 404,
+ * назначение не завершить; удалённая пропадала из завершённых, и история
+ * обследования переписывалась задним числом (внешний разбор 2026-09-28, P2).
+ *
+ * Выбран снимок (battery_assignment_items), а не редакции набора. Набор —
+ * шаблон, который правит методист, и у него один список; назначение — то,
+ * что реально выдано человеку вместе с доступом, и это протокол обследования,
+ * который не меняется после выдачи. Снимок кладётся в той же транзакции, что
+ * и назначение, на всех четырёх путях выдачи (руками, расписание, каскад,
+ * приглашение) — snapshotAssignment; читают его экран, допуск и завершение
+ * (stepsOf). Правка набора действует на будущие назначения; выданные
+ * остаются в том составе, в каком их выдали. Отмена назначения по снимку
+ * же знает, что отзывать (routes/batteries.ts).
+ */
+
+/** Шаг, который назначение выдаёт: методика, место, обязательность */
+export interface IssuedStep {
+  surveyId: string;
+  position: number;
+  required: boolean;
+}
+
+/**
+ * Зафиксировать состав назначения — в той же транзакции, что и его выдача.
+ * Пустой состав назначению не положен: вызывающие отказывают раньше.
+ */
+export async function snapshotAssignment(
+  tx: Pick<typeof Db, "insert">,
+  assignmentId: string,
+  steps: readonly IssuedStep[],
+): Promise<void> {
+  if (!steps.length) return;
+  await tx.insert(batteryAssignmentItems).values(
+    steps.map((s) => ({ assignmentId, surveyId: s.surveyId, position: s.position, required: s.required })),
+  );
+}
+
+/** Условие «методика — шаг этого назначения» для выборок по battery_assignments */
+export function assignmentHasStep(surveyId: string): SQL {
+  return sql`exists (select 1 from battery_assignment_items ai
+                     where ai.assignment_id = ${batteryAssignments.id} and ai.survey_id = ${surveyId})`;
+}
+
+/** Шаги назначений для расчёта — одним запросом, по позиции; из снимка, не из шаблона */
+async function stepsOf(assignmentIds: readonly string[]): Promise<Map<string, StepInput[]>> {
   const result = new Map<string, StepInput[]>();
-  if (!batteryIds.length) return result;
+  if (!assignmentIds.length) return result;
   const rows = await db
     .select({
-      batteryId: batteryItems.batteryId,
-      surveyId: batteryItems.surveyId,
-      position: batteryItems.position,
-      required: batteryItems.required,
+      assignmentId: batteryAssignmentItems.assignmentId,
+      surveyId: batteryAssignmentItems.surveyId,
+      position: batteryAssignmentItems.position,
+      required: batteryAssignmentItems.required,
       administration: surveys.administration,
       status: surveys.status,
       archivedAt: surveys.archivedAt,
     })
-    .from(batteryItems)
-    .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
-    .where(inArray(batteryItems.batteryId, [...batteryIds]))
-    .orderBy(batteryItems.batteryId, batteryItems.position);
+    .from(batteryAssignmentItems)
+    .innerJoin(surveys, eq(surveys.id, batteryAssignmentItems.surveyId))
+    .where(inArray(batteryAssignmentItems.assignmentId, [...assignmentIds]))
+    .orderBy(batteryAssignmentItems.assignmentId, batteryAssignmentItems.position);
   for (const r of rows) {
-    const list = result.get(r.batteryId) ?? [];
+    const list = result.get(r.assignmentId) ?? [];
     list.push({
       surveyId: r.surveyId,
       position: r.position,
@@ -201,7 +250,7 @@ async function stepsOf(batteryIds: readonly string[]): Promise<Map<string, StepI
       administration: r.administration,
       executable: isExecutable(r),
     });
-    result.set(r.batteryId, list);
+    result.set(r.assignmentId, list);
   }
   return result;
 }
@@ -282,8 +331,7 @@ export async function holdCompletable(userId: string | null, surveyId: string): 
         eq(batteryAssignments.userId, userId),
         isNull(batteryAssignments.completedAt),
         isNull(batteryAssignments.cancelledAt),
-        sql`exists (select 1 from battery_items bi
-                    where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
+        assignmentHasStep(surveyId),
       ),
     )
     // один порядок у всех, кто берёт несколько строк назначений, — иначе две сдачи замкнули бы круг
@@ -320,13 +368,13 @@ async function closeIfComplete(
   active: { assignment: typeof batteryAssignments.$inferSelect; strictOrder: boolean }[],
 ): Promise<number> {
   if (!active.length) return 0;
-  const steps = await stepsOf([...new Set(active.map((a) => a.assignment.batteryId))]);
+  const steps = await stepsOf(active.map((a) => a.assignment.id));
   const completions = await completionsOf([...new Set(active.map((a) => a.assignment.userId))]);
   const now = new Date().toISOString();
   let closed = 0;
   for (const { assignment, strictOrder } of active) {
     const progress = batteryProgress(
-      steps.get(assignment.batteryId) ?? [],
+      steps.get(assignment.id) ?? [],
       strictOrder,
       assignment.assignedAt,
       completions.get(assignment.userId) ?? [],
@@ -392,10 +440,7 @@ export async function closeCompletedBatteries(assignmentIds: readonly string[]):
  */
 export async function closeCompletedForSurvey(surveyId: string): Promise<number> {
   // под тем же замком строки, что и сдача: снятие шага и сдача последнего шага одновременно — та же гонка
-  const active = await lockOpen(
-    sql`exists (select 1 from battery_items bi
-                where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
-  );
+  const active = await lockOpen(assignmentHasStep(surveyId));
   const closed = await closeIfComplete(active);
   if (closed) log.info("battery.closed_on_retire", { surveyId, closed });
   return closed;
@@ -444,11 +489,11 @@ export async function assertBatteryOrder(
     );
   if (!active.length) return;
 
-  const steps = await stepsOf(active.map((a) => a.battery.id));
+  const steps = await stepsOf(active.map((a) => a.assignment.id));
   const completions = (await completionsOf([userId])).get(userId) ?? [];
 
   for (const { assignment, battery } of active) {
-    const { steps: progress } = batteryProgress(steps.get(battery.id) ?? [], true, assignment.assignedAt, completions);
+    const { steps: progress } = batteryProgress(steps.get(assignment.id) ?? [], true, assignment.assignedAt, completions);
     const step = progress.find((s) => s.surveyId === surveyId);
     if (!step || step.state !== "locked") continue;
 

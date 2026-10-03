@@ -22,6 +22,7 @@ import {
 } from "@quizzy/shared";
 import { client, db } from "./db";
 import { attachToCase } from "./lib/alertCases";
+import { snapshotAssignment } from "./lib/batteries";
 import { syncBuiltinRole } from "./lib/permissions";
 import { syncSlots } from "./lib/schedule";
 import { bilingual } from "./seedTranslations";
@@ -1044,14 +1045,17 @@ async function seedBattery() {
   const surveyIds = [sadPersonsRow.id, sr45Row.id, minimultRow.id];
   for (const [i, patient] of targets.entries()) {
     const dueAt = new Date(Date.now() + (i === 0 ? -3 : 14) * 86400_000).toISOString();
+    const assignmentId = crypto.randomUUID();
     await db.insert(batteryAssignments).values({
-      id: crypto.randomUUID(),
+      id: assignmentId,
       batteryId: id,
       userId: patient.id,
       assignedBy: psy!.id,
       dueAt,
       note: i === 0 ? "плановое, срок прошёл" : "плановое",
     });
+    // состав назначения — снимок, как у боевой выдачи (lib/batteries.ts)
+    await snapshotAssignment(db, assignmentId, surveyIds.map((surveyId, position) => ({ surveyId, position, required: position < 2 })));
     await db
       .insert(surveyAccess)
       .values(
