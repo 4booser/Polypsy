@@ -88,9 +88,13 @@ test("экраны ежедневного пути переведены цели
    * Проверка искала её в h1 — там она была, пока заголовком экрана служила
    * дата. Теперь заголовок называет экран («Зведення»), а дата ушла под
    * него; смысл проверки прежний: месяц склоняется по-украински, чего
-   * словарь не покрывает вовсе.
+   * словарь не покрывает вовсе. Месяц — сегодняшний по Киеву, в родительном
+   * падеже: прежде стояло «вересня» буквально, и 3 октября проверка упала.
    */
-  await expect(page.locator(".main")).toContainText("вересня");
+  const monthGenitive = new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long", timeZone: "Europe/Kyiv" })
+    .format(new Date())
+    .replace(/^\d+\s+/, "");
+  await expect(page.locator(".main")).toContainText(monthGenitive);
 
   for (const [path, marker] of [
     ["/worklist", "Черга роботи"],
