@@ -23,6 +23,18 @@ export interface Grant {
    * вопрос «откуда методика» тем, как она появилась в первый раз.
    */
   viaPatientGroupId?: string | null;
+  /**
+   * Назначение набора, которое выдаёт доступ. Не задано — основание другое
+   * (руками, группа, приглашение на одну методику), и поле обнуляется.
+   *
+   * Это ответ на вопрос отмены назначения «что снимать» (lib/batteries.ts,
+   * revokeIssuedAccess). При "extend" поверх ДЕЙСТВУЮЩЕГО доступа без
+   * назначения поле не присваивается: специалист выдал методику руками
+   * раньше, набор лишь продлил срок, — отмена набора не должна отобрать то,
+   * что решил специалист. Истёкший доступ основанием уже не служит, и его
+   * присваивает набор.
+   */
+  viaAssignmentId?: string | null;
 }
 
 /**
@@ -118,6 +130,13 @@ async function upsertGrants(tx: typeof Db, grants: Grant[], setLimit: boolean, o
       ? sql`case when ${surveyAccess.expiresAt} is null or excluded.expires_at is null then null
                  else greatest(${surveyAccess.expiresAt}, excluded.expires_at) end`
       : sql`excluded.expires_at`;
+  // происхождение — см. viaAssignmentId в Grant: набор не присваивает действующее независимое основание
+  const viaAssignmentId =
+    options.term === "extend"
+      ? sql`case when ${surveyAccess.viaAssignmentId} is null
+                      and (${surveyAccess.expiresAt} is null or ${surveyAccess.expiresAt} > now())
+                 then null else excluded.via_assignment_id end`
+      : sql`excluded.via_assignment_id`;
   await tx
     .insert(surveyAccess)
     .values(
@@ -128,6 +147,7 @@ async function upsertGrants(tx: typeof Db, grants: Grant[], setLimit: boolean, o
         expiresAt: g.expiresAt,
         note: g.note,
         viaPatientGroupId: g.viaPatientGroupId ?? null,
+        viaAssignmentId: g.viaAssignmentId ?? null,
         ...(setLimit ? { attemptsAllowed: g.attemptsAllowed ?? null } : {}),
       })),
     )
@@ -141,6 +161,7 @@ async function upsertGrants(tx: typeof Db, grants: Grant[], setLimit: boolean, o
         /* пометка «через группу» переписывается вместе со всем остальным —
            см. поле viaPatientGroupId в интерфейсе выше */
         viaPatientGroupId: sql`excluded.via_patient_group_id`,
+        viaAssignmentId,
         /* обе точки отсчёта попыток сдвигаются вместе — см. докблок выше */
         grantedAt: sql`now()`,
         attemptsUsed: 0,

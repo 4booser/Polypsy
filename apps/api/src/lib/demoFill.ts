@@ -27,6 +27,7 @@ import {
   users,
 } from "../db/schema";
 import { hashPassword } from "./auth";
+import { snapshotAssignment } from "./batteries";
 import { hashInviteToken, newInviteCode, newInviteToken } from "./invites";
 import { encryptField, encryptPersonFields } from "./crypto";
 import { normalizePhone, phoneFingerprint } from "./phone";
@@ -449,6 +450,12 @@ async function ensureBatteryWork(
     }
   }
 
+  const steps = await db
+    .select({ surveyId: batteryItems.surveyId, position: batteryItems.position, required: batteryItems.required })
+    .from(batteryItems)
+    .where(eq(batteryItems.batteryId, batteryId))
+    .orderBy(batteryItems.position);
+
   let made = 0;
   for (const [i, userId] of patientIds.entries()) {
     const [has] = await db
@@ -461,13 +468,16 @@ async function ensureBatteryWork(
     // половина просрочена: только просроченные попадают в очередь работы
     const overdue = i % 2 === 0;
     const dueAt = new Date(Date.now() + (overdue ? -1 : 1) * (2 + (i % 9)) * 86_400_000);
+    const assignmentId = crypto.randomUUID();
     await db.insert(batteryAssignments).values({
-      id: crypto.randomUUID(),
+      id: assignmentId,
       batteryId,
       userId,
       assignedBy: specialistId,
       dueAt: dueAt.toISOString(),
     } as never);
+    // состав назначения — снимок, как у боевой выдачи (lib/batteries.ts)
+    await snapshotAssignment(db, assignmentId, steps);
     made += 1;
   }
   return made;

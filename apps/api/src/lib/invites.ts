@@ -12,6 +12,7 @@ import {
   surveys,
   users,
 } from "../db/schema";
+import { snapshotAssignment } from "./batteries";
 import { grantAccess } from "./grantAccess";
 import { isPast } from "./time";
 
@@ -192,18 +193,22 @@ export async function applyInvite(
     if (battery && !battery.archived) {
       // снятые методики по приглашению не выдаются — как и везде
       const items = await tx
-        .select({ surveyId: batteryItems.surveyId })
+        .select({ surveyId: batteryItems.surveyId, position: batteryItems.position, required: batteryItems.required })
         .from(batteryItems)
         .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
-        .where(and(eq(batteryItems.batteryId, battery.id), isNull(surveys.archivedAt)));
+        .where(and(eq(batteryItems.batteryId, battery.id), isNull(surveys.archivedAt)))
+        .orderBy(batteryItems.position);
       if (items.length) {
+        const assignmentId = crypto.randomUUID();
         await tx.insert(batteryAssignments).values({
-          id: crypto.randomUUID(),
+          id: assignmentId,
           batteryId: battery.id,
           userId,
           assignedBy: invite.createdBy,
           note: noteCode("note.invite"),
         });
+        // состав назначения — снимок на момент выдачи (lib/batteries.ts)
+        await snapshotAssignment(tx, assignmentId, items);
         await grantAccess(
           tx as never,
           items.map((item) => ({
@@ -212,6 +217,7 @@ export async function applyInvite(
             grantedBy: invite.createdBy,
             expiresAt: null,
             note: noteCode("note.invite"),
+            viaAssignmentId: assignmentId,
           })),
           { term: "set" },
         );
