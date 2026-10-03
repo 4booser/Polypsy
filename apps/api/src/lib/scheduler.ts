@@ -189,13 +189,14 @@ async function runSchedule(
     for (const { id } of issued) await snapshotAssignment(tx, id, grantable);
     await grantAccess(
       tx as never,
-      fresh.flatMap((userId) =>
+      issued.flatMap(({ id, userId }) =>
         grantable.map((item) => ({
           surveyId: item.surveyId,
           userId,
           grantedBy: schedule.createdBy,
           expiresAt: dueAt,
           note: noteCode("note.schedule", { title: schedule.title }),
+          viaAssignmentId: id,
         })),
       ),
       // назначение поверх более долгого доступа его не укорачивает — см. grantAccess

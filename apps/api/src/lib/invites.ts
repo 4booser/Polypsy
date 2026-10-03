@@ -217,6 +217,7 @@ export async function applyInvite(
             grantedBy: invite.createdBy,
             expiresAt: null,
             note: noteCode("note.invite"),
+            viaAssignmentId: assignmentId,
           })),
           { term: "set" },
         );

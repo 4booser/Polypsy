@@ -168,6 +168,7 @@ async function assignCascade(
         grantedBy: battery.createdBy,
         expiresAt: dueAt,
         note: noteCode("note.cascade"),
+        viaAssignmentId: assignmentId,
       })),
       // назначение набора поверх более долгого доступа его не укорачивает
       { term: "extend" },

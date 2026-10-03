@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { serverText, t, type BatteryProgressState, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
-import { batteries, batteryAssignmentItems, batteryAssignments, responses, surveys } from "../db/schema";
+import { batteries, batteryAssignmentItems, batteryAssignments, responses, surveyAccess, surveys } from "../db/schema";
 import { badRequest } from "./http";
 import { log } from "./log";
 import { parseTs } from "./time";
@@ -221,6 +221,78 @@ export async function snapshotAssignment(
 export function assignmentHasStep(surveyId: string): SQL {
   return sql`exists (select 1 from battery_assignment_items ai
                      where ai.assignment_id = ${batteryAssignments.id} and ai.survey_id = ${surveyId})`;
+}
+
+/*
+ * ─── отмена: снять то, что выдало это назначение, и только это ───
+ *
+ * Отмена меняла одну отметку, и доступ к методикам, выданный назначением,
+ * жил дальше до своего срока или бессрочно: пациент открывал и сдавал
+ * методику из снятого набора, другого основания не имея (внешний разбор
+ * 2026-09-28, P2). Снять строку survey_access целиком нельзя: ключ — пара
+ * «методика и человек», и ту же строку могли выдать руками, группой или
+ * другим назначением. Поэтому у строки доступа есть происхождение
+ * (via_assignment_id, пишет grantAccess), а отмена:
+ *   — берёт состав СВОЕГО назначения (снимок), а не текущий шаблон набора;
+ *   — строку чужого происхождения (руками, группа, другое назначение,
+ *     приглашение на методику) не трогает;
+ *   — свою строку снимает, если ни одно другое открытое назначение этого
+ *     человека не выдаёт ту же методику; если выдаёт — переписывает
+ *     происхождение на него: оно и остаётся основанием, и его отмена потом
+ *     снимет доступ. Срок при этом не укорачивается: он уже был продлён до
+ *     позднего из двух, и укоротить его значило бы решать за то назначение.
+ */
+
+/**
+ * Снять доступ, выданный назначением. Зовётся в транзакции отмены, после
+ * того как отметка поставлена; возвращает, сколько снято и сколько осталось
+ * на другом основании.
+ */
+export async function revokeIssuedAccess(assignment: { id: string; userId: string }): Promise<{
+  revoked: number;
+  kept: number;
+}> {
+  const steps = await db
+    .select({ surveyId: batteryAssignmentItems.surveyId })
+    .from(batteryAssignmentItems)
+    .where(eq(batteryAssignmentItems.assignmentId, assignment.id))
+    .orderBy(batteryAssignmentItems.position);
+  let revoked = 0;
+  let kept = 0;
+  for (const { surveyId } of steps) {
+    const mine = and(
+      eq(surveyAccess.surveyId, surveyId),
+      eq(surveyAccess.userId, assignment.userId),
+      eq(surveyAccess.viaAssignmentId, assignment.id),
+    );
+    const [other] = await db
+      .select({ id: batteryAssignments.id })
+      .from(batteryAssignments)
+      .where(
+        and(
+          eq(batteryAssignments.userId, assignment.userId),
+          sql`${batteryAssignments.id} <> ${assignment.id}`,
+          isNull(batteryAssignments.completedAt),
+          isNull(batteryAssignments.cancelledAt),
+          assignmentHasStep(surveyId),
+        ),
+      )
+      // детерминированный выбор: самое свежее из открытых
+      .orderBy(sql`${batteryAssignments.assignedAt} desc`, batteryAssignments.id)
+      .limit(1);
+    if (other) {
+      const moved = await db
+        .update(surveyAccess)
+        .set({ viaAssignmentId: other.id })
+        .where(mine)
+        .returning({ surveyId: surveyAccess.surveyId });
+      kept += moved.length;
+    } else {
+      const gone = await db.delete(surveyAccess).where(mine).returning({ surveyId: surveyAccess.surveyId });
+      revoked += gone.length;
+    }
+  }
+  return { revoked, kept };
 }
 
 /** Шаги назначений для расчёта — одним запросом, по позиции; из снимка, не из шаблона */
