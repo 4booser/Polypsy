@@ -7715,6 +7715,33 @@ export const UI = {
     en: "After reloading, the editor will show the current version of the plan — what you typed here will be gone. If you need it, copy it first.",
   },
 
+  /* ── w16:drafts ── */
+  /*
+   * Незавершённое прохождение и обновлённая методика (волна 16, внешний
+   * разбор, P1; apps/mobile/src/runner/resume.ts). У каждой версии свои
+   * пункты, и ответы одной в другую не переносятся. Продолжаем в своей
+   * версии — говорим об этом одной строкой, чтобы «інші питання, ніж у
+   * новій редакції» не выглядели ошибкой. Свою версию открыть не удалось —
+   * говорим, почему ответов нет на экране, что они не пропали и что будет,
+   * если начать заново: заменить черновик — решение человека, а не экрана.
+   */
+  "ms.draftKeptVersion": {
+    uk: "Методику оновили, але ви продовжуєте ту версію, в якій почали, — так ваші відповіді збережуться й будуть зараховані.",
+    ru: "Методику обновили, но вы продолжаете ту версию, в которой начали, — так ваши ответы сохранятся и будут засчитаны.",
+    en: "The assessment has been updated, but you’re continuing the version you started, so your answers are kept and will count.",
+  },
+  "ms.draftOtherVersion": {
+    uk: "Незавершене проходження почато в іншій версії методики",
+    ru: "Незавершённое прохождение начато в другой версии методики",
+    en: "Your unfinished attempt was started in another version of this assessment",
+  },
+  "ms.draftOtherVersionHint": {
+    uk: "Відкрити ту версію зараз не вдалося — можливо, немає зв’язку. Відповіді з неї нікуди не зникли, але в нову версію не переносяться: у кожної версії свої питання. Поверніться пізніше, щоб продовжити, або почніть заново — тоді незавершене проходження буде замінено.",
+    ru: "Открыть ту версию сейчас не удалось — возможно, нет связи. Ответы из неё никуда не пропали, но в новую версию не переносятся: у каждой версии свои вопросы. Вернитесь позже, чтобы продолжить, или начните заново — тогда незавершённое прохождение будет заменено.",
+    en: "That version couldn’t be opened right now — you may be offline. Its answers haven’t gone anywhere, but they can’t be carried into the new version: each version has its own questions. Come back later to continue, or start over — the unfinished attempt will then be replaced.",
+  },
+  "ms.startOver": { uk: "Почати заново", ru: "Начать заново", en: "Start over" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

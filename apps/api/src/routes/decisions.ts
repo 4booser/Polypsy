@@ -7,7 +7,7 @@ import { decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, surveyScopeFilter } from "../lib/scope";
+import { accessibleGroupIds, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const decisionRoutes = new Hono<AppEnv>();
@@ -190,6 +190,13 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
 
   const row = await db.query.ruleHits.findFirst({ where: eq(ruleHits.id, id) });
   if (!row) notFound("err.hitNotFound");
+  /*
+   * Зона — как у списка срабатываний (surveyScopeFilter) и у политики строк
+   * rule_hits: решение по сигналу чужой группы методик для сотрудника не
+   * существует (волна 16, проход по маршрутам с чужими id). Владельцем базы
+   * сюда записывалось решение по любому срабатыванию по известному id.
+   */
+  if (!(await canAccessSurvey(user, row!.surveyId))) notFound("err.hitNotFound");
   if (row!.status !== "suggested") badRequest("err.hitAlreadyDecided");
 
   /*
