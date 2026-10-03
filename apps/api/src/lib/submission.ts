@@ -27,7 +27,7 @@ import {
   surveyVersions,
   type UserRow,
 } from "../db/schema";
-import { badRequest } from "./http";
+import { badRequest, conflict } from "./http";
 import { decryptField, encryptField } from "./crypto";
 import { responseSource } from "./responseSource";
 import { attachToCase } from "./alertCases";
@@ -48,7 +48,38 @@ import { env } from "../env";
  * запись в журнал остаётся на маршруте — там известен актор и контекст.
  */
 
+/**
+ * Каждый ответ — на пункт той версии, по которой его пишут, или отказ.
+ *
+ * Волна 16, внешний разбор, P1. Каждая версия методики заводит пункты с
+ * новыми идентификаторами, а автосохранение и сдача ответ на чужой пункт
+ * молча пропускали: запись шла по версии, пункта в ней нет — строка не
+ * ложилась. Мобилка после обновления методики открывала новую версию и
+ * восстанавливала ответы черновика старой; автосохранение отвечало 200 с
+ * «answers: 1», а следующее чтение черновика было пустым. На сдаче та же
+ * пара давала прохождение без единого ответа, если в новой версии нет
+ * обязательных пунктов, — «пройдено» с баллами, которых человек не давал.
+ *
+ * Отказ — 409, а не 400: запрос собран верно, не сходится состояние —
+ * ответы набраны на одной версии, а пишутся в другую. Фраза говорит, что
+ * ничего не записано, и что делать: открыть методику заново — клиент
+ * откроет её в версии черновика. Правило одно на все входы: черновик
+ * (routes/responses.ts), сдача и всё, что идёт через persistSubmission.
+ *
+ * Скрытые условием показа пункты сюда не относятся: они в версии есть, их
+ * ответы отбрасывает движок подсчёта и считает журнал сдачи (hiddenDropped).
+ */
+export function assertAnswersInVersion(survey: SurveyFull, answers: readonly { questionId: string }[]): void {
+  const own = new Set(survey.questions.map((q) => q.id));
+  const foreign = answers.filter((a) => !own.has(a.questionId)).map((a) => a.questionId);
+  if (!foreign.length) return;
+  // идентификаторы пунктов — не сведения о человеке; по ним видно, какой клиент собирает такие пары
+  log.warn("answers.other_version", { surveyId: survey.id, versionId: survey.versionId, count: foreign.length, questionIds: foreign.slice(0, 20) });
+  conflict("err.answersOtherVersion");
+}
+
 export function validateAnswers(survey: SurveyFull, input: SubmitResponseInput): Map<string, Answer> {
+  assertAnswersInVersion(survey, input.answers);
   /*
    * Один ответ на вопрос.
    *

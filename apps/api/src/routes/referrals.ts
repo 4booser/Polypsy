@@ -32,6 +32,7 @@ import { alphasOf, changeOverSeries, normativeSamples } from "../lib/changeBasis
 import { decryptField } from "../lib/crypto";
 import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round } from "../lib/stats";
+import { assertReferralLinks } from "../lib/clinicalRead";
 import { accessiblePatientIds, assertPatientAccess, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
@@ -155,6 +156,14 @@ referralRoutes.post("/", async (c) => {
    * зоны: 403 подтвердил бы, что такой пациент есть.
    */
   await assertPatientAccess(user, input.userId);
+  /*
+   * И ссылки — на записи этого же пациента, доступные сотруднику и
+   * согласованные между собой (волна 16, внешний разбор, P2). До этого
+   * responseId и alertId ложились в строку как есть, и направление пациента
+   * A связывалось с прохождением и тревогой пациента B. Правило — в
+   * lib/clinicalRead.ts, рядом с проверкой чтения самих записей.
+   */
+  await assertReferralLinks(c, user, input);
 
   const id = crypto.randomUUID();
   await db.insert(referrals).values({
