@@ -1593,6 +1593,28 @@ export const ERRORS = {
     ru: "Незавершённое прохождение этой методики начато в другой её версии, и его ответы не перезаписаны. Откройте методику ещё раз: продолжите его или осознанно начните заново",
     en: "An unfinished attempt at this assessment was started in another version, and its answers were not overwritten. Open the assessment again to continue it or deliberately start over",
   },
+  /*
+   * Ссылки направления (lib/clinicalRead.ts, assertReferralLinks). Чужая
+   * недоступная запись — «не знайдено», как и при прямом чтении; доступная,
+   * но не того пациента или не того прохождения — 400 с причиной: запрос
+   * собран неверно, и сотруднику надо понять, какая из ссылок не сходится.
+   */
+  "err.alertNotFound": { uk: "Тривогу не знайдено", ru: "Тревога не найдена", en: "Alert not found" },
+  "err.referralResponseOtherPatient": {
+    uk: "Вказане проходження належить іншому пацієнту, ніж направлення",
+    ru: "Указанное прохождение принадлежит другому пациенту, чем направление",
+    en: "The specified response belongs to a different patient than the referral",
+  },
+  "err.referralAlertOtherPatient": {
+    uk: "Вказана тривога стосується іншого пацієнта, ніж направлення",
+    ru: "Указанная тревога относится к другому пациенту, чем направление",
+    en: "The specified alert concerns a different patient than the referral",
+  },
+  "err.referralAlertOtherResponse": {
+    uk: "Вказана тривога походить від іншого проходження, ніж зазначене в направленні",
+    ru: "Указанная тревога исходит от другого прохождения, чем указанное в направлении",
+    en: "The specified alert comes from a different response than the one named in the referral",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
