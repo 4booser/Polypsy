@@ -14,13 +14,14 @@ import {
 import * as Haptics from "expo-haptics";
 import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
-import { drafts, pickDraft, type LocalDraft } from "@/offline/cache";
+import { draftRequestBody, drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { draftLaneKey, draftLanes } from "@/offline/draftLane";
 import { useExit } from "@/nav/useExit";
 import { finishFailureText, finishSubmission } from "@/runner/finish";
 import { resultView } from "@/runner/resultView";
 import { useOpenReport } from "@/report/useOpenReport";
 import { missedBefore } from "@/runner/progress";
+import { restoreDraft } from "@/runner/resume";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
@@ -64,6 +65,19 @@ export default function TakeSurveyScreen() {
   const [resumed, setResumed] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [draftSynced, setDraftSynced] = useState(true);
+  /*
+   * Черновик и обновлённая методика (runner/resume.ts): продолжаем в своей
+   * версии — keptVersion; свою открыть не удалось — otherVersion, ответов на
+   * экране нет, и человек решает, ждать или начать заново.
+   */
+  const [keptVersion, setKeptVersion] = useState(false);
+  const [otherVersion, setOtherVersion] = useState(false);
+  /**
+   * Версия черновика, который заменит новое начало, — едет с автосохранением
+   * как replacesVersionId, пока сервер его не примет. Без неё сервер черновик
+   * с ответами другой версии не перезаписывает (и правильно).
+   */
+  const replacesVersion = useRef<string | null>(null);
 
   const startedAt = useRef(new Date().toISOString());
   const sessionStart = useRef(Date.now());
@@ -148,8 +162,6 @@ export default function TakeSurveyScreen() {
     (async () => {
       try {
         const loaded = await api.getSurvey(id);
-        setSurvey(loaded);
-        navigation.setOptions({ title: loaded.title });
 
         /*
          * Незавершённое прохождение — продолжаем с того же места. Берём то,
@@ -159,14 +171,35 @@ export default function TakeSurveyScreen() {
         const remote = await api.getDraft(id).catch(() => null);
         const stored = drafts.get(owner, id);
         draftRevision.current = Math.max(draftRevision.current, stored?.revision ?? 0);
-        const draft = pickDraft(stored, remote);
 
-        if (draft) {
+        /*
+         * И продолжаем в той версии, где даны ответы (волна 16, внешний
+         * разбор, P1). Здесь экран показывал действующую версию, а ответы
+         * брал из черновика прежней: на экране их не видел ни один вопрос, а
+         * автосохранение отправляло их с новой версией, и сервер их
+         * выбрасывал. Методика ставится на экран один раз — уже решённой
+         * версией, чтобы число вопросов и заголовок не мигали.
+         */
+        const restored = await restoreDraft(loaded, pickDraft(stored, remote), (versionId, versionNumber) =>
+          api.getSurveyVersion(id, versionId, versionNumber),
+        );
+        setSurvey(restored.survey);
+        navigation.setOptions({ title: restored.survey.title });
+
+        if (restored.kind === "resumed") {
+          const draft = restored.draft;
           setAnswers(new Map((draft.answers as Answer[]).map((a) => [a.questionId, a])));
           startedAt.current = draft.startedAt;
           sessionStart.current = Date.now() - draft.durationMs;
           setResumed(true);
           setSavedAt(draft.lastSavedAt);
+          setKeptVersion(restored.keptVersion);
+          // начатое заново поверх другой версии, ещё не принятое сервером, — замена едет дальше
+          replacesVersion.current = draft.replacesVersionId ?? null;
+        } else if (restored.kind === "otherVersion") {
+          // заменить можно только известную версию; у черновика без неё — та, что на сервере
+          replacesVersion.current = restored.replacesVersionId ?? remote?.versionId ?? null;
+          setOtherVersion(true);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : ut("ms.loadFailed"));
@@ -240,6 +273,10 @@ export default function TakeSurveyScreen() {
     const revision = ++draftRevision.current;
     const local: LocalDraft = {
       surveyId: survey.id,
+      // версия на экране — черновик продолжают и сдают по ней; она же едет при досылке
+      versionId: survey.versionId,
+      versionNumber: survey.versionNumber,
+      replacesVersionId: replacesVersion.current,
       answers: payload,
       startedAt: startedAt.current,
       durationMs: Date.now() - sessionStart.current,
@@ -269,16 +306,12 @@ export default function TakeSurveyScreen() {
        * старая правка затирала новую и на сервере, и на устройстве.
        */
       const sent = await draftLanes.submit(draftLaneKey(owner, survey.id), revision, () =>
-        api.saveDraft(survey.id, {
-          // версия на экране — черновик продолжают и сдают по ней (участок submit)
-          versionId: survey.versionId,
-          answers: payload,
-          startedAt: local.startedAt,
-          durationMs: local.durationMs,
-          events: local.events as never,
-        }),
+        // то же тело, что у досылки: версия экрана и явная замена, если начали заново (offline/cache.ts)
+        api.saveDraft(survey.id, draftRequestBody(local)),
       );
       if (sent.status === "superseded") return; // следом уже идёт правка новее — отметит она
+      // замена принята — дальше черновик на сервере уже этой версии, называть прежнюю незачем
+      if (local.replacesVersionId && replacesVersion.current === local.replacesVersionId) replacesVersion.current = null;
       try {
         drafts.confirm(owner, survey.id, revision, sent.value.lastSavedAt);
       } catch {
@@ -541,6 +574,18 @@ export default function TakeSurveyScreen() {
                 savedAt ? ` ${savedAt.slice(0, 16).replace("T", " ")}` : "",
               )}
             </Body>
+            {keptVersion ? <Body muted>{ut("ms.draftKeptVersion")}</Body> : null}
+          </Card>
+        ) : null}
+        {otherVersion ? (
+          /*
+           * Ответов на экране нет не потому, что они пропали: они в другой
+           * версии, и перенести их нечем. Уйти назад — черновик остаётся и
+           * откроется, когда будет связь; «Почати заново» — явная замена.
+           */
+          <Card>
+            <Body>{ut("ms.draftOtherVersion")}</Body>
+            <Body muted>{ut("ms.draftOtherVersionHint")}</Body>
           </Card>
         ) : null}
         {survey.instructions ? (
@@ -563,7 +608,7 @@ export default function TakeSurveyScreen() {
           ) : null}
         </Card>
         <Button
-          title={resumed ? ut("ms.continue") : ut("ms.start")}
+          title={resumed ? ut("ms.continue") : otherVersion ? ut("ms.startOver") : ut("ms.start")}
           onPress={() => {
             if (!resumed) {
               sessionStart.current = Date.now();

@@ -52,7 +52,7 @@ function netText(key: "net.offline" | "net.failed"): string {
   // через uiText, а не UI[key][lang]: у записи без английского поля en нет, и прямое чтение отдало бы undefined
   return uiText(key, currentLang);
 }
-import { cache, drafts } from "../offline/cache";
+import { cache, draftRequestBody, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName } from "../offline/device";
 import { carryOutWipe, resumeWipe, type WipeDeps } from "../offline/wipe";
@@ -547,6 +547,26 @@ export const api = {
       (error) => offlineFallback(error, cache.survey(owner, id)),
     );
   },
+  /**
+   * Содержимое версии, на которой начат черновик (волна 16, runner/resume.ts).
+   *
+   * С сервера — по номеру (?version=N): права те же, что на методику.
+   * Без сети — копия на устройстве (offline/cache.ts, surveyVersion); номера
+   * нет (черновик пришёл без него) — только она. Легшая копия живёт, пока
+   * жив черновик.
+   */
+  getSurveyVersion: async (id: string, versionId: string, versionNumber: number | null) => {
+    const owner = await ownerNow();
+    const stored = cache.surveyVersion(owner, id, versionId);
+    if (versionNumber === null) return stored;
+    return request<SurveyFull>(`/api/surveys/${id}?version=${versionNumber}`, {}, { owner }).then(
+      (survey) => {
+        if (survey.versionId === versionId) cache.saveSurveyVersion(owner, survey);
+        return survey;
+      },
+      (error) => offlineFallback(error, stored),
+    );
+  },
   createSurvey: (input: CreateSurveyInput) =>
     request<SurveyFull>("/api/surveys", { method: "POST", body: JSON.stringify(input) }),
   updateSurvey: (id: string, input: UpdateSurveyInput) =>
@@ -610,7 +630,12 @@ export const api = {
        */
       if (!owner) throw error;
       const item = enqueue(owner, surveyId, body);
-      const survey = cache.survey(owner, surveyId);
+      /*
+       * Считаем по той версии, которую показали: черновик могли продолжить в
+       * прежней (runner/resume.ts), и действующая версия его пунктов не знает.
+       * Её копии нет — не считаем вовсе: баллы по чужим пунктам были бы нулями.
+       */
+      const survey = cache.surveyVersion(owner, surveyId, payload.versionId ?? null);
       // чей пол и возраст берём для норм — см. respondentFor
       const respondent = respondentFor(payload.subject, cache.me(owner));
       /*
@@ -671,15 +696,8 @@ export const api = {
         sent = await draftLanes.submit(draftLaneKey(owner!, draft.surveyId), revision, () =>
           request<{ lastSavedAt: string | null }>(
             `/api/surveys/${draft.surveyId}/draft`,
-            {
-              method: "PUT",
-              body: JSON.stringify({
-                answers: draft.answers,
-                startedAt: draft.startedAt,
-                durationMs: draft.durationMs,
-                events: draft.events,
-              }),
-            },
+            // с версией черновика и явной заменой, если человек начинал заново (offline/cache.ts)
+            { method: "PUT", body: JSON.stringify(draftRequestBody(draft)) },
             { owner },
           ),
         );
@@ -771,7 +789,15 @@ export const api = {
 
   saveDraft: (
     surveyId: string,
-    payload: { answers: Answer[]; startedAt: string; durationMs: number; events: unknown[]; versionId?: string | null },
+    payload: {
+      answers: unknown[];
+      startedAt: string;
+      durationMs: number;
+      events: unknown[];
+      versionId?: string | null;
+      /** Начато заново поверх черновика этой версии — явное решение человека (draftSchema) */
+      replacesVersionId?: string | null;
+    },
   ) =>
     request<{ id: string; lastSavedAt: string; answers: number }>(
       `/api/surveys/${surveyId}/draft`,
@@ -780,6 +806,9 @@ export const api = {
   getDraft: (surveyId: string) =>
     request<{
       id: string;
+      /** Версия, на которой начат черновик, и её номер: продолжают в ней (runner/resume.ts) */
+      versionId: string | null;
+      versionNumber: number | null;
       startedAt: string;
       lastSavedAt: string | null;
       durationMs: number;

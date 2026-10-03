@@ -30,7 +30,7 @@ import { attachToCase } from "../lib/alertCases";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
 import { detectRisks } from "../lib/risk";
-import { persistSubmission } from "../lib/submission";
+import { assertAnswersInVersion, persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
 import { decodeCursor, encodeCursor } from "../lib/cursor";
 import { periodFrom, periodTo } from "../lib/population";
@@ -570,6 +570,16 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
 });
 
 /**
+ * Какой из незавершённых черновиков — «тот самый», одинаково для чтения и записи.
+ *
+ * Черновик на пару (методика, человек) один по замыслу, но два первых
+ * автосохранения разом заводят две строки. Без порядка чтение и запись
+ * брали бы любую — и продолжение открывало бы не ту копию, которую пишет
+ * автосохранение.
+ */
+const DRAFT_ORDER = [sql`${responses.lastSavedAt} desc nulls last`, desc(responses.id)] as const;
+
+/**
  * Автосохранение черновика.
  *
  * Идемпотентно: на пару (методика, пользователь) держится одно незавершённое
@@ -592,25 +602,60 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
   await assertMayTake(c, user, survey);
   await assertConsent(c, user);
   if (pin.source === "invalid") badRequest("err.surveyVersionInvalid");
+  // ответы — только на пункты той версии, в которую пишем, иначе 409 (lib/submission.ts)
+  assertAnswersInVersion(survey, input.answers);
 
-  const existing = await db.query.responses.findFirst({
-    where: and(
-      eq(responses.surveyId, surveyId),
-      eq(responses.userId, user.id),
-      eq(responses.status, "in_progress"),
-    ),
-  });
+  /*
+   * Черновик — под замком строки до конца запроса: решение «можно ли
+   * сменить ему версию» ниже и запись — одним куском (волна 15, общая
+   * причина 2). Второе автосохранение того же человека ждёт коммита
+   * первого и решает уже по записанной версии, а не по прочитанной до неё.
+   */
+  const [existing] = await db
+    .select({ id: responses.id, versionId: responses.versionId })
+    .from(responses)
+    .where(and(eq(responses.surveyId, surveyId), eq(responses.userId, user.id), eq(responses.status, "in_progress")))
+    .orderBy(...DRAFT_ORDER)
+    .limit(1)
+    .for("update");
 
-  const responseId = existing?.id ?? crypto.randomUUID();
   const now = new Date().toISOString();
   const validIds = new Set(survey.questions.map((q) => q.id));
+
+  if (existing && existing.versionId !== survey.versionId) {
+    /*
+     * Смена версии черновика — только явная (волна 16, внешний разбор, P1).
+     *
+     * Версия черновика шла вслед за клиентом молча: ответы перезаписываются
+     * целиком, и у новой версии свои пункты — прежние ответы просто
+     * стирались. Клиент, открывший новую версию поверх черновика старой
+     * (мобилка так и делала), стирал то, о чём человек даже не знал. Теперь
+     * черновик, в котором есть ответы на пункты вне новой версии, заменяется
+     * только тогда, когда клиент назвал его версию в replacesVersionId —
+     * показал человеку «проходження почато в іншій версії» и тот начал
+     * заново. Пустой черновик терять нечего — он переходит без спроса.
+     */
+    const held = await db
+      .select({ questionId: answers.questionId })
+      .from(answers)
+      .where(eq(answers.responseId, existing.id));
+    const lost = held.filter((a) => !validIds.has(a.questionId)).length;
+    const replaces = input.replacesVersionId != null && input.replacesVersionId === existing.versionId;
+    if (lost > 0 && !replaces) {
+      log.info("draft.version_change_refused", { surveyId, from: existing.versionId, to: survey.versionId, lost });
+      conflict("err.draftOtherVersion");
+    }
+  }
+
+  const responseId = existing?.id ?? crypto.randomUUID();
+  let written = 0;
 
   await db.transaction(async (tx) => {
     if (existing) {
       /*
-       * Версия черновика следует за клиентом: ответы перезаписываются
-       * целиком, и если человек начал заново на новой версии, черновик
-       * обязан помнить новую — иначе продолжение открыло бы старую.
+       * Версия черновика следует за клиентом, если до сюда дошло: та же
+       * версия или явная замена выше. Черновик обязан помнить версию своих
+       * ответов — по ней его продолжают и сдают.
        */
       await tx.update(responses)
         .set({ durationMs: input.durationMs, lastSavedAt: now, versionId: survey.versionId })
@@ -631,7 +676,6 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
     }
 
     for (const answer of input.answers) {
-      if (!validIds.has(answer.questionId)) continue;
       await tx.insert(answers)
         .values({
           id: crypto.randomUUID(),
@@ -649,6 +693,7 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
           changeCount: answer.changeCount ?? 0,
           visitCount: answer.visitCount ?? 1,
         });
+      written++;
     }
 
     for (const risk of detectRisks(survey, input.answers as Answer[])) {
@@ -749,26 +794,42 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
     }
   });
 
-  return c.json({ id: responseId, lastSavedAt: now, answers: input.answers.length });
+  // сколько легло на самом деле, а не сколько пришло: «answers: 1» при пустом черновике и было ошибкой
+  return c.json({ id: responseId, lastSavedAt: now, answers: written });
 });
 
 /** Незавершённое прохождение, чтобы продолжить с того же места */
 responseRoutes.get("/surveys/:id/draft", async (c) => {
   const user = c.get("user");
-  const draft = await db.query.responses.findFirst({
-    where: and(
-      eq(responses.surveyId, c.req.param("id")),
-      eq(responses.userId, user.id),
-      eq(responses.status, "in_progress"),
-    ),
-  });
+  const [draft] = await db
+    .select()
+    .from(responses)
+    .where(and(eq(responses.surveyId, c.req.param("id")), eq(responses.userId, user.id), eq(responses.status, "in_progress")))
+    .orderBy(...DRAFT_ORDER)
+    .limit(1);
   if (!draft) return c.json(null);
 
-  const rows = await db.select().from(answers).where(eq(answers.responseId, draft.id));
+  /*
+   * Номер версии — рядом с её id (волна 16): по номеру клиент открывает
+   * содержимое именно этой версии (GET /surveys/:id?version=N) и
+   * восстанавливает ответы в ней, а не в действующей, где их пунктов нет.
+   */
+  const [version] = draft.versionId
+    ? await db
+        .select({ number: surveyVersions.version })
+        .from(surveyVersions)
+        .where(eq(surveyVersions.id, draft.versionId))
+    : [];
+  const rows = await db
+    .select()
+    .from(answers)
+    .where(eq(answers.responseId, draft.id))
+    .orderBy(asc(answers.questionId));
   return c.json({
     id: draft.id,
     // версия, на которой черновик начат: продолжать и сдавать — по ней
     versionId: draft.versionId,
+    versionNumber: version?.number ?? null,
     startedAt: draft.startedAt,
     lastSavedAt: draft.lastSavedAt,
     durationMs: draft.durationMs,
