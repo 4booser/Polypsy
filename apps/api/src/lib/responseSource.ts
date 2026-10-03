@@ -2,8 +2,8 @@ import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   appointments,
+  batteryAssignmentItems,
   batteryAssignments,
-  batteryItems,
   departments,
   slots,
   surveyAccess,
@@ -63,14 +63,15 @@ export async function responseSource(
     .limit(1);
   if (granted) return "assigned";
 
+  // по составу самого назначения, а не текущему шаблону набора (lib/batteries.ts)
   const [inBattery] = await db
     .select({ id: batteryAssignments.id })
     .from(batteryAssignments)
-    .innerJoin(batteryItems, eq(batteryItems.batteryId, batteryAssignments.batteryId))
+    .innerJoin(batteryAssignmentItems, eq(batteryAssignmentItems.assignmentId, batteryAssignments.id))
     .where(
       and(
         eq(batteryAssignments.userId, userId),
-        eq(batteryItems.surveyId, surveyId),
+        eq(batteryAssignmentItems.surveyId, surveyId),
         isNull(batteryAssignments.cancelledAt),
       ),
     )

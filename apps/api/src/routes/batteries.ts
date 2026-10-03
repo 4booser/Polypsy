@@ -14,8 +14,10 @@ import {
   type Lang,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import {
   batteries,
+  batteryAssignmentItems,
   batteryAssignments,
   batteryItems,
   responses,
@@ -25,7 +27,7 @@ import {
 } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { batteryProgress, closeMissed, isExecutable, isOverdue } from "../lib/batteries";
+import { batteryProgress, closeMissed, isExecutable, isOverdue, revokeIssuedAccess, snapshotAssignment } from "../lib/batteries";
 import { dayOf, deadlineOf } from "../lib/day";
 import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
@@ -71,17 +73,30 @@ function toBatteryItem(i: LoadedItem): BatteryItem {
   };
 }
 
-/** Состав батарей одним запросом: без него список из десяти батарей — это 10 запросов */
-async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, LoadedItem[]>> {
+/**
+ * Состав — одним запросом на все наборы или назначения: без него список из
+ * десяти батарей — это 10 запросов.
+ *
+ * Два источника с одной формой строки: шаблон (battery_items — список
+ * наборов, выдача) и снимок назначения (battery_assignment_items — экран
+ * назначений, lib/batteries.ts). Ключ карты — то, по чему спрашивали.
+ */
+async function loadItemsFrom(
+  source:
+    | { table: typeof batteryItems; key: typeof batteryItems.batteryId }
+    | { table: typeof batteryAssignmentItems; key: typeof batteryAssignmentItems.assignmentId },
+  ids: string[],
+  lang: Lang,
+): Promise<Map<string, LoadedItem[]>> {
   const result = new Map<string, LoadedItem[]>();
-  if (!batteryIds.length) return result;
+  if (!ids.length) return result;
 
   const rows = await db
     .select({
-      batteryId: batteryItems.batteryId,
-      surveyId: batteryItems.surveyId,
-      position: batteryItems.position,
-      required: batteryItems.required,
+      key: source.key,
+      surveyId: source.table.surveyId,
+      position: source.table.position,
+      required: source.table.required,
       title: surveys.title,
       administration: surveys.administration,
       status: surveys.status,
@@ -93,13 +108,13 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
       medianMs: sql<number | null>`(select percentile_cont(0.5) within group (order by r.duration_ms)
         from responses r where r.survey_id = "surveys"."id" and r.status = 'completed' and r.duration_ms > 0)`,
     })
-    .from(batteryItems)
-    .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
-    .where(inArray(batteryItems.batteryId, batteryIds))
-    .orderBy(batteryItems.batteryId, batteryItems.position);
+    .from(source.table)
+    .innerJoin(surveys, eq(surveys.id, source.table.surveyId))
+    .where(inArray(source.key, ids))
+    .orderBy(source.key, source.table.position);
 
   for (const r of rows) {
-    const list = result.get(r.batteryId) ?? [];
+    const list = result.get(r.key) ?? [];
     list.push({
       surveyId: r.surveyId,
       title: t(r.title, lang),
@@ -110,9 +125,19 @@ async function loadItems(batteryIds: string[], lang: Lang): Promise<Map<string, 
       medianMinutes: r.medianMs ? Math.round((Number(r.medianMs) / 60000) * 10) / 10 : null,
       executable: isExecutable(r),
     });
-    result.set(r.batteryId, list);
+    result.set(r.key, list);
   }
   return result;
+}
+
+/** Состав наборов (шаблон) по id набора */
+function loadItems(batteryIds: string[], lang: Lang) {
+  return loadItemsFrom({ table: batteryItems, key: batteryItems.batteryId }, batteryIds, lang);
+}
+
+/** Состав назначений (снимок на момент выдачи) по id назначения */
+function loadAssignmentItems(assignmentIds: string[], lang: Lang) {
+  return loadItemsFrom({ table: batteryAssignmentItems, key: batteryAssignmentItems.assignmentId }, assignmentIds, lang);
 }
 
 /*
@@ -211,7 +236,17 @@ batteryRoutes.post("/", requireStaff, requirePermission("batteries.manage"), asy
   return c.json({ id }, 201);
 });
 
-/** Замена состава батареи целиком */
+/**
+ * Замена состава батареи целиком.
+ *
+ * Действует на будущие назначения. Выданные хранят свой состав
+ * (battery_assignment_items) и правкой не меняются: добавленный шаг у них не
+ * появится, убранный не исчезнет — иначе человек видел бы шаг, доступа на
+ * который ему никто не выдавал, а завершённое обследование переписывалось
+ * бы задним числом (внешний разбор 2026-09-28). Сколько открытых назначений
+ * осталось на прежнем составе — в журнал: методист, который хочет довыдать
+ * шаг уже назначенным, назначит набор заново или выдаст методику руками.
+ */
 batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
@@ -219,6 +254,17 @@ batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), a
   const input = await parseBody(c.req.raw, batteryInputSchema);
   if (input.groupId) await assertGroupAccess(user, input.groupId);
   for (const item of input.items) await assertSurveyAccess(user, item.surveyId);
+
+  const [{ open } = { open: 0 }] = await db
+    .select({ open: sql<number>`count(*)::int` })
+    .from(batteryAssignments)
+    .where(
+      and(
+        eq(batteryAssignments.batteryId, batteryId),
+        isNull(batteryAssignments.completedAt),
+        isNull(batteryAssignments.cancelledAt),
+      ),
+    );
 
   await db.transaction(async (tx) => {
     await tx
@@ -246,7 +292,8 @@ batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), a
     action: "battery.update",
     resourceType: "battery",
     resourceId: batteryId,
-    details: { title: input.title, items: input.items.length },
+    // открытые назначения остались на прежнем составе — см. докблок
+    details: { title: input.title, items: input.items.length, openAssignmentsKept: Number(open) },
   });
   return c.json({ ok: true });
 });
@@ -293,7 +340,8 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
     .where(where)
     .orderBy(desc(batteryAssignments.assignedAt));
 
-  const items = await loadItems([...new Set(rows.map((r) => r.battery.id))], lang);
+  // состав — снимок самого назначения, не текущий шаблон набора (lib/batteries.ts)
+  const items = await loadAssignmentItems(rows.map((r) => r.assignment.id), lang);
   const userIds = [...new Set(rows.map((r) => r.user.id))];
   const completions = userIds.length
     ? await db
@@ -309,7 +357,7 @@ async function loadAssignments(where: SQL | undefined, lang: Lang) {
 
   const nowMs = Date.now();
   const result: BatteryAssignment[] = rows.map((r) => {
-    const list = items.get(r.battery.id) ?? [];
+    const list = items.get(r.assignment.id) ?? [];
     const mine = completions
       .filter((x) => x.userId === r.user.id && x.submittedAt)
       .map((x) => ({ surveyId: x.surveyId, responseId: x.responseId, submittedAt: x.submittedAt! }));
@@ -430,6 +478,8 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
       dueAt,
       note: input.note ?? null,
     });
+    // состав назначения — снимок на момент выдачи (lib/batteries.ts)
+    await snapshotAssignment(tx, id, items);
     /*
      * Доступ — через grantAccess с term "extend": истёкший продлевается,
      * более долгий не укорачивается. Прежде стояло onConflictDoNothing
@@ -445,6 +495,8 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
         grantedBy: user.id,
         expiresAt: dueAt,
         note: noteCode("note.battery", { title: battery.title }),
+        // происхождение доступа — это назначение: по нему отмена знает, что снимать
+        viaAssignmentId: id,
       })),
       { term: "extend" },
     );
@@ -460,7 +512,20 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
   return c.json({ id }, 201);
 });
 
-/** Снятие назначения: запись сохраняется, проставляется отметка отмены */
+/**
+ * Снятие назначения: запись сохраняется, проставляется отметка отмены — и
+ * снимается доступ, который это назначение выдало (lib/batteries.ts,
+ * revokeIssuedAccess: своё происхождение, нет другого открытого назначения с
+ * той же методикой; ручная выдача и группа не трогаются).
+ *
+ * Отметка — условием UPDATE (ещё не снято, не завершено): повторная отмена
+ * или отмена уже завершённого доступ не трогает — завершённое выдано и
+ * пройдено, его доступ живёт до срока, как и прежде. Порядок «строка
+ * назначения → строки доступа» тот же, что у сдачи (holdCompletable), чтобы
+ * сдача и отмена не ждали друг друга по кругу. Снятие доступа — системной
+ * ролью: это следствие действия над назначением, к которому сотрудник
+ * допущен, а строки доступа методик могут лежать вне его зоны чтения.
+ */
 batteryRoutes.post("/assignments/:assignmentId/cancel", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const assignmentId = c.req.param("assignmentId");
@@ -470,17 +535,27 @@ batteryRoutes.post("/assignments/:assignmentId/cancel", requireStaff, requirePer
   if (!row) notFound("err.assignmentNotFound");
   await assertBatteryAccess(user, row.batteryId);
 
-  await db
+  const cancelled = await db
     .update(batteryAssignments)
     .set({ cancelledAt: new Date().toISOString() })
-    .where(eq(batteryAssignments.id, assignmentId));
+    .where(
+      and(
+        eq(batteryAssignments.id, assignmentId),
+        isNull(batteryAssignments.cancelledAt),
+        isNull(batteryAssignments.completedAt),
+      ),
+    )
+    .returning({ id: batteryAssignments.id });
+  const access = cancelled.length
+    ? await asSystem(() => revokeIssuedAccess({ id: assignmentId, userId: row.userId }))
+    : { revoked: 0, kept: 0 };
 
   await audit(c, {
     action: "battery.cancel",
     resourceType: "battery",
     resourceId: row.batteryId,
     subjectUserId: row.userId,
-    details: { assignmentId },
+    details: { assignmentId, accessRevoked: access.revoked, accessKept: access.kept },
   });
   return c.json({ ok: true });
 });

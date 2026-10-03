@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { serverText, t, type BatteryProgressState, type Lang } from "@quizzy/shared";
 import type { db as Db } from "../db";
 import { db } from "../db";
-import { batteries, batteryAssignments, batteryItems, responses, surveys } from "../db/schema";
+import { batteries, batteryAssignmentItems, batteryAssignments, responses, surveyAccess, surveys } from "../db/schema";
 import { badRequest } from "./http";
 import { log } from "./log";
 import { parseTs } from "./time";
@@ -174,26 +174,147 @@ export function batteryProgress<T extends StepInput>(
   };
 }
 
-/** Шаги наборов для расчёта — одним запросом, по позиции */
-async function stepsOf(batteryIds: readonly string[]): Promise<Map<string, StepInput[]>> {
+/*
+ * ─── состав назначения: снимок на момент выдачи ───
+ *
+ * Назначение ссылалось на изменяемый набор, и шаги на экране, допуск к сдаче
+ * и завершение читались из текущего battery_items. Правка набора молча
+ * меняла выданные назначения: добавленная обязательная методика появлялась
+ * у пациента шагом, но доступа на неё назначение не выдавало — открытие 404,
+ * назначение не завершить; удалённая пропадала из завершённых, и история
+ * обследования переписывалась задним числом (внешний разбор 2026-09-28, P2).
+ *
+ * Выбран снимок (battery_assignment_items), а не редакции набора. Набор —
+ * шаблон, который правит методист, и у него один список; назначение — то,
+ * что реально выдано человеку вместе с доступом, и это протокол обследования,
+ * который не меняется после выдачи. Снимок кладётся в той же транзакции, что
+ * и назначение, на всех четырёх путях выдачи (руками, расписание, каскад,
+ * приглашение) — snapshotAssignment; читают его экран, допуск и завершение
+ * (stepsOf). Правка набора действует на будущие назначения; выданные
+ * остаются в том составе, в каком их выдали. Отмена назначения по снимку
+ * же знает, что отзывать (routes/batteries.ts).
+ */
+
+/** Шаг, который назначение выдаёт: методика, место, обязательность */
+export interface IssuedStep {
+  surveyId: string;
+  position: number;
+  required: boolean;
+}
+
+/**
+ * Зафиксировать состав назначения — в той же транзакции, что и его выдача.
+ * Пустой состав назначению не положен: вызывающие отказывают раньше.
+ */
+export async function snapshotAssignment(
+  tx: Pick<typeof Db, "insert">,
+  assignmentId: string,
+  steps: readonly IssuedStep[],
+): Promise<void> {
+  if (!steps.length) return;
+  await tx.insert(batteryAssignmentItems).values(
+    steps.map((s) => ({ assignmentId, surveyId: s.surveyId, position: s.position, required: s.required })),
+  );
+}
+
+/** Условие «методика — шаг этого назначения» для выборок по battery_assignments */
+export function assignmentHasStep(surveyId: string): SQL {
+  return sql`exists (select 1 from battery_assignment_items ai
+                     where ai.assignment_id = ${batteryAssignments.id} and ai.survey_id = ${surveyId})`;
+}
+
+/*
+ * ─── отмена: снять то, что выдало это назначение, и только это ───
+ *
+ * Отмена меняла одну отметку, и доступ к методикам, выданный назначением,
+ * жил дальше до своего срока или бессрочно: пациент открывал и сдавал
+ * методику из снятого набора, другого основания не имея (внешний разбор
+ * 2026-09-28, P2). Снять строку survey_access целиком нельзя: ключ — пара
+ * «методика и человек», и ту же строку могли выдать руками, группой или
+ * другим назначением. Поэтому у строки доступа есть происхождение
+ * (via_assignment_id, пишет grantAccess), а отмена:
+ *   — берёт состав СВОЕГО назначения (снимок), а не текущий шаблон набора;
+ *   — строку чужого происхождения (руками, группа, другое назначение,
+ *     приглашение на методику) не трогает;
+ *   — свою строку снимает, если ни одно другое открытое назначение этого
+ *     человека не выдаёт ту же методику; если выдаёт — переписывает
+ *     происхождение на него: оно и остаётся основанием, и его отмена потом
+ *     снимет доступ. Срок при этом не укорачивается: он уже был продлён до
+ *     позднего из двух, и укоротить его значило бы решать за то назначение.
+ */
+
+/**
+ * Снять доступ, выданный назначением. Зовётся в транзакции отмены, после
+ * того как отметка поставлена; возвращает, сколько снято и сколько осталось
+ * на другом основании.
+ */
+export async function revokeIssuedAccess(assignment: { id: string; userId: string }): Promise<{
+  revoked: number;
+  kept: number;
+}> {
+  const steps = await db
+    .select({ surveyId: batteryAssignmentItems.surveyId })
+    .from(batteryAssignmentItems)
+    .where(eq(batteryAssignmentItems.assignmentId, assignment.id))
+    .orderBy(batteryAssignmentItems.position);
+  let revoked = 0;
+  let kept = 0;
+  for (const { surveyId } of steps) {
+    const mine = and(
+      eq(surveyAccess.surveyId, surveyId),
+      eq(surveyAccess.userId, assignment.userId),
+      eq(surveyAccess.viaAssignmentId, assignment.id),
+    );
+    const [other] = await db
+      .select({ id: batteryAssignments.id })
+      .from(batteryAssignments)
+      .where(
+        and(
+          eq(batteryAssignments.userId, assignment.userId),
+          sql`${batteryAssignments.id} <> ${assignment.id}`,
+          isNull(batteryAssignments.completedAt),
+          isNull(batteryAssignments.cancelledAt),
+          assignmentHasStep(surveyId),
+        ),
+      )
+      // детерминированный выбор: самое свежее из открытых
+      .orderBy(sql`${batteryAssignments.assignedAt} desc`, batteryAssignments.id)
+      .limit(1);
+    if (other) {
+      const moved = await db
+        .update(surveyAccess)
+        .set({ viaAssignmentId: other.id })
+        .where(mine)
+        .returning({ surveyId: surveyAccess.surveyId });
+      kept += moved.length;
+    } else {
+      const gone = await db.delete(surveyAccess).where(mine).returning({ surveyId: surveyAccess.surveyId });
+      revoked += gone.length;
+    }
+  }
+  return { revoked, kept };
+}
+
+/** Шаги назначений для расчёта — одним запросом, по позиции; из снимка, не из шаблона */
+async function stepsOf(assignmentIds: readonly string[]): Promise<Map<string, StepInput[]>> {
   const result = new Map<string, StepInput[]>();
-  if (!batteryIds.length) return result;
+  if (!assignmentIds.length) return result;
   const rows = await db
     .select({
-      batteryId: batteryItems.batteryId,
-      surveyId: batteryItems.surveyId,
-      position: batteryItems.position,
-      required: batteryItems.required,
+      assignmentId: batteryAssignmentItems.assignmentId,
+      surveyId: batteryAssignmentItems.surveyId,
+      position: batteryAssignmentItems.position,
+      required: batteryAssignmentItems.required,
       administration: surveys.administration,
       status: surveys.status,
       archivedAt: surveys.archivedAt,
     })
-    .from(batteryItems)
-    .innerJoin(surveys, eq(surveys.id, batteryItems.surveyId))
-    .where(inArray(batteryItems.batteryId, [...batteryIds]))
-    .orderBy(batteryItems.batteryId, batteryItems.position);
+    .from(batteryAssignmentItems)
+    .innerJoin(surveys, eq(surveys.id, batteryAssignmentItems.surveyId))
+    .where(inArray(batteryAssignmentItems.assignmentId, [...assignmentIds]))
+    .orderBy(batteryAssignmentItems.assignmentId, batteryAssignmentItems.position);
   for (const r of rows) {
-    const list = result.get(r.batteryId) ?? [];
+    const list = result.get(r.assignmentId) ?? [];
     list.push({
       surveyId: r.surveyId,
       position: r.position,
@@ -201,7 +322,7 @@ async function stepsOf(batteryIds: readonly string[]): Promise<Map<string, StepI
       administration: r.administration,
       executable: isExecutable(r),
     });
-    result.set(r.batteryId, list);
+    result.set(r.assignmentId, list);
   }
   return result;
 }
@@ -228,23 +349,104 @@ async function completionsOf(userIds: readonly string[]): Promise<Map<string, Co
   return result;
 }
 
+/*
+ * ─── завершение: проверка под замком строки назначения ───
+ *
+ * Завершённость считалась в транзакции сдачи, до её коммита. Две сдачи
+ * последних методик набора, ушедшие одновременно, — офлайн-очередь,
+ * досылающая пачку, два устройства, — видели каждая своё прохождение и не
+ * видели соседнее: оно ещё не зафиксировано. Обе решали «пройдено не всё»,
+ * обе коммитились, и пересчитывать было уже некому: «2 из 2», а назначение
+ * открыто, после срока — «просрочено» в очереди работы, и повторно этот
+ * набор человеку не назначить (внешний разбор 2026-09-28, P2). Условие на
+ * итоговом UPDATE тут не помогает: до UPDATE не доходит ни одна.
+ *
+ * Выбрана сериализация, а не пересчёт после коммита. Пересчёт «после»
+ * требует крючка на коммит у каждого входа сдачи (обычная, киоск, заполнение
+ * специалистом) и всё равно теряет завершение, если процесс упал между
+ * коммитом и пересчётом, — пришлось бы добавлять ещё и подметание.
+ * Блокировка же решает дело внутри той транзакции, что пишет прохождение:
+ *
+ *   — сдача ДО первой записи берёт замок строк открытых назначений человека,
+ *     в которые входит методика (holdCompletable), по порядку id;
+ *   — вторая сдача того же набора ждёт на этом замке, пока первая не
+ *     зафиксируется, и проверяет завершение уже новым снимком (READ
+ *     COMMITTED: каждый оператор видит всё, что зафиксировано к его началу),
+ *     где прохождение первой есть. Последняя из сдач видит все.
+ *
+ * Почему замок берётся до первой записи, а не перед проверкой: сдача
+ * списывает попытку (строка survey_access) раньше, чем доходит до
+ * завершения, а отмена назначения и расписание идут в обратном порядке —
+ * сначала строка назначения, потом доступы по нему. Взятый позже, замок
+ * назначения замкнул бы круг «сдача держит доступ и ждёт назначение, отмена
+ * держит назначение и ждёт доступ». Порядок «назначение → его доступы»
+ * теперь один у всех, кто их трогает.
+ *
+ * Назначения, выданные уже во время сдачи (каскад по её же результату),
+ * она не закрывает: проверяется ровно то, что было взято под замок, — как и
+ * прежде требовал порядок «сначала закрытие, потом каскады».
+ */
+
+/**
+ * Открытые назначения человека, которые может завершить сдача этой
+ * методики, — под замком строки до конца транзакции сдачи. Зовётся до
+ * первой записи сдачи; возвращает то, что потом проверит
+ * closeCompletedBatteries.
+ */
+export async function holdCompletable(userId: string | null, surveyId: string): Promise<string[]> {
+  if (!userId) return [];
+  const rows = await db
+    .select({ id: batteryAssignments.id })
+    .from(batteryAssignments)
+    .where(
+      and(
+        eq(batteryAssignments.userId, userId),
+        isNull(batteryAssignments.completedAt),
+        isNull(batteryAssignments.cancelledAt),
+        assignmentHasStep(surveyId),
+      ),
+    )
+    // один порядок у всех, кто берёт несколько строк назначений, — иначе две сдачи замкнули бы круг
+    .orderBy(batteryAssignments.id)
+    .for("update");
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Назначения по id — открытые, под замком строки, по порядку id.
+ *
+ * Замок, а не просто чтение: проверку завершённости делает тот, кто держит
+ * строку, и следующий ждёт, пока он зафиксируется (см. выше). Строка,
+ * которую за время ожидания завершили или сняли, в выборку не попадёт —
+ * PostgreSQL перепроверяет условие по её новой версии.
+ */
+async function lockOpen(where: SQL) {
+  return db
+    .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
+    .from(batteryAssignments)
+    .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
+    .where(and(where, isNull(batteryAssignments.completedAt), isNull(batteryAssignments.cancelledAt)))
+    .orderBy(batteryAssignments.id)
+    .for("update", { of: batteryAssignments });
+}
+
 /**
  * Отметить завершёнными назначения, у которых пройдены все исполнимые
- * обязательные шаги. Отметка — условием самого UPDATE (ещё не завершено и
- * не снято): назначение, снятое специалистом в ту же минуту, завершённым
- * не станет.
+ * обязательные шаги. Строки назначений уже под замком вызывающего (lockOpen),
+ * прохождения читаются после него — новым снимком. Отметка — ещё и условием
+ * самого UPDATE (не завершено и не снято).
  */
 async function closeIfComplete(
   active: { assignment: typeof batteryAssignments.$inferSelect; strictOrder: boolean }[],
 ): Promise<number> {
   if (!active.length) return 0;
-  const steps = await stepsOf([...new Set(active.map((a) => a.assignment.batteryId))]);
+  const steps = await stepsOf(active.map((a) => a.assignment.id));
   const completions = await completionsOf([...new Set(active.map((a) => a.assignment.userId))]);
   const now = new Date().toISOString();
   let closed = 0;
   for (const { assignment, strictOrder } of active) {
     const progress = batteryProgress(
-      steps.get(assignment.batteryId) ?? [],
+      steps.get(assignment.id) ?? [],
       strictOrder,
       assignment.assignedAt,
       completions.get(assignment.userId) ?? [],
@@ -275,26 +477,19 @@ async function closeIfComplete(
  * раз заново означало бы, что «активность» назначения зависит от того, кто и
  * когда открыл экран.
  *
- * Вызывается после успешной сдачи; ошибки не пробрасываются — сданное
- * прохождение не должно откатываться из-за учёта батарей.
+ * Вызывается после записи сдачи с тем, что сдача взяла под замок до
+ * записи (holdCompletable). Ошибки не пробрасываются — сданное прохождение
+ * не должно откатываться из-за учёта батарей; и чтобы это было правдой, а
+ * не пожеланием, учёт идёт точкой сохранения: сбой оператора в PostgreSQL
+ * обрывает всю транзакцию, и перехваченное исключение без точки сохранения
+ * всё равно уносило бы прохождение.
  */
-export async function closeCompletedBatteries(userId: string | null, surveyId: string): Promise<void> {
-  if (!userId) return;
+export async function closeCompletedBatteries(assignmentIds: readonly string[]): Promise<void> {
+  if (!assignmentIds.length) return;
   try {
-    const active = await db
-      .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
-      .from(batteryAssignments)
-      .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
-      .where(
-        and(
-          eq(batteryAssignments.userId, userId),
-          isNull(batteryAssignments.completedAt),
-          isNull(batteryAssignments.cancelledAt),
-          sql`exists (select 1 from battery_items bi
-                      where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
-        ),
-      );
-    await closeIfComplete(active);
+    await db.transaction(async () => {
+      await closeIfComplete(await lockOpen(inArray(batteryAssignments.id, [...assignmentIds])));
+    });
   } catch (error) {
     log.error("battery.assignments_update_failed", { error: String(error) });
   }
@@ -316,18 +511,8 @@ export async function closeCompletedBatteries(userId: string | null, surveyId: s
  * методику.
  */
 export async function closeCompletedForSurvey(surveyId: string): Promise<number> {
-  const active = await db
-    .select({ assignment: batteryAssignments, strictOrder: batteries.strictOrder })
-    .from(batteryAssignments)
-    .innerJoin(batteries, eq(batteries.id, batteryAssignments.batteryId))
-    .where(
-      and(
-        isNull(batteryAssignments.completedAt),
-        isNull(batteryAssignments.cancelledAt),
-        sql`exists (select 1 from battery_items bi
-                    where bi.battery_id = ${batteryAssignments.batteryId} and bi.survey_id = ${surveyId})`,
-      ),
-    );
+  // под тем же замком строки, что и сдача: снятие шага и сдача последнего шага одновременно — та же гонка
+  const active = await lockOpen(assignmentHasStep(surveyId));
   const closed = await closeIfComplete(active);
   if (closed) log.info("battery.closed_on_retire", { surveyId, closed });
   return closed;
@@ -376,11 +561,11 @@ export async function assertBatteryOrder(
     );
   if (!active.length) return;
 
-  const steps = await stepsOf(active.map((a) => a.battery.id));
+  const steps = await stepsOf(active.map((a) => a.assignment.id));
   const completions = (await completionsOf([userId])).get(userId) ?? [];
 
   for (const { assignment, battery } of active) {
-    const { steps: progress } = batteryProgress(steps.get(battery.id) ?? [], true, assignment.assignedAt, completions);
+    const { steps: progress } = batteryProgress(steps.get(assignment.id) ?? [], true, assignment.assignedAt, completions);
     const step = progress.find((s) => s.surveyId === surveyId);
     if (!step || step.state !== "locked") continue;
 
