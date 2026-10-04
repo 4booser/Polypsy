@@ -11,6 +11,7 @@ import {
   groupA,
   makeUser,
   root,
+  runDueSchedules,
   sr45,
   submitSurvey,
   surveyInA,
@@ -24,6 +25,7 @@ import {
   decisionRules,
   filterPresets,
   ruleHits,
+  schedules,
   statModels,
   surveyAccess,
 } from "../src/db/schema";
@@ -460,4 +462,93 @@ describe("удаление набора и выдача назначения", (
     ).rejects.toThrow();
     expect(await assignmentsOf(batteryId, p.id)).toHaveLength(1);
   });
+});
+
+describe("архивирование набора и выдача назначения", () => {
+  test("архив раньше выдачи: набор архивный (200), выдача — отказ, ни назначения, ни доступа", async () => {
+    /*
+     * Воспроизведение из разбора (#108, пп. 2–4): PUT archived=true ждал
+     * строки набора; выдача прочитала archived=false и ждала FK на вставке
+     * назначения. После отпускания PUT — 200, затем выдача — 201: назначение
+     * архивного набора и доступ к его методике.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Архів ${tag}`);
+    const title = `Архів ${tag}`;
+    const batteryId = await makeBattery(title, [s]);
+    const p = await patient("archive-assign");
+
+    const [archived, assigned] = await whileHeld(
+      (tx) => tx`select id from batteries where id = ${batteryId} for update`,
+      [archiveBattery(batteryId, title, [s]), assign(batteryId, p)],
+      BATTERY_QUEUE,
+    );
+    expect(archived!.status, `архивирование: ${JSON.stringify(archived!.body)}`).toBe(200);
+    expect(assigned!.status, "архивный набор назначен").toBe(400);
+
+    const [row] = await db.select({ archived: batteries.archived }).from(batteries).where(eq(batteries.id, batteryId));
+    expect(row!.archived).toBe(true);
+    expect(await assignmentsOf(batteryId, p.id)).toHaveLength(0);
+    expect(await accessOf(s, p.id), "доступ к методике архивного набора выдан").toHaveLength(0);
+  }, 30_000);
+
+  test("выдача раньше архива: назначение сохранено, архивирование проходит и знает об открытом назначении", async () => {
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Архів B ${tag}`);
+    const title = `Архів B ${tag}`;
+    const batteryId = await makeBattery(title, [s]);
+    const p = await patient("assign-archive");
+
+    const [assigned, archived] = await whileHeld(
+      (tx) => tx`select id from batteries where id = ${batteryId} for update`,
+      [assign(batteryId, p), archiveBattery(batteryId, title, [s])],
+      BATTERY_QUEUE,
+    );
+    expect(assigned!.status, `назначение: ${JSON.stringify(assigned!.body)}`).toBe(201);
+    expect(archived!.status).toBe(200);
+    expect(await assignmentsOf(batteryId, p.id)).toHaveLength(1);
+    expect(await accessOf(s, p.id)).toHaveLength(1);
+
+    // журнал архивирования считал открытые назначения после замка, а не до него
+    const [entry] = await auditRows("battery.update", batteryId);
+    expect(entry?.details?.openAssignmentsKept).toBe(1);
+  }, 30_000);
+
+  test("расписание, вставшее за архивированием, архивный набор не выдаёт", async () => {
+    /*
+     * Тот же сторож у автоматической выдачи: расписание читало archived до
+     * своей транзакции и выдавало набор, который за это время архивировали.
+     * Теперь строка набора берётся под замок внутри транзакции выдачи
+     * (lib/batteries.ts, lockBatteryForAssign) — то же у каскада и приглашения.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Архів за розкладом ${tag}`);
+    const title = `Архів за розкладом ${tag}`;
+    const batteryId = await makeBattery(title, [s]);
+    const unit = `Взвод ${tag}`;
+    const p = await makeUser("user", `gr-sched-${tag}@test`, { sex: "male", birthDate: "1990-01-01", unit });
+    people.push(p.id);
+    await db.insert(schedules).values({
+      id: crypto.randomUUID(),
+      title: `Розклад ${tag}`,
+      batteryId,
+      scope: "unit",
+      unit,
+      intervalDays: 30,
+      dueDays: 7,
+      startsAt: new Date(Date.now() - 1000).toISOString(),
+      nextRunAt: new Date(Date.now() - 1000).toISOString(),
+      active: true,
+      createdBy: adminA.id,
+    });
+
+    const [archived] = await whileHeld<unknown>(
+      (tx) => tx`select id from batteries where id = ${batteryId} for update`,
+      [archiveBattery(batteryId, title, [s]), () => runDueSchedules()],
+      BATTERY_QUEUE,
+    );
+    expect((archived as { status: number }).status).toBe(200);
+    expect(await assignmentsOf(batteryId, p.id), "расписание выдало архивный набор").toHaveLength(0);
+    expect(await accessOf(s, p.id)).toHaveLength(0);
+  }, 30_000);
 });

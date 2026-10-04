@@ -267,7 +267,9 @@ batteryRoutes.post("/", requireStaff, requirePermission("batteries.manage"), asy
 batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
-  await assertBatteryAccess(user, batteryId);
+  // замок строки — тем же режимом, что возьмёт UPDATE ниже: выдача, вставшая
+  // за ним, увидит архив, а счётчик открытых назначений считается под замком
+  await assertBatteryAccess(user, batteryId, "no key update");
   const input = await parseBody(c.req.raw, batteryInputSchema);
   if (input.groupId) await assertGroupAccess(user, input.groupId);
   for (const item of input.items) await assertSurveyAccess(user, item.surveyId);
