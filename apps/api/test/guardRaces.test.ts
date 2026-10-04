@@ -5,9 +5,13 @@ import {
   adminA,
   api,
   appApi,
+  createSurveySchema,
+  createVersion,
   db,
+  groupA,
   makeUser,
   root,
+  sr45,
   submitSurvey,
   surveyInA,
   surveys,
@@ -15,11 +19,13 @@ import {
 } from "./fixtures";
 import {
   auditLog,
+  batteries,
   batteryAssignments,
   decisionRules,
   filterPresets,
   ruleHits,
   statModels,
+  surveyAccess,
 } from "../src/db/schema";
 
 /**
@@ -318,4 +324,140 @@ describe("пресет фильтров: удаление и создание м
     const run = await appApi(`/api/stat-models/${created.body.id}/run`, adminA.token, { method: "POST", body: "{}" });
     expect(run.status, `запуск созданной модели: ${JSON.stringify(run.body)}`).toBe(200);
   }, 30_000);
+});
+
+/* ═══════════ #107, #108: набор — удаление, архивирование и выдача ═══════════ */
+
+/** Закрытая методика группы А: открывается пациенту только по назначению */
+async function restrictedSurvey(title: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await db.insert(surveys).values({
+    id,
+    groupId: groupA,
+    title: { uk: title, ru: title, en: title },
+    administration: "self",
+    status: "published",
+    publishedAt: new Date().toISOString(),
+    visibility: "restricted",
+    scoringEnabled: true,
+    allowRetake: true,
+    createdBy: adminA.id,
+  } as never);
+  await createVersion(id, createSurveySchema.parse(sr45), adminA.id, "v1");
+  return id;
+}
+
+/** Набор штатным путём (POST /batteries) — так же, как собирает его сотрудник */
+async function makeBattery(title: string, surveyIds: string[]): Promise<string> {
+  const res = await appApi("/api/batteries", adminA.token, {
+    method: "POST",
+    body: JSON.stringify({ title, groupId: groupA, strictOrder: false, items: surveyIds.map((surveyId) => ({ surveyId })) }),
+  });
+  expect(res.status, `набор: ${JSON.stringify(res.body)}`).toBe(201);
+  return res.body.id as string;
+}
+
+const assign = (batteryId: string, who: Person) => () =>
+  appApi(`/api/batteries/${batteryId}/assign`, adminA.token, { method: "POST", body: JSON.stringify({ userId: who.id }) });
+
+const removeBattery = (batteryId: string) => () => appApi(`/api/batteries/${batteryId}`, adminA.token, { method: "DELETE" });
+
+const archiveBattery = (batteryId: string, title: string, surveyIds: string[]) => () =>
+  appApi(`/api/batteries/${batteryId}`, adminA.token, {
+    method: "PUT",
+    body: JSON.stringify({
+      title,
+      groupId: groupA,
+      strictOrder: false,
+      archived: true,
+      items: surveyIds.map((surveyId) => ({ surveyId })),
+    }),
+  });
+
+async function assignmentsOf(batteryId: string, userId: string) {
+  return db
+    .select({ id: batteryAssignments.id })
+    .from(batteryAssignments)
+    .where(and(eq(batteryAssignments.batteryId, batteryId), eq(batteryAssignments.userId, userId)));
+}
+
+async function accessOf(surveyId: string, userId: string) {
+  return db
+    .select({ surveyId: surveyAccess.surveyId })
+    .from(surveyAccess)
+    .where(and(eq(surveyAccess.surveyId, surveyId), eq(surveyAccess.userId, userId)));
+}
+
+/* до правки выдача ждёт на вставке назначения (FK к набору), удаление — на самой строке; после — обе на строке набора */
+const BATTERY_QUEUE = ['"batteries"', '"battery_assignments"'];
+
+describe("удаление набора и выдача назначения", () => {
+  test("выдача раньше удаления: назначение (201) сохранено, удаление — отказ, доступ выдан", async () => {
+    /*
+     * Воспроизведение из разбора (#107, пп. 2–4): выдача ждала FK-проверки
+     * на строке набора, удаление успело посчитать «назначений нет» и ждало
+     * той же строки. После отпускания: 201 с id назначения, затем 204 — и
+     * каскад унёс назначение, чей id уже отдан, а доступ пациента остался.
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Видалення A ${tag}`);
+    const batteryId = await makeBattery(`Видалення A ${tag}`, [s]);
+    const p = await patient("del-assign");
+
+    const [assigned, deleted] = await whileHeld(
+      (tx) => tx`select id from batteries where id = ${batteryId} for update`,
+      [assign(batteryId, p), removeBattery(batteryId)],
+      BATTERY_QUEUE,
+    );
+    expect(assigned!.status, `назначение: ${JSON.stringify(assigned!.body)}`).toBe(201);
+    expect(deleted!.status, "набор с назначением удалён").toBe(400);
+
+    const rows = await assignmentsOf(batteryId, p.id);
+    expect(rows.map((r) => r.id), "назначение, чей id уже отдан, исчезло").toEqual([assigned!.body.id]);
+    expect(await accessOf(s, p.id)).toHaveLength(1);
+    expect(await db.select({ id: batteries.id }).from(batteries).where(eq(batteries.id, batteryId))).toHaveLength(1);
+  }, 30_000);
+
+  test("удаление раньше выдачи: набор удалён (204), выдача — 404, доступа не осталось", async () => {
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Видалення B ${tag}`);
+    const batteryId = await makeBattery(`Видалення B ${tag}`, [s]);
+    const p = await patient("assign-del");
+
+    const [deleted, assigned] = await whileHeld(
+      (tx) => tx`select id from batteries where id = ${batteryId} for update`,
+      [removeBattery(batteryId), assign(batteryId, p)],
+      BATTERY_QUEUE,
+    );
+    expect(deleted!.status, `удаление: ${JSON.stringify(deleted!.body)}`).toBe(204);
+    expect(assigned!.status, "назначение на удалённый набор прошло").toBe(404);
+    expect(await assignmentsOf(batteryId, p.id)).toHaveLength(0);
+    expect(await accessOf(s, p.id), "отказ выдачи оставил доступ").toHaveLength(0);
+  }, 30_000);
+
+  test("завершённое назначение держит набор от удаления и на уровне базы", async () => {
+    /*
+     * Сторож в маршруте — не единственная защита: внешний ключ назначений
+     * теперь RESTRICT, и удаление набора с историей падает в базе даже
+     * мимо маршрута (миграция 0119).
+     */
+    const tag = crypto.randomUUID().slice(0, 8);
+    const s = await restrictedSurvey(`Історія ${tag}`);
+    const batteryId = await makeBattery(`Історія ${tag}`, [s]);
+    const p = await patient("history");
+    const made = await assign(batteryId, p)();
+    expect(made.status).toBe(201);
+    await db
+      .update(batteryAssignments)
+      .set({ completedAt: new Date().toISOString() })
+      .where(eq(batteryAssignments.id, made.body.id));
+
+    expect((await removeBattery(batteryId)()).status).toBe(400);
+    await expect(
+      (async () => {
+        await db.delete(batteries).where(eq(batteries.id, batteryId));
+      })(),
+    ).rejects.toThrow();
+    expect(await assignmentsOf(batteryId, p.id)).toHaveLength(1);
+  });
 });
