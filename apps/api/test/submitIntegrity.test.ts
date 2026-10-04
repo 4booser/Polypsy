@@ -568,6 +568,142 @@ describe("повтор по clientRequestId", () => {
   });
 });
 
+/* ─────────── повтор отдаёт тот же результат, что первая сдача ─────────── */
+
+/**
+ * Один сериализатор результата для первой сдачи и повтора (CR-105).
+ *
+ * Повтор по clientRequestId отдавал строки response_scores как есть: без
+ * scaleCode, scaleTitle, kind, correctedScore и band — вместо полосы плоские
+ * bandLabel/severity. Экран результата мобилки читает scaleTitle и
+ * band.severity/label/description: при повторе из очереди исчезали имя
+ * шкалы и интерпретация.
+ */
+describe("повтор по clientRequestId: формат результата", () => {
+  /** Шкала с полосами, у которых есть описание и рекомендация — то, что теряется при повторе */
+  function bandedContent(yesScore: number) {
+    const base = content(yesScore);
+    return {
+      ...base,
+      scales: base.scales.map((s) => ({
+        ...s,
+        bands: [
+          {
+            minScore: 0,
+            maxScore: 1,
+            label: { uk: "Низький", ru: "Низкий" },
+            severity: "none" as const,
+            description: { uk: "У межах норми", ru: "В пределах нормы" },
+            grade: 1,
+            recommendation: null,
+          },
+          {
+            minScore: 2,
+            maxScore: 99,
+            label: { uk: "Високий", ru: "Высокий" },
+            severity: "severe" as const,
+            description: { uk: "Виражені ознаки", ru: "Выраженные признаки" },
+            grade: 3,
+            recommendation: { uk: "Консультація фахівця", ru: "Консультация специалиста" },
+          },
+        ],
+      })),
+    };
+  }
+
+  async function bandedSurvey(showResultsToPatient: boolean): Promise<string> {
+    const id = crypto.randomUUID();
+    await db.insert(surveys).values({
+      id,
+      groupId: groupA,
+      title: { uk: `Повтор ${tag()}`, ru: "Повтор" },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "public",
+      scoringEnabled: true,
+      allowRetake: true,
+      showResultsToPatient,
+      createdBy: adminA.id,
+    } as never);
+    await createVersion(id, createSurveySchema.parse(bandedContent(1)), adminA.id, "v1");
+    return id;
+  }
+
+  const noDuplicate = (body: Record<string, unknown>) => {
+    const { duplicate: _d, cascade: _c, ...rest } = body;
+    return rest;
+  };
+
+  test("пациент, которому показывают результат: повтор — тот же ScoreResult с названием и интерпретацией", async () => {
+    const surveyId = await bandedSurvey(true);
+    const person = await makeUser("user", `replay-format-${tag()}@test.dev`, { sex: "male", birthDate: "1990-01-01" });
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const clientRequestId = crypto.randomUUID();
+    const body = { clientRequestId, versionId: v1.versionId, answers: yesAnswers(v1) };
+
+    const first = await submit(surveyId, person.token, body);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(first.body.scores).toHaveLength(1);
+    expect(first.body.scores[0].scaleTitle).toBe("Сума");
+    expect(first.body.scores[0].band).toMatchObject({ label: "Високий", severity: "severe", description: "Виражені ознаки" });
+
+    const again = await submit(surveyId, person.token, body);
+    expect(again.status).toBe(200);
+    expect(again.body.duplicate).toBe(true);
+    // та же форма и те же значения: не строки таблицы, а ScoreResult по сохранённой версии
+    expect(noDuplicate(again.body)).toEqual(noDuplicate(first.body));
+  });
+
+  test("результат не показывают — пусто в обоих ответах; специалист за пациента видит полный в обоих", async () => {
+    const surveyId = await bandedSurvey(false);
+    const person = await makeUser("user", `replay-hidden-${tag()}@test.dev`, { sex: "female", birthDate: "1991-01-01" });
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const hidden = { clientRequestId: crypto.randomUUID(), versionId: v1.versionId, answers: yesAnswers(v1) };
+    const first = await submit(surveyId, person.token, hidden);
+    expect(first.status).toBe(201);
+    expect(first.body.scores).toEqual([]);
+    const again = await submit(surveyId, person.token, hidden);
+    expect(again.status).toBe(200);
+    expect(noDuplicate(again.body)).toEqual(noDuplicate(first.body));
+
+    const patientOf = await makeUser("user", `replay-staff-${tag()}@test.dev`, { sex: "male", birthDate: "1980-01-01" });
+    await db.insert(surveyAccess).values({ surveyId, userId: patientOf.id, grantedBy: adminA.id });
+    const byStaff = { clientRequestId: crypto.randomUUID(), onBehalfOf: patientOf.id, versionId: v1.versionId, answers: yesAnswers(v1) };
+    const staffFirst = await submit(surveyId, adminA.token, byStaff);
+    expect(staffFirst.status, JSON.stringify(staffFirst.body)).toBe(201);
+    expect(staffFirst.body.scores[0].band.recommendation).toBe("Консультація фахівця");
+    const staffAgain = await submit(surveyId, adminA.token, byStaff);
+    expect(staffAgain.status).toBe(200);
+    expect(noDuplicate(staffAgain.body)).toEqual(noDuplicate(staffFirst.body));
+  });
+
+  test("после новой редакции повтор считается по той версии, которую проходили", async () => {
+    const surveyId = await bandedSurvey(true);
+    const person = await makeUser("user", `replay-version-${tag()}@test.dev`, { sex: "male", birthDate: "1992-01-01" });
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const body = { clientRequestId: crypto.randomUUID(), versionId: v1.versionId, answers: yesAnswers(v1) };
+    const first = await submit(surveyId, person.token, body);
+    expect(first.status).toBe(201);
+
+    // новая редакция: шкала переименована, полосы перерисованы — у повтора ничего из этого быть не должно
+    const next = bandedContent(5);
+    const renamed = {
+      ...next,
+      scales: next.scales.map((sc) => ({
+        ...sc,
+        title: { uk: "Нова сума", ru: "Новая сумма" },
+        bands: [{ minScore: 0, maxScore: 99, label: { uk: "Інакше", ru: "Иначе" }, severity: "mild" }],
+      })),
+    };
+    await createVersion(surveyId, createSurveySchema.parse(renamed), adminA.id, "v2");
+
+    const again = await submit(surveyId, person.token, body);
+    expect(again.status).toBe(200);
+    expect(noDuplicate(again.body)).toEqual(noDuplicate(first.body));
+  });
+});
+
 /* ─────────── «от имени» и «только просмотр» — только чтение, и держит это база ─────────── */
 
 async function impersonate(targetId: string): Promise<{ token: string; sessionId: string }> {
