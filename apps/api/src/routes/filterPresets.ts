@@ -8,6 +8,7 @@ import {
   type FilterPresetListItem,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { asSystem } from "../db/context";
 import { filterPresets } from "../db/schema";
 import { audit } from "../lib/audit";
 import { badRequest, parseBody, parseQuery } from "../lib/http";
@@ -170,7 +171,14 @@ filterPresetRoutes.delete("/:id", async (c) => {
   // строка под замком до конца запроса: модели считаются после него, а не до (lib/scope.ts)
   const preset = await assertFilterPresetAccess(user, c.req.param("id"), "update");
 
-  const [count] = await db.select({ modelCount }).from(filterPresets).where(eq(filterPresets.id, preset.id));
+  /*
+   * Счёт — системной ролью, не владельца: политика строк показывает ему
+   * только свои модели, а суперадмин вправе собрать модель на чужом пресете.
+   * Такую модель владелец не видит, но удалить пресет из-под неё не должен.
+   */
+  const [count] = await asSystem(() =>
+    db.select({ modelCount }).from(filterPresets).where(eq(filterPresets.id, preset.id)),
+  );
   const used = Number(count?.modelCount ?? 0);
   if (used > 0) badRequest("err.filterPresetInUse", { count: used });
 

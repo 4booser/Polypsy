@@ -326,6 +326,26 @@ describe("пресет фильтров: удаление и создание м
     const run = await appApi(`/api/stat-models/${created.body.id}/run`, adminA.token, { method: "POST", body: "{}" });
     expect(run.status, `запуск созданной модели: ${JSON.stringify(run.body)}`).toBe(200);
   }, 30_000);
+
+  test("модель суперадмина на чужом пресете держит его от удаления владельцем", async () => {
+    /*
+     * Та же дыра без гонки: модели считались под политикой строк владельца
+     * пресета, а модель суперадмина на этом пресете ему не видна — счёт
+     * давал ноль, пресет удалялся, модель переставала запускаться.
+     */
+    const id = await preset("root-model");
+    const title = `Модель root ${crypto.randomUUID().slice(0, 8)}`;
+    const created = await appApi("/api/stat-models", root.token, {
+      method: "POST",
+      body: JSON.stringify({ title, columns: [{ presetId: id, surveyId: surveyInA }] }),
+    });
+    expect(created.status, `модель суперадмина: ${JSON.stringify(created.body)}`).toBe(201);
+
+    const deleted = await removePreset(id)();
+    expect(deleted.status, "пресет удалён из-под модели, которой владелец не видит").toBe(400);
+    const run = await appApi(`/api/stat-models/${created.body.id}/run`, root.token, { method: "POST", body: "{}" });
+    expect(run.status).toBe(200);
+  });
 });
 
 /* ═══════════ #107, #108: набор — удаление, архивирование и выдача ═══════════ */
