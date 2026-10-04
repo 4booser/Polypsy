@@ -7,13 +7,22 @@ import {
   mailingRecipients,
   mailings,
   pushDeliveries,
+  pushOutcomes,
   pushTokens,
   slots,
   specialistProfiles,
   users,
 } from "../src/db/schema";
 import { pushMailings } from "../src/lib/mailingPush";
-import { type PushTicket, pushToUser, registerDevice, setPushSenderForTests } from "../src/lib/push";
+import {
+  checkPushReceipts,
+  expoSender,
+  type PushTicket,
+  pushToUser,
+  registerDevice,
+  setPushReceiptFetcherForTests,
+  setPushSenderForTests,
+} from "../src/lib/push";
 import { remindAppointments } from "../src/lib/remind";
 
 /**
@@ -30,11 +39,14 @@ const sent: Sent[] = [];
 /** Какой билет вернуть по токену; по умолчанию — принято */
 let ticketFor: (token: string) => PushTicket = () => ({ status: "ok", id: crypto.randomUUID() });
 
+/** Подменённый отправитель: собирает сообщения и отвечает билетами по ticketFor */
+const stubSender = async (messages: { to: string; title: string; body: string }[]) => {
+  for (const m of messages) sent.push({ to: m.to, title: m.title, body: m.body });
+  return messages.map((m) => ticketFor(m.to));
+};
+
 beforeAll(() => {
-  setPushSenderForTests(async (messages) => {
-    for (const m of messages) sent.push({ to: m.to, title: m.title, body: m.body });
-    return messages.map((m) => ticketFor(m.to));
-  });
+  setPushSenderForTests(stubSender);
 });
 
 const cancelled: string[] = [];
@@ -42,6 +54,7 @@ const cancelled: string[] = [];
 const crowd = { users: [] as string[], slots: [] as string[], appointments: [] as string[] };
 afterAll(async () => {
   setPushSenderForTests(null);
+  setPushReceiptFetcherForTests(null);
   // ничего живого в общих очередях: напоминания идут по всей базе
   if (cancelled.length) {
     await db.update(appointments).set({ status: "cancelled" }).where(inArray(appointments.id, cancelled));
@@ -146,6 +159,167 @@ describe("билеты провайдера: принято или отказ", 
     } finally {
       ticketFor = () => ({ status: "ok", id: crypto.randomUUID() });
     }
+  });
+});
+
+describe("ответ провайдера не той формы — не успех (внешний разбор, #19)", () => {
+  const message = (eventKey: string) => ({ eventKey, kind: "test.proto", title: "Т", body: "Т" });
+  const originalFetch = globalThis.fetch;
+  /** Что ответит «Expo» на отправку; настоящий отправитель, подменена только сеть */
+  let expoBody: unknown = { data: [] };
+
+  beforeAll(() => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.includes("exp.host/--/api/v2/push/send")) {
+        return new Response(JSON.stringify(expoBody), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+    setPushSenderForTests(expoSender);
+  });
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
+    setPushSenderForTests(stubSender);
+  });
+
+  const outcomesOf = (kind: string) => db.select().from(pushOutcomes).where(eq(pushOutcomes.kind, kind));
+
+  test("пустые, короткие и бесстатусные билеты — исход protocol, заявка снята, следующий проход доставляет", async () => {
+    /*
+     * Прежде отсутствующий билет читался как принятый (`!ticket`), а ответ
+     * без массива билетов — как «принято без билета»: заявка оставалась с
+     * ok = true, и уведомление с неизвестной судьбой не повторялось никогда.
+     */
+    const p = await personWithDevice("proto");
+    const second = `ExponentPushToken[${crypto.randomUUID()}]`;
+    await registerDevice(p.id, second, "ios", "uk");
+    const key = `test:${crypto.randomUUID()}`;
+    const malformed: unknown[] = [
+      { data: [] },
+      {},
+      null,
+      { data: [{ status: "ok", id: "t-only-one" }] }, // билетов меньше, чем устройств
+      { data: [{ status: "ok" }, { status: "ok" }] }, // принято без id — квитанцию не спросить
+      { data: [{ foo: 1 }, { status: "ok", id: "t" }] }, // без статуса
+    ];
+    for (const body of malformed) {
+      expoBody = body;
+      expect(await pushToUser(p.id, message(key)), `ответ ${JSON.stringify(body)} принят за успех`).toBe(false);
+      expect(await deliveries(p.id, key), `после ${JSON.stringify(body)} заявка осталась`).toHaveLength(0);
+    }
+    const failed = (await outcomesOf("test.proto")).filter((o) => o.status === "failed");
+    expect(failed.length).toBeGreaterThanOrEqual(malformed.length * 2);
+    expect(new Set(failed.map((o) => o.error))).toEqual(new Set(["protocol"]));
+
+    // настоящий ответ — доставка, и дальше тишина
+    expoBody = { data: [{ status: "ok", id: `t-${crypto.randomUUID()}` }, { status: "ok", id: `t-${crypto.randomUUID()}` }] };
+    expect(await pushToUser(p.id, message(key))).toBe(true);
+    expect(await deliveries(p.id, key)).toHaveLength(1);
+    expect(await pushToUser(p.id, message(key))).toBe(false);
+  });
+});
+
+describe("квитанция возвращает событие в очередь (внешний разбор, #18)", () => {
+  const message = (eventKey: string) => ({ eventKey, kind: "test.receipt", title: "Т", body: "Т" });
+  const later = () => new Date(Date.now() + 20 * 60_000);
+
+  afterAll(() => {
+    ticketFor = () => ({ status: "ok", id: crypto.randomUUID() });
+    setPushReceiptFetcherForTests(null);
+  });
+
+  test("лимит частоты в квитанции — повтор с задержкой; подтверждённая доставка не дублируется", async () => {
+    /*
+     * Билет «принято» создавал заявку, а поздняя квитанция с временной
+     * ошибкой лишь отмечала исход: заявка оставалась ok = true, повтор
+     * pushToUser отсекался, напоминание не доходило никогда.
+     */
+    const p = await personWithDevice("receipt-retry");
+    const key = `test:${crypto.randomUUID()}`;
+    const first = `ticket-${crypto.randomUUID()}`;
+    ticketFor = () => ({ status: "ok", id: first });
+    expect(await pushToUser(p.id, message(key))).toBe(true);
+
+    setPushReceiptFetcherForTests(async () => ({ [first]: { status: "error", details: { error: "MessageRateExceeded" } } }));
+    const pass = await checkPushReceipts(later());
+    expect(pass.requeued, "квитанция не вернула событие в очередь").toBeGreaterThanOrEqual(1);
+    const [row] = await deliveries(p.id, key);
+    expect(row).toMatchObject({ ok: false, error: "MessageRateExceeded", attempts: 1 });
+    expect(row!.retryAfter, "срок повтора не назначен").not.toBeNull();
+    expect(new Date(row!.retryAfter!).getTime()).toBeGreaterThan(Date.now());
+
+    // до срока — не шлём
+    expect(await pushToUser(p.id, message(key))).toBe(false);
+    expect(to(p.token)).toHaveLength(1);
+
+    // срок вышел — та же заявка, вторая попытка
+    await db.update(pushDeliveries).set({ retryAfter: new Date(Date.now() - 1000).toISOString() }).where(eq(pushDeliveries.id, row!.id));
+    const second = `ticket-${crypto.randomUUID()}`;
+    ticketFor = () => ({ status: "ok", id: second });
+    expect(await pushToUser(p.id, message(key))).toBe(true);
+    expect(to(p.token)).toHaveLength(2);
+    const [again] = await deliveries(p.id, key);
+    expect(again).toMatchObject({ id: row!.id, ok: true, error: null, retryAfter: null, attempts: 2 });
+
+    // квитанция ok — доставлено, больше не шлём
+    setPushReceiptFetcherForTests(async () => ({ [second]: { status: "ok" } }));
+    await checkPushReceipts(later());
+    expect(await pushToUser(p.id, message(key))).toBe(false);
+    expect((await deliveries(p.id, key))[0]).toMatchObject({ ok: true, retryAfter: null });
+    expect(to(p.token)).toHaveLength(2);
+  });
+
+  test("задержка растёт с каждой попыткой", async () => {
+    const p = await personWithDevice("receipt-backoff");
+    const key = `test:${crypto.randomUUID()}`;
+    const delays: number[] = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const ticket = `ticket-${crypto.randomUUID()}`;
+      ticketFor = () => ({ status: "ok", id: ticket });
+      expect(await pushToUser(p.id, message(key))).toBe(true);
+      setPushReceiptFetcherForTests(async () => ({ [ticket]: { status: "error", details: { error: "MessageRateExceeded" } } }));
+      const now = later();
+      await checkPushReceipts(now);
+      const [row] = await deliveries(p.id, key);
+      expect(row).toMatchObject({ ok: false, attempts: attempt });
+      delays.push(new Date(row!.retryAfter!).getTime() - now.getTime());
+      await db.update(pushDeliveries).set({ retryAfter: new Date(Date.now() - 1000).toISOString() }).where(eq(pushDeliveries.id, row!.id));
+    }
+    expect(delays[0]).toBe(15 * 60_000);
+    expect(delays[1]).toBe(30 * 60_000);
+    expect(delays[2]).toBe(60 * 60_000);
+  });
+
+  test("одно из двух устройств подтверждено — повтора нет", async () => {
+    const p = await personWithDevice("receipt-half");
+    const second = `ExponentPushToken[${crypto.randomUUID()}]`;
+    await registerDevice(p.id, second, "ios", "uk");
+    const key = `test:${crypto.randomUUID()}`;
+    const okTicket = `ticket-${crypto.randomUUID()}`;
+    const busyTicket = `ticket-${crypto.randomUUID()}`;
+    ticketFor = (token) => ({ status: "ok", id: token === p.token ? busyTicket : okTicket });
+    expect(await pushToUser(p.id, message(key))).toBe(true);
+    setPushReceiptFetcherForTests(async () => ({
+      [okTicket]: { status: "ok" },
+      [busyTicket]: { status: "error", details: { error: "MessageRateExceeded" } },
+    }));
+    await checkPushReceipts(later());
+    expect((await deliveries(p.id, key))[0], "человек уведомление видел, а повтор назначен").toMatchObject({ ok: true, retryAfter: null });
+  });
+
+  test("постоянный отказ в квитанции закрывает заявку без повтора", async () => {
+    const p = await personWithDevice("receipt-big");
+    const key = `test:${crypto.randomUUID()}`;
+    const ticket = `ticket-${crypto.randomUUID()}`;
+    ticketFor = () => ({ status: "ok", id: ticket });
+    expect(await pushToUser(p.id, message(key))).toBe(true);
+    setPushReceiptFetcherForTests(async () => ({ [ticket]: { status: "error", details: { error: "MessageTooBig" } } }));
+    const pass = await checkPushReceipts(later());
+    expect(pass.requeued).toBe(0);
+    expect((await deliveries(p.id, key))[0]).toMatchObject({ ok: false, error: "MessageTooBig", retryAfter: null });
+    expect(await pushToUser(p.id, message(key))).toBe(false);
+    expect(to(p.token)).toHaveLength(1);
   });
 });
 
