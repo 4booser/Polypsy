@@ -53,6 +53,19 @@ export function validateSurvey(draft: Draft, lang: Lang = "uk"): Issue[] {
   const scales = draft.scales ?? [];
   const total = questions.length;
 
+  /*
+   * ─── есть что проходить ───
+   *
+   * Методика без единого пункта для ответа (только информационные экраны
+   * или вовсе пусто) — не методика: пациент откроет её и сдаст пустое
+   * прохождение, набор закроется шагом, которого не было. Правка
+   * опубликованной методики с `questions: []` проходила проверку публикации
+   * молча, когда шкал у методики нет и остальным правилам нечего проверять
+   * (внешний разбор, CR-046). Для черновика это такая же «ошибка», как
+   * прочие: сохранить можно, опубликовать — нет.
+   */
+  if (!questions.some((q) => q.type !== "info")) add("error", say("val.where.survey"), "val.noItems");
+
   /* ─── шкалы: коды ─── */
   const codeCount = new Map<string, number>();
   for (const s of scales) codeCount.set(s.code, (codeCount.get(s.code) ?? 0) + 1);

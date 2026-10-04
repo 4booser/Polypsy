@@ -780,6 +780,14 @@ export const SERVER_TEXTS = {
     en: "The alert for “{title}” wasn’t acknowledged within {limit} min.",
   },
   "mail.escalation.open": { uk: "Відкрита вже {minutes} хв.", ru: "Открыта уже {minutes} мин.", en: "Open for {minutes} min." },
+
+  /* ── w18:submit ── */
+  "val.where.survey": { uk: "Методика", ru: "Методика", en: "Method" },
+  "val.noItems": {
+    uk: "У методиці немає жодного пункту для відповіді — публікувати нічого",
+    ru: "В методике нет ни одного пункта для ответа — публиковать нечего",
+    en: "The method has no items to answer — there is nothing to publish",
+  },
 } as const satisfies Record<string, ServerTextEntry>;
 
 export type ServerTextKey = keyof typeof SERVER_TEXTS;
