@@ -513,6 +513,128 @@ describe("перенос и отмена", () => {
   });
 });
 
+describe("перенос начатого приёма (#38)", () => {
+  /**
+   * Перенос — действие над приёмом, который ещё не начался. Прежде он
+   * запрещал только done/no_show/cancelled и пропускал arrived/in_progress:
+   * пациент переносил приём, на котором уже сидел, в будущий слот другого
+   * врача, приём возвращался в «записан» мимо графа переходов, а
+   * arrived_at/started_at оставались от прежнего — и завершить его было
+   * нельзя (booked → done запрещён).
+   */
+  async function startedVisit(tag: string) {
+    const patient = await makeUser("user", `clinic-ip-${tag}-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot();
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    expect(booked.status).toBe(201);
+    for (const status of ["arrived", "in_progress"]) {
+      const res = await api(`/api/clinic/appointments/${booked.body.id}/status`, specialistToken, {
+        method: "POST",
+        body: JSON.stringify({ status }),
+      });
+      expect(res.status).toBe(200);
+    }
+    return { id: booked.body.id as string, slotId, patient };
+  }
+
+  test("пациент не переносит приём, который уже идёт; приём завершается штатно", async () => {
+    const { id, slotId, patient } = await startedVisit("p");
+    const other = await looseSpecialist("ip-other");
+    const start = Date.now() + 200 * 3600_000;
+    const elsewhere = crypto.randomUUID();
+    await db.insert(slots).values({
+      id: elsewhere,
+      specialistId: other.id,
+      departmentId,
+      startsAt: new Date(start).toISOString(),
+      endsAt: new Date(start + 3600_000).toISOString(),
+    });
+
+    const moved = await api(`/api/clinic/appointments/${id}/reschedule`, patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId: elsewhere }),
+    });
+    expect(moved.status).toBe(400);
+    expect(String(moved.body.error)).toContain("почав");
+
+    const [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("in_progress");
+    expect(row!.slotId).toBe(slotId);
+    expect(row!.specialistId).toBe(specialistId);
+    expect(row!.arrivedAt).not.toBeNull();
+    expect(row!.startedAt).not.toBeNull();
+
+    const done = await api(`/api/clinic/appointments/${id}/status`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ status: "done" }),
+    });
+    expect(done.status).toBe(200);
+  });
+
+  test("сотрудник — тоже: начатый приём не переносится, а исправляется отдельным шагом назад", async () => {
+    /*
+     * Ошибочно нажатое «пришёл» или «начали» снимается явным обратным
+     * переходом (in_progress → arrived → booked), и каждый шаг убирает свою
+     * отметку времени: история приёма остаётся согласованной с состоянием.
+     * После этого перенос — обычный, из «записан».
+     */
+    const { id } = await startedVisit("s");
+    const second = await freeSlot();
+    const refused = await api(`/api/clinic/appointments/${id}/reschedule`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ slotId: second }),
+    });
+    expect(refused.status).toBe(400);
+
+    // шаг назад: «начали» снято, время начала тоже
+    const unstart = await api(`/api/clinic/appointments/${id}/status`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ status: "arrived" }),
+    });
+    expect(unstart.status).toBe(200);
+    let [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("arrived");
+    expect(row!.startedAt).toBeNull();
+    expect(row!.arrivedAt).not.toBeNull();
+
+    // ещё шаг: «пришёл» снято
+    const unarrive = await api(`/api/clinic/appointments/${id}/status`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ status: "booked" }),
+    });
+    expect(unarrive.status).toBe(200);
+    [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.status).toBe("booked");
+    expect(row!.arrivedAt).toBeNull();
+
+    const moved = await api(`/api/clinic/appointments/${id}/reschedule`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ slotId: second }),
+    });
+    expect(moved.status).toBe(200);
+    [row] = await db.select().from(appointments).where(eq(appointments.id, id));
+    expect(row!.slotId).toBe(second);
+    expect(row!.status).toBe("booked");
+  });
+
+  test("из «записан» и «подтверждён» назад идти некуда", async () => {
+    const patient = await makeUser("user", `clinic-ip-b-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot();
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    const res = await api(`/api/clinic/appointments/${booked.body.id}/status`, specialistToken, {
+      method: "POST",
+      body: JSON.stringify({ status: "booked" }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("сегодня", () => {
   test("день отдаётся целиком, включая уже принятых", async () => {
     const res = await api("/api/clinic/today", specialistToken);
