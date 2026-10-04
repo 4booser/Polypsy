@@ -6,7 +6,7 @@ import { db } from "../db";
 import { decisionRules, ruleHits, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
-import { badRequest, langOf, notFound, parseBody } from "../lib/http";
+import { badRequest, conflict, langOf, notFound, parseBody } from "../lib/http";
 import { accessibleGroupIds, canAccessSurvey, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -209,7 +209,19 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
     badRequest("err.declineNeedsNote");
   }
 
-  await db
+  /*
+   * Решение — одним условием с записью (внешний разбор 2026-09-29, #104).
+   *
+   * «Ещё предложено» проверялось чтением, а UPDATE искал строку только по
+   * id. Два одновременных PATCH — «принять» и «отклонить» — оба читали
+   * «предложено», оба писали, оба получали 200, и в строке оставалось
+   * решение второго с его заметкой поверх первого; журнал при этом нёс обе
+   * записи. Теперь UPDATE записывает, только если строка всё ещё
+   * «предложено»: второй запрос ждёт замка строки, после чужого коммита
+   * условие не сходится, строки нет — 409. Последовательный повтор по уже
+   * решённому остаётся 400 (проверка выше): это не гонка, а повтор.
+   */
+  const [decided] = await db
     .update(ruleHits)
     .set({
       status: input.status,
@@ -217,7 +229,9 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
       decidedAt: new Date().toISOString(),
       decisionNote: input.note?.trim() || null,
     })
-    .where(eq(ruleHits.id, id));
+    .where(and(eq(ruleHits.id, id), eq(ruleHits.status, "suggested")))
+    .returning({ id: ruleHits.id });
+  if (!decided) conflict("err.hitDecidedMeanwhile");
 
   await audit(c, {
     action: "rule.decide",
