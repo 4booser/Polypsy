@@ -48,9 +48,26 @@ export const batteryRoutes = new Hono<AppEnv>();
 
 batteryRoutes.use("*", requireAuth);
 
-/** Батарея видна тем же, кому видна её группа */
-async function assertBatteryAccess(user: Parameters<typeof accessibleGroupIds>[0], batteryId: string) {
-  const row = await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
+/**
+ * Батарея видна тем же, кому видна её группа.
+ *
+ * С замком — для путей, которые по прочитанному решают и пишут (внешний
+ * разбор 2026-09-30…10-01, #107, #108). Выдача берёт строку FOR SHARE:
+ * несколько выдач одного набора друг другу не мешают, а удаление (FOR
+ * UPDATE) и архивирование (UPDATE строки) ждут, пока выдача зафиксируется,
+ * — и наоборот, выдача, вставшая за ними, читает уже новую строку: набора
+ * нет (404) или он архивный (400). Прежде проверки «назначений нет» и «не в
+ * архиве» делались до замка, а каскад внешнего ключа уносил назначение, чей
+ * id уже отдан клиенту.
+ */
+async function assertBatteryAccess(
+  user: Parameters<typeof accessibleGroupIds>[0],
+  batteryId: string,
+  lock?: "share" | "no key update" | "update",
+) {
+  const row = lock
+    ? (await db.select().from(batteries).where(eq(batteries.id, batteryId)).for(lock))[0]
+    : await db.query.batteries.findFirst({ where: eq(batteries.id, batteryId) });
   if (!row) notFound("err.batteryNotFound");
   if (row.groupId) await assertGroupAccess(user, row.groupId);
   else if (!isStaff(user)) forbidden("err.batteryAccessDenied");
@@ -301,7 +318,8 @@ batteryRoutes.put("/:id", requireStaff, requirePermission("batteries.manage"), a
 batteryRoutes.delete("/:id", requireStaff, requirePermission("batteries.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
-  const row = await assertBatteryAccess(user, batteryId);
+  // FOR UPDATE: выдача, стоящая за этим замком, после удаления не найдёт набора
+  const row = await assertBatteryAccess(user, batteryId, "update");
 
   /*
    * Любое назначение — не только открытое — держит батарею от удаления.
@@ -309,6 +327,10 @@ batteryRoutes.delete("/:id", requireStaff, requirePermission("batteries.manage")
    * этот набор; каскад стёр бы её вместе с батареей, и в карте осталось бы
    * прохождение без объяснения, откуда оно взялось. Отработавшая батарея
    * отправляется в архив, а не в утиль.
+   *
+   * Счёт — под замком строки набора (см. assertBatteryAccess), а внешний
+   * ключ назначений с миграции 0119 RESTRICT: удаление с историей падает и в
+   * базе, мимо маршрута.
    */
   const [{ count } = { count: 0 }] = await db
     .select({ count: sql<number>`count(*)` })
@@ -427,7 +449,8 @@ batteryRoutes.get("/:id/assignments", requireStaff, requirePermission("assignmen
 batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.manage"), async (c) => {
   const user = c.get("user");
   const batteryId = c.req.param("id");
-  const battery = await assertBatteryAccess(user, batteryId);
+  // FOR SHARE: архивность и само существование набора проверяются по строке под замком
+  const battery = await assertBatteryAccess(user, batteryId, "share");
   if (battery.archived) badRequest("err.batteryArchived");
   await assertBatteryInUse(batteryId);
   const input = await parseBody(c.req.raw, assignBatterySchema);
