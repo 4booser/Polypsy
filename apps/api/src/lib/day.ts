@@ -107,9 +107,22 @@ export function deadlineOf(value: string | null | undefined, tz: string = env.in
   return BARE_DATE.test(value) ? endOfDay(value, tz) : value;
 }
 
-/** Конец дня, отстоящего от момента `from` на `days` суток, — по поясу учреждения */
+/**
+ * Конец дня, отстоящего от дня момента `from` на `days` календарных дней, —
+ * по поясу учреждения.
+ *
+ * Календарных, а не `days · 86 400 000` мс: сутки у дня перевода часов
+ * длиной 23 или 25 часов, и прибавление миллисекунд у полуночи такого дня
+ * теряло день или перескакивало через него — 25.10 00:30 плюс сутки давало
+ * ещё 25-е в 23:30, а 28.03 23:30 — уже 30-е в 00:30 (внешний разбор, #23).
+ * Сначала берётся местная дата момента, к ней прибавляется число дней (день
+ * за пределами месяца переносит zonedTime), и считается конец получившегося
+ * дня.
+ */
 export function endOfDayAfter(from: Date, days: number, tz: string = env.institutionTz): string {
-  return endOfDay(dayOf(new Date(from.getTime() + days * 86_400_000).toISOString(), tz)!, tz);
+  const l = localParts(from.getTime(), tz);
+  const next = zonedTime({ year: l.year, month: l.month, day: l.day + days + 1, hour: 0, minute: 0, second: 0, ms: 0 }, tz);
+  return new Date(next.getTime() - 1).toISOString();
 }
 
 /**
