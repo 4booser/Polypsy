@@ -48,6 +48,55 @@ docker info >/dev/null 2>&1 || die "Демон Docker не поднялся: sys
 
 docker compose version >/dev/null 2>&1 || die "Нужен docker compose v2 (плагин compose)."
 
+# ── 1а. Защита хоста ──────────────────────────────────────────────────────────
+# Только на Debian/Ubuntu: там есть unattended-upgrades, ufw и fail2ban
+# штатными пакетами. На прежнем сервере (Arch) порт 22 был забит перебором
+# паролей настолько, что sshd сбрасывал и выкатку (MaxStartups), а
+# обновлений безопасности не было вовсе. Ничего из этого не делается, если
+# у входящего нет ключа: иначе отключение паролей запирает дверь снаружи.
+if command -v apt-get >/dev/null 2>&1; then
+  say "Защита хоста…"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get install -y -q unattended-upgrades ufw fail2ban >/dev/null
+  # обновления безопасности — сами, без перезагрузки посреди дня
+  dpkg-reconfigure -f noninteractive unattended-upgrades >/dev/null 2>&1 || true
+  # снаружи — только ssh и сайт; остальное (postgres, api) живёт в сети docker
+  ufw --force reset >/dev/null
+  ufw default deny incoming >/dev/null
+  ufw default allow outgoing >/dev/null
+  ufw allow 22/tcp >/dev/null
+  ufw allow 80/tcp >/dev/null
+  ufw allow 443/tcp >/dev/null
+  ufw --force enable >/dev/null
+  # перебор паролей — в бан после пяти промахов на час
+  cat > /etc/fail2ban/jail.d/quizzy.conf <<'JAIL'
+[sshd]
+enabled = true
+maxretry = 5
+findtime = 10m
+bantime = 1h
+JAIL
+  systemctl enable --now fail2ban >/dev/null 2>&1 || true
+  # пароли по ssh — только если есть чем войти без них
+  keyfile="${SUDO_USER:+/home/$SUDO_USER/.ssh/authorized_keys}"
+  if [ -s /root/.ssh/authorized_keys ] || { [ -n "$keyfile" ] && [ -s "$keyfile" ]; }; then
+    install -d -m 755 /etc/ssh/sshd_config.d
+    cat > /etc/ssh/sshd_config.d/10-quizzy.conf <<'SSHD'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+MaxAuthTries 4
+# очередь неаутентифицированных: выкатка открывает одно соединение, а боты —
+# десятки; дефолт 10:30:100 сбрасывал и её
+MaxStartups 30:50:200
+SSHD
+    sshd -t && systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+    echo "  ✓ ssh: только ключи, root без пароля, fail2ban, ufw 22/80/443, обновления безопасности"
+  else
+    echo "  ! ssh-ключа нет ни у root, ни у ${SUDO_USER:-вас} — пароли по ssh оставлены. Добавьте ключ и запустите скрипт ещё раз."
+  fi
+fi
+
 # ── 2. Окружение ─────────────────────────────────────────────────────────────
 # Пароли попадают в строку подключения вида postgres://user:ПАРОЛЬ@host/db,
 # то есть в URL. Обычный base64 даёт «/» и «+»: первый обрывает адрес на
