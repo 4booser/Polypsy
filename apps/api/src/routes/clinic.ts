@@ -1174,6 +1174,9 @@ clinicRoutes.post("/appointments/:id/confirm", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Из каких состояний приём переносится: только до начала посещения (#38) */
+const RESCHEDULABLE: readonly string[] = ["booked", "confirmed"];
+
 /**
  * Перенос — это отмена и запись одним действием.
  *
@@ -1194,6 +1197,17 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
     }
   }
   if (["done", "no_show", "cancelled"].includes(row.status)) badRequest("err.appointmentClosed");
+  /*
+   * Переносится только приём, который ещё не начался: «записан» и
+   * «подтверждён». Прежде запрет касался лишь закрытых, и пациент переносил
+   * приём, на котором уже сидел (arrived/in_progress), в будущий слот другого
+   * врача: приём возвращался в «записан» мимо графа переходов, arrived_at и
+   * started_at оставались от прежнего, а завершить его было нельзя — booked →
+   * done запрещён (внешний разбор, #38). Ошибочно нажатое «пришёл» или
+   * «начали» сотрудник снимает явным шагом назад в /status, и уже из
+   * «записан» переносит как обычно.
+   */
+  if (!RESCHEDULABLE.includes(row.status)) badRequest("err.appointmentStarted");
 
   const slot = await takeSlot(input.slotId);
 
@@ -1296,8 +1310,16 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
 const NEXT: Record<string, string[]> = {
   booked: ["arrived", "no_show"],
   confirmed: ["arrived", "no_show"],
-  arrived: ["in_progress", "no_show"],
-  in_progress: ["done"],
+  /*
+   * Шаг назад — «пришёл» → «записан» и «начали» → «пришёл» — это исправление
+   * ошибочного нажатия, а не движение приёма (внешний разбор, #38). Прежде
+   * начатый приём «исправляли» переносом, и он уезжал в «записан» с
+   * отметками времени от прежнего состояния. Каждый шаг назад снимает свою
+   * отметку (см. запись ниже), поэтому история остаётся согласованной: в
+   * «записан» нет arrived_at, в «пришёл» нет started_at.
+   */
+  arrived: ["in_progress", "no_show", "booked"],
+  in_progress: ["done", "arrived"],
   /*
    * Из неявки можно вернуться в «пришёл», и это не послабление.
    *
@@ -1318,7 +1340,7 @@ clinicRoutes.post(
     const row = await loadOne(c, c.req.param("id"));
     const input = await parseBody(
       c.req.raw,
-      z.object({ status: z.enum(["arrived", "in_progress", "done", "no_show"]) }),
+      z.object({ status: z.enum(["booked", "arrived", "in_progress", "done", "no_show"]) }),
     );
 
     /*
@@ -1347,9 +1369,12 @@ clinicRoutes.post(
       [row.status as AppointmentStatus],
       {
         status: input.status,
-        ...(input.status === "arrived" && { arrivedAt: now }),
+        // вперёд — ставится отметка; назад — снимается отметка оставляемого состояния
+        ...(input.status === "arrived" && row.status !== "in_progress" && { arrivedAt: now }),
         ...(input.status === "in_progress" && { startedAt: now }),
         ...(input.status === "done" && { finishedAt: now }),
+        ...(input.status === "booked" && { arrivedAt: null }),
+        ...(input.status === "arrived" && row.status === "in_progress" && { startedAt: null }),
       },
       { slotId: row.slotId },
     );
