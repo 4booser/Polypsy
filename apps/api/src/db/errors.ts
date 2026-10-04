@@ -47,7 +47,14 @@ export function unwrapDbError(error: unknown): unknown {
   const cause = error.cause;
   if (!(cause instanceof Error)) return error;
   const driverError = cause as DbError;
-  if (driverError.query === undefined) {
+  /*
+   * postgres.js ставит на каждую свою ошибку `query` неконфигурируемым
+   * свойством — и на ошибку соединения тоже, со значением undefined, потому
+   * что запрос ещё не собран. defineProperty поверх него бросал TypeError, и
+   * при недоступной базе (неверный DATABASE_URL, упавший Postgres) наружу
+   * уходил он, а не ECONNREFUSED. Поэтому — только если свойства нет вовсе.
+   */
+  if (!("query" in driverError)) {
     Object.defineProperty(driverError, "query", { value: error.query, enumerable: false, writable: true });
   }
   return driverError;

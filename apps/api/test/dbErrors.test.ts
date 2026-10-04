@@ -66,6 +66,25 @@ describe("ошибки базы — ошибки драйвера", () => {
     expect(direct.code).toBe("42P01");
   });
 
+  test("недоступная база: наружу ошибка соединения, а не TypeError распаковки", async () => {
+    // postgres.js держит на ошибке соединения неконфигурируемое query=undefined
+    const { drizzle } = await import("drizzle-orm/postgres-js");
+    const postgres = (await import("postgres")).default;
+    const client = postgres("postgres://nobody@127.0.0.1:1/nowhere", { connect_timeout: 2, max: 1 });
+    const dead = drizzle(client);
+    let caught: unknown;
+    try {
+      await dead.execute(sql`select 1`);
+    } catch (e) {
+      caught = e;
+    } finally {
+      await client.end({ timeout: 1 }).catch(() => {});
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).name).not.toBe("TypeError");
+    expect(String(caught)).toMatch(/ECONNREFUSED|CONNECT_TIMEOUT|connect/i);
+  }, 10_000);
+
   test("unwrapDbError: не обёртка и обёртка без причины возвращаются как есть", () => {
     const plain = new Error("своя");
     expect(unwrapDbError(plain)).toBe(plain);
