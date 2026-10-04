@@ -1840,6 +1840,7 @@ export interface RespondentDynamics {
 }
 
 export interface SurveyListItem extends Survey {
+  /** Пунктов для ответа в действующей версии (без информационных экранов) */
   questionCount: number;
   responseCount: number;
   /** Проходил ли текущий пользователь */
