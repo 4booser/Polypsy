@@ -134,7 +134,7 @@ When several norms or sten rows fit a person, the most specific one wins: sex fi
 
 - **Shared catalog, 27 methods**: WHO-5, GAD-7, PHQ-9/8/4, PSS-10, PCL-5, AUDIT, AUDIT-C, PQ-16, Big Five, CESD-R, SRQ-20, GDS-15, DASS-42, PC-PTSD-5, CES, SBQ-R, MSPSS, OSSS-3, RSES, UCLA-3, Brief COPE, CAGE, ASSIST, ASRS-6 and CBI.
   - Installed and updated on every deploy by content fingerprint.
-  - If an institution edited a method locally, its edit is kept. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
+  - If an institution edited a method locally, its edit is kept: a locally published version blocks the content update, and local settings (visibility, instructions, time limit and the like) survive a regular update while the rest of the method is refreshed. The `catalog-status` and `catalog-force` maintenance actions show the situation and let you override it.
 - **Seed-only methods, 4**: SR-45, SAD PERSONS, Mini-mult and MLO "Adaptivnist-200".
 
 **The methods have not been clinically validated yet.** `docs/instruments/` holds the validation package for a clinical psychologist:
