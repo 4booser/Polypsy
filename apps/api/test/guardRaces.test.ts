@@ -17,7 +17,9 @@ import {
   auditLog,
   batteryAssignments,
   decisionRules,
+  filterPresets,
   ruleHits,
+  statModels,
 } from "../src/db/schema";
 
 /**
@@ -236,4 +238,84 @@ describe("решение по срабатыванию: принимается �
     const [row] = await db.select().from(ruleHits).where(eq(ruleHits.id, id));
     expect(row!.status).toBe("accepted");
   });
+});
+
+/* ═══════════ #106: пресет фильтров и статистическая модель ═══════════ */
+
+describe("пресет фильтров: удаление и создание модели на нём согласованы", () => {
+  async function preset(tag: string): Promise<string> {
+    const res = await appApi("/api/filter-presets", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title: `Чоловіки ${tag}`, criteria: { sex: "male" } }),
+    });
+    expect(res.status, `пресет: ${JSON.stringify(res.body)}`).toBe(201);
+    return res.body.id as string;
+  }
+
+  const removePreset = (id: string) => () => appApi(`/api/filter-presets/${id}`, adminA.token, { method: "DELETE" });
+
+  const createModel = (presetId: string, title: string) => () =>
+    appApi("/api/stat-models", adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ title, columns: [{ presetId, surveyId: surveyInA }] }),
+    });
+
+  async function modelsTitled(title: string) {
+    return db.select({ id: statModels.id }).from(statModels).where(eq(statModels.title, title));
+  }
+
+  test("удаление раньше создания: пресет удалён, модель не создана (404), без модели-сироты", async () => {
+    /*
+     * Воспроизведение из разбора (#106, пп. 2–4): DELETE прошёл проверку
+     * «моделей нет» и ждал самой строки; создание модели строку пресета не
+     * трогало и прошло — 201; DELETE затем — 204. Модель осталась в списке,
+     * а её запуск отвечал 404 «пресет не найден».
+     */
+    const id = await preset("del-first");
+    const title = `Сирота ${crypto.randomUUID().slice(0, 8)}`;
+
+    let deleting!: Promise<{ status: number; body: any }>;
+    let creating!: Promise<{ status: number; body: any }>;
+    await holder.begin(async (tx) => {
+      await tx`select id from filter_presets where id = ${id} for update`;
+      deleting = removePreset(id)();
+      deleting.catch(() => {});
+      await untilWaiting(1, ['"filter_presets"']);
+      creating = createModel(id, title)();
+      creating.catch(() => {});
+      // прежний код: создание не ждёт никого; новый — встаёт за строкой пресета
+      await queuedOrDone(creating, 2, ['"filter_presets"']);
+    });
+    const [deleted, created] = await Promise.all([deleting, creating]);
+
+    expect(deleted.status, `удаление: ${JSON.stringify(deleted.body)}`).toBe(204);
+    expect(created.status, "модель создана на пресете, который удалили").toBe(404);
+    expect(await modelsTitled(title)).toHaveLength(0);
+    expect(await db.select({ id: filterPresets.id }).from(filterPresets).where(eq(filterPresets.id, id))).toHaveLength(0);
+  }, 30_000);
+
+  test("создание раньше удаления: модель создана и запускается, удаление — отказ «пресет используется»", async () => {
+    const id = await preset("create-first");
+    const title = `Тримає пресет ${crypto.randomUUID().slice(0, 8)}`;
+
+    let creating!: Promise<{ status: number; body: any }>;
+    let deleting!: Promise<{ status: number; body: any }>;
+    await holder.begin(async (tx) => {
+      await tx`select id from filter_presets where id = ${id} for update`;
+      creating = createModel(id, title)();
+      creating.catch(() => {});
+      await queuedOrDone(creating, 1, ['"filter_presets"']);
+      deleting = removePreset(id)();
+      deleting.catch(() => {});
+      // прежний код: удаление отказывает сразу, увидев модель; новый — ждёт строку пресета
+      await queuedOrDone(deleting, 1, ['"filter_presets"']);
+    });
+    const [created, deleted] = await Promise.all([creating, deleting]);
+
+    expect(created.status, `модель: ${JSON.stringify(created.body)}`).toBe(201);
+    expect(deleted.status, "пресет удалён из-под созданной модели").toBe(400);
+
+    const run = await appApi(`/api/stat-models/${created.body.id}/run`, adminA.token, { method: "POST", body: "{}" });
+    expect(run.status, `запуск созданной модели: ${JSON.stringify(run.body)}`).toBe(200);
+  }, 30_000);
 });
