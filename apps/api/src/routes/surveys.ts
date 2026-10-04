@@ -975,6 +975,7 @@ surveyRoutes.post("/import", requireStaff, requirePermission("surveys.edit"), as
     tooFastMs: input.tooFastMs ?? null,
     alertEscalateMinutes: input.alertEscalateMinutes ?? null,
     safetyPlan: normalizeLocalized(input.safetyPlan),
+    showResultsToPatient: input.showResultsToPatient ?? false,
     createdBy: user.id,
   } as never);
   await createVersion(id, input, user.id, noteCode("note.importFile"));
