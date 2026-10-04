@@ -156,6 +156,10 @@ filterPresetRoutes.patch("/:id", async (c) => {
 /**
  * Удалить пресет, на который никто не ссылается.
  *
+ * Проверка и удаление — под замком строки пресета: создание модели берёт
+ * на неё совместимый между собой, но несовместимый с удалением замок, и
+ * «моделей нет» больше не устаревает между проверкой и DELETE (#106).
+ *
  * Занятому отказываем и называем число моделей. Удалить с отвязкой было
  * бы проще и хуже: колонка, потерявшая пресет, молча стала бы «вся
  * выборка», и модель «чоловіки 25–45 проти жінок» превратилась бы в «усі
@@ -163,7 +167,8 @@ filterPresetRoutes.patch("/:id", async (c) => {
  */
 filterPresetRoutes.delete("/:id", async (c) => {
   const user = c.get("user");
-  const preset = await assertFilterPresetAccess(user, c.req.param("id"));
+  // строка под замком до конца запроса: модели считаются после него, а не до (lib/scope.ts)
+  const preset = await assertFilterPresetAccess(user, c.req.param("id"), "update");
 
   const [count] = await db.select({ modelCount }).from(filterPresets).where(eq(filterPresets.id, preset.id));
   const used = Number(count?.modelCount ?? 0);
