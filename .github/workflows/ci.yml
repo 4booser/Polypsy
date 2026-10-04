@@ -74,6 +74,9 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres@localhost:5432/quizzy
 
+      - name: Внешняя копия — сценарий на заглушке S3
+        run: ./scripts/test/offsite-roundtrip.sh
+
       - name: Целостность контента в базе
         run: bun run --cwd apps/api db:migrate && bun run --cwd apps/api db:seed && bun run --cwd apps/api content:check
         env:
