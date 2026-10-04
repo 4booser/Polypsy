@@ -20,6 +20,9 @@
     "lint:fix": "biome lint --write",
     "install:instance": "bun run --cwd apps/api install:instance"
   },
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.10",
