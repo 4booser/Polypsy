@@ -4,7 +4,10 @@ import {
   adminA,
   api,
   app,
+  batteries,
+  batteryItems,
   db,
+  groupA,
   makeUser,
   responsesTable,
   root,
@@ -1056,6 +1059,109 @@ describe("несданное назначенное", () => {
     const res = await api(`/api/clinic/today?date=${date}`, specialistToken);
     const mine = res.body.items.find((a: { id: string }) => a.id === booked.body.id);
     expect(mine.pendingAssignments).toBe(0);
+  });
+});
+
+describe("несданное назначенное: одно определение ожидаемой работы (#39)", () => {
+  /**
+   * Счётчик складывал survey_access и шаги набора: назначение набора выдаёт
+   * доступ на каждую методику, и один шаг считался дважды. А любое
+   * историческое прохождение методики исключало её из обоих слагаемых — в
+   * том числе сданное за месяц до нового назначения, которое это назначение
+   * не закрывает (batteryProgress засчитывает только сданное после выдачи).
+   */
+  let batteryId: string;
+  let versionId: string;
+
+  async function pendingOf(appointmentId: string, slotId: string): Promise<number> {
+    const [slotRow] = await db.select().from(slots).where(eq(slots.id, slotId));
+    const date = new Date(slotRow!.startsAt).toISOString().slice(0, 10);
+    const res = await api(`/api/clinic/today?date=${date}`, specialistToken);
+    return res.body.items.find((a: { id: string }) => a.id === appointmentId).pendingAssignments;
+  }
+
+  async function bookedPatient(tag: string) {
+    const patient = await makeUser("user", `clinic-pw-${tag}-${crypto.randomUUID()}@test`);
+    const slotId = await freeSlot();
+    const booked = await api("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId }),
+    });
+    expect(booked.status).toBe(201);
+    return { patient, slotId, id: booked.body.id as string };
+  }
+
+  async function completedAt(userId: string, at: string) {
+    await db.insert(responsesTable).values({
+      id: crypto.randomUUID(),
+      surveyId: surveyInA,
+      userId,
+      status: "completed",
+      versionId,
+      startedAt: at,
+      submittedAt: at,
+      durationMs: 60_000,
+      reliable: true,
+    } as never);
+  }
+
+  beforeAll(async () => {
+    const [survey] = await db.select().from(surveysTable).where(eq(surveysTable.id, surveyInA));
+    versionId = survey!.currentVersionId!;
+    batteryId = crypto.randomUUID();
+    await db.insert(batteries).values({
+      id: batteryId,
+      title: `Набір очікуваної роботи ${crypto.randomUUID().slice(0, 6)}`,
+      groupId: groupA,
+      strictOrder: false,
+      createdBy: adminA.id,
+    });
+    await db.insert(batteryItems).values([{ batteryId, surveyId: surveyInA, position: 0, required: true }]);
+  });
+
+  test("один шаг набора — 1, а не 2; прежнее прохождение счёт не уменьшает; сданное после назначения — 0", async () => {
+    const { patient, slotId, id } = await bookedPatient("step");
+    // прохождение за месяц до назначения: новое назначение оно не закрывает
+    await completedAt(patient.id, new Date(Date.now() - 30 * 86_400_000).toISOString());
+    expect(await pendingOf(id, slotId)).toBe(0);
+
+    const assigned = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(201);
+    expect(await pendingOf(id, slotId)).toBe(1);
+
+    // сдано после назначения — работы нет
+    const submitted = await submitSurvey(surveyInA, patient.token);
+    expect(submitted.status).toBe(201);
+    expect(await pendingOf(id, slotId)).toBe(0);
+  });
+
+  test("отменённое назначение работы не добавляет", async () => {
+    const { patient, slotId, id } = await bookedPatient("cancel");
+    const assigned = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(assigned.status).toBe(201);
+    expect(await pendingOf(id, slotId)).toBe(1);
+
+    const cancelled = await api(`/api/batteries/assignments/${assigned.body.id}/cancel`, adminA.token, { method: "POST" });
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBe(200);
+    expect(await pendingOf(id, slotId)).toBe(0);
+  });
+
+  test("личная выдача и шаг набора одной методики — одна ожидаемая работа", async () => {
+    const { patient, slotId, id } = await bookedPatient("both");
+    await db.insert(surveyAccess).values({ surveyId: surveyInA, userId: patient.id, grantedBy: adminA.id });
+    expect(await pendingOf(id, slotId)).toBe(1);
+    const assigned = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: patient.id }),
+    });
+    expect(assigned.status).toBe(201);
+    expect(await pendingOf(id, slotId)).toBe(1);
   });
 });
 

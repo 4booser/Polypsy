@@ -42,6 +42,7 @@ import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuer
 import { requireDateParam } from "../lib/dates";
 import type { MeetOutcome } from "../lib/meet";
 import { STAFF_OUTBOUND_LANG } from "../lib/notify";
+import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -865,40 +866,13 @@ async function loadAppointments(where: ReturnType<typeof and>) {
   /*
    * Назначенное, но не сданное — одним запросом на весь список.
    *
-   * Считается по двум источникам сразу: персональные назначения методик и
-   * батареи. Разделять их на экране незачем — специалисту важно, что человек
-   * пришёл без того, что должен был принести, а не какой формой это было
-   * назначено.
-   *
-   * Отменённые батареи не в счёт: их и не ждали.
-   *
-   * Системной ролью: это счёт по людям уже отобранных приёмов, а не чтение
-   * чужих назначений. Под ролью приложения специалист видит назначения
-   * только методик своих групп, и пометка молча теряла назначенное другой
-   * группой — «пришёл со всем», хотя человек не сдал назначенное (волна 13,
-   * прогон clinic.test.ts под ролью приложения). Наружу уходит одно число.
+   * Разделять личные выдачи и наборы на экране незачем — специалисту важно,
+   * что человек пришёл без того, что должен был принести, а не какой формой
+   * это было назначено. Определение одно (lib/pendingWork.ts): прежний счёт
+   * здесь складывал survey_access и шаги набора и удваивал каждый шаг, а
+   * любое старое прохождение методики скрывало новое назначение (#39).
    */
-  const pendingRows = await asSystem(() => db.execute<{ user_id: string; n: number }>(
-    sql`
-      select u.id as user_id, (
-        (select count(*) from survey_access sa
-          where sa.user_id = u.id
-            and (sa.expires_at is null or sa.expires_at > now())
-            and not exists (
-              select 1 from responses r
-              where r.user_id = u.id and r.survey_id = sa.survey_id and r.status = 'completed'))
-        +
-        (select count(*) from battery_assignments ba
-          join battery_assignment_items bi on bi.assignment_id = ba.id
-          where ba.user_id = u.id and ba.cancelled_at is null
-            and not exists (
-              select 1 from responses r
-              where r.user_id = u.id and r.survey_id = bi.survey_id and r.status = 'completed'))
-      )::int as n
-      from users u where u.id in ${patientIds}
-    `,
-  ));
-  const pending = new Map(pendingRows.map((r) => [r.user_id, Number(r.n)]));
+  const pending = await pendingWorkByUser(patientIds);
 
   /*
    * Скрининг при записи: сдан или нет.
