@@ -181,6 +181,8 @@ export type AuditAction =
    */
   | "sec.reencrypt_start"
   | "sec.reencrypt_done"
+  /* пересборка слепого индекса записей завершена: на каком секрете, сколько записей (#25) */
+  | "sec.search_reindexed"
   | "sec.phone_reindex"
   | "sec.secret_changed"
   | "sec.rls_check"

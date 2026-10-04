@@ -3570,7 +3570,8 @@ export const securityJobs = pgTable(
   "security_jobs",
   {
     id: text("id").primaryKey(),
-    kind: text("kind", { enum: ["reencrypt"] }).notNull(),
+    /** reencrypt — перешифровка (0092); search_reindex — пересборка слепого индекса записей (0117) */
+    kind: text("kind", { enum: ["reencrypt", "search_reindex"] }).notNull(),
     status: text("status", { enum: ["running", "done", "failed"] }).notNull(),
     startedAt: timestampCol("started_at").notNull().default(sql`now()`),
     heartbeatAt: timestampCol("heartbeat_at").notNull().default(sql`now()`),

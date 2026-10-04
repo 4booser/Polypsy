@@ -1148,6 +1148,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "ops.data_read": "act.ops_data_read",
   "sec.reencrypt_start": "act.sec_reencrypt_start",
   "sec.reencrypt_done": "act.sec_reencrypt_done",
+  "sec.search_reindexed": "act.sec_search_reindexed",
   "sec.phone_reindex": "act.sec_phone_reindex",
   "sec.secret_changed": "act.sec_secret_changed",
   "sec.rls_check": "act.sec_rls_check",

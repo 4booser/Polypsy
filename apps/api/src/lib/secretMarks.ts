@@ -22,6 +22,7 @@ export const SECRET_NAMES: readonly OpsSecretName[] = [
   "JWT_SECRET",
   "PHONE_INDEX_SECRET",
   "EXPORT_SECRET",
+  "SEARCH_INDEX_SECRET",
   "METRICS_TOKEN",
 ];
 
@@ -34,6 +35,7 @@ const DEV_DEFAULTS: Partial<Record<OpsSecretName, string>> = {
   JWT_SECRET: "dev-secret-change-me",
   PHONE_INDEX_SECRET: "dev-phone-index-secret-change-me",
   EXPORT_SECRET: "dev-export-secret-change-me",
+  SEARCH_INDEX_SECRET: "dev-search-index-secret-change-me",
 };
 
 function currentValue(name: OpsSecretName): string | null {
@@ -48,6 +50,8 @@ function currentValue(name: OpsSecretName): string | null {
       return env.phoneIndexSecret || null;
     case "EXPORT_SECRET":
       return env.exportSecret || null;
+    case "SEARCH_INDEX_SECRET":
+      return env.searchIndexSecret || null;
     case "METRICS_TOKEN":
       // читается там же, где и в routes/metrics.ts: из окружения на лету
       return process.env.METRICS_TOKEN || null;
