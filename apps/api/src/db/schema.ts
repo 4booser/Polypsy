@@ -1262,6 +1262,12 @@ export const responseScores = pgTable(
       .references(() => scales.id, { onDelete: "cascade" }),
     rawScore: doublePrecision("raw_score").notNull(),
     /**
+     * Балл после поправок от других шкал (K-коррекция), до нормирования.
+     * null — строка записана до 0118: сборка результата (lib/storedScores.ts)
+     * берёт тогда сырой балл или итог, смотря по нормировке.
+     */
+    correctedScore: doublePrecision("corrected_score"),
+    /**
      * Итоговое значение после поправок и нормирования: доля, T-балл или стен.
      * Хранится отдельно от сырого балла, потому что полосы норм заданы именно
      * на нём — у СР-45 сырой балл 0–35, а полосы на доле 0–1.
