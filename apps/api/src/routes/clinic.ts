@@ -1023,12 +1023,23 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
   const asked = c.req.query("date");
   const date = asked ? requireDateParam(asked, "date", { dayOnly: true }) : nowLocal[0]!.today;
 
+  /*
+   * Верхняя граница — СЛЕДУЮЩАЯ местная полночь, переведённая в момент, а не
+   * «эта полночь плюс interval '1 day'». Сутки прибавляются к timestamptz по
+   * поясу сессии базы: в docker-compose это UTC, и день становился ровно 24
+   * часами, а день Europe/Kyiv бывает 23 и 25 часов. Приём 25.10 в 23:30 не
+   * попадал ни в 25-е, ни в 26-е, приём 30.03 в 00:30 — и в 29-е, и в 30-е
+   * (внешний разбор, #22). Календарный день прибавляется к местной дате
+   * (timestamp без пояса), и только потом она переводится в момент.
+   */
+  const dayStart = sql`(${`${date} 00:00`}::timestamp at time zone ${tz})`;
+  const dayEnd = sql`((${`${date} 00:00`}::timestamp + interval '1 day') at time zone ${tz})`;
   const items = await loadAppointments(
     and(
       eq(appointments.specialistId, specialistId),
       ne(appointments.status, "cancelled"),
-      sql`${slots.startsAt} >= (${`${date} 00:00`}::timestamp at time zone ${tz})`,
-      sql`${slots.startsAt} < (${`${date} 00:00`}::timestamp at time zone ${tz}) + interval '1 day'`,
+      sql`${slots.startsAt} >= ${dayStart}`,
+      sql`${slots.startsAt} < ${dayEnd}`,
     )!,
   );
 
