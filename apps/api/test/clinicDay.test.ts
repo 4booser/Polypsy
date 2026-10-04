@@ -128,3 +128,47 @@ describe("#22 приёмный день при TimeZone=UTC у базы", () => 
     expect(await dayUnderUtc("2026-03-30")).toEqual([night30]);
   });
 });
+
+describe("#24 пояс отделения", () => {
+  test("неизвестный пояс отклоняется до записи, настройка не меняется", async () => {
+    const bad = await api(`/api/clinic/departments/${departmentId}`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({ timezone: "Europe/DefinitelyInvalid" }),
+    });
+    expect(bad.status).toBe(400);
+    expect(String(bad.body.error)).toContain("timezone");
+    const [row] = await db.select().from(departments).where(eq(departments.id, departmentId));
+    expect(row!.timezone).toBe("Europe/Kyiv");
+
+    // и день отделения по-прежнему отвечает
+    const day = await api("/api/clinic/today", specialist.token);
+    expect(day.status).toBe(200);
+  });
+
+  test("при создании — тоже", async () => {
+    const res = await api("/api/clinic/departments", root.token, {
+      method: "POST",
+      body: JSON.stringify({ title: { uk: "Хибний пояс", ru: "Неверный пояс" }, timezone: "Mars/Olympus" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("поддерживаемые пояса записываются и работают в API и в PostgreSQL", async () => {
+    for (const tz of ["Europe/Warsaw", "America/New_York", "Asia/Tokyo"]) {
+      const ok = await api(`/api/clinic/departments/${departmentId}`, root.token, {
+        method: "PATCH",
+        body: JSON.stringify({ timezone: tz }),
+      });
+      expect(ok.status, tz).toBe(200);
+      const day = await api("/api/clinic/today", specialist.token);
+      expect(day.status, tz).toBe(200);
+      // «сегодня» — по часам выбранного пояса
+      const expected = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+      expect(day.body.date, tz).toBe(expected);
+    }
+    await api(`/api/clinic/departments/${departmentId}`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({ timezone: "Europe/Kyiv" }),
+    });
+  });
+});

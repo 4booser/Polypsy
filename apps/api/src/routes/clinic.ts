@@ -73,12 +73,30 @@ clinicRoutes.get("/departments", async (c) => {
   });
 });
 
+/**
+ * Пояс отделения должна знать и база, а не только Intl.
+ *
+ * Схема отсекает имена, которых не знает Intl (isTimeZone); но дни отделения
+ * считает PostgreSQL (`at time zone`), и его таблица поясов обновляется
+ * отдельно от ICU. Имя, известное одному и неизвестному другому, записалось
+ * бы и уронило приёмный день пятисоткой (внешний разбор, #24). Сверка — по
+ * pg_timezone_names, без выполнения `at time zone`: ошибка в нём оборвала
+ * бы транзакцию запроса. Имена у базы регистронезависимы — сравнение тоже.
+ */
+async function assertDbTimeZone(tz: string): Promise<void> {
+  const [known] = await db.execute<{ ok: number }>(
+    sql`select 1 as ok from pg_timezone_names where lower(name) = lower(${tz}) limit 1`,
+  );
+  if (!known) badRequest("err.v.timezone", { field: "timezone" });
+}
+
 clinicRoutes.post(
   "/departments",
   requireStaff,
   requirePermission("departments.manage"),
   async (c) => {
     const input = await parseBody(c.req.raw, departmentSchema);
+    await assertDbTimeZone(input.timezone);
     const id = crypto.randomUUID();
     await db.insert(departments).values({
       id,
@@ -108,6 +126,7 @@ clinicRoutes.patch(
     const input = await parseBody(c.req.raw, departmentSchema.partial());
     const existing = await db.query.departments.findFirst({ where: eq(departments.id, id) });
     if (!existing) notFound("err.departmentNotFound");
+    if (input.timezone !== undefined) await assertDbTimeZone(input.timezone);
 
     if (input.screeningSurveyId) {
       const survey = await db.query.surveys.findFirst({

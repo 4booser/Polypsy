@@ -1615,6 +1615,17 @@ export const ERRORS = {
     ru: "Указанная тревога исходит от другого прохождения, чем указанное в направлении",
     en: "The specified alert comes from a different response than the one named in the referral",
   },
+
+  /* ── w18:clinic ── */
+  /*
+   * Пояс отделения (#24): имя IANA, которого не знают ни Intl, ни база.
+   * Сообщение схемы — сам ключ (см. issueKey), «{field}» — путь поля.
+   */
+  "err.v.timezone": {
+    uk: "{field}: невідомий часовий пояс — потрібна назва IANA, наприклад Europe/Kyiv",
+    ru: "{field}: неизвестный часовой пояс — нужно имя IANA, например Europe/Kyiv",
+    en: "{field}: unknown time zone — an IANA name such as Europe/Kyiv is required",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
