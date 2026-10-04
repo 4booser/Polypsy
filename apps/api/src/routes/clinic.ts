@@ -42,6 +42,7 @@ import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuer
 import { requireDateParam } from "../lib/dates";
 import type { MeetOutcome } from "../lib/meet";
 import { syncMeeting } from "../lib/meetSync";
+import { transferRecording } from "../lib/recordingTransfer";
 import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
@@ -1192,6 +1193,14 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
   const slot = await takeSlot(input.slotId);
 
   /*
+   * Запись разговора — к новому специалисту вместе с приёмом, по явному
+   * контракту (lib/recordingTransfer.ts, #101): пустая переходит, согласие
+   * снимается, разговор с материалами приём к другому не отпускает (409).
+   * До записи приёма: отказ здесь ничего не меняет.
+   */
+  const recording = slot.specialistId !== row.specialistId ? await transferRecording(row.id, slot.specialistId) : "none";
+
+  /*
    * Прежнее состояние проверяется в самой записи, а не только прочитанным
    * выше значением: см. moveAppointment. Проверяется ровно прочитанное —
    * статус и слот, — а не «любой статус, из которого перенос разрешён»:
@@ -1228,7 +1237,14 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
     resourceType: "appointment",
     resourceId: row.id,
     subjectUserId: row.patientId,
-    details: { from: row.slotId, to: slot.id, bySelf: me.id === row.patientId, ...(meet ? { meet } : {}) },
+    details: {
+      from: row.slotId,
+      to: slot.id,
+      bySelf: me.id === row.patientId,
+      ...(meet ? { meet } : {}),
+      // запись разговора перешла к новому специалисту; consent_reset — согласие пришлось снять
+      ...(recording !== "none" ? { recording } : {}),
+    },
   });
   return c.json({ ok: true });
 });

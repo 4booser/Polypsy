@@ -5,7 +5,7 @@ import { requestIsReadOnly } from "../db/context";
 import { appointments, visitRecordings } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { badRequest, forbidden, notFound, } from "../lib/http";
+import { badRequest, conflict, forbidden, notFound } from "../lib/http";
 import {
   eraseAudio,
   pendingTranscriptions,
@@ -65,7 +65,14 @@ async function recordingFor(appointmentId: string, patientId: string, specialist
     .select()
     .from(visitRecordings)
     .where(eq(visitRecordings.appointmentId, appointmentId));
-  return created!;
+  /*
+   * Строка есть, но спрашивающему не видна: запись принадлежит другому
+   * специалисту (политика 0059). Штатно такого не бывает — перенос приёма
+   * передаёт запись вместе с ним (lib/recordingTransfer.ts, #101), — но
+   * прежде здесь было `rec.id` у undefined, то есть 500. Отказ внятный.
+   */
+  if (!created) conflict("err.recordingOtherSpecialist");
+  return created;
 }
 
 /** Начальное состояние записи, которой ещё нет в базе (см. GET ниже) */
