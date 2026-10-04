@@ -173,6 +173,29 @@ describe("опубликованной методике нужен хотя бы
   });
 });
 
+describe("список методик считает пункты действующей версии (CR-044)", () => {
+  test("после правки число пунктов — по действующей версии, а не сумма редакций", async () => {
+    const survey = await newSurvey();
+    const inList = async () => {
+      const res = await api(`/api/surveys?groupId=${group}&limit=200`, root.token);
+      expect(res.status).toBe(200);
+      return res.body.items.find((s: { id: string }) => s.id === survey.id);
+    };
+    expect((await inList()).questionCount).toBe(2);
+
+    // вторая редакция с одним пунктом: было бы 3 — пункты обеих редакций
+    const one = [content().questions[0]!].map((q) => ({ ...q, sectionKey: undefined }));
+    const scales = content().scales.map((s) => ({ ...s, key: s.key.slice(0, 1) }));
+    expect((await patch(survey.id, { questions: one, scales })).status).toBe(200);
+    expect((await inList()).questionCount).toBe(1);
+
+    // информационный экран не считается пунктом: это «сколько отвечать», как у шагов набора
+    const withInfo = [...one, { type: "info", title: L("Завершення"), options: [] }];
+    expect((await patch(survey.id, { questions: withInfo, scales })).status).toBe(200);
+    expect((await inList()).questionCount).toBe(1);
+  });
+});
+
 describe("частичная правка переносит неуказанное из действующей версии", () => {
   test("одни questions — шкалы, ключ, полосы и секции на месте", async () => {
     const survey = await newSurvey();
