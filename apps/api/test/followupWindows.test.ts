@@ -34,6 +34,19 @@ describe("границы окон", () => {
     });
   });
 
+  test("замер у полуночи дня перевода часов: окно считается по календарю (#23)", () => {
+    // 25.10.2026 00:30 по Киеву (UTC+3); «через 1 день» — 26.10 целиком, не 25-е
+    const [next] = followUpWindows(new Date("2026-10-24T21:30:00.000Z"), [1]);
+    expect(next).toEqual({
+      afterDays: 1,
+      opensAt: "2026-10-25T22:00:00.000Z",
+      closesAt: "2026-11-08T21:59:59.999Z",
+    });
+    // 28.03.2026 23:30 по Киеву (UTC+2); «через 1 день» — 29.03 (23 часа), не 30-е
+    const [spring] = followUpWindows(new Date("2026-03-28T21:30:00.000Z"), [1]);
+    expect(spring!.opensAt).toBe("2026-03-28T22:00:00.000Z");
+  });
+
   test("близкие повторы не сливаются: окно закрывается к открытию следующего", () => {
     const [a, b] = followUpWindows(new Date("2026-09-27T10:00:00.000Z"), [7, 10]);
     expect(new Date(a!.closesAt).getTime()).toBe(new Date(b!.opensAt).getTime() - 1);
