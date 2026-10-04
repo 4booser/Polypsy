@@ -41,6 +41,7 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireDateParam } from "../lib/dates";
 import type { MeetOutcome } from "../lib/meet";
+import { syncMeeting } from "../lib/meetSync";
 import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
@@ -745,6 +746,7 @@ clinicRoutes.post("/appointments", async (c) => {
    * записывающемуся сам, оно под своей ролью не видно (п. 10).
    */
   let meetingUrl = input.meetingUrl ?? null;
+  let meetingEventId: string | null = null;
   let meet: MeetOutcome | null = null;
   if (input.mode === "remote" && !meetingUrl) {
     const { createMeetLink } = await import("../lib/meet");
@@ -758,6 +760,7 @@ clinicRoutes.post("/appointments", async (c) => {
       title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
     });
     meetingUrl = created.url;
+    meetingEventId = created.eventId;
     meet = created.outcome;
   }
 
@@ -771,6 +774,9 @@ clinicRoutes.post("/appointments", async (c) => {
       kind,
       mode: input.mode,
       meetingUrl,
+      // событие и его организатор — чтобы перенос и отмена нашли, что сводить (lib/meetSync.ts)
+      meetingEventId,
+      meetingOrganizerId: meetingEventId ? slot.specialistId : null,
       reasonEnc: input.reason ? encryptField(input.reason) : null,
       bookedBy: me.id,
     }),
@@ -1201,17 +1207,28 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
       // подтверждение относилось к прежнему времени и на новое не переносится
       status: "booked",
       confirmedAt: null,
+      // событие календаря ждёт сведения — той же записью, что двигает приём (#37)
+      ...(row.meetingEventId ? { meetingSyncAt: new Date().toISOString() } : {}),
     },
     { slotId: row.slotId },
   );
   if (!moved) await refuseChanged(row.id);
+
+  /*
+   * Событие Google Calendar едет вслед за приёмом: на новое время у того же
+   * специалиста, к новому специалисту — пересозданием. Прежде ссылка и
+   * событие оставались прежними, и у врача в календаре стояла встреча на
+   * снятое время (внешний разбор, #37). Сбой Google перенос не срывает:
+   * метка сведения уже записана, фоновый проход повторит.
+   */
+  const meet = row.meetingEventId ? await syncMeeting(row.id) : null;
 
   await audit(c, {
     action: "clinic.reschedule",
     resourceType: "appointment",
     resourceId: row.id,
     subjectUserId: row.patientId,
-    details: { from: row.slotId, to: slot.id, bySelf: me.id === row.patientId },
+    details: { from: row.slotId, to: slot.id, bySelf: me.id === row.patientId, ...(meet ? { meet } : {}) },
   });
   return c.json({ ok: true });
 });
@@ -1260,17 +1277,21 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
       cancelledAt: new Date().toISOString(),
       cancelledBy: me.id,
       cancelledLate: late,
+      ...(row.meetingEventId ? { meetingSyncAt: new Date().toISOString() } : {}),
     },
     { slotId: row.slotId },
   );
   if (!cancelled) await refuseChanged(row.id);
+
+  // отменённый приём не должен висеть в календаре живой встречей (#37); сбой — повторит фоновый проход
+  const meet = row.meetingEventId ? await syncMeeting(row.id) : null;
 
   await audit(c, {
     action: "clinic.cancel",
     resourceType: "appointment",
     resourceId: row.id,
     subjectUserId: row.patientId,
-    details: { late, hoursLeft: Math.round(hoursLeft), reason: input.reason ?? null, by: me.id },
+    details: { late, hoursLeft: Math.round(hoursLeft), reason: input.reason ?? null, by: me.id, ...(meet ? { meet } : {}) },
   });
   return c.json({ ok: true, late });
 });

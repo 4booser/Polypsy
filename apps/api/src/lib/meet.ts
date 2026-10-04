@@ -222,11 +222,13 @@ export type MeetOutcome = "created" | "not_configured" | "not_connected" | "revo
  * разглашение того самого факта, ради сокрытия которого в системе есть коды
  * вместо имён.
  */
-export async function createMeetLink(req: MeetRequest): Promise<{ url: string | null; outcome: MeetOutcome }> {
-  if (!meetConfigured()) return { url: null, outcome: "not_configured" };
+export async function createMeetLink(
+  req: MeetRequest,
+): Promise<{ url: string | null; eventId: string | null; outcome: MeetOutcome }> {
+  if (!meetConfigured()) return { url: null, eventId: null, outcome: "not_configured" };
   try {
     const access = await accessToken(req.specialistId);
-    if (!("token" in access)) return { url: null, outcome: access.outcome };
+    if (!("token" in access)) return { url: null, eventId: null, outcome: access.outcome };
 
     const res = await fetch(EVENTS_ENDPOINT, {
       method: "POST",
@@ -246,13 +248,74 @@ export async function createMeetLink(req: MeetRequest): Promise<{ url: string | 
     });
     if (!res.ok) {
       log.warn("meet.create_failed", { status: res.status });
-      return { url: null, outcome: "failed" };
+      return { url: null, eventId: null, outcome: "failed" };
     }
-    const body = (await res.json().catch(() => null)) as { hangoutLink?: string } | null;
-    return body?.hangoutLink ? { url: body.hangoutLink, outcome: "created" } : { url: null, outcome: "failed" };
+    const body = (await res.json().catch(() => null)) as { hangoutLink?: string; id?: string } | null;
+    /*
+     * Вместе со ссылкой — идентификатор события: по нему перенос и отмена
+     * приёма потом найдут событие в календаре (lib/meetSync.ts, #37). Прежде
+     * сохранялась одна ссылка, и событие было некому трогать.
+     */
+    return body?.hangoutLink
+      ? { url: body.hangoutLink, eventId: typeof body.id === "string" ? body.id : null, outcome: "created" }
+      : { url: null, eventId: null, outcome: "failed" };
   } catch (error) {
     /* что угодно сверх ожидаемого — тоже не повод срывать запись: приём важнее ссылки */
     log.warn("meet.create_error", { error: String(error) });
-    return { url: null, outcome: "failed" };
+    return { url: null, eventId: null, outcome: "failed" };
   }
+}
+
+/* ─── событие уже созданной встречи: перенос и удаление (#37) ─── */
+
+const EVENT_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+
+/**
+ * Чем кончилась операция над существующим событием.
+ *
+ * done — сделано; gone — события в календаре уже нет (404/410): для переноса
+ * это «переносить нечего», для удаления — «уже удалено», и обоим дальше
+ * ничего не нужно; no_access — разрешения специалиста нет или оно отозвано
+ * (трогать событие некому, повтор не поможет); failed — Google не ответил
+ * или ответил отказом, стоит повторить.
+ */
+export type EventOutcome = "done" | "gone" | "no_access" | "failed";
+
+async function eventRequest(
+  organizerId: string,
+  eventId: string,
+  method: "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<EventOutcome> {
+  if (!meetConfigured()) return "no_access";
+  try {
+    const access = await accessToken(organizerId);
+    if (!("token" in access)) return access.outcome === "failed" ? "failed" : "no_access";
+    const res = await fetch(`${EVENT_ENDPOINT}/${encodeURIComponent(eventId)}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${access.token}`,
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(GOOGLE_TIMEOUT_MS),
+    });
+    if (res.ok) return "done";
+    if (res.status === 404 || res.status === 410) return "gone";
+    log.warn("meet.event_failed", { method, status: res.status });
+    return "failed";
+  } catch (error) {
+    log.warn("meet.event_error", { method, error: String(error) });
+    return "failed";
+  }
+}
+
+/** Перенести событие на новое время — в календаре того, кто его создал */
+export function moveMeetEvent(organizerId: string, eventId: string, startsAt: string, endsAt: string): Promise<EventOutcome> {
+  return eventRequest(organizerId, eventId, "PATCH", { start: { dateTime: startsAt }, end: { dateTime: endsAt } });
+}
+
+/** Удалить событие из календаря того, кто его создал */
+export function deleteMeetEvent(organizerId: string, eventId: string): Promise<EventOutcome> {
+  return eventRequest(organizerId, eventId, "DELETE");
 }
