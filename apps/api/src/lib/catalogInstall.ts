@@ -51,6 +51,12 @@ export interface InstallReport {
   /** Правлены в учреждении после установки — каталог их не трогает */
   keptLocal: string[];
   /**
+   * Обновлены, но часть настроек строки осталась учреждения: ключ методики →
+   * поля (visibility, instructions, timeLimitSec…), которые обычное
+   * обновление не переписало (см. localFields / mergeFields).
+   */
+  keptSettings: Record<string, string[]>;
+  /**
    * Почему установка не состоялась вовсе.
    *
    * Единственная причина — в базе ещё нет ни одного сотрудника: методику
@@ -171,9 +177,55 @@ export function surveyFields(input: ReturnType<typeof createSurveySchema.parse>)
   };
 }
 
+type SurveyFields = ReturnType<typeof surveyFields>;
+type SurveyRow = typeof surveys.$inferSelect;
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/**
+ * Поля строки, которые учреждение правило после установки: отличные от
+ * снимка настроек редакции каталога, с которой строку в последний раз
+ * сверял установщик (surveys.catalog_fields).
+ *
+ * Локальность содержимого узнаётся по заметке версии (catalogEdition), а
+ * правка visibility, инструкции, лимита времени и прочих настроек строки
+ * версии не создаёт — и до волны 18 каталог считал такую методику своей
+ * неизменённой редакцией и при очередной правке каталога переписывал
+ * настройки целиком: ограниченная методика становилась общедоступной,
+ * лимит пропадал, инструкция возвращалась каталоговая (CR-017).
+ *
+ * Снимка нет (установка до 0118) — чьи настройки, не узнать; считаются
+ * учреждения все, что отличаются от текущей редакции каталога: обновление
+ * их не тронет, а --force вернёт каталоговые явным решением. Осторожная
+ * сторона выбрана намеренно: лишнее «не тронул» исправляется одним --force,
+ * лишнее «переписал» снимает ограничение доступа у методики пациентов.
+ */
+export function localFields(row: SurveyRow, catalog: SurveyFields): string[] {
+  const snapshot = (row.catalogFields ?? null) as Partial<SurveyFields> | null;
+  return (Object.keys(catalog) as (keyof SurveyFields)[]).filter((key) =>
+    snapshot ? !same(row[key], snapshot[key]) : !same(row[key], catalog[key]),
+  );
+}
+
+/**
+ * Что записать в строку при обычном обновлении: поля каталога, кроме
+ * правленных в учреждении, — те остаются как есть.
+ */
+function mergeFields(row: SurveyRow, catalog: SurveyFields, kept: readonly string[]): SurveyFields {
+  const out = { ...catalog } as Record<string, unknown>;
+  for (const key of kept) out[key] = row[key as keyof SurveyRow];
+  return out as SurveyFields;
+}
+
 type Outcome = "installed" | "updated" | "skipped" | "keptLocal";
 
-async function installOne(entry: CatalogEntry, createdBy: string, force = false): Promise<Outcome> {
+interface OneResult {
+  outcome: Outcome;
+  /** Настройки, оставленные учреждению при обновлении */
+  keptSettings: string[];
+}
+
+async function installOne(entry: CatalogEntry, createdBy: string, force = false): Promise<OneResult> {
   const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
   const edition = await fingerprint(entry);
   const note = noteCode("note.catalog", { edition });
@@ -191,36 +243,62 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
      * однажды поправили в конструкторе. Правка не исчезает — она остаётся
      * прежней версией, и прохождения по ней считаются по ней же, — но
      * действующей становится редакция каталога. В журнал — с пометкой.
+     *
+     * Правки настроек строки (visibility, инструкция, лимит…) — тоже правки
+     * учреждения, но не версии: обычное обновление их сохраняет и обновляет
+     * остальное; --force возвращает и их к каталогу.
      */
     const headEdition = catalogEdition(head?.note);
     const local = headEdition === null;
-    if (local && !force) return "keptLocal";
-    if (headEdition === edition) return "skipped";
+    if (local && !force) return { outcome: "keptLocal", keptSettings: [] };
 
     const input = createSurveySchema.parse(entry.draft);
+    const catalog = surveyFields(input);
+    const localNow = localFields(existing, catalog);
+    const kept = force ? [] : localNow;
+    const sameEdition = headEdition === edition;
+    // та же редакция и настройки каталога на месте (или учреждения, без --force) — нечего делать
+    if (sameEdition && (!force || localNow.length === 0)) return { outcome: "skipped", keptSettings: [] };
+
+    const fields = mergeFields(existing, catalog, kept);
     await db
       .update(surveys)
-      .set({ ...surveyFields(input), updatedAt: new Date().toISOString() } as never)
+      /*
+       * Снимок — настройки РЕДАКЦИИ КАТАЛОГА, а не записанные: у оставленного
+       * учреждению поля строка и дальше отличается от снимка, и следующее
+       * обновление (или --force) снова видит его правленным. Снимок из
+       * записанного стёр бы эту разницу одним обновлением.
+       */
+      .set({ ...fields, catalogFields: catalog, updatedAt: new Date().toISOString() } as never)
       .where(eq(surveys.id, existing.id));
-    await createVersion(existing.id, input, createdBy, note);
+    if (!sameEdition) await createVersion(existing.id, input, createdBy, note);
     await auditSystem({
       action: "survey.catalog_update",
       resourceType: "survey",
       resourceId: existing.id,
-      details: { catalogKey: entry.key, from: head?.note ?? null, to: note, source: entry.source, forced: local },
+      details: {
+        catalogKey: entry.key,
+        from: head?.note ?? null,
+        to: note,
+        source: entry.source,
+        forced: force && (local || localNow.length > 0),
+        keptSettings: kept,
+      },
     });
-    return "updated";
+    return { outcome: "updated", keptSettings: kept };
   }
 
   // через ту же схему, что и API: методика каталога обязана быть валидной
   const input = createSurveySchema.parse(entry.draft);
   const id = crypto.randomUUID();
+  const fields = surveyFields(input);
 
   await db.insert(surveys).values({
     id,
     catalogKey: entry.key,
     groupId: null,
-    ...surveyFields(input),
+    ...fields,
+    catalogFields: fields,
     status: "published",
     publishedAt: new Date().toISOString(),
     createdBy,
@@ -239,7 +317,7 @@ async function installOne(entry: CatalogEntry, createdBy: string, force = false)
     resourceId: id,
     details: { catalogKey: entry.key, title: t(input.title as never, "uk"), source: entry.source },
   });
-  return "installed";
+  return { outcome: "installed", keptSettings: [] };
 }
 
 /** Состояние методики каталога в базе — для обзора перед решением (catalog-status) */
@@ -249,14 +327,16 @@ export interface CatalogStatusRow {
   state: "missing" | "current" | "behind" | "local";
   /** Последние версии: номер, заметка, когда — от свежей к старой */
   versions: { version: number; note: string | null; createdAt: string }[];
+  /** Настройки строки, правленные в учреждении (visibility, instructions, timeLimitSec…) — обновление их не тронет */
+  localFields: string[];
 }
 
 export async function catalogStatus(): Promise<CatalogStatusRow[]> {
   const rows: CatalogStatusRow[] = [];
   for (const entry of CATALOG) {
-    const [existing] = await db.select({ id: surveys.id }).from(surveys).where(eq(surveys.catalogKey, entry.key));
+    const [existing] = await db.select().from(surveys).where(eq(surveys.catalogKey, entry.key));
     if (!existing) {
-      rows.push({ key: entry.key, state: "missing", versions: [] });
+      rows.push({ key: entry.key, state: "missing", versions: [], localFields: [] });
       continue;
     }
     const versions = await db
@@ -272,6 +352,7 @@ export async function catalogStatus(): Promise<CatalogStatusRow[]> {
       key: entry.key,
       state,
       versions: versions.map((v) => ({ ...v, note: renderNote(v.note, "ru"), createdAt: String(v.createdAt) })),
+      localFields: localFields(existing, surveyFields(createSurveySchema.parse(entry.draft))),
     });
   }
   return rows;
@@ -288,6 +369,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
       updated: [],
       skipped: [],
       keptLocal: [],
+      keptSettings: {},
       notReady: "в базе нет ни одного сотрудника — методику не на кого записать",
     };
   }
@@ -295,7 +377,12 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
   const department = await ensureDepartment();
 
   const out: Record<Outcome, string[]> = { installed: [], updated: [], skipped: [], keptLocal: [] };
-  for (const entry of CATALOG) out[await installOne(entry, createdBy, force.has(entry.key))].push(entry.key);
+  const keptSettings: Record<string, string[]> = {};
+  for (const entry of CATALOG) {
+    const one = await installOne(entry, createdBy, force.has(entry.key));
+    out[one.outcome].push(entry.key);
+    if (one.keptSettings.length) keptSettings[entry.key] = one.keptSettings;
+  }
   const { installed, updated, skipped, keptLocal } = out;
 
   log.info("catalog.installed", {
@@ -313,6 +400,7 @@ export async function installCatalog(opts: { force?: readonly string[] } = {}): 
     updated,
     skipped,
     keptLocal,
+    keptSettings,
     notReady: null,
   };
 }
