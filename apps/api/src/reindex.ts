@@ -11,6 +11,9 @@ import { reindexNotes } from "./lib/noteReindex";
  * запускается кнопкой «Запустити зараз» в техпанели, и две копии одного
  * прохода разошлись бы на первой же правке индекса.
  */
-const { indexed, skipped } = await systemContext(baseDb, reindexNotes);
-console.log(`Проиндексировано записей: ${indexed}${skipped ? `, пропущено: ${skipped}` : ""}`);
+const { indexed, skipped, secretMark, jobId } = await systemContext(baseDb, reindexNotes);
+// итог — и в строке, и в журнале security_jobs (search_reindex, target_key = отпечаток секрета)
+console.log(
+  `Проиндексировано записей: ${indexed}${skipped ? `, пропущено: ${skipped}` : ""}; секрет ${secretMark}, задание ${jobId}`,
+);
 process.exit(0);

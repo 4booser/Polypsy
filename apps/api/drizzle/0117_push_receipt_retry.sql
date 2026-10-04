@@ -1,5 +1,5 @@
--- Повтор пуша по квитанции Expo (волна 18, участок delivery; внешний разбор
--- 2026-09-27, #18 и #19).
+-- Волна 18, участок delivery: повтор пуша по квитанции Expo (внешний разбор
+-- 2026-09-27, #18 и #19) и журнал переиндексаций поиска (#25, в конце файла).
 --
 -- Билет Expo говорит лишь «принято в очередь»; что устройство не получило,
 -- выясняется из квитанции через четверть часа. Прежде квитанция «не
@@ -29,3 +29,17 @@ ALTER TABLE push_outcomes ADD COLUMN IF NOT EXISTS delivery_id text REFERENCES p
 --> statement-breakpoint
 -- квитанция ищет исходы своей заявки — и каскад SET NULL при снятии заявки идёт по этому же индексу
 CREATE INDEX IF NOT EXISTS push_outcomes_delivery_idx ON push_outcomes (delivery_id) WHERE delivery_id IS NOT NULL;
+--> statement-breakpoint
+-- ═══ Журнал переиндексаций поиска (#25) ═══
+--
+-- Слепой индекс записей считался на JWT_SECRET: его ротация молча обнуляла
+-- поиск по старым записям. Теперь у индекса свой секрет (SEARCH_INDEX_SECRET),
+-- а каждая пересборка — строка security_jobs вида search_reindex: на каком
+-- секрете строили (target_key — отпечаток секрета, 64 бита HMAC, не сам
+-- секрет), сколько записей, сколько пропущено, когда и чем закончили. При
+-- старте сервер сравнивает отпечаток текущего секрета с последней завершённой
+-- пересборкой и при расхождении пересобирает индекс сам (lib/noteReindex.ts).
+-- Имя ограничения — то, что PostgreSQL дал встроенному CHECK в 0092.
+ALTER TABLE security_jobs DROP CONSTRAINT IF EXISTS security_jobs_kind_check;
+--> statement-breakpoint
+ALTER TABLE security_jobs ADD CONSTRAINT security_jobs_kind_check CHECK (kind IN ('reencrypt', 'search_reindex'));
