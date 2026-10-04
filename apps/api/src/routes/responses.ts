@@ -38,6 +38,7 @@ import { periodFrom, periodTo } from "../lib/population";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertResponseRead, CLINICAL_READ } from "../lib/clinicalRead";
+import { hasPermission } from "../lib/permissions";
 import {
   accessiblePatientIds,
   assertPatientAccess,
@@ -418,6 +419,26 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   let subjectId = user.id;
   if (input.onBehalfOf) {
     if (!isStaff(user)) forbidden("err.onBehalfStaffOnly");
+    /*
+     * Право «заполнять методику за пациента» (administer) — из справочника
+     * прав, и проверяется здесь, а не только классом учётной записи: до
+     * волны 18 его не проверял никто, и сотрудник с исключением
+     * «administer: revoke» сдавал за пациента как ни в чём не бывало
+     * (внешний разбор, CR-069). Отказ — по праву и до зоны: кому нельзя
+     * заполнять за других, тому и зона пациента ни к чему; в журнал — с
+     * причиной, как у чтения клинических данных (lib/clinicalRead.ts).
+     */
+    if (!(await hasPermission(user, "administer"))) {
+      await audit(c, {
+        action: "access.denied",
+        outcome: "denied",
+        resourceType: "survey",
+        resourceId: surveyId,
+        subjectUserId: null,
+        details: { method: c.req.method, reason: "permission_required", permission: "administer" },
+      });
+      forbidden("err.permissionRequired", { permission: "administer" });
+    }
     await assertSurveyAccess(user, surveyId);
     await assertMayFillFor(c, user, input.onBehalfOf, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });

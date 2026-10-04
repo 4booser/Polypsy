@@ -23,6 +23,7 @@ import {
   consentTexts,
   consents,
   loginAttempts,
+  permissionExceptions,
   referrals,
   responseScores,
   responses,
@@ -496,6 +497,48 @@ describe("заполнение за пациента", () => {
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const row = await db.query.responses.findFirst({ where: eq(responses.id, res.body.id) });
     expect(row!.userId).toBe(own.id);
+  });
+
+  test("без права administer — 403 по праву, строка журнала, результата нет; с правом — как прежде (CR-069)", async () => {
+    /*
+     * Право «заполнять методику за пациента» есть в справочнике, но до волны
+     * 18 его не проверял никто: сотрудник с исключением administer: revoke
+     * сдавал за пациента → 201. Мутация: убрать проверку hasPermission в
+     * ветке onBehalfOf — первое ожидание падает.
+     */
+    const surveyId = await makeSurvey();
+    const own = await makeUser("user", `own-noadm-${tag()}@test.dev`, { sex: "male", birthDate: "1979-09-09" });
+    await db.insert(surveyAccess).values({ surveyId, userId: own.id, grantedBy: adminA.id });
+    const nurse = await makeUser("admin", `nurse-${tag()}@test.dev`);
+    await db.insert(groupAdmins).values({ groupId: groupA, userId: nurse.id, addedBy: root.id });
+    await db.insert(permissionExceptions).values({
+      id: crypto.randomUUID(),
+      userId: nurse.id,
+      permission: "administer",
+      mode: "revoke",
+      reason: "Проверка права заполнения за пациента",
+      grantedBy: root.id,
+    });
+    const v1 = (await api<Loaded>(`/api/surveys/${surveyId}`, nurse.token)).body;
+    const body = { onBehalfOf: own.id, versionId: v1.versionId, answers: yesAnswers(v1) };
+
+    const denied = await submit(surveyId, nurse.token, body);
+    expect(denied.status, JSON.stringify(denied.body)).toBe(403);
+    expect(denied.body.scores).toBeUndefined();
+    expect(await db.select().from(responses).where(eq(responses.userId, own.id))).toEqual([]);
+    const journal = (await denials(nurse.id, "permission_required")).filter(
+      (r) => (r.details as { permission?: string }).permission === "administer",
+    );
+    expect(journal.length).toBe(1);
+    // на себя сдать может — право про других, не про себя
+    const self = await submit(surveyId, nurse.token, { versionId: v1.versionId, answers: yesAnswers(v1) });
+    expect(self.status, JSON.stringify(self.body)).toBe(201);
+
+    // положительный контроль: исключение снято — заполнение за пациента проходит
+    await db.update(permissionExceptions).set({ revokedAt: new Date().toISOString() } as never).where(eq(permissionExceptions.userId, nurse.id));
+    const allowed = await submit(surveyId, nurse.token, body);
+    expect(allowed.status, JSON.stringify(allowed.body)).toBe(201);
+    expect((await db.query.responses.findFirst({ where: eq(responses.id, allowed.body.id) }))!.userId).toBe(own.id);
   });
 
   test("суперадмину зона — все; несуществующий по-прежнему «не найден»", async () => {
