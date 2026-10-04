@@ -1615,6 +1615,19 @@ export const ERRORS = {
     ru: "Указанная тревога исходит от другого прохождения, чем указанное в направлении",
     en: "The specified alert comes from a different response than the one named in the referral",
   },
+
+  /* ── w18:races ── */
+  /*
+   * Решение по срабатыванию, принятое одновременно с чужим (routes/decisions.ts).
+   * Не «уже принято» (400): человек нажимал кнопку, глядя на «предложено», и
+   * его решение не записано — экран должен перечитать очередь, как у
+   * направлений (err.referralChanged).
+   */
+  "err.hitDecidedMeanwhile": {
+    uk: "Рішення щодо цієї пропозиції щойно ухвалив інший співробітник. Оновіть список",
+    ru: "Решение по этому предложению только что принял другой сотрудник. Обновите список",
+    en: "Another staff member has just decided on this suggestion. Refresh the list",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
