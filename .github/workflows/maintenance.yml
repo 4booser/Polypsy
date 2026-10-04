@@ -35,6 +35,7 @@ on:
           - logs-api
           - backup-verify
           - backup-status
+          - offsite-status
           - slots-resync
           - catalog-status
           - catalog-force
@@ -128,9 +129,9 @@ jobs:
             # заводим второй список тех же значений в секретах: два места
             # однажды разойдутся. Значения в журнал прогона не печатаются —
             # скрипты выводят только итог.
-            backup-verify|backup-status)
+            backup-verify|backup-status|offsite-status)
               ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "mkdir -p /tmp/quizzy-verify"
-              scp -i ~/.ssh/id_ed25519 scripts/verify-backup.sh scripts/restore.sh \
+              scp -i ~/.ssh/id_ed25519 scripts/verify-backup.sh scripts/restore.sh scripts/offsite.sh \
                 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/quizzy-verify/"
               ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
                 "ACTION='$ACTION' TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'
@@ -145,6 +146,14 @@ jobs:
           eval "unit_env=( $(systemctl show quizzy-backup.service -p Environment --value) )"
           for kv in "${unit_env[@]}"; do export "$kv"; done
           set +a
+          # внешняя копия: каждая местная есть снаружи и того же размера.
+          # Скрипт из хранилища, как и проверка восстановимости; ключи — из
+          # окружения службы, в журнал прогона не печатаются.
+          if [ "$ACTION" = "offsite-status" ]; then
+            trap 'rm -rf /tmp/quizzy-verify' EXIT
+            bash /tmp/quizzy-verify/offsite.sh check </dev/null
+            exit $?
+          fi
           if [ "$ACTION" = "backup-status" ]; then
             systemctl status quizzy-backup.service --no-pager -n 0 | sed -n '1,4p' || true
             # что служба делала в последний раз — без этого «прошла, а файла нет» не разобрать

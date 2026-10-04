@@ -175,7 +175,7 @@ jobs:
           # туда не доехали бы никогда. До снимка — по той же причине, что и
           # состав: снимок должен сниматься исправленным скриптом.
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "rm -rf /tmp/quizzy-scripts.new && mkdir -p /tmp/quizzy-scripts.new"
-          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh \
+          scp -i ~/.ssh/id_ed25519 scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/upgrade-instances.sh scripts/offsite.sh \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/quizzy-scripts.new/"
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             "TARGET='${{ secrets.VPS_PATH }}' bash -s" <<'REMOTE'

@@ -197,6 +197,7 @@ Backups:
 - A nightly `pg_dump`, encrypted with gpg and verified by reading it back.
 - Kept as 7 daily, 4 weekly and 12 monthly copies (`scripts/backup.sh`).
 - A weekly timer and the monthly workflow restore the newest copy into a throwaway database and compare it with production (`scripts/verify-backup.sh`).
+- Each copy is also uploaded to an S3-compatible bucket at another provider when `OFFSITE_URL` is set (`scripts/offsite.sh`); the `offsite-status` action checks that every local copy exists there.
 
 Server setup, TLS, Google sign-in and incident handling are covered in `docs/DEPLOY.md` and `docs/RUNBOOK.md`.
 
@@ -235,5 +236,5 @@ Most documents are in Russian; the validation package is in Ukrainian and Russia
 - The methods have not been clinically validated; the validation package is waiting for a psychologist's review.
 - Several instruments are copyrighted. Check their licensing in the dossiers before clinical use.
 - The mobile app is not published to the App Store or Google Play; builds are run locally through Expo.
-- Backups are stored only on the production server; an off-site copy is not set up yet.
+- The off-site backup copy (`scripts/offsite.sh`, any S3-compatible storage) is built but not yet configured on the production server.
 - One server serves one institution. More institutions mean more instances (`scripts/upgrade-instances.sh`).
