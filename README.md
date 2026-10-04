@@ -231,6 +231,24 @@ Most documents are in Russian; the validation package is in Ukrainian and Russia
 | `docs/OMR.md` | feasibility of reading paper forms from a photo |
 | `docs/ROADMAP.md`, `docs/REWRITE-PLAN.md`, `docs/REDESIGN.md` | plans and design migration notes (historical, not kept fully up to date) |
 
+## Project status
+
+**Stage: pilot, late beta.** As of October 2026 (v1.17.0, 16 development waves since
+August 2026) the product is functionally complete for a single institution and runs in
+production, but it is not yet in clinical use.
+
+- **Done:** clinical console, patient cabinet, mobile app, tech panel, 31 methods, CI with
+  app-role and browser tests, automated deploys with pre-checks, encrypted and verified
+  backups, audit chain, second factor, three interface languages.
+- **Hardening:** four external code reviews (about 90 findings, including privilege
+  escalation, races and data leaks) are fixed and covered by tests. New features are
+  frozen until the next review pass comes back clean.
+- **Not done:** clinical validation of the methods by a psychologist (the package is
+  ready and waiting), off-site backups configured on the server, SSH hardening on the
+  host, mobile store publication, real users and a second institution.
+- **Scale:** one VPS (4 cores, 8 GB) serves one institution with a 76 MB database at
+  near-zero load; capacity is not the constraint, process is.
+
 ## Known limitations
 
 - The methods have not been clinically validated; the validation package is waiting for a psychologist's review.
