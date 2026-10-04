@@ -991,6 +991,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "auth.google_linked": "act.auth_google_linked",
   "auth.google_unlinked": "act.auth_google_unlinked",
   "auth.google_denied": "act.auth_google_denied",
+  "auth.google_link_denied": "act.auth_google_link_denied",
   "account.reveal": "act.account_reveal",
   "profile.update": "act.profile_update",
   "role.create": "act.role_create",
