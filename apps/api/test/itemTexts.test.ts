@@ -17,12 +17,13 @@ describe("тексты пунктов", () => {
   test("пункт не содержит другого нумерованного пункта и не длиннее 400 знаков", () => {
     const problems: string[] = [];
     for (const e of entries) {
-      e.draft.questions.forEach((q, i) => {
+      const questions = e.draft.questions ?? [];
+      questions.forEach((q, i) => {
         for (const [lang, text] of Object.entries(q.title) as [string, string][]) {
           if (!text) continue;
           const tail = text.slice(40); // первые слова могут начинаться с числа («10 раз…»)
           const m = numbered.exec(tail);
-          if (m && Number(m[1]) > i + 1 && Number(m[1]) <= e.draft.questions.length) {
+          if (m && Number(m[1]) > i + 1 && Number(m[1]) <= questions.length) {
             problems.push(`${e.key} п. ${i + 1} (${lang}): внутри текста начинается п. ${m[1]}`);
           }
           if (text.length > 400) problems.push(`${e.key} п. ${i + 1} (${lang}): ${text.length} знаков`);

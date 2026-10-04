@@ -434,6 +434,9 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
 
   const target = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
   if (!target) notFound("err.examineeNotFound");
+  // набор выдаётся обследуемому — как и доступ к методике (routes/access.ts):
+  // назначение сотруднику открывало бы ему методики мимо зоны
+  if (target.role !== "user") badRequest("err.assignOnlyToPatient");
 
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
   if (!items.length) badRequest("err.batteryEmpty");
