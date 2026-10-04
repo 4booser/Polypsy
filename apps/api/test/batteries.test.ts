@@ -69,6 +69,20 @@ describe("батареи", () => {
     expect(rows[0]!.completedAt).not.toBeNull();
   });
 
+  test("набор назначается только обследуемому: сотруднику — отказ без выдачи доступа", async () => {
+    // назначение сотруднику открывало бы ему методики набора мимо зоны
+    const res = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
+      method: "POST",
+      body: JSON.stringify({ userId: adminB.id }),
+    });
+    expect(res.status).toBe(400);
+    const rows = await db
+      .select()
+      .from(batteryAssignments)
+      .where(and(eq(batteryAssignments.batteryId, batteryId), eq(batteryAssignments.userId, adminB.id)));
+    expect(rows).toEqual([]);
+  });
+
   test("чужой админ не может назначить батарею группы А", async () => {
     const res = await api(`/api/batteries/${batteryId}/assign`, adminB.token, {
       method: "POST",
