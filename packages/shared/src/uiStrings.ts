@@ -7742,6 +7742,13 @@ export const UI = {
   },
   "ms.startOver": { uk: "Почати заново", ru: "Начать заново", en: "Start over" },
 
+  /* ── w18:delivery ── */
+  "act.auth_google_link_denied": {
+    uk: "Відмова прив’язки Google: сесію відкликано",
+    ru: "Отказ в привязке Google: сессия отозвана",
+    en: "Google link refused: session revoked",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
