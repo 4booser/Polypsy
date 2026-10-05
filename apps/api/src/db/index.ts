@@ -4,6 +4,10 @@ import postgres from "postgres";
 import { env } from "../env";
 import * as schema from "./schema";
 import { dbContext } from "./context";
+import { installDbErrorUnwrap } from "./errors";
+
+// ошибки базы — ошибками драйвера, а не обёрткой drizzle с параметрами в тексте (см. ./errors)
+installDbErrorUnwrap();
 
 /**
  * Пул соединений к PostgreSQL.

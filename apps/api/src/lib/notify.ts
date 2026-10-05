@@ -38,27 +38,37 @@ import { pushMailings } from "./mailingPush";
 
 let transporter: Transporter | null | undefined;
 
+/** Таймауты SMTP-транспорта, мс; см. smtpTransport */
+export const SMTP_TIMEOUTS = { connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 } as const;
+
+/**
+ * SMTP-транспорт по адресу из SMTP_URL — с таймаутами.
+ *
+ * Таймауты обязательны, и вот почему.
+ *
+ * У nodemailer сокетный таймаут по умолчанию — десять минут, а отправка
+ * идёт внутри транзакции запроса и держит соединение из пула. Тик
+ * минутный и предыдущего не ждёт. Зависший (не отказавший, а именно
+ * зависший — обычный случай) почтовый сервер учреждения за десять минут
+ * набирает десять одновременных проходов, пул из десяти соединений
+ * кончается, и API перестаёт обслуживать запросы. Отказ почты
+ * превращался в отказ консоли и мобильного приложения целиком, включая
+ * экран приёма.
+ *
+ * Адрес и таймауты — одним объектом { url, … }. Прежде таймауты шли вторым
+ * аргументом createTransport(url, …), а второй аргумент у nodemailer — это
+ * умолчания ПИСЬМА, не настройки соединения: транспорт их молча отбрасывал,
+ * и десятиминутный таймаут стоял как есть. Собственные типы nodemailer 10
+ * это поймали (у @types/nodemailer 8 второй аргумент был шире); объектная
+ * форма с url поддерживается с 10.0.0. Сторож — test/smtpTransport.test.ts.
+ */
+export function smtpTransport(url: string): Transporter {
+  return nodemailer.createTransport({ url, ...SMTP_TIMEOUTS });
+}
+
 function getTransport(): Transporter | null {
   if (transporter !== undefined) return transporter;
-  /*
-   * Таймауты обязательны, и вот почему.
-   *
-   * У nodemailer сокетный таймаут по умолчанию — десять минут, а отправка
-   * идёт внутри транзакции запроса и держит соединение из пула. Тик
-   * минутный и предыдущего не ждёт. Зависший (не отказавший, а именно
-   * зависший — обычный случай) почтовый сервер учреждения за десять минут
-   * набирает десять одновременных проходов, пул из десяти соединений
-   * кончается, и API перестаёт обслуживать запросы. Отказ почты
-   * превращался в отказ консоли и мобильного приложения целиком, включая
-   * экран приёма.
-   */
-  transporter = env.smtpUrl
-    ? nodemailer.createTransport(env.smtpUrl, {
-        connectionTimeout: 10_000,
-        greetingTimeout: 10_000,
-        socketTimeout: 20_000,
-      })
-    : null;
+  transporter = env.smtpUrl ? smtpTransport(env.smtpUrl) : null;
   return transporter;
 }
 
