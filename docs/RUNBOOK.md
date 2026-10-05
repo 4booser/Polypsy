@@ -13,7 +13,7 @@
 ```bash
 DATABASE_URL=postgres://…/quizzy_hospital1 \
 JWT_SECRET=… ENCRYPTION_KEY=v1:… \
-PHONE_INDEX_SECRET=… EXPORT_SECRET=… \
+PHONE_INDEX_SECRET=… EXPORT_SECRET=… SEARCH_INDEX_SECRET=… \
 INSTITUTION_NAME='Госпиталь №1' \
 bun run install:instance
 ```
@@ -31,14 +31,17 @@ bun run install:instance
 Для клинической системы открытые поля — не «режим по умолчанию», а авария. То
 же и при запуске сервера: в production процесс без ключа не поднимается.
 
-`PHONE_INDEX_SECRET` и `EXPORT_SECRET` — отдельные секреты, не копии
-`JWT_SECRET` (совпадение установка тоже не принимает). Секрет подписи меняют
-при подозрении на утечку, а слепой индекс телефона и коды субъекта в
-выгрузках обязаны переживать такую смену: иначе дедупликация номеров и
-склейка лонгитюда ломаются молча. Обновление работающего экземпляра, где
-индексы посчитаны на старом секрете: задать `PHONE_INDEX_SECRET` и прогнать
+`PHONE_INDEX_SECRET`, `EXPORT_SECRET` и `SEARCH_INDEX_SECRET` — отдельные
+секреты, не копии `JWT_SECRET` (совпадение установка тоже не принимает).
+Секрет подписи меняют при подозрении на утечку, а слепой индекс телефона,
+коды субъекта в выгрузках и слепой индекс поиска по записям обязаны
+переживать такую смену: иначе дедупликация номеров, склейка лонгитюда и
+поиск ломаются молча. Обновление работающего экземпляра, где индексы
+посчитаны на старом секрете: задать `PHONE_INDEX_SECRET` и прогнать
 `bun run --cwd apps/api db:reindex-phones` — номер лежит шифрованным, поэтому
-индекс пересчитывается.
+индекс пересчитывается; `SEARCH_INDEX_SECRET` задать — поисковый индекс api
+пересоберёт сам при первом старте (журнал — `security_jobs` вида
+`search_reindex`), руками — `bun run --cwd apps/api search:reindex`.
 
 После установки: создать боевую роль БД (`scripts/create-app-role.sql`) и
 перевести `DATABASE_URL` на неё — RLS действует только для не-владельца
@@ -107,7 +110,7 @@ TLS автоматом при заданном SITE_ADDRESS), API проксир
 
 - [ ] `POSTGRES_PASSWORD`, `JWT_SECRET` (32+ случайных символов) заданы
 - [ ] `ENCRYPTION_KEY` задан: `v1:$(head -c 32 /dev/urandom | base64)`
-- [ ] `PHONE_INDEX_SECRET` и `EXPORT_SECRET` заданы и не совпадают с `JWT_SECRET`
+- [ ] `PHONE_INDEX_SECRET`, `EXPORT_SECRET` и `SEARCH_INDEX_SECRET` заданы и не совпадают с `JWT_SECRET`
 - [ ] `CORS_ORIGINS` = адрес консоли
 - [ ] `SMTP_URL`/`MAIL_FROM`/`CONSOLE_URL` — иначе тревоги только в консоли
 - [ ] `OPEN_REGISTRATION=0` — вход пациентов только по приглашениям

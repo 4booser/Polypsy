@@ -567,6 +567,8 @@ export const JOB_KEY: Record<string, UiKey> = {
   notifier: "ops.job.notifier",
   "clinic.remind": "ops.job.remind",
   "mailings.push": "ops.job.mailings",
+  /* волна 18, участок clinic: события Google Calendar догоняют перенос и отмену приёма (apps/api/src/lib/meetSync.ts) */
+  "clinic.meet_sync": "ops.job.meetSync",
   retention: "ops.job.retention",
   /* участок obs2b: задачи, которые запускают и руками (apps/api/src/lib/opsManual.ts) */
   "analytics.cache": "o2b.job.analyticsCache",
@@ -991,6 +993,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "auth.google_linked": "act.auth_google_linked",
   "auth.google_unlinked": "act.auth_google_unlinked",
   "auth.google_denied": "act.auth_google_denied",
+  "auth.google_link_denied": "act.auth_google_link_denied",
   "account.reveal": "act.account_reveal",
   "profile.update": "act.profile_update",
   "role.create": "act.role_create",
@@ -1147,6 +1150,7 @@ export const AUDIT_ACTION_KEY: Readonly<Record<string, UiKey>> = {
   "ops.data_read": "act.ops_data_read",
   "sec.reencrypt_start": "act.sec_reencrypt_start",
   "sec.reencrypt_done": "act.sec_reencrypt_done",
+  "sec.search_reindexed": "act.sec_search_reindexed",
   "sec.phone_reindex": "act.sec_phone_reindex",
   "sec.secret_changed": "act.sec_secret_changed",
   "sec.rls_check": "act.sec_rls_check",

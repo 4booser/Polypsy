@@ -36,6 +36,7 @@ import type {
 import { API_URL } from "../config";
 import { revokeStorage, tokenStorage } from "../storage";
 import { flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
+import { createRefresher, failureStatusAfterRefresh } from "../auth/refresh";
 import { isPasswordChangeRequired, isPasswordGate } from "../auth/passwordGate";
 import { uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
@@ -93,39 +94,23 @@ export class ApiError extends Error {
  */
 const passwordGateListeners = new Set<() => void>();
 
-/** Общий на все запросы обмен refresh: одноразовый токен нельзя жечь параллельно */
-let refreshing: Promise<boolean> | null = null;
-
-async function tryRefresh(): Promise<boolean> {
-  refreshing ??= (async () => {
-    const raw = await tokenStorage.getRefresh();
-    if (!raw) return false;
-    try {
-      const res = await fetch(`${API_URL}/api/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: raw }),
-      });
-      if (!res.ok) return false;
-      const pair = (await res.json()) as { token: string; refreshToken: string };
-      /*
-       * Пока шёл обмен, человек мог выйти. Записать новую пару тогда значило
-       * бы молча вернуть ему сессию, из которой он только что вышел.
-       */
-      if ((await tokenStorage.getRefresh()) !== raw) return false;
-      await tokenStorage.set(pair.token);
-      await tokenStorage.setRefresh(pair.refreshToken);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setTimeout(() => {
-        refreshing = null;
-      }, 0);
-    }
-  })();
-  return refreshing;
-}
+/*
+ * Обмен refresh — общий на все запросы (одноразовый токен нельзя жечь
+ * параллельно) и с тремя исходами вместо булева: auth/refresh.ts.
+ */
+const tryRefresh = createRefresher({
+  getRefresh: () => tokenStorage.getRefresh(),
+  exchange: (refreshToken) =>
+    fetch(`${API_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    }),
+  save: async (pair) => {
+    await tokenStorage.set(pair.token);
+    await tokenStorage.setRefresh(pair.refreshToken);
+  },
+});
 
 interface RequestOptions {
   retried?: boolean;
@@ -170,8 +155,22 @@ async function request<T>(path: string, init: RequestInit = {}, opts: RequestOpt
   // истёкший access продлеваем молча и повторяем запрос один раз
   // продлевается всё, кроме маршрутов, где токен выдают или гасят (auth/session.ts)
   if (res.status === 401 && !opts.retried && refreshOnUnauthorized(path)) {
+    const outcome = await tryRefresh();
     // повтор — с той же проверкой владельца: обмен refresh выдаёт токен той же учётной записи
-    if (await tryRefresh()) return request<T>(path, init, { ...opts, retried: true });
+    if (outcome.kind === "refreshed") return request<T>(path, init, { ...opts, retried: true });
+    /*
+     * Продлить не удалось по временной причине (сети нет, сервер лежит) —
+     * наружу идёт она, а не исходный 401: сам запрос сервер не судил, и
+     * очередь несданных оставит сдачу в автоматическом повторе. Исходный 401
+     * остаётся только за недействительной сессией.
+     */
+    if (outcome.kind === "unavailable") {
+      const status = failureStatusAfterRefresh(outcome, res.status);
+      throw new ApiError(
+        status === 0 ? `${netText("net.offline")} (${API_URL})` : `${netText("net.failed")} ${status}`,
+        status,
+      );
+    }
   }
 
   if (res.status === 204) return undefined as T;

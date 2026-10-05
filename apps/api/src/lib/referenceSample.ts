@@ -10,7 +10,9 @@ import { getSurvey } from "./surveys";
 
 /**
  * Референтная выборка для перцентиля — в печатном листе (волна 15, внешний
- * разбор, п. 19) и в динамике человека (там же, доработка координатора).
+ * разбор, п. 19), в динамике человека (там же, доработка координатора) и в
+ * возрастных кривых норм (волна 18, CR-102: кривая действующей шкалы 0–10
+ * показывала медиану 100 из прохождений старой версии 0–100).
  *
  * Перцентиль на листе читается как «этот человек выше стольких-то процентов
  * обследованных здесь», и ради этого одного числа выборка обязана описывать
@@ -97,15 +99,19 @@ function later(a: Observation, b: Observation): boolean {
  * чей последний протокол провален шкалой лжи, в выборке остаётся его
  * прежний честный, а не пропадает он целиком — и не входит проваленный.
  */
-export function referenceSample(observations: readonly Observation[], target: ReferenceTarget): number[] {
-  const lastOf = new Map<string, Observation>();
+export function referenceObservations<O extends Observation>(observations: readonly O[], target: ReferenceTarget): O[] {
+  const lastOf = new Map<string, O>();
   for (const o of observations) {
     if (!o.userId || !o.reliable || !o.versionId) continue;
     if (!target.versions.has(o.versionId) || o.maxScore !== target.maxScore || o.unit !== target.unit) continue;
     const seen = lastOf.get(o.userId);
     if (!seen || later(o, seen)) lastOf.set(o.userId, o);
   }
-  return [...lastOf.values()].map((o) => o.value);
+  return [...lastOf.values()];
+}
+
+export function referenceSample(observations: readonly Observation[], target: ReferenceTarget): number[] {
+  return referenceObservations(observations, target).map((o) => o.value);
 }
 
 /** Перцентиль по выборке людей; меньше MIN_NORM_SAMPLE человек — null */
@@ -156,6 +162,26 @@ export async function referenceSamples(
   measure: Measure,
   targets: readonly SampleTarget[],
 ): Promise<(target: SampleTarget) => number[]> {
+  const pick = await referenceObservationSets(surveyId, measure, targets);
+  return (target) => pick(target).map((o) => o.value);
+}
+
+/**
+ * То же, что referenceSamples, но наблюдениями, а не числами: возрастным
+ * кривым (routes/norms.ts) к значению нужны возраст и пол прохождения.
+ *
+ * `keep` — что из прочитанного вообще годится вызывающему (кривой — только
+ * прохождения с известным возрастом и полом); отсев идёт ДО выбора
+ * последнего прохождения человека, по той же причине, что и отсев
+ * недостоверных: у человека, чьё последнее прохождение без возраста, в
+ * выборке остаётся прежнее с возрастом, а не пропадает он целиком.
+ */
+export async function referenceObservationSets(
+  surveyId: string,
+  measure: Measure,
+  targets: readonly SampleTarget[],
+  keep: (o: Observation) => boolean = () => true,
+): Promise<(target: SampleTarget) => Observation[]> {
   const codes = [...new Set(targets.map((t) => t.code))];
   if (!codes.length) return () => [];
 
@@ -207,12 +233,13 @@ export async function referenceSamples(
 
   const byCode = new Map<string, Observation[]>();
   for (const r of rows) {
+    if (!keep(r)) continue;
     const list = byCode.get(r.code) ?? [];
     list.push(r);
     byCode.set(r.code, list);
   }
 
-  const memo = new Map<string, number[]>();
+  const memo = new Map<string, Observation[]>();
   return (target) => {
     const key = `${target.versionId}:${target.code}:${target.maxScore}:${target.unit}`;
     const known = memo.get(key);
@@ -222,7 +249,11 @@ export async function referenceSamples(
     if (mine !== null) {
       for (const [versionId, byVersion] of signatures) if (byVersion.get(target.code) === mine) versions.add(versionId);
     }
-    const sample = referenceSample(byCode.get(target.code) ?? [], { versions, maxScore: target.maxScore, unit: target.unit });
+    const sample = referenceObservations(byCode.get(target.code) ?? [], {
+      versions,
+      maxScore: target.maxScore,
+      unit: target.unit,
+    });
     memo.set(key, sample);
     return sample;
   };

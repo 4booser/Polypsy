@@ -1,4 +1,4 @@
-import { bandFor, renderCoded, t } from "@quizzy/shared";
+import { renderCoded, t } from "@quizzy/shared";
 import { Hono, type Context } from "hono";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -29,6 +29,7 @@ import {
 import { attachToCase } from "../lib/alertCases";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { getSurvey, getSurveyForResponse } from "../lib/surveys";
+import { hitBand, ladderOf, storedScoreResult, storedScoreResults } from "../lib/storedScores";
 import { detectRisks } from "../lib/risk";
 import { assertAnswersInVersion, persistSubmission } from "../lib/submission";
 import { decryptField, encryptField } from "../lib/crypto";
@@ -37,6 +38,7 @@ import { periodFrom, periodTo } from "../lib/population";
 import { draftSchema, responseListQuery } from "@quizzy/shared";
 import { audit } from "../lib/audit";
 import { assertResponseRead, CLINICAL_READ } from "../lib/clinicalRead";
+import { hasPermission } from "../lib/permissions";
 import {
   accessiblePatientIds,
   assertPatientAccess,
@@ -356,7 +358,13 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
         .from(riskAlerts)
         .where(eq(riskAlerts.responseId, existing.id))
         .limit(1);
-      const survey = await getSurvey(existing.surveyId, null, langOf(c));
+      /*
+       * Методика — той версии, которую человек проходил, а не действующей:
+       * из неё названия шкал и ступени полос для сборки результата
+       * (lib/storedScores.ts). Настройки показа — из строки методики, как
+       * она есть сейчас, у обеих версий одни.
+       */
+      const survey = await getSurveyForResponse(existing.id, langOf(c));
       // повтор отдаёт то же, что первая попытка: баллы — только тем, кому их показывают (resultsShownTo)
       const shown = resultsShownTo(user, survey);
 
@@ -365,7 +373,13 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
           id: existing.id,
           surveyId: existing.surveyId,
           submittedAt: existing.submittedAt,
-          scores: shown ? stored : [],
+          /*
+           * Тот же ScoreResult, что у первой сдачи, — а не строки таблицы.
+           * Повтор отдавал response_scores как есть: без названия шкалы и с
+           * плоскими bandLabel/severity вместо полосы, и экран результата
+           * терял имя шкалы и интерпретацию (CR-105).
+           */
+          scores: shown && survey ? storedScoreResults(stored, survey) : [],
           reliable: shown ? existing.reliable : null,
           /*
            * Предупреждений в строке не хранится: они собираются при подсчёте
@@ -405,6 +419,26 @@ responseRoutes.post("/surveys/:id/responses", async (c) => {
   let subjectId = user.id;
   if (input.onBehalfOf) {
     if (!isStaff(user)) forbidden("err.onBehalfStaffOnly");
+    /*
+     * Право «заполнять методику за пациента» (administer) — из справочника
+     * прав, и проверяется здесь, а не только классом учётной записи: до
+     * волны 18 его не проверял никто, и сотрудник с исключением
+     * «administer: revoke» сдавал за пациента как ни в чём не бывало
+     * (внешний разбор, CR-069). Отказ — по праву и до зоны: кому нельзя
+     * заполнять за других, тому и зона пациента ни к чему; в журнал — с
+     * причиной, как у чтения клинических данных (lib/clinicalRead.ts).
+     */
+    if (!(await hasPermission(user, "administer"))) {
+      await audit(c, {
+        action: "access.denied",
+        outcome: "denied",
+        resourceType: "survey",
+        resourceId: surveyId,
+        subjectUserId: null,
+        details: { method: c.req.method, reason: "permission_required", permission: "administer" },
+      });
+      forbidden("err.permissionRequired", { permission: "administer" });
+    }
     await assertSurveyAccess(user, surveyId);
     await assertMayFillFor(c, user, input.onBehalfOf, surveyId);
     const subject = await db.query.users.findFirst({ where: eq(users.id, input.onBehalfOf) });
@@ -1129,47 +1163,19 @@ responseRoutes.get("/responses/:id", async (c) => {
     submittedAt: response.submittedAt,
     durationMs: response.durationMs,
     // баллы и полосы — только тому, кому методика их показывает (resultsShownTo внизу файла)
+    /*
+     * Баллы — тем же сериализатором, что повтор сдачи (lib/storedScores.ts):
+     * ScoreResult по версии, которую проходили. Сверх него — лестница полос:
+     * все ступени шкалы той версии с пометкой попавшей. Одной попавшей
+     * экрану мало: макет рисует все «від — до», а собирать их из действующей
+     * методики нельзя — границы могли перерисовать после прохождения.
+     */
     scores: (resultsShownTo(user, survey) ? scoreRows : []).map((s) => {
       const scale = scaleTitles.get(s.scaleId);
-      const band = s.bandLabel
-        ? { id: null, label: s.bandLabel, severity: s.severity!, description: null, grade: null, recommendation: null }
-        : null;
-      /*
-       * Лестница полос — все ступени шкалы той версии, которую человек
-       * проходил, с пометкой попавшей. Одной попавшей экрану мало: макет
-       * рисует все «від — до», а собирать их из действующей методики нельзя —
-       * границы могли перерисовать после прохождения.
-       *
-       * Попавшая ищется тем же сравнением, что в движке подсчёта
-       * (packages/shared/src/scoring.ts), и только когда полоса при подсчёте
-       * вообще нашлась: без неё балл не нормирован и не в тех единицах, в
-       * которых заданы ступени. Запасной путь — по сохранённой подписи: она
-       * записана в момент подсчёта и надёжнее, чем значение, округлённое
-       * иначе.
-       */
-      const ladder = [...(scale?.bands ?? [])].sort((a, b) => a.minScore - b.minScore || a.position - b.position);
-      const hit = band
-        ? (bandFor(ladder, s.value) ?? ladder.find((b) => b.label === band.label))
-        : undefined;
+      const ladder = ladderOf(scale);
+      const hit = hitBand(ladder, s);
       return {
-        scaleId: s.scaleId,
-        scaleCode: scale?.code ?? "",
-        scaleTitle: scale?.title ?? "",
-        kind: "clinical" as const,
-        correctedScore: s.rawScore,
-        value: s.value,
-        /*
-         * Удалось ли нормирование — из сохранённого при подсчёте. Тип
-         * ответа (ScoreResult) обещал это поле давно, а маршрут его не
-         * отдавал, и экран не мог отличить сырой балл от T-балла: без
-         * полосы «64» читалось бы как T 64, хотя это сырой балл без нормы.
-         */
-        normalized: s.normalized,
-        normalization: s.normalization,
-        rawScore: s.rawScore,
-        maxScore: s.maxScore,
-        percent: s.percent,
-        band,
+        ...storedScoreResult(s, scale),
         bands: ladder.map(
           (b): ResponseDetailBand => ({
             id: b.id,

@@ -195,6 +195,25 @@ export function batteryProgress<T extends StepInput>(
  * же знает, что отзывать (routes/batteries.ts).
  */
 
+/**
+ * Набор под замком FOR SHARE — для автоматических выдач (расписание, каскад,
+ * приглашение) внутри их транзакции.
+ *
+ * То же, что делает ручная выдача (routes/batteries.ts, assertBatteryAccess
+ * с замком): архивность и существование набора проверяются по строке, которую
+ * удаление (FOR UPDATE) и архивирование (UPDATE) не могут изменить, пока
+ * выдача не зафиксируется, — а выдача, вставшая за ними, читает уже новую
+ * строку. Нет строки или архив — undefined: автоматике отказывать некому,
+ * она пропускает выдачу (#107, #108).
+ */
+export async function lockBatteryForAssign(
+  tx: Pick<typeof Db, "select">,
+  batteryId: string,
+): Promise<typeof batteries.$inferSelect | undefined> {
+  const [row] = await tx.select().from(batteries).where(eq(batteries.id, batteryId)).for("share");
+  return row && !row.archived ? row : undefined;
+}
+
 /** Шаг, который назначение выдаёт: методика, место, обязательность */
 export interface IssuedStep {
   surveyId: string;

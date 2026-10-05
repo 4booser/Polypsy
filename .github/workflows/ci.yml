@@ -142,6 +142,7 @@ jobs:
           ENCRYPTION_KEY: ci-placeholder
           PHONE_INDEX_SECRET: ci-placeholder
           EXPORT_SECRET: ci-placeholder
+          SEARCH_INDEX_SECRET: ci-placeholder
           APP_DB_PASSWORD: ci-placeholder
           POSTGRES_PASSWORD: ci-placeholder
       - name: Сборка образа API

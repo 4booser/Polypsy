@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
-import { api, app, db, makeUser } from "./fixtures";
+import { api, app, db, issueToken, makeUser } from "./fixtures";
 import { users } from "../src/db/schema";
+import { revokeAllFor } from "../src/lib/refresh";
 import { domainAllowed, googleEnabled } from "../src/lib/google";
 import { env } from "../src/env";
 
@@ -187,5 +188,136 @@ describe("состояние входа привязано к браузеру",
     const res = await app.request("/api/auth/google/start", { redirect: "manual" });
     if (res.status === 404) return; // способ не настроен в тестах
     expect(res.headers.get("set-cookie") ?? "").toContain("quizzy_oauth_state");
+  });
+});
+
+describe("начатая привязка не переживает отзыв сессий (внешний разбор, #36)", () => {
+  /*
+   * Pending OAuth хранил verifier, время и linkUserId — но не границу отзыва
+   * и не сессию, которая привязку начала. Callback доверял сохранённому
+   * linkUserId и записывал google_sub без повторной проверки полномочий:
+   * пациент начинал привязку, администратор отзывал его сессии (старый
+   * токен на /auth/me уже давал 401), а возврат от Google с исходными
+   * state и cookie всё равно записывал google_sub — и этот Google становился
+   * новым способом входа в отозванную учётную запись.
+   *
+   * Google подменён локальным fetch (как в meetBooking.test.ts): это проверка
+   * жизненного цикла полномочий, а не обхода проверки Google-токена.
+   */
+  const originalFetch = globalThis.fetch;
+  const saved = { id: env.googleClientId, secret: env.googleClientSecret, redirect: env.googleRedirectUri };
+  const CLIENT_ID = `client-${crypto.randomUUID()}`;
+  let googleSub = "";
+  let googleEmail = "";
+
+  function idToken(): string {
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const claims = {
+      iss: "https://accounts.google.com",
+      aud: CLIENT_ID,
+      sub: googleSub,
+      email: googleEmail,
+      email_verified: true,
+      exp: Math.floor(Date.now() / 1000) + 300,
+    };
+    return `${b64({ alg: "RS256" })}.${b64(claims)}.sig`;
+  }
+
+  beforeAll(() => {
+    env.googleClientId = CLIENT_ID;
+    env.googleClientSecret = "secret";
+    env.googleRedirectUri = "http://localhost/api/auth/google/callback";
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url.startsWith("https://oauth2.googleapis.com/token")) {
+        return new Response(JSON.stringify({ id_token: idToken() }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+  });
+  afterAll(() => {
+    globalThis.fetch = originalFetch;
+    env.googleClientId = saved.id;
+    env.googleClientSecret = saved.secret;
+    env.googleRedirectUri = saved.redirect;
+  });
+
+  /** Начать привязку: адрес Google и cookie состояния этого браузера */
+  async function startLink(token: string) {
+    const res = await api<{ url: string }>("/api/auth/google/link", token, { method: "POST" });
+    expect(res.status).toBe(200);
+    const state = new URL(res.body.url).searchParams.get("state")!;
+    const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0]!;
+    expect(cookie).toContain("quizzy_oauth_state=");
+    return { state, cookie };
+  }
+
+  function callback(state: string, cookie: string) {
+    return app.request(`/api/auth/google/callback?code=${crypto.randomUUID()}&state=${state}`, {
+      headers: { Cookie: cookie },
+      redirect: "manual",
+    });
+  }
+
+  const subOf = async (id: string) => (await db.query.users.findFirst({ where: eq(users.id, id) }))?.googleSub ?? null;
+
+  test("после отзыва сессий старый callback не записывает google_sub", async () => {
+    const person = await makeUser("user", `g-revoke-${crypto.randomUUID()}@test`);
+    googleSub = `sub-${crypto.randomUUID()}`;
+    googleEmail = `g-revoke-${crypto.randomUUID()}@example.com`;
+    const { state, cookie } = await startLink(person.token);
+
+    // администратор отзывает сессии: старый токен больше не работает
+    await revokeAllFor(person.id);
+    expect((await api("/api/auth/me", person.token)).status).toBe(401);
+
+    const res = await callback(state, cookie);
+    expect(res.status, "возврат от Google завершил привязку после отзыва сессий").toBe(401);
+    expect(await subOf(person.id), "google_sub записан отозванной сессией").toBeNull();
+    // и войти этим Google нечем
+    const login = await db.query.users.findFirst({ where: eq(users.googleSub, googleSub) });
+    expect(login).toBeUndefined();
+  });
+
+  test("после блокировки — тоже", async () => {
+    const person = await makeUser("user", `g-disabled-${crypto.randomUUID()}@test`);
+    googleSub = `sub-${crypto.randomUUID()}`;
+    googleEmail = `g-disabled-${crypto.randomUUID()}@example.com`;
+    const { state, cookie } = await startLink(person.token);
+    await db.update(users).set({ disabledAt: new Date().toISOString() }).where(eq(users.id, person.id));
+
+    const res = await callback(state, cookie);
+    expect(res.status).toBe(401);
+    expect(await subOf(person.id)).toBeNull();
+  });
+
+  test("действующая привязка проходит, а повторный возврат по тому же состоянию — нет", async () => {
+    const person = await makeUser("user", `g-live-${crypto.randomUUID()}@test`);
+    googleSub = `sub-${crypto.randomUUID()}`;
+    googleEmail = `g-live-${crypto.randomUUID()}@example.com`;
+    const { state, cookie } = await startLink(person.token);
+
+    const res = await callback(state, cookie);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location") ?? "").toContain("google=linked");
+    expect(await subOf(person.id)).toBe(googleSub);
+
+    // состояние одноразовое
+    expect((await callback(state, cookie)).status).toBe(401);
+  });
+
+  test("привязка, начатая после отзыва новой сессией, проходит", async () => {
+    // отзыв гасит прежние токены, а не запрещает привязку навсегда
+    const person = await makeUser("user", `g-fresh-${crypto.randomUUID()}@test`);
+    await revokeAllFor(person.id);
+    const fresh = await issueToken({ id: person.id, role: "user" });
+    googleSub = `sub-${crypto.randomUUID()}`;
+    googleEmail = `g-fresh-${crypto.randomUUID()}@example.com`;
+    const { state, cookie } = await startLink(fresh);
+    expect((await callback(state, cookie)).status).toBe(302);
+    expect(await subOf(person.id)).toBe(googleSub);
   });
 });

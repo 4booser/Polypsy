@@ -149,7 +149,8 @@ function assertIndicators(survey: SurveyFull, column: StatModelColumnInput): voi
 export async function resolveColumns(user: User, input: StatModelColumnInput[]): Promise<StatModelColumn[]> {
   const out: StatModelColumn[] = [];
   for (const col of input) {
-    if (col.presetId) await assertFilterPresetAccess(user, col.presetId);
+    // замок на строке пресета — чтобы его не удалили из-под сохраняемой модели (lib/scope.ts)
+    if (col.presetId) await assertFilterPresetAccess(user, col.presetId, "key share");
     const filters = col.presetId ? null : (col.filters ?? {});
     if (filters) await assertFilterRefs(user, filters);
 

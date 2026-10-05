@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { adminA, adminB, api, makeUser, submitSurvey, surveyInA } from "./fixtures";
-import { fingerprint, indexOf, stems } from "../src/lib/searchIndex";
+import { desc, eq } from "drizzle-orm";
+import { adminA, adminB, api, db, makeUser, submitSurvey, surveyInA } from "./fixtures";
+import { baseDb } from "../src/db";
+import { systemContext } from "../src/db/context";
+import { securityJobs } from "../src/db/schema";
+import { env } from "../src/env";
+import { ensureSearchIndexCurrent } from "../src/lib/noteReindex";
+import { fingerprint, indexOf, searchSecretMark, stems } from "../src/lib/searchIndex";
 
 /**
  * Поиск по зашифрованным записям.
@@ -136,5 +142,87 @@ describe("поиск", () => {
     // «ничего не найдено» означало бы «в записях нет слова “на”», что неправда
     const empty = await api("/api/search/notes?q=на и в", adminA.token);
     expect(empty.status).toBe(400);
+  });
+});
+
+describe("секрет индекса — свой, и его смена не теряет поиск (внешний разбор, #25)", () => {
+  async function noteFor(text: string) {
+    const person = await makeUser("user", `search-rot-${crypto.randomUUID()}@test`);
+    await submitSurvey(surveyInA, person.token);
+    await api(`/api/notes/patients/${person.id}`, adminA.token, {
+      method: "PUT",
+      body: JSON.stringify({ text, baseVersion: 0, kind: "session" }),
+    });
+    return person;
+  }
+  const finds = async (q: string, userId: string) => {
+    const res = await api("/api/search/notes?q=" + encodeURIComponent(q), adminA.token);
+    expect(res.status).toBe(200);
+    return res.body.items.some((i: { userId: string }) => i.userId === userId);
+  };
+  const lastJob = async () =>
+    (
+      await db
+        .select()
+        .from(securityJobs)
+        .where(eq(securityJobs.kind, "search_reindex"))
+        .orderBy(desc(securityJobs.startedAt))
+        .limit(1)
+    )[0];
+
+  test("отпечатки не зависят от JWT_SECRET", () => {
+    /*
+     * Ровно то, что ломалось: ротация секрета подписи — штатная реакция на
+     * утечку токена — меняла отпечатки запросов, а индекс оставался прежним.
+     */
+    const before = fingerprint("тревож");
+    const jwt = env.jwtSecret;
+    env.jwtSecret = `rotated-${crypto.randomUUID()}`;
+    try {
+      expect(fingerprint("тревож")).toBe(before);
+    } finally {
+      env.jwtSecret = jwt;
+    }
+    const search = env.searchIndexSecret;
+    env.searchIndexSecret = `rotated-${crypto.randomUUID()}`;
+    try {
+      expect(fingerprint("тревож"), "смена секрета индекса не меняет отпечатки — значит, он не используется").not.toBe(before);
+    } finally {
+      env.searchIndexSecret = search;
+    }
+  });
+
+  test("смена SEARCH_INDEX_SECRET замечается при старте и индекс пересобирается с проверяемым итогом", async () => {
+    const person = await noteFor("Отмечается ангедония и утрата интересов");
+    expect(await finds("ангедония", person.id)).toBe(true);
+
+    // индекс приводится к текущему секрету: журнал есть, отпечаток совпадает
+    await systemContext(baseDb, () => db.delete(securityJobs).where(eq(securityJobs.kind, "search_reindex")));
+    expect(await ensureSearchIndexCurrent()).toBe("reindexed");
+    expect(await ensureSearchIndexCurrent()).toBe("current");
+
+    const original = env.searchIndexSecret;
+    env.searchIndexSecret = `rotated-${crypto.randomUUID()}`;
+    try {
+      // новый процесс с новым секретом: запрос считает другие отпечатки, индекс прежний
+      expect(await finds("ангедония", person.id), "старый индекс нашёл запись новым секретом").toBe(false);
+
+      // первый запуск с новым секретом — пересборка
+      expect(await ensureSearchIndexCurrent()).toBe("reindexed");
+      expect(await finds("ангедония", person.id), "после переиндексации запись не найдена").toBe(true);
+
+      // итог проверяем по журналу: на каком секрете, сколько записей, чем закончилось
+      const job = await lastJob();
+      expect(job).toMatchObject({ status: "done", targetKey: searchSecretMark(), skipped: 0 });
+      expect(job!.processed).toBeGreaterThanOrEqual(1);
+      expect(job!.total).toBe(job!.processed);
+      expect(job!.finishedAt).not.toBeNull();
+      expect(await ensureSearchIndexCurrent()).toBe("current");
+    } finally {
+      env.searchIndexSecret = original;
+      // вернуть индекс к секрету процесса — иначе соседние тесты искали бы по чужим отпечаткам
+      await ensureSearchIndexCurrent();
+    }
+    expect(await finds("ангедония", person.id)).toBe(true);
   });
 });

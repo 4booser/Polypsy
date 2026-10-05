@@ -1617,10 +1617,30 @@ export const specialistProfileSchema = z.object({
   acceptsBookings: z.boolean().default(true),
 });
 
+/**
+ * Известен ли часовой пояс по имени IANA — по тем же таблицам, которыми
+ * считаются даты (Intl).
+ *
+ * Поле пояса отделения проверялось только на длину строки: любая запись
+ * проходила, а следующий же запрос приёмного дня падал пятисоткой на
+ * неизвестном поясе PostgreSQL (внешний разбор, #24). Intl бросает RangeError
+ * на незнакомом имени — это и есть проверка. Знает ли пояс сама база,
+ * сверяет маршрут перед записью (routes/clinic.ts): таблицы ICU и PostgreSQL
+ * обновляются порознь.
+ */
+export function isTimeZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const departmentSchema = z.object({
   title: localizedSchema,
   /** IANA-имя пояса: смещение устаревает дважды в год */
-  timezone: z.string().min(1).max(80).default("Europe/Kyiv"),
+  timezone: z.string().min(1).max(80).refine(isTimeZone, { message: "err.v.timezone" }).default("Europe/Kyiv"),
   /** Методика, которую дают при записи на первичный приём; null — не дают */
   screeningSurveyId: z.string().nullish(),
 });

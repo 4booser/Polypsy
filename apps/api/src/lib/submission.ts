@@ -370,6 +370,7 @@ export async function persistSubmission(
         responseId,
         scaleId: score.scaleId,
         rawScore: score.rawScore,
+        correctedScore: score.correctedScore,
         value: score.value,
         normalization: score.normalization,
         maxScore: score.maxScore,

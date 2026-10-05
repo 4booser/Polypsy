@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { createSurveySchema, db } from "./fixtures";
+import { api, createSurveySchema, db, root } from "./fixtures";
 import { auditLog, surveyVersions, surveys } from "../src/db/schema";
 import { CATALOG } from "../src/instruments/catalog";
 import { catalogStatus, installCatalog } from "../src/lib/catalogInstall";
@@ -175,6 +175,64 @@ describe("установка", () => {
     expect((trail!.details as { forced?: boolean }).forced, "в журнале нет пометки о правке поверх учреждения").toBe(true);
     const versions = await db.select({ note: surveyVersions.note }).from(surveyVersions).where(eq(surveyVersions.surveyId, pss!.id));
     expect(versions.some((v) => v.note === "Правка відділення"), "правка учреждения пропала из истории").toBe(true);
+  });
+
+  test("обычное обновление каталога сохраняет локальные visibility, инструкцию и лимит; --force — явная замена", async () => {
+    /*
+     * CR-017. Локальность определялась только заметкой последней версии
+     * содержимого, а правка visibility, инструкции или лимита версии не
+     * создаёт: каталог считал методику своей неизменённой редакцией и при
+     * очередной правке каталога surveyFields перезаписывал ограничение
+     * доступа — методика становилась public, лимит пропадал, инструкция
+     * возвращалась каталоговая. Мутация: писать surveyFields целиком при
+     * обычном обновлении — третье ожидание падает.
+     */
+    await installCatalog();
+    const [who] = await db.select().from(surveys).where(eq(surveys.catalogKey, "who5"));
+    const patched = await api(`/api/surveys/${who!.id}`, root.token, {
+      method: "PATCH",
+      body: JSON.stringify({
+        visibility: "restricted",
+        timeLimitSec: 1234,
+        instructions: { uk: "Місцева інструкція відділення", ru: "Местная инструкция отделения" },
+      }),
+    });
+    expect(patched.status, JSON.stringify(patched.body)).toBe(200);
+
+    // обзор видит правку настроек, хотя содержимое — редакция каталога
+    const status = (await catalogStatus()).find((r) => r.key === "who5")!;
+    expect(status.state).toBe("current");
+    expect([...status.localFields].sort()).toEqual(["instructions", "timeLimitSec", "visibility"]);
+
+    // новая редакция каталога: изменилось описание (копия каталога в памяти процесса; файлы не трогаются)
+    const entry = CATALOG.find((e) => e.key === "who5")!;
+    const originalDescription = entry.draft.description;
+    entry.draft.description = { uk: "Опис нової редакції", ru: "Описание новой редакции" };
+    try {
+      const updated = await installCatalog();
+      expect(updated.updated).toContain("who5");
+      expect(updated.keptSettings.who5?.sort()).toEqual(["instructions", "timeLimitSec", "visibility"]);
+      const [after] = await db.select().from(surveys).where(eq(surveys.id, who!.id));
+      expect(after!.visibility, "обновление каталога сняло ограничение доступа").toBe("restricted");
+      expect(after!.timeLimitSec).toBe(1234);
+      expect((after!.instructions as { uk: string }).uk).toBe("Місцева інструкція відділення");
+      // а то, чего учреждение не трогало, редакция каталога обновила
+      expect((after!.description as { uk: string }).uk).toBe("Опис нової редакції");
+
+      // принудительная замена — явное действие, и только она возвращает настройки каталога
+      const forced = await installCatalog({ force: ["who5"] });
+      expect(forced.updated).toContain("who5");
+      const [reset] = await db.select().from(surveys).where(eq(surveys.id, who!.id));
+      expect(reset!.visibility).toBe("public");
+      expect(reset!.timeLimitSec).toBeNull();
+      expect((await catalogStatus()).find((r) => r.key === "who5")!.localFields).toEqual([]);
+    } finally {
+      entry.draft.description = originalDescription;
+    }
+    // откат редакции в каталоге — обычным обновлением, без правок учреждения всё совпадает
+    const back = await installCatalog();
+    expect(back.updated).toContain("who5");
+    expect(back.keptSettings.who5).toBeUndefined();
   });
 
   test("общедоступные методики опубликованы и доступны без назначения", async () => {

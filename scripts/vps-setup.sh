@@ -127,6 +127,8 @@ else
   # ротация молча ломает дедупликацию номеров и склейку лонгитюда.
   set_var PHONE_INDEX_SECRET "$(rnd 32)"
   set_var EXPORT_SECRET      "$(rnd 32)"
+  # слепой индекс поиска по записям приёма — тоже свой (волна 18, #25)
+  set_var SEARCH_INDEX_SECRET "$(rnd 32)"
 
   if [ -n "$DOMAIN" ]; then
     set_var SITE_ADDRESS "$DOMAIN"

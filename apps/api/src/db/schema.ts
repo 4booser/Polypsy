@@ -592,6 +592,14 @@ export const surveys = pgTable(
    * разойдутся прохождения. Пусто у методик, заведённых руками.
    */
   catalogKey: text("catalog_key"),
+  /**
+   * Настройки редакции каталога, с которой строку в последний раз сверял
+   * установщик (surveyFields, lib/catalogInstall.ts). Поле строки, отличное
+   * от снимка, — правка учреждения: обычное обновление каталога её сохраняет
+   * (0118, CR-017). null — методика не из каталога или стоит с установки до
+   * снимков.
+   */
+  catalogFields: jsonb("catalog_fields").$type<Record<string, unknown>>(),
   /*
    * Демонстрационная методика: показывается в обучении и на показах, но не
    * выдаётся пациентам. Флаг был объявлен давно и ничего не значил — списки
@@ -1262,6 +1270,12 @@ export const responseScores = pgTable(
       .references(() => scales.id, { onDelete: "cascade" }),
     rawScore: doublePrecision("raw_score").notNull(),
     /**
+     * Балл после поправок от других шкал (K-коррекция), до нормирования.
+     * null — строка записана до 0118: сборка результата (lib/storedScores.ts)
+     * берёт тогда сырой балл или итог, смотря по нормировке.
+     */
+    correctedScore: doublePrecision("corrected_score"),
+    /**
      * Итоговое значение после поправок и нормирования: доля, T-балл или стен.
      * Хранится отдельно от сырого балла, потому что полосы норм заданы именно
      * на нём — у СР-45 сырой балл 0–35, а полосы на доле 0–1.
@@ -1561,9 +1575,16 @@ export const batteryAssignments = pgTable(
   "battery_assignments",
   {
     id: text("id").primaryKey(),
+    /**
+     * RESTRICT, а не CASCADE (миграция 0119): назначение — запись о том, что
+     * человеку выдавали этот набор, и уходить вместе с набором она не должна.
+     * Маршрут удаления и так отказывает набору с назначениями, но его
+     * проверка обходилась гонкой с выдачей (#107); теперь удаление с историей
+     * падает и в базе.
+     */
     batteryId: text("battery_id")
       .notNull()
-      .references(() => batteries.id, { onDelete: "cascade" }),
+      .references(() => batteries.id, { onDelete: "restrict" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -2099,6 +2120,15 @@ export const pushDeliveries = pgTable(
     sentAt: timestampCol("sent_at").notNull().default(sql`now()`),
     ok: boolean("ok").notNull().default(true),
     error: text("error"),
+    /**
+     * Когда заявку можно взять снова (миграция 0117). Ставится квитанцией
+     * Expo «не передано, временно» (lib/push.ts, requeueRefused) вместе с
+     * ok = false; до этого срока pushToUser заявку не берёт, после — берёт
+     * ту же строку и шлёт снова. null — повтор не назначен.
+     */
+    retryAfter: timestampCol("retry_after"),
+    /** Сколько раз по заявке отправляли: задержка повтора растёт с каждым */
+    attempts: integer("attempts").notNull().default(1),
   },
   (t) => ({
     uniqueEvent: uniqueIndex("push_deliveries_unique").on(t.userId, t.eventKey),
@@ -2131,6 +2161,12 @@ export const pushOutcomes = pgTable(
     receiptStatus: text("receipt_status", { enum: ["ok", "error"] }),
     receiptError: text("receipt_error"),
     receiptAt: timestampCol("receipt_at"),
+    /**
+     * Заявка (push_deliveries), по которой шла отправка (миграция 0117): по
+     * ней квитанция «не передано» возвращает событие в очередь. Снятая
+     * заявка оставляет null — исход о ней уже никому не нужен.
+     */
+    deliveryId: text("delivery_id").references(() => pushDeliveries.id, { onDelete: "set null" }),
   },
   (t) => ({ atIdx: index("push_outcomes_at_idx").on(t.at) }),
 );
@@ -3034,6 +3070,23 @@ export const appointments = pgTable(
     /** Очно или дистанционно; своей видеосвязи не пишем, ссылка на стороннюю встречу */
     mode: text("mode", { enum: ["onsite", "remote"] }).notNull().default("onsite"),
     meetingUrl: text("meeting_url"),
+    /**
+     * Событие Google Calendar, из которого взята ссылка, и в чьём календаре
+     * оно лежит (миграция 0116). По ним перенос и отмена сводят календарь с
+     * приёмом (lib/meetSync.ts); без идентификатора событие было некому
+     * трогать, и у врача в календаре оставалась встреча на снятое время
+     * (внешний разбор, #37). Ссылка, вписанная специалистом руками, события
+     * не имеет — её не трогают.
+     */
+    meetingEventId: text("meeting_event_id"),
+    meetingOrganizerId: text("meeting_organizer_id").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Календарь ждёт сведения с приёмом: когда пробовать (null — сведён) и
+     * сколько попыток было. Сбой Google не теряет операцию — фоновый проход
+     * доводит её до конца.
+     */
+    meetingSyncAt: timestampCol("meeting_sync_at"),
+    meetingSyncAttempts: integer("meeting_sync_attempts").notNull().default(0),
     status: text("status", {
       enum: ["booked", "confirmed", "arrived", "in_progress", "done", "no_show", "cancelled"],
     })
@@ -3555,7 +3608,8 @@ export const securityJobs = pgTable(
   "security_jobs",
   {
     id: text("id").primaryKey(),
-    kind: text("kind", { enum: ["reencrypt"] }).notNull(),
+    /** reencrypt — перешифровка (0092); search_reindex — пересборка слепого индекса записей (0117) */
+    kind: text("kind", { enum: ["reencrypt", "search_reindex"] }).notNull(),
     status: text("status", { enum: ["running", "done", "failed"] }).notNull(),
     startedAt: timestampCol("started_at").notNull().default(sql`now()`),
     heartbeatAt: timestampCol("heartbeat_at").notNull().default(sql`now()`),

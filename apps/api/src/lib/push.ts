@@ -53,24 +53,27 @@ export interface PushTicket {
 }
 
 /**
- * Отправщик возвращает билеты — или ничего, если их не у кого спросить
- * (подменённый в тестах отправщик). «Ничего» читается как «принято без
- * билета»: квитанцию по такому не спросить, и в разбивке он честно числится
- * без неё.
+ * Отправщик возвращает билеты — или ничего, если их не у кого спросить:
+ * «ничего» (undefined) — это ТОЛЬКО подменённый в тестах отправщик без
+ * билетов, и читается оно как «принято без билета»: квитанцию по такому не
+ * спросить, и в разбивке он честно числится без неё. Настоящий отправщик
+ * ничего не возвращает никогда: ответ Expo без билетов — ошибка протокола,
+ * и он её бросает (см. expoSender).
  */
 type Sender = (
   messages: { to: string; title: string; body: string; data?: unknown }[],
 ) => Promise<PushTicket[] | void>;
 
 /**
- * Отправщик подменяется в тестах.
+ * Настоящий отправщик — Expo Push API: у приложения нет своего сервера
+ * доставки, а заводить его ради двух типов сообщений значило бы взять на
+ * себя всю возню с сертификатами Apple и ключами Google.
  *
- * По умолчанию — Expo Push API: у приложения нет своего сервера доставки, а
- * заводить его ради двух типов сообщений значило бы взять на себя всю
- * возню с сертификатами Apple и ключами Google.
+ * Экспортирован ради тестов, которые подменяют не его, а сеть (fetch): так
+ * проверяется разбор настоящего ответа, а не стаб.
  */
-let sender: Sender = async (messages) => {
-  if (!messages.length) return;
+export const expoSender: Sender = async (messages) => {
+  if (!messages.length) return [];
   /*
    * С таймаутом: без него зависший (не отказавший) сервис уведомлений
    * держит соединение из пула базы столько, сколько ему угодно, а тик
@@ -84,9 +87,40 @@ let sender: Sender = async (messages) => {
     body: JSON.stringify(messages),
   });
   if (!res.ok) throw new Error(`expo push ${res.status}`);
-  const body = (await res.json().catch(() => null)) as { data?: PushTicket[] } | null;
-  return Array.isArray(body?.data) ? body.data : undefined;
+  const body = (await res.json().catch(() => null)) as { data?: unknown } | null;
+  /*
+   * Ответ без массива билетов — не «принято», а ошибка протокола.
+   *
+   * Прежде такой ответ возвращался как undefined и дальше читался как
+   * «принято без билета»: пустое тело, ошибка в JSON, ответ другой формы —
+   * всё становилось доставкой, заявка оставалась, и уведомление, о судьбе
+   * которого ничего не известно, не повторялось никогда (внешний разбор
+   * 2026-09-27, #19). Бросаем — и оно идёт тем же путём, что сетевой сбой:
+   * исход failed с кодом protocol, заявка снята, следующий проход повторит.
+   */
+  if (!Array.isArray(body?.data)) throw new Error("expo push malformed: no tickets");
+  return body.data as PushTicket[];
 };
+
+/** Отправщик подменяется в тестах; по умолчанию — настоящий */
+let sender: Sender = expoSender;
+
+/**
+ * Билеты той формы и длины, что обещает Expo: по одному на сообщение, в том
+ * же порядке, у каждого status ok|error, у принятого — id (без него квитанцию
+ * не спросить, и «принято» ничем не подтверждается). Пустой или короткий
+ * массив, билет без статуса, принятый без id — ошибка протокола: исход
+ * неизвестен, и его нельзя записывать ни успехом, ни отказом.
+ */
+function wellFormedTickets(tickets: unknown, count: number): tickets is PushTicket[] {
+  if (!Array.isArray(tickets) || tickets.length !== count) return false;
+  return tickets.every((t: unknown) => {
+    if (!t || typeof t !== "object") return false;
+    const ticket = t as Partial<PushTicket>;
+    if (ticket.status === "ok") return typeof ticket.id === "string" && ticket.id.length > 0;
+    return ticket.status === "error";
+  });
+}
 
 export function setPushSenderForTests(next: Sender | null): void {
   sender =
@@ -164,6 +198,16 @@ export async function pushToUser(
   const devices = await db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
   if (!devices.length) return false;
 
+  /*
+   * Заявка: новая строка — или своя же, возвращённая квитанцией на повтор.
+   *
+   * Квитанция Expo приходит через четверть часа после отправки и может
+   * сказать «не передано, лимит частоты» (checkPushReceipts). Такая заявка
+   * остаётся на месте — с ok = false и сроком retry_after, — и взять её
+   * снова можно только когда срок вышел. Так повтор идёт с задержкой, а не
+   * каждую минуту, и той же строкой: исходы по устройствам (push_outcomes)
+   * продолжают указывать на неё, и счётчик попыток растёт.
+   */
   const [claimed] = await db
     .insert(pushDeliveries)
     .values({
@@ -172,10 +216,20 @@ export async function pushToUser(
       eventKey: message.eventKey,
       kind: message.kind,
     })
-    .onConflictDoNothing()
-    .returning({ id: pushDeliveries.id });
+    .onConflictDoUpdate({
+      target: [pushDeliveries.userId, pushDeliveries.eventKey],
+      set: {
+        sentAt: sql`now()`,
+        ok: true,
+        error: null,
+        retryAfter: null,
+        attempts: sql`${pushDeliveries.attempts} + 1`,
+      },
+      setWhere: sql`${pushDeliveries.retryAfter} is not null and ${pushDeliveries.retryAfter} <= now()`,
+    })
+    .returning({ id: pushDeliveries.id, attempts: pushDeliveries.attempts });
 
-  // уже отправляли — второй раз не тревожим
+  // уже отправляли (или срок повтора ещё не вышел) — второй раз не тревожим
   if (!claimed) return false;
 
   let tickets: PushTicket[] | void;
@@ -191,9 +245,25 @@ export async function pushToUser(
         };
       }),
     );
+    /*
+     * Билеты не той формы — исход неизвестен, и он не записывается успехом.
+     *
+     * Прежде отсутствующий билет читался как принятый (`!ticket`), а пустой
+     * массив — как «все приняты»: заявка оставалась, ok = true, повтора не
+     * было (внешний разбор 2026-09-27, #19). Ошибка протокола идёт тем же
+     * путём, что сетевой сбой ниже: исход failed с кодом protocol — его
+     * видно в разбивке техпанели, — заявка снята, следующий проход повторит.
+     * «Хотя бы один раз» здесь — как у сетевого сбоя: запрос мог дойти до
+     * Expo, но подтверждения нет, а пропущенное уведомление дороже лишнего.
+     */
+    const returned: unknown = tickets;
+    if (returned !== undefined && !wellFormedTickets(returned, devices.length)) {
+      const shape = Array.isArray(returned) ? `${returned.length} tickets for ${devices.length} devices` : "not an array";
+      throw new Error(`expo push malformed: ${shape}`);
+    }
   } catch (error) {
     // исход пишется и здесь: «до Expo не дошли» — ровно то, что потом ищут
-    await recordOutcomes(devices, message.kind, null, failureCode(error));
+    await recordOutcomes(devices, message.kind, null, failureCode(error), claimed.id);
     /*
      * Заявка снимается, чтобы следующий проход попробовал снова.
      *
@@ -210,7 +280,7 @@ export async function pushToUser(
     return false;
   }
 
-  await recordOutcomes(devices, message.kind, tickets ?? null, null);
+  await recordOutcomes(devices, message.kind, tickets ?? null, null, claimed.id);
   await forgetDeadTokens(
     devices.filter((_, i) => (tickets ?? [])[i]?.details?.error === "DeviceNotRegistered").map((d) => d.token),
   );
@@ -253,8 +323,10 @@ const PERMANENT_TICKET_ERRORS = new Set(["MessageTooBig"]);
 
 /**
  * Что сказали билеты: принято ли хоть одним устройством, а если нет —
- * постоянный ли отказ. Билета нет вовсе (отправитель ничего не вернул) —
- * «принято без билета», как и в разбивке исходов выше.
+ * постоянный ли отказ. Билетов нет вовсе (тестовый отправитель ничего не
+ * вернул) — «принято без билета», как и в разбивке исходов выше. Форма и
+ * длина массива проверены до этого (wellFormedTickets): недостающий билет
+ * сюда не доходит и принятым не считается.
  */
 function ticketVerdict(
   tickets: PushTicket[] | void,
@@ -263,8 +335,8 @@ function ticketVerdict(
   if (!tickets) return { accepted: true };
   const codes: string[] = [];
   for (let i = 0; i < devices; i++) {
-    const ticket = tickets[i];
-    if (!ticket || ticket.status !== "error") return { accepted: true };
+    const ticket = tickets[i]!;
+    if (ticket.status !== "error") return { accepted: true };
     codes.push(ticket.details?.error ?? "unknown");
   }
   return {
@@ -307,6 +379,8 @@ function failureCode(error: unknown): string {
   const text = String(error);
   const http = /expo push (\d{3})/.exec(text);
   if (http) return `http_${http[1]}`;
+  // ответ пришёл, но не той формы: без билетов, короче списка устройств, билет без статуса или id
+  if (/malformed/i.test(text)) return "protocol";
   if (/timeout|abort/i.test(text)) return "timeout";
   return "network";
 }
@@ -326,6 +400,8 @@ async function recordOutcomes(
   kind: string,
   tickets: PushTicket[] | null,
   failure: string | null,
+  /** Заявка, по которой шла отправка: по ней квитанция возвращает событие в очередь */
+  deliveryId: string,
 ): Promise<void> {
   if (!devices.length) return;
   try {
@@ -342,6 +418,7 @@ async function recordOutcomes(
             status: failure ? ("failed" as const) : rejected ? ("rejected" as const) : ("accepted" as const),
             error: failure ?? (rejected ? (ticket?.details?.error ?? "unknown") : null),
             ticketId: !failure && ticket?.status === "ok" ? (ticket.id ?? null) : null,
+            deliveryId,
           };
         }),
       ),
@@ -413,9 +490,14 @@ const OUTCOME_KEEP_MS = 183 * 86_400_000;
  */
 export async function checkPushReceipts(
   now = new Date(),
-): Promise<{ checked: number; errors: number; purged: number }> {
+): Promise<{ checked: number; errors: number; purged: number; requeued: number }> {
   const rows = await db
-    .select({ id: pushOutcomes.id, ticketId: pushOutcomes.ticketId, tokenHash: pushOutcomes.tokenHash })
+    .select({
+      id: pushOutcomes.id,
+      ticketId: pushOutcomes.ticketId,
+      tokenHash: pushOutcomes.tokenHash,
+      deliveryId: pushOutcomes.deliveryId,
+    })
     .from(pushOutcomes)
     .where(
       and(
@@ -430,6 +512,8 @@ export async function checkPushReceipts(
   let checked = 0;
   let errors = 0;
   const dead = new Set<string>();
+  /** Заявки, по которым квитанция сказала «не передано»: код отказа по заявке */
+  const refused = new Map<string, string>();
   if (rows.length) {
     const receipts = await receiptFetcher(rows.map((r) => r.ticketId!));
     const at = now.toISOString();
@@ -440,6 +524,7 @@ export async function checkPushReceipts(
       const code = receipt.status === "error" ? (receipt.details?.error ?? "unknown") : null;
       if (code) errors++;
       if (code === "DeviceNotRegistered") dead.add(row.tokenHash);
+      if (code && row.deliveryId) refused.set(row.deliveryId, code);
       await db
         .update(pushOutcomes)
         .set({ receiptStatus: receipt.status === "ok" ? "ok" : "error", receiptError: code, receiptAt: at })
@@ -447,11 +532,75 @@ export async function checkPushReceipts(
     }
   }
   if (dead.size) await db.delete(pushTokens).where(inArray(TOKEN_FINGERPRINT, [...dead]));
+  const requeued = refused.size ? await requeueRefused(refused, now) : 0;
 
   const purged = await db
     .delete(pushOutcomes)
     .where(lt(pushOutcomes.at, new Date(now.getTime() - OUTCOME_KEEP_MS).toISOString()))
     .returning({ id: pushOutcomes.id });
 
-  return { checked, errors, purged: purged.length };
+  return { checked, errors, purged: purged.length, requeued };
+}
+
+/** Первая задержка повтора по квитанции; дальше — удвоение, до потолка */
+const RECEIPT_RETRY_BASE_MS = 15 * 60_000;
+const RECEIPT_RETRY_MAX_MS = 4 * 3_600_000;
+
+/**
+ * Вернуть в очередь события, которых квитанция не подтвердила.
+ *
+ * Билет говорит лишь «Expo принял в очередь»; что устройство не получило,
+ * выясняется из квитанции через четверть часа. Прежде такая квитанция
+ * только отмечала исход в push_outcomes: заявка в push_deliveries оставалась
+ * с ok = true, повтор pushToUser с тем же ключом события отсекался, и
+ * напоминание, отвергнутое лимитом частоты (MessageRateExceeded — Expo
+ * прямо велит повторить с задержкой), не доходило никогда (внешний разбор
+ * 2026-09-27, #18).
+ *
+ * Правило — то же, что у билетов (pushToUser): дошло хоть до одного
+ * устройства человека — доставлено, повтора нет (иначе второе устройство
+ * получало бы уведомление дважды). Не дошло ни до одного: постоянный отказ
+ * (MessageTooBig) закрывает заявку с ok = false навсегда; остальное —
+ * временное, и заявка получает срок повтора: 15 минут после первой попытки,
+ * дальше вдвое, до четырёх часов. До срока pushToUser её не берёт; после —
+ * берёт ту же строку и шлёт снова. Квитанция о повторе придёт по новому
+ * билету и попадёт сюда же — цикл с ростом задержки, а не каждую минуту.
+ */
+async function requeueRefused(refused: Map<string, string>, now: Date): Promise<number> {
+  const ids = [...refused.keys()];
+  const rows = await db
+    .select({ id: pushDeliveries.id, attempts: pushDeliveries.attempts })
+    .from(pushDeliveries)
+    .where(
+      and(
+        inArray(pushDeliveries.id, ids),
+        // уже возвращённую или закрытую заявку второй раз не трогаем
+        eq(pushDeliveries.ok, true),
+        // хотя бы одно устройство квитанция подтвердила — доставлено, повтор был бы дублем
+        sql`not exists (select 1 from push_outcomes o
+          where o.delivery_id = ${pushDeliveries.id} and o.receipt_status = 'ok')`,
+      ),
+    );
+  let requeued = 0;
+  for (const row of rows) {
+    const code = refused.get(row.id) ?? "unknown";
+    const permanent = PERMANENT_TICKET_ERRORS.has(code);
+    const delay = Math.min(RECEIPT_RETRY_BASE_MS * 2 ** Math.max(row.attempts - 1, 0), RECEIPT_RETRY_MAX_MS);
+    await db
+      .update(pushDeliveries)
+      .set({
+        ok: false,
+        error: code,
+        retryAfter: permanent ? null : new Date(now.getTime() + delay).toISOString(),
+      })
+      .where(and(eq(pushDeliveries.id, row.id), eq(pushDeliveries.ok, true)));
+    if (!permanent) requeued++;
+    log.warn(permanent ? "push.receipt_rejected" : "push.receipt_retry", {
+      deliveryId: row.id,
+      error: code,
+      attempts: row.attempts,
+      ...(permanent ? {} : { retryInMs: delay }),
+    });
+  }
+  return requeued;
 }

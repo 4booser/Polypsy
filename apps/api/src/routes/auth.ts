@@ -14,7 +14,15 @@ import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
 import { responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
-import { hashPassword, issueMfaToken, makePseudonym, toPublicUser, verifyPassword } from "../lib/auth";
+import {
+  hashPassword,
+  issueMfaToken,
+  issuedAfterRevocation,
+  makePseudonym,
+  readToken,
+  toPublicUser,
+  verifyPassword,
+} from "../lib/auth";
 import { issuePair, revokeAllFor, revokeByToken, rotateRefresh, type IssuedPair } from "../lib/refresh";
 import { clearFailures, isLockedOut, recordFailure } from "../lib/loginGuard";
 import { touchLastSeen } from "../lib/accounts";
@@ -692,15 +700,39 @@ authRoutes.post("/me/reveal", requireAuth, async (c) => {
  * это несостоявшийся приём.
  */
 
+/**
+ * Намерение привязать Google к открытой учётной записи — вместе с
+ * сессией, которая его выразила.
+ *
+ * `issuedMs` — время выдачи access-токена, которым начали привязку. Это та
+ * же отметка, по которой requireAuth отличает живой токен от отозванного
+ * (users.tokens_valid_from, lib/auth.ts). Прежде здесь лежал один
+ * linkUserId, и возврат от Google доверял ему без оглядки: пациент начинал
+ * привязку, администратор отзывал его сессии (старый токен на /auth/me уже
+ * давал 401), а callback с исходными state и cookie всё равно записывал
+ * google_sub — и этот Google становился новым способом входа в отозванную
+ * учётную запись (внешний разбор 2026-09-28, #36). Теперь при возврате
+ * полномочия инициатора проверяются заново — той же проверкой, что на любом
+ * запросе: учётная запись есть, не выключена, и токен выдан после границы
+ * отзыва.
+ */
+interface LinkIntent {
+  userId: string;
+  issuedMs: number;
+}
+
 /** Состояние между началом входа и возвратом: живёт минуты, в памяти процесса */
-const pending = new Map<string, { verifier: string; at: number; linkUserId?: string }>();
+const pending = new Map<string, { verifier: string; at: number; link?: LinkIntent }>();
+
+/** Сколько живёт начатый вход: столько же, сколько cookie состояния (Max-Age=600) */
+const STATE_TTL_MS = 600_000;
 
 /*
  * Хранится в памяти, а не в базе, намеренно: запись живёт минуты и не нужна
  * после возврата. Плата — перезапуск сервера роняет начатые входы; человек
  * нажимает «войти» ещё раз. Обратная плата, забытые строки в базе, дороже.
  */
-function rememberState(verifier: string, linkUserId?: string): string {
+function rememberState(verifier: string, link?: LinkIntent): string {
   const state = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
   /*
    * Просроченное убирается, и размер ограничен.
@@ -710,9 +742,9 @@ function rememberState(verifier: string, linkUserId?: string): string {
    * частоты запросов. Потолок превращает поток запросов в вытеснение
    * старых записей вместо неограниченного роста.
    */
-  for (const [key, value] of pending) if (Date.now() - value.at > 600_000) pending.delete(key);
+  for (const [key, value] of pending) if (Date.now() - value.at > STATE_TTL_MS) pending.delete(key);
   while (pending.size >= 5000) pending.delete(pending.keys().next().value as string);
-  pending.set(state, { verifier, at: Date.now(), linkUserId });
+  pending.set(state, { verifier, at: Date.now(), link });
   return state;
 }
 
@@ -832,8 +864,15 @@ authRoutes.post("/google/link", requireAuth, async (c) => {
   if (!googleEnabled()) notFound("err.googleDisabled");
   const user = c.get("user");
   if (user.anonymous) badRequest("err.googleAnonymous");
+  /*
+   * Токен, которым начали привязку, уже проверен requireAuth; здесь из него
+   * берётся только отметка выдачи — чтобы при возврате от Google проверить,
+   * не отозвали ли эту сессию за время похода к Google (см. LinkIntent).
+   */
+  const claims = await readToken((c.req.header("Authorization") ?? "").replace(/^Bearer\s+/i, ""));
+  if (!claims || !Number.isFinite(claims.ims)) unauthorized("err.sessionExpired");
   const verifier = newVerifier();
-  const state = rememberState(verifier, user.id);
+  const state = rememberState(verifier, { userId: user.id, issuedMs: claims.ims });
   setStateCookie(c, state);
   return c.json({ url: authorizeUrl(state, await challengeOf(verifier)) });
 });
@@ -877,7 +916,7 @@ authRoutes.get("/google/callback", async (c) => {
 
 async function googleCallback(
   c: Context<AppEnv>,
-): Promise<Response | "err.googleNotLinked" | "err.accountDisabled"> {
+): Promise<Response | "err.googleNotLinked" | "err.accountDisabled" | "err.sessionExpired"> {
   if (!googleEnabled()) notFound("err.googleDisabled");
 
   const code = c.req.query("code");
@@ -888,8 +927,13 @@ async function googleCallback(
    * Состояние должно совпасть и с выданным нами, и с тем, что лежит в
    * cookie этого браузера. Первое доказывает, что вход начинали мы; второе
    * — что начинал его ЭТОТ человек, а не тот, кто привёл его по ссылке.
+   *
+   * Срок — и при потреблении, а не только при чистке на вставке: чистка
+   * идёт, когда кто-то начинает новый вход, а на тихом сервере просроченное
+   * состояние иначе жило бы до следующего такого случая.
    */
   if (!code || !saved || stateCookieOf(c) !== state) unauthorized("err.googleState");
+  if (Date.now() - saved.at > STATE_TTL_MS) unauthorized("err.googleState");
 
   let identity: Awaited<ReturnType<typeof exchangeCode>>;
   try {
@@ -907,21 +951,40 @@ async function googleCallback(
   if (!domainAllowed(identity.email)) unauthorized("err.googleDomain");
 
   // ── связывание с открытой учётной записью ──
-  if (saved.linkUserId) {
+  if (saved.link) {
+    /*
+     * Полномочия инициатора — заново, на момент возврата (см. LinkIntent).
+     * Та же тройка, что у requireAuth: запись есть, не выключена, токен выдан
+     * после границы отзыва. Отказ — после записи в журнал, поэтому
+     * возвращается, а не бросается (см. ниже про системную транзакцию).
+     */
+    const owner = await db.query.users.findFirst({ where: eq(users.id, saved.link.userId) });
+    const stale =
+      !owner || owner.anonymous || owner.disabledAt !== null || !issuedAfterRevocation({ ims: saved.link.issuedMs }, owner.tokensValidFrom);
+    if (stale) {
+      await audit(c, {
+        action: "auth.google_link_denied",
+        outcome: "denied",
+        resourceType: "user",
+        resourceId: saved.link.userId,
+        actor: owner ? toPublicUser(owner) : null,
+        details: { email: identity.email, reason: !owner ? "unknown" : owner.disabledAt ? "disabled" : "revoked" },
+      });
+      return "err.sessionExpired";
+    }
     const taken = await db.query.users.findFirst({
       where: eq(users.googleSub, identity.sub),
     });
-    if (taken && taken.id !== saved.linkUserId) conflict("err.googleTaken");
+    if (taken && taken.id !== owner.id) conflict("err.googleTaken");
     await db
       .update(users)
       .set({ googleSub: identity.sub })
-      .where(eq(users.id, saved.linkUserId));
-    const linked = await db.query.users.findFirst({ where: eq(users.id, saved.linkUserId) });
+      .where(eq(users.id, owner.id));
     await audit(c, {
       action: "auth.google_linked",
       resourceType: "user",
-      resourceId: saved.linkUserId,
-      actor: linked ? toPublicUser(linked) : null,
+      resourceId: owner.id,
+      actor: toPublicUser(owner),
       details: { email: identity.email },
     });
     return c.redirect(`${env.consoleUrl ?? ""}/?google=linked`);
