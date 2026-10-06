@@ -1615,6 +1615,41 @@ export const ERRORS = {
     ru: "Указанная тревога исходит от другого прохождения, чем указанное в направлении",
     en: "The specified alert comes from a different response than the one named in the referral",
   },
+
+  /* ── w18:clinic ── */
+  /*
+   * Пояс отделения (#24): имя IANA, которого не знают ни Intl, ни база.
+   * Сообщение схемы — сам ключ (см. issueKey), «{field}» — путь поля.
+   */
+  /*
+   * Перенос начатого приёма (#38). Перенос — действие над приёмом, который
+   * ещё не начался; «пришёл» и «начали» снимает сотрудник отдельным шагом
+   * назад, а не перенос.
+   */
+  "err.appointmentStarted": {
+    uk: "Прийом вже почався — перенести його не можна. Якщо «прийшов» чи «почали» натиснуто помилково, працівник знімає позначку кроком назад",
+    ru: "Приём уже начался — перенести его нельзя. Если «пришёл» или «начали» нажато ошибочно, сотрудник снимает отметку шагом назад",
+    en: "The appointment has already started and can’t be rescheduled. If “arrived” or “started” was pressed by mistake, a staff member undoes it with a step back",
+  },
+  /*
+   * Запись разговора и перенос приёма (#101). Разговор с материалами остаётся
+   * у того, с кем он был; строка, невидимая спрашивающему, — не 500.
+   */
+  "err.recordingHoldsAppointment": {
+    uk: "У цього прийому є запис розмови з поточним фахівцем — передати прийом іншому не можна. Спочатку видаліть запис або залиште прийом у цього фахівця",
+    ru: "У этого приёма есть запись разговора с текущим специалистом — передать приём другому нельзя. Сначала удалите запись или оставьте приём у этого специалиста",
+    en: "This appointment has a recorded conversation with the current specialist, so it can’t be moved to another one. Delete the recording first or keep the appointment with this specialist",
+  },
+  "err.recordingOtherSpecialist": {
+    uk: "Запис розмови цього прийому належить іншому фахівцю",
+    ru: "Запись разговора этого приёма принадлежит другому специалисту",
+    en: "The conversation recording for this appointment belongs to another specialist",
+  },
+  "err.v.timezone": {
+    uk: "{field}: невідомий часовий пояс — потрібна назва IANA, наприклад Europe/Kyiv",
+    ru: "{field}: неизвестный часовой пояс — нужно имя IANA, например Europe/Kyiv",
+    en: "{field}: unknown time zone — an IANA name such as Europe/Kyiv is required",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

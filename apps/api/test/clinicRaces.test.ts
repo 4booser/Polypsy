@@ -270,6 +270,31 @@ describe("движение, перенос и отмена", () => {
     expect(row.slotId).toBe(moved);
   }, 20_000);
 
+  test("перенос пациента не уносит приём, на который в это время отметили приход (#38)", async () => {
+    /*
+     * Пациент переносит с телефона «записан», а специалист в ту же секунду
+     * нажимает «пришёл». Итог один: приход записан, перенос отклонён, и
+     * отметки времени соответствуют состоянию — а не «записан» на новом
+     * слоте с arrived_at от прежнего.
+     */
+    const { id, slotId, patient } = await visit("rs-arrived", "future");
+    const elsewhere = await slotAt("future");
+    const res = await meanwhile(
+      (tx) => tx`update appointments set status = 'arrived', arrived_at = now() where id = ${id}`,
+      () =>
+        api(`/api/clinic/appointments/${id}/reschedule`, patient.token, {
+          method: "POST",
+          body: JSON.stringify({ slotId: elsewhere }),
+        }),
+      UPDATE_APPOINTMENT,
+    );
+    expect(res.status).toBe(409);
+    const row = await statusOf(id);
+    expect(row.status).toBe("arrived");
+    expect(row.slotId).toBe(slotId);
+    expect(row.arrivedAt).not.toBeNull();
+  }, 20_000);
+
   test("второй перенос не затирает первый", async () => {
     /*
      * Пациент и регистратор переносят один приём одновременно. Прежде

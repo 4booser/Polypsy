@@ -5,7 +5,7 @@ import { requestIsReadOnly } from "../db/context";
 import { appointments, visitRecordings } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
-import { badRequest, forbidden, notFound, } from "../lib/http";
+import { badRequest, conflict, forbidden, notFound } from "../lib/http";
 import {
   eraseAudio,
   pendingTranscriptions,
@@ -65,7 +65,14 @@ async function recordingFor(appointmentId: string, patientId: string, specialist
     .select()
     .from(visitRecordings)
     .where(eq(visitRecordings.appointmentId, appointmentId));
-  return created!;
+  /*
+   * Строка есть, но спрашивающему не видна: запись принадлежит другому
+   * специалисту (политика 0059). Штатно такого не бывает — перенос приёма
+   * передаёт запись вместе с ним (lib/recordingTransfer.ts, #101), — но
+   * прежде здесь было `rec.id` у undefined, то есть 500. Отказ внятный.
+   */
+  if (!created) conflict("err.recordingOtherSpecialist");
+  return created;
 }
 
 /** Начальное состояние записи, которой ещё нет в базе (см. GET ниже) */
@@ -140,6 +147,24 @@ const takesAudioSql = or(
     gte(visitRecordings.startedAt, visitRecordings.consentAt),
   ),
 );
+
+/**
+ * Стенограмма готова и лежит в карте.
+ *
+ * Одно основание на оба пути, которые могли бы её стереть, — удаление и
+ * отзыв согласия, — и проверяется оно по материалу, а не только по статусу:
+ * «готово» либо текст с отметкой завершения (их пишет одной записью
+ * воркер, lib/recordings.ts). Прежде удаление смотрело на одно
+ * `status === "done"`, а отзыв согласия у готовой записи сохранял текст, но
+ * менял статус на consent_pending: два разрешённых действия подряд обходили
+ * явный запрет удалять готовый текст, а GET после отзыва переставал
+ * отдавать его специалисту (внешний разбор, #103). Текст без отметки — это
+ * ещё идущая расшифровка, и удаление до её конца уносит его вместе с
+ * аудио, как и прежде.
+ */
+function transcribed(rec: RecordingRow): boolean {
+  return rec.status === "done" || (rec.transcriptEnc !== null && rec.transcriptAt !== null);
+}
 
 /** Ключ отправки придумывает клиент; берём только то, что похоже на ключ */
 function uploadKey(value: unknown): string | null {
@@ -245,6 +270,24 @@ recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
    * старт, проскочивший между чтением и обновлением, оставлял «идёт
    * запись» без согласия, а загрузка — файл без ссылки.
    */
+  /*
+   * Готовую стенограмму отзыв не касается — и не меняет её состояния.
+   *
+   * Это решение о записи в карте, а не о разговоре, и принимается оно не
+   * здесь: отказ с тем же объяснением, что у удаления. Прежде отзыв у
+   * готовой записи сохранял текст, но переводил статус в consent_pending —
+   * и следующее удаление, запрещённое лишь при «готово», стирало
+   * стенограмму; специалист же после отзыва текста не видел (отдаётся
+   * только при «готово») (внешний разбор, #103).
+   *
+   * «Готова» — по строке, прочитанной ДО замка (`found`): такой её видел
+   * человек, нажимая «отозвать». Пока отзыв ждал замка, воркер успевал
+   * положить итог, и строка под замком уже говорила «готово», — но согласие
+   * отозвано раньше, чем текст лёг в карту, и разговор, на хранение
+   * которого согласия больше нет, стирается вместе с аудио (сторож —
+   * recordingRace.test.ts).
+   */
+  if (transcribed(found)) badRequest("err.recordingTranscribed");
   const rec = await lockRecording(found.id);
   if (rec.status === "recording") badRequest("err.recordingInProgress");
 
@@ -258,18 +301,10 @@ recordingRoutes.post("/:appointmentId/consent/revoke", async (c) => {
       // выглядит как «запись есть», а по ней потом пойдёт расшифровка
       audioPath: null,
       audioBytes: null,
-      /*
-       * И стенограмма — если отзыв застал запись ещё не расшифрованной.
-       *
-       * «Застал» — по строке, прочитанной ДО замка (`found`): такой её видел
-       * человек, нажимая «отозвать». Пока отзыв ждал замка, воркер успевал
-       * положить итог — статус «готово», текст в базе, — и строка под замком
-       * (`rec`) уже говорила «готово». Сверка по ней оставляла разговор, на
-       * хранение которого согласия больше нет, в базе буквами. Отзыв,
-       * заставший стенограмму уже готовой, её не трогает, как и прежде: это
-       * решение о записи в карте, а не о разговоре.
-       */
-      ...(found.status === "done" ? {} : { transcriptEnc: null, transcriptEngine: null, transcriptAt: null }),
+      // и стенограмма, дописанная за время ожидания замка: согласия на неё нет
+      transcriptEnc: null,
+      transcriptEngine: null,
+      transcriptAt: null,
     })
     .where(eq(visitRecordings.id, rec.id));
 
@@ -547,7 +582,8 @@ recordingRoutes.post("/:appointmentId/discard", async (c) => {
    */
   const rec = await lockRecording(found.id);
 
-  if (rec.status === "done") badRequest("err.recordingTranscribed");
+  // по материалу, а не по одному статусу (см. transcribed, #103)
+  if (transcribed(rec)) badRequest("err.recordingTranscribed");
 
   await db
     .update(visitRecordings)

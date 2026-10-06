@@ -7742,6 +7742,10 @@ export const UI = {
   },
   "ms.startOver": { uk: "Почати заново", ru: "Начать заново", en: "Start over" },
 
+  /* ── w18:clinic ── */
+  /* фоновая задача сведения событий календаря с приёмами (apps/api/src/lib/meetSync.ts, #37) */
+  "ops.job.meetSync": { uk: "Події календаря прийомів", ru: "События календаря приёмов", en: "Appointment calendar events" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

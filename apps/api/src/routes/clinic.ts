@@ -41,7 +41,10 @@ import { decryptField, encryptField } from "../lib/crypto";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { requireDateParam } from "../lib/dates";
 import type { MeetOutcome } from "../lib/meet";
+import { syncMeeting } from "../lib/meetSync";
+import { transferRecording } from "../lib/recordingTransfer";
 import { STAFF_OUTBOUND_LANG } from "../lib/notify";
+import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -73,12 +76,30 @@ clinicRoutes.get("/departments", async (c) => {
   });
 });
 
+/**
+ * Пояс отделения должна знать и база, а не только Intl.
+ *
+ * Схема отсекает имена, которых не знает Intl (isTimeZone); но дни отделения
+ * считает PostgreSQL (`at time zone`), и его таблица поясов обновляется
+ * отдельно от ICU. Имя, известное одному и неизвестному другому, записалось
+ * бы и уронило приёмный день пятисоткой (внешний разбор, #24). Сверка — по
+ * pg_timezone_names, без выполнения `at time zone`: ошибка в нём оборвала
+ * бы транзакцию запроса. Имена у базы регистронезависимы — сравнение тоже.
+ */
+async function assertDbTimeZone(tz: string): Promise<void> {
+  const [known] = await db.execute<{ ok: number }>(
+    sql`select 1 as ok from pg_timezone_names where lower(name) = lower(${tz}) limit 1`,
+  );
+  if (!known) badRequest("err.v.timezone", { field: "timezone" });
+}
+
 clinicRoutes.post(
   "/departments",
   requireStaff,
   requirePermission("departments.manage"),
   async (c) => {
     const input = await parseBody(c.req.raw, departmentSchema);
+    await assertDbTimeZone(input.timezone);
     const id = crypto.randomUUID();
     await db.insert(departments).values({
       id,
@@ -108,6 +129,7 @@ clinicRoutes.patch(
     const input = await parseBody(c.req.raw, departmentSchema.partial());
     const existing = await db.query.departments.findFirst({ where: eq(departments.id, id) });
     if (!existing) notFound("err.departmentNotFound");
+    if (input.timezone !== undefined) await assertDbTimeZone(input.timezone);
 
     if (input.screeningSurveyId) {
       const survey = await db.query.surveys.findFirst({
@@ -725,6 +747,7 @@ clinicRoutes.post("/appointments", async (c) => {
    * записывающемуся сам, оно под своей ролью не видно (п. 10).
    */
   let meetingUrl = input.meetingUrl ?? null;
+  let meetingEventId: string | null = null;
   let meet: MeetOutcome | null = null;
   if (input.mode === "remote" && !meetingUrl) {
     const { createMeetLink } = await import("../lib/meet");
@@ -738,6 +761,7 @@ clinicRoutes.post("/appointments", async (c) => {
       title: serverText("meet.eventTitle", STAFF_OUTBOUND_LANG),
     });
     meetingUrl = created.url;
+    meetingEventId = created.eventId;
     meet = created.outcome;
   }
 
@@ -751,6 +775,9 @@ clinicRoutes.post("/appointments", async (c) => {
       kind,
       mode: input.mode,
       meetingUrl,
+      // событие и его организатор — чтобы перенос и отмена нашли, что сводить (lib/meetSync.ts)
+      meetingEventId,
+      meetingOrganizerId: meetingEventId ? slot.specialistId : null,
       reasonEnc: input.reason ? encryptField(input.reason) : null,
       bookedBy: me.id,
     }),
@@ -846,40 +873,13 @@ async function loadAppointments(where: ReturnType<typeof and>) {
   /*
    * Назначенное, но не сданное — одним запросом на весь список.
    *
-   * Считается по двум источникам сразу: персональные назначения методик и
-   * батареи. Разделять их на экране незачем — специалисту важно, что человек
-   * пришёл без того, что должен был принести, а не какой формой это было
-   * назначено.
-   *
-   * Отменённые батареи не в счёт: их и не ждали.
-   *
-   * Системной ролью: это счёт по людям уже отобранных приёмов, а не чтение
-   * чужих назначений. Под ролью приложения специалист видит назначения
-   * только методик своих групп, и пометка молча теряла назначенное другой
-   * группой — «пришёл со всем», хотя человек не сдал назначенное (волна 13,
-   * прогон clinic.test.ts под ролью приложения). Наружу уходит одно число.
+   * Разделять личные выдачи и наборы на экране незачем — специалисту важно,
+   * что человек пришёл без того, что должен был принести, а не какой формой
+   * это было назначено. Определение одно (lib/pendingWork.ts): прежний счёт
+   * здесь складывал survey_access и шаги набора и удваивал каждый шаг, а
+   * любое старое прохождение методики скрывало новое назначение (#39).
    */
-  const pendingRows = await asSystem(() => db.execute<{ user_id: string; n: number }>(
-    sql`
-      select u.id as user_id, (
-        (select count(*) from survey_access sa
-          where sa.user_id = u.id
-            and (sa.expires_at is null or sa.expires_at > now())
-            and not exists (
-              select 1 from responses r
-              where r.user_id = u.id and r.survey_id = sa.survey_id and r.status = 'completed'))
-        +
-        (select count(*) from battery_assignments ba
-          join battery_assignment_items bi on bi.assignment_id = ba.id
-          where ba.user_id = u.id and ba.cancelled_at is null
-            and not exists (
-              select 1 from responses r
-              where r.user_id = u.id and r.survey_id = bi.survey_id and r.status = 'completed'))
-      )::int as n
-      from users u where u.id in ${patientIds}
-    `,
-  ));
-  const pending = new Map(pendingRows.map((r) => [r.user_id, Number(r.n)]));
+  const pending = await pendingWorkByUser(patientIds);
 
   /*
    * Скрининг при записи: сдан или нет.
@@ -1023,12 +1023,23 @@ clinicRoutes.get("/today", requireStaff, requirePermission("patients.read"), asy
   const asked = c.req.query("date");
   const date = asked ? requireDateParam(asked, "date", { dayOnly: true }) : nowLocal[0]!.today;
 
+  /*
+   * Верхняя граница — СЛЕДУЮЩАЯ местная полночь, переведённая в момент, а не
+   * «эта полночь плюс interval '1 day'». Сутки прибавляются к timestamptz по
+   * поясу сессии базы: в docker-compose это UTC, и день становился ровно 24
+   * часами, а день Europe/Kyiv бывает 23 и 25 часов. Приём 25.10 в 23:30 не
+   * попадал ни в 25-е, ни в 26-е, приём 30.03 в 00:30 — и в 29-е, и в 30-е
+   * (внешний разбор, #22). Календарный день прибавляется к местной дате
+   * (timestamp без пояса), и только потом она переводится в момент.
+   */
+  const dayStart = sql`(${`${date} 00:00`}::timestamp at time zone ${tz})`;
+  const dayEnd = sql`((${`${date} 00:00`}::timestamp + interval '1 day') at time zone ${tz})`;
   const items = await loadAppointments(
     and(
       eq(appointments.specialistId, specialistId),
       ne(appointments.status, "cancelled"),
-      sql`${slots.startsAt} >= (${`${date} 00:00`}::timestamp at time zone ${tz})`,
-      sql`${slots.startsAt} < (${`${date} 00:00`}::timestamp at time zone ${tz}) + interval '1 day'`,
+      sql`${slots.startsAt} >= ${dayStart}`,
+      sql`${slots.startsAt} < ${dayEnd}`,
     )!,
   );
 
@@ -1144,6 +1155,9 @@ clinicRoutes.post("/appointments/:id/confirm", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Из каких состояний приём переносится: только до начала посещения (#38) */
+const RESCHEDULABLE: readonly string[] = ["booked", "confirmed"];
+
 /**
  * Перенос — это отмена и запись одним действием.
  *
@@ -1164,8 +1178,27 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
     }
   }
   if (["done", "no_show", "cancelled"].includes(row.status)) badRequest("err.appointmentClosed");
+  /*
+   * Переносится только приём, который ещё не начался: «записан» и
+   * «подтверждён». Прежде запрет касался лишь закрытых, и пациент переносил
+   * приём, на котором уже сидел (arrived/in_progress), в будущий слот другого
+   * врача: приём возвращался в «записан» мимо графа переходов, arrived_at и
+   * started_at оставались от прежнего, а завершить его было нельзя — booked →
+   * done запрещён (внешний разбор, #38). Ошибочно нажатое «пришёл» или
+   * «начали» сотрудник снимает явным шагом назад в /status, и уже из
+   * «записан» переносит как обычно.
+   */
+  if (!RESCHEDULABLE.includes(row.status)) badRequest("err.appointmentStarted");
 
   const slot = await takeSlot(input.slotId);
+
+  /*
+   * Запись разговора — к новому специалисту вместе с приёмом, по явному
+   * контракту (lib/recordingTransfer.ts, #101): пустая переходит, согласие
+   * снимается, разговор с материалами приём к другому не отпускает (409).
+   * До записи приёма: отказ здесь ничего не меняет.
+   */
+  const recording = slot.specialistId !== row.specialistId ? await transferRecording(row.id, slot.specialistId) : "none";
 
   /*
    * Прежнее состояние проверяется в самой записи, а не только прочитанным
@@ -1183,17 +1216,35 @@ clinicRoutes.post("/appointments/:id/reschedule", async (c) => {
       // подтверждение относилось к прежнему времени и на новое не переносится
       status: "booked",
       confirmedAt: null,
+      // событие календаря ждёт сведения — той же записью, что двигает приём (#37)
+      ...(row.meetingEventId ? { meetingSyncAt: new Date().toISOString() } : {}),
     },
     { slotId: row.slotId },
   );
   if (!moved) await refuseChanged(row.id);
+
+  /*
+   * Событие Google Calendar едет вслед за приёмом: на новое время у того же
+   * специалиста, к новому специалисту — пересозданием. Прежде ссылка и
+   * событие оставались прежними, и у врача в календаре стояла встреча на
+   * снятое время (внешний разбор, #37). Сбой Google перенос не срывает:
+   * метка сведения уже записана, фоновый проход повторит.
+   */
+  const meet = row.meetingEventId ? await syncMeeting(row.id) : null;
 
   await audit(c, {
     action: "clinic.reschedule",
     resourceType: "appointment",
     resourceId: row.id,
     subjectUserId: row.patientId,
-    details: { from: row.slotId, to: slot.id, bySelf: me.id === row.patientId },
+    details: {
+      from: row.slotId,
+      to: slot.id,
+      bySelf: me.id === row.patientId,
+      ...(meet ? { meet } : {}),
+      // запись разговора перешла к новому специалисту; consent_reset — согласие пришлось снять
+      ...(recording !== "none" ? { recording } : {}),
+    },
   });
   return c.json({ ok: true });
 });
@@ -1242,17 +1293,21 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
       cancelledAt: new Date().toISOString(),
       cancelledBy: me.id,
       cancelledLate: late,
+      ...(row.meetingEventId ? { meetingSyncAt: new Date().toISOString() } : {}),
     },
     { slotId: row.slotId },
   );
   if (!cancelled) await refuseChanged(row.id);
+
+  // отменённый приём не должен висеть в календаре живой встречей (#37); сбой — повторит фоновый проход
+  const meet = row.meetingEventId ? await syncMeeting(row.id) : null;
 
   await audit(c, {
     action: "clinic.cancel",
     resourceType: "appointment",
     resourceId: row.id,
     subjectUserId: row.patientId,
-    details: { late, hoursLeft: Math.round(hoursLeft), reason: input.reason ?? null, by: me.id },
+    details: { late, hoursLeft: Math.round(hoursLeft), reason: input.reason ?? null, by: me.id, ...(meet ? { meet } : {}) },
   });
   return c.json({ ok: true, late });
 });
@@ -1266,8 +1321,16 @@ clinicRoutes.post("/appointments/:id/cancel", async (c) => {
 const NEXT: Record<string, string[]> = {
   booked: ["arrived", "no_show"],
   confirmed: ["arrived", "no_show"],
-  arrived: ["in_progress", "no_show"],
-  in_progress: ["done"],
+  /*
+   * Шаг назад — «пришёл» → «записан» и «начали» → «пришёл» — это исправление
+   * ошибочного нажатия, а не движение приёма (внешний разбор, #38). Прежде
+   * начатый приём «исправляли» переносом, и он уезжал в «записан» с
+   * отметками времени от прежнего состояния. Каждый шаг назад снимает свою
+   * отметку (см. запись ниже), поэтому история остаётся согласованной: в
+   * «записан» нет arrived_at, в «пришёл» нет started_at.
+   */
+  arrived: ["in_progress", "no_show", "booked"],
+  in_progress: ["done", "arrived"],
   /*
    * Из неявки можно вернуться в «пришёл», и это не послабление.
    *
@@ -1288,7 +1351,7 @@ clinicRoutes.post(
     const row = await loadOne(c, c.req.param("id"));
     const input = await parseBody(
       c.req.raw,
-      z.object({ status: z.enum(["arrived", "in_progress", "done", "no_show"]) }),
+      z.object({ status: z.enum(["booked", "arrived", "in_progress", "done", "no_show"]) }),
     );
 
     /*
@@ -1317,9 +1380,12 @@ clinicRoutes.post(
       [row.status as AppointmentStatus],
       {
         status: input.status,
-        ...(input.status === "arrived" && { arrivedAt: now }),
+        // вперёд — ставится отметка; назад — снимается отметка оставляемого состояния
+        ...(input.status === "arrived" && row.status !== "in_progress" && { arrivedAt: now }),
         ...(input.status === "in_progress" && { startedAt: now }),
         ...(input.status === "done" && { finishedAt: now }),
+        ...(input.status === "booked" && { arrivedAt: null }),
+        ...(input.status === "arrived" && row.status === "in_progress" && { startedAt: null }),
       },
       { slotId: row.slotId },
     );

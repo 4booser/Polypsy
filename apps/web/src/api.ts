@@ -2019,7 +2019,8 @@ export const api = {
     if (params.specialistId) q.set("specialistId", params.specialistId);
     return request<{ date: string; items: AppointmentView[] }>(`/api/clinic/today?${q}`);
   },
-  appointmentStatus: (id: string, status: "arrived" | "in_progress" | "done" | "no_show") =>
+  /** «booked» и «arrived» из более позднего состояния — шаг назад, снимающий ошибочную отметку (#38) */
+  appointmentStatus: (id: string, status: "booked" | "arrived" | "in_progress" | "done" | "no_show") =>
     request<{ ok: true }>(`/api/clinic/appointments/${id}/status`, {
       method: "POST",
       body: JSON.stringify({ status }),

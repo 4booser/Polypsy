@@ -3034,6 +3034,23 @@ export const appointments = pgTable(
     /** Очно или дистанционно; своей видеосвязи не пишем, ссылка на стороннюю встречу */
     mode: text("mode", { enum: ["onsite", "remote"] }).notNull().default("onsite"),
     meetingUrl: text("meeting_url"),
+    /**
+     * Событие Google Calendar, из которого взята ссылка, и в чьём календаре
+     * оно лежит (миграция 0116). По ним перенос и отмена сводят календарь с
+     * приёмом (lib/meetSync.ts); без идентификатора событие было некому
+     * трогать, и у врача в календаре оставалась встреча на снятое время
+     * (внешний разбор, #37). Ссылка, вписанная специалистом руками, события
+     * не имеет — её не трогают.
+     */
+    meetingEventId: text("meeting_event_id"),
+    meetingOrganizerId: text("meeting_organizer_id").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Календарь ждёт сведения с приёмом: когда пробовать (null — сведён) и
+     * сколько попыток было. Сбой Google не теряет операцию — фоновый проход
+     * доводит её до конца.
+     */
+    meetingSyncAt: timestampCol("meeting_sync_at"),
+    meetingSyncAttempts: integer("meeting_sync_attempts").notNull().default(0),
     status: text("status", {
       enum: ["booked", "confirmed", "arrived", "in_progress", "done", "no_show", "cancelled"],
     })
