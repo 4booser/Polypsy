@@ -2,11 +2,12 @@ import { Hono } from "hono";
 import { mergeNorms } from "../lib/norms";
 import { MIN_GROUP, normCandidates } from "../lib/normCandidates";
 import { patientRespondent } from "../lib/population";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { referenceObservationSets } from "../lib/referenceSample";
 import { z } from "zod";
-import { ageAt, noteCode, quantile, type Lang } from "@quizzy/shared";
+import { ageAt, noteCode, quantile, scaleMaxScore, type Lang } from "@quizzy/shared";
 import { db } from "../db";
-import { responseScores, responses, scales, users } from "../db/schema";
+import { responses, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { decryptField } from "../lib/crypto";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
@@ -139,6 +140,16 @@ normRoutes.post("/surveys/:id/apply", async (c) => {
  * MIN_WINDOW наблюдений — окно расширяется, и его фактическая ширина
  * возвращается честно: врач должен видеть, на чём построена кривая.
  * За пределы наблюдаемых возрастов не экстраполируем.
+ *
+ * Выборка — референтная (lib/referenceSample.ts, мера «value»), та же, что у
+ * перцентиля листа и динамики. Прежде баллы складывались по коду шкалы без
+ * оглядки на версию: у действующей шкалы 0–10 кривая показывала медиану 100
+ * из прохождений старой редакции 0–100 (CR-102). Теперь в кривую шкалы идут
+ * только версии, где приведённое значение считается так же (отпечаток
+ * valueSignature), с тем же размахом и в тех же единицах; достоверные,
+ * обследуемые, человек — одно наблюдение (его последнее совместимое, с его
+ * возрастом на тот день). Порог окна считается после отбора. Подпись,
+ * нормировка, n и перцентили поэтому относятся к одной мере.
  */
 const MIN_WINDOW = 30;
 const PERCENTILES = [0.1, 0.25, 0.5, 0.75, 0.9] as const;
@@ -177,22 +188,31 @@ normRoutes.get("/surveys/:id/age-curves", async (c) => {
     sexOf.set(r.responseId, r.sex);
   }
 
-  const scoreRows = ageOf.size
-    ? await db
-        .select({ score: responseScores, code: scales.code, kind: scales.kind })
-        .from(responseScores)
-        .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .where(inArray(responseScores.responseId, [...ageOf.keys()]))
-    : [];
+  /*
+   * Точка каждой шкалы — действующая версия: её код, размах сырого балла
+   * (как его пишет сдача, scoring.ts) и единицы — нормировка шкалы.
+   */
+  const clinical = survey.scales.filter((s) => s.kind === "clinical");
+  // методика без единой версии: сравнивать не с чем — кривых нет, а не кривые по всему
+  const versionId = survey.versionId;
+  if (!versionId) return c.json({ surveyId, title: survey.title, minWindow: MIN_WINDOW, scales: [] });
+  const targetOf = (scale: (typeof clinical)[number]) => ({
+    versionId,
+    code: scale.code,
+    maxScore: Math.round(scaleMaxScore(scale, survey.questions) * 100) / 100,
+    unit: scale.normalization,
+  });
+  const pick = ageOf.size
+    ? await referenceObservationSets(surveyId, "value", clinical.map(targetOf), (o) => ageOf.has(o.responseId))
+    : () => [];
 
-  const curves = survey.scales
-    .filter((s) => s.kind === "clinical")
+  const curves = clinical
     .map((scale) => {
-      const own = scoreRows.filter((r) => r.code === scale.code);
+      const own = pick(targetOf(scale));
       const bySex = (["male", "female"] as const).map((sex) => {
         const points = own
-          .filter((r) => sexOf.get(r.score.responseId) === sex)
-          .map((r) => ({ age: ageOf.get(r.score.responseId)!, value: r.score.value }));
+          .filter((o) => sexOf.get(o.responseId) === sex)
+          .map((o) => ({ age: ageOf.get(o.responseId)!, value: o.value }));
         if (points.length < MIN_WINDOW) return { sex, points: [], enough: false as const };
 
         const ages = [...new Set(points.map((p) => p.age))].sort((a, b) => a - b);

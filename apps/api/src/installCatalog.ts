@@ -34,6 +34,8 @@ if (args.includes("--status")) {
     if (r.state === "local" || r.state === "behind") {
       for (const v of r.versions) console.log(`      v${v.version} · ${v.createdAt.slice(0, 16)} · ${v.note ?? "без заметки"}`);
     }
+    // настройки строки, правленные в учреждении: обычное обновление их сохранит, --force вернёт каталоговые
+    if (r.localFields.length) console.log(`      настройки учреждения: ${r.localFields.join(", ")}`);
   }
   await client.end();
   process.exit(0);
@@ -78,6 +80,9 @@ if (report.skipped.length) console.log(`  · уже стояли: ${report.skipp
 if (report.updated.length) console.log(`  ✓ обновлено до редакции каталога: ${report.updated.join(", ")}`);
 if (report.keptLocal.length) {
   console.log(`  · правлены в учреждении, каталог их не трогал: ${report.keptLocal.join(", ")}`);
+}
+for (const [key, fields] of Object.entries(report.keptSettings)) {
+  console.log(`  · ${key}: настройки учреждения сохранены (${fields.join(", ")}) — --force ${key} вернёт каталоговые`);
 }
 
 await client.end();

@@ -492,10 +492,35 @@ export interface ContentSource {
  * Тот же приём, что у copyVersion (участок submit) — одна функция на оба
  * пути, чтобы однажды не разойтись.
  */
-export function remapOptionRefs(value: unknown, resolve: (id: string) => string | undefined): unknown {
+export function remapOptionRefs(
+  value: unknown,
+  resolve: (id: string) => string | undefined,
+  resolveRef: (ref: OptionRef) => string | undefined = () => undefined,
+): unknown {
   if (typeof value === "string") return resolve(value) ?? value;
-  if (Array.isArray(value)) return value.map((v) => remapOptionRefs(v, resolve));
+  if (Array.isArray(value)) return value.map((v) => remapOptionRefs(v, resolve, resolveRef));
+  if (isOptionRef(value)) return resolveRef(value) ?? value;
   return value;
+}
+
+/**
+ * Переносимая ссылка на вариант — в файле методики (surveyToDraft → import).
+ *
+ * Условие показа «если выбран вариант X» хранит идентификатор варианта, а
+ * идентификатор принадлежит своей версии своего экземпляра: в файле он
+ * ничего не значит, и у получателя условие сравнивало бы ответ с чужой
+ * строкой — то есть не срабатывало бы никогда. В файле вариант называется
+ * местом: номер вопроса-источника (как sourceIndex) и место варианта в нём.
+ * При записи (createVersion) место переводится в идентификатор варианта
+ * новой версии, как перевод по source у правки.
+ */
+export interface OptionRef {
+  $option: { question: number; position: number };
+}
+
+export function isOptionRef(value: unknown): value is OptionRef {
+  const ref = (value as { $option?: unknown } | null)?.$option as { question?: unknown; position?: unknown } | undefined;
+  return !!ref && typeof ref.question === "number" && typeof ref.position === "number";
 }
 
 /** Нарушение уникального ключа (версия, номер) — PostgreSQL 23505 по этому индексу */
@@ -698,12 +723,14 @@ export async function createVersion(
           const position = positionOf.get(id);
           return position === undefined ? undefined : optionIdsByIndex[rule.sourceIndex]?.[position];
         };
+        // ссылка местом — из файла методики (surveyToDraft): вопрос и место варианта в нём
+        const resolveRef = (ref: OptionRef) => optionIdsByIndex[ref.$option.question]?.[ref.$option.position];
         await tx.insert(questionLogic).values({
           id: crypto.randomUUID(),
           questionId: questionIdByIndex[index]!,
           sourceQuestionId: sourceId,
           operator: rule.operator,
-          value: remapOptionRefs(rule.value ?? null, resolve) ?? null,
+          value: remapOptionRefs(rule.value ?? null, resolve, resolveRef) ?? null,
           action: rule.action,
         });
       }
@@ -990,15 +1017,21 @@ function groupBy<T, K>(items: T[], key: (item: T) => K): Map<K, T[]> {
 
 /**
  * Методика → формат файла экспорта (CreateSurveyInput): ключи по номерам
- * пунктов, поправки по кодам. Ожидает raw-представление
+ * пунктов, поправки по кодам, секции по порядковым ключам, ссылки условий на
+ * варианты — местом (OptionRef). Ожидает raw-представление
  * (getSurvey(..., raw = true)).
  *
- * ТОЛЬКО для выгрузки наружу. Преобразование по назначению теряет то, что
- * не должно или не может уехать в файл (локальные нормы, ссылки каскадов,
- * секции, условия показа, обратный ключ), и «прочитать → изменить →
- * сохранить новой версией» через него портит методику — так применение
- * локальных норм и теряло всё это до волны 12. Правка своей же методики
- * идёт через copyVersion.
+ * Собирается поверх versionContent — того же «без потерь», что у правки и
+ * копии, — и снимает с него ровно то, чему нельзя уезжать в чужое
+ * учреждение: локальные нормы и ссылки каскадов на батареи. До волны 18 это
+ * был отдельный конвертер, и он молча терял секции, шкалу пункта, обратный
+ * ключ и условия показа (внешний разбор, CR-049): выгрузка → импорт давала
+ * методику с другим подсчётом. Второго конвертера из версии в запись больше
+ * нет — расходиться нечему.
+ *
+ * ТОЛЬКО для выгрузки наружу: «прочитать → изменить → сохранить новой
+ * версией» через него теряет локальные нормы и каскады по назначению.
+ * Правка своей же методики идёт через copyVersion / versionContent.
  */
 /*
  * Локальная ли норма — по источнику. Код пишет публикация локальных норм
@@ -1013,8 +1046,26 @@ export function isLocalNormSource(source: string | null | undefined): boolean {
 }
 
 export function surveyToDraft(survey: SurveyFull) {
-  const indexById = new Map(survey.questions.map((q, i) => [q.id, i + 1]));
-  const draft = {
+  const content = versionContent(survey);
+  /*
+   * Ключи секций — порядковые, а не идентификаторы версии: файл возят между
+   * учреждениями и сравнивают, и выгрузка, меняющая ключи от версии к
+   * версии, делала бы любое сравнение бессмысленным.
+   */
+  const sectionKey = new Map(content.sections.map((sec, i) => [sec.key, `s${i + 1}`]));
+  // место варианта: id → { вопрос, место } по вопросу-источнику условия
+  const optionPlace = new Map<string, { question: number; position: number }>();
+  survey.questions.forEach((q, question) => q.options.forEach((o, position) => optionPlace.set(o.id, { question, position })));
+  const portable = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      const place = optionPlace.get(value);
+      return place ? ({ $option: place } satisfies OptionRef) : value;
+    }
+    if (Array.isArray(value)) return value.map(portable);
+    return value;
+  };
+
+  return {
     /** Версия формата файла — на случай несовместимых изменений */
     formatVersion: 1,
     title: survey.title,
@@ -1032,103 +1083,45 @@ export function surveyToDraft(survey: SurveyFull) {
     tooFastMs: survey.tooFastMs,
     alertEscalateMinutes: survey.alertEscalateMinutes,
     safetyPlan: survey.safetyPlan,
-    sections: [],
-    questions: survey.questions.map((q) => ({
-      type: q.type,
-      title: q.title,
-      help: q.help,
-      required: q.required,
-      minValue: q.minValue,
-      maxValue: q.maxValue,
-      step: q.step,
-      minLabel: q.minLabel,
-      maxLabel: q.maxLabel,
-      riskThreshold: q.riskThreshold,
-      riskLabel: q.riskLabel,
-      riskSeverity: q.riskSeverity,
-      options: q.options.map((o) => ({
-        text: o.text,
-        score: o.score,
-        kind: o.kind,
-        keyCode: o.keyCode,
-        riskFlag: o.riskFlag,
-        riskLabel: o.riskLabel,
-        riskSeverity: o.riskSeverity,
-      })),
+    showResultsToPatient: survey.showResultsToPatient,
+    sections: content.sections.map((sec) => ({ ...sec, key: sectionKey.get(sec.key)! })),
+    questions: content.questions.map((q) => ({
+      ...q,
+      sectionKey: q.sectionKey ? (sectionKey.get(q.sectionKey) ?? null) : null,
+      logic: q.logic.map((rule) => ({ ...rule, value: portable(rule.value) })),
     })),
-    scales: survey.scales.map((s) => ({
-      code: s.code,
-      title: s.title,
-      description: s.description,
-      kind: s.kind,
-      aggregation: s.aggregation,
-      normalization: s.normalization,
-      ratioDenominator: s.ratioDenominator,
-      validityThreshold: s.validityThreshold,
-      validityDirection: s.validityDirection,
-      validityMessage: s.validityMessage,
+    scales: content.scales.map((sc) => ({
+      ...sc,
       /*
-       * Своя доля ответов шкалы, ниже которой балл не вычисляется (участок
-       * engine, миграция 0101). Правило подсчёта, а не местная настройка:
-       * без него у получателя шкала считалась бы по общей доле. Приведение —
-       * до слияния с веткой engine, где поле есть в Scale.
+       * Ключ — по номерам пунктов, а не в том порядке, в каком его вернула
+       * база: для подсчёта порядок не значит ничего, а для сравнения файлов —
+       * всё. «Изменилась методика или только порядок» — вопрос, на который
+       * человек отвечать не должен.
        */
-      minAnsweredShare: (s as { minAnsweredShare?: number | null }).minAnsweredShare ?? null,
-      /*
-       * Ключ выводится по номерам пунктов, а не в том порядке, в каком его
-       * вернула база.
-       *
-       * Для подсчёта порядок не значит ничего — ключ хранится множеством
-       * строк, — но файл методики возят между учреждениями и сравнивают:
-       * выгрузка, которая при каждом запуске переставляет строки, делает
-       * любое сравнение бессмысленным. «Изменилась методика или только
-       * порядок» — вопрос, на который человек отвечать не должен.
-       */
-      key: s.items
-        .flatMap((i) => {
-          const item = indexById.get(i.questionId);
-          return item ? [{ item, matchKey: i.matchKey, weight: i.weight }] : [];
-        })
-        .sort((a, b) => a.item - b.item),
-      corrections: s.corrections.map((x) => ({ from: x.sourceScaleCode, coefficient: x.coefficient })),
+      key: [...sc.key].sort((a, b) => a.item - b.item),
       /*
        * Нормы из пособия переносятся, нормы местной выборки — нет.
        *
        * T-балл значит разное относительно мирной популяции и относительно
        * своего госпиталя. Норма, посчитанная по выборке одного учреждения и
        * молча уехавшая в другое, означает, что второе учреждение считает
-       * своих людей по чужой популяции и об этом не знает. Норма из пособия
-       * общая для всех — она и едет.
-       *
-       * Различает их поле source: локальные помечены кодом note.localSample
-       * (до волны 14 — фразой «локальная выборка, N=…»). Отбрасываем по нему,
-       * а не по флагу: флаг пришлось бы проставлять руками, и однажды его
-       * забыли бы.
+       * своих людей по чужой популяции и об этом не знает. Различает их
+       * источник (isLocalNormSource), а не флаг: флаг пришлось бы
+       * проставлять руками, и однажды его забыли бы.
        */
-      norms: s.norms.filter((n) => !isLocalNormSource(n.source)),
-      stenTable: s.stenTable,
-      bands: s.bands.map((b) => ({
-        minScore: b.minScore,
-        maxScore: b.maxScore,
-        label: b.label,
-        severity: b.severity,
-        description: b.description,
-        grade: b.grade,
-        recommendation: b.recommendation,
+      norms: sc.norms.filter((n) => !isLocalNormSource(n.source)),
+      bands: sc.bands.map((b) => ({
+        ...b,
         /*
-         * Ссылка на батарею НЕ переносится.
-         *
-         * Идентификатор батареи принадлежит своему экземпляру; в чужом он
-         * либо не найдётся, либо — что хуже — найдётся и укажет на другую
-         * батарею. Автоматика назначения по полосе настраивается на месте, и
-         * пустое поле честнее случайного попадания.
+         * Ссылка на батарею НЕ переносится. Идентификатор батареи принадлежит
+         * своему экземпляру; в чужом он либо не найдётся, либо — что хуже —
+         * найдётся и укажет на другую батарею. Автоматика назначения по
+         * полосе настраивается на месте, и пустое поле честнее случайного
+         * попадания.
          */
         cascadeBatteryId: null,
-        cascadeDueDays: b.cascadeDueDays,
-        followUpDays: b.followUpDays,
       })),
     })),
   };
-  return draft;
 }
 
