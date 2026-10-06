@@ -266,8 +266,30 @@ export async function assertPatientGroupAccess(user: User, groupId: string): Pro
  * симметрию с проверками, у которых строка не нужна.
  */
 
-export async function assertFilterPresetAccess(user: User, presetId: string): Promise<FilterPresetRow> {
-  const row = await db.query.filterPresets.findFirst({ where: eq(filterPresets.id, presetId) });
+/**
+ * Замок на строке пресета — на остаток транзакции запроса.
+ *
+ * Пресет и модель согласованы по его строке (внешний разбор 2026-09-30,
+ * #106): модель хранит presetId в jsonb, внешнего ключа нет, и удаление
+ * «никем не занятого» пресета успевало пройти проверку «моделей нет» до
+ * того, как создание модели на нём зафиксировалось — обоим успех, а модель
+ * потом не запускалась. Удаление берёт строку FOR UPDATE и считает модели
+ * уже под замком; создание и правка модели берут FOR KEY SHARE на каждый
+ * пресет колонки — замок, с которым удаление несовместимо, а правка
+ * названия и критериев (обычный UPDATE) — совместима. Кто первым встал за
+ * строкой, тот и прошёл; второй видит итог первого: пресета нет (404) или
+ * модель уже есть (400 «используется»).
+ */
+export type PresetLock = "update" | "key share";
+
+export async function assertFilterPresetAccess(
+  user: User,
+  presetId: string,
+  lock?: PresetLock,
+): Promise<FilterPresetRow> {
+  const row = lock
+    ? (await db.select().from(filterPresets).where(eq(filterPresets.id, presetId)).for(lock))[0]
+    : await db.query.filterPresets.findFirst({ where: eq(filterPresets.id, presetId) });
   if (!row || (!isSuperadmin(user) && row.ownerId !== user.id)) notFound("err.filterPresetNotFound");
   return row;
 }
