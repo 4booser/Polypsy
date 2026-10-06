@@ -567,6 +567,8 @@ export const JOB_KEY: Record<string, UiKey> = {
   notifier: "ops.job.notifier",
   "clinic.remind": "ops.job.remind",
   "mailings.push": "ops.job.mailings",
+  /* волна 18, участок clinic: события Google Calendar догоняют перенос и отмену приёма (apps/api/src/lib/meetSync.ts) */
+  "clinic.meet_sync": "ops.job.meetSync",
   retention: "ops.job.retention",
   /* участок obs2b: задачи, которые запускают и руками (apps/api/src/lib/opsManual.ts) */
   "analytics.cache": "o2b.job.analyticsCache",

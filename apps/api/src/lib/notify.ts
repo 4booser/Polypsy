@@ -19,6 +19,7 @@ import { parseTs } from "./time";
 import { log } from "./log";
 import { registerJob, skipJob, trackJob } from "./opsJobs";
 import { pushToUser } from "./push";
+import { syncDueMeetings } from "./meetSync";
 import { remindAppointments } from "./remind";
 import { pushMailings } from "./mailingPush";
 
@@ -616,6 +617,7 @@ export function startNotifier(intervalMs = 60_000): () => void {
   registerJob("notifier", intervalMs);
   registerJob("clinic.remind", intervalMs);
   registerJob("mailings.push", intervalMs);
+  registerJob("clinic.meet_sync", intervalMs);
   const tick = () => {
     /*
      * Такты не накладываются друг на друга.
@@ -654,6 +656,13 @@ export function startNotifier(intervalMs = 60_000): () => void {
      */
     void trackJob("mailings.push", () => pushMailings()).catch((error) =>
       log.warn("mailings.push_failed", { error: String(error) }),
+    );
+    /*
+     * События календаря, которые не удалось свести из запроса (Google не
+     * ответил на переносе или отмене), — тем же тактом (lib/meetSync.ts, #37).
+     */
+    void trackJob("clinic.meet_sync", () => syncDueMeetings()).catch((error) =>
+      log.warn("clinic.meet_sync_failed", { error: String(error) }),
     );
   };
   tick();

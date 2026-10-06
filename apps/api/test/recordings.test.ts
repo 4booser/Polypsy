@@ -302,6 +302,83 @@ describe("удаление", () => {
   });
 });
 
+describe("готовая стенограмма и отзыв согласия (#103)", () => {
+  /**
+   * Было: отзыв согласия у записи «готово» сохранял текст, но переводил
+   * status в consent_pending; следующий discard запрещён только при
+   * status=done — и стирал стенограмму. Два разрешённых действия подряд
+   * обходили явный запрет удалять готовый текст, а GET после отзыва
+   * переставал отдавать его специалисту (текст отдаётся только при done).
+   */
+  async function transcribed(tag: string) {
+    const made = await visit(tag);
+    await api(`/api/recordings/${made.id}`, made.specialist.token);
+    const { encryptField } = await import("../src/lib/crypto");
+    await db
+      .update(visitRecordings)
+      .set({
+        status: "done",
+        consentAt: new Date().toISOString(),
+        consentBy: made.patient.id,
+        transcriptEnc: encryptField(`Стенограмма ${tag}`),
+        transcriptEngine: "test",
+        transcriptAt: new Date().toISOString(),
+      })
+      .where(eq(visitRecordings.appointmentId, made.id));
+    return made;
+  }
+  const rowOf = async (id: string) =>
+    (await db.select().from(visitRecordings).where(eq(visitRecordings.appointmentId, id)))[0]!;
+
+  test("отзыв согласия после расшифровки не открывает путь к удалению текста", async () => {
+    const { id, patient, specialist } = await transcribed("t1");
+    expect((await api(`/api/recordings/${id}/discard`, patient.token, { method: "POST" })).status).toBe(400);
+
+    const revoked = await api(`/api/recordings/${id}/consent/revoke`, patient.token, { method: "POST" });
+    // отзыв готовой записи — решение о карте, а не о разговоре: отказ с объяснением
+    expect(revoked.status).toBe(400);
+    expect(String(revoked.body.error)).toContain("Розшифровку");
+
+    const again = await api(`/api/recordings/${id}/discard`, patient.token, { method: "POST" });
+    expect(again.status).toBe(400);
+
+    const row = await rowOf(id);
+    expect(row.status).toBe("done");
+    expect(row.transcriptEnc).not.toBeNull();
+    // текст специалисту по-прежнему доступен
+    const seen = await api(`/api/recordings/${id}`, specialist.token);
+    expect(seen.status).toBe(200);
+    expect(seen.body.transcript).toBe("Стенограмма t1");
+  });
+
+  test("удаление проверяет сам текст, а не только статус", async () => {
+    // статус подменён, текст на месте: основание удалять должно смотреть на материал
+    const { id, patient } = await transcribed("t2");
+    await db.update(visitRecordings).set({ status: "consent_pending" }).where(eq(visitRecordings.appointmentId, id));
+    expect((await api(`/api/recordings/${id}/discard`, patient.token, { method: "POST" })).status).toBe(400);
+    expect((await api(`/api/recordings/${id}/consent/revoke`, patient.token, { method: "POST" })).status).toBe(400);
+    expect((await rowOf(id)).transcriptEnc).not.toBeNull();
+  });
+
+  test("отзыв до расшифровки по-прежнему прекращает обработку и стирает материал", async () => {
+    const { id, patient, specialist } = await visit("t3");
+    await api(`/api/recordings/${id}/consent`, patient.token, { method: "POST" });
+    await api(`/api/recordings/${id}/start`, specialist.token, { method: "POST" });
+    await api(`/api/recordings/${id}/stop`, patient.token, { method: "POST" });
+    await db
+      .update(visitRecordings)
+      .set({ status: "uploaded", audioPath: null })
+      .where(eq(visitRecordings.appointmentId, id));
+
+    const revoked = await api(`/api/recordings/${id}/consent/revoke`, patient.token, { method: "POST" });
+    expect(revoked.status).toBe(200);
+    const row = await rowOf(id);
+    expect(row.status).toBe("consent_pending");
+    expect(row.consentAt).toBeNull();
+    expect(row.transcriptEnc).toBeNull();
+  });
+});
+
 describe("запись ведёт специалист, а не пациент", () => {
   test("пациент не может начать запись", async () => {
     /*
