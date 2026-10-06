@@ -24,6 +24,8 @@ export type AuditAction =
   | "auth.google_linked"
   | "auth.google_unlinked"
   | "auth.google_denied"
+  /* возврат от Google по привязке, чья сессия к этому моменту отозвана или выключена (#36) */
+  | "auth.google_link_denied"
   /* поликлиника: каждый переход приёма — событие журнала */
   | "clinic.department_create"
   | "clinic.department_update"
@@ -179,6 +181,8 @@ export type AuditAction =
    */
   | "sec.reencrypt_start"
   | "sec.reencrypt_done"
+  /* пересборка слепого индекса записей завершена: на каком секрете, сколько записей (#25) */
+  | "sec.search_reindexed"
   | "sec.phone_reindex"
   | "sec.secret_changed"
   | "sec.rls_check"

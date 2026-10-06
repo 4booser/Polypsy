@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
 import { serverText } from "@quizzy/shared";
-import { client, db, eq, groupAdmins, makeUser, root, submitSurvey, surveyGroups, surveyInA, surveys } from "./fixtures";
+import { client, db, eq, groupAdmins, makeUser, root, submitSurvey, surveyGroups, surveyInA, surveys, users } from "./fixtures";
 import { alertNotifications, responses, riskAlerts } from "../src/db/schema";
 import { runNotifierOnce, setTransportForTests, STAFF_OUTBOUND_LANG } from "../src/lib/notify";
 import { registerDevice, setPushSenderForTests } from "../src/lib/push";
@@ -228,6 +228,83 @@ describe("что считается «дошло»", () => {
       await closeAlerts([id]);
     } finally {
       await db.update(surveys).set({ alertEscalateMinutes: null }).where(eq(surveys.id, surveyId));
+    }
+  });
+});
+
+describe("заблокированный сотрудник тревог не получает (внешний разбор, #16)", () => {
+  test("единственный админ группы заблокирован — письмо и пуш уходят активному суперадмину, а не ему", async () => {
+    /*
+     * Блокировка отзывает сессии, но членство в группе и токены устройств
+     * остаются. Прежде отбор получателей шёл по group_admins без disabled_at:
+     * письмо и пуш уходили заблокированному, доставка числилась выполненной,
+     * а действующий суперадмин не узнавал о тревоге вовсе.
+     */
+    const t2 = crypto.randomUUID().slice(0, 8);
+    const title2 = `Методика блокировки ${t2}`;
+    const group2 = crypto.randomUUID();
+    const survey2 = crypto.randomUUID();
+    const blockedEmail = `blocked-${t2}@test`;
+    const blocked = await makeUser("admin", blockedEmail);
+    const blockedToken = `ExponentPushToken[${crypto.randomUUID()}]`;
+    await registerDevice(blocked.id, blockedToken, "ios", "uk");
+    const supEmail = `sup-${t2}@test`;
+    const sup = await makeUser("superadmin", supEmail);
+    const supToken = `ExponentPushToken[${crypto.randomUUID()}]`;
+    await registerDevice(sup.id, supToken, "android", "uk");
+    // выключенный суперадмин — тоже не адресат, ни письма, ни эскалации
+    const deadSupEmail = `deadsup-${t2}@test`;
+    const deadSup = await makeUser("superadmin", deadSupEmail);
+    await db.update(users).set({ disabledAt: new Date().toISOString() }).where(inArray(users.id, [blocked.id, deadSup.id]));
+
+    await db.insert(surveyGroups).values({ id: group2, title: `Група ${t2}`, createdBy: root.id });
+    await db.insert(groupAdmins).values({ groupId: group2, userId: blocked.id, addedBy: root.id });
+    await db.insert(surveys).values({
+      id: survey2,
+      groupId: group2,
+      title: { uk: title2, ru: title2, en: title2 },
+      administration: "self",
+      status: "published",
+      publishedAt: new Date().toISOString(),
+      visibility: "restricted",
+      createdBy: root.id,
+      alertEscalateMinutes: 30,
+    } as never);
+
+    const pushed: string[] = [];
+    setPushSenderForTests(async (messages) => {
+      for (const m of messages) pushed.push(m.to);
+    });
+    const mail = capture();
+    const id = crypto.randomUUID();
+    await db.insert(riskAlerts).values({
+      id,
+      responseId,
+      surveyId: survey2,
+      label: "Тестова тривога",
+      severity: "severe",
+      // давнее — чтобы в том же проходе ушла и эскалация
+      at: new Date(Date.now() - 40 * 60_000).toISOString(),
+    });
+    mine.push(id);
+    try {
+      await runNotifierOnce();
+      const letters = mail.sent.filter((m) => m.subject.includes(title2));
+      expect(letters.length, "письма по тревоге нет").toBeGreaterThanOrEqual(1);
+      for (const m of letters) {
+        expect(m.to, "письмо ушло заблокированному").not.toContain(blockedEmail);
+        expect(m.to, "письмо ушло выключенному суперадмину").not.toContain(deadSupEmail);
+        expect(m.to, "резервный активный адресат не выбран").toContain(supEmail);
+      }
+      expect(pushed, "пуш ушёл заблокированному").not.toContain(blockedToken);
+      expect(pushed, "пуш не ушёл резервному адресату").toContain(supToken);
+      const [row] = await notified(id);
+      expect(row?.recipients ?? "").not.toContain(blockedEmail);
+      expect(await journal(id)).toMatchObject({ state: "delivered" });
+    } finally {
+      setPushSenderForTests(null);
+      await client`delete from push_tokens where user_id in (${blocked.id}, ${sup.id})`;
+      await closeAlerts([id]);
     }
   });
 });

@@ -4018,7 +4018,13 @@ export interface OpsReencryptJob {
   error: string | null;
 }
 
-export type OpsSecretName = "ENCRYPTION_KEY" | "JWT_SECRET" | "PHONE_INDEX_SECRET" | "EXPORT_SECRET" | "METRICS_TOKEN";
+export type OpsSecretName =
+  | "ENCRYPTION_KEY"
+  | "JWT_SECRET"
+  | "PHONE_INDEX_SECRET"
+  | "EXPORT_SECRET"
+  | "SEARCH_INDEX_SECRET"
+  | "METRICS_TOKEN";
 
 /** Секрет без значения: задан ли и когда система увидела текущее значение */
 export interface OpsSecretStatus {

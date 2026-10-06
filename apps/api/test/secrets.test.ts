@@ -34,6 +34,7 @@ const BASE = {
   JWT_SECRET: LONG("j"),
   PHONE_INDEX_SECRET: LONG("p"),
   EXPORT_SECRET: LONG("e"),
+  SEARCH_INDEX_SECRET: LONG("s"),
   ENCRYPTION_KEY: `v1:${Buffer.alloc(32, 7).toString("base64")}`,
 };
 
@@ -134,6 +135,18 @@ describe("секреты разных контуров", () => {
     const res = await startEnv({ EXPORT_SECRET: "" });
     expect(res.ok).toBe(false);
     expect(res.out).toContain("EXPORT_SECRET");
+  });
+
+  test("без секрета поискового индекса бой не поднимается (внешний разбор, #25)", async () => {
+    const res = await startEnv({ SEARCH_INDEX_SECRET: "" });
+    expect(res.ok).toBe(false);
+    expect(res.out).toContain("SEARCH_INDEX_SECRET");
+  });
+
+  test("секрет поискового индекса, скопированный из JWT_SECRET, — отказ", async () => {
+    const res = await startEnv({ SEARCH_INDEX_SECRET: BASE.JWT_SECRET });
+    expect(res.ok).toBe(false);
+    expect(res.out).toContain("SEARCH_INDEX_SECRET = JWT_SECRET");
   });
 
   test("вписать всюду одно значение нельзя", async () => {

@@ -2099,6 +2099,15 @@ export const pushDeliveries = pgTable(
     sentAt: timestampCol("sent_at").notNull().default(sql`now()`),
     ok: boolean("ok").notNull().default(true),
     error: text("error"),
+    /**
+     * Когда заявку можно взять снова (миграция 0117). Ставится квитанцией
+     * Expo «не передано, временно» (lib/push.ts, requeueRefused) вместе с
+     * ok = false; до этого срока pushToUser заявку не берёт, после — берёт
+     * ту же строку и шлёт снова. null — повтор не назначен.
+     */
+    retryAfter: timestampCol("retry_after"),
+    /** Сколько раз по заявке отправляли: задержка повтора растёт с каждым */
+    attempts: integer("attempts").notNull().default(1),
   },
   (t) => ({
     uniqueEvent: uniqueIndex("push_deliveries_unique").on(t.userId, t.eventKey),
@@ -2131,6 +2140,12 @@ export const pushOutcomes = pgTable(
     receiptStatus: text("receipt_status", { enum: ["ok", "error"] }),
     receiptError: text("receipt_error"),
     receiptAt: timestampCol("receipt_at"),
+    /**
+     * Заявка (push_deliveries), по которой шла отправка (миграция 0117): по
+     * ней квитанция «не передано» возвращает событие в очередь. Снятая
+     * заявка оставляет null — исход о ней уже никому не нужен.
+     */
+    deliveryId: text("delivery_id").references(() => pushDeliveries.id, { onDelete: "set null" }),
   },
   (t) => ({ atIdx: index("push_outcomes_at_idx").on(t.at) }),
 );
@@ -3572,7 +3587,8 @@ export const securityJobs = pgTable(
   "security_jobs",
   {
     id: text("id").primaryKey(),
-    kind: text("kind", { enum: ["reencrypt"] }).notNull(),
+    /** reencrypt — перешифровка (0092); search_reindex — пересборка слепого индекса записей (0117) */
+    kind: text("kind", { enum: ["reencrypt", "search_reindex"] }).notNull(),
     status: text("status", { enum: ["running", "done", "failed"] }).notNull(),
     startedAt: timestampCol("started_at").notNull().default(sql`now()`),
     heartbeatAt: timestampCol("heartbeat_at").notNull().default(sql`now()`),

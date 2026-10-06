@@ -3678,9 +3678,9 @@ export const UI = {
     en: "All access tokens (30 min) become invalid: a stolen token stops working at once.",
   },
   "ops.sec.secrets.JWT_SECRET.risks": {
-    uk: "Сесії самі не обриваються: консоль і застосунок мовчки обміняють refresh-токен, бо він від секрету не залежить, — щоб справді вивести всіх, окремо відкликати сесії. На цьому ж секреті рахується сліпий індекс пошуку за записами прийому: старі записи перестануть знаходитись до переіндексації (bun src/reindex.ts). Незавершене підключення календаря Google доведеться повторити.",
-    ru: "Сессии сами не обрываются: консоль и приложение молча обменяют refresh-токен, потому что он от секрета не зависит, — чтобы действительно вывести всех, отдельно отозвать сессии. На этом же секрете считается слепой индекс поиска по записям приёма: старые записи перестанут находиться до переиндексации (bun src/reindex.ts). Незавершённое подключение календаря Google придётся повторить.",
-    en: "Sessions do not end by themselves: the console and app silently exchange the refresh token, which does not depend on this secret — to really sign everyone out, revoke sessions separately. The blind search index over visit notes is computed on this secret too: old notes stop being found until reindexing (bun src/reindex.ts). An unfinished Google Calendar connection has to be repeated.",
+    uk: "Сесії самі не обриваються: консоль і застосунок мовчки обміняють refresh-токен, бо він від секрету не залежить, — щоб справді вивести всіх, окремо відкликати сесії. Незавершене підключення календаря Google доведеться повторити.",
+    ru: "Сессии сами не обрываются: консоль и приложение молча обменяют refresh-токен, потому что он от секрета не зависит, — чтобы действительно вывести всех, отдельно отозвать сессии. Незавершённое подключение календаря Google придётся повторить.",
+    en: "Sessions do not end by themselves: the console and app silently exchange the refresh token, which does not depend on this secret — to really sign everyone out, revoke sessions separately. An unfinished Google Calendar connection has to be repeated.",
   },
   "ops.sec.secrets.PHONE_INDEX_SECRET.gives": {
     uk: "Сліпий індекс телефонів більше не перебрати за старим секретом, якщо той витік.",
@@ -7745,6 +7745,27 @@ export const UI = {
   /* ── w18:clinic ── */
   /* фоновая задача сведения событий календаря с приёмами (apps/api/src/lib/meetSync.ts, #37) */
   "ops.job.meetSync": { uk: "Події календаря прийомів", ru: "События календаря приёмов", en: "Appointment calendar events" },
+  /* ── w18:delivery ── */
+  "act.auth_google_link_denied": {
+    uk: "Відмова прив’язки Google: сесію відкликано",
+    ru: "Отказ в привязке Google: сессия отозвана",
+    en: "Google link refused: session revoked",
+  },
+  "act.sec_search_reindexed": {
+    uk: "Пошуковий індекс записів перебудовано",
+    ru: "Поисковый индекс записей пересобран",
+    en: "Note search index rebuilt",
+  },
+  "ops.sec.secrets.SEARCH_INDEX_SECRET.gives": {
+    uk: "Сліпий індекс пошуку за записами прийому більше не перебрати за старим секретом, якщо той витік.",
+    ru: "Слепой индекс поиска по записям приёма больше не перебрать по старому секрету, если тот утёк.",
+    en: "The blind search index over visit notes can no longer be brute-forced with the old secret, if it leaked.",
+  },
+  "ops.sec.secrets.SEARCH_INDEX_SECRET.risks": {
+    uk: "Після перезапуску індекс перебудовується сам (сервер порівнює відбиток секрету з журналом переіндексацій); поки йде перебудова, пошук за старими записами порожній — хвилини. Вручну: bun run search:reindex.",
+    ru: "После перезапуска индекс пересобирается сам (сервер сравнивает отпечаток секрета с журналом переиндексаций); пока идёт пересборка, поиск по старым записям пуст — минуты. Вручную: bun run search:reindex.",
+    en: "After a restart the index rebuilds itself (the server compares the secret's fingerprint with the reindex journal); while it rebuilds, search over old notes is empty — minutes. Manually: bun run search:reindex.",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 

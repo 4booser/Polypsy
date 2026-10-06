@@ -54,7 +54,7 @@ function checkEnv(): { url: string; dbName: string } {
    * раскрывает телефоны перебором, а её ротация — штатная реакция на ту же
    * утечку — молча ломает дедупликацию номеров и склейку лонгитюда.
    */
-  for (const name of ["PHONE_INDEX_SECRET", "EXPORT_SECRET"]) {
+  for (const name of ["PHONE_INDEX_SECRET", "EXPORT_SECRET", "SEARCH_INDEX_SECRET"]) {
     if (!process.env[name]) {
       console.error(
         `${name} не задан. Сгенерировать: ${name}=${randomBytes(32).toString("base64")}`,

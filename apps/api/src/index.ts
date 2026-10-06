@@ -13,6 +13,7 @@ import { log } from "./lib/log";
 import { syncBuiltinRole } from "./lib/permissions";
 import { checkRls, rlsRefusal } from "./lib/rlsGuard";
 import { recordRelease } from "./lib/releases";
+import { ensureSearchIndexCurrent } from "./lib/noteReindex";
 
 // расписания меряются днями, поэтому часового тика достаточно; первый проход
 // идёт сразу при старте, чтобы простой сервера не сдвигал выдачу заданий.
@@ -71,6 +72,24 @@ await syncBuiltinRole().catch((error) =>
  * из-за неё сервер не работает вовсе.
  */
 await recordRelease().catch((error) => log.error("release record failed", { error: String(error) }));
+
+/*
+ * Слепой индекс поиска по записям — на текущем ли секрете (lib/noteReindex.ts).
+ *
+ * Выкатка заводит SEARCH_INDEX_SECRET на сервере, где индекс построен ещё на
+ * JWT_SECRET; без этого шага поиск по старым записям молча пустел бы до
+ * ручной переиндексации. Пересборка идёт в фоне и не держит запуск:
+ * сервер отвечает, пока индекс догоняет. Там же, где планировщик, и под
+ * замком в базе — одна пересборка на все реплики. Отказ запуск не роняет:
+ * без индекса система работает, а не поднявшийся сервер не работает вовсе.
+ */
+if (env.schedulerEnabled) {
+  void ensureSearchIndexCurrent()
+    .then((outcome) => {
+      if (outcome !== "current") log.info("search.index_checked", { outcome });
+    })
+    .catch((error) => log.error("search.index_check_failed", { error: String(error) }));
+}
 
 const stopScheduler = env.schedulerEnabled ? startScheduler() : null;
 // рассыльщик тревог живёт на той же реплике, что и планировщик
