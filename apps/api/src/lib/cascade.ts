@@ -12,7 +12,7 @@ import {
   surveys,
 } from "../db/schema";
 import { auditSystem } from "./audit";
-import { closeMissed, isOverdue, snapshotAssignment } from "./batteries";
+import { closeMissed, isOverdue, lockBatteryForAssign, snapshotAssignment } from "./batteries";
 import { batterySurveysInUse } from "./scope";
 import { log } from "./log";
 
@@ -147,7 +147,9 @@ async function assignCascade(
   // срок — конец дня по поясу учреждения, а не минута сдачи скрининга (lib/day.ts, endOfDay)
   const dueAt = dueDays ? endOfDayAfter(now, dueDays) : null;
 
-  await db.transaction(async (tx) => {
+  const issued = await db.transaction(async (tx) => {
+    // набор под замком: архивированный или удалённый за время проверок — не выдаётся (lib/batteries.ts)
+    if (!(await lockBatteryForAssign(tx, batteryId))) return false;
     await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
     const assignmentId = crypto.randomUUID();
     await tx.insert(batteryAssignments).values({
@@ -173,7 +175,12 @@ async function assignCascade(
       // назначение набора поверх более долгого доступа его не укорачивает
       { term: "extend" },
     );
+    return true;
   });
+  if (!issued) {
+    log.warn("cascade.skipped", { batteryId, reason: "набор архивирован или удалён во время выдачи" });
+    return;
+  }
 
   outcome.assignedBatteries.push(battery.title);
   await auditSystem({

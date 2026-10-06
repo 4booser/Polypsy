@@ -856,7 +856,14 @@ export async function purgeDemoData(): Promise<number> {
    */
   await db.delete(invites).where(sql`${invites.note} like ${`${DEMO_NOTE}%`} or ${invites.createdBy} in ${demo}`);
   await db.delete(referrals).where(sql`${referrals.userId} in ${demo} or ${referrals.createdBy} in ${demo}`);
-  // наборы вымышленного автора — проверено выше, что назначены они только вымышленным
+  /*
+   * Наборы вымышленного автора — проверено выше, что назначены они только
+   * вымышленным. Их назначения — явно и первыми: battery_assignments.battery_id
+   * с миграции 0119 RESTRICT, каскада больше нет.
+   */
+  await db
+    .delete(batteryAssignments)
+    .where(sql`${batteryAssignments.batteryId} in (select id from batteries where created_by in ${demo})`);
   await db.delete(batteries).where(sql`${batteries.createdBy} in ${demo}`);
   /*
    * Тревоги вымышленных — явно и до их прохождений. С волны 12

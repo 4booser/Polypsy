@@ -1650,6 +1650,19 @@ export const ERRORS = {
     ru: "{field}: неизвестный часовой пояс — нужно имя IANA, например Europe/Kyiv",
     en: "{field}: unknown time zone — an IANA name such as Europe/Kyiv is required",
   },
+
+  /* ── w18:races ── */
+  /*
+   * Решение по срабатыванию, принятое одновременно с чужим (routes/decisions.ts).
+   * Не «уже принято» (400): человек нажимал кнопку, глядя на «предложено», и
+   * его решение не записано — экран должен перечитать очередь, как у
+   * направлений (err.referralChanged).
+   */
+  "err.hitDecidedMeanwhile": {
+    uk: "Рішення щодо цієї пропозиції щойно ухвалив інший співробітник. Оновіть список",
+    ru: "Решение по этому предложению только что принял другой сотрудник. Обновите список",
+    en: "Another staff member has just decided on this suggestion. Refresh the list",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

@@ -1575,9 +1575,16 @@ export const batteryAssignments = pgTable(
   "battery_assignments",
   {
     id: text("id").primaryKey(),
+    /**
+     * RESTRICT, а не CASCADE (миграция 0119): назначение — запись о том, что
+     * человеку выдавали этот набор, и уходить вместе с набором она не должна.
+     * Маршрут удаления и так отказывает набору с назначениями, но его
+     * проверка обходилась гонкой с выдачей (#107); теперь удаление с историей
+     * падает и в базе.
+     */
     batteryId: text("battery_id")
       .notNull()
-      .references(() => batteries.id, { onDelete: "cascade" }),
+      .references(() => batteries.id, { onDelete: "restrict" }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

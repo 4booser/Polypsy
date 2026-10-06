@@ -2,7 +2,6 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { noteCode } from "@quizzy/shared";
 import { db } from "../db";
 import {
-  batteries,
   batteryAssignments,
   batteryItems,
   departmentPatients,
@@ -12,7 +11,7 @@ import {
   surveys,
   users,
 } from "../db/schema";
-import { snapshotAssignment } from "./batteries";
+import { lockBatteryForAssign, snapshotAssignment } from "./batteries";
 import { grantAccess } from "./grantAccess";
 import { isPast } from "./time";
 
@@ -189,8 +188,9 @@ export async function applyInvite(
   }
 
   if (invite.batteryId) {
-    const battery = await tx.query.batteries.findFirst({ where: eq(batteries.id, invite.batteryId) });
-    if (battery && !battery.archived) {
+    // под замком строки: архивированный или удалённый набор по приглашению не выдаётся (lib/batteries.ts)
+    const battery = await lockBatteryForAssign(tx, invite.batteryId);
+    if (battery) {
       // снятые методики по приглашению не выдаются — как и везде
       const items = await tx
         .select({ surveyId: batteryItems.surveyId, position: batteryItems.position, required: batteryItems.required })

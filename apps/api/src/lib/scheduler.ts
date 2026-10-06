@@ -20,7 +20,7 @@ import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
 import { securityTick } from "./integrity";
 import { batterySurveysInUse } from "./scope";
-import { closeMissed, isOverdue, snapshotAssignment } from "./batteries";
+import { closeMissed, isOverdue, lockBatteryForAssign, snapshotAssignment } from "./batteries";
 import { log } from "./log";
 import { JobLocked, withJobLock } from "./jobLock";
 import { registerJob, trackJob } from "./opsJobs";
@@ -167,7 +167,9 @@ async function runSchedule(
   const dueAt = endOfDayAfter(now, schedule.dueDays);
   const missed = overdue.filter((a) => fresh.includes(a.userId));
 
-  await db.transaction(async (tx) => {
+  const done = await db.transaction(async (tx) => {
+    // набор под замком: архивированный за время проверок — не выдаётся (lib/batteries.ts)
+    if (!(await lockBatteryForAssign(tx, schedule.batteryId))) return false;
     await closeMissed(
       tx,
       missed.map((a) => a.id),
@@ -202,7 +204,9 @@ async function runSchedule(
       // назначение поверх более долгого доступа его не укорачивает — см. grantAccess
       { term: "extend" },
     );
+    return true;
   });
+  if (!done) return { assigned: 0, skipped: 0, missed: 0, note: noteCode("note.run.archived") };
 
   return {
     assigned: fresh.length,
