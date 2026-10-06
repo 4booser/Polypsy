@@ -170,3 +170,108 @@ describe("сохранение через PATCH не меняет методик
     expect(second.body.error).toBe(ERRORS["err.surveyVersionConflict"].uk);
   }, 30_000);
 });
+
+/**
+ * Выгрузка → импорт без потерь (волна 18, внешний разбор CR-049).
+ *
+ * surveyToDraft был отдельным конвертером и отдавал sections: [] и вопросы
+ * без sectionKey, scaleCode, reverseScored и logic: файл, импортированный в
+ * другом учреждении, считался иначе. Теперь он собран поверх versionContent
+ * и снимает только то, чему нельзя уезжать (локальные нормы, ссылки
+ * каскадов). Проверка — тем же сравнением, что у конструктора, на всём
+ * каталоге и на методике, где есть всё, что терялось.
+ */
+describe("выгрузка → импорт не меняет методику", () => {
+  async function roundtrip(source: SurveyFull): Promise<SurveyFull> {
+    const exported = await api(`/api/surveys/${source.id}/export`, root.token);
+    expect(exported.status, JSON.stringify(exported.body)).toBe(200);
+    const imported = await api(`/api/surveys/import`, root.token, {
+      method: "POST",
+      body: JSON.stringify({ ...exported.body, groupId: group }),
+    });
+    expect(imported.status, JSON.stringify(imported.body)).toBe(201);
+    return (await getSurvey(imported.body.id, null, "uk", true))!;
+  }
+
+  test("каждая методика каталога: импорт файла даёт то же содержимое", async () => {
+    for (const [key] of INSTRUMENTS) {
+      const before = installed.get(key)!;
+      const after = await roundtrip(before);
+      expect(comparable(versionContent(after), after), key).toEqual(comparable(versionContent(before), before));
+    }
+  }, 120_000);
+
+  test("секции, шкала пункта, обратный ключ, условие на вариант и настройки доезжают", async () => {
+    const L = (uk: string) => ({ uk, ru: uk });
+    const yesNo = (title: string, over: Record<string, unknown> = {}) => ({
+      type: "yesno",
+      title: L(title),
+      required: true,
+      sectionKey: "a",
+      scaleCode: "S",
+      options: [
+        { text: L("Так"), score: 1, keyCode: "yes" },
+        { text: L("Ні"), score: 0, keyCode: "no" },
+      ],
+      ...over,
+    });
+    const created = await api("/api/surveys", root.token, {
+      method: "POST",
+      body: JSON.stringify({
+        title: L(`Повний цикл ${tag}`),
+        groupId: group,
+        administration: "clinician",
+        visibility: "restricted",
+        scoringEnabled: true,
+        allowRetake: true,
+        showResultsToPatient: true,
+        timeLimitSec: 777,
+        tooFastMs: 12345,
+        instructions: L("Інструкція для файлу"),
+        safetyPlan: L("План безпеки"),
+        sections: [
+          { key: "a", title: L("Перший розділ") },
+          { key: "b", title: L("Другий розділ"), description: L("Опис розділу") },
+        ],
+        questions: [
+          yesNo("Перший"),
+          yesNo("Другий, обернений", { reverseScored: true }),
+          yesNo("Третій, умовний", { sectionKey: "b" }),
+          { type: "info", title: L("Завершення"), options: [], sectionKey: "b" },
+        ],
+        scales: [{ code: "S", title: L("Сума"), kind: "clinical", normalization: "raw", bands: [] }],
+      }),
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    // условие «показать третий при «Так» в первом» ссылается на вариант этой версии — его id известен только после записи
+    const draft = (await getSurvey(created.body.id, null, "uk", true))!;
+    const yesId = draft.questions[0]!.options[0]!.id;
+    const content = versionContent(draft);
+    content.questions[2]!.logic = [{ sourceIndex: 0, operator: "eq", value: yesId, action: "show" }];
+    await createVersion(draft.id, content, root.id, "умова на варіант", draft);
+    const before = (await getSurvey(draft.id, null, "uk", true))!;
+    expect(before.questions[2]!.logic[0]!.value).toBe(before.questions[0]!.options[0]!.id);
+
+    const after = await roundtrip(before);
+    expect(comparable(versionContent(after), after)).toEqual(comparable(versionContent(before), before));
+    // всё, что терялось, — на месте
+    // raw-представление: тексты на всех языках
+    expect(after.sections.map((s) => s.title as unknown)).toEqual([L("Перший розділ"), L("Другий розділ")]);
+    expect(after.questions[1]!.reverseScored).toBe(true);
+    expect(after.questions[2]!.sectionId).toBe(after.sections[1]!.id);
+    expect(after.questions[0]!.scaleId).toBe(after.scales[0]!.id);
+    expect(after.questions[2]!.logic[0]!.value, "условие ссылается не на вариант новой версии").toBe(
+      after.questions[0]!.options[0]!.id,
+    );
+    // настройки строки
+    expect(after).toMatchObject({
+      administration: "clinician",
+      visibility: "restricted",
+      allowRetake: true,
+      showResultsToPatient: true,
+      timeLimitSec: 777,
+      tooFastMs: 12345,
+    });
+    expect(after.instructions as unknown).toEqual(L("Інструкція для файлу"));
+  }, 30_000);
+});

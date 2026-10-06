@@ -128,6 +128,74 @@ describe("правка опубликованной методики прове�
   });
 });
 
+describe("опубликованной методике нужен хотя бы один пункт (CR-046)", () => {
+  /** Методика без шкал и подсчёта: прочим правилам публикации проверять нечего */
+  async function plainSurvey(publish: boolean) {
+    const created = await api("/api/surveys", root.token, {
+      method: "POST",
+      body: JSON.stringify({
+        title: L(`Без шкал ${tag()}`),
+        groupId: group,
+        administration: "self",
+        questions: content().questions.map((q) => ({ ...q, sectionKey: undefined })),
+        scales: [],
+      }),
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    if (!publish) return created.body;
+    const published = await patch(created.body.id, { status: "published" });
+    expect(published.status).toBe(200);
+    return published.body;
+  }
+
+  test("PATCH опубликованной с questions: [] — отказ, пункты и версия целы", async () => {
+    const survey = await plainSurvey(true);
+    const res = await patch(survey.id, { questions: [] });
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    const after = await raw(survey.id);
+    expect(after.body.status).toBe("published");
+    expect(after.body.versionId).toBe(survey.versionId);
+    expect(after.body.questions.length).toBe(2);
+  });
+
+  test("черновик без пунктов сохраняется, но не публикуется; с одним пунктом — публикуется", async () => {
+    const draft = await plainSurvey(false);
+    expect((await patch(draft.id, { questions: [] })).status).toBe(200);
+    const publish = await patch(draft.id, { status: "published" });
+    expect(publish.status).toBe(400);
+    expect((await raw(draft.id)).body.status).toBe("draft");
+    // одни информационные экраны — тоже не методика
+    const info = { type: "info", title: L("Вступ"), options: [] };
+    expect((await patch(draft.id, { questions: [info] })).status).toBe(200);
+    expect((await patch(draft.id, { status: "published" })).status).toBe(400);
+    expect((await patch(draft.id, { questions: [info, content().questions[0]] })).status).toBe(200);
+    expect((await patch(draft.id, { status: "published" })).status).toBe(200);
+  });
+});
+
+describe("список методик считает пункты действующей версии (CR-044)", () => {
+  test("после правки число пунктов — по действующей версии, а не сумма редакций", async () => {
+    const survey = await newSurvey();
+    const inList = async () => {
+      const res = await api(`/api/surveys?groupId=${group}&limit=200`, root.token);
+      expect(res.status).toBe(200);
+      return res.body.items.find((s: { id: string }) => s.id === survey.id);
+    };
+    expect((await inList()).questionCount).toBe(2);
+
+    // вторая редакция с одним пунктом: было бы 3 — пункты обеих редакций
+    const one = [content().questions[0]!].map((q) => ({ ...q, sectionKey: undefined }));
+    const scales = content().scales.map((s) => ({ ...s, key: s.key.slice(0, 1) }));
+    expect((await patch(survey.id, { questions: one, scales })).status).toBe(200);
+    expect((await inList()).questionCount).toBe(1);
+
+    // информационный экран не считается пунктом: это «сколько отвечать», как у шагов набора
+    const withInfo = [...one, { type: "info", title: L("Завершення"), options: [] }];
+    expect((await patch(survey.id, { questions: withInfo, scales })).status).toBe(200);
+    expect((await inList()).questionCount).toBe(1);
+  });
+});
+
 describe("частичная правка переносит неуказанное из действующей версии", () => {
   test("одни questions — шкалы, ключ, полосы и секции на месте", async () => {
     const survey = await newSurvey();

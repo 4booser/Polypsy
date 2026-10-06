@@ -55,6 +55,13 @@ describe("валидатор структуры методики", () => {
     expect(issues.filter((i) => i.level === "error")).toEqual([]);
   });
 
+  test("без единого пункта для ответа — ошибка; одни информационные экраны — тоже (CR-046)", () => {
+    expect(errorAbout(run({ questions: [], scales: [] }), "нет ни одного пункта")).toBe(true);
+    const info = { type: "info", title: { uk: "Вступ", ru: "Введение" }, options: [] };
+    expect(errorAbout(run({ questions: [info], scales: [] }), "нет ни одного пункта")).toBe(true);
+    expect(errorAbout(run({ questions: [info, q()], scales: [] }), "нет ни одного пункта")).toBe(false);
+  });
+
   test("дублированный код шкалы отбивает уже zod-схема", () => {
     // до валидатора такой черновик не доходит: защита стоит на входе
     const result = createSurveySchema.safeParse({
