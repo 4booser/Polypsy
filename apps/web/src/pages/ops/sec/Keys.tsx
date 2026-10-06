@@ -57,6 +57,11 @@ const OTHER_SECRETS: { name: Exclude<OpsSecretName, "ENCRYPTION_KEY">; gives: Ui
     risks: "ops.sec.secrets.PHONE_INDEX_SECRET.risks",
   },
   { name: "EXPORT_SECRET", gives: "ops.sec.secrets.EXPORT_SECRET.gives", risks: "ops.sec.secrets.EXPORT_SECRET.risks" },
+  {
+    name: "SEARCH_INDEX_SECRET",
+    gives: "ops.sec.secrets.SEARCH_INDEX_SECRET.gives",
+    risks: "ops.sec.secrets.SEARCH_INDEX_SECRET.risks",
+  },
   { name: "METRICS_TOKEN", gives: "ops.sec.secrets.METRICS_TOKEN.gives", risks: "ops.sec.secrets.METRICS_TOKEN.risks" },
 ];
 

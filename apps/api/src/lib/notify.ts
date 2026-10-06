@@ -78,44 +78,59 @@ export function setTransportForTests(value: Transporter | null): void {
   transporter = value;
 }
 
-/** Админы группы методики; без группы или без админов — все суперадмины */
-async function recipientsFor(surveyId: string): Promise<string[]> {
-  const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
-  if (survey?.groupId) {
-    const rows = await db
-      .select({ email: users.email })
-      .from(groupAdmins)
-      .innerJoin(users, eq(users.id, groupAdmins.userId))
-      .where(eq(groupAdmins.groupId, survey.groupId));
-    if (rows.length) return rows.map((r) => r.email);
-  }
-  const supers = await db.select({ email: users.email }).from(users).where(eq(users.role, "superadmin"));
-  return supers.map((r) => r.email);
+/** Адресат тревоги: учётная запись для пуша и почта для письма — одной строкой */
+interface Recipient {
+  id: string;
+  email: string;
 }
 
 /**
- * Кому уходит пуш о тревоге.
+ * Кому уходит тревога: один отбор и для письма, и для пуша.
  *
- * Тот же круг, что и у письма, но идентификаторами: пуш адресуется учётной
- * записи, а не почте. Разъехаться эти два списка не должны — дежурный,
- * получающий письмо, но не получающий пуш, узнаёт о тревоге позже всех.
+ * Прежде списки собирались двумя функциями (почта — по group_admins с
+ * users, пуш — по group_admins без users) и обе брали всех подряд, без
+ * disabled_at. Блокировка сотрудника (routes/opsAccounts.ts) отзывает
+ * сессии, но членство в группе и токены устройств оставляет — и
+ * заблокированный продолжал получать письма и пуши о тревогах, а доставка
+ * числилась выполненной. Хуже: если он был единственным админом группы,
+ * резервный адресат не выбирался — тревогу не получал никто из действующих
+ * (внешний разбор 2026-09-27, #16).
+ *
+ * Теперь: выключенные отсеиваются ДО решения «есть ли кому слать», и если
+ * после отсева админов группы не осталось — тревога уходит действующим
+ * суперадминам. Письмо и пуш идут одному и тому же кругу по построению:
+ * разъехаться им не из чего.
  */
-async function pushRecipientsFor(surveyId: string): Promise<string[]> {
+async function recipientsFor(surveyId: string): Promise<Recipient[]> {
   const survey = await db.query.surveys.findFirst({ where: eq(surveys.id, surveyId) });
   if (survey?.groupId) {
     const rows = await db
-      .select({ id: groupAdmins.userId })
+      .select({ id: users.id, email: users.email })
       .from(groupAdmins)
-      .where(eq(groupAdmins.groupId, survey.groupId));
-    if (rows.length) return rows.map((r) => r.id);
+      .innerJoin(users, eq(users.id, groupAdmins.userId))
+      .where(and(eq(groupAdmins.groupId, survey.groupId), isNull(users.disabledAt)))
+      .orderBy(users.email);
+    if (rows.length) return rows;
   }
-  const supers = await db.select({ id: users.id }).from(users).where(eq(users.role, "superadmin"));
-  return supers.map((r) => r.id);
+  return activeSuperadmins();
 }
 
+/** Действующие суперадмины — резерв для тревог и адресаты эскалаций */
+async function activeSuperadmins(): Promise<Recipient[]> {
+  return db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(and(eq(users.role, "superadmin"), isNull(users.disabledAt)))
+    .orderBy(users.email);
+}
+
+/**
+ * Почта действующих суперадминов: эскалации тревог и оповещения техпанели
+ * (lib/opsAlerts.ts). Выключенный суперадмин — не адресат: его почта могла
+ * перейти к другому человеку, а сам он о состоянии системы знать не должен.
+ */
 export async function superadminEmails(): Promise<string[]> {
-  const rows = await db.select({ email: users.email }).from(users).where(eq(users.role, "superadmin"));
-  return rows.map((r) => r.email);
+  return (await activeSuperadmins()).map((r) => r.email);
 }
 
 interface AlertMail {
@@ -522,11 +537,15 @@ async function deliverAlert(
   /*
    * Эскалация — суперадминам и только письмом: она о том, что дежурные
    * группы тревогу не разобрали, и адресована тем, кто над ними.
+   *
+   * Оба круга — из одного отбора действующих (recipientsFor): письмо и пуш
+   * одной тревоги не могут уйти разным людям.
    */
-  const { to, pushTo } = await systemContext(baseDb, async () => ({
-    to: job.kind === "initial" ? await recipientsFor(survey.id) : await superadminEmails(),
-    pushTo: job.kind === "initial" ? await pushRecipientsFor(survey.id) : [],
-  }));
+  const recipients = await systemContext(baseDb, () =>
+    job.kind === "initial" ? recipientsFor(survey.id) : activeSuperadmins(),
+  );
+  const to = recipients.map((r) => r.email);
+  const pushTo = job.kind === "initial" ? recipients.map((r) => r.id) : [];
 
   let email: DeliveryOutcome["email"] = "none";
   let error: string | null = null;

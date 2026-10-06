@@ -53,6 +53,24 @@ const schema = z.object({
   EXPORT_SECRET: isProduction
     ? z.string().min(32, "EXPORT_SECRET в production — минимум 32 символа")
     : z.string().default("dev-export-secret-change-me"),
+  /**
+   * Слепой индекс поиска по записям приёма (lib/searchIndex.ts) — свой секрет.
+   *
+   * Отпечатки слов лежат в note_search и считаются один раз, при записи.
+   * Пока они считались на JWT_SECRET, его ротация — штатная реакция на
+   * утечку токена — молча меняла отпечатки запросов: поиск отвечал 200 с
+   * пустым списком, а записи были целы (внешний разбор 2026-09-27, #25).
+   * Довод тот же, что у слепого индекса телефона: секрет подписи положено
+   * менять при любом подозрении, а индекс обязан переживать такую смену.
+   *
+   * Смена ЭТОГО секрета индекс тоже ломает — но замечается: при старте
+   * сравнивается отпечаток секрета, на котором индекс построен, и при
+   * расхождении индекс пересобирается сам (lib/noteReindex.ts,
+   * ensureSearchIndexCurrent); руками — `bun run search:reindex`.
+   */
+  SEARCH_INDEX_SECRET: isProduction
+    ? z.string().min(32, "SEARCH_INDEX_SECRET в production — минимум 32 символа")
+    : z.string().default("dev-search-index-secret-change-me"),
   /** Разрешённые origin консоли через запятую; пусто в dev = localhost */
   CORS_ORIGINS: z.string().default(""),
   /**
@@ -310,6 +328,9 @@ if (isProduction) {
   if (raw.PHONE_INDEX_SECRET === raw.JWT_SECRET) same.push("PHONE_INDEX_SECRET = JWT_SECRET");
   if (raw.EXPORT_SECRET === raw.JWT_SECRET) same.push("EXPORT_SECRET = JWT_SECRET");
   if (raw.EXPORT_SECRET === raw.PHONE_INDEX_SECRET) same.push("EXPORT_SECRET = PHONE_INDEX_SECRET");
+  if (raw.SEARCH_INDEX_SECRET === raw.JWT_SECRET) same.push("SEARCH_INDEX_SECRET = JWT_SECRET");
+  if (raw.SEARCH_INDEX_SECRET === raw.PHONE_INDEX_SECRET) same.push("SEARCH_INDEX_SECRET = PHONE_INDEX_SECRET");
+  if (raw.SEARCH_INDEX_SECRET === raw.EXPORT_SECRET) same.push("SEARCH_INDEX_SECRET = EXPORT_SECRET");
   if (same.length) {
     throw new Error(
       [
@@ -331,6 +352,8 @@ export const env = {
   phoneIndexSecret: raw.PHONE_INDEX_SECRET,
   /** Коды субъекта и наблюдения в выгрузках — только они */
   exportSecret: raw.EXPORT_SECRET,
+  /** Слепой индекс поиска по записям — только он */
+  searchIndexSecret: raw.SEARCH_INDEX_SECRET,
   schedulerEnabled: raw.SCHEDULER_ENABLED,
   openRegistration: raw.OPEN_REGISTRATION,
   answerEventsRetentionDays: raw.ANSWER_EVENTS_RETENTION_DAYS,
