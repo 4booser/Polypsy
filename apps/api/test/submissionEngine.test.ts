@@ -556,11 +556,18 @@ describe("сдача датируется моментом завершения,
      * для норм — 24, а не 25 (другая возрастная страта).
      */
     const survey = await olderSurvey(5);
-    const birthday = new Date(Date.now() - DAY);
-    birthday.setFullYear(birthday.getFullYear() - 25);
+    /*
+     * День рождения — вчерашний день ПО КИЕВУ (возраст считается по
+     * календарю учреждения), а не по UTC: с 21:00 до 00:00 UTC эти дни
+     * расходятся, и «вчера» по UTC было бы сегодняшним днём по Киеву —
+     * человеку исполнялось 25 как раз в день сдачи (так упала выкатка v1.18.0).
+     */
+    const kyivDay = (at: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date(at));
+    const yesterday = kyivDay(Date.now() - DAY);
+    const birthDate = `${Number(yesterday.slice(0, 4)) - 25}${yesterday.slice(4)}`;
     const person = await makeUser("user", `engine-age-${crypto.randomUUID().slice(0, 8)}@test`, {
       sex: "male",
-      birthDate: birthday.toISOString().slice(0, 10),
+      birthDate,
     });
     people.push(person.id);
 
