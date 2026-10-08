@@ -159,10 +159,19 @@ describe.skipIf(!inGit)("история журнала", () => {
   test("проверка перехода ловит настоящий случай: 0096 влилась после 0097 и 0098", () => {
     /*
      * Каждый из двух журналов по отдельности в порядке — номера и время
-     * растут. Сломан переход: база на 69c065b уже получила 0098 (и 0097), и
+     * растут. Сломан переход: база на слиянии w12:lists уже получила 0098 (и 0097), и
      * 0096 со временем меньше их на ней не применится никогда.
      */
-    expect(transitionProblems(journalAt("69c065b"), journalAt("79227ce"), "w12").join("\n")).toContain(
+    // коммиты — по теме, а не по хэшу: история переписывалась (трейлеры),
+    // и хэши тех слияний сменились
+    const bySubject = (subject: string) => {
+      const out = git(["log", "--format=%h", `--grep=${subject}`, "HEAD"]).out.toString().trim().split("\n").pop();
+      if (!out) throw new Error(`в истории нет коммита «${subject}»`);
+      return out;
+    };
+    const lists = bySubject("Слияние участка w12:lists");
+    const integrity = bySubject("Слияние участка w12:integrity");
+    expect(transitionProblems(journalAt(lists), journalAt(integrity), "w12").join("\n")).toContain(
       "0096_integrity (when 1788473709043) встала перед уже существующими",
     );
   });
