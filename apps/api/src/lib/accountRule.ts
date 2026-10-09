@@ -1,4 +1,4 @@
-import { SUPERADMIN_RANK, type User } from "@quizzy/shared";
+import { accountRefusal, accountStanding, type AccountRefusal, type AccountSide, type User } from "@quizzy/shared";
 
 /**
  * Кто над чьей учётной записью вправе действовать — правило без базы.
@@ -18,48 +18,16 @@ import { SUPERADMIN_RANK, type User } from "@quizzy/shared";
 
 export type AccountClass = User["role"];
 
-/**
- * Положение учётной записи — одна шкала для класса и лестницы должностей.
- *
- * Пациент 0; сотрудник 1 + ступень лестницы (вне лестницы — 1); суперадмин
- * выше всех. Ступень считается и у пациента, у которого должность осталась с
- * прежней службы: вернуть его в сотрудники — значит вернуть и должность.
+/*
+ * Положение учётной записи и «кто над кем» живут в общем пакете
+ * (packages/shared/src/permissions.ts: accountStanding, accountRefusal) с
+ * волны 19: тем же правилом меню «Користувачів» решает, каких действий не
+ * показывать. Здесь — прежние имена для маршрутов и чистых проверок пачек.
  */
-export function standingFromRank(role: AccountClass, ladderRank: number): number {
-  if (role === "superadmin") return SUPERADMIN_RANK + 1;
-  if (role === "user") return 0;
-  return 1 + ladderRank;
-}
+export { accountRefusal, type AccountRefusal, type AccountSide };
 
-export interface AccountSide {
-  id: string;
-  role: AccountClass;
-  standing: number;
-}
-
-/**
- * Почему нельзя действовать над этой учёткой — или null.
- *
- *  - self: над собой — нет. Своё меняют своими маршрутами (смена пароля с
- *    текущим, выключение второго фактора кодом, выход): обходить их через
- *    действие «над чужой учёткой» значит, что угнанной сессии хватает, чтобы
- *    забрать учётку насовсем;
- *  - superadminOnly: над суперадмином действует только суперадмин;
- *  - aboveYours: цель — строго ниже своего положения. Равный не трогает
- *    равного, как на лестнице: заведующий, сбросивший пароль главному врачу,
- *    входит главным врачом.
- *
- * Суперадмин стоит над всеми и действует над кем угодно, кроме себя.
- */
-export type AccountRefusal = "self" | "superadminOnly" | "aboveYours";
-
-export function accountRefusal(actor: AccountSide, target: AccountSide): AccountRefusal | null {
-  if (actor.id === target.id) return "self";
-  if (actor.role === "superadmin") return null;
-  if (target.role === "superadmin") return "superadminOnly";
-  if (target.standing >= actor.standing) return "aboveYours";
-  return null;
-}
+/** Положение учётной записи (packages/shared, accountStanding) — прежним именем */
+export const standingFromRank: (role: AccountClass, ladderRank: number) => number = accountStanding;
 
 /**
  * Можно ли завести учётку (или выдать учётке) этот класс: только ниже своего

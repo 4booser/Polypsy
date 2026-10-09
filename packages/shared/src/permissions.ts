@@ -13,7 +13,7 @@
  * а не в коде. Здесь только словарь того, что вообще бывает.
  */
 
-import type { Lang } from "./types";
+import type { Lang, Role } from "./types";
 
 export const PERMISSION_GROUPS = [
   {
@@ -593,6 +593,59 @@ export function roleRank(code: string): number {
 export function canAssignRole(actorRank: number, roleCode: string): boolean {
   const rank = roleRank(roleCode);
   return rank > 0 && rank < actorRank;
+}
+
+/**
+ * Положение учётной записи — одна шкала для класса и лестницы должностей.
+ *
+ * Пациент 0; сотрудник 1 + ступень лестницы (вне лестницы — 1); суперадмин
+ * выше всех. Ступень считается и у пациента, у которого должность осталась с
+ * прежней службы: вернуть его в сотрудники — значит вернуть и должность.
+ *
+ * Жило в apps/api/src/lib/accountRule.ts; переехало сюда (w19:ui), когда
+ * то же правило понадобилось меню «Користувачів»: экран не показывает
+ * действий, на которые сервер ответит err.accountAtOrAboveYours, и два
+ * списания одного правила разъехались бы.
+ */
+export function accountStanding(role: Role, ladderRank: number): number {
+  if (role === "superadmin") return SUPERADMIN_RANK + 1;
+  if (role === "user") return 0;
+  return 1 + ladderRank;
+}
+
+/** Сторона действия над учётной записью: кто и на какой ступени */
+export interface AccountSide {
+  id: string;
+  role: Role;
+  standing: number;
+}
+
+/**
+ * Почему нельзя действовать над этой учёткой — или null.
+ *
+ *  - self: над собой — нет. Своё меняют своими маршрутами (смена пароля с
+ *    текущим, выключение второго фактора кодом, выход): обходить их через
+ *    действие «над чужой учёткой» значит, что угнанной сессии хватает, чтобы
+ *    забрать учётку насовсем;
+ *  - superadminOnly: над суперадмином действует только суперадмин;
+ *  - aboveYours: цель — строго ниже своего положения. Равный не трогает
+ *    равного, как на лестнице: заведующий, сбросивший пароль главному врачу,
+ *    входит главным врачом.
+ *
+ * Суперадмин стоит над всеми и действует над кем угодно, кроме себя.
+ *
+ * Настоящая проверка — на сервере (lib/accountClass.ts, guardAccountAction):
+ * там к правилу добавлены право действия, замок строки и журнал. Здесь оно
+ * общее для сервера и экрана, чтобы пункт меню и отказ не разъезжались.
+ */
+export type AccountRefusal = "self" | "superadminOnly" | "aboveYours";
+
+export function accountRefusal(actor: AccountSide, target: AccountSide): AccountRefusal | null {
+  if (actor.id === target.id) return "self";
+  if (actor.role === "superadmin") return null;
+  if (target.role === "superadmin") return "superadminOnly";
+  if (target.standing >= actor.standing) return "aboveYours";
+  return null;
 }
 
 /*

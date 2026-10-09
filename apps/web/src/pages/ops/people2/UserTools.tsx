@@ -421,12 +421,29 @@ export function ImpersonateDialog({ row, onClose }: { row: OpsUserRow; onClose: 
   );
 }
 
+/** Открыть окно пункта people2 по строке */
+export interface RowExtrasOpen {
+  impersonate: () => void;
+  resetMfa: () => void;
+}
+
 /** Пункты меню строки «Користувачів» от people2: вход «от имени» и сброс второго фактора */
 export function useRowExtras() {
   const { ut } = useLang();
   const { user } = useAuth();
+  return rowExtrasFor(ut, user);
+}
+
+/**
+ * То же без хуков — для сборки меню строки в проверке
+ * (test/opsUsersMenu.test.ts); экран берёт его через useRowExtras.
+ */
+export function rowExtrasFor(
+  ut: (key: UiKey) => string,
+  user: { id: string; role: string } | null | undefined,
+): (row: OpsUserRow, open: RowExtrasOpen) => MenuEntry[] {
   const isSuper = user?.role === "superadmin";
-  return (row: OpsUserRow, open: { impersonate: () => void; resetMfa: () => void }): MenuEntry[] => {
+  return (row: OpsUserRow, open: RowExtrasOpen): MenuEntry[] => {
     const self = row.id === user?.id;
     const superRow = row.role === "superadmin";
     return [
