@@ -2,14 +2,14 @@ import { Hono } from "hono";
 import { desc, eq, inArray } from "drizzle-orm";
 import { createInviteSchema, inviteListQuery, t, type Invite, type InvitePreview, type Page } from "@quizzy/shared";
 import { baseDb, db } from "../db";
-import { systemContext } from "../db/context";
-import { batteries, invites, inviteUses, surveys, users } from "../db/schema";
+import { asSystem, systemContext } from "../db/context";
+import { batteries, invites, inviteUses, specialistProfiles, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
 import { fullNameOf } from "../lib/auth";
 import { badRequest, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { findUsableInvite, hashInviteToken, newInviteCode, newInviteToken } from "../lib/invites";
-import { assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
+import { assertGroupAccess, assertSurveyAccess, isStaff, isSuperadmin } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const inviteRoutes = new Hono<AppEnv>();
@@ -93,10 +93,36 @@ async function assertInviteBattery(user: Parameters<typeof assertGroupAccess>[0]
  */
 async function assertInviteScope(
   user: Parameters<typeof assertGroupAccess>[0],
-  invite: { batteryId: string | null; surveyId: string | null },
+  invite: { batteryId: string | null; surveyId: string | null; createdBy: string },
 ) {
   await assertInviteBattery(user, invite.batteryId);
   if (invite.surveyId) await assertSurveyAccess(user, invite.surveyId);
+  if (!invite.batteryId && !invite.surveyId) await assertInviteDepartment(user, invite.createdBy);
+}
+
+/** Отделение сотрудника по его профилю специалиста; null — не закреплён */
+async function departmentOf(userId: string): Promise<string | null> {
+  const [row] = await asSystem(() =>
+    db
+      .select({ departmentId: specialistProfiles.departmentId })
+      .from(specialistProfiles)
+      .where(eq(specialistProfiles.userId, userId)),
+  );
+  return row?.departmentId ?? null;
+}
+
+/*
+ * Приглашение без набора и без методики (или чей набор удалён) ни к чему не
+ * ведёт, и области по группе у него нет. Прежде его видел и гасил любой
+ * сотрудник с invites.manage — в том числе выписанное суперадмином (#51).
+ * Решение владельца 2026-10-09: такое приглашение принадлежит отделению
+ * выписавшего — видят и отзывают его выписавший, сотрудники того же
+ * отделения и суперадмин.
+ */
+async function assertInviteDepartment(user: Parameters<typeof assertGroupAccess>[0], createdBy: string) {
+  if (isSuperadmin(user) || createdBy === user.id) return;
+  const [mine, theirs] = await Promise.all([departmentOf(user.id), departmentOf(createdBy)]);
+  if (!mine || mine !== theirs) forbidden("err.inviteOtherDepartment");
 }
 
 /**
@@ -119,8 +145,9 @@ inviteRoutes.get("/", async (c) => {
   let scanFrom = decodeExactCursor(rawCursor);
 
   const verdicts = new Map<string, boolean>();
-  const canSee = async (row: { batteryId: string | null; surveyId: string | null }): Promise<boolean> => {
-    const key = `${row.batteryId ?? ""}|${row.surveyId ?? ""}`;
+  const canSee = async (row: { batteryId: string | null; surveyId: string | null; createdBy: string }): Promise<boolean> => {
+    // приглашение без набора и методики решается по выписавшему — он в ключе
+    const key = `${row.batteryId ?? ""}|${row.surveyId ?? ""}|${row.batteryId || row.surveyId ? "" : row.createdBy}`;
     const known = verdicts.get(key);
     if (known !== undefined) return known;
     let ok = true;

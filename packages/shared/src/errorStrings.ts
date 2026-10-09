@@ -1663,6 +1663,14 @@ export const ERRORS = {
     ru: "Решение по этому предложению только что принял другой сотрудник. Обновите список",
     en: "Another staff member has just decided on this suggestion. Refresh the list",
   },
+
+  /* ── w19:invites ── */
+  /* приглашение без набора и методики — отделения выписавшего (#51) */
+  "err.inviteOtherDepartment": {
+    uk: "Це запрошення виписане в іншому відділенні — керувати ним можуть лише там",
+    ru: "Это приглашение выписано в другом отделении — управлять им могут только там",
+    en: "This invitation was issued in another department — only that department can manage it",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
