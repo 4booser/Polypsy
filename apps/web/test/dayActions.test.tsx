@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
-import type { AppointmentStatus, AppointmentView } from "@quizzy/shared";
+import { UI, type AppointmentStatus, type AppointmentView, type UiKey } from "@quizzy/shared";
+import { api } from "../src/api";
 import { LangProvider } from "../src/lang";
-import { AppointmentRow, rowActions } from "../src/pages/Today";
+import { AppointmentRow, moveOf, rowActions } from "../src/pages/Today";
 
 /**
  * Столбец действий на экране дня стоит на месте.
@@ -143,5 +144,113 @@ describe("места в столбце действий", () => {
     const acts = rowActions("done");
     expect(Object.values(acts).every((a) => a === null), "у принятого приёма появилось действие").toBe(true);
     expect(cells("done").length).toBe(cells("booked").length);
+  });
+});
+
+/**
+ * Шаг назад: снять ошибочное «пришёл» или «начали» (#38, w19:ui).
+ *
+ * Сервер принимает in_progress → arrived и arrived → booked с волны 18, а
+ * кнопки не было — ошибку нажатия «исправляли» переносом. Проверяется: шаг
+ * назад есть ровно у двух состояний и ведёт ровно на одну ступень, стоит в
+ * левом месте, спрашивает перед запросом, и отказ в вопросе запроса не
+ * шлёт.
+ */
+describe("шаг назад на экране дня", () => {
+  /** Текст ключа на любом из языков — проверка не зависит от языка окружения */
+  const anyLang = (key: UiKey) => {
+    const e = UI[key] as { uk: string; ru: string; en?: string };
+    return [e.uk, e.ru, e.en].filter((x): x is string => !!x);
+  };
+
+  test("«начали» возвращается в «пришёл», «пришёл» — в «записан»; другим состояниям шага назад нет", () => {
+    expect(rowActions("in_progress").offPath).toMatchObject({ to: "arrived", key: "day.undo" });
+    expect(rowActions("arrived").offPath).toMatchObject({ to: "booked", key: "day.undo" });
+    // вперёд по-прежнему ведёт правое место
+    expect(rowActions("in_progress").step?.to).toBe("done");
+    expect(rowActions("arrived").step?.to).toBe("in_progress");
+    for (const status of STATUSES.filter((s) => s !== "arrived" && s !== "in_progress")) {
+      expect(rowActions(status).offPath?.key, `статус ${status}`).not.toBe("day.undo");
+    }
+  });
+
+  test("кнопка видна в строке «пришёл» и «на приёме» — в левом месте", () => {
+    const labels = anyLang("day.undo");
+    for (const status of ["arrived", "in_progress"] as const) {
+      const left = cells(status).find((c) => c.slot === "offPath");
+      expect(labels, `статус ${status}: слева «${left?.label}»`).toContain(left?.label ?? "");
+    }
+    for (const status of ["booked", "confirmed", "done", "no_show", "cancelled"] as const) {
+      const shown = cells(status).map((c) => c.label);
+      expect(shown.some((l) => l !== null && labels.includes(l)), `статус ${status}`).toBe(false);
+    }
+  });
+
+  test("перед шагом назад — вопрос; «нет» — запроса нет", () => {
+    const asked: UiKey[] = [];
+    const no = (q: UiKey) => {
+      asked.push(q);
+      return false;
+    };
+    expect(moveOf(rowActions("arrived").offPath!, no)).toBeNull();
+    expect(moveOf(rowActions("in_progress").offPath!, no)).toBeNull();
+    expect(asked).toEqual(["day.undoArrived", "day.undoStarted"]);
+    // вопрос называет снимаемую отметку и то, куда вернётся приём
+    expect(UI["day.undoArrived"].uk).toContain("прийшов");
+    expect(UI["day.undoStarted"].uk).toContain("на прийомі");
+  });
+
+  test("«да» — уходит шаг назад; ход вперёд вопросов не задаёт", () => {
+    const yes = () => true;
+    expect(moveOf(rowActions("arrived").offPath!, yes)).toBe("booked");
+    expect(moveOf(rowActions("in_progress").offPath!, yes)).toBe("arrived");
+    const never = () => {
+      throw new Error("ход вперёд спросил подтверждение");
+    };
+    expect(moveOf(rowActions("booked").step!, never)).toBe("arrived");
+    expect(moveOf(rowActions("arrived").step!, never)).toBe("in_progress");
+    expect(moveOf(rowActions("booked").offPath!, never)).toBe("no_show");
+  });
+
+  describe("запрос", () => {
+    /* клиент читает токен из localStorage, которого в bun нет: хранилище в памяти на время проверки */
+    const g = globalThis as { localStorage?: Storage; sessionStorage?: Storage };
+    const saved = { fetch: globalThis.fetch, localStorage: g.localStorage, sessionStorage: g.sessionStorage };
+    const memory = (): Storage => {
+      const data = new Map<string, string>();
+      return {
+        get length() {
+          return data.size;
+        },
+        clear: () => data.clear(),
+        getItem: (k) => data.get(k) ?? null,
+        key: (i) => [...data.keys()][i] ?? null,
+        removeItem: (k) => void data.delete(k),
+        setItem: (k, v) => void data.set(k, String(v)),
+      };
+    };
+    beforeEach(() => {
+      g.localStorage = memory();
+      g.sessionStorage = memory();
+    });
+    afterEach(() => {
+      globalThis.fetch = saved.fetch;
+      g.localStorage = saved.localStorage;
+      g.sessionStorage = saved.sessionStorage;
+    });
+
+    test("шаг назад — тот же POST …/status, что и ход вперёд, с прежним состоянием в теле", async () => {
+      const calls: { url: string; method: string; body: string }[] = [];
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        calls.push({ url: String(input), method: init?.method ?? "GET", body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }) as typeof fetch;
+      await api.appointmentStatus("a-1", moveOf(rowActions("arrived").offPath!, () => true)!);
+      await api.appointmentStatus("a-2", moveOf(rowActions("in_progress").offPath!, () => true)!);
+      expect(calls.map((c) => [c.url, c.method, JSON.parse(c.body)])).toEqual([
+        ["/api/clinic/appointments/a-1/status", "POST", { status: "booked" }],
+        ["/api/clinic/appointments/a-2/status", "POST", { status: "arrived" }],
+      ]);
+    });
   });
 });

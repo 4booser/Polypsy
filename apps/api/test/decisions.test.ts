@@ -131,7 +131,7 @@ describe("правила поддержки решений", () => {
       method: "PATCH",
       body: JSON.stringify({ status: "declined", note: "передумал" }),
     });
-    expect(again.status).toBe(400);
+    expect(again.status).toBe(409);
   });
 
   test("чужой админ предложений по чужой методике не видит", async () => {

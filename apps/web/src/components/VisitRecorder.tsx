@@ -8,6 +8,7 @@ import { useResource } from "../useResource";
 import {
   failureKey,
   pickMimeType,
+  recorderButtons,
   RecorderRegistry,
   type RecorderDeps,
   type RecorderLike,
@@ -137,8 +138,8 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
 
   if (!state) return null;
 
-  const idle = here === "idle";
   const inFlight = here === "stopping" || here === "sending" || here === "acquiring";
+  const buttons = recorderButtons(state, here);
 
   return (
     <Panel title={ut("rec.title")}>
@@ -171,19 +172,22 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
         {view.notice ? <Notice notice={view.notice} /> : null}
 
         {/* ── ход записи ── */}
-        {state.consentAt && idle && ["ready", "consent_pending"].includes(state.status) ? (
+        {buttons.start ? (
           <div className="flex gap-2">
             <Button size="sm" disabled={busy} onClick={() => void session.start().then(reload)}>
               {ut("rec.start")}
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => run(() => api.recordingRevoke(appointmentId).then(reload))}
-            >
-              {ut("rec.consentRevoke")}
-            </Button>
+            {/* отзыв у готовой стенограммы сервер отвергает (#103) — кнопки нет (recorderButtons) */}
+            {buttons.revoke ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => run(() => api.recordingRevoke(appointmentId).then(reload))}
+              >
+                {ut("rec.consentRevoke")}
+              </Button>
+            ) : null}
           </div>
         ) : null}
 
@@ -270,7 +274,7 @@ export function VisitRecorder({ appointmentId, onTranscript }: {
           </>
         ) : null}
 
-        {state.status !== "done" && state.status !== "discarded" && state.consentAt ? (
+        {buttons.discard ? (
           <Button
             size="sm"
             variant="ghost"

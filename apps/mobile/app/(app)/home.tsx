@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { Alert, Linking, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import type { AppointmentView } from "@quizzy/shared";
+import { recordingRevocable, type AppointmentView } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { Body, Button, Card, Loader, Title } from "@/components/ui";
 import { useAuth } from "@/auth/AuthContext";
@@ -250,7 +250,7 @@ function NextVisit({
 function RecordingBlock({ appointmentId }: { appointmentId: string }) {
   const _c = useColors();
   const { ut } = useLang();
-  const [state, setState] = useState<{ status: string; consentAt: string | null } | null>(null);
+  const [state, setState] = useState<{ status: string; consentAt: string | null; transcript: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -297,22 +297,31 @@ function RecordingBlock({ appointmentId }: { appointmentId: string }) {
       ) : state.consentAt ? (
         <>
           <Body muted>{ut("rec.consentBySelf")}</Body>
-          <View style={{ marginTop: spacing.md }}>
-            <Button
-              title={ut("rec.consentRevoke")}
-              variant="secondary"
-              disabled={busy}
-              onPress={async () => {
-                setBusy(true);
-                try {
-                  await api.recordingRevoke(appointmentId);
-                  await load();
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
-          </View>
+          {/*
+            «Передумав» — пока стенограммы нет. Готовую сервер отзывом не
+            трогает и отвечает отказом (#103): кнопка, которая всегда
+            кончается отказом, человеку не нужна — нужно знать, почему её нет.
+          */}
+          {recordingRevocable(state) ? (
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                title={ut("rec.consentRevoke")}
+                variant="secondary"
+                disabled={busy}
+                onPress={async () => {
+                  setBusy(true);
+                  try {
+                    await api.recordingRevoke(appointmentId);
+                    await load();
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              />
+            </View>
+          ) : (
+            <Body muted>{ut("rec.revokeTooLate")}</Body>
+          )}
         </>
       ) : (
         <>

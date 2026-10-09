@@ -238,11 +238,11 @@ describe("решение по срабатыванию: принимается �
     expect((await auditRows("rule.decide", id)).length).toBe(1);
   }, 30_000);
 
-  test("повтор после фиксации — прежний отказ 400 «решение уже принято»", async () => {
+  test("повтор после фиксации — 409 «решение уже принято», как проигранная гонка", async () => {
     const id = await suggestedHit("again");
     expect((await decide(id, "accepted")()).status).toBe(200);
     const again = await decide(id, "declined", "передумав")();
-    expect(again.status).toBe(400);
+    expect(again.status).toBe(409);
     const [row] = await db.select().from(ruleHits).where(eq(ruleHits.id, id));
     expect(row!.status).toBe("accepted");
   });

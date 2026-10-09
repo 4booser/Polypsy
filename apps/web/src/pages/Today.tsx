@@ -8,8 +8,12 @@ import { Button, Num, SectionLabel } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 
-/** То, куда приём можно двинуть отсюда: остальные переходы этому экрану не принадлежат */
-type Move = "arrived" | "in_progress" | "done" | "no_show";
+/**
+ * То, куда приём можно двинуть отсюда: остальные переходы этому экрану не
+ * принадлежат. «booked» здесь — только шаг назад от ошибочного «пришёл»
+ * (см. OFF_PATH), а не запись.
+ */
+type Move = "booked" | "arrived" | "in_progress" | "done" | "no_show";
 type Status = AppointmentView["status"];
 
 const STATUS_KEY: Record<Status, UiKey> = {
@@ -26,6 +30,13 @@ const STATUS_KEY: Record<Status, UiKey> = {
 interface Act {
   to: Move;
   key: UiKey;
+  /**
+   * Вопрос перед нажатием. Есть только у шага назад: он снимает отметку
+   * времени, и случайное нажатие стоило бы ещё одного исправления.
+   */
+  confirm?: UiKey;
+  /** Тихая кнопка: поправка, а не ход приёма — глаз не должен цепляться за неё первой */
+  quiet?: true;
 }
 
 /**
@@ -66,6 +77,22 @@ const NEXT: Partial<Record<Status, Act>> = {
 const OFF_PATH: Partial<Record<Status, Act>> = {
   booked: { to: "no_show", key: "day.noShow" },
   confirmed: { to: "no_show", key: "day.noShow" },
+  /*
+   * Шаг назад — снять ошибочно нажатое «пришёл» или «начали» (#38, w19:ui).
+   *
+   * Сервер принимает его с волны 18, а кнопки не было: ошибку нажатия
+   * «исправляли» переносом, и приём уезжал в «записан» с отметками времени
+   * прежнего состояния. Шаг назад снимает ровно одну отметку — «начали»
+   * возвращает в «пришёл», «пришёл» в «записан», — и то же самое делает
+   * сервер (NEXT в routes/clinic.ts).
+   *
+   * Место — левое, рядом с «Не пришёл»: это тоже уход с обычного хода, а
+   * не следующий шаг, и правый столбец остаётся столбцом «дальше». Перед
+   * нажатием — вопрос: кнопка стоит вплотную к «Почати» и «Завершити», и
+   * промах по ней стёр бы отметку, которую потом не восстановить временем.
+   */
+  arrived: { to: "booked", key: "day.undo", confirm: "day.undoArrived", quiet: true },
+  in_progress: { to: "arrived", key: "day.undo", confirm: "day.undoStarted", quiet: true },
 };
 
 /**
@@ -94,6 +121,18 @@ type Slot = (typeof SLOTS)[number];
  */
 export function rowActions(status: Status): Record<Slot, Act | null> {
   return { offPath: OFF_PATH[status] ?? null, step: NEXT[status] ?? null };
+}
+
+/**
+ * Что уйдёт на сервер по нажатию: ход приёма — сразу, шаг назад — только
+ * после «да». Отказ в вопросе — null, и запроса нет вовсе.
+ *
+ * Отдельно от разметки ради проверки без браузера (test/dayActions.test.tsx):
+ * `ask` в строке — window.confirm с фразой словаря.
+ */
+export function moveOf(act: Act, ask: (question: UiKey) => boolean): Move | null {
+  if (act.confirm && !ask(act.confirm)) return null;
+  return act.to;
 }
 
 /** Часы и минуты по часам того, кто смотрит: время приёма — это стенное время */
@@ -329,7 +368,16 @@ export function AppointmentRow({
             /* data-slot — опора для проверки: классы менять можно, признак мест нет */
             <div key={slot} data-slot={slot} className="w-[96px]">
               {act ? (
-                <Button size="sm" className="w-full" onClick={() => onStatus(act.to)} disabled={busy}>
+                <Button
+                  size="sm"
+                  variant={act.quiet ? "ghost" : undefined}
+                  className="w-full"
+                  onClick={() => {
+                    const to = moveOf(act, (question) => window.confirm(ut(question)));
+                    if (to) onStatus(to);
+                  }}
+                  disabled={busy}
+                >
                   {ut(act.key)}
                 </Button>
               ) : null}
