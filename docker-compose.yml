@@ -19,7 +19,11 @@
 # почему.
 services:
   postgres:
-    image: postgres:16
+    # Версия закреплена отпечатком: выкатка делает `compose pull`, и с голым
+    # тегом postgres:16 база молча перезапускалась на свежем патче, как только
+    # Docker Hub сдвигал тег (так было на v1.18.0). Обновление Postgres — только
+    # явной правкой этой строки, после снимка базы. Тот же образ — в CI.
+    image: postgres:16.15@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
     restart: unless-stopped
     environment:
       POSTGRES_DB: quizzy
