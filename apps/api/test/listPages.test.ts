@@ -157,6 +157,7 @@ describe("учётные записи", () => {
 
 describe("приглашения", () => {
   const open: string[] = [];
+  const mineB: string[] = [];
   let groupBound = "";
 
   beforeAll(async () => {
@@ -174,12 +175,16 @@ describe("приглашения", () => {
     const unbound = Array.from({ length: MANY }, () => row(null));
     const bound = row(battery);
     groupBound = bound.id;
-    await db.insert(invites).values([...unbound, bound] as never);
+    // свои приглашения adminB вперемешку с чужими: страницы B должны собраться из них
+    const ofB = Array.from({ length: 7 }, () => ({ ...row(null), createdBy: adminB.id }));
+    const mixed = unbound.flatMap((r, i) => (i % 3 === 0 && ofB[i / 3] ? [r, ofB[i / 3]!] : [r]));
+    await db.insert(invites).values([...mixed, ...ofB.filter((b) => !mixed.includes(b)), bound] as never);
     open.push(...unbound.map((r) => r.id));
+    mineB.push(...ofB.map((r) => r.id));
   });
 
   afterAll(async () => {
-    const ids = [...open, groupBound].filter(Boolean);
+    const ids = [...open, ...mineB, groupBound].filter(Boolean);
     if (ids.length) await db.update(invites).set({ revokedAt: new Date().toISOString() }).where(inArray(invites.id, ids));
   });
 
@@ -192,7 +197,7 @@ describe("приглашения", () => {
   test("страницы собираются из видимых: чужое приглашение не показывается ни на одной", async () => {
     // приглашения без набора — отделения выписавшего (#51): у adminB отделение не adminA
     const { seen } = await walk<{ id: string }>(`/api/invites?limit=${LIMIT}`, adminB.token);
-    expect(new Set(seen).size, "строка показана на двух страницах").toBe(seen.length);
+    onceEach(seen, mineB);
     for (const id of [...open, groupBound]) expect(seen).not.toContain(id);
   }, 60_000);
 

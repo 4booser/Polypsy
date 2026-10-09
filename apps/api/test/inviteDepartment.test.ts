@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { appApi, db, makeUser, root, type Person } from "./fixtures";
-import { departments, specialistProfiles } from "../src/db/schema";
+import { eq } from "drizzle-orm";
+import { departments, invites, specialistProfiles } from "../src/db/schema";
 
 /**
  * Приглашение без набора и без методики — отделения выписавшего (#51).
@@ -57,6 +58,8 @@ describe("приглашение без набора и методики", () =>
     const id = await unscopedInvite(issuer);
     const denied = await appApi(`/api/invites/${id}/revoke`, stranger.token, post({}));
     expect(denied.status).toBe(403);
+    const [still] = await db.select({ revokedAt: invites.revokedAt }).from(invites).where(eq(invites.id, id));
+    expect(still!.revokedAt, "после отказа приглашение не отозвано").toBeNull();
     const ok = await appApi(`/api/invites/${id}/revoke`, colleague.token, post({}));
     expect(ok.status).toBe(200);
   });

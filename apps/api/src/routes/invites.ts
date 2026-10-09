@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { desc, eq, inArray } from "drizzle-orm";
 import { createInviteSchema, inviteListQuery, t, type Invite, type InvitePreview, type Page } from "@quizzy/shared";
 import { baseDb, db } from "../db";
-import { asSystem, systemContext } from "../db/context";
+import { systemContext } from "../db/context";
 import { batteries, invites, inviteUses, specialistProfiles, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { afterCursor, decodeExactCursor, encodeCursor, exactAt } from "../lib/cursor";
@@ -100,28 +100,24 @@ async function assertInviteScope(
   if (!invite.batteryId && !invite.surveyId) await assertInviteDepartment(user, invite.createdBy);
 }
 
-/** Отделение сотрудника по его профилю специалиста; null — не закреплён */
-async function departmentOf(userId: string): Promise<string | null> {
-  const [row] = await asSystem(() =>
-    db
-      .select({ departmentId: specialistProfiles.departmentId })
-      .from(specialistProfiles)
-      .where(eq(specialistProfiles.userId, userId)),
-  );
-  return row?.departmentId ?? null;
-}
-
 /*
  * Приглашение без набора и без методики (или чей набор удалён) ни к чему не
  * ведёт, и области по группе у него нет. Прежде его видел и гасил любой
  * сотрудник с invites.manage — в том числе выписанное суперадмином (#51).
  * Решение владельца 2026-10-09: такое приглашение принадлежит отделению
  * выписавшего — видят и отзывают его выписавший, сотрудники того же
- * отделения и суперадмин.
+ * отделения и суперадмин. Отделение — по профилю специалиста; профили видны
+ * всем сотрудникам (политика specialist_profiles), так что asSystem не нужен,
+ * и оба отделения читаются одним запросом.
  */
 async function assertInviteDepartment(user: Parameters<typeof assertGroupAccess>[0], createdBy: string) {
   if (isSuperadmin(user) || createdBy === user.id) return;
-  const [mine, theirs] = await Promise.all([departmentOf(user.id), departmentOf(createdBy)]);
+  const rows = await db
+    .select({ userId: specialistProfiles.userId, departmentId: specialistProfiles.departmentId })
+    .from(specialistProfiles)
+    .where(inArray(specialistProfiles.userId, [user.id, createdBy]));
+  const mine = rows.find((r) => r.userId === user.id)?.departmentId ?? null;
+  const theirs = rows.find((r) => r.userId === createdBy)?.departmentId ?? null;
   if (!mine || mine !== theirs) forbidden("err.inviteOtherDepartment");
 }
 

@@ -197,7 +197,9 @@ decisionRoutes.patch("/hits/:id", requirePermission("alerts.review"), async (c) 
    * сюда записывалось решение по любому срабатыванию по известному id.
    */
   if (!(await canAccessSurvey(user, row!.surveyId))) notFound("err.hitNotFound");
-  if (row!.status !== "suggested") badRequest("err.hitAlreadyDecided");
+  // решено раньше — тот же исход, что проигранная гонка: состояние сменилось,
+  // пока человек смотрел на устаревший список; 409 — клиент его перечитает
+  if (row!.status !== "suggested") conflict("err.hitAlreadyDecided");
 
   /*
    * Отклонение требует объяснения, принятие — нет. Принять предложение
