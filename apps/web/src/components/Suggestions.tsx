@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { RuleHit } from "@quizzy/shared";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { dateTime } from "../format";
 import { useLang } from "../lang";
 import type { UiKey } from "@quizzy/shared";
@@ -29,6 +29,43 @@ export function Suggestions() {
 }
 
 /**
+ * Решение по предложению — и что делать, если его успел принять другой.
+ *
+ * Сервер записывает решение только поверх «предложено» (#104): второй из
+ * двух одновременных получает 409 err.hitDecidedMeanwhile. Прежде экран
+ * показывал отказ всплывающим уведомлением и оставлял в списке уже
+ * решённое предложение с живыми кнопками; следующее нажатие получало 400
+ * «уже решено», и так до ручного обновления страницы. Теперь на 409 список
+ * перечитывается (решённое из него уходит), а фраза сервера возвращается
+ * экрану — он ставит её над списком, а не в исчезающее уведомление (w19:ui).
+ * Прочие отказы уходят дальше как были: их показывает useAction.
+ *
+ * Без React — ради проверки на подставном запросе (test/suggestions.test.ts).
+ */
+export async function decideHit(
+  send: () => Promise<unknown>,
+  reload: () => void,
+): Promise<{ meanwhile: string | null }> {
+  try {
+    await send();
+  } catch (e) {
+    if (!(e instanceof ApiError) || e.status !== 409) throw e;
+    reload();
+    return { meanwhile: e.message };
+  }
+  reload();
+  return { meanwhile: null };
+}
+
+/**
+ * Показывать ли панель: есть предложения — или есть что сказать о том, куда
+ * делось последнее (его решил другой, и список опустел).
+ */
+export function suggestionsShown(count: number, meanwhile: string | null): boolean {
+  return count > 0 || !!meanwhile;
+}
+
+/**
  * Панель по загрузке — без запроса внутри (test/loadStates.test.tsx).
  *
  * Пустой ответ — панели нет: предложений нет, и говорить не о чем. Отказ
@@ -45,6 +82,26 @@ export function SuggestionsBody({
   const { run, busy } = useAction();
   const [declining, setDeclining] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  /* фраза сервера о решении, принятом другим, пока человек смотрел (409, см. decideHit) */
+  const [meanwhile, setMeanwhile] = useState<string | null>(null);
+
+  /*
+   * Одно действие на обе кнопки. На 409 нечего подтверждать: run получает
+   * false и молчит, а фраза встаёт над списком; набранное возражение
+   * к исчезнувшему предложению сбрасывается вместе с ним.
+   */
+  const decide = (hit: RuleHit, status: "accepted" | "declined", done: string, why?: string) =>
+    void run(async () => {
+      setMeanwhile(null);
+      const outcome = await decideHit(() => api.decideHit(hit.id, status, why), res.reload);
+      if (declining === hit.id) {
+        setDeclining(null);
+        setNote("");
+      }
+      if (!outcome.meanwhile) return true;
+      setMeanwhile(outcome.meanwhile);
+      return false;
+    }, done);
 
   if (res.data === null) {
     return res.error ? (
@@ -54,11 +111,21 @@ export function SuggestionsBody({
     ) : null;
   }
   const items = res.data;
-  if (!items.length) return null;
+  if (!suggestionsShown(items.length, meanwhile)) return null;
 
   return (
     <Panel title={ut("ds.title")} actions={<span className="text-caption text-muted">{ut("ds.sub")}</span>}>
       <div className="suggestions">
+        {/*
+          Не цвет внимания: предложение — не тревога (см. .suggestion), и
+          сообщение о нём тоже. role="status" — диктор прочтёт, почему
+          строка, на которую нажимали, пропала.
+        */}
+        {meanwhile ? (
+          <p role="status" className="m-0 text-caption">
+            {meanwhile}
+          </p>
+        ) : null}
         {items.map((hit: RuleHit) => (
           <article key={hit.id} className="suggestion">
             <div className="row tight">
@@ -91,14 +158,7 @@ export function SuggestionsBody({
                 />
                 <Button
                   disabled={busy || !note.trim()}
-                  onClick={() =>
-                    void run(async () => {
-                      await api.decideHit(hit.id, "declined", note.trim());
-                      setDeclining(null);
-                      setNote("");
-                      res.reload();
-                    }, ut("ds.declined"))
-                  }
+                  onClick={() => decide(hit, "declined", ut("ds.declined"), note.trim())}
                 >
                   {ut("ds.decline")}
                 </Button>
@@ -108,16 +168,7 @@ export function SuggestionsBody({
               </div>
             ) : (
               <div className="row tight">
-                <Button
-                  variant="primary"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      await api.decideHit(hit.id, "accepted");
-                      res.reload();
-                    }, ut("ds.accepted"))
-                  }
-                >
+                <Button variant="primary" disabled={busy} onClick={() => decide(hit, "accepted", ut("ds.accepted"))}>
                   {ut("ds.accept")}
                 </Button>
                 <Button disabled={busy} onClick={() => setDeclining(hit.id)}>
