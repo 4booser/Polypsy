@@ -190,9 +190,10 @@ describe("приглашения", () => {
   }, 60_000);
 
   test("страницы собираются из видимых: чужое приглашение не показывается ни на одной", async () => {
+    // приглашения без набора — отделения выписавшего (#51): у adminB отделение не adminA
     const { seen } = await walk<{ id: string }>(`/api/invites?limit=${LIMIT}`, adminB.token);
-    onceEach(seen, open);
-    expect(seen).not.toContain(groupBound);
+    expect(new Set(seen).size, "строка показана на двух страницах").toBe(seen.length);
+    for (const id of [...open, groupBound]) expect(seen).not.toContain(id);
   }, 60_000);
 
   test("без параметров — сотня, а не всё, что выписано за годы", async () => {
