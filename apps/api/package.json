@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
-    "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/migrate.ts",
     "db:seed": "bun src/seed.ts",
     "db:studio": "drizzle-kit studio",
