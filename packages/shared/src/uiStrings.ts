@@ -7767,6 +7767,20 @@ export const UI = {
     en: "After a restart the index rebuilds itself (the server compares the secret's fingerprint with the reindex journal); while it rebuilds, search over old notes is empty — minutes. Manually: bun run search:reindex.",
   },
 
+  /* ── w19:ui ── */
+  /* шаг назад на экране «Сьогодні»: снять ошибочное «прийшов»/«почали» (#38, pages/Today.tsx) */
+  "day.undo": { uk: "Скасувати", ru: "Отменить", en: "Undo" },
+  "day.undoArrived": {
+    uk: "Скасувати відмітку «прийшов»? Прийом повернеться до стану «записаний»",
+    ru: "Отменить отметку «пришёл»? Приём вернётся в состояние «записан»",
+    en: "Undo the “arrived” mark? The appointment goes back to “booked”",
+  },
+  "day.undoStarted": {
+    uk: "Скасувати відмітку «на прийомі»? Прийом повернеться до стану «прийшов»",
+    ru: "Отменить отметку «на приёме»? Приём вернётся в состояние «пришёл»",
+    en: "Undo the “in appointment” mark? The appointment goes back to “arrived”",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
