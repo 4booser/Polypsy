@@ -1,4 +1,4 @@
-import type { UiKey } from "@quizzy/shared";
+import { recordingRevocable, recordingTranscribed, type UiKey } from "@quizzy/shared";
 
 /**
  * Запись приёма в браузере: микрофон, рекордер, отправка — без React.
@@ -155,6 +155,34 @@ export function failureKey(failure: string | null | undefined): UiKey | null {
   if (!failure) return null;
   const match = /\b(audio-unreadable|audio-empty|empty-transcript|converter-missing|whisper-exit)\b/.exec(failure);
   return match ? (FAILURE_KEYS[match[1]!] ?? null) : null;
+}
+
+/** Состояние записи на сервере — то, по чему блок решает, какие кнопки показать */
+export interface RecordingFacts {
+  status: string;
+  consentAt: string | null;
+  transcript: string | null;
+}
+
+/**
+ * Какие кнопки блока записи видны — без React (test/visitRecorder.test.ts).
+ *
+ * «Почати запис» и «Передумав» — до записи, пока здесь ничего не пишется и
+ * не уходит. «Видалити запис» — пока есть что удалять. Готовая стенограмма
+ * (recordingTranscribed) закрывает и отзыв, и удаление: сервер отвечает на
+ * них отказом (#103), и кнопка, которая всегда кончается отказом, на экране
+ * не стоит (w19:ui).
+ */
+export function recorderButtons(
+  state: RecordingFacts,
+  phase: RecorderPhase,
+): { start: boolean; revoke: boolean; discard: boolean } {
+  const before = !!state.consentAt && phase === "idle" && ["ready", "consent_pending"].includes(state.status);
+  return {
+    start: before,
+    revoke: before && recordingRevocable(state),
+    discard: !!state.consentAt && state.status !== "discarded" && !recordingTranscribed(state),
+  };
 }
 
 const sameMoment = (a: string | null | undefined, b: string | null | undefined) =>

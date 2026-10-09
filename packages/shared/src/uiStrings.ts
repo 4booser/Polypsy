@@ -7780,6 +7780,12 @@ export const UI = {
     ru: "Отменить отметку «на приёме»? Приём вернётся в состояние «пришёл»",
     en: "Undo the “in appointment” mark? The appointment goes back to “arrived”",
   },
+  /* приложение пациента: у готовой стенограммы «Передумав» нет — почему (#103, app/(app)/home.tsx) */
+  "rec.revokeTooLate": {
+    uk: "Розмову вже розшифровано, текст у картці — відкликати згоду на цей запис пізно",
+    ru: "Разговор уже расшифрован, текст в карте — отозвать согласие на эту запись поздно",
+    en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
+  },
 
 } as const satisfies Record<string, UiEntry>;
 
