@@ -1,5 +1,5 @@
-import type { Role, UiKey } from "@quizzy/shared";
-import { createUserSchema } from "@quizzy/shared";
+import type { OpsUserRow, Role, UiKey } from "@quizzy/shared";
+import { accountRefusal, accountStanding, createUserSchema } from "@quizzy/shared";
 import { pageFrom, perFrom } from "../../ui/paging";
 import { patchParams } from "../../ui/viewParams";
 
@@ -225,4 +225,33 @@ export function accountStep(s: AccountDraft, e: AccountEvent): AccountDraft {
     case "created":
       return { ...s, busy: false, error: null, created: e.email };
   }
+}
+
+/* ─────────── меню строки: чьи учётки трогать ─────────── */
+
+/**
+ * Учётка вне досягаемости смотрящего: на его ступени или выше.
+ *
+ * Правило сервера (packages/shared, accountRefusal): действовать над чужой
+ * учёткой можно только строго ниже своего положения, над суперадмином — лишь
+ * суперадмину; иначе 403 err.accountAtOrAboveYours (или err.superadminOnly).
+ * Меню строки таких действий не показывает вовсе (w19:ui): погашенный пункт
+ * с подсказкой «лише вище за посадою» на каждой строке коллег и начальства
+ * — это половина меню, которая ничего не обещает, а заведующему среди
+ * восьми погашенных пунктов не найти двух, которые ему доступны.
+ *
+ * Своя строка — не здесь: «над собой» — другая причина отказа, и пункты на
+ * ней остаются погашенными с объяснением, как были. Суперадмину вне
+ * досягаемости только он сам — и это тоже «над собой».
+ */
+export function accountOutOfReach(
+  me: { id: string; role: Role; ladderRank?: number | null } | null | undefined,
+  row: Pick<OpsUserRow, "id" | "role" | "ladderRank">,
+): boolean {
+  if (!me) return false;
+  const refusal = accountRefusal(
+    { id: me.id, role: me.role, standing: accountStanding(me.role, me.ladderRank ?? 0) },
+    { id: row.id, role: row.role, standing: accountStanding(row.role, row.ladderRank) },
+  );
+  return refusal === "aboveYours" || refusal === "superadminOnly";
 }

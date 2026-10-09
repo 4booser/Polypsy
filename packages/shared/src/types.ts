@@ -3563,6 +3563,34 @@ export type RecordingStatus =
   | "discarded";
 
 /**
+ * Стенограмма готова: разговор лежит в карте текстом (#103).
+ *
+ * То же основание, что у сервера (routes/recordings.ts, transcribed), в той
+ * мере, в какой его видит клиент: «готово» либо текст на руках. Отзыв
+ * согласия и удаление такой записи сервер отвергает (400
+ * err.recordingTranscribed), и экраны этих кнопок не показывают: кнопка,
+ * которая всегда кончается отказом, — не выбор, а ловушка. Текст сервер
+ * отдаёт только специалисту и только при «готово»; правило на это не
+ * полагается.
+ */
+export function recordingTranscribed(rec: { status: string; transcript?: string | null }): boolean {
+  return rec.status === "done" || !!rec.transcript;
+}
+
+/**
+ * Можно ли предложить «передумав» — отозвать согласие на запись приёма.
+ *
+ * Согласие есть, запись сейчас не идёт (сначала её останавливают — иначе
+ * 400 err.recordingInProgress) и стенограммы ещё нет (w19:ui). Общее для
+ * консоли (components/recorder/model.ts) и приложения пациента
+ * (app/(app)/home.tsx): прежде приложение предлагало отзыв и у готовой
+ * стенограммы, а нажатие кончалось отказом сервера.
+ */
+export function recordingRevocable(rec: { status: string; consentAt: string | null; transcript?: string | null }): boolean {
+  return !!rec.consentAt && rec.status !== "recording" && !recordingTranscribed(rec);
+}
+
+/**
  * Хранилище записей приёма — только числа.
  *
  * Ни имени пациента, ни пути к файлу: идентификатор задания (строки записи),

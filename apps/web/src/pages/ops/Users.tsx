@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { BulkUserAction, OpsUserRow, Role } from "@quizzy/shared";
+import type { BulkUserAction, OpsUserRow, Permission, Role, UiKey } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
 import { dateTime, day } from "../../format";
@@ -21,6 +21,7 @@ import {
   type AccountEvent,
   type AccountForm,
   accountBody,
+  accountOutOfReach,
   accountProblems,
   accountReady,
   accountStep,
@@ -34,7 +35,15 @@ import {
 import { UserDevices } from "./UserDevices";
 import { toggleId, withPage } from "./people2/model";
 import { RowCheck } from "./people2/parts";
-import { BulkDialog, ImpersonateDialog, ImportDialog, ResetMfaDialog, SelectionBar, useRowExtras } from "./people2/UserTools";
+import {
+  BulkDialog,
+  ImpersonateDialog,
+  ImportDialog,
+  ResetMfaDialog,
+  type RowExtrasOpen,
+  SelectionBar,
+  useRowExtras,
+} from "./people2/UserTools";
 import { UsersOverview } from "./people2/charts";
 
 /*
@@ -56,6 +65,10 @@ import { UsersOverview } from "./people2/charts";
  * Что человеку нельзя, в меню остаётся погашенным с объяснением, а не
  * пропадает: на своей строке нет «вимкнути» потому, что себя выключить
  * нельзя, — и об этом лучше прочитать, чем гадать, куда делся пункт.
+ *
+ * Исключение — учётки на ступени смотрящего и выше (w19:ui): действий над
+ * ними не-суперадмину не показывают вовсе, остаются переходы «посмотреть»
+ * (userRowMenu, accountOutOfReach в usersModel.ts).
  */
 
 /*
@@ -65,7 +78,7 @@ import { UsersOverview } from "./people2/charts";
 const GRID =
   "grid grid-cols-[44px_minmax(0,2.3fr)_minmax(0,1.4fr)_minmax(0,1.3fr)_56px_minmax(0,1.6fr)_44px] gap-x-[16px]";
 
-type Dialog =
+export type Dialog =
   | { kind: "create" }
   | { kind: "role"; row: OpsUserRow }
   | { kind: "reset"; row: OpsUserRow }
@@ -132,60 +145,8 @@ export default function OpsUsers() {
   const pageIds = res.data?.items.map((r) => r.id) ?? [];
   const extras = useRowExtras();
 
-  function entriesFor(row: OpsUserRow): MenuEntry[] {
-    const self = row.id === user?.id;
-    /* над суперадмином действует только суперадмин — то же правило стоит на сервере */
-    const locked = row.role === "superadmin" && !isSuper;
-    const why = self ? ut("ops.users.notSelf") : locked ? ut("ops.users.superOnly") : undefined;
-    const entries: MenuEntry[] = [
-      { label: ut("ops.users.changeRole"), onSelect: () => setDialog({ kind: "role", row }), disabled: self || locked, hint: why },
-      {
-        label: ut("ops.users.permissions"),
-        to: `/permissions?user=${row.id}`,
-        disabled: row.role === "user",
-        hint: ut("ops.users.patientNoPerms"),
-      },
-      { label: ut("dev.title"), onSelect: () => setDialog({ kind: "devices", row }), disabled: !isSuper, hint: ut("ops.users.superOnly") },
-      { label: ut("ops.users.sessionsOf"), to: `/ops/sessions?user=${row.id}` },
-    ];
-    if (can("audit.read")) {
-      entries.push(
-        { label: ut("ops.users.actorLog"), to: `/ops/audit?actor=${row.id}` },
-        { label: ut("ops.users.subjectLog"), to: `/ops/audit?subject=${row.id}` },
-      );
-    }
-    entries.push(
-      { label: ut("ops.users.resetPassword"), onSelect: () => setDialog({ kind: "reset", row }), disabled: self || locked, hint: why },
-      {
-        label: ut("ops.users.revokeSessions"),
-        onSelect: () => setDialog({ kind: "revoke", row }),
-        disabled: locked || row.sessions === 0,
-        hint: locked ? ut("ops.users.superOnly") : ut("ops.users.noSessions"),
-      },
-      row.disabledAt
-        ? { label: ut("ops.users.enable"), onSelect: () => setDialog({ kind: "enable", row }), disabled: locked, hint: why }
-        : { label: ut("ops.users.disable"), onSelect: () => setDialog({ kind: "disable", row }), disabled: self || locked, hint: why },
-      {
-        label: ut("ops.users.delete"),
-        danger: true,
-        disabled: !isSuper || self,
-        hint: self ? ut("ops.users.notSelf") : ut("ops.users.deleteSuperOnly"),
-        /* учётка со следом — сразу объяснение, а не подтверждение, которое кончится отказом */
-        onSelect: () => {
-          const holds = holdsOfRow(row);
-          setDialog(holds.length ? { kind: "held", row, holds } : { kind: "delete", row });
-        },
-      },
-    );
-    /* people2: «переглянути як ця людина» и сброс второго фактора — оба только суперадмину */
-    entries.push(
-      ...extras(row, {
-        impersonate: () => setDialog({ kind: "impersonate", row }),
-        resetMfa: () => setDialog({ kind: "resetMfa", row }),
-      }),
-    );
-    return entries;
-  }
+  const entriesFor = (row: OpsUserRow): MenuEntry[] =>
+    userRowMenu(row, { me: user, can, ut, open: setDialog, extras });
 
   return (
     <>
@@ -372,6 +333,86 @@ export default function OpsUsers() {
       {dialog?.kind === "import" ? <ImportDialog onClose={close} onDone={done} /> : null}
     </>
   );
+}
+
+/* ─────────── меню строки ─────────── */
+
+export interface RowMenuContext {
+  /** Кто смотрит: id, класс и ступень лестницы (из /api/auth/me) */
+  me: { id: string; role: Role; ladderRank?: number | null } | null | undefined;
+  can: (permission: Permission) => boolean;
+  ut: (key: UiKey) => string;
+  open: (dialog: Dialog) => void;
+  /** Пункты people2: вход «от имени» и сброс второго фактора (rowExtrasFor) */
+  extras: (row: OpsUserRow, open: RowExtrasOpen) => MenuEntry[];
+}
+
+/**
+ * Пункты меню строки «Користувачів» — без React (test/opsUsersMenu.test.ts).
+ *
+ * Учётка вне досягаемости (accountOutOfReach: на ступени смотрящего или
+ * выше, суперадмин для не-суперадмина) — без действий вовсе: сервер на
+ * каждое ответил бы err.accountAtOrAboveYours. Остаются переходы
+ * «посмотреть» — сессии и журнал, — меню у строки не пустеет. Суперадмину
+ * вне досягаемости только он сам, и меню у него — как прежде.
+ */
+export function userRowMenu(row: OpsUserRow, ctx: RowMenuContext): MenuEntry[] {
+  const { me, can, ut, open } = ctx;
+  const isSuper = me?.role === "superadmin";
+  const self = row.id === me?.id;
+
+  const views: MenuEntry[] = [{ label: ut("ops.users.sessionsOf"), to: `/ops/sessions?user=${row.id}` }];
+  if (can("audit.read")) {
+    views.push(
+      { label: ut("ops.users.actorLog"), to: `/ops/audit?actor=${row.id}` },
+      { label: ut("ops.users.subjectLog"), to: `/ops/audit?subject=${row.id}` },
+    );
+  }
+  if (accountOutOfReach(me, row)) return views;
+
+  /*
+   * Дальше учётка строго ниже смотрящего — или его собственная. Прежний
+   * замок «суперадмина трогает только суперадмин» здесь уже не нужен:
+   * чужой суперадмин для не-суперадмина вне досягаемости и ушёл выше.
+   */
+  const why = self ? ut("ops.users.notSelf") : undefined;
+  return [
+    { label: ut("ops.users.changeRole"), onSelect: () => open({ kind: "role", row }), disabled: self, hint: why },
+    {
+      label: ut("ops.users.permissions"),
+      to: `/permissions?user=${row.id}`,
+      disabled: row.role === "user",
+      hint: ut("ops.users.patientNoPerms"),
+    },
+    { label: ut("dev.title"), onSelect: () => open({ kind: "devices", row }), disabled: !isSuper, hint: ut("ops.users.superOnly") },
+    ...views,
+    { label: ut("ops.users.resetPassword"), onSelect: () => open({ kind: "reset", row }), disabled: self, hint: why },
+    {
+      label: ut("ops.users.revokeSessions"),
+      onSelect: () => open({ kind: "revoke", row }),
+      disabled: row.sessions === 0,
+      hint: ut("ops.users.noSessions"),
+    },
+    row.disabledAt
+      ? { label: ut("ops.users.enable"), onSelect: () => open({ kind: "enable", row }) }
+      : { label: ut("ops.users.disable"), onSelect: () => open({ kind: "disable", row }), disabled: self, hint: why },
+    {
+      label: ut("ops.users.delete"),
+      danger: true,
+      disabled: !isSuper || self,
+      hint: self ? ut("ops.users.notSelf") : ut("ops.users.deleteSuperOnly"),
+      /* учётка со следом — сразу объяснение, а не подтверждение, которое кончится отказом */
+      onSelect: () => {
+        const holds = holdsOfRow(row);
+        open(holds.length ? { kind: "held", row, holds } : { kind: "delete", row });
+      },
+    },
+    /* people2: «переглянути як ця людина» и сброс второго фактора — оба только суперадмину */
+    ...ctx.extras(row, {
+      impersonate: () => open({ kind: "impersonate", row }),
+      resetMfa: () => open({ kind: "resetMfa", row }),
+    }),
+  ];
 }
 
 /* ─────────── строка ─────────── */
