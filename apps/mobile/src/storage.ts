@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import { ownerOfToken, setActiveOwner } from "./offline/owner";
+import { ownerOfToken, setActiveOwner, signedIn } from "./offline/owner";
 
 const TOKEN_KEY = "quizzy.token";
 const REFRESH_KEY = "quizzy.refresh";
@@ -44,7 +44,8 @@ export const tokenStorage = {
   },
   set: async (token: string) => {
     await raw.set(token);
-    setActiveOwner(ownerOfToken(token));
+    // новый токен — это вход: после стирания офлайн-слой снова пишет, но только за него (offline/owner.ts)
+    signedIn(ownerOfToken(token));
   },
   getRefresh: () => raw.getRefresh(),
   setRefresh: (token: string) => raw.setRefresh(token),

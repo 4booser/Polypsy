@@ -1,5 +1,5 @@
 import { leftAfterWipe, wipeLocalData } from "./device";
-import { ownerOfToken } from "./owner";
+import { closeForWipe, ownerOfToken } from "./owner";
 import { store } from "./store";
 
 /**
@@ -133,13 +133,67 @@ async function advance(state: WipeState, confirmWith: string | null, deps: WipeD
   return { erased: state.erased, signedOut: state.signedOut, confirmed };
 }
 
+/*
+ * Кому сказать, что сессию закрыло стирание (#125).
+ *
+ * Хранилище чистилось и токены снимались, а интерфейс об этом не знал:
+ * пользователь оставался в состоянии React, экраны — с данными пациентов, и
+ * так до перезапуска. Слушают корень приложения (вход, AuthContext) и стек
+ * экранов (переход на вход, app/_layout.tsx).
+ */
+const wipedListeners = new Set<() => void>();
+
+export function onWiped(listener: () => void): () => void {
+  wipedListeners.add(listener);
+  return () => {
+    wipedListeners.delete(listener);
+  };
+}
+
+/**
+ * Чтение, начатое до стирания и законченное после, — как будто его не было:
+ * `null` вместо ответа (#125). Так профиль, запрошенный при запуске или
+ * перечитанный после правки, не возвращает интерфейсу пользователя, чью
+ * сессию стирание уже закрыло (AuthContext). Ошибка чтения летит как есть.
+ */
+export async function unlessWiped<T>(load: () => Promise<T>): Promise<T | null> {
+  let wiped = false;
+  const off = onWiped(() => {
+    wiped = true;
+  });
+  try {
+    const value = await load();
+    return wiped ? null : value;
+  } finally {
+    off();
+  }
+}
+
+/** Запись закрыта ни для кого, интерфейс без сессии — с этого начинается стирание */
+function closeSession(): void {
+  closeForWipe();
+  for (const listener of wipedListeners) {
+    try {
+      listener();
+    } catch {
+      /* интерфейс не смог — стирание от этого не зависит */
+    }
+  }
+}
+
 /**
  * Исполнить команду стирания, полученную при отметке устройства `deviceId`.
  *
  * Команда — того, чья сессия сейчас в хранилище: сервер выдаёт её паре
  * «установка + учётная запись» (routes/devices.ts), и отметку делал он.
+ *
+ * Первым делом, ещё до очистки, офлайн-слой закрывается на запись — ответ,
+ * запрошенный раньше команды и пришедший после неё, на устройство не ляжет
+ * (owner.ts, closeForWipe), — и интерфейс закрывает сессию: показывать
+ * экраны дальше, пока идут очистка и подтверждение, незачем.
  */
 export async function carryOutWipe(deviceId: string, deps: WipeDeps): Promise<WipeOutcome> {
+  closeSession();
   const token = await deps.token().catch(() => null);
   const state: WipeState = { deviceId, owner: ownerOfToken(token), erased: false, signedOut: false };
   save(state);
@@ -153,11 +207,24 @@ export async function carryOutWipe(deviceId: string, deps: WipeDeps): Promise<Wi
  * снять не удалось; свежий вход после стирания — законный, его не трогаем.
  * Подтверждение уходит только токеном того, чья была команда: чужой вход на
  * том же планшете подтверждать её не вправе.
+ *
+ * Запись и интерфейс — как при самой команде (#125), но только там, где этот
+ * запуск действительно что-то стирает:
+ *   - сессию прошлый раз снять не удалось — её снимает этот, и для интерфейса
+ *     это то же стирание: запись закрыта, сессия закрыта (иначе AuthContext
+ *     восстанавливал человека по этому токену, и токен исчезал из-под
+ *     открытых экранов);
+ *   - сессия снята, а очистка не доведена — данные уходят, после очистки
+ *     пишется только за того, кто вошёл заново, и его сессию не трогаем;
+ *   - ждёт лишь подтверждение — ни запись, ни свежий вход не трогаются:
+ *     иначе каждый запуск выкидывал бы на вход человека, вошедшего после.
  */
 export async function resumeWipe(deps: WipeDeps): Promise<WipeOutcome | null> {
   const state = store.read<WipeState>(WIPE_STATE_KEY);
   if (!state?.deviceId) return null;
+  if (!state.signedOut) closeSession();
   const token = await deps.token().catch(() => null);
+  if (state.signedOut && !state.erased) closeForWipe(ownerOfToken(token));
   const confirmWith = token && ownerOfToken(token) === state.owner ? token : null;
   return advance(state, confirmWith, deps);
 }

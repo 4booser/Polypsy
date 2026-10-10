@@ -3,6 +3,7 @@ import { isTransientStatus, type User } from "@quizzy/shared";
 import { api } from "../api/client";
 import { cache } from "../offline/cache";
 import { ownerOfToken } from "../offline/owner";
+import { unlessWiped } from "../offline/wipe";
 import { tokenStorage } from "../storage";
 import { forgetPush } from "../push";
 
@@ -42,14 +43,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // при старте пробуем восстановить сессию по сохранённому токену
+  /*
+   * Стирание по команде закрывает сессию и в интерфейсе (#125): хранилище уже
+   * чистится, а экраны жили с прежним пользователем до перезапуска. Профиль,
+   * запрошенный до команды и пришедший после, сессию не возвращает —
+   * ни при запуске, ни при перечитывании (offline/wipe.ts, unlessWiped).
+   */
   useEffect(() => {
+    const off = api.onWiped(() => setUser(null));
+    // при старте пробуем восстановить сессию по сохранённому токену
     (async () => {
-      const token = await tokenStorage.get();
-      if (token) {
+      const restored = await unlessWiped(async () => {
+        const token = await tokenStorage.get();
+        if (!token) return null;
         try {
           // истёкший access продлевается по refresh внутри запроса (auth/session.ts)
-          setUser(await api.me());
+          return await api.me();
         } catch (error) {
           /*
            * Стирать сессию — только когда сервер сказал «нет». Раньше её
@@ -60,16 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
            * кэша владельца токена; кэша нет — сессия остаётся, и следующий
            * запуск со связью её восстановит.
            */
-          if (isTransientStatus((error as { status?: number }).status ?? -1)) {
-            const cached = cache.me(ownerOfToken(token));
-            if (cached) setUser(cached);
-          } else {
-            await tokenStorage.clear();
-          }
+          if (isTransientStatus((error as { status?: number }).status ?? -1)) return cache.me(ownerOfToken(token));
+          await tokenStorage.clear();
+          return null;
         }
-      }
+      });
+      if (restored) setUser(restored);
       setLoading(false);
     })();
+    return off;
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -95,9 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(payload.user);
   }, []);
 
-  /** Перечитывает профиль после правки паспортной части */
+  /** Перечитывает профиль после правки паспортной части; стёртое по пути устройство — не возвращает */
   const refresh = useCallback(async () => {
-    setUser(await api.me());
+    const me = await unlessWiped(() => api.me());
+    if (me) setUser(me);
   }, []);
 
   const logout = useCallback(async () => {

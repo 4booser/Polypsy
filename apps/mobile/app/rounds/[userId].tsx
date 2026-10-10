@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import type { RespondentDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
+import { isAccessDenied, shownAfterFailure } from "@/api/access";
 import { SeverityTag } from "@/components/charts";
 import { LineChart } from "@/components/viz";
 import { Body, Button, Card, Divider, ErrorText, Loader, Row, Title } from "@/components/ui";
@@ -39,6 +40,14 @@ export default function RoundsCardScreen() {
       setCachedAt(at);
       navigation.setOptions({ title: card.fullName });
     } catch (e) {
+      /*
+       * Отказ доступа (#126) — карта, открытая раньше, больше не положена:
+       * экран её сбрасывает и показывает ошибку, а в шапке не остаётся имя
+       * пациента. Без сети показанное остаётся.
+       */
+      if (isAccessDenied(e)) navigation.setOptions({ title: ut("rounds.title") });
+      setData((shown) => shownAfterFailure(shown, e));
+      setCachedAt((at) => shownAfterFailure(at, e));
       setError(e instanceof Error ? e.message : ut("rounds.loadFailed"));
     }
   }, [userId, navigation, ut]);

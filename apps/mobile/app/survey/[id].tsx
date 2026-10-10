@@ -16,12 +16,14 @@ import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { draftRequestBody, drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { draftLaneKey, draftLanes } from "@/offline/draftLane";
+import { mayStore } from "@/offline/owner";
 import { useExit } from "@/nav/useExit";
 import { finishFailureText, finishSubmission } from "@/runner/finish";
 import { resultView } from "@/runner/resultView";
 import { useOpenReport } from "@/report/useOpenReport";
 import { missedBefore } from "@/runner/progress";
 import { restoreDraft } from "@/runner/resume";
+import { draftsToResume, dropOwnDraft } from "@/runner/ownDraft";
 import { QuestionInput } from "@/components/QuestionInput";
 import { SeverityTag } from "@/components/charts";
 import { Body, Button, Card, ErrorText, Loader, Row, Title } from "@/components/ui";
@@ -140,6 +142,8 @@ export default function TakeSurveyScreen() {
   useEffect(() => {
     const sub = navigation.addListener("beforeRemove", (e) => {
       if (result || answers.size === 0) return; // завершено или не начато
+      // устройство стирают по команде (#125) — уход на вход не переспрашивается: беречь ответы негде
+      if (!mayStore(owner)) return;
       e.preventDefault();
       Alert.alert(
         ut("ms.abortTitle"),
@@ -155,7 +159,7 @@ export default function TakeSurveyScreen() {
       );
     });
     return sub;
-  }, [navigation, result, answers.size]);
+  }, [navigation, result, answers.size, owner]);
 
   useEffect(() => {
     if (!id) return;
@@ -166,10 +170,10 @@ export default function TakeSurveyScreen() {
         /*
          * Незавершённое прохождение — продолжаем с того же места. Берём то,
          * что новее: локальная копия свежее серверной ровно тогда, когда
-         * человек отвечал без сети, и именно её терять нельзя.
+         * человек отвечал без сети, и именно её терять нельзя. За пациента
+         * черновика нет: свой специалиста ему не подставляется (runner/ownDraft.ts).
          */
-        const remote = await api.getDraft(id).catch(() => null);
-        const stored = drafts.get(owner, id);
+        const { remote, local: stored } = await draftsToResume(id, { owner, onBehalfOf }, api.getDraft);
         draftRevision.current = Math.max(draftRevision.current, stored?.revision ?? 0);
 
         /*
@@ -205,7 +209,7 @@ export default function TakeSurveyScreen() {
         setError(e instanceof Error ? e.message : ut("ms.loadFailed"));
       }
     })();
-  }, [id, navigation, owner]);
+  }, [id, navigation, owner, onBehalfOf]);
 
   // общий таймер: нужен и для лимита времени, и для показа затраченного
   useEffect(() => {
@@ -423,12 +427,9 @@ export default function TakeSurveyScreen() {
              */
             subject: patient ? { sex: patient.sex, age: patient.age } : null,
           }),
-        // прохождение ушло (или встало в очередь) — локальный черновик больше
-        // не нужен и не должен всплыть «продолжением» при следующем открытии
-        dropDraft: () => {
-          if (owner) draftLanes.cancelPending(draftLaneKey(owner, survey.id));
-          drafts.drop(owner, survey.id);
-        },
+        // прохождение ушло (или встало в очередь) — свой черновик больше не нужен
+        // и не должен всплыть «продолжением»; сдача за пациента черновик специалиста не трогает
+        dropDraft: () => dropOwnDraft(survey.id, { owner, onBehalfOf }),
       });
       if (!outcome.ok) {
         setError(finishFailureText(outcome, ut));

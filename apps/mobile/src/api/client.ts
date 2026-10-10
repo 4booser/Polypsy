@@ -56,7 +56,7 @@ function netText(key: "net.offline" | "net.failed"): string {
 import { cache, draftRequestBody, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName } from "../offline/device";
-import { carryOutWipe, resumeWipe, type WipeDeps } from "../offline/wipe";
+import { carryOutWipe, onWiped, resumeWipe, type WipeDeps } from "../offline/wipe";
 import {
   claim,
   deviceCounts,
@@ -73,6 +73,7 @@ import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offl
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
 import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
+import { isAccessDenied } from "./access";
 
 export class ApiError extends Error {
   constructor(
@@ -223,9 +224,19 @@ interface SubmitResult {
   queued?: boolean;
 }
 
-/** Сетевая ошибка → кэш; кэша нет — исходная ошибка честно всплывает */
-function offlineFallback<T>(error: unknown, cached: T | null): T {
+/**
+ * Сетевая ошибка → кэш; кэша нет — исходная ошибка честно всплывает.
+ *
+ * Только сеть (status 0): отказ сервера — его ответ, а не его отсутствие.
+ * Отказ доступа (403, или 401, когда продлить сессию не удалось) говорит,
+ * что эти данные человеку больше не положены, и копия с прошлого раза тогда
+ * не отдаётся, а `forget` её убирает (#126). Обход ловил любую ошибку и
+ * отдавал из кэша карту пациента, которого уже вывели из зоны, — с баллами
+ * и подписью «нет сети».
+ */
+function offlineFallback<T>(error: unknown, cached: T | null, forget?: () => void): T {
   if ((error as ApiError).status === 0 && cached !== null) return cached;
+  if (forget && isAccessDenied(error)) forget();
   throw error;
 }
 
@@ -317,6 +328,8 @@ export const api = {
       passwordGateListeners.delete(listener);
     };
   },
+  /** Подписка на «устройство стёрто по команде, сессия закрыта» (offline/wipe.ts); возвращает отписку */
+  onWiped: (listener: () => void) => onWiped(listener),
   /**
    * Смена пароля. Сервер при этом обрывает все сессии, включая эту
    * (routes/auth.ts, POST /password), — после неё нужен вход новым паролем.
@@ -908,8 +921,8 @@ export const api = {
       cache.saveRounds(owner, list);
       return { list, cachedAt: null };
     } catch (error) {
-      const saved = cache.rounds(owner);
-      if (!saved) throw error;
+      // кэш — только без сети, как у остальных чтений; отказ доступа его уносит
+      const saved = offlineFallback(error, cache.rounds(owner), () => cache.dropRounds(owner));
       return { list: saved.rows as Worklist, cachedAt: saved.at };
     }
   },
@@ -924,8 +937,9 @@ export const api = {
       cache.savePatientCard(owner, userId, card);
       return { card, cachedAt: null };
     } catch (error) {
-      const saved = cache.patientCard(owner, userId);
-      if (!saved) throw error;
+      const saved = offlineFallback(error, cache.patientCard(owner, userId), () =>
+        cache.dropPatientCard(owner, userId),
+      );
       return { card: saved.card as RespondentDynamics, cachedAt: saved.at };
     }
   },
