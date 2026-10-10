@@ -255,9 +255,13 @@ async function isOwnAttempt(
  * Если сдача подняла тот же сигнал заново (тот же пункт — в рамках
  * прохождения он один, уникальный индекс), остаётся строка ЧЕРНОВИКА: на
  * неё уже могли сослаться направление, уведомление, отметка «разобрано».
- * Тяжесть берётся большая (понижать нельзя — как и при автосохранении),
- * случай — тот, к которому сигнал привязала сдача: он открыт сейчас, и
- * дежурный работает в нём. Направления, выписанные на черновик, тоже
+ * Тяжесть берётся большая (понижать нельзя — как и при автосохранении).
+ * Случай — как на автосохранении (PUT /draft): при повышении до тяжёлой —
+ * тот, к которому сигнал привязала сдача (он открыт сейчас, и дежурный
+ * работает в нём); при том же ответе сигнал остаётся в своём случае со
+ * своим решением, а случай, который сдача завела под него, опустев,
+ * убирается — иначе в очереди висел бы открытый случай без единого
+ * неразобранного сигнала. Направления, выписанные на черновик, тоже
  * переходят на итоговое прохождение.
  *
  * Системной ролью: строки чужих таблиц (направления, уведомления) пациенту
@@ -297,12 +301,19 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
       .update(riskAlerts)
       .set({
         responseId: finalId,
-        caseId: fresh.caseId ?? alert.caseId,
+        caseId: upgrade ? (fresh.caseId ?? alert.caseId) : (alert.caseId ?? fresh.caseId),
         severity: severe ? "severe" : "moderate",
         label: alert.severity === "severe" || fresh.severity !== "severe" ? alert.label : fresh.label,
         ...(upgrade ? { at: fresh.at, acknowledgedAt: null, acknowledgedBy: null, outcome: null } : {}),
       })
       .where(eq(riskAlerts.id, alert.id));
+    if (!upgrade && fresh.caseId && alert.caseId && fresh.caseId !== alert.caseId) {
+      // тот же ответ ничего не открывает: случай, заведённый под свежий сигнал, без него пуст
+      await db.execute(sql`
+        delete from alert_cases c
+         where c.id = ${fresh.caseId}
+           and not exists (select 1 from risk_alerts a where a.case_id = c.id)`);
+    }
     byQuestion.set(alert.questionId!, { ...alert, responseId: finalId });
   }
 }

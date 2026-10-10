@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { and, inArray, notInArray } from "drizzle-orm";
 import { adminA, appApi, createSurveySchema, createVersion, db, eq, groupA, isNull, makeUser, surveys } from "./fixtures";
-import { alertNotifications, riskAlerts } from "../src/db/schema";
+import { alertCases, alertNotifications, riskAlerts } from "../src/db/schema";
 import { runNotifierOnce, setTransportForTests } from "../src/lib/notify";
 
 /**
@@ -21,6 +21,7 @@ import { runNotifierOnce, setTransportForTests } from "../src/lib/notify";
 
 const tag = () => crypto.randomUUID().slice(0, 8);
 const mine: string[] = [];
+const people: string[] = [];
 
 type Loaded = { versionId: string; questions: { id: string; options: { id: string }[] }[] };
 
@@ -149,6 +150,13 @@ afterAll(async () => {
       .set({ acknowledgedAt: new Date().toISOString(), acknowledgedBy: adminA.id })
       .where(and(inArray(riskAlerts.id, mine), isNull(riskAlerts.acknowledgedAt)));
   }
+  // и случаи тех, кого заводили ниже: открытый случай — строка очереди дежурного
+  if (people.length) {
+    await db
+      .update(alertCases)
+      .set({ acknowledgedAt: new Date().toISOString(), acknowledgedBy: adminA.id, outcome: "not_confirmed" })
+      .where(and(inArray(alertCases.userId, people), isNull(alertCases.acknowledgedAt)));
+  }
 });
 
 describe("сдача повышает тревогу черновика (#131)", () => {
@@ -208,3 +216,97 @@ describe("сдача повышает тревогу черновика (#131)",
     await expectLiveSevere(done.body.id);
   }, 30_000);
 });
+
+/*
+ * Тот же ответ после разбора (#131, проверка из разбора сборщика).
+ *
+ * Черновик «умеренно» → дежурный закрыл случай → сдача с тем же ответом.
+ * Сдача поднимает сигнал заново (persistSubmission), и attachToCase, не
+ * найдя открытого случая, заводит новый. adoptDraftAlerts сливал свежий
+ * сигнал в строку черновика и переносил её в этот новый случай — вместе с
+ * отметкой разбора: в очереди появлялся открытый случай, в котором только
+ * разобранный сигнал, а прежний случай терял свой. Образец — автосохранение:
+ * тот же ответ ничего не открывает, сигнал остаётся в своём случае со своим
+ * решением.
+ */
+describe("сдача с тем же ответом после разбора", () => {
+  async function draftThenDismiss() {
+    const surveyId = await makeSurvey();
+    const person = await makeUser("user", `same-${tag()}@test.dev`, { sex: "female", birthDate: "1991-07-07" });
+    people.push(person.id);
+    const shown = (await appApi<Loaded>(`/api/surveys/${surveyId}`, person.token)).body;
+    const saveDraft = () =>
+      appApi(`/api/surveys/${surveyId}/draft`, person.token, {
+        method: "PUT",
+        body: JSON.stringify({ startedAt: startedAt(), durationMs: 20_000, versionId: shown.versionId, answers: answer(shown, 1) }),
+      });
+    const draft = await saveDraft();
+    expect(draft.status, JSON.stringify(draft.body)).toBe(200);
+    const early = await signalOf(draft.body.id);
+    expect(early.severity).toBe("moderate");
+    const submit = () =>
+      appApi(`/api/surveys/${surveyId}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({ startedAt: startedAt(), durationMs: 60_000, events: [], versionId: shown.versionId, answers: answer(shown, 1) }),
+      });
+    const dismiss = async () => {
+      const res = await appApi(`/api/alert-cases/${early.caseId}`, adminA.token, {
+        method: "PATCH",
+        body: JSON.stringify({ outcome: "not_confirmed" }),
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+    };
+    return { person, early, saveDraft, submit, dismiss };
+  }
+
+  const openCases = (userId: string) =>
+    db
+      .select()
+      .from(alertCases)
+      .where(and(eq(alertCases.userId, userId), isNull(alertCases.acknowledgedAt)));
+
+  test("разобран, сдача «умеренно»: сигнал в своём случае со своим решением, пустого случая нет", async () => {
+    const { person, early, submit, dismiss } = await draftThenDismiss();
+    await dismiss();
+
+    const done = await submit();
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    const signal = await signalOf(done.body.id);
+    expect(signal.id).toBe(early.id);
+    expect(signal.caseId, "разобранный сигнал переехал в новый случай").toBe(early.caseId);
+    expect(signal.acknowledgedAt).not.toBeNull();
+    expect(signal.outcome).toBe("not_confirmed");
+    expect(await openCases(person.id), "в очереди открытый случай без неразобранных сигналов").toEqual([]);
+    const [own] = await db.select().from(riskAlerts).where(eq(riskAlerts.caseId, early.caseId!));
+    expect(own?.id, "прежний случай потерял свой сигнал").toBe(early.id);
+  }, 30_000);
+
+  test("образец — автосохранение: тот же ответ после разбора ничего не открывает", async () => {
+    const { person, early, saveDraft, dismiss } = await draftThenDismiss();
+    await dismiss();
+
+    const again = await saveDraft();
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    const [signal] = await db.select().from(riskAlerts).where(eq(riskAlerts.id, early.id));
+    expect(signal!.caseId).toBe(early.caseId);
+    expect(signal!.outcome).toBe("not_confirmed");
+    expect(await openCases(person.id)).toEqual([]);
+  }, 30_000);
+
+  test("контроль: не разобран, сдача «умеренно» — сигнал в том же открытом случае, в очереди", async () => {
+    const { person, early, submit, dismiss } = await draftThenDismiss();
+
+    const done = await submit();
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    const signal = await signalOf(done.body.id);
+    expect(signal.id).toBe(early.id);
+    expect(signal.caseId).toBe(early.caseId);
+    expect(signal.acknowledgedAt).toBeNull();
+    expect((await openCases(person.id)).map((c) => c.id)).toEqual([early.caseId!]);
+    const queue = await appApi<{ items: { id: string }[] }>("/api/alerts?limit=500", adminA.token);
+    expect(queue.body.items.map((a) => a.id)).toContain(signal.id);
+    // в конечное состояние: разбор как положено
+    await dismiss();
+  }, 30_000);
+});
+
