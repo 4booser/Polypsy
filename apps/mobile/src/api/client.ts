@@ -53,7 +53,7 @@ function netText(key: "net.offline" | "net.failed"): string {
   // через uiText, а не UI[key][lang]: у записи без английского поля en нет, и прямое чтение отдало бы undefined
   return uiText(key, currentLang);
 }
-import { cache, draftRequestBody, drafts } from "../offline/cache";
+import { cache, draftRequestBody, drafts, type LocalDraft } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName } from "../offline/device";
 import { carryOutWipe, onWiped, resumeWipe, type WipeDeps } from "../offline/wipe";
@@ -72,7 +72,7 @@ import {
 import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offline/owner";
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
 import { leaveDevice } from "../offline/logout";
-import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
+import { evaluateSubmission, isAttemptClosedCode, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
 import { isAccessDenied } from "./access";
 
@@ -239,6 +239,30 @@ function offlineFallback<T>(error: unknown, cached: T | null, forget?: () => voi
   if ((error as ApiError).status === 0 && cached !== null) return cached;
   if (forget && isAccessDenied(error)) forget();
   throw error;
+}
+
+/** Сервер сказал, что попытка закрыта: сдана она сама или невозвратная методика (ATTEMPT_CLOSED_CODES) */
+function isAttemptClosed(error: unknown): boolean {
+  const e = error as { status?: number; code?: string } | null;
+  return e?.status === 409 && isAttemptClosedCode(e.code);
+}
+
+/**
+ * Стереть черновик закрытой попытки — только её.
+ *
+ * Пока шёл запрос, человек мог начать на экране новую попытку той же
+ * методики: её черновик лежит под тем же ключом, но со своим началом
+ * (startedAt), и его отказ прошлой попытке не касается. Дорожка черновика
+ * сбрасывается — следующая попытка считает правки заново (#129).
+ */
+function dropClosedAttempt(owner: string, sent: LocalDraft): void {
+  try {
+    if (drafts.get(owner, sent.surveyId)?.startedAt !== sent.startedAt) return;
+    draftLanes.reset(draftLaneKey(owner, sent.surveyId));
+    drafts.drop(owner, sent.surveyId);
+  } catch {
+    /* не стёрся — следующий прогон получит тот же отказ и попробует снова */
+  }
 }
 
 /** Фоновая догрузка контента методик в кэш владельца; ошибки не мешают основному пути */
@@ -745,7 +769,18 @@ export const api = {
           break;
         }
         /*
-         * Отказ по существу черновик не роняет: он всё равно лежит на
+         * Попытка уже сдана — здесь же или на другом устройстве: 409 с кодом
+         * err.alreadyTaken или err.attemptAlreadySubmitted. Сервер такой
+         * черновик не примет никогда, и досылать его при каждом прогоне —
+         * стучаться в тот же отказ вечно, а продолжать — значит сдавать
+         * сданное. Черновик этой попытки стирается.
+         */
+        if (isAttemptClosed(error)) {
+          dropClosedAttempt(owner!, draft);
+          continue;
+        }
+        /*
+         * Прочий отказ по существу черновик не роняет: он всё равно лежит на
          * устройстве, а прохождение можно продолжить и сдать целиком.
          */
         continue;

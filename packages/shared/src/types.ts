@@ -390,6 +390,23 @@ export interface User {
  */
 export const PASSWORD_CHANGE_CODE = "password_change_required";
 
+/**
+ * Отказы, после которых черновик попытки больше не нужен: невозвратная
+ * методика уже сдана (err.alreadyTaken) или сдана сама эта попытка — тот же
+ * startedAt (err.attemptAlreadySubmitted, PUT /surveys/:id/draft).
+ *
+ * Отказы сервер отдаёт текстом, а не кодами (errorStrings.ts), — эти два
+ * едут ещё и ключом в поле `code` (app.ts, onError): по ним мобилка стирает
+ * свой черновик, а не досылает его при каждом прогоне очереди. Решать по
+ * тексту нельзя — он на языке человека, — а соседний 409 того же маршрута
+ * (err.draftOtherVersion) черновик стирать не велит.
+ */
+export const ATTEMPT_CLOSED_CODES: readonly string[] = ["err.alreadyTaken", "err.attemptAlreadySubmitted"];
+
+export function isAttemptClosedCode(code: unknown): boolean {
+  return typeof code === "string" && ATTEMPT_CLOSED_CODES.includes(code);
+}
+
 /** Кто смотрит «от имени» — см. User.impersonation */
 export interface ImpersonationInfo {
   sessionId: string;
