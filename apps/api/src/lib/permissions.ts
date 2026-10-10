@@ -30,6 +30,16 @@ export async function permissionsOf(user: User): Promise<Set<Permission>> {
 
   const granted = new Set<Permission>();
 
+  /*
+   * Пациент — никаких прав сотрудника, что бы ни лежало в таблицах прав
+   * (#142). Права — это права персонала; класс учётки их гасит. Без этого
+   * сотрудник, разжалованный до пациента с оставшимися ролями и личными
+   * выдачами ops.*, проходил маршруты, закрытые только правом (техпанель
+   * /api/ops/maint пускала его к истории выкаток и откату). Так же отвечает
+   * SQL-двойник rls_has_permission (миграция 0093): не admin — «нет».
+   */
+  if (user.role !== "admin") return granted;
+
   const fromRoles = await db
     .select({ permission: rolePermissions.permission })
     .from(staffRoles)
