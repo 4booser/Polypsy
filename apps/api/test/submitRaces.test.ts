@@ -301,3 +301,135 @@ describe("автосохранение посреди сдачи (#146)", () => 
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
   }, 30_000);
 });
+
+/* ─────────── #147: запоздалое автосохранение после сдачи ─────────── */
+
+describe("запоздалое автосохранение после сдачи (#147)", () => {
+  /*
+   * Автосохранение не спрашивало, сдана ли уже попытка, которую оно
+   * сохраняет: мобильная дорожка черновика досылает последнюю правку и
+   * после сдачи. Черновик рождался заново — с тревогой и, если случай уже
+   * разобран, с новым случаем. Невозвратную методику сдать с него нельзя
+   * никогда (409), а у возвратной его тревогу присваивала следующая сдача.
+   */
+
+  /** Случай, открытый тревогой, разобран дежурным — ролью приложения */
+  async function resolveCase(personId: string) {
+    const [alert] = await alertsOf(personId);
+    expect(alert?.caseId, "сдача с риском не открыла случай").toBeTruthy();
+    const decided = await appApi(`/api/alert-cases/${alert!.caseId}`, adminA.token, {
+      method: "PATCH",
+      body: JSON.stringify({ outcome: "not_confirmed" }),
+    });
+    expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+  }
+
+  const openCases = (userId: string) =>
+    db
+      .select({ id: alertCases.id })
+      .from(alertCases)
+      .where(and(eq(alertCases.userId, userId), isNull(alertCases.acknowledgedAt)));
+
+  test("невозвратная: автосохранение после сдачи — 409, ни черновика, ни тревоги, ни случая", async () => {
+    const surveyId = await makeSurvey(false);
+    const person = await makePatient();
+    const a = await attempt(surveyId, person);
+    expect((await a.draft(YES)).status).toBe(200);
+    const done = await a.submit(YES);
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    await resolveCase(person.id);
+
+    const late = await a.draft(YES);
+    expect(late.status, JSON.stringify(late.body)).toBe(409);
+    expect(late.body.error).toBe("Ви вже проходили цю методику");
+    expect((await rowsOf(surveyId, person.id)).drafts, "черновик сданной попытки возродился").toEqual([]);
+    const alerts = await alertsOf(person.id);
+    expect(alerts.map((x) => x.responseId), "автосохранение подняло тревогу после сдачи").toEqual([done.body.id]);
+    expect(await openCases(person.id), "автосохранение открыло случай после разбора").toEqual([]);
+  }, 30_000);
+
+  test("возвратная: черновик сданной попытки не возрождается, следующая сдача без риска чужой тревоги не получает", async () => {
+    const surveyId = await makeSurvey(true);
+    const person = await makePatient();
+    const a = await attempt(surveyId, person);
+    const done = await a.submit(YES);
+    expect(done.status, JSON.stringify(done.body)).toBe(201);
+    await resolveCase(person.id);
+
+    const late = await a.draft(YES);
+    expect(late.status, JSON.stringify(late.body)).toBe(409);
+    expect((await rowsOf(surveyId, person.id)).drafts, "черновик сданной попытки возродился").toEqual([]);
+    expect(await openCases(person.id)).toEqual([]);
+
+    const next = await attempt(surveyId, person);
+    const clean = await next.submit(NO);
+    expect(clean.status, JSON.stringify(clean.body)).toBe(201);
+    const alerts = await alertsOf(person.id);
+    expect(alerts.map((x) => x.responseId), "сдача без риска получила тревогу прошлой попытки").toEqual([
+      done.body.id,
+    ]);
+  }, 30_000);
+
+  test("контроль: новая попытка возвратной методики после сдачи сохраняется как обычно", async () => {
+    const surveyId = await makeSurvey(true);
+    const person = await makePatient();
+    const a = await attempt(surveyId, person);
+    expect((await a.submit(NO)).status).toBe(201);
+    const next = await attempt(surveyId, person);
+    const saved = await next.draft(NO);
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect((await rowsOf(surveyId, person.id)).drafts).toEqual([saved.body.id]);
+  }, 30_000);
+
+  /*
+   * То же в гонке: сдача уже идёт (стоит на переносе направления черновика —
+   * строку держит посторонняя транзакция), автосохранение той же попытки
+   * приходит следом. Прежде оно проходило мимо сдачи, писало тревогу в
+   * черновик, и сдача падала на его удалении (#146); теперь оно ждёт конца
+   * сдачи и получает отказ, как и пришедшее позже.
+   */
+  for (const allowRetake of [true, false]) {
+    test(`сдача раньше автосохранения той же попытки (allowRetake=${allowRetake}): 201 и 409, черновик не возрождается`, async () => {
+      const surveyId = await makeSurvey(allowRetake);
+      const person = await makePatient();
+      const a = await attempt(surveyId, person);
+      const start = await a.draft(NO);
+      expect(start.status, JSON.stringify(start.body)).toBe(200);
+      const referralId = crypto.randomUUID();
+      await db.insert(referrals).values({
+        id: referralId,
+        userId: person.id,
+        responseId: start.body.id,
+        destination: "psychiatrist",
+        urgency: "routine",
+        createdBy: adminA.id,
+      } as never);
+      myReferrals.push(referralId);
+
+      const row = await hold((tx) => tx`select id from referrals where id = ${referralId} for update`);
+      let submitting: ReturnType<typeof track> | undefined;
+      let saving: ReturnType<typeof track> | undefined;
+      try {
+        submitting = track(a.submit(NO));
+        await until(async () => (await lockWaiters()) >= 1, "сдача не дошла до направления черновика");
+        saving = track(a.draft(YES));
+        await until(
+          async () => saving!.done || (await lockWaiters()) >= 2,
+          "автосохранение не встало в очередь за сдачей",
+        );
+      } finally {
+        await row.release();
+      }
+      const [submitted, saved] = await Promise.all([submitting!.run, saving!.run]);
+
+      expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+      expect(saved.status, JSON.stringify(saved.body)).toBe(409);
+      const rows = await rowsOf(surveyId, person.id);
+      expect(rows.completed).toEqual([submitted.body.id]);
+      expect(rows.drafts, "черновик сданной попытки возродился").toEqual([]);
+      expect(await alertsOf(person.id), "запоздалое автосохранение подняло тревогу").toEqual([]);
+      const [moved] = await db.select().from(referrals).where(eq(referrals.id, referralId));
+      expect(moved!.responseId).toBe(submitted.body.id);
+    }, 30_000);
+  }
+});

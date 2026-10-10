@@ -1,6 +1,6 @@
 import { renderCoded, t } from "@quizzy/shared";
 import { Hono, type Context } from "hono";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   submitResponseSchema,
   type Answer,
@@ -690,6 +690,44 @@ responseRoutes.put("/surveys/:id/draft", async (c) => {
    * тревога, записанная здесь, не появляется в черновике посреди сдачи.
    */
   await lockAttempts(surveyId, user.id);
+
+  /*
+   * Сданная попытка черновика больше не заводит (#147).
+   *
+   * Мобильная дорожка черновика досылает последнюю правку и после сдачи — а
+   * то и посреди неё, тогда правка ждёт замка выше. Сдача черновик уже
+   * удалила, и автосохранение заводило новый: с тревогой и, если случай
+   * успели разобрать, с новым случаем. У невозвратной методики такой
+   * черновик не сдать никогда (409 «уже проходили»), у возвратной его
+   * тревогу присваивала следующая сдача — без единого рискового ответа.
+   *
+   * Невозвратная сдана — черновик ей не нужен, отказ тот же, что у сдачи.
+   * Попытку возвратной узнаём по началу: startedAt клиент держит один на
+   * попытку и шлёт одинаковым в черновик и в сдачу (мобилка, экран
+   * прохождения), а новая попытка начинается со своим. Отказ — до записи:
+   * ни черновика, ни тревоги, ни случая.
+   */
+  if (!survey.allowRetake) {
+    const taken = await db.query.responses.findFirst({
+      where: and(eq(responses.surveyId, surveyId), eq(responses.userId, user.id), eq(responses.status, "completed")),
+      columns: { id: true },
+    });
+    if (taken) conflict("err.alreadyTaken");
+  }
+  const [submitted] = await db
+    .select({ id: responses.id })
+    .from(responses)
+    .where(
+      and(
+        eq(responses.surveyId, surveyId),
+        eq(responses.userId, user.id),
+        ne(responses.status, "in_progress"),
+        sql`${responses.startedAt} = ${input.startedAt}::timestamptz`,
+      ),
+    )
+    .limit(1);
+  if (submitted) conflict("err.attemptAlreadySubmitted");
+
   const [existing] = await db
     .select({ id: responses.id, versionId: responses.versionId })
     .from(responses)
