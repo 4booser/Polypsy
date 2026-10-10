@@ -150,6 +150,25 @@ export function onWiped(listener: () => void): () => void {
   };
 }
 
+/**
+ * Чтение, начатое до стирания и законченное после, — как будто его не было:
+ * `null` вместо ответа (#125). Так профиль, запрошенный при запуске или
+ * перечитанный после правки, не возвращает интерфейсу пользователя, чью
+ * сессию стирание уже закрыло (AuthContext). Ошибка чтения летит как есть.
+ */
+export async function unlessWiped<T>(load: () => Promise<T>): Promise<T | null> {
+  let wiped = false;
+  const off = onWiped(() => {
+    wiped = true;
+  });
+  try {
+    const value = await load();
+    return wiped ? null : value;
+  } finally {
+    off();
+  }
+}
+
 /** Запись закрыта ни для кого, интерфейс без сессии — с этого начинается стирание */
 function closeSession(): void {
   closeForWipe();

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetStore, storeFaults } from "./store.mock";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { memoryStore, resetStore, storeFaults } from "./store.mock";
 import { json, loadClient, noNetwork, serve, session, signIn, tokenOf, useFakeServer } from "./client.harness";
 import { cache, drafts, type LocalDraft } from "../src/offline/cache";
 import { leftAfterWipe } from "../src/offline/device";
 import { forgetWipe } from "../src/offline/owner";
 import { enqueue, pending, rejectedItems } from "../src/offline/queue";
-import { carryOutWipe, onWiped, resumeWipe } from "../src/offline/wipe";
+import { carryOutWipe, onWiped, resumeWipe, unlessWiped, WIPE_STATE_KEY } from "../src/offline/wipe";
 import { isStoreWriteError } from "../src/offline/writeError";
 import { finishSubmission } from "../src/runner/finish";
 
@@ -170,6 +172,75 @@ describe("положительный контроль: без стирания",
     drafts.saveIfNewer(STAFF, draftOf(1));
     expect(drafts.get(STAFF, "s1")?.revision).toBe(1);
     off();
+  });
+});
+
+/**
+ * Профиль, перечитанный до стирания и пришедший после (#125, доработка).
+ *
+ * AuthContext снимал пользователя по onWiped, но перечитывание профиля
+ * (refresh, и восстановление при запуске) было уже в пути и ставило его
+ * обратно. Решение — в offline/wipe.ts, unlessWiped: экран React в тестовом
+ * процессе не грузится, а AuthContext зовёт именно её.
+ */
+describe("профиль, начатый до стирания", () => {
+  test("перечитывание, ответившее после команды, пользователя не возвращает", async () => {
+    const api = await loadClient();
+    signIn(STAFF);
+    const srv = wipingServer(true);
+
+    const refreshing = unlessWiped(() => api.me());
+    await untilAsked(srv.asked, ["/api/auth/me"]);
+    await api.deviceCheckin(null);
+    srv.release();
+
+    expect(await refreshing).toBeNull();
+    expect(leftAfterWipe([])).toEqual([]);
+  });
+
+  test("то же при доводе стирания на запуске", async () => {
+    let release!: () => void;
+    const answer = new Promise<{ id: string }>((done) => (release = () => done({ id: STAFF })));
+    const restoring = unlessWiped(() => answer);
+
+    // прошлый запуск не снял сессию — этот снимает (resumeWipe)
+    const d = {
+      current: tokenOf(STAFF) as string | null,
+      token: async () => d.current,
+      clearTokens: async () => {
+        d.current = null;
+      },
+      confirm: async () => {},
+    };
+    memoryStore.write(WIPE_STATE_KEY, { deviceId: "dev-1", owner: STAFF, erased: true, signedOut: false });
+    await resumeWipe(d);
+    release();
+
+    expect(await restoring).toBeNull();
+  });
+
+  test("AuthContext читает профиль только через unlessWiped — и при запуске, и при перечитывании", () => {
+    const source = readFileSync(resolve(import.meta.dir, "../src/auth/AuthContext.tsx"), "utf8");
+    expect(source).toContain("unlessWiped(() => api.me())");
+    expect(source).toContain("await unlessWiped(async () => {");
+    // профиль прямо в состояние — в обход проверки
+    expect(source).not.toMatch(/setUser\(await api\.me\(\)\)/);
+  });
+
+  test("положительный контроль: без стирания профиль возвращается, ошибка чтения летит как есть", async () => {
+    const api = await loadClient();
+    signIn(STAFF);
+    const srv = wipingServer(false);
+
+    const refreshing = unlessWiped(() => api.me());
+    await untilAsked(srv.asked, ["/api/auth/me"]);
+    await api.deviceCheckin(null);
+    srv.release();
+    expect(await refreshing).toEqual({ id: STAFF, role: "admin" } as never);
+
+    await expect(unlessWiped(() => Promise.reject(Object.assign(new Error("offline"), { status: 0 })))).rejects.toMatchObject({
+      status: 0,
+    });
   });
 });
 
