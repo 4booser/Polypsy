@@ -120,18 +120,24 @@ describe("SPSS-выгрузка: 20 тыс. прохождений × 20 пун�
   }, 60_000);
 
   test("вдвое больше прохождений — не дороже чем в 2,5 раза", async () => {
-    // лучшее из двух: одиночный замер на общей машине CI шумит сильнее, чем различие линейного и квадратичного
-    const best = async (s: MassSurvey) => {
-      const times: number[] = [];
-      for (let i = 0; i < 2; i++) {
-        const r = await fetchExport(`/api/spss/surveys/${s.surveyId}/data.csv?profile=deidentified`);
-        expect(r.status).toBe(200);
-        times.push(r.ms);
-      }
-      return Math.min(...times);
+    /*
+     * Лучшее из трёх, объёмы поочерёдно: одиночный замер на общей машине CI
+     * шумит сильнее, чем различие линейного и квадратичного, а первый заход
+     * по набору платит ещё и за холодные кэши базы.
+     */
+    const once = async (s: MassSurvey) => {
+      const r = await fetchExport(`/api/spss/surveys/${s.surveyId}/data.csv?profile=deidentified`);
+      expect(r.status).toBe(200);
+      return r.ms;
     };
-    const t10 = await best(small);
-    const t20 = await best(large);
+    const small10: number[] = [];
+    const large20: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      small10.push(await once(small));
+      large20.push(await once(large));
+    }
+    const t10 = Math.min(...small10);
+    const t20 = Math.min(...large20);
     expect(t20 / t10).toBeLessThan(2.5);
   }, 120_000);
 });
