@@ -73,6 +73,28 @@ describe("отказ доступа — не «нет сети»", () => {
     expect(cache.rounds(STAFF)).toBeNull();
   });
 
+  test("пациента вывели из зоны, а сервер прячет его за 404 — карта уходит и без сети не возвращается", async () => {
+    /*
+     * Главный случай #126 (ревью PR #196): сервер отвечает вне зоны не 403,
+     * а 404 «Пацієнта не знайдено» (routes/dynamics.ts) — чужого человека он
+     * не подтверждает даже отказом. Пока отказом считались только 401 и 403,
+     * копия переживала 404 и потом открывалась без сети с баллами.
+     */
+    const api = await openedRounds();
+    server({ status: 404 });
+    await expect(api.roundsCard("p1")).rejects.toMatchObject({ status: 404 });
+    expect(cache.patientCard(STAFF, "p1"), "копия карты осталась после 404").toBeNull();
+
+    server("offline");
+    await expect(api.roundsCard("p1")).rejects.toMatchObject({ status: 0 });
+  });
+
+  test("показанная карта после 404 сбрасывается, после сбоя сервера — остаётся", () => {
+    const shown = { fullName: "Петренко" };
+    expect(shownAfterFailure(shown, { status: 404 })).toBeNull();
+    expect(shownAfterFailure(shown, { status: 500 })).toBe(shown);
+  });
+
   test("отказ обхода целиком уносит и карты", async () => {
     const api = await openedRounds();
     server({ status: 403 });
