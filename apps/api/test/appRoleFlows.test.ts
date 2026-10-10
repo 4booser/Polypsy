@@ -18,7 +18,7 @@ import {
   surveyAccess,
 } from "../src/db/schema";
 import { followupNote } from "../src/lib/followup";
-import { api, app, appApi, appRequest, db, makeUser, responsesTable, root, submitSurvey, surveyInA } from "./fixtures";
+import { api, app, appApi, appRequest, db, groupA, makeUser, responsesTable, root, submitSurvey, surveyInA } from "./fixtures";
 import { dedupe } from "../src/lib/openapi";
 import { asAppRole, RLS_ROLE } from "./appRole";
 import { answersFor, buildWorld, closeWorld, futureSlot, type World } from "./appRoleWorld";
@@ -135,7 +135,9 @@ describe("пациент под ролью приложения", () => {
      */
     const other = await submitSurvey(surveyInA, w.stranger.token);
     expect(other.status, JSON.stringify(other.body)).toBe(201);
-    const counted = await both("/api/surveys?limit=200", patientToken);
+    // список — по группе методики: владелец базы видит все методики набора
+    // тестов, и в общем списке она уходила за двухсотую строку
+    const counted = await both(`/api/surveys?limit=200&groupId=${groupA}`, patientToken);
     const ofA = (b: { items: { id: string; responseCount: number }[] }) => b.items.find((s) => s.id === surveyInA);
     expect(ofA(counted.owner.body)?.responseCount, "обследуемому показан счёт чужих прохождений").toBe(0);
     expect(ofA(counted.role.body)?.responseCount).toBe(0);
