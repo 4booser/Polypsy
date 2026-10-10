@@ -304,6 +304,8 @@ describe("цена вопроса о пациенте не зависит от �
   let mine: string;
   let neighbour: string;
   let nobody: string;
+  /* сотня людей из «дальней» части зоны — для пачки событий */
+  let crowd: string[];
 
   /*
    * Пациенты — пачкой и с одним хешем пароля, как в scopeLoad.test.ts:
@@ -340,6 +342,7 @@ describe("цена вопроса о пациенте не зависит от �
     big = await staff("big", [a.groupId, b.groupId]);
     mine = inA[17]!;
     neighbour = inB[42]!;
+    crowd = inB.slice(100, 200);
     nobody = (await patient("outside")).id;
     made.push(nobody);
   }, 120_000);
@@ -530,6 +533,30 @@ describe("цена вопроса о пациенте не зависит от �
           expect(seen.includes(`near-${mark}`), "событие о своём пациенте не дошло").toBe(true);
           expect(seen.indexOf(`near-${mark}`)).toBeLessThan(seen.indexOf(`sys-${mark}`));
           expect(seen.includes(`far-${mark}`), "событие о чужом пациенте ушло в поток").toBe(false);
+
+          /*
+           * Пачка: сто событий о разных людях одной транзакцией — так их
+           * выпускает проход расписания по когорте. Поток спрашивает базу о
+           * людях пачкой, а не запросом на событие: иначе сотня событий на
+           * шестьдесят вкладок — шесть тысяч транзакций в пуле из десяти.
+           * Вопрос стоит три запроса; пульс каждые 120 мс — ещё три.
+           */
+          const sqlBefore = t.sql;
+          await db.transaction(async (tx) => {
+            for (const userId of crowd) {
+              await publish(tx, {
+                kind: "action",
+                action: "schedule.assign",
+                surveyIds: null,
+                userId,
+                resourceId: `crowd-${mark}`,
+                at: new Date().toISOString(),
+              });
+            }
+          });
+          const crowdSeen = () => seen.split(`crowd-${mark}`).length - 1;
+          expect(await until(() => crowdSeen() >= crowd.length), `дошло из пачки: ${crowdSeen()}`).toBe(true);
+          expect(t.sql - sqlBefore, "запросов потока на пачку из ста событий").toBeLessThan(60);
         } finally {
           await reader.cancel().catch(() => {});
           await pump;

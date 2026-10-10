@@ -49,31 +49,33 @@ eventRoutes.get("/", async (c) => {
   let allowed = await readScope();
 
   /**
-   * Вправе ли сотрудник видеть этого человека.
+   * Вправе ли сотрудник видеть этих людей — ответ ложится в memo.
    *
    * Нужна отдельно от зоны по методикам: событие общего потока «action»
    * относится не к методике, а к человеку, и сузить его по методикам нечем.
    *
-   * Вопросом о человеке, о котором пришло событие, а не списком всей зоны
+   * Вопросом о людях, о которых пришли события, а не списком всей зоны
    * (#181). Список строился при открытии вкладки и заново с каждым пульсом:
    * на учреждении в пять тысяч пациентов — секунды и соединение пула на
    * вкладку каждые двадцать пять секунд. Шестьдесят открытых консолей
    * держали занятыми все десять соединений, и лёгкий запрос ждал минуту.
-   * События о людях без методики редки, поэтому база спрашивается о
-   * человеке, когда о нём пришло событие, — своей короткой транзакцией, как
-   * перечитывание ниже, — а ответ помнится до следующего пульса: отзыв
-   * доступа доходит до потока в прежний срок.
+   *
+   * Теперь база спрашивается о людях, когда о них пришли события, — своей
+   * короткой транзакцией, как перечитывание ниже, — а ответ помнится до
+   * следующего пульса: отзыв доступа доходит до потока в прежний срок.
+   * Спрашивается пачкой, а не по событию: событие о человеке выпускает
+   * каждое изменяющее действие журнала, и проход расписания по когорте
+   * выпускает их сотнями разом — по транзакции на событие и на вкладку это
+   * снова занимало бы пул целиком.
    */
   let decided = new Map<string, boolean>();
-  async function maySee(patientId: string): Promise<boolean> {
-    if (isSuperadmin(user)) return true;
-    const memo = decided;
-    const known = memo.get(patientId);
-    if (known !== undefined) return known;
-    const visible = await withDbContext(baseDb, identity, () => patientsInScope(user, [patientId]));
-    const ok = visible === null || visible.has(patientId);
-    memo.set(patientId, ok);
-    return ok;
+  async function decide(memo: Map<string, boolean>, patientIds: string[]): Promise<void> {
+    const unknown = [...new Set(patientIds)].filter((id) => !memo.has(id));
+    if (!unknown.length) return;
+    const visible = isSuperadmin(user)
+      ? null
+      : await withDbContext(baseDb, identity, () => patientsInScope(user, unknown));
+    for (const id of unknown) memo.set(id, visible === null || visible.has(id));
   }
 
   /*
@@ -112,27 +114,47 @@ eventRoutes.get("/", async (c) => {
     });
 
     /*
-     * Доставка — по очереди и в контексте потока.
+     * Доставка — по очереди, пачками и в контексте потока.
      *
-     * Проверка человека идёт в базу, и событие, ждущее ответа, не должно
-     * пропускать вперёд следующее: консоль читает поток по порядку. А
-     * обработчик шины зовётся из чужого контекста — того, где открыт LISTEN,
-     * — поэтому доставка возвращается в контекст потока: тот же пул, что у
-     * перечитывания зоны.
+     * Обработчик шины только складывает событие во входящие; разбирает их
+     * один цикл. Пока он ждёт ответа базы о людях, новые события копятся и
+     * разбираются следующей пачкой одним вопросом. Порядок сохраняется:
+     * событие, ждущее проверки, не обгоняется следующим, — консоль читает
+     * поток по порядку. Обработчик шины зовётся из чужого контекста — того,
+     * где открыт LISTEN, — поэтому цикл запускается в контексте потока: тот
+     * же пул, что у перечитывания зоны.
      */
     const inStream = AsyncLocalStorage.snapshot();
-    let line: Promise<void> = Promise.resolve();
+    const inbox: AppEvent[] = [];
+    let draining = false;
     const unsubscribe = await subscribe((event: AppEvent) => {
       if (!alive) return;
-      line = line
-        .then(() => inStream(() => deliver(event)))
-        .catch((error: unknown) => log.warn("events.deliver_failed", { error: String(error) }));
+      inbox.push(event);
+      if (draining) return;
+      draining = true;
+      void inStream(drain);
     });
 
-    async function deliver(event: AppEvent): Promise<void> {
-      if (!alive) return;
-      // событие без методик (системное) видно всем сотрудникам
-      if (event.surveyIds && !event.surveyIds.some((id) => allowed.has(id))) return;
+    async function drain(): Promise<void> {
+      try {
+        while (alive && inbox.length) {
+          const batch = inbox.splice(0);
+          const memo = decided;
+          await decide(memo, batch.flatMap((e) => (!e.surveyIds && e.userId ? [e.userId] : [])));
+          for (const event of batch) {
+            if (!alive) return;
+            if (visible(event, memo)) await stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
+          }
+        }
+      } catch (error) {
+        log.warn("events.deliver_failed", { error: String(error) });
+      } finally {
+        draining = false;
+      }
+    }
+
+    function visible(event: AppEvent, memo: Map<string, boolean>): boolean {
+      if (event.surveyIds) return event.surveyIds.some((id) => allowed.has(id));
       /*
        * Событие БЕЗ методики, но о человеке, — только тому, кто вправе
        * видеть человека.
@@ -147,9 +169,9 @@ eventRoutes.get("/", async (c) => {
        * стекло. Заодно поток раздавал идентификаторы, которых у получателя
        * не было ниоткуда, — готовый вход для захвата чужой карты.
        */
-      if (!event.surveyIds && event.userId && !(await maySee(event.userId))) return;
-      if (!alive) return;
-      await stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
+      if (event.userId) return memo.get(event.userId) === true;
+      // событие без методик и без человека (системное) видно всем сотрудникам
+      return true;
     }
 
     // первое сообщение сразу: клиент понимает, что канал живой, а прокси —
