@@ -32,8 +32,10 @@ import { birthYearOf } from "../lib/privacy";
 import {
   accessibleGroupIds,
   accessiblePatientIds,
+  assertPatientAccess,
   assertPatientGroupAccess,
   isSuperadmin,
+  patientsInScope,
   surveyScopeFilterFor,
 } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -184,9 +186,10 @@ patientRoutes.get("/", async (c) => {
  *
  * Один маршрут вместо четырёх: экран всё равно открывает их вместе, а
  * разложенные по эндпоинтам они означали бы четыре проверки зоны вместо
- * одной — и четыре места, где её можно забыть. Зона считается один раз и
- * используется трижды: для самого человека, для состава его групп и для
- * счётчиков.
+ * одной — и четыре места, где её можно забыть. Зона спрашивается дважды и
+ * только о названных людях (patientsInScope, #181): о самом человеке и о
+ * составе его групп для счётчиков. Всю зону ради одной карточки не строим —
+ * на учреждении в пять тысяч пациентов это секунды на каждое открытие.
  *
  * «Тести» — все сданные прохождения по методикам в зоне ответственности
  * читателя (surveyScopeFilterFor — с разбитым стеклом, если оно разбито
@@ -214,8 +217,7 @@ patientRoutes.get("/:id/card", async (c) => {
    * Зона — до всего остального, и «не найдено», а не «нельзя»: 403 подтвердил
    * бы, что человек с таким идентификатором в системе есть.
    */
-  const visible = await accessiblePatientIds(user);
-  if (visible !== null && !visible.has(patientId)) notFound("err.userNotFound");
+  await assertPatientAccess(user, patientId);
 
   const person = await db.query.users.findFirst({ where: eq(users.id, patientId) });
   if (!person || person.role !== "user") notFound("err.userNotFound");
@@ -301,6 +303,7 @@ patientRoutes.get("/:id/card", async (c) => {
         .from(patientGroupMembers)
         .where(inArray(patientGroupMembers.groupId, groupRows.map((g) => g.group.id)))
     : [];
+  const visible = memberRows.length ? await patientsInScope(user, memberRows.map((m) => m.userId)) : null;
   const memberCounts = new Map<string, number>();
   for (const m of memberRows) {
     if (visible !== null && !visible.has(m.userId)) continue;

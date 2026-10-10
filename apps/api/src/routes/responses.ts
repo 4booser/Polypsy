@@ -40,12 +40,12 @@ import { audit } from "../lib/audit";
 import { assertResponseRead, CLINICAL_READ } from "../lib/clinicalRead";
 import { hasPermission } from "../lib/permissions";
 import {
-  accessiblePatientIds,
   assertPatientAccess,
   assertPatientGroupAccess,
   assertSurveyAccess,
   hasGrant,
   isStaff,
+  patientsInScope,
 } from "../lib/scope";
 import { log } from "../lib/log";
 import { hasCurrentConsent } from "../lib/consent";
@@ -192,7 +192,7 @@ async function assertConsent(c: Context<AppEnv>, user: User): Promise<void> {
  * этим идентификатором. Суперадмину (зона — все) ищется как прежде.
  */
 async function assertMayFillFor(c: Context<AppEnv>, user: User, patientId: string, surveyId: string): Promise<void> {
-  const allowed = await accessiblePatientIds(user);
+  const allowed = await patientsInScope(user, [patientId]);
   if (allowed === null || allowed.has(patientId)) return;
   await audit(c, {
     action: "access.denied",

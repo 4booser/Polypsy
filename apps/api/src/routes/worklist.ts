@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { serverText, t, type WorkKind } from "@quizzy/shared";
 import { db } from "../db";
 import {
@@ -21,7 +20,7 @@ import { FOLLOWUP_NOTE_PREFIXES } from "../lib/followup";
 import { fullNameOf } from "../lib/auth";
 import { recentAlertPatients } from "../lib/noShow";
 import { langOf } from "../lib/http";
-import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { patientScopeCondition, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 /**
@@ -278,8 +277,13 @@ worklistRoutes.get("/", async (c) => {
    * очередь работы стала вдвое медленнее. Заметил не по коду, а по тому, что
    * смоук перестал укладываться в свои сроки и шесть сценариев отвалились по
    * времени.
+   *
+   * И считается условием, а не списком (#181): строки очереди — единицы и
+   * десятки человек, а список зоны — все пять тысяч пациентов учреждения,
+   * секунды на каждое открытие очереди. Условие база проверяет только для
+   * строк, попавших в выборку.
    */
-  const allowedPatients = await accessiblePatientIds(user);
+  const inZone = await patientScopeCondition(user);
   /*
    * Условие «человек из моей зоны» — для всех видов работы ниже, а не только
    * для учёта. Направления, просроченные назначения и повторы по протоколу
@@ -288,56 +292,49 @@ worklistRoutes.get("/", async (c) => {
    * видел в своей очереди направления чужих пациентов. Нашлось сравнением
    * ответов владельцем и ролью приложения (волна 13): очередь обязана быть
    * одной и той же, а политика — страховкой под правилом, не самим правилом.
+   * `null` — суперадмин, ограничивать нечем.
    */
-  const inZone = (column: AnyPgColumn) =>
-    allowedPatients === null
-      ? undefined
-      : allowedPatients.size
-        ? inArray(column, [...allowedPatients])
-        : sql`false`;
-  if (allowedPatients === null || allowedPatients.size) {
-    const dispRows = await db
-      .select({
-        d: dispensary,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        middleName: users.middleName,
-        anonymous: users.anonymous,
-        pseudonym: users.pseudonym,
-        unit: users.unit,
-      })
-      .from(dispensary)
-      .innerJoin(users, eq(users.id, dispensary.patientId))
-      .where(
-        and(
-          isNull(dispensary.removedAt),
-          lt(dispensary.nextDueAt, new Date().toISOString()),
-          allowedPatients ? inArray(dispensary.patientId, [...allowedPatients]) : undefined,
-        ),
-      )
-      .limit(200);
+  const dispRows = await db
+    .select({
+      d: dispensary,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      middleName: users.middleName,
+      anonymous: users.anonymous,
+      pseudonym: users.pseudonym,
+      unit: users.unit,
+    })
+    .from(dispensary)
+    .innerJoin(users, eq(users.id, dispensary.patientId))
+    .where(
+      and(
+        isNull(dispensary.removedAt),
+        lt(dispensary.nextDueAt, new Date().toISOString()),
+        inZone?.(dispensary.patientId),
+      ),
+    )
+    .limit(200);
 
-    for (const r of dispRows) {
-      const days = Math.floor((now - new Date(r.d.nextDueAt).getTime()) / 86_400_000);
-      items.push({
-        kind: "dispensary",
-        id: r.d.patientId,
-        userId: r.d.patientId,
-        userName: fullNameOf(r as never),
-        unit: r.unit,
-        title: r.d.groupLabel,
-        days,
-        /*
-         * Просроченным считается сразу: срок и есть срок. Мягкая граница
-         * «плюс неделя» превратила бы правило в пожелание, а пожелание — в
-         * привычку не смотреть.
-         */
-        overdue: true,
-        assignedTo: null,
-        since: r.d.nextDueAt,
-        href: `/patients/${r.d.patientId}`,
-      });
-    }
+  for (const r of dispRows) {
+    const days = Math.floor((now - new Date(r.d.nextDueAt).getTime()) / 86_400_000);
+    items.push({
+      kind: "dispensary",
+      id: r.d.patientId,
+      userId: r.d.patientId,
+      userName: fullNameOf(r as never),
+      unit: r.unit,
+      title: r.d.groupLabel,
+      days,
+      /*
+       * Просроченным считается сразу: срок и есть срок. Мягкая граница
+       * «плюс неделя» превратила бы правило в пожелание, а пожелание — в
+       * привычку не смотреть.
+       */
+      overdue: true,
+      assignedTo: null,
+      since: r.d.nextDueAt,
+      href: `/patients/${r.d.patientId}`,
+    });
   }
 
   // 5. Направления, по которым нет ответа
@@ -353,7 +350,7 @@ worklistRoutes.get("/", async (c) => {
     })
     .from(referrals)
     .innerJoin(users, eq(users.id, referrals.userId))
-    .where(and(inArray(referrals.status, ["created", "accepted"]), inZone(referrals.userId)))
+    .where(and(inArray(referrals.status, ["created", "accepted"]), inZone?.(referrals.userId)))
     .limit(200);
 
   for (const r of referralRows) {
@@ -409,7 +406,7 @@ worklistRoutes.get("/", async (c) => {
          */
         isNotNull(batteryAssignments.dueAt),
         lt(batteryAssignments.dueAt, new Date().toISOString()),
-        inZone(batteryAssignments.userId),
+        inZone?.(batteryAssignments.userId),
       ),
     )
     .limit(200);

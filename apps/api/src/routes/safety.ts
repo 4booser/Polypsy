@@ -9,7 +9,7 @@ import { fullNameOf } from "../lib/auth";
 import { namesOf } from "../lib/names";
 import { decryptField, encryptField } from "../lib/crypto";
 import { conflict, forbidden, isUniqueViolation, notFound, parseBody } from "../lib/http";
-import { accessiblePatientIds } from "../lib/scope";
+import { patientsInScope } from "../lib/scope";
 import { requireAuth, type AppEnv } from "../middleware/auth";
 import { hasPermission } from "../lib/permissions";
 import { isStaff } from "../lib/scope";
@@ -126,7 +126,7 @@ safetyRoutes.get("/patients/:userId", async (c) => {
   await assertSafetyStaff(c, "patients.read");
   const userId = c.req.param("userId");
 
-  const allowed = await accessiblePatientIds(staff);
+  const allowed = await patientsInScope(staff, [userId]);
   if (allowed && !allowed.has(userId)) notFound("err.safetyPlanNotFound");
 
   const rows = await db
@@ -154,7 +154,7 @@ safetyRoutes.put("/patients/:userId", async (c) => {
   await assertSafetyStaff(c, "safety.manage");
   const userId = c.req.param("userId");
 
-  const allowed = await accessiblePatientIds(staff);
+  const allowed = await patientsInScope(staff, [userId]);
   if (allowed && !allowed.has(userId)) notFound("err.safetyPlanNotFound");
 
   const { baseVersion, ...content } = await parseBody(c.req.raw, saveSchema);
