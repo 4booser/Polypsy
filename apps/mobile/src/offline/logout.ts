@@ -1,3 +1,7 @@
+import { forgetOwnerCache } from "./cache";
+import { draftLanes, ownerLanePrefix } from "./draftLane";
+import { signedOut } from "./owner";
+
 /**
  * Что сказать человеку, который выходит, пока его ответы ещё на устройстве.
  *
@@ -23,4 +27,25 @@ export function logoutNotice(unsent: { submissions: number; drafts: number }): L
   if (unsent.submissions > 0) lines.push({ key: "mp.logoutKeepsAnswers", n: unsent.submissions });
   if (unsent.drafts > 0) lines.push({ key: "mp.logoutKeepsDrafts", n: unsent.drafts });
   return lines.length ? lines : null;
+}
+
+/**
+ * Что выход делает с офлайн-слоем вышедшего (#130).
+ *
+ * Запись за него закрывается первой (owner.ts, signedOut): ответ, запрошенный
+ * до выхода, не положит его данные обратно. Потом уходят копии с сервера
+ * (cache.ts, forgetOwnerCache) — остаются очередь сдач и неотправленные
+ * черновики. Дорожки его черновиков сбрасываются: дошедший черновик стёрт
+ * с устройства, и при следующем входе экран продолжит его с сервера,
+ * считая правки заново (offline/draftLane.ts, #129).
+ */
+export function leaveDevice(owner: string | null): void {
+  if (!owner) return;
+  signedOut(owner);
+  try {
+    forgetOwnerCache(owner);
+  } catch {
+    /* хранилище не ответило — запись за вышедшего закрыта, следующий выход дочистит */
+  }
+  draftLanes.resetAll(ownerLanePrefix(owner));
 }

@@ -71,6 +71,7 @@ import {
 } from "../offline/queue";
 import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offline/owner";
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
+import { leaveDevice } from "../offline/logout";
 import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
 import { isAccessDenied } from "./access";
@@ -318,6 +319,21 @@ export const api = {
   revokeSession: async (refreshToken: string) => {
     await queueRevocation(revokeStorage, refreshToken).catch(() => {});
     await api.flushRevocations();
+  },
+  /**
+   * Выход на устройстве (AuthContext, logout).
+   *
+   * Офлайн-копии вышедшего уходят, запись за него закрыта (#130,
+   * offline/logout.ts), — до снятия токенов: снятие может и не удаться, а
+   * данные к этому моменту уже не на планшете. Потом сессия снимается, и
+   * refresh уходит в отзыв — выход его не ждёт (auth/session.ts).
+   */
+  signOut: async () => {
+    const token = await tokenStorage.get().catch(() => null);
+    const refresh = await tokenStorage.getRefresh().catch(() => null);
+    leaveDevice(ownerOfToken(token));
+    await tokenStorage.clear();
+    if (refresh) void api.revokeSession(refresh).catch(() => {});
   },
   /** Дослать отзывы, не дошедшие при выходе; зовётся при старте и возвращении приложения */
   flushRevocations: () =>

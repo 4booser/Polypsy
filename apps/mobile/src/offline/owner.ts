@@ -90,16 +90,34 @@ export function closeForWipe(reopenedFor: string | null = null): void {
 export function signedIn(owner: string | null): void {
   active = owner;
   if (afterWipe) afterWipe.reopenedFor = owner;
+  if (owner) departed.delete(owner);
+}
+
+/*
+ * Выход закрывает запись за вышедшего (#130) — тем же приёмом, что стирание.
+ *
+ * Выход уносит его офлайн-копии (offline/logout.ts), но чтение, начатое до
+ * выхода и законченное после, знает владельца с момента запроса и положило
+ * бы карту пациента или профиль обратно. До его следующего входа за него на
+ * устройство не пишется ничего.
+ */
+const departed = new Set<string>();
+
+/** Человек вышел: за него больше не пишем, пока он не войдёт снова (signedIn) */
+export function signedOut(owner: string): void {
+  departed.add(owner);
+  if (active === owner) active = null;
 }
 
 /** Можно ли сейчас класть на устройство данные этого владельца */
 export function mayStore(owner: string | null): owner is string {
-  return !!owner && (afterWipe === null || afterWipe.reopenedFor === owner);
+  return !!owner && !departed.has(owner) && (afterWipe === null || afterWipe.reopenedFor === owner);
 }
 
-/** Стирания не было — состояние нового запуска; для тестов (test/store.mock.ts, resetStore) */
+/** Ни стирания, ни выходов не было — состояние нового запуска; для тестов (test/store.mock.ts, resetStore) */
 export function forgetWipe(): void {
   afterWipe = null;
+  departed.clear();
 }
 
 /**
