@@ -218,6 +218,8 @@ function inRequestTransaction(
 ): Promise<void> {
   return withRequestContext(baseDb, identity, () => next(), () => c.error !== undefined || c.res.status >= 400, {
     readOnly,
+    // клиент ушёл (закрыл вкладку, обрыв по простою) — запросы к базе отменяются (#186)
+    signal: c.req.raw.signal,
   });
 }
 

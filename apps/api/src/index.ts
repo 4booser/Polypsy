@@ -1,5 +1,6 @@
 import { env } from "./env";
 import { app } from "./app";
+import { serveOptions } from "./serve";
 import { startScheduler } from "./lib/scheduler";
 import { startNotifier } from "./lib/notify";
 import { startRetention } from "./lib/retention";
@@ -147,7 +148,5 @@ async function shutdown(signal: string) {
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
-export default {
-  port: env.port,
-  fetch: app.fetch,
-};
+// порт и предел простоя соединения — serve.ts (#186)
+export default serveOptions(app.fetch);

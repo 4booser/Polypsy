@@ -9,7 +9,7 @@ import type {
   OpsVitals,
 } from "@quizzy/shared";
 import { baseDb } from "../db";
-import { asSystem, dbContext, systemContext } from "../db/context";
+import { asSystem, outsideRequest, systemContext } from "../db/context";
 import { audit } from "../lib/audit";
 import { readToken } from "../lib/auth";
 import { badRequest, conflict, notFound, parseBody } from "../lib/http";
@@ -260,10 +260,12 @@ opsSignalRoutes.post("/jobs/:name/run", requireAuth, requireStaff, canRead, canM
    * Проход — фоном и вне транзакции запроса. Промис, заведённый внутри
    * обработчика, наследует контекст базы запроса (AsyncLocalStorage), а эта
    * транзакция закроется вместе с ответом: всё, что задача сделала бы
-   * «в ней», упало бы на закрытом соединении. exit() отвязывает проход от
-   * запроса; свою транзакцию задача открывает сама (systemContext).
+   * «в ней», упало бы на закрытом соединении. outsideRequest() отвязывает
+   * проход от запроса — и от его транзакции, и от отмены по обрыву
+   * клиента (#186): ушедший клиент не останавливает запущенную задачу.
+   * Свою транзакцию задача открывает сама (systemContext).
    */
-  const outcome = dbContext.exit(() =>
+  const outcome = outsideRequest(() =>
     startManual(name, (error) => log.error("ops.manual.failed", { job: name, error: String(error) })),
   );
   if (outcome === "running") conflict("err.opsJobRunning");
