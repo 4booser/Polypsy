@@ -119,6 +119,15 @@ export async function massResponses(s: MassSurvey, from: number, count: number, 
     insert into response_scores (id, response_id, scale_id, raw_score, value, normalization, max_score, percent, normalized)
     select ${tag} || '-r' || g || '-s', ${tag} || '-r' || g, ${s.scaleId}, g % 10, g % 10, 'raw', 30, (g % 10) * 10, true
     from generate_series(${from}::int, ${from + count - 1}::int) g`);
+  /*
+   * Статистика — сразу, а не когда до неё дойдёт autovacuum. Без неё
+   * планировщик считает свежезалитые полмиллиона ответов пустой таблицей,
+   * выбирает по ней полный просмотр на каждую порцию выгрузки — и замер
+   * времени зависел от того, успел ли autovacuum (в прогоне test:app-role
+   * выгрузка 20 тыс. × 20 шла 13,7 с вместо двух). В бою у таблиц
+   * статистика есть всегда.
+   */
+  await db.execute(sql`analyze users, responses, answers, response_scores`);
 }
 
 /**
