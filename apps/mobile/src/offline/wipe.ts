@@ -150,6 +150,18 @@ export function onWiped(listener: () => void): () => void {
   };
 }
 
+/** Запись закрыта ни для кого, интерфейс без сессии — с этого начинается стирание */
+function closeSession(): void {
+  closeForWipe();
+  for (const listener of wipedListeners) {
+    try {
+      listener();
+    } catch {
+      /* интерфейс не смог — стирание от этого не зависит */
+    }
+  }
+}
+
 /**
  * Исполнить команду стирания, полученную при отметке устройства `deviceId`.
  *
@@ -162,14 +174,7 @@ export function onWiped(listener: () => void): () => void {
  * экраны дальше, пока идут очистка и подтверждение, незачем.
  */
 export async function carryOutWipe(deviceId: string, deps: WipeDeps): Promise<WipeOutcome> {
-  closeForWipe();
-  for (const listener of wipedListeners) {
-    try {
-      listener();
-    } catch {
-      /* интерфейс не смог — стирание от этого не зависит */
-    }
-  }
+  closeSession();
   const token = await deps.token().catch(() => null);
   const state: WipeState = { deviceId, owner: ownerOfToken(token), erased: false, signedOut: false };
   save(state);
@@ -183,11 +188,24 @@ export async function carryOutWipe(deviceId: string, deps: WipeDeps): Promise<Wi
  * снять не удалось; свежий вход после стирания — законный, его не трогаем.
  * Подтверждение уходит только токеном того, чья была команда: чужой вход на
  * том же планшете подтверждать её не вправе.
+ *
+ * Запись и интерфейс — как при самой команде (#125), но только там, где этот
+ * запуск действительно что-то стирает:
+ *   - сессию прошлый раз снять не удалось — её снимает этот, и для интерфейса
+ *     это то же стирание: запись закрыта, сессия закрыта (иначе AuthContext
+ *     восстанавливал человека по этому токену, и токен исчезал из-под
+ *     открытых экранов);
+ *   - сессия снята, а очистка не доведена — данные уходят, после очистки
+ *     пишется только за того, кто вошёл заново, и его сессию не трогаем;
+ *   - ждёт лишь подтверждение — ни запись, ни свежий вход не трогаются:
+ *     иначе каждый запуск выкидывал бы на вход человека, вошедшего после.
  */
 export async function resumeWipe(deps: WipeDeps): Promise<WipeOutcome | null> {
   const state = store.read<WipeState>(WIPE_STATE_KEY);
   if (!state?.deviceId) return null;
+  if (!state.signedOut) closeSession();
   const token = await deps.token().catch(() => null);
+  if (state.signedOut && !state.erased) closeForWipe(ownerOfToken(token));
   const confirmWith = token && ownerOfToken(token) === state.owner ? token : null;
   return advance(state, confirmWith, deps);
 }

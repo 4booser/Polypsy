@@ -74,9 +74,13 @@ export function activeOwner(): string | null {
  */
 let afterWipe: { reopenedFor: string | null } | null = null;
 
-/** Стирание началось (offline/wipe.ts): с этого мига офлайн-слой не пишет ни за кого */
-export function closeForWipe(): void {
-  afterWipe = { reopenedFor: null };
+/**
+ * Стирание началось (offline/wipe.ts): с этого мига офлайн-слой не пишет ни
+ * за кого. `reopenedFor` — вход, сделанный уже после команды (довод стирания
+ * при запуске, resumeWipe): за него писать можно, его сессия законна.
+ */
+export function closeForWipe(reopenedFor: string | null = null): void {
+  afterWipe = { reopenedFor };
 }
 
 /**

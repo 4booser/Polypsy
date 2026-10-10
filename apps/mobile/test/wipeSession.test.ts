@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { resetStore } from "./store.mock";
+import { resetStore, storeFaults } from "./store.mock";
 import { json, loadClient, noNetwork, serve, session, signIn, tokenOf, useFakeServer } from "./client.harness";
 import { cache, drafts, type LocalDraft } from "../src/offline/cache";
 import { leftAfterWipe } from "../src/offline/device";
+import { forgetWipe } from "../src/offline/owner";
 import { enqueue, pending, rejectedItems } from "../src/offline/queue";
+import { carryOutWipe, onWiped, resumeWipe } from "../src/offline/wipe";
 import { isStoreWriteError } from "../src/offline/writeError";
 import { finishSubmission } from "../src/runner/finish";
 
@@ -167,6 +169,103 @@ describe("положительный контроль: без стирания",
 
     drafts.saveIfNewer(STAFF, draftOf(1));
     expect(drafts.get(STAFF, "s1")?.revision).toBe(1);
+    off();
+  });
+});
+
+/**
+ * Довод стирания при следующем запуске (resumeWipe) — как сама команда (#125,
+ * доработка), но только там, где запуск действительно что-то стирает: свежий
+ * вход после стирания законен и не трогается.
+ */
+describe("довод стирания при следующем запуске", () => {
+  /** Хранилище токенов и подтверждение — подменой, как в test/wipe.test.ts */
+  function deps(token: string | null, clearFails = false) {
+    const box = {
+      current: token,
+      clearFails,
+      token: async () => box.current,
+      clearTokens: async () => {
+        if (box.clearFails) throw new Error("simulated secure store failure");
+        box.current = null;
+      },
+      confirm: async () => {},
+    };
+    return box;
+  }
+
+  /** Интерфейс после запуска: AuthContext восстановил того, чей токен в хранилище */
+  function restored(id: string) {
+    const ui = { user: { id } as { id: string } | null };
+    const off = onWiped(() => {
+      ui.user = null;
+    });
+    return { ui, off };
+  }
+
+  test("сессию прошлый раз снять не удалось — этот запуск снимает её и в интерфейсе, запись закрыта", async () => {
+    signIn(STAFF);
+    const d = deps(tokenOf(STAFF), true);
+    await carryOutWipe("dev-1", d);
+    // перезапуск: в памяти ничего, токен в хранилище остался, AuthContext восстановил по нему
+    forgetWipe();
+    d.clearFails = false;
+    const { ui, off } = restored(STAFF);
+
+    const outcome = await resumeWipe(d);
+    expect(outcome?.signedOut).toBe(true);
+    expect(d.current).toBeNull();
+    expect(ui.user, "интерфейс без сессии").toBeNull();
+
+    // чтение, начатое при запуске по этому токену, отвечает уже после
+    cache.saveRounds(STAFF, { items: [{ userId: "p1" }] });
+    expect(() => drafts.saveIfNewer(STAFF, draftOf(1))).toThrow();
+    expect(leftAfterWipe([])).toEqual([]);
+    off();
+  });
+
+  test("очистка не доведена, а вошёл уже другой — данные уходят, пишется только за вошедшего, его сессия цела", async () => {
+    signIn(STAFF);
+    cache.saveRounds(STAFF, { items: [{ userId: "p1" }] });
+    storeFaults.failRemove = (name) => name.includes(":rounds:");
+    const d = deps(tokenOf(STAFF));
+    await carryOutWipe("dev-1", d);
+    expect(cache.rounds(STAFF), "очистка не прошла").not.toBeNull();
+
+    // перезапуск; на планшет уже вошёл staff-b
+    forgetWipe();
+    storeFaults.failRemove = null;
+    d.current = tokenOf("staff-b");
+    const { ui, off } = restored("staff-b");
+
+    await resumeWipe(d);
+    expect(cache.rounds(STAFF)).toBeNull();
+    expect(ui.user, "свежий вход не выкидывается").toEqual({ id: "staff-b" });
+    expect(d.current).toBe(tokenOf("staff-b"));
+
+    cache.saveRounds(STAFF, { items: [{ userId: "p1" }] });
+    expect(cache.rounds(STAFF), "данные стёртого обратно не ложатся").toBeNull();
+    cache.saveRounds("staff-b", { items: [] });
+    expect(cache.rounds("staff-b"), "за вошедшего пишется").not.toBeNull();
+    off();
+  });
+
+  test("положительный контроль: ждёт лишь подтверждение — свежий вход и его запись не трогаются", async () => {
+    signIn(STAFF);
+    const d = deps(tokenOf(STAFF));
+    d.confirm = async () => {
+      throw Object.assign(new Error("offline"), { status: 0 });
+    };
+    await carryOutWipe("dev-1", d);
+
+    forgetWipe();
+    d.current = tokenOf("staff-b");
+    const { ui, off } = restored("staff-b");
+
+    expect(await resumeWipe(d)).toEqual({ erased: true, signedOut: true, confirmed: false });
+    expect(ui.user).toEqual({ id: "staff-b" });
+    cache.saveRounds("staff-b", { items: [] });
+    expect(cache.rounds("staff-b")).not.toBeNull();
     off();
   });
 });
