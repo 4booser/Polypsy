@@ -57,26 +57,70 @@ docker compose version >/dev/null 2>&1 || die "Нужен docker compose v2 (п�
 if command -v apt-get >/dev/null 2>&1; then
   say "Защита хоста…"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get install -y -q unattended-upgrades ufw fail2ban >/dev/null
+  # python3-systemd — чтение журнала systemd для fail2ban (backend ниже)
+  apt-get install -y -q unattended-upgrades ufw fail2ban python3-systemd >/dev/null
   # обновления безопасности — сами, без перезагрузки посреди дня
   dpkg-reconfigure -f noninteractive unattended-upgrades >/dev/null 2>&1 || true
-  # снаружи — только ssh и сайт; остальное (postgres, api) живёт в сети docker
-  ufw --force reset >/dev/null
-  ufw default deny incoming >/dev/null
-  ufw default allow outgoing >/dev/null
-  ufw allow 22/tcp >/dev/null
-  ufw allow 80/tcp >/dev/null
-  ufw allow 443/tcp >/dev/null
+
+  # Снаружи — только ssh и сайт; остальное (postgres, api) живёт в сети docker.
+  #
+  # Правила ДОБАВЛЯЮТСЯ, а не пишутся заново. Прежде здесь стоял
+  # `ufw --force reset`: повторный запуск стирал правила администратора, и
+  # ssh, ограниченный им до своих адресов, снова открывался всем (#164).
+  # Теперь порт, у которого правило уже есть (любое — откуда угодно или с
+  # одного адреса), не трогается; политики по умолчанию ставятся только при
+  # первом включении. Порт ssh — тот, что слушает sshd, а не всегда 22:
+  # иначе включение ufw запирает дверь на сервере с перенесённым ssh.
+  #
+  # Вывод ufw читается целиком в переменную, а не конвейером в grep -q: под
+  # pipefail ранний выход grep обрывает пишущего, и проверка врёт.
+  ufw_state="$(ufw status 2>/dev/null || true)"
+  if [[ "$ufw_state" != *"Status: active"* ]]; then
+    ufw default deny incoming >/dev/null
+    ufw default allow outgoing >/dev/null
+  fi
+  ufw_added="$(ufw show added 2>/dev/null || true)"
+  ssh_ports="$(sshd -T 2>/dev/null | awk '$1 == "port" { print $2 }' || true)"
+  for port in ${ssh_ports:-22} 80 443; do
+    if grep -Eq "(^|[[:space:]])$port(/tcp)?([[:space:]]|\$)" <<<"$ufw_added" \
+       || { [ "$port" = 22 ] && grep -Eq '(^|[[:space:]])OpenSSH([[:space:]]|$)' <<<"$ufw_added"; }; then
+      echo "  · ufw: у порта $port правило уже есть — не трогаю"
+    else
+      ufw allow "$port/tcp" >/dev/null
+    fi
+  done
   ufw --force enable >/dev/null
-  # перебор паролей — в бан после пяти промахов на час
+
+  # Перебор паролей — в бан после пяти промахов на час.
+  #
+  # backend = systemd: в Debian 12 нет /var/log/auth.log, sshd пишет только
+  # в журнал systemd, и джейл с журналом-файлом его не находит — fail2ban не
+  # стартует вовсе. Прежде отказ прятался за `|| true`, а установка
+  # печатала «✓ … fail2ban». Теперь служба перезапускается (у работающей
+  # иначе не подхватится новый джейл), джейл sshd спрашивается у самого
+  # fail2ban, и отказ останавливает установку с журналом службы.
   cat > /etc/fail2ban/jail.d/quizzy.conf <<'JAIL'
 [sshd]
 enabled = true
+backend = systemd
 maxretry = 5
 findtime = 10m
 bantime = 1h
 JAIL
-  systemctl enable --now fail2ban >/dev/null 2>&1 || true
+  systemctl enable --quiet fail2ban
+  f2b_ok=""
+  if systemctl restart fail2ban; then
+    for _ in $(seq 1 15); do
+      fail2ban-client status sshd >/dev/null 2>&1 && { f2b_ok=1; break; }
+      sleep 1
+    done
+  fi
+  if [ -z "$f2b_ok" ]; then
+    journalctl -u fail2ban -n 20 --no-pager -o cat >&2 2>/dev/null || true
+    die "fail2ban не поднял джейл sshd — защиты от перебора паролей нет.
+Журнал службы выше; разобранная настройка: fail2ban-client -d"
+  fi
+  echo "  ✓ fail2ban: джейл sshd работает"
   # пароли по ssh — только если есть чем войти без них
   keyfile="${SUDO_USER:+/home/$SUDO_USER/.ssh/authorized_keys}"
   if [ -s /root/.ssh/authorized_keys ] || { [ -n "$keyfile" ] && [ -s "$keyfile" ]; }; then
@@ -91,7 +135,7 @@ MaxAuthTries 4
 MaxStartups 30:50:200
 SSHD
     sshd -t && systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
-    echo "  ✓ ssh: только ключи, root без пароля, fail2ban, ufw 22/80/443, обновления безопасности"
+    echo "  ✓ ssh: только ключи, root без пароля, ufw (ssh/80/443), обновления безопасности"
   else
     echo "  ! ssh-ключа нет ни у root, ни у ${SUDO_USER:-вас} — пароли по ssh оставлены. Добавьте ключ и запустите скрипт ещё раз."
   fi
