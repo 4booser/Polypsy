@@ -83,8 +83,38 @@ export function answerScore(question: Question, answer: Answer | undefined): num
   const raw = rawAnswerScore(question, answer);
   if (raw === null) return null;
   if (!question.reverseScored) return raw;
+  if (question.type === "matrix") {
+    /*
+     * Матрица обращается построчно — каждая отвеченная строка внутри
+     * диапазона своей строки (#136).
+     *
+     * Прежде обращение шло от диапазона всей матрицы (min·строк + max·строк
+     * − сумма отвеченных), и у частично заполненной матрицы пропущенные
+     * строки считались худшим ответом: три строки, варианты 0–3, одна строка
+     * с ответом 3 (обращённый — 0) давали 6 — тяжёлую полосу и тревогу по
+     * баллу, которого человек не набирал. Теперь k отвеченных строк дают
+     * вклад в [min·k; max·k].
+     */
+    const scores = question.options.filter((o) => o.kind === "option").map((o) => o.score);
+    if (!scores.length) return raw;
+    const picked = Object.keys(answer?.matrix ?? {}).length;
+    return (Math.min(...scores) + Math.max(...scores)) * picked - raw;
+  }
   const { min, max } = questionScoreRange(question);
   return min + max - raw;
+}
+
+/**
+ * Сколько единиц ответа даёт пункт для доли отвеченных: у матрицы — строки
+ * (#136), у остальных — сам пункт. Частично заполненная матрица прежде
+ * считалась отвеченной целиком, и правило минимальной доли её не видело.
+ */
+function answerUnits(question: Question, answer: Answer | undefined): { asked: number; answered: number } {
+  if (question.type !== "matrix") return { asked: 1, answered: answer && !answer.skipped ? 1 : 0 };
+  const rows = question.options.filter((o) => o.kind === "row").length;
+  if (!rows) return { asked: 1, answered: answer && !answer.skipped ? 1 : 0 };
+  const filled = answer && !answer.skipped ? Object.keys(answer.matrix ?? {}).length : 0;
+  return { asked: rows, answered: Math.min(rows, filled) };
 }
 
 /**
@@ -308,22 +338,29 @@ export function computeProfile(
   for (const scale of survey.scales) {
     const values: number[] = [];
     let asked = 0;
+    let answered = 0;
     for (const item of scale.items) {
       const question = questionById.get(item.questionId);
       if (!question || question.type === "info") continue;
       // скрытый условием пункт не задавали: ни в сумму, ни в знаменатель доли
       if (!isQuestionVisible(question, survey.questions, byQuestion)) continue;
-      asked++;
-      const contribution = itemContribution(question, item, byQuestion.get(item.questionId));
-      if (contribution !== null) values.push(contribution);
+      const answer = byQuestion.get(item.questionId);
+      // строки матрицы — отдельные единицы доли: частичная матрица не «отвечена целиком» (#136)
+      const units = answerUnits(question, answer);
+      asked += units.asked;
+      const contribution = itemContribution(question, item, answer);
+      if (contribution !== null) {
+        values.push(contribution);
+        answered += units.answered;
+      }
     }
 
     const minShare = scale.minAnsweredShare ?? DEFAULT_MIN_ANSWERED_SHARE;
-    if (asked > 0 && values.length / asked < minShare - 1e-9) {
+    if (asked > 0 && answered / asked < minShare - 1e-9) {
       uncomputable.add(scale.code);
       warn("score.tooFewAnswers", {
         scale: t(scale.title),
-        answered: values.length,
+        answered,
         asked,
         min: Math.round(minShare * 100),
       });
