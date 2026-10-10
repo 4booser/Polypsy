@@ -308,8 +308,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
    * версии: один и тот же человек выглядел «достоверно улучшившимся» на
    * консилиуме и «в пределах ошибки» в карте.
    */
-  const ownSurveyIds = [...new Set(own.map((r) => r.surveyId))];
-  const samples = await normativeSamples(ownSurveyIds);
+  const samples = await normativeSamples(own.map((r) => ({ surveyId: r.surveyId, versionId: r.versionId ?? null })));
   const alphas = await alphasOf(
     own
       .filter((r): r is typeof r & { versionId: string } => !!r.versionId)
