@@ -143,6 +143,34 @@ export function appRolePool(): Promise<PoolOverride> {
 }
 
 /**
+ * Отдельный пул роли приложения со своим application_name — для проверок
+ * «что осталось на соединениях после запросов».
+ *
+ * Общий пул (appRolePool) делят все файлы процесса, и по pg_stat_activity
+ * не отличить его соединения, тронутые проверкой, от тронутых соседями;
+ * а сломанное проверкой соединение осталось бы у соседей. Свой пул — свои
+ * соединения: имя приложения отбирает ровно их, close() их и закрывает.
+ */
+export async function taggedAppRolePool(
+  applicationName: string,
+): Promise<PoolOverride & { close: () => Promise<void> }> {
+  const postgres = (await import("postgres")).default;
+  const { drizzle } = await import("drizzle-orm/postgres-js");
+  const schema = await import("../src/db/schema");
+  // общий пул заводится первым: он же проверяет, что политики для роли действуют
+  const { url } = await appRolePool();
+  const client = postgres(url, {
+    max: 10,
+    idle_timeout: 20,
+    transform: undefined,
+    onnotice: () => {},
+    connection: { application_name: applicationName },
+  });
+  const db = drizzle(client, { schema });
+  return { db, url, close: () => client.end({ timeout: 1 }) };
+}
+
+/**
  * Выполнить fn так, чтобы всё обращение приложения к базе шло ролью
  * приложения — как в бою. Код вокруг (фикстуры, проверки теста) остаётся
  * владельцем. Механика и почему не SET ROLE — в src/db/index.ts (runOnPool).

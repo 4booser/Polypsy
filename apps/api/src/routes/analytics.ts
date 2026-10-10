@@ -22,6 +22,7 @@ import type {
   SurveyAnalytics,
 } from "@quizzy/shared";
 import { db } from "../db";
+import { inIds } from "../db/ids";
 import { env } from "../env";
 import { answerEvents, answers, responseScores, responses, surveyGroups, surveyVersions, surveys, users } from "../db/schema";
 import { csvCell } from "../lib/csv";
@@ -663,11 +664,16 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
     );
   const responseIds = responseRows.map((r) => r.id);
 
+  /*
+   * Список прохождений — одним параметром (db/ids.ts): параметром на id
+   * методика с 65 534 прохождениями и больше упиралась в потолок драйвера, и
+   * аналитика зависала насовсем вместе с соединением пула (#183).
+   */
   const [answerRows, scoreRows, eventRows] = responseIds.length
     ? await Promise.all([
-        db.select().from(answers).where(inArray(answers.responseId, responseIds)),
-        db.select().from(responseScores).where(inArray(responseScores.responseId, responseIds)),
-        db.select().from(answerEvents).where(inArray(answerEvents.responseId, responseIds)),
+        db.select().from(answers).where(inIds(answers.responseId, responseIds)),
+        db.select().from(responseScores).where(inIds(responseScores.responseId, responseIds)),
+        db.select().from(answerEvents).where(inIds(answerEvents.responseId, responseIds)),
       ])
     : [[], [], []];
 
