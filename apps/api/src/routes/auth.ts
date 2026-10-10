@@ -600,8 +600,10 @@ async function refreshHandler(c: Context<AppEnv>): Promise<Response | RefreshRef
   const body = await c.req.json().catch(() => ({}));
   const raw = typeof body?.refreshToken === "string" ? body.refreshToken : "";
   if (!raw) return { key: "err.noRefreshToken" };
+  // ключ попытки обмена: повтор с ним, чей ответ потерялся, получает ту же пару (#144, lib/refresh.ts)
+  const requestId = typeof body?.requestId === "string" ? body.requestId : undefined;
 
-  const outcome = await rotateRefresh(raw);
+  const outcome = await rotateRefresh(raw, requestId);
   if (!outcome.ok) {
     /* выключенной учётке — тот же текст, что на входе и на живом токене (см. rotateRefresh) */
     return {

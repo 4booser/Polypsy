@@ -102,11 +102,12 @@ const passwordGateListeners = new Set<() => void>();
  */
 const tryRefresh = createRefresher({
   getRefresh: () => tokenStorage.getRefresh(),
-  exchange: (refreshToken) =>
+  // ключ попытки: повтор обмена, чей ответ потерялся, сервер узнаёт и отдаёт ту же пару (#144)
+  exchange: (refreshToken, requestId) =>
     fetch(`${API_URL}/api/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
+      body: JSON.stringify({ refreshToken, requestId }),
     }),
   save: async (pair) => {
     await tokenStorage.set(pair.token);
