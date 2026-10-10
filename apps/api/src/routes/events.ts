@@ -1,10 +1,12 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { baseDb, db } from "../db";
 import { dbContext, withDbContext } from "../db/context";
 import { surveys } from "../db/schema";
 import { subscribe, type AppEvent } from "../lib/events";
-import { accessiblePatientIds, surveyScopeFilter } from "../lib/scope";
+import { log } from "../lib/log";
+import { isSuperadmin, patientsInScope, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const eventRoutes = new Hono<AppEnv>();
@@ -28,8 +30,9 @@ eventRoutes.use("*", requireAuth, requireStaff, requirePermission("alerts.review
  *
  * Права проверяются на каждое событие, а не при подписке: зона
  * ответственности сотрудника может измениться посреди смены, и подписка,
- * выданная авансом, пережила бы это изменение. Сама зона — методики И
- * пациенты — перечитывается с каждым пульсом.
+ * выданная авансом, пережила бы это изменение. Зона по методикам
+ * перечитывается с каждым пульсом; о человеке база спрашивается, когда о нём
+ * пришло событие, и ответ живёт до следующего пульса.
  */
 eventRoutes.get("/", async (c) => {
   const user = c.get("user");
@@ -42,20 +45,36 @@ eventRoutes.get("/", async (c) => {
     return new Set(scoped.map((s) => s.id));
   }
 
+  /* первое чтение — ещё в транзакции запроса: она жива, пока обработчик не вернул ответ */
+  let allowed = await readScope();
+
   /**
-   * Кого этот сотрудник вправе видеть.
+   * Вправе ли сотрудник видеть этого человека.
    *
    * Нужна отдельно от зоны по методикам: событие общего потока «action»
    * относится не к методике, а к человеку, и сузить его по методикам нечем.
-   * `null` — суперадмин, видит всех.
+   *
+   * Вопросом о человеке, о котором пришло событие, а не списком всей зоны
+   * (#181). Список строился при открытии вкладки и заново с каждым пульсом:
+   * на учреждении в пять тысяч пациентов — секунды и соединение пула на
+   * вкладку каждые двадцать пять секунд. Шестьдесят открытых консолей
+   * держали занятыми все десять соединений, и лёгкий запрос ждал минуту.
+   * События о людях без методики редки, поэтому база спрашивается о
+   * человеке, когда о нём пришло событие, — своей короткой транзакцией, как
+   * перечитывание ниже, — а ответ помнится до следующего пульса: отзыв
+   * доступа доходит до потока в прежний срок.
    */
-  async function readPatients(): Promise<Set<string> | null> {
-    return accessiblePatientIds(user);
+  let decided = new Map<string, boolean>();
+  async function maySee(patientId: string): Promise<boolean> {
+    if (isSuperadmin(user)) return true;
+    const memo = decided;
+    const known = memo.get(patientId);
+    if (known !== undefined) return known;
+    const visible = await withDbContext(baseDb, identity, () => patientsInScope(user, [patientId]));
+    const ok = visible === null || visible.has(patientId);
+    memo.set(patientId, ok);
+    return ok;
   }
-
-  /* первое чтение — ещё в транзакции запроса: она жива, пока обработчик не вернул ответ */
-  let allowed = await readScope();
-  let patients = await readPatients();
 
   /*
    * Перечитывание зоны — каждый раз своей короткой транзакцией с контекстом
@@ -75,8 +94,7 @@ eventRoutes.get("/", async (c) => {
    * каждое перечитывание стоит одно соединение на миллисекунды раз в
    * двадцать пять секунд.
    */
-  const reread = () =>
-    withDbContext(baseDb, identity, async () => ({ allowed: await readScope(), patients: await readPatients() }));
+  const reread = () => withDbContext(baseDb, identity, readScope);
 
   /*
    * Колбэк потока — вне хранилища контекста запроса (dbContext.exit): всё,
@@ -93,7 +111,25 @@ eventRoutes.get("/", async (c) => {
       alive = false;
     });
 
+    /*
+     * Доставка — по очереди и в контексте потока.
+     *
+     * Проверка человека идёт в базу, и событие, ждущее ответа, не должно
+     * пропускать вперёд следующее: консоль читает поток по порядку. А
+     * обработчик шины зовётся из чужого контекста — того, где открыт LISTEN,
+     * — поэтому доставка возвращается в контекст потока: тот же пул, что у
+     * перечитывания зоны.
+     */
+    const inStream = AsyncLocalStorage.snapshot();
+    let line: Promise<void> = Promise.resolve();
     const unsubscribe = await subscribe((event: AppEvent) => {
+      if (!alive) return;
+      line = line
+        .then(() => inStream(() => deliver(event)))
+        .catch((error: unknown) => log.warn("events.deliver_failed", { error: String(error) }));
+    });
+
+    async function deliver(event: AppEvent): Promise<void> {
       if (!alive) return;
       // событие без методик (системное) видно всем сотрудникам
       if (event.surveyIds && !event.surveyIds.some((id) => allowed.has(id))) return;
@@ -111,9 +147,10 @@ eventRoutes.get("/", async (c) => {
        * стекло. Заодно поток раздавал идентификаторы, которых у получателя
        * не было ниоткуда, — готовый вход для захвата чужой карты.
        */
-      if (!event.surveyIds && event.userId && patients && !patients.has(event.userId)) return;
-      void stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
-    });
+      if (!event.surveyIds && event.userId && !(await maySee(event.userId))) return;
+      if (!alive) return;
+      await stream.writeSSE({ event: event.kind, data: JSON.stringify(event) });
+    }
 
     // первое сообщение сразу: клиент понимает, что канал живой, а прокси —
     // что ответ начался и его не надо буферизовать
@@ -129,16 +166,16 @@ eventRoutes.get("/", async (c) => {
         await stream.sleep(eventStreamTiming.pulseMs);
         if (!alive) break;
         /*
-         * Заодно перечитываем зону ответственности — и методики, и людей.
-         * Смена длится часами, а доступ к методике или к человеку могут
-         * отозвать посреди неё; подписка, выданная авансом при открытии
-         * вкладки, пережила бы этот отзыв. Людей раньше не перечитывали
-         * вовсе (внешний разбор 2026-09-26): события общего потока «action»
-         * о человеке, к которому доступ уже отозван, шли до переподключения.
+         * Заодно перечитываем зону ответственности — методики заново, а
+         * ответы о людях забываем. Смена длится часами, а доступ к методике
+         * или к человеку могут отозвать посреди неё; подписка, выданная
+         * авансом при открытии вкладки, пережила бы этот отзыв. Людей раньше
+         * не перечитывали вовсе (внешний разбор 2026-09-26): события общего
+         * потока «action» о человеке, к которому доступ уже отозван, шли до
+         * переподключения.
          */
-        const fresh = await reread();
-        allowed = fresh.allowed;
-        patients = fresh.patients;
+        allowed = await reread();
+        decided = new Map();
         await stream.writeSSE({ event: "ping", data: "1" });
       }
     } finally {
