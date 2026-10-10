@@ -107,7 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Без токена спрашивать нечего: гость видит вход с первого кадра, а не
    * после пустого прохода эффектов.
    */
-  const [hadToken] = useState(() => !!tokenStore.get());
+  const [hadToken] = useState(() => {
+    // истёкший вход «от имени» с прошлого открытия вкладки — не повод остаться без своей сессии (#167)
+    impersonationStore.dropExpired();
+    return !!tokenStore.get();
+  });
   const [settled, setSettled] = useState(!hadToken);
   const boot = useResource(
     async () => {

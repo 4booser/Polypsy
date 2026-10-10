@@ -141,7 +141,7 @@ import type {
   ReleasesView,
   ServiceStatusInput,
 } from "@quizzy/shared";
-import { MAINTENANCE_CODE, uiText } from "@quizzy/shared";
+import { MAINTENANCE_CODE, renderError, uiText } from "@quizzy/shared";
 import type {
   OpsAlertChannel,
   OpsAlertDelivery,
@@ -192,21 +192,33 @@ export interface ImpersonationSlot {
 }
 
 export const impersonationStore = {
-  get(): ImpersonationSlot | null {
+  /** Слот вкладки как он лежит — и с истёкшим сроком тоже (#167) */
+  slot(): ImpersonationSlot | null {
     try {
       const raw = sessionStorage.getItem(IMPERSONATION_KEY);
-      if (!raw) return null;
-      const slot = JSON.parse(raw) as ImpersonationSlot;
-      return activeSlot(slot, Date.now()) ? slot : null;
+      return raw ? (JSON.parse(raw) as ImpersonationSlot) : null;
     } catch {
       return null;
     }
+  },
+  /** Живой слот: срок не вышел */
+  get(): ImpersonationSlot | null {
+    const slot = impersonationStore.slot();
+    return activeSlot(slot, Date.now()) ? slot : null;
   },
   set(slot: ImpersonationSlot): void {
     sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify(slot));
   },
   clear(): void {
     sessionStorage.removeItem(IMPERSONATION_KEY);
+  },
+  /**
+   * Истёкший слот при открытии вкладки — убрать: профиля «от имени» на
+   * экране ещё нет, и вкладка честно начинает своей сессией (auth.tsx).
+   */
+  dropExpired(): void {
+    const slot = impersonationStore.slot();
+    if (slot && !activeSlot(slot, Date.now())) impersonationStore.clear();
   },
 };
 
@@ -241,8 +253,21 @@ export function ownerOfToken(token: string | null | undefined): string | null {
 }
 
 export const tokenStore = {
-  /* под входом «от имени» запросы идут его токеном; свой — только для «вийти» */
-  get: () => impersonationStore.get()?.token ?? localStorage.getItem(TOKEN_KEY),
+  /*
+   * Под входом «от имени» запросы идут его токеном; свой — только для «вийти».
+   *
+   * Истёкший слот своего токена не открывает (#167). Раньше по истечении
+   * получаса слот считался пустым, и запросы молча шли собственным токеном
+   * суперадмина — при полосе «тільки перегляд» и профиле другого человека
+   * на экране: «Підписати» его заключение срабатывало по-настоящему. Пока
+   * слот лежит, токена нет вовсе; уходит слот через request (на
+   * «Користувачі») или «Вийти».
+   */
+  get: () => {
+    const slot = impersonationStore.slot();
+    if (slot) return activeSlot(slot, Date.now()) ? slot.token : null;
+    return localStorage.getItem(TOKEN_KEY);
+  },
   own: () => localStorage.getItem(TOKEN_KEY),
   set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
   getRefresh: () => localStorage.getItem(REFRESH_KEY),
@@ -479,9 +504,24 @@ export function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === "AbortError";
 }
 
+/** Вход «от имени» кончился: слот вкладки чистится, и вкладка возвращается к себе — на «Користувачі» */
+function leaveImpersonation(): void {
+  impersonationStore.clear();
+  if (typeof window !== "undefined") window.location.assign("/ops/users");
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   // свой сигнал в init важнее внешнего; повтор после обмена токена несёт его в init дальше
   if (!init.signal && ambientSignal) init = { ...init, signal: ambientSignal };
+  /*
+   * Срок входа «от имени» вышел по часам (#167) — то же, что 401 от
+   * сервера: запрос не уходит вовсе, ни чужим токеном, ни своим.
+   */
+  const slot = impersonationStore.slot();
+  if (slot && !activeSlot(slot, Date.now())) {
+    leaveImpersonation();
+    throw new ApiError(renderError("err.impersonationEnded", currentLang), 401);
+  }
   const token = tokenStore.get();
 
   /*
@@ -539,10 +579,13 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
    * другой вкладке или вышел из своей сессии) — возвращаемся к себе, а не
    * меняем refresh: у токена «от имени» его нет, а свой обмен ничего бы не
    * поправил — запросы шли бы тем же погашенным токеном.
+   *
+   * По слоту, с которым запрос ушёл, а не по тому, что лежит после ответа
+   * (#167): срок, вышедший, пока запрос летел, уводил 401 в обмен своего
+   * refresh, и повтор уходил уже своим токеном.
    */
-  if (res.status === 401 && impersonationStore.get()) {
-    impersonationStore.clear();
-    window.location.assign("/ops/users");
+  if (res.status === 401 && slot) {
+    leaveImpersonation();
   } else if (res.status === 401 && !retried && refreshesOn401(path)) {
     const outcome = await tryRefresh(token);
     if (outcome === "renewed") return request<T>(path, init, true);
@@ -2045,7 +2088,7 @@ export const api = {
       // токен, с которым ушёл запрос, — по нему обмен сверяет, не обновила ли его другая вкладка
       const sentWith = tokenStore.get();
       res = await send();
-      if (res.status === 401 && !impersonationStore.get() && (await tryRefresh(sentWith)) === "renewed") res = await send();
+      if (res.status === 401 && !impersonationStore.slot() && (await tryRefresh(sentWith)) === "renewed") res = await send();
     } catch {
       noteNetworkFailure({ method: "POST", path, status: 0 });
       throw new ApiError(netText("net.offline"), 0);
