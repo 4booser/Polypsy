@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { Answer, SurveyFull } from "@quizzy/shared";
 import { isAnswered, isQuestionVisible } from "@quizzy/shared";
 import { api, type Patient } from "../api";
+import { administerPayload, blankVersion, loadAdminister } from "./administerModel";
 import { useResource } from "../useResource";
 import { SeverityTag } from "../charts/advanced";
 import { Loading } from "../ui";
@@ -21,6 +22,9 @@ import { useLang } from "../lang";
 export default function Administer() {
   const { ut } = useLang();
   const { id } = useParams<{ id: string }>();
+  // код бумажного бланка ведёт сюда с версией: вводится и сдаётся она, а не действующая (#169)
+  const [params] = useSearchParams();
+  const version = blankVersion(params.get("v"));
   const navigate = useNavigate();
   const [subject, setSubject] = useState("");
   const [answers, setAnswers] = useState<Map<string, Answer>>(new Map());
@@ -30,17 +34,7 @@ export default function Administer() {
   const [fast, setFast] = useState(false);
   const started = useMemo(() => new Date().toISOString(), []);
 
-  const res = useResource(
-    async () => {
-      const [survey, patients] = await Promise.all([
-        api.survey(id!),
-        api.patients().then((p) => p.items),
-      ]);
-      return { survey, patients };
-    },
-    [id],
-    { enabled: !!id },
-  );
+  const res = useResource(() => loadAdminister(id!, version), [id, version], { enabled: !!id });
   const survey: SurveyFull | null = res.data?.survey ?? null;
   const patients: Patient[] = res.data?.patients ?? [];
 
@@ -63,25 +57,7 @@ export default function Administer() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.submitFor(id, {
-        onBehalfOf: subject,
-        // считается по той версии, пункты которой на экране, а не по действующей на момент нажатия
-        versionId: survey.versionId,
-        startedAt: started,
-        durationMs: Date.now() - new Date(started).getTime(),
-        status: "completed",
-        events: [],
-        /*
-         * Только ответы на показанные пункты. Движок считает всё, что пришло,
-         * а ответ на пункт, скрытый условием, остаётся в памяти формы: в ASSIST
-         * специалист отметил «да» по веществу, заполнил частоту, потом исправил
-         * «да» на «нет» — и балл по веществу, которого человек не употреблял,
-         * ушёл бы в протокол. Пациентская форма (Runner) шлёт так же — только
-         * видимые. Отвергнуто чистить ответы при смене условия: скрытый пункт
-         * вернётся с прежним ответом, если специалист передумает обратно.
-         */
-        answers: [...answers.values()].filter((a) => visible.some((q) => q.id === a.questionId)),
-      });
+      const res = await api.submitFor(id, administerPayload(survey, { subject, startedAt: started, answers }));
       setResult(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : ut("ad.saveFailed"));
