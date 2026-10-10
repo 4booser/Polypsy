@@ -195,7 +195,7 @@ Deploys go through GitHub Actions. A pushed `v*` tag starts `.github/workflows/d
 
 Backups:
 - A nightly `pg_dump`, encrypted with gpg and verified by reading it back.
-- Kept as 7 daily, 4 weekly and 12 monthly copies (`scripts/backup.sh`).
+- Kept as 7 daily, 4 weekly and 12 monthly copies (`scripts/backup.sh`). The snapshot taken before each deploy goes to its own `predeploy/` folder (last 10 kept) and never pushes out the scheduled copies.
 - A weekly timer and the monthly workflow restore the newest copy into a throwaway database and compare it with production (`scripts/verify-backup.sh`).
 - Each copy is also uploaded to an S3-compatible bucket at another provider when `OFFSITE_URL` is set (`scripts/offsite.sh`); the `offsite-status` action checks that every local copy exists there.
 
