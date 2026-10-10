@@ -52,6 +52,8 @@ let tab: Tab;
 let calls: string[] = [];
 /** Принимает ли сервер refresh */
 let refreshAlive = true;
+/** Обмен не доходит (сеть) или сервер сбоит (503) — связь, а не сессия */
+let refreshBroken: null | "network" | 503 = null;
 
 beforeEach(async () => {
   // общий на вкладку обмен отпускается таймером (api.ts, tryRefresh): не брать итог прошлого теста
@@ -60,6 +62,7 @@ beforeEach(async () => {
   g.sessionStorage = memoryStorage();
   calls = [];
   refreshAlive = true;
+  refreshBroken = null;
 
   const cache = new QueryClient();
   cache.setQueryData(["patientCard", "p1"], { fullName: "Коваль Ірина" });
@@ -88,6 +91,8 @@ beforeEach(async () => {
     const reply = (status: number, body: unknown) =>
       new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
     if (path === "/api/auth/refresh") {
+      if (refreshBroken === "network") throw new TypeError("Failed to fetch");
+      if (refreshBroken === 503) return reply(503, { error: "Повторіть запит", code: "err.retryRequest" });
       return refreshAlive ? reply(200, { token: "access-new", refreshToken: "refresh-2" }) : reply(401, { error: "Сесія закінчилась" });
     }
     if (path === "/api/auth/login") return reply(401, { error: "Невірний пароль" });
@@ -138,6 +143,21 @@ describe("окончательный 401", () => {
     expect(tab.user).toEqual({ id: "doctor-a" });
     expect(tokenStore.getRefresh()).toBe("refresh-1");
   });
+
+  for (const broken of ["network", 503] as const) {
+    test(`обмен refresh не дошёл (${broken}) — сессия цела: токены на месте, вкладка остаётся, ошибка «нет связи»`, async () => {
+      // ревью PR #196: секундный обрыв связи при продлении выкидывал врача из консоли
+      refreshBroken = broken;
+      await expect(api.patientCard("p1")).rejects.toMatchObject({ status: 0 });
+      await afterScreensGone();
+
+      expect(tab.ended, "вкладку вывели на вход из-за связи").toBe(0);
+      expect(tab.user).toEqual({ id: "doctor-a" });
+      expect(tab.cache.getQueryData<{ fullName: string }>(["patientCard", "p1"])).toEqual({ fullName: "Коваль Ірина" });
+      expect(tokenStore.own()).toBe("access-old");
+      expect(tokenStore.getRefresh()).toBe("refresh-1");
+    });
+  }
 
   test("AuthProvider сбрасывает вкладку по событию", () => {
     const src = readFileSync(resolve(import.meta.dir, "../src/auth.tsx"), "utf8");

@@ -320,7 +320,7 @@ const REFRESH_LOCK = "quizzy.auth.refresh";
  * чужая — в хранилище уже сессия другого человека (#166), и её вкладка не
  * берёт и не трогает.
  */
-type RefreshOutcome = "renewed" | "failed" | "foreign";
+type RefreshOutcome = "renewed" | "failed" | "foreign" | "unreachable";
 let refreshing: Promise<RefreshOutcome> | null = null;
 
 /** Выполнить под межвкладочным замком, если браузер его умеет */
@@ -356,6 +356,14 @@ async function refreshUnlessRenewed(stale: string | null): Promise<RefreshOutcom
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken: raw }),
     });
+    /*
+     * Сервер недоступен или сбоит (5xx, в том числе 503 «повторите» и
+     * обслуживание) — сессия от этого не кончилась. Прежде любой сбой
+     * обмена стирал токены, а с #173 ещё и выводил вкладку на вход: врача
+     * выкидывало из консоли из-за секундного обрыва связи (ревью PR #196).
+     * Сессию гасит только отказ самого сервера — 4xx.
+     */
+    if (res.status >= 500) return "unreachable";
     if (!res.ok) return "failed";
     const pair = (await res.json()) as { token: string; refreshToken: string };
     // до того, как отпустить замок: следующая вкладка должна увидеть новую пару
@@ -363,7 +371,8 @@ async function refreshUnlessRenewed(stale: string | null): Promise<RefreshOutcom
     tokenStore.setRefresh(pair.refreshToken);
     return "renewed";
   } catch {
-    return "failed";
+    // запрос не дошёл или ответ потерялся — связи нет, а не сессии
+    return "unreachable";
   }
 }
 
@@ -601,6 +610,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   } else if (res.status === 401 && !retried && refreshesOn401(path)) {
     const outcome = await tryRefresh(token);
     if (outcome === "renewed") return request<T>(path, init, true);
+    // продлить не дала связь: токены целы, вкладка остаётся — ответ как у любого обрыва сети
+    if (outcome === "unreachable") throw new ApiError(netText("net.offline"), 0);
     /*
      * Чужая сессия в хранилище (#166) — не наша, и стирать её нельзя: это
      * выкинуло бы из соседней вкладки человека, который только что вошёл.
