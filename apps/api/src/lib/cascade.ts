@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { noteCode, type ScoreResult } from "@quizzy/shared";
 import { db } from "../db";
+import { inSavepoint } from "../db/context";
+import { isRetryableDbError } from "../db/errors";
 import { endOfDayAfter } from "./day";
 import { planFollowUps } from "./followup";
 import { grantAccess } from "./grantAccess";
@@ -33,7 +35,9 @@ import { log } from "./log";
  *      бесконечная петля «прошёл → назначено то же самое» невозможна.
  *
  * Ошибки не пробрасываются: сданное прохождение не должно откатываться
- * из-за неудачного каскада.
+ * из-за неудачного каскада. Неудачный шаг откатывается целиком, вместе со
+ * строкой журнала (cascadeStep). Исключение — взаимоблокировка и сбой
+ * сериализации: они уходят наверх, и сдача получает 503 «повторите».
  */
 
 export interface CascadeOutcome {
@@ -75,21 +79,49 @@ export async function runCascades(
     ).filter((band) => scaleOfBand.get(band.id) === band.scaleId);
 
     for (const band of hit) {
-      if (band.cascadeBatteryId) {
-        await assignCascade(band.cascadeBatteryId, userId, surveyId, band.cascadeDueDays, outcome);
-      }
-      if (band.followUpDays?.trim()) {
-        outcome.scheduledFollowUps += await scheduleFollowUps(
-          surveyId,
-          userId,
-          band.followUpDays,
+      const batteryId = band.cascadeBatteryId;
+      if (batteryId) {
+        await cascadeStep("assign", surveyId, () =>
+          assignCascade(batteryId, userId, surveyId, band.cascadeDueDays, outcome),
         );
+      }
+      const spec = band.followUpDays?.trim();
+      if (spec) {
+        outcome.scheduledFollowUps += (await cascadeStep("followup", surveyId, () =>
+          scheduleFollowUps(surveyId, userId, spec),
+        )) ?? 0;
       }
     }
   } catch (error) {
+    if (isRetryableDbError(error)) throw error;
     log.error("cascade.failed", { surveyId, error: String(error) });
   }
   return outcome;
+}
+
+/**
+ * Шаг каскада — своей точкой сохранения (#145).
+ *
+ * Назначение и строка журнала о нём — одно целое. Прежде сбой строки
+ * журнала после выданного назначения гасился общим перехватом ниже, и
+ * назначение фиксировалось без следа в журнале. Теперь сбой откатывает шаг
+ * целиком, остальные шаги и сдача идут дальше — каскад, как и прежде,
+ * сдачу не роняет.
+ *
+ * Кроме взаимоблокировки и сбоя сериализации (isRetryableDbError): их
+ * отдаём наверх, и вся сдача получает 503 «повторите». Шаг здесь не сбоит,
+ * а столкнулся с соседним запросом; молча откатив его, мы потеряли бы
+ * назначение, которое на повторе выдалось бы как положено, а 503 очереди
+ * сдач повторяют сами — с тем же clientRequestId, без дубля.
+ */
+async function cascadeStep<T>(step: string, surveyId: string, run: () => Promise<T>): Promise<T | null> {
+  try {
+    return await inSavepoint(run);
+  } catch (error) {
+    if (isRetryableDbError(error)) throw error;
+    log.error("cascade.step_failed", { step, surveyId, error: String(error) });
+    return null;
+  }
 }
 
 async function assignCascade(
@@ -182,7 +214,6 @@ async function assignCascade(
     return;
   }
 
-  outcome.assignedBatteries.push(battery.title);
   await auditSystem({
     action: "cascade.assign",
     resourceType: "battery",
@@ -190,6 +221,8 @@ async function assignCascade(
     subjectUserId: userId,
     details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays, ...(missed.length ? { missed: missed.length } : {}) },
   });
+  // в итог — только после строки журнала: не легла она — шаг откатан, и назначения нет
+  outcome.assignedBatteries.push(battery.title);
 }
 
 /**
