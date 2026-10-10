@@ -1671,6 +1671,15 @@ export const ERRORS = {
     ru: "Это приглашение выписано в другом отделении — управлять им могут только там",
     en: "This invitation was issued in another department — only that department can manage it",
   },
+
+  /* ── w20:sec ── */
+  /* запись, выдача методики или набора человеку, которого уже ведёт кто-то другой (#139, lib/otherCare.ts) */
+  "err.patientInOtherCare": {
+    uk: "Цю людину вже веде інше відділення чи фахівець — записати її або призначити їй методику можуть лише вони",
+    ru: "Этого человека уже ведёт другое отделение или специалист — записать его или назначить ему методику могут только они",
+    en: "Another department or specialist already looks after this person — only they can book or assign to them",
+  },
+
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;
