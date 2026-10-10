@@ -2084,7 +2084,10 @@ export interface ResponseDetailAnswer {
   options: {
     id: string;
     text: string;
-    /** Выбор этого варианта поднимает тревогу немедленно */
+    /**
+     * Выбор этого варианта поднимает тревогу немедленно. Только персоналу:
+     * обследуемому ключ не отдаётся (#141), у него этих двух полей нет.
+     */
     riskFlag: boolean;
     riskSeverity: RiskSeverity | null;
     /**
@@ -2099,6 +2102,7 @@ export interface ResponseDetailAnswer {
   date: string | null;
   matrix: Record<string, string> | null;
   ranking: string[] | null;
+  /** Балл за ответ — вес выбранного варианта; обследуемому null (#141) */
   score: number | null;
   durationMs: number;
   changeCount: number;

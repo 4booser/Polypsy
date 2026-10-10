@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { isQuestionVisible, type Answer, type Question, type SurveyFull } from "@quizzy/shared";
+import { isQuestionVisible, type Answer, type Question, type ResponseDetail, type SurveyFull } from "@quizzy/shared";
 import { adminA, appApi, db, makeUser, root, surveyInA, type Person } from "./fixtures";
 import { surveyGroups } from "../src/db/schema";
 
@@ -265,6 +265,65 @@ describe("ключ методики и пациент (#141)", () => {
         }),
       });
       expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+    },
+    20_000,
+  );
+});
+
+describe("своё прохождение пациента — тоже без ключа (#141, GET /api/responses/:id)", () => {
+  test(
+    "пациент не видит критических вариантов, весов и баллов за ответы; сотрудник видит",
+    async () => {
+      const survey = await publishedSurvey(CONTENT);
+      const person = await patient();
+      const full = (await appApi<SurveyFull>(`/api/surveys/${survey.id}`, root.token)).body;
+      const [gate, death, nights, lie] = full.questions as [Question, Question, Question, Question];
+
+      // ответы без тревоги: критический вариант в пункте есть, но не выбран — очередь дежурного не трогается
+      const answers = [
+        { questionId: gate.id, optionIds: [gate.options[0]!.id] },
+        { questionId: death.id, optionIds: [death.options[1]!.id] },
+        { questionId: nights.id, number: 2 },
+        { questionId: lie.id, optionIds: [lie.options[1]!.id] },
+      ].map((a) => ({ ...a, durationMs: 2000, changeCount: 0, visitCount: 1 }));
+      const submitted = await appApi(`/api/surveys/${survey.id}/responses`, person.token, {
+        method: "POST",
+        body: JSON.stringify({
+          versionId: full.versionId,
+          startedAt: new Date(Date.now() - 60_000).toISOString(),
+          durationMs: 60_000,
+          events: [],
+          answers,
+        }),
+      });
+      expect(submitted.status, JSON.stringify(submitted.body)).toBe(201);
+
+      const mine = await appApi<ResponseDetail>(`/api/responses/${submitted.body.id}`, person.token);
+      expect(mine.status).toBe(200);
+      expect(mine.body.answers.length).toBeGreaterThan(0);
+      expect(JSON.stringify(mine.body).includes('"riskFlag"'), "riskFlag в прохождении пациента").toBe(false);
+      for (const a of mine.body.answers) {
+        expect(a.score, `пункт ${a.position}: балл за ответ`).toBeNull();
+        for (const o of a.options) {
+          expect(o.text, "пропал текст варианта").toBeTruthy();
+          for (const field of ["riskFlag", "riskSeverity", "keyCode", "riskLabel"]) {
+            expect(Object.hasOwn(o, field), `пункт ${a.position}: ${field}`).toBe(false);
+          }
+          expect(o.score, `пункт ${a.position}: вес варианта`).toBeNull();
+        }
+      }
+      // что человек ответил — видно, как прежде
+      expect(mine.body.answers.find((a) => a.questionId === death.id)?.optionIds).toEqual([death.options[1]!.id]);
+
+      // положительный контроль: сотрудник видит критический вариант, вес и балл за ответ
+      const staff = await appApi<ResponseDetail>(`/api/responses/${submitted.body.id}`, root.token);
+      expect(staff.status).toBe(200);
+      const staffDeath = staff.body.answers.find((a) => a.questionId === death.id)!;
+      expect(staffDeath.options[0]!.riskFlag).toBe(true);
+      expect(staffDeath.options[0]!.riskSeverity).toBe("severe");
+      expect(staffDeath.options[0]!.score).toBe(3);
+      // «Ніколи» с обратным ключом даёт 2
+      expect(staff.body.answers.find((a) => a.questionId === gate.id)!.score).toBe(2);
     },
     20_000,
   );

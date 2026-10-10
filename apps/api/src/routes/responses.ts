@@ -28,7 +28,7 @@ import {
 } from "../db/schema";
 import { attachToCase } from "../lib/alertCases";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { getSurvey, getSurveyForResponse } from "../lib/surveys";
+import { getSurvey, getSurveyForResponse, respondentView } from "../lib/surveys";
 import { hitBand, ladderOf, storedScoreResult, storedScoreResults } from "../lib/storedScores";
 import { detectRisks } from "../lib/risk";
 import { assertAnswersInVersion, persistSubmission } from "../lib/submission";
@@ -1150,6 +1150,13 @@ responseRoutes.get("/responses/:id", async (c) => {
    * запрашивает.
    */
   const staffView = isStaff(user);
+  /*
+   * И весь ключ — тоже (#141): обследуемому пункты и варианты той же копией
+   * без ключа, что отдаёт GET /api/surveys/:id (respondentView), — без
+   * критических вариантов (riskFlag, riskSeverity) и порогов. Балл за
+   * ответ — тот же вес выбранного варианта, ему тоже null.
+   */
+  const shownQuestions = staffView ? survey.questions : respondentView(survey).questions;
 
   await audit(c, {
     action: "response.read",
@@ -1210,7 +1217,7 @@ responseRoutes.get("/responses/:id", async (c) => {
         ),
       };
     }),
-    answers: survey.questions
+    answers: shownQuestions
       .filter((q) => q.type !== "info")
       .map((q) => {
         const a = answersByQuestion.get(q.id);
@@ -1248,7 +1255,7 @@ responseRoutes.get("/responses/:id", async (c) => {
           date: a?.date ?? null,
           matrix: a?.matrix ?? null,
           ranking: a?.ranking ?? null,
-          score: a?.score ?? null,
+          score: staffView ? (a?.score ?? null) : null,
           durationMs: a?.durationMs ?? 0,
           changeCount: a?.changeCount ?? 0,
           visitCount: a?.visitCount ?? 0,
