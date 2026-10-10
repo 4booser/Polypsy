@@ -1,8 +1,9 @@
 import { Hono, type Context } from "hono";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { ageAt, applyQuasi, contentLangFor, exportQuery, generalizeQuasi, renderNote, serverText } from "@quizzy/shared";
-import type { AgeBand, ContentLang, Generalization, Lang, ServerTextKey, TextParams } from "@quizzy/shared";
+import type { AgeBand, ContentLang, Generalization, Lang, QuasiRow, ServerTextKey, TextParams } from "@quizzy/shared";
 import { db } from "../db";
+import { inIds } from "../db/ids";
 import { env } from "../env";
 import { answers, options, questions, responseScores, responses, scales, surveyVersions, users } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -164,19 +165,21 @@ function caseCoder(profile: ExportProfile): (responseId: string) => string {
  * Считается по самим выгружаемым строкам, а не по всей базе: защищать надо то,
  * что уходит наружу. Расчёт по базе дал бы «в системе таких много», хотя в
  * этой выгрузке человек один.
+ *
+ * Строки — те же, что уходят в файл, а не загруженные заново (#182): прежде
+ * план грузил их сам, и обезличенная выгрузка делала всю загрузку дважды.
  */
-async function quasiPlan(
-  surveyId: string,
-  profile: ExportProfile,
-): Promise<Generalization | null> {
-  if (profile !== "deidentified") return null;
-  const rows = await loadRows(surveyId);
-  return generalizeQuasi(
-    rows.map((c) => ({
+async function quasiPlan(rows: RowContext[]): Promise<Generalization> {
+  const cells: QuasiRow[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (i && i % LOAD_BATCH === 0) await breathe();
+    const c = rows[i]!;
+    cells.push({
       sex: (c.user?.sex as "male" | "female" | null) ?? null,
       band: bandName(ageAt(decryptField(c.user?.birthDate ?? null), c.response.submittedAt, env.institutionTz)),
-    })),
-  );
+    });
+  }
+  return generalizeQuasi(cells);
 }
 
 /** Название полосы для k-анонимности; null — возраст неизвестен */
@@ -602,20 +605,43 @@ function normalizationLabel(n: string): ServerTextKey {
   }
 }
 
+/**
+ * Прохождений на порцию загрузки строк.
+ *
+ * Ответы и баллы порции — по одному запросу, список id — одним параметром
+ * (db/ids.ts): параметром на id методика выше 65 533 прохождений упиралась в
+ * потолок драйвера (#184). Порция же — кусок синхронной работы между
+ * передышками цикла событий: разбор и склейка ответов порции — около
+ * десяти миллисекунд, а не секунды подряд, в которые процесс не отвечает
+ * никому — ни сдаче методик, ни тревогам (#182). Мельче нельзя без нужды:
+ * каждая порция — два запроса к базе. Крупнее — дольше ждёт соседний
+ * запрос: он делает с десяток шагов, и на каждом может попасть на порцию
+ * (при тысяче лёгкий запрос во время выгрузки 20 тыс. × 20 ждал до 300 мс).
+ */
+const LOAD_BATCH = 250;
+
+/** Отдать цикл событий соседним запросам между порциями синхронной работы */
+function breathe(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Строки, разложенные по прохождению, в том порядке, в каком пришли */
+function byResponse<T extends { responseId: string }>(list: T[]): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of list) {
+    const bucket = map.get(item.responseId);
+    if (bucket) bucket.push(item);
+    else map.set(item.responseId, [item]);
+  }
+  return map;
+}
+
 async function loadRows(surveyId: string): Promise<RowContext[]> {
   const rows = await db
     .select({ response: responses, user: users })
     .from(responses)
     .leftJoin(users, eq(users.id, responses.userId))
     .where(and(eq(responses.surveyId, surveyId), eq(responses.status, "completed")));
-
-  const ids = rows.map((r) => r.response.id);
-  const answerRows = ids.length
-    ? await db.select().from(answers).where(inArray(answers.responseId, ids))
-    : [];
-  const scoreRows = ids.length
-    ? await db.select().from(responseScores).where(inArray(responseScores.responseId, ids))
-    : [];
 
   /*
    * Словари всех версий методики сразу: позиция пункта, порядковый номер
@@ -645,28 +671,43 @@ async function loadRows(surveyId: string): Promise<RowContext[]> {
     seen.set(key, n + 1);
   }
 
-  return rows.map((r) => {
-    const answer = new Map<number, (typeof answerRows)[number]>();
-    for (const a of answerRows) {
-      if (a.responseId !== r.response.id) continue;
-      const position = positionOf.get(a.questionId);
-      if (position !== undefined) answer.set(position, a);
+  /*
+   * Склейка — словарём «прохождение → его ответы и баллы», а не перебором.
+   *
+   * Прежде для КАЖДОГО прохождения перебирались ВСЕ ответы и баллы
+   * методики: Big Five, 7 тыс. прохождений и 358 тыс. ответов — 2,5 млрд
+   * сравнений, 66 с синхронно, а в обезличенном профиле дважды (#182).
+   */
+  const result: RowContext[] = [];
+  for (let start = 0; start < rows.length; start += LOAD_BATCH) {
+    const batch = rows.slice(start, start + LOAD_BATCH);
+    const ids = batch.map((r) => r.response.id);
+    const answerRows = await db.select().from(answers).where(inIds(answers.responseId, ids));
+    const scoreRows = await db.select().from(responseScores).where(inIds(responseScores.responseId, ids));
+    const answersOf = byResponse(answerRows);
+    const scoresOf = byResponse(scoreRows);
+    for (const r of batch) {
+      const answer = new Map<number, (typeof answerRows)[number]>();
+      for (const a of answersOf.get(r.response.id) ?? []) {
+        const position = positionOf.get(a.questionId);
+        if (position !== undefined) answer.set(position, a);
+      }
+      const score = new Map<string, (typeof scoreRows)[number]>();
+      for (const s of scoresOf.get(r.response.id) ?? []) {
+        const code = codeOf.get(s.scaleId);
+        if (code !== undefined) score.set(code, s);
+      }
+      result.push({
+        response: r.response,
+        user: r.user,
+        answer,
+        score,
+        version: r.response.versionId ? (versionNo.get(r.response.versionId) ?? null) : null,
+        optionIndex,
+      });
     }
-    const score = new Map<string, (typeof scoreRows)[number]>();
-    for (const s of scoreRows) {
-      if (s.responseId !== r.response.id) continue;
-      const code = codeOf.get(s.scaleId);
-      if (code !== undefined) score.set(code, s);
-    }
-    return {
-      response: r.response,
-      user: r.user,
-      answer,
-      score,
-      version: r.response.versionId ? (versionNo.get(r.response.versionId) ?? null) : null,
-      optionIndex,
-    };
-  });
+  }
+  return result;
 }
 
 /**
@@ -714,14 +755,17 @@ spssRoutes.get("/surveys/:id/data.csv", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const { profile, lang, labels, purpose } = await exportOptions(c);
-  const kanon = await quasiPlan(surveyId, profile);
-  const { vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
+  // строки — один раз: план обобщения считается по тем же, что уходят в файл
   const rows = await loadRows(surveyId);
+  const kanon = profile === "deidentified" ? await quasiPlan(rows) : null;
+  const { vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
 
-  const body = [
-    vars.map((v) => v.name).join(","),
-    ...rows.map((ctx) => vars.map((v) => csvCell(v.value(ctx))).join(",")),
-  ].join("\r\n");
+  const lines = [vars.map((v) => v.name).join(",")];
+  for (let i = 0; i < rows.length; i++) {
+    if (i && i % LOAD_BATCH === 0) await breathe();
+    lines.push(vars.map((v) => csvCell(v.value(rows[i]!))).join(","));
+  }
+  const body = lines.join("\r\n");
 
   // хэш датасета — воспроизводимость: в статье цитируется конкретная выгрузка
   const datasetHash = new Bun.CryptoHasher("sha256").update(body).digest("hex");
@@ -985,7 +1029,7 @@ spssRoutes.get("/surveys/:id/manifest.json", async (c) => {
   const surveyId = c.req.param("id");
   await assertSurveyAccess(c.get("user"), surveyId);
   const { profile, lang, labels, purpose } = await exportOptions(c);
-  const kanon = await quasiPlan(surveyId, profile);
+  const kanon = profile === "deidentified" ? await quasiPlan(await loadRows(surveyId)) : null;
   const { survey, vars } = await buildSchema(surveyId, lang, profile, kanon, labels);
   const say = sayer(labels);
 

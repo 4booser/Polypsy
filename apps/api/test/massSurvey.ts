@@ -120,3 +120,17 @@ export async function massResponses(s: MassSurvey, from: number, count: number, 
     select ${tag} || '-r' || g || '-s', ${tag} || '-r' || g, ${s.scaleId}, g % 10, g % 10, 'raw', 30, (g % 10) * 10, true
     from generate_series(${from}::int, ${from + count - 1}::int) g`);
 }
+
+/**
+ * Убрать посев целиком — в afterAll файла, который его завёл.
+ *
+ * Файлы сюиты идут одним процессом по одной базе, и объём остаётся тем,
+ * кто придёт следом: обходы «каждый GET под ролью приложения» и сводки по
+ * всей базе на лишних десятках тысяч прохождений упирались в свои
+ * таймауты. Прохождения, ответы и баллы уходят каскадом от методики.
+ */
+export async function dropMass(s: MassSurvey): Promise<void> {
+  await db.execute(sql`delete from surveys where id = ${s.surveyId}`);
+  await db.execute(sql`delete from users where id like ${`${s.tag}-u%`}`);
+  await db.execute(sql`delete from survey_groups where id = ${s.groupId}`);
+}

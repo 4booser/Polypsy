@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db, makeUser, sql, type Person } from "./fixtures";
 import { taggedAppRolePool } from "./appRole";
-import { massResponses, massSurvey, type MassSurvey } from "./massSurvey";
+import { dropMass, massResponses, massSurvey, type MassSurvey } from "./massSurvey";
 // само приложение, без обёртки fixtures: запросы этого файла идут своим пулом роли приложения
 import { app } from "../src/app";
 import { db as appDb, runOnPool, type PoolOverride } from "../src/db";
@@ -56,7 +56,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await Promise.all(Object.values(pools ?? {}).map((p) => p.close()));
-});
+  if (s) await dropMass(s);
+}, 60_000);
 
 describe("список id — одним параметром", () => {
   test("условие по 100 тыс. id собирается в один параметр, а не в сто тысяч", () => {

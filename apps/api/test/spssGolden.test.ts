@@ -343,6 +343,22 @@ async function file(name: string, profile: string): Promise<string> {
   return new TextDecoder("utf-8", { ignoreBOM: true }).decode(await res.arrayBuffer());
 }
 
+/**
+ * Файл, разобранный для сравнения с эталоном: BOM и заголовок — как есть,
+ * строки данных — каждая байт в байт, но без порядка между ними.
+ *
+ * Порядок строк — порядок, в котором база отдаёт прохождения: запрос
+ * выгрузки сортировки не задаёт (и переделка склейки этот запрос не
+ * трогала). На чистой базе он совпадает с порядком посева, но стоит
+ * соседнему файлу сюиты переписать строки прохождений — и база отдаёт их
+ * иначе. Сверять порядок значило бы сверять раскладку таблицы, а не
+ * выгрузку; разделитель строк при этом проверяется — им файл и режется.
+ */
+function lines(text: string): { head: string; rows: string[] } {
+  const [head = "", ...rows] = text.split("\r\n");
+  return { head, rows: rows.sort() };
+}
+
 /** Манифест без момента выгрузки и дат создания версий — они от запуска к запуску свои */
 function stable(manifest: string): unknown {
   const m = JSON.parse(manifest) as { exportedAt: string; versions: { createdAt: string }[] };
@@ -352,17 +368,18 @@ function stable(manifest: string): unknown {
 
 describe("SPSS-выгрузка: эталон до переделки склейки", () => {
   test("data.csv, полный профиль", async () => {
-    expect(await file("data.csv", "full")).toBe(`\ufeff${FULL}`);
+    expect(lines(await file("data.csv", "full"))).toEqual(lines(`\ufeff${FULL}`));
   });
 
   test("data.csv, обезличенный профиль", async () => {
-    expect(await file("data.csv", "deidentified")).toBe(`\ufeff${DEIDENTIFIED}`);
+    expect(lines(await file("data.csv", "deidentified"))).toEqual(lines(`\ufeff${DEIDENTIFIED}`));
   });
 
   test("data.csv, анонимный профиль: всё, кроме case_id, — он случайный на каждую выгрузку", async () => {
-    const lines = (await file("data.csv", "anonymous")).split("\r\n");
-    expect(lines.slice(1).every((l) => /^A[0-9A-F]{10},/.test(l))).toBe(true);
-    expect(lines.map((l) => l.replace(/^\ufeff?[^,]*,/, "")).join("\r\n")).toBe(ANONYMOUS);
+    const all = (await file("data.csv", "anonymous")).split("\r\n");
+    expect(all[0]!.startsWith("\ufeffcase_id,")).toBe(true);
+    expect(all.slice(1).every((l) => /^A[0-9A-F]{10},/.test(l))).toBe(true);
+    expect(lines(all.map((l) => l.replace(/^\ufeff?[^,]*,/, "")).join("\r\n"))).toEqual(lines(ANONYMOUS));
   });
 
   test("manifest.json, обезличенный и полный", async () => {
