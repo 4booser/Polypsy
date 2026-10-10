@@ -29,7 +29,8 @@ PG_BASE="${PG_BASE%/}"
 
 # Окружение вызывающего не должно подменять то, что проверяется.
 unset DATABASE_URL BACKUP_DIR BACKUP_PASSPHRASE BACKUP_KIND PG_EXEC APP_EXEC \
-  APP_DB_HOST INSTANCES ENCRYPTION_KEY NODE_ENV
+  APP_DB_HOST INSTANCES ENCRYPTION_KEY NODE_ENV \
+  OFFSITE_URL OFFSITE_KEY_ID OFFSITE_SECRET OFFSITE_REGION
 
 for tool in psql pg_dump pg_restore gpg zstd bun; do
   command -v "$tool" >/dev/null 2>&1 || { echo "нет $tool — сценарий не запустить" >&2; exit 2; }
@@ -165,8 +166,13 @@ if [ -n "$copy" ] && ! LC_ALL=C grep -aqF "$marker" "$copy" && ! zstd -q -t "$co
 else
   bad "в копии виден открытый текст или она не зашифрована"
 fi
-if [ -n "$copy" ] && gpg --batch --quiet --pinentry-mode loopback --no-symkey-cache --passphrase-fd 3 \
-     --decrypt "$copy" 3<<<"$pass" 2>/dev/null | zstd -q -d -c | LC_ALL=C grep -aqF "$marker"; then
+# grep -c, а не -q: -q выходит на первом совпадении, zstd и gpg выше по
+# конвейеру получают SIGPIPE, и под pipefail исправная копия «не содержит
+# данных» — в зависимости от времени и буфера (#165). -c дочитывает поток до
+# конца, и код конвейера снова значит «расшифровалось, распаковалось, маркер
+# есть»; GNU grep с выводом в /dev/null тоже выходит рано, поэтому счёт.
+if [ -n "$copy" ] && n_marker="$(gpg --batch --quiet --pinentry-mode loopback --no-symkey-cache --passphrase-fd 3 \
+     --decrypt "$copy" 3<<<"$pass" 2>/dev/null | zstd -q -d -c | LC_ALL=C grep -acF "$marker")" && [ "$n_marker" -gt 0 ]; then
   ok "внутри шифра — дамп с данными (маркер находится после расшифровки)"
 else
   bad "расшифрованная копия не содержит данных"
@@ -195,7 +201,7 @@ if [ "$fp_src" = "$fp_dst" ]; then
   ok "содержимое совпадает с исходной: $(printf '%s\n' "$fp_src" | wc -l | tr -d ' ') таблиц и последовательностей"
 else
   bad "содержимое восстановленной базы отличается"
-  diff <(printf '%s\n' "$fp_src") <(printf '%s\n' "$fp_dst") | head -n 10 | sed 's/^/      | /'
+  diff <(printf '%s\n' "$fp_src") <(printf '%s\n' "$fp_dst") | head -n 10 | sed 's/^/      | /' || true
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -344,6 +350,77 @@ else
   bad "снимок перед обновлением не восстановился или отличается" "$work/upg-restore.log"
 fi
 no_leak "$work/upg.log" "upgrade-instances.sh"
+
+# ─────────────────────────────────────────────────────────────────────────────
+section "снимок перед выкаткой (BACKUP_KIND=predeploy) не трогает ротацию"
+# Выкатка запускала службу копий без метки, и каждый её снимок становился
+# суточной копией — в воскресенье недельной, 1-го числа месячной, — а
+# ротация по количеству вытесняла им копии прошлых дней (#156). Часы здесь
+# подменены на воскресенье 1-го числа: худший день, когда копия без метки
+# уходит в monthly и вытесняет там старейшую. Каталоги расписания заполнены
+# до предела (7/4/12), в predeploy/ — 9 прежних снимков: после трёх выкаток
+# их 12, и срок хранения (10) обязан сработать в своём каталоге и только в
+# нём.
+real_date="$(command -v date)"
+mkdir -p "$work/datebin"
+# shellcheck disable=SC2016 # $1 и $@ — для заглушки, а не для этой оболочки
+printf '#!/bin/sh\ncase "$1" in\n  +%%u) echo 7 ;;\n  +%%d) echo 01 ;;\n  *) exec "%s" "$@" ;;\nesac\n' "$real_date" > "$work/datebin/date"
+chmod +x "$work/datebin/date"
+pd="$work/pd"
+seed() { # каталог сколько
+  mkdir -p "$pd/$1"
+  for i in $(seq 1 "$2"); do
+    f="$pd/$1/quizzy_2026-01-$(printf '%02d' "$i")_030000.dump.zst.gpg"
+    printf 'прежняя копия %s %s' "$1" "$i" > "$f"
+    touch -t "202601$(printf '%02d' "$i")0300" "$f"
+  done
+}
+seed daily 7; seed weekly 4; seed monthly 12; seed predeploy 9
+sched() { (cd "$pd" && find daily weekly monthly -type f -exec cksum {} + | sort); }
+sched_before="$(sched)"
+
+pd_failed=0
+real_snaps=""
+for i in 1 2 3; do
+  # имя снимка — с точностью до секунды
+  sleep 1
+  if PATH="$work/datebin:$PATH" DATABASE_URL="$SRC_URL" BACKUP_DIR="$pd" BACKUP_PASSPHRASE="$pass" BACKUP_KIND=predeploy \
+       ./scripts/backup.sh > "$work/pd-$i.log" 2>&1 && grep -q 'объектов в архиве: [1-9]' "$work/pd-$i.log"; then
+    real_snaps="$real_snaps $(sed -n 's/^бэкап: \([^ ]*\) .*/\1/p' "$work/pd-$i.log")"
+  else
+    pd_failed=$((pd_failed + 1)); bad "снимок выкатки №$i не снят или не прочитан обратно" "$work/pd-$i.log"
+  fi
+done
+[ "$pd_failed" = "0" ] && ok "три снимка выкатки сняты и прочитаны обратно"
+if [ "$(sched)" = "$sched_before" ]; then
+  ok "daily/weekly/monthly после трёх выкаток в воскресенье 1-го — те же файлы, байт в байт (7/4/12)"
+else
+  bad "снимки выкатки задели копии по расписанию"
+  diff <(printf '%s\n' "$sched_before") <(sched) | head -n 10 | sed 's/^/      | /' || true
+fi
+n_pd="$(find "$pd/predeploy" -type f | wc -l | tr -d ' ')"
+kept=1
+for f in $real_snaps; do case "$f" in "$pd/predeploy/"*) [ -f "$f" ] || kept=0 ;; *) kept=0 ;; esac; done
+if [ "$n_pd" = "10" ] && [ "$kept" = "1" ] && [ -n "$real_snaps" ] \
+   && [ ! -e "$pd/predeploy/quizzy_2026-01-01_030000.dump.zst.gpg" ] \
+   && [ ! -e "$pd/predeploy/quizzy_2026-01-02_030000.dump.zst.gpg" ] \
+   && [ -e "$pd/predeploy/quizzy_2026-01-03_030000.dump.zst.gpg" ]; then
+  ok "в predeploy/ — 10 последних: три новых на месте, два старейших прежних убраны"
+else
+  bad "срок хранения predeploy/ не тот: файлов $n_pd, новые на месте: $kept"
+fi
+for i in 1 2 3; do no_leak "$work/pd-$i.log" "снимок выкатки №$i"; done
+# Контроль: та же проверка видит ротацию, когда она есть. Копия без метки в
+# тот же «день» уходит в monthly и вытесняет старейшую месячную.
+sleep 1
+PATH="$work/datebin:$PATH" DATABASE_URL="$SRC_URL" BACKUP_DIR="$pd" BACKUP_PASSPHRASE="$pass" \
+  ./scripts/backup.sh > "$work/pd-sched.log" 2>&1 || true
+if [ "$(sched)" != "$sched_before" ] && [ ! -e "$pd/monthly/quizzy_2026-01-01_030000.dump.zst.gpg" ] \
+   && [ "$(find "$pd/monthly" -type f | wc -l | tr -d ' ')" = "12" ]; then
+  ok "контроль: копия без метки ушла в monthly и вытеснила старейшую — сверка выше ловит ротацию"
+else
+  bad "контроль не сработал: копия без метки не задела monthly — сверка выше ничего не доказывает" "$work/pd-sched.log"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 section "временные файлы"

@@ -18,7 +18,7 @@
  * сама до этого шага (deploy.yml), и предпроверка ловит сервер, где .env.docker
  * правили руками и секрет потерялся или скопирован из соседнего.
  */
-import "./env";
+import { env } from "./env";
 import "./lib/crypto";
 import { app } from "./app";
 import { client } from "./db";
@@ -26,3 +26,9 @@ import { client } from "./db";
 void app;
 await client.end({ timeout: 1 }).catch(() => {});
 console.log("envCheck: окружение разобрано");
+// В журнал выкатки — чем сервер встретит регистрацию с улицы: при пустой
+// OPEN_REGISTRATION в production она закрыта (env.ts, #155), и смена этого
+// поведения не должна проходить молча.
+console.log(
+  `envCheck: регистрация без приглашения — ${env.openRegistration ? "открыта (OPEN_REGISTRATION)" : "закрыта"}`,
+);

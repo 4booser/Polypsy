@@ -40,7 +40,7 @@ on:
           - catalog-status
           - catalog-force
       count:
-        description: "Сколько вымышленных людей завести (только для demo-fill)"
+        description: "Сколько вымышленных людей завести (только для demo-fill), от 1 до 500"
         required: false
         default: "120"
       keys:
@@ -56,6 +56,49 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      # Входные поля — до первого ssh (#154). Прежде count не проверялся
+      # вовсе и ложился в текст удалённой команды как есть: «120; что
+      # угодно» исполнялось на сервере, и закрытый перечень действий
+      # переставал быть границей — в том числе для держателя
+      # GITHUB_DISPATCH_TOKEN, которому задумано одно право. keys
+      # проверялся, но уже после того, как ssh открыт. Теперь отказ — здесь,
+      # без единого соединения с сервером; дальше идут только проверенные
+      # значения (выходы этого шага), а не поля как есть.
+      - name: Проверка входа
+        id: input
+        env:
+          ACTION: ${{ inputs.action || 'backup-verify' }}
+          COUNT: ${{ inputs.count }}
+          KEYS: ${{ inputs.keys }}
+        run: |
+          case "$ACTION" in
+            catalog-install|demo-fill|demo-purge|rls-check|audit-verify|leftovers|logs-web|logs-api|backup-verify|backup-status|offsite-status|slots-resync|catalog-status|catalog-force) ;;
+            *) echo "неизвестное действие: $ACTION" >&2; exit 1 ;;
+          esac
+          # count — только цифры, от 1 до 500 (предел demoFill.ts); пусто — 120.
+          # Проверяется при любом действии: непроверенное поле не должно
+          # доезжать даже туда, где оно сейчас не нужно.
+          checked_count="${COUNT:-120}"
+          if ! [[ "$checked_count" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$checked_count" -gt 500 ]; then
+            echo "count: целое число от 1 до 500 — получено: $COUNT" >&2
+            exit 1
+          fi
+          # keys — только для catalog-force: строчные буквы, цифры, «_», «-» и
+          # запятые, первым — буква или цифра (не ключ командной строки)
+          checked_keys=""
+          if [ "$ACTION" = "catalog-force" ]; then
+            if ! [[ "$KEYS" =~ ^[a-z0-9][a-z0-9_,-]{0,199}$ ]]; then
+              echo "ключи: буквы, цифры, запятые — получено: $KEYS" >&2
+              exit 1
+            fi
+            checked_keys="$KEYS"
+          fi
+          {
+            echo "action=$ACTION"
+            echo "count=$checked_count"
+            echo "keys=$checked_keys"
+          } >> "$GITHUB_OUTPUT"
+
       # Скрипты копий с сервера не берутся: выкатка привозит туда только
       # docker-compose.yml, и scripts/ на сервере — копия со дня настройки
       # (первый прогон проверки 2026-09-26 шёл старой версией). Проверка
@@ -88,16 +131,24 @@ jobs:
 
       - name: Выполнить
         env:
-          # у запуска по расписанию входных полей нет — это проверка копии
-          ACTION: ${{ inputs.action || 'backup-verify' }}
-          COUNT: ${{ inputs.count }}
-          KEYS: ${{ inputs.keys }}
+          # проверенные шагом «Проверка входа», а не поля как есть; у запуска
+          # по расписанию входных полей нет — это проверка копии
+          ACTION: ${{ steps.input.outputs.action }}
+          COUNT: ${{ steps.input.outputs.count }}
+          KEYS: ${{ steps.input.outputs.keys }}
         run: |
           # команда собирается ЗДЕСЬ, из выбранного действия, а не приходит
-          # строкой снаружи: иначе перечень действий ничего не ограничивает
+          # строкой снаружи: иначе перечень действий ничего не ограничивает.
+          # Числа и ключи ещё раз сверяются с образцом прямо перед тем, как
+          # лечь в команду: проверка в соседнем шаге не должна быть
+          # единственной стеной между полем формы и сервером.
           case "$ACTION" in
             catalog-install) CMD="bun apps/api/src/installCatalog.ts" ;;
-            demo-fill)       CMD="bun apps/api/src/demoFill.ts ${COUNT:-120}" ;;
+            demo-fill)
+              if ! [[ "$COUNT" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$COUNT" -gt 500 ]; then
+                echo "count не прошёл проверку: $COUNT"; exit 1
+              fi
+              CMD="bun apps/api/src/demoFill.ts $COUNT" ;;
             demo-purge)      CMD="bun apps/api/src/demoFill.ts purge" ;;
             rls-check)       CMD="bun apps/api/src/rlsReport.ts" ;;
             audit-verify)    CMD="bun apps/api/src/auditReport.ts" ;;
@@ -114,7 +165,7 @@ jobs:
             # ключи, и только буквы, цифры, запятые: строка снаружи не должна
             # стать куском команды
             catalog-force)
-              [[ "$KEYS" =~ ^[a-z0-9_,-]+$ ]] || { echo "ключи: буквы, цифры, запятые — получено: $KEYS"; exit 1; }
+              [[ "$KEYS" =~ ^[a-z0-9][a-z0-9_,-]{0,199}$ ]] || { echo "ключи: буквы, цифры, запятые — получено: $KEYS"; exit 1; }
               CMD="bun apps/api/src/installCatalog.ts --force $KEYS" ;;
             # чтение журналов службы — не запуск кода: отдельная ветка, где
             # выполняется docker compose logs, а не команда внутри контейнера

@@ -56,7 +56,17 @@ chmod 600 /root/.ssh/config
 ssh-keyscan -t ed25519 github.com 2>/dev/null >> /root/.ssh/known_hosts
 sort -u -o /root/.ssh/known_hosts /root/.ssh/known_hosts
 
-until ssh -o BatchMode=yes -T git@github.com 2>&1 | grep -q 'successfully authenticated'; do
+# Доступ — по тексту приветствия, а не по коду выхода и не конвейером.
+# ssh -T git@github.com выходит с 1 и при принятом ключе («…successfully
+# authenticated, but GitHub does not provide shell access»), так что под
+# pipefail `ssh … | grep -q` был ложью всегда: установка на чистом сервере
+# вечно ждала ключ, который давно добавлен (#164).
+github_ok() {
+  local out
+  out="$(ssh -o BatchMode=yes -o ConnectTimeout=15 -T git@github.com 2>&1)" || true
+  [[ "$out" == *"successfully authenticated"* ]]
+}
+until github_ok; do
   echo
   echo "  Добавьте этот ключ в GitHub: репозиторий → Settings → Deploy keys → Add,"
   echo "  БЕЗ права записи:"
@@ -153,7 +163,10 @@ systemctl daemon-reload
 systemctl enable --now quizzy-backup.timer quizzy-verify.timer >/dev/null 2>&1
 echo "  ✓ таймеры: снимок 03:00 ежедневно, проверка Пн 04:00"
 if systemctl start quizzy-backup.service; then
-  echo "  ✓ первый снимок: $(ls -1t "$BACKUP_DIR"/*/ 2>/dev/null | head -1)"
+  # самый свежий файл копии, а не первая строка ls по подкаталогам — та
+  # печатала заголовок «…/daily/:», а не снимок
+  newest="$(find "$BACKUP_DIR" -type f -name 'quizzy_*.dump.zst.gpg' -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2- || true)"
+  echo "  ✓ первый снимок: ${newest:-файла не видно — journalctl -u quizzy-backup.service}"
 else
   echo "  ! первый снимок не удался: journalctl -u quizzy-backup.service"
 fi

@@ -123,6 +123,11 @@ services:
       INSTITUTION_UNIT: ${INSTITUTION_UNIT:-}
       PORT: "3001"
       RECORDINGS_DIR: /data/recordings
+      # Регистрация пациента без приглашения. Пусто — закрыта (в production
+      # это умолчание, env.ts); открыть — 1. Прежде переменной здесь не было,
+      # и OPEN_REGISTRATION=0 из .env.docker до контейнера не доезжал:
+      # регистрация с улицы оставалась открытой при внешне верной настройке.
+      OPEN_REGISTRATION: ${OPEN_REGISTRATION:-}
       # Вход через Google. Пусто — способа нет и кнопки нет.
       #
       # Перечислять обязательно: .env.docker кормит подстановку в этом файле,
