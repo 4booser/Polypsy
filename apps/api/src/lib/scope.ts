@@ -1,4 +1,5 @@
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { User } from "@quizzy/shared";
 import { db } from "../db";
 import { asSystem } from "../db/context";
@@ -391,7 +392,8 @@ export async function batterySurveysInUse(batteryId: string): Promise<string[]> 
  * рабочей, ничего не проверяя. Считать вызовы — единственный способ
  * спросить ровно то, что нужно.
  *
- * Стоит одно целочисленное увеличение на вызов.
+ * Стоит одно целочисленное увеличение на вызов. Считаются обе формы зоны:
+ * список (accessiblePatientIds) и условие (patientScopeCondition).
  */
 let scopeCalls = 0;
 
@@ -468,16 +470,16 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
 }
 
 /**
- * Условие «человек в зоне ответственности сотрудника» — над ссылкой на его id.
+ * Правило зоны условием SQL — над ссылкой на id человека.
  *
- * То же правило, что у accessiblePatientIds выше, но вопросом о названных
- * людях, а не списком всех (#181). Вопрос «можно ли к этому человеку»
- * задаётся на каждой карточке, в каждом эпизоде и печатной карте, а
- * отвечался построением всей зоны: на учреждении в пять тысяч пациентов —
- * секунды и соединение пула на каждый такой запрос, и десяток врачей,
- * открывших по карточке, занимали пул целиком. Здесь база проверяет только
- * тех, о ком спросили, по индексам их строк: время и число запросов не
- * зависят от того, сколько людей в зоне.
+ * То же правило, что у accessiblePatientIds выше, но вопросом о людях, а не
+ * списком всех (#181). Вопрос «можно ли к этому человеку» задаётся на каждой
+ * карточке, в каждом эпизоде и печатной карте, а отвечался построением всей
+ * зоны: на учреждении в пять тысяч пациентов — секунды и соединение пула на
+ * каждый такой запрос, и десяток врачей, открывших по карточке, занимали пул
+ * целиком. Условием база проверяет только тех, о ком спросили или кто попал
+ * в выборку, по индексам их строк: время и число запросов не зависят от
+ * того, сколько людей в зоне.
  *
  * Пути — те же, и те же отличия между ними: разбитое стекло, приём и
  * отделение считаются для любой учётной записи, а связь через группу
@@ -485,29 +487,38 @@ export async function accessiblePatientIds(user: User): Promise<Set<string> | nu
  * одно правило могут разойтись; держит их вместе проверка эквивалентности
  * (test/patientScope.test.ts) — правка одного без другого её роняет.
  *
- * undefined — ограничений нет (суперадмин).
+ * Группы сотрудника читаются один раз, условие строится для любой колонки:
+ * очередь работы применяет его к трём таблицам. Вызов идёт в счётчик зоны
+ * наравне с полным списком — «один раз на запрос» относится к обоим.
+ *
+ * `null` — ограничений нет (суперадмин).
  */
-async function patientScopeCondition(user: User, patientId: SQL): Promise<SQL | undefined> {
+export async function patientScopeCondition(
+  user: User,
+): Promise<((patientId: SQL | AnyPgColumn) => SQL) | null> {
+  scopeCalls += 1;
   const groupIds = await accessibleGroupIds(user);
-  if (groupIds === null) return undefined;
+  if (groupIds === null) return null;
   const now = new Date().toISOString();
-  const outsideGroups = sql`exists (select 1 from break_glass bg
-        where bg.actor_id = ${user.id} and bg.patient_id = ${patientId}
-          and bg.revoked_at is null and bg.expires_at > ${now}::timestamptz)
-    or exists (select 1 from appointments a
-        where a.specialist_id = ${user.id} and a.patient_id = ${patientId})
-    or exists (select 1 from department_patients dp
-        join specialist_profiles sp on sp.department_id = dp.department_id
-        where sp.user_id = ${user.id} and dp.patient_id = ${patientId} and dp.detached_at is null)`;
-  if (!groupIds.length) return sql`(${outsideGroups})`;
-  return sql`(${outsideGroups}
-    or exists (select 1 from users u where u.id = ${patientId} and u.role = 'user' and (
-      exists (select 1 from survey_access sa join surveys s on s.id = sa.survey_id
-        where sa.user_id = u.id and s.group_id in ${groupIds})
-      or exists (select 1 from responses r join surveys s on s.id = r.survey_id
-        where r.user_id = u.id and s.group_id in ${groupIds})
-      or exists (select 1 from battery_assignments ba join batteries b on b.id = ba.battery_id
-        where ba.user_id = u.id and b.group_id in ${groupIds}))))`;
+  return (patientId) => {
+    const outsideGroups = sql`exists (select 1 from break_glass bg
+          where bg.actor_id = ${user.id} and bg.patient_id = ${patientId}
+            and bg.revoked_at is null and bg.expires_at > ${now}::timestamptz)
+      or exists (select 1 from appointments a
+          where a.specialist_id = ${user.id} and a.patient_id = ${patientId})
+      or exists (select 1 from department_patients dp
+          join specialist_profiles sp on sp.department_id = dp.department_id
+          where sp.user_id = ${user.id} and dp.patient_id = ${patientId} and dp.detached_at is null)`;
+    if (!groupIds.length) return sql`(${outsideGroups})`;
+    return sql`(${outsideGroups}
+      or exists (select 1 from users u where u.id = ${patientId} and u.role = 'user' and (
+        exists (select 1 from survey_access sa join surveys s on s.id = sa.survey_id
+          where sa.user_id = u.id and s.group_id in ${groupIds})
+        or exists (select 1 from responses r join surveys s on s.id = r.survey_id
+          where r.user_id = u.id and s.group_id in ${groupIds})
+        or exists (select 1 from battery_assignments ba join batteries b on b.id = ba.battery_id
+          where ba.user_id = u.id and b.group_id in ${groupIds}))))`;
+  };
 }
 
 /**
@@ -518,8 +529,8 @@ async function patientScopeCondition(user: User, patientId: SQL): Promise<SQL | 
  * групп сотрудника, сколько бы людей ни было в зоне.
  */
 export async function patientsInScope(user: User, patientIds: readonly string[]): Promise<Set<string> | null> {
-  const condition = await patientScopeCondition(user, sql`x.id`);
-  if (condition === undefined) return null;
+  const inScope = await patientScopeCondition(user);
+  if (inScope === null) return null;
   const asked = [...new Set(patientIds)];
   if (!asked.length) return new Set();
   const list = sql.join(
@@ -527,7 +538,7 @@ export async function patientsInScope(user: User, patientIds: readonly string[])
     sql`, `,
   );
   const rows = (await db.execute(
-    sql`select x.id from unnest(array[${list}]::text[]) as x(id) where ${condition}`,
+    sql`select x.id from unnest(array[${list}]::text[]) as x(id) where ${inScope(sql`x.id`)}`,
   )) as unknown as { id: string }[];
   return new Set(rows.map((r) => r.id));
 }

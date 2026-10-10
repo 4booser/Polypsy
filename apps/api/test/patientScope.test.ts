@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { PostgresJsPreparedQuery } from "drizzle-orm/postgres-js/session";
 import type { User } from "@quizzy/shared";
 import { appApi, appRequest, db, encryptPersonFields, hashPassword, makeUser, root, type Person } from "./fixtures";
@@ -15,6 +15,7 @@ import {
   departmentPatients,
   departments,
   groupAdmins,
+  referrals,
   responses,
   slots,
   specialistProfiles,
@@ -43,7 +44,9 @@ import { eventStreamTiming } from "../src/routes/events";
  *    (accessiblePatientIds), на всех путях в зону и на её границах.
  * 2. Цена не зависит от зоны: число запросов и строк, прочитанных
  *    приложением, при зоне в 1 000 и в 10 000 человек одно и то же.
- * 3. Поток событий не строит зону вовсе — ни при открытии, ни на пульсе, —
+ * 3. Карточка и очередь работы не строят зону списком: очередь применяет
+ *    правило условием к своим строкам.
+ * 4. Поток событий не строит зону вовсе — ни при открытии, ни на пульсе, —
  *    и по-прежнему отдаёт события о своих и молчит о чужих.
  */
 
@@ -402,6 +405,36 @@ describe("цена вопроса о пациенте не зависит от �
       }
       const denied = await appApi(`/api/patients/${neighbour}/card`, small.token);
       expect(denied.status).toBe(404);
+    },
+    60_000,
+  );
+
+  test(
+    "очередь работы — зона условием над своими строками, а не списком",
+    async () => {
+      /* открытое направление пациента из «дальней» части зоны: большой его видит, малый — нет */
+      const referralId = crypto.randomUUID();
+      await db.insert(referrals).values({
+        id: referralId,
+        userId: neighbour,
+        destination: "psychiatrist",
+        status: "created",
+        createdBy: root.id,
+      });
+      try {
+        for (const [s, sees] of [
+          [small, false],
+          [big, true],
+        ] as const) {
+          const { out, rows } = await counted(() => appApi("/api/worklist", s.token));
+          expect(out.status).toBe(200);
+          const ids = (out.body.items as { id: string }[]).map((i) => i.id);
+          expect(ids.includes(referralId), `${s === big ? "10 000" : "1 000"}: направление в очереди`).toBe(sees);
+          expect(rows, `${s === big ? "10 000" : "1 000"}: строк прочитано очередью`).toBeLessThan(500);
+        }
+      } finally {
+        await db.update(referrals).set({ status: "declined" }).where(eq(referrals.id, referralId));
+      }
     },
     60_000,
   );
