@@ -26,6 +26,21 @@ describe("офлайн-памятка решает риск как сервер"
     });
   }
 
+  test("копия без ключа (#141): риск по ней не решить — памятка из предосторожности", () => {
+    /*
+     * Пациент с #141 получает методику без критических вариантов, порогов и
+     * шкал (keyWithheld). По такой копии evaluateSubmission риска не найдёт
+     * никогда — и памятка без сети пропала бы ровно у того, кому нужна.
+     */
+    const c = riskCases().find((x) => x.name === "флаг не выбран")!;
+    const withheld = { ...c.survey, safetyPlan: PLAN, keyWithheld: true };
+    expect(offlineSafetyPlan(withheld, c.answers, null)).toBe(PLAN);
+    // без плана у методики — по-прежнему нечего показывать
+    expect(offlineSafetyPlan({ ...withheld, safetyPlan: null }, c.answers, null)).toBeNull();
+    // контроль: та же сдача по копии с ключом памятки не даёт
+    expect(offlineSafetyPlan({ ...c.survey, safetyPlan: PLAN }, c.answers, null)).toBeNull();
+  });
+
   test("нет плана у методики — нечего и показывать", () => {
     const c = riskCases().find((x) => x.name === "флаг варианта")!;
     expect(offlineSafetyPlan({ ...c.survey, safetyPlan: null }, c.answers, null)).toBeNull();

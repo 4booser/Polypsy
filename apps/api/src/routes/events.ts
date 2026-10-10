@@ -1,11 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { eq } from "drizzle-orm";
 import { baseDb, db } from "../db";
-import { dbContext, withDbContext } from "../db/context";
-import { surveys } from "../db/schema";
+import { dbContext, systemContext, withDbContext } from "../db/context";
+import { surveys, users } from "../db/schema";
+import { issuedAfterRevocation, readToken } from "../lib/auth";
 import { subscribe, type AppEvent } from "../lib/events";
+import { resolveImpersonation } from "../lib/impersonation";
 import { log } from "../lib/log";
+import { hasPermission } from "../lib/permissions";
 import { isSuperadmin, patientsInScope, surveyScopeFilter } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -47,6 +51,41 @@ eventRoutes.get("/", async (c) => {
 
   /* первое чтение — ещё в транзакции запроса: она жива, пока обработчик не вернул ответ */
   let allowed = await readScope();
+
+  /*
+   * Токен, которым открыт поток, — для проверки на пульсе (#140).
+   *
+   * requireAuth проверил его на входе, и только на входе: поток живёт
+   * часами, и выключение учётки, «завершить все сессии», конец сессии «от
+   * имени» или отнятое alerts.review до него не доходили — тот же токен на
+   * /me уже получал 401, а события о пациентах зоны шли в открытую вкладку.
+   * Заголовок читается заново, а не передаётся из requireAuth: подпись уже
+   * проверена, повторная проверка стоит микросекунды.
+   */
+  const claims = await readToken(c.req.header("Authorization")!.slice("Bearer ".length).trim());
+
+  /**
+   * Вправе ли этот поток жить дальше — те же замки, что у requireAuth.
+   *
+   * Строка пользователя — системным контекстом, как в requireAuth; право —
+   * в контексте строк сотрудника, как в requirePermission. Две короткие
+   * транзакции раз в пульс: одна строка users и наборы прав одного человека.
+   */
+  async function stillEntitled(): Promise<boolean> {
+    if (!claims) return false;
+    const row = await systemContext(baseDb, async () => {
+      const found = await db.query.users.findFirst({
+        columns: { role: true, disabledAt: true, tokensValidFrom: true },
+        where: eq(users.id, user.id),
+      });
+      if (!found || found.disabledAt) return null;
+      if (found.role !== "admin" && found.role !== "superadmin") return null;
+      if (claims.act) return typeof (await resolveImpersonation(claims)) === "string" ? null : found;
+      return issuedAfterRevocation(claims, found.tokensValidFrom) ? found : null;
+    });
+    if (!row) return false;
+    return withDbContext(baseDb, identity, () => hasPermission({ ...user, role: row.role }, "alerts.review"));
+  }
 
   /**
    * Вправе ли сотрудник видеть этих людей — ответ ложится в memo.
@@ -187,6 +226,16 @@ eventRoutes.get("/", async (c) => {
       while (alive) {
         await stream.sleep(eventStreamTiming.pulseMs);
         if (!alive) break;
+        /*
+         * Сначала — жив ли сам доступ (#140). Нет — поток закрывается, и
+         * ни одно событие после этого в него не уходит: alive гасит и
+         * разбор входящих. Клиент переподключится и получит отказ входа.
+         */
+        if (!(await stillEntitled())) {
+          alive = false;
+          log.info("events.closed_revoked", { userId: user.id });
+          break;
+        }
         /*
          * Заодно перечитываем зону ответственности — методики заново, а
          * ответы о людях забываем. Смена длится часами, а доступ к методике

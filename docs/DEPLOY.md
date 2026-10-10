@@ -93,10 +93,15 @@ cp .env.docker.example .env.docker   # и заполнить
 Заполнить `.env.docker`. Три значения обязаны быть случайными и разными:
 
 ```sh
-head -c 24 /dev/urandom | base64   # POSTGRES_PASSWORD
-head -c 24 /dev/urandom | base64   # APP_DB_PASSWORD
+head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n='   # POSTGRES_PASSWORD
+head -c 24 /dev/urandom | base64 | tr '+/' '-_' | tr -d '\n='   # APP_DB_PASSWORD
 head -c 32 /dev/urandom | base64   # JWT_SECRET
 ```
+
+Пароли базы — алфавитом base64url (`tr '+/' '-_'`), как у `vps-setup.sh`:
+они подставляются в адрес подключения как есть. С «/» из обычного base64
+приложение не стартует; provision отказывает такому `APP_DB_PASSWORD`
+заранее, а сервер — неразборчивому `DATABASE_URL`, не печатая пароля.
 
 И отдельно — ключ шифрования полей. Без него сервер в production **не
 стартует**: установка без ключа пишет ФИО, даты рождения, телефоны,

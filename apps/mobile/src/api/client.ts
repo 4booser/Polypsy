@@ -243,8 +243,15 @@ function offlineFallback<T>(error: unknown, cached: T | null, forget?: () => voi
 /** Фоновая догрузка контента методик в кэш владельца; ошибки не мешают основному пути */
 async function prefetchSurveys(owner: string | null, ids: string[]): Promise<void> {
   if (!owner) return;
+  /*
+   * Копия пациента, легшая до #141, держит ключ методики (веса, критические
+   * варианты, шкалы): она перекачивается, а не пропускается, — сервер отдаёт
+   * пациенту копию уже без ключа (keyWithheld), и на диске ключ не остаётся.
+   */
+  const patient = cache.me(owner)?.role === "user";
   for (const id of ids) {
-    if (cache.survey(owner, id)) continue;
+    const cached = cache.survey(owner, id);
+    if (cached && (cached.keyWithheld || !patient)) continue;
     try {
       cache.saveSurvey(owner, await request<SurveyFull>(`/api/surveys/${id}`, {}, { owner }));
     } catch {
@@ -665,11 +672,17 @@ export const api = {
       const evaluation = survey
         ? evaluateSubmission(survey, payload.answers, { sex: respondent.sex, age: respondent.age })
         : null;
+      /*
+       * Копия без ключа (keyWithheld — так методику с #141 получает пациент)
+       * не знает, какие ответы критические, и баллов по ней нет: карточка
+       * безопасности — из предосторожности, сервер решит по ключу при синке.
+       */
+      const precaution = survey?.keyWithheld === true;
       // офлайн каскады не выполняются: назначения делает сервер при синке
       const offline: SubmitResult = {
         id: item.id,
         scores: evaluation?.profile.scores ?? [],
-        safetyPlan: evaluation?.risk.severity ? (survey?.safetyPlan ?? null) : null,
+        safetyPlan: evaluation?.risk.severity || precaution ? (survey?.safetyPlan ?? null) : null,
         queued: true,
       };
       return offline;

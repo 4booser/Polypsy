@@ -18,6 +18,7 @@ import {
   surveyGetQuery,
   surveyListQuery,
   updateSurveySchema,
+  type SurveyFull,
   type SurveyKeySheet,
   type SurveyListItem,
   type SurveyListPage,
@@ -27,7 +28,7 @@ import { asSystem } from "../db/context";
 import { batteries, responses, surveyVersions, surveys } from "../db/schema";
 import { closeCompletedForSurvey } from "../lib/batteries";
 import { badRequest, conflict, forbidden, issueKey, langOf, notFound, parseBody, parseQuery } from "../lib/http";
-import { attachContent, createVersion, getSurvey, surveyToDraft, versionContent, type Content } from "../lib/surveys";
+import { attachContent, createVersion, getSurvey, respondentView, surveyToDraft, versionContent, type Content } from "../lib/surveys";
 import { audit } from "../lib/audit";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { hasPermission } from "../lib/permissions";
@@ -337,7 +338,9 @@ surveyRoutes.get("/:id", async (c) => {
       notFound("err.surveyNotFound");
     }
   }
-  if (query.version === undefined || query.version === survey.versionNumber) return c.json(survey);
+  /* обследуемому — без ключа: веса, критические пункты, пороги, шкалы (#141) */
+  const view = (full: SurveyFull) => (isStaff(user) ? full : respondentView(full));
+  if (query.version === undefined || query.version === survey.versionNumber) return c.json(view(survey));
 
   /*
    * Версия ищется только после проверки прав и только среди версий ЭТОЙ
@@ -352,7 +355,7 @@ surveyRoutes.get("/:id", async (c) => {
   if (!versionRow) notFound("err.surveyVersionNotFound");
   const versioned = await getSurvey(survey.id, versionRow.id, langOf(c), raw);
   if (!versioned) notFound("err.surveyVersionNotFound");
-  return c.json(versioned);
+  return c.json(view(versioned));
 });
 
 /**

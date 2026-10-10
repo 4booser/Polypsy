@@ -322,6 +322,46 @@ export async function attachContent(
   });
 }
 
+/** Условия показа, которые на устройстве считают балл ответа (isQuestionVisible → answerScore) */
+const SCORE_OPERATORS = new Set(["gt", "gte", "lt", "lte"]);
+
+/**
+ * Методика глазами обследуемого — без ключа (#141).
+ *
+ * GET /api/surveys/:id отдавал пациенту getSurvey целиком: веса вариантов,
+ * критические варианты и пороги, обратный ключ, шкалы со шкалой лжи и её
+ * порогом, полосы. Обследуемый видел, какие ответы поднимут тревогу и как
+ * обойти шкалу лжи, а лицензионные ключи получал любой вошедший.
+ *
+ * Срезается всё, чем методику СЧИТАЮТ, и остаётся то, чем её ПРОХОДЯТ:
+ * тексты, типы, варианты, подписи краёв шкалы, обязательность, условия
+ * показа. Одно исключение — вес варианта и обратный ключ у пункта, на
+ * котором стоит числовое условие показа: isQuestionVisible на устройстве
+ * считает по ним балл ответа, и без них кабинет скрыл бы пункт, который
+ * сервер ждёт (или наоборот), — сдача упала бы на «обязательный пункт не
+ * отвечен». Поля срезаются, а не обнуляются: нулевой вес выглядел бы
+ * правдоподобным ключом. Пометка keyWithheld говорит клиенту, что риск по
+ * этой копии не решить (packages/shared/src/types.ts).
+ */
+export function respondentView(survey: SurveyFull): SurveyFull {
+  const scoredSources = new Set(
+    survey.questions.flatMap((q) => q.logic.filter((r) => SCORE_OPERATORS.has(r.operator)).map((r) => r.sourceQuestionId)),
+  );
+  const questions = survey.questions.map((q) => {
+    const { scaleId: _s, reverseScored, riskThreshold: _t, riskLabel: _l, riskSeverity: _v, options, ...open } = q;
+    const scored = scoredSources.has(q.id);
+    return {
+      ...open,
+      ...(scored ? { reverseScored } : {}),
+      options: options.map(({ score, riskFlag: _f, riskLabel: _ol, riskSeverity: _os, keyCode: _k, ...option }) =>
+        scored ? { ...option, score } : option,
+      ),
+    };
+  });
+  // тип клиента — SurveyFull; поля ключа у этой копии отсутствуют, и кабинеты их не читают (keyWithheld)
+  return { ...survey, keyWithheld: true, scales: [], questions: questions as unknown as Question[] };
+}
+
 export async function getSurvey(
   id: string,
   versionId?: string | null,

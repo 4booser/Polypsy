@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { acceptConsentIfAsked, createVisiblePatient, goMenu, login, openMenu } from "./helpers";
+import { acceptConsentIfAsked, apiToken, createVisiblePatient, goMenu, login, openMenu } from "./helpers";
 
 /**
  * Разбор случаев — экран, ради которого система и существует.
@@ -170,7 +170,9 @@ test("новая тревога догоняет открытый экран б�
   const target = list.items.find((s) => /СР-45/i.test(s.title)) ?? list.items[0];
   if (!target) test.skip(true, "пациенту не выдано ни одной методики");
 
-  const full = await page.request.get(`/api/surveys/${target!.id}`, { headers: auth });
+  // критические варианты — из методики глазами сотрудника: пациенту ключ не отдаётся (#141)
+  const keyToken = await apiToken(page, "superadmin");
+  const full = await page.request.get(`/api/surveys/${target!.id}`, { headers: { Authorization: `Bearer ${keyToken}` } });
   const survey = (await full.json()) as {
     questions: { id: string; type: string; options: { id: string; riskFlag?: boolean }[] }[];
   };
