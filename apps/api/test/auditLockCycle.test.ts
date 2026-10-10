@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { inArray } from "drizzle-orm";
+import { renderError } from "@quizzy/shared";
 import { and, appApi, client, createSurveySchema, createVersion, db, eq, groupA, makeUser, root, surveys } from "./fixtures";
 import { auditLog, referrals, surveyFollowups } from "../src/db/schema";
 import { AUDIT_CHAIN_LOCK } from "../src/lib/audit";
@@ -106,6 +107,7 @@ async function draftWithReferral() {
 
   return {
     referralId,
+    draftId: draft.body.id as string,
     submit: () =>
       appApi(`/api/surveys/${surveyId}/responses`, person.token, {
         method: "POST",
@@ -161,68 +163,106 @@ afterAll(async () => {
   if (mySurveys.length) await db.delete(surveyFollowups).where(inArray(surveyFollowups.surveyId, mySurveys));
 });
 
+type Case = Awaited<ReturnType<typeof draftWithReferral>>;
+
+/**
+ * Чередование из задачи: посторонняя транзакция держит замок журнала, сдача
+ * встаёт за ним первой, PATCH — уже взяв строку направления — второй; через
+ * holdMs удержание снимается, сдача получает журнал и идёт к строке PATCH.
+ *
+ * Кого снимет база, решает holdMs. Проверка взаимоблокировки срабатывает
+ * один раз, через deadlock_timeout (1 с) от начала ожидания.
+ *   400 мс — цикл замыкается до проверки PATCH, первым проверяет он, и
+ *     снимается его запись журнала (случай из задачи). Запас нужен: без
+ *     него порядок решали бы миллисекунды (на macOS таймеры процессов
+ *     срабатывают пачкой).
+ *   1500 мс — PATCH проверяет ещё при удержании, цикла нет, и больше он не
+ *     проверяет; цикл видит только сдача — снимается она.
+ */
+async function interleave(c: Case, holdMs: number) {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let holding!: () => void;
+  const held = new Promise<void>((resolve) => {
+    holding = resolve;
+  });
+  const holder = client.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`;
+    holding();
+    await gate;
+  });
+  await held;
+  try {
+    // сдача доходит до каскада и встаёт за замком журнала первой
+    const submitting = c.submit();
+    expect(await until(async () => (await chainWaiters()) === 1), "сдача не дошла до замка журнала").toBe(true);
+    // PATCH меняет строку направления и встаёт за журналом второй
+    const patching = c.patch();
+    expect(await until(async () => (await chainWaiters()) === 2), "PATCH не дошёл до замка журнала").toBe(true);
+    await Bun.sleep(holdMs);
+    release();
+    await holder;
+    const [submitted, patched] = await Promise.all([submitting, patching]);
+    return { submitted, patched };
+  } finally {
+    release();
+    await holder.catch(() => {});
+  }
+}
+
+const RETRY_TEXTS = (["uk", "ru", "en"] as const).map((lang) => renderError("err.retryRequest", lang));
+
+/** Снятый базой — 503 «повторите» с Retry-After, а не общий 500 */
+function expectRetry(res: { status: number; headers: Headers; body: { error?: string } }) {
+  expect(res.status, JSON.stringify(res.body)).toBe(503);
+  expect(RETRY_TEXTS).toContain(res.body.error!);
+  expect(res.headers.get("Retry-After")).toBe("1");
+}
+
 describe("замок журнала и замок строки (#145)", () => {
   test("сдача с каскадом и PATCH направления в цикле: строка журнала есть — или PATCH отказан и статус прежний", async () => {
-    const { referralId, submit, patch } = await draftWithReferral();
+    const c = await draftWithReferral();
+    const { submitted, patched } = await interleave(c, 400);
 
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let holding!: () => void;
-    const held = new Promise<void>((resolve) => {
-      holding = resolve;
-    });
-    const holder = client.begin(async (tx) => {
-      await tx`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`;
-      holding();
-      await gate;
-    });
-    await held;
-
-    let submitted: Awaited<ReturnType<typeof submit>> | undefined;
-    let patched: Awaited<ReturnType<typeof patch>> | undefined;
-    try {
-      // сдача доходит до каскада и встаёт за замком журнала первой
-      const submitting = submit();
-      expect(await until(async () => (await chainWaiters()) === 1), "сдача не дошла до замка журнала").toBe(true);
-      // PATCH меняет строку направления и встаёт за журналом второй
-      const patching = patch();
-      expect(await until(async () => (await chainWaiters()) === 2), "PATCH не дошёл до замка журнала").toBe(true);
-      /*
-       * Снятым база делает того, чья проверка взаимоблокировки сработает
-       * первой, а срабатывает она через deadlock_timeout (1 с) от начала
-       * ожидания. Удержание ещё на 400 мс ставит ожидание сдачи на строке
-       * заметно позже ожидания PATCH: первым проверяет PATCH, и снимается
-       * его запись журнала — случай из задачи. Без запаса порядок решали бы
-       * миллисекунды (на macOS таймеры процессов срабатывают пачкой).
-       */
-      await Bun.sleep(400);
-      release();
-      await holder;
-      [submitted, patched] = await Promise.all([submitting, patching]);
-    } finally {
-      release();
-      await holder.catch(() => {});
-    }
-
-    const [row] = await db.select().from(referrals).where(eq(referrals.id, referralId));
-    if (patched!.status === 200) {
-      expect(await logged("referral.update", referralId), "PATCH закоммичен без строки журнала").toBe(1);
+    const [row] = await db.select().from(referrals).where(eq(referrals.id, c.referralId));
+    if (patched.status === 200) {
+      expect(await logged("referral.update", c.referralId), "PATCH закоммичен без строки журнала").toBe(1);
       expect(row!.status).toBe("accepted");
     } else {
       expect(row!.status, "PATCH отказан, а статус изменён").toBe("created");
-      expect(await logged("referral.update", referralId)).toBe(0);
+      expect(await logged("referral.update", c.referralId)).toBe(0);
+      expectRetry(patched);
     }
     // цикл действительно был: база сняла одного из двух, и снятый не закоммитил ничего
-    const refused = [submitted!.status, patched!.status].filter((s) => s >= 400);
-    expect(refused.length, `сдача ${submitted!.status}, PATCH ${patched!.status}`).toBe(1);
-    if (submitted!.status === 201) {
-      expect(await logged("response.submit", submitted!.body.id)).toBe(1);
+    const refused = [submitted.status, patched.status].filter((s) => s >= 400);
+    expect(refused.length, `сдача ${submitted.status}, PATCH ${patched.status}`).toBe(1);
+    if (submitted.status === 201) {
+      expect(await logged("response.submit", submitted.body.id)).toBe(1);
     }
     // цепочка после конкурирующих записей цела
     const chain = await verifyChain();
     expect(chain.ok, `цепочка порвана на ${chain.brokenAtSeq}`).toBe(true);
+  }, 30_000);
+
+  test("снята сдача: 503 «повторите», ничего не сохранено, повтор проходит; PATCH — со строкой журнала", async () => {
+    const c = await draftWithReferral();
+    const { submitted, patched } = await interleave(c, 1500);
+
+    expectRetry(submitted);
+    expect(patched.status, JSON.stringify(patched.body)).toBe(200);
+    expect(await logged("referral.update", c.referralId)).toBe(1);
+    // сдача откатилась целиком: прохождения нет, черновик и направление на нём — как были
+    const [before] = await db.select().from(referrals).where(eq(referrals.id, c.referralId));
+    expect(before!.responseId).toBe(c.draftId);
+
+    const again = await c.submit();
+    expect(again.status, JSON.stringify(again.body)).toBe(201);
+    expect(await logged("response.submit", again.body.id)).toBe(1);
+    const [after] = await db.select().from(referrals).where(eq(referrals.id, c.referralId));
+    expect(after!.responseId).toBe(again.body.id);
+    expect((await verifyChain()).ok).toBe(true);
   }, 30_000);
 
   test("контроль: без удержания обе строки журнала на месте", async () => {
