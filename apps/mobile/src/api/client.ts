@@ -56,7 +56,7 @@ function netText(key: "net.offline" | "net.failed"): string {
 import { cache, draftRequestBody, drafts } from "../offline/cache";
 import { respondentFor } from "../offline/respondent";
 import { appBuildInfo, deviceId, platformName } from "../offline/device";
-import { carryOutWipe, resumeWipe, type WipeDeps } from "../offline/wipe";
+import { carryOutWipe, onWiped, resumeWipe, type WipeDeps } from "../offline/wipe";
 import {
   claim,
   deviceCounts,
@@ -328,6 +328,8 @@ export const api = {
       passwordGateListeners.delete(listener);
     };
   },
+  /** Подписка на «устройство стёрто по команде, сессия закрыта» (offline/wipe.ts); возвращает отписку */
+  onWiped: (listener: () => void) => onWiped(listener),
   /**
    * Смена пароля. Сервер при этом обрывает все сессии, включая эту
    * (routes/auth.ts, POST /password), — после неё нужен вход новым паролем.

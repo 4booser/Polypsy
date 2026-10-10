@@ -1,5 +1,5 @@
 import { leftAfterWipe, wipeLocalData } from "./device";
-import { ownerOfToken } from "./owner";
+import { closeForWipe, ownerOfToken } from "./owner";
 import { store } from "./store";
 
 /**
@@ -133,13 +133,43 @@ async function advance(state: WipeState, confirmWith: string | null, deps: WipeD
   return { erased: state.erased, signedOut: state.signedOut, confirmed };
 }
 
+/*
+ * Кому сказать, что сессию закрыло стирание (#125).
+ *
+ * Хранилище чистилось и токены снимались, а интерфейс об этом не знал:
+ * пользователь оставался в состоянии React, экраны — с данными пациентов, и
+ * так до перезапуска. Слушают корень приложения (вход, AuthContext) и стек
+ * экранов (переход на вход, app/_layout.tsx).
+ */
+const wipedListeners = new Set<() => void>();
+
+export function onWiped(listener: () => void): () => void {
+  wipedListeners.add(listener);
+  return () => {
+    wipedListeners.delete(listener);
+  };
+}
+
 /**
  * Исполнить команду стирания, полученную при отметке устройства `deviceId`.
  *
  * Команда — того, чья сессия сейчас в хранилище: сервер выдаёт её паре
  * «установка + учётная запись» (routes/devices.ts), и отметку делал он.
+ *
+ * Первым делом, ещё до очистки, офлайн-слой закрывается на запись — ответ,
+ * запрошенный раньше команды и пришедший после неё, на устройство не ляжет
+ * (owner.ts, closeForWipe), — и интерфейс закрывает сессию: показывать
+ * экраны дальше, пока идут очистка и подтверждение, незачем.
  */
 export async function carryOutWipe(deviceId: string, deps: WipeDeps): Promise<WipeOutcome> {
+  closeForWipe();
+  for (const listener of wipedListeners) {
+    try {
+      listener();
+    } catch {
+      /* интерфейс не смог — стирание от этого не зависит */
+    }
+  }
   const token = await deps.token().catch(() => null);
   const state: WipeState = { deviceId, owner: ownerOfToken(token), erased: false, signedOut: false };
   save(state);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, mock } from "bun:test";
-import { ownerOfToken, setActiveOwner } from "../src/offline/owner";
+import { ownerOfToken, setActiveOwner, signedIn } from "../src/offline/owner";
 
 /**
  * Клиент запросов (src/api/client.ts) в тестовом процессе.
@@ -22,7 +22,7 @@ mock.module("../src/storage", () => ({
     },
     set: async (token: string) => {
       session.token = token;
-      setActiveOwner(ownerOfToken(token));
+      signedIn(ownerOfToken(token));
     },
     getRefresh: async () => session.refresh,
     setRefresh: async (token: string) => {
@@ -38,6 +38,8 @@ mock.module("../src/storage", () => ({
   prefStorage: { get: async () => null, set: async () => {} },
 }));
 mock.module("../src/config", () => ({ API_URL: "http://api.test" }));
+// платформа для отметки устройства (offline/device.ts, platformName) — без самого react-native
+mock.module("react-native", () => ({ Platform: { OS: "android" } }));
 
 /** Токен с нужным sub — владелец офлайн-данных определяется по нему (offline/owner.ts) */
 export function tokenOf(sub: string): string {
@@ -48,7 +50,7 @@ export function tokenOf(sub: string): string {
 export function signIn(sub: string): void {
   session.token = tokenOf(sub);
   session.refresh = `refresh-${sub}`;
-  setActiveOwner(sub);
+  signedIn(sub);
 }
 
 /** Сервер: путь запроса → ответ. Бросить — значит «сети нет» (fetch так и падает) */

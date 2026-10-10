@@ -16,6 +16,7 @@ import { api } from "@/api/client";
 import { useAuth } from "@/auth/AuthContext";
 import { draftRequestBody, drafts, pickDraft, type LocalDraft } from "@/offline/cache";
 import { draftLaneKey, draftLanes } from "@/offline/draftLane";
+import { mayStore } from "@/offline/owner";
 import { useExit } from "@/nav/useExit";
 import { finishFailureText, finishSubmission } from "@/runner/finish";
 import { resultView } from "@/runner/resultView";
@@ -141,6 +142,8 @@ export default function TakeSurveyScreen() {
   useEffect(() => {
     const sub = navigation.addListener("beforeRemove", (e) => {
       if (result || answers.size === 0) return; // завершено или не начато
+      // устройство стирают по команде (#125) — уход на вход не переспрашивается: беречь ответы негде
+      if (!mayStore(owner)) return;
       e.preventDefault();
       Alert.alert(
         ut("ms.abortTitle"),
@@ -156,7 +159,7 @@ export default function TakeSurveyScreen() {
       );
     });
     return sub;
-  }, [navigation, result, answers.size]);
+  }, [navigation, result, answers.size, owner]);
 
   useEffect(() => {
     if (!id) return;

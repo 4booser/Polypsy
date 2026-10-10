@@ -127,6 +127,18 @@ function usePasswordGate(): void {
   );
 }
 
+/**
+ * Устройство стёрто по команде — на вход (#125).
+ *
+ * Пользователя снимает AuthContext, но прохождение и карта обхода лежат вне
+ * вкладок, и сами на вход не уводят: открытое прохождение так и оставалось
+ * на экране, с ответами и автосохранением.
+ */
+function useWipeSignOut(): void {
+  const router = useRouter();
+  useEffect(() => api.onWiped(() => router.replace("/login")), [router]);
+}
+
 function RootStack() {
   const { ut } = useLang();
   const c = useColors();
@@ -135,6 +147,7 @@ function RootStack() {
   // кнопка «назад» на Android там, где стеку возвращаться некуда (src/nav/exits.ts)
   useHardwareBackFallback();
   usePasswordGate();
+  useWipeSignOut();
   /*
    * Экран, открытый первым (по ссылке, после замены), остаётся без
    * системной стрелки — слева тогда встаёт «Закрити» на запасное место. Есть
