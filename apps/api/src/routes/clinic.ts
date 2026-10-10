@@ -46,7 +46,7 @@ import { transferRecording } from "../lib/recordingTransfer";
 import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
-import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
+import { assertPatientAccess, isStaff, patientsInScope } from "../lib/scope";
 import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
@@ -676,7 +676,7 @@ clinicRoutes.post("/appointments", async (c) => {
      * чужого автора. Основания и почему системной ролью — в lib/otherCare.ts.
      */
     outsideScope = await assertNotInOtherCare(
-      await accessiblePatientIds(me),
+      await patientsInScope(me, [input.patientId]),
       input.patientId,
       "err.patientOfAnotherDepartment",
     );

@@ -33,7 +33,7 @@ import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
 import {
   accessibleGroupIds,
-  accessiblePatientIds,
+  patientsInScope,
   assertBatteryInUse,
   assertGroupAccess,
   assertSurveyAccess,
@@ -476,7 +476,7 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
    * чужого автора (#139). Человек, которого уже ведёт кто-то другой, — отказ;
    * «ничей» — назначение с пометкой в журнале (lib/otherCare.ts).
    */
-  const widened = await assertNotInOtherCare(await accessiblePatientIds(user), input.userId);
+  const widened = await assertNotInOtherCare(await patientsInScope(user, [input.userId]), input.userId);
 
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
   if (!items.length) badRequest("err.batteryEmpty");

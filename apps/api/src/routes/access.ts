@@ -9,7 +9,7 @@ import { deadlineOf } from "../lib/day";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import {
   accessibleGroupIds,
-  accessiblePatientIds,
+  patientsInScope,
   assertPatientGroupAccess,
   assertSurveyAccess,
   assertSurveysInUse,
@@ -128,7 +128,7 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
    * «своим» именно благодаря ей: пометка не появлялась никогда, в том числе
    * ровно в том случае, ради которого её завели.
    */
-  const wasOutside = await assertNotInOtherCare(await accessiblePatientIds(c.get("user")), input.userId);
+  const wasOutside = await assertNotInOtherCare(await patientsInScope(c.get("user"), [input.userId]), input.userId);
 
   /*
    * Срок из поля даты — до конца этого дня по поясу учреждения. Голая дата
