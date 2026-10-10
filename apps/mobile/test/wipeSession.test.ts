@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { resetStore } from "./store.mock";
-import { json, loadClient, serve, session, signIn, tokenOf, useFakeServer } from "./client.harness";
+import { json, loadClient, noNetwork, serve, session, signIn, tokenOf, useFakeServer } from "./client.harness";
 import { cache, drafts, type LocalDraft } from "../src/offline/cache";
 import { leftAfterWipe } from "../src/offline/device";
+import { enqueue, pending, rejectedItems } from "../src/offline/queue";
 import { isStoreWriteError } from "../src/offline/writeError";
+import { finishSubmission } from "../src/runner/finish";
 
 /**
  * Удалённое стирание закрывает сессию и в интерфейсе, и для запоздавших записей (#125).
@@ -166,5 +168,77 @@ describe("положительный контроль: без стирания",
     drafts.saveIfNewer(STAFF, draftOf(1));
     expect(drafts.get(STAFF, "s1")?.revision).toBe(1);
     off();
+  });
+});
+
+/**
+ * Очередь сдач — тот же запрет (#125, доработка). Сдача, ушедшая до команды и
+ * упавшая по сети после неё, ложилась в очередь стёртого планшета; прогон
+ * очереди, получивший отказ сервера уже после стирания, записывал помеченную
+ * сдачу обратно.
+ */
+describe("очередь сдач после стирания", () => {
+  /** Сервер стирания; сдача отвечает `answer`, когда её отпустят */
+  function submissionServer(wipe: boolean, answer: () => Response) {
+    let release!: () => void;
+    const gate = new Promise<void>((done) => (release = done));
+    const asked: string[] = [];
+    serve((path, init) => {
+      asked.push(path);
+      if (!(init.headers as Record<string, string>).Authorization) return json(401, { error: "unauthorized" });
+      if (path === "/api/devices/checkin") return json(200, { wipe });
+      if (path === "/api/devices/wiped") return json(200, { ok: true });
+      if (path === "/api/surveys/s1/responses") return gate.then(answer);
+      return json(404, { error: "not found" });
+    });
+    return { release, asked };
+  }
+
+  const submission = { answers: [], startedAt: "2026-10-11T07:00:00.000Z", durationMs: 1000, events: [] };
+
+  test("сдача, упавшая по сети уже после стирания, в очередь не ложится — экран узнаёт, что не сохранено", async () => {
+    const api = await loadClient();
+    signIn(STAFF);
+    const srv = submissionServer(true, noNetwork);
+
+    const sending = finishSubmission({ submit: () => api.submitResponse("s1", submission), dropDraft: () => {} });
+    await untilAsked(srv.asked, ["/api/surveys/s1/responses"]);
+    await api.deviceCheckin(null);
+    srv.release();
+
+    const outcome = await sending;
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error("unreachable");
+    expect(outcome.notSaved).toBe(true);
+    expect(leftAfterWipe([])).toEqual([]);
+  });
+
+  test("прогон очереди, получивший отказ уже после стирания, помеченную сдачу обратно не пишет", async () => {
+    const api = await loadClient();
+    signIn(STAFF);
+    enqueue(STAFF, "s1", submission);
+    const srv = submissionServer(true, () => json(422, { error: "invalid answers" }));
+
+    const flushing = api.flushQueue();
+    await untilAsked(srv.asked, ["/api/surveys/s1/responses"]);
+    await api.deviceCheckin(null);
+    srv.release();
+    await flushing;
+
+    expect(leftAfterWipe([])).toEqual([]);
+  });
+
+  test("положительный контроль: без стирания сдача без сети ложится в очередь, отказ сервера — помечается", async () => {
+    const api = await loadClient();
+    signIn(STAFF);
+    const offline = submissionServer(false, noNetwork);
+    offline.release();
+    expect((await api.submitResponse("s1", submission)).queued).toBe(true);
+    expect(pending(STAFF)).toHaveLength(1);
+
+    const refusing = submissionServer(false, () => json(422, { error: "invalid answers" }));
+    refusing.release();
+    await api.flushQueue();
+    expect(rejectedItems(STAFF).map((i) => i.rejectedReason)).toEqual(["invalid answers"]);
   });
 });
