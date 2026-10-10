@@ -162,6 +162,11 @@ const EXCEPTIONS: Exception[] = [
     text: "«не расшифровано»",
     why: "аварийная пометка на месте ФИО при утраченном ключе: decryptField не знает, кто читает, а значение расходится по всем выдачам, поиску и печати; протаскивать язык через каждое чтение ФИО ради сбоя, о котором техпанель кричит отдельно (ключи), — не в пользу человека",
   },
+  /* неразборчивый DATABASE_URL — отказ проверки конфигурации на старте (env.ts, #163) */
+  { file: "apps/api/src/lib/dbUrl.ts", text: "Сгенерируйте пароль без таких символов", why: WHY.startup },
+  { file: "apps/api/src/lib/dbUrl.ts", text: "в имени или пароле адреса", why: WHY.startup },
+  { file: "apps/api/src/lib/dbUrl.ts", text: "адрес ${…} не разбирается", why: WHY.startup },
+  { file: "apps/api/src/lib/dbUrl.ts", text: "имя или пароль адреса", why: WHY.startup },
   { file: "apps/api/src/lib/encryptBackfill.ts", text: "ENCRYPTION_KEY не задан", why: WHY.job },
   { file: "apps/api/src/lib/followup.ts", text: "Протокол наблюдения", why: WHY.legacy },
   { file: "apps/api/src/lib/google.ts", text: "google: ", why: WHY.google },

@@ -19,6 +19,7 @@
 import { sql } from "drizzle-orm";
 import { client, db } from "./db";
 import { MigrationLedgerError, runMigrations } from "./db/migrations";
+import { passwordBreaksUrl, URL_SAFE_PASSWORD_RECIPE } from "./lib/dbUrl";
 
 const APP_ROLE = "quizzy_app";
 const password = process.env.APP_DB_PASSWORD ?? "";
@@ -49,7 +50,30 @@ if (!password) {
       "политики строк не применяются: они останутся на месте, но каждый",
       "будет видеть всё. Сервер в production такой запуск не примет.",
       "",
-      "Сгенерировать пароль: head -c 24 /dev/urandom | base64",
+      `Сгенерировать пароль: ${URL_SAFE_PASSWORD_RECIPE}`,
+      "",
+    ].join("\n"),
+  );
+  await client.end();
+  process.exit(1);
+}
+
+/*
+ * Пароль подставляется в DATABASE_URL приложения как есть
+ * (docker-compose.yml: postgres://quizzy_app:${APP_DB_PASSWORD}@…), и
+ * подстановка ничего не кодирует (#163). «/», «?», «#», пробел обрывают
+ * адрес — api не стартует; «%» и «@» молча меняют пароль, который увидит
+ * база. Отказ — здесь, до смены пароля роли: прежние контейнеры api
+ * продолжают работать, а сам пароль в журнал не попадает.
+ */
+if (passwordBreaksUrl(password)) {
+  console.error(
+    [
+      "",
+      "APP_DB_PASSWORD содержит символы, которые ломают адрес подключения",
+      "(/ ? # % @ или пробел): приложение с ним не подключится к базе.",
+      "",
+      `Сгенерировать пароль, безопасный в адресе: ${URL_SAFE_PASSWORD_RECIPE}`,
       "",
     ].join("\n"),
   );
