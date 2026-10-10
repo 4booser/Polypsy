@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import type { QueryClient } from "@tanstack/react-query";
 import type { Permission, User } from "@quizzy/shared";
 import { api, impersonationStore, tokenStore, watchSession } from "./api";
 import { queryClient } from "./query";
@@ -74,6 +75,23 @@ async function permissionsFor(user: User): Promise<ReadonlySet<string>> {
     .catch(() => new Set<string>());
 }
 
+/**
+ * Сбросить вкладку без выхода на сервере (#166, #173): профиль, права, шаг
+ * второго фактора и вход «от имени» — сразу, кэш загрузок — после того, как
+ * экраны сняты (см. logout). Токены не трогаются: они либо уже стёрты
+ * (окончательный 401), либо чужие (вошёл другой человек).
+ */
+export function dropTabSession(
+  set: { user: (u: null) => void; perms: (p: ReadonlySet<string>) => void; mfa: (m: null) => void },
+  cache: Pick<QueryClient, "clear"> = queryClient,
+): void {
+  impersonationStore.clear();
+  set.user(null);
+  set.perms(new Set());
+  set.mfa(null);
+  setTimeout(() => cache.clear(), 0);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [perms, setPerms] = useState<ReadonlySet<string>>(new Set());
@@ -142,16 +160,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * ничего не гасим: они теперь чужие, и выход здесь выкинул бы человека из
    * соседней вкладки. Вход «от имени» этой вкладки держался на прежней своей
    * сессии — уходит и он.
+   *
+   * Так же — окончательный 401 (#173): сессию погасил сервер, и консоль
+   * выходит на вход, а не стоит на экране с чужими данными.
+   *
+   * Гостю и вкладке, которая ещё восстанавливает сессию, сбрасывать нечего:
+   * старт закрывает сессию по своему отказу сам (boot выше), а лишняя
+   * очистка кэша посреди старта заставила бы его перечитать профиль ещё раз.
    */
+  const signedIn = useRef(false);
+  useEffect(() => {
+    signedIn.current = user !== null;
+  }, [user]);
   useEffect(
     () =>
       watchSession(window, () => {
-        impersonationStore.clear();
-        setUser(null);
-        setPerms(new Set());
-        setMfa(null);
-        /* кэш — после того, как экраны сняты (см. logout) */
-        setTimeout(() => queryClient.clear(), 0);
+        if (signedIn.current) dropTabSession({ user: setUser, perms: setPerms, mfa: setMfa });
       }),
     [],
   );

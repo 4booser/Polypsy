@@ -438,7 +438,17 @@ export const MAINTENANCE_EVENT = "quizzy:maintenance";
 export const SESSION_TAKEN_EVENT = "quizzy:session-taken";
 
 /**
- * Следить, не сменился ли в браузере человек (#166).
+ * Событие окна «сессии больше нет» (#173): 401, который не починил обмен
+ * refresh, — учётку выключили, её сессии завершили, refresh истёк. Токены
+ * стёрты, но профиль и экран с данными оставались: консоль стояла на
+ * карточке пациента с его именем, и каждое действие кончалось тостом
+ * «Сесія закінчилась». Вкладку выводит AuthProvider (watchSession ниже).
+ */
+export const SESSION_ENDED_EVENT = "quizzy:session-ended";
+
+/**
+ * Следить, не сменился ли в браузере человек (#166) и не кончилась ли
+ * сессия (#173).
  *
  * Токены общие на все вкладки (localStorage), а профиль на экране и кэш
  * загрузок — свои у каждой. Во второй вкладке вошёл другой человек — первая
@@ -459,12 +469,14 @@ export function watchSession(target: Pick<EventTarget, "addEventListener" | "rem
     if (e.key !== null && ownerOfToken(e.oldValue) === ownerOfToken(e.newValue)) return;
     onForeign();
   };
-  const onTaken = () => onForeign();
+  const onLost = () => onForeign();
   target.addEventListener("storage", onStorage);
-  target.addEventListener(SESSION_TAKEN_EVENT, onTaken);
+  target.addEventListener(SESSION_TAKEN_EVENT, onLost);
+  target.addEventListener(SESSION_ENDED_EVENT, onLost);
   return () => {
     target.removeEventListener("storage", onStorage);
-    target.removeEventListener(SESSION_TAKEN_EVENT, onTaken);
+    target.removeEventListener(SESSION_TAKEN_EVENT, onLost);
+    target.removeEventListener(SESSION_ENDED_EVENT, onLost);
   };
 }
 
@@ -598,6 +610,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
       if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_TAKEN_EVENT));
     } else {
       tokenStore.clear();
+      // окончательный 401: сессии нет — вкладка выходит на вход, а не остаётся на экране с данными (#173)
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
     }
   }
   if (res.status === 204) return undefined as T;
