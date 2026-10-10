@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { resetStore } from "./store.mock";
 import { json, loadClient, noNetwork, serve, signIn, useFakeServer } from "./client.harness";
+import { shownAfterFailure } from "../src/api/access";
 import { cache } from "../src/offline/cache";
 
 /**
@@ -109,5 +112,62 @@ describe("без сети кэш отдаётся, как прежде", () => {
     signIn(STAFF);
     server("offline");
     await expect(api.roundsCard("p2")).rejects.toMatchObject({ status: 0 });
+  });
+});
+
+/**
+ * Экраны обхода при отказе доступа (#126, доработка).
+ *
+ * Кэш клиент уже не отдаёт, но экран, открытый раньше, держал показанное:
+ * карта и список падали в ошибку только при пустом экране, а при повторном
+ * открытии вкладки карта пациента, выведенного из зоны, оставалась с
+ * баллами. Правило — в src/api/access.ts (shownAfterFailure): экраны в
+ * тестовом процессе не грузятся (react-native), а зовут именно его.
+ */
+describe("экраны обхода при отказе доступа", () => {
+  /** Экран: что показано и что он покажет после повторной загрузки — как load() в app/rounds/[userId].tsx */
+  async function reload<T>(shown: T | null, load: () => Promise<T>): Promise<{ shown: T | null; error: unknown }> {
+    try {
+      return { shown: await load(), error: null };
+    } catch (error) {
+      return { shown: shownAfterFailure(shown, error), error };
+    }
+  }
+
+  test("403 и 401 после отвергнутого продления — показанные карта и список сбрасываются, ошибка остаётся", async () => {
+    const api = await openedRounds();
+    const card = (await api.roundsCard("p1")).card;
+    const list = (await api.rounds()).list;
+
+    for (const status of [403, 401]) {
+      server({ status });
+      const cardAfter = await reload(card, async () => (await api.roundsCard("p1")).card);
+      expect(cardAfter.shown, `карта после ${status}`).toBeNull();
+      expect(cardAfter.error).toMatchObject({ status });
+      const listAfter = await reload(list, async () => (await api.rounds()).list);
+      expect(listAfter.shown, `список после ${status}`).toBeNull();
+      expect(listAfter.error).toMatchObject({ status });
+    }
+  });
+
+  test("положительный контроль: без сети и при сбое сервера показанное остаётся", async () => {
+    const api = await openedRounds();
+    const card = (await api.roundsCard("p1")).card;
+    cache.dropPatientCard(STAFF, "p1");
+
+    server("offline");
+    const offline = await reload(card, async () => (await api.roundsCard("p1")).card);
+    expect(offline.error).toMatchObject({ status: 0 });
+    expect(offline.shown).toEqual(card);
+
+    server({ status: 500 });
+    expect((await reload(card, async () => (await api.roundsCard("p1")).card)).shown).toEqual(card);
+  });
+
+  test("оба экрана обхода сбрасывают показанное через shownAfterFailure", () => {
+    for (const screen of ["../app/(app)/rounds.tsx", "../app/rounds/[userId].tsx"]) {
+      const source = readFileSync(resolve(import.meta.dir, screen), "utf8");
+      expect(source.match(/shownAfterFailure\(/g)?.length ?? 0, screen).toBeGreaterThanOrEqual(2);
+    }
   });
 });

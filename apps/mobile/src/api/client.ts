@@ -73,6 +73,7 @@ import { activeOwner, isOwnerChanged, OwnerChanged, ownerOfToken } from "../offl
 import { draftLaneKey, draftLanes } from "../offline/draftLane";
 import { evaluateSubmission, isTransientStatus } from "@quizzy/shared";
 import { reportLinkPath, reportLinkUrl } from "../report/model";
+import { isAccessDenied } from "./access";
 
 export class ApiError extends Error {
   constructor(
@@ -234,9 +235,8 @@ interface SubmitResult {
  * и подписью «нет сети».
  */
 function offlineFallback<T>(error: unknown, cached: T | null, forget?: () => void): T {
-  const status = (error as ApiError).status;
-  if (status === 0 && cached !== null) return cached;
-  if (forget && (status === 401 || status === 403)) forget();
+  if ((error as ApiError).status === 0 && cached !== null) return cached;
+  if (forget && isAccessDenied(error)) forget();
   throw error;
 }
 

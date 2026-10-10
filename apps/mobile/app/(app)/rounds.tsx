@@ -3,6 +3,7 @@ import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native"
 import { useFocusEffect, useRouter } from "expo-router";
 import type { WorkItem } from "@quizzy/shared";
 import { api } from "@/api/client";
+import { shownAfterFailure } from "@/api/access";
 import { Body, Card, Empty, ErrorText, Loader, Row, Title } from "@/components/ui";
 import { radius, spacing, useColors } from "@/theme";
 import { useLang } from "@/lang";
@@ -37,6 +38,9 @@ export default function RoundsScreen() {
       setCachedAt(at);
       setError(null);
     } catch (e) {
+      // отказ доступа — показанный список больше не положен (#126); без сети — остаётся
+      setItems((shown) => shownAfterFailure(shown, e));
+      setCachedAt((at) => shownAfterFailure(at, e));
       setError(e instanceof Error ? e.message : ut("rounds.loadFailed"));
     } finally {
       setBusy(false);
