@@ -86,11 +86,25 @@ export async function asSystem<T>(fn: () => Promise<T>): Promise<T> {
   const previous = row?.role ?? "";
   if (previous === "system") return fn();
   await tx.execute(sql`select set_config('app.role', 'system', true)`);
+  const restore = () => tx.execute(sql`select set_config('app.role', ${previous}, true)`);
+  let result: T;
   try {
-    return await fn();
-  } finally {
-    await tx.execute(sql`select set_config('app.role', ${previous}, true)`);
+    result = await fn();
+  } catch (error) {
+    /*
+     * Наружу — исходная ошибка, а не ошибка возврата роли. Ошибка базы вне
+     * точки сохранения (взаимоблокировка, нарушение ограничения) прерывает
+     * всю транзакцию, и возврат роли падает следом с «current transaction is
+     * aborted»; прежде он, стоя в finally, подменял собой причину — в логе и
+     * в ответе была вторая ошибка вместо первой. Роль возвращается, если
+     * транзакция жива (ошибка не из базы или в откатившейся точке
+     * сохранения); прерванной транзакции роль уже не нужна.
+     */
+    await restore().catch(() => {});
+    throw error;
   }
+  await restore();
+  return result;
 }
 
 /* ─────────── Транзакция запроса и записи, которые обязаны её пережить ─────────── */
