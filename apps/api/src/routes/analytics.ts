@@ -1117,7 +1117,8 @@ analyticsRoutes.get("/surveys/:id", async (c) => {
   const respondentNames = new Map<string, string>();
   const respondentIds = [...new Set(completed.map((r) => r.userId).filter((id): id is string => !!id))];
   if (respondentIds.length) {
-    const rows = await db.select().from(users).where(inArray(users.id, respondentIds));
+    // респонденты методики — десятки тысяч: одним параметром (#194)
+    const rows = await db.select().from(users).where(inIds(users.id, respondentIds));
     for (const u of rows) respondentNames.set(u.id, fullNameOf(u));
   }
 

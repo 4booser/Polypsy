@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { noteCode, renderPush } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
@@ -20,7 +20,7 @@ import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
 import { securityTick } from "./integrity";
 import { batterySurveysInUse } from "./scope";
-import { closeMissed, isOverdue, lockBatteryForAssign, snapshotAssignment } from "./batteries";
+import { closeMissed, isOverdue, lockBatteryForAssign, snapshotAssignments } from "./batteries";
 import { log } from "./log";
 import { JobLocked, withJobLock } from "./jobLock";
 import { registerJob, trackJob } from "./opsJobs";
@@ -29,6 +29,8 @@ import { checkPushReceipts, pushToUser } from "./push";
 import { langsOfPatients } from "./remind";
 
 const DAY_MS = 86_400_000;
+/** Сколько назначений в одной вставке: шесть параметров на строку, далеко от потолка протокола */
+const ASSIGN_BATCH = 1000;
 
 /**
  * Кого охватит срабатывание расписания.
@@ -124,19 +126,31 @@ async function runSchedule(
    * выдаётся новое. Одно активное назначение на человека (уникальный
    * индекс) при этом сохраняется.
    */
-  const open = await db
-    .select({ id: batteryAssignments.id, userId: batteryAssignments.userId, dueAt: batteryAssignments.dueAt })
-    .from(batteryAssignments)
-    .where(
-      and(
-        eq(batteryAssignments.batteryId, schedule.batteryId),
-        inArray(batteryAssignments.userId, targets),
-        isNull(batteryAssignments.completedAt),
-        isNull(batteryAssignments.cancelledAt),
-      ),
-    );
+  /*
+   * Открытые назначения набора — все, а охват отбирается здесь, а не в
+   * запросе (#194). Охват подразделения — тысячи людей: параметром на
+   * человека запрос упирался в потолок протокола, а списком одним
+   * параметром (db/ids.ts) — в план: сразу после прошлого прогона у
+   * свежих назначений нет статистики, и база перебирала список заново на
+   * каждую строку — 11 тысяч на 11 тысяч, восемь секунд. Открытых
+   * назначений одного набора не больше, чем людей, которым его выдают.
+   */
+  const reach = new Set(targets);
+  const open = (
+    await db
+      .select({ id: batteryAssignments.id, userId: batteryAssignments.userId, dueAt: batteryAssignments.dueAt })
+      .from(batteryAssignments)
+      .where(
+        and(
+          eq(batteryAssignments.batteryId, schedule.batteryId),
+          isNull(batteryAssignments.completedAt),
+          isNull(batteryAssignments.cancelledAt),
+        ),
+      )
+  ).filter((a) => reach.has(a.userId));
   const overdue = open.filter((a) => isOverdue(a, now));
-  const busyIds = new Set(open.filter((a) => !overdue.includes(a)).map((b) => b.userId));
+  // множествами, а не includes: на подразделении в тысячи человек перебор «каждый с каждым» шёл секундами
+  const busyIds = new Set(open.filter((a) => !isOverdue(a, now)).map((b) => b.userId));
   const fresh = targets.filter((id) => !busyIds.has(id));
   if (!fresh.length) return { assigned: 0, skipped: targets.length, missed: 0 };
 
@@ -165,7 +179,8 @@ async function runSchedule(
    * из другого времени, чем проверял просрочку.
    */
   const dueAt = endOfDayAfter(now, schedule.dueDays);
-  const missed = overdue.filter((a) => fresh.includes(a.userId));
+  const freshIds = new Set(fresh);
+  const missed = overdue.filter((a) => freshIds.has(a.userId));
 
   const done = await db.transaction(async (tx) => {
     // набор под замком: архивированный за время проверок — не выдаётся (lib/batteries.ts)
@@ -177,18 +192,30 @@ async function runSchedule(
       now,
     );
     const issued = fresh.map((userId) => ({ id: crypto.randomUUID(), userId }));
-    await tx.insert(batteryAssignments).values(
-      issued.map(({ id, userId }) => ({
-        id,
-        batteryId: schedule.batteryId,
-        userId,
-        assignedBy: schedule.createdBy,
-        dueAt,
-        note: noteCode("note.schedule", { title: schedule.title }),
-      })),
-    );
+    /*
+     * Порциями (#194): у протокола на запрос 65 533 параметра, а у строки
+     * назначения их шесть — одна вставка на подразделение от 11 тысяч
+     * человек не уходила вовсе (db/sendGuard.ts), и отказ повторялся на
+     * каждом прогоне.
+     */
+    for (let i = 0; i < issued.length; i += ASSIGN_BATCH) {
+      await tx.insert(batteryAssignments).values(
+        issued.slice(i, i + ASSIGN_BATCH).map(({ id, userId }) => ({
+          id,
+          batteryId: schedule.batteryId,
+          userId,
+          assignedBy: schedule.createdBy,
+          dueAt,
+          note: noteCode("note.schedule", { title: schedule.title }),
+        })),
+      );
+    }
     // состав каждого назначения — то, что выдано: снятые методики в него не входят (lib/batteries.ts)
-    for (const { id } of issued) await snapshotAssignment(tx, id, grantable);
+    await snapshotAssignments(
+      tx,
+      issued.map(({ id }) => id),
+      grantable,
+    );
     await grantAccess(
       tx as never,
       issued.flatMap(({ id, userId }) =>

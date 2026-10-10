@@ -2,6 +2,7 @@ import { and, desc, eq, gt, inArray, lte, sql } from "drizzle-orm";
 import { LOCALE_OF, renderPush, type Lang } from "@quizzy/shared";
 import { baseDb, db } from "../db";
 import { systemContext } from "../db/context";
+import { inIds } from "../db/ids";
 import { appointments, departments, responses, slots, specialistProfiles } from "../db/schema";
 import { log } from "./log";
 import { pushToUser } from "./push";
@@ -52,7 +53,8 @@ export async function langsOfPatients(userIds: string[]): Promise<Map<string, La
   const rows = await db
     .selectDistinctOn([responses.userId], { userId: responses.userId, lang: responses.lang })
     .from(responses)
-    .where(and(inArray(responses.userId, userIds), sql`${responses.lang} is not null`))
+    // люди прогона расписания — тысячи: одним параметром (#194)
+    .where(and(inIds(responses.userId, userIds), sql`${responses.lang} is not null`))
     .orderBy(responses.userId, desc(responses.submittedAt));
   for (const r of rows) if (r.userId && r.lang) out.set(r.userId, r.lang as Lang);
   return out;
