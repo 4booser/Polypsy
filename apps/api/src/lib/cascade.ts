@@ -78,6 +78,18 @@ export async function runCascades(
         .orderBy(scaleBands.scaleId, scaleBands.position)
     ).filter((band) => scaleOfBand.get(band.id) === band.scaleId);
 
+    /*
+     * Повторы всех полос сдачи — одним протоколом (#132).
+     *
+     * Прежде каждая полоса ставила свои окна, а постановка окон заменяет все
+     * неоткрытые окна пары «методика + человек»: полоса шкалы A («через 7»)
+     * и полоса шкалы B («через 30») одной сдачи стирали окна друг друга, и
+     * выживали окна той, чей id шкалы случайно шёл последним, — срочное
+     * «через 7» могло пропасть, а в ответе стояло 2 при одном окне в базе.
+     * Теперь сроки всех попавших полос складываются в одно множество, и окна
+     * ставятся один раз — по объединению, независимо от порядка шкал.
+     */
+    const followUpDays = new Set<number>();
     for (const band of hit) {
       const batteryId = band.cascadeBatteryId;
       if (batteryId) {
@@ -85,12 +97,13 @@ export async function runCascades(
           assignCascade(batteryId, userId, surveyId, band.cascadeDueDays, outcome),
         );
       }
-      const spec = band.followUpDays?.trim();
-      if (spec) {
-        outcome.scheduledFollowUps += (await cascadeStep("followup", surveyId, () =>
-          scheduleFollowUps(surveyId, userId, spec),
-        )) ?? 0;
-      }
+      for (const d of parseFollowUpDays(band.followUpDays)) followUpDays.add(d);
+    }
+    if (followUpDays.size) {
+      const days = [...followUpDays].sort((a, b) => a - b);
+      outcome.scheduledFollowUps = (await cascadeStep("followup", surveyId, () =>
+        scheduleFollowUps(surveyId, userId, days),
+      )) ?? 0;
     }
   } catch (error) {
     if (isRetryableDbError(error)) throw error;
@@ -225,6 +238,15 @@ async function assignCascade(
   outcome.assignedBatteries.push(battery.title);
 }
 
+/** Сроки повторов полосы «7, 30» — дни; негодные и пустые отбрасываются */
+function parseFollowUpDays(spec: string | null): number[] {
+  if (!spec?.trim()) return [];
+  return spec
+    .split(",")
+    .map((x) => Number(x.trim()))
+    .filter((d) => Number.isFinite(d) && d > 0 && d <= 365);
+}
+
 /**
  * Повторные замеры той же методики. Интервалы привязаны к конкретному
  * прохождению конкретного человека, поэтому это не расписание, а окна
@@ -242,14 +264,8 @@ async function assignCascade(
 async function scheduleFollowUps(
   surveyId: string,
   userId: string,
-  spec: string,
+  days: number[],
 ): Promise<number> {
-  const days = spec
-    .split(",")
-    .map((x) => Number(x.trim()))
-    .filter((d) => Number.isFinite(d) && d > 0 && d <= 365);
-  if (!days.length) return 0;
-
   const planned = await planFollowUps(surveyId, userId, days);
 
   await auditSystem({
