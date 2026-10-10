@@ -35,7 +35,7 @@ import type {
 } from "@quizzy/shared";
 import { API_URL } from "../config";
 import { revokeStorage, tokenStorage } from "../storage";
-import { flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
+import { dropRevocation, flushRevocations, queueRevocation, refreshOnUnauthorized } from "../auth/session";
 import { createRefresher, failureStatusAfterRefresh } from "../auth/refresh";
 import { isPasswordChangeRequired, isPasswordGate } from "../auth/passwordGate";
 import { uiText } from "@quizzy/shared";
@@ -305,11 +305,15 @@ onWiped(() => draftLanes.resetAll());
 
 const wipeDeps: WipeDeps = {
   token: () => tokenStorage.get(),
+  refresh: () => tokenStorage.getRefresh(),
+  revokeLater: (refreshToken) => queueRevocation(revokeStorage, refreshToken),
+  revoked: (refreshToken) => dropRevocation(revokeStorage, refreshToken),
   clearTokens: () => tokenStorage.clear(),
-  confirm: (deviceId, token) =>
+  // refresh снятой сессии — сервер гасит её семью и отвязывает push установки (#128)
+  confirm: (deviceId, token, refreshToken) =>
     request<{ ok: true }>("/api/devices/wiped", {
       method: "POST",
-      body: JSON.stringify({ deviceId }),
+      body: JSON.stringify(refreshToken ? { deviceId, refreshToken } : { deviceId }),
       headers: { Authorization: `Bearer ${token}` },
     }).then(() => undefined),
 };
@@ -526,10 +530,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  /* с установкой: по ней подтверждение стирания отвязывает уведомления (#128) */
   registerPush: (token: string, platform: "ios" | "android") =>
     request<{ ok: true }>("/api/push/register", {
       method: "POST",
-      body: JSON.stringify({ token, platform }),
+      body: JSON.stringify({ token, platform, deviceId: deviceId() }),
     }),
   forgetPush: (token: string) =>
     request<{ ok: true }>("/api/push/forget", { method: "POST", body: JSON.stringify({ token }) }),
@@ -968,7 +973,10 @@ export const api = {
      * ситуация, ради которой команду и отдавали: нашедший планшет открывает
      * приложение и снова видит отделение, просто без кэша.
      */
-    return (await carryOutWipe(id, wipeDeps)).erased;
+    const outcome = await carryOutWipe(id, wipeDeps);
+    // подтверждение не дошло — снятая сессия отзывается своим путём, как после выхода без сети
+    if (!outcome.confirmed) void api.flushRevocations();
+    return outcome.erased;
   },
 
   rounds: async (): Promise<{ list: Worklist; cachedAt: string | null }> => {

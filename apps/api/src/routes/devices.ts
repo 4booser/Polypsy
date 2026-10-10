@@ -8,6 +8,8 @@ import { devices, users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { langOf, notFound, parseBody } from "../lib/http";
+import { forgetInstallation } from "../lib/push";
+import { revokeByToken } from "../lib/refresh";
 import { isSuperadmin } from "../lib/scope";
 import { requireAuth, requireSuperadmin, type AppEnv } from "../middleware/auth";
 
@@ -129,10 +131,25 @@ deviceRoutes.post("/checkin", async (c) => {
  * Принимается только от привязки, которой команда была дана и ещё не
  * исполнена: «стёрто» без команды — не сведение, а шум, и мобилка на 404
  * снимает свой след («подтверждения не ждут»).
+ *
+ * Стирание закрывает и то, что жило на сервере от имени установки (#128).
+ * Было: устройство чистилось, а его push-токен оставался привязанным и
+ * refresh-семья его сессии — живой; «стёртый» планшет получал уведомления
+ * о тревогах и приёмах, а скопированный с него refresh продлевал сессию.
+ * Теперь уведомления установки отвязываются, а семья сессии, которую
+ * стирание сняло на устройстве, гасится — по её refresh, который мобилка
+ * присылает вместе с подтверждением. Сессии того же человека на других
+ * устройствах живут: их семьи не трогаются.
  */
+const wipedSchema = z.object({
+  deviceId: z.string(),
+  /** Refresh сессии, снятой стиранием; нет — старая сборка или подтверждение после нового входа */
+  refreshToken: z.string().min(1).max(200).optional(),
+});
+
 deviceRoutes.post("/wiped", async (c) => {
   const user = c.get("user");
-  const input = await parseBody(c.req.raw, z.object({ deviceId: z.string() }));
+  const input = await parseBody(c.req.raw, wipedSchema);
   const now = new Date().toISOString();
 
   const [row] = await db
@@ -168,11 +185,16 @@ deviceRoutes.post("/wiped", async (c) => {
       .where(and(eq(devices.id, input.deviceId), ne(devices.userId, user.id), isNull(devices.wipedAt))),
   );
 
+  const pushTokens = await forgetInstallation(input.deviceId);
+  // только своя семья: чужой refresh в теле ничего не гасит (revokeByToken, onlyFor)
+  const sessionRevoked = input.refreshToken ? await revokeByToken(input.refreshToken, user.id) : false;
+
   await audit(c, {
     action: "device.wiped",
     resourceType: "device",
     resourceId: input.deviceId,
     subjectUserId: user.id,
+    details: { pushTokens, sessionRevoked },
   });
   return c.json({ ok: true });
 });

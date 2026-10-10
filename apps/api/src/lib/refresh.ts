@@ -230,12 +230,18 @@ async function revokeOnReuse(tx: typeof db, row: { familyId: string; userId: str
   await invalidateAccessTokens(tx, row.userId);
 }
 
-/** Отзыв по сырому токену (logout) */
-export async function revokeByToken(raw: string): Promise<void> {
+/**
+ * Отзыв по сырому токену (logout).
+ *
+ * `onlyFor` — отзывать, только если токен этого человека (#128, подтверждение
+ * стирания приходит под его сессией): чужой токен в теле запроса не гасит
+ * чужую семью. Возвращает, нашлась ли семья.
+ */
+export async function revokeByToken(raw: string, onlyFor?: string): Promise<boolean> {
   const row = await db.query.refreshTokens.findFirst({
     where: eq(refreshTokens.tokenHash, hashToken(raw)),
   });
-  if (!row) return;
+  if (!row || (onlyFor !== undefined && row.userId !== onlyFor)) return false;
   await db.transaction(async (t) => {
     const tx = t as unknown as typeof db;
     // в очередь за обменами этого человека: выпущенный ими токен семьи гасится тоже (lockOwner)
@@ -252,6 +258,7 @@ export async function revokeByToken(raw: string): Promise<void> {
      */
     await invalidateAccessTokens(tx, row.userId);
   });
+  return true;
 }
 
 /**

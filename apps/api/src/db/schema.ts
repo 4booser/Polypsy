@@ -2090,6 +2090,12 @@ export const pushTokens = pgTable(
      * зарегистрировано до миграции 0087 (см. её обоснование).
      */
     lang: text("lang", { enum: LANGS }),
+    /**
+     * Установка, с которой токен зарегистрирован (миграция 0125, #128):
+     * подтверждение её стирания отвязывает и её уведомления. null —
+     * регистрация старой сборки, до неё.
+     */
+    deviceId: text("device_id"),
     /** Когда устройство последний раз выходило на связь: мёртвые чистятся */
     lastSeenAt: timestampCol("last_seen_at").notNull().default(sql`now()`),
     createdAt: timestampCol("created_at").notNull().default(sql`now()`),
@@ -2097,6 +2103,7 @@ export const pushTokens = pgTable(
   (t) => ({
     tokenIdx: uniqueIndex("push_tokens_token_idx").on(t.token),
     userIdx: index("push_tokens_user_idx").on(t.userId),
+    deviceIdx: index("push_tokens_device_idx").on(t.deviceId),
   }),
 );
 
