@@ -410,6 +410,37 @@ describe("цена вопроса о пациенте не зависит от �
   );
 
   test(
+    "маршруты об одном пациенте — без построения зоны",
+    async () => {
+      /*
+       * Те же проверки «человек в зоне», что у assertPatientAccess, только
+       * записанные на месте: сводка, записи, план безопасности, направления,
+       * динамика.
+       */
+      const paths = (id: string) => [
+        `/api/timeline/${id}`,
+        `/api/notes/patients/${id}`,
+        `/api/safety/patients/${id}`,
+        `/api/referrals/summary/${id}`,
+        `/api/dynamics/respondents/${id}`,
+      ];
+      for (const [s, allowed] of [
+        [small, false],
+        [big, true],
+      ] as const) {
+        for (const path of paths(neighbour)) {
+          const { out, rows } = await counted(() => appApi(path, s.token));
+          const what = `${s === big ? "10 000" : "1 000"}: ${path.replace(neighbour, ":id")}`;
+          if (allowed) expect(out.status, `${what}: ${JSON.stringify(out.body)}`).toBeLessThan(400);
+          else expect(out.status, what).toBe(404);
+          expect(rows, `${what}: строк прочитано`).toBeLessThan(500);
+        }
+      }
+    },
+    60_000,
+  );
+
+  test(
     "очередь работы — зона условием над своими строками, а не списком",
     async () => {
       /* открытое направление пациента из «дальней» части зоны: большой его видит, малый — нет */

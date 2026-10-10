@@ -13,7 +13,7 @@ import { decryptField } from "../lib/crypto";
 import { notFound, parseQuery } from "../lib/http";
 import { referencePercentile, referenceSamples, type SampleTarget } from "../lib/referenceSample";
 import { birthYearOf } from "../lib/privacy";
-import { accessiblePatientIds, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
+import { patientsInScope, surveyScopeFilter, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -197,7 +197,7 @@ dynamicsRoutes.get("/respondents/:userId", async (c) => {
    * хоть одну свою методику, чтобы получить карточку чужого пациента с
    * пустым списком замеров.
    */
-  const allowed = await accessiblePatientIds(staff);
+  const allowed = await patientsInScope(staff, [userId]);
   if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   /*

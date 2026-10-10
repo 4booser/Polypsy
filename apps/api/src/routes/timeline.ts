@@ -18,7 +18,7 @@ import { audit } from "../lib/audit";
 import { fullNameOf } from "../lib/auth";
 import { decryptField } from "../lib/crypto";
 import { langOf, notFound } from "../lib/http";
-import { accessiblePatientIds, surveyScopeFilterFor } from "../lib/scope";
+import { patientsInScope, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const timelineRoutes = new Hono<AppEnv>();
@@ -84,7 +84,7 @@ timelineRoutes.get("/:userId", async (c) => {
    * идентификатор — то есть маршрут отвечал на вопрос «есть ли такой
    * пациент», который задавать ему никто не разрешал.
    */
-  const allowed = await accessiblePatientIds(staff);
+  const allowed = await patientsInScope(staff, [userId]);
   if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   const scope = await surveyScopeFilterFor(staff, userId);
