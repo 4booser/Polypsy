@@ -376,8 +376,10 @@ interface AuditInput {
  * и «выстрелил и забыл» означал бы, что при падении процесса событие пропадёт,
  * а ответ клиенту уже ушёл.
  *
- * Никогда не бросает: отказ журнала не должен ронять обслуживание пациента,
- * поэтому ошибка уходит в лог процесса.
+ * Строка отказа не бросает никогда: её ошибка уходит в лог, а сама строка
+ * повторяется после отката (durable). Строка «сделано», которая не легла,
+ * бросает — действие без следа в журнале не фиксируется (#145, см.
+ * rethrowUnwritten ниже).
  */
 /**
  * Запись с хэш-цепочкой.
@@ -388,7 +390,7 @@ interface AuditInput {
  * отсортированными ключами, иначе один и тот же объект давал бы разные хэши:
  * jsonb хранит ключи в своём порядке, а не в том, в каком их записали.
  */
-const AUDIT_CHAIN_LOCK = 7_154_301;
+export const AUDIT_CHAIN_LOCK = 7_154_301;
 
 /**
  * Версия канонизации новых строк (колонка hash_version, миграция 0096).
@@ -553,10 +555,36 @@ function keepRefusal(input: Pick<AuditInput, "outcome">, write: () => Promise<vo
    * Успешная строка — bookkeeping: вне контекста она пишется системной ролью,
    * в read-only транзакции «от имени» — после неё (db/context.ts).
    */
-  return input.outcome && input.outcome !== "success" ? durable(write) : bookkeeping(write);
+  return isRefusal(input) ? durable(write) : bookkeeping(write);
+}
+
+function isRefusal(input: Pick<AuditInput, "outcome">): boolean {
+  return !!input.outcome && input.outcome !== "success";
+}
+
+/**
+ * Несостоявшаяся строка «сделано» не гасится, а роняет действие (#145).
+ *
+ * Голову цепочки запись берёт под замком транзакции (writeChained), и
+ * держит его запрос до коммита. Запрос, который сначала взял строки, а
+ * потом пришёл к журналу (PATCH направления), и запрос, который взял журнал
+ * раньше строк (сдача с каскадом), встают в цикл, и база снимает одного —
+ * бывает, что ровно на вставке в журнал. Откатывается тогда только точка
+ * сохранения этой вставки, а действие остаётся в транзакции; погашенная
+ * ошибка фиксировала действие без следа в журнале.
+ *
+ * Теперь ошибка уходит наверх: запрос отвечает отказом, его транзакция
+ * откатывается целиком — действия не было, и записывать нечего. Отказы
+ * (outcome не success) — как прежде: их строка повторяется после отката
+ * (durable), и ронять ради неё уже отказанный запрос незачем. Событие потока
+ * (emit) после записанной строки по-прежнему только в лог.
+ */
+function rethrowUnwritten(err: unknown, written: boolean, input: Pick<AuditInput, "outcome">): void {
+  if (!written && !isRefusal(input)) throw err;
 }
 
 export async function audit(c: Context, input: AuditInput): Promise<void> {
+  let written = false;
   try {
     const ctxUser = c.get("user") as User | undefined;
     /*
@@ -594,6 +622,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
        */
       details: withRequestId(details),
     }));
+    written = true;
 
     /*
      * Чтение событием не становится. Различаются они не списком действий, а
@@ -607,6 +636,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
     if (method !== "GET" && method !== "HEAD") await emit(input, actor?.id ?? null);
   } catch (err) {
     log.error("audit.write_failed", { action: input.action, error: String(err) });
+    rethrowUnwritten(err, written, input);
   }
 }
 
@@ -616,6 +646,7 @@ export async function audit(c: Context, input: AuditInput): Promise<void> {
  * именно так, а не как «неизвестно кто».
  */
 export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<void> {
+  let written = false;
   try {
     await keepRefusal(input, () => writeChained({
       id: crypto.randomUUID(),
@@ -631,10 +662,12 @@ export async function auditSystem(input: Omit<AuditInput, "actor">): Promise<voi
       userAgent: "система",
       details: input.details ?? null,
     }));
+    written = true;
     // фоновой проход читающим не бывает: он на то и проход, что что-то делает
     await emit(input, null);
   } catch (err) {
     log.error("audit.system_write_failed", { action: input.action, error: String(err) });
+    rethrowUnwritten(err, written, input);
   }
 }
 

@@ -1680,6 +1680,17 @@ export const ERRORS = {
     en: "Another department or specialist already looks after this person — only they can book or assign to them",
   },
 
+  /* ── w20:data ── */
+  /*
+   * База сняла запрос как жертву взаимоблокировки или сбоя сериализации
+   * (#145, app.ts onError): ничего не сохранено, повтор пройдёт. Отвечается
+   * 503 — очереди сдач повторяют его сами.
+   */
+  "err.retryRequest": {
+    uk: "Запит збігся з іншим одночасним запитом і не виконався. Нічого не збережено — повторіть, будь ласка",
+    ru: "Запрос совпал с другим одновременным запросом и не выполнился. Ничего не сохранено — повторите, пожалуйста",
+    en: "The request collided with another simultaneous request and did not go through. Nothing was saved — please try again",
+  },
 } as const satisfies Record<string, ErrorEntry>;
 
 export type ErrorKey = keyof typeof ERRORS;

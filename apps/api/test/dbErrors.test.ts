@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { DrizzleQueryError } from "drizzle-orm/errors";
-import { db } from "./fixtures";
+import { client, db } from "./fixtures";
 import { departments } from "../src/db/schema";
-import { unwrapDbError } from "../src/db/errors";
+import { isRetryableDbError, unwrapDbError } from "../src/db/errors";
 
 /**
  * Ошибки базы приходят в код ошибками драйвера, а не обёрткой drizzle
@@ -91,5 +91,44 @@ describe("ошибки базы — ошибки драйвера", () => {
     const hollow = new DrizzleQueryError("select 1", [], undefined);
     expect(unwrapDbError(hollow)).toBe(hollow);
     expect(unwrapDbError("строка")).toBe("строка");
+  });
+});
+
+/*
+ * Жертва столкновения двух запросов отвечает 503 «повторите» (#145,
+ * app.ts onError). Взаимоблокировка проверяется настоящими маршрутами в
+ * auditLockCycle.test.ts; сбой сериализации маршрутом не вызвать (запросы
+ * идут на READ COMMITTED) — здесь настоящая ошибка 40001 от базы.
+ */
+describe("повторяемые ошибки базы", () => {
+  test("сбой сериализации (40001) — повторяемый; нарушение ограничения — нет", async () => {
+    const table = `w20_retry_probe_${crypto.randomUUID().slice(0, 8)}`;
+    await client.unsafe(`create table ${table} (id int primary key, n int not null)`);
+    try {
+      await client.unsafe(`insert into ${table} values (1, 0)`);
+      const reserved = await client.reserve();
+      let serialization: unknown;
+      try {
+        await reserved.unsafe("begin isolation level repeatable read");
+        await reserved.unsafe(`select n from ${table} where id = 1`);
+        // соседний запрос меняет ту же строку и фиксирует
+        await client.unsafe(`update ${table} set n = n + 1 where id = 1`);
+        serialization = await failing(reserved.unsafe(`update ${table} set n = n + 1 where id = 1`));
+        await reserved.unsafe("rollback");
+      } finally {
+        reserved.release();
+      }
+      expect((serialization as { code?: string }).code).toBe("40001");
+      expect(isRetryableDbError(serialization)).toBe(true);
+      expect(isRetryableDbError({ code: "40P01" })).toBe(true);
+
+      const duplicate = await failing(client.unsafe(`insert into ${table} values (1, 0)`));
+      expect((duplicate as { code?: string }).code).toBe("23505");
+      expect(isRetryableDbError(duplicate)).toBe(false);
+      expect(isRetryableDbError(new Error("сбой обработчика"))).toBe(false);
+      expect(isRetryableDbError(null)).toBe(false);
+    } finally {
+      await client.unsafe(`drop table if exists ${table}`);
+    }
   });
 });
