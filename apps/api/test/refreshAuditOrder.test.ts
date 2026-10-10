@@ -70,7 +70,7 @@ test("повтор refresh (кража) одновременно со входо
     pending.push(login);
     await untilWaiting(2);
   });
-  const [reuse, login] = await Promise.all(pending);
+  const [reuse, login] = (await Promise.all(pending)) as [Awaited<(typeof pending)[number]>, Awaited<(typeof pending)[number]>];
   const rows = (await db.execute(sql`
     select action, outcome, details->>'reason' as reason from audit_log
     where action = 'auth.refresh_failed' and (resource_id = ${person.id} or subject_user_id = ${person.id})`)) as unknown as { reason: string }[];
