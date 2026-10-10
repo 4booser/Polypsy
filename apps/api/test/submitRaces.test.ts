@@ -17,6 +17,7 @@ import {
   type Person,
 } from "./fixtures";
 import { alertCases, referrals, riskAlerts } from "../src/db/schema";
+import { AUDIT_CHAIN_LOCK } from "../src/lib/audit";
 
 /**
  * Гонки вокруг сдачи (волна 21, участок submit; #146, #147, #148).
@@ -52,6 +53,8 @@ async function makeSurvey(allowRetake: boolean): Promise<string> {
     publishedAt: new Date().toISOString(),
     visibility: "public",
     scoringEnabled: true,
+    // баллы — и в ответе пациенту: повтор обязан отдать те же (#148)
+    showResultsToPatient: true,
     allowRetake,
     createdBy: adminA.id,
   } as never);
@@ -285,7 +288,6 @@ describe("автосохранение посреди сдачи (#146)", () => 
     expect((await mine.draft(NO)).status).toBe(200);
 
     // сдача доходит до своей строки журнала и стоит, держа всё, что взяла до неё
-    const { AUDIT_CHAIN_LOCK } = await import("../src/lib/audit");
     const chain = await hold((tx) => tx`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`);
     let submitting: ReturnType<typeof track> | undefined;
     try {
@@ -432,4 +434,91 @@ describe("запоздалое автосохранение после сдач�
       expect(moved!.responseId).toBe(submitted.body.id);
     }, 30_000);
   }
+});
+
+/* ─────────── #148: повтор сдачи до коммита первой попытки ─────────── */
+
+describe("повтор сдачи с тем же clientRequestId до коммита первой (#148)", () => {
+  /*
+   * Повтор искал первую попытку по clientRequestId до всяких замков. Пока
+   * первая не закоммичена, он её не видел и сдавал сам: у возвратной
+   * методики упирался в уникальный индекс clientRequestId (500), у
+   * невозвратной ждал замка пары и получал «уже проходили» (409). Обе
+   * очереди сдач считают такой ответ отказом по существу — сдача, ответы
+   * которой приняты, висела «отклонённой».
+   *
+   * Первую попытку держит на её строке журнала посторонняя транзакция с
+   * замком цепочки (lib/audit.ts): строка прохождения уже вставлена, но не
+   * закоммичена. Повтор приходит в этот момент.
+   */
+
+  /** Сколько транзакций этой базы ждут замка цепочки журнала */
+  async function chainWaiters(): Promise<number> {
+    const [row] = await client`
+      select count(*)::int as n from pg_locks
+       where locktype = 'advisory'
+         and database = (select oid from pg_database where datname = current_database())
+         and classid::bigint = 0 and objid::bigint = ${AUDIT_CHAIN_LOCK} and objsubid = 1
+         and not granted`;
+    return Number(row!.n);
+  }
+
+  /** Первая и вторая — разом, первая стоит на журнале, пока вторая не встанет в очередь или не ответит */
+  async function overlapped(first: () => Promise<Reply>, second: () => Promise<Reply>) {
+    const chain = await hold((tx) => tx`select pg_advisory_xact_lock(${AUDIT_CHAIN_LOCK})`);
+    let one: ReturnType<typeof track> | undefined;
+    let two: ReturnType<typeof track> | undefined;
+    try {
+      one = track(first());
+      await until(async () => (await chainWaiters()) >= 1, "первая попытка не дошла до журнала");
+      two = track(second());
+      await until(async () => two!.done || (await lockWaiters()) >= 2, "повтор не встал в очередь за первой попыткой");
+    } finally {
+      await chain.release();
+    }
+    return Promise.all([one!.run, two!.run]);
+  }
+
+  for (const allowRetake of [true, false]) {
+    test(`allowRetake=${allowRetake}: вторая — 200 duplicate с тем же прохождением и баллами, строка одна`, async () => {
+      const surveyId = await makeSurvey(allowRetake);
+      const person = await makePatient();
+      const a = await attempt(surveyId, person);
+      const clientRequestId = crypto.randomUUID();
+      const send = () => a.submit(YES, { clientRequestId });
+
+      const [first, again] = await overlapped(send, send);
+
+      expect(first.status, JSON.stringify(first.body)).toBe(201);
+      expect(again.status, JSON.stringify(again.body)).toBe(200);
+      expect(again.body.duplicate).toBe(true);
+      expect(again.body.id).toBe(first.body.id);
+      expect(first.body.scores).toHaveLength(1);
+      expect(again.body.scores, "повтор отдал не те баллы").toEqual(first.body.scores);
+      expect(again.body.reliable).toBe(first.body.reliable);
+      // план безопасности повтор показывает так же: риск был
+      expect(again.body.safetyPlan).toEqual(first.body.safetyPlan);
+      const rows = await db
+        .select({ id: responsesTable.id })
+        .from(responsesTable)
+        .where(eq(responsesTable.clientRequestId, clientRequestId));
+      expect(rows.map((r) => r.id)).toEqual([first.body.id]);
+    }, 30_000);
+  }
+
+  test("контроль: две разные попытки разом — обе приняты, прохождений два", async () => {
+    // замок повтора — по clientRequestId: разные попытки одного человека друг друга не отменяют
+    const surveyId = await makeSurvey(true);
+    const person = await makePatient();
+    const a = await attempt(surveyId, person);
+    const b = await attempt(surveyId, person);
+    const [one, two] = await overlapped(
+      () => a.submit(NO, { clientRequestId: crypto.randomUUID() }),
+      () => b.submit(NO, { clientRequestId: crypto.randomUUID() }),
+    );
+    expect(one.status, JSON.stringify(one.body)).toBe(201);
+    expect(two.status, JSON.stringify(two.body)).toBe(201);
+    expect(two.body.id).not.toBe(one.body.id);
+    expect((await rowsOf(surveyId, person.id)).completed.sort()).toEqual([one.body.id, two.body.id].sort());
+  }, 30_000);
 });
