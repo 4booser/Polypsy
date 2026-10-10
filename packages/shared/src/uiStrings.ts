@@ -7787,6 +7787,10 @@ export const UI = {
     en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
   },
 
+  /* ── w21:perfroutes ── */
+  /* техпанель: проверки «Якості даних» — фоновой задачей с сохранённым итогом (#189, apps/api/src/lib/dataChecks.ts) */
+  "ops.job.dataQuality": { uk: "Перевірки якості даних", ru: "Проверки качества данных", en: "Data quality checks" },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

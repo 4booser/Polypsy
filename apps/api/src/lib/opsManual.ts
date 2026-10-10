@@ -22,11 +22,15 @@
  *   catalog.install — установка общего каталога методик (lib/catalogInstall,
  *     та же, что у installCatalog.ts): идемпотентна по построению;
  *   retention — чистка потока событий по сроку (retention.ts);
- *   ops.alerts — проверка правил оповещений (opsAlerts.ts).
+ *   ops.alerts — проверка правил оповещений (opsAlerts.ts);
+ *   data.quality — «перепроверить» «Якість даних»: проверки целостности
+ *     записей и новый сохранённый итог (dataChecks.ts, #189). Только чтение
+ *     данных и строка итога.
  */
 import { baseDb } from "../db";
 import { systemContext } from "../db/context";
 import { clearAnalyticsCache } from "./analyticsCache";
+import { DATA_QUALITY_JOB, refreshDataQuality } from "./dataChecks";
 import { installCatalog } from "./catalogInstall";
 import { withJobLock } from "./jobLock";
 import { log } from "./log";
@@ -35,7 +39,14 @@ import { ALERT_JOB, runAlertChecksLocked } from "./opsAlerts";
 import { registerRunnable } from "./opsJobs";
 import { runRetentionOnce } from "./retention";
 
-export const MANUAL_JOBS = ["analytics.cache", "search.reindex", "catalog.install", "retention", ALERT_JOB] as const;
+export const MANUAL_JOBS = [
+  "analytics.cache",
+  "search.reindex",
+  "catalog.install",
+  "retention",
+  ALERT_JOB,
+  DATA_QUALITY_JOB,
+] as const;
 
 let registered = false;
 
@@ -68,4 +79,6 @@ export function registerManualJobs(): void {
   registerRunnable("retention", () => withJobLock("retention", () => runRetentionOnce()));
 
   registerRunnable(ALERT_JOB, runAlertChecksLocked);
+
+  registerRunnable(DATA_QUALITY_JOB, () => refreshDataQuality("manual"));
 }

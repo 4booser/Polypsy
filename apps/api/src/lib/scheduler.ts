@@ -19,6 +19,7 @@ import { publish } from "./events";
 import { sweepPresence } from "../routes/presence";
 import { sweepNoShows } from "./noShow";
 import { securityTick } from "./integrity";
+import { DATA_QUALITY_JOB, scheduledDataQuality } from "./dataChecks";
 import { batterySurveysInUse } from "./scope";
 import { closeMissed, isOverdue, lockBatteryForAssign, snapshotAssignments } from "./batteries";
 import { log } from "./log";
@@ -482,6 +483,7 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
   registerJob("clinic.noShows", intervalMs);
   registerJob("push.receipts", intervalMs);
   registerJob("security", intervalMs);
+  registerJob(DATA_QUALITY_JOB, intervalMs);
   registerJob("followups.open", intervalMs);
   registerJob(SLOT_HORIZON_JOB, DAY_MS);
   const tick = () => {
@@ -528,6 +530,14 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      */
     void trackJob("security", () => securityTick()).catch((error) =>
       log.warn("sec.tick_failed", { error: String(error) }),
+    );
+    /*
+     * «Якість даних» техпанели (lib/dataChecks.ts, #189): проверки — здесь,
+     * а экран отдаёт сохранённый итог. Раз в шесть часов — отмеряет сама
+     * задача по дате последнего итога; остальные такты ничего не делают.
+     */
+    void trackJob(DATA_QUALITY_JOB, () => scheduledDataQuality()).catch((error) =>
+      log.warn("data_quality.tick_failed", { error: String(error) }),
     );
     /*
      * Расшифровка записей приёма здесь больше не идёт — она вынесена в

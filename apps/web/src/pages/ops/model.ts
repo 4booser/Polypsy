@@ -575,6 +575,8 @@ export const JOB_KEY: Record<string, UiKey> = {
   "search.reindex": "o2b.job.searchReindex",
   "catalog.install": "o2b.job.catalogInstall",
   "ops.alerts": "o2b.job.alerts",
+  /* волна 21: «Якість даних» — фоновой задачей, «Запустити зараз» — перепроверить (apps/api/src/lib/dataChecks.ts) */
+  "data.quality": "ops.job.dataQuality",
   /* история техпанели (участок obs2a): запись пачками и ротация по сроку */
   "ops.flush": "ops.job.flush",
   "ops.rotate": "ops.job.rotate",
