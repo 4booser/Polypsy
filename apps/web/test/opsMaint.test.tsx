@@ -228,7 +228,7 @@ describe("отложенные сдачи кабинета пациента", ()
   };
 
   test("сдача получает clientRequestId, и первый id сохраняется", () => {
-    const box = createOutbox(memory());
+    const box = createOutbox(memory(), () => "u");
     const a = box.enqueue("u", "s1", {});
     const b = box.enqueue("u", "s1", { clientRequestId: "first" });
     expect(a.payload.clientRequestId).toBeString();
@@ -236,7 +236,7 @@ describe("отложенные сдачи кабинета пациента", ()
   });
 
   test("режим обслуживания (503) останавливает проход и ничего не помечает отказом", async () => {
-    const box = createOutbox(memory());
+    const box = createOutbox(memory(), () => "u");
     box.enqueue("u", "s1", {});
     box.enqueue("u", "s2", {});
     let calls = 0;
@@ -258,7 +258,7 @@ describe("отложенные сдачи кабинета пациента", ()
 
   test("отказ по существу помечает запись, не теряет её и не держит остальных", async () => {
     const store = memory();
-    const box = createOutbox(store);
+    const box = createOutbox(store, () => "u");
     box.enqueue("u", "bad", { answers: [1] });
     box.enqueue("u", "good", {});
     const res = await box.flush("u", async (item) => {
@@ -273,7 +273,7 @@ describe("отложенные сдачи кабинета пациента", ()
   });
 
   test("очередь своя у каждого: чужая сдача не уходит под чужим входом", async () => {
-    const box = createOutbox(memory());
+    const box = createOutbox(memory(), () => "bob");
     box.enqueue("alice", "s1", {});
     const sent: string[] = [];
     await box.flush("bob", async (item) => {
@@ -285,7 +285,7 @@ describe("отложенные сдачи кабинета пациента", ()
 
   test("всё отправлено — запись из хранилища убирается", async () => {
     const store = memory();
-    const box = createOutbox(store);
+    const box = createOutbox(store, () => "u");
     box.enqueue("u", "s1", {});
     await box.flush("u", async () => {});
     expect(store.map.size).toBe(0);

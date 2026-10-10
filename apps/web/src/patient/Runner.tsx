@@ -12,6 +12,7 @@ import { useResource } from "../useResource";
 import { IconCheck, IconClose } from "./icons";
 import { cx } from "../ui/cx";
 import { offlineSafetyPlan, outbox } from "./outbox";
+import { DateInput, MatrixInput, RankingInput, type RunnerAnswer } from "./answerInputs";
 
 /**
  * Прохождение методики на телефоне: один пункт на экран.
@@ -26,11 +27,8 @@ import { offlineSafetyPlan, outbox } from "./outbox";
  * достоверность, и без него протокол выглядит пройденным мгновенно.
  */
 
-interface Answer {
-  optionIds?: string[];
-  number?: number;
-  text?: string;
-}
+/* матрица, ранжирование и дата — той же формы, что у мобилки и сервера (answerInputs.tsx, #168) */
+type Answer = RunnerAnswer;
 
 export default function Runner() {
   const { id } = useParams<{ id: string }>();
@@ -309,7 +307,19 @@ export default function Runner() {
               ) : null}
 
               <div className="flex flex-col gap-2">
-                {choices.length ? (
+                {/* у матрицы и ранжирования тоже есть варианты — их ветки раньше общей кнопочной */}
+                {current.type === "matrix" ? (
+                  <MatrixInput question={current} answer={a} onChange={set} partLang={partLang} />
+                ) : current.type === "ranking" ? (
+                  <RankingInput question={current} answer={a} onChange={set} partLang={partLang} />
+                ) : current.type === "date" ? (
+                  <DateInput
+                    answer={a}
+                    onChange={set}
+                    labelledBy={titleId}
+                    describedBy={current.help ? helpId : undefined}
+                  />
+                ) : choices.length ? (
                   choices.map((o) => {
                     const picked = a?.optionIds?.includes(o.id) ?? false;
                     return (

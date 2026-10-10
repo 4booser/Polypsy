@@ -1,4 +1,5 @@
 import { ageAt, deviceTimeZone, evaluateSubmission, isTransientStatus, type Answer, type SurveyFull } from "@quizzy/shared";
+import { ownerOfToken, tokenStore } from "../api";
 
 /**
  * Несданные ответы веб-кабинета — ждут конца работ или появления сети.
@@ -29,10 +30,25 @@ import { ageAt, deviceTimeZone, evaluateSubmission, isTransientStatus, type Answ
  * нет; уходит она при следующем входе того же человека. Цена названа:
  * ответы лежат в браузере открытыми до отправки — ровно как черновик в
  * мобилке. Отправленное удаляется сразу.
+ *
+ * Отдельного ключа мало (#166): ключ выбирает человек на экране вкладки, а
+ * токен в запросе — тот, что лежит в общем хранилище сейчас. Во второй
+ * вкладке вошёл B — таймер первой отправлял очередь A с токеном B: ответы
+ * ложились в карту B, а у A стирались как отправленные. Поэтому у записи
+ * есть владелец, и перед каждой отправкой он сверяется с `sub` токена,
+ * который уйдёт в запросе (как в мобилке, CR-088). Не совпал — проход
+ * останавливается: запись не уходит, не стирается и не помечается
+ * отказом, а ждёт своего владельца.
  */
 
 export interface OutboxItem {
   id: string;
+  /**
+   * Чья сдача — `sub` токена, с которым её можно отправить (#166). У записей,
+   * легших до появления поля, его нет: их владелец — тот, под чьим ключом
+   * они лежат.
+   */
+  ownerId?: string;
   surveyId: string;
   payload: Record<string, unknown> & { clientRequestId: string };
   queuedAt: string;
@@ -51,7 +67,13 @@ export interface FlushResult {
 
 const keyOf = (userId: string) => `quizzy.outbox.${userId}`;
 
-export function createOutbox(storage: OutboxStorage) {
+/**
+ * `tokenOwner` — владелец токена, который уйдёт в ближайшем запросе. Сверка
+ * стоит вплотную к вызову `submit`, в том же синхронном шаге: запрос читает
+ * токен из хранилища в первой же строке (api.ts, request), и между сверкой
+ * и чтением чужой токен подложиться не успевает.
+ */
+export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | null) {
   function read(userId: string): OutboxItem[] {
     try {
       const raw = storage.getItem(keyOf(userId));
@@ -75,6 +97,7 @@ export function createOutbox(storage: OutboxStorage) {
         typeof payload.clientRequestId === "string" ? payload.clientRequestId : crypto.randomUUID();
       const item: OutboxItem = {
         id: crypto.randomUUID(),
+        ownerId: userId,
         surveyId,
         payload: { ...payload, clientRequestId },
         queuedAt: new Date().toISOString(),
@@ -104,6 +127,8 @@ export function createOutbox(storage: OutboxStorage) {
       try {
         for (const item of read(userId)) {
           if (item.rejectedReason) continue;
+          // токен уже чужой — ни эта, ни следующие от его имени не уйдут; запись цела и ждёт владельца
+          if ((item.ownerId ?? userId) !== tokenOwner()) break;
           try {
             await submit(item);
             write(userId, read(userId).filter((i) => i.id !== item.id));
@@ -163,7 +188,8 @@ function browserStorage(): OutboxStorage {
   }
 }
 
-export const outbox = createOutbox(browserStorage());
+/* владелец — тот, чей токен уйдёт в запросе: под входом «от имени» это тот, от чьего имени смотрят */
+export const outbox = createOutbox(browserStorage(), () => ownerOfToken(tokenStore.get()));
 
 /**
  * Памятка при сдаче, ушедшей в очередь: план безопасности показывается так
