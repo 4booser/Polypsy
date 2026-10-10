@@ -10,6 +10,27 @@ import { z } from "zod";
  */
 const isProduction = process.env.NODE_ENV === "production";
 
+/**
+ * Переключатель вида 1/0. Не задан или пуст — умолчание; кроме 1/0 понимает
+ * true/false, yes/no, on/off. Прочее — отказ запуска, а не «да»: опечатка в
+ * флаге, который открывает систему посторонним, не должна читаться как
+ * согласие.
+ */
+const ON = new Set(["1", "true", "yes", "on"]);
+const OFF = new Set(["0", "false", "no", "off"]);
+const toggle = (fallback: boolean) =>
+  z
+    .string()
+    .optional()
+    .transform((value, ctx) => {
+      const v = (value ?? "").trim().toLowerCase();
+      if (v === "") return fallback;
+      if (ON.has(v)) return true;
+      if (OFF.has(v)) return false;
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `ожидается 1 или 0, получено «${value}»` });
+      return z.NEVER;
+    });
+
 const schema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3001),
   DATABASE_URL: isProduction
@@ -176,11 +197,19 @@ const schema = z.object({
    * никогда: техпанель знает только «задан / не задан».
    */
   GITHUB_DISPATCH_TOKEN: z.string().max(400).default(""),
-  /** Открытая регистрация пациентов без приглашения (в бою выключать) */
-  OPEN_REGISTRATION: z
-    .string()
-    .default("1")
-    .transform((v) => v !== "0" && v.toLowerCase() !== "false"),
+  /**
+   * Регистрация пациента без приглашения.
+   *
+   * В production не задана или пуста — закрыта: «с улицы» в клиническую
+   * систему не попадают, а открытая регистрация вдобавок отвечает «номер
+   * занят» на известный номер и «создан» на неизвестный — то есть говорит
+   * постороннему, состоит ли человек на учёте. Прежде умолчание было
+   * «открыто» везде, а docker-compose.yml переменную в контейнер не
+   * передавал: «OPEN_REGISTRATION=0» в .env.docker не значило ничего, и
+   * боевой сервер принимал регистрацию с улицы (#155). Вне production
+   * умолчание прежнее — открыта: на нём стоят разработка и e2e.
+   */
+  OPEN_REGISTRATION: toggle(!isProduction),
   /** Планировщик тикает только там, где флаг включён (одна реплика) */
   SCHEDULER_ENABLED: z
     .string()

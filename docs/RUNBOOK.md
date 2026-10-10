@@ -113,7 +113,7 @@ TLS автоматом при заданном SITE_ADDRESS), API проксир
 - [ ] `PHONE_INDEX_SECRET`, `EXPORT_SECRET` и `SEARCH_INDEX_SECRET` заданы и не совпадают с `JWT_SECRET`
 - [ ] `CORS_ORIGINS` = адрес консоли
 - [ ] `SMTP_URL`/`MAIL_FROM`/`CONSOLE_URL` — иначе тревоги только в консоли
-- [ ] `OPEN_REGISTRATION=0` — вход пациентов только по приглашениям
+- [ ] `OPEN_REGISTRATION` пуст или `0` — пациенты регистрируются только по приглашениям (в production это и умолчание; `1` открывает регистрацию с улицы). Режим видно в журнале выкатки: строка `envCheck: регистрация без приглашения — …`
 - [ ] Создана боевая роль БД (RLS активен только для не-владельца):
       `psql "$DATABASE_URL" -v app_password='…' -f scripts/create-app-role.sql`,
       затем в DATABASE_URL приложения — `quizzy_app`

@@ -75,7 +75,7 @@ Rules that hold everywhere:
 - Reading a patient's clinical data goes through one check: conclusions, results, printouts and one-time print links all use it.
 - The database enforces the same boundaries with row-level security under a dedicated application role. Tests run the patient and staff flows under that role.
 - TOTP is the second factor. A policy makes it mandatory for superadmins and tech-panel users; other staff can turn it on themselves.
-- Patients join through an invitation link. Open self-registration (`OPEN_REGISTRATION`, meant to be off in production) always creates a patient, never staff.
+- Patients join through an invitation link. Self-registration without an invitation (`OPEN_REGISTRATION`) is off in production unless set to `1`, and on by default in development; it always creates a patient, never staff. With it off, the refusal is the same whether or not the phone or email is already known.
 - Pseudonymous patient accounts store no name.
 
 ## What it does
