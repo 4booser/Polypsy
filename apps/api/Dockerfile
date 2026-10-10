@@ -90,6 +90,22 @@ COPY --from=whisper /out/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=ffmpeg /out/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=build /app /app
 
+# Каталог записей приёмов — с владельцем bun и до USER.
+#
+# Сюда монтируется именованный том recordings (api, transcriber, provision).
+# Пустой том Docker наполняет из образа вместе с владельцем и правами
+# каталога; когда каталога в образе не было, том рождался root:root 755, а
+# процесс работает под bun — storeAudio падал с EACCES, загрузка записи
+# отвечала 500, разговор оставался только в браузере, таблица записей на
+# сервере пустовала (#157). Непустой том, уже созданный на сервере, образ не
+# чинит: его владельца правит выкатка (deploy.yml, перед up -d).
+#
+# 700: внутри — зашифрованные записи разговоров, и читать их, кроме самого
+# приложения, некому.
+RUN mkdir -p /data/recordings \
+ && chown bun:bun /data/recordings \
+ && chmod 700 /data/recordings
+
 # non-root: у образа bun уже есть пользователь bun
 USER bun
 
