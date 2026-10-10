@@ -1140,6 +1140,13 @@ describe("несданное назначенное: одно определен
 
   test("отменённое назначение работы не добавляет", async () => {
     const { patient, slotId, id } = await bookedPatient("cancel");
+    /*
+     * Человек прикреплён к отделению специалиста, а набор выдаёт
+     * администратор группы А: чужого пациента в свою зону выдачей не ввести
+     * (#139), поэтому он сперва в зоне группы — сдавал её методику месяц
+     * назад, и новое назначение это прохождение не закрывает.
+     */
+    await completedAt(patient.id, new Date(Date.now() - 30 * 86_400_000).toISOString());
     const assigned = await api(`/api/batteries/${batteryId}/assign`, adminA.token, {
       method: "POST",
       body: JSON.stringify({ userId: patient.id }),

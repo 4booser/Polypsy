@@ -47,6 +47,7 @@ import { STAFF_OUTBOUND_LANG } from "../lib/notify";
 import { pendingWorkByUser } from "../lib/pendingWork";
 import { HORIZON_WEEKS, lockSchedule, syncSlots } from "../lib/schedule";
 import { accessiblePatientIds, assertPatientAccess, isStaff } from "../lib/scope";
+import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const clinicRoutes = new Hono<AppEnv>();
@@ -663,35 +664,22 @@ clinicRoutes.post("/appointments", async (c) => {
      * этой самой записью (attachedVia: "staff").
      *
      * Различаются два случая, и различие простое: человек, которого не видит
-     * НИКТО, — это приём нового; человек, уже прикреплённый к ЧУЖОМУ
-     * отделению, — это чужой пациент, и запись за него без ведома его
-     * отделения не приём, а обход зоны. Второе запрещено, первое разрешено и
-     * помечается в журнале — тем же приёмом, что уже применён к выдаче
-     * методики (см. widenedOwnScope в routes/access.ts).
+     * НИКТО, — это приём нового; человек, которого уже ведёт кто-то другой,
+     * — это чужой пациент, и запись за него без ведома тех, кто его ведёт,
+     * не приём, а обход зоны. Второе запрещено, первое разрешено и
+     * помечается в журнале — тем же приёмом, что у выдачи методики (см.
+     * widenedOwnScope в routes/access.ts).
+     *
+     * «Ведёт кто-то другой» — не только чужое отделение (#139): прежде
+     * проверялось одно прикрепление, и человек из зоны чужой группы или с
+     * приёмом у другого специалиста записывался к себе — вместе с заметками
+     * чужого автора. Основания и почему системной ролью — в lib/otherCare.ts.
      */
-    const seen = await accessiblePatientIds(me);
-    outsideScope = seen !== null && !seen.has(input.patientId);
-    if (outsideScope) {
-      /*
-       * «Прикреплён ли к чужому отделению» — системной ролью. Под ролью
-       * приложения прикрепление чужого пациента сотруднику не видно — ровно
-       * потому, что пациент чужой, — и проверка ослепала: человек выглядел
-       * «ничьим», запись шла дальше. В чужой слот её останавливала политика
-       * (пятисотка вместо 403), а в СВОЙ слот — не останавливало ничто:
-       * после вставки приёма политика соглашалась, что пациент свой, и обход
-       * зоны, закрытый этой проверкой, в бою был открыт (волна 13, прогон
-       * clinic.test.ts под ролью приложения). Наружу из выборки уходит одно
-       * «да/нет», не отделение и не человек.
-       */
-      const [elsewhere] = await asSystem(() =>
-        db
-          .select({ id: departmentPatients.departmentId })
-          .from(departmentPatients)
-          .where(eq(departmentPatients.patientId, input.patientId!))
-          .limit(1),
-      );
-      if (elsewhere) forbidden("err.patientOfAnotherDepartment");
-    }
+    outsideScope = await assertNotInOtherCare(
+      await accessiblePatientIds(me),
+      input.patientId,
+      "err.patientOfAnotherDepartment",
+    );
     patientId = input.patientId;
   }
 
