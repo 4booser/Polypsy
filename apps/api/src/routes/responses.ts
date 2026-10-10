@@ -279,6 +279,13 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
       continue;
     }
     const severe = alert.severity === "severe" || fresh.severity === "severe";
+    /*
+     * Повышение до тяжёлой — новый факт, как и на автосохранении (PUT
+     * /draft): отметка разбора умеренного сигнала к тяжёлому ответу не
+     * относится, его разбирающий не видел (#131). Отметка снимается, время —
+     * свежего сигнала: от него идёт срок эскалации.
+     */
+    const upgrade = alert.severity !== "severe" && fresh.severity === "severe";
     // ссылки на уходящую строку — на остающуюся: направления и уже отправленные уведомления
     await db.update(referrals).set({ alertId: alert.id }).where(eq(referrals.alertId, fresh.id));
     await db.execute(sql`
@@ -293,6 +300,7 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
         caseId: fresh.caseId ?? alert.caseId,
         severity: severe ? "severe" : "moderate",
         label: alert.severity === "severe" || fresh.severity !== "severe" ? alert.label : fresh.label,
+        ...(upgrade ? { at: fresh.at, acknowledgedAt: null, acknowledgedBy: null, outcome: null } : {}),
       })
       .where(eq(riskAlerts.id, alert.id));
     byQuestion.set(alert.questionId!, { ...alert, responseId: finalId });
