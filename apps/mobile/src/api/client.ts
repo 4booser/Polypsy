@@ -272,6 +272,12 @@ const unwrap = <T>(p: Promise<Items<T>>): Promise<T[]> => p.then((r) => r.items)
  * поставит. Refresh тоже снят — 401 здесь окончателен, и след ждёт входа того
  * же человека.
  */
+/*
+ * Стирание устройства уносит все черновики, а с ними и попытки: счёт правок
+ * следующего прохождения — заново, как после сдачи (offline/draftLane.ts, #129).
+ */
+onWiped(() => draftLanes.resetAll());
+
 const wipeDeps: WipeDeps = {
   token: () => tokenStorage.get(),
   clearTokens: () => tokenStorage.clear(),

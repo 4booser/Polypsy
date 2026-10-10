@@ -40,7 +40,10 @@ export async function draftsToResume(
 /** Прохождение сдано: свой черновик больше не нужен, чужого — не трогаем */
 export function dropOwnDraft(surveyId: string, who: Who): void {
   if (who.onBehalfOf || !who.owner) return;
-  // ждущее сохранение, дойдя до сервера после сдачи, завело бы там новое «незавершённое»
-  draftLanes.cancelPending(draftLaneKey(who.owner, surveyId));
+  /*
+   * Попытка кончилась (offline/draftLane.ts, reset): ждущее сохранение не
+   * уйдёт, а следующее прохождение считает правки заново (#129).
+   */
+  draftLanes.reset(draftLaneKey(who.owner, surveyId));
   drafts.drop(who.owner, surveyId);
 }
