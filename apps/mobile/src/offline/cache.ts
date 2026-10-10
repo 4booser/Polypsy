@@ -135,7 +135,28 @@ export const cache = {
     put(owner, `rounds:card:${userId}`, { at: new Date().toISOString(), card }),
   patientCard: (owner: Owner, userId: string) =>
     get<{ at: string; card: unknown }>(owner, `rounds:card:${userId}`),
+
+  /*
+   * Сервер отказал в доступе (#126): обход или карта этому человеку больше не
+   * положены — пациента вывели из зоны, учётку выключили. Копия, снятая,
+   * пока было можно, уходит: отдавать её дальше значило бы показывать то, что
+   * сервер только что не показал. Отказ обхода целиком уносит и карты.
+   */
+  dropRounds: (owner: Owner) => {
+    if (owner) for (const name of store.keys(ownKey(owner, "rounds:"))) forget(name);
+  },
+  dropPatientCard: (owner: Owner, userId: string) => {
+    if (owner) forget(ownKey(owner, `rounds:card:${userId}`));
+  },
 };
+
+function forget(name: string): void {
+  try {
+    store.remove(name);
+  } catch {
+    /* не удалилась — отдаваться всё равно не будет: при отказе доступа кэш не читается (api/client.ts) */
+  }
+}
 
 /**
  * Записи, лежавшие под общими ключами до появления владельца.
