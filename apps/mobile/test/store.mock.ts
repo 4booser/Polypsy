@@ -1,4 +1,5 @@
 import { mock } from "bun:test";
+import { forgetWipe } from "../src/offline/owner";
 import { StoreWriteError } from "../src/offline/writeError";
 
 /**
@@ -59,6 +60,8 @@ export const memoryStore = {
 
 export function resetStore(): void {
   data.clear();
+  // стирание, исполненное прошлым тестом, закрыло бы офлайн-слой и этому (offline/owner.ts)
+  forgetWipe();
   storeFaults.failWrite = null;
   storeFaults.swallowWrite = null;
   storeFaults.failRemove = null;

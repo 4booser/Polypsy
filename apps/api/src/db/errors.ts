@@ -60,6 +60,19 @@ export function unwrapDbError(error: unknown): unknown {
   return driverError;
 }
 
+/**
+ * База сняла транзакцию, и тот же запрос, повторённый, скорее всего пройдёт:
+ * взаимоблокировка (40P01) или сбой сериализации (40001).
+ *
+ * Это не ошибка в коде, а столкновение двух одновременных запросов (#145):
+ * жертва откатывается целиком, и ответ ей — «повторите», а не «внутренняя
+ * ошибка», которую очереди сдач (isTransientStatus) считают окончательной.
+ */
+export function isRetryableDbError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  return code === "40P01" || code === "40001";
+}
+
 type Run = (...args: unknown[]) => Promise<unknown>;
 
 let installed = false;

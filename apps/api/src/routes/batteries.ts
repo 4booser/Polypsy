@@ -31,7 +31,15 @@ import { batteryProgress, closeMissed, isExecutable, isOverdue, revokeIssuedAcce
 import { dayOf, deadlineOf } from "../lib/day";
 import { grantAccess } from "../lib/grantAccess";
 import { badRequest, conflict, forbidden, langOf, notFound, parseBody } from "../lib/http";
-import { accessibleGroupIds, assertBatteryInUse, assertGroupAccess, assertSurveyAccess, isStaff } from "../lib/scope";
+import {
+  accessibleGroupIds,
+  patientsInScope,
+  assertBatteryInUse,
+  assertGroupAccess,
+  assertSurveyAccess,
+  isStaff,
+} from "../lib/scope";
+import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { parseTs } from "../lib/time";
 
@@ -462,6 +470,13 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
   // набор выдаётся обследуемому — как и доступ к методике (routes/access.ts):
   // назначение сотруднику открывало бы ему методики мимо зоны
   if (target.role !== "user") badRequest("err.assignOnlyToPatient");
+  /*
+   * Назначение вводит человека в зону сотрудника — так же, как выдача
+   * методики, — и тем же путём открывало чужого пациента вместе с заметками
+   * чужого автора (#139). Человек, которого уже ведёт кто-то другой, — отказ;
+   * «ничей» — назначение с пометкой в журнале (lib/otherCare.ts).
+   */
+  const widened = await assertNotInOtherCare(await patientsInScope(user, [input.userId]), input.userId);
 
   const items = await db.select().from(batteryItems).where(eq(batteryItems.batteryId, batteryId));
   if (!items.length) badRequest("err.batteryEmpty");
@@ -535,7 +550,12 @@ batteryRoutes.post("/:id/assign", requireStaff, requirePermission("assignments.m
     resourceType: "battery",
     resourceId: batteryId,
     subjectUserId: input.userId,
-    details: { surveys: items.length, dueAt, ...(open ? { replacedOverdue: open.id } : {}) },
+    details: {
+      surveys: items.length,
+      dueAt,
+      ...(open ? { replacedOverdue: open.id } : {}),
+      ...(widened ? { widenedOwnScope: true } : {}),
+    },
   });
   return c.json({ id }, 201);
 });

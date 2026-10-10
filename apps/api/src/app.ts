@@ -76,6 +76,7 @@ import { templateRoutes } from "./routes/templates";
 import { featureFlagRoutes, opsMaintRoutes, serviceStatusRoutes } from "./routes/opsMaint";
 import { maintenanceGate } from "./lib/serviceStatus";
 import { db } from "./db";
+import { isRetryableDbError } from "./db/errors";
 import { sql } from "drizzle-orm";
 import { requireAuth, requireStaff, type AppEnv } from "./middleware/auth";
 import { requestId } from "./middleware/requestId";
@@ -355,6 +356,25 @@ app.onError((err, c) => {
     const text = info?.key ? renderError(info.key, langOf(c), info.params) : err.message;
     // ожидаемые отказы — не ошибки сервера, стек тут не нужен
     return c.json({ error: text, requestId: id }, err.status);
+  }
+  /*
+   * Жертва взаимоблокировки или сбоя сериализации — 503 «повторите», а не
+   * 500 (#145). Транзакция запроса откатывается (статус от 400), ничего не
+   * сохранено, и тот же запрос через мгновение пройдёт: столкнулся он с
+   * соседним, а не с ошибкой в коде. 503 очереди сдач мобилки и веба
+   * считают временным (isTransientStatus) и повторяют сами; 500 они
+   * помечали бы сдачу отклонённой. Не в группы ошибок техпанели — это не
+   * дефект, — но в лог: частые столкновения видно по нему.
+   */
+  if (isRetryableDbError(err)) {
+    log.warn("request.retryable", {
+      path: c.req.path,
+      method: c.req.method,
+      code: (err as { code?: string }).code,
+      message: err.message,
+    });
+    c.header("Retry-After", "1");
+    return c.json({ error: renderError("err.retryRequest", langOf(c)), requestId: id }, 503);
   }
   /*
    * Номер запроса возвращается пользователю вместе с отказом: по нему

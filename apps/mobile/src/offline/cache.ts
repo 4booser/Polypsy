@@ -6,6 +6,7 @@ import type {
   SurveyListItem,
   User,
 } from "@quizzy/shared";
+import { mayStore } from "./owner";
 import { store } from "./store";
 import { StoreWriteError } from "./writeError";
 
@@ -24,7 +25,9 @@ import { StoreWriteError } from "./writeError";
  *
  * Без владельца (никто не вошёл) кэш ничего не отдаёт и ничего не пишет:
  * ответ сервера, пришедший после выхода, не должен лечь «ничьим» и всплыть
- * у следующего.
+ * у следующего. После стирания устройства — тоже ничего, пока не войдут
+ * снова (owner.ts, mayStore): ответ, запрошенный до команды, не ложится на
+ * уже стёртый планшет.
  *
  * Отказ записи кэш глотает сам и осознанно (writeError.ts): кэш — копия того,
  * что лежит на сервере, и его потеря стоит лишь офлайн-показа; ронять из-за
@@ -35,7 +38,7 @@ import { StoreWriteError } from "./writeError";
 const ownKey = (owner: string, name: string) => `u:${owner}:${name}`;
 
 function put(owner: string | null, name: string, value: unknown): void {
-  if (!owner) return;
+  if (!mayStore(owner)) return;
   try {
     store.write(ownKey(owner, name), value);
   } catch {
@@ -135,7 +138,28 @@ export const cache = {
     put(owner, `rounds:card:${userId}`, { at: new Date().toISOString(), card }),
   patientCard: (owner: Owner, userId: string) =>
     get<{ at: string; card: unknown }>(owner, `rounds:card:${userId}`),
+
+  /*
+   * Сервер отказал в доступе (#126): обход или карта этому человеку больше не
+   * положены — пациента вывели из зоны, учётку выключили. Копия, снятая,
+   * пока было можно, уходит: отдавать её дальше значило бы показывать то, что
+   * сервер только что не показал. Отказ обхода целиком уносит и карты.
+   */
+  dropRounds: (owner: Owner) => {
+    if (owner) for (const name of store.keys(ownKey(owner, "rounds:"))) forget(name);
+  },
+  dropPatientCard: (owner: Owner, userId: string) => {
+    if (owner) forget(ownKey(owner, `rounds:card:${userId}`));
+  },
 };
+
+function forget(name: string): void {
+  try {
+    store.remove(name);
+  } catch {
+    /* не удалилась — отдаваться всё равно не будет: при отказе доступа кэш не читается (api/client.ts) */
+  }
+}
 
 /**
  * Записи, лежавшие под общими ключами до появления владельца.
@@ -236,10 +260,12 @@ export const drafts = {
   /**
    * Бросает StoreWriteError: черновик — не кэш, а часто единственная копия
    * ответов, и экран обязан знать, что она не легла (см. writeError.ts).
-   * Без владельца писать некуда — это тоже отказ, а не тишина.
+   * Без владельца писать некуда — это тоже отказ, а не тишина; после
+   * стирания устройства до нового входа — тоже (owner.ts, mayStore):
+   * открытое прохождение не дописывает черновик на стёртый планшет.
    */
   save: (owner: Owner, draft: LocalDraft) => {
-    if (!owner) throw new StoreWriteError(draftName(draft.surveyId));
+    if (!mayStore(owner)) throw new StoreWriteError(draftName(draft.surveyId));
     store.write(ownKey(owner, draftName(draft.surveyId)), draft);
   },
   /**
@@ -248,7 +274,7 @@ export const drafts = {
    * отказ хранилища — как у save.
    */
   saveIfNewer: (owner: Owner, draft: LocalDraft): boolean => {
-    if (!owner) throw new StoreWriteError(draftName(draft.surveyId));
+    if (!mayStore(owner)) throw new StoreWriteError(draftName(draft.surveyId));
     const stored = get<LocalDraft>(owner, draftName(draft.surveyId));
     if (stored && (stored.revision ?? 0) >= (draft.revision ?? 0)) return false;
     store.write(ownKey(owner, draftName(draft.surveyId)), {

@@ -1,7 +1,7 @@
 import { isTransientStatus, uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 import { isPasswordGate } from "../auth/passwordGate";
-import { isOwnerChanged } from "./owner";
+import { isOwnerChanged, mayStore } from "./owner";
 import { store } from "./store";
 import { StoreWriteError } from "./writeError";
 
@@ -51,6 +51,12 @@ export interface QueuedSubmission {
 const key = (id: string) => `queue:${id}`;
 
 export function enqueue(ownerId: string, surveyId: string, payload: Record<string, unknown>): QueuedSubmission {
+  /*
+   * Устройство стирают по команде (owner.ts, mayStore): сдача, упавшая по
+   * сети уже после команды, на стёртый планшет не ложится (#125). Это отказ
+   * записи, а не «сохранено» — экран черновик не стирает (runner/finish.ts).
+   */
+  if (!mayStore(ownerId)) throw new StoreWriteError(key(surveyId));
   const item: QueuedSubmission = {
     id: crypto.randomUUID(),
     ownerId,
@@ -180,6 +186,8 @@ export async function flush(
         const status = (error as { status?: number }).status ?? 0;
         if (isTransientStatus(status)) break; // сети нет или идут работы — остальные тоже не уйдут
         // сервер отказал по существу: фиксируем причину, не блокируем остальных
+        // пока шла отправка, устройство стёрли — пометка вернула бы стёртую сдачу на планшет (#125)
+        if (!mayStore(item.ownerId ?? null)) break;
         try {
           store.write(key(item.id), {
             ...item,

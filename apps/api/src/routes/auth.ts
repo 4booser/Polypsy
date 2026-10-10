@@ -561,31 +561,53 @@ authRoutes.post("/password", requireAuth, async (c) => {
  * ответом — обнаружение кражи срабатывало бы и тут же отменялось само,
  * оставляя вору живую цепочку.
  */
+/*
+ * Строка журнала об отказе — второй транзакцией, ПОСЛЕ фиксации обмена.
+ *
+ * Обмен держит строку владельца в users (lockOwner, lib/refresh.ts) до
+ * своей фиксации, а вход того же человека берёт замки в обратном порядке:
+ * сначала замок цепочки журнала, потом users (touchLastSeen). Пока строка
+ * отказа писалась в той же транзакции, повтор погашенного токена (кража)
+ * одновременно со входом давал цикл, и PostgreSQL снимал запись журнала —
+ * строка «reused», ради которой обнаружение кражи и пишется, молча
+ * пропадала. После фиксации замка на users уже нет, и цикла не бывает.
+ */
 authRoutes.post("/refresh", async (c) => {
   const outcome = await systemContext(baseDb, () => refreshHandler(c));
-  if (typeof outcome === "string") unauthorized(outcome);
-  return outcome;
+  if (outcome instanceof Response) return outcome;
+  const { key, failure } = outcome;
+  if (failure) {
+    await systemContext(baseDb, () =>
+      audit(c, {
+        action: "auth.refresh_failed",
+        outcome: "denied",
+        resourceType: "user",
+        resourceId: failure.userId,
+        subjectUserId: failure.userId ?? null,
+        details: { reason: failure.reason },
+      }),
+    );
+  }
+  unauthorized(key);
 });
 
-async function refreshHandler(
-  c: Context<AppEnv>,
-): Promise<Response | "err.noRefreshToken" | "err.sessionExpired" | "err.accountDisabled"> {
+type RefreshRefusal = {
+  key: "err.noRefreshToken" | "err.sessionExpired" | "err.accountDisabled";
+  failure?: { userId?: string; reason: string };
+};
+
+async function refreshHandler(c: Context<AppEnv>): Promise<Response | RefreshRefusal> {
   const body = await c.req.json().catch(() => ({}));
   const raw = typeof body?.refreshToken === "string" ? body.refreshToken : "";
-  if (!raw) return "err.noRefreshToken";
+  if (!raw) return { key: "err.noRefreshToken" };
 
   const outcome = await rotateRefresh(raw);
   if (!outcome.ok) {
-    await audit(c, {
-      action: "auth.refresh_failed",
-      outcome: "denied",
-      resourceType: "user",
-      resourceId: outcome.userId,
-      subjectUserId: outcome.userId ?? null,
-      details: { reason: outcome.reason },
-    });
     /* выключенной учётке — тот же текст, что на входе и на живом токене (см. rotateRefresh) */
-    return outcome.reason === "disabled" ? "err.accountDisabled" : "err.sessionExpired";
+    return {
+      key: outcome.reason === "disabled" ? "err.accountDisabled" : "err.sessionExpired",
+      failure: { userId: outcome.userId, reason: outcome.reason },
+    };
   }
   /* обмен пары — и есть «был в системе»: раз в полчаса работы, не на каждый запрос */
   await touchLastSeen(outcome.userId);

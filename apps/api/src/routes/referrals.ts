@@ -33,7 +33,7 @@ import { decryptField } from "../lib/crypto";
 import { badRequest, conflict, langOf, notFound, parseBody, parseQuery } from "../lib/http";
 import { round } from "../lib/stats";
 import { assertReferralLinks } from "../lib/clinicalRead";
-import { accessiblePatientIds, assertPatientAccess, surveyScopeFilterFor } from "../lib/scope";
+import { accessiblePatientIds, assertPatientAccess, patientsInScope, surveyScopeFilterFor } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import { env } from "../env";
 
@@ -193,7 +193,7 @@ referralRoutes.patch("/:id", async (c) => {
   const existing = await db.query.referrals.findFirst({ where: eq(referrals.id, id) });
   if (!existing) notFound("err.referralNotFound");
   /* чужое направление — то же «не найдено», что даёт в бою политика строк */
-  const zone = await accessiblePatientIds(c.get("user"));
+  const zone = await patientsInScope(c.get("user"), [existing.userId]);
   if (zone && !zone.has(existing.userId)) notFound("err.referralNotFound");
 
   const input = await parseBody(c.req.raw, updateReferralSchema);
@@ -263,7 +263,7 @@ referralRoutes.get("/summary/:userId", async (c) => {
    * идентификатор — то есть маршрут отвечал на вопрос «есть ли такой
    * пациент», который задавать ему никто не разрешал.
    */
-  const allowed = await accessiblePatientIds(staff);
+  const allowed = await patientsInScope(staff, [userId]);
   if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
 
   const scope = await surveyScopeFilterFor(staff, userId);

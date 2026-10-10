@@ -8,7 +8,7 @@ import { fullNameOf } from "../lib/auth";
 import { decryptField, encryptField } from "../lib/crypto";
 import { indexOf } from "../lib/searchIndex";
 import { badRequest, conflict, isUniqueViolation, notFound, parseBody } from "../lib/http";
-import { accessiblePatientIds } from "../lib/scope";
+import { patientsInScope } from "../lib/scope";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 import type { User } from "@quizzy/shared";
 
@@ -68,7 +68,7 @@ const signSchema = z.object({ version: z.number().int().min(1), revision: z.numb
 async function assertPatient(staff: User, userId: string) {
   const patient = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!patient) notFound("err.patientNotFound");
-  const allowed = await accessiblePatientIds(staff);
+  const allowed = await patientsInScope(staff, [userId]);
   if (allowed && !allowed.has(userId)) notFound("err.patientNotFound");
   return patient;
 }

@@ -9,13 +9,14 @@ import { deadlineOf } from "../lib/day";
 import { badRequest, langOf, notFound, parseBody } from "../lib/http";
 import {
   accessibleGroupIds,
-  accessiblePatientIds,
+  patientsInScope,
   assertPatientGroupAccess,
   assertSurveyAccess,
   assertSurveysInUse,
   surveyInUse,
 } from "../lib/scope";
 import { grantAccess } from "../lib/grantAccess";
+import { assertNotInOtherCare } from "../lib/otherCare";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
 
 export const accessRoutes = new Hono<AppEnv>();
@@ -111,25 +112,23 @@ accessRoutes.post("/surveys/:id/grants", async (c) => {
   }
 
   /*
-   * Отмечаем, был ли человек в зоне видимости ДО выдачи.
+   * Был ли человек в зоне видимости ДО выдачи — и можно ли его в неё ввести.
    *
    * Выдача методики — штатный способ, которым новый самозаписавшийся
    * пациент попадает в зону специалиста, и запрещать её нельзя: иначе
    * назначить методику новому человеку станет невозможно вовсе. Но у
    * этого есть оборотная сторона: зная идентификатор чужого пациента,
-   * сотрудник может выписать себе доступ к его карте — и сегодня это
-   * неотличимо от обычной работы.
-   *
-   * Отличать теперь можно. Расширение собственной зоны — событие журнала
-   * с отдельной пометкой, а не строка, теряющаяся среди сотен назначений.
+   * сотрудник выписывал себе доступ к его карте и к заметкам чужого автора,
+   * а журнал отмечал это лишь пометкой. Теперь человек, которого уже ведёт
+   * кто-то другой, получает отказ (#139, lib/otherCare.ts); «ничей» —
+   * выдачу, а журнал — пометку widenedOwnScope.
    *
    * Зона считается строго ДО grantAccess. Прежде она читалась после — той
    * же транзакцией, которая уже видит новую выдачу, — и человек числился
    * «своим» именно благодаря ей: пометка не появлялась никогда, в том числе
    * ровно в том случае, ради которого её завели.
    */
-  const seenBefore = await accessiblePatientIds(c.get("user"));
-  const wasOutside = seenBefore !== null && !seenBefore.has(input.userId);
+  const wasOutside = await assertNotInOtherCare(await patientsInScope(c.get("user"), [input.userId]), input.userId);
 
   /*
    * Срок из поля даты — до конца этого дня по поясу учреждения. Голая дата

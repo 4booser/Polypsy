@@ -86,11 +86,47 @@ export async function asSystem<T>(fn: () => Promise<T>): Promise<T> {
   const previous = row?.role ?? "";
   if (previous === "system") return fn();
   await tx.execute(sql`select set_config('app.role', 'system', true)`);
+  const restore = () => tx.execute(sql`select set_config('app.role', ${previous}, true)`);
+  let result: T;
   try {
-    return await fn();
-  } finally {
-    await tx.execute(sql`select set_config('app.role', ${previous}, true)`);
+    result = await fn();
+  } catch (error) {
+    /*
+     * Наружу — исходная ошибка, а не ошибка возврата роли. Ошибка базы вне
+     * точки сохранения (взаимоблокировка, нарушение ограничения) прерывает
+     * всю транзакцию, и возврат роли падает следом с «current transaction is
+     * aborted»; прежде он, стоя в finally, подменял собой причину — в логе и
+     * в ответе была вторая ошибка вместо первой. Роль возвращается, если
+     * транзакция жива (ошибка не из базы или в откатившейся точке
+     * сохранения); прерванной транзакции роль уже не нужна.
+     */
+    await restore().catch(() => {});
+    throw error;
   }
+  await restore();
+  return result;
+}
+
+/**
+ * fn — своей точкой сохранения внутри транзакции контекста (#145).
+ *
+ * Ошибка внутри откатывает только сделанное в fn — вместе со строкой
+ * журнала о нём — и уходит наружу; транзакция запроса остаётся живой. Для
+ * автоматики поверх действия человека (каскад, правила): её сбой не должен
+ * ни ронять сдачу, ни оставлять полдела — назначение без строки журнала.
+ *
+ * Контекстом на время fn становится сама точка сохранения, а не
+ * транзакция над ней. Иначе db.* внутри fn шли бы прежним путём: postgres.js
+ * запоминает упавший запрос за той областью, через которую он ушёл, и
+ * транзакция запроса упала бы на коммите, хотя точка сохранения откатилась
+ * и ошибку поймали.
+ *
+ * Вне контекста — просто fn: частично откатывать нечего.
+ */
+export async function inSavepoint<T>(fn: () => Promise<T>): Promise<T> {
+  const tx = dbContext.getStore();
+  if (!tx) return fn();
+  return tx.transaction((savepoint) => dbContext.run(savepoint as Tx, fn));
 }
 
 /* ─────────── Транзакция запроса и записи, которые обязаны её пережить ─────────── */

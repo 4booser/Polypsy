@@ -1,6 +1,8 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { evaluateRules, type DecisionRule, type RuleInput, type ScoreResult, type StoredExplanation } from "@quizzy/shared";
 import { db } from "../db";
+import { inSavepoint } from "../db/context";
+import { isRetryableDbError } from "../db/errors";
 import { decisionRules, responses, ruleHits, surveys } from "../db/schema";
 import { auditSystem } from "./audit";
 import { log } from "./log";
@@ -96,32 +98,49 @@ export async function applyRules(params: {
     }));
 
     const matches = evaluateRules(rules, input);
+    let hits = 0;
     for (const match of matches) {
-      await db.insert(ruleHits).values({
-        id: crypto.randomUUID(),
-        ruleId: match.ruleId,
-        ruleVersion: match.ruleVersion,
-        responseId,
-        userId,
-        surveyId,
-        /*
-         * Объяснение — кодами условий, не фразой: текстом его делает маршрут
-         * /api/decisions/hits на языке читающего (волна 13).
-         */
-        explanation: { title: match.title, because: match.because, actions: match.actions } satisfies StoredExplanation,
-      });
+      /*
+       * Срабатывание и строка журнала о нём — одной точкой сохранения
+       * (#145), как шаг каскада (lib/cascade.ts, cascadeStep): сбой журнала
+       * откатывает срабатывание, а не оставляет его без следа; прочие
+       * правила и сдача идут дальше. Взаимоблокировка и сбой сериализации —
+       * наверх, вся сдача получает 503 «повторите».
+       */
+      try {
+        await inSavepoint(async () => {
+          await db.insert(ruleHits).values({
+            id: crypto.randomUUID(),
+            ruleId: match.ruleId,
+            ruleVersion: match.ruleVersion,
+            responseId,
+            userId,
+            surveyId,
+            /*
+             * Объяснение — кодами условий, не фразой: текстом его делает маршрут
+             * /api/decisions/hits на языке читающего (волна 13).
+             */
+            explanation: { title: match.title, because: match.because, actions: match.actions } satisfies StoredExplanation,
+          });
 
-      await auditSystem({
-        action: "rule.hit",
-        resourceType: "rule",
-        resourceId: match.ruleId,
-        subjectUserId: userId,
-        details: { responseId, title: match.title },
-      });
+          await auditSystem({
+            action: "rule.hit",
+            resourceType: "rule",
+            resourceId: match.ruleId,
+            subjectUserId: userId,
+            details: { responseId, title: match.title },
+          });
+        });
+        hits++;
+      } catch (error) {
+        if (isRetryableDbError(error)) throw error;
+        log.warn("rules.hit_failed", { responseId, ruleId: match.ruleId, error: String(error) });
+      }
     }
 
-    return matches.length;
+    return hits;
   } catch (error) {
+    if (isRetryableDbError(error)) throw error;
     log.warn("rules.apply_failed", { responseId, error: String(error) });
     return 0;
   }

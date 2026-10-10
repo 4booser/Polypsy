@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { icc21, psi, serverText } from "@quizzy/shared";
 import { db } from "../db";
+import { inIds } from "../db/ids";
 import { answers, responseScores, responses, scales } from "../db/schema";
 import { audit } from "../lib/audit";
 import { langOf, notFound, parseQuery } from "../lib/http";
@@ -81,12 +82,17 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
    */
   const trusted = completed.filter((r) => r.reliable);
 
-  /* ── 7.3: доходимость и пропуски по стратам ── */
+  /*
+   * ── 7.3: доходимость и пропуски по стратам ──
+   *
+   * Списки прохождений здесь и в дрейфе ниже — одним параметром (db/ids.ts):
+   * параметром на id «Якість» методики выше 65 533 прохождений отвечала 500 (#184).
+   */
   const answered = completed.length
     ? await db
         .select({ responseId: answers.responseId, questionId: answers.questionId, skipped: answers.skipped })
         .from(answers)
-        .where(inArray(answers.responseId, completed.map((r) => r.id)))
+        .where(inIds(answers.responseId, completed.map((r) => r.id)))
     : [];
   const askedCount = survey.questions.filter((q) => q.type !== "info").length;
   const answeredCount = new Map<string, number>();
@@ -135,7 +141,7 @@ dataQualityRoutes.get("/surveys/:id", async (c) => {
         .select({ score: responseScores, code: scales.code, kind: scales.kind })
         .from(responseScores)
         .innerJoin(scales, eq(scales.id, responseScores.scaleId))
-        .where(inArray(responseScores.responseId, trusted.map((r) => r.id)))
+        .where(inIds(responseScores.responseId, trusted.map((r) => r.id)))
     : [];
   const monthOf = new Map(trusted.map((r) => [r.id, r.month ?? ""]));
 

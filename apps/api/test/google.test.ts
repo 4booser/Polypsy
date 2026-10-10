@@ -313,6 +313,10 @@ describe("начатая привязка не переживает отзыв �
     // отзыв гасит прежние токены, а не запрещает привязку навсегда
     const person = await makeUser("user", `g-fresh-${crypto.randomUUID()}@test`);
     await revokeAllFor(person.id);
+    // граница отзыва — на миллисекунду позже его самого (#138, lib/refresh.ts):
+    // токен той же миллисекунды считается выданным до отзыва. Новая сессия
+    // в жизни — другой запрос; здесь её отделяет пауза
+    await Bun.sleep(2);
     const fresh = await issueToken({ id: person.id, role: "user" });
     googleSub = `sub-${crypto.randomUUID()}`;
     googleEmail = `g-fresh-${crypto.randomUUID()}@example.com`;

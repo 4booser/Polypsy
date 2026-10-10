@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { adminA, and, api, db, eq, makeUser, submitSurvey, surveyInA } from "./fixtures";
+import { adminA, and, api, db, encryptPersonFields, eq, groupA, makeUser, sql, submitSurvey, surveyInA, surveys } from "./fixtures";
 import { auditLog, surveyAccess } from "../src/db/schema";
 import { grantAccess } from "../src/lib/grantAccess";
 
@@ -127,4 +127,75 @@ describe("журнал выдачи: расширение собственной
     expect(events[0]!.details, "расширение зоны не отмечено").toMatchObject({ widenedOwnScope: true });
     expect(events[1]!.details).not.toHaveProperty("widenedOwnScope");
   });
+});
+
+describe("выдача порциями (#184)", () => {
+  test("10 тыс. пар «пациент × методика» одной выдачей: с лимитом, затем продлением без него", async () => {
+    /*
+     * Вставка шла одной командой, семь-восемь параметров на строку: выше
+     * ~8 тыс. пар (набор из десятка методик группе в тысячу человек,
+     * расписание на отделение) — отказ драйвера, и у расписания — на каждом
+     * повторе. Две ветки вставки (с лимитом и без) проверяются обе, вторая —
+     * поверх уже выданного: порции не должны терять ни строк, ни правил
+     * перевыдачи.
+     */
+    const tag = `grant-bulk-${crypto.randomUUID().slice(0, 8)}`;
+    const name = encryptPersonFields({ firstName: "Пачка", lastName: "Видачі" });
+    await db.execute(sql`
+      insert into users (id, email, password_hash, first_name, last_name, role)
+      select ${tag} || '-u' || g, ${tag} || '-u' || g || '@grant.test', 'посів-без-входу',
+             ${name.firstName}, ${name.lastName}, 'user'
+      from generate_series(1, 2000) g`);
+    const surveyIds = Array.from({ length: 5 }, (_, i) => `${tag}-s${i}`);
+    await db.insert(surveys).values(
+      surveyIds.map((id) => ({
+        id,
+        groupId: groupA,
+        title: { uk: id },
+        administration: "self",
+        status: "published",
+        publishedAt: new Date().toISOString(),
+        visibility: "restricted",
+        createdBy: adminA.id,
+      })) as never,
+    );
+    const pairs = surveyIds.flatMap((surveyId) =>
+      Array.from({ length: 2000 }, (_, i) => ({
+        surveyId,
+        userId: `${tag}-u${i + 1}`,
+        grantedBy: adminA.id,
+        expiresAt: null,
+        note: "пачка",
+      })),
+    );
+    expect(pairs).toHaveLength(10_000);
+
+    try {
+      await db.transaction(async (tx) => {
+        await grantAccess(tx as never, pairs.map((p) => ({ ...p, attemptsAllowed: 2 })), { term: "set" });
+      });
+      await db.execute(sql`update survey_access set attempts_used = 1 where survey_id like ${`${tag}-s%`}`);
+      await db.transaction(async (tx) => {
+        await grantAccess(
+          tx as never,
+          pairs.map((p) => ({ ...p, expiresAt: "2099-01-01T00:00:00.000Z", note: "продовження" })),
+          { term: "extend" },
+        );
+      });
+
+      const [row] = (await db.execute(sql`
+        select count(*)::int as n,
+               count(*) filter (where attempts_allowed = 2)::int as "limited",
+               count(*) filter (where attempts_used = 0)::int as "fresh",
+               count(*) filter (where note = 'продовження')::int as "noted",
+               count(*) filter (where expires_at is null)::int as "forever"
+        from survey_access where survey_id like ${`${tag}-s%`}`)) as unknown as Record<string, number>[];
+      // все пары; лимит перевыдача без лимита не сняла; попытки обнулены; бессрочный продлением не укорочен
+      expect(row).toEqual({ n: 10_000, limited: 10_000, fresh: 10_000, noted: 10_000, forever: 10_000 });
+    } finally {
+      // доступ уходит каскадом от методик; соседним файлам лишние 10 тыс. строк ни к чему
+      await db.execute(sql`delete from surveys where id like ${`${tag}-s%`}`);
+      await db.execute(sql`delete from users where id like ${`${tag}-u%`}`);
+    }
+  }, 60_000);
 });

@@ -40,12 +40,12 @@ import { audit } from "../lib/audit";
 import { assertResponseRead, CLINICAL_READ } from "../lib/clinicalRead";
 import { hasPermission } from "../lib/permissions";
 import {
-  accessiblePatientIds,
   assertPatientAccess,
   assertPatientGroupAccess,
   assertSurveyAccess,
   hasGrant,
   isStaff,
+  patientsInScope,
 } from "../lib/scope";
 import { log } from "../lib/log";
 import { hasCurrentConsent } from "../lib/consent";
@@ -192,7 +192,7 @@ async function assertConsent(c: Context<AppEnv>, user: User): Promise<void> {
  * этим идентификатором. Суперадмину (зона — все) ищется как прежде.
  */
 async function assertMayFillFor(c: Context<AppEnv>, user: User, patientId: string, surveyId: string): Promise<void> {
-  const allowed = await accessiblePatientIds(user);
+  const allowed = await patientsInScope(user, [patientId]);
   if (allowed === null || allowed.has(patientId)) return;
   await audit(c, {
     action: "access.denied",
@@ -255,9 +255,13 @@ async function isOwnAttempt(
  * Если сдача подняла тот же сигнал заново (тот же пункт — в рамках
  * прохождения он один, уникальный индекс), остаётся строка ЧЕРНОВИКА: на
  * неё уже могли сослаться направление, уведомление, отметка «разобрано».
- * Тяжесть берётся большая (понижать нельзя — как и при автосохранении),
- * случай — тот, к которому сигнал привязала сдача: он открыт сейчас, и
- * дежурный работает в нём. Направления, выписанные на черновик, тоже
+ * Тяжесть берётся большая (понижать нельзя — как и при автосохранении).
+ * Случай — как на автосохранении (PUT /draft): при повышении до тяжёлой —
+ * тот, к которому сигнал привязала сдача (он открыт сейчас, и дежурный
+ * работает в нём); при том же ответе сигнал остаётся в своём случае со
+ * своим решением, а случай, который сдача завела под него, опустев,
+ * убирается — иначе в очереди висел бы открытый случай без единого
+ * неразобранного сигнала. Направления, выписанные на черновик, тоже
  * переходят на итоговое прохождение.
  *
  * Системной ролью: строки чужих таблиц (направления, уведомления) пациенту
@@ -279,6 +283,13 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
       continue;
     }
     const severe = alert.severity === "severe" || fresh.severity === "severe";
+    /*
+     * Повышение до тяжёлой — новый факт, как и на автосохранении (PUT
+     * /draft): отметка разбора умеренного сигнала к тяжёлому ответу не
+     * относится, его разбирающий не видел (#131). Отметка снимается, время —
+     * свежего сигнала: от него идёт срок эскалации.
+     */
+    const upgrade = alert.severity !== "severe" && fresh.severity === "severe";
     // ссылки на уходящую строку — на остающуюся: направления и уже отправленные уведомления
     await db.update(referrals).set({ alertId: alert.id }).where(eq(referrals.alertId, fresh.id));
     await db.execute(sql`
@@ -290,11 +301,19 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
       .update(riskAlerts)
       .set({
         responseId: finalId,
-        caseId: fresh.caseId ?? alert.caseId,
+        caseId: upgrade ? (fresh.caseId ?? alert.caseId) : (alert.caseId ?? fresh.caseId),
         severity: severe ? "severe" : "moderate",
         label: alert.severity === "severe" || fresh.severity !== "severe" ? alert.label : fresh.label,
+        ...(upgrade ? { at: fresh.at, acknowledgedAt: null, acknowledgedBy: null, outcome: null } : {}),
       })
       .where(eq(riskAlerts.id, alert.id));
+    if (!upgrade && fresh.caseId && alert.caseId && fresh.caseId !== alert.caseId) {
+      // тот же ответ ничего не открывает: случай, заведённый под свежий сигнал, без него пуст
+      await db.execute(sql`
+        delete from alert_cases c
+         where c.id = ${fresh.caseId}
+           and not exists (select 1 from risk_alerts a where a.case_id = c.id)`);
+    }
     byQuestion.set(alert.questionId!, { ...alert, responseId: finalId });
   }
 }
