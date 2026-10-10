@@ -215,6 +215,31 @@ export function activeSlot(slot: ImpersonationSlot | null, now: number): boolean
   return Boolean(slot?.token) && new Date(slot!.expiresAt).getTime() > now;
 }
 
+/**
+ * Чей это токен — `sub` из полезной нагрузки JWT (#166).
+ *
+ * Токены лежат в localStorage, общем для всех вкладок: вошёл другой человек
+ * в соседней вкладке — и открытая вкладка на следующем же запросе берёт его
+ * токен. Сверка владельца — то, чем вкладка отличает «соседняя вкладка
+ * продлила мою сессию» от «в браузере теперь чужая сессия». Подпись не
+ * проверяется и не должна: токен проверит сервер, а здесь вопрос лишь в
+ * том, чей он. Так же устроено в мобилке (apps/mobile/src/offline/owner.ts).
+ */
+export function ownerOfToken(token: string | null | undefined): string | null {
+  if (!token) return null;
+  const part = token.split(".")[1];
+  if (!part) return null;
+  try {
+    // base64url → base64 с выравниванием: atob понимает только второе
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const claims = JSON.parse(atob(padded)) as { sub?: unknown };
+    return typeof claims.sub === "string" && claims.sub ? claims.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export const tokenStore = {
   /* под входом «от имени» запросы идут его токеном; свой — только для «вийти» */
   get: () => impersonationStore.get()?.token ?? localStorage.getItem(TOKEN_KEY),
@@ -264,7 +289,14 @@ export class ApiError extends Error {
  * одновременный старт двух обменов — его закрывает только замок.
  */
 const REFRESH_LOCK = "quizzy.auth.refresh";
-let refreshing: Promise<boolean> | null = null;
+
+/**
+ * Итог продления: продлено — повторить запрос; не вышло — сессии нет;
+ * чужая — в хранилище уже сессия другого человека (#166), и её вкладка не
+ * берёт и не трогает.
+ */
+type RefreshOutcome = "renewed" | "failed" | "foreign";
+let refreshing: Promise<RefreshOutcome> | null = null;
 
 /** Выполнить под межвкладочным замком, если браузер его умеет */
 function underRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -279,32 +311,40 @@ function underRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
  * `stale` — access, с которым ушёл запрос, получивший 401. Токен в
  * хранилище другой — его уже обменяла другая вкладка (или человек вошёл
  * заново): второй обмен того же refresh был бы для сервера кражей.
+ *
+ * Но «другой» — продлением считается, только если он того же человека
+ * (#166). Здесь брался любой: врач A вышел, в соседней вкладке вошёл B, и
+ * вкладка A после 401 подхватывала токен B и дальше работала от его имени —
+ * с экраном A и правами B. Токен другого владельца — не продление, а чужая
+ * сессия: её не берём и не трогаем, вкладка выходит.
  */
-async function refreshUnlessRenewed(stale: string | null): Promise<boolean> {
+async function refreshUnlessRenewed(stale: string | null): Promise<RefreshOutcome> {
   const current = tokenStore.own();
-  if (current && current !== stale) return true;
+  if (current && current !== stale) {
+    return ownerOfToken(current) === ownerOfToken(stale) ? "renewed" : "foreign";
+  }
   const raw = tokenStore.getRefresh();
-  if (!raw) return false;
+  if (!raw) return "failed";
   try {
     const res = await fetch("/api/auth/refresh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken: raw }),
     });
-    if (!res.ok) return false;
+    if (!res.ok) return "failed";
     const pair = (await res.json()) as { token: string; refreshToken: string };
     // до того, как отпустить замок: следующая вкладка должна увидеть новую пару
     tokenStore.set(pair.token);
     tokenStore.setRefresh(pair.refreshToken);
-    return true;
+    return "renewed";
   } catch {
-    return false;
+    return "failed";
   }
 }
 
-function tryRefresh(stale: string | null): Promise<boolean> {
+function tryRefresh(stale: string | null): Promise<RefreshOutcome> {
   refreshing ??= underRefreshLock(() => refreshUnlessRenewed(stale))
-    .catch(() => false)
+    .catch((): RefreshOutcome => "failed")
     .finally(() => {
       setTimeout(() => {
         refreshing = null;
@@ -364,6 +404,44 @@ export function refreshesOn401(path: string): boolean {
  * импорты в круг.
  */
 export const MAINTENANCE_EVENT = "quizzy:maintenance";
+
+/**
+ * Событие окна «в браузере теперь чужая сессия» (#166): продление нашло в
+ * хранилище токен другого человека. Вкладку выводит AuthProvider — тем же
+ * сбросом, что и событие `storage` (watchSession ниже).
+ */
+export const SESSION_TAKEN_EVENT = "quizzy:session-taken";
+
+/**
+ * Следить, не сменился ли в браузере человек (#166).
+ *
+ * Токены общие на все вкладки (localStorage), а профиль на экране и кэш
+ * загрузок — свои у каждой. Во второй вкладке вошёл другой человек — первая
+ * продолжала показывать прежнего, а запросы слала уже токеном нового:
+ * таймер очереди кабинета отправлял ответы A с токеном B, и они ложились в
+ * карту B. Браузер сообщает о записи в хранилище из другой вкладки событием
+ * `storage`; токен сменил владельца (или исчез — выход в другой вкладке) —
+ * вкладка сбрасывает профиль и кэш. Продление той же сессии в соседней
+ * вкладке владельца не меняет и ничего не сбрасывает.
+ *
+ * Возвращает отписку — под useEffect.
+ */
+export function watchSession(target: Pick<EventTarget, "addEventListener" | "removeEventListener">, onForeign: () => void): () => void {
+  const onStorage = (event: Event) => {
+    const e = event as StorageEvent;
+    // key === null — хранилище очищено целиком
+    if (e.key !== null && e.key !== TOKEN_KEY) return;
+    if (e.key !== null && ownerOfToken(e.oldValue) === ownerOfToken(e.newValue)) return;
+    onForeign();
+  };
+  const onTaken = () => onForeign();
+  target.addEventListener("storage", onStorage);
+  target.addEventListener(SESSION_TAKEN_EVENT, onTaken);
+  return () => {
+    target.removeEventListener("storage", onStorage);
+    target.removeEventListener(SESSION_TAKEN_EVENT, onTaken);
+  };
+}
 
 /*
  * Сигнал отмены для запросов, начатых загрузкой экрана (волна 13).
@@ -466,8 +544,18 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
     impersonationStore.clear();
     window.location.assign("/ops/users");
   } else if (res.status === 401 && !retried && refreshesOn401(path)) {
-    if (await tryRefresh(token)) return request<T>(path, init, true);
-    tokenStore.clear();
+    const outcome = await tryRefresh(token);
+    if (outcome === "renewed") return request<T>(path, init, true);
+    /*
+     * Чужая сессия в хранилище (#166) — не наша, и стирать её нельзя: это
+     * выкинуло бы из соседней вкладки человека, который только что вошёл.
+     * Выходит эта вкладка — через AuthProvider, событием.
+     */
+    if (outcome === "foreign") {
+      if (typeof window !== "undefined") window.dispatchEvent(new Event(SESSION_TAKEN_EVENT));
+    } else {
+      tokenStore.clear();
+    }
   }
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
@@ -1957,7 +2045,7 @@ export const api = {
       // токен, с которым ушёл запрос, — по нему обмен сверяет, не обновила ли его другая вкладка
       const sentWith = tokenStore.get();
       res = await send();
-      if (res.status === 401 && !impersonationStore.get() && (await tryRefresh(sentWith))) res = await send();
+      if (res.status === 401 && !impersonationStore.get() && (await tryRefresh(sentWith)) === "renewed") res = await send();
     } catch {
       noteNetworkFailure({ method: "POST", path, status: 0 });
       throw new ApiError(netText("net.offline"), 0);

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Permission, User } from "@quizzy/shared";
-import { api, tokenStore } from "./api";
+import { api, impersonationStore, tokenStore, watchSession } from "./api";
 import { queryClient } from "./query";
 import { useResource } from "./useResource";
 
@@ -130,6 +130,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [boot.data, boot.error, settled]);
   const loading = !settled;
+
+  /*
+   * В соседней вкладке сменился человек (#166): вошёл другой или вышел этот.
+   * Вкладка сбрасывает профиль и кэш и показывает вход — дальше работать с
+   * экраном одного и токеном другого нельзя. Токены не трогаем и на сервере
+   * ничего не гасим: они теперь чужие, и выход здесь выкинул бы человека из
+   * соседней вкладки. Вход «от имени» этой вкладки держался на прежней своей
+   * сессии — уходит и он.
+   */
+  useEffect(
+    () =>
+      watchSession(window, () => {
+        impersonationStore.clear();
+        setUser(null);
+        setPerms(new Set());
+        setMfa(null);
+        /* кэш — после того, как экраны сняты (см. logout) */
+        setTimeout(() => queryClient.clear(), 0);
+      }),
+    [],
+  );
 
   /*
    * Принять уже выданную пару токенов.
