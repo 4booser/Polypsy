@@ -124,7 +124,26 @@ export async function grantAccess(tx: typeof Db, grants: Grant[], options: Grant
   if (keepLimit.length) await upsertGrants(tx, keepLimit, false, options);
 }
 
+/**
+ * Выдач на одну вставку.
+ *
+ * Строка вставки — семь-восемь параметров, а у протокола их потолок —
+ * 65 533 (db/sendGuard.ts): одной командой выше ~8 тыс. пар «человек ×
+ * методика» выдача отказывала. А такие бывают — набор из десятка методик
+ * группе в тысячу человек, расписание на всё отделение, — и упавшая выдача
+ * расписания падала бы так же на каждом повторе (lib/scheduler.ts, #184).
+ * Порции идут одна за другой в той же транзакции: выдача по-прежнему
+ * целиком или никак.
+ */
+const GRANT_BATCH = 1000;
+
 async function upsertGrants(tx: typeof Db, grants: Grant[], setLimit: boolean, options: GrantOptions): Promise<void> {
+  for (let i = 0; i < grants.length; i += GRANT_BATCH) {
+    await upsertBatch(tx, grants.slice(i, i + GRANT_BATCH), setLimit, options);
+  }
+}
+
+async function upsertBatch(tx: typeof Db, grants: Grant[], setLimit: boolean, options: GrantOptions): Promise<void> {
   const expiresAt =
     options.term === "extend"
       ? sql`case when ${surveyAccess.expiresAt} is null or excluded.expires_at is null then null

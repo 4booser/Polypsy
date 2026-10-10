@@ -1266,8 +1266,9 @@ analyticsRoutes.get("/surveys/:id/export", requirePermission("export.full"), asy
     .where(eq(responses.surveyId, surveyId))
     .orderBy(desc(responses.submittedAt));
 
+  // список прохождений — одним параметром: параметром на id выгрузка выше 65 533 прохождений отвечала 500 (#184)
   const answerRows = responseRows.length
-    ? await db.select().from(answers).where(inArray(answers.responseId, responseRows.map((r) => r.id)))
+    ? await db.select().from(answers).where(inIds(answers.responseId, responseRows.map((r) => r.id)))
     : [];
 
   const optionText = new Map(survey.questions.flatMap((q) => q.options.map((o) => [o.id, o.text])));

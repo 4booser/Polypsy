@@ -9,13 +9,14 @@ import { answers } from "../src/db/schema";
 import { inIds } from "../src/db/ids";
 
 /**
- * Методика с прохождениями сверх потолка параметров (#183).
+ * Методика с прохождениями сверх потолка параметров (#183, #184).
  *
  * Список id прохождений уходил в базу параметром на элемент (inArray), а у
  * протокола на число параметров два байта: выше 65 533 postgres.js
  * отказывает. Аналитика методики при этом зависала навсегда и уносила
- * соединение пула (как — в requestTxPipeline.test.ts). PHQ-9
- * скринингового учреждения проходит этот порог ко второму году.
+ * соединение пула (как — в requestTxPipeline.test.ts), а SPSS- и
+ * CSV-выгрузки и «Якість» отвечали 500. PHQ-9 скринингового учреждения
+ * проходит этот порог ко второму году.
  *
  * Здесь — 70 тыс. настоящих прохождений и настоящие маршруты под ролью
  * приложения, а не пониженный предел: потолок драйвера не настраивается, и
@@ -35,10 +36,10 @@ const RESPONSES = 70_000;
 let staff: Person;
 let s: MassSurvey;
 /*
- * Пулы — свои у каждой проверки: застрявшие соединения одной (так было до
- * правки) не должны валить соседнюю за компанию.
+ * Пулы — свои у аналитики и у выгрузок: застрявшие соединения одной
+ * проверки (так было до правки) не должны валить соседнюю за компанию.
  */
-let pools: Record<"analytics", PoolOverride & { close: () => Promise<void> }>;
+let pools: Record<"analytics" | "exports", PoolOverride & { close: () => Promise<void> }>;
 let pool: PoolOverride;
 
 const within = <T>(ms: number, work: Promise<T>): Promise<T | "timeout"> =>
@@ -46,12 +47,14 @@ const within = <T>(ms: number, work: Promise<T>): Promise<T | "timeout"> =>
 const onPool = <T>(fn: () => Promise<T>): Promise<T> => runOnPool(pool, fn);
 const get = (path: string) => onPool(async () => app.request(path, { headers: { Authorization: `Bearer ${staff.token}` } }));
 const statusOf = (r: Response | "timeout") => (r === "timeout" ? "timeout" : r.status);
+/** Строк данных в CSV: без заголовка и пустого хвоста */
+const dataRows = (text: string) => text.split(/\r?\n/).filter(Boolean).length - 1;
 
 beforeAll(async () => {
   staff = await makeUser("superadmin", `${TAG}@ceiling.test`);
   s = await massSurvey(TAG, 2, staff.id);
   await massResponses(s, 1, RESPONSES, 2_000);
-  pools = { analytics: await taggedAppRolePool(`${TAG}-a`) };
+  pools = { analytics: await taggedAppRolePool(`${TAG}-a`), exports: await taggedAppRolePool(`${TAG}-e`) };
 }, 120_000);
 
 afterAll(async () => {
@@ -100,4 +103,33 @@ describe("аналитика методики выше потолка (#183)", (
     )) as unknown as { state: string; query: string }[];
     expect(left.filter((c) => c.state === "idle" && /^rollback/i.test(c.query.trim()))).toEqual([]);
   }, 180_000);
+});
+
+describe("выгрузки и «Якість» выше потолка (#184)", () => {
+  beforeAll(() => {
+    pool = pools.exports;
+  });
+
+  test("SPSS data.csv — 200, строка на каждое сданное прохождение", async () => {
+    const res = await within(90_000, get(`/api/spss/surveys/${s.surveyId}/data.csv?profile=deidentified`));
+    expect(statusOf(res)).toBe(200);
+    expect(dataRows(await (res as Response).text())).toBe(RESPONSES);
+  }, 120_000);
+
+  test("CSV-выгрузка аналитики — 200, строка на каждое прохождение", async () => {
+    const res = await within(90_000, get(`/api/analytics/surveys/${s.surveyId}/export`));
+    expect(statusOf(res)).toBe(200);
+    const text = await (res as Response).text();
+    expect(dataRows(text)).toBe(RESPONSES);
+    // ответы склеены с прохождениями: у каждой строки первый пункт отвечен (колонка q1_answer)
+    const answered = text.split("\n").slice(1).filter((l) => /^(?:[^,]*,){6}"?[0-3]"?,/.test(l));
+    expect(answered.length).toBe(RESPONSES);
+  }, 120_000);
+
+  test("«Якість» — 200, сданные прохождения посчитаны все", async () => {
+    const res = await within(90_000, get(`/api/data-quality/surveys/${s.surveyId}`));
+    expect(statusOf(res)).toBe(200);
+    const body = (await (res as Response).json()) as { strata: { suppressed: boolean; completed?: number }[] };
+    expect(body.strata.reduce((sum, st) => sum + (st.completed ?? 0), 0)).toBe(RESPONSES);
+  }, 120_000);
 });
