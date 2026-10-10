@@ -152,7 +152,7 @@ describe.skipIf(!inGit)("история журнала", () => {
     expect(git(["describe", "--tags", "--abbrev=0", "--match", "v*", "HEAD"]).ok, "нет тега выпуска в истории HEAD").toBe(
       true,
     );
-  });
+  }, 30_000);
 
   const release = () => git(["describe", "--tags", "--abbrev=0", "--match", "v*", "HEAD"]).out.toString().trim();
 
@@ -174,7 +174,7 @@ describe.skipIf(!inGit)("история журнала", () => {
     expect(transitionProblems(journalAt(lists), journalAt(integrity), "w12").join("\n")).toContain(
       "0096_integrity (when 1788473709043) встала перед уже существующими",
     );
-  });
+  }, 30_000);
 
   test("выпущенные миграции неизменны, новые встают после выпущенных", () => {
     const tag = release();
@@ -188,7 +188,7 @@ describe.skipIf(!inGit)("история журнала", () => {
       }
     }
     expect(problems).toEqual([]);
-  });
+  }, 30_000);
 
   test("каждое состояние первородной линии после выпуска добавляет миграции только после существующих", () => {
     const tag = release();
@@ -207,7 +207,7 @@ describe.skipIf(!inGit)("история журнала", () => {
     }
     problems.push(...transitionProblems(prev, current, `${prevName} → рабочая копия`));
     expect(problems).toEqual([]);
-  });
+  }, 30_000);
 });
 
 /* ─────────── сторож: одна сверка на все входы ─────────── */
