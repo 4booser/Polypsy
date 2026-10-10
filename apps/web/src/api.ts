@@ -1610,7 +1610,10 @@ export const api = {
         percent: number;
         band: string | null;
         severity: "none" | "mild" | "moderate" | "severe" | null;
+        /** Прошлое значение — только сравнимое (shared/rci.ts, comparability) */
         previousValue: number | null;
+        /** Почему прошлого значения нет, хотя прошлое прохождение есть */
+        previousIncomparable: "unreliable" | "units" | "version" | null;
       }[];
       previousAt: string | null;
     }>(`/api/conclusions/responses/${responseId}/conclusion/draft`),

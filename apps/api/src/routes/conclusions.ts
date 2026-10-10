@@ -1,7 +1,7 @@
 import { Hono, type Context } from "hono";
 import { aliasedTable, and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import { z } from "zod";
-import { ageAt, queryDate, t } from "@quizzy/shared";
+import { ageAt, comparability, queryDate, t } from "@quizzy/shared";
 import { db } from "../db";
 import { conclusions, responseScores, responses, scales, surveys, users } from "../db/schema";
 import { audit } from "../lib/audit";
@@ -195,7 +195,12 @@ conclusionRoutes.get(
      */
     const [previous] = response.userId
       ? await db
-          .select({ id: responses.id, submittedAt: responses.submittedAt })
+          .select({
+            id: responses.id,
+            submittedAt: responses.submittedAt,
+            versionId: responses.versionId,
+            reliable: responses.reliable,
+          })
           .from(responses)
           .where(
             and(
@@ -215,7 +220,39 @@ conclusionRoutes.get(
           .from(responseScores)
           .where(eq(responseScores.responseId, previous.id))
       : [];
-    const before = new Map(previousScores.map((p) => [p.scaleId, p.value]));
+    const before = new Map(previousScores.map((p) => [p.scaleId, p]));
+
+    /*
+     * «Було» — только то, с чем сравнивать можно (#137), по тому же правилу,
+     * что у динамики и экрана прохождения (shared/rci.ts, comparability).
+     *
+     * Прежде прошлое значение бралось по id шкалы без проверки: сдача без
+     * пола (норм нет — сырой 3) и сдача после исправления пола (T 70) давали
+     * в черновике «70 — високий (було 3)», хотя динамика для той же пары
+     * пишет «несравнимо». Так же шло значение недостоверного протокола.
+     * Теперь у несравнимой пары прошлого значения нет, а причина — рядом.
+     */
+    const previousOf = (score: typeof responseScores.$inferSelect) => {
+      const prev = previous ? before.get(score.scaleId) : undefined;
+      if (!prev || !previous) return { previousValue: null, previousIncomparable: null };
+      const incomparable = comparability(
+        {
+          version: response.versionId,
+          normalized: score.normalized,
+          normalization: score.normalization,
+          reliable: response.reliable,
+        },
+        {
+          version: previous.versionId,
+          normalized: prev.normalized,
+          normalization: prev.normalization,
+          reliable: previous.reliable,
+        },
+      );
+      return incomparable
+        ? { previousValue: null, previousIncomparable: incomparable }
+        : { previousValue: prev.value, previousIncomparable: null };
+    };
 
     return c.json({
       patient: patient
@@ -242,7 +279,7 @@ conclusionRoutes.get(
         percent: r.score.percent,
         band: r.score.bandLabel,
         severity: r.score.severity,
-        previousValue: before.has(r.scale.id) ? before.get(r.scale.id)! : null,
+        ...previousOf(r.score),
       })),
       previousAt: previous?.submittedAt ?? null,
     });
