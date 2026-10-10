@@ -16,13 +16,28 @@ export function dayOf(iso: string | null | undefined, tz: string = env.instituti
   if (!iso) return null;
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return null;
-  /* en-CA даёт ровно YYYY-MM-DD — формат, в котором дни сравниваются строкой */
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(at);
+  return dayFormat(tz).format(at);
+}
+
+/*
+ * Форматтер — один на пояс, а не новый на каждый вызов.
+ *
+ * Сборка Intl.DateTimeFormat стоит десятки микросекунд, а dayOf зовут на
+ * каждое прохождение — лента по дням и недельные средние аналитики
+ * методики. На 70 тыс. прохождений это было 6,5 с синхронной работы из
+ * десяти, всё это время процесс не отвечал никому (#183). Форматтер
+ * неизменяем, и делить его между вызовами безопасно.
+ */
+const dayFormats = new Map<string, Intl.DateTimeFormat>();
+
+function dayFormat(tz: string): Intl.DateTimeFormat {
+  let format = dayFormats.get(tz);
+  if (!format) {
+    /* en-CA даёт ровно YYYY-MM-DD — формат, в котором дни сравниваются строкой */
+    format = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+    dayFormats.set(tz, format);
+  }
+  return format;
 }
 
 /* ─── местное время учреждения ↔ момент (участок delivery, волна 12) ─── */

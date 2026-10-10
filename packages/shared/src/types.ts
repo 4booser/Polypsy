@@ -910,10 +910,28 @@ function calendarDayOf(value: string, timeZone: string): [number, number, number
   if (plain) return [Number(plain[1]), Number(plain[2]), Number(plain[3])];
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
+  const parts = dayParts(timeZone)
     .formatToParts(at)
     .reduce<Record<string, number>>((acc, p) => (p.type === "literal" ? acc : { ...acc, [p.type]: Number(p.value) }), {});
   return [parts.year!, parts.month!, parts.day!];
+}
+
+/*
+ * Форматтер — один на пояс, а не новый на каждый вызов: сборка
+ * Intl.DateTimeFormat стоит десятки микросекунд, а ageAt зовут на каждую
+ * строку SPSS-выгрузки трижды. На 20 тыс. прохождений это были секунды
+ * синхронной работы — больше половины всей выгрузки (#182). Форматтер
+ * неизменяем, делить его безопасно.
+ */
+const dayPartFormats = new Map<string, Intl.DateTimeFormat>();
+
+function dayParts(timeZone: string): Intl.DateTimeFormat {
+  let format = dayPartFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    dayPartFormats.set(timeZone, format);
+  }
+  return format;
 }
 
 /**
