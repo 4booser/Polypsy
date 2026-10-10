@@ -205,6 +205,11 @@ export const outbox = createOutbox(browserStorage(), () => ownerOfToken(tokenSto
  *
  * Пол и возраст — того, кто вошёл: нормы шкал стратифицированы, и без них
  * T-балл не посчитается, а с ним не назначится и полоса.
+ *
+ * Копия методики без ключа (keyWithheld — так её с #141 получает пациент)
+ * не знает, какие ответы критические: решить риск по ней нельзя. Тогда
+ * памятка показывается из предосторожности — лишняя памятка при сдаче без
+ * сети дешевле пропущенной; сервер решит по ключу при отправке.
  */
 export function offlineSafetyPlan(
   survey: SurveyFull,
@@ -213,6 +218,7 @@ export function offlineSafetyPlan(
   now = new Date().toISOString(),
 ): string | null {
   if (!survey.safetyPlan) return null;
+  if (survey.keyWithheld) return survey.safetyPlan;
   /* день — по календарю устройства: пояса учреждения клиент не знает, окончательный возраст считает сервер */
   const respondent = { sex: me?.sex ?? null, age: ageAt(me?.birthDate ?? null, now, deviceTimeZone()) };
   return evaluateSubmission(survey, answers, respondent).risk.severity ? survey.safetyPlan : null;

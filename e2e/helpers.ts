@@ -476,7 +476,12 @@ export async function submitSeedSurvey(
 ): Promise<void> {
   const headers = auth(patient.token);
   const surveyId = await seedSurveyId(page, patient.token);
-  const full = (await (await page.request.get(`/api/surveys/${surveyId}`, { headers })).json()) as {
+  /*
+   * Критический вариант — из методики глазами сотрудника: пациенту ключ не
+   * отдаётся (#141), у его копии нет riskFlag. Варианты и их id те же.
+   */
+  const staff = opts.risky ? auth(await apiToken(page, "superadmin")) : headers;
+  const full = (await (await page.request.get(`/api/surveys/${surveyId}`, { headers: staff })).json()) as {
     questions: { id: string; type: string; options: { id: string; riskFlag?: boolean }[] }[];
   };
   const answers = full.questions

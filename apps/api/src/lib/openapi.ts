@@ -206,7 +206,7 @@ export const ROUTE_DOCS: Record<string, RouteDoc> = {
   "POST /api/surveys": { summary: "Создание методики", access: "staff", permission: "surveys.edit", body: createSurveySchema },
   "POST /api/surveys/validate": { summary: "Структурная проверка черновика без сохранения", access: "staff", permission: "surveys.edit" },
   "POST /api/surveys/import": { summary: "Импорт методики из файла экспорта", access: "staff", permission: "surveys.edit" },
-  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии", access: "user" },
+  "GET /api/surveys/:id": { summary: "Методика с содержимым; ?raw=1 — для конструктора; ?version=N — содержимое конкретной версии; обследуемому — без ключа (веса, критические пункты, пороги, шкалы срезаны, keyWithheld)", access: "user" },
   "PATCH /api/surveys/:id": { summary: "Правка методики — создаёт новую версию", access: "staff", permission: "surveys.edit", body: updateSurveySchema },
   "DELETE /api/surveys/:id": { summary: "Снятие методики с использования (данные сохраняются)", access: "staff", permission: "surveys.publish" },
   "POST /api/surveys/:id/restore": { summary: "Возврат методики в работу", access: "staff", permission: "surveys.publish" },
