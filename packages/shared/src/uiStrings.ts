@@ -7787,6 +7787,14 @@ export const UI = {
     en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
   },
 
+  /* ── w21:perfdb ── */
+  /* журнал техпанели: свободный текст ищется не дальше 31 дня, и экран говорит, за какие дни (#190, pages/ops/AuditLog.tsx) */
+  "ops.audit.searchPeriod": {
+    uk: "Текст шукається не далі 31 дня:",
+    ru: "Текст ищется не дальше 31 дня:",
+    en: "Text is searched within 31 days:",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;

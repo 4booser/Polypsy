@@ -101,6 +101,43 @@ async function filtersOf(query: AuditQuery): Promise<SQL[]> {
   return filters;
 }
 
+const DAY_MS = 86_400_000;
+const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const dayMs = (day: string) => Date.parse(`${day}T00:00:00.000Z`);
+
+/**
+ * Свободный текст ищется в пределах 31 дня (#190).
+ *
+ * Текст — шесть ILIKE '%…%', одно из них по подробностям целиком: полный
+ * перебор журнала, на 2 млн строк — 9 с на страницу. Триграммный индекс тут
+ * не помогает: журнал читает роль приложения под политикой строк, а условие
+ * с оператором не LEAKPROOF (ILIKE таков) PostgreSQL раньше проверки
+ * политики не пускает — ни в индекс, ни впереди фильтра. Сравнение времени
+ * LEAKPROOF, и индекс по времени под политикой работает, — поэтому текст
+ * ищется в окне: период человека, если он не длиннее 31 дня, иначе последние
+ * 31 день его периода; без «з» — 31 день до «по», без «по» — до сегодня по
+ * часам учреждения. Окно одно на таблицу, выгрузку и график, и ответ его
+ * называет (searchPeriod): сузить молча значило бы выдать «не найдено за
+ * месяц» за «не найдено во всём журнале».
+ *
+ * 31, а не 30: в окно целиком входит любой календарный месяц.
+ */
+const AUDIT_TEXT_DAYS = 31;
+
+function textWindow(from: string | undefined, to: string | undefined, today: string): { from: string; to: string } {
+  const last = to ? to.slice(0, 10) : today;
+  const first = isoDay(dayMs(last) - (AUDIT_TEXT_DAYS - 1) * DAY_MS);
+  return { from: from && from.slice(0, 10) >= first ? from : first, to: last };
+}
+
+/** Отбор с окном поиска по тексту и само окно днями; без текста отбор как есть */
+function searchScope(query: AuditQuery): { query: AuditQuery; searchPeriod?: { from: string; to: string } } {
+  if (!query.q) return { query };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: env.institutionTz }).format(new Date());
+  const win = textWindow(query.from, query.to, today);
+  return { query: { ...query, from: win.from }, searchPeriod: { from: win.from.slice(0, 10), to: win.to } };
+}
+
 /** То, что отбор записывает о себе в журнал: условия без значений, которые могли бы оказаться ПДн */
 function filterNote(query: AuditQuery) {
   const { action, actorId, subjectUserId, actor, subject, resourceType, outcome, q, from, to } = query;
@@ -129,9 +166,13 @@ function filterNote(query: AuditQuery) {
  * зовут прежние клиенты и тесты, курсор — техпанель. Порядок — по времени и
  * идентификатору: одного времени мало, записи одного запроса ложатся в одну
  * миллисекунду (см. lib/cursor.ts).
+ *
+ * Счёт — только на первой странице (#190): на следующих он тот же, а
+ * считался заново каждый раз — второй проход по отбору на каждую страницу.
+ * Экран берёт число с первой страницы (useResource, pagedState).
  */
 auditRoutes.get("/", async (c) => {
-  const query = parseQuery(c, auditQuery);
+  const { query, searchPeriod } = searchScope(parseQuery(c, auditQuery));
   const { limit, offset } = query;
   const filters = await filtersOf(query);
   const where = filters.length ? and(...filters) : undefined;
@@ -141,7 +182,7 @@ auditRoutes.get("/", async (c) => {
     ? and(where, or(lt(auditLog.at, cursor.at), and(eq(auditLog.at, cursor.at), lt(auditLog.id, cursor.id))))
     : where;
 
-  const [rows, [{ total } = { total: 0 }]] = await Promise.all([
+  const [rows, counted] = await Promise.all([
     db
       .select()
       .from(auditLog)
@@ -149,7 +190,7 @@ auditRoutes.get("/", async (c) => {
       .orderBy(desc(auditLog.at), desc(auditLog.id))
       .limit(limit + 1)
       .offset(cursor ? 0 : offset),
-    db.select({ total: sql<number>`count(*)` }).from(auditLog).where(where),
+    !cursor && offset === 0 ? db.select({ total: sql<number>`count(*)` }).from(auditLog).where(where) : null,
   ]);
   const entries = rows.slice(0, limit);
   const last = entries[entries.length - 1];
@@ -161,10 +202,11 @@ auditRoutes.get("/", async (c) => {
 
   const body: AuditPage = {
     entries: entries as AuditPage["entries"],
-    total: Number(total ?? 0),
+    ...(counted ? { total: Number(counted[0]?.total ?? 0) } : {}),
     offset,
     limit,
     nextCursor: rows.length > limit && last ? encodeCursor(last.at, last.id) : null,
+    ...(searchPeriod ? { searchPeriod } : {}),
   };
   return c.json(body);
 });
@@ -192,7 +234,8 @@ auditRoutes.get("/", async (c) => {
 export const AUDIT_EXPORT_MAX = 10_000;
 
 auditRoutes.get("/export.csv", async (c) => {
-  const query = parseQuery(c, auditQuery);
+  // окно поиска по тексту — то же, что у таблицы: выгружается то, что на экране
+  const { query } = searchScope(parseQuery(c, auditQuery));
   const filters = await filtersOf(query);
   const where = filters.length ? and(...filters) : undefined;
 
@@ -259,14 +302,10 @@ auditRoutes.get("/export.csv", async (c) => {
 
 /* ─────────── записи по отбору во времени (волна 11) ─────────── */
 
-const DAY_MS = 86_400_000;
 /** Без «с» — последние тридцать дней: столько же, сколько у рядов остальных разделов техпанели */
 export const AUDIT_DAILY_DAYS = 30;
 /** Дальше десяти лет назад месяцев слишком много для одной полосы столбцов, и журнал столько не живёт */
 const AUDIT_DAILY_MAX_DAYS = 3660;
-
-const isoDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-const dayMs = (day: string) => Date.parse(`${day}T00:00:00.000Z`);
 
 /**
  * Окно и шаг графика по отбору журнала.
@@ -306,7 +345,8 @@ export function dailyWindow(
  * журнал».
  */
 auditRoutes.get("/daily", async (c) => {
-  const query = parseQuery(c, auditQuery);
+  // с текстом период графика — окно поиска: столбцы вне его были бы пустыми не потому, что записей нет
+  const { query } = searchScope(parseQuery(c, auditQuery));
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: env.institutionTz }).format(new Date());
   const win = dailyWindow(query.from, query.to, today);
   const tz = env.institutionTz;

@@ -4,7 +4,7 @@ import type { AuditChainReport, AuditEntry, AuditPage } from "@quizzy/shared";
 import { api, ApiError } from "../../api";
 import { useAuth } from "../../auth";
 import { HBars, Kpi } from "../../charts/clinical";
-import { dateTime, locale } from "../../format";
+import { dateTime, day, locale } from "../../format";
 import { useLang } from "../../lang";
 import { Loading, useAction } from "../../ui";
 import { IconDisclosure } from "../../ui/glyphs";
@@ -205,6 +205,7 @@ export default function OpsAuditLog() {
         <span className="font-mono text-[13px] text-muted tabular-nums" aria-live="polite">
           {list.total !== null ? `${ut("ppl.found")} ${list.total.toLocaleString(locale())}` : ""}
         </span>
+        <SearchPeriodNote period={list.head?.searchPeriod} />
         <span className="flex-1" />
         <Button
           variant="ghost"
@@ -328,6 +329,22 @@ export default function OpsAuditLog() {
         </ListPlace>
       </RuleSection>
     </>
+  );
+}
+
+/**
+ * За какие дни искался текст (#190). Сервер ищет свободный текст не дальше
+ * 31 дня — индекс под политикой строк для него не работает, а перебор всего
+ * журнала шёл секундами — и называет окно в ответе. Без этой строки «не
+ * найдено за месяц» читалось бы как «не найдено во всём журнале».
+ */
+export function SearchPeriodNote({ period }: { period: AuditPage["searchPeriod"] }) {
+  const { ut } = useLang();
+  if (!period) return null;
+  return (
+    <span className="text-[13px] text-muted tabular-nums">
+      {`${ut("ops.audit.searchPeriod")} ${day(period.from)} – ${day(period.to)}`}
+    </span>
   );
 }
 
