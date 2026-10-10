@@ -196,7 +196,8 @@ deviceRoutes.post("/wiped", async (c) => {
     subjectUserId: user.id,
     details: { pushTokens, sessionRevoked },
   });
-  return c.json({ ok: true });
+  // мобилка по нему снимает refresh из своего списка «отозвать»: второй отзыв той же семьи не нужен
+  return c.json({ ok: true, sessionRevoked });
 });
 
 /**

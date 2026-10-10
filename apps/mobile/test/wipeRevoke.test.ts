@@ -40,7 +40,7 @@ function deviceServer(opts: { wipe: boolean; wiped?: Server; logout?: Server }) 
   serve((path, init) => {
     (bodies[path] ??= []).push(init.body ? JSON.parse(String(init.body)) : null);
     if (path === "/api/devices/checkin") return json(200, { wipe: opts.wipe });
-    if (path === "/api/devices/wiped") return (opts.wiped ?? (() => json(200, { ok: true })))(path, init);
+    if (path === "/api/devices/wiped") return (opts.wiped ?? (() => json(200, { ok: true, sessionRevoked: true })))(path, init);
     if (path === "/api/auth/logout") return (opts.logout ?? (() => json(200, { ok: true })))(path, init);
     if (path === "/api/push/register") return json(200, { ok: true });
     return json(404, { error: "not found" });
@@ -80,6 +80,17 @@ describe("стирание и сессия на сервере", () => {
     await api.flushRevocations();
     expect(bodies["/api/auth/logout"]).toEqual([{ refreshToken: `refresh-${owner}` }]);
     expect(revocations).toEqual([]);
+  });
+
+  test("сервер старше (о семье не говорит) — refresh остаётся в списке отзыва", async () => {
+    const api = await loadClient();
+    const owner = ownerOf();
+    signIn(owner);
+    deviceServer({ wipe: true, wiped: () => json(200, { ok: true }), logout: noNetwork });
+
+    expect(await api.deviceCheckin(null)).toBe(true);
+    await Bun.sleep(5);
+    expect(revocations).toEqual([`refresh-${owner}`]);
   });
 
   test("положительный контроль: без команды стирания сессия и список отзыва не тронуты", async () => {

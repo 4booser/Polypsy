@@ -312,11 +312,11 @@ const wipeDeps: WipeDeps = {
   clearTokens: () => tokenStorage.clear(),
   // refresh снятой сессии — сервер гасит её семью и отвязывает push установки (#128)
   confirm: (deviceId, token, refreshToken) =>
-    request<{ ok: true }>("/api/devices/wiped", {
+    request<{ ok: true; sessionRevoked?: boolean }>("/api/devices/wiped", {
       method: "POST",
       body: JSON.stringify(refreshToken ? { deviceId, refreshToken } : { deviceId }),
       headers: { Authorization: `Bearer ${token}` },
-    }).then(() => undefined),
+    }).then((res) => res?.sessionRevoked === true),
 };
 
 export const api = {
@@ -975,8 +975,8 @@ export const api = {
      * приложение и снова видит отделение, просто без кэша.
      */
     const outcome = await carryOutWipe(id, wipeDeps);
-    // подтверждение не дошло — снятая сессия отзывается своим путём, как после выхода без сети
-    if (!outcome.confirmed) void api.flushRevocations();
+    // семью не погасило подтверждение (не дошло, сервер старше) — отзыв уходит своим путём, как после выхода
+    void api.flushRevocations();
     return outcome.erased;
   },
 

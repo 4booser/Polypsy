@@ -68,9 +68,11 @@ export interface WipeDeps {
   /**
    * POST /api/devices/wiped явно переданным токеном: хранилище к этому
    * моменту уже пусто. `refreshToken` — снятой стиранием сессии: сервер
-   * гасит её семью; null — гасить нечего (сессию сняли раньше).
+   * гасит её семью; null — гасить нечего (сессию сняли раньше). true —
+   * сервер сказал, что семью погасил (sessionRevoked); сервер старше этого
+   * не скажет, и отзыв тогда уйдёт своим путём.
    */
-  confirm(deviceId: string, token: string, refreshToken: string | null): Promise<void>;
+  confirm(deviceId: string, token: string, refreshToken: string | null): Promise<boolean | void>;
 }
 
 export interface WipeOutcome {
@@ -140,16 +142,17 @@ async function advance(state: WipeState, confirmWith: string | null, deps: WipeD
 
   let confirmed = false;
   let settled = false;
+  let sessionRevoked = false;
   if (state.erased && confirmWith) {
     try {
-      await deps.confirm(state.deviceId, confirmWith, leaving);
+      sessionRevoked = (await deps.confirm(state.deviceId, confirmWith, leaving)) === true;
       confirmed = true;
       settled = true;
     } catch (error) {
       settled = notExpected(error);
     }
     // семью погасил сервер — второй отзыв лишь сдвинул бы границу access-токенов на других устройствах
-    if (confirmed && leaving) await deps.revoked(leaving).catch(() => {});
+    if (sessionRevoked && leaving) await deps.revoked(leaving).catch(() => {});
   }
   if (state.erased && state.signedOut && settled) {
     try {

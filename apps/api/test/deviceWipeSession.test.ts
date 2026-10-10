@@ -61,6 +61,8 @@ describe("подтверждение стирания", () => {
       post({ deviceId: tablet.device, refreshToken: tablet.refreshToken }),
     );
     expect(wiped.status, JSON.stringify(wiped.body)).toBe(200);
+    // мобилка по нему снимает refresh из своего списка «отозвать»
+    expect(wiped.body.sessionRevoked).toBe(true);
 
     expect(await pushOf(person.id), "уведомления стёртого планшета остались").toEqual([phone.push]);
     expect(await refreshWith(tablet.refreshToken), "сессия стёртого планшета продлевается").toBe(401);
@@ -79,6 +81,7 @@ describe("подтверждение стирания", () => {
       post({ deviceId: tablet.device, refreshToken: theirs.refreshToken }),
     );
     expect(wiped.status).toBe(200);
+    expect(wiped.body.sessionRevoked).toBe(false);
     expect(await refreshWith(theirs.refreshToken)).toBe(200);
   }, 30_000);
 
@@ -86,6 +89,7 @@ describe("подтверждение стирания", () => {
     const { person, tablet, phone } = await staffOnTwoDevices();
     const wiped = await api("/api/devices/wiped", tablet.token, post({ deviceId: tablet.device }));
     expect(wiped.status).toBe(200);
+    expect(wiped.body.sessionRevoked).toBe(false);
     expect(await pushOf(person.id)).toEqual([phone.push]);
   }, 30_000);
 
