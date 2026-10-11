@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db } from "../db";
-import { asSystem } from "../db/context";
+import { baseDb, db } from "../db";
+import { asSystem, dbContext, systemContext } from "../db/context";
 import { googleCalendarTokens } from "../db/schema";
 import { env } from "../env";
 import { decryptField, encryptField } from "./crypto";
@@ -108,6 +108,17 @@ export async function disconnectCalendar(userId: string): Promise<void> {
 }
 
 /**
+ * Системной ролью: в транзакции вызывающего, если она есть (запись на
+ * приём, сведение из запроса), иначе своей короткой. Фоновое сведение
+ * ходит в Google вне транзакции (lib/meetSync.ts, #204), и без своей
+ * транзакции чтение разрешения шло бы без контекста — политика строк под
+ * ролью приложения не отдала бы его, и календарь выглядел бы неподключённым.
+ */
+function systemRole<T>(fn: () => Promise<T>): Promise<T> {
+  return dbContext.getStore() ? asSystem(fn) : systemContext(baseDb, fn);
+}
+
+/**
  * Разрешение специалиста на календарь — для записи на приём к нему.
  *
  * Системной ролью, узко: одна строка, этого специалиста, и только
@@ -122,7 +133,7 @@ export async function disconnectCalendar(userId: string): Promise<void> {
  * берётся из занятого слота, а не из запроса.
  */
 async function calendarGrant(specialistId: string): Promise<string | null> {
-  const [row] = await asSystem(() =>
+  const [row] = await systemRole(() =>
     db
       .select({ refreshTokenEnc: googleCalendarTokens.refreshTokenEnc })
       .from(googleCalendarTokens)
@@ -171,7 +182,7 @@ async function accessToken(specialistId: string): Promise<TokenResult> {
      * и в контексте пациента удаление чужой строки политика тихо пропускала.
      */
     if (res.status === 400 || res.status === 401) {
-      await asSystem(() => disconnectCalendar(specialistId));
+      await systemRole(() => disconnectCalendar(specialistId));
       log.warn("meet.grant_revoked", { userId: specialistId });
       return { outcome: "revoked" };
     }

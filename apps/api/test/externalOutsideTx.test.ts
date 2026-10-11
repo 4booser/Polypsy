@@ -1,11 +1,24 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { db, makeUser, root } from "./fixtures";
+import { appApi, db, makeUser, type Person, root } from "./fixtures";
 import { asAppRole, taggedAppRolePool } from "./appRole";
 import { baseDb, runOnPool } from "../src/db";
 import { systemContext, withDbContext, withRequestContext } from "../src/db/context";
-import { pushDeliveries, pushOutcomes, securityJobs, users } from "../src/db/schema";
+import {
+  appointments,
+  departments,
+  googleCalendarTokens,
+  pushDeliveries,
+  pushOutcomes,
+  securityJobs,
+  slots,
+  specialistProfiles,
+  users,
+} from "../src/db/schema";
+import { env } from "../src/env";
+import { encryptField } from "../src/lib/crypto";
 import { type StartOutcome, startReencrypt } from "../src/lib/keyRotation";
+import { syncDueMeetings } from "../src/lib/meetSync";
 import {
   checkPushReceipts,
   type PushReceipt,
@@ -215,4 +228,285 @@ describe("квитанции Expo спрашиваются вне транзак
       .where(inArray(pushOutcomes.deliveryId, [sent.deliveryId]));
     expect(outcomes.every((o) => o.receiptStatus === "error")).toBe(true);
   }, 30_000);
+});
+
+/* ═══════════ фоновое сведение Google Calendar ═══════════ */
+
+describe("фоновое сведение Google: сеть вне транзакции, приём держится захватом (#204)", () => {
+  const EVENTS = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+  const meetOf = (id: string) => `https://meet.google.com/${id}`;
+  const originalFetch = globalThis.fetch;
+  const saved = { id: env.googleClientId, secret: env.googleClientSecret, redirect: env.googleRedirectUri };
+
+  interface Call {
+    method: string;
+    url: string;
+    start: string | null;
+  }
+  /** Календарь «Google»: событие и его начало */
+  const calendar = new Map<string, { start: string }>();
+  let eventSeq = 0;
+  /** Вызов, который «висит» до команды теста, — один, первый подходящий */
+  let hold: { match: (call: Call) => boolean; wait: () => Promise<void> } | null = null;
+
+  function holdGoogle(match: (call: Call) => boolean) {
+    const g = gate();
+    let taken = false;
+    hold = {
+      match: (call) => {
+        if (taken || !match(call)) return false;
+        taken = true;
+        return true;
+      },
+      wait: g.wait,
+    };
+    return g;
+  }
+
+  async function google(call: Call): Promise<Response> {
+    if (hold?.match(call)) await hold.wait();
+    if (call.method === "POST") {
+      eventSeq += 1;
+      const created = `${TAG}-evt-${eventSeq}`;
+      calendar.set(created, { start: call.start ?? "" });
+      return Response.json({ id: created, hangoutLink: meetOf(created) });
+    }
+    const id = decodeURIComponent(call.url.slice(EVENTS.length + 1).replace(/\?.*$/, ""));
+    const event = calendar.get(id);
+    if (!event) return Response.json({ error: "not found" }, { status: 404 });
+    if (call.method === "DELETE") {
+      calendar.delete(id);
+      return new Response(null, { status: 204 });
+    }
+    if (call.method === "PATCH" && call.start) event.start = call.start;
+    return Response.json({ id });
+  }
+
+  let departmentId: string;
+  const mine: string[] = [];
+
+  beforeAll(async () => {
+    env.googleClientId = "test-client";
+    env.googleClientSecret = "test-secret";
+    env.googleRedirectUri = "http://localhost/meet/callback";
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith("https://oauth2.googleapis.com/token")) return Response.json({ access_token: "synthetic-access" });
+      if (url.startsWith("https://www.googleapis.com/")) {
+        const body = typeof init?.body === "string" ? (JSON.parse(init.body) as { start?: { dateTime?: string } }) : null;
+        return google({ method: init?.method ?? "GET", url, start: body?.start?.dateTime ?? null });
+      }
+      return originalFetch(input, init);
+    }) as typeof fetch;
+
+    departmentId = crypto.randomUUID();
+    await db.insert(departments).values({
+      id: departmentId,
+      title: { uk: `Сведення поза транзакцією ${TAG}`, ru: `Сведение вне транзакции ${TAG}` },
+      timezone: "Europe/Kyiv",
+    });
+  });
+
+  afterAll(async () => {
+    hold = null;
+    globalThis.fetch = originalFetch;
+    // настройки Google — назад: «вход через Google выключен, пока не настроен» проверяют соседи
+    env.googleClientId = saved.id;
+    env.googleClientSecret = saved.secret;
+    env.googleRedirectUri = saved.redirect;
+    // ничего живого в общей очереди сведения
+    if (mine.length) {
+      await db
+        .update(appointments)
+        .set({ status: "cancelled", cancelledAt: new Date().toISOString(), meetingSyncAt: null })
+        .where(inArray(appointments.id, mine));
+    }
+  }, 15_000);
+
+  let slotSeq = 0;
+  async function slotFor(specialistId: string) {
+    slotSeq += 1;
+    const start = Date.now() + 500 * 3600_000 + slotSeq * 2 * 3600_000;
+    const id = crypto.randomUUID();
+    const startsAt = new Date(start).toISOString();
+    await db.insert(slots).values({ id, specialistId, departmentId, startsAt, endsAt: new Date(start + 3600_000).toISOString() });
+    return { id, startsAt };
+  }
+
+  async function specialist(tag: string): Promise<Person> {
+    const person = await makeUser("admin", `${TAG}-s-${tag}-${crypto.randomUUID()}@test`);
+    await db.insert(specialistProfiles).values({ userId: person.id, departmentId });
+    await db
+      .insert(googleCalendarTokens)
+      .values({ userId: person.id, refreshTokenEnc: encryptField(`refresh-${tag}`)!, googleEmail: `${tag}@example.test` });
+    return person;
+  }
+
+  const appointment = async (id: string) => (await db.select().from(appointments).where(eq(appointments.id, id)))[0]!;
+
+  /** Дистанционный приём с событием в календаре врача — записью пациента, ролью приложения */
+  async function remoteVisit(tag: string) {
+    const doctor = await specialist(tag);
+    const patient = await makeUser("user", `${TAG}-p-${tag}-${crypto.randomUUID()}@test`);
+    const slot = await slotFor(doctor.id);
+    const res = await appApi("/api/clinic/appointments", patient.token, {
+      method: "POST",
+      body: JSON.stringify({ slotId: slot.id, mode: "remote" }),
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    mine.push(res.body.id);
+    const row = await appointment(res.body.id);
+    expect(calendar.has(row.meetingEventId!)).toBe(true);
+    return { id: res.body.id as string, doctor, patient, slot, row };
+  }
+
+  /** Сведение отложено прежним сбоем: строка ждёт фонового прохода */
+  const pending = (id: string, set: Partial<typeof appointments.$inferInsert> = {}) =>
+    db
+      .update(appointments)
+      .set({ ...set, meetingSyncAt: new Date(Date.now() - 60_000).toISOString(), meetingSyncAttempts: 1 })
+      .where(eq(appointments.id, id));
+
+  const later = () => new Date(Date.now() + 3600_000);
+  const post = (path: string, token: string, body: unknown) =>
+    appApi(path, token, { method: "POST", body: JSON.stringify(body) });
+
+  /** Завершился ли запрос за отведённое время — не стоял ли он за чужим замком */
+  async function doneWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+    return Promise.race([p.then(() => true, () => true), Bun.sleep(ms).then(() => false)]);
+  }
+
+  /*
+   * Прежде фоновый проход держал строку приёма замком (и транзакцию с
+   * соединением пула) всё время обращений к Google — до 8 с на вызов. Перенос
+   * и отмена того же приёма стояли за этим замком.
+   */
+  test("Google висит на переносе события: проход не держит транзакции; отмена того же приёма не ждёт и сводит календарь сама", async () => {
+    const visit = await remoteVisit("cancel");
+    await pending(visit.id);
+    const appName = `${TAG}-meet-cancel`;
+    const pool = await taggedAppRolePool(appName);
+    const g = holdGoogle((c) => c.method === "PATCH" && c.url.includes(visit.row.meetingEventId!));
+    try {
+      const pass = runOnPool(pool, () => syncDueMeetings(later()));
+      pass.catch(() => {});
+      await until(() => g.reached() > 0, "проход дошёл до Google");
+
+      expect(await openTransactions(appName), "проход держит транзакцию, пока ждёт Google").toBe(0);
+      const cancel = post(`/api/clinic/appointments/${visit.id}/cancel`, visit.patient.token, {});
+      expect(await doneWithin(cancel, 5_000), "отмена ждала проход, который ждёт Google").toBe(true);
+      expect((await cancel).status).toBe(200);
+
+      g.release();
+      await pass;
+    } finally {
+      g.release();
+      await pool.close();
+    }
+
+    // запоздавший итог прохода, посчитанный по прежнему приёму, не записан
+    const after = await appointment(visit.id);
+    expect(after.status).toBe("cancelled");
+    expect(after.meetingEventId).toBeNull();
+    expect(after.meetingSyncAt).toBeNull();
+    expect(calendar.has(visit.row.meetingEventId!)).toBe(false);
+  }, 60_000);
+
+  test("положительный контроль: Google висит, приём никто не трогает — соседи не ждут, после ответа итог записан", async () => {
+    const visit = await remoteVisit("settle");
+    // перенос на другой слот того же врача, не дошедший до Google
+    const next = await slotFor(visit.doctor.id);
+    await pending(visit.id, { slotId: next.id });
+    const appName = `${TAG}-meet-settle`;
+    const pool = await taggedAppRolePool(appName);
+    const g = holdGoogle((c) => c.method === "PATCH" && c.url.includes(visit.row.meetingEventId!));
+    let result: { attempted: number; settled: number };
+    try {
+      const pass = runOnPool(pool, () => syncDueMeetings(later()));
+      pass.catch(() => {});
+      await until(() => g.reached() > 0, "проход дошёл до Google");
+      expect(await openTransactions(appName)).toBe(0);
+      expect(await neighbour(pool)).toBeLessThan(2000);
+      // второй проход захваченный приём не берёт
+      const second = await runOnPool(pool, () => syncDueMeetings(later()));
+      expect(second.settled).toBe(0);
+      g.release();
+      result = await pass;
+    } finally {
+      g.release();
+      await pool.close();
+    }
+
+    expect(result.settled).toBeGreaterThanOrEqual(1);
+    const after = await appointment(visit.id);
+    expect(after.meetingSyncAt).toBeNull();
+    expect(after.meetingSyncAttempts).toBe(0);
+    expect(after.meetingEventId).toBe(visit.row.meetingEventId);
+    expect(calendar.get(visit.row.meetingEventId!)?.start).toBe(next.startsAt);
+  }, 60_000);
+
+  test("перенос, пока проход ждёт Google на переносе события: запрос не ждёт, запоздавший вызов прохода его не перебивает", async () => {
+    const visit = await remoteVisit("late-move");
+    const first = await slotFor(visit.doctor.id);
+    await pending(visit.id, { slotId: first.id });
+    const target = await slotFor(visit.doctor.id);
+    const g = holdGoogle((c) => c.method === "PATCH" && c.url.includes(visit.row.meetingEventId!));
+    try {
+      const pass = syncDueMeetings(later());
+      pass.catch(() => {});
+      await until(() => g.reached() > 0, "проход дошёл до Google");
+      const moved = post(`/api/clinic/appointments/${visit.id}/reschedule`, visit.patient.token, { slotId: target.id });
+      expect(await doneWithin(moved, 5_000), "перенос ждал проход, который ждёт Google").toBe(true);
+      expect((await moved).status).toBe(200);
+      expect(calendar.get(visit.row.meetingEventId!)?.start).toBe(target.startsAt);
+
+      // вызов прохода доходит до Google позже переноса — и ставит событие на прежнее время
+      g.release();
+      await pass;
+    } finally {
+      g.release();
+    }
+    expect(calendar.get(visit.row.meetingEventId!)?.start).toBe(first.startsAt);
+    // но итог прохода не записан, сведение запрошено заново — и следующий проход ставит событие на место
+    expect((await appointment(visit.id)).meetingSyncAt).not.toBeNull();
+    await syncDueMeetings(later());
+    expect(calendar.get(visit.row.meetingEventId!)?.start).toBe(target.startsAt);
+    expect((await appointment(visit.id)).meetingSyncAt).toBeNull();
+  }, 60_000);
+
+  test("событие, созданное проходом, пока приём перенесли, не остаётся сиротой: приём берёт его и сводится заново", async () => {
+    const visit = await remoteVisit("adopt");
+    // сбой посреди пересоздания: прежнее событие убрано, новое не создано
+    calendar.delete(visit.row.meetingEventId!);
+    await pending(visit.id, { meetingEventId: null, meetingOrganizerId: null, meetingUrl: null });
+    const target = await slotFor(visit.doctor.id);
+    const g = holdGoogle((c) => c.method === "POST" && c.start === visit.slot.startsAt);
+    let before = 0;
+    try {
+      const pass = syncDueMeetings(later());
+      pass.catch(() => {});
+      await until(() => g.reached() > 0, "проход дошёл до создания события");
+      // перенос приёма без события сведения не просит; прежде он стоял за замком прохода
+      const moved = post(`/api/clinic/appointments/${visit.id}/reschedule`, visit.patient.token, { slotId: target.id });
+      expect(await doneWithin(moved, 5_000), "перенос ждал проход, который ждёт Google").toBe(true);
+      expect((await moved).status).toBe(200);
+      before = eventSeq;
+      g.release();
+      await pass;
+    } finally {
+      g.release();
+    }
+
+    // проход создал событие на прежнее время; приём его взял и попросил сведения
+    const adopted = await appointment(visit.id);
+    expect(adopted.meetingEventId).toBe(`${TAG}-evt-${before + 1}`);
+    expect(adopted.meetingSyncAt).not.toBeNull();
+    await syncDueMeetings(later());
+    const after = await appointment(visit.id);
+    expect(after.meetingEventId).toBe(adopted.meetingEventId);
+    expect(after.meetingUrl).toBe(meetOf(after.meetingEventId!));
+    expect(after.meetingSyncAt).toBeNull();
+    expect(calendar.get(after.meetingEventId!)?.start).toBe(target.startsAt);
+    expect(eventSeq, "создано лишнее событие").toBe(before + 1);
+  }, 60_000);
 });
