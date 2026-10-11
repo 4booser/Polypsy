@@ -154,7 +154,14 @@ describe("политики строк прохождений на 100 тыс. п
     expect(seen).toEqual({ responses: RESPONSES, answers: RESPONSES * ITEMS, response_scores: RESPONSES });
     for (const table of TABLES) {
       const { owner: o, admin: a } = ms[table]!;
-      expect({ table, ms: ms[table], within: a <= 20 * o + 30 }).toEqual({ table, ms: ms[table], within: true });
+      /*
+       * Порог — по порядку величины: в 20 раз от владельца, но не ниже
+       * 400 мс. На раннере CI владелец считает баллы по индексу за 4 мс, и
+       * чистое «20× + 30» (110 мс) краснело на 155 мс у администратора, хотя
+       * до правки (#185) тот же счёт на 100 тыс. строк шёл около двух секунд —
+       * вызов функции политики на каждую строку.
+       */
+      expect({ table, ms: ms[table], within: a <= Math.max(20 * o + 30, 400) }).toEqual({ table, ms: ms[table], within: true });
     }
   }, 120_000);
 });
