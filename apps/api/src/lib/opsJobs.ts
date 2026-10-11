@@ -115,6 +115,20 @@ export async function trackJob<T>(name: string, fn: () => Promise<T>): Promise<T
   }
 }
 
+/**
+ * Проход по такту — если прошлый проход задачи ещё идёт, пропуск, а не
+ * второй рядом (null). Так, как рассыльщик не накладывает свои такты: при
+ * медленном внешнем сервисе минутный такт иначе множит одновременные
+ * проходы над одной очередью (волна 22, сведение Google).
+ */
+export function tickOnce<T>(name: string, fn: () => Promise<T>): Promise<T | null> {
+  if (jobs.get(name)?.running) {
+    skipJob(name);
+    return Promise.resolve(null);
+  }
+  return trackJob(name, fn);
+}
+
 /** Такт пропущен: предыдущий проход ещё идёт (рассыльщик не накладывает такты) */
 export function skipJob(name: string): void {
   const s = stateOf(name);

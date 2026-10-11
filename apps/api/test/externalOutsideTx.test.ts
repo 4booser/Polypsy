@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { appApi, db, makeUser, type Person, root } from "./fixtures";
 import { asAppRole, taggedAppRolePool } from "./appRole";
@@ -19,6 +19,7 @@ import { env } from "../src/env";
 import { encryptField } from "../src/lib/crypto";
 import { type StartOutcome, startReencrypt } from "../src/lib/keyRotation";
 import { syncDueMeetings } from "../src/lib/meetSync";
+import { tickOnce } from "../src/lib/opsJobs";
 import {
   checkPushReceipts,
   type PushReceipt,
@@ -246,25 +247,29 @@ describe("фоновое сведение Google: сеть вне транзак
   /** Календарь «Google»: событие и его начало */
   const calendar = new Map<string, { start: string }>();
   let eventSeq = 0;
-  /** Вызов, который «висит» до команды теста, — один, первый подходящий */
-  let hold: { match: (call: Call) => boolean; wait: () => Promise<void> } | null = null;
+  /** Вызовы, которые «висят» до команды теста: у каждого — один, первый подходящий */
+  const holds: { match: (call: Call) => boolean; wait: () => Promise<void> }[] = [];
+  /** Все вызовы к событиям — по ним видно, не звали ли Google дважды */
+  const calls: Call[] = [];
 
   function holdGoogle(match: (call: Call) => boolean) {
     const g = gate();
     let taken = false;
-    hold = {
+    holds.push({
       match: (call) => {
         if (taken || !match(call)) return false;
         taken = true;
         return true;
       },
       wait: g.wait,
-    };
+    });
     return g;
   }
 
   async function google(call: Call): Promise<Response> {
-    if (hold?.match(call)) await hold.wait();
+    calls.push(call);
+    const held = holds.find((h) => h.match(call));
+    if (held) await held.wait();
     if (call.method === "POST") {
       eventSeq += 1;
       const created = `${TAG}-evt-${eventSeq}`;
@@ -308,7 +313,7 @@ describe("фоновое сведение Google: сеть вне транзак
   });
 
   afterAll(async () => {
-    hold = null;
+    holds.length = 0;
     globalThis.fetch = originalFetch;
     // настройки Google — назад: «вход через Google выключен, пока не настроен» проверяют соседи
     env.googleClientId = saved.id;
@@ -509,4 +514,66 @@ describe("фоновое сведение Google: сеть вне транзак
     expect(calendar.get(after.meetingEventId!)?.start).toBe(target.startsAt);
     expect(eventSeq, "создано лишнее событие").toBe(before + 1);
   }, 60_000);
+
+  /*
+   * Ревью волны 22: срок захвата считался от начала прохода. Проход идёт по
+   * очереди, и при медленном Google приём, захваченный через три минуты
+   * после начала, получал срок, истёкший ещё до захвата, — следующий такт
+   * брал его же и звал Google второй раз.
+   */
+  test("медленный Google: срок захвата — от момента захвата; следующий такт не берёт приём, который проход ещё сводит", async () => {
+    const slow = await remoteVisit("slow-first");
+    const late = await remoteVisit("slow-late");
+    // оба ждут сведения; медленный — раньше в очереди
+    await db
+      .update(appointments)
+      .set({ meetingSyncAt: new Date(Date.now() - 120_000).toISOString(), meetingSyncAttempts: 1 })
+      .where(eq(appointments.id, slow.id));
+    await pending(late.id);
+    const lateCalls = () => calls.filter((c) => c.method === "PATCH" && c.url.includes(late.row.meetingEventId!)).length;
+
+    const start = Date.now();
+    const first = holdGoogle((c) => c.method === "PATCH" && c.url.includes(slow.row.meetingEventId!));
+    const second = holdGoogle((c) => c.method === "PATCH" && c.url.includes(late.row.meetingEventId!));
+    try {
+      const pass = syncDueMeetings(new Date(start));
+      pass.catch(() => {});
+      await until(() => first.reached() > 0, "проход дошёл до медленного приёма");
+      // Google отвечал по медленному приёму три минуты — дольше срока захвата
+      setSystemTime(new Date(start + 3 * 60_000));
+      first.release();
+      await until(() => second.reached() > 0, "проход захватил следующий приём и ждёт Google");
+
+      // следующий такт — уже после этих трёх минут
+      await syncDueMeetings(new Date());
+      expect(lateCalls(), "следующий такт взял приём, который сводит проход").toBe(1);
+
+      second.release();
+      await pass;
+    } finally {
+      first.release();
+      second.release();
+      setSystemTime();
+    }
+    const after = await appointment(late.id);
+    expect(after.meetingSyncAt).toBeNull();
+    expect(after.meetingSyncAttempts).toBe(0);
+  }, 60_000);
+
+  test("такты сведения не накладываются: пока идёт прошлый проход, следующий такт пропускается", async () => {
+    const name = `${TAG}-meet-tick`;
+    const g = gate();
+    let runs = 0;
+    const slowPass = () => {
+      runs += 1;
+      return g.wait();
+    };
+    const first = tickOnce(name, slowPass);
+    expect(await tickOnce(name, slowPass), "второй проход пошёл рядом с первым").toBeNull();
+    expect(runs).toBe(1);
+    g.release();
+    await first;
+    // прошлый кончился — следующий такт идёт
+    expect(await tickOnce(name, async () => "ok")).toBe("ok");
+  }, 15_000);
 });

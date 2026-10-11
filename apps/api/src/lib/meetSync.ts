@@ -264,12 +264,25 @@ export async function requestMeetSync(appointmentId: string): Promise<MeetSyncOu
  * захваченный приём не попадает в очередь соседнего прохода, пока захват
  * не истёк. Срок — он же отметка захвата: итог записывается, только пока
  * метка равна ему (leased).
+ *
+ * Срок отмеряется от момента захвата этого приёма, а не от начала прохода
+ * (ревью волны 22): проход идёт по очереди до пятидесяти приёмов, и при
+ * медленном Google поздние захватывались бы уже с истёкшим сроком —
+ * следующий проход брал бы тот же приём, и Google звали бы дважды. Момент
+ * захвата — время прохода (now), сдвинутое на прошедшее с его начала:
+ * проход, которому задали время (тесты, ручной прогон), отмеряет срок в
+ * нём же.
  */
-async function claimDue(appointmentId: string, now: Date): Promise<{ found: Found; lease: string } | null> {
+async function claimDue(
+  appointmentId: string,
+  now: Date,
+  startedAt: number,
+): Promise<{ found: Found; lease: string } | null> {
   return systemContext(baseDb, async () => {
     const found = await claim(appointmentId, now);
     if (!found) return null;
-    const lease = new Date(now.getTime() + LEASE_MS).toISOString();
+    const claimedAt = now.getTime() + Math.max(0, Date.now() - startedAt);
+    const lease = new Date(claimedAt + LEASE_MS).toISOString();
     await db.update(appointments).set({ meetingSyncAt: lease }).where(eq(appointments.id, appointmentId));
     return { found, lease };
   });
@@ -381,6 +394,7 @@ function leased(found: Found, lease: string): Sink & { superseded: boolean } {
  * очереди вовсе (сюита ходила владельцем и этого не замечала).
  */
 export async function syncDueMeetings(now = new Date()): Promise<{ attempted: number; settled: number }> {
+  const startedAt = Date.now();
   const due = await systemContext(baseDb, () =>
     db
       .select({ id: appointments.id })
@@ -393,7 +407,7 @@ export async function syncDueMeetings(now = new Date()): Promise<{ attempted: nu
   for (const { id } of due) {
     try {
       // занятую строку сводит тот, кто её держит; сведённую или захваченную за время прохода — уже некому (см. claim)
-      const claimed = await claimDue(id, now);
+      const claimed = await claimDue(id, now, startedAt);
       if (!claimed) continue;
       const sink = leased(claimed.found, claimed.lease);
       const outcome = await reconcile(claimed.found, sink);
