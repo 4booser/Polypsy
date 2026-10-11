@@ -54,7 +54,7 @@ import { withJobLock } from "./jobLock";
 import { log } from "./log";
 import { mailTransportReady, sendSystemMail, superadminEmails } from "./notify";
 import { scrubText, startedAt, windowStats } from "./opsBuffer";
-import { intervalOf, isRunning, lastStartOf, registerJob, skipJob, trackJob } from "./opsJobs";
+import { intervalOf, isRunning, lastOkOf, lastStartOf, registerJob, skipJob, trackJob } from "./opsJobs";
 
 export const ALERT_JOB = "ops.alerts";
 export const ALERT_RULE_KEYS: readonly OpsAlertRuleKey[] = ["errors5xx", "schedulerSilent", "p95", "diskFree", "auditChain"];
@@ -91,6 +91,18 @@ export interface AuditChainStatus {
   checkedAt: string;
 }
 let auditChainSource: (() => Promise<AuditChainStatus | null>) | null = null;
+
+/**
+ * Сколько последняя исправная сверка цепочки считается свежей.
+ *
+ * Плановая сверка — раз в сутки (lib/integrity.ts); двое суток — один
+ * пропущенный проход с запасом. Старше — правило «недоступно: сверка
+ * давно не проходила», а не «гаразд»: сверка десятидневной давности ничего
+ * не говорит о журнале сейчас, а вставшая плановая сверка иначе так и
+ * числилась бы зелёной (#160). Провал сверки остаётся «збій» при любой
+ * давности: журнал был порван, и более поздняя сверка этого не опровергла.
+ */
+export const AUDIT_CHAIN_STALE_MS = 48 * 3_600_000;
 
 export function setAuditChainSource(fn: (() => Promise<AuditChainStatus | null>) | null): void {
   auditChainSource = fn;
@@ -144,7 +156,12 @@ export async function diskUsage(path = env.recordingsDir): Promise<DiskUsage | n
 export interface SignalInputs {
   now: number;
   stats: (windowMin: number) => OpsWindowStats;
-  scheduler: { enabled: boolean; lastTickAt: number | null; startedAt: number };
+  /**
+   * lastOkAt — конец последнего УСПЕШНОГО прохода планировщика. Не начало
+   * последнего прохода: оно ставится до выполнения, и планировщик, падающий
+   * на каждом проходе, по нему выглядел тикающим (#160).
+   */
+  scheduler: { enabled: boolean; lastOkAt: number | null; startedAt: number };
   disk: DiskUsage | null;
   /** undefined — источник не подключён; null — подключён, но проверки ещё не было */
   auditChain: AuditChainStatus | null | undefined;
@@ -190,7 +207,7 @@ export function observe(rule: RuleShape, s: SignalInputs): Observation {
       if (t === null) return { firing: null, value: null, unavailable: "noThreshold" };
       /* выключенный на этом экземпляре планировщик не «молчит» — он идёт на другом */
       if (!s.scheduler.enabled) return { firing: null, value: null, unavailable: "schedulerOff" };
-      const from = s.scheduler.lastTickAt ?? s.scheduler.startedAt;
+      const from = s.scheduler.lastOkAt ?? s.scheduler.startedAt;
       const minutes = Math.floor((s.now - from) / 60_000);
       return { firing: minutes > t, value: minutes };
     }
@@ -203,7 +220,12 @@ export function observe(rule: RuleShape, s: SignalInputs): Observation {
     case "auditChain": {
       if (s.auditChain === undefined) return { firing: null, value: null, unavailable: "noSource" };
       if (s.auditChain === null) return { firing: null, value: null, unavailable: "neverChecked" };
-      return { firing: !s.auditChain.ok, value: s.auditChain.ok ? 1 : 0 };
+      if (!s.auditChain.ok) return { firing: true, value: 0 };
+      const checkedAt = Date.parse(s.auditChain.checkedAt);
+      if (!Number.isFinite(checkedAt) || s.now - checkedAt > AUDIT_CHAIN_STALE_MS) {
+        return { firing: null, value: null, unavailable: "chainStale" };
+      }
+      return { firing: false, value: 1 };
     }
     default:
       return { firing: null, value: null, unavailable: "unknownRule" };
@@ -496,7 +518,7 @@ export async function gatherSignals(now: number, over: Partial<SignalInputs> = {
     stats: over.stats ?? ((w) => windowStats(w, now)),
     scheduler: over.scheduler ?? {
       enabled: env.schedulerEnabled,
-      lastTickAt: lastStartOf("schedules"),
+      lastOkAt: lastOkOf("schedules"),
       startedAt: Date.parse(startedAt),
     },
     disk: "disk" in over ? (over.disk ?? null) : await diskUsage(),

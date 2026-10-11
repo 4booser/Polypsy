@@ -7787,6 +7787,14 @@ export const UI = {
     en: "The conversation has already been transcribed and is in the record — it’s too late to withdraw consent for this recording",
   },
 
+  /* ── w21:ops ── */
+  /* правило «цепочка журнала»: последняя исправная сверка старше двух суток (#160, lib/opsAlerts.ts) */
+  "o2b.unavail.chainStale": {
+    uk: "остання вдала перевірка ланцюжка — понад дві доби тому: планова перевірка не проходить",
+    ru: "последняя удачная проверка цепочки — больше двух суток назад: плановая проверка не проходит",
+    en: "the last successful chain check was over two days ago: the scheduled check isn’t running",
+  },
+
 } as const satisfies Record<string, UiEntry>;
 
 export type UiKey = keyof typeof UI;
