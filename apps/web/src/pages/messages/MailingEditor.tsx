@@ -156,7 +156,12 @@ function MailingEditor({ id }: { id: string | null }) {
   const { run, busy } = useAction();
   const answerId = useId();
 
-  const card = useResource(() => api.mailing(id!), [id], { enabled: id !== null });
+  /*
+   * keep: false (#200) — вдобавок к ключу обёртки (MailingPage): форма
+   * заливается из карточки один раз, и карточка прежнего повідомлення под
+   * адресом нового стала бы его черновиком.
+   */
+  const card = useResource(() => api.mailing(id!), [id], { enabled: id !== null, keep: false });
   /*
    * Группы — для окна отправки, а не для формы: на кадрах поля адресатов нет,
    * и оно убрано с глаз (см. шапку файла). Отказ списка форму не запирает:

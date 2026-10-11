@@ -69,14 +69,24 @@ export default function ConclusionPage() {
    * котором экран должен что-то рисовать. Одна загрузка даёт одно состояние
    * «готово» и одну ошибку.
    */
-  const res = useResource(async () => {
-    const detail = await api.responseDetail(responseId);
-    const survey = await api.survey(detail.survey.id);
-    return { detail, survey };
-  }, [responseId]);
+  /*
+   * keep: false у всех трёх загрузок (#200, как у карточек #177): после
+   * перехода к другому прохождению прежние ответ, методика и черновик под
+   * новым адресом — не «устаревающие данные», а чужое заключение. Черновик
+   * прежнего залился бы в поле, и «Зберегти» записал бы его новому.
+   */
+  const res = useResource(
+    async () => {
+      const detail = await api.responseDetail(responseId);
+      const survey = await api.survey(detail.survey.id);
+      return { detail, survey };
+    },
+    [responseId],
+    { keep: false },
+  );
 
   /* источник черновика: сам не перечитывается — правку не затрёт (useResource, manual) */
-  const conclusion = useResource(() => api.conclusion(responseId), [responseId], { manual: true });
+  const conclusion = useResource(() => api.conclusion(responseId), [responseId], { manual: true, keep: false });
 
   /*
    * Название документа — поле «Назва заключення» с кадра f36.
@@ -88,6 +98,8 @@ export default function ConclusionPage() {
    * затирать то, что человек набрал.
    */
   const [title, setTitle] = useState("");
+  /* название набирается к своему прохождению: переход к другому начинает с пустого (#200) */
+  useEffect(() => setTitle(""), [responseId]);
   useEffect(() => {
     const t = conclusion.data?.current?.title;
     if (typeof t === "string") setTitle(t);
@@ -117,6 +129,7 @@ export default function ConclusionPage() {
   const surveyId = res.data?.detail.survey.id;
   const models = useResource(() => loadModels(responseId, surveyId!), [responseId, surveyId], {
     enabled: !!surveyId,
+    keep: false,
   });
 
   /*

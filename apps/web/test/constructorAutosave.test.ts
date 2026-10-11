@@ -54,3 +54,57 @@ describe("чужой черновик не восстанавливается", 
     expect(src).not.toContain("draftKey(id)");
   });
 });
+
+describe("прежние ключи без учётки убираются при входе (#200)", () => {
+  type Keys = {
+    dropLegacyDrafts?: (s: Pick<Storage, "length" | "key" | "removeItem">) => void;
+  };
+  /* модуля на коде до правки нет — проверки падают по существу, а не загрузкой файла */
+  const load = (): Promise<Keys> => import("../src/pages/constructor/draftKey").catch(() => ({}));
+
+  /** localStorage браузера в той части, которой пользуется чистка */
+  function fakeStorage(keys: string[]) {
+    const map = new Map(keys.map((k) => [k, "{}"]));
+    return {
+      map,
+      get length() {
+        return map.size;
+      },
+      key: (i: number) => [...map.keys()][i] ?? null,
+      removeItem: (k: string) => void map.delete(k),
+    };
+  }
+
+  test("ключи без учётки — прочь; свои черновики, тема и токены — на месте", async () => {
+    const { dropLegacyDrafts } = await load();
+    expect(dropLegacyDrafts).toBeFunction();
+    const mine = draftKey("doctor-a", "survey-1")!;
+    const mineNew = draftKey("doctor-a", undefined)!;
+    const storage = fakeStorage([
+      "quizzy.constructor.survey-1",
+      "quizzy.constructor.new",
+      mine,
+      mineNew,
+      "quizzy.theme.v2",
+      "quizzy.token",
+    ]);
+    dropLegacyDrafts!(storage);
+    expect([...storage.map.keys()].sort()).toEqual([mine, mineNew, "quizzy.theme.v2", "quizzy.token"].sort());
+  });
+
+  test("положительный контроль: без прежних ключей чистка ничего не трогает", async () => {
+    const { dropLegacyDrafts } = await load();
+    expect(dropLegacyDrafts).toBeFunction();
+    const storage = fakeStorage([draftKey("doctor-b", "survey-2")!, "quizzy.lang"]);
+    dropLegacyDrafts!(storage);
+    expect(storage.map.size).toBe(2);
+  });
+
+  test("вход и восстановление сессии чистят прежние ключи", () => {
+    const src = readFileSync(resolve(import.meta.dir, "../src/auth.tsx"), "utf8");
+    expect(src).toContain('import { dropLegacyDrafts } from "./pages/constructor/draftKey";');
+    // adopt — общий путь входа: пароль, второй фактор, регистрация
+    expect(src).toMatch(/async function adopt\([\s\S]{0,700}?dropLegacyConstructorDrafts\(\);/);
+    expect(src).toMatch(/if \(boot\.data\) \{[\s\S]{0,300}?dropLegacyConstructorDrafts\(\);/);
+  });
+});
