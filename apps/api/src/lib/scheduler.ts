@@ -521,8 +521,12 @@ export function startScheduler(intervalMs = 3_600_000): () => void {
      * Квитанции пуш-уведомлений (lib/push.ts). Раз в час хватает с запасом:
      * Expo хранит их сутки, а вопрос «дошло ли» задают на следующий день, а
      * не в ту же минуту. Заодно чистятся исходы старше полугода.
+     *
+     * Без обёртки контекстом (#204): проход сам берёт снимок и пишет итоги
+     * короткими транзакциями, а Expo спрашивает вне их — обёртка держала бы
+     * транзакцию и соединение пула открытыми на всё время ответа Expo.
      */
-    void trackJob("push.receipts", () => systemContext(baseDb, () => checkPushReceipts())).catch((error) =>
+    void trackJob("push.receipts", () => checkPushReceipts()).catch((error) =>
       log.warn("push.receipts_failed", { error: String(error) }),
     );
     /*
