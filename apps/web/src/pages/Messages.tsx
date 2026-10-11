@@ -30,6 +30,35 @@ export function ownThread(
 }
 
 /**
+ * Набранный ответ — свой у каждого разговора (#177).
+ *
+ * Поле было одно на экран: экран переписки не пересоздаётся при переходе
+ * к другому разговору (тот же маршрут /messages/:id), и набранное пациенту
+ * A оставалось в поле под разговором с B — и уходило B. Теперь черновики
+ * лежат по id разговора: после перехода поле пусто или держит черновик
+ * этого разговора, а вернувшись к A, человек находит своё.
+ */
+export type ThreadDrafts = Readonly<Record<string, string>>;
+
+/** Что стоит в поле открытого разговора */
+export function draftIn(drafts: ThreadDrafts, id: string | undefined): string {
+  return id ? (drafts[id] ?? "") : "";
+}
+
+/** Набранное — в черновик своего разговора */
+export function withDraft(drafts: ThreadDrafts, id: string, text: string): ThreadDrafts {
+  return { ...drafts, [id]: text };
+}
+
+/**
+ * Письмо ушло — черновик его разговора стирается, если пока шла отправка
+ * его не дописали; другие разговоры не трогаются.
+ */
+export function afterSent(drafts: ThreadDrafts, id: string, sent: string): ThreadDrafts {
+  return drafts[id] === sent ? withDraft(drafts, id, "") : drafts;
+}
+
+/**
  * Лента писем по состоянию загрузки. «Повідомлень ще немає» — только когда
  * сервер ответил пустым разговором; до ответа — скелет, на отказе — отказ с
  * «Повторити» (раньше на отказе стояло то же «ще немає»).
@@ -76,7 +105,8 @@ export default function MessagesPage() {
   const { id } = useParams();
   const { ut } = useLang();
   const { run, busy } = useAction();
-  const [text, setText] = useState("");
+  const [drafts, setDrafts] = useState<ThreadDrafts>({});
+  const text = draftIn(drafts, id);
 
   const list = useResource(() => api.threads(), []);
   const thread = useResource(() => (id ? api.thread(id) : Promise.resolve(null)), [id]);
@@ -207,7 +237,10 @@ export default function MessagesPage() {
                       <Textarea
                         rows={3}
                         value={text}
-                        onChange={(e) => setText(e.target.value)}
+                        onChange={(e) => {
+                          const typed = e.target.value;
+                          setDrafts((d) => withDraft(d, id, typed));
+                        }}
                         placeholder={ut("ms.placeholder")}
                       />
                       <Button
@@ -215,8 +248,10 @@ export default function MessagesPage() {
                         disabled={busy || !text.trim() || !current?.patientId}
                         onClick={() =>
                           run(async () => {
-                            await api.sendMessage({ patientId: current!.patientId, text });
-                            setText("");
+                            // адресат и текст — этого разговора, сколько бы ни шла отправка
+                            const sent = text;
+                            await api.sendMessage({ patientId: current!.patientId, text: sent });
+                            setDrafts((d) => afterSent(d, id, sent));
                             await thread.reload();
                             await list.reload();
                           })

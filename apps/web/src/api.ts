@@ -998,7 +998,8 @@ export const api = {
   survey: (id: string, version?: number) =>
     request<SurveyFull>(`/api/surveys/${id}${version ? `?version=${version}` : ""}`),
   /** Методика в редактируемом виде: локализованные объекты вместо строк */
-  keySheet: (id: string) => request<KeySheet>(`/api/surveys/${id}/key?lang=ru`),
+  /* язык — заголовком Accept-Language, как у всех запросов: ?lang у сервера сильнее, и зашитый ru печатал лист по-русски в любой консоли (#180) */
+  keySheet: (id: string) => request<KeySheet>(`/api/surveys/${id}/key`),
   surveyRaw: (id: string) => request<SurveyFull>(`/api/surveys/${id}?raw=1`),
   validateSurvey: (draft: unknown) =>
     request<{ issues: Issue[] }>("/api/surveys/validate", {

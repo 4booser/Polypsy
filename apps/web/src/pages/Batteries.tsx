@@ -6,7 +6,7 @@ import type {
   SurveyGroupWithCounts,
   SurveyListItem,
 } from "@quizzy/shared";
-import { api, type Patient } from "../api";
+import { api } from "../api";
 import { day } from "../format";
 import { Empty, IconBattery, Loading, Screen, Search, useAction } from "../ui";
 import { Page, Panel, Stack } from "../ui/layout";
@@ -15,7 +15,8 @@ import { choiceLabel, keepChosen } from "../ui/choices";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
 import { pastDeadline, today } from "../components/deadline";
-import { assignCandidates } from "./batteries/model";
+import { assignChoices } from "./batteries/model";
+import { usePatientSearch } from "../components/PatientPicker";
 
 /**
  * Батареи: набор методик, назначаемый целиком.
@@ -36,20 +37,20 @@ export default function Batteries() {
    * ограничит выбор, но не оставит человека перед пустым экраном.
    */
   const res = useResource(async () => {
-    const [rows, surveys, groups, patients] = await Promise.all([
+    /* пациентов здесь нет: назначение ищет их на сервере по набранному (Assignments, #174) */
+    const [rows, surveys, groups] = await Promise.all([
       api.batteries(),
       /* со снятыми: состав батареи может держать снятую методику, и редактор обязан её назвать (см. BatteryEditor) */
       api.surveys(true).catch(() => [] as SurveyListItem[]),
       api.groups().catch(() => [] as SurveyGroupWithCounts[]),
-      api.patients().then((p) => p.items).catch(() => [] as Patient[]),
     ]);
-    return { rows, surveys, groups, patients };
+    return { rows, surveys, groups };
   }, []);
   const reload = res.reload;
 
   return (
     <Screen res={res}>
-      {({ rows, surveys, groups, patients }) => (
+      {({ rows, surveys, groups }) => (
     <Page
       title={ut("bt.title")}
       sub={ut("bt.sub")}
@@ -140,7 +141,7 @@ export default function Batteries() {
               ))}
             </ol>
 
-            {openId === b.id ? <Assignments battery={b} patients={patients} /> : null}
+            {openId === b.id ? <Assignments battery={b} /> : null}
           </Panel>
         ))}
       </Stack>
@@ -156,7 +157,7 @@ function totalMinutes(b: Battery): number | null {
   return Math.round(b.items.reduce((sum, i) => sum + (i.medianMinutes ?? 0), 0));
 }
 
-function Assignments({ battery, patients }: { battery: Battery; patients: Patient[] }) {
+function Assignments({ battery }: { battery: Battery }) {
   const { ut } = useLang();
   const [query, setQuery] = useState("");
   const [due, setDue] = useState("");
@@ -168,8 +169,17 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
   const rows = res.data;
   const reload = res.reload;
 
-  /* просроченное назначение — не «уже назначено»: сервер выдаст заново (batteries/model.ts) */
-  const candidates = useMemo(() => assignCandidates(patients, rows ?? [], query), [patients, query, rows]);
+  /*
+   * Кого предлагать — ищет сервер по набранному: первая сотня без поиска
+   * прятала остальных (#174), а её отказ превращался в «нікого не знайдено».
+   * Просроченное назначение — не «уже назначено»: сервер выдаст заново
+   * (batteries/model.ts).
+   */
+  const found = usePatientSearch(query, { onlyTyped: true });
+  const choices = useMemo(
+    () => (found.data ? assignChoices(found.data, rows ?? [], query) : null),
+    [found.data, query, rows],
+  );
   /* срок в прошлом не отправляется: назначение родилось бы просроченным (components/deadline.ts) */
   const dueInPast = pastDeadline(due, today());
 
@@ -249,10 +259,12 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ut("mark.optional")} />
         </label>
       </div>
-      {query ? (
+      {query.trim() && found.error ? (
+        <p className="mt-2 text-caption text-danger">{found.error}</p>
+      ) : query.trim() && choices ? (
         <div className="row tight mt-2">
-          {candidates.length ? (
-            candidates.map((p) => (
+          {choices.list.length ? (
+            choices.list.map((p) => (
               <button
                 key={p.id}
                 disabled={busy || dueInPast}
@@ -279,6 +291,7 @@ function Assignments({ battery, patients }: { battery: Battery; patients: Patien
           ) : (
             <span className="text-caption text-muted">{ut("bat.nobodyLeft")}</span>
           )}
+          {choices.cut ? <span className="text-caption text-muted">{ut("pg.truncated")}</span> : null}
         </div>
       ) : null}
       <p className="mt-2 text-caption text-muted">

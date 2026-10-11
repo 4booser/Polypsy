@@ -1,16 +1,60 @@
 import { Link } from "react-router-dom";
+import type { UiKey } from "@quizzy/shared";
 import { api } from "../api";
 import { dateTime } from "../format";
 import { NotLoaded, loadView, useAction } from "../ui";
 import { Button } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource, type Resource } from "../useResource";
+import { moveAndReload } from "../pages/visitModel";
 import { IconCheck, IconClock, IconPin, IconVideo } from "./icons";
 
 type Visits = Awaited<ReturnType<typeof api.myAppointments>>;
 type Surveys = Awaited<ReturnType<typeof api.surveys>>;
 /** Что блоку нужно от загрузки: данные, отказ, время ответа и «повторить» */
 type Loaded<T> = Pick<Resource<T>, "data" | "error" | "loading" | "reload" | "updatedAt">;
+
+/**
+ * Поздняя отмена — правило сервера (routes/clinic.ts, POST
+ * /appointments/:id/cancel): до приёма меньше LATE_CANCEL_HOURS часов, но он
+ * ещё не начался, — сервер ставит cancelledLate, и специалист видит отмену
+ * так же, как неявку. Здесь то же число и то же условие; совпадение с
+ * сервером сторожит test/cabinetCancel.test.ts.
+ */
+export const LATE_CANCEL_HOURS = 24;
+
+export function lateCancel(startsAt: string, now = Date.now()): boolean {
+  const hoursLeft = (new Date(startsAt).getTime() - now) / 3600000;
+  return hoursLeft < LATE_CANCEL_HOURS && hoursLeft > 0;
+}
+
+/** Вопрос перед отменой; поздней — с предупреждением, что специалист это увидит */
+export function cancelQuestion(startsAt: string, ut: (key: UiKey) => string, now = Date.now()): string {
+  return lateCancel(startsAt, now) ? `${ut("pt.cancelSure")}\n\n${ut("pt.cancelLate")}` : ut("pt.cancelSure");
+}
+
+/**
+ * «Скасувати» в кабинете (#178): сначала вопрос — кнопка стоит рядом с
+ * «Підтвердити», и промах пальцем отменял приём одним нажатием, без слова о
+ * том, что поздняя отмена видна специалисту (мобилка спрашивает и
+ * предупреждает). Отказался — ничего не уходит (false: useAction не
+ * покажет «скасовано»). Согласился — отмена, и экран перечитывается и на
+ * отказе сервера: 409/400 значит, что приём уже изменили или закрыли.
+ */
+export async function cancelVisit(
+  visit: { id: string; startsAt: string },
+  deps: {
+    ask: (question: string) => boolean;
+    cancel: (id: string) => Promise<unknown>;
+    reload: () => void;
+    ut: (key: UiKey) => string;
+    now?: number;
+  },
+): Promise<boolean> {
+  if (!deps.ask(cancelQuestion(visit.startsAt, deps.ut, deps.now))) return false;
+  await moveAndReload(() => deps.cancel(visit.id), deps.reload);
+  return true;
+}
 
 /**
  * Главная кабинета: ближайший приём и что пройти до него.
@@ -32,8 +76,20 @@ export default function PatientHome() {
       visits={visits}
       surveys={surveys}
       busy={busy}
-      onConfirm={(id) => run(() => api.confirmAppointment(id).then(visits.reload), ut("pt.confirmed"))}
-      onCancel={(id) => run(() => api.cancelAppointment(id).then(visits.reload), ut("pt.cancelled"))}
+      /* перечитывается и на отказе: приём мог уже изменить специалист (pages/visitModel.ts, #178) */
+      onConfirm={(id) => run(() => moveAndReload(() => api.confirmAppointment(id), visits.reload), ut("pt.confirmed"))}
+      onCancel={(visit) =>
+        run(
+          () =>
+            cancelVisit(visit, {
+              ask: (question) => window.confirm(question),
+              cancel: (id) => api.cancelAppointment(id),
+              reload: visits.reload,
+              ut,
+            }),
+          ut("pt.cancelled"),
+        )
+      }
     />
   );
 }
@@ -60,7 +116,8 @@ export function HomeBody({
   surveys: Loaded<Surveys>;
   busy: boolean;
   onConfirm: (id: string) => void;
-  onCancel: (id: string) => void;
+  /** Приём целиком: вопрос перед отменой зависит от того, сколько до него осталось */
+  onCancel: (visit: { id: string; startsAt: string }) => void;
 }) {
   const { ut } = useLang();
   const visitsView = loadView(visits);
@@ -150,7 +207,7 @@ export function HomeBody({
                 variant="quiet"
                 disabled={busy}
                 className="px-4"
-                onClick={() => onCancel(next.id)}
+                onClick={() => onCancel(next)}
               >
                 {ut("pt.cancel")}
               </Button>

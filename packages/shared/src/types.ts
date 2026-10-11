@@ -531,6 +531,11 @@ export interface OpsSession {
   /** Последнее обновление токена — выдача текущего */
   lastUsedAt: string;
   expiresAt: string;
+  /**
+   * Ступень лестницы владельца (как у OpsUserRow): экран не предлагает
+   * «Завершити» учётке на ступени смотрящего и выше — сервер ответил бы 403
+   */
+  ladderRank: number;
 }
 
 export interface OpsSessionPage {
