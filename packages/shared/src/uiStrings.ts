@@ -4388,7 +4388,6 @@ export const UI = {
     ru: "Часть задач можно запустить вручную — это делает тот, у кого есть право управлять работой системы.",
     en: "Some jobs can be run by hand — by someone with the right to manage the system.",
   },
-  "o2b.job.analyticsCache": { uk: "Перерахунок аналітики", ru: "Пересчёт аналитики", en: "Analytics recalculation" },
   "o2b.job.searchReindex": { uk: "Переіндексація пошуку", ru: "Переиндексация поиска", en: "Search reindex" },
   "o2b.job.catalogInstall": { uk: "Встановлення каталогу методик", ru: "Установка каталога методик", en: "Assessment catalogue install" },
   "o2b.job.alerts": { uk: "Перевірка правил сповіщень", ru: "Проверка правил оповещений", en: "Alert rule check" },
@@ -7833,6 +7832,10 @@ export const UI = {
     ru: "До приёма меньше суток — отмена будет поздней, и специалист это увидит",
     en: "The appointment is less than 24 hours away — this is a late cancellation, and the specialist will see it",
   },
+
+  /* ── w21:perfroutes ── */
+  /* техпанель: проверки «Якості даних» — фоновой задачей с сохранённым итогом (#189, apps/api/src/lib/dataChecks.ts) */
+  "ops.job.dataQuality": { uk: "Перевірки якості даних", ru: "Проверки качества данных", en: "Data quality checks" },
 
 } as const satisfies Record<string, UiEntry>;
 

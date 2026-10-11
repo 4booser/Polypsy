@@ -1,6 +1,9 @@
-import { sql, type SQL } from "drizzle-orm";
+import { desc, eq, sql, type SQL } from "drizzle-orm";
 import { t, type DataCheck, type DataCheckKey, type Lang } from "@quizzy/shared";
-import { db } from "../db";
+import { baseDb, db } from "../db";
+import { systemContext } from "../db/context";
+import { integrityChecks } from "../db/schema";
+import { JobLocked, withJobLock } from "./jobLock";
 
 /**
  * Проверки целостности данных — раздел «Якість даних» техпанели.
@@ -390,7 +393,10 @@ function parsed<T>(value: T | string | null): T | null {
   return typeof value === "string" ? (JSON.parse(value) as T) : value;
 }
 
-async function runOne(spec: CheckSpec, scope: CheckScope): Promise<Omit<DataCheck, "bySurvey"> & { bySurvey: { surveyId: string; count: number }[] }> {
+/** Итог одной проверки без названий методик — так он и хранится (см. refreshDataQuality) */
+type RawCheck = Omit<DataCheck, "bySurvey"> & { bySurvey: { surveyId: string; count: number }[] };
+
+async function runOne(spec: CheckSpec, scope: CheckScope): Promise<RawCheck> {
   const rows = await db.execute<SummaryRow & Record<string, unknown>>(sql`
     with hits as (${spec.hits(scope)})
     select
@@ -426,10 +432,18 @@ async function runOne(spec: CheckSpec, scope: CheckScope): Promise<Omit<DataChec
  * (см. routes/opsData.ts).
  */
 export async function runDataChecks(lang: Lang, scope: CheckScope = {}): Promise<DataCheck[]> {
-  const raw: Awaited<ReturnType<typeof runOne>>[] = [];
+  return titled(await collectDataChecks(scope), lang);
+}
+
+async function collectDataChecks(scope: CheckScope = {}): Promise<RawCheck[]> {
+  const raw: RawCheck[] = [];
   // по очереди, а не разом: внутри одной транзакции запросы всё равно идут по одному
   for (const spec of CHECKS) raw.push(await runOne(spec, scope));
+  return raw;
+}
 
+/** Названия методик разбивки — на языке смотрящего, при чтении: хранится итог без них */
+async function titled(raw: readonly RawCheck[], lang: Lang): Promise<DataCheck[]> {
   const ids = [...new Set(raw.flatMap((c) => c.bySurvey.map((b) => b.surveyId)))];
   const titles = new Map<string, string>();
   if (ids.length) {
@@ -449,4 +463,117 @@ export async function runDataChecks(lang: Lang, scope: CheckScope = {}): Promise
     ...c,
     bySurvey: c.bySurvey.map((b) => ({ ...b, title: titles.get(b.surveyId) ?? b.surveyId })),
   }));
+}
+
+/* ─────────── итог фоновой задачей (#189) ─────────── */
+
+/**
+ * Проверки — задачей, маршрут отдаёт сохранённый итог.
+ *
+ * Прежде маршрут прогонял все проверки на каждое открытие экрана: по
+ * очереди, по всем таблицам, под политиками строк — на синтетике в 1,44×
+ * цели 71 с (answers.missing — 21 с, ответы на пункт чужой версии — ещё
+ * 20), и при обрыве соединения на десятой секунде ответ не доходил вовсе.
+ * Несостыковки записей не появляются за минуты, а смотрят на них раз в
+ * день, — считать их на каждое открытие незачем.
+ *
+ * Итог — в integrity_checks видом data_quality (миграция 0122): ключи,
+ * числа и голые идентификаторы, как и в ответе маршрута; названия методик
+ * подставляются при чтении на языке смотрящего. Хранятся последние
+ * KEEP_RUNS итогов — историю проверок экран не показывает, хвост нужен
+ * разбору («когда это появилось»), а не росту таблицы.
+ *
+ * Когда: планировщик раз в DATA_QUALITY_EVERY_MS (отмеряет по дате
+ * последнего итога, а не счётчиком тиков — перезапуск не сбивает), руками —
+ * «Запустити зараз» у задачи на экране фоновых задач техпанели (opsManual).
+ * Одна проверка за раз на все реплики — замок в базе. Своей транзакцией
+ * системы и без предела оператора: тяжёлый проход — работа фоновой
+ * задачи, а не запроса (db/context.ts, REQUEST_STATEMENT_TIMEOUT_MS).
+ */
+export const DATA_QUALITY_JOB = "data.quality";
+/** Как часто планировщик обновляет итог */
+export const DATA_QUALITY_EVERY_MS = 6 * 3_600_000;
+/** Допуск на дрожание часового тика — как у сверки журнала (lib/integrity.ts) */
+const SLACK_MS = 5 * 60_000;
+const KEEP_RUNS = 20;
+
+interface StoredRun {
+  at: string;
+  durationMs: number;
+  checks: RawCheck[];
+}
+
+/** Итог для экрана: проверки и когда они прошли */
+export interface DataQualityResult {
+  checkedAt: string;
+  checks: DataCheck[];
+}
+
+/**
+ * Прогнать проверки и сохранить итог — в текущем контексте базы (вызывающий
+ * отвечает за системную роль). Возвращает сохранённое.
+ */
+async function checkAndStore(trigger: "manual" | "schedule", actorId: string | null): Promise<StoredRun> {
+  const started = Date.now();
+  const checks = await collectDataChecks();
+  const run: StoredRun = { at: new Date().toISOString(), durationMs: Date.now() - started, checks };
+  await db.insert(integrityChecks).values({
+    id: crypto.randomUUID(),
+    kind: "data_quality",
+    trigger,
+    at: run.at,
+    // «прошла» — ни одна проверка уровня ошибки не сработала
+    ok: !checks.some((c) => c.level === "error" && c.count > 0),
+    actorId,
+    summary: run as unknown as Record<string, unknown>,
+  });
+  await db.execute(sql`
+    delete from integrity_checks
+     where kind = 'data_quality'
+       and id not in (select id from integrity_checks where kind = 'data_quality' order by at desc limit ${KEEP_RUNS})
+  `);
+  return run;
+}
+
+/** Обновить итог фоном: своей системной транзакцией, под замком на все реплики */
+export function refreshDataQuality(trigger: "manual" | "schedule"): Promise<StoredRun> {
+  return withJobLock(DATA_QUALITY_JOB, () => systemContext(baseDb, () => checkAndStore(trigger, null)));
+}
+
+/** Такт планировщика: обновить итог, если последний старше DATA_QUALITY_EVERY_MS. null — ещё свежий */
+export async function scheduledDataQuality(now = new Date()): Promise<StoredRun | null> {
+  const [last] = await systemContext(baseDb, () =>
+    db
+      .select({ at: integrityChecks.at })
+      .from(integrityChecks)
+      .where(eq(integrityChecks.kind, "data_quality"))
+      .orderBy(desc(integrityChecks.at))
+      .limit(1),
+  );
+  if (last && now.getTime() - new Date(last.at).getTime() < DATA_QUALITY_EVERY_MS - SLACK_MS) return null;
+  try {
+    return await refreshDataQuality("schedule");
+  } catch (error) {
+    // проверку в эти минуты гонит соседняя реплика или ручной запуск
+    if (error instanceof JobLocked) return null;
+    throw error;
+  }
+}
+
+/**
+ * Последний итог для экрана — в текущем контексте (маршрут зовёт под
+ * asSystem). Итога ещё нет (свежая установка, планировщик не дошёл) —
+ * проверки идут здесь же, один раз, и итог сохраняется: на свежей
+ * установке они быстрые, а на большой первый такт планировщика после
+ * выкатки успевает раньше.
+ */
+export async function dataQualityReport(lang: Lang, actorId: string | null): Promise<DataQualityResult> {
+  const [last] = await db
+    .select({ summary: integrityChecks.summary })
+    .from(integrityChecks)
+    .where(eq(integrityChecks.kind, "data_quality"))
+    .orderBy(desc(integrityChecks.at))
+    .limit(1);
+  const run = (last?.summary as unknown as StoredRun | undefined) ?? (await checkAndStore("manual", actorId));
+  return { checkedAt: run.at, checks: await titled(run.checks, lang) };
 }

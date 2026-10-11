@@ -3,7 +3,7 @@ import { z } from "zod";
 import { screenViewsSchema } from "@quizzy/shared";
 import { asSystem } from "../db/context";
 import { audit } from "../lib/audit";
-import { runDataChecks } from "../lib/dataChecks";
+import { dataQualityReport } from "../lib/dataChecks";
 import { langOf, parseBody, parseQuery } from "../lib/http";
 import { mobileReport, pushReport, recordScreenViews, usageReport } from "../lib/opsData";
 import { requireAuth, requirePermission, requireStaff, type AppEnv } from "../middleware/auth";
@@ -47,15 +47,20 @@ const windowQuery = (fallback: 7 | 30 | 90) =>
       .default(fallback),
   });
 
+/*
+ * Сохранённый итог проверок, а не прогон (#189): проверки идут задачей
+ * планировщика и руками из техпанели (lib/dataChecks.ts). checkedAt —
+ * когда они прошли, а не когда открыли экран.
+ */
 opsDataRoutes.get("/quality", async (c) => {
-  const checks = await asSystem(() => runDataChecks(langOf(c)));
+  const report = await asSystem(() => dataQualityReport(langOf(c), c.get("user").id));
   await audit(c, {
     action: "ops.data_read",
     resourceType: "ops",
     resourceId: "quality",
-    details: { fired: checks.filter((x) => x.count > 0).map((x) => x.key) },
+    details: { fired: report.checks.filter((x) => x.count > 0).map((x) => x.key), checkedAt: report.checkedAt },
   });
-  return c.json({ checkedAt: new Date().toISOString(), checks });
+  return c.json(report);
 });
 
 opsDataRoutes.get("/usage", async (c) => {

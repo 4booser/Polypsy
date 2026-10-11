@@ -218,7 +218,7 @@ describe("записи прийомів", () => {
 
 describe("фонові задачі: «Запустити зараз»", () => {
   const job = (over: Partial<OpsJob>): OpsJob => ({
-    name: "analytics.cache",
+    name: "data.quality",
     intervalSec: 0,
     runs: 0,
     failures: 0,
@@ -242,7 +242,7 @@ describe("фонові задачі: «Запустити зараз»", () => {
   });
 
   test("у каждой ручной задачи есть имя по-человечески на трёх языках", () => {
-    for (const name of ["analytics.cache", "search.reindex", "catalog.install", "retention", "ops.alerts"]) {
+    for (const name of ["data.quality", "search.reindex", "catalog.install", "retention", "ops.alerts"]) {
       const key = JOB_KEY[name]!;
       expect(key, name).toBeDefined();
       for (const lang of ["uk", "ru", "en"] as const) expect(uiText(key, lang), `${name} ${lang}`).not.toBe(key);

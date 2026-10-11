@@ -6,11 +6,14 @@ import * as schema from "./schema";
 import { dbContext } from "./context";
 import { installDbErrorUnwrap } from "./errors";
 import { installSendGuard } from "./sendGuard";
+import { installCancelOnAbort } from "./cancelOnAbort";
 
 // ошибки базы — ошибками драйвера, а не обёрткой drizzle с параметрами в тексте (см. ./errors)
 installDbErrorUnwrap();
 // запрос сверх потолка параметров не доходит до соединения: иначе драйвер теряет счёт ответам (см. ./sendGuard)
 installSendGuard();
+// клиент ушёл — запросы его транзакции отменяются, новые не отправляются (см. ./cancelOnAbort)
+installCancelOnAbort();
 
 /**
  * Пул соединений к PostgreSQL.

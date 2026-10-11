@@ -3638,7 +3638,8 @@ export const integrityChecks = pgTable(
   "integrity_checks",
   {
     id: text("id").primaryKey(),
-    kind: text("kind", { enum: ["audit_chain", "rls"] }).notNull(),
+    // data_quality — итог проверок «Якості даних» (lib/dataChecks.ts, миграция 0122)
+    kind: text("kind", { enum: ["audit_chain", "rls", "data_quality"] }).notNull(),
     trigger: text("trigger", { enum: ["manual", "schedule"] }).notNull(),
     at: timestampCol("at").notNull().default(sql`now()`),
     ok: boolean("ok").notNull(),

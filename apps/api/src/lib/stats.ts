@@ -2,8 +2,12 @@ import { dayOf } from "./day";
 /** Небольшие статистические помощники для аналитики */
 
 export function median(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
+  return medianSorted([...values].sort((a, b) => a - b));
+}
+
+/** Медиана уже отсортированного по возрастанию — без копии (аналитика методики, #187) */
+export function medianSorted(sorted: readonly number[]): number {
+  if (!sorted.length) return 0;
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
@@ -17,8 +21,12 @@ export function median(values: number[]): number {
  * поликлинике они малые, это заметный сдвиг.
  */
 export function quantile(values: number[], p: number): number {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
+  return quantileSorted([...values].sort((a, b) => a - b), p);
+}
+
+/** Квантиль уже отсортированного по возрастанию — без копии (аналитика методики, #187) */
+export function quantileSorted(sorted: readonly number[], p: number): number {
+  if (!sorted.length) return 0;
   const at = (sorted.length - 1) * Math.min(1, Math.max(0, p));
   const lo = Math.floor(at);
   const hi = Math.ceil(at);
@@ -57,9 +65,17 @@ export function distribution(values: number[]): { value: number; count: number }
  * Postgres и получал другой день.
  */
 export function timelineByDay(timestamps: (string | null)[]): { date: string; count: number }[] {
+  return timelineOfDays(timestamps.map((ts) => dayOf(ts)));
+}
+
+/**
+ * То же по уже известным дням учреждения (YYYY-MM-DD). Аналитика методики
+ * берёт день из базы (#187): форматирование даты в поясе — на каждое из
+ * десятков тысяч прохождений — было заметной частью её памяти и времени.
+ */
+export function timelineOfDays(days: readonly (string | null)[]): { date: string; count: number }[] {
   const counts = new Map<string, number>();
-  for (const ts of timestamps) {
-    const date = dayOf(ts);
+  for (const date of days) {
     if (!date) continue;
     counts.set(date, (counts.get(date) ?? 0) + 1);
   }
@@ -201,7 +217,11 @@ export function kurtosisExcess(values: number[]): number | null {
  * режут время одинаково.
  */
 export function weekOf(iso: string | null | undefined): string | null {
-  const day = dayOf(iso);
+  return mondayOf(dayOf(iso));
+}
+
+/** Понедельник недели дня учреждения (YYYY-MM-DD) */
+export function mondayOf(day: string | null | undefined): string | null {
   if (!day) return null;
   const at = new Date(`${day}T00:00:00Z`);
   const back = (at.getUTCDay() + 6) % 7; // понедельник → 0, воскресенье → 6
@@ -221,9 +241,27 @@ export function weeklyMeans(
   points: { at: string | null; value: number }[],
   floor: number,
 ): { week: string; n: number; mean: number | null }[] {
+  return weeklyMeansOfDays(
+    points.map((p) => ({ day: dayOf(p.at), value: p.value })),
+    floor,
+  );
+}
+
+/** То же по уже известным дням учреждения — см. timelineOfDays */
+export function weeklyMeansOfDays(
+  points: readonly { day: string | null; value: number }[],
+  floor: number,
+): { week: string; n: number; mean: number | null }[] {
+  // понедельник — один на день, а не на каждую точку: дней в выборке единицы сотен
+  const mondays = new Map<string, string | null>();
   const byWeek = new Map<string, number[]>();
   for (const p of points) {
-    const week = weekOf(p.at);
+    if (!p.day) continue;
+    let week = mondays.get(p.day);
+    if (week === undefined) {
+      week = mondayOf(p.day);
+      mondays.set(p.day, week);
+    }
     if (!week || !Number.isFinite(p.value)) continue;
     const list = byWeek.get(week) ?? [];
     list.push(p.value);

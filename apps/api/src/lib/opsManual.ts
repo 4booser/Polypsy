@@ -13,20 +13,24 @@
  *
  * В списке:
  *
- *   analytics.cache — «пересчёт аналитики». Аналитика не хранится
- *     посчитанной, она считается на лету и кэшируется в процессе по
- *     отпечатку данных; запуск сбрасывает кэш, и следующее открытие экранов
- *     считает заново. Нужен после правок мимо сдачи (нормы, восстановление);
  *   search.reindex — пересборка слепого индекса записей (lib/noteReindex.ts,
  *     та же функция, что у команды reindex.ts);
  *   catalog.install — установка общего каталога методик (lib/catalogInstall,
  *     та же, что у installCatalog.ts): идемпотентна по построению;
  *   retention — чистка потока событий по сроку (retention.ts);
- *   ops.alerts — проверка правил оповещений (opsAlerts.ts).
+ *   ops.alerts — проверка правил оповещений (opsAlerts.ts);
+ *   data.quality — «перепроверить» «Якість даних»: проверки целостности
+ *     записей и новый сохранённый итог (dataChecks.ts, #189). Только чтение
+ *     данных и строка итога.
+ *
+ * «Пересчёт аналитики» (analytics.cache) убран (#187): он сбрасывал кэш
+ * lib/analyticsCache.ts, которым ни один маршрут не пользовался, — кнопка
+ * ничего не делала. Аналитика считается на каждый запрос, и пересчитывать
+ * нечего.
  */
 import { baseDb } from "../db";
 import { systemContext } from "../db/context";
-import { clearAnalyticsCache } from "./analyticsCache";
+import { DATA_QUALITY_JOB, refreshDataQuality } from "./dataChecks";
 import { installCatalog } from "./catalogInstall";
 import { withJobLock } from "./jobLock";
 import { log } from "./log";
@@ -35,7 +39,13 @@ import { ALERT_JOB, runAlertChecksLocked } from "./opsAlerts";
 import { registerRunnable } from "./opsJobs";
 import { runRetentionOnce } from "./retention";
 
-export const MANUAL_JOBS = ["analytics.cache", "search.reindex", "catalog.install", "retention", ALERT_JOB] as const;
+export const MANUAL_JOBS = [
+  "search.reindex",
+  "catalog.install",
+  "retention",
+  ALERT_JOB,
+  DATA_QUALITY_JOB,
+] as const;
 
 let registered = false;
 
@@ -43,12 +53,6 @@ let registered = false;
 export function registerManualJobs(): void {
   if (registered) return;
   registered = true;
-
-  registerRunnable("analytics.cache", async () => {
-    const cleared = clearAnalyticsCache();
-    log.info("ops.manual.analytics_cache", { cleared });
-    return cleared;
-  });
 
   registerRunnable("search.reindex", () => withJobLock("search.reindex", () => systemContext(baseDb, reindexNotes)));
 
@@ -68,4 +72,6 @@ export function registerManualJobs(): void {
   registerRunnable("retention", () => withJobLock("retention", () => runRetentionOnce()));
 
   registerRunnable(ALERT_JOB, runAlertChecksLocked);
+
+  registerRunnable(DATA_QUALITY_JOB, () => refreshDataQuality("manual"));
 }
