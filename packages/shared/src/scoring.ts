@@ -1,5 +1,5 @@
 import type { CodedText, ServerTextKey, TextParams } from "./serverStrings";
-import { t, type Answer, type ProfileResult, type Question, type Scale, type ScaleItem, type ScoreResult, type Sex, type SurveyFull } from "./types";
+import { t, type Answer, type LogicRule, type ProfileResult, type Question, type Scale, type ScaleItem, type ScoreResult, type Sex, type SurveyFull } from "./types";
 
 /** Диапазон баллов, который вопрос может дать субшкале */
 export function questionScoreRange(question: Question): { min: number; max: number } {
@@ -577,19 +577,65 @@ export function isAnswered(question: Question, answer: Answer | undefined): bool
   }
 }
 
-/** Проходит ли вопрос по условной логике при текущих ответах */
+/**
+ * Проходит ли вопрос по условной логике при текущих ответах.
+ *
+ * Видимость транзитивна (#135): ответ источника, который сам скрыт своим
+ * условием, не считается — источник для правила не отвечен. Прежде правило
+ * смотрело на ответ источника как есть: Q2 показан при «да» в Q1, Q3 (тяжёлый
+ * пункт) — при ответе на Q2; человек ответил всё и сменил Q1 на «ні». Экран
+ * держал Q3 по старому ответу Q2, оставшемуся в памяти формы, а сервер,
+ * получив тело без скрытого Q2, считал Q3 скрытым и молча отбрасывал его
+ * вместе с тревогой. Теперь Q3 скрыт и на экране, и в подсчёте.
+ *
+ * Отсюда и согласие клиента с сервером: видимость зависит только от ответов
+ * на видимые пункты, поэтому тело из одних видимых ответов (так шлют все
+ * клиенты) сервер читает с той же видимостью — ни один показанный пункт не
+ * отбрасывается. Одна функция для экрана, проверки обязательности,
+ * countedAnswers и computeProfile.
+ *
+ * Условия ссылаются только назад (createSurveySchema, err.v.logicForward), и
+ * цепочки конечны; на случай старых данных с кругом пункт на круге считается
+ * показанным — как читалось до транзитивности.
+ */
 export function isQuestionVisible(question: Question, questions: Question[], answers: Map<string, Answer>): boolean {
   // без условий — виден; `?.` — для методик, собранных в памяти без поля logic (эталоны, предпросмотр)
   if (!question.logic?.length) return true;
   const byId = new Map(questions.map((q) => [q.id, q]));
+  const memo = new Map<string, boolean>();
+  const onPath = new Set<string>();
 
-  // все правила должны выполняться: show — включает, hide — исключает
-  return question.logic.every((rule) => {
-    const source = byId.get(rule.sourceQuestionId);
-    const answer = answers.get(rule.sourceQuestionId);
-    const matched = source ? evaluateRule(source, answer, rule.operator, rule.value) : false;
-    return rule.action === "show" ? matched : !matched;
-  });
+  const visible = (q: Question): boolean => {
+    if (!q.logic?.length) return true;
+    const known = memo.get(q.id);
+    if (known !== undefined) return known;
+    onPath.add(q.id);
+    // все правила должны выполняться: show — включает, hide — исключает
+    const result = q.logic.every((rule) => {
+      const source = byId.get(rule.sourceQuestionId);
+      const shown = !!source && (onPath.has(source.id) || visible(source));
+      return logicRuleHolds(rule, source, shown ? answers.get(rule.sourceQuestionId) : undefined);
+    });
+    onPath.delete(q.id);
+    memo.set(q.id, result);
+    return result;
+  };
+  return visible(question);
+}
+
+/**
+ * Одно правило показа при данном ответе на источник — без видимости самого
+ * источника: show — выполнено при совпадении, hide — при несовпадении.
+ * Кирпич isQuestionVisible; отдельно нужен тем, кто подбирает ответы под
+ * правило (примеры листов сверки, apps/api/src/instrumentSheets).
+ */
+export function logicRuleHolds(
+  rule: Pick<LogicRule, "operator" | "value" | "action">,
+  source: Question | undefined,
+  answer: Answer | undefined,
+): boolean {
+  const matched = source ? evaluateRule(source, answer, rule.operator, rule.value) : false;
+  return rule.action === "show" ? matched : !matched;
 }
 
 function evaluateRule(
