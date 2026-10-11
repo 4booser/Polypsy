@@ -346,9 +346,10 @@ async function adoptDraftAlerts(draftIds: string[], finalId: string): Promise<vo
  * вместе с транзакцией запроса, так что второй читает уже закоммиченное:
  * сдача — тревоги автосохранения, автосохранение — сданное прохождение.
  * Берётся раньше замков случая и журнала (lib/alertCases.ts, lib/audit.ts)
- * у обоих маршрутов — порядок один, цикла нет.
+ * у обоих маршрутов и у чистки призраков (lib/ghostDrafts.ts) — порядок один,
+ * цикла нет.
  */
-async function lockAttempts(surveyId: string, personId: string): Promise<void> {
+export async function lockAttempts(surveyId: string, personId: string): Promise<void> {
   await db.execute(sql`select pg_advisory_xact_lock(hashtext(${`response:${surveyId}:${personId}`}))`);
 }
 
