@@ -357,8 +357,19 @@ for (const theme of ["dark", "light"] as const) {
      * Ждём именно вариант ответа, а не заголовок: экран прохождения — это
      * вопрос и кнопки под ним, и сканировать его до того, как приехал
      * первый пункт, значит проверить заставку загрузки.
+     *
+     * У методики с инструкцией перед первым пунктом — её экран и «Почати»
+     * (#170). Он тоже часть прохождения: проверяется отдельно, потом пункт.
      */
-    await page.locator("button[aria-pressed]").first().waitFor();
+    // язык консоли стенда — любой из трёх: подпись «Почати» / «Начать» / «Start» (ms.start)
+    const start = page.getByRole("button", { name: /^(Почати|Начать|Start)$/ });
+    const firstOption = page.locator("button[aria-pressed]").first();
+    await Promise.race([start.waitFor(), firstOption.waitFor()]);
+    if (await start.isVisible()) {
+      expect(await violationsOf(page, "/me/tests/:id — інструкція")).toEqual([]);
+      await start.click();
+    }
+    await firstOption.waitFor();
     expect(await violationsOf(page, "/me/tests/:id")).toEqual([]);
   });
 }
