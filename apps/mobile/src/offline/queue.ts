@@ -1,4 +1,4 @@
-import { isTransientStatus, retriesServerFailure, uiText } from "@quizzy/shared";
+import { isConsentRequiredCode, isTransientStatus, retriesServerFailure, uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 import { isPasswordGate } from "../auth/passwordGate";
 import { isOwnerChanged, mayStore } from "./owner";
@@ -142,6 +142,17 @@ export interface FlushResult {
   sent: number;
   left: number;
   rejected: number;
+  /** Прогон встал на 403 «нужно согласие»: запись ждёт принятия новой редакции (#201) */
+  consent?: true;
+}
+
+/**
+ * 403 «сначала примите согласие» — по коду отказа (сервер, app.ts:
+ * err.consentRequired), а не по тексту: текст на языке человека.
+ */
+export function isConsentRefusal(error: unknown): boolean {
+  const e = error as { status?: number; code?: unknown } | null;
+  return e?.status === 403 && isConsentRequiredCode(e.code);
 }
 
 let flushing = false;
@@ -165,6 +176,14 @@ let flushing = false;
  * SERVER_FAILURES_MAX раз: битая сдача не должна ни держать очередь, ни
  * крутиться вечно.
  *
+ * 403 «нужно согласие» (код err.consentRequired) — тоже не отказ по
+ * существу (#201), как и в веб-кабинете: опубликовали новую редакцию
+ * согласия, пока сдача ждала. Запись не помечается, попытка не считается,
+ * прогон встаёт (следующие упрутся в то же), а итог говорит `consent` —
+ * приложение показывает экран согласия (api/client.ts, onConsentRequired).
+ * После принятия первый прогон отправляет ту же запись с тем же
+ * clientRequestId. Прежде она становилась отклонённой и ждала разбора.
+ *
  * Чужие записи прогон не видит вовсе. Смена токена посреди прогона
  * (OwnerChanged из клиента) — тоже остановка, а не отказ: запись цела и
  * дождётся своего владельца.
@@ -178,6 +197,7 @@ export async function flush(
   }
   flushing = true;
   let sent = 0;
+  let consent = false;
   try {
     for (const item of pending(owner)) {
       if (item.rejectedReason) continue;
@@ -195,6 +215,11 @@ export async function flush(
         if (isPasswordGate(error)) break;
         const status = (error as { status?: number }).status ?? 0;
         if (isTransientStatus(status)) break; // сети нет или идут работы — остальные тоже не уйдут
+        // новая редакция согласия — запись цела и ждёт принятия; остальные упрутся в то же
+        if (isConsentRefusal(error)) {
+          consent = true;
+          break;
+        }
         // пока шла отправка, устройство стёрли — пометка вернула бы стёртую сдачу на планшет (#125)
         if (!mayStore(item.ownerId ?? null)) break;
         const attempts = item.attempts + 1;
@@ -225,7 +250,12 @@ export async function flush(
   } finally {
     flushing = false;
   }
-  return { sent, left: pendingCount(owner), rejected: rejectedItems(owner).length };
+  return {
+    sent,
+    left: pendingCount(owner),
+    rejected: rejectedItems(owner).length,
+    ...(consent ? { consent: true as const } : {}),
+  };
 }
 
 /** Своя запись по id; чужая или безхозная — как будто её нет */

@@ -71,6 +71,8 @@ export default function ConsentScreen() {
       setError(null);
       try {
         await api.acceptConsent(textId);
+        // сдачи, вставшие на новой редакции (#201), уходят сразу — те же записи, тот же clientRequestId
+        void api.flushQueue().catch(() => {});
         router.replace("/(app)/home");
       } catch (e) {
         setError(e instanceof Error ? e.message : ut("common.error"));
