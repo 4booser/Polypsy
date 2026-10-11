@@ -179,10 +179,12 @@ async function assignCascade(
   // срок — конец дня по поясу учреждения, а не минута сдачи скрининга (lib/day.ts, endOfDay)
   const dueAt = dueDays ? endOfDayAfter(now, dueDays) : null;
 
+  // сколько пропусков закрыто на деле: завершённое между чтением и записью не закрывается (#151)
+  let closedMissed = 0;
   const issued = await db.transaction(async (tx) => {
     // набор под замком: архивированный или удалённый за время проверок — не выдаётся (lib/batteries.ts)
     if (!(await lockBatteryForAssign(tx, batteryId))) return false;
-    await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
+    closedMissed = await closeMissed(tx, missed, noteCode("note.missed.cascade"), now);
     const assignmentId = crypto.randomUUID();
     await tx.insert(batteryAssignments).values({
       id: assignmentId,
@@ -219,7 +221,7 @@ async function assignCascade(
     resourceType: "battery",
     resourceId: batteryId,
     subjectUserId: userId,
-    details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays, ...(missed.length ? { missed: missed.length } : {}) },
+    details: { fromSurveyId, sourceTitle: source?.title ?? null, dueDays, ...(closedMissed ? { missed: closedMissed } : {}) },
   });
   // в итог — только после строки журнала: не легла она — шаг откатан, и назначения нет
   outcome.assignedBatteries.push(battery.title);
