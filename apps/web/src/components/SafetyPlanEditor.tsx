@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SafetyPlanContent } from "@quizzy/shared";
 import { api } from "../api";
 import { day } from "../format";
@@ -10,6 +10,7 @@ import { Panel } from "../ui/layout";
 import { Button } from "../ui/primitives";
 import { freshKey, withKeys, withoutKeys, type Keyed } from "../ui/rowKeys";
 import { staleMessage } from "./versioned";
+import { printOnly } from "../print";
 
 /**
  * Личный план безопасности (Стэнли–Браун).
@@ -109,6 +110,8 @@ export function SafetyPlanBody({
    * нажмёт «Перечитати», — план перечитывается целиком, и правка пропадёт.
    */
   const [stale, setStale] = useState<string | null>(null);
+  /* «Друк» — только этот блок: лист отдают самому человеку, остальной карте на нём не место (#180) */
+  const planRef = useRef<HTMLDivElement>(null);
 
   const active = res.data?.versions.find((v) => v.active) ?? null;
 
@@ -168,6 +171,7 @@ export function SafetyPlanBody({
      * это и отмечено — янтарной полосой слева и меткой рядом с заголовком.
      * Когда план есть, блок обычный.
      */
+    <div ref={planRef}>
     <Panel
       className={active ? undefined : "border-l-2 border-l-[var(--accent)]"}
       title={ut("sp.title")}
@@ -184,7 +188,7 @@ export function SafetyPlanBody({
           <button onClick={() => setOpen((v) => !v)}>
             {open ? ut("common.close") : active ? ut("sp.revise") : ut("sp.create")}
           </button>
-          {active ? <button onClick={() => window.print()}>{ut("sp.print")}</button> : null}
+          {active ? <button onClick={() => printOnly(planRef.current)}>{ut("sp.print")}</button> : null}
         </>
       }
     >
@@ -291,6 +295,7 @@ export function SafetyPlanBody({
         </div>
       ) : null}
     </Panel>
+    </div>
   );
 }
 

@@ -1053,11 +1053,14 @@ export default function App() {
               {isSuper ? <Route path="keys" element={<OpsSecKeys />} /> : null}
               {isSuper ? <Route path="integrity" element={<OpsSecIntegrity />} /> : null}
               {isSuper ? <Route path="sql" element={<OpsSecSql />} /> : null}
-              {/* участок obs2b: «Сповіщення» и «Записи прийомів» (Експлуатація), «Помилки клієнта» и «Швидкість екранів» (Система) */}
-              <Route path="alerts" element={<OpsAlerts />} />
-              <Route path="recordings" element={<OpsRecordings />} />
-              <Route path="client-errors" element={<OpsClientErrors />} />
-              <Route path="vitals" element={<OpsVitals />} />
+              {/*
+                участок obs2b: «Сповіщення» и «Записи прийомів» (Експлуатація), «Помилки клієнта» и «Швидкість екранів» (Система) —
+                по ops.read, как в меню и на сервере: без права по ссылке открывался раздел, а сервер отвечал 403 с записью в журнал (#180)
+              */}
+              {can("ops.read") ? <Route path="alerts" element={<OpsAlerts />} /> : null}
+              {can("ops.read") ? <Route path="recordings" element={<OpsRecordings />} /> : null}
+              {can("ops.read") ? <Route path="client-errors" element={<OpsClientErrors />} /> : null}
+              {can("ops.read") ? <Route path="vitals" element={<OpsVitals />} /> : null}
               {/* люди и безопасность (people2) — каждый раздел по своему праву, как в sections.ts */}
               {can("audit.read") ? <Route path="suspicious" element={<OpsSuspicious />} /> : null}
               {can("users.manage") ? <Route path="grants" element={<OpsGrants />} /> : null}
