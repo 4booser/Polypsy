@@ -1,7 +1,7 @@
 import { desc, eq, sql } from "drizzle-orm";
 import type { OpsReencryptJob } from "@quizzy/shared";
 import { baseDb, db } from "../db";
-import { dbContext, systemContext } from "../db/context";
+import { outsideRequest, systemContext } from "../db/context";
 import { securityJobs, users } from "../db/schema";
 import { auditSystem } from "./audit";
 import { activeKey } from "./crypto";
@@ -71,13 +71,16 @@ export type StartOutcome =
  * Запустить перешифровку. Возвращается сразу после записи задания; сам
  * проход — `done`, маршрут его не ждёт, тест ждёт.
  *
- * Всё — вне транзакции запроса (dbContext.exit): задание обязано быть
- * записано и видно до того, как проход начнёт отмечать ход, а транзакция
- * запроса закоммитится только с ответом. Проход же живёт дольше запроса и
- * ходит своими транзакциями, по одной на порцию.
+ * Всё — вне запроса (outsideRequest): задание обязано быть записано и
+ * видно до того, как проход начнёт отмечать ход, а транзакция запроса
+ * закоммитится только с ответом. Проход же живёт дольше запроса и ходит
+ * своими транзакциями, по одной на порцию. Вне запроса — и вне его отмены
+ * по обрыву клиента (#186): прежде здесь стоял dbContext.exit, который
+ * снимал только транзакцию, и обрыв запроса, лишь запустившего проход,
+ * отвергал все его обращения к базе — перешифровка вставала «идущей» (#204).
  */
 export function startReencrypt(actor: { id: string; email: string }): Promise<StartOutcome> {
-  return dbContext.exit(async (): Promise<StartOutcome> => {
+  return outsideRequest(async (): Promise<StartOutcome> => {
     const target = activeKey()?.id ?? null;
     if (!target) return { started: false, reason: "no_key" };
 

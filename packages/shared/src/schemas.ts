@@ -1231,10 +1231,19 @@ export const surveyAnalyticsQuery = dateRangeQuery.extend({
  * текст по действию, ресурсу и подробностям, и курсор вместо смещения —
  * журнал растёт сверху, и смещение на второй странице повторяло бы строки,
  * записанные, пока человек читал первую.
+ *
+ * Смещение — не дальше AUDIT_OFFSET_MAX (#202). Прежде принималось до
+ * миллиона: глубокая страница — это перебор и сортировка журнала целиком
+ * (под политикой строк планировщик не знает, сколько строк она пропустит,
+ * и уже на десяти тысячах из миллиона уходит от индекса по времени к полной
+ * сортировке). Смещением листают только прежние клиенты, и дальше первых
+ * страниц они не ходят; глубже — курсор.
  */
+export const AUDIT_OFFSET_MAX = 5_000;
+
 export const auditQuery = dateRangeQuery.extend({
   limit: queryInt(1, 500, 100),
-  offset: queryInt(0, 1_000_000, 0),
+  offset: queryInt(0, AUDIT_OFFSET_MAX, 0),
   action: z.string().max(64).optional(),
   actorId: z.string().uuid().optional(),
   subjectUserId: z.string().uuid().optional(),
