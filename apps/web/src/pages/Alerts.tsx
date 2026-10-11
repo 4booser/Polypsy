@@ -719,7 +719,8 @@ export function QueueRow({
  */
 function PatientContext({ userId }: { userId: string }) {
   const { ut } = useLang();
-  const res = useResource(() => api.caseSummary(userId), [userId]);
+  /* keep: false — сводка прежнего пациента не встаёт рядом со случаем следующего (#177) */
+  const res = useResource(() => api.caseSummary(userId), [userId], { keep: false });
   const data = res.data;
 
   if (!data) return <Loading rows={4} error={res.error} onRetry={res.reload} busy={res.loading} />;

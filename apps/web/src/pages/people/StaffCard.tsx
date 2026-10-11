@@ -165,8 +165,10 @@ export default function StaffCard() {
   const kind = barKind(user, user?.role !== "admin" || can("patients.read"), pathname);
 
   const viewerId = user?.id ?? "";
+  /* keep: false — карточка прежнего сотрудника не стоит под адресом следующего, и действия не уходят на него (#177) */
   const res = useResource(() => loadMember(id!, { id: viewerId, canManageUsers: canManage }), [id, viewerId, canManage], {
     enabled: !!id && !!user,
+    keep: false,
   });
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
