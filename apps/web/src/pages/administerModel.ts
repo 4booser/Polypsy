@@ -1,5 +1,5 @@
 import { isQuestionVisible, type Answer, type SurveyFull } from "@quizzy/shared";
-import { api, type Patient } from "../api";
+import { api } from "../api";
 
 /**
  * Ввод методики специалистом (Administer.tsx): какая версия и что уходит.
@@ -19,16 +19,15 @@ export function blankVersion(raw: string | null): number | undefined {
 }
 
 /**
- * Методика той версии, что на бланке, и список пациентов. Версии нет —
- * отказ сервера (err.surveyVersionNotFound) показывается как ошибка
- * загрузки, а не подменяется действующей.
+ * Методика той версии, что на бланке. Версии нет — отказ сервера
+ * (err.surveyVersionNotFound) показывается как ошибка загрузки, а не
+ * подменяется действующей.
+ *
+ * Пациентов здесь нет: первая сотня без поиска прятала остальных (#174) —
+ * выбор ищет их на сервере сам (components/PatientPicker.tsx).
  */
-export async function loadAdminister(
-  id: string,
-  version: number | undefined,
-): Promise<{ survey: SurveyFull; patients: Patient[] }> {
-  const [survey, patients] = await Promise.all([api.survey(id, version), api.patients().then((p) => p.items)]);
-  return { survey, patients };
+export async function loadAdminister(id: string, version: number | undefined): Promise<{ survey: SurveyFull }> {
+  return { survey: await api.survey(id, version) };
 }
 
 /** Тело сдачи за пациента */
