@@ -7,6 +7,7 @@ import { Panel } from "../ui/layout";
 import { Button, Num, SectionLabel } from "../ui/primitives";
 import { useLang } from "../lang";
 import { useResource } from "../useResource";
+import { moveAndReload } from "./visitModel";
 
 /**
  * То, куда приём можно двинуть отсюда: остальные переходы этому экрану не
@@ -219,7 +220,8 @@ export default function TodayPage() {
                     key={a.id}
                     a={a}
                     busy={busy}
-                    onStatus={(to) => run(() => api.appointmentStatus(a.id, to).then(reload))}
+                    /* перечитывается и на отказе: 409/400 значит, что строка устарела (visitModel.ts, #178) */
+                    onStatus={(to) => run(() => moveAndReload(() => api.appointmentStatus(a.id, to), reload))}
                     onLead={() => run(() => api.takeLead(a.patientId, true).then(reload))}
                   />
                 ))}

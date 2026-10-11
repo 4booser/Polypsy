@@ -24,6 +24,7 @@ import {
   assignProblems,
   assignReady,
   assignable,
+  moveAndReload,
   protocolSavable,
   protocolStep,
 } from "./visitModel";
@@ -413,7 +414,8 @@ function Actions({
           <Button
             size="sm"
             disabled={busy}
-            onClick={() => run(() => api.appointmentStatus(data.appointment.id, "done").then(reload))}
+            /* перечитывается и на отказе: приём мог уже закрыть или перевести другой (visitModel.ts, #178) */
+            onClick={() => run(() => moveAndReload(() => api.appointmentStatus(data.appointment.id, "done"), reload))}
           >
             {ut("visit.finish")}
           </Button>
