@@ -163,13 +163,63 @@ export function qualityOf(
   personFit: number | null = null,
   lang: Lang = "uk",
 ): QualityFlags {
-  const byId = new Map(questions.map((q) => [q.id, q]));
+  const markers = qualityMarkers(durationMs, answers, new Map(questions.map((q) => [q.id, q])), tooFastMs);
+  return qualityFlags(responseId, respondent, submittedAt, durationMs, markers, tooFastMs, personFit, lang);
+}
+
+/** Признаки небрежности, посчитанные по ответам одного прохождения, — без person-fit */
+export interface QualityMarkers {
+  tooFastShare: number;
+  longestStraightLine: number;
+  tooShort: boolean;
+}
+
+/**
+ * Признаки — по ответам прохождения; флаги и причины — отдельно
+ * (qualityFlags). Разделены ради аналитики методики (#187): счёт ответов
+ * она получает из базы, ответы целиком — только тех пунктов, где важен их
+ * порядок (прямая линия), а person-fit известен только после прохода по
+ * всем прохождениям.
+ */
+export function qualityMarkers(
+  durationMs: number,
+  answers: readonly AnswerLike[],
+  byId: ReadonlyMap<string, Question>,
+  tooFastMs: number = TOO_FAST_MS,
+): QualityMarkers {
   const answered = answers.filter((a) => !a.skipped);
-
   const timed = answered.filter((a) => a.durationMs > 0);
-  const tooFast = timed.filter((a) => a.durationMs < tooFastMs).length;
-  const tooFastShare = timed.length ? round((tooFast / timed.length) * 100, 1) : 0;
+  return markersFrom(
+    {
+      answered: answered.length,
+      timed: timed.length,
+      fast: timed.filter((a) => a.durationMs < tooFastMs).length,
+      longestStraightLine: straightLine(answered, byId),
+    },
+    durationMs,
+    tooFastMs,
+  );
+}
 
+/** Признаки по счёту ответов прохождения: отвеченных, со временем, быстрых — и по прямой линии */
+export function markersFrom(
+  count: { answered: number; timed: number; fast: number; longestStraightLine: number },
+  durationMs: number,
+  tooFastMs: number = TOO_FAST_MS,
+): QualityMarkers {
+  return {
+    tooFastShare: count.timed ? round((count.fast / count.timed) * 100, 1) : 0,
+    longestStraightLine: count.longestStraightLine,
+    tooShort: count.answered >= 5 && durationMs > 0 && durationMs < count.answered * tooFastMs,
+  };
+}
+
+/**
+ * Самая длинная «прямая линия» среди отвеченных пунктов, в их порядке:
+ * одинаковый столбец во всех строках матрицы и подряд идущие одинаковые
+ * числовые ответы. Другие типы пунктов на неё не влияют.
+ */
+export function straightLine(answered: readonly AnswerLike[], byId: ReadonlyMap<string, Question>): number {
   let longestStraightLine = 0;
 
   // внутри матричного вопроса: одинаковый столбец во всех строках
@@ -195,13 +245,32 @@ export function qualityOf(
       run = 1;
     }
   }
+  return longestStraightLine;
+}
 
+/** Есть ли у прохождения хоть одна причина флага — те же пороги, что у qualityFlags */
+export function qualityFlagged(
+  { tooFastShare, longestStraightLine, tooShort }: QualityMarkers,
+  personFit: number | null,
+): boolean {
+  return tooFastShare >= 50 || longestStraightLine >= 5 || tooShort || (personFit !== null && personFit >= 0.4);
+}
+
+/** Флаги и причины по признакам прохождения и person-fit */
+export function qualityFlags(
+  responseId: string,
+  respondent: string | null,
+  submittedAt: string | null,
+  durationMs: number,
+  { tooFastShare, longestStraightLine, tooShort }: QualityMarkers,
+  tooFastMs: number = TOO_FAST_MS,
+  personFit: number | null = null,
+  lang: Lang = "uk",
+): QualityFlags {
   const reasons: string[] = [];
   if (tooFastShare >= 50) reasons.push(serverText("quality.tooFast", lang, { share: tooFastShare, ms: tooFastMs }));
   if (longestStraightLine >= 5) reasons.push(serverText("quality.straightLine", lang, { n: longestStraightLine }));
-  if (answered.length >= 5 && durationMs > 0 && durationMs < answered.length * tooFastMs) {
-    reasons.push(serverText("quality.tooShort", lang));
-  }
+  if (tooShort) reasons.push(serverText("quality.tooShort", lang));
   /*
    * Person-fit: профиль, где трудные пункты сработали, а лёгкие нет, — не
    * «плохой человек», а нетипичный паттерн: небрежность, симуляция или

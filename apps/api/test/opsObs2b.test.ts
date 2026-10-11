@@ -167,7 +167,7 @@ describe("кто видит и кто меняет", () => {
     const writes: [string, string, unknown][] = [
       ["PUT", "/api/ops/alerts/rules/errors5xx", { threshold: 7 }],
       ["POST", "/api/ops/alerts/test", { channel: "telegram" }],
-      ["POST", "/api/ops/jobs/analytics.cache/run", {}],
+      ["POST", "/api/ops/jobs/data.quality/run", {}],
       ["POST", `/api/ops/recordings/${crypto.randomUUID()}/retry`, {}],
     ];
     for (const [method, path, body] of writes) {
@@ -738,17 +738,21 @@ describe("ручной запуск фоновой задачи", () => {
     expect((await api("/api/ops/jobs/schedules/run", root.token, { method: "POST", body: "{}" })).status).toBe(404);
   });
 
-  test("безопасные задачи видны в реестре до первого прохода; сброс кэша аналитики проходит", async () => {
+  test("безопасные задачи видны в реестре до первого прохода; перепроверка «Якості даних» проходит", async () => {
     const jobs = await api<OpsJobs>("/api/ops/jobs", root.token);
     const manual = jobs.body.items.filter((j) => j.manual).map((j) => j.name);
-    expect(manual).toEqual(expect.arrayContaining(["analytics.cache", "search.reindex", "catalog.install", "retention", "ops.alerts"]));
+    expect(manual).toEqual(expect.arrayContaining(["data.quality", "search.reindex", "catalog.install", "retention", "ops.alerts"]));
     expect(manual).not.toContain("schedules");
+    // «пересчёт аналитики» сбрасывал кэш, которым никто не пользовался, — его больше нет (#187)
+    expect(manual).not.toContain("analytics.cache");
 
-    const run = await api("/api/ops/jobs/analytics.cache/run", root.token, { method: "POST", body: "{}" });
+    const run = await api("/api/ops/jobs/data.quality/run", root.token, { method: "POST", body: "{}" });
     expect(run.status).toBe(202);
-    await Bun.sleep(10);
-    expect(jobsSnapshot().find((j) => j.name === "analytics.cache")).toMatchObject({ lastResult: "ok", lastByHand: true });
-  });
+    for (let i = 0; i < 300 && jobsSnapshot().find((j) => j.name === "data.quality")?.lastResult === "running"; i++) {
+      await Bun.sleep(50);
+    }
+    expect(jobsSnapshot().find((j) => j.name === "data.quality")).toMatchObject({ lastResult: "ok", lastByHand: true });
+  }, 30_000);
 
   test("проверка оповещений руками — проход под замком, без запроса в чужой контекст", async () => {
     const run = await api("/api/ops/jobs/ops.alerts/run", root.token, { method: "POST", body: "{}" });

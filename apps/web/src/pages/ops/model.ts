@@ -571,7 +571,6 @@ export const JOB_KEY: Record<string, UiKey> = {
   "clinic.meet_sync": "ops.job.meetSync",
   retention: "ops.job.retention",
   /* участок obs2b: задачи, которые запускают и руками (apps/api/src/lib/opsManual.ts) */
-  "analytics.cache": "o2b.job.analyticsCache",
   "search.reindex": "o2b.job.searchReindex",
   "catalog.install": "o2b.job.catalogInstall",
   "ops.alerts": "o2b.job.alerts",
