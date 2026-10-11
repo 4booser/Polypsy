@@ -199,7 +199,8 @@ normRoutes.get("/surveys/:id/age-curves", async (c) => {
   const targetOf = (scale: (typeof clinical)[number]) => ({
     versionId,
     code: scale.code,
-    maxScore: Math.round(scaleMaxScore(scale, survey.questions) * 100) / 100,
+    // тот же максимум, что пишет сдача: балла после поправок (#133)
+    maxScore: Math.round(scaleMaxScore(scale, survey.questions, survey.scales) * 100) / 100,
     unit: scale.normalization,
   });
   const pick = ageOf.size

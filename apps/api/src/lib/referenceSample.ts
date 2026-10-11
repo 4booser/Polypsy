@@ -119,7 +119,7 @@ export function referencePercentile(value: number, sample: readonly number[]): n
   return percentileOf(value, [...sample]);
 }
 
-/** Что сравнивается: сырой балл (печатный лист) или приведённое значение — T, стен, доля (динамика) */
+/** Что сравнивается: балл до нормировки, после поправок (печатный лист) или приведённое значение — T, стен, доля (динамика) */
 export type Measure = "raw" | "value";
 
 /** Точка, для которой нужна выборка: версия, шкала, размах сырого балла и единицы */
@@ -193,7 +193,17 @@ export async function referenceObservationSets(
         versionId: responses.versionId,
         reliable: responses.reliable,
         submittedAt: responses.submittedAt,
-        value: measure === "raw" ? responseScores.rawScore : responseScores.value,
+        /*
+         * «Сырой» у листа — балл до нормировки, но ПОСЛЕ поправок (#133): лист
+         * печатает его «з максимуму», и максимум записан тоже после поправок.
+         * Сырой балл без поправок у ЛАП МЛО — всегда 0, и выборка из одних
+         * нулей давала 50-й перцентиль любому человеку. У строк до волны 18
+         * балла после поправок нет (0118) — там он и есть сырой.
+         */
+        value:
+          measure === "raw"
+            ? sql<number>`coalesce(${responseScores.correctedScore}, ${responseScores.rawScore})`
+            : responseScores.value,
         maxScore: responseScores.maxScore,
         unit: measure === "raw" ? sql<string>`'raw'` : responseScores.normalization,
         code: scales.code,
