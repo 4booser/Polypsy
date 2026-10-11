@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 import type { Permission, UiKey } from "@quizzy/shared";
 import { useLang } from "../lang";
 import { cx } from "../ui/cx";
-import { IconSearchGlass, isTopLayer, useFocusTrap } from "../ui";
+import { IconSearchGlass, backdropPress, isTopLayer, useFocusTrap } from "../ui";
 import { Button, Tag } from "../ui/primitives";
 import { EventCenter } from "./EventCenter";
 import { LangMenu } from "./LangMenu";
@@ -719,6 +719,8 @@ function MoreMenu({
    * проекте — а расхождение между копиями как раз так и появляется.
    */
   const ref = useFocusTrap<HTMLDivElement>();
+  /* подложка — тем же правилом, что Modal (#200, #179): нажатие начато и закончено на ней */
+  const [press] = useState(backdropPress);
 
   useEffect(() => {
     /* Esc закрывает верхний слой: палитра поверх меню не должна гасить оба */
@@ -760,7 +762,15 @@ function MoreMenu({
         содержимому под списком: человек целится «закрыть», а попадает в
         ссылку, которую не видел.
       */}
-      <div aria-hidden onClick={onClose} className="fixed inset-0 z-40" />
+      <div
+        aria-hidden
+        onPointerDown={press.down}
+        onPointerUp={press.up}
+        onClick={(e) => {
+          if (press.click(e)) onClose();
+        }}
+        className="fixed inset-0 z-40"
+      />
       <div
         id="topbar-more"
         ref={ref}

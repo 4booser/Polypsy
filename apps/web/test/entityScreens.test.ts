@@ -60,6 +60,38 @@ describe("keep: false — после смены id загрузка, а не д�
   });
 });
 
+describe("остатки #177: заключение, протокол, группа, повідомлення (#200)", () => {
+  const screens: [string, string][] = [
+    ["pages/Conclusion.tsx", "[responseId],\n    { keep: false },"],
+    ["pages/Conclusion.tsx", "[responseId], { manual: true, keep: false })"],
+    ["pages/Conclusion.tsx", "enabled: !!surveyId,\n    keep: false,"],
+    ["pages/response/index.tsx", "{ enabled: !!rid && !!surveyId, keep: false }"],
+    ["pages/patientGroups/PatientGroupCard.tsx", "useResource(() => api.patientGroup(groupId), [groupId], { keep: false })"],
+    ["pages/messages/MailingEditor.tsx", "useResource(() => api.mailing(id!), [id], { enabled: id !== null, keep: false })"],
+  ];
+  for (const [file, call] of screens) {
+    test(`${file}: ${call.replace(/\s+/g, " ")}`, () => {
+      expect(source(file)).toContain(call);
+    });
+  }
+
+  test("заключение: название, набранное к прежнему прохождению, к новому не переходит", () => {
+    expect(source("pages/Conclusion.tsx")).toContain('useEffect(() => setTitle(""), [responseId]);');
+  });
+
+  test("заключение: отказ 409 прежнего прохождения к новому не переходит", () => {
+    const editor = source("components/ConclusionEditor.tsx");
+    const reset = editor.indexOf("useEffect(() => setStale(null), [responseId]);");
+    expect(reset, "строка «заключение переписали» живёт через смену прохождения").toBeGreaterThan(-1);
+    // хук — до раннего возврата «загрузка»: иначе порядок хуков зависел бы от данных
+    expect(reset).toBeLessThan(editor.indexOf("if (!state) {"));
+  });
+
+  test("положительный контроль: форма повідомлення по-прежнему пересоздаётся по адресу", () => {
+    expect(source("pages/messages/MailingEditor.tsx")).toContain('<MailingEditor key={id ?? "new"} id={id ?? null} />');
+  });
+});
+
 describe("набранный ответ — свой у каждого разговора", () => {
   type Drafts = Readonly<Record<string, string>>;
   const m = messages as {

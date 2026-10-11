@@ -72,7 +72,11 @@ const SUBMIT = "POST /api/surveys/s1/responses";
 const STATUS = "GET /api/consents/me";
 const ACCEPT = "POST /api/consents/me/accept";
 
-const refused = { status: 403, body: { error: "Спершу прийміть інформовану згоду — без неї відповіді не приймаються" } };
+/* с #201 отказ несёт код — по нему, а не по фразе, сдача узнаёт «нужно согласие» */
+const refused = {
+  status: 403,
+  body: { error: "Спершу прийміть інформовану згоду — без неї відповіді не приймаються", code: "err.consentRequired" },
+};
 const newEdition = (textId: string, text: string) => ({
   status: 200,
   body: { required: true, accepted: false, version: 2, textId, text },

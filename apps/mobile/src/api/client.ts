@@ -97,6 +97,13 @@ export class ApiError extends Error {
 const passwordGateListeners = new Set<() => void>();
 
 /*
+ * Прогон очереди встал на 403 «нужно согласие» (#201): новую редакцию
+ * опубликовали, пока сдача ждала. Корневая раскладка уводит на экран
+ * согласия; после принятия экран сам досылает очередь — ту же запись.
+ */
+const consentGateListeners = new Set<() => void>();
+
+/*
  * Обмен refresh — общий на все запросы (одноразовый токен нельзя жечь
  * параллельно) и с тремя исходами вместо булева: auth/refresh.ts.
  */
@@ -384,6 +391,13 @@ export const api = {
     passwordGateListeners.add(listener);
     return () => {
       passwordGateListeners.delete(listener);
+    };
+  },
+  /** Подписка на «очередь ждёт согласия на новую редакцию» (#201); возвращает отписку */
+  onConsentRequired: (listener: () => void) => {
+    consentGateListeners.add(listener);
+    return () => {
+      consentGateListeners.delete(listener);
     };
   },
   /** Подписка на «устройство стёрто по команде, сессия закрыта» (offline/wipe.ts); возвращает отписку */
@@ -764,6 +778,8 @@ export const api = {
         { owner: item.ownerId ?? null },
       ).then(() => undefined),
     );
+    // сдача ждёт согласия на новую редакцию — показать его экран (корневая раскладка)
+    if (result.consent) for (const listener of consentGateListeners) listener();
 
     for (const draft of drafts.unsynced(owner)) {
       const revision = draft.revision ?? 0;

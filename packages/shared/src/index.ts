@@ -17,6 +17,8 @@ export * from "./permissions";
 export * from "./serviceStatus";
 export * from "./featureFlags";
 export * from "./rci";
+/* точка динамики пациента: доля для профиля и подпись в своих единицах (#199) */
+export * from "./dynamicsPoint";
 export * from "./medstats";
 export * from "./versionDiff";
 export * from "./palette";

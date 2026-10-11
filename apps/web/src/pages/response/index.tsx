@@ -70,6 +70,9 @@ export default function ResponseView() {
    * берётся по идентификатору из адреса, а не из ответа о прохождении —
    * иначе запросы шли бы один за другим и экран ждал бы вдвое дольше. Цена
    * — один лишний запрос, когда адрес собран с чужой методикой; см. Navigate.
+   *
+   * keep: false (#200): протокол прежнего прохождения под адресом нового —
+   * чужие ответы, а не устаревающие; пока едет новый — загрузка.
    */
   const res = useResource(
     async () => {
@@ -77,7 +80,7 @@ export default function ResponseView() {
       return { detail, survey };
     },
     [rid, surveyId],
-    { enabled: !!rid && !!surveyId },
+    { enabled: !!rid && !!surveyId, keep: false },
   );
 
   if (!res.data) return <Loading rows={8} error={res.error} onRetry={res.reload} />;

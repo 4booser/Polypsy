@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useNavigation } from "expo-router";
+import { pointShare, pointValueText, pointValueTop } from "@quizzy/shared";
 import type { RespondentDynamics } from "@quizzy/shared";
 import { api } from "@/api/client";
 import { ChartCard, SeverityTag } from "@/components/charts";
@@ -70,11 +71,17 @@ export default function PatientDynamicsScreen() {
             >
               <RadarChart
                 labels={[ut("mdy.last"), ut("mdy.first")]}
+                /*
+                 * Доля — сырой балл после поправок против максимума шкалы
+                 * (pointShare, одна запись с консолью): rawScore точки —
+                 * T-балл или стен, и делить его на максимум сырого балла
+                 * значило мерить в двух единицах (#199).
+                 */
                 axes={sv.scales.map((sc) => {
                   const p = sc.points[sc.points.length - 1];
                   return {
                     label: sc.title,
-                    value: p && p.maxScore > 0 ? p.rawScore / p.maxScore : 0,
+                    value: p ? pointShare(p) : 0,
                     raw: p?.rawScore ?? 0,
                   };
                 })}
@@ -84,7 +91,7 @@ export default function PatientDynamicsScreen() {
                         const p = sc.points[0];
                         return {
                           label: sc.title,
-                          value: p && p.maxScore > 0 ? p.rawScore / p.maxScore : 0,
+                          value: p ? pointShare(p) : 0,
                           raw: p?.rawScore ?? 0,
                         };
                       })
@@ -108,7 +115,8 @@ export default function PatientDynamicsScreen() {
               >
                 <LineChart
                   height={190}
-                  yMax={last?.maxScore ?? undefined}
+                  // верх — в единицах значений на графике: у стенов 10, у T-балла его нет (#199)
+                  yMax={(last && pointValueTop(last)) ?? undefined}
                   series={[
                     {
                       label: sc.title,
@@ -130,7 +138,10 @@ export default function PatientDynamicsScreen() {
                       <Body muted>{ut("mdy.last")}</Body>
                       <View style={{ flex: 1 }} />
                       <Text style={{ color: c.text, fontVariant: ["tabular-nums"] }}>
-                        {ut("qi.pointOf").replace("{n}", String(last.rawScore)).replace("{max}", String(last.maxScore))}
+                        {pointValueText(last, {
+                          of: ut("an.of"),
+                          norm: { raw: ut("norm.raw"), ratio: ut("norm.ratio"), tscore: ut("norm.tscore"), sten: ut("norm.sten") },
+                        })}
                       </Text>
                     </Row>
                     {last.severity ? (

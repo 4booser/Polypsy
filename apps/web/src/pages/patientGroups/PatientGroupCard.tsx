@@ -68,7 +68,8 @@ export default function PatientGroupCard() {
     [setParams],
   );
 
-  const card = useResource(() => api.patientGroup(groupId), [groupId]);
+  /* keep: false (#200): состав прежней группы под адресом новой — и «Видалити» ушло бы не тем людям */
+  const card = useResource(() => api.patientGroup(groupId), [groupId], { keep: false });
   const group = card.data;
 
   /*

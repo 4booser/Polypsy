@@ -407,6 +407,30 @@ export function isAttemptClosedCode(code: unknown): boolean {
   return typeof code === "string" && ATTEMPT_CLOSED_CODES.includes(code);
 }
 
+/**
+ * 403 «сначала примите согласие» (routes/responses.ts, assertConsent) — тоже
+ * ключом в поле `code` (#201). Без него клиент узнавал причину вопросом о
+ * статусе согласия после любого 403, а очередь веб-кабинета не узнавала
+ * вовсе: сдача на новой редакции согласия становилась отвергнутой. По коду
+ * очередь останавливается и ведёт к экрану согласия, а после принятия
+ * уходят те же ответы (web patient/outbox.ts, PatientApp.tsx).
+ */
+export const CONSENT_REQUIRED_CODE = "err.consentRequired";
+
+export function isConsentRequiredCode(code: unknown): boolean {
+  return code === CONSENT_REQUIRED_CODE;
+}
+
+/**
+ * Ключи отказов, которые сервер отдаёт полем `code` (app.ts, onError): по ним
+ * клиент решает сам. Прочие отказы — только текстом: решать по ним нечего.
+ */
+export const CLIENT_DECISION_CODES: readonly string[] = [...ATTEMPT_CLOSED_CODES, CONSENT_REQUIRED_CODE];
+
+export function isClientDecisionCode(code: unknown): code is string {
+  return typeof code === "string" && CLIENT_DECISION_CODES.includes(code);
+}
+
 /** Кто смотрит «от имени» — см. User.impersonation */
 export interface ImpersonationInfo {
   sessionId: string;

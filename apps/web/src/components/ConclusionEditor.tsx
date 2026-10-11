@@ -1,5 +1,5 @@
 
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { UiKey } from "@quizzy/shared";
 import { api, type ConclusionState } from "../api";
 import { cx } from "../ui/cx";
@@ -99,6 +99,12 @@ export function ConclusionEditor({
    * нужно действие — перечитать, — и знать, что станет с набранным.
    */
   const [stale, setStale] = useState<string | null>(null);
+  /*
+   * Отказ — о заключении этого прохождения. Переход к другому начинает без
+   * него: строка «заключение переписали» под чужим адресом звала бы
+   * перечитать то, чего здесь никто не переписывал (#201, хвост #200).
+   */
+  useEffect(() => setStale(null), [responseId]);
 
   if (!state) {
     // отказ загрузки — не повод прятать редактор: заключение можно написать заново

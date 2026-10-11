@@ -1,6 +1,7 @@
 import { consentViewOf, isTransientStatus, type ConsentStatus } from "@quizzy/shared";
 import { api, ApiError } from "../api";
 import { acceptFailure } from "./ConsentGate";
+import { isConsentRefusal } from "./outbox";
 
 /**
  * Сдача прохождения из кабинета — и что с ней бывает, кроме «принято».
@@ -22,9 +23,12 @@ import { acceptFailure } from "./ConsentGate";
  *   сдача держится ЦЕЛИКОМ — тем же телом, с тем же clientRequestId, — пока
  *   человек читает текст на месте. После принятия уходит именно она.
  *
- * Отказ 403 не несёт кода — только переведённый текст, — поэтому причина
- * узнаётся вопросом о статусе, а не разбором фразы. Статус не узнать (нет
- * сети) или согласие в порядке — это другой отказ, и он бросается как есть.
+ * Причина узнаётся по коду отказа (err.consentRequired, #201), а не по
+ * фразе: она на языке человека. Прежде кода не было, и о статусе согласия
+ * спрашивали после любого 403 — и после «методику вам не назначено». Статус
+ * всё равно нужен — в нём текст, который человек примет; не узнать его (нет
+ * сети) или согласие уже в порядке — это другой отказ, и он бросается как
+ * есть.
  */
 
 export type SubmitBody = Parameters<typeof api.submitResponse>[1] & { clientRequestId: string };
@@ -59,7 +63,7 @@ export async function sendAnswers(io: SendIo, surveyId: string, body: SubmitBody
       io.enqueue(surveyId, body);
       return { kind: "queued" };
     }
-    if (error.status === 403) {
+    if (isConsentRefusal(error)) {
       const status = await io.consentStatus().catch(() => null);
       if (status && consentViewOf(status).kind !== "pass") return { kind: "consent", surveyId, body, status, error: null };
     }

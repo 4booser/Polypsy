@@ -1,4 +1,14 @@
-import { ageAt, deviceTimeZone, evaluateSubmission, isTransientStatus, type Answer, type SurveyFull } from "@quizzy/shared";
+import {
+  ageAt,
+  deviceTimeZone,
+  evaluateSubmission,
+  isConsentRequiredCode,
+  isTransientStatus,
+  retriesServerFailure,
+  SERVER_FAILURES_MAX,
+  type Answer,
+  type SurveyFull,
+} from "@quizzy/shared";
 import { ownerOfToken, tokenStore } from "../api";
 
 /**
@@ -25,7 +35,16 @@ import { ownerOfToken, tokenStore } from "../api";
  *   принял. Теперь попытка считается, проход останавливается, как при
  *   временном отказе, и запись уйдёт следующим проходом. Отвергнутой она
  *   становится, только если сервер падает на ней SERVER_FAILURES_MAX раз:
- *   битая сдача не должна ни держать очередь, ни крутиться вечно;
+ *   битая сдача не должна ни держать очередь, ни крутиться вечно. Порог и
+ *   правило — общие с мобилкой (shared, retriesServerFailure, #201);
+ * - 403 «нужно согласие» (код err.consentRequired, #201) — тоже не отказ
+ *   по существу: опубликовали новую редакцию согласия, пока сдача ждала.
+ *   Запись не помечается и попытка не считается, проход останавливается, а
+ *   итог прохода говорит `consent` — кабинет перепроверяет согласие и
+ *   показывает его экран (PatientApp.tsx). После принятия уходит эта же
+ *   запись — те же ответы, тот же clientRequestId. Прежде она становилась
+ *   отвергнутой, а экран согласия открытой вкладки статус заново не
+ *   спрашивал: повтор падал до перезагрузки;
  * - отказ по существу (прочие 4xx) помечает запись и не блокирует остальных:
  *   битую сдачу нельзя ни потерять молча, ни повторять вечно. Решение по
  *   ней — человека: повторить или отказаться (кабинет, OutboxStrip);
@@ -75,12 +94,24 @@ export interface FlushResult {
   sent: number;
   left: number;
   rejected: number;
+  /** Проход встал на 403 «нужно согласие»: запись ждёт принятия новой редакции (#201) */
+  consent?: true;
 }
 
 const keyOf = (userId: string) => `quizzy.outbox.${userId}`;
 
-/** Сколько раз сервер может упасть на одной сдаче, прежде чем она станет отвергнутой (#172) */
-export const SERVER_FAILURES_MAX = 5;
+/** Сколько раз сервер может упасть на одной сдаче, прежде чем она станет отвергнутой (#172) — общий с мобилкой */
+export { SERVER_FAILURES_MAX };
+
+/**
+ * 403 «сначала примите согласие» — по коду в теле ответа (app.ts, onError),
+ * а не по тексту: текст на языке человека. ApiError веба держит тело в
+ * `body`; подменённый сервер тестов может отдать код и полем ошибки.
+ */
+export function isConsentRefusal(error: unknown): boolean {
+  const e = error as { status?: number; code?: unknown; body?: { code?: unknown } | null } | null;
+  return e?.status === 403 && isConsentRequiredCode(e.body?.code ?? e.code);
+}
 
 /**
  * `tokenOwner` — владелец токена, который уйдёт в ближайшем запросе. Сверка
@@ -140,6 +171,7 @@ export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | 
       if (flushing) return count();
       flushing = true;
       let sent = 0;
+      let consent = false;
       try {
         for (const item of read(userId)) {
           if (item.rejectedReason) continue;
@@ -154,8 +186,13 @@ export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | 
             if (isTransientStatus(status)) break;
             // сессии нет или она чужая — запись цела и ждёт входа владельца, как при чужом токене выше
             if (status === 401) break;
+            // новая редакция согласия — запись цела и ждёт принятия; следующие тоже упрутся в него
+            if (isConsentRefusal(error)) {
+              consent = true;
+              break;
+            }
             const attempts = item.attempts + 1;
-            const serverFailure = status >= 500 && attempts < SERVER_FAILURES_MAX;
+            const serverFailure = retriesServerFailure(status, attempts);
             write(
               userId,
               read(userId).map((i) =>
@@ -173,7 +210,7 @@ export function createOutbox(storage: OutboxStorage, tokenOwner: () => string | 
       } finally {
         flushing = false;
       }
-      return { ...count(), sent };
+      return { ...count(), sent, ...(consent ? { consent: true as const } : {}) };
     },
 
     /** Вернуть отклонённую сдачу в очередь — решение человека, а не кода */

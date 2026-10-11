@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import type { QueryClient } from "@tanstack/react-query";
 import type { Permission, User } from "@quizzy/shared";
 import { api, impersonationStore, tokenStore, watchSession } from "./api";
+import { dropLegacyDrafts } from "./pages/constructor/draftKey";
 import { queryClient } from "./query";
 import { useResource } from "./useResource";
 
@@ -92,6 +93,20 @@ export function dropTabSession(
   setTimeout(() => cache.clear(), 0);
 }
 
+/**
+ * Прежние ключи автосохранения конструктора без учётки — прочь при входе
+ * (#200). С #176 их никто не читает, а лежат в них несохранённые правки
+ * методик неизвестно чьи — на общем компьютере ординаторской, без срока.
+ * Хранилище недоступно (приватное окно, запрет сайта) — чистить нечего.
+ */
+function dropLegacyConstructorDrafts(): void {
+  try {
+    dropLegacyDrafts(localStorage);
+  } catch {
+    /* хранилища нет — и прежних ключей в нём тоже */
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [perms, setPerms] = useState<ReadonlySet<string>>(new Set());
@@ -142,6 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (settled) return;
     if (boot.data) {
+      // сессия восстановлена — тоже вход: держится неделями, и ждать нового входа ради чистки незачем
+      dropLegacyConstructorDrafts();
       // права и профиль — одним проходом отрисовки, права не позже профиля (см. accept)
       setPerms(boot.data.perms);
       setUser(boot.data.me);
@@ -215,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * ни одного из них даже заглушкой «пока грузится».
      */
     queryClient.clear();
+    dropLegacyConstructorDrafts();
     tokenStore.set(res.token);
     tokenStore.setRefresh(res.refreshToken);
     await accept(await api.me().catch(() => res.user));

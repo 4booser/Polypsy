@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   consentActionsOf,
   consentViewOf,
@@ -40,6 +40,11 @@ import { Button, TouchArea } from "../ui/primitives";
  * Без связи (и на время работ сервера) статус не узнать — кабинет не
  * запирается: сдачу всё равно проверит сервер. Другой отказ сервера — «текст
  * не получен», и принимать тогда нечего.
+ *
+ * Статус спрашивается при открытии кабинета — и заново, когда сервер сказал
+ * «нужно согласие» на досылке из очереди (#201, useRecheckConsent): новую
+ * редакцию опубликовали, пока вкладка была открыта. Прежде экран открытой
+ * вкладки об этом не узнавал, и повтор очереди падал до перезагрузки.
  */
 export function ConsentGate({ children }: { children: ReactNode }) {
   const { ut } = useLang();
@@ -64,6 +69,25 @@ export function ConsentGate({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /*
+   * Перепроверка: решение, принятое на этом экране прежде («pass» поверх
+   * статуса), больше не в силе — решает свежий статус. Снимается оно, когда
+   * свежий ответ пришёл, а не сразу: иначе до ответа встал бы прежний
+   * статус с прежним текстом.
+   */
+  const reload = res.reload;
+  const rechecking = useRef(false);
+  const recheck = useCallback(() => {
+    rechecking.current = true;
+    reload();
+  }, [reload]);
+  useEffect(() => {
+    if (!rechecking.current) return;
+    rechecking.current = false;
+    setError(null);
+    setOverride(null);
+  }, [res.updatedAt]);
+
   const loaded = res.data;
   const status = loaded && "status" in loaded ? loaded.status : null;
   /** Текст держится и после отказа: «повернутися до тексту» возвращает его, а не грузит заново */
@@ -74,7 +98,7 @@ export function ConsentGate({ children }: { children: ReactNode }) {
     override ?? (loaded === null ? null : status ? consentViewOf(status) : consentViewOfLoadError("code" in loaded ? loaded.code : undefined));
 
   if (view === null) return null;
-  if (view.kind === "pass") return <>{children}</>;
+  if (view.kind === "pass") return <RecheckConsent.Provider value={recheck}>{children}</RecheckConsent.Provider>;
 
   const run: Record<ConsentAction, () => void | Promise<void>> = {
     accept: async () => {
@@ -122,6 +146,18 @@ export function ConsentGate({ children }: { children: ReactNode }) {
   };
 
   return <ConsentScreen view={view} busy={busy} error={error} onAction={(a) => void run[a]()} />;
+}
+
+const RecheckConsent = createContext<() => void>(() => {});
+
+/**
+ * Перепроверить согласие из-под ворот: очередь кабинета упёрлась в 403
+ * «нужно согласие» (#201). Ворота перечитывают статус и, если редакция
+ * новая, встают экраном согласия; после принятия кабинет монтируется снова
+ * и досылает очередь — те же ответы (PatientApp.tsx, useOutbox).
+ */
+export function useRecheckConsent(): () => void {
+  return useContext(RecheckConsent);
 }
 
 /**
