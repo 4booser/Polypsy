@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { resetStore } from "./store.mock";
+import { SERVER_FAILURES_MAX } from "@quizzy/shared";
 import { discard, enqueue, flush, pending, pendingCount, rejectedItems, retryRejected } from "../src/offline/queue";
 
 /**
@@ -151,12 +152,18 @@ describe("прогон очереди", () => {
     expect(done.sent).toBe(2);
   });
 
-  test("ошибка сервера в коде (500) — отказ, а не вечный повтор", async () => {
+  test("ошибка сервера в коде (500) — не приговор с первого раза, но и не вечный повтор (#201)", async () => {
+    /*
+     * Как в веб-кабинете после #172: разовый 500 делал сдачу отклонённой
+     * навсегда. Теперь отказ — после SERVER_FAILURES_MAX падений подряд
+     * (подробно — serverFailures.test.ts).
+     */
     enqueue(A, "s1", {});
-    const res = await flush(A, async () => {
+    const fail = async () => {
       throw new HttpError("Внутрішня помилка", 500);
-    });
-    expect(res.rejected).toBe(1);
+    };
+    for (let i = 1; i < SERVER_FAILURES_MAX; i++) expect((await flush(A, fail)).rejected, `прогон ${i}`).toBe(0);
+    expect((await flush(A, fail)).rejected).toBe(1);
   });
 
   test("id первой попытки сохраняется в очереди: дубль после 504 сервер узнает", () => {

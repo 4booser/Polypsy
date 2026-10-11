@@ -1,4 +1,4 @@
-import { isTransientStatus, uiText } from "@quizzy/shared";
+import { isTransientStatus, retriesServerFailure, uiText } from "@quizzy/shared";
 import { currentLang } from "../currentLang";
 import { isPasswordGate } from "../auth/passwordGate";
 import { isOwnerChanged, mayStore } from "./owner";
@@ -43,8 +43,9 @@ export interface QueuedSubmission {
   surveyId: string;
   payload: Record<string, unknown>;
   queuedAt: string;
+  /** Сколько раз сервер отказал на этой записи (сбои 5xx считаются до SERVER_FAILURES_MAX) */
   attempts: number;
-  /** Отказ сервера (4xx): в вечный ретрай не уходит, ждёт разбора */
+  /** Отказ сервера (4xx; 5xx — после SERVER_FAILURES_MAX подряд): в вечный ретрай не уходит, ждёт разбора */
   rejectedReason?: string;
 }
 
@@ -155,6 +156,15 @@ let flushing = false;
  * до него очередь помечала бы каждую сдачу «отклонённой сервером»: она
  * ждала бы разбора человеком, а не конца работ.
  *
+ * Сбой сервера (500 и прочие 5xx) — тоже не приговор (#201), так же, как в
+ * веб-кабинете после #172 (shared, retriesServerFailure): разовый 500 при
+ * досылке делал сдачу отклонённой навсегда, хотя следующий прогон её бы
+ * принял. Теперь попытка считается, прогон останавливается, как при
+ * временном отказе (порядок сдачи сохраняется), и запись уйдёт следующим
+ * прогоном. Отклонённой она становится, только если сервер упал на ней
+ * SERVER_FAILURES_MAX раз: битая сдача не должна ни держать очередь, ни
+ * крутиться вечно.
+ *
  * Чужие записи прогон не видит вовсе. Смена токена посреди прогона
  * (OwnerChanged из клиента) — тоже остановка, а не отказ: запись цела и
  * дождётся своего владельца.
@@ -185,15 +195,23 @@ export async function flush(
         if (isPasswordGate(error)) break;
         const status = (error as { status?: number }).status ?? 0;
         if (isTransientStatus(status)) break; // сети нет или идут работы — остальные тоже не уйдут
-        // сервер отказал по существу: фиксируем причину, не блокируем остальных
         // пока шла отправка, устройство стёрли — пометка вернула бы стёртую сдачу на планшет (#125)
         if (!mayStore(item.ownerId ?? null)) break;
+        const attempts = item.attempts + 1;
+        // сбой сервера — попытка считается, прогон встаёт: следующий начнёт с этой же записи
+        const serverFailure = retriesServerFailure(status, attempts);
         try {
-          store.write(key(item.id), {
-            ...item,
-            attempts: item.attempts + 1,
-            rejectedReason: error instanceof Error ? error.message : `${uiText("net.failed", currentLang)} ${status}`,
-          });
+          store.write(
+            key(item.id),
+            serverFailure
+              ? { ...item, attempts }
+              : {
+                  // сервер отказал по существу: фиксируем причину, не блокируем остальных
+                  ...item,
+                  attempts,
+                  rejectedReason: error instanceof Error ? error.message : `${uiText("net.failed", currentLang)} ${status}`,
+                },
+          );
         } catch {
           /*
            * Пометку записать не удалось — запись остаётся неотмеченной и
@@ -201,6 +219,7 @@ export async function flush(
            * потерянная сдача.
            */
         }
+        if (serverFailure) break;
       }
     }
   } finally {
